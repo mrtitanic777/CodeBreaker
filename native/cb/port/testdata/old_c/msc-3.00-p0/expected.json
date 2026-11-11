@@ -1,0 +1,3815 @@
+[
+ {
+  "tag": "msc-3.00-p0.agree_globals",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.fixed_allocators",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.array_bounds",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.word_stacks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.merge_tables",
+  "changed": {
+   "d02acb.c": "9d72c5a385b80e4c"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [
+    "d02acb.c (g_0e5a: g_0e64)",
+    "d02acb.c (g_0e70: g_0e7c, g_0e88)"
+   ],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ],
+   [
+    "a string read past its end at a constant place (not joined: check)",
+    [
+     "d00ce3.c (g_0582)",
+     "d02acb.c (g_0e54)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_0e64",
+    "(&g_0e5a[5])",
+    "int g_0e5a[10];"
+   ],
+   [
+    "g_0e7c",
+    "(&g_0e70[6])",
+    "int g_0e70[18];"
+   ],
+   [
+    "g_0e88",
+    "(&g_0e70[12])",
+    "int g_0e70[18];"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.numbered_tables",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.size_tables",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.pool_blocks",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.local_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.byte_places",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.shared_blocks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.word_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.word_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.shared_blocks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.byte_places",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.local_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 10,
+   "g_1dcc": 10,
+   "g_1f78": 10,
+   "g_1fd8": 10,
+   "g_21e4": 10,
+   "g_23f0": 10,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.pool_blocks",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.size_tables",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.numbered_tables",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.array_bounds",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.word_stacks",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.merge_tables",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694",
+   "d02acb.c": "9d72c5a385b80e4c"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [
+    "d02acb.c (g_0e5a: g_0e64)",
+    "d02acb.c (g_0e70: g_0e7c, g_0e88)"
+   ],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ],
+   [
+    "a string read past its end at a constant place (not joined: check)",
+    [
+     "d00ce3.c (g_0582)",
+     "d02acb.c (g_0e54)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_0e64",
+    "(&g_0e5a[5])",
+    "int g_0e5a[10];"
+   ],
+   [
+    "g_0e7c",
+    "(&g_0e70[6])",
+    "int g_0e70[18];"
+   ],
+   [
+    "g_0e88",
+    "(&g_0e70[12])",
+    "int g_0e70[18];"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.fixed_allocators",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694",
+   "d02acb.c": "9d72c5a385b80e4c"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [
+    "d02acb.c (g_0e5a: g_0e64)",
+    "d02acb.c (g_0e70: g_0e7c, g_0e88)"
+   ],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ],
+   [
+    "a string read past its end at a constant place (not joined: check)",
+    [
+     "d00ce3.c (g_0582)",
+     "d02acb.c (g_0e54)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_0e64",
+    "(&g_0e5a[5])",
+    "int g_0e5a[10];"
+   ],
+   [
+    "g_0e7c",
+    "(&g_0e70[6])",
+    "int g_0e70[18];"
+   ],
+   [
+    "g_0e88",
+    "(&g_0e70[12])",
+    "int g_0e70[18];"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ },
+ {
+  "tag": "msc-3.00-p0.chain.agree_globals",
+  "changed": {
+   "d00f89.c": "1e105b6004a6e694",
+   "d02acb.c": "9d72c5a385b80e4c"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [
+    "d02acb.c (g_0e5a: g_0e64)",
+    "d02acb.c (g_0e70: g_0e7c, g_0e88)"
+   ],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [
+    "d00f89.c (struct pool: size and left x4)"
+   ],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "d00d74.c (struct slots: g_05ec, g_05ee)"
+    ]
+   ],
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "getflags.h (struct flagdef: var)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "g_05d6, g_05d8, g_05da, g_05dc, g_05de, g_0640, g_0644"
+    ]
+   ],
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "f011b3.c (struct macro as struct mac)"
+    ]
+   ],
+   [
+    "a string read past its end at a constant place (not joined: check)",
+    [
+     "d00ce3.c (g_0582)",
+     "d02acb.c (g_0e54)"
+    ]
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_0e64",
+    "(&g_0e5a[5])",
+    "int g_0e5a[10];"
+   ],
+   [
+    "g_0e7c",
+    "(&g_0e70[6])",
+    "int g_0e70[18];"
+   ],
+   [
+    "g_0e88",
+    "(&g_0e70[12])",
+    "int g_0e70[18];"
+   ]
+  ],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_00fe": 10,
+   "g_0230": 10,
+   "g_0232": 10,
+   "g_0234": 10,
+   "g_03d6": 10,
+   "g_052e": 10,
+   "g_056c": 10,
+   "g_056e": 10,
+   "g_0582": 10,
+   "g_05d2": 10,
+   "g_05d4": 10,
+   "g_05d6": 10,
+   "g_05d8": 10,
+   "g_05da": 10,
+   "g_05dc": 10,
+   "g_05de": 10,
+   "g_05e0": 10,
+   "g_05e2": 10,
+   "g_05e4": 10,
+   "g_05e6": 10,
+   "g_05e8": 10,
+   "g_05ea": 10,
+   "g_05ec": 10,
+   "g_05ee": 10,
+   "g_0616": 10,
+   "g_0640": 10,
+   "g_0642": 10,
+   "g_0644": 10,
+   "g_0664": 10,
+   "g_06ea": 10,
+   "g_06fe": 10,
+   "g_0700": 10,
+   "g_0828": 10,
+   "g_082a": 10,
+   "g_082c": 10,
+   "g_08e6": 10,
+   "g_08e8": 10,
+   "g_091a": 10,
+   "g_091e": 10,
+   "g_09d2": 10,
+   "g_09d4": 10,
+   "g_09d6": 10,
+   "g_09d8": 10,
+   "g_09da": 10,
+   "g_09dc": 10,
+   "g_09de": 10,
+   "g_0a42": 10,
+   "g_0a44": 10,
+   "g_0a8e": 10,
+   "g_0ad2": 10,
+   "g_0ad4": 10,
+   "g_0ad6": 10,
+   "g_0c28": 10,
+   "g_0c3c": 10,
+   "g_0e52": 10,
+   "g_0e54": 10,
+   "g_0e56": 10,
+   "g_0e58": 10,
+   "g_0e5a": 10,
+   "g_0e64": 10,
+   "g_0e6e": 10,
+   "g_0e70": 10,
+   "g_0e7c": 10,
+   "g_0e88": 10,
+   "g_0f06": 10,
+   "g_123a": 10,
+   "g_1394": 10,
+   "g_151c": 10,
+   "g_151e": 10,
+   "g_19c6": 10,
+   "g_19c8": 10,
+   "g_19ca": 10,
+   "g_19cc": 10,
+   "g_19d0": 4080,
+   "g_1dcc": 2096,
+   "g_1f78": 10,
+   "g_1fd8": 2096,
+   "g_21e4": 2096,
+   "g_23f0": 2096,
+   "g_25fc": 10,
+   "g_25fe": 10,
+   "g_2600": 10,
+   "g_2e00": 10,
+   "g_2e02": 10,
+   "g_2e42": 10,
+   "g_2f42": 10,
+   "g_3042": 10,
+   "g_3270": 10,
+   "g_3370": 10,
+   "g_3470": 10,
+   "g_3770": 10,
+   "g_3772": 10,
+   "g_3974": 10,
+   "g_3b74": 10,
+   "g_3b76": 10
+  }
+ }
+]

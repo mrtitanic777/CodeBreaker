@@ -141,6 +141,7 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
