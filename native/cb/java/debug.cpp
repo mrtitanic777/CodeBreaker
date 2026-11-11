@@ -1,14 +1,20 @@
-// codebreaker/java/debug.cpp -- typed C++ port of codebreaker.java.debug. See debug.hpp.
+#include "cb/java/debug.hpp"
 
-#include "codebreaker/java/debug.hpp"
+#include <algorithm>
+#include <vector>
 
-namespace codebreaker::java::debug {
+#include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/core/text.hpp"
+#include "cb/java/textutil.hpp"
 
-// (the three files' text, verbatim)
-extern const py::str DEBUG_H;
-extern const py::str DEBUG_CPP;
-extern const py::str DEBUG_README;
-const py::str DEBUG_H = py::str(R"DBGSRC(// Debug.h -- SINGLE toggle point for ALL debug instrumentation (CodeBreaker-emitted).
+namespace cb::java::debug {
+
+namespace {
+
+// The three files, as the C++ and C they ARE -- the text is the product, so it is held verbatim. (A raw string
+// literal may not pass 16 KB on MSVC; each is well under.)
+constexpr std::string_view kDebugH = R"DBGH(// Debug.h -- SINGLE toggle point for ALL debug instrumentation (CodeBreaker-emitted).
 // ==========================================================================
 //  Flip DEBUG_ENABLED to 0 for retail: every macro below becomes a no-op and
 //  every debug site in the codebase that routes through these macros goes dark.
@@ -100,9 +106,8 @@ void  Debug_HardCrash(const char* file, int line, const char* fmt, ...);  // log
 
 #endif // DEBUG_ENABLED
 #endif // J2X_DEBUG_H
-)DBGSRC");
-
-const py::str DEBUG_CPP = py::str(R"DBGSRC(// Debug.cpp -- backend for the single debug file (CodeBreaker-emitted). See Debug.h.
+)DBGH";
+constexpr std::string_view kDebugCpp = R"DBGC(// Debug.cpp -- backend for the single debug file (CodeBreaker-emitted). See Debug.h.
 // J2X-ALWAYS-LINK: the debug facility is a developer tool that must ship whenever debug is enabled even
 // if no game code references it yet (you add Debug:: log calls while chasing a bug). The dead-subsystem
 // prune treats this file as a reachability ROOT and never cuts it. NOTE: the boot/error trace the port
@@ -232,9 +237,8 @@ void Debug_Summary() {}
 void Debug_HardCrash(const char*, int, const char*, ...) {}
 
 #endif // DEBUG_ENABLED
-)DBGSRC");
-
-const py::str DEBUG_README = py::str(R"DBGSRC(# DEBUG.md -- the single debug file
+)DBGC";
+constexpr std::string_view kDebugReadme = R"DBGR(# DEBUG.md -- the single debug file
 
 All debug instrumentation for the port lives behind one switch: `DEBUG_ENABLED` in `Debug.h`.
 
@@ -262,51 +266,69 @@ never a line per event -- so the console stays readable and a real leak stands o
 Do **not** add raw `printf` / `OutputDebugString` debug code elsewhere; route it through a `DBG_*`
 macro so the master switch governs it. The converter flags stray debug output as
 `J2X-REVIEW[debug-bypass]`.
-)DBGSRC");
+)DBGR";
 
-py::list<py::str> write_debug(const py::str& out_dir, bool enabled_default) {
-    // Emit Debug.h + Debug.cpp + DEBUG.md into out_dir.
-    py::str header = enabled_default ? DEBUG_H : DEBUG_H.replace(py::str("#define DEBUG_ENABLED 1"), py::str("#define DEBUG_ENABLED 0"));
-    py::list<py::str> paths;
-    const std::tuple<const char*, const py::str*> files[] = {
-        {"Debug.h", &header}, {"Debug.cpp", &DEBUG_CPP}, {"DEBUG.md", &DEBUG_README}};
-    for (const auto& nc : files) {
-        py::str p = py::os::path::join(out_dir, py::str(std::get<0>(nc)));
-        py::file f = py::open(p, py::str("w"), py::str("utf-8"));
-        f.write(*std::get<1>(nc));
-        f.close();
-        paths.append(p);
-    }
+}  // namespace
+
+std::string debug_header(bool enabled_default) {
+    return enabled_default ? std::string(kDebugH) : text::replace_all(kDebugH, "#define DEBUG_ENABLED 1", "#define DEBUG_ENABLED 0");
+}
+
+std::string_view debug_cpp() { return kDebugCpp; }
+
+std::string_view debug_readme() { return kDebugReadme; }
+
+std::vector<std::filesystem::path> write_debug(const std::filesystem::path& out_dir, bool enabled_default) {
+    const std::vector<std::filesystem::path> paths = {out_dir / "Debug.h", out_dir / "Debug.cpp", out_dir / "DEBUG.md"};
+    fs::write_text(paths[0], debug_header(enabled_default));
+    fs::write_text(paths[1], kDebugCpp);
+    fs::write_text(paths[2], kDebugReadme);
     return paths;
 }
 
-const py::re::Pattern& _DEBUG_MARKER() {
-    static const py::re::Pattern marker = py::re::compile(py::str("J2X-DEBUG\\[([a-z0-9-]+)\\]"));
-    return marker;
+namespace {
+
+constexpr std::string_view kMarker = "J2X-DEBUG[";
+
+bool is_tag_char(char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'; }
+
+// The tag of the first well-formed `J2X-DEBUG[tag]` on the line (tag is [a-z0-9-]+), or empty.
+std::string_view marker_tag(std::string_view line) {
+    for (std::size_t at = line.find(kMarker); at != std::string_view::npos; at = line.find(kMarker, at + 1)) {
+        std::size_t i = at + kMarker.size();
+        const std::size_t start = i;
+        while (i < line.size() && is_tag_char(line[i])) ++i;
+        if (i > start && i < line.size() && line[i] == ']') return line.substr(start, i - start);
+    }
+    return {};
 }
 
-py::dict<py::str, py::list<std::tuple<py::str, int64_t>>> scan_debug_markers(const py::str& out_dir) {
-    // Return {tag: [(file, line)]} for every J2X-DEBUG marker across the tree.
-    py::dict<py::str, py::list<std::tuple<py::str, int64_t>>> out;
-    for (const py::str& f : py::sorted(py::os::listdir(out_dir))) {
-        if (!(f.endswith(py::str(".cpp")) || f.endswith(py::str(".h")))) continue;
-        py::str text;
-        try {
-            py::file h = py::open(py::os::path::join(out_dir, f), py::str("r"), py::str("utf-8"), py::str("replace"));
-            text = h.read_text();
-            h.close();
-        } catch (const py::OSError&) {   // (IOError is OSError)
-            continue;
-        }
-        if (!text.contains(py::str("J2X-DEBUG"))) continue;
-        int64_t i = 0;
-        for (const py::str& line : py::split(text, py::str("\n"))) {
-            i++;
-            std::optional<py::re::Match> m = _DEBUG_MARKER().search(line);
-            if (m) out.setdefault(m->group(1), py::list<std::tuple<py::str, int64_t>>()).append(std::make_tuple(f, i));
+}  // namespace
+
+std::map<std::string, std::vector<MarkerSite>> scan_debug_markers(const std::filesystem::path& out_dir) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(out_dir, ec)) throw NotFoundError(out_dir, 0, "not a folder");
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator(out_dir)) {
+        const std::string name = fs::to_text(entry.path().filename());
+        if (entry.is_regular_file() && (name.ends_with(".cpp") || name.ends_with(".h"))) files.push_back(entry.path());
+    }
+    std::sort(files.begin(), files.end());
+
+    std::map<std::string, std::vector<MarkerSite>> out;
+    for (const auto& file : files) {
+        const auto content = textutil::try_read_text(file);
+        if (!content || content->find("J2X-DEBUG") == std::string::npos) continue;
+        std::uint32_t number = 0;
+        for (std::string_view line : text::split(*content, '\n')) {
+            ++number;
+            if (std::string_view tag = marker_tag(line); !tag.empty()) {
+                out[std::string(tag)].push_back({fs::to_text(file.filename()), number});
+            }
         }
     }
     return out;
 }
 
-}  // namespace codebreaker::java::debug
+}  // namespace cb::java::debug
+

@@ -6,7 +6,9 @@
 #include "cb/core/testing.hpp"
 #include "codebreaker/java/_paths.hpp"
 #include "codebreaker/java/cmake.hpp"
+#include "codebreaker/java/debug.hpp"
 #include "codebreaker/java/ir.hpp"
+#include "codebreaker/java/ledger.hpp"
 #include "codebreaker/java/overlays.hpp"
 #include "codebreaker/java/platforms.hpp"
 #include "codebreaker/java/stubs.hpp"
@@ -112,4 +114,33 @@ CB_TEST("java.shims.platforms", [] {
     CB_CHECK(from_py(jv::platforms::generate_stdafx(py::str("psp"))).find("#include <pspkernel.h>") != std::string::npos);
 });
 
+
+CB_TEST("java.shims.ledger_and_debug", [] {
+    namespace lg = jv::ledger;
+    lg::Ledger l;
+    l.add(py::str("b.cpp"), lg::Category::ERROR, py::str("bad"), 4);
+    l.add(py::str("a.cpp"), lg::Category::PORTED, py::str("fine"));
+    l.add(py::str("a.cpp"), lg::Category::GUESSED, py::str("hm"), 2, std::optional<py::str>(lg::Severity::LOW));
+    CB_CHECK_EQ(l.size(), 3);
+    CB_CHECK_EQ(from_py(l.events[0]->severity), "HIGH");               // the category's default
+    CB_CHECK_EQ(from_py(l.events[2]->severity), "LOW");                // the producer's
+    CB_CHECK_EQ(l.files().size(), 2);
+    auto by_file = l.by_file();
+    CB_CHECK(by_file.get(py::str("a.cpp")).value()[0] == l.events[1]);   // the old event objects, not copies
+    CB_CHECK_EQ(l.totals_by_category().get(py::str("BLOCKED")).value(), 0);
+    auto rows = l.file_risk_table();
+    CB_CHECK_EQ(from_py(std::get<0>(rows[0])), "b.cpp");
+    CB_CHECK_EQ(std::get<1>(rows[0]), 5);
+    CB_CHECK(from_py(l.to_json()).find("\"totals_by_severity\"") != std::string::npos);
+    CB_CHECK_THROWS_AS(py::ValueError, lg::Event(py::str("x"), py::str("NOPE"), py::str("m")));
+
+    cb::fs::ScopedTempDir tmp("cbshim");
+    auto paths = jv::debug::write_debug(to_py(cb::fs::to_text(tmp.path())), true);
+    CB_CHECK_EQ(paths.size(), 3);
+    auto markers = jv::debug::scan_debug_markers(to_py(cb::fs::to_text(tmp.path())));
+    CB_CHECK(markers.contains(py::str("once")));
+    CB_CHECK_EQ(from_py(std::get<0>(markers.get(py::str("once")).value()[0])), "Debug.h");
+});
+
 }  // namespace
+
