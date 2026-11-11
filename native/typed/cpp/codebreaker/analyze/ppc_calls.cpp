@@ -106,7 +106,7 @@ Result analyse(const py::str& path) {
     }
     for (const auto& kv : img->imports.items()) module.import_names.emplace(static_cast<uint64_t>(std::get<0>(kv)), std::get<1>(kv).utf8());
     if (!img->run_names) throw py::AttributeError("'Image' object has no attribute 'run_names'");
-    for (int64_t a : img->run_names->vec()) module.transparent.insert(static_cast<uint64_t>(a));
+    for (int64_t a : img->run_names->keys()) module.transparent.insert(static_cast<uint64_t>(a));
     for (const auto& kv : funcs.items()) {
         ns::Body body;
         for (const Row& row : std::get<1>(kv).vec()) {

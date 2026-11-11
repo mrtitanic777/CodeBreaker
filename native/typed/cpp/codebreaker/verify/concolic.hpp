@@ -101,9 +101,10 @@ inline ns::Observation to_new(const Observation& o) {
         std::lock_guard<std::mutex> g(st.lock);
         for (const PathEntry& e : o.path) n.path.push_back({e.site, e.taken, emulate::symbolic::shim::node_of(st, e.cond), kind_of(e.kind)});
     }
-    for (const auto& [name, v] : o.vars) {
-        n.vars[name.utf8()] = {std::get<0>(v) == py::str("arg") ? ns::InputVar::Place::Arg : ns::InputVar::Place::Mem, std::get<1>(v),
-                               static_cast<uint32_t>(std::get<2>(v)), std::get<3>(v)};
+    for (const auto& kv : o.vars.items()) {
+        const auto& v = std::get<1>(kv);
+        n.vars[std::get<0>(kv).utf8()] = {std::get<0>(v) == py::str("arg") ? ns::InputVar::Place::Arg : ns::InputVar::Place::Mem, std::get<1>(v),
+                                          static_cast<uint32_t>(std::get<2>(v)), std::get<3>(v)};
     }
     for (const py::str& s : o.lost) n.lost.insert(s.utf8());
     n.cut = o.cut;

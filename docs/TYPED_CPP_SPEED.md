@@ -723,3 +723,16 @@ Answers: 0 differences for PE, NE, LE, DOS and detect. OMF: only on damaged or n
 calls) or message, strict reads of a field cut by the end of the file (42 calls), index 0 as "no target" (102 calls), as
 listed in the formats DIVERGES notes. Fixed on the way: omf rename_externs on an EXTDEF without a type index (26 MSVC
 1.52 MFC objects), omf patched with a non-ASCII segment name, ne.u16/u32 with a negative offset.
+
+
+## cb refactor W1-B2: verify/compare, verify/concolic, emulate/native_win16, analyze/globals, analyze/ppc_calls, analyze/image (2026-11-11)
+
+Old = the engine or typed port the new code replaces (same inputs, best of 3, shared machine, +-30%). These modules are small passes; the
+numbers that matter are that nothing got slower and that the recorder, the solver and the decoder (the real costs) are the same code.
+
+| What | Old | New |
+|---|---|---|
+| analyze/globals: cbanalyze.dll's globals.variables + globals.tables on one loaded module (lz32 / dpwsock / password.cpl / vswks / pa3dmxd.drv; the DLL's answer alone, JSON out, from Python) | 0.5 / 0.5 / 0.9 / 0.9 / 2.6 ms | not isolated: the golden test decodes, builds the call graph and the strings table and then runs the pass for all 15 modules in 1.5 s wall (0.19 s process start); the pass is the same loop over the same references without the JSON |
+| analyze/image: load_pe of 3 real PE modules, functions carved and discovered (formats::pe + Capstone) | not timed (the old loader needs the Python, formats.dll and the DLL) | 1.1 s for all three, decode included |
+| verify/concolic: the 17 explorer tests, each a real Z3 session (own context) | the z3++ binding over py:: lists | 1.8 s for 72 checks, 0.19 s of it process start |
+| emulate/native_win16: the recorder is the same tracer code (w16_rec.cpp); the 16 callback trampolines became one context callback (cbt_w16_set_context) | 16 fixed slots, each call through a closure | one indirect call per event |

@@ -141,7 +141,44 @@ ImageSpec pe_spec(const formats::pe::Image& pe) {
 }
 
 Image load_pe(const formats::pe::Image& pe) {
-    return load(pe_spec(pe), static_cast<Va>(pe.header().image_base));
+    const Va base = static_cast<Va>(pe.header().image_base);
+    ImageSpec spec = pe_spec(pe);
+    // The targets of the direct calls a linear sweep of the code sees are real entry points (the sweep reads a table
+    // or padding as instructions now and then; a target outside the code is dropped).
+    std::set<Va> starts;
+    for (const auto& [start, limit] : spec.functions) starts.insert(start);
+    std::set<Va> found;
+    {
+        ImageSpec copy = spec;
+        Image sweep(std::move(copy));
+        for (const Span& s : sweep.spans()) {
+            if (!s.executable) continue;
+            const Va end = s.va + static_cast<Va>(s.data.size());
+            for (Va va = s.va; va < end;) {
+                const Function run = sweep.linear(va, 256);
+                if (run.insns.empty()) {
+                    ++va;
+                    continue;
+                }
+                for (const Instruction& ins : run.insns) {
+                    if (ins.flow == Flow::Call && ins.target && !starts.contains(*ins.target)) {
+                        const Span* t = sweep.span(*ins.target);
+                        if (t != nullptr && t->executable) found.insert(*ins.target);
+                    }
+                }
+                va = run.insns.back().addr + run.insns.back().size;
+            }
+        }
+    }
+    if (!found.empty()) {
+        for (Va va : found) {
+            starts.insert(va);
+            spec.function_names.try_emplace(va, auto_name(ImageKind::Pe, base, va));
+        }
+        spec.functions.clear();
+        set_functions(spec, starts);
+    }
+    return load(std::move(spec), base);
 }
 
 ImageSpec ne_spec(const NeLayout& layout) {
