@@ -42,4 +42,4 @@ A fault reports the guest address, the guest function and the host stack (offset
 program; `llvm-symbolizer --relative-address` turns them into the recompiled functions).
 
 The FFmpeg-derived WMA Pro tables (`runtime/src/audio/wmapro_tables.inc`) are LGPL-2.1+;
-`system/live/third_party/nlohmann` is MIT (NOTICE).
+`native/third_party/nlohmann` is MIT (NOTICE).

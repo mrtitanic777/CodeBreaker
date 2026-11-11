@@ -7,5 +7,5 @@
 #   target_link_libraries(<runtime> PRIVATE ws2_32)
 # The sources compile as part of the runtime's target and log through its "log.h". Headers: "live/<name>.h".
 
-set(X360_LIVE_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}" "${CMAKE_CURRENT_LIST_DIR}/third_party")
+set(X360_LIVE_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}" "${CMAKE_CURRENT_LIST_DIR}/../../../third_party")
 file(GLOB X360_LIVE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/live/*.cpp")
