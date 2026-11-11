@@ -209,3 +209,22 @@ Notes:
   when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
   was first. Compared with lz32.dll first in a fresh state: identical.
 * Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
+## Refactor to idiomatic C++, wave 0 batch 4 (base + build), 2026-11-11
+
+Old = the typed port on the py:: layer (built from the pre-refactor sources, /O2), new = `native/cb` (/O2, static CRT), same inputs, one thread, best of three.
+
+| Work | old (ms) | new (ms) |
+|---|---|---|
+| pklite `read` of EXTRACT.EXE's load module (46 KB, 86 KB expanded, 33,011 tokens) | 1.39 | 0.73 |
+| pklite `parse` of the 86 KB image (PKLITE's choices) | 68.6 | 40.8 |
+| pklite `pack` (parse + encode + the safe-memory pass) | 66.7 | 41.2 |
+| ctext `blank` x5 of a 207 KB C text (first sight, no cache hit) | 7.09 | 1.41 |
+| ctext `blank(whole)` x5 of the same | 6.33 | 1.14 |
+| corpus `index` of the Win95 corpus (2,562 files, 2,534 names; walk, lowercase, rank, sort) | 10.2 - 11.8 | 4.6 - 5.5 |
+| corpus `retail("kernel32")` after the index | (cached) | 0.17 (cached) |
+
+Notes: the old `ctext.blank` kept an LRU of 16,384 results; the new one has none (a scan costs about what hashing the text did).
+The old Python `pklite.parse` takes 7.8 s on the same image. `functions`, `runs`, `parallel`, `tidy_state` are process / file-system
+bound (a compile is a process spawn; both ports use CreateProcess): not timed apart from the real OpenWatcom 16-bit build below.
+A 16-bit build through the real OpenWatcom (3 functions, one rejected, cache warm in a second folder): the objects come out of the
+cache rewritten for the new folder (`omf_here`) and the linked DLL is byte-identical to the first.
