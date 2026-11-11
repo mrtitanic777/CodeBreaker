@@ -179,6 +179,7 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/pascal_join.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"

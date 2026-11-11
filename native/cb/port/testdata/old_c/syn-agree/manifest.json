@@ -1,0 +1,28 @@
+{
+ "env": {},
+ "profile": "dos_msc3",
+ "pointer_bits": 16,
+ "files": [
+  "a.h",
+  "b.c",
+  "c.c"
+ ],
+ "ds": [
+  [
+   "g_0cb0",
+   3248
+  ],
+  [
+   "g_0cb2",
+   3250
+  ]
+ ],
+ "bss": {
+  "g_0cb0": 10,
+  "g_0cb2": 10
+ },
+ "notes": [],
+ "aliases": [],
+ "extra": {},
+ "rules": []
+}

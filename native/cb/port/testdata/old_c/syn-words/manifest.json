@@ -1,0 +1,14 @@
+{
+ "env": {},
+ "profile": "dos_msc3",
+ "pointer_bits": 16,
+ "files": [
+  "w.c"
+ ],
+ "ds": [],
+ "bss": {},
+ "notes": [],
+ "aliases": [],
+ "extra": {},
+ "rules": []
+}
