@@ -2,6 +2,7 @@
 // each expected text checked by hand against what Microsoft's undname prints.
 //
 // DIVERGES from the Python module (and the engine it called, native/symbols/demangle.cc), by design:
+//   * Nesting deeper than 100 levels is not read (it was 400; real names nest a dozen deep).
 //   * Text is read as bytes, not code points: Latin-1 superscript digits (U+00B2, B3, B9), which Python's isdigit()
 //     accepted and int() refused, no longer make a name unreadable; a byte above 0x7F is an ordinary name byte.
 //   * plain(): `@N` with N beyond 32 bits is not a stack size (Python had a big integer): the name is returned as it

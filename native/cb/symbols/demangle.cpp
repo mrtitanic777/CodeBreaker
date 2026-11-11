@@ -151,6 +151,8 @@ struct FunctionType {
     string this_qualifier;
 };
 
+constexpr int kMaxDepth = 100;   // real names nest a dozen deep; a runaway one is declined, not recursed into
+
 class Reader {
 public:
     explicit Reader(string_view text) : s_(text) {}
@@ -404,7 +406,7 @@ private:
     class Depth {
     public:
         explicit Depth(Reader& r) : r_(r) {
-            if (++r_.depth_ > 400) {
+            if (++r_.depth_ > kMaxDepth) {
                 --r_.depth_;
                 r_.fail();
             }
