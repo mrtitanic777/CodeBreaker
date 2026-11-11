@@ -2596,7 +2596,7 @@ inline int64_t getsize(const str& s) {
 }
 inline str normcase(const str& s) { return str(s.lower().u32()).replace(str("/"), str("\\")); }
 }  // namespace path
-inline list<str> listdir(const str& s) {
+inline list<str> listdir(const str& s = str(".")) {
     nul_check_("listdir", s);
     list<str> out;
     std::error_code ec;

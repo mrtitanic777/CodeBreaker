@@ -20,6 +20,7 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <io.h>
+#include <sys/utime.h>
 #endif
 
 namespace py {
@@ -42,6 +43,16 @@ inline str pystr_(const fs_::path& p) { return str(p.u8string()); }
 // open(path, mode, encoding=, errors=, newline=): a handle shared by every name holding it (closed when
 // the last one goes, or by close()). Text mode decodes (default cp1252, Windows' locale codec) and
 // translates newlines as Python's universal newlines; writing translates "\n" to "\r\n" unless newline=.
+// a std::string of n bytes whose contents the caller fills in at once (a read): not zeroed first where the library can leave it
+inline void resize_uninit_(std::string& s, size_t n) {
+#if defined(_MSVC_STL_VERSION)
+    s._Resize_and_overwrite(n, [](char*, size_t m) { return m; });
+#elif defined(__cpp_lib_string_resize_and_overwrite)
+    s.resize_and_overwrite(n, [](char*, size_t m) { return m; });
+#else
+    s.resize(n);
+#endif
+}
 class file {
     struct H {
         std::FILE* f = nullptr;
@@ -69,7 +80,7 @@ class file {
         if (here >= 0 && _fseeki64(f, 0, SEEK_END) == 0) {
             int64_t end = _ftelli64(f);
             _fseeki64(f, here, SEEK_SET);
-            if (end > here) s.resize(static_cast<size_t>(end - here));
+            if (end > here) resize_uninit_(s, static_cast<size_t>(end - here));
             size_t got = s.empty() ? 0 : std::fread(&s[0], 1, s.size(), f);
             s.resize(got);
         }
@@ -168,8 +179,9 @@ class file {
     bytes read(int64_t n = -1) const {
         need_(true);
         if (n < 0) return bytes(rest_());
-        std::string s(static_cast<size_t>(n), '\0');
-        size_t got = std::fread(&s[0], 1, s.size(), h().f);
+        std::string s;
+        resize_uninit_(s, static_cast<size_t>(n));
+        size_t got = n ? std::fread(&s[0], 1, s.size(), h().f) : 0;
         s.resize(got);
         return bytes(std::move(s));
     }
@@ -407,7 +419,7 @@ inline str getenv(const str& k, const str& dflt) { return environ_::get(k, dflt)
 struct stat_result {
     int64_t st_mode = 0, st_size = 0, st_nlink = 1;
     double st_atime = 0, st_mtime = 0, st_ctime = 0;
-    int64_t st_mtime_ns = 0;
+    int64_t st_atime_ns = 0, st_mtime_ns = 0, st_ctime_ns = 0;   // (st_ctime: the creation time on Windows)
 };
 inline stat_result stat(const str& p) {
     nul_check_("stat", p);
@@ -442,9 +454,72 @@ inline stat_result stat(const str& p) {
     if (_wstat64(q.c_str(), &cs) == 0) {
         r.st_atime = static_cast<double>(cs.st_atime);
         r.st_ctime = static_cast<double>(cs.st_ctime);
+        r.st_atime_ns = static_cast<int64_t>(cs.st_atime) * 1000000000LL;
+        r.st_ctime_ns = static_cast<int64_t>(cs.st_ctime) * 1000000000LL;
     }
 #endif
     return r;
+}
+
+// os.utime(path, ns=(atime_ns, mtime_ns)) / os.utime(path, (atime, mtime)) / os.utime(path) (now), as CPython does on Windows
+inline void utime_ns(const str& p, int64_t atime_ns, int64_t mtime_ns) {
+    nul_check_("utime", p);
+    // (the C runtime sets both times to whole seconds, then the file time sets the modification time exactly, to 100 ns; the access
+    // time stays at its whole second: <windows.h> is not included here, and the C runtime cannot set the finer one)
+    int64_t asec = atime_ns / 1000000000LL;
+    if (atime_ns % 1000000000LL < 0) asec -= 1;
+    int64_t msec = mtime_ns / 1000000000LL;
+    if (mtime_ns % 1000000000LL < 0) msec -= 1;
+    std::error_code ec;
+    {
+#ifdef _WIN32
+        struct __utimbuf64 ub;
+        ub.actime = asec;
+        ub.modtime = msec;
+        const std::wstring wp = fspath_(p).wstring();
+        std::error_code dec;
+        if (!fs_::is_directory(fspath_(p), dec) && _wutime64(wp.c_str(), &ub) != 0) {
+            if (errno == ENOENT) raise_os_(std::error_code(2, std::system_category()), p);
+            // (the C runtime cannot open a read-only file to set its times, the system call CPython makes can: lift the attribute for the call)
+            struct _stat64 cs;
+            if (_wstat64(wp.c_str(), &cs) != 0 || (cs.st_mode & _S_IWRITE)) raise_os_(std::error_code(5, std::system_category()), p);
+            _wchmod(wp.c_str(), _S_IREAD | _S_IWRITE);
+            const int rc = _wutime64(wp.c_str(), &ub);
+            _wchmod(wp.c_str(), _S_IREAD);
+            if (rc != 0) raise_os_(std::error_code(5, std::system_category()), p);
+        }
+#endif
+    }
+    const int64_t ticks = (mtime_ns / 100) + 116444736000000000LL;   // (100 ns since 1601)
+    fs_::last_write_time(fspath_(p), fs_::file_time_type(std::chrono::duration<int64_t, std::ratio<1, 10000000>>(ticks)), ec);
+    if (ec) raise_os_(ec, p);
+}
+inline void utime(const str& p, const std::optional<std::tuple<double, double>>& times = std::nullopt) {
+    if (!times) {
+        const int64_t now = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        utime_ns(p, now, now);
+        return;
+    }
+    auto split = [](double d) {   // _PyTime_DoubleToDenominator, rounding down
+        double ip;
+        double fp = std::modf(d, &ip) * 1e9;
+        fp = std::floor(fp);
+        if (fp >= 1e9) { fp -= 1e9; ip += 1.0; }
+        else if (fp < 0) { fp += 1e9; ip -= 1.0; }
+        return static_cast<int64_t>(ip) * 1000000000LL + static_cast<int64_t>(fp);
+    };
+    utime_ns(p, split(std::get<0>(*times)), split(std::get<1>(*times)));
+}
+// os.chmod(path, mode): on Windows only the read-only attribute follows the write bit
+inline void chmod(const str& p, int64_t mode) {
+    nul_check_("chmod", p);
+#ifdef _WIN32
+    if (_wchmod(fspath_(p).wstring().c_str(), (mode & 0200) ? (_S_IREAD | _S_IWRITE) : _S_IREAD) != 0) raise_os_(std::error_code(errno == ENOENT ? 2 : 5, std::system_category()), p);
+#else
+    std::error_code ec;
+    fs_::permissions(fspath_(p), static_cast<fs_::perms>(mode & 07777), ec);
+    if (ec) raise_os_(ec, p);
+#endif
 }
 
 namespace path {
@@ -675,18 +750,86 @@ inline walk_t walk(const str& top) { return walk_t(top); }
 }  // namespace os
 
 namespace shutil {
-inline void copyfile(const str& a, const str& b) {
-    std::error_code ec;
-    if (!fs_::exists(fspath_(a), ec)) throw FileNotFoundError("[Errno 2] No such file or directory: " + repr(a).utf8());
-    fs_::copy_file(fspath_(a), fspath_(b), fs_::copy_options::overwrite_existing, ec);
-    if (ec) throw PermissionError("[Errno 13] Permission denied: " + repr(b).utf8());
+inline void copyfile(const str& a, const str& b) {   // shutil.copyfile: the bytes (the copy has the time of its writing, and no attributes)
+    if (os::path::isdir(a)) throw IsADirectoryError("[Errno 21] Is a directory: " + repr(a).utf8());
+    file in = file::open(a, str("rb"));
+    file out = file::open(b, str("wb"));
+    for (;;) {
+        const bytes chunk = in.read(1 << 20);
+        if (chunk.raw().empty()) break;
+        out.write(chunk);
+    }
+    out.close();
+    in.close();
+}
+// shutil.copymode / copystat / copy / copy2 (Windows: the mode is the read-only bit, the times are exact to 100 ns)
+inline void copymode(const str& src, const str& dst) { os::chmod(dst, os::stat(src).st_mode & 07777); }
+inline void copystat(const str& src, const str& dst) {
+    const os::stat_result st = os::stat(src);
+    os::utime_ns(dst, st.st_atime_ns, st.st_mtime_ns);
+    os::chmod(dst, st.st_mode & 07777);
 }
 inline str copy(const str& a, const str& b) {
     str dst = os::path::isdir(b) ? os::path::join(b, os::path::basename(a)) : b;
     copyfile(a, dst);
+    copymode(a, dst);
     return dst;
 }
-inline str copy2(const str& a, const str& b) { return copy(a, b); }
+inline str copy2(const str& a, const str& b) {   // copy, and the times and mode with it
+    str dst = os::path::isdir(b) ? os::path::join(b, os::path::basename(a)) : b;
+    copyfile(a, dst);
+    copystat(a, dst);
+    return dst;
+}
+// shutil.Error: str() is the list of (src, dst, why) tuples
+struct Error : Exception {
+    list<std::tuple<str, str, str>> errors;
+    explicit Error(const list<std::tuple<str, str, str>>& e) : Exception(repr(e).utf8()), errors(e) {}
+    const char* type() const override { return "Error"; }
+};
+// shutil.copytree(src, dst, symlinks=False, ignore=None, copy_function=copy2, dirs_exist_ok=False); links are followed
+// (symlinks=True, ignore_dangling_symlinks are not offered)
+using IgnoreFn = std::function<set<str>(const str&, const list<str>&)>;
+inline str copytree(const str& src, const str& dst, const IgnoreFn& ignore = nullptr, const std::function<str(const str&, const str&)>& copy_function = nullptr,
+                    bool dirs_exist_ok = false) {
+    std::vector<std::pair<str, bool>> entries;   // (name, is_dir): the folder in the order the system lists it
+    {
+        std::error_code ec;
+        auto it = fs_::directory_iterator(fspath_(src), ec);
+        if (ec) os::raise_os_(ec, src);
+        for (const auto& e : it) {
+            std::error_code e2;
+            entries.emplace_back(str(e.path().filename().u8string()), fs_::is_directory(e.path(), e2));
+        }
+    }
+    set<str> ignored;
+    if (ignore) {
+        list<str> names;
+        for (const auto& e : entries) names.append(e.first);
+        ignored = ignore(src, names);
+    }
+    os::makedirs(dst, 0777, dirs_exist_ok);
+    list<std::tuple<str, str, str>> errors;
+    for (const auto& e : entries) {
+        if (ignored.contains(e.first)) continue;
+        const str srcname = os::path::join(src, e.first), dstname = os::path::join(dst, e.first);
+        try {
+            if (e.second) copytree(srcname, dstname, ignore, copy_function, dirs_exist_ok);
+            else if (copy_function) copy_function(srcname, dstname);
+            else copy2(srcname, dstname);
+        } catch (const Error& err) {
+            for (const auto& x : err.errors) errors.append(x);
+        } catch (const OSError& why) {
+            errors.append(std::make_tuple(srcname, dstname, str(why.what())));
+        }
+    }
+    try {
+        copystat(src, dst);
+    } catch (const OSError&) {   // (on Windows an OSError here carries a winerror: it is not reported)
+    }
+    if (!errors.empty()) throw Error(errors);
+    return dst;
+}
 inline str move(const str& a, const str& b) {
     str dst = os::path::isdir(b) ? os::path::join(b, os::path::basename(a)) : b;
     std::error_code ec;
@@ -746,6 +889,139 @@ inline double monotonic() { return perf_counter(); }
 inline void sleep(double s) {
     if (s < 0) throw ValueError("sleep length must be non-negative");
     std::this_thread::sleep_for(std::chrono::duration<double>(s));
+}
+// time.struct_time: the fields in the order of its tuple (tm_mon 1-12, tm_wday 0 = Monday, tm_yday 1-366)
+struct struct_time {
+    int64_t tm_year = 1970, tm_mon = 1, tm_mday = 1, tm_hour = 0, tm_min = 0, tm_sec = 0, tm_wday = 3, tm_yday = 1, tm_isdst = 0;
+};
+namespace detail_ {
+inline struct_time from_tm_(const std::tm& t) {
+    struct_time r;
+    r.tm_year = t.tm_year + 1900;
+    r.tm_mon = t.tm_mon + 1;
+    r.tm_mday = t.tm_mday;
+    r.tm_hour = t.tm_hour;
+    r.tm_min = t.tm_min;
+    r.tm_sec = t.tm_sec;
+    r.tm_wday = (t.tm_wday + 6) % 7;
+    r.tm_yday = t.tm_yday + 1;
+    r.tm_isdst = t.tm_isdst;
+    return r;
+}
+// the seconds a time function takes: now, or the number rounded down (_PyTime_ObjectToTime_t, ROUND_FLOOR)
+inline std::time_t seconds_(const std::optional<double>& secs) {
+    if (!secs) return static_cast<std::time_t>(time());
+    const double d = *secs;
+    if (std::isnan(d)) throw ValueError("Invalid value NaN (not a number)");
+    const double f = std::floor(d);
+    if (f < -9223372036854775808.0 || f >= 9223372036854775808.0) throw OverflowError("timestamp out of range for platform time_t");
+    return static_cast<std::time_t>(f);
+}
+}  // namespace detail_
+inline struct_time gmtime(const std::optional<double>& secs = std::nullopt) {
+    const std::time_t t = detail_::seconds_(secs);
+    std::tm tm{};
+#ifdef _WIN32
+    if (gmtime_s(&tm, &t) != 0) throw OSError("[Errno 22] Invalid argument");
+#else
+    if (!gmtime_r(&t, &tm)) throw OSError("[Errno 22] Invalid argument");
+#endif
+    return detail_::from_tm_(tm);
+}
+inline struct_time localtime(const std::optional<double>& secs = std::nullopt) {
+    const std::time_t t = detail_::seconds_(secs);
+    std::tm tm{};
+#ifdef _WIN32
+    if (localtime_s(&tm, &t) != 0) throw OSError("[Errno 22] Invalid argument");
+#else
+    if (!localtime_r(&t, &tm)) throw OSError("[Errno 22] Invalid argument");
+#endif
+    return detail_::from_tm_(tm);
+}
+// time.strftime(format, t=localtime()): the C runtime's wcsftime (as CPython uses on Windows), after CPython's range checks
+inline str strftime(const str& fmt, const std::optional<struct_time>& when = std::nullopt) {
+    const struct_time t = when ? *when : localtime();
+    std::tm tm{};
+    tm.tm_year = static_cast<int>(t.tm_year - 1900);
+    tm.tm_mon = static_cast<int>(t.tm_mon - 1);
+    tm.tm_mday = static_cast<int>(t.tm_mday);
+    tm.tm_hour = static_cast<int>(t.tm_hour);
+    tm.tm_min = static_cast<int>(t.tm_min);
+    tm.tm_sec = static_cast<int>(t.tm_sec);
+    tm.tm_wday = static_cast<int>((t.tm_wday + 1) % 7);
+    tm.tm_yday = static_cast<int>(t.tm_yday - 1);
+    tm.tm_isdst = static_cast<int>(t.tm_isdst);
+    if (tm.tm_mon == -1) tm.tm_mon = 0;
+    else if (tm.tm_mon < 0 || tm.tm_mon > 11) throw ValueError("month out of range");
+    if (tm.tm_mday == 0) tm.tm_mday = 1;
+    else if (tm.tm_mday < 0 || tm.tm_mday > 31) throw ValueError("day of month out of range");
+    if (tm.tm_hour < 0 || tm.tm_hour > 23) throw ValueError("hour out of range");
+    if (tm.tm_min < 0 || tm.tm_min > 59) throw ValueError("minute out of range");
+    if (tm.tm_sec < 0 || tm.tm_sec > 61) throw ValueError("seconds out of range");
+    if (tm.tm_wday < 0) throw ValueError("day of week out of range");
+    if (tm.tm_yday == -1) tm.tm_yday = 0;
+    else if (tm.tm_yday < 0 || tm.tm_yday > 365) throw ValueError("day of year out of range");
+    if (tm.tm_isdst < -1) tm.tm_isdst = -1;
+    else if (tm.tm_isdst > 1) tm.tm_isdst = 1;
+    if (t.tm_year < 1 || t.tm_year > 9999) throw ValueError("strftime() requires year in [1; 9999]");
+    // the C runtime aborts on a conversion it does not know; CPython turns that into ValueError("Invalid format string")
+    const std::u32string& f = fmt.u32();
+    for (size_t i = 0; i < f.size(); i++) {
+        if (f[i] != U'%') continue;
+        i++;
+        if (i < f.size() && f[i] == U'#') i++;
+        if (i >= f.size() || std::u32string(U"aAbBcCdDeFgGhHIjmMnprRStTuUVwWxXyYzZ%").find(f[i]) == std::u32string::npos) throw ValueError("Invalid format string");
+        // (the C runtime also refuses a field a directive reads when it is out of the range it draws: the seconds 60 and 61 among them)
+        const auto in = [](int v, int lo, int hi) { return v >= lo && v <= hi; };
+        const std::u32string use_s = U"cTXr", use_h = U"cTXrRHIp", use_m = U"cTXrRM", use_date = U"cxDFdeCyYGgVUWjmbBh";
+        const char32_t d = f[i];
+        bool ok = true;
+        if (std::u32string(U"aAuwcU W").find(d) != std::u32string::npos) ok = ok && in(tm.tm_wday, 0, 6);
+        if (std::u32string(U"bBhmcxDF").find(d) != std::u32string::npos) ok = ok && in(tm.tm_mon, 0, 11);
+        if (std::u32string(U"deFxDc").find(d) != std::u32string::npos) ok = ok && in(tm.tm_mday, 1, 31);
+        if (std::u32string(U"jUW").find(d) != std::u32string::npos) ok = ok && in(tm.tm_yday, 0, 365);
+        if (use_h.find(d) != std::u32string::npos) ok = ok && in(tm.tm_hour, 0, 23);
+        if (use_m.find(d) != std::u32string::npos) ok = ok && in(tm.tm_min, 0, 59);
+        if (use_s.find(d) != std::u32string::npos || d == U'S') ok = ok && in(tm.tm_sec, 0, 59);
+        (void)use_date;
+        if (!ok) throw ValueError("Invalid format string");
+    }
+    if (f.empty()) return str("");
+    std::wstring wfmt;
+    for (char32_t c : f) {
+        if (c >= 0x10000) { wfmt.push_back(static_cast<wchar_t>(0xD800 + ((c - 0x10000) >> 10))); wfmt.push_back(static_cast<wchar_t>(0xDC00 + ((c - 0x10000) & 0x3FF))); }
+        else wfmt.push_back(static_cast<wchar_t>(c));
+    }
+    for (size_t size = 1024; size <= 256 * wfmt.size() + 1024; size *= 2) {
+        std::wstring buf(size, L'\0');
+        const size_t n = std::wcsftime(&buf[0], size, wfmt.c_str(), &tm);
+        if (n > 0) {
+            buf.resize(n);
+            std::u32string out;
+            for (size_t i = 0; i < buf.size(); i++) {
+                char32_t c = buf[i];
+                if (c >= 0xD800 && c < 0xDC00 && i + 1 < buf.size()) c = 0x10000 + ((c - 0xD800) << 10) + (buf[++i] - 0xDC00);
+                out.push_back(c);
+            }
+            return str(out);
+        }
+    }
+    return str("");
+}
+// time.mktime(t): the local time as seconds (OverflowError "mktime argument out of range")
+inline double mktime(const struct_time& t) {
+    std::tm tm{};
+    tm.tm_year = static_cast<int>(t.tm_year - 1900);
+    tm.tm_mon = static_cast<int>(t.tm_mon - 1);
+    tm.tm_mday = static_cast<int>(t.tm_mday);
+    tm.tm_hour = static_cast<int>(t.tm_hour);
+    tm.tm_min = static_cast<int>(t.tm_min);
+    tm.tm_sec = static_cast<int>(t.tm_sec);
+    tm.tm_isdst = static_cast<int>(t.tm_isdst);
+    tm.tm_wday = -1;   // (a sentinel: mktime sets it when it succeeds)
+    const std::time_t r = std::mktime(&tm);
+    if (r == static_cast<std::time_t>(-1) && tm.tm_wday == -1) throw OverflowError("mktime argument out of range");
+    return static_cast<double>(r);
 }
 }  // namespace time
 
@@ -1299,14 +1575,35 @@ namespace re {
 // a Match: Python's positions are code points; pyre's are UTF-8 bytes
 class Match {
     ::re::Match m_;
-    std::vector<std::string> names_;
+    const std::vector<std::pair<std::string, int>>* names_ = nullptr;   // (?P<name>...): name, group (the compiled pattern's, kept by pyre's cache)
     // (constant time: pyre keeps a table of code-point counts for the subject, built once and shared by its matches)
     int64_t cp_(long byte) const { return m_.cp_offset(byte); }
 
   public:
     Match() = default;
-    explicit Match(::re::Match m) : m_(std::move(m)) {}
+    explicit Match(::re::Match m, const std::vector<std::pair<std::string, int>>* names = nullptr) : m_(std::move(m)), names_(names) {}
     explicit operator bool() const { return m_.ok; }
+    // the group a name or number stands for: IndexError "no such group" as Python
+    int index_(const str& name) const {
+        if (names_)
+            for (const auto& kv : *names_)
+                if (kv.first == name.utf8()) return kv.second;
+        throw IndexError("no such group");
+    }
+    str group(const str& name) const { return piece_(index_(name)); }   // m.group("name")
+    std::optional<str> group_opt(const str& name) const { return group_opt(static_cast<int64_t>(index_(name))); }
+    int64_t start(const str& name) const { return start(static_cast<int64_t>(index_(name))); }
+    int64_t end(const str& name) const { return end(static_cast<int64_t>(index_(name))); }
+    // m.string: the text the match was made on
+    str string() const { return str::from_utf8(m_.s->data(), m_.s->size()); }
+    // m.groupdict(): {name: text or None}, in the order the groups are named
+    dict<str, std::optional<str>> groupdict() const {
+        dict<str, std::optional<str>> out;
+        if (names_)
+            for (const auto& kv : *names_) out[str(kv.first)] = group_opt(static_cast<int64_t>(kv.second));
+        return out;
+    }
+    // m.lastindex / m.lastgroup are not kept by pyre
     bool empty() const { return !m_.ok; }
     str piece_(int g) const {   // (the text of a group, decoded from the subject in place; '' where it did not take part)
         if (!m_.has(g)) return str();
@@ -1332,9 +1629,9 @@ class Match {
     const ::re::Match& raw() const { return m_; }
 };
 inline bool truthy(const Match& m) { return static_cast<bool>(m); }
-inline std::optional<Match> opt_(::re::Match m) {
+inline std::optional<Match> opt_(::re::Match m, const std::vector<std::pair<std::string, int>>* names = nullptr) {
     if (!m) return std::nullopt;
-    return Match(std::move(m));
+    return Match(std::move(m), names);
 }
 inline int flags_(int64_t f) {
     int out = 0;
@@ -1394,22 +1691,22 @@ class Pattern {
         return u.s->size();
     }
     static size_t end_(const ::re::Subject& u, int64_t cp, bool ascii) { return cp == INT64_MAX ? std::string::npos : at_(u, cp, ascii); }
-    template <class F> static std::optional<Match> at1_(const str& s, int64_t pos, int64_t endpos, F f) {
+    template <class F> static std::optional<Match> at1_(const str& s, int64_t pos, int64_t endpos, F f, const std::vector<std::pair<std::string, int>>* names) {
         auto u = subj_(s);
-        return opt_(f(u, at_(u, pos, u.ascii), end_(u, endpos, u.ascii)));
+        return opt_(f(u, at_(u, pos, u.ascii), end_(u, endpos, u.ascii)), names);
     }
     std::optional<Match> match(const str& s, int64_t pos = 0, int64_t endpos = INT64_MAX) const {
-        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->match_in(u, a, b); });
+        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->match_in(u, a, b); }, &r_->names());
     }
     std::optional<Match> fullmatch(const str& s, int64_t pos = 0, int64_t endpos = INT64_MAX) const {
-        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->fullmatch_in(u, a, b); });
+        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->fullmatch_in(u, a, b); }, &r_->names());
     }
     std::optional<Match> search(const str& s, int64_t pos = 0, int64_t endpos = INT64_MAX) const {
-        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->search_in(u, a, b); });
+        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->search_in(u, a, b); }, &r_->names());
     }
     list<Match> finditer(const str& s) const {
         list<Match> out;
-        for (auto& m : r_->finditer_in(subj_(s))) out.append(Match(m));
+        for (auto& m : r_->finditer_in(subj_(s))) out.append(Match(m, &r_->names()));
         return out;
     }
     list<str> findall(const str& s) const {
@@ -1443,7 +1740,7 @@ class Pattern {
     str sub(const str& repl, const str& s, int64_t count = 0) const { return sub_(repl, s, count, nullptr); }
     template <class F> str sub_fn_(const F& fn, const str& s, int64_t count, int64_t* n) const {
         int k = 0;
-        std::string o = r_->sub_fn_in([&](const ::re::Match& m) { return fn(Match(m)).utf8(); }, subj_(s), static_cast<int>(count), &k);
+        std::string o = r_->sub_fn_in([&](const ::re::Match& m) { return fn(Match(m, &r_->names())).utf8(); }, subj_(s), static_cast<int>(count), &k);
         if (n) *n = k;
         return k == 0 ? s : str(o);
     }

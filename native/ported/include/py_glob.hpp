@@ -252,4 +252,16 @@ inline list<str> glob(const str& pathname, bool recursive = false, bool include_
 }
 
 }  // namespace glob
+
+namespace shutil {
+// shutil.ignore_patterns(*patterns): the names (of those listed) that match one of the patterns, for copytree(ignore=)
+inline IgnoreFn ignore_patterns(const list<str>& patterns) {
+    return [patterns](const str&, const list<str>& names) {
+        set<str> ignored;
+        for (const str& pattern : patterns)
+            for (const str& n : fnmatch::filter(names, pattern)) ignored.add(n);
+        return ignored;
+    };
+}
+}  // namespace shutil
 }  // namespace py
