@@ -25,7 +25,8 @@ import os
 import re
 import struct
 
-from codebreaker.exact import compare, omf
+from codebreaker.exact import compare
+from codebreaker.formats import omf
 
 
 def rows(prj):

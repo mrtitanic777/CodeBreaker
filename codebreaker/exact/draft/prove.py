@@ -5,7 +5,8 @@ import os
 import re
 
 from codebreaker.base import settings
-from codebreaker.exact import compare, omf
+from codebreaker.exact import compare
+from codebreaker.formats import omf
 from codebreaker.exact.draft.text import _changed, _declare_pointer, BYTEPTR, split_body
 from codebreaker.exact.draft.shapes import (adjacent_swaps, assign_loops, byte_heads, call_pairs, case_guards,
                                             chain_tails, char_widens, common_tails, const_tests, flat_returns,

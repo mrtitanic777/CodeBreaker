@@ -18,7 +18,8 @@ gives is taken from that object (its names renumbered) before the program's byte
 import re
 import struct
 
-from codebreaker.exact import compare, omf
+from codebreaker.exact import compare
+from codebreaker.formats import omf
 
 
 def _ix(n):

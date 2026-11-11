@@ -13,7 +13,7 @@ record listing its relocations in the original's order. It proves nothing about 
 """
 import struct
 
-from codebreaker.exact import omf
+from codebreaker.formats import omf
 from codebreaker.exact.standin import _idx, _ix, fixrec, fixups
 
 
