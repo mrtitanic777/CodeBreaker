@@ -26,6 +26,7 @@
 #include "codebreaker/java/console/xact.hpp"
 #include "codebreaker/java/debug.hpp"
 #include "codebreaker/java/ledger.hpp"
+#include "codebreaker/java/profiles/package.hpp"
 #include "codebreaker/java/projects/minecraft/achievements.hpp"
 #include "codebreaker/java/projects/minecraft/applet_ping.hpp"
 #include "codebreaker/java/projects/minecraft/controller_nav.hpp"
@@ -1000,17 +1001,17 @@ int64_t cmd_report(const Namespace& A) {
 // explicit --edition is honored here. -> the previous profile name (or None) so the caller can restore it.
 std::optional<py::str> apply_edition(const Namespace& A) {
     if (!A.truthy("edition")) return std::nullopt;
-    py::str prev = transpile::active_profile().name;
+    py::str prev = profiles::active()->name;
     std::optional<py::str> name = mc::edition::resolve(A.str("edition"));
     if (name && !name->empty() && *name != prev) {
-        transpile::use_profile(*name);
+        profiles::use(*name);
         say("  edition: active target profile: " + name->utf8());
     }
     return prev;
 }
 
 void restore_edition(const std::optional<py::str>& prev) {
-    if (prev && transpile::active_profile().name != *prev) transpile::use_profile(*prev);
+    if (prev && profiles::active()->name != *prev) profiles::use(*prev);
 }
 
 int64_t cmd_signatures(const Namespace& A) {

@@ -75,6 +75,20 @@ struct Profile {
                      const std::optional<py::set<py::str>>& default_value_types_ = std::nullopt,
                      const std::optional<py::str>& dead_types_ = std::nullopt,
                      const std::optional<py::str>& optional_types_ = std::nullopt);
+
+    // Every field, in the order of the fields (the era profile ports of java/projects/minecraft/profiles write their data
+    // as exactly this: `Profile{name, static_init_order, ..., heavy_types_high}`).
+    Profile(const py::str& name_, const py::list<py::str>& static_init_order_, const py::dict<py::str, py::str>& package_roles_,
+            const py::list<py::str>& heavy_types_, const py::list<std::tuple<py::str, py::str>>& vcxproj_filters_,
+            const std::optional<py::str>& dead_types_, const std::optional<py::str>& optional_types_, const py::set<py::str>& nullable_,
+            const py::set<py::str>& nullable_fields_, const py::set<py::str>& nullable_getters_,
+            const py::dict<py::str, py::str>& nullable_getter_return_type_, const py::set<py::str>& unsigned_byte_scalar_fields_,
+            const py::set<py::str>& default_value_types_, const py::list<py::str>& heavy_types_high_)
+        : name(name_), static_init_order(static_init_order_), package_roles(package_roles_), heavy_types(heavy_types_),
+          vcxproj_filters(vcxproj_filters_), dead_types(dead_types_), optional_types(optional_types_), nullable(nullable_),
+          nullable_fields(nullable_fields_), nullable_getters(nullable_getters_), nullable_getter_return_type(nullable_getter_return_type_),
+          unsigned_byte_scalar_fields(unsigned_byte_scalar_fields_), default_value_types(default_value_types_),
+          heavy_types_high(heavy_types_high_) {}
 };
 
 // Register a callback invoked as fn(profile) every time the active profile changes (and it is the caller's

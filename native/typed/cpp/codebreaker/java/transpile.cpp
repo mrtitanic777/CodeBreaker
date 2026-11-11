@@ -27,19 +27,8 @@
 #include "codebreaker/java/parse.hpp"
 #include "codebreaker/java/platforms.hpp"
 #include "codebreaker/java/probe.hpp"
-#include "codebreaker/java/projects/minecraft/achievements.hpp"
-#include "codebreaker/java/projects/minecraft/content.hpp"
-#include "codebreaker/java/projects/minecraft/controller_nav.hpp"
-#include "codebreaker/java/projects/minecraft/edition.hpp"
-#include "codebreaker/java/projects/minecraft/keybind_mark.hpp"
-#include "codebreaker/java/projects/minecraft/platform_coverage.hpp"
-#include "codebreaker/java/projects/minecraft/profiles/minecraft_alpha.hpp"
-#include "codebreaker/java/projects/minecraft/profiles/minecraft_beta.hpp"
-#include "codebreaker/java/projects/minecraft/profiles/minecraft_indev.hpp"
-#include "codebreaker/java/projects/minecraft/profiles/minecraft_infdev.hpp"
-#include "codebreaker/java/projects/minecraft/profiles/minecraft_release.hpp"
-#include "codebreaker/java/projects/minecraft/profiles/minecraft_rubydung.hpp"
-#include "codebreaker/java/projects/minecraft/raycast.hpp"
+#include "codebreaker/java/profiles/package.hpp"
+#include "codebreaker/java/projects/package.hpp"
 #include "codebreaker/java/reflection_factory.hpp"
 #include "codebreaker/java/report.hpp"
 #include "codebreaker/java/rules.hpp"
@@ -50,10 +39,8 @@
 #include "codebreaker/translate/backends/cpp03.hpp"
 #include "codebreaker/translate/backends/cpp17.hpp"
 #include "codebreaker/translate/desugar.hpp"
-#include "codebreaker/translate/frontends/java/lower.hpp"
 #include "codebreaker/verify/lanes/java.hpp"
 #include "py_settings.hpp"
-#include "py_subprocess.hpp"
 
 #ifdef ERROR
 #undef ERROR   // (wingdi.h: it is the name of a ledger Category)
@@ -67,10 +54,7 @@ using py::str;
 
 str S(const char* s) { return str(s); }
 
-namespace mc = projects::minecraft;
-namespace mcp = projects::minecraft::profiles;
 namespace cpp03 = translate::backends::cpp03;
-namespace jlower = translate::frontends::java::lower;
 
 str join_nl(const py::list<str>& xs) { return py::join(S("\n"), xs); }
 
@@ -80,41 +64,17 @@ bool _TRACE_THROWS = false;
 bool _GL_TO_D3D9 = false;
 py::list<str> _GL_NAMESPACES{S("GL11"), S("GLU")};
 py::set<str> _THIS_ESCAPES;
-std::shared_ptr<Project> _PROJECT;
+std::shared_ptr<projects::Project> _PROJECT;
 
 // ================================================================================================== profiles
-// (codebreaker.java.profiles, with the Minecraft project's profile registration.)
+// The profile registry (java/profiles) and the project layer (java/projects, the Minecraft project) are the
+// packages' own. What this module adds is what the Python's `profiles.on_change` observers do here: when the
+// active profile changes, the typed ports that hold profile data (typemap, rules, console/vcxproj) and this
+// module's static-init seed are re-derived from it. (java.signatures has no port; its package-role table is
+// not reseeded.)
 namespace {
 
-struct Registry {
-    py::dict<str, Profile> table;
-    const Profile* active = nullptr;
-    bool minecraft_loaded = false;
-    std::vector<Profile> keep;   // (stable addresses for the registered profiles)
-};
-
-Registry& registry() {
-    static Registry r;
-    return r;
-}
-
-const Profile& generic_profile_() {
-    static const Profile g = [] {
-        Profile p;
-        p.name = S("generic");
-        return p;
-    }();
-    return g;
-}
-
-void register_(const Profile& p) {
-    Registry& r = registry();
-    r.keep.reserve(64);
-    r.keep.push_back(p);
-    r.table.set(p.name, r.keep.back());
-}
-
-void on_change_(const Profile& p) {
+void on_change_(const profiles::Profile& p) {
     typemap::Profile t;
     t.nullable = py::set<str>::from(p.nullable);
     t.nullable_fields = py::set<str>::from(p.nullable_fields);
@@ -129,349 +89,15 @@ void on_change_(const Profile& p) {
     _reseed_static_init_order(p);
 }
 
-// the project's profiles register when it loads: the era profiles, then the Tessellator's heavy_types_high
-void load_minecraft_profiles_() {
-    Registry& r = registry();
-    if (r.minecraft_loaded) return;
-    r.minecraft_loaded = true;
-    register_(mcp::minecraft_xbox360::PROFILE);
-    register_(mcp::minecraft_rubydung::PROFILE());
-    register_(mcp::minecraft_indev::PROFILE());
-    register_(mcp::minecraft_infdev::PROFILE());
-    register_(mcp::minecraft_alpha::PROFILE());
-    register_(mcp::minecraft_beta::PROFILE());
-    register_(mcp::minecraft_release::PROFILE());
-    for (const str& n : r.table.keys()) {
-        if (n.startswith(S("minecraft_"))) {
-            Profile& p = const_cast<Profile&>(r.table.at(n));
-            p.heavy_types_high = py::list<str>{S("Tesselator"), S("Tessellator")};
-        }
-    }
-}
-
-// the project that registers target profile `profile_name` (by its manifest's prefix)
-void for_profile_(const str& profile_name);
+// registered once, as the Python modules do at import
+const bool observers_registered_ = [] {
+    profiles::on_change(on_change_);
+    return true;
+}();
 
 }  // namespace
 
-const Profile& GENERIC_PROFILE() { return generic_profile_(); }
-
-const Profile& active_profile() {
-    Registry& r = registry();
-    if (r.active == nullptr) {
-        register_(generic_profile_());
-        r.active = &r.table.at(S("generic"));
-    }
-    return *r.active;
-}
-
-static const Profile& get_profile_(const str& name) {
-    (void)active_profile();
-    Registry& r = registry();
-    if (!r.table.contains(name)) for_profile_(name);   // a project's profile: its project registers it on load
-    if (!r.table.contains(name)) throw py::KeyError(py::repr(name).utf8());
-    return r.table.at(name);
-}
-
-const Profile& use_profile(const str& name) {
-    Registry& r = registry();
-    const Profile& p = get_profile_(name);
-    r.active = &p;
-    on_change_(p);
-    return p;
-}
-
-py::list<str> profile_names() {
-    (void)active_profile();
-    py::list<str> out;
-    for (const str& n : py::sorted(registry().table.keys())) out.append(n);
-    return out;
-}
-
-// ================================================================================================== projects
 namespace {
-
-// [manifest] of every project package, by name
-struct Manifest {
-    str name;
-    py::list<str> packages, classes, options, profile_prefixes;
-};
-
-py::list<str> strings_of_(const translate::ir::Dict& d, const char* key) {
-    py::list<str> out;
-    if (!d.contains(str(key))) return out;
-    const translate::ir::Val& v = d.at(str(key));
-    if (const auto* l = std::get_if<translate::ir::Val::List>(&v.v)) {
-        for (const translate::ir::Val& x : *l)
-            if (const auto* s = std::get_if<str>(&x.v)) out.append(*s);
-    }
-    return out;
-}
-
-py::list<Manifest> manifests_() {
-    py::list<Manifest> out;
-    str here = py::os::path::join(_paths::_HERE(), S("projects"));
-    py::list<str> entries = py::os::listdir(here);
-    for (const str& d : py::sorted(entries)) {
-        str p = py::os::path::join(here, d, S("manifest.json"));
-        if (py::os::path::isfile(p)) {
-            translate::ir::Dict m = jlower::load_tree(textutil::read_text(p, S("replace"), true));
-            Manifest mf;
-            mf.name = d;
-            if (m.contains(S("name"))) {
-                if (const auto* s = std::get_if<str>(&m.at(S("name")).v)) mf.name = *s;
-            }
-            mf.packages = strings_of_(m, "packages");
-            mf.classes = strings_of_(m, "classes");
-            mf.options = strings_of_(m, "options");
-            mf.profile_prefixes = strings_of_(m, "profile_prefixes");
-            out.append(mf);
-        }
-    }
-    return out;
-}
-
-class Minecraft : public Project {
-  public:
-    Minecraft() {
-        name = S("minecraft");
-        char_map.set(0x2302, 127);   // U+2302 (house): the font's tile 127, its CP437 byte
-        registrars = py::list<str>{S("addMapping"), S("addIdClassMapping"), S("register\\w*"), S("addClassMapping")};
-        load_minecraft_profiles_();
-    }
-
-    std::optional<str> profile_for(const std::optional<str>& edition, const std::optional<str>& mc_version,
-                                   const py::list<ClassRef>& classes) override {
-        std::optional<str> r = mc::edition::resolve(edition, mc_version, std::optional<py::list<ClassRef>>(classes));
-        if (r && !r->empty()) return r;
-        return S("minecraft_xbox360");
-    }
-
-    Patched ir_patches(const py::list<translate::ir::NodeP>& units, const std::optional<str>& platform) override {
-        Patched p;
-        if (!(platform && *platform == S("xbox360"))) return p;
-        p.sound = mc::sound_fix::patch(units);
-        p.applet = mc::applet_ping::patch(units);
-        p.render = mc::render_fix::patch(units);
-        return p;
-    }
-
-    str finalize_text(const str& text, const std::optional<str>& platform) override {
-        if (!(platform && *platform == S("xbox360"))) return text;
-        return mc::raycast::convert_gl_pick_to_raycast(text);
-    }
-
-    void after_emit(const str& out_dir, const std::optional<str>& platform, const Patched& patched, const Progress& prog) override {
-        if (!(platform && *platform == S("xbox360"))) return;
-        // SFX BYPASS: SoundManager gates every sound effect on the OGG pool, EMPTY on the console (sound
-        // comes from XACT banks) -> all SFX silent. The guard is dropped and the name routed to the bridge.
-        int64_t sf_sites = patched.sound ? patched.sound->sites : 0;
-        int64_t sf_files = patched.sound ? patched.sound->files.size() : 0;
-        py::list<str> sf_stranded = mc::sound_fix::stranded(out_dir);
-        if (sf_sites) {
-            prog(py::percent(S("[sound] SFX+music bypass: %d site(s) routed to the XACT bridge across %d file(s)"), sf_sites, sf_files));
-        }
-        if (py::truthy(sf_stranded)) {
-            prog(py::percent(S("[sound] WARNING: a soundPool*->getRandomSound null-guard survived in %s -- sound may be "
-                               "silent there (guard shape changed; update sound_fix.py)"),
-                             py::join(S(", "), sf_stranded)));
-        }
-        // CONTROLLER MENU NAVIGATION: the D-pad adapter into GuiScreen + the per-frame call (the algorithm
-        // lives in Input.reference). Before overlays (an overlay wins).
-        mc::controller_nav::Result cn = mc::controller_nav::run(out_dir);
-        if (cn.guiscreen_cpp && cn.callsite) {
-            prog(S("[controller] menu nav injected into GuiScreen (+ per-frame call)"));
-        }
-        if (py::truthy(cn.missing)) {
-            prog(py::percent(S("[controller] WARNING: menu-nav anchor(s) not found -> menus may be un-navigable: %s"),
-                             py::join(S("; "), cn.missing)));
-        }
-        // APPLET ANTI-PIRACY PING: setLevel's getDocumentBase()->openStream() faults on console.
-        int64_t ap_sites = patched.applet ? patched.applet->sites : 0;
-        int64_t ap_files = patched.applet ? patched.applet->files.size() : 0;
-        py::list<str> ap_stranded = mc::applet_ping::stranded(out_dir);
-        if (ap_sites) {
-            prog(py::percent(S("[applet] anti-piracy URL ping neutralized: %d site(s) across %d file(s)"), ap_sites, ap_files));
-        }
-        if (py::truthy(ap_stranded)) {
-            prog(py::percent(S("[applet] WARNING: a getDocumentBase()->openStream() ping survived in %s -- may crash on "
-                               "setLevel (ping shape changed; update applet_ping.py)"),
-                             py::join(S(", "), ap_stranded)));
-        }
-        // RENDER: the per-frame chunk-rebuild budget and the hurt-camera 0/0 NaN guard.
-        int64_t rf_update = patched.render ? patched.render->update : 0;
-        int64_t rf_hurt = patched.render ? patched.render->hurt : 0;
-        py::list<str> rf_stranded = mc::render_fix::stranded(out_dir);
-        if (rf_update) {
-            prog(py::percent(S("[render] chunk-rebuild budget applied to updateRenderers (%d site(s))"), rf_update));
-        }
-        if (rf_hurt) {
-            prog(py::percent(S("[render] hurt-camera 0/0 NaN guard applied (%d site(s))"), rf_hurt));
-        }
-        if (py::truthy(rf_stranded)) {
-            prog(py::percent(S("[render] WARNING: a render-fix trigger survived in %s -- first in-game frame may hang "
-                               "or be invisible (shape changed; update render_fix.py)"),
-                             py::join(S(", "), rf_stranded)));
-        }
-    }
-
-    void after_construction(const str& out_dir, const std::optional<str>& platform, const Progress& prog) override {
-        if (!(platform && *platform == S("xbox360"))) return;
-        // KEYBIND MARKING: F1/F3/ESC/hotbar... are keys the console does not have; tag each site.
-        mc::keybind_mark::Result kb = mc::keybind_mark::run(out_dir);
-        prog(py::percent(S("[keybind] tagged %d keyboard key-press site(s) -> KEYBIND_INDEX.md (route to controller/menu)"),
-                         kb.sites.size()));
-    }
-
-    void reports(const str& java_dir, const str& out_dir, const py::list<str>& runtime_files, const Progress& prog) override {
-        // asset manifest: what textures/sounds/music/lang files must ship in the content folder
-        str cm = mc::content::write_content_md(java_dir, out_dir);
-        prog(py::percent(S("[content] asset manifest written to %s"), cm));
-        // achievements -> the console achievement system (title config + networked profile write)
-        auto found = mc::achievements::scan_achievements(out_dir);
-        if (py::truthy(found)) {
-            mc::achievements::run(out_dir, out_dir);
-            prog(py::percent(S("[achievements] %d found -> ACHIEVEMENTS.md + achievements.xlast + Achievements.h/.cpp"), found.size()));
-        }
-        // platform-layer coverage against the Alpha reference layer
-        str ref_dir = _paths::data_path(py::list<str>{S("platform"), S("reference")});
-        std::optional<str> ref = py::os::path::isdir(ref_dir) ? std::optional<str>(ref_dir) : std::nullopt;
-        auto pc = mc::platform_coverage::write_report(out_dir, ref, py::set<str>::from(runtime_files));
-        prog(py::percent(S("[platform] coverage report written to %s"), std::get<0>(pc)));
-    }
-};
-
-std::map<std::string, std::shared_ptr<Project>>& loaded_() {
-    static std::map<std::string, std::shared_ptr<Project>> m;
-    return m;
-}
-
-// The project called `name` ('generic' or a project package).
-std::shared_ptr<Project> load_project_(const std::optional<str>& name) {
-    if (!name || name->empty() || *name == S("generic")) return generic_project();
-    auto& cache = loaded_();
-    std::string key = name->utf8();
-    if (cache.find(key) == cache.end()) {
-        std::optional<Manifest> m;
-        for (const Manifest& x : manifests_())
-            if (x.name == *name) {
-                m = x;
-                break;
-            }
-        if (!m) {
-            py::list<str> names;
-            for (const Manifest& x : manifests_()) names.append(x.name);
-            throw py::ValueError(py::percent(S("unknown project %r (choices: generic, %s)"), *name, py::join(S(", "), names)).utf8());
-        }
-        if (*name != S("minecraft")) throw py::ImportError(S("No module named 'codebreaker.java.projects.").utf8() + name->utf8() + "'");
-        cache[key] = std::make_shared<Minecraft>();
-    }
-    return cache[key];
-}
-
-void for_profile_(const str& profile_name) {
-    for (const Manifest& m : manifests_()) {
-        bool hit = false;
-        for (const str& p : m.profile_prefixes)
-            if (profile_name.startswith(p)) hit = true;
-        if (hit) {
-            load_project_(m.name);
-            return;
-        }
-    }
-}
-
-// Do the parsed classes carry the manifest's marks (a package prefix or a class name)?
-bool matches_(const Manifest& manifest, const py::list<ClassRef>& classes) {
-    for (const ClassRef& c : classes) {
-        str pkg = c->package ? *c->package : str();
-        bool by_pkg = false;
-        if (py::truthy(manifest.packages)) {
-            for (const str& p : manifest.packages)
-                if (pkg.startswith(p)) by_pkg = true;
-        }
-        if (by_pkg || manifest.classes.contains(c->name)) return true;
-    }
-    return false;
-}
-
-}  // namespace
-
-std::optional<str> Project::profile_for(const std::optional<str>& edition, const std::optional<str>& mc_version, const py::list<ClassRef>&) {
-    if ((edition && !edition->empty()) || (mc_version && !mc_version->empty())) {
-        auto r = [](const std::optional<str>& x) { return x ? py::repr(*x) : S("None"); };
-        throw py::ValueError(py::percent(S("the generic project takes no edition or version (%s, %s)"), r(edition), r(mc_version)).utf8());
-    }
-    return std::nullopt;
-}
-Patched Project::ir_patches(const py::list<translate::ir::NodeP>&, const std::optional<str>&) { return Patched(); }
-str Project::finalize_text(const str& text, const std::optional<str>&) { return text; }
-void Project::after_emit(const str&, const std::optional<str>&, const Patched&, const Progress&) {}
-void Project::after_construction(const str&, const std::optional<str>&, const Progress&) {}
-void Project::reports(const str&, const str&, const py::list<str>&, const Progress&) {}
-
-const std::shared_ptr<Project>& generic_project() {
-    static const std::shared_ptr<Project> g = std::make_shared<Project>();
-    return g;
-}
-
-std::shared_ptr<Project> choose_project(const py::list<ClassRef>& classes, const std::optional<str>& project,
-                                        const std::optional<str>& edition, const std::optional<str>& mc_version) {
-    if (project && !project->empty()) return load_project_(project);
-    py::set<str> given;
-    if (edition && !edition->empty()) given.add(S("edition"));
-    if (mc_version && !mc_version->empty()) given.add(S("mc_version"));
-    py::list<Manifest> ms = manifests_();
-    for (const Manifest& m : ms) {
-        if (!given.empty() && given.issubset(py::set<str>::from(m.options))) return load_project_(m.name);
-    }
-    for (const Manifest& m : ms) {
-        if (matches_(m, classes)) return load_project_(m.name);
-    }
-    return generic_project();
-}
-
-// fn on every item, `jobs` at a time on threads of this process; the results in the items' order (an item's exception is
-// raised after the others ended).
-template <class Fn, class Item>
-auto parallel_map_(Fn fn, const py::list<Item>& items, int64_t jobs) {
-    using R = decltype(fn(std::declval<const Item&>()));
-    std::vector<R> out(static_cast<size_t>(items.size()));
-    std::atomic<int64_t> next{0};
-    std::mutex failed_lock;
-    std::exception_ptr failed;
-    auto work = [&]() {
-        for (;;) {
-            int64_t i = next.fetch_add(1);
-            if (i >= items.size()) return;
-            try {
-                out[static_cast<size_t>(i)] = fn(items[i]);
-            } catch (...) {
-                std::lock_guard<std::mutex> hold(failed_lock);
-                if (!failed) failed = std::current_exception();
-            }
-        }
-    };
-    int64_t n = std::max<int64_t>(1, std::min<int64_t>(jobs, items.size()));
-    std::vector<std::thread> ts;
-    for (int64_t k = 1; k < n; k++) ts.emplace_back(work);
-    work();
-    for (auto& t : ts) t.join();
-    if (failed) std::rethrow_exception(failed);
-    return out;
-}
-
-// ================================================================================================== the Java front end
-namespace {
-
-TreeDumper& dumper_() {
-    static TreeDumper d;
-    return d;
-}
-
-str tree_dump_source_() {
-    return py::os::path::normpath(py::os::path::join(_paths::_HERE(), S(".."), S("translate"), S("frontends"), S("java"), S("TreeDump.java")));
-}
 
 str state_(const py::list<str>& parts) {   // settings.state(*parts)
     str path = py::settings::get_str(S("state"));
@@ -481,99 +107,6 @@ str state_(const py::list<str>& parts) {   // settings.state(*parts)
 }
 
 }  // namespace
-
-void set_tree_dumper(const TreeDumper& dumper) { dumper_() = dumper; }
-
-// The folder holding the compiled TreeDump, compiling it when its source or the JDK changed.
-static str treedump_tool_(const str& javac) {
-    str source = tree_dump_source_();
-    py::file f = py::open(source, S("rb"));
-    py::bytes data = f.read();
-    py::hashlib::Hash h = py::hashlib::sha1(data + py::bytes(py::repr(base::cache::tool(javac)).encode("utf-8")));
-    str key = h.hexdigest().slice(0, 12);
-    str folder = state_(py::list<str>{S("translate"), S("treedump-") + key});
-    if (!py::os::path::isfile(py::os::path::join(folder, S("TreeDump.class")))) {
-        py::os::makedirs(folder, 0777, true);
-        py::subprocess::RunOptions o;
-        o.stdout_ = py::subprocess::Stream::Capture;
-        o.stderr_ = py::subprocess::Stream::Stdout;
-        o.encoding = "utf-8";
-        o.errors = "replace";
-        auto r = py::subprocess::run(py::list<str>{javac, S("-nowarn"), S("-encoding"), S("UTF-8"), S("-d"), folder, source}, o);
-        if (r.returncode != 0) {
-            py::shutil::rmtree(folder, true);
-            throw py::RuntimeError(S("TreeDump did not compile: ") + r.stdout_.value_or(str()).slice(0, 400));
-        }
-        str parent = py::os::path::dirname(folder);
-        for (const str& old : py::os::listdir(parent)) {   // (those of another source or JDK: never used again)
-            if (old.startswith(S("treedump-")) && old != py::os::path::basename(folder))
-                py::shutil::rmtree(py::os::path::join(parent, old), true);
-        }
-    }
-    return folder;
-}
-
-Trees dump_trees(const str& java_dir, const py::list<str>& classpath) {
-    if (dumper_()) return dumper_()(java_dir, classpath);
-    auto jdk = verify::lanes::java::jdk();
-    str javac = std::get<0>(jdk), java = std::get<1>(jdk);
-    if (javac.empty()) throw py::RuntimeError(S("the Java front end needs a JDK (settings.json: java)"));
-    str folder = treedump_tool_(javac);
-    // every .java file under the source folder, sorted
-    py::list<str> files;
-    for (const auto& w : py::os::walk(java_dir))
-        for (const str& f : std::get<2>(w))
-            if (f.endswith(S(".java"))) files.append(py::os::path::join(std::get<0>(w), f));
-    files = py::list<str>::from(py::sorted(files));
-    str out = py::tempfile::mkdtemp(std::nullopt, S("cb-treedump-"));
-    try {
-        if (py::os::path::isdir(out)) py::shutil::rmtree(out);
-        py::os::makedirs(out);
-        str listing = py::os::path::join(out, S("_files.txt"));
-        {
-            py::file lf = py::open(listing, S("w"), S("utf-8"));
-            lf.write(py::join(S("\n"), files));
-        }
-        py::list<str> cmd{java, S("-Xss16m"), S("-cp"), folder, S("TreeDump"), S("--out"), out, S("--sourcepath"), java_dir};
-        if (py::truthy(classpath)) {
-            cmd.append(S("--cp"));
-            cmd.append(py::join(py::os::pathsep, classpath));
-        }
-        cmd.append(S("@") + listing);
-        py::subprocess::RunOptions o;
-        o.encoding = "utf-8";
-        o.errors = "replace";
-        auto r = py::subprocess::run(cmd, o);
-        if (r.returncode != 0) {
-            str err = r.stderr_.value_or(str());
-            throw py::RuntimeError(S("TreeDump failed: ") + err.slice(std::max<int64_t>(err.size() - 600, 0), err.size()));
-        }
-        // every unit's tree, read and parsed on the workers' threads (the units are independent); the files are
-        // read as bytes and decoded as UTF-8 (the text-mode reader's newline translation changes nothing in JSON)
-        py::list<std::tuple<str, str>> found;
-        for (const auto& w : py::os::walk(out)) {
-            for (const str& f : std::get<2>(w)) {
-                if (f.endswith(S(".json")) && !f.startswith(S("_"))) {
-                    str p = py::os::path::join(std::get<0>(w), f);
-                    str rel = py::os::path::relpath(p, out);
-                    found.append(std::make_tuple(p, rel.slice(0, rel.size() - 5).replace(S("\\"), S("/"))));
-                }
-            }
-        }
-        auto load_one = [](const std::tuple<str, str>& pr) {
-            py::file fh = py::open(std::get<0>(pr), S("rb"));
-            return jlower::load_tree(fh.read().decode("utf-8", "strict"));
-        };
-        auto loaded = parallel_map_(load_one, found, base::parallel::workers());
-        Trees units;
-        for (size_t k = 0; k < loaded.size(); k++) units.set(std::get<1>(found[static_cast<int64_t>(k)]), loaded[k]);
-        py::shutil::rmtree(out, true);
-        return units;
-    } catch (...) {
-        py::shutil::rmtree(out, true);
-        throw;
-    }
-}
 
 // ================================================================================================== the passes
 str _convert_gl_to_d3d9(const str& text) {
@@ -1493,7 +1026,7 @@ py::list<str> _prune_unreferenced(const str& out_dir, const py::set<str>& game_c
 // missed dependency found on hardware, edit THIS list.
 py::list<str> _STATIC_INIT_ORDER;
 
-void _reseed_static_init_order(const Profile& p) { _STATIC_INIT_ORDER = p.static_init_order.copy(); }
+void _reseed_static_init_order(const profiles::Profile& p) { _STATIC_INIT_ORDER = p.static_init_order.copy(); }
 
 py::list<str> compute_static_init_order(const py::list<ClassRef>& classes, const py::set<str>& callable_init) {
     py::dict<str, ClassRef> by_name;
@@ -1735,15 +1268,15 @@ Summary convert(const str& java_dir, const str& out_dir, const std::optional<py:
                 const std::optional<str>& edition, const std::optional<str>& mc_version) {
     std::lock_guard<std::mutex> hold(one_at_a_time_());
     // _convert_restoring: the per-conversion module state is put back when it ends, even by an exception
-    str prev_profile = active_profile().name;
+    str prev_profile = profiles::active()->name;
     py::set<str> base_getters = py::set<str>::from(typemap::KNOWN_NULLABLE_GETTERS);
     py::dict<str, str> base_gtypes = typemap::NULLABLE_GETTER_RETURN_TYPE.copy();
     auto restore = [&]() {
         typemap::KNOWN_NULLABLE_GETTERS = py::set<str>::from(base_getters);
         typemap::NULLABLE_GETTER_RETURN_TYPE = base_gtypes.copy();
         emit::source::TREE_BODIES = nullptr;   // phase 1's IR bodies never outlive their conversion
-        _PROJECT = generic_project();          // nor does its project
-        if (active_profile().name != prev_profile) use_profile(prev_profile);
+        _PROJECT = projects::GENERIC();          // nor does its project
+        if (profiles::active()->name != prev_profile) profiles::use(prev_profile);
     };
     try {
         Summary s = convert_(java_dir, out_dir, value_types, ledger, write_report, cpp_std, platform, progress_cb, platform_refs, sdk_override,
@@ -1815,17 +1348,17 @@ Summary convert_(const str& java_dir, const str& out_dir, const std::optional<py
     // typemap/rules/vcxproj/signatures/pipeline, so it MUST run before build_resolver (which reads
     // typemap.DEFAULT_VALUE_TYPES). convert() restores it in a `finally` (even on an exception), so
     // repeated in-process conversions can't drift.
-    _PROJECT = choose_project(classes, std::nullopt, edition, mc_version);
-    if (_PROJECT != generic_project()) {
+    _PROJECT = projects::choose(classes, std::nullopt, edition, mc_version);
+    if (_PROJECT != projects::GENERIC()) {
         _prog(py::percent(S("[project] %s"), _PROJECT->name));
     }
-    str _prev_profile = active_profile().name;
+    str _prev_profile = profiles::active()->name;
     std::optional<str> _ed_name = _PROJECT->profile_for(edition, mc_version, classes);
-    if (_ed_name && py::truthy(*_ed_name) && *_ed_name != active_profile().name) {
-        use_profile(*_ed_name);
+    if (_ed_name && py::truthy(*_ed_name) && *_ed_name != profiles::active()->name) {
+        profiles::use(*_ed_name);
         _prog(py::percent(S("[edition] active target profile: %s"), *_ed_name));
     } else if ((edition && py::truthy(*edition)) || (mc_version && py::truthy(*mc_version))) {
-        _prog(py::percent(S("[edition] target profile: %s"), active_profile().name));
+        _prog(py::percent(S("[edition] target profile: %s"), profiles::active()->name));
     }
 
     _prog(S("[resolve] inheritance + MI forwards + type resolver..."));
@@ -1944,11 +1477,10 @@ Summary convert_(const str& java_dir, const str& out_dir, const std::optional<py
     py::list<str> dump_cp;
     if (py::truthy(_shim)) dump_cp.append(_shim);
     dump_cp.extend(_cp);
-    auto _trees = dump_trees(java_dir, dump_cp);
-    py::list<translate::ir::NodeP> _units = cpp03::java_units(_trees);
+    py::list<translate::ir::NodeP> _units = cpp03::java_units(java_dir, dump_cp);
     // the console's fixes to the game's own logic, made on the tree before it is written (by shape, so no
     // printing of the C++ hides a site): sound routed to XACT, the applet ping, the render budget and NaN
-    Patched _patched = _PROJECT->ir_patches(_units, platform);
+    projects::Patched _patched = _PROJECT->ir_patches(_units, platform);
     std::shared_ptr<cpp03::Bodies> tree;
     if (std_version.year >= 2017) {   // the C++17 forms (backends/cpp17.Bodies: cpp03.Bodies17)
         tree = translate::backends::cpp17::Bodies(_ctx, _units);

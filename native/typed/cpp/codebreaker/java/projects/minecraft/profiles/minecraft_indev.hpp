@@ -13,9 +13,8 @@
 // The flat ``World.d[]`` walks into the (engine-level) OOB fixed-array crash class; bounds-guarding that
 // access is a rules concern, not a profile field.
 //
-// codebreaker.java.profiles.Profile has no typed port yet; the Profile record of the minecraft_xbox360 port
-// stands for it. `register(Profile(...))` -- adding the profile to the Python registry -- is not ported:
-// the registry is Python state of the profiles package. The Profile the Python registers is PROFILE() here.
+// The Profile is codebreaker.java.profiles.Profile (aliased by the minecraft_xbox360 port). `register(Profile(...))` is
+// done by the project package (load_profiles). The Profile the Python registers is PROFILE() here.
 // Values built from other profile modules are read when first asked for (function-local statics /
 // accessors), so no start-up order between files matters.
 #pragma once

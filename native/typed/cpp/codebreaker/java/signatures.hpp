@@ -12,7 +12,7 @@
 // Typing notes:
 //   * The package-role descriptions come from the active target profile. The Python freezes them into
 //     `_PACKAGE_ROLES` and re-derives them when profiles.on_change fires; the profile registry is
-//     transpile's (java/transpile.hpp: active_profile()), whose switch is exactly what fires on_change, so
+//     java/profiles' (profiles::active()), whose switch is exactly what fires on_change, so
 //     _PACKAGE_ROLES() reads the active profile's package_roles when asked (the same dict, always).
 //   * Python's `except Exception as e: ... str(e)` is `catch (const py::Exception&)` with e.what().
 //   * run() prints to standard output as the Python does and returns nothing.

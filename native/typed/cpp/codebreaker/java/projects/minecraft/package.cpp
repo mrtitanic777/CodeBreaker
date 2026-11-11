@@ -32,42 +32,18 @@ namespace codebreaker::java::projects::minecraft {
 
 using py::str;
 
-namespace {
-
-// the era profile ports' record -> the registry's
-jprofiles::Profile to_profile(const mcprofiles::minecraft_xbox360::Profile& p) {
-    jprofiles::Profile o;
-    o.name = p.name;
-    o.static_init_order = p.static_init_order;
-    o.package_roles = p.package_roles;
-    o.heavy_types = p.heavy_types;
-    o.vcxproj_filters = p.vcxproj_filters;
-    o.dead_types = p.dead_types;
-    o.optional_types = p.optional_types;
-    o.nullable = p.nullable;
-    o.nullable_fields = p.nullable_fields;
-    o.nullable_getters = p.nullable_getters;
-    o.nullable_getter_return_type = p.nullable_getter_return_type;
-    o.unsigned_byte_scalar_fields = p.unsigned_byte_scalar_fields;
-    o.default_value_types = p.default_value_types;
-    o.heavy_types_high = p.heavy_types_high;
-    return o;
-}
-
-}  // namespace
-
 void load_profiles() {
     static std::once_flag once;
     std::call_once(once, [] {
         // from ...profiles import (minecraft_xbox360, minecraft_rubydung, minecraft_indev, minecraft_infdev,
         //                          minecraft_alpha, minecraft_beta, minecraft_release): each registers itself
-        jprofiles::register_(to_profile(mcprofiles::minecraft_xbox360::PROFILE));
-        jprofiles::register_(to_profile(mcprofiles::minecraft_rubydung::PROFILE()));
-        jprofiles::register_(to_profile(mcprofiles::minecraft_indev::PROFILE()));
-        jprofiles::register_(to_profile(mcprofiles::minecraft_infdev::PROFILE()));
-        jprofiles::register_(to_profile(mcprofiles::minecraft_alpha::PROFILE()));
-        jprofiles::register_(to_profile(mcprofiles::minecraft_beta::PROFILE()));
-        jprofiles::register_(to_profile(mcprofiles::minecraft_release::PROFILE()));
+        jprofiles::register_(mcprofiles::minecraft_xbox360::PROFILE);
+        jprofiles::register_(mcprofiles::minecraft_rubydung::PROFILE());
+        jprofiles::register_(mcprofiles::minecraft_indev::PROFILE());
+        jprofiles::register_(mcprofiles::minecraft_infdev::PROFILE());
+        jprofiles::register_(mcprofiles::minecraft_alpha::PROFILE());
+        jprofiles::register_(mcprofiles::minecraft_beta::PROFILE());
+        jprofiles::register_(mcprofiles::minecraft_release::PROFILE());
         // the Tessellator holds an MB-scale vertex buffer: a by-value copy of it is HIGH (rules.py)
         for (const str& n : jprofiles::names())
             if (n.startswith(str("minecraft_"))) jprofiles::get(n)->heavy_types_high = py::list<str>{str("Tesselator"), str("Tessellator")};

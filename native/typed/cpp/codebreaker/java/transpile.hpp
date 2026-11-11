@@ -13,22 +13,17 @@
 // etc.), in contrast to the legacy output.
 //
 // Notes on the port:
-//   * codebreaker.java.profiles and codebreaker.java.projects (and the Minecraft project package,
-//     codebreaker.java.projects.minecraft.__init__) have no typed port of their own. What convert() reads of
-//     them is here, in transpile.cpp, as stand-ins: the profile registry (`active_profile`, `use_profile`,
-//     `profile_names`; the seven Minecraft profiles register when the project loads, as in Python, with the
-//     Tessellator's heavy_types_high), the `Project` hooks (GENERIC and the Minecraft project) and the
-//     project choice (`choose_project`). Switching the active profile reseeds the typed ports that hold
-//     profile data (typemap, rules, console/vcxproj) and this module's static-init seed, as the Python's
-//     `profiles.on_change` observers do. (java.signatures has no port; its package-role table is not
-//     reseeded.)
+//   * the profile registry, the project layer and the Minecraft project are the packages' own
+//     (java/profiles, java/projects, java/projects/minecraft): convert() reads them through
+//     profiles::active / use and projects::choose. What this module owns of them is the `profiles.on_change`
+//     observer: switching the active profile reseeds the typed ports that hold profile data (typemap, rules,
+//     console/vcxproj) and this module's static-init seed. (java.signatures has no port; its package-role
+//     table is not reseeded.)
 //   * the module's globals (_TRACE_THROWS, _GL_TO_D3D9, _THIS_ESCAPES, _PROJECT, _STATIC_INIT_ORDER) are
 //     namespace-scope variables; convert() holds the one-at-a-time lock as the Python does.
 //   * cpp_std is the CppStandard record below; the emitters take the header::CppStd (year, label) of it.
-//   * the Java front end (translate/frontends/java/__init__.py: javac's TreeDump -> JSON trees) has no port:
-//     `dump_trees` here is that module's `dump` (compile TreeDump once under the state folder, run it, read
-//     the JSON back), and `set_tree_dumper` lets a host give the trees another way. The Python's
-//     `java_units` (cpp03) is `translate::backends::cpp03::java_units(trees)` over them.
+//   * the Java front end is translate::frontends::java (javac's TreeDump -> JSON trees); the Python's
+//     `java_units` (cpp03) is `translate::backends::cpp03::java_units(java_dir, classpath)`, which convert() calls.
 //   * convert()'s summary dict is the Summary record; `convert`'s `progress_cb` is a std::function of a str
 //     (an empty function: no callback); `ledger` is a py::ref<Ledger> (null: a new one).
 //   * Python's `Counter.most_common(8)` is spelled out where the progress line is written.
@@ -42,10 +37,8 @@
 #include "codebreaker/java/emit/header.hpp"
 #include "codebreaker/java/ir.hpp"
 #include "codebreaker/java/ledger.hpp"
-#include "codebreaker/java/projects/minecraft/applet_ping.hpp"
-#include "codebreaker/java/projects/minecraft/profiles/minecraft_xbox360.hpp"
-#include "codebreaker/java/projects/minecraft/render_fix.hpp"
-#include "codebreaker/java/projects/minecraft/sound_fix.hpp"
+#include "codebreaker/java/profiles/package.hpp"
+#include "codebreaker/java/projects/package.hpp"
 #include "codebreaker/java/types.hpp"
 #include "codebreaker/translate/ir.hpp"
 #include "py.hpp"
@@ -56,61 +49,6 @@ namespace codebreaker::java::transpile {
 using ClassRef = py::ref<ir::JClass>;
 using MethodRef = py::ref<ir::Method>;
 using Progress = std::function<void(const py::str&)>;
-using Profile = projects::minecraft::profiles::minecraft_xbox360::Profile;
-
-// ---------------------------------------------------------------------------------------------- profiles
-// (codebreaker.java.profiles: the registry of target profiles.)
-const Profile& GENERIC_PROFILE();
-const Profile& active_profile();
-const Profile& use_profile(const py::str& name);       // reseeds typemap / rules / vcxproj / the static-init seed
-py::list<py::str> profile_names();                     // sorted; the Minecraft ones once the project has loaded
-
-// ---------------------------------------------------------------------------------------------- projects
-// What a program family's package gives the converter through hooks (codebreaker.java.projects.Project).
-// `patched` is what ir_patches answers: the IR fixes' reports by name.
-struct Patched {
-    std::optional<projects::minecraft::sound_fix::Result> sound;
-    std::optional<projects::minecraft::applet_ping::Result> applet;
-    std::optional<projects::minecraft::render_fix::Result> render;
-};
-
-class Project {
-  public:
-    virtual ~Project() = default;
-    py::str name = py::str("generic");
-    py::dict<int64_t, int64_t> char_map;                            // source char code -> the 8-bit code its font draws
-    py::list<py::str> registrars{py::str("register\\w*")};          // calls whose arguments map ids/names to classes
-
-    // The target-profile name for this conversion, or None to keep the active one. (ValueError: the generic
-    // project takes no edition or version.)
-    virtual std::optional<py::str> profile_for(const std::optional<py::str>& edition, const std::optional<py::str>& mc_version,
-                                               const py::list<ClassRef>& classes);
-    // Change the lowered program before the back end writes it.
-    virtual Patched ir_patches(const py::list<translate::ir::NodeP>& units, const std::optional<py::str>& platform);
-    // A last change to one emitted C++ file (before the GL namespace rename).
-    virtual py::str finalize_text(const py::str& text, const std::optional<py::str>& platform);
-    // After every class is written and before overlays: fixes and checks on the written program.
-    virtual void after_emit(const py::str& out_dir, const std::optional<py::str>& platform, const Patched& patched, const Progress& prog);
-    // After two-phase construction (the last rewrite): markers over the final code.
-    virtual void after_construction(const py::str& out_dir, const std::optional<py::str>& platform, const Progress& prog);
-    // The project's own reports (assets, achievements, platform coverage).
-    virtual void reports(const py::str& java_dir, const py::str& out_dir, const py::list<py::str>& runtime_files, const Progress& prog);
-};
-
-const std::shared_ptr<Project>& generic_project();
-// The project for this conversion: the one asked for; else the one claiming a given option (an `edition`, an
-// `mc_version`); else the one whose marks the program carries; else generic.
-std::shared_ptr<Project> choose_project(const py::list<ClassRef>& classes, const std::optional<py::str>& project = std::nullopt,
-                                        const std::optional<py::str>& edition = std::nullopt,
-                                        const std::optional<py::str>& mc_version = std::nullopt);
-
-// ---------------------------------------------------------------------------------------------- the Java front end
-// {source path relative to src without .json: javac's typed tree}
-using Trees = py::dict<py::str, translate::ir::Dict>;
-using TreeDumper = std::function<Trees(const py::str& java_dir, const py::list<py::str>& classpath)>;
-void set_tree_dumper(const TreeDumper& dumper);        // an empty function: the built-in one (javac's TreeDump)
-// translate.frontends.java.dump over a temporary folder (compiling TreeDump once, under the state folder).
-Trees dump_trees(const py::str& java_dir, const py::list<py::str>& classpath = py::list<py::str>());
 
 // ---------------------------------------------------------------------------------------------- the module
 // Set True by convert() for platforms where a C++ `throw` is a no-op that does not unwind (xbox360), so
@@ -124,7 +62,7 @@ extern py::list<py::str> _GL_NAMESPACES;
 // classes whose construction hands `this` to someone (a registry, a list, a listener) -- set per convert
 extern py::set<py::str> _THIS_ESCAPES;
 // the project of this conversion, set per convert
-extern std::shared_ptr<Project> _PROJECT;
+extern std::shared_ptr<projects::Project> _PROJECT;
 
 // Rewrite OpenGL call sites (GL11::glX, GLU::gluX, GL11::GL_CONST) in emitted game code to the Direct3D 9
 // layer namespace 'd3d9'. Only the `Ns::` qualified form is touched.
@@ -244,7 +182,7 @@ Summary convert(const py::str& java_dir, const py::str& out_dir, const std::opti
 // The seed of the dependency order for static initialization (the active profile's).
 extern py::list<py::str> _STATIC_INIT_ORDER;
 // Re-derive the static-init seed when the active target profile changes.
-void _reseed_static_init_order(const Profile& p);
+void _reseed_static_init_order(const profiles::Profile& p);
 
 // Order classes' initStatics() so a class runs AFTER every class whose statics it reads.
 py::list<py::str> compute_static_init_order(const py::list<ClassRef>& classes, const py::set<py::str>& callable_init);

@@ -2294,14 +2294,6 @@ std::optional<py::list<str>> Bodies::body(const str& cls_name, const MethodRef& 
     return lines;
 }
 
-py::list<NodeP> java_units(const py::dict<str, ir::Dict>& trees) {
-    std::vector<str> paths = trees.keys();
-    std::sort(paths.begin(), paths.end());
-    py::list<NodeP> out;
-    for (const str& p : paths) out.append(lower::lower(trees.at(p), p));
-    return out;
-}
-
 // ============================================================================================ the C++17 dialect
 void Writer17::_stmt(const NodeP& s, const py::list<str>& out, const str& ind) {
     if (auto fe = as_a<ir::ForEach>(s)) return foreach(fe, out, ind);

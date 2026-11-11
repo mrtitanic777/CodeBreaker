@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "codebreaker/java/parse.hpp"
+#include "codebreaker/java/profiles/package.hpp"
 #include "codebreaker/java/transpile.hpp"
 #include "py_os.hpp"
 
@@ -16,6 +17,7 @@ namespace codebreaker::java::signatures {
 using py::str;
 
 namespace pipeline = codebreaker::java::transpile;
+
 
 const str DEFAULT_PKG("(default package)");
 
@@ -32,7 +34,7 @@ str e_str_(const py::Exception& e) { return str(std::string(e.what())); }
 
 }  // namespace
 
-py::dict<str, str> _PACKAGE_ROLES() { return pipeline::active_profile().package_roles; }
+py::dict<str, str> _PACKAGE_ROLES() { return profiles::active()->package_roles; }
 
 str _package_role(const str& pkg, const py::list<str>& class_names) {
     const py::dict<str, str> roles = _PACKAGE_ROLES();

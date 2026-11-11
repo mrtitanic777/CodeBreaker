@@ -13,29 +13,15 @@
 #include <optional>
 #include <tuple>
 
+#include "codebreaker/java/profiles/package.hpp"
 #include "py.hpp"
 
 namespace codebreaker::java::projects::minecraft::profiles::minecraft_xbox360 {
 
-// codebreaker.java.profiles.Profile has no typed port yet, so its fields are a record here (the Python
-// class is a bag of target data; every field defaults to empty). `register(PROFILE)` -- adding the
-// profile to the Python registry -- is not ported: the registry is Python state of the profiles package.
-struct Profile {
-    py::str name;
-    py::list<py::str> static_init_order;
-    py::dict<py::str, py::str> package_roles;
-    py::list<py::str> heavy_types;                                // a tuple of names
-    py::list<std::tuple<py::str, py::str>> vcxproj_filters;       // (basename regex, filter path)
-    std::optional<py::str> dead_types;                            // anchored regex, or None
-    std::optional<py::str> optional_types;                        // anchored regex, or None
-    py::set<py::str> nullable;
-    py::set<py::str> nullable_fields;
-    py::set<py::str> nullable_getters;
-    py::dict<py::str, py::str> nullable_getter_return_type;
-    py::set<py::str> unsigned_byte_scalar_fields;
-    py::set<py::str> default_value_types;
-    py::list<py::str> heavy_types_high;                           // () by default
-};
+// The profile is codebreaker.java.profiles.Profile (java/profiles/package.hpp): a bag of target data, every field empty by
+// default. `register(PROFILE)` -- adding the profile to the registry -- is done by the project package
+// (java/projects/minecraft/package.cpp: load_profiles).
+using Profile = codebreaker::java::profiles::Profile;
 
 // Proven, ctor-MEDIATED static-init dependencies used to SEED the topological order (e.g. Block's
 // ctor reads Material statics, so Material must init first).

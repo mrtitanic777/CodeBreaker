@@ -30,8 +30,9 @@
 //     unset name finds nothing.
 //   * The IR slots a statement body holds as a bare list of statements (ir::NodeOrList) are not something the Java
 //     front end makes; where the Python fails on one (Decline('statement list')), so does this.
-//   * java_units() of the Python runs javac (frontends.java.dump) and lowers each unit's JSON; the part with a typed
-//     port is the lowering, so java_units takes the dumps ({path: tree}) the Python's dump returns.
+//   * java_units() runs the Java front end (translate::frontends::java::dump, over a temporary folder) and lowers
+//     each unit's tree, in the order of their paths. It is defined in cpp03_java_units.cpp: the back end itself does
+//     not stand on the front end (javac, the JDK lookup), so a program that links only the back end does not link it.
 //   * The runtime reads (_runtime_header, _runtime_return, _runtime_field, library_return) use
 //     codebreaker::java::runtime as the Python does.
 //   * Python ints are int64_t.
@@ -315,7 +316,7 @@ class Bodies : public jsource::Bodies {
 
 // Run the Java front end's dumps ({path: tree}, what frontends.java.dump returns) through the lowering.
 // -> [ir.Unit]
-py::list<ir::NodeP> java_units(const py::dict<py::str, ir::Dict>& trees);
+py::list<ir::NodeP> java_units(const py::str& java_dir, const py::list<py::str>& classpath = py::list<py::str>());
 
 // ============================================================================================ the C++17 dialect
 // Inside the transpiler, `convert(..., cpp_std='C++17')` writes every body with this module's Writer and the
