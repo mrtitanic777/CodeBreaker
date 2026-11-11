@@ -43,7 +43,8 @@ class Project(object):
         self.include = [os.path.normpath(os.path.join(self.dir, x)) for x in c.get("include", [])]
         self.dgroup = int(c["dgroup"], 0) if isinstance(c.get("dgroup"), str) else c.get("dgroup", 0)
         num = lambda x: int(x, 0) if isinstance(x, str) else x
-        self.code_segments = sorted(num(x) for x in c.get("code_segments", [0]))
+        cs = c.get("code_segments", [0])
+        self.code_segments = [0] if cs == "relocs" else sorted(num(x) for x in cs)   # ("relocs": worked out below)
         self.loadseg = num(c.get("loadseg", 0))
         self.code_end = num(c.get("code_end", 0))
         self.switches = c.get("switches")
