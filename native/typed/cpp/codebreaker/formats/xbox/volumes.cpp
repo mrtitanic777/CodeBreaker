@@ -191,7 +191,7 @@ py::list<Entry> FatxVolume::files() {
     py::list<Entry> out;
     for (const fatx::EntryRef& e : _all().values())
         out.append(Entry(e->path, e->file_size, e->is_directory, e->first_cluster,
-                         e->modified ? e->modified->strftime_minute() : py::str("")));
+                         e->modified ? e->modified->strftime(py::str("%Y-%m-%d %H:%M")) : py::str("")));
     return out;
 }
 

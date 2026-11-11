@@ -63,9 +63,19 @@ class file {
     }
     std::string rest_() const {
         std::string s;
+        std::FILE* f = h().f;
+        // (a regular file: its remaining size is known, so the string is made once and read into directly)
+        int64_t here = _ftelli64(f);
+        if (here >= 0 && _fseeki64(f, 0, SEEK_END) == 0) {
+            int64_t end = _ftelli64(f);
+            _fseeki64(f, here, SEEK_SET);
+            if (end > here) s.resize(static_cast<size_t>(end - here));
+            size_t got = s.empty() ? 0 : std::fread(&s[0], 1, s.size(), f);
+            s.resize(got);
+        }
         char tmp[65536];
         size_t n;
-        while ((n = std::fread(tmp, 1, sizeof tmp, h().f)) > 0) s.append(tmp, n);
+        while ((n = std::fread(tmp, 1, sizeof tmp, f)) > 0) s.append(tmp, n);
         return s;
     }
     void fill_() const {   // (text) the rest of the file, decoded

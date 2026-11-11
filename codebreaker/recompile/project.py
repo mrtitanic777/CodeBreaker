@@ -850,7 +850,7 @@ def main(argv):
                 return 1
         if "--check" in argv:
             i = argv.index("--check")
-            seconds = int(argv[i + 1]) if i + 1 < len(argv) and argv[i + 1].isdigit() else 60
+            seconds = int(argv[i + 1]) if i + 1 < len(argv) and argv[i + 1].isdecimal() else 60
             r = x360project.check(info["dir"], info["name"], seconds)
             print("check (%d s headless): %d frames presented" % (seconds, r["frames"]))
             for imp, calls in sorted(r["unimplemented"].items(), key=lambda kv: -kv[1]):
