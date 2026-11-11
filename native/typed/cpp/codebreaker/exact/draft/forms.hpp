@@ -237,7 +237,7 @@ inline std::vector<nf::LibraryMacroSpec> specs_of(const py::list<LibMacro>& l) {
 // ---- the passes
 
 inline std::optional<py::str> frame_names(const py::str& text, const FrameRule& rule, bool regs_last = false) {
-    nf::FrameRule r;
+    shim::nf::FrameRule r;
     if (rule.mod && *rule.mod > 0) r.mod = static_cast<std::uint32_t>(*rule.mod);
     return shim::opt_py(shim::nf::frame_names(text.utf8(), r, {regs_last, REGSLOTS[0]}));
 }
