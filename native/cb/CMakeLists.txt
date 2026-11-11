@@ -229,7 +229,7 @@ get_property(CB_ALL_TESTS_SO_FAR GLOBAL PROPERTY CB_TEST_SOURCES)
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_ALL_TESTS_SO_FAR} ${CB_COMPAT_TESTS})
 # The shims that have a translation unit of their own (they call old ports that cannot be linked into cb_tests) are compiled, not
 # run: this keeps them honest until their last consumer is refactored. At /W3 without /WX, like the compat tests.
-add_library(cb_shim_check OBJECT
+add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
