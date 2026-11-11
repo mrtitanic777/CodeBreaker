@@ -1,69 +1,48 @@
-// codebreaker/base/tidy_state.hpp -- typed C++ port of codebreaker.base.tidy_state.
+// codebreaker/base/tidy_state.hpp -- SHIM over cb/base/tidy_state.hpp (docs/CPP_DESIGN.md 6.3): the old types in, the new
+// functions called, the old types out. Deleted with its last py:: consumer.
 //
-// tidy_state.py -- how big state/ is, part by part, and what of it is stale, gone.
-//
-//     python -m codebreaker tidy-state              the sizes, and the stale removed
-//     python -m codebreaker tidy-state --dry        the sizes, and what would be removed
-//     python -m codebreaker tidy-state --stray      also remove what no part of CodeBreaker writes
-//     python -m codebreaker tidy-state --keep-builds    leave Converted/*/build/ alone
-//
-// (The module's whole docstring, with the rules of what goes, is kept in tidy_state.cpp as DOC;
-// `main` prints it for -h / --help.)
-//
-// Notes on the port:
-//   * glob.glob has no counterpart in the runtime: a small glob() (the pattern rules of glob.glob on
-//     Windows: * ? [seq], hidden names not matched by a wildcard that does not start with a dot) is
-//     local to tidy_state.cpp;
-//   * settings.ROOT is py::settings::checkout_root() (CB_CHECKOUT_ROOT);
-//   * the Python tuples of names (RUN_TOOLS, NAMED_ELSEWHERE, OLD_CACHES) are py::list<py::str>.
+// `codebreaker tidy-state [--dry] [--stray] [--keep-builds]`: how big state/ is, part by part, and what of it is stale,
+// gone (the rules are in cb/base/tidy_state.hpp). The cache's own clean-up is the old cache port's: it is given to the
+// new module as hooks.
 #pragma once
 
 #include <cstdint>
-#include <optional>
-#include <tuple>
 
 #include "py.hpp"
-#include "py_os.hpp"
 
 namespace codebreaker::base::tidy_state {
 
-extern const int64_t DAY;
-extern const py::list<py::str> RUN_TOOLS;
-// what the code names by a value, not by a literal: the period compilers' work folders, the
-// setup ISO's folder (the setting win95_setup_iso).
-extern const py::list<py::str> NAMED_ELSEWHERE;
-// (the fingerprints' own file, before they were in the cache)
-extern const py::list<py::str> OLD_CACHES;
+// the text of --help
+inline constexpr const char* DOC = R"DOC(tidy_state.py -- how big state/ is, part by part, and what of it is stale, gone.
 
-// The module's docstring (what `main` prints for -h).
-extern const char* const DOC;
+    python -m codebreaker tidy-state              the sizes, and the stale removed
+    python -m codebreaker tidy-state --dry        the sizes, and what would be removed
+    python -m codebreaker tidy-state --stray      also remove what no part of CodeBreaker writes
+    python -m codebreaker tidy-state --keep-builds    leave Converted/*/build/ alone
 
-int64_t _size(const py::str& path);
-py::str _gb(int64_t n);
+state/ is CodeBreaker's to fill, and once filled 70 GB: fingerprints under comparer revisions
+long gone, millions of cache files, the disk and CD copies of killed boot runs. What fills it now
+looks after itself -- the cache (base/cache.py) holds its generation of now under a cap, and every
+run that copies a disk works in a run folder deleted when it ends (base/runs.py). This is the
+look over all of it, and the clean-up of what came before or slipped through. The rules:
 
-// The names at the top of state/ that CodeBreaker's code writes: read from the code itself
-// (settings.state("<name>" ..., runs.<call>("<name>" ..., "state", "<name>"), so a new tool's
-// folder is known the day it is written.
-py::set<py::str> known();
+    cache          older generations of every kind dropped, the cap held (cache --prune)
+    old caches     the fingerprints' own file of before (state/fingerprints.sqlite), now in the cache
+    runs           run folders older than a day (killed runs), of every tool that has them, and
+                   those of before run folders were (phase3/walk_*, setup16_*, t_*; vxdboot/run_*;
+                   record16's memory dumps)
+    kept disks     an installed disk a Setup walk kept to compare (record16/walk/<tag>/hd.img),
+                   a week old
+    builds         the object files of a Converted/<name>/build/ not built for two weeks (the
+                   programs and their symbols stay; the next build compiles them again)
+    stray          anything at the top of state/ no part of CodeBreaker writes -- listed, removed
+                   only with --stray (it may be someone's hand work)
 
-bool _is_known(const py::str& name, const py::set<py::str>& names);
+What a run of the code would make again is all that goes; the stores (results.sqlite,
+functions.sqlite), hand work (java/overlays, xna/overlays) and the tools' outputs are left.
+)DOC";
 
-// [(path, bytes, rule)] of what the rules say can go (the cache apart: it prunes itself).
-// `now` is time.time() when not given (or 0).
-py::list<std::tuple<py::str, int64_t, py::str>> stale(const std::optional<double>& now = std::nullopt);
-
-// Every Converted/<name>/build/ folder.
-py::list<py::str> _builds();
-
-// [(path, bytes)] at the top of state/ that no part of CodeBreaker writes.
-py::list<std::tuple<py::str, int64_t>> stray();
-
-// [(name, bytes)] of state/'s top-level parts, the biggest first.
-py::list<std::tuple<py::str, int64_t>> parts();
-
-bool _delete(const py::str& p);
-
-// python -m codebreaker tidy-state [--dry] [--stray] [--keep-builds]
+// python -m codebreaker tidy-state [--dry] [--stray] [--keep-builds]  (defined in tidy_state.cpp, the shim's translation unit)
 int64_t main(const py::list<py::str>& argv);
 
 }  // namespace codebreaker::base::tidy_state

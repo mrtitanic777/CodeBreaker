@@ -20,7 +20,6 @@ GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 779, XamShowCommunitySessionsUI)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 792, XamVoiceGetMicArrayStatus)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 794, XamVoiceGetDirectionalData)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1399, XamGetServiceEndpoint)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2816, XamPartySendGameInvites)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2827, XamPartySetCustomData)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2832, XamPartyGetBandwidth)
 

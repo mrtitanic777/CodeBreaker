@@ -1,37 +1,16 @@
-// codebreaker/exact/aout.hpp -- C++ port of codebreaker.exact.aout.
-//
-// aout.py -- a Version 7 a.out object file for the 8086 (XENIX's C compiler), read as omf.read reads OMF.
-//
-// The file: 16 bytes of header (0407h/0107h magic, text, data, bss and symbol sizes, the entry, a
-// word, and whether there is relocation), the text, the data, then - unless the last header word
-// says none - one relocation word for every word of the text and of the data (0: none), then the
-// symbols (8 characters, a type word, a value word).
-//
-// A relocation word: bit 0 set, the word is relative to the place after it (a call or jump); bits
-// 1-3 what it names (1 the text, 2 the data, 3 the bss, 4 an external symbol, bits 4-14 its number);
-// bit 15 set, the operand begins one byte on (the 8086 has operands at odd places too).
-//
-//     o = aout.read(data)       o.seg o.segs o.filled o.pubs o.ext o.comm o.fix o.raw   (as omf.read)
-//         o.fix kinds: 'off' a word that holds a place, 'rel' a place relative to the word's end;
-//         targets ('seg', '_TEXT'|'_DATA'|'_BSS') or ('ext', name). A word that names the data or the
-//         bss, and a symbol's value, count from that segment's own start (the linker adds the piece's
-//         place; LINK 2.4x relinked from these objects shows it). A relative word's own value counts
-//         from the start of the text, so its displacement is set to make it count as an OMF
-//         self-relative fixup's would.
-//
-// Typing notes:
-//   The Python's `Obj` (an attribute bag) is the struct `Obj`.  Its fixups are tuples
-//   (segment, offset, kind, target, displacement); a target is a (kind, name) pair of texts, kind being
-//   "seg" or "ext".  `groups` is always empty here (an OMF object fills it: {group: [segment names]}).
+// codebreaker/exact/aout.hpp -- compat shim for cb/exact/aout.hpp (docs/CPP_DESIGN.md 6.3). No logic: conversion and
+// forwarding. Deleted with its last old-layer consumer.
 #pragma once
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/exact/aout.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::aout {
 
-extern const py::list<int64_t> MAGICS;
+inline const py::list<int64_t> MAGICS = {0407, 0410, 0411, 0x0107, 0x0109};
 
-bool is_aout(const py::bytes& data);
+inline bool is_aout(const py::bytes& data) { return cb::exact::aout::is_aout(cb::compat::from_py(data)); }
 
 using Target = std::tuple<py::str, py::str>;                                     // ("seg", "_TEXT") or ("ext", name)
 using Fixup = std::tuple<py::str, int64_t, py::str, Target, int64_t>;           // (segment, offset, kind, target, disp)
@@ -52,6 +31,31 @@ struct Obj {
     py::bytes raw;
 };
 
-Obj read(const py::bytes& data);
+// The old record of an object file (also what exact/linkemu and exact/compare take, as the Python's omf.read gives).
+inline Obj to_old(const cb::exact::ObjectFile& o, const std::vector<cb::exact::aout::Symbol>& symbols) {
+    using cb::compat::to_py;
+    Obj out;
+    for (const auto& [name, bytes] : o.seg) out.seg.set(to_py(name), to_py(cb::ByteView(bytes)));
+    for (const auto& [name, n] : o.filled) out.filled.set(to_py(name), to_py(n));
+    for (const auto& s : o.segs) out.segs.append(SegInfo(to_py(s.name), to_py(s.cls), to_py(s.length), to_py(s.align)));
+    for (const auto& [name, members] : o.groups) out.groups.set(to_py(name), to_py(members));
+    for (const auto& s : symbols) out.syms.append(Sym(to_py(s.name), s.type, s.value));
+    for (const auto& p : o.pubs) out.pubs.append(Pub(to_py(p.name), to_py(*p.segment), to_py(p.offset)));
+    for (const auto& e : o.ext) out.ext.append(to_py(e));
+    for (const auto& [name, v] : o.comm) out.comm.set(to_py(name), std::make_tuple(to_py(v.size), v.far));
+    for (const auto& f : o.fix)
+        out.fix.append(Fixup(to_py(f.segment), to_py(f.offset), py::str(f.kind == cb::exact::FixKind::Rel ? "rel" : "off"),
+                             Target(py::str(f.target.kind == cb::exact::TargetKind::External ? "ext" : "seg"), to_py(f.target.name)),
+                             to_py(f.displacement)));
+    out.raw = to_py(cb::ByteView(o.raw));
+    return out;
+}
+
+inline Obj read(const py::bytes& data) {
+    return cb::compat::guard([&] {
+        const cb::exact::aout::Image image = cb::exact::aout::read(cb::compat::from_py(data));
+        return to_old(image.object, image.symbols);
+    });
+}
 
 }  // namespace codebreaker::exact::aout

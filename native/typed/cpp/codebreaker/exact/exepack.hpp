@@ -1,18 +1,9 @@
-// codebreaker/exact/exepack.hpp -- C++ from codebreaker.exact.exepack.
-//
-// exepack.py -- what a file packed by EXEPACK (or LINK /EXEPACK) keeps of the program it packed.
-//
-// The packed file's code segment begins with EXEPACK's header: the program's own entry and stack (real
-// CS:IP, SS:SP), the length it unpacks to, the signature "RB". After the unpacker's code and its message
-// ("Packed file is corrupt") come the program's relocations: sixteen groups, one for each 64K of the image,
-// a count and that many offsets - in the order the linker listed them.
-//
-//     exepack::read(file bytes) -> Packed or null (not packed)
-//         .ip .cs .sp .ss      the program's entry and stack (paragraphs from the image's start)
-//         .dest                the unpacked length in paragraphs
-//         .relocs              [image address] of each relocation, in the table's order
+// codebreaker/exact/exepack.hpp -- compat shim for cb/exact/exepack.hpp (docs/CPP_DESIGN.md 6.3). No logic: conversion
+// and forwarding. Deleted with its last old-layer consumer.
 #pragma once
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/exact/exepack.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::exepack {
@@ -29,11 +20,26 @@ public:
     py::list<int64_t> relocs;
 };
 
-extern const py::bytes SIG;
-extern const py::bytes MSG;
+inline const py::bytes SIG = py::bytes("RB");
+inline const py::bytes MSG = py::bytes("Packed file is corrupt");
 
-// The packed program's header and relocations; null when the file is not EXEPACK-packed.
-// Raises py::StructError (struct.error) when the relocation table runs off the end of the file.
-py::ref<Packed> read(const py::bytes& b);
+// The packed program's header and relocations; null when the file is not EXEPACK-packed. Raises py::StructError
+// (struct.error) when the relocation table runs off the end of the file.
+inline py::ref<Packed> read(const py::bytes& b) {
+    return cb::compat::guard([&]() -> py::ref<Packed> {
+        const auto packed = cb::exact::exepack::read(cb::compat::from_py(b));
+        if (!packed) return nullptr;
+        py::ref<Packed> p = std::make_shared<Packed>();
+        p->ip = packed->ip;
+        p->cs = packed->cs;
+        p->mem = packed->mem;
+        p->size = packed->size;
+        p->sp = packed->sp;
+        p->ss = packed->ss;
+        p->dest = packed->dest;
+        p->relocs = cb::compat::to_py(packed->relocs);
+        return p;
+    });
+}
 
 }  // namespace codebreaker::exact::exepack
