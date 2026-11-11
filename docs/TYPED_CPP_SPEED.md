@@ -388,3 +388,19 @@ wall including process start. The old port decoded each word with one `cs_disasm
 exe could not be run here (no Python-engine build in this worktree), so no side-by-side number is claimed.
 `floating::emit` is a table lookup over 32 rules and one string fill per instruction (the old one was an `if` chain of 32 string
 compares and `py::str` formatting). Nothing else in the batch has a loop worth timing.
+
+## exact/emu and exact/habits (wave 0, batch B8)
+
+Whole old harness run (process start, parsing the cases, the module) against the new module's golden test over the same
+cases (process start, parsing, the module), milliseconds, release build:
+
+| work | old port | cb |
+|---|---|---|
+| exact/habits/oldcomp (1,000 pairs) | 44 | 36 |
+| exact/habits/boolx (2,337 cases) | 255 | 29 |
+| exact/habits/symx (10,625 cases) | 551 | 45 |
+| exact/emu/isis, 20,000,000 8080 instructions of a loop | 517 | 281 |
+
+exact/emu/isis and exact/emu/xenix golden tests copy a folder per case, which dominates their time (isis 91 runs 2.4 s,
+xenix 67 runs 6.0 s; the old harness's 317 and 91 runs took 1.6 s and 4.7 s with fewer copies); xenix's work is Unicorn's
+either way and was not timed apart.
