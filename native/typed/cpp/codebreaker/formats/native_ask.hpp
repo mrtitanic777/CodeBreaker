@@ -53,9 +53,9 @@ inline const Own no_own = [](const std::string&, const std::string&) { return fa
     throw py::RuntimeError(msg);
 }
 
-// native.call(question, data, *args): the answer read as R
-template <class R, class... A>
-R ask(const char* question, const py::bytes& data, const Own& own, const A&... args) {
+// native.call(question, data, *args): the answer as it came (a pickle's value), for a caller that reads it by its shape
+template <class... A>
+py::native::Val ask_val(const char* question, const py::bytes& data, const Own& own, const A&... args) {
     namespace nat = py::native;
     nat::Args a;
     (a.put(args), ...);
@@ -71,8 +71,15 @@ R ask(const char* question, const py::bytes& data, const Own& own, const A&... a
         std::string name = v.items.size() > 0 ? v.items[0].s : "RuntimeError", msg = v.items.size() > 1 ? v.items[1].s : "";
         raise_as(name, msg, own);
     }
+    return v;
+}
+
+// native.call(question, data, *args): the answer read as R
+template <class R, class... A>
+R ask(const char* question, const py::bytes& data, const Own& own, const A&... args) {
+    py::native::Val v = ask_val(question, data, own, args...);
     if constexpr (std::is_void_v<R>) return;
-    else return nat::read<R>(v);
+    else return py::native::read<R>(v);
 }
 
 // a module's exception of `Type` for the reader's name `kind`
