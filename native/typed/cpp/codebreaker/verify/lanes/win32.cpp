@@ -16,6 +16,7 @@
 //     kept under a mutex (the judge runs from several threads).
 
 #include "codebreaker/verify/lanes/win32.hpp"
+#include "codebreaker/jobs/workers.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -1845,6 +1846,28 @@ reconstruct::Built Win32Kind::build(const reconstruct::Prepared& m, const py::st
 
 reconstruct::Verdict Win32Kind::judge(const reconstruct::Context& context, const reconstruct::Item& item) const {
     return win32::judge(*std::static_pointer_cast<py::str>(context), *std::static_pointer_cast<Item>(item));
+}
+
+std::optional<std::string> Win32Kind::encode_context(const reconstruct::Context& context) const {
+    return jobs::workers::Enc().s(std::static_pointer_cast<py::str>(context)->utf8()).text();
+}
+reconstruct::Context Win32Kind::decode_context(const std::string& text) const {
+    jobs::workers::Dec d(text);
+    return std::make_shared<py::str>(py::str(d.s()));
+}
+std::string Win32Kind::encode_item(const reconstruct::Item& item) const {
+    const Item& it = *std::static_pointer_cast<Item>(item);
+    return jobs::workers::Enc().s(it.key.utf8()).i(it.va).s(it.dll.utf8()).i(it.entry).i(it.regs).text();
+}
+reconstruct::Item Win32Kind::decode_item(const std::string& text) const {
+    jobs::workers::Dec d(text);
+    auto it = std::make_shared<Item>();
+    it->key = py::str(d.s());
+    it->va = d.i();
+    it->dll = py::str(d.s());
+    it->entry = d.i();
+    it->regs = d.i();
+    return it;
 }
 
 const std::shared_ptr<reconstruct::Kind>& kind() {

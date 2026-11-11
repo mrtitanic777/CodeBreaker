@@ -56,6 +56,7 @@
 #include "codebreaker/formats/pe.hpp"
 #include "codebreaker/formats/resources.hpp"
 #include "codebreaker/jobs/pool.hpp"
+#include "codebreaker/jobs/workers.hpp"
 #include "codebreaker/platforms/win16.hpp"
 #include "codebreaker/source/assembly.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
@@ -277,6 +278,7 @@ bool Built::linked() const { return image && !image->empty(); }
 
 // A build and what was found out about it.
 py::str Built::report() const {
+    if (carried_report) return *carried_report;
     if (!linked()) {
         return py::percent("%s: NOT BUILT: %s", name, error);
     }
@@ -3865,7 +3867,9 @@ py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std:
     const int64_t jobs = jobs_in && *jobs_in ? *jobs_in : base::parallel::workers();
     // (the Python gave each module a process of its own. The gate and the judge run Unicorn and the tracer, whose state is per process,
     // so builds on threads corrupt each other: one at a time unless CB_BUILD_THREADS asks for more)
-    const int64_t procs = py::os::environ_::get(py::str("CB_BUILD_THREADS")) ? std::max<int64_t>(1, std::min<int64_t>(jobs, py::len(modules))) : 1;
+    // (processes of this program when it can start them -- jobs/workers -- else one at a time)
+    const bool as_processes = jobs::workers::enabled();
+    const int64_t procs = py::os::environ_::get(py::str("CB_BUILD_THREADS")) || as_processes ? std::max<int64_t>(1, std::min<int64_t>(jobs, py::len(modules))) : 1;
     py::dict<py::str, Built> out;
     if (procs == 1) {
         for (const py::str& m : modules) {
@@ -3887,6 +3891,40 @@ py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std:
     std::stable_sort(by_size.begin(), by_size.end(), [&](const py::str& a, const py::str& b) { return size(a) < size(b); });
     auto one = [&](const py::str& m) -> std::pair<py::str, Built> {
         emit(log, py::percent("%s: building (one of %d at once)", py::os::path::basename(m), procs));
+        if (as_processes) {
+            namespace W = jobs::workers;
+            const std::string dir = W::scratch_folder();
+            const auto od = outdir_of ? outdir_of(m) : std::nullopt;
+            const int64_t rc = W::run({"build", W::hex(m.utf8()), od ? W::hex(od->utf8()) : std::string("-"), call ? "1" : "0", dir + "\\answer.txt"});
+            const std::string answer = W::read_file(dir + "\\answer.txt");
+            std::error_code ec;
+            std::filesystem::remove_all(dir, ec);
+            if (answer.empty())
+                throw py::RuntimeError(py::percent("%s: the build stopped (exit %d)", m, rc).utf8());
+            const auto found = base::corpus::retail(m);
+            Built b(found ? *found : m);
+            size_t at = 0;
+            while (at < answer.size()) {
+                size_t nl = answer.find('\n', at);
+                if (nl == std::string::npos) nl = answer.size();
+                if (nl > at) {
+                    const std::string line = answer.substr(at, nl - at);
+                    W::Dec d(line.substr(2));
+                    switch (line[0]) {
+                        case 'R': b.carried_report = py::str(d.s()); break;
+                        case 'I': { const std::string v = d.s(); if (!v.empty()) b.image = py::str(v); break; }
+                        case 'F': { const std::string v = d.s(); if (!v.empty()) b.folder = py::str(v); break; }
+                        case 'G': { const py::str k(d.s()); b.gated.set(k, py::str(d.s())); break; }
+                        case 'P': b.placed_c.add(py::str(d.s())); break;
+                        case 'M': b.moved_c.add(py::str(d.s())); break;
+                        case 'J': { const py::str k(d.s()); b.rejected.set(k, py::str(d.s())); break; }
+                        default: break;
+                    }
+                }
+                at = nl + 1;
+            }
+            return {m, b};
+        }
         return {m, build(m, outdir_of ? outdir_of(m) : std::nullopt, call, [](const py::str&) {})};
     };
     py::list<py::str> todo;
@@ -3902,6 +3940,23 @@ py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std:
         out.set(m, by_name.at(m));
     }
     return out;
+}
+
+int64_t build_worker(const std::vector<std::string>& args) {
+    namespace W = jobs::workers;
+    if (args.size() < 4) return 2;
+    const py::str module(W::unhex(args[0]));
+    const std::string od = W::unhex(args[1]);
+    const Built b = build(module, od.empty() ? std::optional<py::str>() : std::optional<py::str>(py::str(od)), args[2] == "1", [](const py::str&) {});
+    std::string out = "R " + W::Enc().s(b.report().utf8()).text() + "\n";
+    out += "I " + W::Enc().s(b.image ? b.image->utf8() : "").text() + "\n";
+    out += "F " + W::Enc().s(b.folder ? b.folder->utf8() : "").text() + "\n";
+    for (const auto& kv : b.gated.items()) out += "G " + W::Enc().s(std::get<0>(kv).utf8()).s(std::get<1>(kv).utf8()).text() + "\n";
+    for (const py::str& n : b.placed_c) out += "P " + W::Enc().s(n.utf8()).text() + "\n";
+    for (const py::str& n : b.moved_c) out += "M " + W::Enc().s(n.utf8()).text() + "\n";
+    for (const auto& kv : b.rejected.items()) out += "J " + W::Enc().s(std::get<0>(kv).utf8()).s(std::get<1>(kv).utf8()).text() + "\n";
+    W::write_file(args[3], out);
+    return 0;
 }
 
 // python -m codebreaker build <module> [--out DIR] [--no-run] [--engine] [--no-engine]

@@ -33,6 +33,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <vector>
 #include <set>
 #include <tuple>
 #include <variant>
@@ -116,6 +117,7 @@ class Built {
     py::dict<py::str, std::shared_ptr<analyze::origin::Origin>> origins;   // analyze.origin.module16(...).functions
     std::optional<py::str> layout;                  // "segments renumbered: ..." when the segments differ
     translate::ir::Dict l2;                         // the module as one L2 tree (module_document / module_document32)
+    std::optional<py::str> carried_report;          // a build made in a worker process (build_many): its report as the worker wrote it
 
     Built() = default;   // (so that py::dict<py::str, Built> can hold one)
     explicit Built(const py::str& original);
@@ -185,6 +187,9 @@ Built build(const py::str& module, const std::optional<py::str>& outdir = std::n
 py::dict<py::str, Built> build_many(const py::list<py::str>& modules,
                                     const std::function<std::optional<py::str>(const py::str&)>& outdir_of = nullptr,
                                     bool call = true, const Log& log = nullptr, const std::optional<int64_t>& jobs = std::nullopt);
+
+// A build worker process's job (jobs/workers): args = module, outdir or "-", call ("1"/"0"), answer file. Writes what a Built is read by.
+int64_t build_worker(const std::vector<std::string>& args);
 
 // python -m codebreaker build <module> [--out DIR] [--no-run] [--engine] [--no-engine]; -> exit status
 int64_t main(const py::list<py::str>& argv);
