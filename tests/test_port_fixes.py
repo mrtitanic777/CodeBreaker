@@ -238,6 +238,16 @@ def test_java_rules_findings_of_one_line_come_in_name_order():
     assert got == ["as"], got
 
 
+def test_data_declared_size_takes_the_first_declaration_by_name():
+    """exact.data._declared_size: a name declared more than one way answers from the first declaration in sorted
+    order (it walked the set in hash order, so the answer changed from run to run)."""
+    from codebreaker.exact import data
+    ty = {("int", "a"), ("char", "a")}
+    assert data._declared_size(ty, {}) == 1, data._declared_size(ty, {})      # ("char", "a") sorts first
+    ty = {("long", "a"), ("int", "a[3]")}
+    assert data._declared_size(ty, {}) == 6, data._declared_size(ty, {})      # ("int", "a[3]") before ("long", "a")
+
+
 def test_origin_notes_calls_to_compiler_helpers():
     """analyze.origin: a call to one of the C compiler's helpers (named: __aFlmul, __aNchkstk ...) is noted in the
     function's compiler notes, near or far (the lookup was `imported.get(<address>)` in a dict keyed by import
@@ -306,7 +316,7 @@ def main():
                test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
                test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch,
                test_xsm3_challenge_verify_answers_a_valid_packet, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same,
-               test_java_rules_findings_of_one_line_come_in_name_order,
+               test_java_rules_findings_of_one_line_come_in_name_order, test_data_declared_size_takes_the_first_declaration_by_name,
                test_origin_notes_calls_to_compiler_helpers,
                test_native_dosexec_loads_the_dll_once_from_two_threads):
         check(fn)
