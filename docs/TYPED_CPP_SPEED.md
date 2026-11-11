@@ -521,3 +521,12 @@ Old = the engine or Python module the new code replaces, same inputs, best of 3-
 | xdk_libraries: search dash.xex (2.0M words) and a game's default.xex (1.8M words) for 1,308 library signatures | Python 2.9 s / 1.9 s (whole `match`, image read included) | 220 / 200 ms (the search alone; a sorted pair index replaced a table of lists: 1.1 s before) |
 | xdk_libraries: make the 1,308 signatures from 2,277 functions | Python 300 ms | 8 ms |
 | ordinals: read all 597 .lib and .def files of the reference folder | Python 570 ms (process start included) | 91 ms |
+
+## cb refactor: xna batch W0-B30 (2026-11-11)
+
+Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2), same inputs, best of 3, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
+| mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |

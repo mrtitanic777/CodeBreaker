@@ -122,6 +122,31 @@ def test_fixups():
     text, n, left = fixups.constructors(ctor)
     assert n == 3 and not left, (n, left)
     assert "public A(int x) : base(x)" in text and "v = new Vector2(1f, 2f);" in text and "_002Ector" not in text, text
+    # a call over two lines goes whole; a one-line constructor loses only the call
+    text, n, left = fixups.constructors("class P\n{\n    P(int x, int y)\n    {\n        base._002Ector(x,\n y);\n        z = 1;\n    }\n}\n")
+    assert text == "class P\n{\n    P(int x, int y) : base(x,\n y)\n    {\n        z = 1;\n    }\n}\n" and n == 2 and not left, text
+    text, n, left = fixups.constructors("class G { G() { base._002Ector( 5 ); } }\n")
+    assert text == "class G { G() : base( 5 ) {  } }\n" and n == 2 and not left, text
+    # an obfuscator's names are any letters: the value is found whole, not from its last ASCII letter
+    text, n, left = fixups.constructors("Vector2 éa;\néa._002Ector(1);\n")
+    assert text == "Vector2 éa;\néa = new Vector2(1);\n" and n == 1 and not left, (text, left)
+    # a constructor that has an initializer already, and a call inside an `if`, are left and listed
+    for src, why in (("class D : E\n{\n    D(int n) : base()\n    {\n        ((E)this)._002Ector(n);\n    }\n}\n", "already has an initializer"),
+                     ("class H {\n  H(int a) {\n    if (a) {\n      base._002Ector(a);\n    }\n  }\n}\n", "statement block")):
+        text, n, left = fixups.constructors(src)
+        assert text == src and n == 0 and len(left) == 1 and why in left[0][1], (text, n, left)
+    # apply keeps the line endings a file has (CRLF stays CRLF, LF stays LF) and leaves an unchanged file alone
+    with tempfile.TemporaryDirectory() as d:
+        crlf, lf, same = os.path.join(d, "a.cs"), os.path.join(d, "b.cs"), os.path.join(d, "c.cs")
+        for p, data in ((crlf, ctor.replace("\n", "\r\n")), (lf, ctor), (same, "class Z\r\n{\r\n}\r\n")):
+            with open(p, "wb") as f:
+                f.write(b"\xef\xbb\xbf" + data.encode("utf-8"))
+        report = fixups.apply(d)
+        assert report["constructors"] == 6 and not report["left"], report
+        raw = {os.path.basename(p): open(p, "rb").read() for p in (crlf, lf, same)}
+        assert b"\r\n" in raw["a.cs"] and b"\n" not in raw["a.cs"].replace(b"\r\n", b""), raw["a.cs"]
+        assert b"\r" not in raw["b.cs"] and not raw["a.cs"].startswith(b"\xef\xbb\xbf"), raw
+        assert raw["c.cs"] == b"\xef\xbb\xbfclass Z\r\n{\r\n}\r\n", raw["c.cs"]
 
 
 def test_managed_and_decompile():
