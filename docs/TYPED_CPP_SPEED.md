@@ -346,6 +346,64 @@ Same inputs (the harness `cases.txt` of each module, parsing and hex decoding in
 | build/vxdfile (329 cases) | 120 ms | 17 ms | 7x |
 
 The assemblers, definitions, watcom, msvc152, period16 and dos_sessions have no CPU-bound work of their own (they drive other programs); not timed.
+## cb refactor: recompile batch W0-B24 (2026-11-11)
+
+Real inputs: the Xbox 360 images of Minecraft in C:/Nexia360/Games (Xbox 360 Edition 20 MB, Indev, the test build, the two
+pre-release builds). Old = the original Python module (the typed port runs the same algorithm; where its harness could be built
+it is timed too); new = `native/cb/recompile`, Release /O2, best of 5 runs after one warm-up, on a busy shared machine. The
+image is already read in every row (reading it is formats/powerpc_image).
+
+| What | Old | New | Ratio |
+|---|---|---|---|
+| switches.find, Minecraft default.xex (213 tables, 4 unresolved, 12 pointer calls) | 0.69 s (Python) | 0.003 s | ~230x |
+| the same, Indev / test build / pre-release 1 / pre-release 2 | 0.39 / 0.21 / 0.55 / 0.59 s | 0.001 / 0.001 / 0.002 / 0.002 s | 200-400x |
+| jumptable over every bctr of Minecraft's code (1232 bctrs, 214 tables) | 6.4 s (Python) | 0.0026 s | ~2400x |
+| the same, Indev (no runaway table; 422 bctrs, 153 tables) | 0.41 s (Python) | 0.0015 s | ~270x |
+| jumptable, the old harness's 1,158 detect cases (fuzzed images), typed port vs new through its shim | 0.54 s | 0.41-0.46 s | 1.2-1.3x |
+| xenon.build() when up to date (the check of 4 source folders' times) | 4.5 ms (Python) | 1.7-2.8 ms | 2x |
+| xenon.msvc_env() (the real cmd.exe running vcvars64.bat) | 2.1 s | 2.1-2.7 s | same (it is cmd.exe) |
+| xenon.instruction_tests, 5 of Xenia's tests through the real binutils, XenonRecomp and clang-cl | 14.2 s (Python) | 14.9 s | same (clang-cl compiles for 12 s) |
+| gpu.gpu_files / design_md | text constants | text constants | nothing to time |
+
+The scan modules are faster because the Python read each word of a 20 MB image through `struct.unpack_from` and each
+instruction through a tuple decode; the C++ reads bytes and decodes fields. The 6.4 s of the jumptable row is mostly one
+real table, an unbounded byte table at 0x824A8E4C of Minecraft, which the Python read for 9.5 million entries until the image
+ended (and the pre-release builds' similar one for 6.9 million); the C++ stops at 65,536 (`kMaxTableEntries`, a DIVERGES
+in jumptable_test). Everything else it finds in the five images is identical to the original (whole-image comparison,
+below). The xenon module is bound by the programs it runs; its own work (the environment of vcvars64, the scan for a newer
+source, the compare of the generated files) is a few milliseconds.
+
+Equivalence on the real images (not timed): `switches.find` on the five images gives the same tables (213/150/91/148/148),
+labels, guards, defaults, functions, and the same unresolved / outside / pointer-call lists, byte for byte as text; the
+recompiler's jumptable gives the same index registers and targets for every table of the five images except the cut at 65,536
+in the three runaway tables named above. The old typed harness's cases (1,158 detect cases) agree except the same 16 tables.
+## W0-B25: recompile (x360project, disassemble, builders/floating) and source (assembly, placement, ne_asm/segdiff, ne_asm/run)
+
+These are I/O- and tool-bound (they start XenonRecomp, OpenWatcom, the corpus walk) except `disassemble`, the only one on a hot path
+(the recompiler lists every word of a function). New code, Release, one thread, 4,096 words of Minecraft Xbox 360 code (0x822B6E00):
+the listing with the VMX128 callback, Capstone for the rest, plus the flow classification from two entries and the data runs, the three
+decodes of the two `Disassembler`s the test builds included: the whole `recompile.disassemble` suite (7 tests, 78 checks) runs in 47 ms
+wall including process start. The old port decoded each word with one `cs_disasm` call per word; the new one does the same through
+`platforms::Decoder::each` (also one `cs_disasm` per word), so the per-word cost is Capstone's in both and the new code adds no work. The old
+exe could not be run here (no Python-engine build in this worktree), so no side-by-side number is claimed.
+`floating::emit` is a table lookup over 32 rules and one string fill per instruction (the old one was an `if` chain of 32 string
+compares and `py::str` formatting). Nothing else in the batch has a loop worth timing.
+
+## exact/emu and exact/habits (wave 0, batch B8)
+
+Whole old harness run (process start, parsing the cases, the module) against the new module's golden test over the same
+cases (process start, parsing, the module), milliseconds, release build:
+
+| work | old port | cb |
+|---|---|---|
+| exact/habits/oldcomp (1,000 pairs) | 44 | 36 |
+| exact/habits/boolx (2,337 cases) | 255 | 29 |
+| exact/habits/symx (10,625 cases) | 551 | 45 |
+| exact/emu/isis, 20,000,000 8080 instructions of a loop | 517 | 281 |
+
+exact/emu/isis and exact/emu/xenix golden tests copy a folder per case, which dominates their time (isis 91 runs 2.4 s,
+xenix 67 runs 6.0 s; the old harness's 317 and 91 runs took 1.6 s and 4.7 s with fewer copies); xenix's work is Unicorn's
+either way and was not timed apart.
 
 ## cb/java/console (W0-B17), 2026-11-11
 
