@@ -7,6 +7,7 @@ rem     tools\build_cb.cmd -- --filter core.io   run only the tests whose name c
 rem
 rem Needs MSVC (Visual Studio 2026), CMake and Ninja; the vcvars environment is loaded if it is not already.
 setlocal
+call "%~dp0disk_guard.cmd" || exit /b 1
 set ROOT=%~dp0..
 set MODE=release
 set B=%ROOT%\state\cxx\cb

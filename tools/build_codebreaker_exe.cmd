@@ -11,6 +11,7 @@ rem The program reads its command line as python does: codebreaker.exe <command>
 rem codebreaker.exe -m pytest tests\java, codebreaker.exe tests\test_port.py, codebreaker.exe tests\run_all.py.
 rem Needs tools\build_native.cmd pyengine pyrt first; CPython's Lib and site-packages are read at translation only.
 setlocal
+call "%~dp0disk_guard.cmd" || exit /b 1
 set ROOT=%~dp0..
 set OUT=%2
 if "%OUT%"=="" set OUT=%ROOT%\state\cxx\codebreaker

@@ -2,6 +2,7 @@
 rem build_rt_exe.cmd [checkout root] -- rebuilds the Python-compatible runtime (native\pyrt) and codebreaker.exe,
 rem the two steps before the exe gate (codebreaker.exe tests\run_all.py --quick).  Default root: this script's checkout.
 setlocal
+call "%~dp0disk_guard.cmd" || exit /b 1
 set ROOT=%~1
 if "%ROOT%"=="" set ROOT=%~dp0..
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
