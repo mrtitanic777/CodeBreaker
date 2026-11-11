@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <ctime>
+#include <filesystem>
+#include <sys/stat.h>
 #include <map>
 #include <set>
 
@@ -97,6 +99,14 @@ str state_path(const str& name) {
 }
 
 bool less_str(const str& a, const str& b) { return a.u32() < b.u32(); }
+
+// os.stat(path): (st_size, int(st_mtime)) in one call
+std::pair<int64_t, int64_t> stat_size_mtime(const str& path) {
+    struct _stat64 st;
+    std::wstring w = std::filesystem::u8path(path.utf8()).wstring();
+    if (_wstat64(w.c_str(), &st) != 0) throw py::OSError("[Errno 2] No such file or directory: " + py::repr(path).utf8());
+    return {static_cast<int64_t>(st.st_size), static_cast<int64_t>(st.st_mtime)};
+}
 
 }  // namespace
 
@@ -206,8 +216,8 @@ py::list<CorpusModule> corpus_modules(bool refresh) {
         const str& kind = std::get<0>(kt);
         if (!has_exts(kind)) continue;                       // not in the binary corpus (java: given by folder)
         for (const str& path : base::corpus::modules(kind, exts_of(kind))) {
-            int64_t size = py::os::path::getsize(path);
-            int64_t mtime = static_cast<int64_t>(py::os::path::getmtime(path));
+            auto sm = stat_size_mtime(path);
+            int64_t size = sm.first, mtime = sm.second;
             Entry got;
             bool have = memo.contains(path);
             if (have) got = memo.at(path);
