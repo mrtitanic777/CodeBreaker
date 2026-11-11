@@ -168,6 +168,10 @@ class Win32Kind final : public reconstruct::Kind {
     bool PER_FUNCTION() const override { return true; }
 };
 
+// The one Win32Kind, and its registration under "pe" (as win16::register_lane registers "ne").
+const std::shared_ptr<reconstruct::Kind>& kind();
+void register_lane();
+
 // ---- the fingerprint -----------------------------------------------------------------------------------------------
 // compiler/CRT-runtime imports the toolchain emits are ignored (not the body's own logic).
 // Canonicalise an imported-call name so the two builds' import-table spellings of the same import compare equal.

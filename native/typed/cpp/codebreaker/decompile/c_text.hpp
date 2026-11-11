@@ -79,7 +79,7 @@ using SelectorImports = py::dict<int64_t, std::tuple<py::str, py::str>>;
 // A function's heading as the C back end reports one (found["heading"]): its parameters (the heading text, [(name, type)]),
 // the types it names, its calls, its declaration with the argument list left open, and whether it is __fastcall16.
 struct Heading {
-    std::tuple<py::str, py::list<std::tuple<py::str, py::str>>> params;
+    std::optional<std::tuple<py::str, py::list<std::tuple<py::str, py::str>>>> params;   // None when the heading text did not parse
     py::dict<py::str, py::str> types;
     py::list<std::tuple<py::str, py::list<py::str>>> calls;   // (callee, its arguments as written)
     py::str declaration;                   // `head();`

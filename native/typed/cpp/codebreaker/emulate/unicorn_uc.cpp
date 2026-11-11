@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "codebreaker/base/capstone_dll.hpp"
 #include "codebreaker/emulate/native_trace.hpp"
 
 namespace codebreaker::emulate::unicorn_uc {
@@ -47,7 +48,8 @@ template <class T> bool sym(HMODULE m, const char* name, T& slot) {
 }
 
 const Lib& lib() {
-    if (!g_loaded) throw py::ImportError("No module named 'unicorn'");
+    // (nobody called load_unicorn(): Python's `import unicorn` finds the package itself, so look for its DLL as it would)
+    if (!g_loaded) load_unicorn(base::capstone_dll::find_unicorn());
     return L;
 }
 
@@ -240,6 +242,12 @@ std::optional<int64_t> x86_reg(const py::str& name) {
     auto it = table.find(name.utf8());
     if (it == table.end()) return std::nullopt;
     return it->second;
+}
+
+py::dict<py::str, int64_t> x86_register_table() {
+    py::dict<py::str, int64_t> out;
+    for (const x86_reg_row& r : REGS) out.set(py::str("UC_X86_REG_") + py::str(r.name), r.id);
+    return out;
 }
 
 std::shared_ptr<core16::Uc> open_x86(int64_t bits) {

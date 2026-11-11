@@ -1847,4 +1847,11 @@ reconstruct::Verdict Win32Kind::judge(const reconstruct::Context& context, const
     return win32::judge(*std::static_pointer_cast<py::str>(context), *std::static_pointer_cast<Item>(item));
 }
 
+const std::shared_ptr<reconstruct::Kind>& kind() {
+    static std::shared_ptr<reconstruct::Kind> k = std::make_shared<Win32Kind>();
+    return k;
+}
+
+void register_lane() { reconstruct::register_kind(KIND, kind()); }
+
 }  // namespace codebreaker::verify::lanes::win32

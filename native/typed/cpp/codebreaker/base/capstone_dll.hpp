@@ -16,4 +16,8 @@ namespace codebreaker::base::capstone_dll {
 // The path of capstone.dll (looked for once).
 py::str find();
 
+// The path of unicorn.dll, the one the Python unicorn package carries (unicorn/lib/unicorn.dll), looked for the same way:
+// CB_UNICORN_DLL, the setting "unicorn_dll", then the site-packages. ImportError ("No module named 'unicorn'") when none holds one.
+py::str find_unicorn();
+
 }  // namespace codebreaker::base::capstone_dll

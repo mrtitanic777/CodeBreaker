@@ -231,7 +231,7 @@ inline std::tuple<py::str, py::str, py::list<py::str>, py::str> judge(const Judg
 }
 
 // The lane as a reconstruct::Kind (what the Python module is to reconstruct.py), and its registration under "ne".
-// Prepared::lane holds a std::shared_ptr<win16::Prepared>; Built::context a std::shared_ptr<JudgeContext>; each item a
+// Prepared::lane holds a std::shared_ptr<decompile::c_text::Module16> (the base of a win16::Prepared, static_pointer_cast back); Built::context a std::shared_ptr<JudgeContext>; each item a
 // std::shared_ptr<JudgeItem>.
 const std::shared_ptr<reconstruct::Kind>& kind();
 void register_lane();

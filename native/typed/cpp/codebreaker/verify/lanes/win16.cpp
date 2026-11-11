@@ -1320,7 +1320,8 @@ class Win16Kind : public reconstruct::Kind {
         return win16::as_prepared(std::make_shared<win16::Prepared>(win16::prepare(module_path, work)));
     }
     reconstruct::Built build(const reconstruct::Prepared& m, const py::str& module_path, const py::str& work) const override {
-        std::shared_ptr<win16::Prepared> mine = std::static_pointer_cast<win16::Prepared>(m.lane);
+        // (the lane holds the Module16 base of the Prepared, as build/module.cpp reads it: shared_ptr<void> carries no cast)
+        std::shared_ptr<win16::Prepared> mine = std::static_pointer_cast<win16::Prepared>(std::static_pointer_cast<decompile::c_text::Module16>(m.lane));
         win16::Built b = win16::build(*mine, module_path, work);
         reconstruct::Built out;
         out.context = std::make_shared<JudgeContext>(b.context);
@@ -1343,7 +1344,10 @@ reconstruct::Prepared as_prepared(const std::shared_ptr<Prepared>& m) {
     out.key = m->key;
     out.all_keys = m->all_keys;
     out.sig = m->sig;
-    out.lane = m;
+    {
+        const std::shared_ptr<decompile::c_text::Module16> base = m;   // Prepared::lane holds a Module16 (what build::module::build casts it to)
+        out.lane = base;
+    }
     return out;
 }
 
