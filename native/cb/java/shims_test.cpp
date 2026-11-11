@@ -12,6 +12,7 @@
 #include "codebreaker/java/ledger.hpp"
 #include "codebreaker/java/overlays.hpp"
 #include "codebreaker/java/platforms.hpp"
+#include "codebreaker/java/reflection_factory.hpp"
 #include "codebreaker/java/stubs.hpp"
 #include "codebreaker/java/textutil.hpp"
 #include "codebreaker/java/typemap.hpp"
@@ -169,6 +170,19 @@ CB_TEST("java.shims.apimap", [] {
     CB_CHECK(am::extract_symbols(py::str("Math.sqrt(1)")).contains(py::str("Math.sqrt")));
 });
 
+
+CB_TEST("java.shims.reflection_factory", [] {
+    namespace rf = jv::reflection_factory;
+    cb::fs::ScopedTempDir tmp("cbshim");
+    cb::fs::write_text(tmp.path() / "T.cpp", "#include \"t.h\"\nvoid i() { addMapping(Class(typeid(Foo))); }\nBase* g() { return (Base*)p->newInstance(); }\n");
+    auto r = rf::run(to_py(cb::fs::to_text(tmp.path())), std::optional<py::list<py::str>>(py::list<py::str>{py::str("addMapping")}));
+    CB_CHECK_EQ(r.total_sites, 1);
+    CB_CHECK_EQ(r.total_classes, 1);
+    CB_CHECK_EQ(from_py(r.registries[0].registry), "T");
+    CB_CHECK(cb::fs::read_text(tmp.path() / "T.cpp").find("T_createByReflection(p)") != std::string::npos);
+    auto [text, sites, fac] = rf::process(py::str("x"), py::str("X"));
+    CB_CHECK_EQ(sites, 0);
+    CB_CHECK(!fac.has_value());
+});
+
 }  // namespace
-
-
