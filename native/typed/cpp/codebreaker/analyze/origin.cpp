@@ -10,8 +10,6 @@
 //   * `imported.get(ops[0].imm)` of _judge looks an integer up in describe's import_names, whose keys are the symbols'
 //     names: it never finds one, so the "calls <compiler helper>" note of that branch is never made -- the C++ has no
 //     such branch.
-//   * In _module16 the `covered` bytearray of the Python is trimmed by `covered[a:b] = b"" * n` (an empty replacement: it
-//     deletes bytes) and holds only zeros, so `any(covered[at:at + 6])` is never true: the loop does not test it.
 #include "codebreaker/analyze/origin.hpp"
 
 #include <algorithm>
@@ -504,16 +502,21 @@ Result _module16(const py::str& path, const std::optional<py::dict<int64_t, py::
         const std::vector<int64_t>& offs = starts[seg];
         py::bytes image = image_of(seg);
         std::map<int64_t, int64_t> inner;
+        std::vector<char> covered(static_cast<size_t>(image.size()), 0);   // the bytes of instructions
         for (size_t k = 0; k < offs.size(); k++) {
             int64_t off = offs[k], end = k + 1 < offs.size() ? offs[k + 1] : image.size();
             for (const Insn& ins : disasm(*md, image, off, end, off).vec()) {
                 if (static_cast<int64_t>(ins.address) != off) inner[static_cast<int64_t>(ins.address)] = off;
+                for (int64_t q = static_cast<int64_t>(ins.address); q < static_cast<int64_t>(ins.address) + ins.size && q < image.size(); q++) covered[static_cast<size_t>(q)] = 1;
             }
         }
         std::map<int64_t, std::set<std::tuple<int64_t, int64_t, int64_t, int64_t>>> named;
         const std::string& raw = image.raw();
         for (int64_t at = 0; at < image.size() - 5; at += 2) {   // (a table of its own segment, not code)
             auto w = [&](int64_t o) { return static_cast<int64_t>(static_cast<unsigned char>(raw[static_cast<size_t>(o)])) | (static_cast<int64_t>(static_cast<unsigned char>(raw[static_cast<size_t>(o) + 1])) << 8); };
+            bool any_covered = false;
+            for (int64_t q = at; q < at + 6 && q < image.size(); q++) if (covered[static_cast<size_t>(q)]) any_covered = true;
+            if (any_covered) continue;
             int64_t a = w(at), b = w(at + 2), c = w(at + 4);
             auto ia = inner.find(a);
             if (a < b && ia != inner.end()) {

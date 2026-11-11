@@ -444,7 +444,7 @@ py::list<Op> arguments(const Function& fn, int64_t i, int64_t n) {
     for (int64_t j = i - 1; j > std::max<int64_t>(-1, i - 60); j--) {
         if (out.size() >= n) break;
         const Ins& ins = *fn.insns[j];
-        if (ins.flow || ins.mn == "pop" || ins.mn == "leave" || ins.mn == "enter" || ins.mn == "pushal" || ins.mn == "popal") break;
+        if (flow_is(ins, "call") || flow_is(ins, "jmp") || flow_is(ins, "ret") || ins.mn == "pop" || ins.mn == "leave" || ins.mn == "enter" || ins.mn == "pushal" || ins.mn == "popal") break;
         if (ins.mn == "push" && !ins.ops.empty()) {
             Op op = ins.ops[0];
             if (op.kind == "r") {
