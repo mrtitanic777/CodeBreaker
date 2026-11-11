@@ -465,6 +465,97 @@ def test_wine_s_spec_types_an_import_and_its_calls_are_said_one_argument_to_a_pa
     assert "USER_1(1, 2);" in t["f"]
 
 
+def test_a_typed_call_inside_the_arguments_of_another_is_said_with_it():
+    """wine_typing said each typed call from its own start to its end, and went on into its arguments from the
+    parenthesis: a typed call among the arguments of another was said again from the start of the outer text's
+    remainder, `USER_1(USER_1(a))a));`."""
+    from codebreaker.build import msc6
+    from codebreaker.symbols import wine16
+    ex = {("USER", 33): wine16.Export("GetClientRect", "pascal", ["word", "ptr"], True, False),
+          ("KERNEL", 88): wine16.Export("lstrcpy", "pascal", ["segptr", "str"], False, False),
+          ("USER", 1): wine16.Export("Y", "pascal", ["word"], True, False)}
+    header = ("extern uint4 __far __stdcall USER_33();\nextern uint4 __far __stdcall KERNEL_88();\n"
+              "extern uint4 __far __stdcall USER_1();\n")
+    look = lambda m, n: ex.get((m, n))               # noqa: E731
+    _h, t = msc6.wine_typing(header, {"f": "  USER_1(USER_1(a));\n"}, look)
+    assert t["f"] == "  USER_1(USER_1(a));\n"
+    _h, t = msc6.wine_typing(header, {"f": "  KERNEL_88(USER_33(a, b), c, d, e);\n"}, look)
+    assert t["f"] == ("  KERNEL_88((void __far *)(((uint4)(uint2)(USER_33(a, b)) << 16) | (uint2)(c)), "
+                      "(void __far *)(((uint4)(uint2)(d) << 16) | (uint2)(e)));\n")
+    _h, t = msc6.wine_typing(header, {"f": "  USER_1(KERNEL_88(a, b, c, d));\n"}, look)
+    assert t["f"] == ("  USER_1(KERNEL_88((void __far *)(((uint4)(uint2)(a) << 16) | (uint2)(b)), "
+                      "(void __far *)(((uint4)(uint2)(c) << 16) | (uint2)(d))));\n")
+
+
+def test_a_number_with_a_leading_zero_is_decimal_in_the_texts_of_the_16_bit_lane():
+    """ds_globals and split_frame read their numbers with int(x, 0), which raises ValueError for a decimal with a leading zero
+    (`*(int2 *)0123`) and ended the whole pass."""
+    from codebreaker.build import msc6
+    declarations, text = msc6.ds_globals("x = *(int2 *)0123;\n")
+    assert declarations == "extern char codebreaker_d007b[];\n"
+    assert text == "x = (*(int2 *)codebreaker_d007b);\n"
+
+
+def test_a_hole_of_no_length_is_no_hole():
+    """asm16: a hole whose start equals its end (nothing rebuilt from C there) made `write` loop for ever, one `db 0 dup (0CCh)`
+    line a turn until memory was gone: it is now no hole."""
+    from codebreaker.build import asm16
+    from codebreaker.formats.ne import NEFile
+    path = os.path.join(ROOT, "native", "cb", "formats", "testdata", "lzexpand.dll")
+    nef = NEFile(path)
+
+    def symbol_for(kind, *what):
+        if kind == "function":
+            return "_f%d_%x" % what
+        if kind == "import":
+            return "_IMP_%s_%s" % what
+        return "_%s%d" % (kind, what[0])
+    plain = asm16.Function(nef, 1, 182, 278, "_f1_b6", symbol_for)
+    empty = asm16.Function(nef, 1, 182, 278, "_f1_b6", symbol_for, 0, (), False, [(220, 220, "_nothing")])
+    assert plain.text and empty.holes == []
+    assert empty.text == plain.text
+
+
+def _tiny_ne(tmp_path, code, relocs):
+    """A one-segment NE module (name T, importing KERNEL) holding `code`, with `relocs` [(source, flags, offset, module, ordinal)]."""
+    import struct
+    hdr = bytearray(0x40)
+    hdr[0:2], hdr[2] = b"NE", 5
+    seg_tab, resident, modrefs, imported, entry = 0x40, 0x48, 0x4D, 0x4F, 0x57
+    for off, value in ((0x04, entry), (0x06, 1), (0x0C, 0x8000), (0x1C, 1), (0x1E, 1), (0x22, seg_tab), (0x24, resident),
+                       (0x26, resident), (0x28, modrefs), (0x2A, imported), (0x32, 4)):
+        struct.pack_into("<H", hdr, off, value)
+    hdr[0x36] = 2
+    tables = bytearray(0x58 - 0x40)
+    struct.pack_into("<HHHH", tables, 0, 0x100 >> 4, len(code), 0x0100, len(code))
+    tables[resident - 0x40:resident - 0x40 + 5] = b"\x01T\x00\x00\x00"
+    struct.pack_into("<H", tables, modrefs - 0x40, 1)
+    tables[imported - 0x40:imported - 0x40 + 8] = b"\x00\x06KERNEL"
+    mz = bytearray(0x40)
+    mz[0:2] = b"MZ"
+    struct.pack_into("<I", mz, 0x3C, 0x40)
+    image = bytearray(mz + hdr + tables)
+    image += bytes(0x100 - len(image)) + code + struct.pack("<H", len(relocs))
+    for source, flags, off, module, ordinal in relocs:
+        image += struct.pack("<BBHHH", source, flags, off, module, ordinal)
+    path = os.path.join(str(tmp_path), "tiny.dll")
+    with open(path, "wb") as f:
+        f.write(bytes(image))
+    return path
+
+
+def test_a_far_call_to_an_import_with_an_addend_is_named_with_it(tmp_path):
+    """The far call's operand is a fix-up of the import KERNEL.15, additive (the place holds the addend, 4): written as `call far
+    ptr _IMP_KERNEL_15 + 4`. asm16 named it by the last word of the expression and wrote `call far ptr 4`."""
+    from codebreaker.build import asm16
+    from codebreaker.formats.ne import NEFile
+    code = bytearray([0x55, 0x8B, 0xEC, 0x9A, 0x04, 0x00, 0x00, 0x00, 0x5D, 0xCB])
+    nef = NEFile(_tiny_ne(tmp_path, bytes(code), [(3, 0x05, 4, 1, 15)]))
+    f = asm16.Function(nef, 1, 0, len(code), "_f", lambda kind, *what: "_IMP_%s_%s" % what if kind == "import" else None)
+    assert f.text, f.why
+    assert "call far ptr _IMP_KERNEL_15 + 4" in f.text
+
+
 def test_a_run_time_library_routine_is_named_outside_the_linker_s_bytes(monkeypatch):
     """A function that is a library routine byte for byte, outside the places the linker filled in
     (the routine's fix-ups, the original's relocations), is the library's -- __aFlmul in SUWIN."""

@@ -69,7 +69,8 @@ class Function(object):
         self.missing, self.tables = set(), set()              # (set again once the code is followed)
         self.far_missing = set()                            # (segment, offset) a far call or jump reaches mid-run
         self.reaches = None                                 # refused for jumping into the middle of this offset's function
-        self.holes = sorted(holes)
+        # (an empty hole -- start == end -- has nothing to place: `write` never moved past it, one `db 0 dup` line a turn)
+        self.holes = sorted(h for h in holes if h[0] < h[1])
         self.raw_hole_calls = {}                           # offset -> (symbol, opcode): see raw_calls_into_holes
         self.raw_far_entries = set()                       # (segment, offset) a raw far call or pushed pointer
         #                                                    goes to where no function begins: see _raw_far_pointers
@@ -200,7 +201,7 @@ class Function(object):
                     # symbol's selector or offset loaded or pushed
                     site = at + 1
                     if b0 in (0x9A, 0xEA) and ins.size == 5 and sites.get(site, (0,))[0] == 4:
-                        name = sym_of[site].split()[-1]
+                        name = sym_of[site]           # (the whole expression: `_sym + 4` with an addend, not its last word)
                         self.symbolic[at] = (5, "%s far ptr %s" % ("call" if b0 == 0x9A else "jmp", name))
                     elif b0 in (0x9A, 0xEA) and ins.size == 5 and (at + 3) in internal_selector:
                         # a far call into the module: the file relocates only its selector; its offset
@@ -368,7 +369,7 @@ class Function(object):
                     self.externs.setdefault(name, "far")
                     self.sites[p] = (2, "dw   offset %s" % name)
                     break
-                if p == off + 3 or self.blob[p - 1] in (0x9A, 0xEA):
+                if p == off + 3 or p > 0 and self.blob[p - 1] in (0x9A, 0xEA):
                     # a call or a pushed pointer into the middle of a function: that place is
                     # an entry of its own (USER 35:035A `call far 43:0234`, inside sub_43_01D4 --
                     # rebuilt from C, the call ran its filler)
@@ -380,7 +381,7 @@ class Function(object):
         before `push n`, or the two words stored side by side (`mov [m], n` / `mov [m+2], seg
         X`, either order) -- or None."""
         if data[0] == 0x68 and len(data) == 3:
-            if self.blob[at - 3:at - 2] == b"\x68" and (at - 2) in selectors:
+            if at >= 3 and self.blob[at - 3:at - 2] == b"\x68" and (at - 2) in selectors:
                 return selectors[at - 2]
             return None
         me = _decoded(md, self.blob[at:at + 16], at, self.bits)

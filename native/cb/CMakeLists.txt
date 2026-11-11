@@ -74,7 +74,7 @@ set_target_properties(cb_sqlite3 PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$
 cb_area(base)
 target_link_libraries(cb_base PUBLIC cb_core PRIVATE cb_sqlite3)
 cb_area(build)
-target_link_libraries(cb_build PUBLIC cb_core cb_base)
+target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb_source cb_symbols)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 cb_area(jobs)
@@ -188,6 +188,9 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/pascal_join.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/authored/match16.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/scoreboard16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xna.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
