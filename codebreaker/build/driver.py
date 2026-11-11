@@ -173,6 +173,14 @@ def structure(lf):
             "references": len(le.references(lf))}
 
 
+def _equal_share(ba, bb, skip):
+    """(bytes equal, bytes compared) over one object, outside `skip` (the places the loader patches). A patched place
+    that lies partly or wholly outside the object (a 16-bit fix-up at its end counts four bytes) is not part of the object, so
+    it does not shorten it."""
+    inside = {i for i in skip if 0 <= i < len(ba)}
+    return sum(1 for i in range(len(ba)) if ba[i] == bb[i] and i not in inside), len(ba) - len(inside)
+
+
 def compare(built, original):
     """Check a rebuilt image against the original (two LEFile). -> (checks, notes, same):
     checks {name: True/False} for objects, descriptor, services, exports, module; notes, one
@@ -234,10 +242,9 @@ def compare(built, original):
     for x, y in zip(built.objects, original.objects):
         if x["vsize"] != y["vsize"]:
             continue
-        ba, bb = le.object_data(built, x), le.object_data(original, y)
-        skip = pa.get(x["idx"], set()) | pb.get(y["idx"], set())
-        total += len(ba) - len(skip)
-        equal += sum(1 for i in range(len(ba)) if ba[i] == bb[i] and i not in skip)
+        e, n = _equal_share(le.object_data(built, x), le.object_data(original, y), pa.get(x["idx"], set()) | pb.get(y["idx"], set()))
+        equal += e
+        total += n
     if a["references"] != b["references"]:
         notes.append("places the loader patches: %d, original %d" % (a["references"], b["references"]))
     return checks, notes, (equal / total if total else None)

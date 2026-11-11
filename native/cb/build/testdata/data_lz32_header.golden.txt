@@ -1,0 +1,9 @@
+struct layout_of_codebreaker_data_2; extern struct layout_of_codebreaker_data_2 codebreaker_data_2;
+struct layout_of_g_exported; extern struct layout_of_g_exported g_exported;
+struct layout_of_g_second; extern struct layout_of_g_second g_second;
+#define g_a (*(int *)((char *)&codebreaker_data_2 + 0x4))
+#define g_b (*(char *)((char *)&g_second + 0x4))
+int helper(void);
+#define g_far (*(int *)0x7fff0000)
+#define g_upper (*(int *)0xBFEA2000)
+LOST 7fff0000

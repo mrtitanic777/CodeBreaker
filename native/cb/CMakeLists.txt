@@ -74,7 +74,7 @@ set_target_properties(cb_sqlite3 PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$
 cb_area(base)
 target_link_libraries(cb_base PUBLIC cb_core PRIVATE cb_sqlite3)
 cb_area(build)
-target_link_libraries(cb_build PUBLIC cb_core cb_base)
+target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 cb_area(jobs)

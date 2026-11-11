@@ -564,3 +564,15 @@ Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2)
 |---|---|---|
 | fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
 | mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+
+## cb refactor: build batch W1-B5 (2026-11-11)
+
+Old = the Python that is still the live implementation (build/data.py, build/driver.py, over formats.dll), same inputs, shared machine
+(+-30%); the typed ports on the py:: layer were not built in this worktree. Not timed: build/m68k_asm and build/native_dos (their cost is the
+instruction encoder and the DOS executive behind them, which are other modules' work; the new directive layer is a single linear pass over a
+source's lines).
+
+| What | Old | New |
+|---|---|---|
+| `data32` over 60 Win95 PE modules (relocated words, pointers, the C text of every data section; file read and image parsed in the timing) + `data16` and `far_segments` over 60 NE modules | 1.41 s (Python) | 0.50 s (outputs identical for all 120, byte for byte) |
+| driver `compare` of two small VxDs (splitter, srammtd, bios; 9 pairs x 20) | 3.57 ms per pair | 0.29 ms per pair |
