@@ -99,7 +99,7 @@ target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
-file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp")
+file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp")
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
@@ -124,10 +124,6 @@ set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp"
 cb_area(source)
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats)
 
-
-target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)   # (zlib: the PNG codec of java/rgba_png)
-
-file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp")
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
