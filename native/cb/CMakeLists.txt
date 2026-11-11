@@ -88,6 +88,10 @@ target_link_libraries(cb_analyze PUBLIC cb_core)
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core)
 
+cb_area(symbols)
+target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge)
+
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -100,7 +104,12 @@ set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_ALL_TESTS_SO_FAR} ${CB_COMPAT_
 add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/sdk_structs.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
