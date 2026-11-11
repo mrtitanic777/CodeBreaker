@@ -1,0 +1,37 @@
+[
+[
+"x = GL11.glVertex3f(1,2,3); Display.create (); org.lwjgl.opengl.GL11.glEnd();",
+[
+"Display.create",
+"GL11.glEnd",
+"GL11.glVertex3f"
+]
+],
+[
+"GL11.GL_TRIANGLES + Keyboard.KEY_A + a.B.cC() + X.AB + Foo.BARbaz + Foo.BAR_1 ;",
+[
+"B.cC",
+"Foo.BAR_1",
+"GL11.GL_TRIANGLES",
+"Keyboard.KEY_A"
+]
+],
+[
+"foo.Bar.baz(\n Qux.quux\n(1)) 9Foo.bar() _Foo.bar() Foo.bar",
+[
+"Bar.baz",
+"Qux.quux"
+]
+],
+[
+"Math.sqrt(x)+Math.PI;System.out.println(\"x\");List<String> l; Map.Entry.getKey()",
+[
+"Entry.getKey",
+"Math.sqrt"
+]
+],
+[
+"",
+[]
+]
+]

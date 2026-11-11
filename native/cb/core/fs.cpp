@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include "cb/core/fs.hpp"
 
 #include <windows.h>
@@ -306,23 +307,26 @@ std::optional<std::string> get_env(std::string_view name) {
     return win::from_wide(value);
 }
 
-ScopedEnv::ScopedEnv(std::string_view name, std::optional<std::string_view> value)
-    : name_(name), previous_(get_env(name)) {
-    const std::wstring wname = win::to_wide(name_);
+// Both copies of the environment change: the system's (SetEnvironmentVariableW, what child processes and GetEnvironmentVariable
+// see) and the C runtime's (_wputenv_s, what getenv/_wgetenv see -- the C runtime copies the environment once, so a variable
+// set only in the system's copy is invisible to code that reads it through the C runtime).
+static void set_both(const std::wstring& name, const std::optional<std::string>& value) {
     if (value) {
-        SetEnvironmentVariableW(wname.c_str(), win::to_wide(*value).c_str());
+        const std::wstring wvalue = win::to_wide(*value);
+        SetEnvironmentVariableW(name.c_str(), wvalue.c_str());
+        if (!wvalue.empty()) _wputenv_s(name.c_str(), wvalue.c_str());
+        else _wputenv_s(name.c_str(), L"");   // the C runtime cannot hold an empty value: it removes the variable
     } else {
-        SetEnvironmentVariableW(wname.c_str(), nullptr);
+        SetEnvironmentVariableW(name.c_str(), nullptr);
+        _wputenv_s(name.c_str(), L"");
     }
 }
 
-ScopedEnv::~ScopedEnv() {
-    const std::wstring wname = win::to_wide(name_);
-    if (previous_) {
-        SetEnvironmentVariableW(wname.c_str(), win::to_wide(*previous_).c_str());
-    } else {
-        SetEnvironmentVariableW(wname.c_str(), nullptr);
-    }
+ScopedEnv::ScopedEnv(std::string_view name, std::optional<std::string_view> value)
+    : name_(name), previous_(get_env(name)) {
+    set_both(win::to_wide(name_), value ? std::optional<std::string>(std::string(*value)) : std::nullopt);
 }
+
+ScopedEnv::~ScopedEnv() { set_both(win::to_wide(name_), previous_); }
 
 }  // namespace cb::fs

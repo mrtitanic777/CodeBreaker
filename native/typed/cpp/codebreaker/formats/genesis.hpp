@@ -1,36 +1,31 @@
-// codebreaker/formats/genesis.hpp -- C++17 port of codebreaker.formats.genesis.
+// codebreaker/formats/genesis.hpp -- compat shim over cb/formats/genesis.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// genesis.py -- Sega Genesis / Mega Drive cartridge images (`.md`, `.bin`, `.gen`, `.smd`).
-//
-//     py::ref<ROM> rom = genesis::read(path);
-//     rom->data                       the ROM as the 68000 sees it from address 0 (an .smd dump de-interleaved)
-//     rom->header                     the header's fields at $100: system, copyright, names, serial, checksum,
-//                                     devices, ROM and RAM ranges, region
-//     rom->vectors                    {"ssp", "reset", and each exception vector that points into the ROM}
-//     rom->memory()                   the ROM placed in a 16 MB address space
-//     rom->functions()                function starts: the reset vector, the exception and interrupt handlers,
-//                                     every JSR/BSR target reached from them
-//     rom->checksum()                 the checksum the header should hold (the sum of the words from $200)
-//
-// The 68000 starts by reading two longs at address 0: the stack pointer and the program's start.
-// Then come the exception vectors (bus error, address error, illegal instruction, ...) and the
-// interrupt autovectors -- on the Genesis level 4 is the horizontal blank ($70) and level 6 the
-// vertical blank ($78). The header at $100 starts "SEGA" (the TMSS hardware of later consoles
-// refuses to start a cartridge without it). There is no bank switching below 4 MB: the ROM is
-// simply at $000000-$3FFFFF. An .smd dump (a copier's 512-byte header, then 16 KB blocks stored
-// odd bytes first) is turned into that plain image.
+// The module itself is native/cb/formats/genesis.{hpp,cpp}; this header keeps the old py:: surface for the ports
+// that have not been refactored yet and is deleted with the last of them. Conversion and forwarding only; the 68000
+// decoder `functions()` follows the code with is the decompiler's (still an old port) and is adapted here.
 #pragma once
 
 #include <tuple>
 
-#include "py.hpp"
-#include "py_os.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/formats/genesis.hpp"
+#include "cb/formats/probe.hpp"
+#include "codebreaker/decompile/m68k.hpp"
 
 namespace codebreaker::formats::genesis {
 
-extern const std::tuple<py::str, py::str, py::str, py::str> EXTENSIONS;
+inline const std::tuple<py::str, py::str, py::str, py::str> EXTENSIONS =
+    std::tuple<py::str, py::str, py::str, py::str>{py::str(".md"), py::str(".bin"), py::str(".gen"), py::str(".smd")};
 // {vector number: name}
-extern const py::dict<int64_t, py::str> VECTOR_NAMES;
+inline const py::dict<int64_t, py::str> VECTOR_NAMES = [] {
+    py::dict<int64_t, py::str> names;
+    for (unsigned n = 0; n < 64; ++n) {
+        const std::string name = cb::formats::genesis::vector_name(n);
+        if (!name.empty()) names.set(n, cb::compat::to_py(name));
+    }
+    return names;
+}();
 
 // ROM.header: a dict with ten fixed keys (a record); the keys "domestic name" and "overseas name" have a space.
 struct Header {
@@ -97,5 +92,108 @@ py::ref<ROM> parse(const py::bytes& data, const py::str& path = py::str(""));
 // Function starts: the reset vector and the handlers the vectors name, then every JSR and BSR
 // target reached by following the code from them.
 py::list<int64_t> functions(const ROM& rom);
+
+// ---- the bodies: all conversion --------------------------------------------------------------------------
+
+namespace shim_ {
+
+// The part of the old ROM that memory(), checksum() and functions() need.
+inline cb::formats::genesis::Rom to_cb(const ROM& r) {
+    cb::formats::genesis::Rom out;
+    out.data = cb::compat::from_py(r.data);
+    out.reset = cb::compat::int_from_py<std::uint32_t>(r.vectors.at(py::str("reset")));
+    for (const auto& kv : r.vectors.items()) {
+        const py::str& name = std::get<0>(kv);
+        if (name == py::str("ssp") || name == py::str("reset")) continue;
+        out.vectors.push_back({cb::compat::from_py(name), cb::compat::int_from_py<std::uint32_t>(std::get<1>(kv))});
+    }
+    return out;
+}
+
+inline py::ref<ROM> from_cb(const cb::formats::genesis::Rom& r, const py::str& path) {
+    py::ref<ROM> rom = std::make_shared<ROM>();
+    rom->path = path;
+    rom->smd = r.smd;
+    rom->data = cb::compat::to_py(cb::ByteView(r.data));
+    const cb::formats::genesis::Header& h = r.header;
+    rom->header.system = cb::compat::to_py(h.system);
+    rom->header.copyright = cb::compat::to_py(h.copyright);
+    rom->header.domestic_name = cb::compat::to_py(h.domestic_name);
+    rom->header.overseas_name = cb::compat::to_py(h.overseas_name);
+    rom->header.serial = cb::compat::to_py(h.serial);
+    rom->header.checksum = h.checksum;
+    rom->header.devices = cb::compat::to_py(h.devices);
+    rom->header.rom = {h.rom_start, h.rom_end};
+    rom->header.ram = {h.ram_start, h.ram_end};
+    rom->header.region = cb::compat::to_py(h.region);
+    rom->vectors.set(py::str("ssp"), r.initial_ssp);
+    rom->vectors.set(py::str("reset"), r.reset);
+    for (const cb::formats::genesis::Vector& v : r.vectors) rom->vectors.set(cb::compat::to_py(v.name), v.address);
+    return rom;
+}
+
+// The old 68000 decoder in the form cb::formats::code_scan wants (`data`: the ROM, converted once).
+inline cb::formats::Decoder decoder(const py::bytes& data) {
+    return [&data](cb::ByteView, std::uint32_t pc) -> std::optional<cb::formats::DecodedInsn> {
+        const std::optional<decompile::m68k::Insn> insn = decompile::m68k::decode(data, pc, pc);
+        if (!insn) return std::nullopt;
+        cb::formats::DecodedInsn out;
+        out.size = static_cast<std::uint32_t>(insn->length);
+        if (insn->target) out.target = static_cast<std::uint32_t>(*insn->target);
+        if (insn->flow == py::str("call")) {
+            // a TRAP's handler is followed but is not a function start
+            out.flow = insn->mnemonic == py::str("TRAP") ? cb::formats::Flow::Branch : cb::formats::Flow::Call;
+        } else if (insn->flow == py::str("jump")) {
+            out.flow = cb::formats::Flow::Jump;
+        } else if (insn->flow == py::str("branch")) {
+            out.flow = cb::formats::Flow::Branch;
+        } else if (insn->flow == py::str("ret")) {
+            out.flow = cb::formats::Flow::Return;
+        } else if (insn->flow == py::str("indirect")) {
+            out.flow = cb::formats::Flow::Indirect;
+        } else if (insn->flow == py::str("halt")) {
+            out.flow = cb::formats::Flow::Halt;
+        }
+        return out;
+    };
+}
+
+}  // namespace shim_
+
+inline py::bytearray ROM::memory() const {
+    return py::bytearray(cb::compat::to_py(cb::ByteView(shim_::to_cb(*this).memory())));
+}
+inline py::list<int64_t> ROM::functions() const { return genesis::functions(*this); }
+inline int64_t ROM::checksum() const { return shim_::to_cb(*this).computed_checksum(); }
+
+inline bool is_genesis(const py::str& path) {
+    return cb::formats::genesis::probe(cb::fs::from_text(cb::compat::from_py(path)));
+}
+
+inline py::ref<ROM> read(const py::str& path) {
+    return cb::compat::guard([&] {
+        return shim_::from_cb(cb::formats::genesis::read(cb::fs::from_text(cb::compat::from_py(path))), path);
+    });
+}
+
+inline py::bytes _desmd(const py::bytes& data) {
+    return cb::compat::guard(
+        [&] { return cb::compat::to_py(cb::ByteView(cb::formats::genesis::deinterleave_smd(cb::compat::from_py(data)))); });
+}
+
+inline py::ref<ROM> parse(const py::bytes& data, const py::str& path) {
+    return cb::compat::guard([&] {
+        return shim_::from_cb(
+            cb::formats::genesis::parse(cb::compat::from_py(data),
+                                        cb::formats::extension_of(cb::fs::from_text(cb::compat::from_py(path)))),
+            path);
+    });
+}
+
+inline py::list<int64_t> functions(const ROM& rom) {
+    const cb::formats::genesis::Rom cb_rom = shim_::to_cb(rom);
+    const py::bytes data = cb::compat::to_py(cb::ByteView(cb_rom.data));
+    return cb::compat::to_py(cb_rom.functions(shim_::decoder(data)));
+}
 
 }  // namespace codebreaker::formats::genesis

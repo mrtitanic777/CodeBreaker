@@ -1,63 +1,27 @@
-// codebreaker/build/pklite.hpp -- C++17 port of codebreaker.build.pklite.
+// codebreaker/build/pklite.hpp -- SHIM over cb/build/pklite.hpp (docs/CPP_DESIGN.md 6.3): the old types in, the new functions
+// called, the old types out. No logic; deleted with its last py:: consumer.
 //
-// pklite.py -- read and write a program the way PKLITE 1.15 (its "large" model) stores it.
+// Read and write a program the way PKLITE 1.15 (its "large" model) stores it (see cb/build/pklite.hpp for the format):
 //
 //     auto s = pklite::read(stored_module);          .image .relocs .regs (cs, ip, ss, sp) .tokens .stub .start .end
-//     auto tokens = pklite::parse(image);            the choices PKLITE makes for a program (see parse)
+//     auto tokens = pklite::parse(image);            the choices PKLITE makes for a program
 //     auto stream = pklite::encode(tokens, stub);    the compressed stream of those tokens
 //     auto [module, header] = pklite::pack(image, relocs, regs, stub_head, memory);    the stored load module
-//
-// The format is read off PKLITE's own decompressor, which is the first thing in every file it
-// packed (the entry point): it moves itself and the stream to the top of memory and expands the
-// program down to where DOS loaded it, then relocates it and jumps to it. The stream is read
-// through one pointer that serves two things: a bit stream of 16-bit words, lowest bit first,
-// the next word fetched AS SOON AS the 16th bit of one is taken; and single bytes, read in between.
-//
-//     bit 0             a literal: the next byte
-//     bit 1             a copy: a length code; for length 2 one byte of distance, else a bit -- 1:
-//                       the distance is one byte; 0: a code for its high byte, then its low byte
-//     length 25 + n     the length code for 25 reads a byte n: a copy of 25 + n (n < FE); FE: the
-//                       pointers are renormalised (output past ~32K of a segment), nothing copied;
-//                       FF: the end
-//     after the end     the relocation table -- runs of a count byte, a segment word and that many
-//                       offset words, a zero count ending it -- then SS, SP, CS, IP (relative)
-//
-// The two prefix codes are the decompressor's: it reads bits into BX and looks values up in
-// tables inside its own code (the lookups may run from one table into the next, as the CPU's
-// do). They are derived here by walking the decompressor's decision tree, with the tables taken
-// from the stub being written -- the stub is PKLITE's code, carried as the program's (see
-// dos_writer: it is written as source like every other part of the file).
-//
-// PKLITE's choices (parse): every copy is the longest match within 8191 bytes, the nearest of
-// equals; a length-2 copy only within 255 bytes; a copy is put off by one byte (a literal
-// instead) when the next byte starts a longer one; a renormalisation mark comes before the first
-// token at or past each 0x8000 + k * 0xA000 bytes of output less 277 (the longest copy).
-//
-// Python names that start with an underscore keep them (a trailing underscore for the classes:
-// _Out -> Out_, _Bits -> Bits_, _Writer -> Writer_), so the C++ identifiers are not reserved ones.
 #pragma once
 
 #include <cstdint>
-#include <functional>
-#include <optional>
 #include <tuple>
 
-#include "py.hpp"
+#include "cb/build/pklite.hpp"
+#include "cb/compat/py_bridge.hpp"
 
 namespace codebreaker::build::pklite {
 
-extern const int64_t STUB_CODE;      // the decompressor's code in the load module (copied to offset 0 to run)
-extern const int64_t MAX_DISTANCE;
-extern const int64_t MAX_LENGTH;     // (the code allows FD; PKLITE never makes one longer than 277)
-extern const int64_t _FIRST_MARK;
-extern const int64_t _MARK_EVERY;
+namespace newp = ::cb::build::pklite;
 
-// Python's private  class _Out(Exception)  (raised when the stream or the bit string runs out;
-// type() reports "_Out").
-struct Out_ : py::Exception {
-    Out_() : py::Exception() {}
-    const char* type() const override { return "_Out"; }
-};
+inline const int64_t STUB_CODE = static_cast<int64_t>(newp::kStubCode);   // the decompressor's code in the load module
+inline const int64_t MAX_DISTANCE = newp::kMaxDistance;
+inline const int64_t MAX_LENGTH = newp::kMaxLength;   // (the code allows FD; PKLITE never makes one longer than 277)
 
 // One token of the stream. The Python keeps tuples: ("lit", b) ("copy", n, d) ("seg",) ("end",).
 struct Token {
@@ -73,35 +37,59 @@ struct Token {
     static Token end() { return {Kind::End, 0, 0}; }
 };
 
-// A source of single bits (the decompressor's reading), or of a bit string being walked.
-using Bit = std::function<int64_t()>;
-// A prefix code's reader: _length or _high.
-using CodeReader = std::function<int64_t(const Bit&, const py::bytes&)>;
 // {value: bit string}
 using Codes = py::dict<int64_t, py::list<int64_t>>;
 
-// The decompressor's reading: words of bits and single bytes through one pointer.
-class Bits_ {
-public:
-    py::bytes d;
-    int64_t si = 0;
-    int64_t bp = 0;
-    int64_t dx = 0;
+namespace detail {
 
-    Bits_(const py::bytes& data, int64_t at);
-    int64_t word();
-    int64_t byte();
-    int64_t bit();
-};
+inline Codes codes_of(const newp::Codes& codes) {
+    Codes out;
+    for (const auto& [value, code] : codes) {
+        py::list<int64_t> bits;
+        for (int i = code.length - 1; i >= 0; --i) bits.append((code.bits >> i) & 1);
+        out.set(static_cast<int64_t>(value), bits);
+    }
+    return out;
+}
 
-// The length code, as the decompressor reads it (t: its code from offset 0).
-int64_t _length(const Bit& bit, const py::bytes& t);
+inline std::uint16_t u16(int64_t v) {
+    if (v < 0 || v > 0xFFFF) throw py::StructError("argument out of range");   // (struct.error: a value that does not fit its field)
+    return static_cast<std::uint16_t>(v);
+}
 
-// The code for a distance's high byte (after the bit that says it has one).
-int64_t _high(const Bit& bit, const py::bytes& t);
+inline newp::Token token_of(const Token& t) {
+    switch (t.kind) {
+        case Token::Kind::Lit: return newp::Token::literal(static_cast<std::uint8_t>(t.a));
+        case Token::Kind::Copy: return newp::Token::copy(u16(t.a), u16(t.b));
+        case Token::Kind::Seg: return newp::Token::mark();
+        case Token::Kind::End: return newp::Token::end();
+    }
+    return newp::Token::end();
+}
 
-// {value: bit string} of a prefix code, by feeding the reader every string of bits.
-Codes _codes(const CodeReader& read, const py::bytes& t);
+inline Token token_to_old(const newp::Token& t) {
+    switch (t.kind) {
+        case newp::Token::Kind::Literal: return Token::lit(t.byte);
+        case newp::Token::Kind::Copy: return Token::copy(t.length, t.distance);
+        case newp::Token::Kind::Mark: return Token::seg();
+        case newp::Token::Kind::End: return Token::end();
+    }
+    return Token::end();
+}
+
+inline std::vector<newp::Token> tokens_of(const py::list<Token>& tokens) {
+    std::vector<newp::Token> out;
+    for (const Token& t : tokens) out.push_back(token_of(t));
+    return out;
+}
+
+inline std::vector<newp::Relocated> relocs_of(const py::list<std::tuple<int64_t, int64_t>>& relocs) {
+    std::vector<newp::Relocated> out;
+    for (const auto& [segment, offset] : relocs) out.push_back({u16(segment), u16(offset)});
+    return out;
+}
+
+}  // namespace detail
 
 // PKLITE's decompressor as it is in one file: its code and the codes its tables make.
 class Stub {
@@ -110,8 +98,15 @@ public:
     Codes lengths;
     Codes highs;
     py::bytes code;
+    newp::Stub impl;
 
-    Stub(const py::bytes& module, int64_t start);
+    Stub(const py::bytes& module, int64_t start)
+        : impl(::cb::compat::guard([&] { return newp::Stub::of(::cb::compat::from_py(module), static_cast<std::size_t>(start)); })) {
+        head = ::cb::compat::to_py(::cb::ByteView(impl.head));
+        code = ::cb::compat::to_py(::cb::ByteView(impl.code));
+        lengths = detail::codes_of(impl.lengths);
+        highs = detail::codes_of(impl.highs);
+    }
 };
 
 // A load module PKLITE stored, read: see read().
@@ -126,54 +121,49 @@ struct Stored {
     py::bytes tail;
 };
 
-// -> (image, tokens, end of stream). Tokens: ("lit", b) ("copy", n, d) ("seg",) ("end",)
-std::tuple<py::bytes, py::list<Token>, int64_t> _decode(const Stub& stub, const py::bytes& data, int64_t at);
-
-// Where the stream starts: the paragraph the entry code puts DS at (mov bx,ds / add bx,N).
-// ValueError when the module has no such entry code.
-int64_t stream_start(const py::bytes& module);
+// Where the stream starts: the paragraph the entry code puts DS at (mov bx,ds / add bx,N). ValueError when the module has no
+// such entry code.
+inline int64_t stream_start(const py::bytes& module) {
+    return static_cast<int64_t>(::cb::compat::guard([&] { return newp::stream_start(::cb::compat::from_py(module)); }));
+}
 
 // A load module stored by PKLITE 1.15 large. -> Stored
-Stored read(const py::bytes& module);
+inline Stored read(const py::bytes& module) {
+    const ::cb::Bytes bytes = ::cb::compat::from_py(module);
+    newp::Stored s = ::cb::compat::guard([&] { return newp::read(bytes); });
+    Stored out{Stub(module, static_cast<int64_t>(s.start))};
+    out.start = static_cast<int64_t>(s.start);
+    out.end = static_cast<int64_t>(s.end);
+    out.image = ::cb::compat::to_py(::cb::ByteView(s.image));
+    for (const newp::Token& t : s.tokens) out.tokens.append(detail::token_to_old(t));
+    for (const newp::Relocation& run : s.relocs) {
+        py::list<int64_t> offsets;
+        for (std::uint16_t o : run.offsets) offsets.append(o);
+        out.relocs.append(std::make_tuple(static_cast<int64_t>(run.segment), offsets));
+    }
+    out.regs = std::make_tuple<int64_t, int64_t, int64_t, int64_t>(s.regs.cs, s.regs.ip, s.regs.ss, s.regs.sp);
+    out.tail = ::cb::compat::to_py(::cb::ByteView(s.tail));
+    return out;
+}
 
-// The stream as the decompressor will read it: a word is reserved where the reading will
-// fetch it -- at the start, and right after the byte that follows the 16th bit of the last.
-class Writer_ {
-public:
-    py::bytearray out;
-    int64_t slot = 0;
-    int64_t n = 0;
-    int64_t word = 0;
+inline py::bytes encode(const py::list<Token>& tokens, const Stub& stub) {
+    const std::vector<newp::Token> t = detail::tokens_of(tokens);
+    return ::cb::compat::to_py(::cb::ByteView(::cb::compat::guard([&] { return newp::encode(t, stub.impl); })));
+}
 
-    Writer_();
-    void bit(int64_t b);
-    void bits(const py::list<int64_t>& code);
-    void byte(int64_t b);
-    py::bytes done();
-};
+// The tokens PKLITE makes for a program.
+inline py::list<Token> parse(const py::bytes& image) {
+    py::list<Token> out;
+    for (const newp::Token& t : newp::parse(::cb::compat::from_py(image))) out.append(detail::token_to_old(t));
+    return out;
+}
 
-py::bytes encode(const py::list<Token>& tokens, const Stub& stub);
-
-void encode_into(Writer_& w, const py::list<Token>& tokens, const Stub& stub);
-
-// longest(pos) -> (length, distance), as PKLITE finds it: every earlier place with the same
-// three bytes is a candidate, nearest first, and of equal lengths the nearest -- except at the
-// full length a copy can have there (277, or what is left), where it is the FARTHEST (so inside
-// a long run of one byte the copy comes from where the run began); a candidate farther than
-// MAX_DISTANCE is taken as MAX_DISTANCE back. Length 2 only within 255. (0, 0): none.
-using Longest = std::function<std::tuple<int64_t, int64_t>(int64_t)>;
-Longest _matcher(const py::bytes& data);
-
-// Whether PKLITE puts a copy off by a byte: the next one is two or more longer, or one
-// longer and this one comes from more than 128 back.
-bool _put_off(const std::tuple<int64_t, int64_t>& cur, const std::tuple<int64_t, int64_t>& nxt);
-
-// The tokens PKLITE makes for a program (see the top).
-py::list<Token> parse(const py::bytes& image);
-
-// The table: the relocations in the order given, (segment, offset) pairs, a run of the same
-// segment as one entry of at most 255 offsets.
-py::bytes _relocation_table(const py::list<std::tuple<int64_t, int64_t>>& relocs);
+// The table: the relocations in the order given, (segment, offset) pairs, a run of the same segment as one entry of at
+// most 255 offsets.
+inline py::bytes _relocation_table(const py::list<std::tuple<int64_t, int64_t>>& relocs) {
+    const std::vector<newp::Relocated> r = detail::relocs_of(relocs);
+    return ::cb::compat::to_py(::cb::ByteView(newp::relocation_table(r)));
+}
 
 // The file's header after pack(): {cs, ip, ss, sp, min_alloc, relocs} (a dict with fixed keys in the Python).
 struct Header {
@@ -185,15 +175,28 @@ struct Header {
     py::list<std::tuple<int64_t, int64_t>> relocs;
 };
 
-// The program `image` with its relocations [(segment, offset)] in the order its table lists
-// them, registers (cs, ip, ss, sp), and `memory` -- the paragraphs it asks for beyond itself
-// (the min-alloc of its own header) -- stored as PKLITE stores it, behind `head` (PKLITE's entry
-// code and decompressor, STREAM_START bytes). -> (load module, header) where header is
-// {cs, ip, ss, sp, min_alloc, relocs}: the file's entry is PKLITE's, with one relocation (the
-// segment its entry code adds to the memory it needs).
-// struct.error (py::StructError) where a value does not fit its 16-bit field.
-std::tuple<py::bytes, Header> pack(const py::bytes& image, const py::list<std::tuple<int64_t, int64_t>>& relocs,
-                                   const std::tuple<int64_t, int64_t, int64_t, int64_t>& regs, const py::bytes& head,
-                                   int64_t memory);
+// The program `image` with its relocations [(segment, offset)] in the order its table lists them, registers (cs, ip, ss, sp),
+// and `memory` -- the paragraphs it asks for beyond itself -- stored as PKLITE stores it, behind `head` (PKLITE's entry code and
+// decompressor, STREAM_START bytes). -> (load module, header). struct.error (py::StructError) where a value does not fit its
+// 16-bit field.
+inline std::tuple<py::bytes, Header> pack(const py::bytes& image, const py::list<std::tuple<int64_t, int64_t>>& relocs,
+                                          const std::tuple<int64_t, int64_t, int64_t, int64_t>& regs, const py::bytes& head,
+                                          int64_t memory) {
+    const std::vector<newp::Relocated> r = detail::relocs_of(relocs);
+    const newp::Registers registers{detail::u16(std::get<0>(regs)), detail::u16(std::get<1>(regs)), detail::u16(std::get<2>(regs)),
+                                    detail::u16(std::get<3>(regs))};
+    const ::cb::Bytes image_bytes = ::cb::compat::from_py(image), head_bytes = ::cb::compat::from_py(head);
+    if (memory < 0 || memory > 0xFFFFFFFFLL) throw py::StructError("argument out of range");
+    newp::Packed p = ::cb::compat::guard(
+        [&] { return newp::pack(image_bytes, r, registers, head_bytes, static_cast<std::uint32_t>(memory)); });
+    Header h;
+    h.cs = p.header.cs;
+    h.ip = p.header.ip;
+    h.ss = p.header.ss;
+    h.sp = p.header.sp;
+    h.min_alloc = p.header.min_alloc;
+    for (const newp::Relocated& rel : p.header.relocs) h.relocs.append(std::make_tuple<int64_t, int64_t>(rel.segment, rel.offset));
+    return {::cb::compat::to_py(::cb::ByteView(p.module)), h};
+}
 
 }  // namespace codebreaker::build::pklite
