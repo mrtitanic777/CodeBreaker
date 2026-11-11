@@ -1,19 +1,14 @@
-// codebreaker/formats/msx.hpp -- C++17 port of codebreaker.formats.msx.
+// codebreaker/formats/msx.hpp -- compat shim over cb/formats/msx.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// msx.py -- MSX cartridge images (`.rom`, `.mx1`, `.mx2`).
-//
-//     py::ref<Program> p = msx::read(path);
-//     p->origin, p->image         where the cartridge sits and its bytes
-//     p->entries                  {address: name}: the header's INIT, STATEMENT and DEVICE entries
-//
-// A cartridge starts "AB", then four addresses: INIT (called at power-on), STATEMENT (the BASIC
-// CALL extension), DEVICE, and TEXT (a BASIC program in the ROM); zero where unused. A cartridge sits
-// in page 1 ($4000) -- 32 KB ones fill pages 1 and 2 -- or, rarely, at $0000 or $8000; where is told
-// by its INIT address. Cartridges over 48 KB switch banks through a mapper (Konami, ASCII ...), which
-// this lane does not follow yet: only the part seen at power-on would come back.
+// The module itself is native/cb/formats/msx.{hpp,cpp}; this header keeps the old py:: surface for the ports that
+// have not been refactored yet and is deleted with the last of them. Conversion and forwarding only.
 #pragma once
 
-#include "py.hpp"
+#include <tuple>
+
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/formats/msx.hpp"
 
 namespace codebreaker::formats::msx {
 
@@ -47,9 +42,25 @@ public:
     py::str path;
 };
 
-extern const std::tuple<py::str, py::str, py::str> EXTENSIONS;
+inline const std::tuple<py::str, py::str, py::str> EXTENSIONS =
+    std::tuple<py::str, py::str, py::str>{py::str(".rom"), py::str(".mx1"), py::str(".mx2")};
 
-bool is_msx(const py::str& path);
-py::ref<Program> read(const py::str& path);
+inline bool is_msx(const py::str& path) { return cb::formats::msx::probe(cb::fs::from_text(cb::compat::from_py(path))); }
+
+inline py::ref<Program> read(const py::str& path) {
+    return cb::compat::guard([&] {
+        const cb::formats::msx::Program p = cb::formats::msx::read(cb::fs::from_text(cb::compat::from_py(path)));
+        py::ref<Program> out = std::make_shared<Program>();
+        out->path = path;
+        out->origin = p.origin;
+        out->image = cb::compat::to_py(cb::ByteView(p.image));
+        out->header.init = p.header.init;
+        out->header.statement = p.header.statement;
+        out->header.device = p.header.device;
+        out->header.text = p.header.text;
+        for (const cb::formats::msx::Entry& e : p.entries) out->entries.set(e.address, cb::compat::to_py(e.name));
+        return out;
+    });
+}
 
 }  // namespace codebreaker::formats::msx
