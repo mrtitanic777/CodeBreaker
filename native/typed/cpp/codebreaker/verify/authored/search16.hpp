@@ -1,76 +1,26 @@
-// codebreaker/verify/authored/search16.hpp -- typed C++ of codebreaker.verify.authored.search16
+// codebreaker/verify/authored/search16.hpp -- COMPAT SHIM over cb/verify/authored/search16.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// search16.py -- the last bytes of a near miss, found by trying small rewrites of its source.
+// The module is native/cb/verify/authored/search16.{hpp,cpp}. This header keeps the one entry point the old code calls,
+// `search`, over the old py:: types (a verdict is the tuple (word, differing bytes, total bytes), a group the tuple
+// (compiler, switches, winner)); no logic of its own: the words are mapped to the new ByteMatch enum and back.
 //
-//     python -m codebreaker match <16-bit module> --search ROUNDS
-//
-// A function a few bytes from the original under Microsoft C (verify/authored/match16.py) is often one the
-// compiler would make exactly from a source written a little differently: its locals declared in
-// another order (the compiler lays the frame out by declaration, so every [bp-N] moves), or one of
-// them unsigned where the decompiler guessed signed (a compare, a shift, a widening). Each round
-// takes every near miss's best text so far, rewrites it one small way, compiles all of them (one
-// emulator session for each compiler and switches), and keeps a rewrite that comes nearer. A rewrite
-// that comes out identical is source: the compiler says so, byte for byte.
-//
-// Typing notes:
-//   * The Python draws its choices from random.Random(seed): `Random` below is the runtime's py::random::Random
-//     (CPython's Mersenne Twister, bit for bit); the same seed gives the same rewrites as the Python.
-//   * A verdict is the tuple (word, differing bytes, total bytes) that verify/authored/match16.py makes with
-//     match.distance(...)[:3] (or (V.NO_COMPILE, 0, 0)); a group is the tuple (compiler, switches, winner).
-//   * compile_group and score are the caller's functions (std::function); `log` is the Python's `log=print`:
-//     an empty std::function is None (no log), the overload without it prints to stdout.
-//   * Python int(num, 0) of a constant of a comparison: a decimal with a leading zero is a ValueError; a value
-//     past int64 is outside this port (no real source gets near it).
+// DIVERGES: the rewrites are drawn from std::mt19937_64 seeded with `seed`, not from CPython's Mersenne Twister, so the same
+// seed no longer gives the same rewrites as the Python did (a search is still repeatable). A function the compile callback
+// answers for that was not asked about is ignored. Not kept, internals of the module that only its own harness called:
+// `rewrite` (it took the Python generator), the pattern accessors and the line helpers.
 #pragma once
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <tuple>
-#include <vector>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/verify/authored/search16.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
-#include "py_random.hpp"
 
 namespace codebreaker::verify::authored::search16 {
-
-// random.Random(seed): the runtime's CPython-exact Mersenne Twister
-using Random = py::random::Random;
-
-const py::re::Pattern& _DECL();
-const py::re::Pattern& _COMPARE();
-const py::re::Pattern& _LEFT();
-const py::re::Pattern& _IF();
-const py::re::Pattern& _STMT();
-const py::re::Pattern& _SELF();
-const py::re::Pattern& _COMPOUND();
-const py::re::Pattern& _COMMUTE();
-const py::dict<py::str, py::str>& _SIGN();              // int1 <-> uint1 ...
-
-// the indices of the body's leading declarations (not the K&R parameter declarations)
-py::list<int64_t> _locals(const py::list<py::str>& lines);
-
-// A comparison with a constant, as the decompiler normalizes it (`x <= 0x19`) and as a source may
-// have had it (`x < 0x1a`): the compiler writes the constant given and the jump that goes with it.
-py::str _compare(const py::re::Match& m);
-
-// Ghidra puts the constant first (`0x19 < iVar1`); a source had the variable first, and the
-// comparison it meant may be the other side of the constant (`iVar1 >= 0x1a`).
-py::str _left(const py::re::Match& m);
-
-// [(if line, else line, end line)] of each `if (c) { ... } else { ... }` written a block to a line
-py::list<std::tuple<int64_t, int64_t, int64_t>> _if_else(const py::list<py::str>& lines);
-
-// `cond` said the other way: a comparison turned around, anything else under a !
-py::str _negate(const py::str& cond);
-
-// [k] -- adjacent simple statements k, k+1 of one block (neither a declaration nor a control line)
-py::list<int64_t> _statement_swaps(const py::list<py::str>& lines, int64_t body);
-
-// one small rewrite of `text`, or None when there is nothing of the kind to rewrite
-std::optional<py::str> rewrite(const py::str& text, Random& rng);
 
 using Verdict = std::tuple<py::str, int64_t, int64_t>;      // (word, differing bytes, total bytes)
 using Group = std::tuple<py::str, py::str, py::str>;        // (compiler, switches, winner)
@@ -79,13 +29,59 @@ using CompileGroup = std::function<py::dict<py::str, Verdict>(const Group&, cons
 using Score = std::function<double(const Verdict&)>;
 using Log = std::function<void(const py::str&)>;            // empty: None
 
+namespace detail_shim {
+namespace nw = cb::verify::authored::search16;
+
+inline nw::ByteVerdict verdict_of(const Verdict& v) {
+    const auto match = cb::verify::parse_byte_match(std::get<0>(v).utf8());
+    if (!match) throw py::ValueError("not a byte comparison word: " + std::get<0>(v).utf8());
+    return {*match, static_cast<std::size_t>(std::get<1>(v)), static_cast<std::size_t>(std::get<2>(v))};
+}
+inline Verdict old_verdict(const nw::ByteVerdict& v) {
+    return Verdict(cb::compat::to_py(cb::verify::word(v.match)), static_cast<int64_t>(v.differing), static_cast<int64_t>(v.total));
+}
+inline nw::Group group_of(const Group& g) { return {std::get<0>(g).utf8(), std::get<1>(g).utf8(), std::get<2>(g).utf8()}; }
+inline Group old_group(const nw::Group& g) {
+    return Group(cb::compat::to_py(g.compiler), cb::compat::to_py(g.switches), cb::compat::to_py(g.winner));
+}
+}  // namespace detail_shim
+
 // near: {fn: (text, verdict, group)} -- each near miss's best text, its verdict and the compiler and switches it
 // is judged under; compile_group(group, {fn: text}) -> {fn: verdict}; score(verdict) -> number, higher nearer.
 // -> {fn: (text, verdict)} the best found.
-py::dict<py::str, std::tuple<py::str, Verdict>> search(const py::dict<py::str, Near>& near, const CompileGroup& compile_group,
-                                                       const Score& score, int64_t rounds, int64_t seed, const Log& log);
+inline py::dict<py::str, std::tuple<py::str, Verdict>> search(const py::dict<py::str, Near>& near, const CompileGroup& compile_group,
+                                                              const Score& score, int64_t rounds, int64_t seed, const Log& log) {
+    namespace nw = detail_shim::nw;
+    std::vector<nw::NearMiss> misses;
+    for (const auto& kv : near.items()) {
+        const Near& n = std::get<1>(kv);
+        misses.push_back({std::get<0>(kv).utf8(), std::get<0>(n).utf8(), detail_shim::verdict_of(std::get<1>(n)),
+                          detail_shim::group_of(std::get<2>(n))});
+    }
+    nw::Options options;
+    options.rounds = static_cast<int>(rounds);
+    options.seed = static_cast<std::uint64_t>(seed);
+    if (log) options.log = [&log](std::string_view line) { log(cb::compat::to_py(line)); };
+    const auto found = nw::search(
+        misses,
+        [&](const nw::Group& g, const std::map<std::string, std::string>& texts) {
+            py::dict<py::str, py::str> mine;
+            for (const auto& [fn, text] : texts) mine.set(cb::compat::to_py(fn), cb::compat::to_py(text));
+            std::map<std::string, nw::ByteVerdict> out;
+            for (const auto& kv : compile_group(detail_shim::old_group(g), mine).items())
+                out[std::get<0>(kv).utf8()] = detail_shim::verdict_of(std::get<1>(kv));
+            return out;
+        },
+        [&](const nw::ByteVerdict& v) { return score(detail_shim::old_verdict(v)); }, options);
+    py::dict<py::str, std::tuple<py::str, Verdict>> out;
+    for (const nw::Best& b : found) out.set(cb::compat::to_py(b.function), std::make_tuple(cb::compat::to_py(b.text), detail_shim::old_verdict(b.verdict)));
+    return out;
+}
+
 // log=print, seed=1995
-py::dict<py::str, std::tuple<py::str, Verdict>> search(const py::dict<py::str, Near>& near, const CompileGroup& compile_group,
-                                                       const Score& score, int64_t rounds);
+inline py::dict<py::str, std::tuple<py::str, Verdict>> search(const py::dict<py::str, Near>& near, const CompileGroup& compile_group,
+                                                              const Score& score, int64_t rounds) {
+    return search(near, compile_group, score, rounds, 1995, [](const py::str& line) { py::print(line); });
+}
 
 }  // namespace codebreaker::verify::authored::search16

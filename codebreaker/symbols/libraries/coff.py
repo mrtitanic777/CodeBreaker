@@ -66,7 +66,8 @@ class Coff(object):
                 break
             if raw[:4] == b"\0\0\0\0":
                 so = strtab + struct.unpack_from("<I", raw, 4)[0]
-                name = data[so:data.find(b"\0", so)].decode("latin-1")
+                end = data.find(b"\0", so)
+                name = data[so:end if end >= 0 else len(data)].decode("latin-1")   # (a name nothing ends runs to the end)
             else:
                 name = raw[:8].rstrip(b"\0").decode("latin-1")
             value, secnum, typ, cls, naux = struct.unpack_from("<IhHBB", raw, 8)
