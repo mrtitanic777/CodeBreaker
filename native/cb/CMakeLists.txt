@@ -225,7 +225,9 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/sdk_structs.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
