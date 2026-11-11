@@ -521,3 +521,20 @@ Old = the engine or Python module the new code replaces, same inputs, best of 3-
 | xdk_libraries: search dash.xex (2.0M words) and a game's default.xex (1.8M words) for 1,308 library signatures | Python 2.9 s / 1.9 s (whole `match`, image read included) | 220 / 200 ms (the search alone; a sorted pair index replaced a table of lists: 1.1 s before) |
 | xdk_libraries: make the 1,308 signatures from 2,277 functions | Python 300 ms | 8 ms |
 | ordinals: read all 597 .lib and .def files of the reference folder | Python 570 ms (process start included) | 91 ms |
+
+
+## cb refactor W0-B22: port/pre_ansi part 2 (the data passes of the port of old C), 2026-11-11
+
+Inputs: real source trees of `Microsoft-Assemblers-Compilers/ports` (lib-2.20, link-2.44, masm-4.00, msc-1.04-mc2, msc-3.00-p0,
+msc-3.00-p3 for the whole-port runs; msc-3.00-p3, -p0, -p2 and masm-4.00 for the passes alone): the twelve passes of `Port`, each on
+a fresh Port and as the chain `Port.modernize` runs, and `Port.modernize` itself. The passes moved from the typed port (`py::str`
+text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, token scans); the old file is a shim over them.
+
+| What | Python | old typed C++ | new (`cb::port`) | Ratio vs Python |
+|---|---|---|---|---|
+| the passes alone (no `Port.__init__`, no conversion), 4 trees: p3 / p0 / p2 / masm | 4.83 / 2.60 / 11.49 / 8.88 s = 27.8 s | not separated | 1.46 / 0.28 / 2.64 / 0.92 s = 5.3 s | ~5x faster |
+| 6 trees, 24 pass runs + `modernize` each, whole harness (includes the old `Port.__init__` of parts 1, 3, 5) | ~90 s passes + 44.5 s `modernize` | 200 s (busy machine; 102 s for the passes before `modernize` was timed) | 27.7 s (the shim over the new code) | ~5x faster than the old typed port, ~5x than Python |
+
+The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
+directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
+picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.

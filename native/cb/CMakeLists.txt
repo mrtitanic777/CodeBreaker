@@ -105,9 +105,6 @@ set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX
 cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core)
 
-cb_area(port)
-target_link_libraries(cb_port PUBLIC cb_core cb_base)
-
 cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core)
 
