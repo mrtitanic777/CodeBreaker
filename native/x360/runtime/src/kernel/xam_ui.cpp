@@ -1293,6 +1293,13 @@ GUEST_IMPORT(XamShowPartyUI)
     ctx.r3.u64 = guide::ShowCommunity(ctx.r3.u32, guide::Tab::kParty);
 }
 
+// XAM's ordinal 773, which a title looks up with XexGetProcedureAddress: the import above.
+PPC_FUNC(__imp__XamShowPartyUI);
+namespace
+{
+    kernel::DynamicExportRegistrar g_showPartyUI("xam.xex", 773, __imp__XamShowPartyUI);
+}
+
 // DWORD XamShowPartyInviteUI(DWORD UserIndex, ...): choosing friends to invite: the Guide's friends list (Invite to
 // Party is a friend's action there).
 GUEST_IMPORT(XamShowPartyInviteUI)
@@ -1682,6 +1689,25 @@ GUEST_IMPORT(XamShowBeaconsUI)
 {
     const uint32_t user = ctx.r3.u32;
     ctx.r3.u64 = OnLiveForHud(user) ? ShowServiceUnavailable(user, 0, "XamShowBeaconsUI") : kErrorFunctionFailed;
+}
+
+// DWORD XamShowCommunitySessionsUI(DWORD UserIndex, DWORD Flags) (XDK XShowCommunitySessionsUI, ordinal 779; Flags
+// XSHOWCOMMUNITYSESSION_SHOWPARTY 0x1, from the XDK's xbox.h; XAM 0x816C4008 -> 0x816C2148: HUD message 0x21017 with a
+// 0x650-byte block {user +0, 0x40000 +4, flags +0x10}, sent through the helper (0x816C1718) the beacons use): a user
+// signed in to LIVE only. The Guide has no sessions screen and our LIVE no community sessions to list, so this is
+// what the beacons do without their service: XAM's "Not Available" box. Any other user: ERROR_FUNCTION_FAILED
+// (the beacons' answer). The flags are only logged.
+GUEST_IMPORT(XamShowCommunitySessionsUI)
+{
+    const uint32_t user = ctx.r3.u32, flags = ctx.r4.u32;
+    Log("XamShowCommunitySessionsUI(user {}, flags {:X})", user, flags);
+    ctx.r3.u64 = OnLiveForHud(user) ? ShowServiceUnavailable(user, 0, "XamShowCommunitySessionsUI") : kErrorFunctionFailed;
+}
+
+PPC_FUNC(__imp__XamShowCommunitySessionsUI);
+namespace
+{
+    kernel::DynamicExportRegistrar g_showCommunitySessionsUI("xam.xex", 779, __imp__XamShowCommunitySessionsUI);
 }
 
 // DWORD XamShowSocialPostUI(PXSOCIAL_POST_PARAMS) (XAM 0x816C1AC0 -> 0x21037): ERROR_INVALID_PARAMETER without the
