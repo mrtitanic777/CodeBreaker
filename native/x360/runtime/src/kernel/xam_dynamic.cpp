@@ -13,15 +13,10 @@ GUEST_EXPORT("xam.xex", 873, XuiAlloc)
         Fatal("XuiAlloc({:X}): kernel pool exhausted", ctx.r3.u32);
 }
 
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 625, XamContentCreateInternal)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 633, XamContentAggregateCreateEnumerator)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 773, XamShowPartyUI)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 779, XamShowCommunitySessionsUI)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 792, XamVoiceGetMicArrayStatus)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 794, XamVoiceGetDirectionalData)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1399, XamGetServiceEndpoint)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2827, XamPartySetCustomData)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2832, XamPartyGetBandwidth)
+// The rest of this file's list lives next to the imports' families: xam_content.cpp (XamContentCreateInternal,
+// XamContentAggregateCreateEnumerator), xam_ui.cpp (XamShowPartyUI, XamShowCommunitySessionsUI), xam_voice.cpp
+// (XamVoiceGetMicArrayStatus, XamVoiceGetDirectionalData), xam_party.cpp (XamPartySetCustomData, XamPartyGetBandwidth)
+// and xam_service_endpoint.cpp (XamGetServiceEndpoint).
 
 // HRESULT XamVoiceSetMicArrayIdleUsers(DWORD IdleUserMask, BOOL Unknown): tells the Kinect microphone array which
 // local talkers are idle. No Kinect is attached, so there is nothing to steer; XHV2's callers ignore the result.

@@ -11,6 +11,7 @@
 #include "kernel/users.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <mutex>
 
@@ -794,3 +795,36 @@ namespace
 
 GUEST_IMPORT(XamGetUserPresetWindowsLiveCreds) { NoWindowsLiveCreds(ctx); }
 GUEST_IMPORT(XamGetUserInMemoryWindowsLiveCreds) { NoWindowsLiveCreds(ctx); }
+
+// Logon preview mode (XAM 17559: ordinals 1565-1567, 0x816D7760 / 0x816D7778 / 0x816D77A0): a reference count the
+// dashboard's sign-in holds while a profile is previewed. XamUserIsLogonPreviewModeEnabled is TRUE while it is not 0,
+// XamUserLockLogonPreviewMode adds one (an atomic increment, no result) and XamUserUnlockLogonPreviewMode takes one
+// away (nothing keeps it from going below 0 either). On the last unlock XAM also flags the user state (|= 0x10, while a
+// profile is signed in) and calls 0x816E2E78 to tell the sign-in; that release hook is not done here: nothing in this
+// runtime waits on it. The early NXE dashboards (7258 ... 7371) look Lock up with XexGetProcedureAddress
+// (kernel/xam_nxe_dynamic.cpp).
+namespace
+{
+    std::atomic<int32_t> g_logonPreviewLocks = 0;
+}
+
+GUEST_IMPORT(XamUserIsLogonPreviewModeEnabled)
+{
+    ctx.r3.u64 = g_logonPreviewLocks.load() != 0;
+}
+
+GUEST_IMPORT(XamUserLockLogonPreviewMode)
+{
+    g_logonPreviewLocks++;
+}
+
+GUEST_IMPORT(XamUserUnlockLogonPreviewMode)
+{
+    g_logonPreviewLocks--;
+}
+
+PPC_FUNC(__imp__XamUserLockLogonPreviewMode);
+namespace
+{
+    kernel::DynamicExportRegistrar g_lockLogonPreviewMode("xam.xex", 1566, __imp__XamUserLockLogonPreviewMode);
+}

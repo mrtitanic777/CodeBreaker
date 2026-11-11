@@ -301,6 +301,16 @@ GUEST_IMPORT(XexGetProcedureAddress)
         address = kernel::ResolveVariable(library, uint16_t(ordinal));
     if (address == 0)
         address = kernel::BindDynamicExport(library, uint16_t(ordinal));
+    if (address == 0 && library == "xam.xex" && kernel::IsAbsentXamExport(uint16_t(ordinal)))
+    {
+        // An empty slot of the console's export table: STATUS_DRIVER_ENTRYPOINT_NOT_FOUND with a null address (Xenia's
+        // XexGetProcedureAddress, the same for any export the module lacks).
+        Log("XexGetProcedureAddress({:08X} {}, ordinal {}): not an export of this XAM", handle, library, ordinal);
+        if (ctx.r5.u32)
+            guest::g_memory.Write32(ctx.r5.u32, 0);
+        ctx.r3.u64 = 0xC0000263;
+        return;
+    }
     if (address == 0)
         Fatal("XexGetProcedureAddress({}, ordinal {}): no implementation of this export (add a GUEST_EXPORT)",
             library, ordinal);
