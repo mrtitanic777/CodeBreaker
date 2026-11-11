@@ -1,225 +1,365 @@
-// codebreaker/formats/dos.hpp -- typed C++ of codebreaker.formats.dos
-//
-// dos.py -- the ONE reader for real-mode programs: what DOS, or the boot sector, would load.
-// Answered by the C++ (native/formats/dos: formats.dll); its Python reader is gone (docs/NATIVE.md, step 4).
-//
-//     namespace dos = codebreaker::formats::dos;
-//     dos::kind(path)        "mz" | "com" | "driver" | "kernel" | None   (None: not a program -- e.g.
-//                            COUNTRY.SYS and the LOGO*.SYS pictures carry a program's extension only)
-//     dos::packer(path)      "EXEPACK" | "PKLITE" | "LZEXE" | "DIET" | "UPX" | "moves itself" | None
-//     Program p = dos::read(path)   a Program: the bytes as they sit in memory once loaded (and unpacked)
-//     dos::read(path, false) a program that moves itself read as it is stored: the
-//                            moving is its own code, which its source has to have
-//     dos::programs()        every real-mode program of the corpus, one path per name
-//     dos::unpacked_file(p)  a packed program written back as a plain MZ file (`info --unpack`)
-//
-// Four kinds of file, one result:
-//
-//   mz      a header, a relocation table, a load module, sometimes an overlay behind it. The load
-//           module goes to segment LOAD and every relocation (a word holding a segment) has LOAD
-//           added. A load module stored compressed is unpacked first, so the Program holds the
-//           program and not its unpacker: EXEPACK statically (a backwards run-length scheme with its
-//           own relocation table), anything else by running the unpacker (in formats.dll, on Unicorn).
-//           A program that is not compressed but starts by moving itself (COMMAND.COM) is run the
-//           same way, up to where it continues in the moved copy.
-//   com     no header: the file goes to LOAD:0100 behind a 256-byte program prefix, entry there.
-//   driver  a device driver: a chain of device headers (next, attributes, strategy routine,
-//           interrupt routine, name) at offset 0 -- of the file, or of an MZ load module.
-//   kernel  IO.SYS / WINBOOT.SYS, three programs in one file: the first sectors are the loader the
-//           boot sector starts at 0070:0200 (it moves itself to the top of memory); what follows is
-//           the BIOS and DOS kernel, which the loader reads to 0070:0000; and the MZ header describes
-//           only the last part, SYSINIT, with a "header size" that skips the other two.
-//
-// A Program's `image` is one flat stretch of real-mode memory starting at linear address `base`
-// (linear = segment * 16 + offset); `spans` says which parts of it hold bytes from the file.
-//
-// Typing notes (how the Python's dynamic parts are typed here):
-//   * The readers are the C++ of native/formats/dos (dos.cc, unpack.cc, with core/bytes.cc, core/text.cc,
-//     core/files.cc, core/uc.cc): linked, and called directly with typed results.  What the Python got
-//     back as pickled values (dicts with fixed keys, tuples) these functions return as the structs / tuples
-//     below.  An exception the reader raised comes back as the py:: exception of the same Python type (an
-//     "UcError"/"ImportError" the Python bridge turned into RuntimeError is a RuntimeError here too).
-//   * The unpacker runs on Unicorn, by the unicorn.dll the Python package carries: hand its path to
-//     load_unicorn() once (as the xenix / dpmi ports do); a run without it is a RuntimeError.
-//   * `Mz` is the dict _mz() answers (nreloc, header, min_alloc, max_alloc, ss, sp, ip, cs, reloc_off, size).
-//   * `Device` and `Program` are the Python classes.  Program attributes the C++ sets only sometimes
-//     (windows_at; in_kernel, which kernel_parts sets) are std::optional / bool defaults of "absent".
-//     `ds` is std::optional<int64_t> (the data segment register; None when no `mov ds` is found).
-//   * programs()' `extensions` default is the module's EXTENSIONS.
+// codebreaker/formats/dos.hpp -- COMPAT shim for the old typed port of codebreaker.formats.dos (deleted when its last py:: consumer is
+// refactored). The reader is native/cb/formats/dos.hpp; this header only converts the records and keeps the old names. No logic,
+// except the three functions that depend on code that is not refactored yet and stay here tied to it:
+//   COMPAT(py): programs        -- remove when base.corpus is refactored (the corpus index)
+//   COMPAT(py): exepack_stub    -- remove when build.exepack is refactored (its Layout)
+//   COMPAT(py): kernel_parts    -- remove when build.exepack is refactored
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/formats/dos.hpp"
+#include "codebreaker/base/corpus.hpp"
+#include "codebreaker/build/exepack.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 
-#include "codebreaker/build/exepack.hpp"
-
 namespace codebreaker::formats::dos {
 
-extern const int64_t LOAD;                // the segment a program is loaded at
-extern const int64_t KERNEL_SEGMENT;      // where the boot sector and the loader put IO.SYS
-extern const int64_t LOADER_SEGMENT;      // where the loader moves itself with 640 KB of memory
-extern const py::list<py::str> EXTENSIONS;
-extern const int64_t EXEPACK_SEGMENT;     // where the EXEPACK unpacker's code is read (it runs behind SYSINIT)
+namespace cd = cb::formats::dos;
 
-// Unicorn's DLL (the one Python's `unicorn` package carries), handed over once: the unpackers need it.
-void load_unicorn(const py::str& dll_path);
+inline const int64_t LOAD = 0x1000;            // the segment a program is loaded at
+inline const int64_t KERNEL_SEGMENT = 0x0070;  // where the boot sector and the loader put IO.SYS
+inline const int64_t LOADER_SEGMENT = 0x9000;  // where the loader moves itself with 640 KB of memory
+inline const py::list<py::str> EXTENSIONS = py::list<py::str>{py::str(".exe"), py::str(".com"), py::str(".sys"), py::str(".dos"), py::str(".mod"),
+                                                              py::str(".new"), py::str(".vxd"), py::str(".386"), py::str(".bin"), py::str(".ovl")};
+inline const int64_t EXEPACK_SEGMENT = 0x5000;  // where the EXEPACK unpacker's code is read (it runs behind SYSINIT)
 
-// The fields of an MZ header (_mz).  `size` is the end of the load module in the file.
+// The reader finds Unicorn beside the executable now (cb::emu::unicorn); nothing to load from a path.
+inline void load_unicorn(const py::str&) {}
+
 struct Mz {
     int64_t nreloc = 0, header = 0, min_alloc = 0, max_alloc = 0, ss = 0, sp = 0, ip = 0, cs = 0, reloc_off = 0, size = 0;
 };
 
-// One device header of a driver.
 class Device {
-public:
+  public:
     int64_t offset;
-    std::optional<int64_t> next;      // the link to the next header (None: the chain ends)
+    std::optional<int64_t> next;  // the link to the next header (None: the chain ends)
     int64_t attributes, strategy, interrupt;
     py::str name;
     bool character;
 
-    Device(int64_t offset, const std::optional<int64_t>& nxt, int64_t attributes, int64_t strategy, int64_t interrupt,
-           const py::str& name);
-    py::str repr() const;             // Device('NAME' at 0x0, strategy 0x0, interrupt 0x0)
+    Device(int64_t offset_, const std::optional<int64_t>& nxt, int64_t attributes_, int64_t strategy_, int64_t interrupt_, const py::str& name_)
+        : offset(offset_), next(nxt), attributes(attributes_), strategy(strategy_), interrupt(interrupt_), name(name_), character((attributes_ & 0x8000) != 0) {}
+    py::str repr() const { return py::percent(py::str("Device(%r at %#x, strategy %#x, interrupt %#x)"), name, offset, strategy, interrupt); }
 };
 
-using Span = std::tuple<int64_t, int64_t, py::str>;               // (linear address, length, label)
-using EntryPoint = std::tuple<int64_t, py::str, py::str>;         // (linear address, name, "far" | "near")
+using Span = std::tuple<int64_t, int64_t, py::str>;        // (linear address, length, label)
+using EntryPoint = std::tuple<int64_t, py::str, py::str>;  // (linear address, name, "far" | "near")
 
-// A real-mode program as loaded. See the top.
 class Program {
-public:
+  public:
     py::str path, kind, name;
     std::optional<py::str> packer;    // how the load module was stored
     std::optional<py::str> unpacked;  // "static" | "emulated" when it was unpacked
     int64_t base;
     py::bytes image;
-    py::list<Span> spans;             // which parts of the image hold bytes from the file
+    py::list<Span> spans;
     py::list<EntryPoint> entries;
-    py::dict<int64_t, int64_t> segments;   // entry address -> the code segment it runs with
-    py::list<int64_t> relocations;    // linear addresses of words that hold a segment
-    py::list<Device> devices;         // offsets relative to their segment
+    py::dict<int64_t, int64_t> segments;  // entry address -> the code segment it runs with
+    py::list<int64_t> relocations;
+    py::list<Device> devices;
     int64_t device_segment;
     int64_t cs = 0, ip = 0, ss = 0, sp = 0;
-    std::optional<int64_t> ds;        // the data segment register while the program runs
-    py::bytes overlay;                // bytes of the file behind the load module
+    std::optional<int64_t> ds;
+    py::bytes overlay;
     py::list<py::str> notes;
-    std::optional<int64_t> windows_at;   // set by the reader of a DOS program with a Windows module behind it
-    bool in_kernel = false;           // SYSINIT of kernel_parts: built into IO.SYS, not a file of its own
+    std::optional<int64_t> windows_at;
+    bool in_kernel = false;  // SYSINIT of kernel_parts: built into IO.SYS, not a file of its own
 
-    Program(const py::str& path, const py::str& kind);
-    bool inside(int64_t linear) const;
-    std::optional<int64_t> word(int64_t linear) const;
+    Program(const py::str& path_, const py::str& kind_)
+        : path(path_), kind(kind_), name(py::os::path::basename(path_).lower()), base(LOAD * 16), device_segment(LOAD), ds(LOAD) {}
+
+    bool inside(int64_t linear) const {
+        for (const Span& s : spans) {
+            const int64_t lo = std::get<0>(s), n = std::get<1>(s);
+            if (lo <= linear && linear < lo + n) return true;
+        }
+        return false;
+    }
+    std::optional<int64_t> word(int64_t linear) const {
+        const int64_t i = linear - base;
+        if (0 <= i && i <= py::len(image) - 2) return image.byte_(i) | (image.byte_(i + 1) << 8);
+        return std::nullopt;
+    }
 };
 
-// ---- what a file is
-// The fields of an MZ header, or None. A Windows module's DOS stub is None unless `stub`.
-std::optional<Mz> _mz(const py::bytes& data, bool stub = false);
-
-// The device headers chained from offset `at` of one segment's bytes. [] when what is there
-// is not a device header: the routines must lie inside the image, a character device must
-// have a printable name, and the chain must end in a link of offset FFFF.
-py::list<Device> devices(const py::bytes& image, int64_t at = 0, const py::list<int64_t>& segments = py::list<int64_t>{0, 0xFFFF},
-                         int64_t limit = 64);
-
-// Where the BIOS/DOS part of an IO.SYS starts in the file: a sector boundary holding a jump
-// followed at once by the chain of built-in devices (CON, AUX, PRN, ...) whose links name
-// KERNEL_SEGMENT. None when the file is not laid out that way.  -> (start, first)
-std::optional<std::tuple<int64_t, int64_t>> _kernel_body(const py::bytes& data, const Mz& h);
-
-std::optional<py::str> _kind(const py::bytes& data, const py::str& name = py::str(""));
-
-// Programs stored one after another in one file, each with its own MZ header: [(offset,
-// bytes)], or [] for one alone. CodeView 4.1's CV.EXE is three -- a stub that checks the CPU and
-// memory, the DOSX16 extender, and CodeView itself (448 KB, run in protected mode) -- and only
-// the stub was taken apart: 7 functions of a debugger. (A program's overlays, stored after it the
-// same way, come out as parts too.) Each part starts at the next byte, or after up to 15 bytes
-// of zeros to a paragraph.   (the C++ answers each part as (offset, end))
-py::list<std::tuple<int64_t, int64_t>> chain(const py::bytes& data);
-
-// A real-mode device driver and a VxD in one file (DRVSPACE.BIN): an MZ header whose load
-// module is the driver -- device headers at its start -- and whose new-header field points at
-// an LE behind it, the VxD. -> (header size, LE offset), or None.
-std::optional<std::tuple<int64_t, int64_t>> driver_and_vxd(const py::bytes& data);
-
-// A DOS program and a Windows module in one file (REGEDIT.EXE, XCOPY32.EXE, UNINSTAL.EXE):
-// the module's DOS stub is itself a real program -- run from DOS, it does the work there.
-// -> (MZ fields, offset of the module's new header), or None.
-std::optional<std::tuple<Mz, int64_t>> dos_and_windows(const py::bytes& data);
-
-// The real-mode driver of a driver+vxd file, as a Program (a driver image).
-Program driver_part(const py::str& path);
-
-// What kind of real-mode program a file is, or None. See the top.
-std::optional<py::str> kind(const py::str& path);
-
-std::optional<py::str> _packer(const py::bytes& data, const Mz& h);
-
-// How an MZ program's load module is stored compressed, or None when it is not (or the
-// scheme is not one this knows by its marks).
-std::optional<py::str> packer(const py::str& path);
-
-// One path per program name of the corpus that kind() accepts, by name.
-py::list<py::str> programs(const py::list<py::str>& extensions = EXTENSIONS);
-
-// ---- EXEPACK
-// (load module, [relocation offsets], cs, ip, ss, sp)
 using Unpacked = std::tuple<py::bytes, py::list<int64_t>, int64_t, int64_t, int64_t, int64_t>;
 
-// Undo EXEPACK on a load module. -> (load module, [relocation offsets], cs, ip, ss, sp)
-//
-// The packed module ends in a small segment (the entry's CS): a header of words -- the real
-// IP, CS, (scratch), this segment's size, (in the 20-byte header one more word), the real SP,
-// SS, the unpacked size in paragraphs, (in the 18- and 20-byte headers a padding count), and
-// "RB" -- then the unpacker, its error message, and the relocation table. The data before it
-// is read backwards from its end: skip 0xFF padding, then commands of
-// a byte and a length word -- B0 fills `length` bytes with the byte before it, B2 copies
-// `length` bytes -- written backwards from the unpacked size; bit 0 marks the last command.
-// The relocation table is sixteen lists, one per 64 KB (segment 0x0000, 0x1000, ...), each a
-// count and that many offsets.
-Unpacked unpack_exepack(const py::bytes& module, int64_t cs, int64_t ip);
+namespace conv {
+inline Mz mz(const cd::MzHeader& h) {
+    return Mz{h.relocation_count, h.header_size, h.min_alloc, h.max_alloc, h.ss, h.sp, h.ip, h.cs, h.relocation_offset, static_cast<int64_t>(h.size)};
+}
+inline cd::MzHeader mz(const Mz& m) {
+    cd::MzHeader h;
+    h.header_size = static_cast<uint32_t>(m.header), h.size = static_cast<uint64_t>(m.size), h.cs = static_cast<uint16_t>(m.cs), h.ip = static_cast<uint16_t>(m.ip);
+    h.relocation_count = static_cast<uint16_t>(m.nreloc), h.min_alloc = static_cast<uint16_t>(m.min_alloc), h.max_alloc = static_cast<uint16_t>(m.max_alloc);
+    h.ss = static_cast<uint16_t>(m.ss), h.sp = static_cast<uint16_t>(m.sp), h.relocation_offset = static_cast<uint16_t>(m.reloc_off);
+    return h;
+}
+inline Device device(const cd::Device& d) {
+    return Device(d.offset, d.next ? std::optional<int64_t>(*d.next) : std::nullopt, d.attributes, d.strategy, d.interrupt, cb::compat::to_py(d.name));
+}
+inline py::list<Device> devices(const std::vector<cd::Device>& ds) {
+    py::list<Device> out;
+    for (const auto& d : ds) out.append(device(d));
+    return out;
+}
+inline py::list<int64_t> ints(const std::vector<uint32_t>& v) {
+    py::list<int64_t> out;
+    for (uint32_t x : v) out.append(x);
+    return out;
+}
+inline std::vector<uint32_t> ints(const py::list<int64_t>& l) {
+    std::vector<uint32_t> out;
+    for (int64_t x : l) out.push_back(static_cast<uint32_t>(x));
+    return out;
+}
+inline Unpacked unpacked(const cd::Unpack& u) {
+    return Unpacked(cb::compat::to_py(cb::ByteView(u.module)), ints(u.relocations), u.cs, u.ip, u.ss, u.sp);
+}
+inline std::optional<py::str> opt(const std::optional<const char*>& s) { return s ? std::optional<py::str>(py::str(*s)) : std::nullopt; }
+// _program(path, answer): the Program(path, kind) with the attributes the answer carries set
+inline Program program(const py::str& path, const cd::Program& n) {
+    Program p(path, py::str(cd::kind_name(n.kind)));
+    if (n.packer) p.packer = py::str(cd::packer_name(*n.packer));
+    if (n.unpacked) p.unpacked = py::str(*n.unpacked == cd::Unpacked::Static ? "static" : "emulated");
+    p.base = n.base;
+    p.image = cb::compat::to_py(cb::ByteView(n.image));
+    for (const auto& s : n.spans) p.spans.append(Span(s.address, s.length, cb::compat::to_py(s.label)));
+    for (const auto& e : n.entries) p.entries.append(EntryPoint(e.address, cb::compat::to_py(e.name), py::str(e.call == cd::Entry::Call::Far ? "far" : "near")));
+    for (const auto& kv : n.segments) p.segments.set(kv.first, kv.second);
+    p.relocations = ints(n.relocations);
+    p.devices = devices(n.devices);
+    p.device_segment = n.device_segment;
+    p.cs = n.cs, p.ip = n.ip, p.ss = n.ss, p.sp = n.sp;
+    p.ds = n.ds ? std::optional<int64_t>(*n.ds) : std::nullopt;
+    p.overlay = cb::compat::to_py(cb::ByteView(n.overlay));
+    for (const auto& s : n.notes) p.notes.append(cb::compat::to_py(s));
+    if (n.windows_at) p.windows_at = static_cast<int64_t>(*n.windows_at);
+    return p;
+}
+inline cb::Bytes file(const py::str& path) { return cb::fs::read_file(cb::fs::from_text(path.utf8())); }
+inline py::str lower_name(const py::str& path) { return py::os::path::basename(path).lower(); }
+}  // namespace conv
 
-// Run the unpacker of a packed load module to the real entry point, in the emulator (twice, at
-// two load segments: words that differ by the distance are the relocations). With `moved`, run a
-// program that only moves itself until it continues in the moved copy. -> (load module with no
-// load segment applied, [relocation offsets], cs, ip, ss, sp), the segments relative to the load
-// segment. RuntimeError when no real entry point is reached or the two runs do not agree.
-Unpacked unpack_emulated(const py::bytes& module, const py::list<int64_t>& relocations, int64_t cs, int64_t ip, int64_t ss,
-                         int64_t sp, bool moved = false);
+inline std::optional<Mz> _mz(const py::bytes& data, bool stub = false) {
+    return cb::compat::guard([&]() -> std::optional<Mz> {
+        auto h = cd::mz_header(cb::compat::from_py(data), stub);
+        return h ? std::optional<Mz>(conv::mz(*h)) : std::nullopt;
+    });
+}
 
-// A Program read from a packed MZ file, written back as a plain MZ file that DOS runs the
-// same way: the unpacked load module with its relocation table (grouped per 64 KB, as EXEPACK
-// kept it), the real entry and stack, room above the image for the stack, and whatever the file
-// held behind its load module. -> bytes
-py::bytes unpacked_file(const Program& p);
+inline py::list<Device> devices(const py::bytes& image, int64_t at = 0, const py::list<int64_t>& segments = py::list<int64_t>{0, 0xFFFF}, int64_t limit = 64) {
+    return cb::compat::guard([&] { return conv::devices(cd::devices(cb::compat::from_py(image), static_cast<uint64_t>(at), conv::ints(segments), static_cast<size_t>(limit))); });
+}
 
-// The data segment a program sets up: the first `mov ds, reg` after its entry point, when
-// the register was loaded with a relocated constant or copied from CS just before.
-std::optional<int64_t> _data_segment(const Program& p, int64_t entry);
+inline std::optional<std::tuple<int64_t, int64_t>> _kernel_body(const py::bytes& data, const Mz& h) {
+    return cb::compat::guard([&]() -> std::optional<std::tuple<int64_t, int64_t>> {
+        auto r = cd::kernel_body(cb::compat::from_py(data), conv::mz(h));
+        if (!r) return std::nullopt;
+        return std::make_tuple(static_cast<int64_t>(r->first), static_cast<int64_t>(r->second));
+    });
+}
 
-// Read a real-mode program. -> Program. ValueError when the file is not one. With
-// run_movers False a program that moves itself is read as stored (see the top).
-Program read(const py::str& path, bool run_movers = true);
+inline std::optional<py::str> _kind(const py::bytes& data, const py::str& name = py::str("")) {
+    return cb::compat::guard([&]() -> std::optional<py::str> {
+        auto k = cd::kind_of(cb::compat::from_py(data), name.utf8());
+        return k ? std::optional<py::str>(py::str(cd::kind_name(*k))) : std::nullopt;
+    });
+}
 
-// IO.SYS as the programs it is made of, each where it runs. -> (parts, layout):
-// parts [(stem, Program)] -- the loader and the BIOS + DOS kernel, stored in the file as they
-// run; SYSINIT as the MZ program it is (unpacked: the file stores it as LINK /EXEPACK did);
-// and the EXEPACK unpacker's code -- and layout, how SYSINIT was packed (build/exepack.Layout).
-// The file is: loader, kernel, SYSINIT packed. The loader's first bytes are the MZ header that
-// describes the packed SYSINIT; to the loader they are data.
-std::tuple<py::list<std::tuple<py::str, Program>>, build::exepack::Layout> kernel_parts(const py::str& path);
+inline py::list<std::tuple<int64_t, int64_t>> chain(const py::bytes& data) {
+    return cb::compat::guard([&] {
+        py::list<std::tuple<int64_t, int64_t>> out;
+        for (const auto& p : cd::chain(cb::compat::from_py(data))) out.append(std::make_tuple(static_cast<int64_t>(p.first), static_cast<int64_t>(p.second)));
+        return out;
+    });
+}
 
-// PKLITE's entry code and decompressor (the first `start` bytes of the load module it
-// stored) as a program of its own: it runs at the start of the program, in the program prefix's
-// segment, then copies its decompressor to the top of memory.
-Program pklite_head(const py::str& path, int64_t start);
+inline std::optional<std::tuple<int64_t, int64_t>> driver_and_vxd(const py::bytes& data) {
+    return cb::compat::guard([&]() -> std::optional<std::tuple<int64_t, int64_t>> {
+        auto r = cd::driver_and_vxd(cb::compat::from_py(data));
+        if (!r) return std::nullopt;
+        return std::make_tuple(static_cast<int64_t>(r->first), static_cast<int64_t>(r->second));
+    });
+}
 
-// The EXEPACK unpacker's code (build/exepack.Layout.stub_code) as a program of its own:
-// LINK put the same one behind every program it packed.
-Program exepack_stub(const py::str& path, const build::exepack::Layout& layout);
+inline std::optional<std::tuple<Mz, int64_t>> dos_and_windows(const py::bytes& data) {
+    return cb::compat::guard([&]() -> std::optional<std::tuple<Mz, int64_t>> {
+        auto r = cd::dos_and_windows(cb::compat::from_py(data));
+        if (!r) return std::nullopt;
+        return std::make_tuple(conv::mz(r->first), static_cast<int64_t>(r->second));
+    });
+}
+
+inline Program driver_part(const py::str& path) {
+    return cb::compat::guard([&] {
+        Program p = conv::program(path, cd::read_driver_part(conv::file(path)));
+        p.name = py::str("the real-mode driver of " + conv::lower_name(path).utf8());
+        return p;
+    });
+}
+
+inline std::optional<py::str> kind(const py::str& path) {
+    try {
+        auto k = cd::kind_of(conv::file(path), cb::fs::from_text(path.utf8()).filename().string());
+        return k ? std::optional<py::str>(py::str(cd::kind_name(*k))) : std::nullopt;
+    } catch (const cb::IoError&) {  // None for a file that cannot be read
+        return std::nullopt;
+    }
+}
+
+inline std::optional<py::str> _packer(const py::bytes& data, const Mz& h) {
+    return cb::compat::guard([&]() -> std::optional<py::str> {
+        auto p = cd::packer_of(cb::compat::from_py(data), conv::mz(h));
+        return p ? std::optional<py::str>(py::str(cd::packer_name(*p))) : std::nullopt;
+    });
+}
+
+inline std::optional<py::str> packer(const py::str& path) {
+    return cb::compat::guard([&]() -> std::optional<py::str> {
+        const cb::Bytes d = conv::file(path);
+        auto h = cd::mz_header(d);
+        if (!h) return std::nullopt;
+        auto p = cd::packer_of(d, *h);
+        return p ? std::optional<py::str>(py::str(cd::packer_name(*p))) : std::nullopt;
+    });
+}
+
+// COMPAT(py): remove when base.corpus is refactored
+inline py::list<py::str> programs(const py::list<py::str>& extensions = EXTENSIONS) {
+    py::dict<py::str, py::list<py::str>> idx = base::corpus::index();
+    std::vector<py::str> names = idx.keys();
+    std::sort(names.begin(), names.end(), [](const py::str& a, const py::str& b) { return a < b; });
+    py::list<py::str> out;
+    for (const py::str& name : names) {
+        bool ends = false;
+        for (const py::str& e : extensions)
+            if (name.endswith(e)) ends = true;
+        if (!ends) continue;
+        py::list<py::str> cands = idx.at(name);
+        std::optional<py::str> k = kind(cands[0]);
+        if (k && !k->empty()) out.append(cands[0]);
+    }
+    return out;
+}
+
+inline Unpacked unpack_exepack(const py::bytes& module, int64_t cs, int64_t ip) {
+    return cb::compat::guard([&] { return conv::unpacked(cd::unpack_exepack(cb::compat::from_py(module), static_cast<uint32_t>(cs), static_cast<uint32_t>(ip))); });
+}
+
+inline Unpacked unpack_emulated(const py::bytes& module, const py::list<int64_t>& relocations, int64_t cs, int64_t ip, int64_t ss, int64_t sp, bool moved = false) {
+    return cb::compat::guard([&] {
+        return conv::unpacked(cd::unpack_emulated(cb::compat::from_py(module), conv::ints(relocations), static_cast<uint32_t>(cs), static_cast<uint32_t>(ip),
+                                                  static_cast<uint32_t>(ss), static_cast<uint32_t>(sp), moved));
+    });
+}
+
+inline py::bytes unpacked_file(const Program& p) {
+    return cb::compat::guard([&] {
+        cd::Program n;
+        const std::string k = p.kind.utf8();
+        n.kind = k == "mz" ? cd::Kind::Mz : k == "com" ? cd::Kind::Com : cd::Kind::Driver;
+        n.image = cb::compat::from_py(p.image);
+        n.relocations = conv::ints(p.relocations);
+        n.cs = static_cast<uint32_t>(p.cs), n.ss = static_cast<uint32_t>(p.ss), n.sp = static_cast<uint32_t>(p.sp), n.ip = static_cast<uint32_t>(p.ip);
+        n.overlay = cb::compat::from_py(p.overlay);
+        return cb::compat::to_py(cb::ByteView(cd::unpacked_file(n, p.name.utf8())));
+    });
+}
+
+inline std::optional<int64_t> _data_segment(const Program& p, int64_t entry) {
+    return cb::compat::guard([&]() -> std::optional<int64_t> {
+        const std::string k = p.kind.utf8();
+        auto r = cd::data_segment(cb::compat::from_py(p.image), static_cast<uint32_t>(p.base), static_cast<uint32_t>(p.ip),
+                                  k == "mz" ? cd::Kind::Mz : k == "com" ? cd::Kind::Com : cd::Kind::Driver, conv::ints(p.relocations), static_cast<uint32_t>(entry));
+        return r ? std::optional<int64_t>(*r) : std::nullopt;
+    });
+}
+
+inline Program read(const py::str& path, bool run_movers = true) {
+    return cb::compat::guard([&] {
+        return conv::program(path, cd::read_program(conv::file(path), cb::fs::from_text(path.utf8()).filename().string(), run_movers));
+    });
+}
+
+inline Program pklite_head(const py::str& path, int64_t start) {
+    return cb::compat::guard([&] {
+        Program p = conv::program(path, cd::read_pklite_head(conv::file(path), static_cast<uint64_t>(start)));
+        p.name = py::str("pklite (the entry code and decompressor PKLITE put in front of " + conv::lower_name(path).utf8() + ")");
+        return p;
+    });
+}
+
+// COMPAT(py): remove when build.exepack is refactored
+inline Program exepack_stub(const py::str& path, const build::exepack::Layout& layout) {
+    Program stub(path, py::str("kernel part"));
+    stub.name = py::percent(py::str("exepack (the unpacker LINK /EXEPACK put behind %s)"), conv::lower_name(path));
+    stub.base = EXEPACK_SEGMENT * 16 + 2 * layout.words;  // its code follows the header words
+    stub.image = layout.stub_code;
+    stub.spans = py::list<Span>{Span(stub.base, py::len(stub.image), py::str("exepack"))};
+    stub.cs = EXEPACK_SEGMENT;
+    stub.ds = EXEPACK_SEGMENT;
+    stub.entries = py::list<EntryPoint>{EntryPoint(stub.base, py::str("unpack"), py::str("far"))};
+    stub.segments = py::dict<int64_t, int64_t>{{stub.base, EXEPACK_SEGMENT}};
+    return stub;
+}
+
+// COMPAT(py): remove when build.exepack is refactored
+inline std::tuple<py::list<std::tuple<py::str, Program>>, build::exepack::Layout> kernel_parts(const py::str& path) {
+    py::bytes data(cb::compat::to_py(cb::ByteView(conv::file(path))));
+    Program whole = read(path);
+    if (whole.kind != py::str("kernel")) throw py::ValueError(py::percent(py::str("%s: not a kernel image"), whole.name));
+    std::optional<Mz> h_ = _mz(data);
+    if (!h_) throw py::TypeError("'NoneType' object is not subscriptable");
+    Mz h = *h_;
+    auto body = _kernel_body(data, h);
+    if (!body) throw py::TypeError("cannot unpack non-iterable NoneType object");
+    int64_t start = std::get<0>(*body);
+    py::list<std::tuple<py::str, Program>> out;
+    struct Part {
+        const char* stem;
+        int64_t segment, lo, hi;
+        const char* label;
+    };
+    const Part parts[] = {{"msload", LOADER_SEGMENT, 0, start, "loader"}, {"msdos", KERNEL_SEGMENT, start, h.header, "bios and dos"}};
+    for (const Part& part : parts) {
+        Program p(path, py::str("kernel part"));
+        p.name = py::percent(py::str("%s (the %s of %s)"), py::str(part.stem), py::str(part.label), whole.name);
+        p.base = part.segment * 16;
+        p.image = data.slice(part.lo, part.hi);
+        p.spans = py::list<Span>{Span(p.base, py::len(p.image), py::str(part.label))};
+        p.entries = py::list<EntryPoint>();
+        for (const EntryPoint& e : whole.entries)
+            if (p.base <= std::get<0>(e) && std::get<0>(e) < p.base + py::len(p.image)) p.entries.append(e);
+        p.segments = py::dict<int64_t, int64_t>();
+        for (const auto& kv : whole.segments.items()) {
+            int64_t va = std::get<0>(kv);
+            if (p.base <= va && va < p.base + py::len(p.image)) p.segments.set(va, std::get<1>(kv));
+        }
+        p.ds = part.segment == KERNEL_SEGMENT ? whole.ds : std::optional<int64_t>(part.segment);
+        if (part.segment == KERNEL_SEGMENT) {
+            p.devices = whole.devices;
+            p.device_segment = whole.device_segment;
+        }
+        out.append(std::make_tuple(py::str(part.stem), p));
+    }
+    py::bytes stored = data.slice(h.header, h.size);
+    build::exepack::Layout layout = build::exepack::layout(stored, h.cs, h.ip);
+    Program p = cb::compat::guard([&] { return conv::program(path, cd::read_load_module(conv::file(path))); });
+    p.name = py::percent(py::str("sysinit (of %s)"), whole.name);
+    p.in_kernel = true;  // its file is IO.SYS: built into it, not a file of its own
+    if (!p.unpacked || *p.unpacked != py::str("static")) throw py::ValueError(py::percent(py::str("%s: SYSINIT is not stored as EXEPACK"), whole.name));
+    out.append(std::make_tuple(py::str("sysinit"), p));
+    out.append(std::make_tuple(py::str("exepack"), exepack_stub(path, layout)));
+    return std::make_tuple(out, layout);
+}
 
 }  // namespace codebreaker::formats::dos

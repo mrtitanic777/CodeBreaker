@@ -1,47 +1,16 @@
-// codebreaker/exact/draft/package.hpp -- typed C++ from codebreaker/exact/draft/__init__.py.
+// codebreaker/exact/draft/package.hpp -- compat shim for cb/exact/draft/package.hpp (docs/CPP_DESIGN.md 6.3), from
+// codebreaker/exact/draft/__init__.py.
 //
 // draft -- functions written by an inverse model of the compiler, kept only when the compiler proves them.
 //
 //     python -m codebreaker exact PROJECT draft [--all] [--limit N] [-v]
 //
-// For every function carve finds that has no src/fADDR.c (--all: every function, the written ones left as they are),
-// the toolchain profile's inverse model ("inverse": a module of codebreaker.invert with recover(code) and to_c(...))
-// reads the function's bytes back into C. The text is made a source file of the project's kind:
-//
-//   - the places it names get the engine's names: data g_XXXX (DS:XXXX), functions fXXXXX (their image offset), the
-//     library's routines by their names (the library stage's), each declared
-//   - what the model leaves of the machine (a register it could not fold into an expression) makes the draft unfit: it
-//     is not compiled
-//
-// and compiled by the project's toolchain and held to the program (exact/compare.py). Identical: written as
-// src/fADDR.c. Otherwise it is kept in src/drafts/fADDR.c with what was wrong, for a person or a later model - the
-// ledger never counts a draft.
-//
-//     draft::run(project) -> {address: verdict}
-//
-// The package, each module using only those above it:
-//
-//     text.py        reading a draft's text: an if's parts, a block's ends, a test negated, a register read later
-//     shapes.py      control flow read back into statements: returns, loops and their tests, switches, gotos
-//     forms.py       values and places read back: registers folded, steps and stores joined, pointers, macros
-//     candidates.py  the model's text made the project's source, and every rewrite applied to it
-//     prove.py       a candidate compiled and held to the program; the beam search over the rewrites
-//     __init__.py    the model's texts of a function, and the stage itself (run, main)
-//
-// Typing and runtime notes (the modules this one uses that have no typed port are given here as interfaces):
-//   * The inverse model is a Python module (`inv`) whose attributes the stage reads and sets (hasattr / getattr /
-//     assignment): the abstract class InverseModel. An attribute the module may lack is a std::optional (absent: the
-//     hasattr is false); `LAST` is the struct Last; `SWITCH` (a function or None, and present or not) is `has_switch` and
-//     `SWITCH`. recover / recover_cfg / to_c / _fold_ladders are its virtual functions; what recover returns besides the
-//     frame size, the parameter names and the statements (`pt`, `loc`: the model's own tables, only handed back to to_c) is
-//     an opaque std::shared_ptr<void>.
-//   * The project (`prj`) and the stages draft asks of it (exact.library.locate, exact.carve.functions,
-//     draft.prove.prove_texts, prj.toolchain(), prj.symbols(), prj.sources(), prj.path()) are the abstract class Project;
-//     importlib.import_module("codebreaker.invert." + model) is the std::function `inverse_model_loader`.
-//   * candidates.FPINFO / candidates.FRAME and invert.flow16.CMPSWITCH, which this module sets, are FPINFO, FRAME and
-//     flow16_cmpswitch here (those modules have no typed port yet; they belong there).
-//   * `hook = table_hook(code); hook.base = ...` is a TableHook object; SWITCH takes it as a std::function.
-//   * main(prj, argv) prints with py::print; `raise SystemExit(msg)` is py::SystemExit(msg).
+// The new module is typed (a model reads with explicit `Reading`/`Structuring` arguments, the stage returns what the
+// later passes need instead of setting module tables). This header keeps the old layer's shape: the model with its
+// attributes the stage sets and resets (`FRAME_AFTER_BP`, `FPCASTS`, `UNSIGNED_CAST`, `SWITCH`, `LAST`), the
+// project interface, and the tables FPINFO / FRAME / flow16_cmpswitch; the adapters below turn one into the other.
+// The only logic is that adaptation: setting an attribute for the length of one call, as the Python stage did.
+// Deleted with its last old-layer consumer.
 #pragma once
 
 #include <cstdint>
@@ -50,6 +19,10 @@
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/log.hpp"
+#include "cb/exact/draft/package.hpp"
+#include "codebreaker/exact/draft/text.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 #include "py_stdlib.hpp"
@@ -99,34 +72,40 @@ class InverseModel {
 class TableHook {
   public:
     int64_t base = 0;
-    explicit TableHook(const py::bytes& code);
-    std::optional<py::list<int64_t>> operator()(int64_t addr) const;
+    explicit TableHook(const py::bytes& code) : code_(code) {}
+    std::optional<py::list<int64_t>> operator()(int64_t addr) const {
+        if (!hook_ || hook_base_ != base) {
+            hook_ = std::make_shared<cb::exact::draft::TableHook>(cb::compat::from_py(code_), cb::compat::int_from_py<std::uint32_t>(base));
+            hook_base_ = base;
+        }
+        const auto places = (*hook_)(cb::compat::int_from_py<std::uint32_t>(addr));
+        if (!places) return std::nullopt;
+        return cb::compat::to_py(*places);
+    }
+
   private:
     py::bytes code_;
-    struct Impl;
-    std::shared_ptr<Impl> impl_;
+    mutable std::shared_ptr<cb::exact::draft::TableHook> hook_;
+    mutable int64_t hook_base_ = 0;
 };
 
 // SWITCH(address) for the model: the places a near jump through a table goes (`jmp cs:[bx + T]`, after `cmp R, N`: N + 1
 // words at T) - addresses in the function's own code, from 0. T is the program's offset of the table, so the function's
 // own offset is found where its code begins being the program's
-std::shared_ptr<TableHook> table_hook(const py::bytes& code);
+inline std::shared_ptr<TableHook> table_hook(const py::bytes& code) { return std::make_shared<TableHook>(code); }
 
 // the code with the floating-point emulator's calls (int 34h..3Bh: an 8087 instruction, its first byte D8h + n; int 3Ch:
 // one with a segment; int 3Dh: fwait) written as the 8087's own - each as long as it was (a wait before it), so the model
 // reads them as the instructions they stand for
-py::bytes fp_native(const py::bytes& code);
+inline py::bytes fp_native(const py::bytes& code) {
+    return cb::compat::guard([&] { return cb::compat::to_py(cb::ByteView(cb::exact::draft::fp_native(cb::compat::from_py(code)))); });
+}
 
 // an arm that is only `goto L;`, L the start of statements to the end of their block: those statements in its place (the
 // compiler's one copy of a tail two arms share); L dropped when nothing goes to it then
-py::list<py::str> inline_goto_arms(const py::list<py::str>& lines);
-
-// [(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk; a
-// structured control-flow graph, where the model has one): the compiler decides between them
-py::list<std::tuple<py::str, py::dict<py::str, int64_t>>> model_texts(InverseModel& inv, const py::bytes& code, const py::str& name,
-                                                                      std::optional<int64_t> base = std::nullopt);
-
-void _fpinfo(InverseModel& inv, const py::bytes& raw, const py::bytes& code);
+inline py::list<py::str> inline_goto_arms(const py::list<py::str>& lines) {
+    return cb::compat::to_py(cb::exact::draft::inline_goto_arms(cb::compat::from_py(lines)));
+}
 
 // candidates.FPINFO: what the model read of the 8087's values (types by place, the return, whether the code has any)
 struct FpInfo {
@@ -134,11 +113,123 @@ struct FpInfo {
     std::optional<py::str> ret;
     bool fp = false;
 };
-extern FpInfo FPINFO;
+inline FpInfo FPINFO;
 // candidates.FRAME: the one-element list [the frame's size]
-extern py::list<int64_t> FRAME;
+inline py::list<int64_t> FRAME{0};
 // invert.flow16.CMPSWITCH: switches by compares read as switches
-extern bool flow16_cmpswitch;
+inline bool flow16_cmpswitch = false;
+
+namespace detail {
+
+// A new-tree model over an old one: each call sets the old module's attributes for its length, as the stage did.
+class NewModel final : public cb::exact::draft::InverseModel {
+public:
+    explicit NewModel(draft::InverseModel& old) : old_(old) {}
+    cb::exact::draft::ModelCapabilities capabilities() const override {
+        cb::exact::draft::ModelCapabilities c;
+        c.frame_after_bp = old_.FRAME_AFTER_BP.has_value();
+        c.regvars_eager = old_.REGVARS_EAGER.has_value();
+        c.structured = old_.has_recover_cfg;
+        c.table_switch = old_.has_switch;
+        c.fp_casts = old_.FPCASTS.has_value();
+        c.unsigned_compares = old_.UNSIGNED_CAST.has_value();
+        c.fold_ladders = old_.has_fold_ladders;
+        return c;
+    }
+    cb::exact::draft::Recovery recover(cb::ByteView code, const cb::exact::draft::Reading& reading) override {
+        set_reading(reading);
+        return convert(old_.recover(cb::compat::to_py(code)));
+    }
+    cb::exact::draft::Recovery recover_structured(cb::ByteView code, const cb::exact::draft::Reading& reading,
+                                                  const cb::exact::draft::Structuring& how) override {
+        set_reading(reading);
+        struct Restore {   // (the module's switches back as they were, whatever the call does)
+            draft::InverseModel& m;
+            SwitchHook switch_;
+            std::optional<bool> unsigned_cast;
+            bool fp_casts;
+            ~Restore() {
+                flow16_cmpswitch = false;
+                if (m.has_switch) m.SWITCH = switch_;
+                if (fp_casts) m.FPCASTS = false;
+                m.UNSIGNED_CAST = unsigned_cast;
+            }
+        } restore{old_, old_.SWITCH, old_.UNSIGNED_CAST, how.fp_casts};
+        flow16_cmpswitch = how.compare_switches;
+        if (how.table_switch && old_.has_switch) {
+            const auto hook = how.table_switch;
+            old_.SWITCH = [hook](int64_t address) -> std::optional<py::list<int64_t>> {
+                const auto places = hook(cb::compat::int_from_py<std::uint32_t>(address));
+                if (!places) return std::nullopt;
+                return cb::compat::to_py(*places);
+            };
+        }
+        if (how.fp_casts) old_.FPCASTS = true;
+        if (how.unsigned_compares) old_.UNSIGNED_CAST = true;
+        return convert(old_.recover_cfg(cb::compat::to_py(code)));
+    }
+    std::string to_c(std::string_view name, const cb::exact::draft::Recovery& r) override {
+        const auto state = std::any_cast<std::pair<std::shared_ptr<void>, std::shared_ptr<void>>>(&r.model_state);
+        return old_.to_c(py::str(std::string(name)), r.frame_size, cb::compat::to_py(r.params), cb::compat::to_py(r.stmts),
+                         state != nullptr ? state->first : nullptr, state != nullptr ? state->second : nullptr)
+            .utf8();
+    }
+    std::vector<std::string> fold_ladders(const std::vector<std::string>& stmts) override {
+        return cb::compat::from_py(old_._fold_ladders(cb::compat::to_py(stmts)));
+    }
+    cb::exact::draft::ModelLast last() const override {
+        cb::exact::draft::ModelLast l;
+        for (const auto& kv : old_.LAST.regparam.items()) l.regparam.insert_or_assign(std::get<0>(kv).utf8(), static_cast<int>(std::get<1>(kv)));
+        for (const auto& kv : old_.LAST.fptypes.items()) l.fptypes[std::get<0>(kv).utf8()] = std::get<1>(kv).utf8();
+        if (old_.LAST.fpret) l.fpret = old_.LAST.fpret->utf8();
+        for (const py::str& s : old_.LAST.unsigned_longs) l.unsigned_longs.insert(s.utf8());
+        return l;
+    }
+
+private:
+    void set_reading(const cb::exact::draft::Reading& r) {   // (a draft is of 3.00 or later code: its -Gs frames, its register variables)
+        if (old_.FRAME_AFTER_BP) old_.FRAME_AFTER_BP = r.frame_after_bp;
+        if (old_.REGVARS_EAGER) old_.REGVARS_EAGER = r.regvars_eager;
+    }
+    static cb::exact::draft::Recovery convert(const Recovery& r) {
+        cb::exact::draft::Recovery out;
+        out.frame_size = cb::compat::int_from_py<std::uint32_t>(r.fs);
+        out.params = cb::compat::from_py(r.params);
+        out.stmts = cb::compat::from_py(r.stmts);
+        out.model_state = std::make_pair(r.pt, r.loc);
+        return out;
+    }
+    draft::InverseModel& old_;
+};
+
+}  // namespace detail
+
+// [(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk; a
+// structured control-flow graph, where the model has one): the compiler decides between them. Sets FRAME, FPINFO and
+// text::LONGINFO, which the later passes read.
+inline py::list<std::tuple<py::str, py::dict<py::str, int64_t>>> model_texts(InverseModel& inv, const py::bytes& code, const py::str& name,
+                                                                             std::optional<int64_t> base = std::nullopt) {
+    detail::NewModel model(inv);
+    const cb::exact::draft::ModelTexts t = cb::compat::guard([&] {
+        return cb::exact::draft::model_texts(model, cb::compat::from_py(code), name.utf8(),
+                                             base ? std::optional<std::uint32_t>(cb::compat::int_from_py<std::uint32_t>(*base)) : std::nullopt);
+    });
+    FRAME[0] = t.frame_size;
+    FPINFO = FpInfo();
+    for (const auto& [k, v] : t.fp.types) FPINFO.types.set(py::str(k), py::str(v));
+    if (t.fp.ret) FPINFO.ret = py::str(*t.fp.ret);
+    FPINFO.fp = t.fp.fp;
+    text::LONGINFO.clear();
+    text::LONGINFO.unsigned_ = cb::compat::to_py(t.longs.unsigned_names);
+    if (t.longs.ret) text::LONGINFO.ret = *t.longs.ret;
+    py::list<std::tuple<py::str, py::dict<py::str, int64_t>>> out;
+    for (const auto& d : t.texts) {
+        py::dict<py::str, int64_t> regparam;
+        for (const auto& [reg, ix] : d.regparam) regparam.set(py::str(reg), ix);
+        out.append(std::make_tuple(py::str(d.text), regparam));
+    }
+    return out;
+}
 
 // ---- the project and the stages draft asks of it ------------------------------------------------------------------------------
 struct LibModule {
@@ -171,14 +262,149 @@ class Project {
 };
 
 // importlib.import_module("codebreaker.invert." + model)
-extern std::function<std::shared_ptr<InverseModel>(const py::str&)> inverse_model_loader;
+inline std::function<std::shared_ptr<InverseModel>(const py::str&)> inverse_model_loader;
+
+namespace detail {
+
+// The new-tree project over an old one.
+class NewProject final : public cb::exact::draft::Project {
+public:
+    explicit NewProject(draft::Project& p) : p_(p) {
+        symbols_ = [&] {
+            cb::exact::SymbolTable t;
+            for (const auto& kv : p.symbols().items()) {
+                const std::string kind = std::get<0>(std::get<1>(kv)).utf8();
+                t.insert_or_assign(std::get<0>(kv).utf8(),
+                                   cb::exact::SymPlace{kind == "C" ? cb::exact::SymKind::Code : kind == "D" ? cb::exact::SymKind::Data
+                                                       : kind == "S" ? cb::exact::SymKind::Segment : cb::exact::SymKind::Unknown,
+                                                       std::get<1>(std::get<1>(kv))});
+            }
+            return t;
+        }();
+        image_ = cb::compat::from_py(p.image());
+    }
+    std::string toolchain_name() const override { return p_.toolchain_name().utf8(); }
+    std::optional<std::string> inverse_model_name() const override {
+        const auto m = p_.inverse_model();
+        return m ? std::optional<std::string>(m->utf8()) : std::nullopt;
+    }
+    std::shared_ptr<cb::exact::draft::InverseModel> load_inverse_model(std::string_view name) override {
+        if (!inverse_model_loader) throw cb::NotFoundError(std::string("codebreaker.invert.") + std::string(name), 0, "no such inverse model");
+        old_model_ = inverse_model_loader(py::str(std::string(name)));
+        return std::make_shared<NewModel>(*old_model_);
+    }
+    std::vector<cb::exact::draft::LibraryPlace> library_places() const override {
+        const auto module = [](const LibModule& m) {
+            cb::exact::draft::LibraryModule out;
+            for (const auto& kv : m.pubs.items())
+                out.publics.insert_or_assign(std::get<0>(kv).utf8(), std::make_pair(cb::compat::int_from_py<std::uint32_t>(std::get<0>(std::get<1>(kv))),
+                                                                                  cb::compat::int_from_py<std::uint32_t>(std::get<1>(std::get<1>(kv)))));
+            out.first_code_segment = cb::compat::int_from_py<std::uint32_t>(m.first_code_segment);
+            return out;
+        };
+        std::vector<cb::exact::draft::LibraryPlace> places;
+        const Located located = p_.locate();
+        for (const py::list<LibPlace>* group : {&located.coded, &located.lone})
+            for (const LibPlace& lp : *group) {
+                cb::exact::draft::LibraryPlace place;
+                place.code = cb::compat::int_from_py<std::uint32_t>(lp.code);
+                place.module = module(lp.m);
+                for (const LibModule& m : lp.also) place.also.push_back(module(m));
+                places.push_back(std::move(place));
+            }
+        return places;
+    }
+    const cb::exact::SymbolTable& symbols() const override { return symbols_; }
+    cb::ByteView image() const override { return image_; }
+    std::set<std::uint32_t> source_addresses() const override {
+        std::set<std::uint32_t> out;
+        for (int64_t a : p_.source_addresses()) out.insert(cb::compat::int_from_py<std::uint32_t>(a));
+        return out;
+    }
+    std::filesystem::path path(std::string_view name) const override { return std::filesystem::path(p_.path(py::str(std::string(name))).utf8()); }
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> functions() const override {
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> out;
+        for (const auto& f : p_.functions())
+            out.emplace_back(cb::compat::int_from_py<std::uint32_t>(std::get<0>(f)), cb::compat::int_from_py<std::uint32_t>(std::get<1>(f)));
+        return out;
+    }
+    cb::exact::draft::ProveOutcome prove_texts(cb::exact::draft::InverseModel&, const cb::exact::draft::ModelTexts& texts, std::uint32_t address,
+                                               std::uint32_t length, const std::map<std::uint32_t, std::string>& names) override {
+        // (the old prover reads FRAME, FPINFO and LONGINFO, which the old model_texts set; set them from these texts)
+        FRAME[0] = texts.frame_size;
+        FPINFO = FpInfo();
+        for (const auto& [k, v] : texts.fp.types) FPINFO.types.set(py::str(k), py::str(v));
+        if (texts.fp.ret) FPINFO.ret = py::str(*texts.fp.ret);
+        FPINFO.fp = texts.fp.fp;
+        text::LONGINFO.clear();
+        text::LONGINFO.unsigned_ = cb::compat::to_py(texts.longs.unsigned_names);
+        if (texts.longs.ret) text::LONGINFO.ret = *texts.longs.ret;
+        py::list<std::tuple<py::str, py::dict<py::str, int64_t>>> list;
+        for (const auto& d : texts.texts) {
+            py::dict<py::str, int64_t> regparam;
+            for (const auto& [reg, ix] : d.regparam) regparam.set(py::str(reg), ix);
+            list.append(std::make_tuple(py::str(d.text), regparam));
+        }
+        py::dict<int64_t, py::str> old_names;
+        for (const auto& [a, n] : names) old_names.set(a, py::str(n));
+        const auto [source, verdict] = p_.prove_texts(*old_model_, list, address, length, old_names);
+        return {source.utf8(), verdict.utf8()};
+    }
+
+private:
+    draft::Project& p_;
+    std::shared_ptr<draft::InverseModel> old_model_;
+    cb::exact::SymbolTable symbols_;
+    cb::Bytes image_;
+};
+
+}  // namespace detail
 
 // {image offset: name} of the code the program has names for (SYMBOLS, the library's modules)
-py::dict<int64_t, py::str> _names(Project& prj);
+inline py::dict<int64_t, py::str> _names(Project& prj) {
+    detail::NewProject p(prj);
+    py::dict<int64_t, py::str> out;
+    for (const auto& [a, n] : cb::exact::draft::code_names(p)) out.set(a, py::str(n));
+    return out;
+}
 
 // draft.run(project) -> {address: verdict}
-py::dict<int64_t, py::str> run(Project& prj, bool every = false, std::optional<int64_t> limit = std::nullopt, bool verbose = false);
+inline py::dict<int64_t, py::str> run(Project& prj, bool every = false, std::optional<int64_t> limit = std::nullopt, bool verbose = false) {
+    detail::NewProject p(prj);
+    cb::exact::draft::Options options;
+    options.every = every;
+    if (limit) options.limit = cb::compat::int_from_py<std::size_t>(*limit);
+    options.verbose = verbose;
+    py::dict<int64_t, py::str> out;
+    try {
+        for (const auto& [a, v] : cb::exact::draft::run(p, options)) out.set(a, py::str(v));
+    } catch (const cb::UsageError& e) {   // (the toolchain names no inverse model: SystemExit(text), as it was)
+        throw py::SystemExit(py::str(e.what()));
+    } catch (const cb::Error& e) {
+        cb::compat::rethrow_as_py(e);
+    }
+    cb::flush_out();
+    return out;
+}
 
-int64_t main(Project& prj, const py::list<py::str>& argv);
+inline int64_t main(Project& prj, const py::list<py::str>& argv) {
+    cb::exact::draft::Options options;
+    for (std::size_t i = 0; i < argv.size(); ++i) {
+        if (argv[i] == py::str("--all")) options.every = true;
+        else if (argv[i] == py::str("-v")) options.verbose = true;
+        else if (argv[i] == py::str("--limit") && i + 1 < argv.size()) options.limit = static_cast<std::size_t>(py::int_from_str(argv[i + 1]));
+    }
+    detail::NewProject p(prj);
+    int64_t code = 0;
+    try {
+        code = cb::exact::draft::run_command(p, options);
+    } catch (const cb::UsageError& e) {
+        throw py::SystemExit(py::str(e.what()));
+    } catch (const cb::Error& e) {
+        cb::compat::rethrow_as_py(e);
+    }
+    cb::flush_out();
+    return code;
+}
 
 }  // namespace codebreaker::exact::draft

@@ -209,3 +209,127 @@ Notes:
   when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
   was first. Compared with lz32.dll first in a fresh state: identical.
 * Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
+
+## Idiomatic C++ refactor (native/cb), against the py:: ports
+
+| Module | py:: port | native/cb | Speedup |
+|---|---|---|---|
+| knowledge/sources (all 14 kinds, 16,896 rows) | 139-145 ms | 45-48 ms | ~3x |
+| verify/verdicts classify() (12.8M calls: 8 words x 4 limits texts) | 296-306 ns | 19 ns from text, 1.2 ns from enums (the judge's own use) | 15x / 250x (the live engine/verdicts.cc: 80 ns) |
+| verify/teeth breaks() (60,000 C texts of a few lines) | 1.17 s | 0.46 s (including the harness's JSON in and out) | 2.5x |
+| verify/guided (74 synthetic programs x100, behind the old-record shim: every call converts the records both ways) | 0.66 s | 0.32 s | 2.1x |
+### cb refactor W0-B16 (java: apimap, reflection_factory, platforms, ledger, ir, debug, bugfix_ledger, typemap, stubs, overlays, cmake, textutil, _paths -> native/cb/java)
+
+The new code is compared with the Python module on the same inputs (the old typed ports run through the py:: layer and were not timed
+separately; they were slower than the Python on string work). Release build, one process, repeated runs on a loaded machine (ms):
+
+| work (real or synthetic input) | Python | cb C++ |
+|---|---|---|
+| apimap: load the 12 shipped api_maps/*.json, 20 loads | 101 | 84-150 |
+| apimap: extract_symbols over 3.5 MB of Java-like text | 154 | 7-12 |
+| bugfix_ledger: collect over codebreaker/java (134 markers), 3 runs | 84 | 49-69 |
+| ledger: add 200k events / file_risk_table / to_json | 159 / 92 / 218 | 40 / 45 / 75 |
+| reflection_factory.process over an 800 KB .cpp with 400 registrations | 21 | 10-12 |
+
+Notes:
+* apimap load is the one at parity, not faster: 100 KB of JSON is 2.5 ms of the 4-7 ms per load (the ordered JSON the file order needs).
+* ledger.to_json first went through a JSON document (947 ms for 38 MB); it writes the fixed layout directly now (75 ms).
+### cb refactor, wave 0 batch W0-B6 (decompile: m6502, xenos, struct_text, jar, ctree, inline_asm, z80), 2026-11-11
+
+The old per-module harness run end to end (process start included), the typed port (old) against the refactored module reached
+through its shim (new), same cases. Wall time in ms, mean of four runs; the cases are the harness's, so the work per run is the
+old port's own cases (m6502 9,342, xenos 6,699, struct_text 261, ctree 3,822 outputs, inline_asm 3,810, z80 25,854 cases of which the
+new driver runs the ones that still exist as API: decode, text, assemble, value).
+
+| Module | old | new | Ratio |
+|---|---|---|---|
+| decompile/m6502 | 152 | 118 | 1.3x |
+| decompile/xenos | 88 | 64 | 1.4x |
+| decompile/struct_text | 42 | 32 | 1.3x |
+| decompile/ctree | 44 | 31 | 1.4x |
+| decompile/inline_asm | 122 | 64 | 1.9x |
+| decompile/z80 | 366 | 129 | 2.8x |
+| decompile/jar | (process-bound: a fake `java` is started per case) | same | 1.0x |
+
+Notes:
+* The "new" side still pays the shim's conversions to `py::str`/`py::list` (the old callers' types); against the module's own
+  API the gap is wider. z80 `decode` no longer builds a `py::dict` row per instruction.
+
+## Refactor to idiomatic C++, wave 0 batch 4 (base + build), 2026-11-11
+
+Old = the typed port on the py:: layer (built from the pre-refactor sources, /O2), new = `native/cb` (/O2, static CRT), same inputs, one thread, best of three.
+
+| Work | old (ms) | new (ms) |
+|---|---|---|
+| pklite `read` of EXTRACT.EXE's load module (46 KB, 86 KB expanded, 33,011 tokens) | 1.39 | 0.73 |
+| pklite `parse` of the 86 KB image (PKLITE's choices) | 68.6 | 40.8 |
+| pklite `pack` (parse + encode + the safe-memory pass) | 66.7 | 41.2 |
+| ctext `blank` x5 of a 207 KB C text (first sight, no cache hit) | 7.09 | 1.41 |
+| ctext `blank(whole)` x5 of the same | 6.33 | 1.14 |
+| corpus `index` of the Win95 corpus (2,562 files, 2,534 names; walk, lowercase, rank, sort) | 10.2 - 11.8 | 4.6 - 5.5 |
+| corpus `retail("kernel32")` after the index | (cached) | 0.17 (cached) |
+
+Notes: the old `ctext.blank` kept an LRU of 16,384 results; the new one has none (a scan costs about what hashing the text did).
+The old Python `pklite.parse` takes 7.8 s on the same image. `functions`, `runs`, `parallel`, `tidy_state` are process / file-system
+bound (a compile is a process spawn; both ports use CreateProcess): not timed apart from the real OpenWatcom 16-bit build below.
+A 16-bit build through the real OpenWatcom (3 functions, one rejected, cache warm in a second folder): the objects come out of the
+cache rewritten for the new folder (`omf_here`) and the linked DLL is byte-identical to the first.
+## cb/base/cache and cb/analyze (refactor, 2026-11-11)
+
+Idiomatic C++ in `native/cb/` against what it replaces, same inputs, best of 3, on a busy shared machine (single numbers
+are +-30%).
+
+| What | Old | New | Ratio |
+|---|---|---|---|
+| analyze engine (cbanalyze.dll through JSON) vs `cb/analyze` called directly: comctl32.dll, 1133 functions (discover + call graph + strings + resources) | 0.40 s | 0.16 s | 2.5x faster |
+| the same, user.exe (NE), 2319 functions | 0.67 s | 0.30 s | 2.2x faster |
+| mfc30.dll, 3481 functions | 0.42 s | 0.29 s | 1.5x faster |
+| kernel32.dll, 1867 functions | 0.41 s | 0.19-0.25 s | 1.7-2.1x faster |
+| shell32.dll, 2398 functions | 0.74 s | 0.42-0.64 s | 1.2-1.8x faster |
+| of which the strings + resources passes alone, kernel32 / shell32 | 0.024 / 0.034 s | 0.018-0.025 / 0.030-0.043 s | about the same |
+| cache: put 5000 x 200 B | 0.30 s | 0.40 s | 0.75x (~20 us a put more: the second table) |
+| cache: get 15000 x 200 B | 0.10 s | 0.10 s | same |
+| cache: put 300 x 100 KB / get 900 x 100 KB | 0.24 / 0.07 s | 0.22 / 0.07 s | same |
+
+Why the analyses are faster: the engine used to answer through JSON (every decoded instruction of every function written
+as text and read back) and now returns typed structs. Why the small cache put is slower: the time of use is a table of its
+own (so renewing it never rewrites a result: that fixed a 100 KB-per-touch WAL write), and a trigger writes it, one more
+b-tree insert per put. It is immaterial next to the work the cache fronts (a compile takes 100 ms or more). Speed-ups that
+were needed to get here: prepared statements kept per connection, text and blobs bound without a copy, the payload taken
+out of the row without a second copy, a hardware CRC-32C for the entry checksum (with the extra copy, the checksum of the core's
+bytewise CRC-32 made a 100 KB get 3x slower than the old port's: 0.25 s -> 0.07 s per 900 gets).
+## cb refactor: exact batch W0-B7 (2026-11-11)
+
+Old = the typed port on the py:: layer (pre-refactor commit, C++17 /O1, built as its harness build.cmd did); new = the
+refactored module reached through its compat shim from the same harness (so the figure includes the shim's conversions),
+C++20 /O1. Best of three runs of the harness's whole case file, process start included.
+
+| module (harness work) | old ms | new ms |
+|---|---|---|
+| exact/draft/text (54,961 cases: tests, blocks, live registers, declarations) | 2047 | 1469 |
+| exact/compare (4,000 functions against an image, Capstone decode of each) | 512 | 510 |
+
+The other modules of the batch (aout, exepack, hooks_lattice, x86, linkemu, batch, readable, draft/package) have
+harnesses of a few hundred cases that run in the process start; they were checked for the same behaviour, not timed.
+## Executable-format readers (cb/formats: pe, ne, le, dos, omf, detect), 2026-11-11
+
+Old = the native C++ readers (native/formats) behind the typed shells; new = native/cb/formats. Both run over the same inputs by a
+differential harness (state/work/cpp-refactor/formats/diff.cpp: each side dumps every fact its readers give for a file to text; the
+dumps are compared), on the 1,248 files of the Win95 corpus (586 PE, 373 NE, 218 LE among them) and the OMF objects/libraries of the
+period toolchains and the old harness (1,738), with seeded damage (truncations, bit flips, damaged headers) as extra inputs
+(8,736 .. 38,688 per lane). Times are the whole dump per lane (parse + every reader + text), best of three on a busy machine:
+
+| Lane (inputs) | old | new |
+|---|---|---|
+| PE (1,248) | 0.29 s | 0.30 s |
+| NE (1,248) | 0.22 s | 0.19 s |
+| LE (1,248) | 0.63 s | 0.68 s (equal within noise; 0.39 / 0.39 on a quiet run) |
+| DOS (1,248, packed programs unpacked statically) | 0.08 s | 0.08 s |
+| DOS with damage (26,208; most run the emulated unpacker to its limit) | 30.8 s | 35.5 s before caching the Unicorn table in the hook, equal after |
+| OMF (1,738) | 3.08 s | 3.17 s |
+
+Differences found by the harness and kept on purpose are listed in the `DIVERGES` comment at the top of each `*_test.cpp` and in
+state/work/typed-port/_bugs/LIST.md: strict reads of a field cut by the end of the file (OMF 51 of 12,094 inputs, all truncations),
+index 0 as "no target" instead of "the last entry" (OMF 178 fix-up lines, all in the hand-made synthetic objects), a trailing odd byte
+of a UTF-16 resource name dropped instead of replaced (2 of 26,208 damaged PEs). Everything else matched (0 mismatches in 8,736 PE,
+NE, LE and DOS inputs each, 38,688 LE, 26,208 NE and DOS).

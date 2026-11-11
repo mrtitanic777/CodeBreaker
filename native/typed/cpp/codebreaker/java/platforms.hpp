@@ -1,29 +1,14 @@
-// codebreaker/java/platforms.hpp -- typed C++ port of codebreaker.java.platforms.
-//
-// platforms.py -- target platform definitions for stub annotation.
-//
-// Each platform maps the converter's subsystem IDs (from stubs.py) to the
-// platform-specific SDK, API, and library names that should fill that stub.
-// The converter emits these as comments inside the stub body so the developer
-// knows exactly what to reach for.
-//
-// Notes on the port:
-//   * PLATFORMS is an OrderedDict of dicts with fixed keys: each platform is a `Platform` record and each
-//     subsystem entry a `Subsystem` record ('sdk_dir' is absent on some platforms, so it is optional);
-//   * the _STDAFX table is {platform: dict with fixed keys}: a `StdafxConfig` record, where the keys the
-//     Python reads with .get() ('globals', 'extra', 'host_minmax', 'timer_impl') are an empty list / empty
-//     string / false / nullopt when absent;
-//   * get_platform returns the Python dict or None: std::optional<Platform>.
+// codebreaker/java/platforms.hpp -- SHIM over cb/java/platforms.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last
+// py:: consumer. (The private _STDAFX* tables of the port had no consumer and are not carried.)
 #pragma once
 
-#include <cstdint>
 #include <optional>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/java/platforms.hpp"
 
 namespace codebreaker::java::platforms {
 
-// One subsystem entry of a platform: the SDK, libraries and APIs that fill the stub.
 struct Subsystem {
     py::str sdk;
     py::str libs;
@@ -40,39 +25,35 @@ struct Platform {
     py::dict<py::str, Subsystem> subsystems;
 };
 
-extern const py::dict<py::str, Platform> PLATFORMS;
+namespace shim_ {
+inline py::dict<py::str, Platform> build() {
+    namespace cbp = cb::java::platforms;
+    py::dict<py::str, Platform> out;
+    for (const cbp::Platform& p : cbp::platforms()) {
+        Platform q{cb::compat::to_py(p.label), cb::compat::to_py(p.description), std::nullopt, p.big_endian,
+                   p.null_page_protected, cb::compat::to_py(p.null_deref_msg), {}};
+        if (p.sdk_dir) q.sdk_dir = cb::compat::to_py(*p.sdk_dir);
+        for (const cb::java::stubs::SubsystemInfo& s : cb::java::stubs::subsystems()) {
+            const cbp::SubsystemApi& api = p.api(s.id);
+            q.subsystems.set(cb::compat::to_py(s.key),
+                             Subsystem{cb::compat::to_py(api.sdk), cb::compat::to_py(api.libs), cb::compat::to_py(api.apis)});
+        }
+        out.set(cb::compat::to_py(p.key), std::move(q));
+    }
+    return out;
+}
+}  // namespace shim_
 
-// Return platform info or None.
-std::optional<Platform> get_platform(const py::str& platform_id);
+inline const py::dict<py::str, Platform> PLATFORMS = shim_::build();
 
-// Return a comment string for a stub body, given a platform and subsystem.
-// e.g. '// TODO: Implement with D3D9 (d3d9.lib) -- IDirect3DDevice9, ...'
-py::str get_stub_comment(const py::str& platform_id, const py::str& subsystem_id);
+inline std::optional<Platform> get_platform(const py::str& platform_id) { return PLATFORMS.get(platform_id); }
 
-// ---------------------------------------------------------------------------
-// Platform-specific stdafx.h generation
-// ---------------------------------------------------------------------------
+inline py::str get_stub_comment(const py::str& platform_id, const py::str& subsystem_id) {
+    return cb::compat::to_py(cb::java::platforms::stub_comment(cb::compat::from_py(platform_id), cb::compat::from_py(subsystem_id)));
+}
 
-extern const py::str _STDAFX_COMMON_CRT;
-extern const py::str _STDAFX_HOST_WINDOWS;
-extern const py::str _STDAFX_HOST_MINMAX;
-extern const py::str _STDAFX_MSVC_WARNINGS;
-extern const py::str _STDAFX_COMMON_TYPEDEFS;
-
-// One entry of the _STDAFX table.
-struct StdafxConfig {
-    py::list<py::str> system_headers;
-    py::list<py::str> sdk_headers;
-    py::list<py::str> globals;
-    py::str warnings;
-    py::str extra;
-    bool host_minmax = false;
-    std::optional<py::str> timer_impl;
-};
-
-extern const py::dict<py::str, StdafxConfig> _STDAFX;
-
-// Generate a platform-specific stdafx.h precompiled header.
-py::str generate_stdafx(const py::str& platform_id, const py::str& cpp_std_label = py::str("C++03"));
+inline py::str generate_stdafx(const py::str& platform_id, const py::str& cpp_std_label = py::str("C++03")) {
+    return cb::compat::to_py(cb::java::platforms::generate_stdafx(cb::compat::from_py(platform_id), cb::compat::from_py(cpp_std_label)));
+}
 
 }  // namespace codebreaker::java::platforms

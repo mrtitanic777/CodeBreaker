@@ -45,11 +45,13 @@ _REG_LINE = re.compile(r'\b(?:register\w*)\s*\(')      # set per run from the pr
 def _split_top(s):
     """Split a comma-separated arg blob at top-level commas (respecting nested parens/angles)."""
     out, depth, cur = [], 0, ''
+    prev = ''
     for ch in s:
         if ch in '(<':
             depth += 1
-        elif ch in ')>':
+        elif ch == ')' or (ch == '>' and prev != '-'):    # the > of -> closes nothing
             depth -= 1
+        prev = ch
         if ch == ',' and depth == 0:
             out.append(cur.strip()); cur = ''
         else:

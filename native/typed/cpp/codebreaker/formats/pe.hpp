@@ -1,47 +1,28 @@
-// codebreaker/formats/pe.hpp -- typed C++ from codebreaker.formats.pe.
-//
-// pe.py -- PE32 / PE32+ reader for the era's 32-bit modules, answered by the C++ (native/formats/pe:
-// formats.dll, through native.py). Its Python reader is gone (docs/NATIVE.md, step 4): this module
-// is the API -- each method's def is its signature and its documentation, and formats.dll answers.
-//
-// Windows 3.1 was NE all the way down, so `ne.py` was the only loader the toolchain needed. This is
-// the first release in the lineage where the core ships in two worlds at once: the 16-bit
-// compatibility layer (KRNL386, USER, GDI -- still NE) and the new 32-bit engines (KERNEL32, USER32,
-// GDI32 and 600+ other modules -- PE). This is the 32-bit half: enough to tier and measure the
-// corpus (section table, code size), feed the ordinal work (export directory, name<->ordinal), and
-// show a module's structure (PE Explorer's views).
-//
-// Typing and runtime notes:
-//   * The Python asked formats.dll through a ctypes/pickle bridge (codebreaker.formats.native). Here the
-//     very C++ the DLL is built from (native/formats/pe/pe.cc: cbf::pe::Image) is called directly, with typed
-//     results; the dicts with fixed keys that the DLL answered are the structs below. Like the DLL, every
-//     method reads the image again from `data` (PEFile keeps nothing else); an error the reader raises
-//     (cbf::PyError) is thrown as the same py:: exception.
-//   * Addresses and the image base can be 64-bit unsigned (PE32+): those fields are uint64_t. Python's
-//     unbounded ints are int64_t elsewhere; an address sum past 64 bits is OverflowError (the DLL raises it too,
-//     except BuildMeta::entry_va, whose Python int goes past 64 bits only for a corrupt PE32+ image base).
-//   * pe.code_sections' answer is (va, bytes, name) -- three items, as the DLL gives, though the Python docstring
-//     says two.
-//   * `type` of a ResourceType is a name or a number: std::variant<py::str, int64_t>.
+// codebreaker/formats/pe.hpp -- COMPAT shim for the old typed port of codebreaker.formats.pe (deleted when its last py:: consumer is
+// refactored). The reader is native/cb/formats/pe.hpp (cb::formats::pe::Image); this header only converts: the records the old
+// callers use, and PEFile with its method names. No logic.
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <tuple>
 #include <variant>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/formats/pe.hpp"
+#include "cb/formats/read.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::formats::pe {
 
-// one section header (the dict pe.parse gives)
 struct Section {
     py::str name;
     int64_t vsize = 0, vaddr = 0, rawsize = 0, rawptr = 0, chars = 0;
 };
 
-// pe.build_meta
 struct BuildMeta {
     py::str machine, magic, kind;
     uint64_t image_base = 0;
@@ -51,16 +32,14 @@ struct BuildMeta {
     py::str linker_version, subsystem;
 };
 
-// pe.debug_codeview: RSDS -> {format, guid, age, pdb}; NB10 -> {format, signature, age, pdb}
 struct CodeView {
     py::str format;
-    std::optional<py::str> guid;          // RSDS
-    std::optional<int64_t> signature;     // NB10
+    std::optional<py::str> guid;       // RSDS
+    std::optional<int64_t> signature;  // NB10
     int64_t age = 0;
     py::str pdb;
 };
 
-// pe.optional_header
 struct OptionalHeader {
     int64_t magic = 0;
     py::str linker_version;
@@ -78,7 +57,6 @@ struct ExportSymbol {
     int64_t ordinal = 0, hint = 0, rva = 0;
     py::str forward;
 };
-// pe.export_table
 struct ExportTable {
     py::str module;
     int64_t ordinal_base = 0, timestamp = 0;
@@ -96,14 +74,14 @@ struct ImportModule {
 
 struct ResourceItem {
     py::str name;
-    std::optional<int64_t> id;            // None for an item that goes by a name
+    std::optional<int64_t> id;
     int64_t language = 0, rva = 0;
     std::optional<int64_t> offset;
     int64_t size = 0;
 };
 struct ResourceType {
-    std::variant<py::str, int64_t> type;  // the type's name, or its number
-    std::optional<int64_t> id;            // None for a type that goes by a name
+    std::variant<py::str, int64_t> type;
+    std::optional<int64_t> id;
     py::list<ResourceItem> items;
 };
 
@@ -122,11 +100,9 @@ struct Clr {
 };
 struct Rich {
     int64_t key = 0;
-    py::list<std::tuple<int64_t, int64_t, int64_t>> entries;   // (product, build, count)
+    py::list<std::tuple<int64_t, int64_t, int64_t>> entries;  // (product, build, count)
 };
 
-// A PE image read from `path`: e_lfanew, machine, image_base, entry, sections, datadirs ...
-// (pe.parse's attributes), every method answered by the C++ reader.
 class PEFile {
   public:
     py::str path;
@@ -136,96 +112,225 @@ class PEFile {
     int64_t entry = 0;
     uint64_t image_base = 0;
     int64_t n_datadir = 0;
-    py::list<std::tuple<int64_t, int64_t>> datadirs;   // (rva, size)
+    py::list<std::tuple<int64_t, int64_t>> datadirs;  // (rva, size)
     py::list<Section> sections;
 
-    explicit PEFile(const py::str& path);
+    explicit PEFile(const py::str& path_) : path(path_) {
+        py::file f = py::open_rb(path_);
+        data = f.read();
+        f.close();
+        cb::compat::guard([&] {
+            img_ = std::make_shared<const cb::formats::pe::Image>(cb::formats::pe::Image::parse(cb::compat::from_py(data), path_.utf8()));
+        });
+        const cb::formats::pe::Header& h = img_->header();
+        e_lfanew = h.e_lfanew, machine = h.machine, n_sections = h.n_sections, timestamp = h.timestamp, opt_size = h.opt_size;
+        characteristics = h.characteristics, magic = h.magic, is_plus = h.is_plus, entry = h.entry_rva, image_base = h.image_base;
+        n_datadir = h.n_datadirs;
+        for (const auto& d : img_->data_directories()) datadirs.append(std::make_tuple<int64_t, int64_t>(d.rva, d.size));
+        for (const auto& s : img_->sections())
+            sections.append(Section{cb::compat::to_py(s.name), s.virtual_size, s.virtual_address, s.raw_size, s.raw_ptr, s.characteristics});
+    }
 
-    py::str machine_name() const;
-    bool is_dll() const;
-    std::optional<int64_t> _rva_to_off(int64_t rva) const;
-    // Sum of raw sizes of executable/code sections.
-    int64_t code_bytes() const;
-    // The export directory's internal name, or '' if not exported.
-    py::str module_name() const;
-    // {name: rva} for every export that has a name.
-    py::dict<py::str, int64_t> export_addrs() const;
-    // [(ordinal, name_or_None, rva)] from the export directory.
-    py::list<std::tuple<int64_t, std::optional<py::str>, int64_t>> exports() const;
-    // {iat_slot_va: (dll, name)} from the import directory (data dir 1).
-    //
-    // A `call dword ptr [iat_slot_va]` in the code resolves to an imported
-    // API through this map -- the PE analogue of NE's module.ordinal imports,
-    // and what lets pe_trace name cross-module calls instead of leaving them
-    // as raw `[0x....]`.  name is the imported symbol, or '#<ordinal>' for a
-    // by-ordinal import.
-    py::dict<uint64_t, std::tuple<py::str, py::str>> imports() const;
-    // [(va_start, bytes, name)] for executable sections.
-    py::list<std::tuple<uint64_t, py::bytes, py::str>> code_sections() const;
-    // Set of RVAs that carry an absolute 32-bit address (HIGHLOW, type 3).
-    //
-    // The PE analogue of NE's FIXUPP relocation sites. Data directory 5 (.reloc)
-    // lists every field the loader would patch if the image were not loaded at
-    // its preferred ImageBase. On disk each such field already holds the
-    // preferred-base absolute value, so a faithful reconstruction that emits the
-    // literal reproduces the shipped bytes exactly; the mask only guards the
-    // rare case where our encoding differs at a relocated field. Type 3 = the
-    // 4-byte absolute (HIGHLOW) used throughout a 32-bit image; type 0 = padding.
-    py::set<int64_t> base_relocs() const;
-    // Structural build metadata: machine, bitness, image base, entry, link
-    // timestamp, linker version, subsystem, EXE/DLL. All from the headers.
-    BuildMeta build_meta() const;
-    // The CodeView record from the DEBUG data directory (index 6), or None.
-    //
-    // Modern toolchains emit an RSDS record here pointing at the matching PDB
-    // (a GUID+age key); older ones emit NB10 (a timestamp+age key). This is the
-    // PE debug-directory form, distinct from the appended NB09 CodeView blob
-    // that symbol_engine/codeview.py reads.
-    std::optional<CodeView> debug_codeview() const;
-    // One little-endian value at a file offset ('B' 'H' 'I' 'Q'), or 0 when it lies outside the file.
-    uint64_t _u(const py::str& fmt, std::optional<int64_t> off) const;
-    // The zero-terminated string at a file offset ('' when the offset is not in the file).
-    py::str _text(std::optional<int64_t> off, int64_t limit = 512) const;
-    // File offset of an RVA. One that lies in the headers, before any section, is its own
-    // offset; one that lies nowhere is None.
-    std::optional<int64_t> file_offset(int64_t rva) const;
-    // The optional header's fields by name (PE32 and PE32+).
-    OptionalHeader optional_header() const;
-    // (rva, size) of one data directory; (0, 0) when the image has none at that index.
-    std::tuple<int64_t, int64_t> directory(int64_t index) const;
-    // {'module', 'ordinal_base', 'timestamp', 'symbols': [{name, ordinal, hint, rva, forward}]}.
-    // `hint` is the name's index in the name table (-1 for an export by ordinal only);
-    // `forward` is 'OTHER.Function' when the export is passed on to another module.
-    ExportTable export_table() const;
-    // [{'module', 'symbols': [{name, ordinal, hint, slot}]}] from the import directory, or from
-    // the delay-load directory. An import by ordinal has name '' and hint -1; one by name has
-    // ordinal -1. `slot` is the RVA of the address-table entry the loader fills in.
-    py::list<ImportModule> import_table(bool delay = false) const;
-    // [{'type': name or number, 'id', 'items': [{name, id, language, rva, offset, size}]}] --
-    // the resource directory's three levels (type, name, language) flattened to one list of
-    // items per type. `id` is None for a type or item that goes by a name.
-    py::list<ResourceType> resource_tree() const;
-    // [(page_rva, entries)] -- the blocks of the base relocation directory.
-    py::list<std::tuple<int64_t, int64_t>> reloc_blocks() const;
-    // The thread-local storage directory's addresses, or None.
-    std::optional<Tls> tls() const;
-    // [{type, timestamp, size, offset}] -- every record of the debug directory (`type` is the
-    // IMAGE_DEBUG_TYPE number).
-    py::list<DebugEntry> debug_entries() const;
-    // [{length, revision, type}] -- the attribute certificates (this directory holds a FILE
-    // OFFSET, not an RVA).
-    py::list<Certificate> certificates() const;
-    // The .NET runtime header, or None for a native image.
-    std::optional<Clr> clr() const;
-    // The linker's 'Rich' record between the DOS stub and the PE header: {key, entries:
-    // [(product, build, count)]}, or None when the image has none.
-    std::optional<Rich> rich() const;
+    py::str machine_name() const { return cb::compat::to_py(img_->machine_name()); }
+    bool is_dll() const { return img_->header().is_dll(); }
+    std::optional<int64_t> _rva_to_off(int64_t rva) const { return opt_int(rva < 0 ? std::nullopt : img_->rva_to_offset(static_cast<uint64_t>(rva))); }
+    int64_t code_bytes() const { return static_cast<int64_t>(img_->code_bytes()); }
+    py::str module_name() const { return cb::compat::guard([&] { return cb::compat::to_py(img_->module_name()); }); }
+    py::dict<py::str, int64_t> export_addrs() const {
+        return cb::compat::guard([&] {
+            py::dict<py::str, int64_t> out;
+            for (const auto& e : img_->exports())
+                if (e.name && !e.name->empty()) out.set(cb::compat::to_py(*e.name), static_cast<int64_t>(e.rva));
+            return out;
+        });
+    }
+    py::list<std::tuple<int64_t, std::optional<py::str>, int64_t>> exports() const {
+        return cb::compat::guard([&] {
+            py::list<std::tuple<int64_t, std::optional<py::str>, int64_t>> out;
+            for (const auto& e : img_->exports())
+                out.append(std::make_tuple(static_cast<int64_t>(e.ordinal), e.name ? std::optional<py::str>(cb::compat::to_py(*e.name)) : std::nullopt,
+                                           static_cast<int64_t>(e.rva)));
+            return out;
+        });
+    }
+    py::dict<uint64_t, std::tuple<py::str, py::str>> imports() const {
+        return cb::compat::guard([&] {
+            py::dict<uint64_t, std::tuple<py::str, py::str>> out;
+            for (const auto& i : img_->imports()) out.set(i.slot_va, std::make_tuple(cb::compat::to_py(i.dll), cb::compat::to_py(i.name)));
+            return out;
+        });
+    }
+    py::list<std::tuple<uint64_t, py::bytes, py::str>> code_sections() const {
+        return cb::compat::guard([&] {
+            py::list<std::tuple<uint64_t, py::bytes, py::str>> out;
+            for (const auto& c : img_->code_sections())
+                out.append(std::make_tuple(c.va, cb::compat::to_py(img_->section_data(*c.section)), cb::compat::to_py(c.section->name)));
+            return out;
+        });
+    }
+    py::set<int64_t> base_relocs() const {
+        return cb::compat::guard([&] {
+            py::set<int64_t> out;
+            for (uint64_t r : img_->base_relocs()) out.add(static_cast<int64_t>(r));
+            return out;
+        });
+    }
+    BuildMeta build_meta() const {
+        return cb::compat::guard([&] {
+            const auto oh = img_->optional_header();
+            const auto entry_va = img_->entry_va();
+            BuildMeta o;
+            o.machine = cb::compat::to_py(img_->machine_name());
+            o.magic = cb::compat::to_py(is_plus ? "PE32+" : "PE32");
+            o.kind = cb::compat::to_py(is_dll() ? "DLL" : "EXE");
+            o.image_base = image_base;
+            o.entry_rva = entry;
+            o.entry_va = entry_va.value_or(0);
+            o.timestamp = timestamp;
+            o.linker_version = version_text(oh.linker_major, oh.linker_minor);
+            o.subsystem = subsystem_text(oh.subsystem, true);
+            return o;
+        });
+    }
+    std::optional<CodeView> debug_codeview() const {
+        return cb::compat::guard([&]() -> std::optional<CodeView> {
+            auto cv = img_->debug_codeview();
+            if (!cv) return std::nullopt;
+            CodeView o;
+            const bool rsds = cv->kind == cb::formats::pe::CodeView::Kind::Rsds;
+            o.format = cb::compat::to_py(rsds ? "RSDS" : "NB10");
+            if (rsds) o.guid = cb::compat::to_py(cv->guid);
+            else o.signature = static_cast<int64_t>(cv->signature);
+            o.age = cv->age;
+            o.pdb = cb::compat::to_py(cv->pdb);
+            return o;
+        });
+    }
+    uint64_t _u(const py::str& fmt, std::optional<int64_t> off) const {
+        const std::string f = fmt.utf8();
+        if (f.size() != 1 || std::string("BHIQ").find(f[0]) == std::string::npos) throw py::StructError("bad char in struct format");
+        if (!off || *off < 0) return 0;
+        const auto d = img_->data();
+        const auto at = static_cast<uint64_t>(*off);
+        return f[0] == 'B' ? cb::formats::get_or_zero<uint8_t>(d, at) : f[0] == 'H' ? cb::formats::get_or_zero<uint16_t>(d, at)
+               : f[0] == 'I' ? cb::formats::get_or_zero<uint32_t>(d, at) : cb::formats::get_or_zero<uint64_t>(d, at);
+    }
+    py::str _text(std::optional<int64_t> off, int64_t limit = 512) const {
+        if (!off || *off < 0) return py::str("");
+        return cb::compat::to_py(cb::formats::cstring(img_->data(), static_cast<uint64_t>(*off), static_cast<uint64_t>(limit)));
+    }
+    std::optional<int64_t> file_offset(int64_t rva) const { return opt_int(rva < 0 ? std::nullopt : img_->file_offset(static_cast<uint64_t>(rva))); }
+    OptionalHeader optional_header() const {
+        const auto h = img_->optional_header();
+        OptionalHeader o;
+        o.magic = h.magic;
+        o.linker_version = version_text(h.linker_major, h.linker_minor);
+        o.code_size = h.code_size, o.initialized_data_size = h.initialized_data_size, o.uninitialized_data_size = h.uninitialized_data_size;
+        o.entry_point = h.entry_point, o.code_base = h.code_base, o.image_base = h.image_base;
+        o.section_alignment = h.section_alignment, o.file_alignment = h.file_alignment;
+        o.os_version = version_text(h.os_version.major, h.os_version.minor);
+        o.image_version = version_text(h.image_version.major, h.image_version.minor);
+        o.subsystem_version = version_text(h.subsystem_version.major, h.subsystem_version.minor);
+        o.image_size = h.image_size, o.headers_size = h.headers_size, o.checksum = h.checksum, o.subsystem = h.subsystem;
+        o.subsystem_name = subsystem_text(h.subsystem, false);
+        o.dll_characteristics = h.dll_characteristics;
+        return o;
+    }
+    std::tuple<int64_t, int64_t> directory(int64_t index) const {
+        const auto d = index < 0 ? cb::formats::pe::DataDirectory{} : img_->directory(static_cast<size_t>(index));
+        return std::make_tuple<int64_t, int64_t>(d.rva, d.size);
+    }
+    ExportTable export_table() const {
+        const auto t = img_->export_table();
+        ExportTable o;
+        o.module = cb::compat::to_py(t.module);
+        o.ordinal_base = t.ordinal_base, o.timestamp = t.timestamp;
+        for (const auto& s : t.symbols)
+            o.symbols.append(ExportSymbol{cb::compat::to_py(s.name.value_or("")), static_cast<int64_t>(s.ordinal), s.hint ? static_cast<int64_t>(*s.hint) : -1,
+                                          s.rva, cb::compat::to_py(s.forward.value_or(""))});
+        return o;
+    }
+    py::list<ImportModule> import_table(bool delay = false) const {
+        py::list<ImportModule> out;
+        for (const auto& m : img_->import_table(delay)) {
+            ImportModule o;
+            o.module = cb::compat::to_py(m.module);
+            for (const auto& s : m.symbols)
+                o.symbols.append(ImportSymbol{cb::compat::to_py(s.name.value_or("")), s.ordinal ? static_cast<int64_t>(*s.ordinal) : -1,
+                                              s.hint ? static_cast<int64_t>(*s.hint) : -1, static_cast<int64_t>(s.slot_rva)});
+            out.append(o);
+        }
+        return out;
+    }
+    py::list<ResourceType> resource_tree() const {
+        py::list<ResourceType> out;
+        for (const auto& t : img_->resource_tree()) {
+            ResourceType o;
+            if (t.name) o.type = cb::compat::to_py(*t.name);
+            else o.type = static_cast<int64_t>(*t.id);
+            if (t.id) o.id = static_cast<int64_t>(*t.id);
+            for (const auto& it : t.items) {
+                ResourceItem e;
+                e.name = it.name ? cb::compat::to_py(*it.name) : py::str("#" + std::to_string(*it.id));
+                if (it.id) e.id = static_cast<int64_t>(*it.id);
+                e.language = it.language, e.rva = it.rva, e.size = it.size;
+                if (it.file_offset) e.offset = static_cast<int64_t>(*it.file_offset);
+                o.items.append(e);
+            }
+            out.append(o);
+        }
+        return out;
+    }
+    py::list<std::tuple<int64_t, int64_t>> reloc_blocks() const {
+        py::list<std::tuple<int64_t, int64_t>> out;
+        for (const auto& b : img_->reloc_blocks()) out.append(std::make_tuple<int64_t, int64_t>(b.page_rva, b.entries));
+        return out;
+    }
+    std::optional<Tls> tls() const {
+        auto t = img_->tls();
+        if (!t) return std::nullopt;
+        return Tls{t->start_va, t->end_va, t->index_va, t->callbacks_va};
+    }
+    py::list<DebugEntry> debug_entries() const {
+        py::list<DebugEntry> out;
+        for (const auto& e : img_->debug_entries()) out.append(DebugEntry{e.type, e.timestamp, e.size, e.offset});
+        return out;
+    }
+    py::list<Certificate> certificates() const {
+        py::list<Certificate> out;
+        for (const auto& c : img_->certificates()) out.append(Certificate{c.length, c.revision, c.type});
+        return out;
+    }
+    std::optional<Clr> clr() const {
+        auto c = img_->clr();
+        if (!c) return std::nullopt;
+        return Clr{version_text(c->runtime.major, c->runtime.minor), c->flags, c->entry_token};
+    }
+    std::optional<Rich> rich() const {
+        auto r = img_->rich();
+        if (!r) return std::nullopt;
+        Rich o;
+        o.key = r->key;
+        for (const auto& e : r->entries) o.entries.append(std::make_tuple<int64_t, int64_t, int64_t>(e.product, e.build, e.count));
+        return o;
+    }
+
+  private:
+    static std::optional<int64_t> opt_int(const std::optional<uint64_t>& v) { return v ? std::optional<int64_t>(static_cast<int64_t>(*v)) : std::nullopt; }
+    static py::str version_text(int64_t major, int64_t minor) { return py::str(std::to_string(major) + "." + std::to_string(minor)); }
+    // `hex_when_unnamed`: build_meta writes 0xNNNN, optional_header the decimal number
+    static py::str subsystem_text(uint32_t sub, bool hex_when_unnamed) {
+        if (const char* label = cb::formats::pe::subsystem_label(sub)) return py::str(label);
+        if (!hex_when_unnamed) return py::str(std::to_string(sub));
+        char buf[16];
+        std::snprintf(buf, sizeof buf, "0x%x", sub);
+        return py::str(buf);
+    }
+    std::shared_ptr<const cb::formats::pe::Image> img_;
 };
 
-PEFile open_pe(const py::str& path);
+inline PEFile open_pe(const py::str& path) { return PEFile(path); }
 
-// Whether the file is a .NET assembly: a PE image with a CLR runtime header (data directory
-// 14). Reads the headers only.
-bool is_dotnet(const py::str& path);
+inline bool is_dotnet(const py::str& path) { return cb::formats::pe::is_dotnet_file(cb::fs::from_text(path.utf8())); }
 
 }  // namespace codebreaker::formats::pe

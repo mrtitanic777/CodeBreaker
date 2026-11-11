@@ -1,124 +1,112 @@
-// codebreaker/base/parallel.hpp -- C++17 port of codebreaker.base.parallel.
+// codebreaker/base/parallel.hpp -- SHIM over cb/core/parallel.hpp and cb/base/parallel.hpp (docs/CPP_DESIGN.md 6.3): the
+// old types in, the new functions called, the old types out. No logic; deleted with its last py:: consumer.
 //
-// parallel.py -- how much of the machine CodeBreaker takes: the budget every runner asks for.
+// How much of the machine CodeBreaker takes: the budget every runner asks for. The settings it reads (workers, low_load,
+// min_free_gb) are the old settings'; the environment (CB_JOBS, CB_LOW_LOAD, CB_MIN_FREE_GB) overrides them.
 //
-//     n = parallel::workers();                      // how many things run side by side (settings.json "workers")
-//     {
-//         parallel::slots s(6, 256, "decompile");   // the machine's slots, shared by every CodeBreaker process
-//         int64_t n = s.enter();
-//         ... run n at once ...
-//     }                                             // (`with parallel.slots(...) as n:`; the end of the scope gives them back)
+//     n = parallel::workers();                      // how many things run side by side
+//     { parallel::slots s(6, 256, "decompile"); int64_t n = s.enter(); ... }   // the machine's slots, given back at the end
 //     parallel::throttle(4);                        // this process below normal priority, on four cores
 //     parallel::wait_for_memory("verify");          // before a heavy job: while memory is short, wait
-//
-// The work itself is run by jobs/pool.py (threads, worker processes, a subprocess each); this
-// holds what they all ask before they start: how many, and whether the machine has room.
-//
-// Notes on the port:
-//   - the settings it reads (low_load, workers, min_free_gb) are read with py::settings::get_str; settings.json
-//     holds some of them as numbers (get_str is for string settings and raises TypeError for those), so the
-//     number, boolean or null is then read from settings.json's text here, as Python's settings.get gave it
-//     (inside codebreaker.exe that reading needs CB_CHECKOUT_ROOT; without it the TypeError stands).
-//   - Python's `with parallel.slots(...)` is  enter()  and  exit() ; the destructor calls exit(), which
-//     gives the slots back once.
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <vector>
 
-#include "py.hpp"
+#include "cb/base/parallel.hpp"
+#include "cb/compat/legacy_settings.hpp"
+#include "cb/core/parallel.hpp"
 
 namespace codebreaker::base::parallel {
 
-int64_t cpu_count();
+namespace newp = ::cb::base::budget;
 
-extern const int64_t LOW_LOAD;                 // what the setting low_load holds everything to
+inline int64_t cpu_count() { return ::cb::parallel::cpu_count(); }
 
-// settings.json "low_load" (or CB_LOW_LOAD=1): the machine is someone's to work on while
-// CodeBreaker runs -- every count below is held to LOW_LOAD
-bool low_load();
+inline const int64_t LOW_LOAD = ::cb::parallel::kLowLoad;   // what the setting low_load holds everything to
 
-// How many things run side by side, everywhere: the one number every part of the workbench
-// asks for (compiles, judging, sweeps). settings.json "workers", or CB_JOBS; otherwise every
-// processor but two (the two left for the machine's owner and for the process handing the work
-// out). With low_load, never more than LOW_LOAD.
-int64_t workers();
+// How many things run side by side, everywhere: settings.json "workers", or CB_JOBS; otherwise every processor but two.
+// With low_load, never more than LOW_LOAD.
+inline int64_t workers() { return ::cb::parallel::workers(::cb::compat::legacy::worker_policy()); }
 
-// ---------------------------------------------------------------------------
-// Background work: below normal priority, on a bounded number of cores.
-// ---------------------------------------------------------------------------
-// Lower this process's priority and/or pin it to the first `cores` CPUs, so a background
-// sweep leaves the machine usable. Child processes inherit both. Windows only; a no-op (False)
-// elsewhere or on failure.
-bool throttle(std::optional<int64_t> cores = std::nullopt, bool below_normal = true);
+// settings.json "low_load" (or CB_LOW_LOAD=1)
+inline bool low_load() {
+    if (const auto env = ::cb::fs::get_env("CB_LOW_LOAD"); env && !env->empty()) {
+        const std::string t = ::cb::text::lower(::cb::text::trim(*env));
+        return !(t == "0" || t == "false" || t == "no" || t == "off" || t == "none");
+    }
+    return ::cb::compat::legacy::worker_policy().low_load;
+}
+
+// Lower this process's priority and/or pin it to the first `cores` CPUs. Child processes inherit both.
+inline bool throttle(std::optional<int64_t> cores = std::nullopt, bool below_normal = true) {
+    return ::cb::parallel::throttle(cores ? static_cast<int>(*cores) : 0, below_normal);
+}
 
 // the memory the system can still give out without paging, in GB (None where not known)
-std::optional<double> available_gb();
+inline std::optional<double> available_gb() {
+    const double gb = ::cb::parallel::available_gb();
+    return gb < 0 ? std::nullopt : std::optional<double>(gb);
+}
 
-// settings.json "min_free_gb" (or CB_MIN_FREE_GB): below this much free memory no new heavy job starts
-double min_free_gb();
+// settings.json "min_free_gb" (or CB_MIN_FREE_GB)
+inline double min_free_gb() { return newp::min_free_gb(::cb::compat::legacy::budget_limits()); }
 
-// before a heavy job: wait while the system has less than min_free_gb free - the machine first, the work
-// after. Returns the seconds waited.
-double wait_for_memory(const py::str& label = py::str(""), double poll = 2.0, double limit = 600);
+// before a heavy job: wait while the system has less than min_free_gb free. Returns the seconds waited.
+inline double wait_for_memory(const py::str& label = py::str(""), double poll = 2.0, double limit = 600) {
+    const auto waited = newp::wait_for_memory(::cb::compat::legacy::budget_limits(), label.utf8(),
+                                              std::chrono::milliseconds(static_cast<std::int64_t>(poll * 1000)),
+                                              std::chrono::milliseconds(static_cast<std::int64_t>(limit * 1000)));
+    return static_cast<double>(waited.count()) / 1000.0;
+}
 
 // the machine's memory in GB (None where not known)
-std::optional<double> total_gb();
-
-// ---------------------------------------------------------------------------
-// The governor: one budget of heavy jobs for the whole machine.
-//
-// Each part used to decide on its own how much to run at once, so they multiplied: a sweep taking
-// two binaries apart, each splitting its decompiler six ways, asked for twelve at once. Now a
-// heavy job holds a slot while it runs -- slots are the machine's `workers()`, shared by every
-// CodeBreaker process (a locked file each: the system lets go of it when its process ends, even
-// killed) -- and it is given no more than the free memory carries, at `mb_each` a piece, past the
-// reserve the system keeps. A small machine runs one at a time; nobody waits for ever.
-// ---------------------------------------------------------------------------
-// One slot: a locked file (Python's _Slot).
-class Slot_ {
-public:
-    explicit Slot_(const py::str& path) : path(path) {}
-    Slot_(const Slot_&) = delete;
-    Slot_& operator=(const Slot_&) = delete;
-    ~Slot_();
-    bool take();
-    void give_back();
-    py::str path;
-private:
-    int fd_ = -1;   // the open file (Python's self.f), -1 for None
-};
+inline std::optional<double> total_gb() { return newp::total_gb(); }
 
 // memory the governor leaves to the system: min_free_gb, but no more than a quarter of the machine
-double reserve_gb();
+inline double reserve_gb() { return newp::reserve_gb(::cb::compat::legacy::budget_limits()); }
 
-// processors nothing is using, measured over `sample` seconds (None where not known): what
-// other programs keep busy -- a build beside us -- is not ours to take
-std::optional<double> idle_cores(double sample = 0.25);
+// processors nothing is using, measured over `sample` seconds (None where not known)
+inline std::optional<double> idle_cores(double sample = 0.25) {
+    return newp::idle_cores(std::chrono::milliseconds(static_cast<std::int64_t>(sample * 1000)));
+}
 
 // how many pieces of `mb_each` MB the free memory carries past the reserve (None: not known)
-std::optional<int64_t> memory_allows(int64_t mb_each);
+inline std::optional<int64_t> memory_allows(int64_t mb_each) {
+    const auto n = newp::memory_allows(::cb::compat::legacy::budget_limits(), static_cast<int>(mb_each));
+    return n ? std::optional<int64_t>(*n) : std::nullopt;
+}
 
 //     parallel::slots s(6, 256, "decompile");  int64_t n = s.enter();  ...  s.exit();
-// Up to `want` of the machine's slots, as many as are free and the memory carries -- at least
-// one: with none free it waits for one (up to `limit` seconds, then runs on one regardless).
+// Up to `want` of the machine's slots, as many as are free and the memory carries -- at least one: with none free it waits
+// for one (up to `limit` seconds, then runs on one regardless).
 class slots {
 public:
-    slots(int64_t want, int64_t mb_each = 256, const py::str& label = py::str(""), double limit = 600, double poll = 0.5);
+    slots(int64_t want, int64_t mb_each = 256, const py::str& label = py::str(""), double limit = 600, double poll = 0.5)
+        : want(want), mb_each(mb_each), label(label), limit(limit), poll(poll) {}
     slots(const slots&) = delete;
     slots& operator=(const slots&) = delete;
-    ~slots();
-    int64_t enter();    // __enter__: how many slots are held (at least 1)
-    bool exit();        // __exit__: gives them back; False, so nothing is swallowed
+    int64_t enter() {   // __enter__: how many slots are held (at least 1)
+        held_ = std::make_unique<newp::Slots>(::cb::compat::legacy::budget_limits(), static_cast<int>(want), static_cast<int>(mb_each),
+                                              label.utf8(), std::chrono::milliseconds(static_cast<std::int64_t>(limit * 1000)),
+                                              std::chrono::milliseconds(static_cast<std::int64_t>(poll * 1000)));
+        return held_->count();
+    }
+    bool exit() {       // __exit__: gives them back; False, so nothing is swallowed
+        held_.reset();
+        return false;
+    }
 
     int64_t want;
     int64_t mb_each;
     py::str label;
     double limit;
     double poll;
-    std::vector<std::shared_ptr<Slot_>> held;
+
+private:
+    std::unique_ptr<newp::Slots> held_;
 };
 
 }  // namespace codebreaker::base::parallel
