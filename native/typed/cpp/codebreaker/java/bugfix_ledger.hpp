@@ -1,5 +1,5 @@
 // codebreaker/java/bugfix_ledger.hpp -- SHIM over cb/java/bugfix_ledger.hpp (docs/CPP_DESIGN.md 6.3); deleted with its
-// last py:: consumer. (The port's private scanners _MARK, _clean_comment, _scan_file ... had no consumer.)
+// last py:: consumer. (_clean_comment and _scan_file are kept for the old harness.)
 #pragma once
 
 #include <cstdint>
@@ -41,6 +41,24 @@ inline cbb::Layer layer_of(const py::str& s) {
     throw py::ValueError("not a ledger layer: " + cb::compat::from_py(s));
 }
 }  // namespace conv_
+
+struct ScanEntry {
+    py::str slug;
+    int64_t line = 0;
+    py::str desc;
+};
+
+inline py::str _clean_comment(const py::str& line) { return cb::compat::to_py(cbb::clean_comment(cb::compat::from_py(line))); }
+
+inline py::list<ScanEntry> _scan_file(const py::str& path) {
+    return cb::compat::guard([&] {
+        py::list<ScanEntry> out;
+        for (const cbb::MarkerEntry& e : cbb::scan_file(cb::fs::from_text(cb::compat::from_py(path)))) {
+            out.append(ScanEntry{cb::compat::to_py(e.slug), static_cast<int64_t>(e.line), cb::compat::to_py(e.description)});
+        }
+        return out;
+    });
+}
 
 // Return [{'layer','file','slug','line','desc'}] across every authored layer.
 inline py::list<Entry> collect(const py::str& repo_root) {
@@ -86,3 +104,4 @@ inline py::list<Entry> run(const std::optional<py::str>& repo_root = std::nullop
 }
 
 }  // namespace codebreaker::java::bugfix_ledger
+

@@ -209,3 +209,19 @@ Notes:
   when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
   was first. Compared with lz32.dll first in a fresh state: identical.
 * Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
+### cb refactor W0-B16 (java: apimap, reflection_factory, platforms, ledger, ir, debug, bugfix_ledger, typemap, stubs, overlays, cmake, textutil, _paths -> native/cb/java)
+
+The new code is compared with the Python module on the same inputs (the old typed ports run through the py:: layer and were not timed
+separately; they were slower than the Python on string work). Release build, one process, repeated runs on a loaded machine (ms):
+
+| work (real or synthetic input) | Python | cb C++ |
+|---|---|---|
+| apimap: load the 12 shipped api_maps/*.json, 20 loads | 101 | 84-150 |
+| apimap: extract_symbols over 3.5 MB of Java-like text | 154 | 7-12 |
+| bugfix_ledger: collect over codebreaker/java (134 markers), 3 runs | 84 | 49-69 |
+| ledger: add 200k events / file_risk_table / to_json | 159 / 92 / 218 | 40 / 45 / 75 |
+| reflection_factory.process over an 800 KB .cpp with 400 registrations | 21 | 10-12 |
+
+Notes:
+* apimap load is the one at parity, not faster: 100 KB of JSON is 2.5 ms of the 4-7 ms per load (the ordered JSON the file order needs).
+* ledger.to_json first went through a JSON document (947 ms for 38 MB); it writes the fixed layout directly now (75 ms).

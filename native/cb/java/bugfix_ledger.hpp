@@ -33,6 +33,13 @@ struct MarkerEntry {
     std::string description;   // the comment on the marker line, or on the line after it
 };
 
+// The human explanation on a marker line: the text after `FIXED BUG <slug>` with comment punctuation stripped.
+std::string clean_comment(std::string_view line);
+
+// The markers in one file (layer and file are left for the caller to fill in); empty if it cannot be read. A marker
+// line with no prose borrows the next comment line.
+std::vector<MarkerEntry> scan_file(const std::filesystem::path& path);
+
 // Every marker across every layer of the tree at `repo_root` (the java lane's folder), layers in order and, within
 // a layer, files in name order. Layers whose folder is missing are skipped.
 std::vector<MarkerEntry> collect(const std::filesystem::path& repo_root);
@@ -44,3 +51,4 @@ std::string render(std::span<const MarkerEntry> entries);
 std::vector<MarkerEntry> run(const std::filesystem::path& repo_root, const std::filesystem::path& out_path);
 
 }  // namespace cb::java::bugfix_ledger
+

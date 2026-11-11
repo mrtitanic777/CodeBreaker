@@ -12,6 +12,10 @@
 
 namespace codebreaker::java::debug {
 
+inline const py::str DEBUG_H = cb::compat::to_py(cb::java::debug::debug_header(true));
+inline const py::str DEBUG_CPP = cb::compat::to_py(cb::java::debug::debug_cpp());
+inline const py::str DEBUG_README = cb::compat::to_py(cb::java::debug::debug_readme());
+
 // Emit Debug.h + Debug.cpp + DEBUG.md into out_dir. Returns the paths.
 inline py::list<py::str> write_debug(const py::str& out_dir, bool enabled_default = true) {
     return cb::compat::guard([&] {
@@ -37,3 +41,4 @@ inline py::dict<py::str, py::list<std::tuple<py::str, int64_t>>> scan_debug_mark
 }
 
 }  // namespace codebreaker::java::debug
+

@@ -68,6 +68,8 @@ std::string_view rstrip_chars(std::string_view s, std::string_view chars) {
     return s;
 }
 
+}  // namespace
+
 // Strip code/comment punctuation to recover the human explanation on a marker line.
 std::string clean_comment(std::string_view line) {
     std::string_view s = text::trim(line);
@@ -82,7 +84,7 @@ std::string clean_comment(std::string_view line) {
     return std::string(tail);
 }
 
-std::vector<MarkerEntry> scan_file(const stdfs::path& path) {
+std::vector<MarkerEntry> scan_file(const std::filesystem::path& path) {
     std::vector<MarkerEntry> entries;
     const auto content = textutil::try_read_text(path);
     if (!content) return entries;
@@ -110,6 +112,8 @@ std::vector<MarkerEntry> scan_file(const stdfs::path& path) {
     }
     return entries;
 }
+
+namespace {
 
 struct LayerDef {
     Layer layer;
@@ -213,4 +217,5 @@ std::vector<MarkerEntry> run(const stdfs::path& repo_root, const stdfs::path& ou
 }
 
 }  // namespace cb::java::bugfix_ledger
+
 

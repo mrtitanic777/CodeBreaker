@@ -1,10 +1,10 @@
 #include "cb/java/ledger.hpp"
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 
-#include "cb/core/json.hpp"
+#include <format>
+
+#include "cb/core/text.hpp"
 
 namespace cb::java::ledger {
 
@@ -160,36 +160,78 @@ std::vector<FileRisk> Ledger::file_risk_table() const {
     return rows;
 }
 
-std::string Ledger::to_json() const {
-    Json doc = Json::object();
-    Json events = Json::array();
-    for (const Event& e : events_) {
-        Json j = Json::object();
-        j["file"] = e.file;
-        j["line"] = e.line;
-        j["category"] = std::string(name(e.category));
-        j["severity"] = std::string(name(e.severity));
-        j["source"] = e.source;
-        j["rule"] = e.rule;
-        j["message"] = e.message;
-        j["snippet"] = e.snippet;
-        events.push_back(std::move(j));
-    }
-    doc["events"] = std::move(events);
+namespace {
 
-    Json by_category = Json::object();
-    const CategoryCounts cats = totals_by_category();
-    for (Category c : all_categories()) by_category[std::string(name(c))] = cats[static_cast<std::size_t>(c)];
-    doc["totals_by_category"] = std::move(by_category);
-
-    Json by_severity = Json::object();
-    const SeverityCounts sevs = totals_by_severity();
-    for (Severity s : {Severity::High, Severity::Med, Severity::Low}) {
-        by_severity[std::string(name(s))] = sevs[static_cast<std::size_t>(s)];
+// A JSON string literal, UTF-8 as is (text that is not valid UTF-8 has each bad byte replaced by U+FFFD).
+void put_string(std::string& out, std::string_view s) {
+    std::string repaired;
+    if (!text::is_valid_utf8(s)) {
+        repaired = text::sanitize_utf8(s);
+        s = repaired;
     }
-    doc["totals_by_severity"] = std::move(by_severity);
-    return json::dump(doc, json::Style::Pretty);
+    out += '"';
+    for (const char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    out += std::format("\\u{:04x}", static_cast<unsigned>(static_cast<unsigned char>(c)));
+                } else {
+                    out += c;
+                }
+        }
+    }
+    out += '"';
 }
 
+}  // namespace
+
+// Written directly rather than through a JSON document: a ledger holds tens of thousands of events and the layout is
+// fixed (2-space indent, keys in the order below).
+std::string Ledger::to_json() const {
+    std::string out = "{\n  \"events\": ";
+    if (events_.empty()) {
+        out += "[]";
+    } else {
+        out += "[\n";
+        for (std::size_t i = 0; i < events_.size(); ++i) {
+            const Event& e = events_[i];
+            out += "    {\n      \"file\": ";
+            put_string(out, e.file);
+            out += std::format(",\n      \"line\": {},\n      \"category\": \"{}\",\n      \"severity\": \"{}\",\n      \"source\": ", e.line,
+                               name(e.category), name(e.severity));
+            put_string(out, e.source);
+            out += ",\n      \"rule\": ";
+            put_string(out, e.rule);
+            out += ",\n      \"message\": ";
+            put_string(out, e.message);
+            out += ",\n      \"snippet\": ";
+            put_string(out, e.snippet);
+            out += i + 1 < events_.size() ? "\n    },\n" : "\n    }\n";
+        }
+        out += "  ]";
+    }
+    out += ",\n  \"totals_by_category\": {\n";
+    const CategoryCounts cats = totals_by_category();
+    for (std::size_t i = 0; i < kCategoryCount; ++i) {
+        const Category c = all_categories()[i];
+        out += std::format("    \"{}\": {}{}\n", name(c), cats[static_cast<std::size_t>(c)], i + 1 < kCategoryCount ? "," : "");
+    }
+    out += "  },\n  \"totals_by_severity\": {\n";
+    const SeverityCounts sevs = totals_by_severity();
+    constexpr Severity kOrder[] = {Severity::High, Severity::Med, Severity::Low};
+    for (std::size_t i = 0; i < kSeverityCount; ++i) {
+        out += std::format("    \"{}\": {}{}\n", name(kOrder[i]), sevs[static_cast<std::size_t>(kOrder[i])], i + 1 < kSeverityCount ? "," : "");
+    }
+    out += "  }\n}";
+    return out;
+}
 }  // namespace cb::java::ledger
+
 

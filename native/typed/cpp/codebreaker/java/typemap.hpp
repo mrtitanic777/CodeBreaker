@@ -32,6 +32,7 @@ inline py::set<py::str> names(const cbt::NameSet& s) {
     for (const std::string& n : s) out.add(cb::compat::to_py(n));
     return out;
 }
+template <class T> inline py::set<T> copy_of_(const py::set<T>& s) { return py::set<T>::from(s); }   // a fresh set, not another handle
 inline py::dict<py::str, py::str> map(const cbt::NameMap& m) {
     py::dict<py::str, py::str> out;
     for (const auto& [k, v] : m) out.set(cb::compat::to_py(k), cb::compat::to_py(v));
@@ -61,12 +62,16 @@ inline py::set<py::str> DEFAULT_VALUE_TYPES;
 
 // Re-derive every profile-sourced global from ``p`` when the active target profile changes (each a fresh copy).
 inline void _reseed(const Profile& p) {
-    UNSIGNED_BYTE_SCALAR_FIELDS = p.unsigned_byte_scalar_fields;
-    KNOWN_NULLABLE = p.nullable;
-    KNOWN_NULLABLE_FIELDS = p.nullable_fields;
-    KNOWN_NULLABLE_GETTERS = p.nullable_getters;
-    NULLABLE_GETTER_RETURN_TYPE = p.nullable_getter_return_type;
-    DEFAULT_VALUE_TYPES = p.default_value_types;
+    // py::set/py::dict are shared handles: a plain assignment would alias the profile's own collection
+    UNSIGNED_BYTE_SCALAR_FIELDS = shim_::copy_of_(p.unsigned_byte_scalar_fields);
+    KNOWN_NULLABLE = shim_::copy_of_(p.nullable);
+    KNOWN_NULLABLE_FIELDS = shim_::copy_of_(p.nullable_fields);
+    KNOWN_NULLABLE_GETTERS = shim_::copy_of_(p.nullable_getters);
+    NULLABLE_GETTER_RETURN_TYPE = p.nullable_getter_return_type.copy();
+    DEFAULT_VALUE_TYPES = shim_::copy_of_(p.default_value_types);
 }
 
 }  // namespace codebreaker::java::typemap
+
+
+
