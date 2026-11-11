@@ -1,57 +1,37 @@
-// codebreaker/recompile/x360project.hpp -- typed C++ from codebreaker.recompile.x360project.
+// codebreaker/recompile/x360project.hpp -- SHIM over cb/recompile/x360project.hpp (docs/CPP_DESIGN.md 6.3): an Xbox 360 title as a PC
+// project on CodeBreaker's Xbox 360 runtime (see the new header for the layout of the project folder).
 //
-// x360project.py -- an Xbox 360 title as a PC project on CodeBreaker's Xbox 360 runtime.
-//
-//     python -m codebreaker recompile-project <default.xex> [-o <folder>] [--name N] [--title-files <dir>]
 //     auto info = x360project::scaffold(xex_path, folder, name, title_files);
 //
-// The folder is the binary's project folder (codebreaker/base/converted.py: Converted/<name>/)
-// unless -o names another:
-//
-//     <folder>/
-//       CMakeLists.txt        x360_title(<name> ...) from native/x360/x360.cmake
-//       src/                  the title's XenonRecomp configuration (config.py), its switch tables
-//                             (switches.py, with XenonAnalyse's), and default.xex in basic form
-//       src/ppc/              XenonRecomp's C++ (one statement per guest instruction), regenerated:
-//                             only changed files are rewritten, so a rebuild recompiles only those
-//       src/module_info.cpp   the title described to the runtime (modules.h: g_titleModule)
-//       assets/               the title folder the program runs: its files (--title-files) and
-//                             default.xex in basic form; it is the title's game: device
-//       build/                the CMake build: build/<name>.exe
-//       reports/recompile.log what XenonRecomp said
-//       Build-<name>.bat      configures and builds with clang-cl and Ninja
-//       Play-<name>.bat       runs it
-//
-// The program is native/x360's runtime with the title linked in; run it as
-// `build/<name>.exe assets` (or from assets/).
-//
-// Typing and runtime notes:
-//   * `ROOT` is three folders above the Python module; here `set_root` derives it from the checkout root (as
-//     recompile/xenon.hpp does for its own), a plain variable a test may point elsewhere.
-//   * scaffold's result, check's result and build's (ok, lines) are records / a tuple.
-//   * every subprocess runs through py::subprocess::run (timeout, env); check()'s Popen + wait(timeout) + kill is
-//     run(timeout=...) with TimeoutExpired caught: the child is ended with exit code 1, as Process.kill() leaves it.
-//   * shutil.copy2 / copytree(dirs_exist_ok=True) and filecmp.cmp(shallow=False) are not in the runtime: small local
-//     helpers (copy2 keeps the modification time).
+// The new module is given XenonRecomp's tool chain as a `Recompiler`; this shim fills it from the old ports (recompile/xenon, config,
+// discover, formats/xex), which have not been refactored yet. Deleted with its last py:: consumer (recompile/project).
 #pragma once
 
 #include <cstdint>
 #include <optional>
 #include <tuple>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/recompile/x360project.hpp"
+#include "codebreaker/formats/xex.hpp"
+#include "codebreaker/recompile/config.hpp"
+#include "codebreaker/recompile/discover.hpp"
+#include "codebreaker/recompile/xenon.hpp"
+#include "py_os.hpp"
 
 namespace codebreaker::recompile::x360project {
 
-// The checkout root (three folders above x360project.py).
-extern py::str ROOT;
-void set_root(const py::str& root);
+// The checkout root (three folders above the Python module); a plain variable a test may point elsewhere.
+inline py::str ROOT = py::str("");
+inline void set_root(const py::str& root) { ROOT = root; }
 
 // the program's, target's and scripts' name from a .xex path: its stem, lower case, letters and digits kept
-py::str _name(const py::str& xex_path);
+inline py::str _name(const py::str& xex_path) { return cb::compat::to_py(cb::recompile::x360project::default_name(cb::fs::from_text(cb::compat::from_py(xex_path)))); }
 
 // Make dst hold src's files, rewriting only those that changed and removing the rest.
-void _sync(const py::str& src, const py::str& dst);
+inline void _sync(const py::str& src, const py::str& dst) {
+    cb::compat::guard([&] { cb::recompile::x360project::sync_folder(cb::fs::from_text(cb::compat::from_py(src)), cb::fs::from_text(cb::compat::from_py(dst))); });
+}
 
 // scaffold's result: {"name", "dir", "functions", "switches", "unimplemented"}
 struct ScaffoldInfo {
@@ -69,19 +49,73 @@ template <class F> void for_each_field_mut(ScaffoldInfo& r, F&& f) {
     f("unimplemented", r.unimplemented, true);
 }
 
+namespace shim_ {
+
+// XenonRecomp's tool chain as the old ports know it.
+inline cb::recompile::x360project::Recompiler recompiler() {
+    namespace cbx = cb::recompile::x360project;
+    const auto path = [](const py::str& s) { return cb::fs::from_text(cb::compat::from_py(s)); };
+    cbx::Recompiler rc;
+    rc.analyse = path(xenon::ANALYSE);
+    rc.recomp = path(xenon::RECOMP);
+    rc.source = path(xenon::SOURCE);
+    rc.visual_studio = path(xenon::visual_studio());
+    rc.runtime_cmake = path(py::os::path::join(ROOT, py::str("native"), py::str("x360"), py::str("x360.cmake")));
+    rc.ensure_built = [] { cb::compat::guard([] { xenon::build(); }); };
+    rc.write_basic = [](const std::filesystem::path& xex, const std::filesystem::path& out) {
+        cb::compat::guard([&] { formats::xex::basic(cb::compat::to_py(cb::fs::to_text(xex)), cb::compat::to_py(cb::fs::to_text(out))); });
+    };
+    rc.write_switch_tables = [](const std::filesystem::path& file, const std::filesystem::path& basic, const std::optional<std::string>& analysed) {
+        return cb::compat::guard([&] {
+            const auto [found, added] = config::write_switch_tables(cb::compat::to_py(cb::fs::to_text(file)), cb::compat::to_py(cb::fs::to_text(basic)),
+                                                                    analysed ? std::optional<py::str>(cb::compat::to_py(*analysed)) : std::nullopt);
+            return cbx::Recompiler::SwitchTables{static_cast<std::size_t>(found), static_cast<std::size_t>(added)};
+        });
+    };
+    rc.make_config = [](const std::filesystem::path& basic, std::string_view out_dir, std::string_view tables, std::string_view file_path) {
+        return cb::compat::guard([&] {
+            return cb::compat::from_py(config::make(cb::compat::to_py(cb::fs::to_text(basic)), cb::compat::to_py(out_dir), cb::compat::to_py(tables),
+                                                    std::nullopt, std::optional<py::str>(cb::compat::to_py(file_path))));
+        });
+    };
+    rc.savegprlr_14_address = [](const std::filesystem::path& basic) {
+        return cb::compat::guard([&] {
+            const auto helpers = config::helpers(*discover::_image(cb::compat::to_py(cb::fs::to_text(basic))));
+            return static_cast<std::uint32_t>(helpers.get(py::str("savegprlr_14_address"), 0));
+        });
+    };
+    return rc;
+}
+
+}  // namespace shim_
+
 // `name` and `title_files` are None by default (the name is taken from the .xex; no title folder is copied).
-ScaffoldInfo scaffold(const py::str& xex_path, const py::str& out_dir, const std::optional<py::str>& name = std::nullopt,
-                      const std::optional<py::str>& title_files = std::nullopt);
+inline ScaffoldInfo scaffold(const py::str& xex_path, const py::str& out_dir, const std::optional<py::str>& name = std::nullopt,
+                             const std::optional<py::str>& title_files = std::nullopt) {
+    return cb::compat::guard([&] {
+        const auto info = cb::recompile::x360project::scaffold(
+            shim_::recompiler(), cb::fs::from_text(cb::compat::from_py(xex_path)), cb::fs::from_text(cb::compat::from_py(out_dir)),
+            name ? cb::compat::from_py(*name) : std::string(),
+            title_files ? std::optional<std::filesystem::path>(cb::fs::from_text(cb::compat::from_py(*title_files))) : std::nullopt);
+        return ScaffoldInfo{cb::compat::to_py(info.name), cb::compat::to_py(cb::fs::to_text(info.dir)), static_cast<int64_t>(info.functions),
+                            static_cast<int64_t>(info.switches), static_cast<int64_t>(info.unimplemented)};
+    });
+}
 
 // Runs Build-<name>.bat with at most `jobs` compiles at once. -> (ok, the last lines of its output)
-std::tuple<bool, py::list<py::str>> build(const py::str& out_dir, const py::str& name, int64_t jobs = 4);
+inline std::tuple<bool, py::list<py::str>> build(const py::str& out_dir, const py::str& name, int64_t jobs = 4) {
+    return cb::compat::guard([&] {
+        const auto r = cb::recompile::x360project::build(cb::fs::from_text(cb::compat::from_py(out_dir)), cb::compat::from_py(name), static_cast<unsigned>(jobs));
+        return std::make_tuple(r.ok, cb::compat::to_py(r.tail));
+    });
+}
 
 // check's result: {"frames", "unimplemented": {import: calls}, "fatal": message or "", "exit", "log"}
 struct CheckResult {
     int64_t frames = 0;
     py::dict<py::str, int64_t> unimplemented;
     py::str fatal;
-    std::optional<int64_t> exit;   // the program's exit code (1 when it had to be ended)
+    std::optional<int64_t> exit;   // the program's exit code (empty when it had to be ended)
     py::str log;
 };
 template <class F> void for_each_field_mut(CheckResult& r, F&& f) {
@@ -93,6 +127,17 @@ template <class F> void for_each_field_mut(CheckResult& r, F&& f) {
 }
 
 // Runs the built title headless for `seconds` and reads its log.
-CheckResult check(const py::str& out_dir, const py::str& name, int64_t seconds = 60);
+inline CheckResult check(const py::str& out_dir, const py::str& name, int64_t seconds = 60) {
+    return cb::compat::guard([&] {
+        const auto r = cb::recompile::x360project::check(cb::fs::from_text(cb::compat::from_py(out_dir)), cb::compat::from_py(name), static_cast<unsigned>(seconds));
+        CheckResult out;
+        out.frames = static_cast<int64_t>(r.frames);
+        for (const auto& [import, calls] : r.unimplemented) out.unimplemented.set(cb::compat::to_py(import), static_cast<int64_t>(calls));
+        out.fatal = cb::compat::to_py(r.fatal);
+        if (r.exit) out.exit = static_cast<int64_t>(*r.exit);
+        out.log = cb::compat::to_py(cb::fs::to_text(r.log));
+        return out;
+    });
+}
 
 }  // namespace codebreaker::recompile::x360project

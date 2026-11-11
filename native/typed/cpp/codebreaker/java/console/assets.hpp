@@ -1,118 +1,141 @@
-// codebreaker/java/console/assets.hpp -- C++ port of codebreaker.java.console.assets: extract the game's
-// shipped assets (textures, language files, fonts, misc resources) out of the original Minecraft jar and lay
-// them down in the converted project's Content folder with the EXACT same relative paths and names, and audit
-// which resource paths the code loads vs which the jar provides.
+// codebreaker/java/console/assets.hpp -- SHIM over cb/java/console/assets.hpp (docs/CPP_DESIGN.md 6.3); deleted with its
+// last py:: consumer (run, achievements).
 //
-// normalize_png_to_rgba: Python converts with Pillow (an optional import). This port has its own PNG reader
-// (every colour type / bit depth Pillow reads, palette + tRNS, interlaced) and writer, built on zlib
-// (native/decompiler/core/zlib; compile it with -DNO_GZIP -DLOCAL_ZLIB and add the folder to the include path).
-// The pixels it writes are the RGBA pixels Pillow's convert('RGBA') gives, including Pillow's quirks (16-bit
-// samples keep their high byte, 16-bit grey is clipped to 255, a tRNS colour is compared by its low byte);
-// the compressed bytes of the PNG differ from Pillow's.
+// The old module imported Pillow when it was there (_HAS_PIL); the new one has its own PNG codec, so every non-RGBA PNG is
+// converted and `unconverted` is always empty.
 #pragma once
 
 #include <optional>
 #include <tuple>
 
+#include "cb/java/console/assets.hpp"
+#include "cb/java/console/png_rgba.hpp"
+#include "codebreaker/java/_paths.hpp"
+#include "codebreaker/java/console/_shim.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::java::console::assets {
 
-// zipfile.BadZipFile (raised on a file that is not a zip, a bad header, a bad CRC)
-struct BadZipFile : py::Exception {
-    using py::Exception::Exception;
-    const char* type() const override { return "BadZipFile"; }
-};
-
-// PIL.UnidentifiedImageError (an OSError): the file is not a readable PNG header.
+// PIL.UnidentifiedImageError (an OSError): the file is not a readable PNG.
 struct UnidentifiedImageError : py::OSError {
     using py::OSError::OSError;
     const char* type() const override { return "UnidentifiedImageError"; }
 };
 
-// `try: from PIL import Image` -- the PNG reader/writer of this file stands in for Pillow (see above).
+// `try: from PIL import Image` -- the PNG codec of the new module stands in for Pillow.
 inline constexpr bool _HAS_PIL = true;
 
-// Asset file extensions the game ships in its jar and loads at runtime.
-extern const py::list<py::str> _ASSET_EXTS;
-
-// A resource-path string literal as it appears in code: "/dir/name.ext" (leading slash, shipped file).
-// Identical in Java source and in the converted C++ (JavaString literals keep the same text).
-extern const py::re::Pattern _RES_PATH;
-
-extern const py::list<py::str> _CODE_EXTS;
-
-// strip // line comments and /* block */ comments so a documentation example like `"/x.png"` in a
-// comment is not mistaken for a real resource load (false MISSING).
-extern const py::re::Pattern _LINE_COMMENT;
-extern const py::re::Pattern _BLOCK_COMMENT;
-
-py::str _strip_comments(const py::str& text);
-
-// --- PNG normalization: force to 8-bit straight-alpha RGBA (colortype 6) ------------------------
-
 // PNG IHDR color type (0 gray, 2 rgb, 3 indexed, 4 gray+alpha, 6 rgba), or None if not a PNG.
-std::optional<int64_t> _png_colortype(const py::bytes& raw);
+inline std::optional<int64_t> _png_colortype(const py::bytes& raw) {
+    const auto ct = cb::java::console::png::color_type(cb::compat::from_py(raw));
+    if (!ct) return std::nullopt;
+    return static_cast<int64_t>(*ct);
+}
 
 // True if this PNG is not already 8-bit straight RGBA (i.e. would misrender on the 360).
-bool png_needs_rgba(const py::bytes& raw);
+inline bool png_needs_rgba(const py::bytes& raw) { return cb::java::console::png::needs_rgba(cb::compat::from_py(raw)); }
 
-// Return (bytes, changed). If the PNG isn't already RGBA, decode it (honoring palette tRNS) and re-encode as
-// 8-bit RGBA (changed = true); otherwise return it unchanged. Raises UnidentifiedImageError / OSError for a
-// PNG that Pillow could not read.
-std::tuple<py::bytes, bool> normalize_png_to_rgba(const py::bytes& raw);
+// Return (bytes, changed). Raises UnidentifiedImageError for a PNG that cannot be read.
+inline std::tuple<py::bytes, bool> normalize_png_to_rgba(const py::bytes& raw) {
+    try {
+        auto c = cb::java::console::png::normalize_to_rgba(cb::compat::from_py(raw));
+        return {cb::compat::to_py(cb::ByteView(c.png)), c.changed};
+    } catch (const cb::FormatError& e) {
+        throw UnidentifiedImageError(std::string(e.what()));
+    }
+}
 
-// Return the sorted list of asset entry paths (png/txt/lang/...) inside the jar, using forward
-// slashes and no leading slash -- exactly how they map under Content\.
-py::list<py::str> list_jar_assets(const py::str& jar_path);
+// The folder of the console-only assets the converter bundles (computed on first use, after the host has set _paths' folder).
+inline const py::str& _CONSOLE_ASSETS_DIR() {
+    static const py::str dir = codebreaker::java::_paths::data_path(py::list<py::str>{py::str("platform"), py::str("assets")});
+    return dir;
+}
 
-// Every resource path the code loads, as {path WITHOUT the leading slash: sorted files that reference it}.
-// Scans .java and/or converted .cpp/.h -- the literal is the same in both.
-py::dict<py::str, py::list<py::str>> code_resource_refs(const py::str& code_dir);
+inline py::list<py::str> list_jar_assets(const py::str& jar_path) {
+    return cb::compat::guard([&] {
+        return cb::compat::to_py(cb::java::console::assets::list_jar_assets(cb::java::console::ZipArchive::open(shim::path_of(jar_path))));
+    });
+}
 
-// CONSOLE-ONLY assets that no vanilla jar ships but the console platform layer needs (e.g. the controller
-// cursor icon drawn by EntityRenderer in container GUIs -- see controller_nav.py). Bundled in the converter
-// and copied into Content alongside the jar extraction so the feature is never a per-project manual asset.
-// (Python computes it once at import: data_path('platform', 'assets'); here it is computed on first use, after
-// the host has set _paths' folder, and kept.)
-const py::str& _CONSOLE_ASSETS_DIR();
+inline py::dict<py::str, py::list<py::str>> code_resource_refs(const py::str& code_dir) {
+    return cb::compat::guard([&] { return cb::compat::to_py(cb::java::console::assets::code_resource_refs(shim::path_of(code_dir))); });
+}
 
-// Mirror the bundled console-only assets into content_dir (same relative paths). Returns the list of
-// relative paths written. Skips silently if the bundle dir is absent.
-py::list<py::str> place_console_assets(const py::str& content_dir);
+inline py::str _strip_comments(const py::str& text) { return cb::compat::to_py(cb::java::console::assets::strip_comments(text.utf8())); }
 
-// Mirror the jar's asset entries into content_dir, preserving each entry's relative path and name (jar
-// `gui/gui.png` -> content_dir/gui/gui.png). If `only` (a set of slash-less paths) is given, extract just
-// those; otherwise extract every asset. When normalize_png is on, any non-RGBA PNG is converted to RGBA8888
-// on the way out (see the top of this file). If `converted` is given, the names of PNGs that were normalized
-// are appended to it (the list is a shared handle). Returns the sorted list of paths written.
-py::list<py::str> extract(const py::str& jar_path, const py::str& content_dir,
-                          const std::optional<py::set<py::str>>& only = std::nullopt, bool normalize_png = true,
-                          const std::optional<py::list<py::str>>& converted = std::nullopt);
+inline py::list<py::str> place_console_assets(const py::str& content_dir) {
+    return cb::compat::guard([&] {
+        return cb::compat::to_py(cb::java::console::assets::place_console_assets(shim::path_of(_CONSOLE_ASSETS_DIR()), shim::path_of(content_dir)));
+    });
+}
 
-// Bundled console-only asset rel-paths (forward slash, no leading slash). Part of the coverage
-// audit's SUPPLY, since these ship from the converter rather than the jar.
-py::list<py::str> list_console_assets();
+inline py::list<py::str> list_console_assets() {
+    return cb::compat::to_py(cb::java::console::assets::list_console_assets(shim::path_of(_CONSOLE_ASSETS_DIR())));
+}
+
+// Mirror the jar's asset entries into content_dir. If `converted` is given, the names of the PNGs that were normalized are
+// appended to it (the list is a shared handle). Returns the sorted list of paths written.
+inline py::list<py::str> extract(const py::str& jar_path, const py::str& content_dir,
+                                 const std::optional<py::set<py::str>>& only = std::nullopt, bool normalize_png = true,
+                                 const std::optional<py::list<py::str>>& converted = std::nullopt) {
+    return cb::compat::guard([&] {
+        cb::java::console::assets::ExtractOptions options;
+        options.normalize_png = normalize_png;
+        if (only) options.only = cb::compat::from_py(*only);
+        const auto jar = cb::java::console::ZipArchive::open(shim::path_of(jar_path));
+        auto done = cb::java::console::assets::extract(jar, shim::path_of(content_dir), options);
+        if (converted) {
+            py::list<py::str> shared = *converted;
+            for (const std::string& n : done.normalized) shared.append(cb::compat::to_py(n));
+        }
+        return cb::compat::to_py(done.written);
+    });
+}
 
 // What coverage() returns (a dict with these fixed keys).
 struct Coverage {
     py::dict<py::str, py::list<py::str>> needed;   // {path: [files that reference it]}   (slash-less)
-    py::list<py::str> present;                     // sorted[paths the code needs AND the jar has]
-    py::list<py::str> missing;                     // sorted[paths the code needs but the jar LACKS]  <- runtime NULL-image crash
-    py::list<py::str> extra;                       // sorted[asset paths in the jar the code never references]
+    py::list<py::str> present;
+    py::list<py::str> missing;
+    py::list<py::str> extra;
     int64_t jar_count = 0;
 };
 
+namespace detail_ {
+inline Coverage to_old(const cb::java::console::assets::Coverage& c) {
+    Coverage o;
+    o.needed = cb::compat::to_py(c.needed);
+    o.present = cb::compat::to_py(c.present);
+    o.missing = cb::compat::to_py(c.missing);
+    o.extra = cb::compat::to_py(c.extra);
+    o.jar_count = static_cast<int64_t>(c.supply);
+    return o;
+}
+inline cb::java::console::assets::Coverage to_new(const Coverage& c) {
+    cb::java::console::assets::Coverage o;
+    for (const auto& kv : c.needed.items()) o.needed[std::get<0>(kv).utf8()] = cb::compat::from_py(std::get<1>(kv));
+    o.present = cb::compat::from_py(c.present);
+    o.missing = cb::compat::from_py(c.missing);
+    o.extra = cb::compat::from_py(c.extra);
+    o.supply = static_cast<std::size_t>(c.jar_count);
+    return o;
+}
+}  // namespace detail_
+
 // Audit the code's texture/resource demand against the jar's supply.
-Coverage coverage(const py::str& jar_path, const py::str& code_dir);
+inline Coverage coverage(const py::str& jar_path, const py::str& code_dir) {
+    return cb::compat::guard([&] {
+        const auto jar = cb::java::console::ZipArchive::open(shim::path_of(jar_path));
+        return detail_::to_old(cb::java::console::assets::coverage(jar, shim::path_of(code_dir), shim::path_of(_CONSOLE_ASSETS_DIR())));
+    });
+}
 
-// (Python's `converted=None` and an empty list behave the same here: both are falsy, so None is an empty list.)
-py::str render_coverage(const Coverage& cov, const py::list<py::str>& converted = py::list<py::str>(),
-                        const py::list<py::str>& unconverted = py::list<py::str>());
-
-// Names of PNG entries in the jar that are NOT already RGBA (would misrender raw on the 360).
-py::list<py::str> indexed_pngs(const py::str& jar_path);
+inline py::str render_coverage(const Coverage& cov, const py::list<py::str>& converted = py::list<py::str>(),
+                               const py::list<py::str>& unconverted = py::list<py::str>()) {
+    (void)unconverted;   // (always empty: the new module has its own PNG codec)
+    return cb::compat::to_py(cb::java::console::assets::render_coverage(detail_::to_new(cov), cb::compat::from_py(converted)));
+}
 
 // What run() returns (a dict with these fixed keys).
 struct RunResult {
@@ -126,10 +149,27 @@ struct RunResult {
     py::list<py::str> console;
 };
 
-// One-shot: extract assets into content_dir (all, or only code-referenced if only_needed), normalizing
-// non-RGBA PNGs to RGBA, and -- when code_dir is given -- write TEXTURE_COVERAGE.md next to content_dir.
-// (`code_dir=None` and an empty string are both "no audit".)
-RunResult run(const py::str& jar_path, const py::str& content_dir, const std::optional<py::str>& code_dir = std::nullopt,
-              bool only_needed = false, bool normalize_png = true);
+// One-shot: extract assets into content_dir (all, or only code-referenced if only_needed), normalizing non-RGBA PNGs to
+// RGBA, and -- when code_dir is given -- write TEXTURE_COVERAGE.md next to content_dir.
+inline RunResult run(const py::str& jar_path, const py::str& content_dir, const std::optional<py::str>& code_dir = std::nullopt,
+                     bool only_needed = false, bool normalize_png = true) {
+    return cb::compat::guard([&] {
+        cb::java::console::assets::RunOptions options;
+        options.code_dir = shim::given(code_dir);
+        options.bundle_dir = shim::path_of(_CONSOLE_ASSETS_DIR());
+        options.only_needed = only_needed;
+        options.normalize_png = normalize_png;
+        const auto done = cb::java::console::assets::run(shim::path_of(jar_path), shim::path_of(content_dir), options);
+        RunResult out;
+        out.written = cb::compat::to_py(done.written);
+        if (done.coverage) out.coverage = detail_::to_old(*done.coverage);
+        out.content_dir = content_dir;
+        out.report = shim::native(done.report);
+        out.converted = cb::compat::to_py(done.converted);
+        out.has_pil = _HAS_PIL;
+        out.console = cb::compat::to_py(done.console);
+        return out;
+    });
+}
 
 }  // namespace codebreaker::java::console::assets

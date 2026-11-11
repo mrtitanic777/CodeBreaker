@@ -1,0 +1,695 @@
+# regs+flags (0/1 each) TAB linker-words (index:value,..;.. or -) TAB want TAB got TAB verdict (T, or F|reason-up-to-the-colon). instructions: text@bytes-hex joined by ' | '
+11	0:16,4660	mov word ptr [bx + 0x1234], cx@d5268783 | or word ptr [bp - 4], bx@27ef34	mov word ptr [bx + 0x1234], cx@d5268783 | or word ptr [bp - 4], bx@27ef34	T
+01	0:16,4660;1:16,4660	cmp word ptr [bp + 6], si@848e | mov word ptr [bx + 0x1234], 5@87bc06	cmp word ptr [bp + 6], si@848e | mov word ptr [bx + 0x1234], 5@87bc06 | mov si, 2@	T
+11	-	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov ax, 0x5678@ | push ax@	F|other values pushed
+10	-	or ax, word ptr [bx + si]@4d0093d2	or ax, word ptr [bx + si]@4d0093d2	T
+10	2:16,4660;3:16,4660;4:16,4660	or cx, di@d2d674 | push word ptr [bp + 6]@f5fe0739 | or word ptr [bp - 2], si@09b8 | lea dx, [bx + 2]@e676 | mov word ptr [bx + si], bx@5f2f91c7	or cx, di@d2d674 | push word ptr [bp + 6]@f5fe0739 | or word ptr [bp - 4], si@09b8 | lea dx, [bx + 2]@e676 | mov word ptr [bx + si], bx@5f2f91c7	F|other values left in the frame
+01	2:16,4660	shl bx, 1@9e | sub word ptr [bp + 4], si@8e3767 | add si, 0x10@4bb2 | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	shl bx, 1@9e | sub word ptr [bp + 4], si@8e3767 | add si, 0x10@4bb2 | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	T
+11	0:4660	mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | add di, dx@37 | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	or bx, word ptr [bp]@00	F|other values left in the registers
+00	0:4660	xor si, word ptr [bp + si]@4da369	xor si, word ptr [bp + si]@4da369	T
+11	-	mov ax, bx@ | add ax, ax@ | push ax@	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values pushed
+00	2:16,4660;4:16,4660;6:16,4660;7:16,4660	shl dx, 1@9ff173 | xchg cx, 1@51 | mov di, 0x1234@18958985 | xor di, word ptr [bp - 2]@6a01 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40	shl dx, 1@9ff173 | xchg cx, 1@51 | mov di, 0x1234@18958985 | xor di, word ptr [bp - 2]@6a01 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | mov ax, ax@	F|not known
+01	0:16,4660;1:16,4660;3:16,4660;4:16,4660	inc bx@21 | mov bx, 0@b80000 | jcc 5@7001 | inc bx@40 | cmp word ptr [bp + 6], 0x1234@035585	inc bx@21 | mov bx, 0@b80000 | jcc 5@7001 | inc bx@40 | cmp word ptr [bp + 6], 0x1234@035585	T
+00	0:16,4660;1:16,4660;2:16,4660;3:16,4660	xor ax, ax@8cfb | mov cx, si@f8452ac4 | mov word ptr [bp - 2], si@5eb1 | mov cx, 5@16 | push ax@70	xor ax, ax@8cfb | mov cx, si@f8452ac4 | mov word ptr [bp - 2], si@5eb1 | mov cx, 5@16 | push ax@70	T
+11	1:0,2,5;3:0,16	mul 0x1234@580b | sub ax, ax@91d9 | sub di, word ptr [bx - 2]@ee | cmp word ptr [bx + 0x1234], word ptr [bx + 0x1234]@8b29 | add bx, bx@40	mul 0x1234@580b | sub ax, ax@91d9 | sub di, word ptr [bx - 2]@ee | cmp word ptr [bx + 0x1234], word ptr [bx + 0x1234]@8b29 | add bx, bx@40	T
+01	-	or cx, dx@61bd40c7 | mov cx, 0@b80000 | jcc 5@7201 | inc cx@40	mov ax, 0@b80000 | jcc 5@7501 | inc ax@40	F|another condition
+01	0:16,4660;1:16,4660;2:16,4660;4:16,4660	mov di, 0@b80000 | jcc 5@7c01 | inc di@40 | shr ax, 1@ccc75967 | lea si, [bx + 0x1234]@62 | sub di, word ptr [bp + 4]@24e44e2f | mov si, word ptr [bx + si]@793ce242	mov di, 0@b80000 | jcc 0x1234@7c01 | inc di@40 | shr ax, 1@ccc75967 | lea si, [bx + 0x1234]@62 | sub di, word ptr [bp + 4]@24e44e2f | mov si, word ptr [bx + si]@793ce242	T
+01	0:4660;1:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+10	-	inc di@7b | or word ptr [bx + 0x1234], si@a8 | xchg word ptr [bx + 0x1234], 5@88976028 | push word ptr [bp + 6]@f6e1 | cmp si, 0x10@10f833 | shl bx, cl@ca | or ax, word ptr [bp + 4]@c903cf	and ax, 1@ba0bc845	F|not known
+00	0:16,4660;1:16,4660	mov word ptr [bp + 6], dx@4d2712 | sub word ptr [bp + 6], bx@2e9e0940	mov word ptr [bp + 6], dx@4d2712 | sub word ptr [bp + 6], bx@2e9e0940	T
+00	0:4660;1:4660;2:4660	xor ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values stored
+00	0:16,4660	xor bx, 5@0448	xor bx, 5@0448	T
+10	0:16,4660;4:16,4660;6:16,4660	add word ptr [bp - 2], cx@9ddff8de | dec si@f9 | push dx@1b | dec si@3dea | mov dx, 0xff@a8 | mov word ptr [bx + si], cx@99ed7f95 | add word ptr [bp + 6], 0x1234@764f	add word ptr [bp - 8], cx@9ddff8de | dec si@f9 | push dx@1b | dec si@3dea | mov dx, 0xff@a8 | mov word ptr [bx + si], cx@99ed7f95 | add word ptr [bp + 6], 0x1234@764f	F|other values left in the frame
+01	0:16,4660;1:16,4660	mov word ptr [bp - 4], si@be | mov word ptr [bp + 4], 5@31655e	mov word ptr [bp - 4], si@be | mov word ptr [bp + 4], 5@31655e	T
+01	1:16,4660;3:16,4660	xor word ptr [bp + 6], 5@06bc96ef | mul bx@89df5ac7 | mov cx, word ptr [bx + si]@cbd6 | and word ptr [bp - 2], 5@c2f5 | add cx, 5@ad30cd	xor word ptr [bp + 6], 5@06bc96ef | mul bx@89df5ac7 | mov cx, word ptr [bx + si]@cbd6 | and word ptr [bp - 2], 5@c2f5 | add cx, 5@ad30cd	T
+10	2:16,4660	mov bx, bx@5b1d | lea dx, [bp - 4]@521ab7 | xchg word ptr [bp - 2], 5@8d07	mov bx, bx@5b1d | lea dx, [bp - 6]@521ab7 | xchg word ptr [bp - 8], 5@8d07	F|not known
+00	0:16,4660;1:16,4660;2:16,4660;3:16,4660;4:16,4660;5:16,4660;6:16,4660	mov word ptr [bp - 2], dx@6e1c | xor word ptr [bp - 2], bx@fb | or word ptr [bx + 0x1234], 0xff@299a4479 | sub cx, si@139dda | mov word ptr [bp - 2], bx@5fd3 | xor dx, 0@b2 | and word ptr [bp - 2], 0@941928	mov word ptr [bp - 2], dx@6e1c | xor word ptr [bp - 2], bx@fb | or word ptr [bx + 0x1234], 0xff@299a4479 | sub cx, si@139dda | mov word ptr [bp - 2], bx@5fd3 | xor dx, 0@b2 | and word ptr [bp - 2], 0@941928	T
+00	0:4660;1:4660;2:4660	mul bx@ | push ax@	mov ax, word ptr [bp - 2]@ | add ax, word ptr [bp - 4]@ | mov word ptr [bp - 8], ax@ | push bx@	F|other values pushed
+00	0:16,4660;3:16,4660;4:16,4660	mov di, 5@9ede759f | push word ptr [bx + si]@52a5 | inc bx@53 | push cx@89e0 | add word ptr [bp - 2], dx@a70801	mov di, 5@9ede759f | push word ptr [bx + si]@52a5 | inc bx@53 | push cx@89e0 | add word ptr [bp - 2], dx@a70801	T
+11	-	mov ax, bx@ | add ax, bx@		F|other values left in the registers
+10	-	sub ax, ax@ | mov word ptr [bx], ax@		F|other values stored
+10	-	shr bx, 1@ac | xchg ax, si@68d3f0	shr bx, 1@ac | xchg ax, si@68d3f0 | or word ptr [bp + 4], 0x1234@	F|other values left in the frame
+01	1:16,4660;3:16,4660;5:16,4660	lea di, [bp - 4]@3809 | sub word ptr [bp - 4], 0xff@dcab12 | or word ptr [bp + 6], 0x10@207d | xor word ptr [bx + si], si@f97cb916 | xor word ptr [bp + 6], 0xff@ea2c | inc ax@ad	lea di, [bp - 4]@3809 | sub word ptr [bp - 4], 0xff@dcab12 | or word ptr [bp + 6], 0x10@207d | xor word ptr [bx + si], si@f97cb916 | xor word ptr [bp + 6], 0xff@ea2c | inc ax@ad	T
+11	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx], 0@	F|other values left in the registers
+10	2:16,4660;4:16,4660	xchg di, word ptr [bp - 2]@72f0 | and word ptr [bp + 4], di@79 | push word ptr [bx + si]@e6d995ac | add word ptr [bx + 0x1234], 5@e70f | or cx, cx@f03e9d | xor cx, cx@bd	xchg di, word ptr [bp - 2]@72f0 | and word ptr [bp + 4], di@79 | push word ptr [bx + si]@e6d995ac | add word ptr [bx + 0x1234], 5@e70f | or cx, cx@f03e9d | xor cx, cx@bd	T
+00	3:16,4660;4:16,4660	or si, word ptr [bp + 4]@4d1a88 | div ax@0c58 | push word ptr [bp + 6]@26 | mov bx, word ptr [bp - 2]@5c5d94 | mov ax, 0@cfbd9f | shr dx, 1@27 | xor word ptr [bp + 6], si@2bdb15	or si, word ptr [bp + 4]@4d1a88 | div ax@0c58 | push word ptr [bp + 6]@26 | mov bx, word ptr [bp - 8]@5c5d94 | mov ax, 0@cfbd9f | shr dx, 1@27 | xor word ptr [bp + 6], si@2bdb15	T
+00	0:4660;1:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values stored
+01	0:4660	add ax, bx@ | add ax, cx@ | push ax@	mov ax, 5@ | push ax@ | push ax@	F|other values pushed
+00	0:16,4660;1:16,4660;2:16,4660	or word ptr [bp + 6], si@5265ca | mov word ptr [bx + 0x1234], dx@a44df6 | mov word ptr [bp - 4], 5@7984	or word ptr [bp + 6], si@5265ca | mov word ptr [bx + 0x1234], dx@a44df6 | mov word ptr [bp - 4], 0x1234@7984	T
+00	0:4660;1:4660	xor ax, ax@ | mov word ptr [bx], ax@	xor ax, ax@ | mov word ptr [bx], ax@	T
+11	0:	dec si@0125 | mov si, 0@b80000 | jcc 5@7001 | inc si@40	mov di, 0@b80000 | jcc 5@7f01 | inc di@40	F|other values left in the registers
+10	-	mov ax, bx@ | add ax, bx@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the registers
+01	1:4660	xor ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values stored
+11	0:4660	mov ax, 5@ | push ax@	mov ax, 0x1234@ | push ax@	T
+00	0:4660;1:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov ax, bx@ | add ax, ax@ | push ax@	F|other values pushed
+00	-	mov ax, bx@ | shl ax, 1@ | push ax@	mov word ptr [bx + 0x1234], ax@ | push word ptr [bx + 0x1234]@	F|other values pushed
+01	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	xor ax, ax@ | mov word ptr [bx], ax@	F|other values stored
+01	-	mov word ptr [bx], 0@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values stored
+11	0:16,4660	or ax, si@c957 | shl ax, 1@c0765e63	or ax, si@c957 | shl ax, 1@c0765e63	T
+01	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values left in the frame
+10	-	and cx, word ptr [bp - 4]@0b | and bx, di@a7fd04	and cx, word ptr [bp - 6]@0b | and bx, di@a7fd04	F|other values left in the registers
+00	0:16,4660;1:16,4660;2:16,4660;3:16,4660;5:16,4660	mov di, 0@b80000 | jcc 5@7401 | inc di@40 | mov word ptr [bx + si], 5@7ccc5635 | push di@3140f912 | mov dx, 0x1234@43bac0	mov di, 0@b80000 | jcc 5@7401 | inc di@40 | mov word ptr [bx + si], 5@7ccc5635 | push di@3140f912 | mov dx, 0x1234@43bac0	T
+00	1:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov ax, 5@ | push ax@	F|other values pushed
+10	0:4660;1:4660	xor ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values stored
+10	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values left in the frame
+11	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40		F|other values left in the registers
+10	1:4660	mov ax, bx@ | add ax, bx@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values left in the frame
+11	0:16,4660;1:16,4660;2:16,4660	add word ptr [bp - 4], 0xff@bbbf | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40	mov word ptr [bp - 2], 5@ba6e429e | shr di, cl@913171 | push dx@d3a372c4 | inc cx@25fd	F|not known
+10	1:16,4660;3:16,4660;5:16,4660	xor di, di@95 | dec word ptr [bp + 6]@0cc9 | sub word ptr [bx + 0x1234], bx@9f1e	xor word ptr [bx + 0x1234], bx@9b | mov si, 0xff@d1 | or word ptr [bp - 4], bx@e324 | mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	F|other values stored
+11	-	sub byte ptr [bp - 2], bl@8c86cde2 | shr dx, 1@6322fd | shl cl, 1@5b2f	sub byte ptr [bp - 2], bl@8c86cde2 | shr dx, 1@6322fd | shl cl, 1@5b2f	T
+00	1:16,4660	and word ptr [bx + 0x1234], si@44 | mov cx, 0@b80000 | jcc 5@7201 | inc cx@40	and word ptr [bx + 0x1234], si@44 | mov cx, 0@b80000 | jcc 5@7201 | inc cx@40	T
+01	3:16,4660;4:16,4660	shr cx, 1@3c | mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | or word ptr [bx + si], dx@6d | add word ptr [bp + 4], si@eb | and bx, word ptr [bx + 0x1234]@398fce	shr cx, 1@3c | mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | or word ptr [bx + si], dx@6d | add word ptr [bp + 4], si@eb | and bx, word ptr [bx + 0x1234]@398fce | add si, word ptr [bp - 4]@	F|another condition
+11	1:16,4660	xor si, 0x10@24 | xchg si, 2@77	xor si, 0x10@24 | xchg si, 2@77	F|not known
+10	2:4660	xor ax, ax@ | mov word ptr [bx], ax@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+11	1:16,4660	and bx, word ptr [bp - 4]@80 | sub dx, 2@b1cf61	and bx, word ptr [bp - 6]@80 | sub dx, 2@b1cf61	F|other values left in the registers
+10	0:4660;1:4660;2:4660;3:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the registers
+10	1:16,4660;3:16,4660;4:16,4660	mov ax, 0@b80000 | jcc 5@7401 | inc ax@40 | sub bx, word ptr [bp + 6]@df | mul si@dfea	mov ax, 0@b80000 | jcc 5@7401 | inc ax@40 | sub bx, word ptr [bp + 6]@df | mul si@dfea	T
+11	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov ax, 0@ | mov word ptr [bx], ax@	F|another condition
+10	1:16,4660;2:16,4660	mov bx, di@e0ff4e | and si, cx@61 | add ax, 2@99 | cmp word ptr [bp + 6], cx@66c2	mov bx, di@e0ff4e | and si, cx@61 | add ax, 2@99 | cmp word ptr [bp + 6], cx@66c2	T
+11	-	mov word ptr [bx], 0@	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values stored
+10	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values stored
+10	0:16,4660;2:16,4660;4:16,4660	div di@668b | mov ax, 1@649e269d | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	div di@668b | mov ax, 1@649e269d | mov si, 0@b80000 | jcc 0x1234@7c01 | inc si@40	T
+01	0:16,4660;1:16,4660;2:16,4660;3:16,4660;5:16,4660;6:16,4660	mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | dec word ptr [bp - 2]@3950 | xor cx, cx@a2 | xchg bx, ax@80 | mov ax, 0@b80000 | jcc 5@7501 | inc ax@40	mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | dec word ptr [bp - 2]@3950 | xor cx, cx@a2 | xchg bx, ax@80 | mov ax, 0@b80000 | jcc 5@7501 | inc ax@40 | mov si, word ptr [bx + 0x1234]@	T
+00	0:16,4660;1:16,4660	mov dx, cx@7807da | xchg word ptr [bp - 4], bx@466d	xchg word ptr [bp - 4], bx@466d | mov dx, cx@7807da	T
+10	1:	mov si, 0@b80000 | jcc 5@7501 | inc si@40	mov si, 0@b80000 | jcc 5@7501 | inc si@40	T
+11	2:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the registers
+11	1:16,4660	xor cx, word ptr [bp + 4]@4f | or ax, word ptr [bx + si]@68	xor cx, word ptr [bp + 4]@4f | or ax, word ptr [bx + si]@68	T
+11	-	xor ax, ax@ | mov word ptr [bx], ax@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+00	0:16,4660;1:16,4660	push word ptr [bp + 6]@db	push word ptr [bp + 6]@db | mov si, word ptr [bp + 6]@	T
+01	0:16,4660	xor dx, 0x1234@63	xor dx, 0x1234@63	T
+10	0:4660;1:4660	xor ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values stored
+01	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov ax, 0@ | mov word ptr [bx], ax@	F|another condition
+10	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the frame
+01	0:16,4660	cmp word ptr [bp + 4], bx@33	cmp word ptr [bp + 4], bx@33	T
+10	0:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	F|other values pushed
+10	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov ax, 0x5678@ | push ax@	F|other values pushed
+00	0:4660;1:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov word ptr [bx + 0x1234], ax@ | push word ptr [bx + 0x1234]@	F|other values pushed
+10	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values left in the frame
+01	-	add ax, bx@ | add ax, cx@ | push ax@	mov ax, bx@ | shl ax, 2@ | push ax@	F|not known
+01	2:16,4660;4:16,4660;5:16,4660;6:16,4660	mov cx, 0@b80000 | jcc 5@7401 | inc cx@40 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40	mov cx, 0@b80000 | jcc 5@7401 | inc cx@40 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | shl di, 1@	F|another condition
+11	1:16,4660;2:16,4660;3:16,4660	mov cx, 0@b80000 | jcc 5@7c01 | inc cx@40 | mov bx, word ptr [bx + 0x1234]@feb4c658	mov cx, 0@b80000 | jcc 5@7c01 | inc cx@40 | mov bx, word ptr [bx + 0x1234]@feb4c658 | and word ptr [bp - 2], si@	F|other values left in the frame
+11	0:4660	div bx@ | push ax@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values pushed
+01	2:16,4660	push word ptr [bp - 4]@45af029c | and word ptr [bp + 6], 5@ab | xor word ptr [bx + 0x1234], cx@555b | add ax, 2@80af | and word ptr [bx + si], si@bc	xor word ptr [bx + 0x1234], cx@555b | add ax, 2@80af | and word ptr [bx + si], si@bc | and word ptr [bp + 6], 5@ab | push word ptr [bp - 4]@45af029c	F|another condition
+10	1:16,4660;4:16,4660;5:16,4660	mov si, 0xff@3e | cmp dx, cx@b56f | sub di, 0x10@8a7dfa45 | mov word ptr [bx + 0x1234], 5@5870 | mov ax, cx@f3a2 | and word ptr [bp + 6], si@5847	mov si, 0xff@3e | cmp dx, cx@b56f | sub di, 0x1234@8a7dfa45 | mov word ptr [bx + 0x1234], 0x1234@5870 | mov ax, cx@f3a2 | and word ptr [bp + 6], si@5847	F|other values stored
+00	0:16,4660;3:16,4660	sub word ptr [bp - 2], 0xff@c8f90799 | lea ax, [bp + 6]@3f55c091 | or si, 0x10@e9c8 | push bx@9e	sub word ptr [bp - 8], 0xff@c8f90799 | lea ax, [bp + 6]@3f55c091 | or si, 0x10@e9c8 | push bx@9e	F|other values left in the frame
+11	-	xchg word ptr [bp - 4], di@8a88	xchg word ptr [bp - 4], di@8a88	T
+00	0:4660	mov ax, bx@ | add ax, bx@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values left in the frame
+11	0:4660;1:4660	mov ax, bx@ | add ax, bx@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the registers
+10	1:16,4660;4:16,4660	and word ptr [bp + 6], di@a0 | cmp di, word ptr [bp - 4]@99791efc | cmp word ptr [bx + 0x1234], dx@2ae7a1 | xor word ptr [bp + 4], di@40 | xchg dx, 5@4e3484 | div si@997da0a6 | lea dx, [bx + 0x1234]@0b73	and word ptr [bp + 6], di@a0 | cmp di, word ptr [bp - 4]@99791efc | cmp word ptr [bx + 0x1234], dx@2ae7a1 | xor word ptr [bp + 4], di@40 | xchg dx, 5@4e3484 | div si@997da0a6 | lea dx, [bx + 0x1234]@0b73	F|not known
+01	-	mov dx, cx@05 | shr al, cl@0d2e	mov si, 0@b80000 | jcc 5@7c01 | inc si@40	F|not known
+00	-	mov ax, bx@ | shl ax, 1@ | push ax@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values pushed
+10	0:16,4660;1:16,4660	add si, cx@ac32f400 | xchg si, cx@a0 | xor ax, ax@bb16d8 | xor dx, word ptr [bx + 0x1234]@8a4fe5 | mov di, 0@b80000 | jcc 5@7201 | inc di@40	add dx, ax@89622c | mov cx, 0x10@f55dfa96 | xor word ptr [bp + 4], 0xff@a01d | dec di@a8d814	F|other values left in the frame
+11	0:16,4660;1:16,4660;2:16,4660;5:16,4660	dec word ptr [bp - 4]@18 | and ax, 0x1234@2f00fa00 | and word ptr [bp + 6], dx@b6b6f7 | shl dx, 1@13d88e24 | xor si, si@d1	dec word ptr [bp - 4]@18 | and ax, 0x1234@2f00fa00 | and word ptr [bp + 6], dx@b6b6f7 | shl dx, 1@13d88e24 | xor si, si@d1 | mov ax, word ptr [bp - 4]@	F|other values left in the registers
+10	1:16,4660;2:16,4660	mov bx, 0@b80000 | jcc 5@7401 | inc bx@40	mov bx, 0@b80000 | jcc 5@7401 | inc bx@40 | xor dx, dx@	F|other values left in the registers
+01	0:	shl word ptr [bp + 4], 1@9a	shl word ptr [bp + 4], 1@9a	T
+01	-	mov ax, 0@b80000 | jcc 5@7401 | inc ax@40	dec word ptr [bp + 6]@e6	F|other values left in the frame
+01	2:4660	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values pushed
+00	0:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov ax, bx@ | shl ax, 2@ | push ax@	F|not known
+11	-	shl bx, 1@976c | add word ptr [bx + si], si@386fba5d	shl bx, 1@976c | add word ptr [bx + si], si@386fba5d	T
+01	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40		F|another condition
+11	2:16,4660;5:16,4660;6:16,4660	and bx, 1@35a0b7 | cmp word ptr [bp - 2], ax@32a31dff | dec ax@42843a | and word ptr [bx + 0x1234], dx@b97c | mov si, 0@b80000 | jcc 5@7001 | inc si@40	and bx, 1@35a0b7 | cmp word ptr [bp - 2], ax@32a31dff | dec ax@42843a | and word ptr [bx + 0x1234], dx@b97c | mov si, 0@b80000 | jcc 5@7001 | inc si@40	T
+10	-	div bx@ | push ax@	div bx@ | push ax@	T
+00	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values left in the frame
+11	-	shr cx, 1@7f61cb	shr cx, 1@7f61cb	T
+00	0:16,4660;1:16,4660;4:16,4660;6:16,4660;7:16,4660	mov si, word ptr [bp - 2]@2992dd | mov si, 0@127465 | and word ptr [bp - 4], ax@0f78e532 | mov word ptr [bx + si], cx@bc | mov si, 0@b80000 | jcc 5@7501 | inc si@40	mov si, word ptr [bp - 2]@2992dd | mov si, 0@127465 | and word ptr [bp - 4], ax@0f78e532 | mov word ptr [bx + si], cx@bc | mov si, 0@b80000 | jcc 5@7501 | inc si@40 | xor ax, 0@	T
+01	0:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, bx@ | add ax, bx@	F|another condition
+00	0:16,4660;1:16,4660	and word ptr [bp - 4], si@5874 | push word ptr [bp + 4]@1b69fe	push word ptr [bp + 4]@1b69fe | and word ptr [bp - 4], si@5874	T
+10	0:4660;2:4660	mov word ptr [bx], 0@	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values stored
+01	0:16,4660;2:16,4660	push word ptr [bp + 6]@6e0b | dec word ptr [bp - 2]@cd | cmp word ptr [bp - 4], cx@09	push word ptr [bp + 6]@6e0b | dec word ptr [bp - 2]@cd | cmp word ptr [bp - 4], cx@09 | shr si, 1@	F|another condition
+00	2:16,4660	cmp word ptr [bx + 0x1234], si@450306 | mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | xor cx, 0x1234@5695	cmp word ptr [bx + 0x1234], si@450306 | mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | xor cx, 0x1234@5695	T
+00	1:4660	mov ax, bx@ | add ax, bx@	mov ax, word ptr [bp - 2]@ | add ax, word ptr [bp - 4]@ | mov word ptr [bp - 8], ax@ | push bx@	F|other values pushed
+10	-	xor word ptr [bp + 6], 5@8a6168	xor word ptr [bp + 6], 0x1234@8a6168	F|other values left in the frame
+11	2:16,4660	lea di, [bx + 0x1234]@2abfba | div cx@48 | and si, 5@964a8c | or word ptr [bp + 6], ax@cf8a	lea di, [bx + 0x1234]@2abfba | div cx@48 | and si, 5@964a8c | or word ptr [bp + 6], ax@cf8a	T
+00	-	shl ax, 1@12c86075	shl ax, 1@12c86075	T
+01	1:16,4660;2:16,4660;5:16,4660	mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | cmp word ptr [bx + si], dx@5b32 | xchg word ptr [bp + 4], 5@f6d6 | sub word ptr [bx + si], 5@91f1dd	mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | cmp word ptr [bx + si], dx@5b32 | xchg word ptr [bp + 4], 5@f6d6 | sub word ptr [bx + si], 5@91f1dd	F|not known
+10	1:2	xor word ptr [bp + 4], word ptr [bp + 4]@6f3d | cmp si, ax@dec3 | xor cx, word ptr [bp - 4]@b5f2b9 | inc 0@68 | add ax, dl@09	push cx@553a | and cx, ax@d077b1 | add word ptr [bp - 4], word ptr [bp - 4]@63aa0e6a | lea dx, bl@52f77a98	F|not known
+00	0:16,4660;6:16,4660	mov cx, si@688120 | xor cx, ax@0cd6 | or word ptr [bp - 4], cx@b7e379 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40 | div bx@5b	mov cx, si@688120 | xor cx, ax@0cd6 | or word ptr [bp - 4], cx@b7e379 | mov di, 0@b80000 | jcc 0x1234@7f01 | inc di@40 | div bx@5b	T
+11	1:4660;2:4660;3:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values left in the frame
+00	0:4660;1:4660	mov ax, bx@ | add ax, ax@ | push ax@	mov ax, bx@ | add ax, ax@ | push ax@	T
+01	4:16,4660;6:16,4660	or cx, si@98c8 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40	add si, bx@de | mov word ptr [bx + 0x1234], dx@48a1 | shl bx, 1@870e1d | sub ax, bx@9e | or word ptr [bp - 4], di@1b | xor word ptr [bp + 4], ax@03def4 | mov dx, 2@4e3b72	F|other values stored
+00	1:16,4660	mov word ptr [bp - 2], 5@2b | mov ax, 0@b80000 | jcc 5@7201 | inc ax@40 | xor word ptr [bp - 4], 0x1234@1d	mov word ptr [bp - 2], 5@2b | mov ax, 0@b80000 | jcc 5@7201 | inc ax@40 | xor word ptr [bp - 4], 0x1234@1d	T
+00	3:4660	mov ax, bx@ | shl ax, 1@ | push ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values pushed
+00	1:16,4660;2:16,4660;3:16,4660;6:16,4660	mov cx, 0x10@fe | xor cx, cx@72 | mov word ptr [bx + 0x1234], dx@de8271a1 | mov cx, ax@44be4c | mov di, 0@b80000 | jcc 5@7201 | inc di@40	mov cx, 0x10@fe | xor cx, cx@72 | mov word ptr [bx + 0x1234], dx@de8271a1 | mov cx, ax@44be4c | mov di, 0@b80000 | jcc 5@7201 | inc di@40	T
+10	1:16,4660	xchg word ptr [bx + 0x1234], ax@c7ad | and dx, word ptr [bp + 4]@e638	xchg word ptr [bx + 0x1234], ax@c7ad | and dx, word ptr [bp + 4]@e638	T
+01	3:4660	mov ax, bx@ | add ax, bx@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|another condition
+01	0:4660;3:4660	mov ax, bx@ | shl ax, 1@ | push ax@	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	F|other values pushed
+11	1:16,4660;5:16,4660;6:16,4660	add word ptr [bx + 0x1234], dx@c8 | shr di, 1@69b41364 | lea ax, [bp - 4]@3837 | shr dx, 1@03 | mov word ptr [bp + 6], cx@d383 | add bx, word ptr [bp - 2]@b1cc235f | shl ax, 1@ec98ca	add word ptr [bx + 0x1234], dx@c8 | shr di, 1@69b41364 | lea ax, [bp - 4]@3837 | shr dx, 1@03 | mov word ptr [bp + 6], cx@d383 | add bx, word ptr [bp - 2]@b1cc235f | shl ax, 1@ec98ca	T
+00	-	xor ax, ax@ | mov word ptr [bx], ax@	hlt@	F|not known
+00	0:16,4660;2:16,4660;3:16,4660	mov word ptr [bx + si], ax@c27c52ac | xchg word ptr [bp + 6], bx@5321d5 | dec dx@b573 | add word ptr [bp + 6], ax@06af5a	mov word ptr [bx + si], ax@c27c52ac | xchg word ptr [bp + 6], bx@5321d5 | dec dx@b573 | add word ptr [bp + 6], ax@06af5a	T
+00	-	inc word ptr [sp]@5205	sub ax, cx@69c9	F|not known
+00	1:16,4660	mov si, 0@b80000 | jcc 5@7401 | inc si@40	xor word ptr [bx + si], bx@8f25deba | shr bx, 1@57eb1f	F|other values stored
+11	1:16,4660;2:16,4660	sub word ptr [bp + 4], cx@10f12213 | xor dx, dx@28 | and di, 5@cd55	sub word ptr [bp + 4], cx@10f12213 | xor dx, dx@28 | and di, 5@cd55	T
+11	2:16,4660;3:16,4660	inc word ptr [bp - 4]@de3e | or word ptr [bp + 4], cx@85 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40	inc word ptr [bp - 6]@de3e | or word ptr [bp + 4], cx@85 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40	F|other values left in the frame
+10	2:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the frame
+11	0:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values left in the registers
+11	0:16,4660;1:16,4660	add bx, word ptr [bx + 0x1234]@c80693 | mov word ptr [bx + 0x1234], bx@38 | add dx, 0@42d71f88	add dx, 0@42d71f88 | add bx, word ptr [bx + 0x1234]@c80693 | mov word ptr [bx + 0x1234], bx@38	F|another condition
+00	1:16,4660;2:16,4660	push word ptr [bx + si]@c92b82 | mov ax, 0@b80000 | jcc 5@7f01 | inc ax@40 | sub word ptr [bp - 2], 0x10@a06aaa	push word ptr [bx + si]@c92b82 | mov ax, 0@b80000 | jcc 5@7f01 | inc ax@40 | sub word ptr [bp - 8], 0x10@a06aaa	F|other values left in the frame
+00	1:16,4660;2:16,4660;3:16,4660;5:16,4660	mov word ptr [bp - 4], ax@8e | add di, 5@6d | div si@b601 | mov cx, 0x1234@81 | xor si, word ptr [bp - 2]@ecea | add di, 0x10@ad743778	mov word ptr [bp - 4], ax@8e | add di, 5@6d | div si@b601 | mov cx, 0x1234@81 | xor si, word ptr [bp - 4]@ecea | add di, 0x10@ad743778	T
+10	0:16,4660;2:16,4660	mov word ptr [bx + 0x1234], dx@6d | mul si@20be24bc | mov bx, 0x1234@52e6fe	mov word ptr [bx + 0x1234], dx@6d | mul si@20be24bc | mov bx, 0x1234@52e6fe	T
+11	-	add word ptr [bp + 6], word ptr [bp + 6]@94b84174 | mov si, 0@b80000 | jcc 5@7201 | inc si@40	shr dl, 1@6678 | add di, cl@c811	F|other values left in the frame
+01	0:4660;2:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	T
+11	-	mov word ptr [bx], 0@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+01	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx], 0@	F|another condition
+01	0:16,4660;1:16,4660;2:16,4660;3:16,4660	add si, word ptr [bp + 6]@945629e4 | mov bx, 0@b80000 | jcc 5@7f01 | inc bx@40	add si, word ptr [bp + 6]@945629e4 | mov bx, 0@b80000 | jcc 5@7f01 | inc bx@40 | div dx@	F|another condition
+10	0:16,4660	mov word ptr [bx + si], ax@db3af021	mov word ptr [bx + si], ax@db3af021	T
+01	0:4660;1:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov ax, bx@ | add ax, bx@	F|another condition
+01	5:16,4660	sub word ptr [bx + 0x1234], 2@48 | mov word ptr [bx + si], 5@ef1d8c | cmp word ptr [bp - 2], si@24 | cmp word ptr [bp + 6], 0xff@91c7d8 | mov si, word ptr [bp + 4]@24833252	mov word ptr [bp - 4], cx@420e010a | mov cx, 0@b80000 | jcc 5@7001 | inc cx@40 | mov ax, 0@b80000 | jcc 5@7001 | inc ax@40	F|other values stored
+11	0:4660;1:4660	mov ax, 5@ | push ax@	mov ax, 5@ | push ax@	T
+11	1:0,1,2	mov si, 0@b80000 | jcc 5@7501 | inc si@40	mov si, 0@b80000 | jcc 5@7501 | inc si@40	T
+00	0:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov ax, bx@ | add ax, bx@	T
+00	0:16,4660	mul dx@ff66595e	mul dx@ff66595e	T
+11	3:16,4660;4:16,4660	add word ptr [bp - 2], si@520414e2 | mov si, 0@b80000 | jcc 5@7501 | inc si@40	add word ptr [bp - 2], si@520414e2 | mov si, 0@b80000 | jcc 5@7501 | inc si@40 | or word ptr [bx + si], ax@	F|other values stored
+10	0:16,4660;2:16,4660	and si, 0xff@0863e283 | shl di, 1@a2898a | xor word ptr [bp - 2], si@255c7f65 | or dx, si@ab99fa | mov dx, word ptr [bx + si]@b14585a0 | add dx, dx@d1	and si, 0xff@0863e283 | shl di, 1@a2898a | xor word ptr [bp - 2], si@255c7f65 | or dx, si@ab99fa | mov dx, word ptr [bx + si]@b14585a0 | add dx, dx@d1	T
+11	1:0,2,16	xor word ptr [bp - 2], 0x10@31fb60 | mov dx, 0@b80000 | jcc 5@7001 | inc dx@40	sub di, 0xff@b5 | xor word ptr [bx + 0x1234], ax@ce372104 | lea ax, 10@9c7f71 | lea di, dx@252ee440 | xor di, di@e0	F|other values stored
+00	0:4660;1:4660;2:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the frame
+01	0:2,5,65535;2:	mov dx, 0@b80000 | jcc 5@7001 | inc dx@40	mov dx, 0@b80000 | jcc 5@7001 | inc dx@40	T
+01	0:16,4660;1:16,4660;3:16,4660	or cx, cx@a64919 | sub word ptr [bp - 2], di@e6e282b1 | div si@2c | sub bx, si@ea0b55	or cx, cx@a64919 | sub word ptr [bp - 8], di@e6e282b1 | div si@2c | sub bx, si@ea0b55	F|other values left in the frame
+11	0:16,4660;3:16,4660;5:16,4660	sub dx, di@b635 | xor word ptr [bp + 4], dx@57 | mov word ptr [bp - 4], si@64c0e3 | push si@aeda | xor di, di@5ce3 | sub si, 0x1234@70	sub dx, di@b635 | xor word ptr [bp + 4], dx@57 | mov word ptr [bp - 4], si@64c0e3 | push si@aeda | xor di, di@5ce3 | sub si, 0x1234@70	F|other values left in the registers
+01	-	xor ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values stored
+10	0:16,4660;1:16,4660;3:16,4660	mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | cmp dx, si@174add92 | cmp di, si@70	mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | cmp dx, si@174add92 | cmp di, si@70	T
+10	1:16,4660;2:16,4660;3:16,4660;6:16,4660	add ax, si@26ba82ce | cmp word ptr [bx + 0x1234], 0x10@a60946 | xchg word ptr [bp + 4], ax@04 | and cx, 0xff@d482 | mov bx, 5@2fe387d5 | mov dx, ax@f4cc | mov word ptr [bp + 6], 5@92	add ax, si@26ba82ce | cmp word ptr [bx + 0x1234], 0x1234@a60946 | xchg word ptr [bp + 4], ax@04 | and cx, 0xff@d482 | mov bx, 0x1234@2fe387d5 | mov dx, ax@f4cc | mov word ptr [bp + 6], 0x1234@92	F|other values left in the registers
+11	2:16,4660	mov word ptr [bp + 6], 5@6be7f13d | xor cx, cx@5a5c31 | cmp word ptr [bx + 0x1234], si@899a2a55	mov word ptr [bp + 6], 0x1234@6be7f13d | xor cx, cx@5a5c31 | cmp word ptr [bx + 0x1234], si@899a2a55	F|other values left in the frame
+00	1:4660;2:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	F|other values pushed
+10	0:16,4660;2:16,4660;4:16,4660;5:16,4660	xchg word ptr [bp - 2], dx@29dd | and di, 5@8b | push word ptr [bx + si]@0441 | push bx@7f | mov bx, si@6acf | xor si, si@e253	xchg word ptr [bp - 2], dx@29dd | and di, 5@8b | push word ptr [bx + si]@0441 | push bx@7f | mov bx, si@6acf | xor si, si@e253	T
+11	0:4660	div bx@ | push ax@	hlt@	F|not known
+01	1:4660	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	mov ax, 5@ | push ax@	F|other values pushed
+11	0:4660;1:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	add ax, cx@ | add ax, bx@ | push ax@	F|other values pushed
+10	-	mov ax, 0x5678@ | push ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values pushed
+10	-	mov ax, bx@ | add ax, bx@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the registers
+00	0:16,4660	add dx, word ptr [bx + 0x1234]@9c | shl dx, 1@6d285f | sub word ptr [bx + 0x1234], 0x10@7fbac788 | dec dx@fd	add dx, word ptr [bx + 0x1234]@9c | shl dx, 1@6d285f | sub word ptr [bx + 0x1234], 0x10@7fbac788 | dec dx@fd	T
+00	1:16,4660;2:16,4660	mov word ptr [bp + 6], ax@ce35 | or word ptr [bp + 4], 1@bc491ab3 | mov bx, dx@fa13858f	mov word ptr [bp + 6], ax@ce35 | or word ptr [bp + 4], 1@bc491ab3 | mov bx, dx@fa13858f	T
+01	-	mov si, 0@b80000 | jcc 5@7501 | inc si@40	add bx, di@6070 | mov dx, 0@b80000 | jcc 5@7f01 | inc dx@40	F|another condition
+10	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the registers
+01	0:16,4660;1:16,4660	xor bx, 1@72ec25c2 | cmp ax, word ptr [bp + 6]@b0	xor bx, 1@72ec25c2 | cmp ax, word ptr [bp + 6]@b0	T
+10	1:16,4660;2:16,4660	inc di@bdf0 | xchg si, bx@b4804c15 | push ax@b18a	inc di@bdf0 | xchg si, bx@b4804c15 | push ax@b18a	T
+10	1:16,4660;2:16,4660	and word ptr [bp - 2], si@dc | and word ptr [bx + si], ax@e9 | xchg ax, bx@181b | mov ax, 1@09d2c419 | mov si, 0@b80000 | jcc 5@7001 | inc si@40	and word ptr [bp - 2], si@dc | and word ptr [bx + si], ax@e9 | xchg ax, bx@181b | mov ax, 1@09d2c419 | mov si, 0@b80000 | jcc 0x1234@7001 | inc si@40	T
+11	-	mov ax, 5@ | push ax@		F|other values pushed
+10	0:1,2,4660	xor byte ptr [bp - 4], word ptr [bx]@939aa26b | add word ptr [bp + 4], si@54f9 | mov dx, 0@b80000 | jcc 5@7401 | inc dx@40	shr cl, 1@8ea3	F|other values left in the frame
+00	0:16,4660;2:16,4660;6:16,4660	add dx, word ptr [bx + 0x1234]@81 | and di, 0@21aed7 | and ax, di@12 | or di, word ptr [bp - 4]@1e | mov word ptr [bx + 0x1234], 5@4310 | mov bx, word ptr [bp + 6]@b3ab | mov word ptr [bp - 4], bx@4559be	add dx, word ptr [bx + 0x1234]@81 | and di, 0@21aed7 | and ax, di@12 | or di, word ptr [bp - 6]@1e | mov word ptr [bx + 0x1234], 5@4310 | mov bx, word ptr [bp + 6]@b3ab | mov word ptr [bp - 6], bx@4559be	T
+10	1:16,4660;3:16,4660	mov si, 0@b80000 | jcc 5@7001 | inc si@40 | or dx, dx@e15c	mov si, 0@b80000 | jcc 5@7001 | inc si@40 | or dx, dx@e15c	T
+10	1:16,4660;2:16,4660;5:16,4660;6:16,4660	inc cx@d166e4 | shr cx, 1@8f | and dx, 0x1234@5a69 | sub dx, di@92b0b8 | lea di, [bx + si]@54797b | xchg word ptr [bx + 0x1234], cx@32f4a6	inc cx@d166e4 | shr cx, 1@8f | and dx, 0x1234@5a69 | sub dx, di@92b0b8 | lea di, [bx + si]@54797b | xchg word ptr [bx + 0x1234], cx@32f4a6 | div di@	F|other values left in the registers
+10	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40		F|other values left in the registers
+10	1:4660;3:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values left in the registers
+11	1:4660	mov ax, bx@ | add ax, bx@	add ax, cx@ | add ax, bx@ | push ax@	F|other values pushed
+10	1:4660;2:4660;3:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the registers
+01	2:16,4660	dec si@ac | or word ptr [bp + 4], di@a684 | cmp word ptr [bp - 4], cx@0701 | push bx@a8aa | mov word ptr [bx + 0x1234], 5@a0	dec si@ac | or word ptr [bp + 4], di@a684 | cmp word ptr [bp - 4], cx@0701 | push bx@a8aa | mov word ptr [bx + 0x1234], 5@a0 | add bx, 5@	F|another condition
+11	0:4660;1:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values left in the frame
+10	1:16,4660;2:16,4660;3:16,4660;5:16,4660	cmp ax, cx@4ab967 | mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | inc si@7c30 | shl dx, 1@ef	cmp ax, cx@4ab967 | mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | inc si@7c30 | shl dx, 1@ef	T
+01	-	xor ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx], 0@	F|another condition
+00	0:4660	add word ptr [bp - 2], word ptr [bp - 2]@cd61bb1a	add word ptr [bp - 2], word ptr [bp - 2]@cd61bb1a	T
+10	0:16,4660;1:16,4660;2:16,4660;3:16,4660	push word ptr [bx + si]@b150 | dec si@e5 | sub ax, dx@b9e3ffa7 | xor di, bx@2a1c95 | push ax@73	push word ptr [bx + si]@b150 | dec si@e5 | sub ax, dx@b9e3ffa7 | xor di, bx@2a1c95 | push ax@73	T
+11	-	cmp ax, dx@17 | mov word ptr [bp + 4], 5@a26a3609 | div si@8e | cmp word ptr [bp - 2], 1@c84205c1	cmp ax, dx@17 | mov word ptr [bp + 4], 5@a26a3609 | div si@8e | cmp word ptr [bp - 4], 1@c84205c1	F|another condition
+11	-	xor ax, ax@ | mov word ptr [bx], ax@	mov ax, 0@ | mov word ptr [bx], ax@	F|another condition
+11	1:16,4660	xor dx, ax@d06da1 | cmp word ptr [bp - 4], di@5052	xor dx, ax@d06da1 | cmp word ptr [bp - 6], di@5052	F|another condition
+01	0:16,4660;2:16,4660;6:16,4660;7:16,4660	or word ptr [bp - 2], 0@b439d1 | mov di, 0@b80000 | jcc 5@7401 | inc di@40 | xchg word ptr [bx + 0x1234], ax@b510ccf2 | mov di, word ptr [bp - 4]@2dde14d4 | shl di, 1@c3dfd5c3	or word ptr [bp - 2], 0@b439d1 | mov di, 0@b80000 | jcc 5@7401 | inc di@40 | xchg word ptr [bx + 0x1234], ax@b510ccf2 | mov di, word ptr [bp - 4]@2dde14d4 | shl di, 1@c3dfd5c3 | mov bx, 0x1234@	T
+11	1:16,4660;2:16,4660;3:16,4660;4:16,4660	shr ax, 1@62ce2aed | mov si, dx@d1fcf61a | mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	shr ax, 1@62ce2aed | mov si, dx@d1fcf61a | mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	T
+00	0:16,4660;1:16,4660;3:16,4660;4:16,4660	mov di, 0@b80000 | jcc 5@7501 | inc di@40 | push word ptr [bp + 4]@6fb67919 | add word ptr [bp - 4], ax@bb | xchg word ptr [bp - 2], bx@6c7e7f	mov di, 0@b80000 | jcc 5@7501 | inc di@40 | push word ptr [bp + 4]@6fb67919 | add word ptr [bp - 6], ax@bb | xchg word ptr [bp - 8], bx@6c7e7f	F|other values left in the frame
+00	-	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov ax, bx@ | shl ax, 1@ | push ax@	F|other values pushed
+00	1:4660;3:4660	xor ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values stored
+00	0:16,4660	mov bx, 0@b80000 | jcc 5@7201 | inc bx@40 | dec word ptr [bp - 2]@c1bb	and word ptr [bx + 0x1234], si@6fc996 | inc cx@b49843 | inc word ptr [bp - 2]@aeea | add word ptr [bx + 0x1234], cx@30 | and si, ax@f98c | mov bx, word ptr [bp + 6]@b4b4cfd2	F|other values stored
+11	-	shl ax, 1@4c	shl ax, 1@4c	T
+11	3:16,4660	mov bx, 0@b80000 | jcc 5@7f01 | inc bx@40	mov bx, 0@b80000 | jcc 5@7f01 | inc bx@40 | cmp cx, dx@	F|another condition
+11	2:16,4660	dec word ptr [bp - 4]@07a7 | or word ptr [bp - 4], 0@4f9734 | and word ptr [bx + si], cx@94a8	dec word ptr [bp - 4]@07a7 | or word ptr [bp - 4], 0@4f9734 | and word ptr [bx + si], cx@94a8	T
+01	2:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|another condition
+11	0:16,4660;1:16,4660;2:16,4660;3:16,4660;4:16,4660;5:16,4660;6:16,4660	shl si, 1@e126ab4a | add bx, word ptr [bp - 2]@e3ec4fd4 | push si@3ad315 | push si@dd92 | mov word ptr [bp - 4], dx@10 | shr bx, 1@3364 | shl cx, 1@7ec6a976	shl si, 1@e126ab4a | add bx, word ptr [bp - 2]@e3ec4fd4 | push si@3ad315 | push si@dd92 | mov word ptr [bp - 4], dx@10 | shr bx, 1@3364 | shl cx, 1@7ec6a976	T
+11	-	inc word ptr [bp - 4]@ba	inc word ptr [bp - 4]@ba	T
+11	0:16,4660;1:16,4660;2:16,4660	sub si, dx@ad2ba8 | lea cx, [bp - 4]@52 | dec di@5159e5	sub si, dx@ad2ba8 | lea cx, [bp - 6]@52 | dec di@5159e5	F|other values left in the registers
+11	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values left in the registers
+01	3:16,4660;4:16,4660	mov si, 0@b80000 | jcc 5@7201 | inc si@40 | mov di, dx@6e | mov word ptr [bx + si], bx@49c8573b | sub word ptr [bp + 4], ax@fd | mov bx, 0x10@a415c5	mov si, 0@b80000 | jcc 0x1234@7201 | inc si@40 | mov di, dx@6e | mov word ptr [bx + si], bx@49c8573b | sub word ptr [bp + 4], ax@fd | mov bx, 0x1234@a415c5	T
+01	0:16,4660;3:16,4660;5:16,4660;7:16,4660	mov di, word ptr [bp + 6]@90 | inc word ptr [bp - 2]@bcc313c0 | mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40	dec word ptr [bp - 4]@f4cd | dec di@0ee8 | mov word ptr [bp + 4], 5@e7 | or bx, 5@8b6a78 | mov ax, di@1678af72 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40	F|other values left in the frame
+01	-	xor ax, ax@ | mov word ptr [bx], ax@	mov ax, bx@ | add ax, ax@ | push ax@	F|other values pushed
+01	-	mov si, cx@5f264d	mov si, cx@5f264d | and si, 0x10@	F|another condition
+01	0:16,4660;2:16,4660;6:16,4660	cmp word ptr [bp + 4], 0@67 | lea si, [bx + 0x1234]@524a | cmp dx, word ptr [bp + 6]@a71e | cmp si, cx@d1552f | mul si@69 | add word ptr [bp + 4], 0x1234@553815 | sub di, word ptr [bx + si]@e4	cmp word ptr [bp + 4], 0@67 | lea si, [bx + 0x1234]@524a | cmp dx, word ptr [bp + 6]@a71e | cmp si, cx@d1552f | mul si@69 | add word ptr [bp + 4], 0x1234@553815 | sub di, word ptr [bx + si]@e4 | add bx, 5@	F|another condition
+11	0:16,4660;1:16,4660;5:16,4660	dec word ptr [bp - 2]@44ef8c30 | mov bx, si@4ea2fb | mov si, 0x10@8b98 | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40 | mov dx, cx@ee42ef	dec word ptr [bp - 4]@44ef8c30 | mov bx, si@4ea2fb | mov si, 0x10@8b98 | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40 | mov dx, cx@ee42ef	F|other values left in the frame
+01	0:16,4660;3:16,4660	xor word ptr [bp + 6], cx@807b | mov word ptr [bp - 4], 5@39834d0a | xor word ptr [bp + 4], ax@30c299e9 | or word ptr [bp - 2], 0x10@d72e77	xor word ptr [bp + 6], cx@807b | mov word ptr [bp - 4], 5@39834d0a | xor word ptr [bp + 4], ax@30c299e9 | or word ptr [bp - 4], 0x10@d72e77	F|other values left in the frame
+11	1:2,4660	lea byte ptr [bp - 2], byte ptr [bp - 2]@0e64d3 | cmp di, bx@81	lea byte ptr [bp - 2], byte ptr [bp - 2]@0e64d3 | cmp di, bx@81	T
+10	1:4660	mov ax, bx@ | add ax, bx@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+11	1:16,4660	or ax, cx@e7 | mov word ptr [bp - 2], 5@3d14 | mov di, word ptr [bx + si]@8eb4e803	or ax, cx@e7 | mov word ptr [bp - 2], 5@3d14 | mov di, word ptr [bx + si]@8eb4e803	T
+00	0:16,4660;2:16,4660;5:16,4660;6:16,4660	inc ax@8c | mov di, 0@b80000 | jcc 5@7501 | inc di@40 | mov dx, 0xff@fe5e19 | add word ptr [bp - 4], dx@06c7c5bc	inc ax@8c | mov di, 0@b80000 | jcc 5@7501 | inc di@40 | mov dx, 0xff@fe5e19 | add word ptr [bp - 4], dx@06c7c5bc | xchg dx, dx@	T
+10	0:5,4660	push dx@f64d4b78	push dx@f64d4b78	T
+11	-	mov ax, 5@ | push ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values pushed
+10	2:16,4660;3:16,4660;4:16,4660;6:16,4660	mov di, 0@b80000 | jcc 5@7f01 | inc di@40 | add si, 0x10@33 | or word ptr [bx + si], 0@22a3 | cmp di, di@962e8c2b | or dx, di@baad	mov di, 0@b80000 | jcc 5@7f01 | inc di@40 | add si, 0x10@33 | or word ptr [bx + si], 0@22a3 | cmp di, di@962e8c2b | or dx, di@baad | div bx@	F|other values left in the registers
+01	-	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values stored
+00	-	xor di, 10@70 | xor di, si@50ad | cmp bx, bx@a443a4db | cmp bx, bx@1248c8eb	inc [ax*2]@9b | or word ptr [bx + si], 0@cb | shl word ptr [bp + 4], cl@4285f8 | xor di, word ptr [bx]@0529e4e0	F|not known
+10	0:16,4660;3:16,4660	cmp dx, 0@60fad6 | sub word ptr [bx + si], bx@d2 | cmp di, 1@ef077e | or si, word ptr [bp + 4]@7534	cmp dx, 0@60fad6 | sub word ptr [bx + si], bx@d2 | cmp di, 1@ef077e | or si, word ptr [bp + 4]@7534	T
+00	0:4660;1:4660	mul bx@ | push ax@	mov word ptr [bp - 6], ax@ | mov word ptr [bp - 8], bx@ | push word ptr [bp - 6]@	F|other values pushed
+11	0:16,4660;1:16,4660;2:16,4660;6:16,4660	push word ptr [bx + 0x1234]@1b36aee6 | sub cx, 0@8f866e | shr ax, 1@6d | shr si, 1@88 | xor bx, bx@03da7c | mov cx, word ptr [bp - 4]@f006343a	push word ptr [bx + 0x1234]@1b36aee6 | sub cx, 0@8f866e | shr ax, 1@6d | shr si, 1@88 | xor bx, bx@03da7c | mov cx, word ptr [bp - 4]@f006343a | add word ptr [bp - 2], dx@	F|other values left in the frame
+01	1:1,5,65535	add bx, 00@818a7c1a | div si@8d8dbe0c | xchg word ptr [bp + 6], dx@eda0b2	add bx, 00@818a7c1a | div si@8d8dbe0c | xchg word ptr [bp + 6], dx@eda0b2	T
+10	-	mov word ptr [bx], 0@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values stored
+10	-	sub di, word ptr [bp]@818c31 | sub byte ptr [bp - 2], dx@d8a29414	sub di, word ptr [bp]@818c31 | sub byte ptr [bp - 2], dx@d8a29414	T
+10	2:16,4660;3:16,4660;5:16,4660	mov word ptr [bx + 0x1234], si@150930fc | mul si@f5e7da66 | mov di, 2@e2ca4f37 | mov word ptr [bp + 6], 5@da | shl bx, 1@45 | or word ptr [bp - 2], 2@5b89a79e	mov word ptr [bx + 0x1234], si@150930fc | mul si@f5e7da66 | mov di, 2@e2ca4f37 | mov word ptr [bp + 6], 0x1234@da | shl bx, 1@45 | or word ptr [bp - 2], 2@5b89a79e	T
+10	0:4660	mov ax, bx@ | add ax, bx@	mov ax, bx@ | add ax, bx@	T
+01	0:16,4660;1:16,4660;2:16,4660	or di, word ptr [bp - 2]@ecfe3d | push word ptr [bp - 4]@a3d4 | xchg word ptr [bp + 6], di@23f1c16e | and word ptr [bp - 2], si@28b83ec4	xchg word ptr [bp + 6], di@23f1c16e | and word ptr [bp - 2], si@28b83ec4 | or di, word ptr [bp - 2]@ecfe3d | push word ptr [bp - 4]@a3d4	F|other values left in the frame
+10	1:16,4660;2:16,4660;5:16,4660;6:16,4660;7:16,4660	mov si, word ptr [bp + 6]@d7124700 | cmp word ptr [bp + 6], ax@cae71039 | push word ptr [bp - 4]@aa | dec si@093c72 | xchg di, word ptr [bp + 4]@bfa8 | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	mov si, word ptr [bp + 6]@d7124700 | cmp word ptr [bp + 6], ax@cae71039 | push word ptr [bp - 4]@aa | dec si@093c72 | xchg di, word ptr [bp + 4]@bfa8 | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	T
+00	1:16,4660;4:16,4660;6:16,4660;8:16,4660	mov si, 0@b80000 | jcc 5@7201 | inc si@40 | push word ptr [bp - 2]@9a | sub bx, dx@da3a | and si, word ptr [bp - 2]@004245 | mov cx, 0@b80000 | jcc 5@7201 | inc cx@40	mov si, 0@b80000 | jcc 5@7201 | inc si@40 | push word ptr [bp - 2]@9a | sub bx, dx@da3a | and si, word ptr [bp - 2]@004245 | mov cx, 0@b80000 | jcc 5@7201 | inc cx@40 | mov word ptr [bx + si], cx@	F|other values stored
+00	-	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	mov ax, bx@ | shl ax, 2@ | push ax@	F|not known
+01	-	mov bx, 0@b80000 | jcc 5@7001 | inc bx@40	mov bx, 0@b80000 | jcc 5@7001 | inc bx@40	T
+10	0:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, bx@ | add ax, bx@	F|other values left in the frame
+11	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	hlt@	F|not known
+00	0:16,4660;1:16,4660	dec dx@211d025f	dec dx@211d025f | and bx, 5@	T
+10	1:16,4660;2:16,4660;6:16,4660	inc di@08 | mov cx, word ptr [bp + 4]@88 | dec dx@c6493571 | sub dx, 1@59b17d | xor cx, 5@00979c93 | add word ptr [bx + si], 0x10@1b034a2e | cmp si, 0x10@40e0	xor cx, 5@00979c93 | cmp si, 0x10@40e0 | dec dx@c6493571 | sub dx, 1@59b17d | mov cx, word ptr [bp + 4]@88 | add word ptr [bx + si], 0x10@1b034a2e | inc di@08	F|other values left in the registers
+01	1:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values left in the frame
+10	0:16,4660	or word ptr [bx + si], cx@6f31a9c3 | or word ptr [bp + 6], 0x1234@a54c21	or word ptr [bx + si], cx@6f31a9c3 | or word ptr [bp + 6], 0x1234@a54c21	T
+00	1:16,4660;5:16,4660	xor di, 0@fb | shr dx, 1@9006 | or word ptr [bp + 6], ax@8f0b	mov ax, ax@ed | or cx, word ptr [bp - 2]@c020 | sub word ptr [bp + 4], di@56 | mov ax, 0@b80000 | jcc 5@7501 | inc ax@40	F|other values left in the frame
+11	0:16,4660;1:16,4660;2:16,4660	mov si, 0@b80000 | jcc 5@7001 | inc si@40 | xchg bx, 1@c59eb50f	mov si, 0@b80000 | jcc 5@7001 | inc si@40 | xchg bx, 1@c59eb50f	F|not known
+11	0:;3:1	sub cx, cx@5fb82b | mov ax, 0@b80000 | jcc 5@7001 | inc ax@40	sub cx, cx@5fb82b | mov ax, 0@b80000 | jcc 5@7001 | inc ax@40	T
+11	0:16,4660;1:16,4660	sub si, 5@7a03 | xor ax, 0x1234@f1	sub si, 5@7a03 | xor ax, 0x1234@f1 | cmp di, 0x1234@	F|another condition
+01	0:16,4660;1:16,4660;2:16,4660	sub word ptr [bp - 4], 0xff@ebc545 | push ax@5ea5b3 | add word ptr [bp - 2], ax@707d3e96	sub word ptr [bp - 6], 0xff@ebc545 | push ax@5ea5b3 | add word ptr [bp - 8], ax@707d3e96	F|other values left in the frame
+10	1:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov ax, 0@ | mov word ptr [bx], ax@	T
+00	-	sub ax, ax@ | mov word ptr [bx], ax@	mov ax, 0@ | mov word ptr [bx], ax@	T
+01	0:16,4660	cmp word ptr [bp + 6], 2@f4 | mov word ptr [bp - 2], di@517e	cmp word ptr [bp + 6], 2@f4 | mov word ptr [bp - 2], di@517e	T
+01	1:16,4660;2:16,4660;3:16,4660;4:16,4660;6:16,4660	mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | dec word ptr [bp - 2]@2be66c | mov si, 0@b80000 | jcc 5@7f01 | inc si@40	mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | dec word ptr [bp - 2]@2be66c | mov si, 0@b80000 | jcc 5@7f01 | inc si@40	T
+01	0:16,4660;2:16,4660;4:16,4660	xchg bx, bx@7acb342d | lea di, [bx + 2]@ab3ab6c1 | mov ax, 0@b80000 | jcc 5@7401 | inc ax@40 | shr di, 1@9b53d5c5	xchg bx, bx@7acb342d | lea di, [bx + 2]@ab3ab6c1 | mov ax, 0@b80000 | jcc 5@7401 | inc ax@40 | shr di, 1@9b53d5c5 | mov cx, ax@	T
+10	-	mov ax, bx@ | shl ax, 1@ | push ax@	mul cx@ | push ax@	F|other values pushed
+10	2:16,4660	cmp si, di@bf77 | or word ptr [bx + 0x1234], ax@66604011 | cmp si, word ptr [bx + si]@ad19 | add dx, word ptr [bx + 0x1234]@4f59311c	cmp si, di@bf77 | or word ptr [bx + 0x1234], ax@66604011 | cmp si, word ptr [bx + si]@ad19 | add dx, word ptr [bx + 0x1234]@4f59311c | or cx, 1@	F|other values left in the registers
+10	0:4660	mov word ptr [bx], 0@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values stored
+10	0:16,4660;1:16,4660	push word ptr [bp + 6]@14 | mov word ptr [bp - 4], 5@c77151	push word ptr [bp + 6]@14 | mov word ptr [bp - 4], 0x1234@c77151	T
+10	1:4660	mov word ptr [bx], 0@	mov ax, bx@ | add ax, bx@	F|other values stored
+11	0:16,4660;1:16,4660;2:16,4660	mov word ptr [bp + 6], si@33d66c | add di, word ptr [bp + 6]@48ecf1 | dec bx@de	mov word ptr [bp + 6], si@33d66c | add di, word ptr [bp + 6]@48ecf1 | dec bx@de | xor bx, 0x10@	F|other values left in the registers
+00	0:4660;2:4660;3:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	T
+01	1:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov word ptr [bp - 2], bx@ | mov word ptr [bp - 4], ax@ | push word ptr [bp - 4]@	T
+11	-	mov ax, bx@ | add ax, bx@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the registers
+00	0:16,4660;1:16,4660;2:16,4660;3:16,4660	push di@921fa3 | dec word ptr [bp - 4]@dccf16 | push di@22302aa9 | xchg di, 0@09ca6d7f	push di@921fa3 | dec word ptr [bp - 4]@dccf16 | push di@22302aa9 | xchg di, 0@09ca6d7f | mov cx, dx@	F|not known
+00	0:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+00	0:16,4660	add word ptr [bp + 4], 1@438fdb21	add word ptr [bp + 4], 1@438fdb21 | or word ptr [bp + 4], 2@	F|other values left in the frame
+11	1:4660	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	mov word ptr [bx + 0x1234], ax@ | push word ptr [bx + 0x1234]@	F|other values stored
+11	0:16,4660;1:16,4660;4:16,4660	sub word ptr [bp - 4], 0xff@212d | shl dx, 1@dd68 | push word ptr [bp + 6]@345f | div ax@66 | div di@0205 | xchg word ptr [bp + 6], 5@4536	sub word ptr [bp - 6], 0xff@212d | shl dx, 1@dd68 | push word ptr [bp + 6]@345f | div ax@66 | div di@0205 | xchg word ptr [bp + 6], 5@4536	F|not known
+10	-	mov dx, word ptr [bp + 6]@a9030127 | xor di, di@dcc5d6	mov dx, word ptr [bp + 6]@a9030127 | xor di, di@dcc5d6	T
+11	1:4660	mul bx@ | push ax@	mul bx@ | push ax@	T
+11	1:16,4660;2:16,4660;3:16,4660;4:16,4660;6:16,4660	mov si, word ptr [bp + 6]@55 | mov word ptr [bp - 4], cx@86 | push bx@76 | shl si, 1@5d8d96f5 | mov cx, 0@b80000 | jcc 5@7201 | inc cx@40	mov si, word ptr [bp + 6]@55 | mov word ptr [bp - 4], cx@86 | push bx@76 | shl si, 1@5d8d96f5 | mov cx, 0@b80000 | jcc 0x1234@7201 | inc cx@40	T
+10	-	mov word ptr [bx], 0@	mov word ptr [bp - 2], bx@ | mov word ptr [bp - 4], ax@ | push word ptr [bp - 4]@	F|other values pushed
+10	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40		F|other values left in the registers
+11	-	xchg cx, word ptr [bp - 2]@cf	xchg cx, word ptr [bp - 8]@cf	F|other values left in the registers
+10	0:16,4660;2:16,4660	mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | and si, word ptr [bp - 2]@b9 | mov word ptr [bx + 0x1234], cx@378c	mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | and si, word ptr [bp - 4]@b9 | mov word ptr [bx + 0x1234], cx@378c	F|other values left in the registers
+01	-	push word ptr [bx + 0x1234]@68fc2e | mov bx, 0@b80000 | jcc 5@7201 | inc bx@40	push word ptr [bx + 0x1234]@68fc2e | mov bx, 0@b80000 | jcc 5@7201 | inc bx@40	T
+10	-	mov ax, bx@ | add ax, bx@	hlt@	F|not known
+11	-	mov word ptr [bx], 0@		F|other values stored
+10	-	mov ax, word ptr [bp + 6]@39640cae | mov si, si@05cdc1 | push word ptr [bx + si]@9d7bbcd1 | mul ax@33a817	mov ax, word ptr [bp + 6]@39640cae | mov si, si@05cdc1 | push word ptr [bx + si]@9d7bbcd1 | mul ax@33a817	T
+10	0:16,4660;1:16,4660;5:16,4660	inc cx@44216b4e | xchg word ptr [bp - 4], 5@87799b04 | mov si, word ptr [bp - 2]@c4 | lea ax, [bp + 6]@e4f4a7a4 | shr dx, 1@36 | sub word ptr [bp + 4], 1@042714	inc cx@44216b4e | xchg word ptr [bp - 6], 5@87799b04 | mov si, word ptr [bp - 8]@c4 | lea ax, [bp + 6]@e4f4a7a4 | shr dx, 1@36 | sub word ptr [bp + 4], 1@042714	F|not known
+01	0:16,4660;1:16,4660;2:16,4660;5:16,4660;6:16,4660	inc word ptr [bp + 6]@f199aa | mov dx, 0@b80000 | jcc 5@7401 | inc dx@40 | mov cx, 0xff@12 | mov dx, word ptr [bx + 0x1234]@875e | push si@1d83c3	inc word ptr [bp + 6]@f199aa | mov dx, 0@b80000 | jcc 5@7401 | inc dx@40 | mov cx, 0xff@12 | mov dx, word ptr [bx + 0x1234]@875e | push si@1d83c3	T
+10	-	xor word ptr [bp + 6], dx@183b214d	xor word ptr [bp + 6], dx@183b214d	T
+10	2:16,4660;3:16,4660;5:16,4660;6:16,4660	or si, word ptr [bx + 0x1234]@77fdf8 | mov word ptr [bx + 0x1234], cx@43 | mov word ptr [bp - 2], 5@15 | push si@ea73 | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	mov word ptr [bp - 2], 5@15 | push si@ea73 | inc bx@40 | mov word ptr [bx + 0x1234], cx@43 | jcc 5@7c01 | mov bx, 0@b80000 | or si, word ptr [bx + 0x1234]@77fdf8	F|not known
+10	-	mov ax, 0@b80000 | jcc 5@7401 | inc ax@40	inc cx@210c6e	F|other values left in the registers
+10	0:4660;1:4660;2:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	add ax, bx@ | add ax, cx@ | push ax@	F|other values pushed
+00	-	mov dx, 0@f861 | push si@e85ada | cmp bx, word ptr [bx + si]@a171	mov dx, 0@f861 | push si@e85ada | cmp bx, word ptr [bx + si]@a171	T
+11	0:16,4660;1:16,4660;3:16,4660	mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | div si@cfa4	jcc 5@7001 | inc dx@40 | div si@cfa4 | mov dx, 0@b80000	F|not known
+01	2:16,4660	add word ptr [bp + 4], dx@4bdc9461 | mov si, word ptr [bx + si]@b6ad5f77 | push word ptr [bx + 0x1234]@bb83bf2b | add word ptr [bx + si], 1@a68f3a | mov cx, 0x10@0f5aaf2b | xchg word ptr [bp - 4], di@27	add word ptr [bp + 4], dx@4bdc9461 | mov si, word ptr [bx + si]@b6ad5f77 | push word ptr [bx + 0x1234]@bb83bf2b | add word ptr [bx + si], 1@a68f3a | mov cx, 0x10@0f5aaf2b | xchg word ptr [bp - 4], di@27	T
+10	-	mov si, 0@b80000 | jcc 5@7201 | inc si@40	mov si, 0@b80000 | jcc 5@7201 | inc si@40	T
+11	0:16,4660;1:16,4660;2:16,4660;4:16,4660	xor si, 2@cdc0 | or ax, word ptr [bx + si]@89 | div dx@9f | mov bx, dx@eac1a262 | xor di, di@e53c	xor si, 2@cdc0 | or ax, word ptr [bx + si]@89 | div dx@9f | mov bx, dx@eac1a262 | xor di, di@e53c | xor word ptr [bp + 4], dx@	F|other values left in the frame
+01	3:4660	sub ax, ax@ | mov word ptr [bx], ax@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+11	-	mov ax, 0x5678@ | push ax@	div bx@ | push dx@	F|other values pushed
+11	2:4660	mov ax, bx@ | add ax, bx@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the registers
+11	0:4660;3:4660	sub ax, ax@ | mov word ptr [bx], ax@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+00	1:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values left in the frame
+11	0:16,4660;1:16,4660;2:16,4660	shr cx, 1@1cb3c6 | xchg word ptr [bx + 0x1234], si@bdf4d023 | cmp di, 0@0e1e4d83	shr cx, 1@1cb3c6 | cmp di, 0@0e1e4d83 | xchg word ptr [bx + 0x1234], si@bdf4d023	T
+01	2:16,4660;6:16,4660	mov word ptr [bx + si], dx@da | mov cx, 0@b80000 | jcc 5@7c01 | inc cx@40 | xor dx, word ptr [bp - 4]@25b6	or cx, si@66 | lea dx, [bx + 0x1234]@42c1d327 | cmp di, 0@32c40607 | mov ax, 0@b80000 | jcc 5@7f01 | inc ax@40 | div si@11f16051	F|other values stored
+01	0:16,4660	div ax@cca057	div ax@cca057	T
+00	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+01	2:16,4660	div cx@a51da2 | and cx, 0@15 | dec word ptr [bp + 6]@c7b4b0b4	div cx@a51da2 | and cx, 0@15 | dec word ptr [bp + 6]@c7b4b0b4	T
+11	1:4660	mov ax, bx@ | add ax, bx@	mov ax, bx@ | add ax, bx@	T
+10	-	mul bx@ | push ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values pushed
+11	1:16,4660;2:16,4660;4:16,4660;6:16,4660	push cx@82 | sub dx, 2@02 | add dx, 2@2dcf | cmp word ptr [bp + 6], 0@cd23 | mov word ptr [bp + 6], cx@c6a240 | mov cx, di@f3	push cx@82 | sub dx, 2@02 | add dx, 2@2dcf | cmp word ptr [bp + 6], 0@cd23 | mov word ptr [bp + 6], cx@c6a240 | mov cx, di@f3 | cmp word ptr [bp - 4], bx@	F|another condition
+00	0:4660;1:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	xor ax, ax@ | mov word ptr [bx], ax@	F|other values stored
+10	0:16,4660;1:16,4660;4:16,4660;5:16,4660	mov cx, 0@b80000 | jcc 5@7201 | inc cx@40 | xor word ptr [bp - 4], bx@78 | xor word ptr [bx + 0x1234], ax@79e4294b | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov cx, 0@b80000 | jcc 5@7201 | inc cx@40 | xor word ptr [bp - 6], bx@78 | xor word ptr [bx + 0x1234], ax@79e4294b | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the frame
+11	0:16,4660;2:16,4660;3:16,4660	mov di, 0@b80000 | jcc 5@7401 | inc di@40 | mul ax@e1512d	mov di, 0@b80000 | jcc 5@7401 | inc di@40 | mul ax@e1512d | dec ax@	F|other values left in the registers
+00	-	sub ax, ax@ | mov word ptr [bx], ax@	xor ax, ax@ | mov word ptr [bx], ax@	T
+00	1:16,4660	sub bx, 5@7df0 | push dx@a8c5b53f	sub bx, 5@7df0 | push dx@a8c5b53f	T
+11	0:16,4660;2:16,4660;4:16,4660	mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | push word ptr [bp + 4]@a8fb58bf	mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | push word ptr [bp + 4]@a8fb58bf | shl si, 1@	F|other values left in the registers
+01	0:16,4660	mov word ptr [bp + 6], 5@d1	mov word ptr [bp + 6], 5@d1	T
+01	-	xor ax, ax@ | mov word ptr [bx], ax@	hlt@	F|not known
+01	1:16,4660;2:16,4660	and di, 2@a3 | and word ptr [bx + 0x1234], 0x1234@af | cmp cx, 0xff@1538bf | xor ax, ax@4f84121d | xchg word ptr [bx + si], ax@0131 | mov si, 0@b80000 | jcc 5@7501 | inc si@40	mov si, 0@b80000 | xor ax, ax@4f84121d | and di, 2@a3 | xchg word ptr [bx + si], ax@0131 | cmp cx, 0xff@1538bf | and word ptr [bx + 0x1234], 0x1234@af | jcc 5@7501 | inc si@40	F|not known
+10	1:16,4660;4:16,4660;5:16,4660	add dx, word ptr [bp + 4]@2a | add si, word ptr [bp - 2]@f2eb26d0 | and si, word ptr [bp + 6]@74d7 | xor si, si@17aa | mov word ptr [bx + si], 5@38d724 | cmp cx, word ptr [bp - 2]@9d5729b2	add dx, word ptr [bp + 4]@2a | add si, word ptr [bp - 2]@f2eb26d0 | and si, word ptr [bp + 6]@74d7 | xor si, si@17aa | mov word ptr [bx + si], 5@38d724 | cmp cx, word ptr [bp - 2]@9d5729b2	T
+00	0:4660;1:4660	sub ax, ax@ | mov word ptr [bx], ax@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+11	1:16,4660;3:16,4660	div si@3d99e133 | inc ax@0d10953f | mov cx, 0xff@e1c6 | mov word ptr [bx + si], cx@fb80e95f | add word ptr [bp + 6], di@cf1284be | or si, 2@69	div si@3d99e133 | inc ax@0d10953f | mov cx, 0xff@e1c6 | mov word ptr [bx + si], cx@fb80e95f | add word ptr [bp + 6], di@cf1284be | or si, 2@69	T
+10	0:16,4660;1:16,4660;2:16,4660	push word ptr [bp - 2]@5f | cmp word ptr [bp - 4], 0@72f12d74	push word ptr [bp - 2]@5f | cmp word ptr [bp - 4], 0@72f12d74 | mov word ptr [bp - 4], 5@	F|other values left in the frame
+11	-	cmp word ptr [bp - 2], si@18aea6 | xor word ptr [bp + 4], 2@eecb	cmp word ptr [bp - 8], si@18aea6 | xor word ptr [bp + 4], 2@eecb	T
+01	2:16,4660;3:16,4660	xor bx, word ptr [bp - 4]@15d3 | xor dx, word ptr [bx + 0x1234]@de54ee | xor dx, word ptr [bp - 2]@82aa5c21 | mul ax@c5 | xor bx, word ptr [bp + 6]@6605	xor bx, word ptr [bp + 6]@6605 | xor bx, word ptr [bp - 4]@15d3 | mul ax@c5 | xor dx, word ptr [bp - 2]@82aa5c21 | xor dx, word ptr [bx + 0x1234]@de54ee	F|another condition
+11	0:16,4660;1:16,4660;3:16,4660	lea dx, [bx + 0x1234]@b887d7 | sub cx, dx@6a7c12 | mov cx, dx@5aaf2b | xor ax, ax@55ddc738 | or bx, 0x10@63 | sub word ptr [bp - 4], dx@6b84 | xchg word ptr [bx + 0x1234], 5@fe	lea dx, [bx + 0x1234]@b887d7 | sub cx, dx@6a7c12 | mov cx, dx@5aaf2b | xor ax, ax@55ddc738 | or bx, 0x10@63 | sub word ptr [bp - 6], dx@6b84 | xchg word ptr [bx + 0x1234], 5@fe	F|not known
+01	0:16,4660;2:16,4660	mov ax, dx@8bb6 | push dx@862db854 | lea cx, [bx + 0x1234]@506f6d | shl bx, 1@04f08f5d | push word ptr [bp + 4]@07b1 | push dx@cc4fc77f | or word ptr [bp + 4], dx@b9a548b1	mov ax, dx@8bb6 | push dx@862db854 | lea cx, [bx + 0x1234]@506f6d | shl bx, 1@04f08f5d | push word ptr [bp + 4]@07b1 | push dx@cc4fc77f | or word ptr [bp + 4], dx@b9a548b1	T
+11	0:4660;1:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 6], ax@ | mov word ptr [bp - 8], bx@ | push word ptr [bp - 6]@	F|other values pushed
+00	0:4660;1:4660	mov ax, bx@ | add ax, bx@	xor ax, ax@ | mov word ptr [bx], ax@	F|other values stored
+00	0:4660;2:4660	mov ax, bx@ | add ax, bx@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	T
+11	0:4660;2:4660	div bx@ | push ax@	mov ax, bx@ | shl ax, 2@ | push ax@	F|not known
+11	0:16,4660;1:16,4660;3:16,4660	lea ax, [bx + 0x1234]@c133aec9 | mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	lea ax, [bx + 0x1234]@c133aec9 | mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	T
+01	0:16,4660	inc bx@8f	inc bx@8f	T
+01	0:0,16,65535	shl word ptr [bp + 4], 1@d767d82f	shl word ptr [bp + 4], 1@d767d82f	T
+00	0:16,4660;1:16,4660;3:16,4660;4:16,4660;7:16,4660	mov cx, 0@b80000 | jcc 5@7201 | inc cx@40 | push word ptr [bp + 6]@5ecb35 | cmp word ptr [bx + si], 1@39 | mov bx, ax@497d1a35 | or word ptr [bp - 4], bx@776d	mov cx, 0@b80000 | jcc 5@7201 | inc cx@40 | push word ptr [bp + 6]@5ecb35 | cmp word ptr [bx + si], 1@39 | mov bx, ax@497d1a35 | or word ptr [bp - 4], bx@776d | mov word ptr [bp - 4], dx@	F|other values left in the frame
+00	0:16,4660	mov word ptr [bp - 2], 5@a206b4	mov word ptr [bp - 2], 5@a206b4	T
+11	0:4660;2:4660;3:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the registers
+01	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|another condition
+11	-	xor ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values stored
+10	-	mov bx, bx@9c	mov bx, bx@9c	T
+01	-	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values stored
+00	1:16,4660;2:16,4660;5:16,4660	xchg word ptr [bp + 6], dx@55a242 | add word ptr [bp + 4], dx@6ed5	xor ax, ax@13 | dec di@35b15f | xor word ptr [bx + si], cx@a4025ec5 | xor word ptr [bp + 6], 0x10@098253c0 | mov dx, 0@b80000 | jcc 5@7401 | inc dx@40	F|other values stored
+10	1:4660;2:4660;3:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	F|other values pushed
+10	0:16,4660;1:16,4660	mov word ptr [bx + 0x1234], 5@cd67889f | add word ptr [bp + 4], ax@34 | xor word ptr [bx + si], di@b84fe697	mov word ptr [bx + 0x1234], 5@cd67889f | add word ptr [bp + 4], ax@34 | xor word ptr [bx + si], di@b84fe697	T
+10	2:4660	mov ax, 0x5678@ | push ax@	mov ax, bx@ | shl ax, 2@ | push ax@	F|not known
+11	-	mov di, 0x1234@082833 | push word ptr [bx + 0x1234]@15eb	mov di, 0x1234@082833 | push word ptr [bx + 0x1234]@15eb	T
+11	1:16,4660;2:16,4660	cmp word ptr [bp - 2], dx@f382 | xor cx, cx@5ceeda | mov si, dx@f7	cmp word ptr [bp - 2], dx@f382 | xor cx, cx@5ceeda | mov si, dx@f7 | xor word ptr [bp + 4], 0x1234@	F|other values left in the frame
+01	-	xor ax, ax@ | mov word ptr [bx], ax@	mov ax, bx@ | add ax, bx@	F|other values stored
+10	-	xor ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx], 0@	F|other values left in the registers
+00	0:16,4660	xor word ptr [bx + 0x1234], 1@6c94 | mov dx, 1@a1c28bfa	mov dx, 1@a1c28bfa | xor word ptr [bx + 0x1234], 1@6c94	T
+01	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40		F|another condition
+00	0:16,4660;1:16,4660	xchg dx, word ptr [bx + si]@a136c6 | add ax, 2@0ab80ca1 | xchg word ptr [bp + 4], si@04	xchg dx, word ptr [bx + si]@a136c6 | add ax, 2@0ab80ca1 | xchg word ptr [bp + 4], si@04	T
+11	0:16,4660	and ax, 0xff@921103	and ax, 0xff@921103	T
+01	0:16,4660;1:16,4660	dec di@e2ced3d2 | or word ptr [bx + si], 0x10@ff4b26	dec di@e2ced3d2 | or word ptr [bx + si], 0x10@ff4b26	T
+11	1:16,4660;3:16,4660;5:16,4660;6:16,4660	sub word ptr [bp + 6], si@0626de | mov bx, 0xff@9b1a | xor ax, 0x10@effe5f | cmp word ptr [bp - 2], bx@a90e | and word ptr [bp - 2], 1@bb58 | xor word ptr [bx + si], ax@2fa00c | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	sub word ptr [bp + 6], si@0626de | mov bx, 0xff@9b1a | xor ax, 0x10@effe5f | cmp word ptr [bp - 2], bx@a90e | and word ptr [bp - 2], 1@bb58 | xor word ptr [bx + si], ax@2fa00c | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	T
+01	1:16,4660;4:16,4660	mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40 | div dx@ece5	mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40 | div dx@ece5 | cmp word ptr [bx + si], dx@	F|another condition
+11	0:16,4660;3:16,4660;6:16,4660	dec di@8fec | mov word ptr [bx + 0x1234], 5@d9b085 | push si@aa | cmp word ptr [bx + si], 5@eb | push ax@b6f52d | mov word ptr [bp + 4], di@27bf | lea bx, [bx + 0x1234]@28	dec di@8fec | mov word ptr [bx + 0x1234], 5@d9b085 | push si@aa | cmp word ptr [bx + si], 5@eb | push ax@b6f52d | mov word ptr [bp + 4], di@27bf | lea bx, [bx + 0x1234]@28	T
+00	0:16,4660	div cx@af823a	div cx@af823a	T
+10	-	xor ax, ax@ | mov word ptr [bx], ax@		F|other values stored
+01	0:16,4660	mov word ptr [bx + 0x1234], 5@ae1d2e61 | and dx, word ptr [bp + 4]@39 | push word ptr [bp - 4]@b70edc | xor di, di@bda8 | xor word ptr [bp + 4], bx@b55d1b7d	mov word ptr [bx + 0x1234], 5@ae1d2e61 | and dx, word ptr [bp + 4]@39 | push word ptr [bp - 4]@b70edc | xor di, di@bda8 | xor word ptr [bp + 4], bx@b55d1b7d	T
+00	1:16,4660	mov word ptr [bx + si], 5@ac	mov word ptr [bx + si], 5@ac | sub word ptr [bp - 2], bx@	F|other values left in the frame
+01	-	xor cx, ax@73bc0558 | mov bx, 0@b80000 | jcc 5@7201 | inc bx@40	sub word ptr [bp - 2], bx@a2 | mov dx, 0@b80000 | jcc 5@7f01 | inc dx@40	F|other values left in the frame
+01	0:4660;1:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the frame
+10	0:16,4660;1:16,4660;2:16,4660	add dx, ax@f7fc | mov bx, 0@b80000 | jcc 5@7001 | inc bx@40	add dx, ax@f7fc | mov bx, 0@b80000 | jcc 5@7001 | inc bx@40	T
+11	1:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	xor ax, ax@ | mov word ptr [bx], ax@	F|other values stored
+10	1:4660;2:4660;3:4660	xor ax, ax@ | mov word ptr [bx], ax@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+00	0:4660;2:4660	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	mov ax, word ptr [bp - 2]@ | add ax, word ptr [bp - 4]@ | mov word ptr [bp - 8], ax@ | push bx@	F|other values left in the frame
+01	1:4660;3:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|another condition
+11	0:16,4660;1:16,4660;4:16,4660	lea bx, [si]@d62e1b2e | mov ax, 2@11 | dec bx@ad | xchg bx, 2@059d | sub ax, word ptr [bp - 2]@575da0	lea bx, [si]@d62e1b2e | mov ax, 2@11 | dec bx@ad | xchg bx, 2@059d | sub ax, word ptr [bp - 4]@575da0	F|not known
+11	2:16,4660;4:16,4660;5:16,4660	inc word ptr [bp + 6]@d24597 | push word ptr [bp - 4]@8c7b4377 | cmp word ptr [bp - 4], si@33b4 | xor di, di@c4754c | dec ax@eaa8	inc word ptr [bp + 6]@d24597 | push word ptr [bp - 4]@8c7b4377 | cmp word ptr [bp - 4], si@33b4 | xor di, di@c4754c | dec ax@eaa8 | xor ax, ax@	F|other values left in the registers
+00	0:16,4660	shl dx, 1@1c6a74 | and si, 0x10@be903c6c | add word ptr [bp - 4], si@e9 | dec word ptr [bp - 4]@2f926b	or word ptr [bp - 4], bx@342b	F|other values left in the frame
+11	-	mov ax, bx@ | add ax, bx@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+11	1:16,4660;2:16,4660;3:16,4660	push si@c79e | mov di, 0@b80000 | jcc 5@7401 | inc di@40	push si@c79e | mov di, 0@b80000 | jcc 0x1234@7401 | inc di@40	T
+11	-	mov ax, bx@ | add ax, bx@	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values left in the registers
+01	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|another condition
+11	0:65535;2:0,5	add dx, 10@f021b0 | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	add dx, 10@f021b0 | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	T
+01	0:16,4660;1:16,4660;2:16,4660;3:16,4660	mov word ptr [bp - 2], di@b5d34e | shr dx, 1@c4 | cmp cx, 2@a4087a18 | or word ptr [bp - 2], 2@8d785b	mov word ptr [bp - 2], di@b5d34e | shr dx, 1@c4 | cmp cx, 2@a4087a18 | or word ptr [bp - 2], 2@8d785b | and word ptr [bx + si], 0@	F|other values stored
+00	0:16,4660	xchg bx, si@0b94db | mov bx, bx@05	xchg bx, si@0b94db | mov bx, bx@05	T
+11	1:16,4660	mov si, 0@b80000 | jcc 5@7f01 | inc si@40	mov si, 0@b80000 | jcc 0x1234@7f01 | inc si@40	T
+10	0:16,4660;1:16,4660;2:16,4660;3:16,4660;5:16,4660	lea ax, [bx + si]@1c | mov si, dx@c328ea | div di@744f8c48 | xor word ptr [bp + 4], ax@b4dd | sub word ptr [bp + 4], si@0d | shr di, 1@4f	lea ax, [bx + si]@1c | mov si, dx@c328ea | div di@744f8c48 | xor word ptr [bp + 4], ax@b4dd | sub word ptr [bp + 4], si@0d | shr di, 1@4f	T
+01	0:16,4660;1:16,4660	cmp word ptr [bp - 2], cx@e5115cfd | cmp si, cx@52e4	cmp word ptr [bp - 4], cx@e5115cfd | cmp si, cx@52e4	T
+11	1:16,4660;3:16,4660;5:16,4660	mov word ptr [bp + 6], 5@30da | shl bx, 1@752f76 | xor cx, cx@b4b0f742 | inc si@c896 | div cx@6355ac | cmp dx, word ptr [bp + 4]@7a34	mov word ptr [bp + 6], 5@30da | cmp dx, word ptr [bp + 4]@7a34 | inc si@c896 | shl bx, 1@752f76 | xor cx, cx@b4b0f742 | div cx@6355ac	F|another condition
+10	0:4660;1:4660	mov ax, 5@ | push ax@	div bx@ | push dx@	F|other values pushed
+01	-	add ax, bx@ | add ax, cx@ | push ax@	add ax, bx@ | add ax, cx@ | push ax@	T
+11	0:16,4660	or si, 0x1234@05bb5b	or si, 0x1234@05bb5b	T
+01	1:16,4660;4:16,4660	xor dx, dx@724bc2 | sub word ptr [bx + 0x1234], 0@8f | add word ptr [bx + 0x1234], ax@4f2dc069 | add word ptr [bp - 4], ax@6b1d2f64 | add word ptr [bp + 6], 1@0e | push word ptr [bp + 6]@dd	xor dx, dx@724bc2 | sub word ptr [bx + 0x1234], 0@8f | add word ptr [bx + 0x1234], ax@4f2dc069 | add word ptr [bp - 4], ax@6b1d2f64 | add word ptr [bp + 6], 1@0e | push word ptr [bp + 6]@dd	T
+10	2:16,4660	mov bx, 5@3e | mov word ptr [bp - 2], 5@18f120 | push si@1feaae | mov word ptr [bx + 0x1234], dx@fcdb | cmp word ptr [bp + 4], 0@8004b5 | push word ptr [bp + 6]@10f1d3	mov bx, 5@3e | mov word ptr [bp - 8], 5@18f120 | push si@1feaae | mov word ptr [bx + 0x1234], dx@fcdb | cmp word ptr [bp + 4], 0@8004b5 | push word ptr [bp + 6]@10f1d3	T
+11	-	add word ptr [bp - 4], di@0df8f1b9	add word ptr [bp - 6], di@0df8f1b9	F|other values left in the frame
+00	-	mov word ptr [bx], 0@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values stored
+10	2:16,4660	add word ptr [bp + 6], 0x10@668ff944 | xor word ptr [bx + si], dx@d0f735 | shl dx, 1@d9	shl dx, 1@d9 | xor word ptr [bx + si], dx@d0f735 | add word ptr [bp + 6], 0x10@668ff944	F|other values stored
+11	3:16,4660;5:16,4660	push bx@a3f6 | div ax@3a | mov ax, 0x1234@48 | cmp di, 2@8b | add word ptr [bp - 4], 0@97b3e6 | mov bx, 0@b80000 | jcc 5@7201 | inc bx@40	mov cx, 0@b80000 | jcc 5@7401 | inc cx@40 | mov word ptr [bx + 0x1234], cx@56 | or word ptr [bp - 4], cx@51dc | or word ptr [bx + si], di@2a2df3	F|other values pushed
+11	0:16,4660	xchg word ptr [bp + 4], dx@8456	xchg word ptr [bp + 4], dx@8456	T
+01	0:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, bx@ | add ax, bx@	F|other values left in the frame
+11	0:16,4660;3:16,4660	and word ptr [bp + 4], 1@f3 | xor dx, cx@b233 | dec bx@eb | push cx@4bf5c0	and word ptr [bp + 4], 1@f3 | xor dx, cx@b233 | dec bx@eb | push cx@4bf5c0	T
+11	1:16,4660	xor word ptr [bp - 2], di@58a386 | dec word ptr [bp - 4]@4925c54d | sub word ptr [bp + 6], ax@6f2f15	sub word ptr [bp + 6], ax@6f2f15 | xor word ptr [bp - 2], di@58a386 | dec word ptr [bp - 4]@4925c54d	F|another condition
+11	0:16,4660;1:16,4660	dec word ptr [bp - 2]@a164 | and word ptr [bx + si], di@fb | inc bx@2fb5af | cmp word ptr [bx + si], cx@2fba15 | xor word ptr [bp - 2], ax@50 | inc word ptr [bp - 2]@d24d2794	xchg word ptr [bx + 0x1234], 5@45 | and word ptr [bp + 6], 0@95	F|not known
+10	-	div dx@a796	div dx@a796	T
+10	0:4660;1:4660	mov ax, bx@ | add ax, ax@ | push ax@	mov ax, 0x5678@ | push ax@	F|other values pushed
+11	2:16,4660	lea ax, [bx + si]@51 | dec word ptr [bp - 2]@0349c6 | cmp si, di@456e	lea ax, [bx + si]@51 | dec word ptr [bp - 8]@0349c6 | cmp si, di@456e	F|other values left in the frame
+10	0:16,4660;3:16,4660	mov word ptr [bp - 2], si@400e16 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40 | lea si, [bx + si]@4a	mov word ptr [bp - 2], si@400e16 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40 | lea si, [bx + si]@4a	T
+11	-	mov byte ptr [bp - 2], bx@ea328a | cmp word ptr [bp + 6], ah@4bc334	mov byte ptr [bp - 2], bx@ea328a | cmp word ptr [bp + 6], ah@4bc334	F|not known
+11	1:16,4660;2:16,4660;6:16,4660	mov word ptr [bx + 0x1234], di@85bf | shr cx, 1@58b8 | div cx@738a | mov word ptr [bp - 4], dx@f17bcb | mov cx, 0@b80000 | jcc 5@7c01 | inc cx@40	mov word ptr [bx + 0x1234], di@85bf | shr cx, 1@58b8 | div cx@738a | mov word ptr [bp - 4], dx@f17bcb | mov cx, 0@b80000 | jcc 5@7c01 | inc cx@40 | cmp si, si@	F|another condition
+00	-	push word ptr [bp + 4]@d145 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40	push word ptr [bp + 4]@d145 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40	T
+01	2:16,4660	mov word ptr [bp + 6], 5@727aba44 | lea bx, [bx + si]@8a4afdb8	mov word ptr [bp + 6], 5@727aba44 | lea bx, [bx + si]@8a4afdb8 | cmp ax, 0@	F|another condition
+00	0:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov word ptr [bx], 0@	F|other values pushed
+11	-	mov word ptr [bx], 0@	mov word ptr [bx], 0@	T
+11	0:1	or dx, dx@f6	or dx, dx@f6	T
+00	1:16,4660	push si@c469e3ca | mul dx@80e3b7	push si@c469e3ca | mul dx@80e3b7	T
+00	-	mov ax, bx@ | shl ax, 1@ | push ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values pushed
+01	0:16,4660;1:16,4660	and word ptr [bx + 0x1234], bx@07 | push ax@4229a837 | mov dx, word ptr [bp - 4]@3d3d | add word ptr [bp - 4], si@3e | add si, word ptr [bp - 2]@38	and word ptr [bx + 0x1234], bx@07 | push ax@4229a837 | mov dx, word ptr [bp - 4]@3d3d | add word ptr [bp - 4], si@3e | add si, word ptr [bp - 4]@38	F|another condition
+11	0:16,4660	mov word ptr [bx + si], bx@1fb1	mov word ptr [bx + si], bx@1fb1 | xor dx, dx@	F|other values left in the registers
+11	0:;1:1,4660;2:1	mov ax, 0@b80000 | jcc 5@7f01 | inc ax@40 | mov word ptr [bp - 2], 0x0@41	xchg word ptr [bp - 4], dx@2f | shr word ptr [bp - 2], 2@c83a2a | mov word ptr [bp + si], bh@ff869b24 | xor cx, dl@96	F|not known
+11	-	sub ax, ax@ | mov word ptr [bx], ax@		F|other values stored
+01	0:4660;1:4660;2:4660;3:4660	mov ax, bx@ | add ax, bx@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|another condition
+11	0:4660;3:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values left in the registers
+01	1:16,4660;3:16,4660	mov cx, 0@b80000 | jcc 5@7201 | inc cx@40	mov cx, 0@b80000 | jcc 5@7201 | inc cx@40 | xor cx, 0x10@	F|another condition
+01	0:16,4660	sub word ptr [bp + 4], 0x1234@6de4	sub word ptr [bp + 4], 0x1234@6de4	F|other values left in the frame
+10	3:16,4660	add word ptr [bx + si], 0xff@7a8ee4 | mov word ptr [bp + 6], 5@1d2710 | or word ptr [bp + 6], si@17833b | mov word ptr [bp + 6], dx@97 | xchg word ptr [bx + si], 5@65 | mov di, 0@b80000 | jcc 5@7401 | inc di@40	add word ptr [bx + si], 0xff@7a8ee4 | mov word ptr [bp + 6], 5@1d2710 | or word ptr [bp + 6], si@17833b | mov word ptr [bp + 6], dx@97 | xchg word ptr [bx + si], 5@65 | mov di, 0@b80000 | jcc 5@7401 | inc di@40	F|not known
+10	0:16,4660;1:16,4660	shl di, 1@e1	shl di, 1@e1 | and bx, dx@	F|other values left in the registers
+11	0:4660;1:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	F|other values pushed
+11	0:16,4660;2:16,4660	mov word ptr [bx + si], si@a743 | mov bx, 0@3e | dec ax@142c44	mov word ptr [bx + si], si@a743 | mov bx, 0@3e | dec ax@142c44	T
+01	0:16,4660;3:0,2	add ax, al@323a | mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40	xor cx, word ptr [ ]@ebe6d0 | mov dx, 0@b80000 | jcc 5@7c01 | inc dx@40	F|another condition
+10	1:4660;2:4660	mov ax, 0x5678@ | push ax@	mov word ptr [bp - 6], ax@ | mov word ptr [bp - 8], bx@ | push word ptr [bp - 6]@	F|other values pushed
+10	0:16,4660	shr bx, 1@f9	shr bx, 1@f9	T
+11	1:16,4660;2:16,4660;4:16,4660;5:16,4660	sub cx, word ptr [bp + 4]@a8 | sub word ptr [bp - 4], bx@0a | sub word ptr [bx + 0x1234], bx@b9e5a1f5 | mov dx, word ptr [bp - 2]@543bd34a | push word ptr [bx + si]@d915909f | shr dx, 1@a8	sub cx, word ptr [bp + 4]@a8 | sub word ptr [bp - 4], bx@0a | sub word ptr [bx + 0x1234], bx@b9e5a1f5 | mov dx, word ptr [bp - 2]@543bd34a | push word ptr [bx + si]@d915909f | shr dx, 1@a8	T
+10	0:16,4660	dec si@d7b0 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40	or bx, 0x10@989a3d	F|other values left in the registers
+00	0:16,4660;1:16,4660;2:16,4660	cmp word ptr [bp - 4], dx@9895 | mov word ptr [bp - 2], 5@d9ad0be8 | and word ptr [bx + 0x1234], 0@cfc5	cmp word ptr [bp - 4], dx@9895 | mov word ptr [bp - 4], 5@d9ad0be8 | and word ptr [bx + 0x1234], 0@cfc5	T
+01	1:16,4660	inc cx@fa1c | mov bx, word ptr [bx + 0x1234]@fc00 | mov bx, 2@31a70f	dec cx@4b789a04 | and word ptr [bp - 2], 0xff@68	F|other values left in the frame
+00	-	mul bx@ | push ax@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values pushed
+10	-	xchg dx, word ptr [bx + 0x1234]@0a0168 | mul dx@fd | xor word ptr [bp - 2], ax@1a	xchg dx, word ptr [bx + 0x1234]@0a0168 | mul dx@fd | xor word ptr [bp - 8], ax@1a	F|other values left in the frame
+10	0:4660;1:4660;2:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values left in the registers
+10	0:4660;1:4660;2:4660;3:4660	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values pushed
+10	0:16,4660;2:16,4660;3:16,4660	add si, word ptr [bx + 0x1234]@ac | shl bx, 1@d2d40a | push word ptr [bp - 2]@2d | xor dx, dx@543d | or word ptr [bp - 2], ax@624fad	shl bx, 1@d2d40a | push word ptr [bp - 2]@2d | add si, word ptr [bx + 0x1234]@ac | or word ptr [bp - 2], ax@624fad | xor dx, dx@543d	F|other values left in the registers
+01	0:4660;1:4660	mov ax, bx@ | add ax, bx@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+01	3:4660	mov ax, 0x5678@ | push ax@	mov ax, word ptr [bp - 2]@ | add ax, word ptr [bp - 4]@ | mov word ptr [bp - 8], ax@ | push bx@	F|other values pushed
+10	0:4660;2:4660	add ax, bx@ | add ax, cx@ | push ax@	mov ax, bx@ | shl ax, 2@ | push ax@	F|not known
+11	-	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	mov ax, bx@ | shl ax, 1@ | push ax@	F|other values pushed
+01	0:16,4660;1:16,4660;3:16,4660	shr cx, 1@6425 | push dx@4b | sub word ptr [bx + si], 2@2ce1a424 | mov si, 0@b80000 | jcc 5@7001 | inc si@40 | push word ptr [bp - 2]@7e41	shr cx, 1@6425 | push dx@4b | sub word ptr [bx + si], 2@2ce1a424 | mov si, 0@b80000 | jcc 5@7001 | inc si@40 | push word ptr [bp - 2]@7e41	T
+01	0:4660;1:4660;2:4660	add ax, bx@ | add ax, cx@ | push ax@	mov word ptr [bp - 6], ax@ | mov word ptr [bp - 8], bx@ | push word ptr [bp - 6]@	F|other values pushed
+01	-	mov ax, bx@ | add ax, bx@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|another condition
+10	3:16,4660;4:16,4660	xor ax, ax@eb | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40 | cmp word ptr [bx + si], si@c0c33e1a	xor ax, ax@eb | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40 | cmp word ptr [bx + si], si@c0c33e1a	T
+01	0:4660	mov ax, bx@ | add ax, bx@	mov ax, bx@ | shl ax, 2@ | push ax@	F|not known
+10	2:16,4660;3:16,4660	add word ptr [bx + 0x1234], di@7eb6a7 | shl ax, 1@61 | push bx@1460 | mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40 | mul si@bda3	add word ptr [bx + 0x1234], di@7eb6a7 | shl ax, 1@61 | push bx@1460 | mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40 | mul si@bda3	T
+11	-	mov  ax, bx@f6 | xchg 2, di@65b3	mov  ax, bx@f6 | xchg 2, di@65b3	F|not known
+11	0:16,4660;1:16,4660;3:16,4660;4:16,4660;5:16,4660	push word ptr [bp + 6]@74ee | xchg word ptr [bp - 2], cx@8bfe25 | mov word ptr [bx + si], di@e9a6 | xor word ptr [bx + si], di@c04108 | push bx@272c | inc word ptr [bp - 4]@67eebf7a	push word ptr [bp + 6]@74ee | xchg word ptr [bp - 8], cx@8bfe25 | mov word ptr [bx + si], di@e9a6 | xor word ptr [bx + si], di@c04108 | push bx@272c | inc word ptr [bp - 6]@67eebf7a	F|other values left in the frame
+11	-	xor ax, ax@ | mov word ptr [bx], ax@		F|other values stored
+00	-	xor ax, ax@ | mov word ptr [bx], ax@	mul bx@ | push ax@	F|other values pushed
+00	-	mov ax, 5@ | push ax@	hlt@	F|not known
+11	1:16,4660;2:16,4660;3:16,4660	mov word ptr [bp + 4], 5@3e | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | mov cx, word ptr [bp - 4]@90473d	mov word ptr [bp + 4], 5@3e | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | mov cx, word ptr [bp - 4]@90473d	T
+10	0:4660;1:4660;2:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov word ptr [bp - 6], ax@ | mov word ptr [bp - 8], bx@ | push word ptr [bp - 6]@	T
+11	3:4660	div bx@ | push ax@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values pushed
+10	0:16,4660	mov word ptr [bx + 0x1234], ax@3c	mov word ptr [bx + 0x1234], ax@3c | add cx, 0x10@	F|other values left in the registers
+00	0:4660;1:4660	mov ax, bx@ | add ax, bx@	mov ax, bx@ | add ax, ax@ | push ax@	F|other values pushed
+01	1:4660	mov ax, bx@ | add ax, ax@ | push ax@	mov ax, bx@ | add ax, ax@ | push ax@	T
+10	-	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values pushed
+00	-	mov dx, 0@b80000 | jcc 5@7001 | inc dx@40 | lea ax, [bx + 2]@465df080	add word ptr [bp - 2], si@3b911eed	F|other values left in the frame
+10	1:4660;2:4660;3:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values pushed
+11	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+01	0:16,4660	shl bx, 1@67 | add word ptr [bp - 4], si@1d0a20cb	add word ptr [bp - 4], si@1d0a20cb | shl bx, 1@67	F|another condition
+11	0:16,4660;1:16,4660;3:16,4660;4:16,4660	mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | mov bx, 0@b80000 | jcc 5@7201 | inc bx@40	mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | mov bx, 0@b80000 | jcc 5@7201 | inc bx@40	T
+10	2:16,4660;3:16,4660	cmp word ptr [bx + 0x1234], si@faa7 | xor ax, bx@258b6c | or dx, di@9905 | mov word ptr [bp + 6], 5@01ec | xor dx, 2@24c3 | xor bx, word ptr [bp - 2]@682d6e	cmp word ptr [bx + 0x1234], si@faa7 | xor ax, bx@258b6c | or dx, di@9905 | mov word ptr [bp + 6], 5@01ec | xor dx, 2@24c3 | xor bx, word ptr [bp - 8]@682d6e	F|other values left in the registers
+00	0:16,4660;1:16,4660;2:16,4660	mov ax, 0@b80000 | jcc 5@7f01 | inc ax@40	mov ax, 0@b80000 | jcc 0x1234@7f01 | inc ax@40	T
+11	2:16,4660;3:16,4660	sub word ptr [bp - 2], si@38 | add si, di@8b | mov dx, bx@7fe5 | mov word ptr [bp - 4], dx@5ef18415	sub word ptr [bp - 8], si@38 | add si, di@8b | mov dx, bx@7fe5 | mov word ptr [bp - 6], dx@5ef18415	F|other values left in the frame
+00	0:4660;1:4660	mov word ptr [bx], 0@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+10	2:16,4660;3:16,4660;6:16,4660	inc si@4ca9 | and word ptr [bp - 4], 0x1234@29 | xor ax, ax@80fe | push bx@6f511fe2 | shr ax, 1@ed | xor ax, 2@3574 | xor ax, si@2d813e5f	inc si@4ca9 | and word ptr [bp - 4], 0x1234@29 | xor ax, ax@80fe | push bx@6f511fe2 | shr ax, 1@ed | xor ax, 2@3574 | xor ax, si@2d813e5f | mov si, 2@	F|other values left in the registers
+11	1:16,4660;4:16,4660;5:16,4660;6:16,4660	dec dx@4e4400 | or word ptr [bp - 4], 0xff@43d62754 | mul dx@0dcf2b | mov word ptr [bx + si], 5@e5 | sub word ptr [bp + 6], 0x10@d3 | xor word ptr [bx + 0x1234], 5@49944c9c | mov cx, 0@b80000 | jcc 5@7c01 | inc cx@40	dec dx@4e4400 | or word ptr [bp - 4], 0xff@43d62754 | mul dx@0dcf2b | mov word ptr [bx + si], 5@e5 | sub word ptr [bp + 6], 0x10@d3 | xor word ptr [bx + 0x1234], 5@49944c9c | mov cx, 0@b80000 | jcc 5@7c01 | inc cx@40 | mov si, bx@	F|other values left in the frame
+00	0:16,4660;1:16,4660;2:16,4660;3:16,4660;4:16,4660;5:16,4660;6:16,4660	add word ptr [bp - 2], dx@71 | xchg si, word ptr [bx + 0x1234]@30815207 | add word ptr [bx + si], si@77f418 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | shl di, cl@67950d	add word ptr [bp - 2], dx@71 | xchg si, word ptr [bx + 0x1234]@30815207 | add word ptr [bx + si], si@77f418 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | shl di, cl@67950d	F|not known
+00	0:4660;1:4660	xor ax, ax@ | mov word ptr [bx], ax@	div bx@ | push dx@	F|other values pushed
+11	-	mov ax, bx@ | add ax, bx@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values left in the registers
+01	0:16,4660;1:16,4660	add bx, 0x10@b448 | push di@18e1	add bx, 0x10@b448 | push di@18e1	T
+11	0:16,4660	sub word ptr [bp + 4], bx@f4	sub word ptr [bp + 4], bx@f4	T
+10	0:4660	mov ax, 0x5678@ | push ax@	mov ax, 0x5678@ | push ax@	T
+11	1:16,4660	or word ptr [bp + 4], 0x10@7181a8fd | push word ptr [bx + 0x1234]@0c69	or word ptr [bp + 4], 0x10@7181a8fd | push word ptr [bx + 0x1234]@0c69	T
+11	1:16,4660;2:16,4660	cmp dx, 0x10@05e2 | push word ptr [bp - 4]@29 | mov bx, 0@b80000 | jcc 5@7401 | inc bx@40	cmp dx, 0x10@05e2 | push word ptr [bp - 4]@29 | mov bx, 0@b80000 | jcc 5@7401 | inc bx@40	T
+10	-	xor ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values stored
+01	2:16,4660;5:16,4660	mov dx, 0@b80000 | jcc 5@7f01 | inc dx@40 | dec di@99534d | dec word ptr [bp - 2]@760820 | push si@8a9742 | and cx, word ptr [bp + 6]@f4848823	mov dx, 0@b80000 | jcc 5@7f01 | inc dx@40 | dec di@99534d | dec word ptr [bp - 8]@760820 | push si@8a9742 | and cx, word ptr [bp + 6]@f4848823	F|other values left in the frame
+00	2:4660;3:1,2,4660;4:1,2	mov ax, 0@b80000 | jcc 5@7501 | inc ax@40	jmp 5@6b343e | mov dx, 0@b80000 | jcc 5@7401 | inc dx@40 | mov word ptr [bp + 6], byte ptr [bp - 4]@1503	F|not known
+00	0:4660	mov ax, bx@ | add ax, ax@ | push ax@	hlt@	F|not known
+10	0:4660	add ax, bx@ | add ax, cx@ | push ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values pushed
+10	0:16,4660;2:16,4660;3:16,4660;4:16,4660	mov si, si@74 | and cx, bx@7718 | mov si, 0@b80000 | jcc 5@7201 | inc si@40	mov si, si@74 | and cx, bx@7718 | mov si, 0@b80000 | jcc 5@7201 | inc si@40 | mov word ptr [bx + 0x1234], bx@	F|other values stored
+11	1:4660;3:4660	sub ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values stored
+10	1:16,4660;2:16,4660	mov bx, dx@d1093bbe | mov di, 0x1234@19558964 | xor dx, dx@3c | mov cx, ax@54d985 | mov word ptr [bp + 6], 5@d8bd | push bx@1f1c	mov bx, dx@d1093bbe | mov di, 0x1234@19558964 | xor dx, dx@3c | mov cx, ax@54d985 | mov word ptr [bp + 6], 5@d8bd | push bx@1f1c	T
+00	1:4660	mov ax, bx@ | add ax, bx@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+10	1:16,4660;3:16,4660;4:16,4660;5:16,4660;7:16,4660	or word ptr [bx + si], ax@8f55ec | cmp ax, 0xff@6d659d | sub ax, 0x10@8d38 | push word ptr [bx + 0x1234]@8e2e | push word ptr [bx + si]@1adb | add word ptr [bp - 2], 0x1234@ddfcb56d | or word ptr [bp - 4], 1@6269	or word ptr [bx + si], ax@8f55ec | cmp ax, 0xff@6d659d | sub ax, 0x10@8d38 | push word ptr [bx + 0x1234]@8e2e | push word ptr [bx + si]@1adb | add word ptr [bp - 2], 0x1234@ddfcb56d | or word ptr [bp - 4], 1@6269 | shr si, 1@	F|other values left in the registers
+01	0:16,4660;1:16,4660;2:16,4660;3:16,4660;4:16,4660	or bx, dx@5a177187 | mov cx, word ptr [bx + 0x1234]@3d42 | sub si, 0x10@59 | mov si, 0@b80000 | jcc 5@7501 | inc si@40	or bx, dx@5a177187 | mov cx, word ptr [bx + 0x1234]@3d42 | sub si, 0x10@59 | mov si, 0@b80000 | jcc 5@7501 | inc si@40	F|another condition
+00	0:4660;1:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the frame
+10	1:16,4660;3:16,4660;4:16,4660	or word ptr [bp - 4], ax@64 | and bx, 1@00d94065 | add word ptr [bp + 4], cx@d3a594 | sub word ptr [bp - 2], bx@53 | sub cx, word ptr [bp - 4]@01d7	or word ptr [bp - 4], ax@64 | and bx, 1@00d94065 | add word ptr [bp + 4], cx@d3a594 | sub word ptr [bp - 2], bx@53 | sub cx, word ptr [bp - 4]@01d7	T
+10	1:16,4660	cmp word ptr [bp + 4], si@31 | and di, word ptr [bp - 2]@bfa61bb7 | cmp word ptr [bp - 2], dx@67 | mul si@a3	cmp word ptr [bp + 4], si@31 | and di, word ptr [bp - 8]@bfa61bb7 | cmp word ptr [bp - 8], dx@67 | mul si@a3	F|other values left in the registers
+10	1:16,4660;3:16,4660;4:16,4660	or word ptr [bx + 0x1234], 0x10@5d146c | mov word ptr [bx + si], di@97 | mov si, word ptr [bx + 0x1234]@1d937ff4 | xor word ptr [bp + 6], cx@4685ee | push dx@1e | xor word ptr [bp - 4], dx@dc	or word ptr [bx + 0x1234], 0x10@5d146c | mov word ptr [bx + si], di@97 | mov si, word ptr [bx + 0x1234]@1d937ff4 | xor word ptr [bp + 6], cx@4685ee | push dx@1e | xor word ptr [bp - 6], dx@dc	F|other values left in the frame
+10	0:16,4660	mov si, word ptr [bp - 4]@5ff47e7d	mov si, word ptr [bp - 4]@5ff47e7d	T
+01	-	sub word ptr [bp + 4], 1@9a6d | add word ptr [bx + 0x1234], cx@a7a1a1f2 | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	inc bx@436d	F|other values stored
+00	-	mov ax, bx@ | add ax, bx@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	T
+10	-	mov bx, word ptr [bp + 4]@4075d793 | or bx, word ptr [bp - 4]@2a58 | dec ax@6c1809 | mov bx, word ptr [bx + si]@e7de | mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	mov si, 0@b80000 | jcc 5@7201 | inc si@40	F|other values left in the registers
+01	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, 6@ | push ax@	F|other values pushed
+11	0:16,4660;1:16,4660	mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	T
+10	1:16,4660;6:16,4660;7:16,4660	or si, word ptr [bx + si]@2c70 | push word ptr [bp - 2]@c589 | mov word ptr [bx + 0x1234], 5@d02ead | mov cx, 0x10@9cb0 | shr ax, 1@a868 | mov word ptr [bx + 0x1234], di@c0fe446d | xor ax, ax@74049e	or si, word ptr [bx + si]@2c70 | push word ptr [bp - 2]@c589 | mov word ptr [bx + 0x1234], 5@d02ead | mov cx, 0x10@9cb0 | shr ax, 1@a868 | mov word ptr [bx + 0x1234], di@c0fe446d | xor ax, ax@74049e | mov cx, 2@	F|other values left in the registers
+01	0:16,4660	xor dx, dx@a85ee9	xor dx, dx@a85ee9	T
+01	0:4660;1:4660;2:4660	mov ax, bx@ | shl ax, 1@ | push ax@	add ax, cx@ | add ax, bx@ | push ax@	F|other values pushed
+11	0:4660	mul bx@ | push ax@	div bx@ | push dx@	F|other values pushed
+01	0:16,4660	mov word ptr [bp + 4], 5@bd0a63bd	mov word ptr [bp + 4], 5@bd0a63bd | mul di@	F|another condition
+01	0:4660;3:4660	xor ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values stored
+10	0:16,4660;2:16,4660	inc word ptr [bp - 2]@aff8f8bb | xor ax, ax@dd71ba | mov word ptr [bp + 4], di@697c	inc word ptr [bp - 8]@aff8f8bb | xor ax, ax@dd71ba | mov word ptr [bp + 4], di@697c	F|other values left in the frame
+00	2:16,4660	xor word ptr [bx + si], bx@9b2461e7 | or dx, word ptr [bp - 2]@abdeb4be | mov di, bx@2802bd5f | push di@30f1	xor word ptr [bx + si], bx@9b2461e7 | or dx, word ptr [bp - 8]@abdeb4be | mov di, bx@2802bd5f | push di@30f1	T
+11	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values left in the frame
+00	2:;4:65535	mov dx, 0@b80000 | jcc 5@7401 | inc dx@40 | add dx, ax@4796 | mov dx, 0x10@e8185214	mov dx, 0@b80000 | jcc 5@7401 | inc dx@40 | add dx, ax@4796 | mov dx, 0x10@e8185214	T
+01	4:16,4660	mov dx, 2@698300 | push word ptr [bx + 0x1234]@6ed2c2 | mov word ptr [bp - 4], si@e32a5377 | or word ptr [bx + si], cx@bae85e2c | cmp cx, 1@b70a	mov dx, 2@698300 | push word ptr [bx + 0x1234]@6ed2c2 | mov word ptr [bp - 4], si@e32a5377 | or word ptr [bx + si], cx@bae85e2c | cmp cx, 1@b70a	T
+10	-	sub bx, 0x1234@bf2778	sub bx, 0x1234@bf2778 | or si, word ptr [bp + 4]@	F|other values left in the registers
+00	0:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov word ptr [bx], 0@	F|other values stored
+10	0:2,5,65535;3:0,1	cmp byte ptr [bp - 4], ch@0dae | mov word ptr [bp - 2], word ptr [bp - 2]@5dfe25 | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	neg 2@299a37 | sub si, si@204a5f78 | add dl, cx@3a599a89 | shl cx, 1@8fc1 | mov ax, 0@b80000 | jcc 5@7f01 | inc ax@40	F|not known
+00	-	mov ax, 0x5678@ | push ax@	mov ax, bx@ | shl ax, 1@ | push ax@	F|other values pushed
+00	0:16,4660;3:16,4660;4:16,4660;6:16,4660;7:16,4660	xor dx, 1@69 | push word ptr [bp + 6]@45 | add word ptr [bx + si], bx@4e2e3d2c | dec word ptr [bp - 2]@4c | mov dx, 5@a974 | sub word ptr [bp + 6], 0xff@17e3da0e | push word ptr [bp - 2]@cfd8	xor dx, 1@69 | push word ptr [bp + 6]@45 | add word ptr [bx + si], bx@4e2e3d2c | dec word ptr [bp - 2]@4c | mov dx, 5@a974 | sub word ptr [bp + 6], 0xff@17e3da0e | push word ptr [bp - 2]@cfd8 | mov ax, word ptr [bp - 4]@	T
+11	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values stored
+01	-	mov cx, di@8610 | sub cx, word ptr [bx + si]@c0 | xor si, si@0bb792	mov cx, di@8610 | sub cx, word ptr [bx + si]@c0 | xor si, si@0bb792	T
+10	-	mov ax, bx@ | add ax, bx@	add ax, bx@ | add ax, cx@ | push ax@	F|other values pushed
+00	0:16,4660	mul di@7d8f22cb | mov dx, word ptr [bp + 6]@9ac1a4	push dx@b415d1 | or ax, word ptr [bp - 2]@69	F|other values pushed
+00	0:16,4660;2:16,4660;4:16,4660;5:16,4660;7:16,4660	shr di, 1@99 | mov ax, ax@c7 | or word ptr [bp - 4], si@49 | shr ax, 1@b5cc9984 | inc word ptr [bp - 4]@be | mov di, 0@b80000 | jcc 5@7f01 | inc di@40	shr di, 1@99 | mov ax, ax@c7 | or word ptr [bp - 4], si@49 | shr ax, 1@b5cc9984 | inc word ptr [bp - 4]@be | mov di, 0@b80000 | jcc 5@7f01 | inc di@40	T
+10	-	sub word ptr [bp + 4], ax@b6	sub word ptr [bp + 4], ax@b6	T
+11	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, bx@ | add ax, bx@	F|other values left in the registers
+11	-	xor word ptr [bx + si], 0x10@fcb9f7	xor word ptr [bx + si], 0x10@fcb9f7	T
+01	0:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	div bx@ | push dx@	F|other values pushed
+11	1:16,4660	mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	mov bx, 0@b80000 | jcc 5@7501 | inc bx@40	T
+01	0:16,4660	lea ax, [si]@18	lea ax, [si]@18	T
+11	-	and dx, dx@7dbdc5 | mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | or word ptr [bx + si], si@d60b74fe	and dx, dx@7dbdc5 | mov si, 0@b80000 | jcc 5@7f01 | inc si@40 | or word ptr [bx + si], si@d60b74fe	T
+10	0:16,4660;1:16,4660;2:16,4660	push word ptr [bp - 2]@f75109 | and bx, 0x1234@fc | mul bx@aaa9f6	push word ptr [bp - 2]@f75109 | mul bx@aaa9f6 | and bx, 0x1234@fc	F|other values left in the registers
+01	1:4660;3:4660	sub ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values stored
+00	-	mov word ptr [bx], 0@	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values stored
+00	0:16,4660;4:16,4660;5:16,4660	xchg word ptr [bx + si], si@7ea60557 | cmp word ptr [bx + si], cx@bf18fc76 | push word ptr [bp - 2]@640d | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	xchg word ptr [bx + si], si@7ea60557 | cmp word ptr [bx + si], cx@bf18fc76 | push word ptr [bp - 2]@640d | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40 | shr bx, 1@	T
+11	-	add ax, bx@ | add ax, cx@ | push ax@	add ax, cx@ | add ax, bx@ | push ax@	T
+00	0:16,4660;1:16,4660	xor di, di@19 | mov ax, word ptr [bp + 4]@21e32f	xor di, di@19 | mov ax, word ptr [bp + 4]@21e32f	T
+00	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40		T
+10	-	xor di, di@1f80042a	xor di, di@1f80042a	T
+11	-	dec word ptr [bp + 6]@c9a958b9	dec word ptr [bp + 6]@c9a958b9 | mov cx, 2@	F|other values left in the registers
+01	-	mov word ptr [bx], 0@	xor ax, ax@ | mov word ptr [bx], ax@	F|another condition
+01	0:4660;1:4660;3:4660	mov ax, bx@ | shl ax, 1@ | push ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values pushed
+00	1:16,4660	mov cx, 0@b80000 | jcc 5@7001 | inc cx@40 | xor dx, dx@06618c38	mov cx, 0@b80000 | jcc 0x1234@7001 | inc cx@40 | xor dx, dx@06618c38	T
+01	0:4660;1:4660	mov ax, bx@ | add ax, bx@	mov word ptr [bp - 8], 1@ | mov word ptr [bp - 6], 2@	F|other values left in the frame
+00	1:16,4660;2:16,4660	push cx@ee | push di@4d8daa	push cx@ee | push di@4d8daa | add word ptr [bp + 6], 0x1234@	F|other values left in the frame
+10	0:16,4660;3:16,4660	xor cx, 0@aaa189 | cmp word ptr [bp - 2], 0xff@42 | and word ptr [bp - 4], di@5cae31 | or word ptr [bx + 0x1234], si@77f0	xor cx, 0@aaa189 | cmp word ptr [bp - 4], 0xff@42 | and word ptr [bp - 4], di@5cae31 | or word ptr [bx + 0x1234], si@77f0	T
+01	0:16,4660;1:16,4660;3:16,4660	mov word ptr [bp + 6], si@5e27b4 | xchg word ptr [bp + 6], dx@63 | inc ax@7ca3 | mov word ptr [bp + 6], dx@a7	mov word ptr [bp + 6], si@5e27b4 | xchg word ptr [bp + 6], dx@63 | inc ax@7ca3 | mov word ptr [bp + 6], dx@a7	T
+00	-	sub byte ptr [bp - 2], dx@b31570 | add dx, -1@051e40	sub byte ptr [bp - 2], dx@b31570 | add dx, -1@051e40	T
+10	-	shl cx, 1@1c	shl cx, 1@1c	T
+11	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, 0x5678@ | push ax@	F|other values pushed
+10	0:16,4660	mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40 | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40 | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	T
+10	0:16,4660;1:16,4660;3:16,4660	mul ax@59 | and word ptr [bp + 4], 0x1234@32 | xchg cx, di@7a054613 | mov ax, 0@5f0d045d	mul ax@59 | and word ptr [bp + 4], 0x1234@32 | xchg cx, di@7a054613 | mov ax, 0@5f0d045d	T
+00	0:4660	div bx@ | push ax@	mov ax, word ptr [bp - 2]@ | add ax, word ptr [bp - 4]@ | mov word ptr [bp - 8], ax@ | push bx@	F|other values pushed
+11	2:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, 5@ | push ax@ | push ax@	F|other values pushed
+10	-	mov word ptr [bp - 2], cx@ed7a	mov word ptr [bp - 2], cx@ed7a	T
+10	0:4660;1:4660;2:4660	add ax, bx@ | add ax, cx@ | push ax@	mov ax, bx@ | add ax, ax@ | push ax@	F|other values pushed
+00	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+11	0:16,4660;1:16,4660;2:16,4660	xor si, si@e57bd75b | mov si, 5@4e | sub di, word ptr [bp + 6]@5acc	xor si, si@e57bd75b | mov si, 0x1234@4e | sub di, word ptr [bp + 6]@5acc	T
+01	0:4660;1:4660	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	mov ax, word ptr [bp - 2]@ | add ax, word ptr [bp - 4]@ | mov word ptr [bp - 8], ax@ | push bx@	F|other values left in the frame
+10	-	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx], 0@	F|other values left in the registers
+11	1:16,4660;3:16,4660;4:16,4660	xor cx, cx@a5ca | mov si, word ptr [bx + 0x1234]@eb31 | add word ptr [bp + 6], 2@87128d | cmp di, dx@fe1cd4b6 | and di, cx@4050fa	add word ptr [bp + 6], 2@87128d | and di, cx@4050fa | xor cx, cx@a5ca | mov si, word ptr [bx + 0x1234]@eb31 | cmp di, dx@fe1cd4b6	F|other values left in the registers
+10	1:16,4660	push si@2428 | add word ptr [bx + 0x1234], cx@cb5e | xchg cx, 0xff@c9c9ac9a	push si@2428 | add word ptr [bx + 0x1234], cx@cb5e | xchg cx, 0xff@c9c9ac9a	F|not known
+11	0:4660;2:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values left in the registers
+11	0:16,4660;1:16,4660	div bx@0c | inc bx@42ef42d2	div bx@0c | inc bx@42ef42d2	T
+11	1:16,4660;2:16,4660;3:16,4660	push ax@35ee0487 | sub dx, bx@26fed5b0 | and cx, ax@65 | mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40	push ax@35ee0487 | sub dx, bx@26fed5b0 | and cx, ax@65 | mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40	T
+01	0:16,4660	mov dx, 2@10d3975b | shl dx, 1@ce	mov dx, 2@10d3975b | shl dx, 1@ce	T
+01	0:4660;1:4660;2:4660;3:4660	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|another condition
+00	0:16,4660;2:16,4660;3:16,4660;4:16,4660;5:16,4660	xor word ptr [bx + si], 0x10@3c | xchg ax, 0@c33741 | push cx@5993ece7 | xor ax, word ptr [bp - 2]@837e | xchg word ptr [bx + si], 5@f1 | xchg word ptr [bp + 4], 5@03a0 | mov word ptr [bx + 0x1234], cx@e4	xor word ptr [bx + si], 0x10@3c | xchg ax, 0@c33741 | push cx@5993ece7 | xor ax, word ptr [bp - 8]@837e | xchg word ptr [bx + si], 5@f1 | xchg word ptr [bp + 4], 5@03a0 | mov word ptr [bx + 0x1234], cx@e4	F|not known
+01	-	mov ax, 5@ | push ax@	mov ax, 5@ | push ax@	T
+00	0:4660	add ax, bx@ | add ax, cx@ | push ax@	mov ax, 5@ | push ax@ | push ax@	F|other values pushed
+10	0:16,4660;1:16,4660;5:16,4660	push word ptr [bp - 2]@96e9ace3	mov word ptr [bx + si], dx@0eb5 | sub dx, word ptr [bp + 4]@49ea | push word ptr [bp - 4]@84d4 | mov dx, 0@b80000 | jcc 5@7f01 | inc dx@40	F|other values pushed
+11	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40		F|other values left in the registers
+00	1:16,4660	or word ptr [bp - 4], di@604c	or word ptr [bp - 4], di@604c | mov di, si@	T
+11	0:16,4660;2:16,4660	mov word ptr [bp - 4], ax@78 | push word ptr [bx + si]@a1e203 | shl dx, 1@36ae61	mov word ptr [bp - 4], ax@78 | push word ptr [bx + si]@a1e203 | shl dx, 1@36ae61	T
+01	-	sub ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx + 0x1234], ax@ | push word ptr [bx + 0x1234]@	F|other values pushed
+11	1:16,4660;4:16,4660;5:16,4660	mov word ptr [bx + si], 5@bb0e28 | mov di, 0@b80000 | jcc 5@7001 | inc di@40 | or word ptr [bp + 4], 0x1234@83800b | sub word ptr [bp - 2], dx@fb76	mov word ptr [bx + si], 5@bb0e28 | mov di, 0@b80000 | jcc 5@7001 | inc di@40 | or word ptr [bp + 4], 0x1234@83800b | sub word ptr [bp - 4], dx@fb76	F|other values left in the frame
+11	0:16,4660;1:16,4660;3:16,4660;5:16,4660;6:16,4660	dec si@b698 | or cx, word ptr [bp + 6]@513ac8 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | add word ptr [bp - 4], di@cfe0968a	dec si@b698 | or cx, word ptr [bp + 6]@513ac8 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | add word ptr [bp - 4], di@cfe0968a | xor word ptr [bp + 6], si@	F|other values left in the frame
+10	0:16,4660;1:16,4660;4:16,4660;5:16,4660	dec word ptr [bp - 2]@0153 | cmp ax, bx@3099ed | div dx@c7b2 | cmp ax, word ptr [bx + 0x1234]@6b5c | xor word ptr [bp + 4], ax@dc | dec dx@4094e253	cmp ax, bx@3099ed | xor word ptr [bp + 4], ax@dc | dec word ptr [bp - 2]@0153 | cmp ax, word ptr [bx + 0x1234]@6b5c | dec dx@4094e253 | div dx@c7b2	F|other values left in the frame
+11	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@		F|other values left in the frame
+00	1:65535;2:0,2,4660	mov ax, 0@b80000 | jcc 5@7401 | inc ax@40	add bx, dx@5e | xor dx, dx@09 | mov si, 5@94ab	T
+00	2:4660	mov ax, bx@ | shl ax, 1@ | push ax@	mov ax, bx@ | shl ax, 1@ | push ax@	T
+00	2:5,16	xor dx, dx@22bd67 | mov byte ptr [bp - 4], ax@53e239de | cmp byte ptr [bp - 2], byte ptr [bp - 2]@2252	xor dx, dx@22bd67 | mov byte ptr [bp - 4], ax@53e239de | cmp byte ptr [bp - 2], byte ptr [bp - 2]@2252	T
+11	3:16,4660	dec word ptr [bp - 2]@06a043 | mov word ptr [bx + si], cx@186130d3 | dec word ptr [bp - 2]@e8a1 | mov word ptr [bp - 2], dx@6c8646	dec word ptr [bp - 8]@06a043 | mov word ptr [bx + si], cx@186130d3 | dec word ptr [bp - 8]@e8a1 | mov word ptr [bp - 8], dx@6c8646	F|another condition
+00	0:4660	mov word ptr [bx], 0@	hlt@	F|not known
+11	0:	sub dx, cx@d6 | sub di, di@97752c | shr word ptr [bp + 6], 1@862304f9	sub dx, cx@d6 | sub di, di@97752c | shr word ptr [bp + 6], 1@862304f9	T
+11	-	mul ax@db5f	mul ax@db5f	T
+00	0:16,4660;1:16,4660;2:16,4660;4:16,4660	push cx@14a452 | xor ax, 1@e41d3adf | add word ptr [bx + si], 0xff@f4eb | cmp bx, word ptr [bx + si]@c49a | mov word ptr [bp - 2], 5@4d2fd2 | add cx, bx@6c15 | shl cx, cl@53f8	push cx@14a452 | xor ax, 1@e41d3adf | add word ptr [bx + si], 0xff@f4eb | cmp bx, word ptr [bx + si]@c49a | mov word ptr [bp - 2], 5@4d2fd2 | add cx, bx@6c15 | shl cx, cl@53f8	F|not known
+10	-	mov word ptr [bx], 0@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values stored
+00	0:4660	sub ax, ax@ | mov word ptr [bx], ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values stored
+11	0:4660	mov ax, bx@ | add ax, ax@ | push ax@	mov ax, 0x5678@ | push ax@	F|other values pushed
+00	0:16,4660;1:16,4660;3:16,4660	cmp word ptr [bp + 6], bx@f0 | mov di, ax@47df | push word ptr [bx + si]@b282 | xor word ptr [bp + 4], 0x1234@ca21 | cmp dx, bx@89f2	cmp word ptr [bp + 6], bx@f0 | mov di, ax@47df | push word ptr [bx + si]@b282 | xor word ptr [bp + 4], 0x1234@ca21 | cmp dx, bx@89f2 | shr cx, cl@	F|not known
+00	0:16,4660;1:16,4660;2:16,4660	add word ptr [bx + 0x1234], cx@85281b | mov word ptr [bx + si], 5@d6c8a4cb | lea ax, [bx + 0x1234]@c6ec7f	add word ptr [bx + 0x1234], cx@85281b | mov word ptr [bx + si], 0x1234@d6c8a4cb | lea ax, [bx + 0x1234]@c6ec7f	T
+11	1:16,4660;3:16,4660;4:16,4660;5:16,4660	push word ptr [bp - 4]@472b | mov si, si@4b | cmp si, 0x1234@a5029d8d | mov ax, 2@a7c6 | or bx, 0x1234@7fc0 | xchg word ptr [bp + 4], 5@51 | push dx@f8	push word ptr [bp - 4]@472b | mov si, si@4b | cmp si, 0x1234@a5029d8d | mov ax, 2@a7c6 | or bx, 0x1234@7fc0 | xchg word ptr [bp + 4], 0x1234@51 | push dx@f8	F|not known
+00	4:16,4660;5:16,4660	push ax@ff8e6d24 | dec dx@7f7f | mov si, word ptr [bx + si]@cd | mov word ptr [bx + si], 5@a996bd7d | or word ptr [bp + 4], dx@3dff5b | or word ptr [bp - 2], bx@edca27 | and word ptr [bx + 0x1234], 0xff@9c1c5b01	push ax@ff8e6d24 | dec dx@7f7f | mov si, word ptr [bx + si]@cd | mov word ptr [bx + si], 5@a996bd7d | or word ptr [bp + 4], dx@3dff5b | or word ptr [bp - 4], bx@edca27 | and word ptr [bx + 0x1234], 0xff@9c1c5b01	F|other values left in the frame
+11	-	mov cx, 0@b80000 | jcc 5@7201 | inc cx@40 | xor dx, dx@412448	mov dx, 0@b80000 | jcc 5@7c01 | inc dx@40	F|other values left in the registers
+01	-	mov ax, bx@ | shl ax, 1@ | push ax@	hlt@	F|not known
+11	2:4660;3:4660	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	T
+01	0:	sub word ptr [bx + si], 10@42ad | or [bx + 2], [bx + 2]@f5 | lea dx, -2@82	cmp dx, bx@39 | cmp di, ax@3b	F|other values stored
+10	2:16,4660;4:16,4660	push di@bc93a5 | xor si, si@1dde | add si, 0xff@3e4b | shl si, 1@9a74b7 | xor word ptr [bp + 4], ax@e8a0e1 | add si, word ptr [bp + 4]@08b198	xor word ptr [bp + 4], ax@e8a0e1 | push di@bc93a5 | add si, word ptr [bp + 4]@08b198 | shl si, 1@9a74b7 | xor si, si@1dde | add si, 0xff@3e4b	F|other values left in the registers
+01	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	hlt@	F|not known
+11	0:4660;1:4660;2:4660	mov ax, 0x5678@ | push ax@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values pushed
+11	0:16,4660	push word ptr [bp - 4]@f1	push word ptr [bp - 4]@f1	T
+00	0:4660;2:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov word ptr [bp - 6], ax@ | mov word ptr [bp - 8], bx@ | push word ptr [bp - 6]@	T
+11	-	cmp word ptr [bp + 4], dx@246eb657	cmp word ptr [bp + 4], dx@246eb657	T
+00	1:4660	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	div bx@ | push dx@	F|other values pushed
+10	0:16,4660	xchg word ptr [bx + 0x1234], 5@e5698c | add dx, 1@3f | mov di, ax@ac21975d | cmp dx, 0x1234@51f6 | lea cx, [bx + 2]@f9 | shl bx, cl@7b | add word ptr [bx + 0x1234], 0@8b	xchg word ptr [bp + 6], bx@9f33ab85	F|not known
+01	0:1	shl word ptr [bp + 4], 1@bf	shl word ptr [bp + 4], 1@bf	T
+11	-	mov cx, 1@0613ba	cmp di, 0x1234@eb63 | mov cx, cx@01892ccb | mov cx, 0@89	F|other values left in the registers
+11	0:65535;2:0,4660;3:2,4660;4:16,65535	mov ax, 0@b80000 | jcc 5@7501 | inc ax@40 | add cx, -2@a24fba	mov di, 0@b80000 | jcc 5@7001 | inc di@40 | mov word ptr [bp - 4], di@cb7d03ca | sub cx, cx@10b863	F|other values left in the frame
+11	0:16,4660	cmp word ptr [bp + 6], bx@1bf182	cmp word ptr [bp + 6], bx@1bf182	T
+10	1:16,4660;2:16,4660;3:16,4660;4:16,4660	add ax, word ptr [bp - 2]@1c7459 | and si, bx@68 | xchg word ptr [bp - 4], si@80409b | or di, ax@804a0a | xor word ptr [bp + 6], cx@cb40eb05 | cmp word ptr [bx + si], bx@3c6e81	add ax, word ptr [bp - 2]@1c7459 | and si, bx@68 | xchg word ptr [bp - 4], si@80409b | or di, ax@804a0a | xor word ptr [bp + 6], cx@cb40eb05 | cmp word ptr [bx + si], bx@3c6e81	T
+10	1:16,4660;3:16,4660;4:16,4660	mov bx, 0@b80000 | jcc 5@7001 | inc bx@40	xor ax, cx@783cdf06 | cmp word ptr [bp - 2], di@072889 | mov di, 0@b80000 | jcc 5@7501 | inc di@40	F|other values left in the registers
+00	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	T
+10	0:16,4660;1:16,4660	and word ptr [bp - 4], 5@afc0 | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	and word ptr [bp - 4], 5@afc0 | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	T
+10	-	mov ax, bx@ | add ax, bx@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the registers
+01	-	mov ax, bx@ | add ax, bx@		F|another condition
+10	0:2	mov si, 0@b80000 | jcc 5@7501 | inc si@40 | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	shr cx, 1@65c8e5	F|other values left in the registers
+10	0:4660;1:4660;3:4660	mov ax, bx@ | add ax, bx@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values left in the registers
+00	1:16,4660;2:16,4660;6:16,4660	mov word ptr [bx + si], di@60dbdf | div bx@a5df | cmp word ptr [bp + 6], bx@0e | xchg dx, 0x10@d66760 | xor si, si@17a8 | inc word ptr [bp + 6]@9bbf3406 | xchg word ptr [bx + 0x1234], si@a8ef	mov word ptr [bx + si], di@60dbdf | div bx@a5df | cmp word ptr [bp + 6], bx@0e | xchg dx, 0x10@d66760 | xor si, si@17a8 | inc word ptr [bp + 6]@9bbf3406 | xchg word ptr [bx + 0x1234], si@a8ef	F|not known
+01	0:4660	mov word ptr [bx], 0@	mul cx@ | push ax@	F|other values pushed
+11	1:2,5,65535	mov word ptr [bx + 0x1234], cx@b07dba | shr word ptr [bp + 4], 1@943a | add byte ptr [bp - 4], -2@429231	xor bx, word ptr [bp + 6]@3e | shl al, 1@6392	F|other values stored
+00	1:16,4660;2:16,4660;3:16,4660	mov word ptr [bp + 4], di@b9 | lea di, [bx + 2]@70d975 | xchg si, word ptr [bp - 4]@ab | push word ptr [bx + 0x1234]@c652 | cmp word ptr [bx + si], cx@0378 | shr si, 1@ff | xor cx, 0@81c1	mov word ptr [bp + 4], di@b9 | lea di, [bx + 2]@70d975 | xchg si, word ptr [bp - 4]@ab | push word ptr [bx + 0x1234]@c652 | cmp word ptr [bx + si], cx@0378 | shr si, 1@ff | xor cx, 0@81c1	T
+11	0:4660	xor ax, ax@ | mov word ptr [bx], ax@	mov word ptr [bx], 0@	F|other values left in the registers
+01	2:2,5;5:5,4660	xchg dx, bx@ae1cedca | xor si, si@6ae0ce | mov cx, 0@b80000 | jcc 5@7001 | inc cx@40	xor bx, bx@eb | xchg byte ptr [bp - 2], 1@83aa | inc bx@73 | mov si, 0@b80000 | jcc 5@7f01 | inc si@40	F|not known
+01	0:4660	mov ax, 0x5678@ | push ax@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values pushed
+01	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|another condition
+11	-	and cx, word ptr [bp + 4]@49f8bd0b	and cx, word ptr [bp + 4]@49f8bd0b	T
+01	1:16,4660;2:16,4660	or word ptr [bx + si], 0xff@ea758e | mov bx, word ptr [bp + 4]@b59c0c49 | mov word ptr [bp - 4], bx@a0c5f311	or word ptr [bx + si], 0xff@ea758e | mov bx, word ptr [bp + 4]@b59c0c49 | mov word ptr [bp - 4], bx@a0c5f311	T
+00	0:16,4660;1:16,4660;3:16,4660;6:16,4660	and si, 0xff@97 | mov di, 0@b80000 | jcc 5@7501 | inc di@40 | xor word ptr [bp - 2], dx@e15ca0b3 | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	and si, 0xff@97 | mov di, 0@b80000 | jcc 5@7501 | inc di@40 | xor word ptr [bp - 8], dx@e15ca0b3 | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values left in the frame
+01	0:16	mov si, al@71688c52 | mov ax, 0@b80000 | jcc 5@7001 | inc ax@40	mov si, al@71688c52 | mov ax, 0@b80000 | jcc 5@7001 | inc ax@40	T
+01	0:4660;2:4660	mov ax, bx@ | add ax, bx@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|another condition
+00	-	or ax, ax@06b4a0 | sub cx, cx@9b1e2e8b | sub dx, dx@7a | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	or ax, ax@06b4a0 | sub cx, cx@9b1e2e8b | sub dx, dx@7a | mov si, 0@b80000 | jcc 5@7c01 | inc si@40	T
+11	1:16,4660;3:16,4660;4:16,4660	cmp word ptr [bp - 4], 5@b79d | mov bx, 0@b80000 | jcc 5@7401 | inc bx@40 | shr ax, 1@be79	shr ax, 1@be79 | mov bx, 0@b80000 | cmp word ptr [bp - 4], 5@b79d | inc bx@40 | jcc 5@7401	F|not known
+01	0:16,4660;3:16,4660;5:16,4660	cmp word ptr [bp + 4], 5@36e13134 | sub ax, bx@2e0cc839 | and cx, si@cd044a77 | or si, word ptr [bp + 4]@d6898a2b | shl ax, 1@75e59f | sub word ptr [bp - 4], cx@002496	cmp word ptr [bp + 4], 5@36e13134 | sub ax, bx@2e0cc839 | and cx, si@cd044a77 | or si, word ptr [bp + 4]@d6898a2b | shl ax, 1@75e59f | sub word ptr [bp - 4], cx@002496 | dec ax@	F|another condition
+10	0:4660;1:4660	mov word ptr [bx], 0@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values left in the registers
+11	4:16,4660	xchg ax, 0@52 | sub word ptr [bx + si], cx@a77b | push cx@ed5db8 | mov cx, 0@b80000 | jcc 5@7501 | inc cx@40	xchg ax, 0@52 | sub word ptr [bx + si], cx@a77b | push cx@ed5db8 | mov cx, 0@b80000 | jcc 5@7501 | inc cx@40	F|not known
+11	1:16,4660;3:16,4660;4:16,4660;5:16,4660	or dx, si@65 | mov di, 0@b80000 | jcc 5@7c01 | inc di@40 | mov bx, 0@b80000 | jcc 5@7201 | inc bx@40	or dx, si@65 | mov di, 0@b80000 | jcc 0x1234@7c01 | inc di@40 | mov bx, 0@b80000 | jcc 0x1234@7201 | inc bx@40	T
+00	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	F|other values pushed
+01	2:16,4660;6:16,4660	add word ptr [bp + 6], 5@321369 | shl bx, 1@df910f | shr di, 1@d2fa1213 | mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40	add word ptr [bp + 6], 5@321369 | shl bx, 1@df910f | shr di, 1@d2fa1213 | mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40 | sub dx, 1@	F|another condition
+11	4:16,4660	push ax@4cd7 | shr si, cl@9812 | mov bx, 0@b80000 | jcc 5@7401 | inc bx@40	push ax@4cd7 | shr si, cl@9812 | mov bx, 0@b80000 | jcc 5@7401 | inc bx@40	F|not known
+01	3:5,4660	xchg bx, di@49c9ad | mov si, 0@b80000 | jcc 5@7001 | inc si@40	add di, dl@b0078a | mov si, 0@b80000 | jcc 5@7201 | inc si@40 | mov word ptr [bp - 2], word ptr [bp - 2]@dc	F|other values left in the frame
+11	1:16,4660;2:16,4660;3:16,4660;4:16,4660;6:16,4660	cmp ax, di@c92a | or word ptr [bx + 0x1234], di@c46c | div cx@0c3e | mov ax, 0@b80000 | jcc 5@7401 | inc ax@40	cmp ax, di@c92a | or word ptr [bx + 0x1234], di@c46c | div cx@0c3e | mov ax, 0@b80000 | jcc 5@7401 | inc ax@40 | div ax@	F|other values left in the registers
+00	-	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	mov word ptr [bx], 0@	F|other values pushed
+01	1:4660	mov ax, bx@ | add ax, bx@	mov word ptr [bp - 4], 2@ | mov word ptr [bp - 2], 1@	F|other values left in the frame
+11	0:16,4660;1:16,4660	push word ptr [bp - 2]@3e5da0	push word ptr [bp - 2]@3e5da0 | cmp word ptr [bp + 6], di@	F|another condition
+11	0:16,4660;2:16,4660;4:16,4660;5:16,4660	mov word ptr [bp - 4], dx@b28b | xor ax, ax@80 | sub cx, word ptr [bp + 6]@51 | mov ax, 0@b80000 | jcc 5@7501 | inc ax@40	mov word ptr [bp - 6], dx@b28b | xor ax, ax@80 | sub cx, word ptr [bp + 6]@51 | mov ax, 0@b80000 | jcc 5@7501 | inc ax@40	T
+10	0:16,4660	add word ptr [bx + 0x1234], dx@17e661	add word ptr [bx + 0x1234], dx@17e661 | cmp word ptr [bx + 0x1234], 0x10@	T
+00	0:16,4660;1:16,4660	mov word ptr [bp + 4], 5@0c1f | shr si, 1@75d1 | mul ax@90 | dec bx@687d	mov word ptr [bp + 4], 5@0c1f | mul ax@90 | shr si, 1@75d1 | dec bx@687d	T
+11	0:16,4660;2:16,4660;4:16,4660	mov dx, 5@ae676de7 | cmp ax, word ptr [bp + 4]@8f542842 | mov dx, 0x10@0c29c817 | inc word ptr [bp - 4]@9ae515ff | xor dx, dx@388e | mov cx, 2@e010	mov dx, 5@ae676de7 | cmp ax, word ptr [bp + 4]@8f542842 | mov dx, 0x10@0c29c817 | inc word ptr [bp - 4]@9ae515ff | xor dx, dx@388e | mov cx, 2@e010 | xor bx, word ptr [bp - 2]@	F|other values left in the registers
+10	-	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	mov ax, bx@ | add ax, bx@	F|other values left in the registers
+10	1:16,4660;2:16,4660	xchg cx, word ptr [bx + si]@308ec483 | mov ax, 0x1234@ac96	xchg cx, word ptr [bx + si]@308ec483 | mov ax, 0x1234@ac96 | cmp cx, word ptr [bx + 0x1234]@	T
+10	3:4660	mul bx@ | push ax@	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	F|other values pushed
+00	0:4660;1:4660;2:4660	mov word ptr [bp - 4], ax@ | mov word ptr [bp - 2], bx@ | push word ptr [bp - 4]@	mov word ptr [bp - 2], bx@ | mov word ptr [bp - 4], ax@ | push word ptr [bp - 4]@	T
+11	3:5,65535	shr dx, 1@f2 | sub word ptr [bx + si], di@05f875 | mov byte ptr [bp - 2], dx@1ca3 | mov cx, 0@b80000 | jcc 5@7501 | inc cx@40	mov word ptr [bp - 4], word ptr [bx + 2]@190452 | add cx, di@d6747401 | sub di, di@3a190629 | lea word ptr [bx + si], 0x10@cd | mov di, al@9ca6	F|other values stored
+01	0:4660;3:4660	add ax, bx@ | add ax, cx@ | push ax@	cmp ax, bx@ | mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40	F|other values pushed
+01	0:16,4660;1:16,4660;2:16,4660;4:16,4660	xchg bx, 2@e304 | shr si, cl@cba7 | mov si, 0xff@809d8d | xor ax, ax@f16296 | cmp word ptr [bp + 6], 0x1234@446644	xchg bx, 2@e304 | shr si, cl@cba7 | mov si, 0xff@809d8d | xor ax, ax@f16296 | cmp word ptr [bp + 6], 0x1234@446644	F|not known
+10	0:1,65535	push word ptr [si]@58 | mov byte ptr [bp - 4], word ptr [bp + 4]@0dc627 | add word ptr [bx + 0x1234], cl@9ac8 | push word ptr [bx - 2]@05d29e70 | or cx, bx@d6f569	push word ptr [si]@58 | mov byte ptr [bp - 4], word ptr [bp + 4]@0dc627 | add word ptr [bx + 0x1234], cl@9ac8 | push word ptr [bx - 2]@05d29e70 | or cx, bx@d6f569	T
+01	0:4660;1:4660	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	xor ax, ax@ | mov word ptr [bx], ax@	F|other values stored
+10	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov ax, bx@ | add ax, bx@	F|other values left in the registers
+00	3:16,4660	mov word ptr [bp + 6], bx@4d | inc ax@dd1529 | push di@990c1898 | mul dx@46be33 | shr di, 1@3be944 | shl bx, 1@e58eb033 | mov word ptr [bx + si], cx@c8	mov word ptr [bp + 6], bx@4d | inc ax@dd1529 | push di@990c1898 | mul dx@46be33 | shr di, 1@3be944 | shl bx, 1@e58eb033 | mov word ptr [bx + si], cx@c8	T
+00	-	mov si, bx@9e14 | dec word ptr [bp + 6]@1aff63 | xchg si, cx@c645fa4b	mov word ptr [bp - 2], si@997f6d	F|other values left in the frame
+00	0:16,4660;2:16,4660;3:16,4660;6:16,4660	mov word ptr [bp - 2], 5@f6de | mov dx, 0@b80000 | jcc 5@7c01 | inc dx@40 | sub dx, word ptr [bp + 4]@eb | mov word ptr [bp + 4], 5@7526 | xor ax, ax@2d4b08	dec bx@05 | cmp dx, si@cd | cmp word ptr [bx + 0x1234], cx@4476a9 | mov dx, 0@b80000 | jcc 5@7501 | inc dx@40 | cmp ax, 1@a756dc	F|other values left in the frame
+00	-	cmp si, 2@06 | dec dx@0ddb898e | mov word ptr [bx + si], 5@bb | cmp cx, word ptr [bp + 6]@ac5bc141	cmp si, 2@06 | dec dx@0ddb898e | mov word ptr [bx + si], 5@bb | cmp cx, word ptr [bp + 6]@ac5bc141	T
+11	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	mov ax, 0@ | mov word ptr [bx], ax@	F|other values stored
+01	-	mov word ptr [bp - 4], 1@ | mov word ptr [bp - 2], 2@	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the frame
+10	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values left in the registers
+10	1:4660	mov word ptr [bx], 0@	xor ax, ax@ | mov word ptr [bx], ax@	F|other values left in the registers
+11	1:16,4660;2:16,4660	mov ax, 0@b80000 | jcc 5@7201 | inc ax@40	mov ax, 0@b80000 | jcc 5@7201 | inc ax@40	T
+10	0:16,4660	mov dx, 0@b80000 | jcc 5@7401 | inc dx@40	mov dx, 0@b80000 | jcc 5@7401 | inc dx@40	T
+01	0:16,4660	and word ptr [bp - 4], 0@2afdbf4c	and word ptr [bp - 4], 0@2afdbf4c	T
+01	1:16,4660;3:16,4660;4:16,4660;5:16,4660	mov word ptr [bx + si], 5@4b8e | mov si, word ptr [bx + si]@f64d9b43 | cmp ax, 5@27 | mov ax, 0@b80000 | jcc 5@7001 | inc ax@40	mov word ptr [bx + si], 5@4b8e | mov si, word ptr [bx + si]@f64d9b43 | cmp ax, 5@27 | mov ax, 0@b80000 | jcc 5@7001 | inc ax@40 | mov cx, di@	T
+00	-	mov word ptr [bx], 0@		F|other values stored
+01	1:16,4660;2:16,4660;3:16,4660;4:16,4660;5:16,4660	mov word ptr [bx + 0x1234], 5@de | lea si, [si]@13d88102 | or word ptr [bp + 6], ax@02d7c516 | inc word ptr [bp + 6]@cac7 | or word ptr [bp + 6], 0xff@482d24f7 | dec word ptr [bp - 2]@a9 | xchg word ptr [bp - 2], cx@ae352efa	mov ax, ax@d6fa | or word ptr [bx + 0x1234], di@44 | mov si, 0@b80000 | jcc 5@7c01 | inc si@40 | lea bx, [bx + 0x1234]@69a55c	F|other values stored
+10	3:4660	mov word ptr [bx], 0@	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values stored
+01	0:16,4660;2:16,4660;3:16,4660	add si, si@3db176 | or word ptr [bp - 2], cx@cdc5 | add word ptr [bx + 0x1234], ax@55 | cmp bx, word ptr [bp - 2]@61	add si, si@3db176 | or word ptr [bp - 2], cx@cdc5 | add word ptr [bx + 0x1234], ax@55 | cmp bx, word ptr [bp - 2]@61	T
+01	0:16,4660;2:16,4660	shl si, cl@ab35 | mov di, 2@19e02f21 | shl cx, cl@90cf3e9e | cmp si, 0xff@c3	shl si, cl@ab35 | mov di, 2@19e02f21 | shl cx, cl@90cf3e9e | cmp si, 0xff@c3	F|not known
+01	0:16,4660	and word ptr [bp + 4], si@65f0	and word ptr [bp + 4], si@65f0	T
+01	0:16,4660	shl cx, 1@6f92	shl cx, 1@6f92	T
+10	0:16,4660;1:16,4660;2:16,4660;3:16,4660;4:16,4660	xchg dx, word ptr [bp + 6]@9e5b1c9b | mul cx@34 | mul si@6545045f | sub word ptr [bp - 2], 5@7a1e37 | sub cx, word ptr [bp - 4]@5ea2 | mov si, word ptr [bp - 2]@485b0c21	xchg dx, word ptr [bp + 6]@9e5b1c9b | mul cx@34 | mul si@6545045f | sub word ptr [bp - 4], 5@7a1e37 | sub cx, word ptr [bp - 4]@5ea2 | mov si, word ptr [bp - 4]@485b0c21	F|other values left in the frame
+11	-	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	mov word ptr [bx + 0x5678], ax@ | push word ptr [bx + 0x5678]@	F|other values pushed
+11	-	or ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	mov word ptr [bx], 0@	F|other values stored
+00	1:16,4660	mov di, 0@b80000 | jcc 5@7501 | inc di@40 | cmp word ptr [bp + 6], si@db | sub word ptr [bp - 4], 0x10@0c47f55c	mov di, 0@b80000 | jcc 5@7501 | inc di@40 | cmp word ptr [bp + 6], si@db | sub word ptr [bp - 4], 0x10@0c47f55c	T
+10	0:2;2:4660	mov bx, 0@b80000 | jcc 5@7c01 | inc bx@40 | mov di, 0@b80000 | jcc 5@7f01 | inc di@40	mov dx, word ptr [bx - 2]@029b | mov di, 0@b80000 | jcc 5@7001 | inc di@40	F|other values left in the registers
+10	-	or word ptr [bp + 4], bx@bf98 | push ax@4ac5fd	or word ptr [bp + 4], bx@bf98 | push ax@4ac5fd	T
+01	2:16,4660	shr di, cl@f25403 | mov word ptr [bp + 6], 5@ebfa60	shr di, cl@f25403 | mov word ptr [bp + 6], 5@ebfa60 | shr cx, 1@	F|not known
+10	1:4660;2:4660	mov word ptr [bx], 0@	mov ax, bx@ | add ax, ax@ | push ax@	F|other values pushed
+10	1:4660;2:4660;3:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	and ax, ax@ | mov cx, 0@b80000 | jcc 5@7401 | inc cx@40	F|other values left in the registers
+01	0:16,4660;1:16,4660;6:16,4660;7:16,4660	or word ptr [bx + 0x1234], 0x1234@d5 | and word ptr [bp + 6], di@6b | shl ax, 1@56a2dd5e | add word ptr [bp + 6], 0@23f6dc5e | sub word ptr [bp + 4], 2@32 | mov bx, 0@b80000 | jcc 5@7401 | inc bx@40	or word ptr [bx + 0x1234], 0x1234@d5 | and word ptr [bp + 6], di@6b | shl ax, 1@56a2dd5e | add word ptr [bp + 6], 0@23f6dc5e | sub word ptr [bp + 4], 2@32 | mov bx, 0@b80000 | jcc 5@7401 | inc bx@40	T
+00	3:	mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40	shl al, 1@59 | xchg dx, di@f308 | mov di, 0@b80000 | jcc 5@7201 | inc di@40	T
+11	-	add ax, bx@ | add ax, cx@ | push ax@	mov ax, word ptr [bp - 4]@ | add ax, word ptr [bp - 2]@ | mov word ptr [bp - 6], ax@ | push bx@	F|other values pushed
+11	-	xor ax, ax@ | mov word ptr [bx], ax@	xor ax, ax@ | mov word ptr [bx], ax@	T
+10	1:16,4660;2:16,4660;4:16,4660	cmp ax, si@88aa93 | push word ptr [bp - 4]@3b7832 | xor word ptr [bp + 6], 2@f5 | add word ptr [bp + 6], si@0cd6 | mov cx, 0x10@c2137a	cmp ax, si@88aa93 | push word ptr [bp - 4]@3b7832 | xor word ptr [bp + 6], 2@f5 | add word ptr [bp + 6], si@0cd6 | mov cx, 0x10@c2137a	T
+10	0:4660;1:4660	sub ax, ax@ | mov word ptr [bx], ax@	mov ax, bx@ | add ax, bx@ | mov cx, 7@	F|other values stored
+01	-	xor ax, ax@ | mov word ptr [bx], ax@	mov ax, 0@ | mov word ptr [bx], ax@	F|another condition
+00	2:16,4660;4:16,4660;5:16,4660;6:16,4660;8:16,4660	or dx, 0x10@be379e | lea di, [bx + si]@bb | push di@62 | shr di, 1@50 | shl di, 1@62fc | xor ax, ax@14f1fb | mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40	or dx, 0x10@be379e | lea di, [bx + si]@bb | push di@62 | shr di, 1@50 | shl di, 1@62fc | xor ax, ax@14f1fb | mov ax, 0@b80000 | jcc 5@7c01 | inc ax@40	T
+01	3:16,4660	lea word ptr [bp + 6], word ptr [bp + 6]@11fdc5 | mov si, 0@b80000 | jcc 5@7501 | inc si@40	mov cx, 0@b80000 | jcc 5@7f01 | inc cx@40 | xor ax, cx@c433	F|other values left in the frame
+11	-	mov word ptr [bx], 0@	xor ax, ax@ | mov word ptr [bx], ax@	F|other values left in the registers
+10	1:16,4660;2:16,4660;4:16,4660	xchg word ptr [bx + 0x1234], dx@bf | xor ax, word ptr [bx + si]@7ae9 | mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | or word ptr [bx + 0x1234], 0xff@44c0	xchg word ptr [bx + 0x1234], dx@bf | xor ax, word ptr [bx + si]@7ae9 | mov cx, 0@b80000 | jcc 5@7501 | inc cx@40 | or word ptr [bx + 0x1234], 0xff@44c0	T
+11	0:16,4660;2:16,4660;3:16,4660	xor word ptr [bp - 4], ax@f5d6 | lea bx, [bp + 6]@c1 | lea dx, [si]@1ebfbf | push word ptr [bp + 6]@b7 | push word ptr [bp + 4]@e1 | xor cx, 0x1234@c8a371	xor word ptr [bp - 6], ax@f5d6 | lea bx, [bp + 6]@c1 | lea dx, [si]@1ebfbf | push word ptr [bp + 6]@b7 | push word ptr [bp + 4]@e1 | xor cx, 0x1234@c8a371	F|other values left in the frame
+01	0:4660;1:4660;2:4660	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	cmp ax, bx@ | mov dx, 0@b80000 | jcc 5@7201 | inc dx@40	T
+00	1:16,4660;2:16,4660	sub word ptr [bp - 2], 0x10@4b093ae1 | xor word ptr [bp - 2], 2@3f5d41	sub word ptr [bp - 2], 0x10@4b093ae1 | xor word ptr [bp - 2], 2@3f5d41 | shl di, cl@	F|not known
+11	-	mul bx@ | push ax@		F|other values pushed

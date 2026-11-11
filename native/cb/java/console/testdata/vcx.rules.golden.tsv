@@ -1,0 +1,55 @@
+^(Debug|HeapTrack|ThreadPool|Stack)$	Debug
+^(JavaRT|JavaString|JArray|JList|JObject|JMap|JSet|JCat|Runnable|Iterator|Class|Runtime|j2x_\w*|stdafx|Common|ReflectionFactory)$	Runtime
+^(Kernel|KernelConfig|ControllerConfig|SDKConfig)$	Platform\Config
+^(Save360|ContentStorage|STFS\w*)$	Platform\Storage (STFS)
+^(GL\d*|GLU|GLContext|GLAllocation|ARB\w+|NV\w+|BufferUtils|Display|DisplayMode|Sys|Project|Frustrum)$	Platform\Video (GL->D3D9)
+^(Keyboard|Mouse|Controllers?|Input|InputConfig|OSK|MouseHelper)$	Platform\Input
+^(Socket\w*|InetAddress|SocketAddress|UdpSocket|URL|URI|URLConnection|HttpURLConnection|BindException|ConnectException|UnknownHostException|MalformedURLException)$	Platform\Networking (XNet)
+^(Inflate|Inflater|InflaterInputStream|Deflater|DeflaterOutputStream|GZIP\w*|Zip\w*|DataFormatException)$	Platform\Compression (zlib)
+^(File\w*|Buffered(Input|Output|Reader|Writer)\w*|Data(Input|Output)\w*|(Input|Output)Stream\w*|ByteArray\w*Stream|Print\w*|StringReader|StringWriter|PushbackReader|InputStreamReader|Reader|Writer|RandomAccessFile|FileIO|EOFException|IOException|FileNotFoundException)$	Platform\Java IO
+^(Pattern|Matcher|Charset|Locale|Calendar|Date|GregorianCalendar|SimpleDateFormat|DateFormat|DecimalFormat|NumberFormat|Properties|Logger|BigInteger|MessageDigest|MD5\w*|ByteOrder|Reference|SoftReference)$	Platform\Java util
+^(Frame|Panel|Canvas|Component|Applet|MinecraftApplet|Cursor|Robot|Toolkit|Clipboard|Transferable|DataFlavor|BorderLayout|GridLayout|FlowLayout|CardLayout|GridBagLayout|Window|Dialog|WindowAdapter|KeyAdapter|MouseAdapter|FocusAdapter|ComponentAdapter|KeyListener|MouseListener|MouseMotionListener|MouseWheelListener|WindowListener|ComponentListener|FocusListener|ActionListener|ContainerListener|KeyEvent|MouseEvent|MouseWheelEvent|WindowEvent|ComponentEvent|FocusEvent|InputEvent|ActionEvent|Graphics|Graphics2D|Font|FontMetrics|Rectangle|Dimension|Color|BufferStrategy|BufferedImage|Raster|WritableRaster|DataBuffer|DataBufferInt|ImageObserver|ImageIO|Document|DocumentBuilder|DocumentBuilderFactory|Node|NodeList|Element|Iso\w*|IsomPreview\w*)$	Platform\Java AWT/DOM (stubs)
+^(\w*Exception|\w*Error|Throwable)$	Platform\Java exceptions
+^Packet\w*	Network\Packets
+^(NetClientHandler|NetServerHandler|NetHandler|NetLoginHandler)$	Network\Handlers
+^(NetworkManager|Network\w*Thread|ThreadConnectToServer|ThreadCloseConnection|TcpConnection|MemoryConnection)$	Network\Connection
+^(SoundManager|SoundPool\w*|MusicTicker)$	Audio\Engine
+^(Sound\w*|Audio\w*|XactAudio|Codec\w*|Library\w*OpenAL)$	Audio\Platform
+^(GuiIngame\w*|GuiParticle|GuiAchievement)$	GUI\In-game HUD
+^(GuiButton|GuiSlot\w*|GuiSlider|GuiTextField|GuiSmall\w*|GuiScreenButtonList)$	GUI\Widgets
+^Gui\w*	GUI\Screens
+^(FontRenderer|ScaledResolution|LoadingScreen\w*)$	GUI\Text & Layout
+^(Render\w*|IRender\w*)$	Rendering\Renderers
+^Model\w*	Rendering\Models
+^(Texture\w*|TexturePack\w*|\w+FX|IconCoord|Colorizer\w*|\w*Colorizer)$	Rendering\Textures
+^(Tessellator|EffectRenderer|\w*Particle\w*)$	Rendering\Tessellator & FX
+^(Tile|Tesselator|Shaders|Mipmaps)$	Rendering\Renderers
+^TileEntity\w*	TileEntities
+^(EntityPlayer\w*|EntityClientPlayerMP|InventoryPlayer)$	Entities\Player
+^(Path\w*|EntityAI\w*)$	Entities\AI & Pathfinding
+^(Entity|EntityLiving|EntityCreature|DataWatcher|WatchableObject)$	Entities\Base
+^(Entity\w*|\w+Entity|MobSpawner\w*|SpawnListEntry)$	Entities\Types
+^(Block|BlockContainer|Material|StepSound)$	Blocks\Base
+^Block.+	Blocks\Types
+^(CraftingManager|\w*Recipe\w*|RecipesIngredients|FurnaceRecipes)$	Items & Inventory\Recipes
+^(Container\w*|Slot\w*|Inventory\w*|IInventory)$	Items & Inventory\Containers
+^(Item|Item.+|ItemStack)$	Items & Inventory\Items
+^(Chunk\w*|IChunk\w*)$	World & Generation\Chunk
+^BiomeGen\w*	World & Generation\Biomes
+^(MapGen\w*|WorldGen\w*|NoiseGen\w*|\w*Generator|ChunkProvider\w*|StructureBoundingBox|Component\w*Structure)$	World & Generation\Generation
+^(Spawner\w*|SpawnerAnimals)$	World & Generation\Spawning
+^(World\w*|IWorld\w*|IBlockAccess|NextTickListEntry|WorldInfo|WorldProvider\w*)$	World & Generation\World
+^NBT\w*	IO & NBT\NBT
+^RegionFile\w*	IO & NBT\Region
+^(Save\w*|\w*ChunkLoader|ChunkLoader|IChunkLoader|AnvilSave\w*|\w*Storage|MapStorage|ISaveFormat|ISaveHandler|CompressedStreamTools)$	IO & NBT\Save
+^(Compressed\w*|\w*Cache|MapData\w*|MapColor)$	IO & NBT\Misc
+^J_\w*	Platform\JSON (argo)
+^(ByteBuffer|ShortBuffer|IntBuffer|FloatBuffer|DoubleBuffer|LongBuffer|CharBuffer|NIOBuffers)$	Platform\Java NIO
+^(Collection|Collections|Comparable|Comparator|Entry|Enumeration|JIterator|HashMap\w*|HashSet\w*|TreeMap\w*|TreeSet\w*|ArrayList\w*|LinkedList\w*|LinkedHashMap\w*|StringBuilder|StringBuffer)$	Runtime
+^Chat\w*	GUI\Screens
+^(ClippingHelper\w*|Frustrum|ICamera)$	Rendering\Renderers
+^Explosion$	World & Generation\World
+^(MathHelper|Vec3D\w*|Vec3|Vertex|AABB|Cube|Frustum|Polygon|AxisAlignedBB|MovingObjectPosition|Direction|Facing|ChunkCoordinates\w*|ChunkPosition|WeightedRandom\w*|Tuple|LongHashMap\w*|MCHash\w*|Random)$	Math & Utilities
+^Enum\w*	Enums
+^(StatBase|StatList|Stat\w*|IStat\w*|Achievement\w*|StatFileWriter|StatsSyncher|StatCollector|StatStringFormat\w*)$	Core\Stats & Achievements
+^(Minecraft|MinecraftApplet|RubyDung|Session|Timer|Main|GameSettings|EnumOptions\w*|Profiler|MovementInput\w*)$	Core

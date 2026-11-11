@@ -19,6 +19,7 @@
 #include "kernel/overlapped.h"
 #include "kernel/profile_location.h"
 #include "kernel/profile_store.h"
+#include "kernel/spa.h"
 #include "kernel/users.h"
 #include "settings.h"
 #include "xui/image.h"
@@ -521,6 +522,108 @@ GUEST_IMPORT(XamReadTile)
         int32_t(hr) < 0 ? 0 : guest::g_memory.Read32(sizePtr));
 
     const uint32_t result = int32_t(hr) < 0 ? 0x65B : kernel::kErrorSuccess; // ERROR_FUNCTION_FAILED
+    if (overlapped)
+    {
+        kernel::CompleteOverlapped(overlapped, result, hr, 0);
+        ctx.r3.u64 = kernel::kErrorIoPending;
+        return;
+    }
+    const uint32_t thread = guest::g_memory.Read32(ctx.r13.u32 + kernel::pcr::kCurrentThread);
+    guest::g_memory.Write32(thread + kernel::kthread::kLastError, hr);
+    ctx.r3.u64 = result;
+}
+
+namespace
+{
+    // The result of XamReadString's message handler (XAM 17559 0x81909380): the HRESULT, with the string written.
+    // 1. The running title's own string table (its SPA's XSTR, UTF-8 converted to UTF-16 into the buffer; *Size is
+    //    in characters and includes the terminator) when TitleId is 0 or the running title. The string must exist
+    //    (E_INVALIDARG if not, or the buffer is NULL, or the id is 0xFFFF); a buffer of 0 characters is
+    //    HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER), and so is one too small for the string (nothing written);
+    //    an empty string, or a 1-character buffer, gets "" and *Size 1.
+    // 2. Failing that, for a signed-in UserIndex (< 4): the profile's <TitleID>.gpd string entry (section 5, TitleId 0 =
+    //    the running title), its UTF-16 bytes copied whole (a buffer too small: insufficient buffer, nothing copied),
+    //    *Size the characters read.
+    // On any failure *Size becomes 1 and the buffer "" (the handler does that itself).
+    uint32_t ReadString(uint32_t titleId, uint16_t stringId, uint32_t user, uint32_t buffer, uint32_t sizePtr)
+    {
+        auto& mem = guest::g_memory;
+        uint32_t hr = kHrInvalidArg;
+        const uint32_t running = kernel::TitleId();
+        if (buffer && sizePtr && (titleId == 0 || titleId == running) && stringId != 0xFFFF &&
+            !kernel::ExecutableResource(std::format("{:08X}", running)).empty())
+        {
+            const uint32_t capacity = mem.Read32(sizePtr);
+            if (capacity == 0)
+                hr = kHrInsufficientBuffer;
+            else if (const auto text = kernel::spa::FindString(stringId))
+            {
+                // MultiByteToWideChar(CP_UTF8) into capacity - 1 characters: all or nothing.
+                if (text->empty() || capacity == 1)
+                {
+                    mem.Write32(sizePtr, 1);
+                    mem.Write16(buffer, 0);
+                    hr = kernel::kErrorSuccess;
+                }
+                else if (text->size() > capacity - 1)
+                    hr = kHrInsufficientBuffer;
+                else
+                {
+                    for (size_t i = 0; i < text->size(); i++)
+                        mem.Write16(buffer + uint32_t(i) * 2, (*text)[i]);
+                    mem.Write16(buffer + uint32_t(text->size()) * 2, 0);
+                    mem.Write32(sizePtr, uint32_t(text->size()) + 1);
+                    hr = kernel::kErrorSuccess;
+                }
+            }
+        }
+        if (int32_t(hr) < 0 && buffer && sizePtr && user < 4)
+        {
+            hr = kHrInvalidArg;
+            if (const auto profile = kernel::users::SignedIn(user))
+                if (const auto entry = kernel::profile::ReadEntry(profile->xuid, titleId ? titleId : running, 5, stringId))
+                {
+                    if (mem.Read32(sizePtr) * 2 < entry->size())
+                        hr = kHrInsufficientBuffer;
+                    else
+                    {
+                        if (!entry->empty())
+                            std::memcpy(mem.Translate(buffer), entry->data(), entry->size());
+                        const uint32_t chars = uint32_t(entry->size() / 2);
+                        mem.Write32(sizePtr, chars);
+                        if (chars)
+                            mem.Write16(buffer + (chars - 1) * 2, 0);
+                        hr = kernel::kErrorSuccess;
+                    }
+                }
+        }
+        if (int32_t(hr) < 0 && sizePtr)
+        {
+            mem.Write32(sizePtr, 1);
+            if (buffer)
+                mem.Write16(buffer, 0);
+        }
+        return hr;
+    }
+}
+
+// DWORD XamReadString(DWORD TitleId, QWORD StringId, DWORD UserIndex, LPWSTR Buffer, PDWORD BufferSize,
+//                     PXOVERLAPPED Overlapped)
+// XAM 17559 (0x81670898) posts app 0xFB message 0xB0038 ({TitleId, QWORD StringId, UserIndex, Buffer, BufferSize}, 0x20
+// bytes; the handler 0x81909380 uses the string id's low 16 bits) and, like XamReadTile, completes at once: 0, or
+// ERROR_FUNCTION_FAILED (0x65B; the HRESULT is the thread's last error) on a failure; with an overlapped, ERROR_IO_PENDING
+// and XMsgCompleteIORequest(Overlapped, result, hr, 0). *BufferSize is in characters, the terminator included. Titles
+// read the strings of their SPA's string table with it (a leaderboard column's name: Minecraft's Leaderboards screen
+// asks for string 0x2E1), 0x8000 = the title's name; the dash asks for a title's name with user 0xFE (no user).
+// ReadString above has the rules and where the strings come from.
+GUEST_IMPORT(XamReadString)
+{
+    const uint32_t titleId = ctx.r3.u32, user = ctx.r5.u32, buffer = ctx.r6.u32, sizePtr = ctx.r7.u32;
+    const uint32_t overlapped = ctx.r8.u32;
+    const uint64_t stringId = ctx.r4.u64;
+    const uint32_t hr = ReadString(titleId, uint16_t(stringId), user, buffer, sizePtr);
+    Log("XamReadString(title {:08X}, string {:X}, user {:X}): {:08X}", titleId, stringId, user, hr);
+    const uint32_t result = int32_t(hr) < 0 ? 0x65B : kernel::kErrorSuccess;
     if (overlapped)
     {
         kernel::CompleteOverlapped(overlapped, result, hr, 0);
