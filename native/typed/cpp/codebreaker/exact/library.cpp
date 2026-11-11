@@ -659,7 +659,9 @@ MapP _locate(const Project& prj) {
         str main_seg = segs[0];
         {
             int64_t best = -1;
-            for (const str& s : segs) {
+            py::set<str> distinct;
+            for (const str& s : segs) distinct.add(s);
+            for (const str& s : py::sorted(distinct)) {   // (a tie: the first by name)
                 int64_t c = segs.count(s);
                 if (c > best) {
                     best = c;

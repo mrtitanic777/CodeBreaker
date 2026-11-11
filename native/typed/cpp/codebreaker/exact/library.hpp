@@ -48,8 +48,7 @@
 //     a _Named) and `name` (the Member's, or the _Named's) are kept; `raw` is _Named.raw (b"" for none).
 //   * Member.l2 is the module's L2 document (translate::l2::Dict); a public's place is read back from it, as the
 //     Python reads it.
-//   * `max(set(segs), key=segs.count)` (the main code segment) breaks a tie by the Python's set order, which is
-//     arbitrary; here the first of the tied segments in the order the modules are placed.
+//   * `max(sorted(set(segs)), key=segs.count)` (the main code segment) breaks a tie by name: the first of the tied segments.
 //   * main() prints with `print`: the text goes to the function given (std::cout where none is).
 //   * Python ints are int64_t.
 #pragma once
