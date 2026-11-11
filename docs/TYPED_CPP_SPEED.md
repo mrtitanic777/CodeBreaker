@@ -47,7 +47,7 @@ Runtime changes behind these (all output-neutral):
   chunks of one reserved address range, so delete finds the class from the address (no header, unsized delete works). The
   typed ports make a `std::u32string` per `py::str`; the system heap was ~25% of their CPU. p5: 52 -> 39 s CPU.
 - py::re (native/l2/src/pyre.cc): every one-character instruction tests an ASCII byte by its own table (no UTF-8 decode, no
-  call), `` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
+  call), `\b` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
   where that character is not (sre's literal-tail check), the backtrack stack is an inline array. Micro-benchmark
   (tools/bench_re.cc vs tools/bench_re.py on 295 C files, 18 patterns): 704 -> 290 ms against Python's 525 ms.
 - ctext.blank's cache looks up by hash without copying the (large) text.

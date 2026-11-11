@@ -15,7 +15,7 @@ argument count and what it gives back through a pointer, once per import entered
     run.detach(); run.restore()       # (a kept machine: hooks off, pages back)
 
 The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-(require()). Build: toolsuild_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
+(require()). Build: tools\build_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
 """
 import ctypes
 import os
@@ -95,7 +95,7 @@ def _load():
         lib = settings.load_native(path)
         lib.cbt_version.restype = ctypes.c_int
         if lib.cbt_version() != 1:
-            raise OSError("cbtrace.dll is another version: rebuild cbtrace (toolsuild_cb.cmd)")
+            raise OSError("cbtrace.dll is another version: rebuild cbtrace (tools\\build_cb.cmd)")
         lib.cbt_init.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_int32)
         err = ctypes.create_string_buffer(256)
         if lib.cbt_init(os.path.abspath(uc_dll), os.path.abspath(cs_dll), err, 256):

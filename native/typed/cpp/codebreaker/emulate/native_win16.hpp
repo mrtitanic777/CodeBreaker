@@ -1,6 +1,6 @@
 // codebreaker/emulate/native_win16.hpp -- C++ port of codebreaker.emulate.native_win16.
 //
-// native_win16.py -- trace_function16's per-instruction and memory hooks in C++ (native/tracer:
+// native_win16.py -- trace_function16's per-instruction and memory hooks in C++ (native/cb/emulate/tracer:
 // cbtrace.dll), through ctypes.
 //
 // windows16.trace_function16 still lays the NE module out, enters the function, starts the run
@@ -13,10 +13,10 @@
 // clock reads the live instruction count this recorder keeps (count()).
 //
 // The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-// (require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
+// (require()). Build: tools\build_cb.cmd (native/cb/CMakeLists.txt, target cbtrace).
 //
 // Typing notes (where the C++ has to say what the Python leaves to ctypes and dicts):
-//   ctypes structures  _Config and _Result are the C structures of native/tracer/cbtrace.h (cbt_w16_config,
+//   ctypes structures  _Config and _Result are the C structures of native/cb/emulate/tracer/cbtrace.h (cbt_w16_config,
 //                      cbt_w16_result), field for field; Lib holds the DLL's cbt_w16_* entry points (what
 //                      lib.cbt_w16_* are on the ctypes CDLL). native_trace::_load() loads the DLL; `_lib()`
 //                      binds the 16-bit entry points from the same DLL, once, as the Python's _READY guards.
@@ -48,7 +48,7 @@ extern const py::list<py::str> _ACCESS;
 // An event the code hook met: (a, n) -> 0, or nonzero when the handler raised.
 using EVENT = int (*)(int64_t, int64_t);
 
-// ---- native/tracer/cbtrace.h: cbt_w16_config and cbt_w16_result, field for field -----------------
+// ---- native/cb/emulate/tracer/cbtrace.h: cbt_w16_config and cbt_w16_result, field for field -----------------
 struct _Config {
     void* uch = nullptr;
     int32_t eip_id = 0;

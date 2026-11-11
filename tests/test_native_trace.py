@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the native run recorders (native/tracer: cbtrace.dll -- the 32-bit tracer, the flat
+"""Tests for the native run recorders (native/cb/emulate/tracer: cbtrace.dll -- the 32-bit tracer, the flat
 driver recorder, the 16-bit recorder) and the path explorer's shadow in the same DLL. Run:
 python tests/test_native_trace.py   (exit 0 = passed)
 

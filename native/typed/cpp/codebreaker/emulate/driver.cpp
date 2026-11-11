@@ -145,7 +145,7 @@ Record run(const Image& image, int64_t entry, const std::optional<py::dict<str, 
     uc->reg_write(reg.at("eflags"), (uc->reg_read(reg.at("eflags")) & ~int64_t(0x41)) | (flags & 0x41));
     Record rec;
 
-    // The hooks are C++ (native/tracer: cbtrace.dll; emulate/native_driver), attached in this
+    // The hooks are C++ (native/cb/emulate/tracer: cbtrace.dll; emulate/native_driver), attached in this
     // order: the code (the driver's own, told from a call out), memory, the INT 20h service calls,
     // the ports; and a shadow (the path explorer's) stepped there too. The caller is asked once per
     // distinct service which register it answers in.

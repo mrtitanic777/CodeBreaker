@@ -1,4 +1,4 @@
-r"""native_shadow.py -- the path explorer's symbolic shadow of an x86 run in C++ (native/tracer:
+r"""native_shadow.py -- the path explorer's symbolic shadow of an x86 run in C++ (native/cb/emulate/tracer:
 cbtrace.dll, shadow.cc), through ctypes.
 
     sh = native_shadow.Shadow(16 | 32 | 33, lifter, inputs)   # Shadow16 / Shadow32 / ShadowLE
@@ -13,7 +13,7 @@ of an instruction not lifted before in the process (pcode.Lifter.line).
 `inputs`: [(low, high)] -- the memory bytes that are inputs of the run until written.
 
 The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-(require()). Build: toolsuild_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
+(require()). Build: tools\build_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
 """
 import ctypes
 import struct

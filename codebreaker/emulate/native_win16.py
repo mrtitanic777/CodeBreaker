@@ -1,4 +1,4 @@
-r"""native_win16.py -- trace_function16's per-instruction and memory hooks in C++ (native/tracer:
+r"""native_win16.py -- trace_function16's per-instruction and memory hooks in C++ (native/cb/emulate/tracer:
 cbtrace.dll), through ctypes.
 
 windows16.trace_function16 still lays the NE module out, enters the function, starts the run
@@ -11,7 +11,7 @@ and the ports' device model stay Python hooks, which trace_function16 attaches i
 clock reads the live instruction count this recorder keeps (count()).
 
 The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-(require()). Build: toolsuild_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
+(require()). Build: tools\build_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
 """
 import ctypes
 import struct

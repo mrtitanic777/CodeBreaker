@@ -294,7 +294,7 @@ Run::~Run() {
 void require() {
     if (!enabled()) {
         std::optional<py::str> why = why_not();
-        throw py::RuntimeError(py::str("the run recorder is native (native/tracer, cbtrace.dll): ") + (why ? *why : py::str("None")));
+        throw py::RuntimeError(py::str("the run recorder is native (native/cb/emulate/tracer, cbtrace.dll): ") + (why ? *why : py::str("None")));
     }
 }
 

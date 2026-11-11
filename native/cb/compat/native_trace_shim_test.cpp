@@ -1,11 +1,12 @@
 // The shim at codebreaker/emulate/native_trace.hpp: the old Run / RunArgs / TraceRecord over the new recorder, on a
-// real engine. The old lookups the shim calls (where the host's DLLs are) are answered here by cb's own DLLs, so the
+// real engine. The old lookup the shim calls (where unicorn.dll is) is pointed at cb's own DLL (CB_UNICORN_DLL), so the
 // engine the test makes and the recorder's table are one Unicorn.
 #include <windows.h>   // (before the shim: it declares the two kernel32 calls itself unless windows.h is in)
 
 #include "codebreaker/emulate/native_trace.hpp"
 
 #include "cb/core/dynlib.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/unicorn_api.hpp"
 #include "cb/core/capstone_api.hpp"
@@ -14,11 +15,6 @@
 #include <unicorn/x86.h>
 #pragma warning(pop)
 
-namespace codebreaker::base::capstone_dll {
-py::str find() { return py::str(cb::disasm::capstone::library().path().generic_string()); }
-py::str find_unicorn() { return py::str(cb::emu::unicorn::library().path().generic_string()); }
-}  // namespace codebreaker::base::capstone_dll
-
 namespace codebreaker::emulate::unicorn_uc {
 py::dict<py::str, int64_t> x86_register_table() { return py::dict<py::str, int64_t>(); }   // (the recorder has its own)
 }  // namespace codebreaker::emulate::unicorn_uc
@@ -26,6 +22,9 @@ py::dict<py::str, int64_t> x86_register_table() { return py::dict<py::str, int64
 namespace nt = codebreaker::emulate::native_trace;
 
 CB_TEST("compat.native_trace_shim.run_records_in_the_old_shapes", [] {
+    // the shim's recorder gets the Unicorn base/capstone_dll finds: cb's own, the one this test's engine is made by
+    // (looked for once per process; no other test asks for it)
+    cb::fs::ScopedEnv uc_dll("CB_UNICORN_DLL", cb::fs::to_text(cb::emu::unicorn::library().path()));
     const auto& uc = cb::emu::unicorn::api();
     uc_engine* engine = nullptr;
     cb::emu::unicorn::check(uc.uc_open(UC_ARCH_X86, UC_MODE_32, &engine), "uc_open");

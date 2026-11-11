@@ -561,7 +561,7 @@ Trace trace_function(const py::str& module, const FuncSelector& func, const Trac
     bool lean = options.lean;
     if (lean) rec.pages0 = py::dict<uint64_t, py::bytes>();
 
-    // The hooks are C++ (native/tracer: cbtrace.dll; emulate/native_trace), attached to this Unicorn in
+    // The hooks are C++ (native/cb/emulate/tracer: cbtrace.dll; emulate/native_trace), attached to this Unicorn in
     // trace_function's order, keeping the record -- no Python per instruction, and a shadow (the path explorer's)
     // stepped there too.
     native_trace::require();

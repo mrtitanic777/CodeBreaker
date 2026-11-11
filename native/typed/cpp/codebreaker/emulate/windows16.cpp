@@ -1179,7 +1179,7 @@ Trace16 trace_function16(const py::str& path, const Trace16Options& options) {
         return true;
     };
 
-    // The per-instruction and memory hooks are C++ (native/tracer: cbtrace.dll; emulate/native_win16), attached in
+    // The per-instruction and memory hooks are C++ (native/cb/emulate/tracer: cbtrace.dll; emulate/native_win16), attached in
     // trace_function16's order; the events above are its callbacks, and a shadow (the path explorer's) is stepped there
     // too. The branch log and the ports' device model stay hooks of this module's.
     native_win16::require();
