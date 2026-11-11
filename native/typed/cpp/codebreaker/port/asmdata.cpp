@@ -73,6 +73,7 @@ std::tuple<std::optional<int64_t>, std::optional<str>> _value(const str& v0, con
         std::optional<str> sign = m->group_opt(2), num = m->group_opt(3);
         std::optional<int64_t> d = 0;
         if (num) d = asm16::number(*num);
+        if (!d) throw asm16::Asm16Error(F("a data item not understood: %r", v));   // (sym+text that is no number)
         if (sign && *sign == S("-")) {
             if (!d) throw py::TypeError("bad operand type for unary -: 'NoneType'");   // (-None)
             d = -*d;
