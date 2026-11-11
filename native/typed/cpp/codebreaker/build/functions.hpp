@@ -41,6 +41,9 @@ extern const py::list<py::str> CFLAGS_POWERPC;
 
 // build folder -> the hash of the header in it (used by build/module, engine/win16)
 extern py::dict<py::str, py::str> _HEADER;
+// _HEADER read and written under one lock (compiles run on threads): the header key of a build folder / set it
+std::optional<py::str> header_key(const py::str& outdir);
+void set_header_key(const py::str& outdir, const py::str& key);
 // build folder -> {function: digest of its object code}, of the last build there
 extern py::dict<py::str, py::dict<py::str, py::str>> OBJECTS;
 

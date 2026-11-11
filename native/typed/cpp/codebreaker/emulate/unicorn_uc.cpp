@@ -9,6 +9,7 @@
 #include <exception>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,13 @@ const x86_reg_row REGS[] = {
 #include "codebreaker/emulate/unicorn_x86_regs.inc"
 };
 
+// Unicorn keeps global state (the TCG code buffer) that opening, closing and mapping touch: the gate opens machines on several
+// threads (Python's unicorn binding is called under the GIL-held ctypes layer), so those four calls take one lock.
+std::mutex& uc_global() {
+    static std::mutex m;
+    return m;
+}
+
 class UnicornUc;
 
 struct HookData {
@@ -74,18 +82,27 @@ struct HookData {
 
 class UnicornUc : public core16::Uc {
   public:
-    explicit UnicornUc(int mode) { check(lib().open(UC_ARCH_X86, static_cast<uc_mode>(mode), &uc_)); }
+    explicit UnicornUc(int mode) {
+        const Lib& l = lib();
+        std::lock_guard<std::mutex> hold(uc_global());
+        check(l.open(UC_ARCH_X86, static_cast<uc_mode>(mode), &uc_));
+    }
     ~UnicornUc() override {
-        if (uc_) L.close(uc_);
+        if (uc_) {
+            std::lock_guard<std::mutex> hold(uc_global());
+            L.close(uc_);
+        }
     }
     UnicornUc(const UnicornUc&) = delete;
     UnicornUc& operator=(const UnicornUc&) = delete;
 
     void* handle() const override { return uc_; }
     void mem_map(int64_t address, int64_t size) override {
+        std::lock_guard<std::mutex> hold(uc_global());
         check(L.mem_map(uc_, static_cast<uint64_t>(address), static_cast<size_t>(size), UC_PROT_ALL));
     }
     void mem_unmap(int64_t address, int64_t size) override {
+        std::lock_guard<std::mutex> hold(uc_global());
         check(L.mem_unmap(uc_, static_cast<uint64_t>(address), static_cast<size_t>(size)));
     }
     py::bytes mem_read(int64_t address, int64_t size) override {

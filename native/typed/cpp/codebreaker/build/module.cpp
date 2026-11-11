@@ -2900,7 +2900,7 @@ std::optional<py::str> _build16(Built& b, const py::str& path, const decompile::
         if (!fresh.count(sub.utf8())) {                        // (the header beside the function, as in its own folder -- this build's, not one left from before)
             fresh.insert(sub.utf8());
             write_text(py::os::path::join(sub, py::str("m.h")), mheader);
-            build::functions::_HEADER.set(sub, base::cache::key(Cs{mheader}));
+            build::functions::set_header_key(sub, base::cache::key(Cs{mheader}));
         }
         const py::str stem = py::os::path::basename(stems.at(name));
         const py::str why = build::functions::_compile(wcc, cat(cflags, py::list<py::str>{py::percent("-nt=CODE%dX", *seg), py::str("-nc=XCODE")}), env, sub, stem, text);

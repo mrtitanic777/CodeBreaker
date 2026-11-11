@@ -40,6 +40,20 @@ const py::list<py::str> CFLAGS_POWERPC = py::list<py::str>(std::vector<py::str>{
 py::dict<py::str, py::str> _HEADER;
 py::dict<py::str, py::dict<py::str, py::str>> OBJECTS;
 
+// (_HEADER and OBJECTS are written while other threads compile: one lock for both; the Python had its GIL)
+std::recursive_mutex& tables_lock() {
+    static std::recursive_mutex m;
+    return m;
+}
+std::optional<py::str> header_key(const py::str& outdir) {
+    std::lock_guard<std::recursive_mutex> g(tables_lock());
+    return _HEADER.contains(outdir) ? std::optional<py::str>(_HEADER.at(outdir)) : std::nullopt;
+}
+void set_header_key(const py::str& outdir, const py::str& key) {
+    std::lock_guard<std::recursive_mutex> g(tables_lock());
+    _HEADER.set(outdir, key);
+}
+
 namespace {
 
 // the build cache's database is one connection shared by every thread: its reads and writes go one at a time
@@ -415,7 +429,7 @@ std::tuple<py::str, bool> compile_kept(const py::str& cc, const py::list<py::str
 
 py::str _compile(const py::str& cc, const py::list<py::str>& cflags, const py::dict<py::str, py::str>& env, const py::str& outdir,
                  const py::str& stem, const py::str& text) {
-    std::optional<py::str> header = _HEADER.contains(outdir) ? std::optional<py::str>(_HEADER.at(outdir)) : std::nullopt;
+    std::optional<py::str> header = header_key(outdir);
     return std::get<0>(compile_kept(cc, _adjust_flags(cflags, text), env, outdir, stem, text, header));
 }
 
@@ -464,7 +478,7 @@ py::list<py::str> never_set_kept(const py::str& cc, const py::list<py::str>& cfl
 
 py::list<py::str> never_set(const py::str& cc, const py::list<py::str>& cflags, const py::dict<py::str, py::str>& env,
                             const py::str& outdir, const py::str& stem, const py::str& text) {
-    std::optional<py::str> header = _HEADER.contains(outdir) ? std::optional<py::str>(_HEADER.at(outdir)) : std::nullopt;
+    std::optional<py::str> header = header_key(outdir);
     return never_set_kept(cc, cflags, env, outdir, stem, text, header);
 }
 
@@ -500,7 +514,10 @@ namespace {
 void note_objects(const py::str& outdir, const py::dict<py::str, py::str>& stems, const py::dict<py::str, py::str>& dropped,
                   const std::vector<py::str>& gone = {}) {
     py::dict<py::str, py::str> out;
-    OBJECTS.set(outdir, out);
+    {
+        std::lock_guard<std::recursive_mutex> g(tables_lock());
+        OBJECTS.set(outdir, out);
+    }
     for (const auto& kv : stems.items()) {
         const py::str& n = std::get<0>(kv);
         std::optional<py::str> d = object_digest(py::os::path::join(outdir, std::get<1>(kv) + S(".obj")));
@@ -536,7 +553,7 @@ py::list<Compiled> compile_groups(const py::str& cc, const py::dict<py::str, py:
     std::vector<Item> work;
     for (const Group& g : groups.vec()) {
         py::os::makedirs(g.outdir, 0777, true);
-        _HEADER.set(g.outdir, cache::key({cache::Part(header)}));
+        set_header_key(g.outdir, cache::key({cache::Part(header)}));
         write_text(py::os::path::join(g.outdir, S("m.h")), header);
         py::dict<py::str, py::str> stems;
         int64_t i = 0;
@@ -940,7 +957,8 @@ py::str compile_powerpc(const py::str& cl, const py::str& outdir, const py::str&
     // the stem the object and an error name, and the text; kept in the shared build cache)
     py::dict<py::str, py::str> environ_;
     std::optional<py::str> k;
-    if (_HEADER.contains(outdir)) {
+    const std::optional<py::str> hkey = header_key(outdir);
+    if (hkey) {
         // os.environ as a dict
         py::dict<py::str, py::str> envd;
         for (const char* nm : {"INCLUDE", "CL"}) {
@@ -949,7 +967,7 @@ py::str compile_powerpc(const py::str& cl, const py::str& outdir, const py::str&
         }
         k = cache::key({cache::Part(S("cl-ppc-object")), cache::Part(tool_inputs(cl, envd, S("CL"))),
                         cache::Part(cache::folder(py::os::path::dirname(cl))), cache::Part(CFLAGS_POWERPC),
-                        cache::Part(_HEADER.at(outdir)), cache::Part(stem), cache::Part(text)});
+                        cache::Part(*hkey), cache::Part(stem), cache::Part(text)});
     }
     std::optional<py::bytes> had = k ? cache_get(S("objects"), *k) : std::nullopt;
     if (had) {
@@ -1000,7 +1018,7 @@ BuiltPowerPC build_powerpc(const py::str& header, const py::dict<py::str, py::st
     auto [cl, link_, lib] = *tools;
     int64_t jobs = (jobs0 && *jobs0) ? *jobs0 : base::parallel::workers();
     py::os::makedirs(outdir, 0777, true);
-    _HEADER.set(outdir, cache::key({cache::Part(header)}));
+    set_header_key(outdir, cache::key({cache::Part(header)}));
     write_text(py::os::path::join(outdir, S("m.h")), header);
     py::dict<py::str, py::str> stems;
     int64_t i = 0;

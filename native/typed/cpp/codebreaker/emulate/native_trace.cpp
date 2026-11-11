@@ -1,6 +1,8 @@
 // codebreaker/emulate/native_trace.cpp -- C++ port of codebreaker.emulate.native_trace (see the header).
 
 #include "codebreaker/emulate/native_trace.hpp"
+
+#include <mutex>
 #include "codebreaker/base/capstone_dll.hpp"
 #include "codebreaker/emulate/unicorn_uc.hpp"
 
@@ -77,6 +79,8 @@ py::str dll_path() {
 }
 
 std::shared_ptr<Lib> _load() {
+    static std::recursive_mutex init;   // (first use may be on several gate threads at once)
+    std::lock_guard<std::recursive_mutex> hold(init);
     if (!_LIB.empty()) {
         return _LIB[0];
     }

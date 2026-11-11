@@ -2,6 +2,8 @@
 
 #include "codebreaker/build/watcom.hpp"
 
+#include <mutex>
+
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -84,7 +86,13 @@ py::dict<py::str, py::str>& _EXPORT_NAMES() {
     return names;
 }
 
+std::recursive_mutex& import_maps_lock() {
+    static std::recursive_mutex m;
+    return m;
+}
+
 py::dict<py::str, py::str> import_map(const py::str& module) {
+    std::lock_guard<std::recursive_mutex> hold(import_maps_lock());   // (compiles run on threads: the two tables below are shared)
     if (!_IMPORT_MAPS().contains(module)) {
         py::dict<py::str, py::str> out;
         try {

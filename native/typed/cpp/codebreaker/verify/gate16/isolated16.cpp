@@ -748,7 +748,9 @@ py::list<Checked> check(const py::str& original, const py::str& folder, const py
     if (!workers) {
         std::optional<py::str> env = py::os::environ_::get(py::str("CB_GATE_WORKERS"));
         int64_t asked = env && !env->empty() ? py::int_parse(*env) : 0;
-        workers = asked ? asked : base::parallel::workers();
+        // The Python ran each share in a process of its own. Unicorn and the tracer keep state per process (the code buffer,
+        // the callback slots), so shares on threads corrupt each other: one share at a time unless CB_GATE_WORKERS asks.
+        workers = asked ? asked : 1;
     }
     workers = std::max<int64_t>(1, workers);
     Tables tables = tables_in ? *tables_in : _tables(original);
