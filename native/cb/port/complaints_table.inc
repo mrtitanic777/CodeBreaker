@@ -1,0 +1,116 @@
+// complaints_table.inc -- generated from codebreaker/port/pre_ansi.py SAYS: the compilers' words (gcc's, clang's,
+// MSVC's) for each kind of complaint, in the order they are tried. Included by complaints.cpp.
+static const std::vector<std::pair<Complaint, std::vector<std::string_view>>> kSays = {
+    {Complaint::LibraryName,
+     {
+         R"re(conflicting types for '(?P<fn>\w+)')re",
+         R"re('(?P<fn>\w+)': redefinition; different)re",
+     }},
+    {Complaint::ArgumentType,
+     {
+         R"re(passing argument (?P<n>\d+) of '(?P<fn>\w+)' (?P<how>from incompatible pointer type|makes integer from pointer without a cast|makes pointer from integer without a cast))re",
+         R"re(incompatible (?P<how>pointer types|pointer to integer conversion|integer to pointer conversion) passing '(?P<frm>[^']*)'(?: \(aka '[^']*'\))? to parameter of type '(?P<to>[^']*)')re",
+         R"re('function': incompatible types - from '(?P<frm>[^']*)' to '(?P<to>[^']*)')re",
+         R"re('function': '(?P<to>[^']*)' differs in levels of indirection from '(?P<frm>[^']*)')re",
+     }},
+    {Complaint::FunctionPointer,
+     {
+         R"re((?:assignment to|initialization of) '(?P<to>[^']*\(\*\)\([^']*\))'(?: \{aka '[^']*'\})? from incompatible pointer type '(?P<frm>[^']*\(\*\)\([^']*\))')re",
+         R"re(incompatible function pointer types assigning to '(?P<to>[^']*)'(?: \(aka '[^']*'\))? from '(?P<frm>[^']*)')re",
+         R"re('=': incompatible types - from '(?P<frm>[^']*\*\)\([^']*\))' to '(?P<to>[^']*)')re",
+     }},
+    {Complaint::IntegerFromPointer,
+     {
+         R"re(assignment to '(?P<to>[^']*)'(?: \{aka '[^']*'\})? from '(?P<frm>[^']*\*)'(?: \{aka '[^']*'\})? makes integer from pointer)re",
+         R"re(incompatible pointer to integer conversion assigning to '(?P<to>[^']*)'(?: \(aka '[^']*'\))? from '(?P<frm>[^']*\*)')re",
+         R"re('=': '(?P<to>[^'*]*)' differs in levels of indirection from '(?P<frm>[^']*\*)')re",
+     }},
+    {Complaint::PointerAssign,
+     {
+         R"re((?:assignment to|initialization of) '(?P<to>[^']*\*)'(?: \{aka '[^']*'\})? from incompatible pointer type '(?P<frm>[^']*)')re",
+         R"re(incompatible pointer types (?:assigning to|initializing) '(?P<to>[^']*\*)'(?: \(aka '[^']*'\))? (?:from|with an expression of type) '(?P<frm>[^']*)')re",
+         R"re('(?:=|initializing)': incompatible types - from '(?P<frm>[^']*)' to '(?P<to>[^']*\*)')re",
+     }},
+    {Complaint::ReturnsPointerAsInt,
+     {
+         R"re(returning '(?P<frm>[^']*\*)'(?: \{aka '[^']*'\})? from a function with return type '(?P<to>[^']*)'(?: \{aka '[^']*'\})? makes integer from pointer)re",
+         R"re(incompatible pointer to integer conversion returning '(?P<frm>[^']*\*)')re",
+     }},
+    {Complaint::ReturnsIntAsPointer,
+     {
+         R"re(returning '(?P<frm>[^'*]*)'(?: \{aka '[^']*'\})? from a function with return type '(?P<to>[^']*\*)'(?: \{aka '[^']*'\})? makes pointer from integer)re",
+         R"re(incompatible integer to pointer conversion returning '(?P<frm>[^'*]*)')re",
+     }},
+    {Complaint::ReturnsOtherPointer,
+     {
+         R"re(returning '(?P<frm>[^']*\*)'(?: \{aka '[^']*'\})? from a function with incompatible return type '(?P<to>[^']*\*)')re",
+         R"re(incompatible pointer types returning '(?P<frm>[^']*\*)')re",
+     }},
+    {Complaint::PointerFromInteger,
+     {
+         R"re((?:assignment to|initialization of) '(?P<to>[^']*\*)'(?: \{aka '[^']*'\})? from '(?P<frm>[^'*]*)'(?: \{aka '[^']*'\})? makes pointer from integer)re",
+         R"re(incompatible integer to pointer conversion (?:assigning to|initializing) '(?P<to>[^']*\*)')re",
+     }},
+    {Complaint::NegativeCompare,
+     {
+         R"re(comparison is always (?:false|true) due to limited range of data type)re",
+         R"re(result of comparison of constant -\d+ with expression of type '(?P<t>[^']*)'.* is always)re",
+         R"re('(?:==|!=)': signed/unsigned mismatch)re",
+     }},
+    {Complaint::NoMember,
+     {
+         R"re(request for member '(?P<m>\w+)' in something not a structure or union)re",
+         R"re('(?:struct|union) \w+' has no member named '(?P<m>\w+)')re",
+         R"re(no member named '(?P<m>\w+)' in)re",
+         R"re(member reference base type '[^']*' is not a structure or union)re",
+         R"re(left of '->(?P<m>\w+)' must point to struct)re",
+         R"re(invalid type argument of '->')re",
+         R"re('(?P<m>\w+)' : is not a member of)re",
+     }},
+    {Complaint::VoidValue,
+     {
+         R"re(void value not ignored)re",
+         R"re(requires expression of scalar type \('void' invalid\))re",
+         R"re(incompatible type 'void')re",
+         R"re(illegal use of type 'void')re",
+         R"re('void' illegal)re",
+         R"re(void expression)re",
+         R"re(controlling expression has type 'void')re",
+     }},
+    {Complaint::PointerCastSize,
+     {
+         R"re(cast from pointer to integer of different size)re",
+         R"re(cast to smaller integer type '[^']*' from '[^']*\*')re",
+     }},
+    {Complaint::IncompleteType,
+     {
+         R"re(type of formal parameter (?P<n>\d+) is incomplete)re",
+         R"re(argument type '(?P<to>(?:union|struct) \w+)' is incomplete)re",
+     }},
+    {Complaint::UnionAssigned,
+     {
+         R"re(incompatible types when assigning to type '(?P<to>union \w+)' from type '(?P<frm>[^']*)')re",
+         R"re(assigning to '(?P<to>union \w+)' from incompatible type '(?P<frm>[^']*)')re",
+     }},
+    {Complaint::UnionArgument,
+     {
+         R"re(incompatible type for argument (?P<n>\d+) of '(?P<fn>\w+)')re",
+         R"re(passing '(?P<frm>[^']*)'(?: \(aka '[^']*'\))? to parameter of incompatible type '(?P<to>union \w+)')re",
+     }},
+    {Complaint::Unsequenced,
+     {
+         R"re(operation on '(?P<v>\w+)' may be undefined)re",
+         R"re(unsequenced modification and access to '(?P<v>\w+)')re",
+     }},
+    {Complaint::IntegerCastSize,
+     {
+         R"re(cast to pointer from integer of different size)re",
+         R"re(cast to '[^']*' from smaller integer type)re",
+         R"re(conversion from '[^']*' to '[^']*' of greater size)re",
+     }},
+    {Complaint::Arity,
+     {
+         R"re(too (?:many|few) arguments to function (?:'(?P<fn>\w+)'|call))re",
+         R"re(too (?:many|few) actual parameters)re",
+     }},
+};

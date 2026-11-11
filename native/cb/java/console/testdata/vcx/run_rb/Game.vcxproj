@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <A>1</A>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ClCompile Include="x.cpp" />
+  </ItemGroup>
+</Project>

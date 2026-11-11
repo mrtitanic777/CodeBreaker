@@ -26,6 +26,12 @@ output's folder is a setting (`<name>_bin`), as `decompiler_bin` is.
 
 ## Step 1 (done): the 32-bit run recorder -- `native/tracer`
 
+> **Moved (2026-11-11, docs/CPP_DESIGN.md).** The recorder's sources are `native/cb/emulate/tracer/` (api.cc ->
+> api.cpp and so on), part of `cb_emulate`, and `cbtrace.dll` is the `cbtrace` target of `native/cb/CMakeLists.txt`
+> (`tools\build_cb.cmd`; it lands in `state/cxx/cb/bin`, the `tracer_bin` default). The typed C++ face of the 32-bit
+> recorder is `cb/emulate/native_trace.hpp`; the C interface stays for the ports that still reach it through it.
+> Below, `native/tracer` is that folder.
+
 **Why, measured.** `reconstruct.run` on ping.exe (30 functions): decompile 4 s, build 1 s, judge
 189 s. The judge made 2,459 emulator runs and Unicorn called back into Python 8.5 million times --
 `hook_code` per instruction and `hook_block` per block in emulate/emulator.py `trace_function`
@@ -63,8 +69,7 @@ branch decode per module hash and address), so even a cache's effect on later ru
 **The switch.** `CB_NATIVE_TRACE` (default 1; 0 = the Python hooks). Without the built DLL the
 Python hooks run (native_trace.why_not() says why). Build:
 
-    (vcvars64)  cmake -S native/tracer -B native/tracer/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-                cmake --build native/tracer/build
+    tools\build_cb.cmd            (cbtrace.dll in state\cxx\cb\bin; was: cmake -S native/tracer ...)
 
 **The gate** (harness kept outside the repo, in state/work/native-trace2). Every function's (verdict,
 reason, limits, detail) with the switch off and on, fresh CB_STATE, CB_NO_FP_CACHE=1, the same

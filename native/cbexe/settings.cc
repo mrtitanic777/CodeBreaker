@@ -260,7 +260,7 @@ void init(const var& m) {
         {S("openwatcom"), S("")},
         {S("decompiler_bin"), J({"native", "decompiler", "build", "bin"})},
         {S("xex_bin"), J({"native", "xex", "build", "bin"})},
-        {S("tracer_bin"), J({"native", "tracer", "build", "bin"})},
+        {S("tracer_bin"), J({"state", "cxx", "cb", "bin"})},
         {S("formats_bin"), J({"native", "formats", "build", "bin"})},
         {S("engine_bin"), J({"native", "engine", "build", "bin"})},
         {S("dosexec_bin"), J({"native", "dosexec", "build", "bin"})},

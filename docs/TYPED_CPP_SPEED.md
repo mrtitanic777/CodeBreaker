@@ -47,7 +47,7 @@ Runtime changes behind these (all output-neutral):
   chunks of one reserved address range, so delete finds the class from the address (no header, unsized delete works). The
   typed ports make a `std::u32string` per `py::str`; the system heap was ~25% of their CPU. p5: 52 -> 39 s CPU.
 - py::re (native/l2/src/pyre.cc): every one-character instruction tests an ASCII byte by its own table (no UTF-8 decode, no
-  call), `` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
+  call), `\b` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
   where that character is not (sre's literal-tail check), the backtrack stack is an inline array. Micro-benchmark
   (tools/bench_re.cc vs tools/bench_re.py on 295 C files, 18 patterns): 704 -> 290 ms against Python's 525 ms.
 - ctext.blank's cache looks up by hash without copying the (large) text.
@@ -311,6 +311,26 @@ C++20 /O1. Best of three runs of the harness's whole case file, process start in
 
 The other modules of the batch (aout, exepack, hooks_lattice, x86, linkemu, batch, readable, draft/package) have
 harnesses of a few hundred cases that run in the process start; they were checked for the same behaviour, not timed.
+
+## cb refactor, batch W0-B1 (compare, emulate): before and after, 2026-11-11
+
+The py-layer port (before) against the idiomatic native/cb code (after), same machine, release build, best of N.
+
+| What | Before | After |
+|---|---|---|
+| compare::image::first_difference, 4 MB equal until the last bytes | 2.35 ms | 0.21 ms (memcmp, eight bytes at a time) |
+| compare::mask::same, 4 MB, every 64th byte masked | 3.77 ms | 0.93 ms |
+| compare::mask::distance, 4 MB, one mask | 4.89 ms | 0.96 ms |
+| the 32-bit recorder (cbtrace.dll, C interface; 900,002 instructions of a counting loop, one hook per instruction) | 26.4 / 27.4 / 27.5 ns per instruction | 27.0 / 27.4 / 28.7 ns per instruction |
+
+Notes:
+* The recorder's code is the same code moved (native/tracer -> native/cb/emulate/tracer); only the Unicorn and Capstone
+  tables changed (`ucl()` is one acquire load). A first version took a mutex per call and was 6% slower; the atomic fix
+  brought it to noise. Runs on this machine vary by a factor of two with other load, so the pairs above were run back to back.
+* pcode's cost is the pcodecheck pipe (unchanged); ports16 and symbolic construct a few objects per run (not measured: far
+  from any hot loop of the judge).
+* Harness: state/work/cpp-refactor/hot-b1/ (the recorder), state/work/cpp-refactor/compare/ (mask, image).
+
 ## Executable-format readers (cb/formats: pe, ne, le, dos, omf, detect), 2026-11-11
 
 Old = the native C++ readers (native/formats) behind the typed shells; new = native/cb/formats. Both run over the same inputs by a
@@ -346,6 +366,124 @@ Same inputs (the harness `cases.txt` of each module, parsing and hex decoding in
 | build/vxdfile (329 cases) | 120 ms | 17 ms | 7x |
 
 The assemblers, definitions, watcom, msvc152, period16 and dos_sessions have no CPU-bound work of their own (they drive other programs); not timed.
+## cb refactor: recompile batch W0-B24 (2026-11-11)
+
+Real inputs: the Xbox 360 images of Minecraft in C:/Nexia360/Games (Xbox 360 Edition 20 MB, Indev, the test build, the two
+pre-release builds). Old = the original Python module (the typed port runs the same algorithm; where its harness could be built
+it is timed too); new = `native/cb/recompile`, Release /O2, best of 5 runs after one warm-up, on a busy shared machine. The
+image is already read in every row (reading it is formats/powerpc_image).
+
+| What | Old | New | Ratio |
+|---|---|---|---|
+| switches.find, Minecraft default.xex (213 tables, 4 unresolved, 12 pointer calls) | 0.69 s (Python) | 0.003 s | ~230x |
+| the same, Indev / test build / pre-release 1 / pre-release 2 | 0.39 / 0.21 / 0.55 / 0.59 s | 0.001 / 0.001 / 0.002 / 0.002 s | 200-400x |
+| jumptable over every bctr of Minecraft's code (1232 bctrs, 214 tables) | 6.4 s (Python) | 0.0026 s | ~2400x |
+| the same, Indev (no runaway table; 422 bctrs, 153 tables) | 0.41 s (Python) | 0.0015 s | ~270x |
+| jumptable, the old harness's 1,158 detect cases (fuzzed images), typed port vs new through its shim | 0.54 s | 0.41-0.46 s | 1.2-1.3x |
+| xenon.build() when up to date (the check of 4 source folders' times) | 4.5 ms (Python) | 1.7-2.8 ms | 2x |
+| xenon.msvc_env() (the real cmd.exe running vcvars64.bat) | 2.1 s | 2.1-2.7 s | same (it is cmd.exe) |
+| xenon.instruction_tests, 5 of Xenia's tests through the real binutils, XenonRecomp and clang-cl | 14.2 s (Python) | 14.9 s | same (clang-cl compiles for 12 s) |
+| gpu.gpu_files / design_md | text constants | text constants | nothing to time |
+
+The scan modules are faster because the Python read each word of a 20 MB image through `struct.unpack_from` and each
+instruction through a tuple decode; the C++ reads bytes and decodes fields. The 6.4 s of the jumptable row is mostly one
+real table, an unbounded byte table at 0x824A8E4C of Minecraft, which the Python read for 9.5 million entries until the image
+ended (and the pre-release builds' similar one for 6.9 million); the C++ stops at 65,536 (`kMaxTableEntries`, a DIVERGES
+in jumptable_test). Everything else it finds in the five images is identical to the original (whole-image comparison,
+below). The xenon module is bound by the programs it runs; its own work (the environment of vcvars64, the scan for a newer
+source, the compare of the generated files) is a few milliseconds.
+
+Equivalence on the real images (not timed): `switches.find` on the five images gives the same tables (213/150/91/148/148),
+labels, guards, defaults, functions, and the same unresolved / outside / pointer-call lists, byte for byte as text; the
+recompiler's jumptable gives the same index registers and targets for every table of the five images except the cut at 65,536
+in the three runaway tables named above. The old typed harness's cases (1,158 detect cases) agree except the same 16 tables.
+## W0-B25: recompile (x360project, disassemble, builders/floating) and source (assembly, placement, ne_asm/segdiff, ne_asm/run)
+
+These are I/O- and tool-bound (they start XenonRecomp, OpenWatcom, the corpus walk) except `disassemble`, the only one on a hot path
+(the recompiler lists every word of a function). New code, Release, one thread, 4,096 words of Minecraft Xbox 360 code (0x822B6E00):
+the listing with the VMX128 callback, Capstone for the rest, plus the flow classification from two entries and the data runs, the three
+decodes of the two `Disassembler`s the test builds included: the whole `recompile.disassemble` suite (7 tests, 78 checks) runs in 47 ms
+wall including process start. The old port decoded each word with one `cs_disasm` call per word; the new one does the same through
+`platforms::Decoder::each` (also one `cs_disasm` per word), so the per-word cost is Capstone's in both and the new code adds no work. The old
+exe could not be run here (no Python-engine build in this worktree), so no side-by-side number is claimed.
+`floating::emit` is a table lookup over 32 rules and one string fill per instruction (the old one was an `if` chain of 32 string
+compares and `py::str` formatting). Nothing else in the batch has a loop worth timing.
+
+## exact/emu and exact/habits (wave 0, batch B8)
+
+Whole old harness run (process start, parsing the cases, the module) against the new module's golden test over the same
+cases (process start, parsing, the module), milliseconds, release build:
+
+| work | old port | cb |
+|---|---|---|
+| exact/habits/oldcomp (1,000 pairs) | 44 | 36 |
+| exact/habits/boolx (2,337 cases) | 255 | 29 |
+| exact/habits/symx (10,625 cases) | 551 | 45 |
+| exact/emu/isis, 20,000,000 8080 instructions of a loop | 517 | 281 |
+
+exact/emu/isis and exact/emu/xenix golden tests copy a folder per case, which dominates their time (isis 91 runs 2.4 s,
+xenix 67 runs 6.0 s; the old harness's 317 and 91 runs took 1.6 s and 4.7 s with fewer copies); xenix's work is Unicorn's
+either way and was not timed apart.
+
+## cb/java/console (W0-B17), 2026-11-11
+
+The old side is the original Python (the live implementation of these features; the typed ports ran over the same
+algorithms). Real inputs, the new side a driver over `cb_java` (Release, C++20 /O2); best of three, process start excluded.
+Outputs were compared first: all of them identical to the Python's.
+
+| work | Python | native/cb | note |
+|---|---|---|---|
+| xdk_scan.detect, the installed XDK (2,514 entry points in its headers) | 0.125-0.162 s | 0.055 s | 2.3-3x; same 2,514 names and header for each |
+| assets.run, Minecraft's `minecraft.jar` (346 entries, 42 assets, 3 PNGs converted) | 0.054 s | 0.050-0.059 s | same: 42 files identical, every PNG pixel for pixel |
+| of which: reading the jar / converting the 3 PNGs / writing the 42 files | - | 0.7 ms / 0.5 ms / 65-115 ms | the writes are the file system; the Python does the same ones |
+| vcxproj.run, a generated 5,202-file project (the real xbox360 profile's 55 rules) | 4.2-4.7 s | 2.3-3.6 s | 1.3-1.8x; .vcxproj and .filters byte-identical to the Python's |
+
+The vcxproj figure is dominated by classifying every class against the profile's rules through the generated project's very
+deep inheritance chains (up to 208 ancestors, each tried against 55 patterns); a converted game's chains are 3-6 deep, where the
+whole run is a few milliseconds. Not memoised: the classification of a class and its ancestors is repeated per file.
+## Java lane text passes (cb/java: emit/std_transforms, projects/minecraft/{raycast, content, keybind_mark, ui_mark}), 2026-11-11
+
+Old = the typed ports over the py:: layer, run by the old harnesses (state/work/typed-port/<module>/test.exe over its cases.txt,
+whole process); new = the same inputs through native/cb/java in one process, best of 20 (state/work/cpp-refactor/w0-b18/bench.cpp).
+The old process start alone is 10 ms, so the old work is the total minus that:
+
+| Work | old (total - start) | new |
+|---|---|---|
+| raycast.convert_gl_pick_to_raycast, 261 recorded cases | 54 - 11 = 43 ms | 3.6 ms |
+| std_transforms (apply, sanitize, annotate, literal-masked sub), 544 cases | 53 - 10 = 43 ms (all four functions) | 0.36 ms for the 256 `apply` cases alone |
+| content.scan_assets over the harness corpus (33 files) | not run (the old harness writes into its folders) | 3.4 ms |
+| content.render_content_md (c1) | | 1.6 ms |
+| keybind_mark.mark / ui_mark.mark of the harness tree (dry run) | | 1.0 ms / 1.7 ms |
+
+No old figure for the tree passes: their harnesses are written to rebuild and copy their fixture folders for every case. They
+were compared for behaviour instead: 81 keybind_mark, 85 ui_mark, 143 controller_nav and 261 raycast recorded cases, the 544
+std_transforms cases, 57 content calls, the whole platform_equivalents and minecraft_xbox360 tables: no difference that is not
+listed in a DIVERGES block (raycast overlap and comment rules, std_transforms empty pattern, run() on a missing folder, the
+controller_nav half-patch return).
+## Quad files, the MC2 inverse and the Java tool table (cb/invert, cb/java/run, format_key), 2026-11-11
+
+`cb::invert::early_c` is a typed API over the same compiler model (native/invert, linked as cb_invert_model), so its speed is the
+model's: the old harness's 808 recover/recover_cfg calls (each followed by two to_c, detect_copies, a ladder fold and two
+local_decls, and the text written out) take 0.19-0.22 s in the old process; the new golden test runs 397 recoveries in about
+0.06 s of its 0.10-0.14 s (the rest is the process start and loading the DLLs): about 0.15 ms a recovery against 0.25 ms,
+with the model identical, so the gain is the lost output formatting. The quad readers (quad_dump, quad_align on the 10 KB FXU.Q
+and the Lattice objects), early_c_frame, grammars, known_differences (seven patterns, compiled once per table) and format_key
+run in microseconds on their real inputs; they have no hot path and were checked for the same behaviour, not timed. The Java
+tool table parses a command line in microseconds; the tools it runs are other modules' work.
+## port/pre_ansi part 4 (cb/port: c_source, old_sizes, struct_layout, union_views, frames, original_program, bss, rewrite, headers, complaints), 2026-11-11
+
+Old = the typed port (pre_ansi_p4.cpp, 1,870 lines over the py:: layer); new = native/cb/port. Both run the old part-4 harness
+(state/work/typed-port/port.pre_ansi.p4: every call of the part on the three source trees lib 2.20, link 2.44 and MS C 3.00 p0,
+2,940 answers). The old exe also runs the Port constructor (parts 1-3, not yet refactored) and could not be rebuilt without it
+(its objects are older than master's header shims), so the two times are not of equal scope:
+
+| Whole harness (3 trees, 2,940 calls) | old | new |
+|---|---|---|
+| old test.exe (constructor of parts 1-3 + part 4) | 2.86 s | |
+| new driver (part 4 only; the constructor's state is read from a dump) | | 0.20 s |
+
+The Python original runs the same constructor in 0.5 s for the three trees, so the old constructor is a fraction of the 2.86 s; the
+new part 4 is not slower. The new answers equal the Python's on all 2,940 calls (compare.py, by meaning; 0 differences).
 
 ### native/cb/port (W0-B21: pre_ansi PART 5, the widening passes and the mending)
 

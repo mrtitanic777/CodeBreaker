@@ -1,0 +1,144 @@
+write_filters wf1 Proj -> Proj.vcxproj.filters folders=13
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Amp &amp; &lt;Co&gt;">
+      <UniqueIdentifier>{90416c67-6d0b-41b5-ae76-57664146d31b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Liquid">
+      <UniqueIdentifier>{706fbbcc-7b96-6d3a-09da-5f443d2b802f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debug">
+      <UniqueIdentifier>{2a2fc436-3c50-28df-bba6-9ebf00e41485}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game (misc)">
+      <UniqueIdentifier>{9fb84d3a-3f81-5e95-5c16-a64d684af799}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Gui">
+      <UniqueIdentifier>{a0164319-f4ed-482f-0023-8b14c93bb2bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Release">
+      <UniqueIdentifier>{ec7bbb83-940f-f017-dd99-3e6d442d05e2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime">
+      <UniqueIdentifier>{ec79de61-14b4-f84f-c121-1efa7ad6c311}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Zed">
+      <UniqueIdentifier>{68dba7ac-fb4b-5e23-5354-753193e86d3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="obj">
+      <UniqueIdentifier>{7ecebee2-db79-ccc0-4bce-f5bf489af9ce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu">
+      <UniqueIdentifier>{244313f9-0b93-ad56-3d05-bda32ef479b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu\Gfx">
+      <UniqueIdentifier>{20704e45-8225-996f-148d-ea903515ff5b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="stdafx.cpp"><Filter>Runtime</Filter></ClCompile>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+    <ClCompile Include="LiquidBlock.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="Fluid.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="Debug.cpp"><Filter>Debug</Filter></ClCompile>
+    <ClCompile Include="A&amp;B.cpp"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClCompile>
+    <ClCompile Include="Many.dots.here.cpp"><Filter>Game (misc)</Filter></ClCompile>
+    <ClCompile Include="Zed.cpp"><Filter>Zed</Filter></ClCompile>
+    <ClCompile Include="GuiMainMenu.cpp"><Filter>Gui</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp"><Filter>xuimenu</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp"><Filter>xuimenu\Gfx</Filter></ClCompile>
+    <ClCompile Include="Debug\skipped.cpp"><Filter>Debug</Filter></ClCompile>
+    <ClCompile Include="obj\skipped.cpp"><Filter>obj</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stdafx.h"><Filter>Runtime</Filter></ClInclude>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+    <ClInclude Include="Fluid.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="LiquidBlock.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="Debug.h"><Filter>Debug</Filter></ClInclude>
+    <ClInclude Include="A&amp;B.h"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClInclude>
+    <ClInclude Include="Many.dots.here.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="KernelConfig.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="GuiMainMenu.h"><Filter>Gui</Filter></ClInclude>
+    <ClInclude Include="xuimenu\Ui.h"><Filter>xuimenu</Filter></ClInclude>
+    <ClInclude Include="xuimenu\stdafx.h"><Filter>xuimenu</Filter></ClInclude>
+    <ClInclude Include="Release\skipped.h"><Filter>Release</Filter></ClInclude>
+  </ItemGroup>
+</Project>
+
+write_filters wf2 Empty -> Empty.vcxproj.filters folders=0
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+</Project>
+
+write_filters wf3 Q&A -> Q&A.vcxproj.filters folders=3
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debug">
+      <UniqueIdentifier>{2a2fc436-3c50-28df-bba6-9ebf00e41485}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+    <ClCompile Include="Debug.cpp"><Filter>Debug</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+  </ItemGroup>
+</Project>
+
+write_filters wf5 Dir -> Dir.vcxproj.filters folders=7
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="a">
+      <UniqueIdentifier>{7c3a714b-0b45-1bfa-4991-59b2398f2337}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="a\b">
+      <UniqueIdentifier>{4b40af7d-dc55-18e1-08b5-ae7f3e283f23}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sub">
+      <UniqueIdentifier>{6b19dc70-0c3f-6c00-89b1-3a655c4ac5ff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sub\deep">
+      <UniqueIdentifier>{13aa50ef-90fa-820e-1158-2d6186cc9e8e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="sub\deep\er">
+      <UniqueIdentifier>{eddef5d6-3ed8-2e3b-b4cd-9d4c3d60fd4e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="sub\deep\er\x.cpp"><Filter>sub\deep\er</Filter></ClCompile>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+    <ClInclude Include="a\b\Block.h"><Filter>a\b</Filter></ClInclude>
+  </ItemGroup>
+</Project>

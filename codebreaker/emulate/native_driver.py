@@ -1,4 +1,4 @@
-r"""native_driver.py -- driver.py run()'s hooks in C++ (native/tracer: cbtrace.dll), through ctypes.
+r"""native_driver.py -- driver.py run()'s hooks in C++ (native/cb/emulate/tracer: cbtrace.dll), through ctypes.
 
 A run of a VxD entry point used to call back into Python on every instruction and every memory
 access. Here those hooks are C++: emulate/driver.run still lays the regions out, sets the
@@ -13,7 +13,7 @@ a service answers in (driver_services + the knowledge base), once per distinct s
     run.detach()
 
 The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-(require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
+(require()). Build: tools\build_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
 """
 import ctypes
 import struct
@@ -201,4 +201,4 @@ def require():
     """The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
     be used here, saying why."""
     if not enabled():
-        raise RuntimeError("the run recorder is native (native/tracer, cbtrace.dll): %s" % why_not())
+        raise RuntimeError("the run recorder is native (native/cb/emulate/tracer, cbtrace.dll): %s" % why_not())

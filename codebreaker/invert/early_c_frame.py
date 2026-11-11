@@ -58,8 +58,9 @@ def _chain_swaps(copies):
     swaps=[]; seen=set()
     for src,_ in [(s,d) for d,s in copies]:            # iterate origins (srcs w/o incoming)
         if src in incoming or src in seen: continue
-        cur=src; seen.add(src)
-        while cur in outg: cur=outg[cur]; seen.add(cur)  # walk to sink
+        cur=src; seen.add(src); walked={src}
+        while cur in outg and outg[cur] not in walked:   # walk to the sink (a chain running into a cycle stops at its entry)
+            cur=outg[cur]; seen.add(cur); walked.add(cur)
         if src!=cur: swaps.append((src,cur))
     return swaps
 

@@ -1,0 +1,99 @@
+## fabs f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.u64 = ctx.f4.u64 & ~0x8000000000000000;
+## fnabs f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.u64 = ctx.f4.u64 | 0x8000000000000000;
+## fneg f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.u64 = ctx.f4.u64 ^ 0x8000000000000000;
+## fmr f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64;
+## fcfid f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(ctx.f4.s64);
+## fctid f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.s64 = std::isnan(ctx.f4.f64) ? int64_t(0x8000000000000000ULL) : (ctx.f4.f64 > double(LLONG_MAX)) ? LLONG_MAX : simde_mm_cvtsd_si64(simde_mm_load_sd(&ctx.f4.f64));
+## fctidz f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.s64 = std::isnan(ctx.f4.f64) ? int64_t(0x8000000000000000ULL) : (ctx.f4.f64 > double(LLONG_MAX)) ? LLONG_MAX : simde_mm_cvttsd_si64(simde_mm_load_sd(&ctx.f4.f64));
+## fctiwz f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.s64 = std::isnan(ctx.f4.f64) ? int64_t(0x80000000U) : (ctx.f4.f64 > double(INT_MAX)) ? INT_MAX : simde_mm_cvttsd_si32(simde_mm_load_sd(&ctx.f4.f64));
+## frsp f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(ctx.f4.f64));
+## fcmpu cr6 f4 f5
+ctx.fpscr.disableFlushMode();
+ctx.cr6.compare(ctx.f4.f64, ctx.f5.f64);
+## fcmpo cr6 f4 f5
+ctx.fpscr.disableFlushMode();
+ctx.cr6.compare(ctx.f4.f64, ctx.f5.f64);
+## fadd f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64 + ctx.f5.f64;
+## fadds f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(ctx.f4.f64 + ctx.f5.f64));
+## fsub f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64 - ctx.f5.f64;
+## fsubs f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(ctx.f4.f64 - ctx.f5.f64));
+## fmul f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64 * ctx.f5.f64;
+## fmuls f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(ctx.f4.f64 * ctx.f5.f64));
+## fdiv f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64 / ctx.f5.f64;
+## fdivs f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(ctx.f4.f64 / ctx.f5.f64));
+## fmadd f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64 * ctx.f5.f64 + ctx.f6.f64;
+## fmadds f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(ctx.f4.f64 * ctx.f5.f64 + ctx.f6.f64));
+## fmsub f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64 * ctx.f5.f64 - ctx.f6.f64;
+## fmsubs f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(ctx.f4.f64 * ctx.f5.f64 - ctx.f6.f64));
+## fnmadd f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = -(ctx.f4.f64 * ctx.f5.f64 + ctx.f6.f64);
+## fnmadds f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(-(ctx.f4.f64 * ctx.f5.f64 + ctx.f6.f64)));
+## fnmsub f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = -(ctx.f4.f64 * ctx.f5.f64 - ctx.f6.f64);
+## fnmsubs f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(-(ctx.f4.f64 * ctx.f5.f64 - ctx.f6.f64)));
+## fres f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(1.0 / ctx.f4.f64));
+## frsqrte f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = 1.0 / sqrt(ctx.f4.f64);
+## fsqrt f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = sqrt(ctx.f4.f64);
+## fsqrts f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = double(float(sqrt(ctx.f4.f64)));
+## fsel f3 f4 f5 f6
+ctx.fpscr.disableFlushMode();
+ctx.f3.f64 = ctx.f4.f64 >= 0.0 ? ctx.f5.f64 : ctx.f6.f64;
+## helpers
+#include <cmath>
+#include <climits>
