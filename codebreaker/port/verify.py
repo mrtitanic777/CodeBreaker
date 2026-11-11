@@ -115,6 +115,17 @@ def run_port(cfg, exe, folder, cmd, stdin, env):
     return p.stdout, p.returncode
 
 
+def program_of(cfg, case):
+    """the other program of the set a case names - None for a case that names none; a name the file does not define is
+    a mistake in the file (it used to run the default program, quietly)"""
+    name = case.get("program")
+    if name is None:
+        return None
+    if name not in cfg.get("programs", {}):
+        raise ValueError("case %r names the program %r, which the cases file does not define" % (case.get("name"), name))
+    return cfg["programs"][name]
+
+
 def run_cases(path, exe, env=None):
     """every case of CASES.json run by exe alone (the original not run): [(case name, its console)] - what the
     sanitizer pass reads"""
@@ -129,7 +140,7 @@ def run_cases(path, exe, env=None):
             shutil.copy(inputs[n], os.path.join(fb, n))
         for n, text in case.get("make", {}).items():
             open(os.path.join(fb, n), "wb").write(text.encode("latin1"))
-        prog = cfg.get("programs", {}).get(case.get("program"))
+        prog = program_of(cfg, case)
         if prog:                                            # (another pass: its own port)
             exe2 = at(prog["port"])
             if not os.path.isfile(exe2):
@@ -193,7 +204,7 @@ def main(argv):
             for f in (fa, fb):
                 open(os.path.join(f, n), "wb").write(text.encode("latin1"))
         cmd, stdin = case.get("cmd", ""), case.get("stdin", "")
-        prog = cfg.get("programs", {}).get(case.get("program"))
+        prog = program_of(cfg, case)
         oa, pb = (at(prog["original"]), at(prog["port"])) if prog else (orig, port)
         ca, xa = run_original(cfg, oa, fa, cmd, stdin)
         try:

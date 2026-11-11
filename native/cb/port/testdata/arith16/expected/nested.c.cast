@@ -1,0 +1,8 @@
+#include "hdr.h"
+#define ADD(a,b) ((a)+(b))
+uint16_t ufn(uint16_t x);
+void f(void) {
+  ul = (uint16_t)((((u)) ? 3L : (int16_t)(-(ADD(s, t)))) > (uint16_t)(s + 0xFFFF)) > ufn(u) <= 5u;
+  if ((uint16_t)((int16_t)(arr[2] + fn(3)) >> (i ^ st.f) % arr[2]) > u) {}
+  if (u < (uint16_t)(s + t * 2) && v > (uint16_t)(s - t)) {}
+}
