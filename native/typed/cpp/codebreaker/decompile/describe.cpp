@@ -1,6 +1,7 @@
 // codebreaker/decompile/describe.cpp -- typed C++ of codebreaker.decompile.describe (see describe.hpp).
 
 #include "codebreaker/decompile/describe.hpp"
+#include "codebreaker/base/capstone_dll.hpp"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -210,7 +211,7 @@ CsLib& cs_ready() {
     if (lib.with_detail) return lib;
     std::lock_guard<std::mutex> hold(cs_mutex());
     if (lib.with_detail) return lib;
-    if (dll_path().empty()) throw py::ImportError("capstone: no DLL given (set_capstone_dll)");
+    if (dll_path().empty()) set_capstone_dll(base::capstone_dll::find());   // (nobody named one: found as `import capstone` would)
     lib.module = LoadLibraryW(dll_path().c_str());
     if (!lib.module) throw py::ImportError("capstone: cannot load the DLL");
     lib.open = sym_<decltype(&cs_open)>(lib.module, "cs_open");
@@ -2486,6 +2487,8 @@ std::tuple<py::str, py::dict<int64_t, py::str>> describe32(const py::str& module
         if (x86) {
             try {
                 pop = symbols::api_arguments::_scan(*mod, va - static_cast<int64_t>(pe.image_base), 4);
+            } catch (const py::ImportError&) {
+                throw;   // (no capstone is not "no pop count")
             } catch (const std::exception&) {
                 pop = std::nullopt;
             }
