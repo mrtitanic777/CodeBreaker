@@ -70,8 +70,25 @@ def test_cpukey_generated_keys_validate():
     assert cpukey_ecd.validate_cpukey(cpukey_ecd.compute_ecd(base).hex())["valid"]
 
 
+def test_sms_writer_game_gear_rom():
+    """source.sms_writer: a Game Gear cartridge is written (the Game Gear's ports were merged into the console's
+    with dict(PORTS, **GG_PORTS), whose integer keys raise TypeError), and names its own ports."""
+    import tempfile
+    from codebreaker.build import z80_asm
+    from codebreaker.source import sms_writer
+    _at, image = z80_asm.build_flat("        DI\n        OUT ($06),A\n        IN A,($00)\n        OUT ($BF),A\n        JR $\n")
+    work = tempfile.mkdtemp(prefix="cb_gg_")
+    path = os.path.join(work, "t.gg")
+    with open(path, "wb") as f:
+        f.write(bytes(image) + bytes(0x4000 - len(image)))
+    r = sms_writer.reconstruct(path, work)
+    text = open(r["source"]).read()
+    assert "Game Gear" in text and "GG_STEREO" in text and "GG_START" in text, text[:600]
+
+
 def main():
-    for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate):
+    for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
+               test_sms_writer_game_gear_rom):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
