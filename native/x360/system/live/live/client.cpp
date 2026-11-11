@@ -739,6 +739,8 @@ namespace live
                 SendLine(j);
         }
 
+        GameSessionInfo ParseGameSession(const json& j); // (defined with the session requests)
+
         void HandleEvent(const json& j)
         {
             const std::string op = Str(j, "op");
@@ -789,6 +791,28 @@ namespace live
                     u.messages.clear();
                     u.party.reset();
                     e = { EventKind::SignedOut, user, xuid };
+                }
+                else if (op == "match_found" || op == "match_timeout")
+                {
+                    e = { op == "match_found" ? EventKind::MatchFound : EventKind::MatchTimeout, user };
+                    e.ticket = uint64_t(std::max<int64_t>(0, I64(j, "ticket")));
+                    if (op == "match_found")
+                    {
+                        e.host = Str(j, "role") == "host";
+                        if (e.host)
+                        {
+                            if (const json& players = Get(j, "players"); players.is_array())
+                                for (const json& p : players)
+                                    e.players.push_back(ParseHex64(Get(p, "xuid")));
+                        }
+                        else if (const json& session = Get(j, "session"); session.is_object())
+                            e.session = std::make_shared<GameSessionInfo>(ParseGameSession(session));
+                        else
+                        {
+                            Log("Live: match_found without a session");
+                            return;
+                        }
+                    }
                 }
                 else
                 {
@@ -2069,19 +2093,91 @@ namespace live
                         { "attributes", AttributeObject(attributes) } });
     }
 
-    std::optional<std::vector<GameSessionInfo>> SearchGameSessions(
-        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults)
+    namespace
     {
-        const auto reply = Request({ { "op", "session_search" }, { "user", user }, { "filters", AttributeObject(filters) },
-                                     { "players", players }, { "max_results", maxResults } });
+        // The filters of a search or ticket: a plain value is the attribute's bytes (base64); an operator makes it
+        // {"op", "value"} with the number (when given) or the bytes.
+        json FilterObject(const std::map<uint32_t, std::vector<uint8_t>>& filters, const SessionQuery& query)
+        {
+            json out = json::object();
+            for (const auto& [id, bytes] : filters)
+            {
+                const std::string key = std::format("{:08X}", id);
+                const auto op = query.ops.find(id);
+                if (op == query.ops.end() || op->second.op.empty())
+                    out[key] = Base64(bytes);
+                else if (op->second.number)
+                    out[key] = { { "op", op->second.op }, { "value", *op->second.number } };
+                else
+                    out[key] = { { "op", op->second.op }, { "value", Base64(bytes) } };
+            }
+            for (const auto& [id, op] : query.ops)
+                if (!filters.contains(id) && !op.op.empty() && op.number)
+                    out[std::format("{:08X}", id)] = { { "op", op.op }, { "value", *op.number } };
+            return out;
+        }
+
+        // rank, rank_by and rank_target of a search or ticket (left out when not set).
+        void AddRank(json& request, const SessionQuery& query)
+        {
+            if (!query.rank.empty())
+                request["rank"] = query.rank;
+            if (query.rankBy)
+                request["rank_by"] = std::format("{:08X}", *query.rankBy);
+            if (query.rankTarget)
+                request["rank_target"] = *query.rankTarget;
+        }
+
+        std::string ReplyError(const std::optional<json>& reply)
+        {
+            if (!reply)
+                return Connected() ? std::string("timeout") : std::string("not connected");
+            return Str(*reply, "error");
+        }
+    }
+
+    std::optional<std::vector<GameSessionInfo>> SearchGameSessions(
+        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults,
+        const SessionQuery& query, std::string* error)
+    {
+        json request = { { "op", "session_search" }, { "user", user }, { "filters", FilterObject(filters, query) },
+                         { "players", players }, { "max_results", maxResults } };
+        AddRank(request, query);
+        const auto reply = Request(std::move(request));
         if (!reply || !Bool(*reply, "ok"))
+        {
+            if (error)
+                *error = ReplyError(reply);
             return std::nullopt;
+        }
         std::vector<GameSessionInfo> out;
         if (const json& list = Get(*reply, "sessions"); list.is_array())
             for (const json& j : list)
                 if (j.is_object())
                     out.push_back(ParseGameSession(j));
         return out;
+    }
+
+    std::optional<uint64_t> QueueMatch(uint32_t user, const MatchRequest& match, std::string* error)
+    {
+        json request = { { "op", "match_queue" }, { "user", user }, { "filters", FilterObject(match.filters, match.query) },
+                         { "players", match.players }, { "min_players", match.minPlayers },
+                         { "max_players", match.maxPlayers }, { "timeout_s", match.timeoutSeconds } };
+        AddRank(request, match.query);
+        const auto reply = Request(std::move(request));
+        const json& ticket = reply ? Get(*reply, "ticket") : Get(json(), "ticket");
+        if (!reply || !Bool(*reply, "ok") || !ticket.is_number_integer())
+        {
+            if (error)
+                *error = ReplyError(reply);
+            return std::nullopt;
+        }
+        return ticket.get<uint64_t>();
+    }
+
+    std::optional<std::string> CancelMatch(uint32_t user, uint64_t ticket)
+    {
+        return Simple({ { "op", "match_cancel" }, { "user", user }, { "ticket", ticket } });
     }
 
     std::optional<std::string> SetGameSessionQos(uint32_t user, uint64_t sessionId, const std::vector<uint8_t>& data)

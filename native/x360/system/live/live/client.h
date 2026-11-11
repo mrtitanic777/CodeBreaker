@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -176,15 +177,36 @@ namespace live
         std::string knownServersFile; // UTF-8 path
     };
 
+    // A game session as the server shows it (XSessionSearchByIds, joining, matchmaking results): nullopt from
+    // GameSession when it does not exist (any more) or no answer.
+    struct GameSessionInfo
+    {
+        uint64_t id = 0, host = 0;
+        uint32_t titleId = 0, flags = 0, publicSlots = 0, privateSlots = 0;
+        std::vector<uint64_t> members;
+        bool playing = false;
+        std::vector<uint8_t> qos; // the host's XNetQosListen data
+        std::map<uint32_t, std::vector<uint8_t>> attributes; // matchmaking attributes (SetGameSessionAttributes)
+    };
+
     // SignedOut: the server signed `user` out because the same account signed in on another console (as Xbox LIVE
     // does); it is not signed in again until the runtime calls SignIn.
+    // MatchFound / MatchTimeout (QueueMatch, protocol "Matchmaking"; `user` is the ticket's user, `ticket` its id):
+    //   MatchFound with `host` false: join `session` (the title's session the server found, XSessionJoinRemote);
+    //   MatchFound with `host` true: no session fits, this console creates one (XSessionCreate, with matchmaking
+    //   flag) within 30 s; `players` are the group's online XUIDs, this console's first; the others then get
+    //   MatchFound with that session. MatchTimeout: the ticket's time ran out.
     enum class EventKind { Connected, Disconnected, SignedIn, SignedOut, FriendChanged, FriendRemoved, MessageArrived,
-                           PartyChanged };
+                           PartyChanged, MatchFound, MatchTimeout };
     struct Event
     {
         EventKind kind;
         uint32_t user = 0;
         uint64_t xuid = 0; // FriendChanged / FriendRemoved: the friend
+        uint64_t ticket = 0;                 // MatchFound / MatchTimeout
+        bool host = false;                   // MatchFound: this console hosts (role "host"), else joins
+        std::shared_ptr<GameSessionInfo> session; // MatchFound as joiner: the session to join
+        std::vector<uint64_t> players;       // MatchFound as host: the group's XUIDs, the host's first
     };
 
     // Reads a settings value "host[:port][, host[:port]...]" into config.host / port / fallbacks (port default
@@ -348,28 +370,52 @@ namespace live
     std::optional<std::string> ModifyGameSession(uint32_t user, uint64_t sessionId, uint32_t flags, uint32_t publicSlots,
                                                  uint32_t privateSlots);
     std::optional<std::string> SetGameSessionPlaying(uint32_t user, uint64_t sessionId, bool playing);
-    // A session's details (XSessionSearchByIds, joining): nullopt when it does not exist (any more) or no answer.
-    struct GameSessionInfo
-    {
-        uint64_t id = 0, host = 0;
-        uint32_t titleId = 0, flags = 0, publicSlots = 0, privateSlots = 0;
-        std::vector<uint64_t> members;
-        bool playing = false;
-        std::vector<uint8_t> qos; // the host's XNetQosListen data
-        std::map<uint32_t, std::vector<uint8_t>> attributes; // matchmaking attributes (SetGameSessionAttributes)
-    };
     std::optional<GameSessionInfo> GameSession(uint32_t user, uint64_t sessionId);
     // A matchmaking session's attributes (XSESSION_CREATE_USES_MATCHMAKING; the host's): the contexts and properties
     // of the title's matchmaking schema the host has set, by id (a context's value as 4 big-endian bytes, a
     // property's data as the title set it). Sent at XSessionCreate and XSessionModify, as XAM does.
     std::optional<std::string> SetGameSessionAttributes(uint32_t user, uint64_t sessionId,
                                                         const std::map<uint32_t, std::vector<uint8_t>>& attributes);
+    // How a search or a match ticket compares and orders (protocol "Matchmaking"). An operator replaces the plain
+    // "bytes equal" test of the filter with the same attribute id (or adds a filter that has only a number): `op`
+    // is "==", "!=", "<", "<=", ">" or ">="; `number` is the value for the numeric comparison (a context's value, a
+    // numeric property), else the filter's bytes are compared. Ranking: rank "" / "newest" (default), "fullest"
+    // (most members first: what a quick match wants) or "closest" (the attribute rankBy nearest to rankTarget, or,
+    // when that is absent, to the filter's number on rankBy).
+    struct SessionFilterOp
+    {
+        std::string op;
+        std::optional<double> number;
+    };
+    struct SessionQuery
+    {
+        std::map<uint32_t, SessionFilterOp> ops;
+        std::string rank;
+        std::optional<uint32_t> rankBy;
+        std::optional<double> rankTarget;
+    };
     // XSessionSearchEx: the caller's title's matchmaking sessions that have `players` open public slots, are joinable
     // now (not playing with XSESSION_CREATE_JOIN_IN_PROGRESS_DISABLED), are not the caller's own, and whose
-    // attribute equals each filter's bytes (an attribute the session lacks fails its filter); at most `maxResults`,
-    // newest first. nullopt when the server does not answer.
+    // attributes pass each filter (equal to the bytes, or `query`'s operator); at most `maxResults`, ranked by
+    // `query` (default newest first). nullopt when the server does not answer; the server's error text in `error`.
     std::optional<std::vector<GameSessionInfo>> SearchGameSessions(
-        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults);
+        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults,
+        const SessionQuery& query = {}, std::string* error = nullptr);
+    // The match queue (match_queue): a ticket that is placed into an open session of the title that passes the filters,
+    // or grouped with other tickets of the title with the same filters to start a new one. The answer comes as events
+    // (EventKind::MatchFound, MatchTimeout) to the handler. `players` are the seats this console needs, `minPlayers`
+    // / `maxPlayers` the new game's size, `timeoutSeconds` how long to wait (the server caps it at 300). At most 4
+    // open tickets per connection. Returns the ticket, nullopt with the error text in `error`.
+    struct MatchRequest
+    {
+        std::map<uint32_t, std::vector<uint8_t>> filters;
+        SessionQuery query;
+        uint32_t players = 1, minPlayers = 2, maxPlayers = 4;
+        uint32_t timeoutSeconds = 60;
+    };
+    std::optional<uint64_t> QueueMatch(uint32_t user, const MatchRequest& request, std::string* error = nullptr);
+    // Ends a ticket (match_cancel); an error text for a ticket that ended already ("no such ticket").
+    std::optional<std::string> CancelMatch(uint32_t user, uint64_t ticket);
     // The host's QoS data for its session (XNetQosListen with XNET_QOS_LISTEN_SET_DATA; at most 1024 bytes).
     std::optional<std::string> SetGameSessionQos(uint32_t user, uint64_t sessionId, const std::vector<uint8_t>& data);
 
