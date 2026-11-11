@@ -26,3 +26,26 @@ codebreaker.emulate.windows16
 codebreaker.formats.native
 codebreaker.platforms
 concurrent.futures._base
+
+# translated here but C (or always in use) in CPython, so its profile does not show them: measured by the
+# C++ program's times (identify lz32.dll was 25% slower with them compiled without inlining)
+_pycollections
+_pyntpath
+genericpath
+posixpath
+_pystring
+re._parser
+re._constants
+pathlib.*
+fnmatch
+_pydatetime
+datetime
+_pyio
+reprlib
+linecache
+codebreaker.base.*
+codebreaker.formats.*
+codebreaker.engine.*
+
+# experiment: all of CodeBreaker's own modules
+codebreaker.*
