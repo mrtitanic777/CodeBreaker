@@ -209,3 +209,8 @@ Notes:
   when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
   was first. Compared with lz32.dll first in a fresh state: identical.
 * Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
+## Idiomatic C++ refactor (native/cb), against the py:: ports
+
+| Module | py:: port | native/cb | Speedup |
+|---|---|---|---|
+| knowledge/sources (all 14 kinds, 16,896 rows) | 139-145 ms | 45-48 ms | ~3x |
