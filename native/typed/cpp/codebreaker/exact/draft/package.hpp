@@ -37,7 +37,8 @@
 //     an opaque std::shared_ptr<void>.
 //   * The project (`prj`) and the stages draft asks of it (exact.library.locate, exact.carve.functions,
 //     draft.prove.prove_texts, prj.toolchain(), prj.symbols(), prj.sources(), prj.path()) are the abstract class Project;
-//     importlib.import_module("codebreaker.invert." + model) is the std::function `inverse_model_loader`.
+//     importlib.import_module("codebreaker.invert." + model) is Project::load_inverse_model (the real project's gives
+//     invert::early_c, the one model a toolchain profile names).
 //   * candidates.FPINFO / candidates.FRAME and invert.flow16.CMPSWITCH, which this module sets, are FPINFO, FRAME and
 //     flow16_cmpswitch here (those modules have no typed port yet; they belong there).
 //   * `hook = table_hook(code); hook.base = ...` is a TableHook object; SWITCH takes it as a std::function.
@@ -87,6 +88,11 @@ class InverseModel {
                          const std::shared_ptr<void>& pt, const std::shared_ptr<void>& loc) = 0;
     bool has_fold_ladders = false;
     virtual py::list<py::str> _fold_ladders(const py::list<py::str>& stmts) = 0;
+
+    // The model's checker mode (hasattr(inv, "MARK")): the C text of the code read with byte-wide memory marked as
+    // BYTE(x) (nullopt: it raised). A module with no MARK has none.
+    bool has_mark = false;
+    virtual std::optional<py::str> checked_c(const py::bytes& code) { (void)code; return std::nullopt; }
 
     // the module's switches, written by the stage (absent: None of the optional)
     std::optional<bool> FRAME_AFTER_BP, REGVARS_EAGER, FPCASTS, UNSIGNED_CAST;
@@ -165,13 +171,14 @@ class Project {
     virtual py::set<int64_t> source_addresses() = 0;          // {a for a, p in prj.sources()}
     virtual py::str path(const py::str& name) = 0;            // prj.path(name)
     virtual py::list<std::tuple<int64_t, int64_t, py::str>> functions() = 0;   // exact.carve.functions(prj)
+    // importlib.import_module("codebreaker.invert." + model): ModuleNotFoundError for a module there is no port of
+    virtual std::shared_ptr<InverseModel> load_inverse_model(const py::str& model) {
+        throw py::ModuleNotFoundError("No module named 'codebreaker.invert." + model.utf8() + "'");
+    }
     // draft.prove.prove_texts(prj, tc, inv, texts, a, ln, names) -> (source, verdict)
     virtual std::tuple<py::str, py::str> prove_texts(InverseModel& inv, const py::list<std::tuple<py::str, py::dict<py::str, int64_t>>>& texts,
                                                      int64_t a, int64_t ln, const py::dict<int64_t, py::str>& names) = 0;
 };
-
-// importlib.import_module("codebreaker.invert." + model)
-extern std::function<std::shared_ptr<InverseModel>(const py::str&)> inverse_model_loader;
 
 // {image offset: name} of the code the program has names for (SYMBOLS, the library's modules)
 py::dict<int64_t, py::str> _names(Project& prj);

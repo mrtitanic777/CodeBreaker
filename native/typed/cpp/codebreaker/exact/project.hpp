@@ -68,10 +68,10 @@
 //   batch::Project     (batch_project)    headers, include, switches
 //   readable::Project (as_readable)   dir, src, symbols, sources, ledger_run, with_src
 //   draft::Project     (as_draft)     toolchain_name, inverse_model, locate (library::locate), symbols, image,
-//                      source_addresses, path, functions (carve::functions); prove_texts is exact.draft.prove, which has no
-//                      typed port: it is the function given to set_prove_texts
-//   forms::Prj of exact.draft.forms/candidates/prove: kit_dir, library_places, compile_listing: toolchain().p's "kit" and
-//                      kit_dir(kit), locate(prj) (as_library), toolchain()->compile_listing
+//                      source_addresses, path, functions (carve::functions), load_inverse_model (invert::early_c),
+//                      prove_texts (exact.draft.prove over draft_prj)
+//   forms::Prj of exact.draft.forms/candidates/prove (draft_prj): kit_dir, library_places, compile_listing: toolchain().p's
+//                      "kit" and kit_dir(kit), locate(prj) (as_library), toolchain()->compile_listing; both in project_draft.cpp
 #pragma once
 
 #include <cstdint>
@@ -84,6 +84,7 @@
 #include "codebreaker/exact/batch.hpp"
 #include "codebreaker/exact/compare.hpp"
 #include "codebreaker/exact/data.hpp"
+#include "codebreaker/exact/draft/forms.hpp"
 #include "codebreaker/exact/draft/package.hpp"
 #include "codebreaker/exact/exepack.hpp"
 #include "codebreaker/exact/identify.hpp"
@@ -204,11 +205,6 @@ const ProfileParts& profile_parts(const toolchain::Toolchain& tc);
 void set_decoder16(const compare::Decoder& d);
 const compare::Decoder& decoder16();
 
-// exact.draft.prove.prove_texts, which has no typed port: given what as_draft() hands out for it
-using ProveTexts = std::function<std::tuple<py::str, py::str>(draft::InverseModel&, const py::list<std::tuple<py::str, py::dict<py::str, int64_t>>>&,
-                                                              int64_t a, int64_t ln, const py::dict<int64_t, py::str>& names)>;
-void set_prove_texts(const ProveTexts& f);
-
 // ---- the project
 class Project : public std::enable_shared_from_this<Project> {
   public:
@@ -289,6 +285,7 @@ pascal_join::Project pascal_project(Project& p);
 compare::Project compare_project(Project& p);
 batch::Project batch_project(Project& p);
 std::shared_ptr<readable::Project> as_readable(Project& p);
-std::shared_ptr<draft::Project> as_draft(Project& p);
+std::shared_ptr<draft::Project> as_draft(Project& p);       // (exact/project_draft.cpp)
+draft::forms::Prj draft_prj(Project& p);                      // what draft's forms, candidates and prove read of the project and its profile (exact/project_draft.cpp)
 
 }  // namespace codebreaker::exact::project

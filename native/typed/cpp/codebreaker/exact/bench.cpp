@@ -29,9 +29,8 @@ py::list<std::tuple<int64_t, str, str>> run(project::Project& prj, const std::op
     auto tc = prj.toolchain();
     const auto& inverse = project::profile_parts(*tc).inverse;
     if (!inverse) throw py::KeyError("'inverse'");
-    if (!draft::inverse_model_loader) throw py::ModuleNotFoundError("No module named 'codebreaker.invert." + inverse->utf8() + "'");
-    std::shared_ptr<draft::InverseModel> inv = draft::inverse_model_loader(*inverse);
     auto dv = project::as_draft(prj);
+    std::shared_ptr<draft::InverseModel> inv = dv->load_inverse_model(*inverse);
     py::dict<int64_t, str> names = draft::_names(*dv);
     const bytes& img = prj.image;
     py::dict<int64_t, int64_t> fs;

@@ -10,10 +10,9 @@
 // source; --out writes one line a function (address, verdict) for comparing two runs.
 //
 // Typing notes:
-//   * The inverse model is draft::InverseModel, found by draft::inverse_model_loader (importlib.import_module of
-//     "codebreaker.invert." + the profile's "inverse"; none installed: ModuleNotFoundError).  The draft stage's
-//     model_texts and _names are the typed port (exact/draft/package.hpp); draft.prove.prove_texts has no typed port and
-//     is what project::set_prove_texts is given (the draft adapter of the project calls it).
+//   * The inverse model is draft::InverseModel, loaded by the project's draft view (project::as_draft: invert::early_c,
+//     the model a toolchain profile names); the draft stage's model_texts and _names are the typed port
+//     (exact/draft/package.hpp), and draft.prove.prove_texts is exact/draft/prove (the project's draft view calls it).
 //   * A row is (address, verdict, source).  Where proving raises, the Python's source is traceback.format_exc(); here it is
 //     "Traceback (most recent call last):\n" + "<Type>: <message>\n" (the frames are the Python's own).
 //   * main() prints to `out` (std::cout by default).

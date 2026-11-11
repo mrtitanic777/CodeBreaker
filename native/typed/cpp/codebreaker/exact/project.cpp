@@ -213,10 +213,6 @@ compare::Decoder& decoder_slot() {
     static compare::Decoder d;
     return d;
 }
-ProveTexts& prove_slot() {
-    static ProveTexts f;
-    return f;
-}
 
 // the struct.unpack_from("<14H", b, 0) of an MZ header
 py::list<int64_t> header_words(const bytes& b) {
@@ -451,52 +447,6 @@ struct ReadableView : ViewOf<readable::Project> {
     }
 };
 
-struct DraftView : ViewOf<draft::Project> {
-    using ViewOf<draft::Project>::ViewOf;
-    str toolchain_name() override { return p.toolchain()->name; }
-    std::optional<str> inverse_model() override { return profile_parts(*p.toolchain()).inverse; }
-    draft::Located locate() override {
-        draft::Located out;
-        auto lib = as_library(p);
-        library::MapP mp = library::locate(*lib);
-        auto conv = [](const library::MemberP& m) {
-            draft::LibModule x;
-            py::dict<str, int64_t> ids;                          // (a segment's number: its place among the member's segments)
-            for (int64_t i = 0; i < m->segments.size(); ++i) {
-                if (m->segments[i]) ids.setdefault(*m->segments[i], i);
-            }
-            auto id = [&](const std::optional<str>& s) { return s && ids.contains(*s) ? ids.at(*s) : int64_t(-1); };
-            for (const auto& kv : m->pubs.items()) x.pubs.set(std::get<0>(kv), std::make_tuple(id(std::get<0>(std::get<1>(kv))), std::get<1>(std::get<1>(kv))));
-            x.first_code_segment = m->code.empty() ? int64_t(-1) : id(std::optional<str>(std::get<0>(m->code[0])));
-            return x;
-        };
-        auto place = [&](const library::PlacedP& pl) {
-            draft::LibPlace lp;
-            lp.code = pl->code ? *pl->code : 0;
-            lp.m = conv(pl->m);
-            for (const auto& a : pl->also) lp.also.append(conv(a));
-            return lp;
-        };
-        for (const auto& pl : mp->coded) out.coded.append(place(pl));
-        for (const auto& pl : mp->lone) out.lone.append(place(pl));
-        return out;
-    }
-    py::dict<str, std::tuple<str, int64_t>> symbols() override { return p.symbols(); }
-    bytes image() override { return p.image; }
-    py::set<int64_t> source_addresses() override {
-        py::set<int64_t> s;
-        for (const auto& x : p.sources()) s.add(std::get<0>(x));
-        return s;
-    }
-    str path(const str& name) override { return p.path(name); }
-    py::list<std::tuple<int64_t, int64_t, str>> functions() override { return carve::functions(p); }
-    std::tuple<str, str> prove_texts(draft::InverseModel& inv, const py::list<std::tuple<str, py::dict<str, int64_t>>>& texts, int64_t a, int64_t ln,
-                                     const py::dict<int64_t, str>& names) override {
-        if (!prove_slot()) throw py::ModuleNotFoundError("No module named 'codebreaker.exact.draft.prove' (no typed port: set_prove_texts)");
-        return prove_slot()(inv, texts, a, ln, names);
-    }
-};
-
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------- Num, Config
@@ -515,7 +465,6 @@ const compare::Decoder& decoder16() {
     if (!decoder_slot()) throw py::RuntimeError("no 16-bit decoder installed (project::set_decoder16)");
     return decoder_slot();
 }
-void set_prove_texts(const ProveTexts& f) { prove_slot() = f; }
 
 const ProfileParts& profile_parts(const toolchain::Toolchain& tc) {
     static std::map<std::string, std::shared_ptr<ProfileParts>> cache;
@@ -872,7 +821,6 @@ std::shared_ptr<standin::Project> as_standin(Project& p) { return std::make_shar
 std::shared_ptr<recut::Project> as_recut(Project& p) { return std::make_shared<RecutView>(p); }
 std::shared_ptr<linkwhole::Project> as_linkwhole(Project& p) { return std::make_shared<LinkwholeView>(p); }
 std::shared_ptr<readable::Project> as_readable(Project& p) { return std::make_shared<ReadableView>(p); }
-std::shared_ptr<draft::Project> as_draft(Project& p) { return std::make_shared<DraftView>(p); }
 
 compare::Project compare_project(Project& p) {
     compare::Project c;

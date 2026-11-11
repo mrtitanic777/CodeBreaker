@@ -91,7 +91,6 @@ py::str param_name(int64_t ix) { return py::str(py::str(char32_t('a' + ix))); } 
 FpInfo FPINFO;
 py::list<int64_t> FRAME{0};
 bool flow16_cmpswitch = false;
-std::function<std::shared_ptr<InverseModel>(const py::str&)> inverse_model_loader;
 
 // ---- table_hook ----------------------------------------------------------------------------------------------------------------
 struct TableHook::Impl {
@@ -423,8 +422,7 @@ py::dict<int64_t, py::str> run(Project& prj, bool every, std::optional<int64_t> 
     std::optional<py::str> model = prj.inverse_model();
     if (!model || model->empty())
         throw py::SystemExit(py::percent(ps("the toolchain %s names no inverse model (its profile's \"inverse\")"), prj.toolchain_name()));
-    if (!inverse_model_loader) throw py::ImportError("No module named 'codebreaker.invert." + model->utf8() + "'");
-    std::shared_ptr<InverseModel> inv = inverse_model_loader(*model);
+    std::shared_ptr<InverseModel> inv = prj.load_inverse_model(*model);
     py::dict<int64_t, py::str> names = _names(prj);
     py::bytes img = prj.image();
     py::set<int64_t> have = prj.source_addresses();
