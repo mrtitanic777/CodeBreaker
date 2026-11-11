@@ -83,9 +83,9 @@ target_link_libraries(cb_knowledge PUBLIC cb_core)
 cb_area(engine)
 target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge)
 cb_area(jobs)
-target_link_libraries(cb_jobs PUBLIC cb_core)
+target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
-target_link_libraries(cb_platforms PUBLIC cb_core)
+target_link_libraries(cb_platforms PUBLIC cb_core cb_formats)
 
 # The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
 add_executable(cb_worker_probe jobs/worker_probe_main.cpp)
@@ -241,7 +241,9 @@ add_library(cb_shim_check OBJECT
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
