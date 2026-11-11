@@ -10,8 +10,17 @@
 #include <string.h>
 #include <sys/types.h>
 
-// zlib 1.3.1 itself (native/decompiler/core/zlib), compiled into this unit as C++ with internal linkage (an anonymous
-// namespace): a program that links its own zlib as well does not clash with it.
+// zlib 1.3.1 itself (native/decompiler/core/zlib), compiled into this unit as C++. Its functions are extern "C", so the
+// anonymous namespace alone would not hide them: Z_PREFIX gives them zlib's z_ names (z_inflate, z_adler32 ...), and a
+// program that links its own zlib as well does not clash with this one.
+namespace {
+// the runtime's CRC-32, for the crc32() zlib's sources need (named before Z_PREFIX renames crc32)
+uint32_t crc32_of_(const unsigned char* p, size_t n, uint32_t start) {
+    return static_cast<uint32_t>(py::crc32(py::bytes(reinterpret_cast<const char*>(p), n), static_cast<int64_t>(start)));
+}
+}  // namespace
+
+#define Z_PREFIX 1
 namespace {
 #include "../../decompiler/core/zlib/zlib.h"
 #include "../../decompiler/core/zlib/adler32.c"
@@ -25,9 +34,14 @@ namespace {
 // crc32() for deflate's gzip wrapper and inflate's check (the decompiler copy of zlib carries no crc32.c)
 uLong ZEXPORT crc32(uLong crc, const Bytef* buf, uInt len) {
     if (buf == Z_NULL) return 0;
-    return static_cast<uLong>(static_cast<uint32_t>(py::crc32(py::bytes(reinterpret_cast<const char*>(buf), len), static_cast<int64_t>(crc))));
+    return static_cast<uLong>(crc32_of_(buf, len, static_cast<uint32_t>(crc)));
 }
 }  // namespace
+// (the prefixed names are zlib's own; the names this file's code uses go back to themselves)
+#undef crc32
+#undef adler32
+#undef compress
+#undef uncompress
 
 namespace py {
 namespace zlib {
