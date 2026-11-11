@@ -261,7 +261,14 @@ def ior(a, b):
     return INT(-m - 1, m)
 
 
-ixor = ior
+def ixor(a, b):
+    """a ^ b. Two non-negative operands give 0 up to the all-ones mask over the larger bound; `or`'s lower
+    bound (the larger of the two) is not one of xor's (5 ^ 5 is 0). Otherwise as `or`."""
+    if a.nonneg() and b.nonneg():
+        if a.hi is None or b.hi is None:
+            return INT(0, None)
+        return INT(0, _bits_hi(max(a.hi, b.hi)))
+    return ior(a, b)
 
 
 def iinvert(a):
