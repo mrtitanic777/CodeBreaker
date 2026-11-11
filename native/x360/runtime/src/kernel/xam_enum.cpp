@@ -12,7 +12,9 @@
 #include "kernel/overlapped.h"
 
 #include <cstring>
+#include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 
 namespace
@@ -32,6 +34,7 @@ namespace
         uint32_t tailSize = 0;
         std::vector<std::vector<uint8_t>> items;
         size_t next = 0;
+        std::shared_ptr<std::function<uint32_t(uint32_t, uint32_t, uint32_t&)>> produce;
     };
 
     std::mutex g_enumMutex;
@@ -40,6 +43,7 @@ namespace
 
 namespace kernel
 {
+    bool TitleServerEnumerate(uint32_t object, uint32_t buffer, uint32_t bufferSize, uint32_t& written, uint32_t& error); // xam_titleserver.cpp
     uint32_t CreateHostEnumerator(const EnumeratorInfo& info, uint32_t itemSize, std::vector<std::vector<uint8_t>> items)
     {
         auto& mem = guest::g_memory;
@@ -53,7 +57,9 @@ namespace kernel
         {
             std::lock_guard lock(g_enumMutex);
             g_enumerators[object] = { itemSize, info.itemsPerEnumerate, info.unsupportedEnumerateFlags,
-                                      info.wholeItems, info.tailPointers, info.tailSize, std::move(items), 0 };
+                                      info.wholeItems, info.tailPointers, info.tailSize, std::move(items), 0,
+                                      info.produce ? std::make_shared<std::function<uint32_t(uint32_t, uint32_t, uint32_t&)>>(info.produce)
+                                                   : nullptr };
         }
         SetObjectCleanup(object, [object]
             {
@@ -89,6 +95,15 @@ namespace
     if (object == 0)
         return finish(kErrorInvalidHandle, 0);
     if (it == g_enumerators.end())
+    {
+        // An XLSP enumerator (XTitleServerCreateEnumerator, kernel/xam_titleserver.cpp).
+        lock.unlock();
+        uint32_t written = 0, error = 0;
+        if (buffer != 0 && kernel::TitleServerEnumerate(object, buffer, bufferSize, written, error))
+            return finish(error, written);
+        lock.lock();
+    }
+    if (it == g_enumerators.end())
         Fatal("XamEnumerate on enumerator {:08X} (app {:02X}, message {:08X}): enumerators served by XAM apps are not "
               "implemented", handle, mem.Read32(object), mem.Read32(object + 4));
     if (buffer == 0)
@@ -98,6 +113,14 @@ namespace
     if (flags & e.unsupportedFlags)
         Fatal("XamEnumerate on enumerator {:08X} (message {:08X}): flags {:X} are not implemented", handle,
               mem.Read32(object + 4), flags & e.unsupportedFlags);
+    if (e.produce)
+    {
+        const auto produce = e.produce;
+        lock.unlock(); // (it may wait for the server)
+        uint32_t produced = 0;
+        const uint32_t error = (*produce)(buffer, bufferSize, produced);
+        return finish(error, produced);
+    }
     const uint32_t count = uint32_t(std::min<size_t>(e.items.size() - e.next, e.itemsPerEnumerate));
     if (count == 0)
         return finish(kErrorNoMoreFiles, 0);

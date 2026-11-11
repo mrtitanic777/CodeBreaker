@@ -1,1 +1,2 @@
 native/typed/cpp/codebreaker/decompile/c_text_consts.inc text eol=lf
+native/cb/**/testdata/** -text
