@@ -19,15 +19,17 @@
 //   * module16() is kept in the cache (base.cache "origin16", pickled in the Python): the key is the module's bytes,
 //     `more`, and this file's and describe's source text; the C++ keeps its own serialised form (the pickle is not
 //     read by anything else).
-//   * _judge / _c8_forms (private, taking the capstone decoder and a segment's bytes) are not declared: nothing else
-//     reaches them. _linker16 is declared (cheap, pure).
+//   * _judge is declared as `judge` (taking the capstone decoder and a segment's bytes; the harness calls it on code of its
+//     own); _c8_forms is private. _linker16 is declared (cheap, pure).
 #pragma once
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <tuple>
 
 #include "py.hpp"
+#include "codebreaker/decompile/describe.hpp"
 
 namespace codebreaker::analyze::origin {
 
@@ -60,6 +62,12 @@ struct Result {
 // ones the module's own tables give (the decompiler finds the ones only called).
 Result module16(const py::str& path, const std::optional<py::dict<int64_t, py::str>>& more = std::nullopt);
 Result _module16(const py::str& path, const std::optional<py::dict<int64_t, py::str>>& more = std::nullopt);
+
+// _judge: the function at start..end of a segment's `image` judged by what its code does (`starts`: the offsets of the
+// segment's functions; `functions`: {address: name} of the module's functions, to name what it calls; `base`: the address of
+// the segment's offset 0). Fills o.language / o.evidence / o.compiler.
+void judge(Origin& o, const decompile::describe::Decoder& md, const py::bytes& image, int64_t start, int64_t end, const std::set<int64_t>& starts,
+           bool g3, const py::dict<int64_t, py::str>& names, int64_t base);
 
 // The (major, minor) version of the linker that made a 16-bit module, from its NE header ((0, 0) when not NE).
 std::tuple<int64_t, int64_t> _linker16(const py::str& path);

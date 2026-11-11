@@ -220,11 +220,34 @@ def test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same():
     assert again == first, again[0]
 
 
+def test_origin_notes_calls_to_compiler_helpers():
+    """analyze.origin: a call to one of the C compiler's helpers (named: __aFlmul, __aNchkstk ...) is noted in the
+    function's compiler notes, near or far (the lookup was `imported.get(<address>)` in a dict keyed by import
+    symbols, so it never found anything)."""
+    import struct
+    from codebreaker import platforms
+    from codebreaker.analyze import origin
+    from codebreaker.decompile import describe
+    md = platforms.decoder(16, detail=True)
+    base = describe.address(1, 0)
+    code = bytearray(b"\x55\x8b\xec")                                         # push bp / mov bp, sp
+    code += b"\xe8" + struct.pack("<h", 0x20 - (len(code) + 3))                # call near 0x20
+    code += b"\x9a" + struct.pack("<HH", 0x30, base >> 16)                     # call far selector:0x30
+    code += b"\x9a" + struct.pack("<HH", 0x40, base >> 16)                     # call far selector:0x40 (not a helper)
+    code += b"\x5d\xcb"                                                       # pop bp / retf
+    code += bytes(0x20 - len(code)) + b"\xcb" + bytes(0x0F) + b"\xcb" + bytes(0x20)
+    names = {base: "caller", base + 0x20: "__aNlmul", base + 0x30: "__aFuldiv", base + 0x40: "other"}
+    o = origin.Origin(base, "caller")
+    origin._judge(o, md, bytes(code), 0, 0x20, names, {0, 0x20, 0x30, 0x40}, False, base)
+    assert o.compiler == ["calls __aNlmul", "calls __aFuldiv"], o.compiler
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
                test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
                test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch,
-               test_xsm3_challenge_verify_answers_a_valid_packet, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same):
+               test_xsm3_challenge_verify_answers_a_valid_packet, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same,
+               test_origin_notes_calls_to_compiler_helpers):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
