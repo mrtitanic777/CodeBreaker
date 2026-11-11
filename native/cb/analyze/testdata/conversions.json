@@ -1,0 +1,694 @@
+[
+{
+"format": "",
+"wide": false,
+"types": []
+},
+{
+"format": "",
+"wide": true,
+"types": []
+},
+{
+"format": "%",
+"wide": false,
+"types": []
+},
+{
+"format": "%",
+"wide": true,
+"types": []
+},
+{
+"format": "%%",
+"wide": false,
+"types": []
+},
+{
+"format": "%%",
+"wide": true,
+"types": []
+},
+{
+"format": "%d",
+"wide": false,
+"types": [
+"int"
+]
+},
+{
+"format": "%d",
+"wide": true,
+"types": [
+"int"
+]
+},
+{
+"format": "%5.2f",
+"wide": false,
+"types": [
+"double"
+]
+},
+{
+"format": "%5.2f",
+"wide": true,
+"types": [
+"double"
+]
+},
+{
+"format": "%-8s|",
+"wide": false,
+"types": [
+"char *"
+]
+},
+{
+"format": "%-8s|",
+"wide": true,
+"types": [
+"wchar_t *"
+]
+},
+{
+"format": "%*d",
+"wide": false,
+"types": [
+"int",
+"int"
+]
+},
+{
+"format": "%*d",
+"wide": true,
+"types": [
+"int",
+"int"
+]
+},
+{
+"format": "%*.*s",
+"wide": false,
+"types": [
+"int",
+"int",
+"char *"
+]
+},
+{
+"format": "%*.*s",
+"wide": true,
+"types": [
+"int",
+"int",
+"wchar_t *"
+]
+},
+{
+"format": "%.*f",
+"wide": false,
+"types": [
+"int",
+"double"
+]
+},
+{
+"format": "%.*f",
+"wide": true,
+"types": [
+"int",
+"double"
+]
+},
+{
+"format": "%ld %lu %lld %I64d %I64u %hd %hu %hhd",
+"wide": false,
+"types": [
+"long",
+"unsigned long",
+"__int64",
+"__int64",
+"unsigned __int64",
+"short",
+"unsigned short",
+"int"
+]
+},
+{
+"format": "%ld %lu %lld %I64d %I64u %hd %hu %hhd",
+"wide": true,
+"types": [
+"long",
+"unsigned long",
+"__int64",
+"__int64",
+"unsigned __int64",
+"short",
+"unsigned short",
+"int"
+]
+},
+{
+"format": "%s %S %ls %ws %hs",
+"wide": false,
+"types": [
+"char *",
+"wchar_t *",
+"wchar_t *",
+"wchar_t *",
+"char *"
+]
+},
+{
+"format": "%s %S %ls %ws %hs",
+"wide": true,
+"types": [
+"wchar_t *",
+"char *",
+"wchar_t *",
+"wchar_t *",
+"wchar_t *"
+]
+},
+{
+"format": "%c %C",
+"wide": false,
+"types": [
+"char",
+"wchar_t"
+]
+},
+{
+"format": "%c %C",
+"wide": true,
+"types": [
+"wchar_t",
+"char"
+]
+},
+{
+"format": "%p %n",
+"wide": false,
+"types": [
+"void *",
+"int *"
+]
+},
+{
+"format": "%p %n",
+"wide": true,
+"types": [
+"void *",
+"int *"
+]
+},
+{
+"format": "%e %E %g %G",
+"wide": false,
+"types": [
+"double",
+"double",
+"double",
+"double"
+]
+},
+{
+"format": "%e %E %g %G",
+"wide": true,
+"types": [
+"double",
+"double",
+"double",
+"double"
+]
+},
+{
+"format": "%x %X %o %i %u",
+"wide": false,
+"types": [
+"unsigned",
+"unsigned",
+"unsigned",
+"int",
+"unsigned"
+]
+},
+{
+"format": "%x %X %o %i %u",
+"wide": true,
+"types": [
+"unsigned",
+"unsigned",
+"unsigned",
+"int",
+"unsigned"
+]
+},
+{
+"format": "%08lx",
+"wide": false,
+"types": [
+"unsigned long"
+]
+},
+{
+"format": "%08lx",
+"wide": true,
+"types": [
+"unsigned long"
+]
+},
+{
+"format": "%#x",
+"wide": false,
+"types": [
+"unsigned"
+]
+},
+{
+"format": "%#x",
+"wide": true,
+"types": [
+"unsigned"
+]
+},
+{
+"format": "%+d % d",
+"wide": false,
+"types": [
+"int",
+"int"
+]
+},
+{
+"format": "%+d % d",
+"wide": true,
+"types": [
+"int",
+"int"
+]
+},
+{
+"format": "%.f",
+"wide": false,
+"types": []
+},
+{
+"format": "%.f",
+"wide": true,
+"types": []
+},
+{
+"format": "%5.d",
+"wide": false,
+"types": []
+},
+{
+"format": "%5.d",
+"wide": true,
+"types": []
+},
+{
+"format": "%L",
+"wide": false,
+"types": []
+},
+{
+"format": "%L",
+"wide": true,
+"types": []
+},
+{
+"format": "abc%",
+"wide": false,
+"types": []
+},
+{
+"format": "abc%",
+"wide": true,
+"types": []
+},
+{
+"format": "%z",
+"wide": false,
+"types": []
+},
+{
+"format": "%z",
+"wide": true,
+"types": []
+},
+{
+"format": "%I32d",
+"wide": false,
+"types": [
+"int"
+]
+},
+{
+"format": "%I32d",
+"wide": true,
+"types": [
+"int"
+]
+},
+{
+"format": "%hhx",
+"wide": false,
+"types": [
+"unsigned"
+]
+},
+{
+"format": "%hhx",
+"wide": true,
+"types": [
+"unsigned"
+]
+},
+{
+"format": "%5%",
+"wide": false,
+"types": []
+},
+{
+"format": "%5%",
+"wide": true,
+"types": []
+},
+{
+"format": "100%% done %d",
+"wide": false,
+"types": [
+"int"
+]
+},
+{
+"format": "100%% done %d",
+"wide": true,
+"types": [
+"int"
+]
+},
+{
+"format": "%1$d",
+"wide": false,
+"types": []
+},
+{
+"format": "%1$d",
+"wide": true,
+"types": []
+},
+{
+"format": "File %s, line %d: %s",
+"wide": false,
+"types": [
+"char *",
+"int",
+"char *"
+]
+},
+{
+"format": "File %s, line %d: %s",
+"wide": true,
+"types": [
+"wchar_t *",
+"int",
+"wchar_t *"
+]
+},
+{
+"format": "%s = %ld",
+"wide": false,
+"types": [
+"char *",
+"long"
+]
+},
+{
+"format": "%s = %ld",
+"wide": true,
+"types": [
+"wchar_t *",
+"long"
+]
+},
+{
+"format": "Error %lu in %hs (%ws)",
+"wide": false,
+"types": [
+"unsigned long",
+"char *",
+"wchar_t *"
+]
+},
+{
+"format": "Error %lu in %hs (%ws)",
+"wide": true,
+"types": [
+"unsigned long",
+"wchar_t *",
+"wchar_t *"
+]
+},
+{
+"format": "%-*.*lf%%",
+"wide": false,
+"types": [
+"int",
+"int",
+"double"
+]
+},
+{
+"format": "%-*.*lf%%",
+"wide": true,
+"types": [
+"int",
+"int",
+"double"
+]
+},
+{
+"format": "%0*d",
+"wide": false,
+"types": [
+"int",
+"int"
+]
+},
+{
+"format": "%0*d",
+"wide": true,
+"types": [
+"int",
+"int"
+]
+},
+{
+"format": "% 5.3s",
+"wide": false,
+"types": [
+"char *"
+]
+},
+{
+"format": "% 5.3s",
+"wide": true,
+"types": [
+"wchar_t *"
+]
+},
+{
+"format": "%.10hs",
+"wide": false,
+"types": [
+"char *"
+]
+},
+{
+"format": "%.10hs",
+"wide": true,
+"types": [
+"wchar_t *"
+]
+},
+{
+"format": "%hc %lc %wc",
+"wide": false,
+"types": [
+"char",
+"char",
+"char"
+]
+},
+{
+"format": "%hc %lc %wc",
+"wide": true,
+"types": [
+"wchar_t",
+"wchar_t",
+"wchar_t"
+]
+},
+{
+"format": "%lf %Lf",
+"wide": false,
+"types": [
+"double",
+"double"
+]
+},
+{
+"format": "%lf %Lf",
+"wide": true,
+"types": [
+"double",
+"double"
+]
+},
+{
+"format": "%.0f%s",
+"wide": false,
+"types": [
+"double",
+"char *"
+]
+},
+{
+"format": "%.0f%s",
+"wide": true,
+"types": [
+"double",
+"wchar_t *"
+]
+},
+{
+"format": "%lld%%",
+"wide": false,
+"types": [
+"__int64"
+]
+},
+{
+"format": "%lld%%",
+"wide": true,
+"types": [
+"__int64"
+]
+},
+{
+"format": "%I64x",
+"wide": false,
+"types": [
+"unsigned __int64"
+]
+},
+{
+"format": "%I64x",
+"wide": true,
+"types": [
+"unsigned __int64"
+]
+},
+{
+"format": "%hhhd",
+"wide": false,
+"types": []
+},
+{
+"format": "%hhhd",
+"wide": true,
+"types": []
+},
+{
+"format": "%lls",
+"wide": false,
+"types": [
+"char *"
+]
+},
+{
+"format": "%lls",
+"wide": true,
+"types": [
+"wchar_t *"
+]
+},
+{
+"format": "%hS %lS",
+"wide": false,
+"types": [
+"wchar_t *",
+"wchar_t *"
+]
+},
+{
+"format": "%hS %lS",
+"wide": true,
+"types": [
+"char *",
+"wchar_t *"
+]
+},
+{
+"format": "x%%%d%%y",
+"wide": false,
+"types": [
+"int"
+]
+},
+{
+"format": "x%%%d%%y",
+"wide": true,
+"types": [
+"int"
+]
+},
+{
+"format": "%%%%",
+"wide": false,
+"types": []
+},
+{
+"format": "%%%%",
+"wide": true,
+"types": []
+},
+{
+"format": "%*%",
+"wide": false,
+"types": []
+},
+{
+"format": "%*%",
+"wide": true,
+"types": []
+},
+{
+"format": "%-+ 0#5d",
+"wide": false,
+"types": [
+"int"
+]
+},
+{
+"format": "%-+ 0#5d",
+"wide": true,
+"types": [
+"int"
+]
+},
+{
+"format": "%.*%d",
+"wide": false,
+"types": []
+},
+{
+"format": "%.*%d",
+"wide": true,
+"types": []
+}
+]

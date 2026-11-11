@@ -274,3 +274,27 @@ The old Python `pklite.parse` takes 7.8 s on the same image. `functions`, `runs`
 bound (a compile is a process spawn; both ports use CreateProcess): not timed apart from the real OpenWatcom 16-bit build below.
 A 16-bit build through the real OpenWatcom (3 functions, one rejected, cache warm in a second folder): the objects come out of the
 cache rewritten for the new folder (`omf_here`) and the linked DLL is byte-identical to the first.
+## cb/base/cache and cb/analyze (refactor, 2026-11-11)
+
+Idiomatic C++ in `native/cb/` against what it replaces, same inputs, best of 3, on a busy shared machine (single numbers
+are +-30%).
+
+| What | Old | New | Ratio |
+|---|---|---|---|
+| analyze engine (cbanalyze.dll through JSON) vs `cb/analyze` called directly: comctl32.dll, 1133 functions (discover + call graph + strings + resources) | 0.40 s | 0.16 s | 2.5x faster |
+| the same, user.exe (NE), 2319 functions | 0.67 s | 0.30 s | 2.2x faster |
+| mfc30.dll, 3481 functions | 0.42 s | 0.29 s | 1.5x faster |
+| kernel32.dll, 1867 functions | 0.41 s | 0.19-0.25 s | 1.7-2.1x faster |
+| shell32.dll, 2398 functions | 0.74 s | 0.42-0.64 s | 1.2-1.8x faster |
+| of which the strings + resources passes alone, kernel32 / shell32 | 0.024 / 0.034 s | 0.018-0.025 / 0.030-0.043 s | about the same |
+| cache: put 5000 x 200 B | 0.30 s | 0.40 s | 0.75x (~20 us a put more: the second table) |
+| cache: get 15000 x 200 B | 0.10 s | 0.10 s | same |
+| cache: put 300 x 100 KB / get 900 x 100 KB | 0.24 / 0.07 s | 0.22 / 0.07 s | same |
+
+Why the analyses are faster: the engine used to answer through JSON (every decoded instruction of every function written
+as text and read back) and now returns typed structs. Why the small cache put is slower: the time of use is a table of its
+own (so renewing it never rewrites a result: that fixed a 100 KB-per-touch WAL write), and a trigger writes it, one more
+b-tree insert per put. It is immaterial next to the work the cache fronts (a compile takes 100 ms or more). Speed-ups that
+were needed to get here: prepared statements kept per connection, text and blobs bound without a copy, the payload taken
+out of the row without a second copy, a hardware CRC-32C for the entry checksum (with the extra copy, the checksum of the core's
+bytewise CRC-32 made a 100 KB get 3x slower than the old port's: 0.25 s -> 0.07 s per 900 gets).

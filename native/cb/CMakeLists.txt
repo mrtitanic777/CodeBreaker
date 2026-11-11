@@ -38,8 +38,17 @@ endfunction()
 
 cb_area(core)
 target_link_libraries(cb_core PUBLIC bcrypt)
+# The SQLite amalgamation (third-party C, its own flags). It stays where the engine keeps it until native/engine
+# moves into this tree (docs/CPP_DESIGN.md section 8), when it moves to third_party/ with nlohmann.
+set(CB_SQLITE_DIR "${CB_NATIVE_ROOT}/engine/third_party/sqlite")
+add_library(cb_sqlite3 STATIC "${CB_SQLITE_DIR}/sqlite3.c")
+target_include_directories(cb_sqlite3 PUBLIC "${CB_SQLITE_DIR}")
+target_compile_definitions(cb_sqlite3 PRIVATE SQLITE_THREADSAFE=1 _CRT_SECURE_NO_WARNINGS)
+target_compile_options(cb_sqlite3 PRIVATE /W0 /O2)
+set_target_properties(cb_sqlite3 PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 cb_area(base)
-target_link_libraries(cb_base PUBLIC cb_core)
+target_link_libraries(cb_base PUBLIC cb_core PRIVATE cb_sqlite3)
 cb_area(build)
 target_link_libraries(cb_build PUBLIC cb_core cb_base)
 cb_area(knowledge)
@@ -71,10 +80,14 @@ set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX
 cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core)
 
+cb_area(analyze)
+target_link_libraries(cb_analyze PUBLIC cb_core)
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
-set_source_files_properties(${CB_COMPAT_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+set_source_files_properties(${CB_COMPAT_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-"
+  INCLUDE_DIRECTORIES "${CB_NATIVE_ROOT}/ported/include;${CB_NATIVE_ROOT}/typed/cpp;${CB_NATIVE_ROOT}/l2/src")
 get_property(CB_ALL_TESTS_SO_FAR GLOBAL PROPERTY CB_TEST_SOURCES)
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_ALL_TESTS_SO_FAR} ${CB_COMPAT_TESTS})
 # The shims that have a translation unit of their own (they call old ports that cannot be linked into cb_tests) are compiled, not
