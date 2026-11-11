@@ -34,11 +34,21 @@ function(cb_area dir)
   set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${all_tests} ${tests})
 endfunction()
 
+# CodeBreaker's one XEX parser (native/xex/src/xex_file.cpp): shared with the xex program and the recompiled-game
+# runtime, so it is compiled as it is, under its own flags (not /W4 /WX), and cb::formats::xex wraps it.
+add_library(cb_xex_reader STATIC "${CB_NATIVE_ROOT}/xex/src/xex_file.cpp")
+set_target_properties(cb_xex_reader PROPERTIES CXX_STANDARD 20 MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+target_include_directories(cb_xex_reader PUBLIC "${CB_NATIVE_ROOT}/xex/src")
+target_compile_options(cb_xex_reader PRIVATE /utf-8 /EHsc /W3)
+if(CB_ASAN)
+  target_compile_options(cb_xex_reader PRIVATE /fsanitize=address /Zi)
+endif()
+
 cb_area(core)
 target_link_libraries(cb_core PUBLIC bcrypt)
 
 cb_area(formats)
-target_link_libraries(cb_formats PUBLIC cb_core)
+target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
