@@ -42,10 +42,11 @@ namespace codebreaker::formats::inspect {
 // ---- an ordered JSON-like tree (what the Python's plain dicts / lists / scalars are, where they mix types)
 class Value {
   public:
-    enum class Kind { None, Bool, Int, Str, List, Dict };
+    enum class Kind { None, Bool, Int, Str, List, Dict, Float };
     Kind kind = Kind::None;
     bool b = false;
     int64_t i = 0;
+    double d = 0.0;               // Float
     py::str s;
     std::vector<Value> items;     // List: the items; Dict: the values (parallel to keys)
     std::vector<py::str> keys;    // Dict: the keys, in insertion order
@@ -54,6 +55,7 @@ class Value {
     explicit Value(bool v) : kind(Kind::Bool), b(v) {}
     Value(int64_t v) : kind(Kind::Int), i(v) {}
     Value(int v) : kind(Kind::Int), i(v) {}
+    Value(double v) : kind(Kind::Float), d(v) {}
     Value(const py::str& v) : kind(Kind::Str), s(v) {}
     Value(const char* v) : kind(Kind::Str), s(v) {}
     static Value none() { return Value(); }

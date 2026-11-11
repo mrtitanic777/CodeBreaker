@@ -95,6 +95,7 @@ bool Value::truthy() const {
         case Kind::None: return false;
         case Kind::Bool: return b;
         case Kind::Int: return i != 0;
+        case Kind::Float: return d != 0.0;
         case Kind::Str: return !s.empty();
         case Kind::List:
         case Kind::Dict: return !items.empty();
@@ -113,6 +114,7 @@ void dump_(std::string& o, const Value& v, const std::optional<int64_t>& indent,
         case Value::Kind::None: o += "null"; return;
         case Value::Kind::Bool: o += v.b ? "true" : "false"; return;
         case Value::Kind::Int: o += std::to_string(v.i); return;
+        case Value::Kind::Float: o += py::to_str(v.d).utf8(); return;
         case Value::Kind::Str: py::json::put(o, v.s); return;
         case Value::Kind::List: {
             if (v.items.empty()) { o += "[]"; return; }
@@ -1528,6 +1530,7 @@ static str py_repr(const Value& v) {
         case Value::Kind::None: return str("None");
         case Value::Kind::Bool: return v.b ? str("True") : str("False");
         case Value::Kind::Int: return py::to_str(v.i);
+        case Value::Kind::Float: return py::to_str(v.d);
         case Value::Kind::Str: return py::repr(v.s);
         case Value::Kind::List: {
             py::list<str> parts;
@@ -1552,6 +1555,7 @@ str _cell(const str& key, const Value& value) {
         case Value::Kind::Int:
             if (hex_keys.search(key) && value.i >= 0) return str("0x") + py::hex(value.i).slice_from(2);
             return py::to_str(value.i);
+        case Value::Kind::Float: return py::to_str(value.d);
         case Value::Kind::List: {
             py::list<str> parts;
             for (const Value& v : value.items) parts.append(_cell(key, v));
