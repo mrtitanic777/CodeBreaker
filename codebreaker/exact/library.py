@@ -30,7 +30,7 @@ src/CRTLIB, one line each:
 """
 import struct
 
-from codebreaker.exact import omf
+from codebreaker.formats import omf
 
 W = lambda b, k: struct.unpack_from("<H", b, k)[0]
 

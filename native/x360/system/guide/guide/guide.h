@@ -26,6 +26,10 @@ namespace guide
     // Guide's own controller it closes the Guide again; ignored while another system UI is open.
     void GuideButton(uint32_t user);
 
+    // Something on Xbox LIVE changed for `user` (a friend's presence or request, a message, the party): an open Guide
+    // shows it at once, as the console's does (its blades' counts; the Community tab it shows, focus kept).
+    void LiveChanged(uint32_t user);
+
     // XamShowMessagesUI / XamShowPartyUI / XamShowPartyInviteUI (friends) / the dash's own tab requests: the
     // Community on `tab`; Back closes it. Needs Xbox LIVE.
     uint32_t ShowCommunity(uint32_t user, Tab tab);

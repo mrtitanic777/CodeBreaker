@@ -26,7 +26,8 @@ import json
 import os
 import re
 
-from codebreaker.exact import compare, omf
+from codebreaker.exact import compare
+from codebreaker.formats import omf
 
 NL = "\n"
 

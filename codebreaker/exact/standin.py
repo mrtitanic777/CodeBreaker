@@ -18,7 +18,8 @@ gives is taken from that object (its names renumbered) before the program's byte
 import re
 import struct
 
-from codebreaker.exact import compare, omf
+from codebreaker.exact import compare
+from codebreaker.formats import omf
 
 
 def _ix(n):
@@ -44,7 +45,7 @@ def fixups(r, thr):
                 ix, q = _idx(r, q)
             thr[(d, c & 3)] = (meth, ix)
             continue
-        f = dict(M=(c >> 6) & 1, loc=(c >> 2) & 7, off=((c & 3) << 8) | r[q + 1])
+        f = dict(M=(c >> 6) & 1, loc=(c >> 2) & 0xF, off=((c & 3) << 8) | r[q + 1])
         fd = r[q + 2]
         q += 3
         if fd & 0x80:

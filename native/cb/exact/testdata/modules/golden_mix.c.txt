@@ -1,0 +1,17 @@
+/* switches: -Zi */
+
+
+int f01300() { return 1; }
+
+#pragma alloc_text(OVL, f01380)
+
+static void
+ovl(a)
+int a;
+{
+}
+int f01380(q)
+{
+	ovl(q);
+	return 0;
+}

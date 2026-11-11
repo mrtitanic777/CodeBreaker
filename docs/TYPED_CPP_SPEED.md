@@ -564,6 +564,165 @@ Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2)
 |---|---|---|
 | fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
 | mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+| contract16: `_calls` over 250 functions (474 calls) of four Win95 16-bit modules | Python 199 ms (the old typed port could not be isolated: its harness times describe16 with it) | 42 ms (the whole test: parse the dump, decode, compare; process start 55 ms not counted) |
+| setup16 make_cd: the CD is patched in place (copy + two records) instead of written again by pycdlib; screen shrink 640x480 to 160x120 is the same Pillow filter | not timed (the old port had no ISO writer) | fixture CD in a few ms; the cost is the copy of the image |
+## cb refactor: symbols/libraries, x86, wine16 and translate/ir, batch W0-B27 (2026-11-11)
+
+Old = the live Python module (the exe's translated Python runs it), best of 3, shared machine (+-30%). Results compared first: the same functions
+(kind, count, and a digest of every name, byte, mask and offset) for all 391 real libraries of the Win95 DDK/SDK and the Xbox 360 XDK (under 30 MB).
+
+| What | Old | New |
+|---|---|---|
+| symbols/libraries: read all 391 libraries (277 Win95 reference, 114 XDK; 16-bit OMF, 32-bit COFF and PowerPC COFF), file read included | Python 27.0 s | 1.9 s (14x) |
+| ... the largest: xavatar2d.lib (5,513 functions) | Python 2.32 s | 0.050 s (46x) |
+| ... libcMT.lib (10 MB, 2,139 PowerPC functions) | Python 0.107 s | 0.016 s (6.7x) |
+| ... KERNEL32.LIB (the SDK's import library, 631 thunks) | Python 0.013 s | 0.0027 s (4.8x) |
+| libraries::Index.find (the pair index of xdk_libraries, now shared) | the same code, moved | no change (xdk match 200-220 ms, see batch W0-B26) |
+| wine16, x86 | not timed: a few hundred lines of text; a decoder wrapper that does no work of its own | |
+| translate/ir: build 1M nodes (500k `a + n`), then walk them and read each one's kind | old py:: port 0.051 s build, 0.249 s walk | build 0.087 s, walk 0.041 s |
+
+translate/ir: building a node is 1.7x slower than the old port (87 ns against 46: the arena registers every node's destructor, and a node is
+136 bytes; the first version, with every node as big as a ClassDecl, was 424 bytes and took 0.19 s, so the big declarations are now boxed), walking
+is 6x faster (no shared_ptr counts, no `py::list` of `py::ref`, the kind by a visit rather than a virtual `class_name()` that builds a `py::str`),
+and a build with a walk is 2.3x faster. A tree is built once and walked by every pass.
+
+## cb refactor W1-B1: emulate/powerpc, z80, m6502, native_driver, 2026-11-11
+
+Inputs: a 3000-iteration PowerPC loop (store, load, add, `bdnz`: 15,000 instructions a run, 200 runs), a Z80 `DEC BC` loop (32,770
+steps a run), a 6502 `INX`/`BNE` loop (200,000 steps a run); one thread, Release (`state/work/cpp-refactor/w1b1/bench.cpp`, `bench.py`).
+The old typed ports ran on `py::` containers and per-step dictionaries and cannot be built apart from the Python runtime here, so the
+comparison is with the Python they were ported from (the live implementation until the exe retires it).
+
+| What | Python | new (`cb::emulate`) | Ratio |
+|---|---|---|---|
+| PowerPC interpreter | 0.20 Msteps/s | 29.5 Msteps/s | ~145x |
+| Z80 interpreter | 0.43 Msteps/s | 44.4 Msteps/s | ~100x |
+| 6502 interpreter | 0.70 Msteps/s | 87.9 Msteps/s | ~125x |
+
+Correctness against the Python: 1,825 6502 single steps (every opcode, decimal mode, memory CRC) are identical; 53,419 of 53,424 PowerPC
+single steps (every primary and extended opcode, random words, random machine states, memory CRC of every written page) are identical, and
+the other five are signalling-NaN cases the old harness recorded unstably (the current Python gives what the C++ gives).
+
+## cb::decompile m68k, xenos_hlsl, vmx128 (W1-B6)
+
+Old harnesses replayed (state/work/typed-port/decompile.m68k and decompile.xenos_hlsl, the old port's `test.exe`) against the same recorded cases replayed through `cb_tests` (Release; CB_M68K_CORPUS / CB_XENOS_CORPUS, which also parse the case text and the Python's JSON answers).
+
+| What | old typed C++ | new (`cb::decompile`) |
+|---|---|---|
+| m68k: the whole old harness (133,147 decodes with text, 65,536 text-and-assemble round trips, 6,600 assembler lines, the private helpers' cases, the opcode-shape table) | 5.0 s | 1.6 s for the decodes, round trips and assembler lines (the helpers' cases are gone with the helpers) |
+| xenos_hlsl: 7,872 shaders translated (plus 442 containers and the small functions in the old run) | 1.5 s | 1.2 s (with the JSON of every answer parsed) |
+| vmx128: decode and the SLEIGH generation | not timed separately (the old harness was dominated by reading four game images) | the 77 rows plus 200 free-bit words decode and the 22 KB SLEIGH is written inside the test's 10 ms |
+
+Nothing is slower than the port it replaces.
+
+## cb::build::flat_thunk and cb::base::converted (wave 1, W1-B3, 2026-11-11)
+
+Measured on this machine (an SSD with Defender on), the same real inputs through the live Python and through `native/cb`. The real work of both is
+small; what is measured is mostly file creation, and that is where the C++ was first slower (`std::filesystem::create_directories` costs 2.6 ms for a
+folder that is already there and 3 ms for a new one in the MSVC library, and every `cb::fs::write_file` asked it first: `cb::fs::make_dirs` now looks
+first and creates with `CreateDirectoryW`).
+
+| What | Python | new (`cb::build::flat_thunk` / `cb::base::converted`) |
+|---|---|---|
+| `recover` of the 35 flat-thunk modules of the Win95 corpus with the real 8,292-prototype SDK table (4 files each; stub reading, SMapLS scan, text) | 0.25-0.45 s | 0.10-0.12 s (0.025 s of it is not file creation) |
+| `Store.project` + two `record` + the second `project` (found again) for the same 35 modules, fresh Converted folder | 0.97 s | 0.57 s |
+
+The old typed port of flat_thunk was not timed (the typed ports are being replaced). The 35 modules x 5 files `recover` makes are byte-identical to the
+Python's (175 files); the OpenWatcom builds of recovered sources of lz32, dciman32 and version are byte-identical DLLs (PE timestamp aside), and the period
+build (thunk.exe, ML, CL, LINK) of the curated lz32 source differs only in the export and resource timestamps (8 bytes).
+## cb refactor: build/msc6 and build/asm16, batch W1-B4 (2026-11-11)
+
+Old = the live Python module (the exe's translated Python runs it) and, where it could be run, the old typed port on the py:: layer (its harness
+binaries of state/work/typed-port, built /O2). Same inputs, shared machine (+-30%). Results compared first, on meaning: asm16 over the 699
+functions of the Win95 16-bit modules (every attribute, the source in six forms, check / check_piece / differences): 699 of 699 equal; msc6 over 199 decompiled
+texts of four modules and 150 mutated ones through every text pass, 400 fuzzed object files, Wine typing and the SDK passes: all equal but the 13
+fuzzed (damaged) objects (see DIVERGES in msc6_test.cpp); compile_many against the REAL compilers (Microsoft C 6.0a under DOSBox-X, Visual C++ 1.52c on Windows):
+single, named, batched, together, partial, a refused file among good ones, the cache read back: all equal.
+
+| What | Old | New |
+|---|---|---|
+| asm16: 699 functions made, then each one's mnemonics, candidates, raw calls, the source in six forms, three checks (no file output) | Python 5.5 s | 1.6-2.0 s (3x), the module files read included |
+| ... the same with the harness's 4,400 output files and JSON lines | old typed port 37.3 s | 30.1 s (the files dominate both: cb::fs::write_file costs about 6 ms a small file on this machine) |
+| msc6 text passes over 345 texts (pascal_order, fold_temporaries, join_far_parameters, split_frame, ds_globals, sdk_calls) | Python 0.43 s | 0.085 s (5x): fold_temporaries 0.286 -> 0.040, pascal_order 0.049 -> 0.017, sdk_calls 0.046 -> 0.010 |
+| msc6: sdk_prototypes of the 2,000-line WINDOWS.H | Python 10 ms | 3 ms |
+| msc6: the whole harness (400 fuzzed objects, every pass, Wine typing of four headers, 150 mutated texts), no file output | | 0.5-0.7 s |
+| msc6 / asm16 compile_many | the compiler dominates (DOSBox-X starts in about 2 s; a native Visual C++ 1.52c compile 0.1 s a file): equal within noise | |
+
+## cb refactor: build batch W1-B5 (2026-11-11)
+
+Old = the Python that is still the live implementation (build/data.py, build/driver.py, over formats.dll), same inputs, shared machine
+(+-30%); the typed ports on the py:: layer were not built in this worktree. Not timed: build/m68k_asm and build/native_dos (their cost is the
+instruction encoder and the DOS executive behind them, which are other modules' work; the new directive layer is a single linear pass over a
+source's lines).
+
+| What | Old | New |
+|---|---|---|
+| `data32` over 60 Win95 PE modules (relocated words, pointers, the C text of every data section; file read and image parsed in the timing) + `data16` and `far_segments` over 60 NE modules | 1.41 s (Python) | 0.50 s (outputs identical for all 120, byte for byte) |
+| driver `compare` of two small VxDs (splitter, srammtd, bios; 9 pairs x 20) | 3.57 ms per pair | 0.29 ms per pair |
+
+## cb refactor: decompile batch W1-B7 (2026-11-11)
+
+Old = the typed port on the py:: layer (`decompile/asm_blocks.cpp`, `decompile/sm83.cpp`; the old harness binaries of
+`state/work/typed-port/`), same inputs, shared machine (+-30%). New = `native/cb/decompile/{asm_blocks,frame16,shape16,sm83,l2tree}`
+(`cb::Json` L2 documents, `std::string`, no py::).
+
+| What | Python | old typed C++ | new |
+|---|---|---|---|
+| asm_blocks: the whole old harness (1,848 `place` cases on recorded decoders, plus 5,800 calls of its helpers; parse, run, print) | not timed | 1,264 ms | 440-540 ms (the same cases, parse and compare included) |
+| sm83: the whole old harness (14,700 decode / text / assemble / table cases) | not timed | 430 ms | 191 ms (through the compat shim, so with the py:: conversions the shim does) |
+| frame16 + shape16 x2 over 400 random documents (~8 KB of L2 each: lay_out, then reshape of its result and of the original), documents already parsed | 433 ms | no harness runs (the old port needs describe's decoder) | 83 ms |
+
+The first version of shape16 re-opened Capstone for every statement it looked at (460 ms, no faster than the Python); a
+`inline_asm::Decoder16` (one open handle, asked many times) opened by the pass made it 5x faster than the Python.
+
+## cb refactor: exact batches W1-B9 and W1-B12 (2026-11-11)
+
+Old = the Python module on the same inputs (the Python is the live implementation of both), one run, shared machine (+-30%). New = Release `cb_tests` build.
+
+| What | Python | New |
+|---|---|---|
+| `exact/recut`: 300 `recut` of a 400-byte segment with 150 fix-ups | 239 ms | 72 ms |
+| `exact/recut`: 300 `recut` of a 60-byte segment (3 data records) | 48 ms | 11 ms |
+| `exact/recut`: 300 `recut` of a 3000-byte segment (3 data records of 1 KB) | 63 ms | 3 ms |
+| `exact/habits/cmpp`: `walk` of 408 listings (random procedures, damaged and short ones; 65,000 rows) x 20 | 579 ms | 141 ms |
+
+`exact/emu/dpmi` has no Python run to time against on its own (it runs only inside the DOS executive's emulation loop); each INT 31h it serves is
+a handful of register reads and one or two memory writes.
+
+## formats/inspect (cb::formats::inspect)
+
+The old harness's 2,180 cases (88 files of the Win95 corpus and damaged copies: describe, render, markdown, strings, hexdump, resource_body), the calls that do the module's work, `main` left out:
+
+| | Python (native readers behind it) | cb::formats::inspect |
+|---|---|---|
+| describe / render / markdown / strings / hexdump / resource_body, all cases | 0.97 s (describe 0.28, strings 0.47, hexdump 0.14, render 0.05, resource_body 0.03) | 0.35 s (describe 0.05, strings 0.18, hexdump 0.05, render 0.03, resource_body 0.02) |
+| the 101 `info` command runs, output captured | not timed (a process each) | 0.85 s in one process |
+
+About 2.8x faster on the same calls; nothing is slower. Measured on a busy machine (other builds running).
+## formats.dll answers from cb::formats (pe, ne, le, dos, omf, detect), 2026-11-11
+
+Old = master's formats.dll (its own readers in native/formats); new = formats.dll whose questions call native/cb/formats.
+Every question codebreaker/formats/{pe,ne,le,dos,omf,detect}.py asks (130 of the 137 offered; never asked by the
+workload: dos.pklite_head, dos.unpack_emulated, dos.unpack_exepack, le.compress, le.expand, ne._read_name_table,
+ne._rsrc_string -- the last two are covered by native/formats/gate.py's samples), driven through the Python API over the
+1,248 Win95 corpus files and the 1,738 OMF files (toolchains + seeded damage); both DLLs in one process, time summed
+inside cbf_call (harness: state/work/fmtdiff_a39/diff.py), on a machine running a test gate beside it:
+
+| Lane (calls) | old | new |
+|---|---|---|
+| PE (40,110) | 1.35 s | 1.08 s |
+| NE (10,931) | 0.21 s | 0.48 s (the module is parsed again, file copied, per question) |
+| LE (43,513) | 2.13 s | 1.24 s |
+| DOS (17,698) | 1.35 s | 1.02 s |
+| detect (9,984) | 2.65 s | 2.38 s |
+| OMF (76,409) | 3.97 s | 3.96 s |
+| all (198,645) | 11.66 s | 10.16 s |
+
+Answers: 0 differences for PE, NE, LE, DOS and detect. OMF: only on damaged or non-OMF input -- the exception's kind
+(old IndexError/KeyError from Python-style indexing, new ValueError/struct.error from FormatError/TruncatedError; 2,267
+calls) or message, strict reads of a field cut by the end of the file (42 calls), index 0 as "no target" (102 calls), as
+listed in the formats DIVERGES notes. Fixed on the way: omf rename_externs on an EXTDEF without a type index (26 MSVC
+1.52 MFC objects), omf patched with a non-ASCII segment name, ne.u16/u32 with a negative offset.
 
 ## cb refactor W1-B10: exact/draft/shapes (2026-11-11)
 

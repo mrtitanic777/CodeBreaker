@@ -153,12 +153,24 @@ class _Monitor(object):
         return img
 
 
+def _pixel(img, xy):
+    """The pixel at xy, or None where the screen has none: a 640-wide screen shorter than the page's lowest
+    point (a 640x350 one) is not that page, and asking it for the point ended the whole run with IndexError."""
+    return img.getpixel(xy) if xy[0] < img.size[0] and xy[1] < img.size[1] else None
+
+
 def _license(img):
-    return img.size[0] == 640 and all(img.getpixel(xy) == LICENSE_GREY for xy in LICENSE_POINTS)
+    return img.size[0] == 640 and all(_pixel(img, xy) == LICENSE_GREY for xy in LICENSE_POINTS)
 
 
 def _error_box(img):
-    return img.size[0] == 640 and all(sum(img.getpixel(xy)) > 700 for xy in ((97, 310), (320, 175), (540, 310)))
+    if img.size[0] != 640:
+        return False
+    for xy in ((97, 310), (320, 175), (540, 310)):
+        p = _pixel(img, xy)
+        if p is None or sum(p) <= 700:
+            return False
+    return True
 
 
 def _welcome(img):

@@ -253,7 +253,7 @@ class Toolchain(object):
                 if f.startswith(tag) and len(f) == len(tag) + 2:
                     _remove(os.path.join(w, f))
         if obj is not None and self.p.get("rename_externs"):
-            from codebreaker.exact import omf
+            from codebreaker.formats import omf
             obj = omf.rename_externs(obj, self.p["rename_externs"])
         res = (obj, con.decode("latin1").replace("\r", ""))
         self._listing = lst_text

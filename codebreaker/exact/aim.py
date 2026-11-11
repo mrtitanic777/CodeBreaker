@@ -44,6 +44,11 @@ def listing_code(text, name=None):
     return out
 
 
+def _num(text):
+    """a number as the disassembler writes it: 0x.. hex, else decimal (int(text, 0) refuses a decimal with a leading zero)"""
+    return int(text, 16) if text.startswith("0x") else int(text, 10)
+
+
 def _norm(ins, base):
     """an instruction as compared: mnemonic and operands, the numbers a link changes (places of code and data,
     targets) masked, a frame's place and a small constant kept"""
@@ -55,13 +60,13 @@ def _norm(ins, base):
         inner = m.group(1)                                  #  large, or the 0 of an unlinked object - masked)
         parts = [p.strip() for p in re.split(r"\s*\+\s*|\s*-\s*", inner)]
         regs = [p for p in parts if re.fullmatch(r"[a-z]{2}", p)]
-        nums = [int(p, 0) for p in parts if re.fullmatch(r"0x[0-9a-f]+|\d+", p)]
+        nums = [_num(p) for p in parts if re.fullmatch(r"0x[0-9a-f]+|\d+", p)]
         if "bp" in regs and nums:
             return "[%s%s%d]" % ("+".join(regs), "-" if " - " in inner else "+", nums[0])
         small = [n for n in nums if 0 < n < 0x80]
         return "[%s%s]" % ("+".join(regs) or "M", "+%d" % small[0] if small and regs else "")
     ops = re.sub(r"\[([^\]]*)\]", mem, ops)
-    ops = re.sub(r"(?<![\w\[+-])(0x[0-9a-f]+|\d+)\b", lambda m: m.group(0) if 0 < int(m.group(0), 0) < 0x80 else "N", ops)
+    ops = re.sub(r"(?<![\w\[+-])(0x[0-9a-f]+|\d+)\b", lambda m: m.group(0) if 0 < _num(m.group(0)) < 0x80 else "N", ops)
     return (ins.mnemonic + " " + ops).strip()
 
 

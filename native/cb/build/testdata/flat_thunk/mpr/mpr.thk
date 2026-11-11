@@ -1,0 +1,260 @@
+/* mpr.thk -- flat-thunk script. Function list from the export table; per-function
+ * ARITY recovered from the stub's `ret N` (stdcall) and pointer args from the SMapLS
+ * marshalling. Pointer input/output DIRECTION is defaulted to input -- curate where a
+ * function writes back through a pointer (mark output/inout). 16-bit target: MPR.DLL. */
+enablemapdirect3216 = true;
+
+typedef unsigned short WORD;  typedef unsigned long DWORD;  typedef int INT;
+typedef long LONG;  typedef char *LPSTR;  typedef void *LPVOID;
+typedef void VOID;  typedef int HFILE;
+
+/* @10 DllCanUnloadNow -- arity recovered from stub */
+DWORD DllCanUnloadNow16(void)
+{
+}
+
+/* @11 DllGetClassObject -- arity recovered from stub */
+DWORD DllGetClassObject16(DWORD a1)
+{
+}
+
+/* @26 MultinetGetConnectionPerformanceA -- arity recovered from stub */
+DWORD MultinetGetConnectionPerformance16(DWORD a1, DWORD a2)
+{
+}
+
+/* @28 MultinetGetErrorTextA -- arity recovered from stub */
+DWORD MultinetGetErrorText16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @30 NPSAuthenticationDialogA -- arity recovered from stub */
+DWORD NPSAuthenticationDialog16(DWORD a1)
+{
+}
+
+/* @31 NPSCopyStringA -- arity recovered from stub */
+DWORD NPSCopyString16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @32 NPSDeviceGetNumberA -- arity recovered from stub */
+DWORD NPSDeviceGetNumber16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @33 NPSDeviceGetStringA -- arity recovered from stub */
+DWORD NPSDeviceGetString16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @34 NPSGetProviderHandleA -- arity recovered from stub */
+DWORD NPSGetProviderHandle16(DWORD a1)
+{
+}
+
+/* @35 NPSGetProviderNameA -- arity recovered from stub */
+DWORD NPSGetProviderName16(DWORD a1, DWORD a2)
+{
+}
+
+/* @36 NPSGetSectionNameA -- arity recovered from stub */
+DWORD NPSGetSectionName16(DWORD a1, DWORD a2)
+{
+}
+
+/* @37 NPSNotifyGetContextA -- arity recovered from stub */
+DWORD NPSNotifyGetContext16(DWORD a1)
+{
+}
+
+/* @38 NPSNotifyRegisterA -- arity recovered from stub */
+DWORD NPSNotifyRegister16(DWORD a1, DWORD a2)
+{
+}
+
+/* @39 NPSSetCustomTextA -- arity recovered from stub */
+DWORD NPSSetCustomText16(DWORD a1)
+{
+}
+
+/* @40 NPSSetExtendedErrorA -- arity recovered from stub */
+DWORD NPSSetExtendedError16(DWORD a1, DWORD a2)
+{
+}
+
+/* @41 PwdChangePasswordA -- arity recovered from stub */
+DWORD PwdChangePassword16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @43 PwdGetPasswordStatusA -- arity recovered from stub */
+DWORD PwdGetPasswordStatus16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @45 PwdSetPasswordStatusA -- arity recovered from stub */
+DWORD PwdSetPasswordStatus16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @47 WNetAddConnection2A -- arity recovered from stub */
+DWORD WNetAddConnection216(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @49 WNetAddConnection3A -- arity recovered from stub */
+DWORD WNetAddConnection316(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @51 WNetAddConnectionA -- arity recovered from stub */
+DWORD WNetAddConnection16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @53 WNetCachePassword -- arity recovered from stub */
+DWORD WNetCachePassword16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6)
+{
+}
+
+/* @54 WNetCancelConnection2A -- arity recovered from stub */
+DWORD WNetCancelConnection216(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @56 WNetCancelConnectionA -- arity recovered from stub */
+DWORD WNetCancelConnection16(DWORD a1, DWORD a2)
+{
+}
+
+/* @58 WNetCloseEnum -- arity recovered from stub (SDK prototype) */
+void WNetCloseEnum16(HANDLE)
+{
+}
+
+/* @59 WNetConnectionDialog1A -- arity recovered from stub */
+DWORD WNetConnectionDialog116(DWORD a1)
+{
+}
+
+/* @61 WNetConnectionDialog -- arity recovered from stub */
+DWORD WNetConnectionDialog16(DWORD a1, DWORD a2)
+{
+}
+
+/* @62 WNetDisconnectDialog1A -- arity recovered from stub */
+DWORD WNetDisconnectDialog116(DWORD a1)
+{
+}
+
+/* @64 WNetDisconnectDialog -- arity recovered from stub */
+DWORD WNetDisconnectDialog16(DWORD a1, DWORD a2)
+{
+}
+
+/* @65 WNetEnumCachedPasswords -- arity recovered from stub */
+DWORD WNetEnumCachedPasswords16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @66 WNetEnumResourceA -- arity recovered from stub */
+DWORD WNetEnumResource16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @68 WNetFormatNetworkNameA -- arity recovered from stub */
+DWORD WNetFormatNetworkName16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6)
+{
+}
+
+/* @70 WNetGetCachedPassword -- arity recovered from stub */
+DWORD WNetGetCachedPassword16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @71 WNetGetConnectionA -- arity recovered from stub (SDK prototype) */
+DWORD WNetGetConnection16(LPCSTR, LPSTR, LPDWORD)
+{
+}
+
+/* @73 WNetGetHomeDirectoryA -- arity recovered from stub */
+DWORD WNetGetHomeDirectory16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @75 WNetGetLastErrorA -- arity recovered from stub */
+DWORD WNetGetLastError16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @77 WNetGetNetworkInformationA -- arity recovered from stub */
+DWORD WNetGetNetworkInformation16(DWORD a1, DWORD a2)
+{
+}
+
+/* @79 WNetGetProviderNameA -- arity recovered from stub */
+DWORD WNetGetProviderName16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @81 WNetGetResourceInformationA -- arity recovered from stub */
+DWORD WNetGetResourceInformation16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @83 WNetGetResourceParentA -- arity recovered from stub */
+DWORD WNetGetResourceParent16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @85 WNetGetUniversalNameA -- arity recovered from stub */
+DWORD WNetGetUniversalName16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @87 WNetGetUserA -- arity recovered from stub (SDK prototype) */
+DWORD WNetGetUser16(LPCSTR lpName, LPSTR lpUserName, LPDWORD lpnLength)
+{
+}
+
+/* @89 WNetLogoffA -- arity recovered from stub */
+DWORD WNetLogoff16(DWORD a1, DWORD a2)
+{
+}
+
+/* @91 WNetLogonA -- arity recovered from stub */
+DWORD WNetLogon16(DWORD a1, DWORD a2)
+{
+}
+
+/* @93 WNetOpenEnumA -- arity recovered from stub */
+DWORD WNetOpenEnum16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @95 WNetRemoveCachedPassword -- arity recovered from stub */
+DWORD WNetRemoveCachedPassword16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @96 WNetRestoreConnectionA -- arity recovered from stub */
+DWORD WNetRestoreConnection16(DWORD a1, DWORD a2)
+{
+}
+
+/* @98 WNetSetConnectionA -- arity recovered from stub */
+DWORD WNetSetConnection16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @100 WNetUseConnectionA -- arity recovered from stub */
+DWORD WNetUseConnection16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7, DWORD a8)
+{
+}
+
+/* @102 WNetVerifyPasswordA -- arity recovered from stub */
+DWORD WNetVerifyPassword16(DWORD a1, DWORD a2)
+{
+}
+

@@ -1,0 +1,11 @@
+module=tapi32
+n_exports=114
+k32_ordinals=[36, 41, 43, 45, 46, 89, 90]
+unknown_ordinals=[36, 43, 45, 46]
+target16=TAPI.DLL
+dll_candidates=['TAPI.DLL', 'TAPI32.DLL', 'KERNEL32.DLL']
+n_signatures_recovered=37
+n_pointer_args=44
+n_sdk_prototypes=2
+recovered=['tapi32.def', 'tapi32k32.def', '37/114 signatures (stub arity)']
+scaffolded=['tapi32.thk', 'tapi32.c']

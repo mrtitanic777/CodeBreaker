@@ -540,6 +540,11 @@ namespace live
             m.read = Bool(j, "read");
             m.titleId = ParseHex32(Get(j, "title_id"));
             m.sessionId = ParseHex64(Get(j, "session_id"));
+            if (const auto a = j.find("attachment"); a != j.end() && a->is_object())
+            {
+                m.attachment = Str(*a, "type");
+                m.attachmentMs = U32(*a, "duration_ms");
+            }
             return m;
         }
 
@@ -1900,7 +1905,8 @@ namespace live
     }
 
     std::optional<std::string> SendLiveMessage(uint32_t user, const std::vector<uint64_t>& to, const std::string& text,
-                                               const std::string& kind, uint32_t titleId, uint64_t sessionId)
+                                               const std::string& kind, uint32_t titleId, uint64_t sessionId,
+                                               const std::vector<uint8_t>* voice)
     {
         json list = json::array();
         for (const uint64_t x : to)
@@ -1909,7 +1915,27 @@ namespace live
                          { "title_id", titleId ? std::format("{:08X}", titleId) : std::string() } };
         if (sessionId)
             request["session_id"] = Hex64(sessionId);
+        if (voice && !voice->empty())
+            request["attachment"] = { { "type", "voice" }, { "format", "adpcm16k" }, { "data", Base64(*voice) } };
         return Simple(std::move(request));
+    }
+
+    std::optional<std::string> BlockCommunications(uint32_t user, uint64_t xuid, bool block)
+    {
+        return Simple({ { "op", block ? "mute" : "unmute" }, { "user", user }, { "xuid", Hex64(xuid) } });
+    }
+
+    std::optional<std::vector<uint8_t>> MessageVoice(uint32_t user, uint32_t id, std::string* error)
+    {
+        const auto reply = Request({ { "op", "message_attachment" }, { "user", user }, { "message", id } });
+        if (!reply || !Bool(*reply, "ok") || Str(*reply, "type") != "voice")
+        {
+            if (error)
+                *error = !reply ? (Connected() ? "timeout" : "not connected")
+                                : !Bool(*reply, "ok") ? Str(*reply, "error") : "not a voice message";
+            return std::nullopt;
+        }
+        return FromBase64(Str(*reply, "data"));
     }
 
     std::optional<std::string> UpdateTitles(uint32_t user, const std::vector<TitlePlayed>& titles)

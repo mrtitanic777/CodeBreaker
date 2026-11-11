@@ -27,6 +27,7 @@ POINTER = {"ptr", "str", "segptr", "segstr"}
 
 _LINE = re.compile(r"^\s*(\d+)\s+(pascal|cdecl|varargs|stub|stdcall)\s+((?:-\w+(?:=\S+)?\s+)*)(\w+)\s*(?:\(([^)]*)\))?\s*(?:#\s*\(([^)]*)\))?")
 _cache = {}
+_loaded = False
 
 
 def _folder():
@@ -41,11 +42,12 @@ def _module(spec_name):
 
 def exports(module):
     """{ordinal: Export} of a 16-bit module (KERNEL, USER, SETUPX, ...), or {} when Wine has none"""
+    global _loaded
     module = module.upper()
-    if module not in _cache:
+    if not _loaded:                                  # (the whole folder, once: not again for each module Wine lacks)
         _cache.update(_read_all())
-        _cache.setdefault(module, {})
-    return _cache[module]
+        _loaded = True
+    return _cache.setdefault(module, {})
 
 
 def _read_all():
@@ -53,10 +55,10 @@ def _read_all():
     root = _folder()
     if not root or not os.path.isdir(root):
         return out
-    for d in os.listdir(root):
-        if not re.search(r"\.(dll|exe|drv)16$", d):
+    for d in sorted(os.listdir(root), key=str.lower):      # (in name order, so that when two spec files of one module
+        if not re.search(r"\.(dll|exe|drv)16$", d):         #  declare an ordinal the later one wins on every machine)
             continue
-        for f in os.listdir(os.path.join(root, d)):
+        for f in sorted(os.listdir(os.path.join(root, d)), key=str.lower):
             if f.endswith(".spec"):
                 out.setdefault(_module(f), {}).update(read_spec(open(os.path.join(root, d, f), encoding="latin1").read()))
     return out

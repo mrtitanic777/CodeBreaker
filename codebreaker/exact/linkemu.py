@@ -34,7 +34,8 @@ def load(raw, odd=False, real=None):
     """(pieces {segment: Piece}, defined {name: (segment, offset)}, common {name: length}, fixes, start)
     a fix: (segment, offset, how, target, addend) - how 'abs' (the address), 'rel' (from the end of the word),
     'seg' (a paragraph); target ('sym', name) or ('seg', segment) or ('grp',)"""
-    from codebreaker.exact import aout, omf
+    from codebreaker.exact import aout
+    from codebreaker.formats import omf
     o = omf.read(raw)
     even = aout.is_aout(raw)                                # (a C object's pieces each begin at an even address)
     name = lambda s: real.setdefault(s.upper(), s) if real is not None else s
@@ -66,7 +67,7 @@ def load(raw, odd=False, real=None):
 
 def link24(objects, symbols, log=None):
     say = log or (lambda *a: None)
-    from codebreaker.exact import omf
+    from codebreaker.formats import omf
     real = {}
     mods = [(n,) + load(raw, odd, real) for n, raw, odd in objects]
     order = []                                              # (the segments: a group's in the order the group lists

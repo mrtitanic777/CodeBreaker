@@ -1,0 +1,3 @@
+struct layout_of_codebreaker_data_2; extern struct layout_of_codebreaker_data_2 codebreaker_data_2;
+struct layout_of_g_exported; extern struct layout_of_g_exported g_exported;
+struct layout_of_g_second; extern struct layout_of_g_second g_second;

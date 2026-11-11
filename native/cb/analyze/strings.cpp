@@ -483,7 +483,7 @@ Formats find_formats(Image& img, const call_graph::Graph& graph, const Table& ta
 namespace {
 
 // A string for a summary line: in double quotes, with backslash, quote and anything not printable ASCII escaped.
-std::string quoted(std::string_view s) {
+std::string quote_text(std::string_view s) {
     std::string out = "\"";
     for (unsigned char c : s) {
         if (c == '"' || c == '\\') {
@@ -547,11 +547,11 @@ Report make_report(const Table& table, const std::vector<FunctionUses>& uses, co
     // a short summary
     for (std::size_t i = 0; i < std::min<std::size_t>(stack.size(), 8); ++i)
         report.text.push_back(std::format("stack string in {} at {}: {}", label(stack[i].function), stack[i].where,
-                                          quoted(stack[i].text)));
+                                          quote_text(stack[i].text)));
     for (std::size_t i = 0; i < std::min<std::size_t>(report.formats.size(), 10); ++i) {
         const FormatFact& f = report.formats[i];
         const std::string args = f.arguments && !f.arguments->empty() ? text::join(*f.arguments, ", ") : "(argument list elsewhere)";
-        report.text.push_back(std::format("{}({}) in {} -> {}", after_last_bang(f.api), quoted(f.format.substr(0, 50)),
+        report.text.push_back(std::format("{}({}) in {} -> {}", after_last_bang(f.api), quote_text(f.format.substr(0, 50)),
                                           label(f.function), args));
     }
     std::size_t shown = 0;

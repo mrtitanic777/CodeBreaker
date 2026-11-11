@@ -5,7 +5,7 @@
 //     const auto signatures = make_signatures(libraries);                // from the libraries' functions
 //     const auto found = match(program, signatures);                     // {address: {names, libs, size}}
 //
-// Every COFF archive (.lib) in the XDK's library folder is read (symbols/libraries), each function's machine code taken
+// Every COFF archive (.lib) in the XDK's library folder is read (symbols/libraries, `read_libraries`), each function's machine code taken
 // from its object with the bits the linker patches (the fields its relocations name) masked out, and the program's code
 // searched for the same words. A program linked against the same XDK and compiler holds the release libraries'
 // functions byte for byte apart from those fields, so a match names the function for certain -- once a signature is
@@ -16,8 +16,9 @@
 // for word; such a hit is refused unless the library symbol is itself a secondary entry of its section (the register
 // save / restore runs and other hand-written routines are entered by falling into them).
 //
-// Reading the libraries and the program is for the formats' readers; this module takes what they read: the functions of
-// each library (code and the bits left out of each word) and the program's text (its words and where functions start).
+// The libraries are read by symbols/libraries (the one reader of library files, shared with the runtime library's
+// digests and the Microsoft C routines); the program is for the formats' readers: this module takes the program's text
+// (its words and where functions start).
 // The names are the XDK's: the output stays with the program's project, never in the repository.
 #pragma once
 
@@ -33,6 +34,7 @@
 #include <vector>
 
 #include "cb/core/bytes.hpp"
+#include "cb/symbols/libraries/package.hpp"
 
 namespace cb::symbols::xdk_libraries {
 
@@ -42,21 +44,17 @@ inline constexpr int kReaderRevision = 3;
 // Where the XDK installs its libraries, when no folder is configured.
 inline constexpr std::string_view kDefaultLibraries = "C:\\Program Files (x86)\\Microsoft Xbox 360 SDK\\lib\\xbox";
 
-// One function of a library, as the library's reader gives it: its symbol, its big-endian PowerPC code, the bits the
-// linker patches in each word (`ignore`, one per word), and where it starts in its section (nonzero: the symbol is
-// entered by falling into it).
-struct LibraryFunction {
-    std::string name;
-    Bytes code;
-    std::vector<std::uint32_t> ignore;
-    std::uint32_t at = 0;
-};
-
-// A library file's name (as it is in the folder) and its functions; only PowerPC libraries are given.
+// A library file's name (as it is in the folder) and its functions, as symbols/libraries reads them: each one's
+// big-endian PowerPC code, the bits the linker patches in each word (`ignore`, one per word), and where it starts in its
+// section (nonzero: the symbol is entered by falling into it). Only PowerPC libraries are given.
 struct Library {
     std::string name;
-    std::vector<LibraryFunction> functions;
+    std::vector<libraries::Function> functions;
 };
+
+// The PowerPC libraries of a folder, in the order of their names (a folder that is not there, a file that is not a
+// library or one that is damaged gives none).
+std::vector<Library> read_libraries(const std::filesystem::path& folder);
 
 // What a function of a library looks like in a program: its words, the bits left out of each, and who has it.
 struct Signature {

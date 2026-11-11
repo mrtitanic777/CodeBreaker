@@ -25,7 +25,7 @@ namespace cb::exact::compare {
 
 // What compare reads of the project (exact/project, refactored later; it fills this in).
 struct Program {
-    std::uint32_t dgroup = 0;     // the image offset of the data segment
+    std::int64_t dgroup = 0;      // the image offset of the data segment (negative: the data lies below the image, as a Pascal program's may)
     std::uint32_t loadseg = 0;    // the segment the program is loaded at (its segment words are relative to it)
     std::function<std::uint32_t(std::uint32_t)> code_base;   // the image offset of the code segment an address is in
     // The places in the load image the loader adds the load segment to (the program's relocation table); null or

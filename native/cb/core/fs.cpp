@@ -171,9 +171,23 @@ void write_file_atomic(const stdfs::path& p, ByteView data) {
 }
 
 void make_dirs(const stdfs::path& p) {
-    std::error_code ec;
-    stdfs::create_directories(p, ec);
-    if (ec && !stdfs::is_directory(p)) throw IoError(p, ec.value(), "cannot create directory: " + ec.message());
+    if (p.empty()) return;
+    // (std::filesystem::create_directories costs 3 ms a folder in the MSVC library, 2.6 ms even for one that is there, and
+    // every write_file asks: the Win32 calls are 30 times cheaper)
+    const DWORD attributes = GetFileAttributesW(native(p).c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES) {
+        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) return;
+        throw IoError(p, ERROR_ALREADY_EXISTS, "cannot create directory: a file is there");
+    }
+    if (CreateDirectoryW(native(p).c_str(), nullptr)) return;
+    DWORD error = GetLastError();
+    if (error == ERROR_PATH_NOT_FOUND && p.has_parent_path() && p.parent_path() != p) {
+        make_dirs(p.parent_path());   // the parents first
+        if (CreateDirectoryW(native(p).c_str(), nullptr)) return;
+        error = GetLastError();
+    }
+    if (error == ERROR_ALREADY_EXISTS) return;   // made by someone else between the look and the call
+    throw IoError(p, static_cast<int>(error), "cannot create directory: " + win::error_message(error));
 }
 
 std::uint64_t file_size(const stdfs::path& p) {

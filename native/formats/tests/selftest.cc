@@ -86,6 +86,16 @@ int main() {
     std::vector<uint8_t> zm = {'Z', 'M', 0, 0};
     check(ask("pe.parse", zm, kNoArgs, a) == CBF_RAISED && has(a, "ValueError"), "not MZ raises ValueError");
 
+    // the other readers answer from cb::formats too
+    check(ask("ne.open", pe, kNoArgs, a) == CBF_RAISED && has(a, "ValueError"), "ne.open of a PE raises ValueError");
+    check(ask("le.from_buffer", pe, kNoArgs, a) == CBF_RAISED && has(a, "ValueError"), "le.from_buffer of a PE raises ValueError");
+    check(ask("detect.dos_header", pe, kNoArgs, a) == CBF_OK && has(a, "\x8c\x0anew_header"), "detect.dos_header of a PE");
+    std::vector<uint8_t> dos(0x210, 0);
+    dos[0] = 'M';
+    dos[1] = 'Z';
+    check(ask("dos._mz", dos, std::string("\x80\x04\x89\x85\x2e", 5), a) == CBF_OK && has(a, "\x8c\x06nreloc"), "dos._mz of a DOS program");
+    check(ask("omf.records", {}, kNoArgs, a) == CBF_OK && a == std::string("\x80\x04](e.", 6), "omf.records of nothing: []");
+
     std::printf("%s\n", failures ? "FAILED" : "all passed");
     return failures ? 1 : 0;
 }

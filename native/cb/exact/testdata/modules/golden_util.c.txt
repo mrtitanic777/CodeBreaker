@@ -1,0 +1,11 @@
+/* switches: -Gs */
+extern char *f01010();
+extern unsigned long f01200();
+
+unsigned long
+f01200(x)
+{
+	return (unsigned long) f01010(x);
+}
+
+int util_table = 7;

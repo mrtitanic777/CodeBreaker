@@ -27,7 +27,8 @@ import shutil
 import struct
 import tempfile
 
-from codebreaker.exact import library, modules, omf, standin
+from codebreaker.exact import library, modules, standin
+from codebreaker.formats import omf
 from codebreaker.exact import toolchain as tcm
 
 

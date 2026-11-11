@@ -350,6 +350,8 @@ class Host(object):
             while index in self.ldt_used:
                 index += 1
             self.next_ldt = index + 1
+        if index >= LDT_COUNT:
+            raise RuntimeError("DPMI: the LDT is full")
         self.ldt_used[index] = (base, limit, access)
         gran = 0x80 if limit > 0xFFFFF else 0x00
         if access & 0x08 and limit > 0xFFFF:                   # a wide code selector is 32-bit (D=1)
@@ -376,6 +378,10 @@ class Host(object):
         if fn == 0x0000:                                       # allocate CX descriptors (LDT)
             n = cx or 1
             base_idx = self.next_ldt
+            if base_idx + n > LDT_COUNT:                       # (more than the table holds)
+                W(UC_X86_REG_AX, 0x8011)
+                carry(True)
+                return
             for k in range(n):
                 self._make_ldt(0, 0, 0x92, index=base_idx + k)
             self.next_ldt = base_idx + n
@@ -429,6 +435,10 @@ class Host(object):
             carry(False)
             return
         if fn == 0x000C:                                       # set descriptor BX from ES:EDI (8 bytes)
+            if not bx & 4 or self._ldt_index(bx) >= LDT_COUNT:     # (only an LDT selector can be set)
+                W(UC_X86_REG_AX, 0x8022)
+                carry(True)
+                return
             raw = bytes(mu.mem_read(self._lin_esedi(), 8))
             if os.environ.get("DOSRUN_DEBUG"):
                 print("  000C %04x <- %s" % (bx, raw.hex()), file=sys.stderr)

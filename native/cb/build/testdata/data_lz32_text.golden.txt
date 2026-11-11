@@ -1,0 +1,7 @@
+INPUT
+static int pre = 0xbfea2004;
+int f(void) { int a = *(int *)0xbfea2004; int b = x-0xbfea2008; int c = -0x4015eff8; int d = 0xbfea1010; int e = 0xbfea2044U; int g = 0x12345; return v.0xbfea2000 + 0xbfea1020; }
+OUTPUT
+static int pre = 0xbfea2004;
+int f(void) { int a = *(int *)((int4)((char *)&codebreaker_data_2 + 0x4)); int b = x-((int4)((char *)&codebreaker_data_2 + 0x8)); int c = ((int4)fn_bfea1008); int d = ((int4)fn_bfea1010); int e = 0xbfea2044U; int g = 0x12345; return v.0xbfea2000 + ((int4)fn_bfea1020); }
+LOST 12345
