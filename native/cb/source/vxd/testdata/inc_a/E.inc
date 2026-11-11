@@ -1,0 +1,3 @@
+Begin_Service_Table SHELL
+SHELL_Service SHELL_Get_Version
+End_Service_Table

@@ -1,52 +1,48 @@
-// codebreaker/source/vxd/symbols.hpp -- typed C++ of codebreaker.source.vxd.symbols
+// codebreaker/source/vxd/symbols.hpp -- compat shim for cb/source/vxd/symbols.hpp (docs/CPP_DESIGN.md 6.3). No logic:
+// conversion and forwarding. Deleted with its last old-layer consumer.
 //
-// symbols.py -- recover VxD function/handler names from the Win95 DDK.
+//   * control_messages()  -- the system control messages (SYS_CRITICAL_INIT=0, DEVICE_INIT=1, ..., from VMM.INC), so a
+//     control-dispatch handler can be named after the message it services.
+//   * sym_names(name)     -- the DDK debug .SYM files (DEBUG/<DEV>.SYM) carry the REAL internal function names for 12
+//     core VxDs. Record format: <u16 offset><u8 namelen><name>.
 //
-// Three DDK sources name things the raw disassembly can only call sub_XXXX:
-//
-//   * control_messages()  -- the system control messages (SYS_CRITICAL_INIT=0, DEVICE_INIT=1, ...,
-//     from VMM.INC), so a control-dispatch handler can be named after the message it services.
-//   * sym_names(name)     -- the DDK debug .SYM files (DEBUG/<DEV>.SYM, MAPSYM output) carry the REAL
-//     internal function names (VKD_Filter_Keyboard_Input, VKD_Put_Byte, ...) for 12 core VxDs. Record
-//     format: <u16 offset><u8 namelen><name>. NOTE these are the DEBUG build's offsets; the retail
-//     oracle differs, so a caller applies a name only where the offset lands on a real function start.
-//
-// The service names live in engine.inverse_engine.vxd_services (the exported interface); this module
-// adds the control handlers and the internal functions.
-//
-// Typing notes:
-//   * HERE / ROOT / _INC / _DEBUG are the Python's import-time constants; they are functions here,
-//     worked out on first use (HERE from the checkout root, as py::settings gives it: the Python takes it
-//     from __file__) and then kept, as the import-time values are.
-//   * control_messages() keeps its answer for the process (functools.lru_cache(maxsize=1)) and hands the
-//     same dict each time.
-//   * glob.glob has no counterpart in the runtime: a small glob lives in the .cpp (the rules of glob.glob
-//     on Windows: wildcards in any part of the path, names matched without regard to case, no hidden names
-//     for a pattern not starting with a dot).
-//   * The Python's `if __name__ == "__main__"` block (a printout of the counts) is not ported.
+// control_messages() keeps its answer for the process (functools.lru_cache(maxsize=1)) and hands the same dict each
+// time. The Python module's import-time constants and its glob (HERE, ROOT, _INC, _DEBUG, _find) belonged to its
+// implementation; the folders are cb::source::vxd::DdkFolders now.
 #pragma once
 
 #include <cstdint>
-#include <optional>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/source/vxd/symbols.hpp"
+#include "codebreaker/base/corpus.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::source::vxd::symbols {
 
-py::str HERE();   // codebreaker/source/vxd
-py::str ROOT();   // codebreaker
-
-const py::list<py::str>& _INC();     // the folders VMM.INC may be in
-const py::list<py::str>& _DEBUG();   // the folders the .SYM files may be in
-
-// The first of `cands` (joined to ROOT, which an absolute one replaces) that exists, with `leaf` under it.
-std::optional<py::str> _find(const py::list<py::str>& cands, const py::str& leaf = py::str(""));
+namespace detail {
+// The DDK folders as the old layer's settings and corpus give them: beside the checkout, the reference folder.
+inline const cb::source::vxd::DdkFolders& ddk() {
+    static const cb::source::vxd::DdkFolders folders = cb::source::vxd::DdkFolders::standard(
+        base::corpus::detail::instance(),
+        cb::fs::from_text(py::os::path::dirname(py::settings::checkout_root()).utf8()));   // dirname(settings.ROOT)
+    return folders;
+}
+}  // namespace detail
 
 // {message_number: MESSAGE_NAME} for the system control messages, from VMM.INC.
-py::dict<int64_t, py::str> control_messages();
+inline py::dict<int64_t, py::str> control_messages() {
+    static const py::dict<int64_t, py::str> kept = cb::compat::guard(
+        [] { return cb::compat::to_py(cb::source::vxd::control_messages(detail::ddk())); });
+    return kept;
+}
 
 // {offset: name} from DEBUG/<device>.SYM, or {} if there is no symbol file for it.
-py::dict<int64_t, py::str> sym_names(const py::str& device);
+inline py::dict<int64_t, py::str> sym_names(const py::str& device) {
+    return cb::compat::guard(
+        [&] { return cb::compat::to_py(cb::source::vxd::sym_names(detail::ddk(), cb::compat::from_py(device))); });
+}
 
 }  // namespace codebreaker::source::vxd::symbols

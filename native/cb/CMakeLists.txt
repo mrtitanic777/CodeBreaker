@@ -91,6 +91,9 @@ target_link_libraries(cb_exact PUBLIC cb_core)
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge)
 
+cb_area(source)
+target_link_libraries(cb_source PUBLIC cb_core cb_base)
+
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
