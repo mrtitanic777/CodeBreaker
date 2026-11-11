@@ -5,6 +5,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "codebreaker/java/_paths.hpp"
+#include "codebreaker/java/apimap.hpp"
 #include "codebreaker/java/cmake.hpp"
 #include "codebreaker/java/debug.hpp"
 #include "codebreaker/java/ir.hpp"
@@ -142,5 +143,32 @@ CB_TEST("java.shims.ledger_and_debug", [] {
     CB_CHECK_EQ(from_py(std::get<0>(markers.get(py::str("once")).value()[0])), "Debug.h");
 });
 
+
+CB_TEST("java.shims.apimap", [] {
+    namespace am = jv::apimap;
+    // (load() needs the old platform_equivalents port, which is not part of this test: build the registry by hand)
+    am::Registry reg(std::make_shared<cb::java::apimap::Registry>(
+        cb::java::apimap::Registry::load(cb::testing::data_path("../../codebreaker/java/api_maps"))));
+    auto m = reg.resolve(py::str("Math.sqrt"), py::str("java"), py::str("cpp"));
+    CB_CHECK(m != nullptr);
+    CB_CHECK_EQ(from_py(m->kind), "direct");
+    CB_CHECK_EQ(from_py(m->__repr__()), "Mapping(java:Math.sqrt -> cpp:sqrt [direct])");
+    auto m11 = reg.resolve(py::str("Math.sqrt"), py::str("java"), py::str("cpp"), std::optional<py::str>(py::str("c++11")));
+    CB_CHECK_EQ(from_py(*m11->dialect), "c++11");
+    CB_CHECK(reg.resolve(py::str("Nope.nothing"), py::str("java"), py::str("cpp")) == nullptr);
+    CB_CHECK(reg.known(py::str("Math.sqrt"), py::str("java")));
+    CB_CHECK(reg.languages.contains(py::str("cpp")) && reg.languages.get(py::str("cpp")).value().dialects->size() > 0);
+    CB_CHECK(reg._sym.contains(std::make_tuple(py::str("java"), py::str("Math.sqrt"))));
+    CB_CHECK(reg._sym.get(std::make_tuple(py::str("java"), py::str("Math.sqrt")))->maps.get(py::str("cpp")).value().kind.size() > 0);
+    auto cov = reg.coverage(py::list<py::str>{py::str("Math.sqrt"), py::str("Nope.nothing")}, py::str("java"), py::str("cpp"));
+    CB_CHECK_EQ(cov.mapped.size(), 1);
+    CB_CHECK_EQ(cov.unmapped.size(), 1);
+    CB_CHECK(reg.symbols_in(py::str("java.lang")).size() > 0);
+    CB_CHECK(reg.stats().size() > 0);
+    CB_CHECK_EQ(from_py(am::_leaf(py::str("std::vector::push_back"))), "push_back");
+    CB_CHECK(am::extract_symbols(py::str("Math.sqrt(1)")).contains(py::str("Math.sqrt")));
+});
+
 }  // namespace
+
 
