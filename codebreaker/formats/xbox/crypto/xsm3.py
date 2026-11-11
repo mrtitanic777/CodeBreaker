@@ -303,7 +303,7 @@ class XSM3State:
 		xsm3_challenge_response[4] = 0x10  # packet length
 
 		# calculate the ACR value and encrypt it into the outgoing packet using the encrypted random
-		xsm3_decryption_buffer = UsbdSecXSMAuthenticationAcr(self.xsm3_identification_data, self.xsm3_console_id, self.xsm3_random_console_data[8:])
+		xsm3_decryption_buffer = UsbdSecXSMAuthenticationAcr(self.xsm3_random_console_data, self.xsm3_console_id, self.xsm3_identification_data)
 		xsm3_challenge_response[5:5 + 8] = UsbdSecXSM3AuthenticationCrypt(self.xsm3_random_console_data_enc, xsm3_decryption_buffer[:8], CryptMode.ENCRYPT)
 		# calculate the MAC of the encrypted packet and append it to the end
 		(salt, xsm3_challenge_response[5 + 8:5 + 8 + 8]) = UsbdSecXSM3AuthenticationMac(self.xsm3_random_console_data_swap_enc, self.xsm3_random_console_data, xsm3_challenge_response[5:5 + 8])

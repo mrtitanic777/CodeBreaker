@@ -158,10 +158,38 @@ def test_apply_jump_sd_4bl_writes_the_branch():
     assert struct.unpack_from(">I", out, 12)[0] == 0x48000000
 
 
+def test_xsm3_challenge_verify_answers_a_valid_packet():
+    """formats.xbox.crypto.xsm3: xsm3_do_challenge_verify, past a valid MAC, calculates the ACR from the random
+    console data (key), the console id and the identification data (it passed the 8 bytes of random data as the
+    identification data, and the ACR raised IndexError)."""
+    import random
+    from codebreaker.formats.xbox.crypto import xsm3 as M
+    k1, k2 = bytes(range(16)), bytes(range(16, 32))
+    M.STATIC_KEY_1, M.STATIC_KEY_2 = k1, k2
+    plain = bytes(range(40, 64))
+    ct = M.UsbdSecXSM3AuthenticationCrypt(k1, plain, M.CryptMode.ENCRYPT)
+    mac = M.UsbdSecXSM3AuthenticationMac(k2, None, ct)[1]
+    pkt = bytes([9, 0x40, 0, 0, 0x1C]) + ct + mac[4:]
+    pkt += bytes([M.xsm3_calculate_checksum(pkt)])
+    random.seed(1234)
+    st = M.XSM3State(M.xsm3_id_data_ms_controller)
+    assert st.xsm3_do_challenge_init(pkt) is not None
+    data8 = bytes(range(8))
+    buf = M.UsbdSecXSM3AuthenticationCrypt(st.xsm3_random_controller_data, data8, M.CryptMode.DECRYPT)
+    rcd = bytearray(st.xsm3_random_console_data)
+    rcd[8:16] = buf
+    vmac = M.UsbdSecXSM3AuthenticationMac(st.xsm3_challenge_init_hash, rcd, data8)[1]
+    vpkt = bytes([9, 0x41, 0, 0, 0x10]) + data8 + vmac
+    vpkt += bytes([M.xsm3_calculate_checksum(vpkt)])
+    resp = st.xsm3_do_challenge_verify(vpkt)
+    assert resp is not None and len(resp) == 5 + 0x10 + 1 and bytes(resp[:2]) == b"IL" and resp[4] == 0x10
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
                test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
-               test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch):
+               test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch,
+               test_xsm3_challenge_verify_answers_a_valid_packet):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
