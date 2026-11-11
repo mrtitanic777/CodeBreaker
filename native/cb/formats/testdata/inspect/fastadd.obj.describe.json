@@ -1,0 +1,27 @@
+{
+ "dos": null,
+ "exports": {
+  "count": 0,
+  "module": "",
+  "symbols": []
+ },
+ "format": "OMF object",
+ "headers": {},
+ "imports": [],
+ "kind": "dos",
+ "name": "fastadd.obj",
+ "notes": [],
+ "ok": true,
+ "resources": {
+  "count": 0,
+  "types": []
+ },
+ "sections": [],
+ "size": 505,
+ "summary": {
+  "family": "dos",
+  "format": "OMF object",
+  "read with": "(nothing yet)",
+  "type": ""
+ }
+}

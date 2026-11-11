@@ -556,3 +556,14 @@ text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, tok
 The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
 directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
 picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.
+
+## formats/inspect (cb::formats::inspect)
+
+The old harness's 2,180 cases (88 files of the Win95 corpus and damaged copies: describe, render, markdown, strings, hexdump, resource_body), the calls that do the module's work, `main` left out:
+
+| | Python (native readers behind it) | cb::formats::inspect |
+|---|---|---|
+| describe / render / markdown / strings / hexdump / resource_body, all cases | 0.97 s (describe 0.28, strings 0.47, hexdump 0.14, render 0.05, resource_body 0.03) | 0.35 s (describe 0.05, strings 0.18, hexdump 0.05, render 0.03, resource_body 0.02) |
+| the 101 `info` command runs, output captured | not timed (a process each) | 0.85 s in one process |
+
+About 2.8x faster on the same calls; nothing is slower. Measured on a busy machine (other builds running).

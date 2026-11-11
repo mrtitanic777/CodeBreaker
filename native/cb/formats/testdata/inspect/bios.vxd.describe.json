@@ -1,0 +1,146 @@
+{
+ "dos": {
+  "bytes_in_last_page": 144,
+  "checksum": 0,
+  "cs": 0,
+  "header_paragraphs": 4,
+  "header_size": 64,
+  "ip": 0,
+  "load_size": 1104,
+  "max_alloc": 65535,
+  "min_alloc": 0,
+  "new_header": 128,
+  "overlay": 0,
+  "pages": 3,
+  "relocation_table": 64,
+  "relocations": 0,
+  "sp": 184,
+  "ss": 0
+ },
+ "driver": {
+  "control_proc": 0,
+  "device_id": 61,
+  "flags": 0,
+  "init_order": 377487361,
+  "major": 4,
+  "minor": 0,
+  "name": "BIOS",
+  "obj": 1,
+  "rva": 16,
+  "version": 1024
+ },
+ "exports": {
+  "count": 0,
+  "module": "BIOS",
+  "symbols": []
+ },
+ "format": "LE",
+ "headers": {
+  "cpu": 2,
+  "cpu_name": "80386",
+  "data_pages_offset": 4096,
+  "ddk_version": 1024,
+  "device_id": 61,
+  "entry": 0,
+  "entry_object": 0,
+  "fixup_section_size": 1488,
+  "imported_modules": 0,
+  "last_page_bytes": 405,
+  "loader_section_size": 246,
+  "module_flags": 163840,
+  "module_version": 0,
+  "objects": 4,
+  "os": 4,
+  "os_name": "Windows 386",
+  "page_size": 512,
+  "pages": 33,
+  "signature": "LE",
+  "stack": 0,
+  "stack_object": 0
+ },
+ "imports": [],
+ "kind": "le",
+ "name": "bios.vxd",
+ "notes": [],
+ "ok": true,
+ "resources": {
+  "count": 0,
+  "types": []
+ },
+ "sections": [
+  {
+   "address": 0,
+   "code": true,
+   "file_offset": 4096,
+   "file_size": 512,
+   "flags": [
+    "READ",
+    "EXECUTE",
+    "PRELOAD",
+    "32BIT"
+   ],
+   "name": "object 1",
+   "size": 264
+  },
+  {
+   "address": 0,
+   "code": true,
+   "file_offset": 4608,
+   "file_size": 13824,
+   "flags": [
+    "READ",
+    "EXECUTE",
+    "32BIT"
+   ],
+   "name": "object 2",
+   "size": 13418
+  },
+  {
+   "address": 0,
+   "code": false,
+   "file_offset": 18432,
+   "file_size": 1024,
+   "flags": [
+    "READ",
+    "WRITE",
+    "SHARED",
+    "32BIT"
+   ],
+   "name": "object 3",
+   "size": 863
+  },
+  {
+   "address": 0,
+   "code": true,
+   "file_offset": 19456,
+   "file_size": 1536,
+   "flags": [
+    "READ",
+    "EXECUTE",
+    "DISCARDABLE",
+    "32BIT"
+   ],
+   "name": "object 4",
+   "size": 1429
+  }
+ ],
+ "size": 21429,
+ "summary": {
+  "code_bytes": 15111,
+  "description": "BIOS Virtual Device  (Version 4.0)",
+  "entry": 0,
+  "exports": 0,
+  "format": "LE",
+  "image_base": 0,
+  "import_modules": 0,
+  "imports": 0,
+  "linked": "",
+  "linker": "",
+  "machine": "80386",
+  "module": "BIOS",
+  "resources": 0,
+  "sections": 4,
+  "subsystem": "Windows 386",
+  "type": "driver"
+ }
+}
