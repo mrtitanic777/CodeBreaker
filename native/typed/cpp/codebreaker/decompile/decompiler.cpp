@@ -326,6 +326,11 @@ py::dict<int64_t, py::bytes> _segment_images(const py::str& description) {
 //   /*@P <name> <bytes> */                      a pointer and its size  -> pointers
 //   /*@S <name> <bytes> <off>:<bytes>:<type>... */  a structure it recovered -> structs
 //   /*@L2 {...} */                              its L2 document (CB_L2) -> l2
+namespace {
+bool holds_big_int(const Wire& v);
+Val from_wire_wrapping(const Wire& v);
+}  // namespace
+
 std::tuple<py::str, FunctionNotes> split_notes(const py::str& text) {
     static const py::re::Pattern note = py::re::compile("/\\*@(G|P|S|L2) (.*) \\*/");
     static const py::re::Pattern field = py::re::compile("([0-9a-f]+):(\\d+):([\\w*^]+)");
@@ -337,10 +342,12 @@ std::tuple<py::str, FunctionNotes> split_notes(const py::str& text) {
         if (!m) break;
         py::str kind = m->group(1), rest = m->group(2);
         if (kind == "L2") {
-            Val doc = native_l2::from_wire(::py::json_parse(rest.utf8()));
+            Wire wire = ::py::json_parse(rest.utf8());
+            Val doc = from_wire_wrapping(wire);
             const Dict* d = std::get_if<Dict>(&doc.v);
             if (!d) throw py::TypeError("an L2 document is a dict");
             facts.l2 = *d;
+            if (holds_big_int(wire)) facts.l2_exact = wire;
             native_l2::known_text(*d, rest);   // (the native writer reads the text itself)
         } else if (kind == "S") {
             py::list<py::str> parts = py::split(rest);
@@ -397,7 +404,8 @@ std::optional<py::str> c_from_l2(const std::optional<py::str>& text, FunctionNot
         if (module) {
             Wire w = c_text::facts_wire(*module);
             try {
-                body = native_l2::function(doc, cback::MOVED, std::nullopt, w);   // (its far pointers: L2's types say which)
+                body = facts.l2_exact ? native_l2::function(*facts.l2_exact, cback::MOVED, std::nullopt, w)
+                                      : native_l2::function(doc, cback::MOVED, std::nullopt, w);   // (its far pointers: L2's types say which)
             } catch (...) {
                 module->wire = w;
                 throw;
@@ -422,6 +430,35 @@ std::optional<py::str> c_from_l2(const std::optional<py::str>& text, FunctionNot
 
 namespace {
 
+// an integer of 2**63 .. 2**64-1 anywhere in a document (what an L2Doc cannot hold)
+bool holds_big_int(const Wire& v) {
+    if (v.k == ::py::K::Int) return v.u64;
+    if (v.k == ::py::K::List || v.k == ::py::K::Tuple) {
+        for (const Wire& x : v.seq())
+            if (holds_big_int(x)) return true;
+    } else if (v.k == ::py::K::Dict) {
+        for (const auto& kv : v.items())
+            if (holds_big_int(kv.second)) return true;
+    }
+    return false;
+}
+
+// native_l2::from_wire, but an integer past int64 wraps (the exact document is kept beside: FunctionNotes::l2_exact)
+Val from_wire_wrapping(const Wire& v) {
+    if (v.k == ::py::K::Int && v.u64) return Val(static_cast<int64_t>(v.i));
+    if (v.k == ::py::K::List || v.k == ::py::K::Tuple || v.k == ::py::K::Set) {
+        Val::List out;
+        for (const Wire& x : v.seq()) out.append(from_wire_wrapping(x));
+        return Val(out);
+    }
+    if (v.k == ::py::K::Dict) {
+        Dict out;
+        for (const auto& kv : v.items()) out.set(py::str(kv.first.str()), from_wire_wrapping(kv.second));
+        return Val(out);
+    }
+    return native_l2::from_wire(v);
+}
+
 struct RunOut {
     py::dict<py::str, py::str> texts;
     py::list<py::str> order;
@@ -438,7 +475,10 @@ const py::re::Pattern& MARK() {
 
 }  // namespace
 
-const py::re::Pattern _BLOCK = py::re::compile("(?ms)^/\\*@@ \\S+ ([0-9a-f]+) \\*/\\n.*?(?=^/\\*@@ |\\Z)");
+const py::re::Pattern& _BLOCK() {
+    static const py::re::Pattern p = py::re::compile("(?ms)^/\\*@@ \\S+ ([0-9a-f]+) \\*/\\n.*?(?=^/\\*@@ |\\Z)");
+    return p;
+}
 
 namespace {
 
@@ -1451,8 +1491,8 @@ std::tuple<py::str, int64_t, int64_t> as_c(const py::str& path) {
 int64_t main(const py::list<py::str>& argv) {
     if (argv.empty()) {
         std::cout << "python -m codebreaker decompile <module> [--out FILE]\n\n"
-                     "    Decompile any module the corpus or a path names -- a 32-bit or 16-bit Windows module, a\n"
-                     "    virtual device driver, a DOS program, a PowerPC image, a NES cartridge -- and write its functions as C. "
+                     "Decompile any module the corpus or a path names -- a 32-bit or 16-bit Windows module, a\n"
+                     "virtual device driver, a DOS program, a PowerPC image, a NES cartridge -- and write its functions as C. "
                      "Nothing is built or judged; `module` does that.\n";
         return 2;
     }

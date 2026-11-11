@@ -110,12 +110,18 @@ Wire Wopt_i(const std::optional<int64_t>& s) { return s ? Wi(*s) : Wire(); }
 
 py::str group(const std::optional<py::re::Match>& m, int64_t g) { return m->group(g); }
 
+// a function's L2 document as the C back end takes it: exactly as written (see FunctionNotes::l2_exact)
+Wire doc_wire(const core16::FunctionNotes& f) { return f.l2_exact ? *f.l2_exact : native_l2::to_wire(translate::ir::Val(*f.l2)); }
+
 }  // namespace
 
 // ---- constants ------------------------------------------------------------------------------------
 
 const py::list<py::str> CFLAGS = L({"-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", "-ecd"});
-const py::dict<py::str, int64_t> _SIZEOF = cback::SIZEOF;
+const py::dict<py::str, int64_t>& _SIZEOF() {
+    static const py::dict<py::str, int64_t> d = cback::SIZEOF;
+    return d;
+}
 const py::str HEADER = py::str(HEADER_TEXT);
 const py::list<py::str> INTERRUPT_REGISTERS = L({"ax", "bx", "cx", "dx", "si", "di", "ds", "es"});
 const py::str SEG_PTR = py::str(SEG_PTR_TEXT);
@@ -556,7 +562,7 @@ Compilable32 compilable32(const py::str& module_path, const py::list<int64_t>& f
                 if (!mine.contains(g.address)) mine.set(g.address, py::set<int64_t>());
                 mine.at(g.address).add(g.bytes);
             }
-            if (facts->l2) named.set(n, cback::module_names32(*facts->l2));
+            if (facts->l2) named.set(n, cback::module_names32(doc_wire(*facts)));
         }
     }
     // What the module decides over all of its functions, from their trees before any is written:
@@ -637,7 +643,7 @@ Compilable32 compilable32(const py::str& module_path, const py::list<int64_t>& f
     for (const py::str& n : order.vec()) {
         const core16::FunctionNotes* f = notes_of(n);
         if (f && f->l2) {
-            std::optional<int64_t> k = cback::takes32(cback::signature(*f->l2));
+            std::optional<int64_t> k = cback::takes32(cback::signature(doc_wire(*f)));
             if (k) takes.set(n, *k);
         }
     }
@@ -712,7 +718,7 @@ Compilable32 compilable32(const py::str& module_path, const py::list<int64_t>& f
     std::vector<py::str> odd;
     py::set<py::str> types;
     for (const py::str& n : declared.keys())
-        for (const py::str& t : cback::type_names(*got.notes.at(n).l2)) types.add(t);
+        for (const py::str& t : cback::type_names(doc_wire(got.notes.at(n)))) types.add(t);
     for (const py::str& name : py::sorted(types).vec()) {
         if (!py::re::fullmatch("unk(?:byte|int|uint)\\d+|u?int[3567]|xunknown[3567]", name)) continue;
         if (py::re::search("\\b" + name.utf8() + ";", _TYPES)) continue;
@@ -1440,7 +1446,7 @@ Written _write16(const std::optional<py::dict<int64_t, py::bytes>>& images, cons
     if (!known.from_l2) return w;   // (va, None, set(), known, {})
     w.found = facts;
     w.found.win16 = true;
-    w.flags = cback::flags(*known.l2, *facts.wire);
+    w.flags = cback::flags(doc_wire(known), *facts.wire);
     return w;
 }
 
@@ -2048,7 +2054,7 @@ ModulePPC compilable_powerpc(const py::str& module_path, const py::str& outdir) 
             out.set(n, out.at(n).strip());
             continue;
         }
-        named.set(n, cback::module_names32(*facts.l2));   // (what its tree names, as its text does)
+        named.set(n, cback::module_names32(doc_wire(facts)));   // (what its tree names, as its text does)
         declared.set(n, *written.declared);
         out.set(n, out.at(n).strip());
         if (written.novalue) {

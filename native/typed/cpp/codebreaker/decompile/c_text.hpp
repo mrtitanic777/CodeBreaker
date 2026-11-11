@@ -52,7 +52,7 @@ using core16::StructNote;
 // The options OpenWatcom's 32-bit compiler is given (decompiled C is stdcall by default: -ecd)
 extern const py::list<py::str> CFLAGS;
 // bytes of each of the decompiler's scalar types (backends/c.SIZEOF)
-extern const py::dict<py::str, int64_t> _SIZEOF;
+const py::dict<py::str, int64_t>& _SIZEOF();   // (built on first use: it copies another unit's global)
 // The C the 16-bit modules' headers start with (base types, helpers); the 32-bit one is _TYPES + _HELPERS
 extern const py::str HEADER;
 // A software interrupt's register record: the registers' names in the record's order
