@@ -679,8 +679,10 @@ def render(value, key="", indent=0):
                 lines.append("%s%-*s  %s" % (pad, width, k, _cell(k, v)))
         return lines
     if isinstance(value, list) and value and isinstance(value[0], dict):
-        plain = [k for k in value[0] if not isinstance(value[0][k], (dict, list)) or
-                 (isinstance(value[0][k], list) and not (value[0][k] and isinstance(value[0][k][0], dict)))]
+        def holds_records(k):                                # any row with records under k makes the column nested
+            return any(isinstance(r, dict) and (isinstance(r.get(k), dict) or (
+                isinstance(r.get(k), list) and r[k] and isinstance(r[k][0], dict))) for r in value)
+        plain = [k for k in value[0] if not holds_records(k)]
         nested = [k for k in value[0] if k not in plain]
         rows = [[_cell(k, r.get(k)) for k in plain] for r in value]
         widths = [min(48, max([len(k)] + [len(r[i]) for r in rows])) for i, k in enumerate(plain)]

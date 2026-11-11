@@ -688,3 +688,14 @@ Old = the Python module on the same inputs (the Python is the live implementatio
 
 `exact/emu/dpmi` has no Python run to time against on its own (it runs only inside the DOS executive's emulation loop); each INT 31h it serves is
 a handful of register reads and one or two memory writes.
+
+## formats/inspect (cb::formats::inspect)
+
+The old harness's 2,180 cases (88 files of the Win95 corpus and damaged copies: describe, render, markdown, strings, hexdump, resource_body), the calls that do the module's work, `main` left out:
+
+| | Python (native readers behind it) | cb::formats::inspect |
+|---|---|---|
+| describe / render / markdown / strings / hexdump / resource_body, all cases | 0.97 s (describe 0.28, strings 0.47, hexdump 0.14, render 0.05, resource_body 0.03) | 0.35 s (describe 0.05, strings 0.18, hexdump 0.05, render 0.03, resource_body 0.02) |
+| the 101 `info` command runs, output captured | not timed (a process each) | 0.85 s in one process |
+
+About 2.8x faster on the same calls; nothing is slower. Measured on a busy machine (other builds running).

@@ -1,0 +1,478 @@
+{
+ "certificates": [],
+ "clr": null,
+ "debug": [],
+ "directories": [
+  {
+   "name": "Export",
+   "rva": 16384,
+   "size": 289
+  },
+  {
+   "name": "Import",
+   "rva": 12288,
+   "size": 382
+  },
+  {
+   "name": "Resource",
+   "rva": 20480,
+   "size": 916
+  },
+  {
+   "name": "Exception",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "Security",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "BaseReloc",
+   "rva": 24576,
+   "size": 96
+  },
+  {
+   "name": "Debug",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "Architecture",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "GlobalPtr",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "TLS",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "LoadConfig",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "BoundImport",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "IAT",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "DelayImport",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "CLR",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "Reserved",
+   "rva": 0,
+   "size": 0
+  }
+ ],
+ "dos": {
+  "bytes_in_last_page": 144,
+  "checksum": 0,
+  "cs": 0,
+  "header_paragraphs": 4,
+  "header_size": 64,
+  "ip": 0,
+  "load_size": 1104,
+  "max_alloc": 65535,
+  "min_alloc": 0,
+  "new_header": 128,
+  "overlay": 0,
+  "pages": 3,
+  "relocation_table": 64,
+  "relocations": 0,
+  "sp": 184,
+  "ss": 0
+ },
+ "exports": {
+  "count": 12,
+  "module": "LZ32.dll",
+  "ordinal_base": 1,
+  "symbols": [
+   {
+    "address": 3219788202,
+    "forward": "",
+    "hint": 4,
+    "name": "LZCopy",
+    "ordinal": 1
+   },
+   {
+    "address": 3219788344,
+    "forward": "",
+    "hint": 7,
+    "name": "LZOpenFileA",
+    "ordinal": 2
+   },
+   {
+    "address": 3219788289,
+    "forward": "",
+    "hint": 6,
+    "name": "LZInit",
+    "ordinal": 3
+   },
+   {
+    "address": 3219788756,
+    "forward": "",
+    "hint": 10,
+    "name": "LZSeek",
+    "ordinal": 4
+   },
+   {
+    "address": 3219788643,
+    "forward": "",
+    "hint": 9,
+    "name": "LZRead",
+    "ordinal": 5
+   },
+   {
+    "address": 3219788253,
+    "forward": "",
+    "hint": 3,
+    "name": "LZClose",
+    "ordinal": 6
+   },
+   {
+    "address": 3219788067,
+    "forward": "",
+    "hint": 11,
+    "name": "LZStart",
+    "ordinal": 7
+   },
+   {
+    "address": 3219788592,
+    "forward": "",
+    "hint": 0,
+    "name": "CopyLZFile",
+    "ordinal": 8
+   },
+   {
+    "address": 3219788123,
+    "forward": "",
+    "hint": 5,
+    "name": "LZDone",
+    "ordinal": 9
+   },
+   {
+    "address": 3219788504,
+    "forward": "",
+    "hint": 1,
+    "name": "GetExpandedNameA",
+    "ordinal": 10
+   },
+   {
+    "address": 3219788193,
+    "forward": "",
+    "hint": 8,
+    "name": "LZOpenFileW",
+    "ordinal": 11
+   },
+   {
+    "address": 3219788184,
+    "forward": "",
+    "hint": 2,
+    "name": "GetExpandedNameW",
+    "ordinal": 12
+   }
+  ]
+ },
+ "format": "PE",
+ "headers": {
+  "file": {
+   "characteristics": [
+    "EXECUTABLE",
+    "32BIT",
+    "DLL"
+   ],
+   "linked": "1996-08-10 21:47:04",
+   "machine": "i386",
+   "machine_id": 332,
+   "optional_header_size": 224,
+   "sections": 6,
+   "timestamp": 839713624
+  },
+  "optional": {
+   "checksum": 15188,
+   "code_base": 4096,
+   "code_size": 1536,
+   "dll_characteristics": 0,
+   "entry_point": 4096,
+   "file_alignment": 512,
+   "headers_size": 1024,
+   "image_base": 3219783680,
+   "image_size": 28672,
+   "image_version": "0.0",
+   "initialized_data_size": 3072,
+   "linker_version": "2.50",
+   "magic": 267,
+   "os_version": "1.0",
+   "section_alignment": 4096,
+   "subsystem": 2,
+   "subsystem_name": "GUI",
+   "subsystem_version": "4.0",
+   "uninitialized_data_size": 0
+  }
+ },
+ "imports": [
+  {
+   "count": 17,
+   "delay": false,
+   "module": "KERNEL32.dll",
+   "symbols": [
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 21,
+     "slot": 12400
+    },
+    {
+     "hint": 491,
+     "name": "SMapLS_IP_EBP_12",
+     "ordinal": -1,
+     "slot": 12404
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 89,
+     "slot": 12408
+    },
+    {
+     "hint": 499,
+     "name": "SMapLS_IP_EBP_8",
+     "ordinal": -1,
+     "slot": 12412
+    },
+    {
+     "hint": 501,
+     "name": "SUnMapLS_IP_EBP_12",
+     "ordinal": -1,
+     "slot": 12416
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 41,
+     "slot": 12420
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 90,
+     "slot": 12424
+    },
+    {
+     "hint": 509,
+     "name": "SUnMapLS_IP_EBP_8",
+     "ordinal": -1,
+     "slot": 12428
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 17,
+     "slot": 12432
+    },
+    {
+     "hint": 88,
+     "name": "DisableThreadLibraryCalls",
+     "ordinal": -1,
+     "slot": 12436
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 22,
+     "slot": 12440
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 20,
+     "slot": 12444
+    },
+    {
+     "hint": 436,
+     "name": "OpenFile",
+     "ordinal": -1,
+     "slot": 12448
+    },
+    {
+     "hint": 342,
+     "name": "GlobalFree",
+     "ordinal": -1,
+     "slot": 12452
+    },
+    {
+     "hint": 290,
+     "name": "GetShortPathNameA",
+     "ordinal": -1,
+     "slot": 12456
+    },
+    {
+     "hint": 552,
+     "name": "SetLastError",
+     "ordinal": -1,
+     "slot": 12460
+    },
+    {
+     "hint": 335,
+     "name": "GlobalAlloc",
+     "ordinal": -1,
+     "slot": 12464
+    }
+   ]
+  }
+ ],
+ "kind": "pe",
+ "load_config": false,
+ "name": "lz32.dll",
+ "notes": [],
+ "ok": true,
+ "relocations": {
+  "addresses": 39,
+  "blocks": 2,
+  "entries": 40
+ },
+ "resources": {
+  "count": 1,
+  "types": [
+   {
+    "count": 1,
+    "id": 16,
+    "items": [
+     {
+      "id": 1,
+      "language": 1033,
+      "name": "#1",
+      "offset": 4192,
+      "preview": "text",
+      "rva": 20576,
+      "size": 820,
+      "type_id": 16,
+      "wide": true
+     }
+    ],
+    "type": "VERSION"
+   }
+  ]
+ },
+ "rich": null,
+ "sections": [
+  {
+   "address": 3219787776,
+   "code": true,
+   "file_offset": 1024,
+   "file_size": 1536,
+   "flags": [
+    "CODE",
+    "EXECUTE",
+    "READ"
+   ],
+   "name": ".text",
+   "size": 1130
+  },
+  {
+   "address": 3219791872,
+   "code": false,
+   "file_offset": 2560,
+   "file_size": 512,
+   "flags": [
+    "INITDATA",
+    "SHARED",
+    "READ",
+    "WRITE"
+   ],
+   "name": ".data",
+   "size": 138
+  },
+  {
+   "address": 3219795968,
+   "code": false,
+   "file_offset": 3072,
+   "file_size": 512,
+   "flags": [
+    "INITDATA",
+    "SHARED",
+    "READ"
+   ],
+   "name": ".idata",
+   "size": 382
+  },
+  {
+   "address": 3219800064,
+   "code": false,
+   "file_offset": 3584,
+   "file_size": 512,
+   "flags": [
+    "INITDATA",
+    "READ"
+   ],
+   "name": ".edata",
+   "size": 289
+  },
+  {
+   "address": 3219804160,
+   "code": false,
+   "file_offset": 4096,
+   "file_size": 1024,
+   "flags": [
+    "INITDATA",
+    "READ"
+   ],
+   "name": ".rsrc",
+   "size": 916
+  },
+  {
+   "address": 3219808256,
+   "code": false,
+   "file_offset": 5120,
+   "file_size": 512,
+   "flags": [
+    "INITDATA",
+    "DISCARDABLE",
+    "READ"
+   ],
+   "name": ".reloc",
+   "size": 138
+  }
+ ],
+ "size": 5632,
+ "summary": {
+  "code_bytes": 1536,
+  "description": "",
+  "entry": 3219787776,
+  "exports": 12,
+  "format": "PE32",
+  "image_base": 3219783680,
+  "import_modules": 1,
+  "imports": 17,
+  "linked": "1996-08-10 21:47:04",
+  "linker": "2.50",
+  "machine": "i386",
+  "module": "LZ32.dll",
+  "resources": 1,
+  "sections": 6,
+  "subsystem": "GUI",
+  "type": "DLL"
+ },
+ "symbols_file": null,
+ "tls": null
+}

@@ -1,0 +1,806 @@
+{
+ "dos": {
+  "bytes_in_last_page": 384,
+  "checksum": 0,
+  "cs": 0,
+  "header_paragraphs": 4,
+  "header_size": 64,
+  "ip": 0,
+  "load_size": 320,
+  "max_alloc": 65535,
+  "min_alloc": 0,
+  "new_header": 128,
+  "overlay": 0,
+  "pages": 1,
+  "relocation_table": 64,
+  "relocations": 0,
+  "sp": 184,
+  "ss": 0
+ },
+ "exports": {
+  "count": 3,
+  "module": "CHARMAP",
+  "symbols": [
+   {
+    "address": "1:0392",
+    "exported": true,
+    "forward": "",
+    "hint": -1,
+    "movable": true,
+    "name": "CHARMAPWNDPROC",
+    "ordinal": 1
+   },
+   {
+    "address": "1:099a",
+    "exported": true,
+    "forward": "",
+    "hint": -1,
+    "movable": true,
+    "name": "CHARGRIDWNDPROC",
+    "ordinal": 2
+   },
+   {
+    "address": "1:17d2",
+    "exported": true,
+    "forward": "",
+    "hint": -1,
+    "movable": true,
+    "name": "FONTLOADPROC",
+    "ordinal": 3
+   }
+  ]
+ },
+ "format": "NE",
+ "headers": {
+  "alignment_shift": 4,
+  "automatic_data_segment": 2,
+  "checksum": 0,
+  "entry_offset": 9070,
+  "entry_segment": 1,
+  "expected_windows": "4.0",
+  "flags": [
+   "MULTIPLE_DATA"
+  ],
+  "flags_value": 770,
+  "heap": 1024,
+  "linker_version": "5.60",
+  "module_references": 5,
+  "movable_entries": 3,
+  "segments": 2,
+  "stack": 5120,
+  "stack_pointer": 0,
+  "stack_segment": 2,
+  "target_system": "Windows"
+ },
+ "imports": [
+  {
+   "count": 18,
+   "delay": false,
+   "module": "KERNEL",
+   "symbols": [
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 15
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 17
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 18
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 19
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 30
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 50
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 58
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 59
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 60
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 61
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 62
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 63
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 88
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 89
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 90
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 91
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 102
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 178
+    }
+   ]
+  },
+  {
+   "count": 63,
+   "delay": false,
+   "module": "USER",
+   "symbols": [
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 5
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 6
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 18
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 19
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 22
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 28
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 29
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 30
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 32
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 33
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 34
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 36
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 38
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 39
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 40
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 42
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 49
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 53
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 66
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 67
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 68
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 71
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 74
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 78
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 89
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 90
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 91
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 101
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 106
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 107
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 108
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 110
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 111
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 113
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 114
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 119
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 124
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 125
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 137
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 138
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 139
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 141
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 145
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 156
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 171
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 173
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 174
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 176
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 179
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 180
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 190
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 228
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 232
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 258
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 277
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 308
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 397
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 410
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 420
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 452
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 466
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 471
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 659
+    }
+   ]
+  },
+  {
+   "count": 20,
+   "delay": false,
+   "module": "GDI",
+   "symbols": [
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 1
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 2
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 9
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 19
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 20
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 33
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 34
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 45
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 51
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 52
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 57
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 61
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 68
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 69
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 91
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 93
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 330
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 350
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 351
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 442
+    }
+   ]
+  },
+  {
+   "count": 2,
+   "delay": false,
+   "module": "KEYBOARD",
+   "symbols": [
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 129
+    },
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 131
+    }
+   ]
+  },
+  {
+   "count": 1,
+   "delay": false,
+   "module": "SHELL",
+   "symbols": [
+    {
+     "hint": -1,
+     "name": "",
+     "ordinal": 22
+    }
+   ]
+  }
+ ],
+ "kind": "ne",
+ "name": "charmap.exe",
+ "notes": [],
+ "ok": true,
+ "relocations": {
+  "records": 106
+ },
+ "resources": {
+  "count": 8,
+  "types": [
+   {
+    "count": 1,
+    "id": 14,
+    "items": [
+     {
+      "language": 0,
+      "name": "#111",
+      "offset": 11680,
+      "preview": "hex",
+      "size": 48,
+      "type_id": 14,
+      "wide": false
+     }
+    ],
+    "type": "GROUP_ICON"
+   },
+   {
+    "count": 1,
+    "id": 2,
+    "items": [
+     {
+      "language": 0,
+      "name": "#110",
+      "offset": 13664,
+      "preview": "image",
+      "size": 592,
+      "type_id": 2,
+      "wide": false
+     }
+    ],
+    "type": "BITMAP"
+   },
+   {
+    "count": 1,
+    "id": 5,
+    "items": [
+     {
+      "language": 0,
+      "name": "CHARMAP",
+      "offset": 11744,
+      "preview": "hex",
+      "size": 224,
+      "type_id": 5,
+      "wide": false
+     }
+    ],
+    "type": "DIALOG"
+   },
+   {
+    "count": 2,
+    "id": 6,
+    "items": [
+     {
+      "language": 0,
+      "name": "#7",
+      "offset": 12000,
+      "preview": "text",
+      "size": 384,
+      "type_id": 6,
+      "wide": false
+     },
+     {
+      "language": 0,
+      "name": "#8",
+      "offset": 12416,
+      "preview": "text",
+      "size": 112,
+      "type_id": 6,
+      "wide": false
+     }
+    ],
+    "type": "STRING"
+   },
+   {
+    "count": 1,
+    "id": 16,
+    "items": [
+     {
+      "language": 0,
+      "name": "#1",
+      "offset": 14256,
+      "preview": "text",
+      "size": 496,
+      "type_id": 16,
+      "wide": false
+     }
+    ],
+    "type": "VERSION"
+   },
+   {
+    "count": 2,
+    "id": 3,
+    "items": [
+     {
+      "language": 0,
+      "name": "#1",
+      "offset": 12544,
+      "preview": "image",
+      "size": 752,
+      "type_id": 3,
+      "wide": false
+     },
+     {
+      "language": 0,
+      "name": "#2",
+      "offset": 13312,
+      "preview": "image",
+      "size": 304,
+      "type_id": 3,
+      "wide": false
+     }
+    ],
+    "type": "ICON"
+   }
+  ]
+ },
+ "sections": [
+  {
+   "address": "1:0000",
+   "code": true,
+   "file_offset": 608,
+   "file_size": 9160,
+   "flags": [
+    "MOVABLE",
+    "PRELOAD",
+    "RELOCINFO",
+    "DISCARDABLE"
+   ],
+   "name": "seg 1",
+   "size": 9160
+  },
+  {
+   "address": "2:0000",
+   "code": false,
+   "file_offset": 10656,
+   "file_size": 996,
+   "flags": [
+    "DATA",
+    "MOVABLE",
+    "PRELOAD"
+   ],
+   "name": "seg 2",
+   "size": 996
+  }
+ ],
+ "size": 14752,
+ "summary": {
+  "code_bytes": 9160,
+  "description": "Utility for easily selecting special characters.",
+  "entry": "1:236e",
+  "exports": 3,
+  "format": "NE",
+  "image_base": 0,
+  "import_modules": 5,
+  "imports": 104,
+  "linked": "",
+  "linker": "5.60",
+  "machine": "i286/i386 (16-bit)",
+  "module": "CHARMAP",
+  "resources": 8,
+  "sections": 2,
+  "subsystem": "Windows",
+  "type": "EXE"
+ }
+}
