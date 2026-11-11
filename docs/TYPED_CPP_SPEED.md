@@ -564,3 +564,18 @@ Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2)
 |---|---|---|
 | fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
 | mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+
+## cb refactor: decompile batch W1-B7 (2026-11-11)
+
+Old = the typed port on the py:: layer (`decompile/asm_blocks.cpp`, `decompile/sm83.cpp`; the old harness binaries of
+`state/work/typed-port/`), same inputs, shared machine (+-30%). New = `native/cb/decompile/{asm_blocks,frame16,shape16,sm83,l2tree}`
+(`cb::Json` L2 documents, `std::string`, no py::).
+
+| What | Python | old typed C++ | new |
+|---|---|---|---|
+| asm_blocks: the whole old harness (1,848 `place` cases on recorded decoders, plus 5,800 calls of its helpers; parse, run, print) | not timed | 1,264 ms | 440-540 ms (the same cases, parse and compare included) |
+| sm83: the whole old harness (14,700 decode / text / assemble / table cases) | not timed | 430 ms | 191 ms (through the compat shim, so with the py:: conversions the shim does) |
+| frame16 + shape16 x2 over 400 random documents (~8 KB of L2 each: lay_out, then reshape of its result and of the original), documents already parsed | 433 ms | no harness runs (the old port needs describe's decoder) | 83 ms |
+
+The first version of shape16 re-opened Capstone for every statement it looked at (460 ms, no faster than the Python); a
+`inline_asm::Decoder16` (one open handle, asked many times) opened by the pass made it 5x faster than the Python.
