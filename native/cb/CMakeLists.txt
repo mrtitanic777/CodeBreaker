@@ -78,9 +78,9 @@ target_link_libraries(cb_build PUBLIC cb_core cb_base)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 cb_area(jobs)
-target_link_libraries(cb_jobs PUBLIC cb_core)
+target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
-target_link_libraries(cb_platforms PUBLIC cb_core)
+target_link_libraries(cb_platforms PUBLIC cb_core cb_formats)
 
 # The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
 add_executable(cb_worker_probe jobs/worker_probe_main.cpp)
@@ -208,6 +208,7 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/sdk_structs.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
