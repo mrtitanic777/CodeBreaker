@@ -1,3 +1,4 @@
+// cb-unity: alone (file-local helpers shared by name with the other shapes_*.cpp files)
 // The passes that read back widths and pairs: a byte widened with zeros (an unsigned char), a char widened for a test, a
 // word element's offset, a long that is the two words dx:ax - and the swaps of two stores and the calls an operator joins.
 #include <algorithm>

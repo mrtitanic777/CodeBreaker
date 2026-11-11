@@ -1,3 +1,4 @@
+// cb-unity: alone (file-local helpers shared by name with the other shapes_*.cpp files)
 // The passes that read back loops: a loop's test moved to its head, a register carried round into a variable, a step
 // made the for's, loops of tests alone, an outer loop that only restarts the inner one.
 #include <algorithm>

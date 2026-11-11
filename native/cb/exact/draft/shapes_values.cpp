@@ -1,3 +1,4 @@
+// cb-unity: alone (file-local helpers shared by name with the other shapes_*.cpp files)
 // The passes that read back the values the compiler leaves behind a test or a register: a comparison's 1 and 0, the
 // ?: of two arms, a call's value kept in ax, a value stored and read again.
 #include <algorithm>

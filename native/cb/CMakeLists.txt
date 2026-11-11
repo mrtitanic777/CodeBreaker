@@ -29,7 +29,7 @@ endfunction()
 option(CB_UNITY "compile native/cb in unity batches" ON)
 set(CB_UNITY_BATCH 8 CACHE STRING "sources per unity batch")
 option(CB_PCH "precompile the standard headers of native/cb" ON)
-# Sources that cannot share a unity unit: they define file-local helpers with the same names as a neighbour's.
+# Sources that cannot share a unity unit: they define file-local helpers with the same names as a neighbour's. A source can also say so itself with a "// cb-unity: alone" comment.
 set(CB_UNITY_ALONE
   port/old_c_passes.cpp port/union_views.cpp source/vxd/symbols.cpp knowledge/value.cpp)
 function(cb_unity target sources)
@@ -41,7 +41,8 @@ function(cb_unity target sources)
     file(RELATIVE_PATH rel "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" "${src}")
     file(READ "${src}" text)
     # windows.h defines macros (far, near, pascal, min, LoadLibrary...) that would leak into the next file of the unit
-    if(rel IN_LIST CB_UNITY_ALONE OR text MATCHES "<[Ww]indows\\.h>")
+    # (or the source says so itself: a "cb-unity: alone" comment)
+    if(rel IN_LIST CB_UNITY_ALONE OR text MATCHES "<[Ww]indows\\.h>" OR text MATCHES "cb-unity: alone")
       set_source_files_properties("${src}" PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
     endif()
   endforeach()

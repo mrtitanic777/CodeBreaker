@@ -1,3 +1,4 @@
+// cb-unity: alone (file-local helpers shared by name with the other shapes_*.cpp files)
 // The passes that read back switches: a run of values the compiler tests as a range, an arm that falls into the next,
 // the default arm that is the code after the switch, a selector kept in ax.
 #include <algorithm>

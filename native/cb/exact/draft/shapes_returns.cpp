@@ -1,3 +1,4 @@
+// cb-unity: alone (file-local helpers shared by name with the other shapes_*.cpp files)
 // The passes that read back returns and gotos: the compiler's one exit jumped to from every way out, the tails two arms
 // share, the stores two arms meet at.
 #include <algorithm>
