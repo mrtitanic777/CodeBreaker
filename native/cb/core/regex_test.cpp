@@ -150,7 +150,7 @@ CB_TEST("core.regex.flags", [] {
     CB_CHECK_EQ(found(Regex("hello", RegexFlags::IgnoreCase), "Say HeLLo"), "HeLLo");
     CB_CHECK_EQ(found(Regex("[a-c]+", RegexFlags::IgnoreCase), "xABCabc"), "ABCabc");
     CB_CHECK_EQ(found(Regex("(?i)hello"), "HELLO"), "HELLO");                     // inline flags at the start
-    CB_CHECK_EQ(found(Regex("(?ims)^a.b$"), "x\nA\nB"), "<none>");
+    CB_CHECK_EQ(found(Regex("(?ims)^a.b$"), "x\nA\nB"), "A\nB");
     CB_CHECK_EQ(found(Regex("(?s)a.b"), "a\nb"), "a\nb");
     CB_CHECK_EQ(found(Regex("(?m)^b"), "a\nb"), "b");
     CB_CHECK(Regex("A", RegexFlags::IgnoreCase | RegexFlags::Multiline).test("a"));

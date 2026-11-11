@@ -12,7 +12,7 @@ function(cb_apply_flags target)
   target_compile_features(${target} PUBLIC cxx_std_20)
   set_target_properties(${target} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-  target_include_directories(${target} PUBLIC "${CB_NATIVE_ROOT}" "${CB_THIRD_PARTY}")
+  target_include_directories(${target} PUBLIC "${CB_NATIVE_ROOT}" "${CB_THIRD_PARTY}" "${CB_THIRD_PARTY}/include")
   target_compile_definitions(${target} PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
   target_compile_options(${target} PRIVATE /permissive- /utf-8 /EHsc /W4 /WX /Zc:__cplusplus /Zc:char8_t- /bigobj)
   if(CB_ASAN)
@@ -36,6 +36,16 @@ endfunction()
 
 cb_area(core)
 target_link_libraries(cb_core PUBLIC bcrypt)
+# where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
+# before the copy below (see native/third_party/README.md)
+set_source_files_properties(core/dynlib.cpp PROPERTIES COMPILE_DEFINITIONS CB_THIRD_PARTY_BIN="${CB_THIRD_PARTY}/bin")
+
+# The prebuilt unicorn/capstone/libz3 DLLs go next to every executable that loads them.
+set(CB_PREBUILT_DLLS "${CB_THIRD_PARTY}/bin/unicorn.dll" "${CB_THIRD_PARTY}/bin/capstone.dll" "${CB_THIRD_PARTY}/bin/libz3.dll")
+function(cb_copy_prebuilt_dlls target)
+  add_custom_command(TARGET ${target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CB_PREBUILT_DLLS} "$<TARGET_FILE_DIR:${target}>")
+endfunction()
 
 # ---- the test executable: every area's tests, compiled straight into it (a static library would let the
 # linker drop test objects nothing references) -------------------------------------------------------------
@@ -44,6 +54,7 @@ add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} cb.manifest)
 cb_apply_flags(cb_tests)
 target_compile_definitions(cb_tests PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 target_link_libraries(cb_tests PRIVATE cb_core)
+cb_copy_prebuilt_dlls(cb_tests)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 enable_testing()
