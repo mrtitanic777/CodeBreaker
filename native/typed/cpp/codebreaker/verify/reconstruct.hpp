@@ -38,6 +38,18 @@
 #include "py.hpp"
 #include "py_os.hpp"
 
+// <windows.h> (through py_os.hpp) defines `near` and `far`, which headers of ours use as names (decompile/c_text.hpp's Module16): no header of ours
+// wants them as macros.
+#ifdef near
+#undef near
+#endif
+#ifdef far
+#undef far
+#endif
+#ifdef VOID
+#undef VOID
+#endif
+
 namespace codebreaker::verify::reconstruct {
 
 // who a candidate in the store came from
