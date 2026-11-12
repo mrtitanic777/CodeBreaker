@@ -216,9 +216,15 @@ void Database::set_about(std::string_view name, std::string_view value) {
     impl_->conn.exec("INSERT OR REPLACE INTO about(name, value) VALUES(?,?)", {std::string(name), std::string(value)});
 }
 
+std::string hash_of(const Encoded& encoded) { return hash_of(encoded.tag, encoded.data); }
+
 std::string Database::write(std::string_view kind, std::string_view key, const Value& value, std::string_view step, std::string_view version,
                             const std::vector<Input>& inputs, double took) {
-    const Encoded e = encode(value);
+    return write(kind, key, encode(value), step, version, inputs, took);
+}
+
+std::string Database::write(std::string_view kind, std::string_view key, const Encoded& e, std::string_view step, std::string_view version,
+                            const std::vector<Input>& inputs, double took) {
     const std::string h = hash_of(e.tag, e.data);
     const bool small = e.data.size() <= kBlobAt;
     const std::lock_guard<std::mutex> g(impl_->mutex);

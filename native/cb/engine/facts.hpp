@@ -63,6 +63,8 @@ struct Encoded {
 };
 // How a value is kept. A document holding a number JSON cannot say (NaN, infinity) throws UnsupportedError.
 Encoded encode(const Value& value);
+// The hash of a value as kept: the SHA-1 of its tag and bytes, lower-case hex.
+std::string hash_of(const Encoded& encoded);
 // Throws FormatError for malformed JSON or text, UnsupportedError for the tag P (a Python pickle) or an unknown tag.
 Value decode(char tag, ByteView data);
 
@@ -123,6 +125,9 @@ public:
 
     // Keep a fact; -> its hash.
     std::string write(std::string_view kind, std::string_view key, const Value& value, std::string_view step,
+                      std::string_view version, const std::vector<Input>& inputs, double took = 0);
+    // The same for a value already encoded (a caller that needed its hash first).
+    std::string write(std::string_view kind, std::string_view key, const Encoded& encoded, std::string_view step,
                       std::string_view version, const std::vector<Input>& inputs, double took = 0);
     // Keep a row as it is given (a fact whose hash is not its value's: the binary's own bytes by the digest the caller knows).
     void write_raw(std::string_view kind, std::string_view key, std::string_view hash, char tag, ByteView data,
