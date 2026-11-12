@@ -222,9 +222,6 @@ target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly)
 
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp")
-
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -314,7 +311,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
