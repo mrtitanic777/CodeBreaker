@@ -1017,3 +1017,21 @@ Old = the Python (the old typed ports cannot be built here without the whole exe
 | function store: 20,000 functions recorded in one call | (the C engine's store.cc: same SQL; not built here) | 0.17 s |
 | function store: best + tally of those 20,000 | same | 0.14 s |
 | reach: describe / gap / spread / report | not timed (a few ms a file) | not timed |
+
+## W2-B3: analyze/facts, analyze/conventions, build/resources, build/masm, build/sm83_asm
+
+Old = the Python (the old typed ports cannot be built here without the whole exe); New = native/cb, Release.
+
+| What | Old | New |
+|---|---|---|
+| conventions `analyse` over the 15 golden modules (923 functions: facts, counts, duplicates, bridge) | 157 ms (Python + cbanalyze.dll's conventions.cc) | 66 ms (the same work, decoded functions already in the image) |
+| resources `write_rc` (`.rc` and every payload file) of 21 Windows 95 modules, 413 resources | 124 ms (Python, formats DLL) | 100 ms (about 500 small files written: most of it is the file system) |
+| resources `rebuild` of 14 modules (write, wrc twice, read, compare) | not timed | 55-88 ms each (almost all of it wrc's two runs) |
+| sm83_asm `build` of the demo program into a 64 KB ROM, 200 times | 268 ms (Python, 1.3 ms each) | 21.9 ms (0.11 ms each) |
+| facts / masm | not timed: the cost of masm is the assembler's (the native executive, DOSBox) and of facts the SQLite file | |
+
+## W2-B8 (formats/xbox/crypto)
+
+| What | Old | New |
+|---|---|---|
+| build_lib, keystore, sd_signer, se_patcher | not timed: the cost is the RSA private-key operation per signed bootloader (big-number arithmetic in both) and, for the SE, the LZX library | the tests make and use about 20 2048-bit keys in under a second in all |

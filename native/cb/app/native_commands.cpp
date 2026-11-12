@@ -19,6 +19,7 @@
 #include "cb/formats/dos.hpp"
 #include "cb/formats/inspect.hpp"
 #include "cb/formats/xbox/heavyiron.hpp"
+#include "cb/formats/xex.hpp"
 #include "cb/symbols/demangle.hpp"
 #include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
@@ -28,7 +29,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 8> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab"};
+constexpr std::array<std::string_view, 9> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -250,6 +251,15 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // cab list|extract|create: Microsoft cabinets, with no outside tool
     table.set("cab", [](std::span<const std::string> argv) -> int { return cab_command(argv); });
+
+    // xex <command> <file.xex> [args]: the xex program, with this process's stdout and stderr
+    formats::xex::Tools xex_tools;
+    xex_tools.xex_program = config.path("xex_bin").value_or(std::filesystem::path{}) / "xex.exe";
+    xex_tools.unpacked_dir = config.state() / "unpacked" / "xex";
+    table.set("xex", [xex_tools](std::span<const std::string> args) -> int {
+        flush_out();
+        return formats::xex::run(xex_tools, std::vector<std::string>(args.begin(), args.end()));
+    });
 
     // heavyiron <archive> ...: Heavy Iron Studios' .HO/.HIP archives
     table.set("heavyiron", [](std::span<const std::string> args) -> int {

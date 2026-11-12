@@ -118,6 +118,7 @@ cb_area(build)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_symbols)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb_source cb_symbols)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
+target_link_libraries(cb_build PUBLIC cb_decompile)   # (sm83_asm: the Game Boy instruction encoder)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
@@ -155,7 +156,8 @@ cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core cb_formats)
 
 cb_area(analyze)
-target_link_libraries(cb_analyze PUBLIC cb_core cb_formats cb_symbols)
+target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
+
 
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
@@ -280,6 +282,9 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3_staged.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b8.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
@@ -315,7 +320,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/build_lib.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/harness.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/keystore.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/shadowboot.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xcp_dumper.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xsm3.cpp"

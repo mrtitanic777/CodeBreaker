@@ -11,9 +11,9 @@
 
 #include "cb/analyze/call_graph.hpp"
 #include "cb/analyze/convention_facts.hpp"
+#include "cb/analyze/conventions.hpp"
 #include "cb/analyze/native.hpp"
 #include "cb/compat/py_bridge.hpp"
-#include "codebreaker/analyze/conventions.hpp"
 #include "codebreaker/analyze/image.hpp"
 #include "py.hpp"
 
@@ -78,19 +78,10 @@ inline const cba::call_graph::Graph& cb_graph_of(image::Image& img) {
     });
 }
 
-// What the calling-convention pass said of each function, as the refactored analyses take it.
+// What the calling-convention pass said of each function, as the refactored analyses take it (the cb pass, over the cb image
+// and its call graph).
 inline cba::ConventionFacts convention_facts_of(image::Image& img) {
-    cba::ConventionFacts out;
-    for (const auto& [start, fact] : conventions::functions(img)->items()) {
-        cba::ConventionFact f;
-        if (fact.convention) f.convention = fact.convention->utf8();
-        if (fact.procedure) f.procedure = fact.procedure->utf8();
-        if (fact.removes) f.removes = static_cast<int>(*fact.removes);
-        f.frame = fact.frame;
-        for (const py::str& r : fact.reg_args) f.reg_args.push_back(r.utf8());
-        out.emplace(start, std::move(f));
-    }
-    return out;
+    return cba::conventions::summary(cba::conventions::functions(cb_image_of(img), cb_graph_of(img)));
 }
 
 }  // namespace codebreaker::analyze::bridge
