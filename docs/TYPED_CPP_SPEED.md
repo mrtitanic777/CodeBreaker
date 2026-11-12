@@ -800,3 +800,22 @@ big-number parts: they carried their own BigInt).
 | RSA-2048 key generation x3 | 97 | 86 (CNG; with a seeded RandomSource the primes are searched here: ~270 ms each) |
 | rot_sum_sha over 8 MB x5 | 3097 | 81 |
 | RC4 over 8 MB x5 | 52 | 52 (state and indices in locals; about 4 cycles a byte, the dependency-chain limit of RC4, as OpenSSL's) |
+
+## W1-B22: recompile/discover and recompile/builders (arith, logical, memory, system, vector)
+
+Old = the typed port on the py:: layer (`py::list<py::str>` statements, helpers as `std::function` over `py::str`), new =
+`native/cb/recompile/builders` (tables of statement text, `std::format`, an `Operands` interface), both Release /O2 in one test
+executable, one thread, every case of the golden file (the statements of the instruction, operand tokens parsed in each call),
+repeated; times for the whole loop.
+
+| Work | Old | New |
+|---|---|---|
+| arith, 544 cases x60 | 39 ms | 12 ms |
+| logical, 930 cases x60 | 114 ms | 26 ms |
+| memory, 1,068 cases x60 | 147 ms | 43 ms |
+| system, 1,195 cases x30 | 66 ms | 21 ms |
+| vector, 1,137 cases x30 | 61 ms | 38 ms |
+
+`discover` over the 16 KB Minecraft slice (4,096 words, a data section of 57 pointers, 37 functions): 0.04 ms a run with the pointer
+scan (50 runs in 2 ms). The old port could not be timed beside it in the test executable (it reads its image through the old PowerPC
+PE reader, which the new tests cannot link).

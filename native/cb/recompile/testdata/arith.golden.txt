@@ -1,0 +1,1244 @@
+## add r3 r4 r5
+ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+## add r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 + ctx.r0.u64;
+## add r31 r0 r3
+ctx.r31.u64 = ctx.r0.u64 + ctx.r3.u64;
+## add r13 r12 r11
+ctx.r13.u64 = ctx.r12.u64 + ctx.r11.u64;
+## adde r3 r4 r5
+temp.u8 = (ctx.r4.u32 + ctx.r5.u32 < ctx.r4.u32) | (ctx.r4.u32 + ctx.r5.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## adde r0 r0 r0
+temp.u8 = (ctx.r0.u32 + ctx.r0.u32 < ctx.r0.u32) | (ctx.r0.u32 + ctx.r0.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r0.u64 = ctx.r0.u64 + ctx.r0.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## adde r31 r0 r3
+temp.u8 = (ctx.r0.u32 + ctx.r3.u32 < ctx.r0.u32) | (ctx.r0.u32 + ctx.r3.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r31.u64 = ctx.r0.u64 + ctx.r3.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## adde r13 r12 r11
+temp.u8 = (ctx.r12.u32 + ctx.r11.u32 < ctx.r12.u32) | (ctx.r12.u32 + ctx.r11.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r13.u64 = ctx.r12.u64 + ctx.r11.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## addi r3 r4 0
+ctx.r3.s64 = ctx.r4.s64 + 0;
+## addi r3 r4 1
+ctx.r3.s64 = ctx.r4.s64 + 1;
+## addi r3 r4 5
+ctx.r3.s64 = ctx.r4.s64 + 5;
+## addi r3 r4 16
+ctx.r3.s64 = ctx.r4.s64 + 16;
+## addi r3 r4 31
+ctx.r3.s64 = ctx.r4.s64 + 31;
+## addi r3 r4 32
+ctx.r3.s64 = ctx.r4.s64 + 32;
+## addi r3 r4 63
+ctx.r3.s64 = ctx.r4.s64 + 63;
+## addi r3 r4 32767
+ctx.r3.s64 = ctx.r4.s64 + 32767;
+## addi r3 r4 32768
+ctx.r3.s64 = ctx.r4.s64 + 32768;
+## addi r3 r4 65535
+ctx.r3.s64 = ctx.r4.s64 + 65535;
+## addi r3 r4 -1
+ctx.r3.s64 = ctx.r4.s64 + -1;
+## addi r3 r4 -32768
+ctx.r3.s64 = ctx.r4.s64 + -32768;
+## addi r0 r0 0
+ctx.r0.s64 = 0;
+## addi r0 r0 1
+ctx.r0.s64 = 1;
+## addi r0 r0 5
+ctx.r0.s64 = 5;
+## addi r0 r0 16
+ctx.r0.s64 = 16;
+## addi r0 r0 31
+ctx.r0.s64 = 31;
+## addi r0 r0 32
+ctx.r0.s64 = 32;
+## addi r0 r0 63
+ctx.r0.s64 = 63;
+## addi r0 r0 32767
+ctx.r0.s64 = 32767;
+## addi r0 r0 32768
+ctx.r0.s64 = 32768;
+## addi r0 r0 65535
+ctx.r0.s64 = 65535;
+## addi r0 r0 -1
+ctx.r0.s64 = -1;
+## addi r0 r0 -32768
+ctx.r0.s64 = -32768;
+## addi r31 r0 0
+ctx.r31.s64 = 0;
+## addi r31 r0 1
+ctx.r31.s64 = 1;
+## addi r31 r0 5
+ctx.r31.s64 = 5;
+## addi r31 r0 16
+ctx.r31.s64 = 16;
+## addi r31 r0 31
+ctx.r31.s64 = 31;
+## addi r31 r0 32
+ctx.r31.s64 = 32;
+## addi r31 r0 63
+ctx.r31.s64 = 63;
+## addi r31 r0 32767
+ctx.r31.s64 = 32767;
+## addi r31 r0 32768
+ctx.r31.s64 = 32768;
+## addi r31 r0 65535
+ctx.r31.s64 = 65535;
+## addi r31 r0 -1
+ctx.r31.s64 = -1;
+## addi r31 r0 -32768
+ctx.r31.s64 = -32768;
+## addi r13 r12 0
+ctx.r13.s64 = ctx.r12.s64 + 0;
+## addi r13 r12 1
+ctx.r13.s64 = ctx.r12.s64 + 1;
+## addi r13 r12 5
+ctx.r13.s64 = ctx.r12.s64 + 5;
+## addi r13 r12 16
+ctx.r13.s64 = ctx.r12.s64 + 16;
+## addi r13 r12 31
+ctx.r13.s64 = ctx.r12.s64 + 31;
+## addi r13 r12 32
+ctx.r13.s64 = ctx.r12.s64 + 32;
+## addi r13 r12 63
+ctx.r13.s64 = ctx.r12.s64 + 63;
+## addi r13 r12 32767
+ctx.r13.s64 = ctx.r12.s64 + 32767;
+## addi r13 r12 32768
+ctx.r13.s64 = ctx.r12.s64 + 32768;
+## addi r13 r12 65535
+ctx.r13.s64 = ctx.r12.s64 + 65535;
+## addi r13 r12 -1
+ctx.r13.s64 = ctx.r12.s64 + -1;
+## addi r13 r12 -32768
+ctx.r13.s64 = ctx.r12.s64 + -32768;
+## addic r3 r4 0
+ctx.xer.ca = ctx.r4.u32 > 4294967295;
+ctx.r3.s64 = ctx.r4.s64 + 0;
+## addic r3 r4 1
+ctx.xer.ca = ctx.r4.u32 > 4294967294;
+ctx.r3.s64 = ctx.r4.s64 + 1;
+## addic r3 r4 5
+ctx.xer.ca = ctx.r4.u32 > 4294967290;
+ctx.r3.s64 = ctx.r4.s64 + 5;
+## addic r3 r4 16
+ctx.xer.ca = ctx.r4.u32 > 4294967279;
+ctx.r3.s64 = ctx.r4.s64 + 16;
+## addic r3 r4 31
+ctx.xer.ca = ctx.r4.u32 > 4294967264;
+ctx.r3.s64 = ctx.r4.s64 + 31;
+## addic r3 r4 32
+ctx.xer.ca = ctx.r4.u32 > 4294967263;
+ctx.r3.s64 = ctx.r4.s64 + 32;
+## addic r3 r4 63
+ctx.xer.ca = ctx.r4.u32 > 4294967232;
+ctx.r3.s64 = ctx.r4.s64 + 63;
+## addic r3 r4 32767
+ctx.xer.ca = ctx.r4.u32 > 4294934528;
+ctx.r3.s64 = ctx.r4.s64 + 32767;
+## addic r3 r4 32768
+ctx.xer.ca = ctx.r4.u32 > 4294934527;
+ctx.r3.s64 = ctx.r4.s64 + 32768;
+## addic r3 r4 65535
+ctx.xer.ca = ctx.r4.u32 > 4294901760;
+ctx.r3.s64 = ctx.r4.s64 + 65535;
+## addic r3 r4 -1
+ctx.xer.ca = ctx.r4.u32 > 0;
+ctx.r3.s64 = ctx.r4.s64 + -1;
+## addic r3 r4 -32768
+ctx.xer.ca = ctx.r4.u32 > 32767;
+ctx.r3.s64 = ctx.r4.s64 + -32768;
+## addic r0 r0 0
+ctx.xer.ca = ctx.r0.u32 > 4294967295;
+ctx.r0.s64 = ctx.r0.s64 + 0;
+## addic r0 r0 1
+ctx.xer.ca = ctx.r0.u32 > 4294967294;
+ctx.r0.s64 = ctx.r0.s64 + 1;
+## addic r0 r0 5
+ctx.xer.ca = ctx.r0.u32 > 4294967290;
+ctx.r0.s64 = ctx.r0.s64 + 5;
+## addic r0 r0 16
+ctx.xer.ca = ctx.r0.u32 > 4294967279;
+ctx.r0.s64 = ctx.r0.s64 + 16;
+## addic r0 r0 31
+ctx.xer.ca = ctx.r0.u32 > 4294967264;
+ctx.r0.s64 = ctx.r0.s64 + 31;
+## addic r0 r0 32
+ctx.xer.ca = ctx.r0.u32 > 4294967263;
+ctx.r0.s64 = ctx.r0.s64 + 32;
+## addic r0 r0 63
+ctx.xer.ca = ctx.r0.u32 > 4294967232;
+ctx.r0.s64 = ctx.r0.s64 + 63;
+## addic r0 r0 32767
+ctx.xer.ca = ctx.r0.u32 > 4294934528;
+ctx.r0.s64 = ctx.r0.s64 + 32767;
+## addic r0 r0 32768
+ctx.xer.ca = ctx.r0.u32 > 4294934527;
+ctx.r0.s64 = ctx.r0.s64 + 32768;
+## addic r0 r0 65535
+ctx.xer.ca = ctx.r0.u32 > 4294901760;
+ctx.r0.s64 = ctx.r0.s64 + 65535;
+## addic r0 r0 -1
+ctx.xer.ca = ctx.r0.u32 > 0;
+ctx.r0.s64 = ctx.r0.s64 + -1;
+## addic r0 r0 -32768
+ctx.xer.ca = ctx.r0.u32 > 32767;
+ctx.r0.s64 = ctx.r0.s64 + -32768;
+## addic r31 r0 0
+ctx.xer.ca = ctx.r0.u32 > 4294967295;
+ctx.r31.s64 = ctx.r0.s64 + 0;
+## addic r31 r0 1
+ctx.xer.ca = ctx.r0.u32 > 4294967294;
+ctx.r31.s64 = ctx.r0.s64 + 1;
+## addic r31 r0 5
+ctx.xer.ca = ctx.r0.u32 > 4294967290;
+ctx.r31.s64 = ctx.r0.s64 + 5;
+## addic r31 r0 16
+ctx.xer.ca = ctx.r0.u32 > 4294967279;
+ctx.r31.s64 = ctx.r0.s64 + 16;
+## addic r31 r0 31
+ctx.xer.ca = ctx.r0.u32 > 4294967264;
+ctx.r31.s64 = ctx.r0.s64 + 31;
+## addic r31 r0 32
+ctx.xer.ca = ctx.r0.u32 > 4294967263;
+ctx.r31.s64 = ctx.r0.s64 + 32;
+## addic r31 r0 63
+ctx.xer.ca = ctx.r0.u32 > 4294967232;
+ctx.r31.s64 = ctx.r0.s64 + 63;
+## addic r31 r0 32767
+ctx.xer.ca = ctx.r0.u32 > 4294934528;
+ctx.r31.s64 = ctx.r0.s64 + 32767;
+## addic r31 r0 32768
+ctx.xer.ca = ctx.r0.u32 > 4294934527;
+ctx.r31.s64 = ctx.r0.s64 + 32768;
+## addic r31 r0 65535
+ctx.xer.ca = ctx.r0.u32 > 4294901760;
+ctx.r31.s64 = ctx.r0.s64 + 65535;
+## addic r31 r0 -1
+ctx.xer.ca = ctx.r0.u32 > 0;
+ctx.r31.s64 = ctx.r0.s64 + -1;
+## addic r31 r0 -32768
+ctx.xer.ca = ctx.r0.u32 > 32767;
+ctx.r31.s64 = ctx.r0.s64 + -32768;
+## addic r13 r12 0
+ctx.xer.ca = ctx.r12.u32 > 4294967295;
+ctx.r13.s64 = ctx.r12.s64 + 0;
+## addic r13 r12 1
+ctx.xer.ca = ctx.r12.u32 > 4294967294;
+ctx.r13.s64 = ctx.r12.s64 + 1;
+## addic r13 r12 5
+ctx.xer.ca = ctx.r12.u32 > 4294967290;
+ctx.r13.s64 = ctx.r12.s64 + 5;
+## addic r13 r12 16
+ctx.xer.ca = ctx.r12.u32 > 4294967279;
+ctx.r13.s64 = ctx.r12.s64 + 16;
+## addic r13 r12 31
+ctx.xer.ca = ctx.r12.u32 > 4294967264;
+ctx.r13.s64 = ctx.r12.s64 + 31;
+## addic r13 r12 32
+ctx.xer.ca = ctx.r12.u32 > 4294967263;
+ctx.r13.s64 = ctx.r12.s64 + 32;
+## addic r13 r12 63
+ctx.xer.ca = ctx.r12.u32 > 4294967232;
+ctx.r13.s64 = ctx.r12.s64 + 63;
+## addic r13 r12 32767
+ctx.xer.ca = ctx.r12.u32 > 4294934528;
+ctx.r13.s64 = ctx.r12.s64 + 32767;
+## addic r13 r12 32768
+ctx.xer.ca = ctx.r12.u32 > 4294934527;
+ctx.r13.s64 = ctx.r12.s64 + 32768;
+## addic r13 r12 65535
+ctx.xer.ca = ctx.r12.u32 > 4294901760;
+ctx.r13.s64 = ctx.r12.s64 + 65535;
+## addic r13 r12 -1
+ctx.xer.ca = ctx.r12.u32 > 0;
+ctx.r13.s64 = ctx.r12.s64 + -1;
+## addic r13 r12 -32768
+ctx.xer.ca = ctx.r12.u32 > 32767;
+ctx.r13.s64 = ctx.r12.s64 + -32768;
+## addis r3 r4 0
+ctx.r3.s64 = ctx.r4.s64 + 0;
+## addis r3 r4 1
+ctx.r3.s64 = ctx.r4.s64 + 65536;
+## addis r3 r4 5
+ctx.r3.s64 = ctx.r4.s64 + 327680;
+## addis r3 r4 16
+ctx.r3.s64 = ctx.r4.s64 + 1048576;
+## addis r3 r4 31
+ctx.r3.s64 = ctx.r4.s64 + 2031616;
+## addis r3 r4 32
+ctx.r3.s64 = ctx.r4.s64 + 2097152;
+## addis r3 r4 63
+ctx.r3.s64 = ctx.r4.s64 + 4128768;
+## addis r3 r4 32767
+ctx.r3.s64 = ctx.r4.s64 + 2147418112;
+## addis r3 r4 32768
+ctx.r3.s64 = ctx.r4.s64 + -2147483648;
+## addis r3 r4 65535
+ctx.r3.s64 = ctx.r4.s64 + -65536;
+## addis r3 r4 -1
+ctx.r3.s64 = ctx.r4.s64 + -65536;
+## addis r3 r4 -32768
+ctx.r3.s64 = ctx.r4.s64 + -2147483648;
+## addis r0 r0 0
+ctx.r0.s64 = 0;
+## addis r0 r0 1
+ctx.r0.s64 = 65536;
+## addis r0 r0 5
+ctx.r0.s64 = 327680;
+## addis r0 r0 16
+ctx.r0.s64 = 1048576;
+## addis r0 r0 31
+ctx.r0.s64 = 2031616;
+## addis r0 r0 32
+ctx.r0.s64 = 2097152;
+## addis r0 r0 63
+ctx.r0.s64 = 4128768;
+## addis r0 r0 32767
+ctx.r0.s64 = 2147418112;
+## addis r0 r0 32768
+ctx.r0.s64 = -2147483648;
+## addis r0 r0 65535
+ctx.r0.s64 = -65536;
+## addis r0 r0 -1
+ctx.r0.s64 = -65536;
+## addis r0 r0 -32768
+ctx.r0.s64 = -2147483648;
+## addis r31 r0 0
+ctx.r31.s64 = 0;
+## addis r31 r0 1
+ctx.r31.s64 = 65536;
+## addis r31 r0 5
+ctx.r31.s64 = 327680;
+## addis r31 r0 16
+ctx.r31.s64 = 1048576;
+## addis r31 r0 31
+ctx.r31.s64 = 2031616;
+## addis r31 r0 32
+ctx.r31.s64 = 2097152;
+## addis r31 r0 63
+ctx.r31.s64 = 4128768;
+## addis r31 r0 32767
+ctx.r31.s64 = 2147418112;
+## addis r31 r0 32768
+ctx.r31.s64 = -2147483648;
+## addis r31 r0 65535
+ctx.r31.s64 = -65536;
+## addis r31 r0 -1
+ctx.r31.s64 = -65536;
+## addis r31 r0 -32768
+ctx.r31.s64 = -2147483648;
+## addis r13 r12 0
+ctx.r13.s64 = ctx.r12.s64 + 0;
+## addis r13 r12 1
+ctx.r13.s64 = ctx.r12.s64 + 65536;
+## addis r13 r12 5
+ctx.r13.s64 = ctx.r12.s64 + 327680;
+## addis r13 r12 16
+ctx.r13.s64 = ctx.r12.s64 + 1048576;
+## addis r13 r12 31
+ctx.r13.s64 = ctx.r12.s64 + 2031616;
+## addis r13 r12 32
+ctx.r13.s64 = ctx.r12.s64 + 2097152;
+## addis r13 r12 63
+ctx.r13.s64 = ctx.r12.s64 + 4128768;
+## addis r13 r12 32767
+ctx.r13.s64 = ctx.r12.s64 + 2147418112;
+## addis r13 r12 32768
+ctx.r13.s64 = ctx.r12.s64 + -2147483648;
+## addis r13 r12 65535
+ctx.r13.s64 = ctx.r12.s64 + -65536;
+## addis r13 r12 -1
+ctx.r13.s64 = ctx.r12.s64 + -65536;
+## addis r13 r12 -32768
+ctx.r13.s64 = ctx.r12.s64 + -2147483648;
+## addze r3 r4
+temp.s64 = ctx.r4.s64 + ctx.xer.ca;
+ctx.xer.ca = temp.u32 < ctx.r4.u32;
+ctx.r3.s64 = temp.s64;
+## addze r0 r0
+temp.s64 = ctx.r0.s64 + ctx.xer.ca;
+ctx.xer.ca = temp.u32 < ctx.r0.u32;
+ctx.r0.s64 = temp.s64;
+## addze r31 r0
+temp.s64 = ctx.r0.s64 + ctx.xer.ca;
+ctx.xer.ca = temp.u32 < ctx.r0.u32;
+ctx.r31.s64 = temp.s64;
+## addze r13 r12
+temp.s64 = ctx.r12.s64 + ctx.xer.ca;
+ctx.xer.ca = temp.u32 < ctx.r12.u32;
+ctx.r13.s64 = temp.s64;
+## addme r3 r4
+temp.u8 = (ctx.r4.u32 + 0xFFFFFFFFu < ctx.r4.u32) | (ctx.r4.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r3.u64 = ctx.r4.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## addme r0 r0
+temp.u8 = (ctx.r0.u32 + 0xFFFFFFFFu < ctx.r0.u32) | (ctx.r0.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r0.u64 = ctx.r0.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## addme r31 r0
+temp.u8 = (ctx.r0.u32 + 0xFFFFFFFFu < ctx.r0.u32) | (ctx.r0.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r31.u64 = ctx.r0.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## addme r13 r12
+temp.u8 = (ctx.r12.u32 + 0xFFFFFFFFu < ctx.r12.u32) | (ctx.r12.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r13.u64 = ctx.r12.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## addc r3 r4 r5
+ctx.xer.ca = ctx.r4.u32 + ctx.r5.u32 < ctx.r4.u32;
+ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+## addc r0 r0 r0
+ctx.xer.ca = ctx.r0.u32 + ctx.r0.u32 < ctx.r0.u32;
+ctx.r0.u64 = ctx.r0.u64 + ctx.r0.u64;
+## addc r31 r0 r3
+ctx.xer.ca = ctx.r0.u32 + ctx.r3.u32 < ctx.r0.u32;
+ctx.r31.u64 = ctx.r0.u64 + ctx.r3.u64;
+## addc r13 r12 r11
+ctx.xer.ca = ctx.r12.u32 + ctx.r11.u32 < ctx.r12.u32;
+ctx.r13.u64 = ctx.r12.u64 + ctx.r11.u64;
+## divd r3 r4 r5
+ctx.r3.s64 = (ctx.r5.s64 && !(ctx.r4.s64 == INT64_MIN && ctx.r5.s64 == -1)) ? ctx.r4.s64 / ctx.r5.s64 : 0;
+## divd r0 r0 r0
+ctx.r0.s64 = (ctx.r0.s64 && !(ctx.r0.s64 == INT64_MIN && ctx.r0.s64 == -1)) ? ctx.r0.s64 / ctx.r0.s64 : 0;
+## divd r31 r0 r3
+ctx.r31.s64 = (ctx.r3.s64 && !(ctx.r0.s64 == INT64_MIN && ctx.r3.s64 == -1)) ? ctx.r0.s64 / ctx.r3.s64 : 0;
+## divd r13 r12 r11
+ctx.r13.s64 = (ctx.r11.s64 && !(ctx.r12.s64 == INT64_MIN && ctx.r11.s64 == -1)) ? ctx.r12.s64 / ctx.r11.s64 : 0;
+## divdu r3 r4 r5
+ctx.r3.u64 = ctx.r5.u64 ? ctx.r4.u64 / ctx.r5.u64 : 0;
+## divdu r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 ? ctx.r0.u64 / ctx.r0.u64 : 0;
+## divdu r31 r0 r3
+ctx.r31.u64 = ctx.r3.u64 ? ctx.r0.u64 / ctx.r3.u64 : 0;
+## divdu r13 r12 r11
+ctx.r13.u64 = ctx.r11.u64 ? ctx.r12.u64 / ctx.r11.u64 : 0;
+## divw r3 r4 r5
+ctx.r3.u64 = uint32_t((ctx.r5.s32 && !(ctx.r4.s32 == INT32_MIN && ctx.r5.s32 == -1)) ? ctx.r4.s32 / ctx.r5.s32 : 0);
+## divw r0 r0 r0
+ctx.r0.u64 = uint32_t((ctx.r0.s32 && !(ctx.r0.s32 == INT32_MIN && ctx.r0.s32 == -1)) ? ctx.r0.s32 / ctx.r0.s32 : 0);
+## divw r31 r0 r3
+ctx.r31.u64 = uint32_t((ctx.r3.s32 && !(ctx.r0.s32 == INT32_MIN && ctx.r3.s32 == -1)) ? ctx.r0.s32 / ctx.r3.s32 : 0);
+## divw r13 r12 r11
+ctx.r13.u64 = uint32_t((ctx.r11.s32 && !(ctx.r12.s32 == INT32_MIN && ctx.r11.s32 == -1)) ? ctx.r12.s32 / ctx.r11.s32 : 0);
+## divwu r3 r4 r5
+ctx.r3.u64 = uint32_t(ctx.r5.u32 ? ctx.r4.u32 / ctx.r5.u32 : 0);
+## divwu r0 r0 r0
+ctx.r0.u64 = uint32_t(ctx.r0.u32 ? ctx.r0.u32 / ctx.r0.u32 : 0);
+## divwu r31 r0 r3
+ctx.r31.u64 = uint32_t(ctx.r3.u32 ? ctx.r0.u32 / ctx.r3.u32 : 0);
+## divwu r13 r12 r11
+ctx.r13.u64 = uint32_t(ctx.r11.u32 ? ctx.r12.u32 / ctx.r11.u32 : 0);
+## mulhw r3 r4 r5
+ctx.r3.s64 = (int64_t(ctx.r4.s32) * int64_t(ctx.r5.s32)) >> 32;
+## mulhw r0 r0 r0
+ctx.r0.s64 = (int64_t(ctx.r0.s32) * int64_t(ctx.r0.s32)) >> 32;
+## mulhw r31 r0 r3
+ctx.r31.s64 = (int64_t(ctx.r0.s32) * int64_t(ctx.r3.s32)) >> 32;
+## mulhw r13 r12 r11
+ctx.r13.s64 = (int64_t(ctx.r12.s32) * int64_t(ctx.r11.s32)) >> 32;
+## mulhwu r3 r4 r5
+ctx.r3.u64 = (uint64_t(ctx.r4.u32) * uint64_t(ctx.r5.u32)) >> 32;
+## mulhwu r0 r0 r0
+ctx.r0.u64 = (uint64_t(ctx.r0.u32) * uint64_t(ctx.r0.u32)) >> 32;
+## mulhwu r31 r0 r3
+ctx.r31.u64 = (uint64_t(ctx.r0.u32) * uint64_t(ctx.r3.u32)) >> 32;
+## mulhwu r13 r12 r11
+ctx.r13.u64 = (uint64_t(ctx.r12.u32) * uint64_t(ctx.r11.u32)) >> 32;
+## mulld r3 r4 r5
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * ctx.r5.u64);
+## mulld r0 r0 r0
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * ctx.r0.u64);
+## mulld r31 r0 r3
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * ctx.r3.u64);
+## mulld r13 r12 r11
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * ctx.r11.u64);
+## mulli r3 r4 0
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(0));
+## mulli r3 r4 1
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(1));
+## mulli r3 r4 5
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(5));
+## mulli r3 r4 16
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(16));
+## mulli r3 r4 31
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(31));
+## mulli r3 r4 32
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(32));
+## mulli r3 r4 63
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(63));
+## mulli r3 r4 32767
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(32767));
+## mulli r3 r4 32768
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(32768));
+## mulli r3 r4 65535
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(65535));
+## mulli r3 r4 -1
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(-1));
+## mulli r3 r4 -32768
+ctx.r3.s64 = static_cast<int64_t>(ctx.r4.u64 * static_cast<uint64_t>(-32768));
+## mulli r0 r0 0
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(0));
+## mulli r0 r0 1
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(1));
+## mulli r0 r0 5
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(5));
+## mulli r0 r0 16
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(16));
+## mulli r0 r0 31
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(31));
+## mulli r0 r0 32
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(32));
+## mulli r0 r0 63
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(63));
+## mulli r0 r0 32767
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(32767));
+## mulli r0 r0 32768
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(32768));
+## mulli r0 r0 65535
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(65535));
+## mulli r0 r0 -1
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(-1));
+## mulli r0 r0 -32768
+ctx.r0.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(-32768));
+## mulli r31 r0 0
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(0));
+## mulli r31 r0 1
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(1));
+## mulli r31 r0 5
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(5));
+## mulli r31 r0 16
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(16));
+## mulli r31 r0 31
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(31));
+## mulli r31 r0 32
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(32));
+## mulli r31 r0 63
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(63));
+## mulli r31 r0 32767
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(32767));
+## mulli r31 r0 32768
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(32768));
+## mulli r31 r0 65535
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(65535));
+## mulli r31 r0 -1
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(-1));
+## mulli r31 r0 -32768
+ctx.r31.s64 = static_cast<int64_t>(ctx.r0.u64 * static_cast<uint64_t>(-32768));
+## mulli r13 r12 0
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(0));
+## mulli r13 r12 1
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(1));
+## mulli r13 r12 5
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(5));
+## mulli r13 r12 16
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(16));
+## mulli r13 r12 31
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(31));
+## mulli r13 r12 32
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(32));
+## mulli r13 r12 63
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(63));
+## mulli r13 r12 32767
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(32767));
+## mulli r13 r12 32768
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(32768));
+## mulli r13 r12 65535
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(65535));
+## mulli r13 r12 -1
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(-1));
+## mulli r13 r12 -32768
+ctx.r13.s64 = static_cast<int64_t>(ctx.r12.u64 * static_cast<uint64_t>(-32768));
+## mullw r3 r4 r5
+ctx.r3.s64 = int64_t(ctx.r4.s32) * int64_t(ctx.r5.s32);
+## mullw r0 r0 r0
+ctx.r0.s64 = int64_t(ctx.r0.s32) * int64_t(ctx.r0.s32);
+## mullw r31 r0 r3
+ctx.r31.s64 = int64_t(ctx.r0.s32) * int64_t(ctx.r3.s32);
+## mullw r13 r12 r11
+ctx.r13.s64 = int64_t(ctx.r12.s32) * int64_t(ctx.r11.s32);
+## mulhd r3 r4 r5
+ctx.r3.s64 = static_cast<int64_t>((static_cast<__int128>(static_cast<int64_t>(ctx.r4.s64)) * static_cast<__int128>(static_cast<int64_t>(ctx.r5.s64))) >> 64);
+## mulhd r0 r0 r0
+ctx.r0.s64 = static_cast<int64_t>((static_cast<__int128>(static_cast<int64_t>(ctx.r0.s64)) * static_cast<__int128>(static_cast<int64_t>(ctx.r0.s64))) >> 64);
+## mulhd r31 r0 r3
+ctx.r31.s64 = static_cast<int64_t>((static_cast<__int128>(static_cast<int64_t>(ctx.r0.s64)) * static_cast<__int128>(static_cast<int64_t>(ctx.r3.s64))) >> 64);
+## mulhd r13 r12 r11
+ctx.r13.s64 = static_cast<int64_t>((static_cast<__int128>(static_cast<int64_t>(ctx.r12.s64)) * static_cast<__int128>(static_cast<int64_t>(ctx.r11.s64))) >> 64);
+## mulhdu r3 r4 r5
+ctx.r3.u64 = static_cast<uint64_t>((static_cast<__uint128_t>(ctx.r4.u64) * static_cast<__uint128_t>(ctx.r5.u64)) >> 64);
+## mulhdu r0 r0 r0
+ctx.r0.u64 = static_cast<uint64_t>((static_cast<__uint128_t>(ctx.r0.u64) * static_cast<__uint128_t>(ctx.r0.u64)) >> 64);
+## mulhdu r31 r0 r3
+ctx.r31.u64 = static_cast<uint64_t>((static_cast<__uint128_t>(ctx.r0.u64) * static_cast<__uint128_t>(ctx.r3.u64)) >> 64);
+## mulhdu r13 r12 r11
+ctx.r13.u64 = static_cast<uint64_t>((static_cast<__uint128_t>(ctx.r12.u64) * static_cast<__uint128_t>(ctx.r11.u64)) >> 64);
+## neg r3 r4
+ctx.r3.s64 = static_cast<int64_t>(-ctx.r4.u64);
+## neg r0 r0
+ctx.r0.s64 = static_cast<int64_t>(-ctx.r0.u64);
+## neg r31 r0
+ctx.r31.s64 = static_cast<int64_t>(-ctx.r0.u64);
+## neg r13 r12
+ctx.r13.s64 = static_cast<int64_t>(-ctx.r12.u64);
+## subf r3 r4 r5
+ctx.r3.u64 = ctx.r5.u64 - ctx.r4.u64;
+## subf r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 - ctx.r0.u64;
+## subf r31 r0 r3
+ctx.r31.u64 = ctx.r3.u64 - ctx.r0.u64;
+## subf r13 r12 r11
+ctx.r13.u64 = ctx.r11.u64 - ctx.r12.u64;
+## subfc r3 r4 r5
+ctx.xer.ca = ctx.r5.u32 >= ctx.r4.u32;
+ctx.r3.u64 = ctx.r5.u64 - ctx.r4.u64;
+## subfc r0 r0 r0
+ctx.xer.ca = ctx.r0.u32 >= ctx.r0.u32;
+ctx.r0.u64 = ctx.r0.u64 - ctx.r0.u64;
+## subfc r31 r0 r3
+ctx.xer.ca = ctx.r3.u32 >= ctx.r0.u32;
+ctx.r31.u64 = ctx.r3.u64 - ctx.r0.u64;
+## subfc r13 r12 r11
+ctx.xer.ca = ctx.r11.u32 >= ctx.r12.u32;
+ctx.r13.u64 = ctx.r11.u64 - ctx.r12.u64;
+## subfe r3 r4 r5
+temp.u8 = (~ctx.r4.u32 + ctx.r5.u32 < ~ctx.r4.u32) | (~ctx.r4.u32 + ctx.r5.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r3.u64 = ~ctx.r4.u64 + ctx.r5.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfe r0 r0 r0
+temp.u8 = (~ctx.r0.u32 + ctx.r0.u32 < ~ctx.r0.u32) | (~ctx.r0.u32 + ctx.r0.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r0.u64 = ~ctx.r0.u64 + ctx.r0.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfe r31 r0 r3
+temp.u8 = (~ctx.r0.u32 + ctx.r3.u32 < ~ctx.r0.u32) | (~ctx.r0.u32 + ctx.r3.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r31.u64 = ~ctx.r0.u64 + ctx.r3.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfe r13 r12 r11
+temp.u8 = (~ctx.r12.u32 + ctx.r11.u32 < ~ctx.r12.u32) | (~ctx.r12.u32 + ctx.r11.u32 + ctx.xer.ca < ctx.xer.ca);
+ctx.r13.u64 = ~ctx.r12.u64 + ctx.r11.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfic r3 r4 0
+ctx.xer.ca = ctx.r4.u32 <= 0;
+ctx.r3.u64 = static_cast<uint64_t>(0) - ctx.r4.u64;
+## subfic r3 r4 1
+ctx.xer.ca = ctx.r4.u32 <= 1;
+ctx.r3.u64 = static_cast<uint64_t>(1) - ctx.r4.u64;
+## subfic r3 r4 5
+ctx.xer.ca = ctx.r4.u32 <= 5;
+ctx.r3.u64 = static_cast<uint64_t>(5) - ctx.r4.u64;
+## subfic r3 r4 16
+ctx.xer.ca = ctx.r4.u32 <= 16;
+ctx.r3.u64 = static_cast<uint64_t>(16) - ctx.r4.u64;
+## subfic r3 r4 31
+ctx.xer.ca = ctx.r4.u32 <= 31;
+ctx.r3.u64 = static_cast<uint64_t>(31) - ctx.r4.u64;
+## subfic r3 r4 32
+ctx.xer.ca = ctx.r4.u32 <= 32;
+ctx.r3.u64 = static_cast<uint64_t>(32) - ctx.r4.u64;
+## subfic r3 r4 63
+ctx.xer.ca = ctx.r4.u32 <= 63;
+ctx.r3.u64 = static_cast<uint64_t>(63) - ctx.r4.u64;
+## subfic r3 r4 32767
+ctx.xer.ca = ctx.r4.u32 <= 32767;
+ctx.r3.u64 = static_cast<uint64_t>(32767) - ctx.r4.u64;
+## subfic r3 r4 32768
+ctx.xer.ca = ctx.r4.u32 <= 32768;
+ctx.r3.u64 = static_cast<uint64_t>(32768) - ctx.r4.u64;
+## subfic r3 r4 65535
+ctx.xer.ca = ctx.r4.u32 <= 65535;
+ctx.r3.u64 = static_cast<uint64_t>(65535) - ctx.r4.u64;
+## subfic r3 r4 -1
+ctx.xer.ca = ctx.r4.u32 <= 4294967295;
+ctx.r3.u64 = static_cast<uint64_t>(-1) - ctx.r4.u64;
+## subfic r3 r4 -32768
+ctx.xer.ca = ctx.r4.u32 <= 4294934528;
+ctx.r3.u64 = static_cast<uint64_t>(-32768) - ctx.r4.u64;
+## subfic r0 r0 0
+ctx.xer.ca = ctx.r0.u32 <= 0;
+ctx.r0.u64 = static_cast<uint64_t>(0) - ctx.r0.u64;
+## subfic r0 r0 1
+ctx.xer.ca = ctx.r0.u32 <= 1;
+ctx.r0.u64 = static_cast<uint64_t>(1) - ctx.r0.u64;
+## subfic r0 r0 5
+ctx.xer.ca = ctx.r0.u32 <= 5;
+ctx.r0.u64 = static_cast<uint64_t>(5) - ctx.r0.u64;
+## subfic r0 r0 16
+ctx.xer.ca = ctx.r0.u32 <= 16;
+ctx.r0.u64 = static_cast<uint64_t>(16) - ctx.r0.u64;
+## subfic r0 r0 31
+ctx.xer.ca = ctx.r0.u32 <= 31;
+ctx.r0.u64 = static_cast<uint64_t>(31) - ctx.r0.u64;
+## subfic r0 r0 32
+ctx.xer.ca = ctx.r0.u32 <= 32;
+ctx.r0.u64 = static_cast<uint64_t>(32) - ctx.r0.u64;
+## subfic r0 r0 63
+ctx.xer.ca = ctx.r0.u32 <= 63;
+ctx.r0.u64 = static_cast<uint64_t>(63) - ctx.r0.u64;
+## subfic r0 r0 32767
+ctx.xer.ca = ctx.r0.u32 <= 32767;
+ctx.r0.u64 = static_cast<uint64_t>(32767) - ctx.r0.u64;
+## subfic r0 r0 32768
+ctx.xer.ca = ctx.r0.u32 <= 32768;
+ctx.r0.u64 = static_cast<uint64_t>(32768) - ctx.r0.u64;
+## subfic r0 r0 65535
+ctx.xer.ca = ctx.r0.u32 <= 65535;
+ctx.r0.u64 = static_cast<uint64_t>(65535) - ctx.r0.u64;
+## subfic r0 r0 -1
+ctx.xer.ca = ctx.r0.u32 <= 4294967295;
+ctx.r0.u64 = static_cast<uint64_t>(-1) - ctx.r0.u64;
+## subfic r0 r0 -32768
+ctx.xer.ca = ctx.r0.u32 <= 4294934528;
+ctx.r0.u64 = static_cast<uint64_t>(-32768) - ctx.r0.u64;
+## subfic r31 r0 0
+ctx.xer.ca = ctx.r0.u32 <= 0;
+ctx.r31.u64 = static_cast<uint64_t>(0) - ctx.r0.u64;
+## subfic r31 r0 1
+ctx.xer.ca = ctx.r0.u32 <= 1;
+ctx.r31.u64 = static_cast<uint64_t>(1) - ctx.r0.u64;
+## subfic r31 r0 5
+ctx.xer.ca = ctx.r0.u32 <= 5;
+ctx.r31.u64 = static_cast<uint64_t>(5) - ctx.r0.u64;
+## subfic r31 r0 16
+ctx.xer.ca = ctx.r0.u32 <= 16;
+ctx.r31.u64 = static_cast<uint64_t>(16) - ctx.r0.u64;
+## subfic r31 r0 31
+ctx.xer.ca = ctx.r0.u32 <= 31;
+ctx.r31.u64 = static_cast<uint64_t>(31) - ctx.r0.u64;
+## subfic r31 r0 32
+ctx.xer.ca = ctx.r0.u32 <= 32;
+ctx.r31.u64 = static_cast<uint64_t>(32) - ctx.r0.u64;
+## subfic r31 r0 63
+ctx.xer.ca = ctx.r0.u32 <= 63;
+ctx.r31.u64 = static_cast<uint64_t>(63) - ctx.r0.u64;
+## subfic r31 r0 32767
+ctx.xer.ca = ctx.r0.u32 <= 32767;
+ctx.r31.u64 = static_cast<uint64_t>(32767) - ctx.r0.u64;
+## subfic r31 r0 32768
+ctx.xer.ca = ctx.r0.u32 <= 32768;
+ctx.r31.u64 = static_cast<uint64_t>(32768) - ctx.r0.u64;
+## subfic r31 r0 65535
+ctx.xer.ca = ctx.r0.u32 <= 65535;
+ctx.r31.u64 = static_cast<uint64_t>(65535) - ctx.r0.u64;
+## subfic r31 r0 -1
+ctx.xer.ca = ctx.r0.u32 <= 4294967295;
+ctx.r31.u64 = static_cast<uint64_t>(-1) - ctx.r0.u64;
+## subfic r31 r0 -32768
+ctx.xer.ca = ctx.r0.u32 <= 4294934528;
+ctx.r31.u64 = static_cast<uint64_t>(-32768) - ctx.r0.u64;
+## subfic r13 r12 0
+ctx.xer.ca = ctx.r12.u32 <= 0;
+ctx.r13.u64 = static_cast<uint64_t>(0) - ctx.r12.u64;
+## subfic r13 r12 1
+ctx.xer.ca = ctx.r12.u32 <= 1;
+ctx.r13.u64 = static_cast<uint64_t>(1) - ctx.r12.u64;
+## subfic r13 r12 5
+ctx.xer.ca = ctx.r12.u32 <= 5;
+ctx.r13.u64 = static_cast<uint64_t>(5) - ctx.r12.u64;
+## subfic r13 r12 16
+ctx.xer.ca = ctx.r12.u32 <= 16;
+ctx.r13.u64 = static_cast<uint64_t>(16) - ctx.r12.u64;
+## subfic r13 r12 31
+ctx.xer.ca = ctx.r12.u32 <= 31;
+ctx.r13.u64 = static_cast<uint64_t>(31) - ctx.r12.u64;
+## subfic r13 r12 32
+ctx.xer.ca = ctx.r12.u32 <= 32;
+ctx.r13.u64 = static_cast<uint64_t>(32) - ctx.r12.u64;
+## subfic r13 r12 63
+ctx.xer.ca = ctx.r12.u32 <= 63;
+ctx.r13.u64 = static_cast<uint64_t>(63) - ctx.r12.u64;
+## subfic r13 r12 32767
+ctx.xer.ca = ctx.r12.u32 <= 32767;
+ctx.r13.u64 = static_cast<uint64_t>(32767) - ctx.r12.u64;
+## subfic r13 r12 32768
+ctx.xer.ca = ctx.r12.u32 <= 32768;
+ctx.r13.u64 = static_cast<uint64_t>(32768) - ctx.r12.u64;
+## subfic r13 r12 65535
+ctx.xer.ca = ctx.r12.u32 <= 65535;
+ctx.r13.u64 = static_cast<uint64_t>(65535) - ctx.r12.u64;
+## subfic r13 r12 -1
+ctx.xer.ca = ctx.r12.u32 <= 4294967295;
+ctx.r13.u64 = static_cast<uint64_t>(-1) - ctx.r12.u64;
+## subfic r13 r12 -32768
+ctx.xer.ca = ctx.r12.u32 <= 4294934528;
+ctx.r13.u64 = static_cast<uint64_t>(-32768) - ctx.r12.u64;
+## subfze r3 r4
+temp.u8 = ~ctx.r4.u32 + ctx.xer.ca < ~ctx.r4.u32;
+ctx.r3.u64 = ~ctx.r4.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfze r0 r0
+temp.u8 = ~ctx.r0.u32 + ctx.xer.ca < ~ctx.r0.u32;
+ctx.r0.u64 = ~ctx.r0.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfze r31 r0
+temp.u8 = ~ctx.r0.u32 + ctx.xer.ca < ~ctx.r0.u32;
+ctx.r31.u64 = ~ctx.r0.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfze r13 r12
+temp.u8 = ~ctx.r12.u32 + ctx.xer.ca < ~ctx.r12.u32;
+ctx.r13.u64 = ~ctx.r12.u64 + ctx.xer.ca;
+ctx.xer.ca = temp.u8;
+## subfme r3 r4
+temp.u8 = (~ctx.r4.u32 + 0xFFFFFFFFu < ~ctx.r4.u32) | (~ctx.r4.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r3.u64 = ~ctx.r4.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## subfme r0 r0
+temp.u8 = (~ctx.r0.u32 + 0xFFFFFFFFu < ~ctx.r0.u32) | (~ctx.r0.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r0.u64 = ~ctx.r0.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## subfme r31 r0
+temp.u8 = (~ctx.r0.u32 + 0xFFFFFFFFu < ~ctx.r0.u32) | (~ctx.r0.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r31.u64 = ~ctx.r0.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## subfme r13 r12
+temp.u8 = (~ctx.r12.u32 + 0xFFFFFFFFu < ~ctx.r12.u32) | (~ctx.r12.u32 + 0xFFFFFFFFu + ctx.xer.ca < ctx.xer.ca);
+ctx.r13.u64 = ~ctx.r12.u64 + ctx.xer.ca + 0xFFFFFFFFFFFFFFFFull;
+ctx.xer.ca = temp.u8;
+## cmpd cr3 r4 r5
+ctx.cr3.compare<int64_t>(ctx.r4.s64, ctx.r5.s64, ctx.xer);
+## cmpd cr0 r0 r0
+ctx.cr0.compare<int64_t>(ctx.r0.s64, ctx.r0.s64, ctx.xer);
+## cmpd cr7 r0 r3
+ctx.cr7.compare<int64_t>(ctx.r0.s64, ctx.r3.s64, ctx.xer);
+## cmpd cr5 r12 r11
+ctx.cr5.compare<int64_t>(ctx.r12.s64, ctx.r11.s64, ctx.xer);
+## cmpld cr3 r4 r5
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, ctx.r5.u64, ctx.xer);
+## cmpld cr0 r0 r0
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, ctx.r0.u64, ctx.xer);
+## cmpld cr7 r0 r3
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, ctx.r3.u64, ctx.xer);
+## cmpld cr5 r12 r11
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, ctx.r11.u64, ctx.xer);
+## cmplw cr3 r4 r5
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, ctx.r5.u32, ctx.xer);
+## cmplw cr0 r0 r0
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, ctx.r0.u32, ctx.xer);
+## cmplw cr7 r0 r3
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, ctx.r3.u32, ctx.xer);
+## cmplw cr5 r12 r11
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, ctx.r11.u32, ctx.xer);
+## cmpw cr3 r4 r5
+ctx.cr3.compare<int32_t>(ctx.r4.s32, ctx.r5.s32, ctx.xer);
+## cmpw cr0 r0 r0
+ctx.cr0.compare<int32_t>(ctx.r0.s32, ctx.r0.s32, ctx.xer);
+## cmpw cr7 r0 r3
+ctx.cr7.compare<int32_t>(ctx.r0.s32, ctx.r3.s32, ctx.xer);
+## cmpw cr5 r12 r11
+ctx.cr5.compare<int32_t>(ctx.r12.s32, ctx.r11.s32, ctx.xer);
+## cmpdi cr3 r4 0
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 0, ctx.xer);
+## cmpdi cr3 r4 1
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 1, ctx.xer);
+## cmpdi cr3 r4 5
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 5, ctx.xer);
+## cmpdi cr3 r4 16
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 16, ctx.xer);
+## cmpdi cr3 r4 31
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 31, ctx.xer);
+## cmpdi cr3 r4 32
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 32, ctx.xer);
+## cmpdi cr3 r4 63
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 63, ctx.xer);
+## cmpdi cr3 r4 32767
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 32767, ctx.xer);
+## cmpdi cr3 r4 32768
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 32768, ctx.xer);
+## cmpdi cr3 r4 65535
+ctx.cr3.compare<int64_t>(ctx.r4.s64, 65535, ctx.xer);
+## cmpdi cr3 r4 -1
+ctx.cr3.compare<int64_t>(ctx.r4.s64, -1, ctx.xer);
+## cmpdi cr3 r4 -32768
+ctx.cr3.compare<int64_t>(ctx.r4.s64, -32768, ctx.xer);
+## cmpdi cr0 r0 0
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 0, ctx.xer);
+## cmpdi cr0 r0 1
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 1, ctx.xer);
+## cmpdi cr0 r0 5
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 5, ctx.xer);
+## cmpdi cr0 r0 16
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 16, ctx.xer);
+## cmpdi cr0 r0 31
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 31, ctx.xer);
+## cmpdi cr0 r0 32
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 32, ctx.xer);
+## cmpdi cr0 r0 63
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 63, ctx.xer);
+## cmpdi cr0 r0 32767
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 32767, ctx.xer);
+## cmpdi cr0 r0 32768
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 32768, ctx.xer);
+## cmpdi cr0 r0 65535
+ctx.cr0.compare<int64_t>(ctx.r0.s64, 65535, ctx.xer);
+## cmpdi cr0 r0 -1
+ctx.cr0.compare<int64_t>(ctx.r0.s64, -1, ctx.xer);
+## cmpdi cr0 r0 -32768
+ctx.cr0.compare<int64_t>(ctx.r0.s64, -32768, ctx.xer);
+## cmpdi cr7 r0 0
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 0, ctx.xer);
+## cmpdi cr7 r0 1
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 1, ctx.xer);
+## cmpdi cr7 r0 5
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 5, ctx.xer);
+## cmpdi cr7 r0 16
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 16, ctx.xer);
+## cmpdi cr7 r0 31
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 31, ctx.xer);
+## cmpdi cr7 r0 32
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 32, ctx.xer);
+## cmpdi cr7 r0 63
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 63, ctx.xer);
+## cmpdi cr7 r0 32767
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 32767, ctx.xer);
+## cmpdi cr7 r0 32768
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 32768, ctx.xer);
+## cmpdi cr7 r0 65535
+ctx.cr7.compare<int64_t>(ctx.r0.s64, 65535, ctx.xer);
+## cmpdi cr7 r0 -1
+ctx.cr7.compare<int64_t>(ctx.r0.s64, -1, ctx.xer);
+## cmpdi cr7 r0 -32768
+ctx.cr7.compare<int64_t>(ctx.r0.s64, -32768, ctx.xer);
+## cmpdi cr5 r12 0
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 0, ctx.xer);
+## cmpdi cr5 r12 1
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 1, ctx.xer);
+## cmpdi cr5 r12 5
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 5, ctx.xer);
+## cmpdi cr5 r12 16
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 16, ctx.xer);
+## cmpdi cr5 r12 31
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 31, ctx.xer);
+## cmpdi cr5 r12 32
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 32, ctx.xer);
+## cmpdi cr5 r12 63
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 63, ctx.xer);
+## cmpdi cr5 r12 32767
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 32767, ctx.xer);
+## cmpdi cr5 r12 32768
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 32768, ctx.xer);
+## cmpdi cr5 r12 65535
+ctx.cr5.compare<int64_t>(ctx.r12.s64, 65535, ctx.xer);
+## cmpdi cr5 r12 -1
+ctx.cr5.compare<int64_t>(ctx.r12.s64, -1, ctx.xer);
+## cmpdi cr5 r12 -32768
+ctx.cr5.compare<int64_t>(ctx.r12.s64, -32768, ctx.xer);
+## cmpldi cr3 r4 0
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 0, ctx.xer);
+## cmpldi cr3 r4 1
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 1, ctx.xer);
+## cmpldi cr3 r4 5
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 5, ctx.xer);
+## cmpldi cr3 r4 16
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 16, ctx.xer);
+## cmpldi cr3 r4 31
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 31, ctx.xer);
+## cmpldi cr3 r4 32
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 32, ctx.xer);
+## cmpldi cr3 r4 63
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 63, ctx.xer);
+## cmpldi cr3 r4 32767
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 32767, ctx.xer);
+## cmpldi cr3 r4 32768
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 32768, ctx.xer);
+## cmpldi cr3 r4 65535
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 65535, ctx.xer);
+## cmpldi cr3 r4 -1
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 4294967295, ctx.xer);
+## cmpldi cr3 r4 -32768
+ctx.cr3.compare<uint64_t>(ctx.r4.u64, 4294934528, ctx.xer);
+## cmpldi cr0 r0 0
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 0, ctx.xer);
+## cmpldi cr0 r0 1
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 1, ctx.xer);
+## cmpldi cr0 r0 5
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 5, ctx.xer);
+## cmpldi cr0 r0 16
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 16, ctx.xer);
+## cmpldi cr0 r0 31
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 31, ctx.xer);
+## cmpldi cr0 r0 32
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 32, ctx.xer);
+## cmpldi cr0 r0 63
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 63, ctx.xer);
+## cmpldi cr0 r0 32767
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 32767, ctx.xer);
+## cmpldi cr0 r0 32768
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 32768, ctx.xer);
+## cmpldi cr0 r0 65535
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 65535, ctx.xer);
+## cmpldi cr0 r0 -1
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 4294967295, ctx.xer);
+## cmpldi cr0 r0 -32768
+ctx.cr0.compare<uint64_t>(ctx.r0.u64, 4294934528, ctx.xer);
+## cmpldi cr7 r0 0
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 0, ctx.xer);
+## cmpldi cr7 r0 1
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 1, ctx.xer);
+## cmpldi cr7 r0 5
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 5, ctx.xer);
+## cmpldi cr7 r0 16
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 16, ctx.xer);
+## cmpldi cr7 r0 31
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 31, ctx.xer);
+## cmpldi cr7 r0 32
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 32, ctx.xer);
+## cmpldi cr7 r0 63
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 63, ctx.xer);
+## cmpldi cr7 r0 32767
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 32767, ctx.xer);
+## cmpldi cr7 r0 32768
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 32768, ctx.xer);
+## cmpldi cr7 r0 65535
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 65535, ctx.xer);
+## cmpldi cr7 r0 -1
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 4294967295, ctx.xer);
+## cmpldi cr7 r0 -32768
+ctx.cr7.compare<uint64_t>(ctx.r0.u64, 4294934528, ctx.xer);
+## cmpldi cr5 r12 0
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 0, ctx.xer);
+## cmpldi cr5 r12 1
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 1, ctx.xer);
+## cmpldi cr5 r12 5
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 5, ctx.xer);
+## cmpldi cr5 r12 16
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 16, ctx.xer);
+## cmpldi cr5 r12 31
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 31, ctx.xer);
+## cmpldi cr5 r12 32
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 32, ctx.xer);
+## cmpldi cr5 r12 63
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 63, ctx.xer);
+## cmpldi cr5 r12 32767
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 32767, ctx.xer);
+## cmpldi cr5 r12 32768
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 32768, ctx.xer);
+## cmpldi cr5 r12 65535
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 65535, ctx.xer);
+## cmpldi cr5 r12 -1
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 4294967295, ctx.xer);
+## cmpldi cr5 r12 -32768
+ctx.cr5.compare<uint64_t>(ctx.r12.u64, 4294934528, ctx.xer);
+## cmplwi cr3 r4 0
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 0, ctx.xer);
+## cmplwi cr3 r4 1
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 1, ctx.xer);
+## cmplwi cr3 r4 5
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 5, ctx.xer);
+## cmplwi cr3 r4 16
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 16, ctx.xer);
+## cmplwi cr3 r4 31
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 31, ctx.xer);
+## cmplwi cr3 r4 32
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 32, ctx.xer);
+## cmplwi cr3 r4 63
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 63, ctx.xer);
+## cmplwi cr3 r4 32767
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 32767, ctx.xer);
+## cmplwi cr3 r4 32768
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 32768, ctx.xer);
+## cmplwi cr3 r4 65535
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 65535, ctx.xer);
+## cmplwi cr3 r4 -1
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 4294967295, ctx.xer);
+## cmplwi cr3 r4 -32768
+ctx.cr3.compare<uint32_t>(ctx.r4.u32, 4294934528, ctx.xer);
+## cmplwi cr0 r0 0
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 0, ctx.xer);
+## cmplwi cr0 r0 1
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 1, ctx.xer);
+## cmplwi cr0 r0 5
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 5, ctx.xer);
+## cmplwi cr0 r0 16
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 16, ctx.xer);
+## cmplwi cr0 r0 31
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 31, ctx.xer);
+## cmplwi cr0 r0 32
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 32, ctx.xer);
+## cmplwi cr0 r0 63
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 63, ctx.xer);
+## cmplwi cr0 r0 32767
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 32767, ctx.xer);
+## cmplwi cr0 r0 32768
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 32768, ctx.xer);
+## cmplwi cr0 r0 65535
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 65535, ctx.xer);
+## cmplwi cr0 r0 -1
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 4294967295, ctx.xer);
+## cmplwi cr0 r0 -32768
+ctx.cr0.compare<uint32_t>(ctx.r0.u32, 4294934528, ctx.xer);
+## cmplwi cr7 r0 0
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 0, ctx.xer);
+## cmplwi cr7 r0 1
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 1, ctx.xer);
+## cmplwi cr7 r0 5
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 5, ctx.xer);
+## cmplwi cr7 r0 16
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 16, ctx.xer);
+## cmplwi cr7 r0 31
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 31, ctx.xer);
+## cmplwi cr7 r0 32
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 32, ctx.xer);
+## cmplwi cr7 r0 63
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 63, ctx.xer);
+## cmplwi cr7 r0 32767
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 32767, ctx.xer);
+## cmplwi cr7 r0 32768
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 32768, ctx.xer);
+## cmplwi cr7 r0 65535
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 65535, ctx.xer);
+## cmplwi cr7 r0 -1
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 4294967295, ctx.xer);
+## cmplwi cr7 r0 -32768
+ctx.cr7.compare<uint32_t>(ctx.r0.u32, 4294934528, ctx.xer);
+## cmplwi cr5 r12 0
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 0, ctx.xer);
+## cmplwi cr5 r12 1
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 1, ctx.xer);
+## cmplwi cr5 r12 5
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 5, ctx.xer);
+## cmplwi cr5 r12 16
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 16, ctx.xer);
+## cmplwi cr5 r12 31
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 31, ctx.xer);
+## cmplwi cr5 r12 32
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 32, ctx.xer);
+## cmplwi cr5 r12 63
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 63, ctx.xer);
+## cmplwi cr5 r12 32767
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 32767, ctx.xer);
+## cmplwi cr5 r12 32768
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 32768, ctx.xer);
+## cmplwi cr5 r12 65535
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 65535, ctx.xer);
+## cmplwi cr5 r12 -1
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 4294967295, ctx.xer);
+## cmplwi cr5 r12 -32768
+ctx.cr5.compare<uint32_t>(ctx.r12.u32, 4294934528, ctx.xer);
+## cmpwi cr3 r4 0
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 0, ctx.xer);
+## cmpwi cr3 r4 1
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 1, ctx.xer);
+## cmpwi cr3 r4 5
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 5, ctx.xer);
+## cmpwi cr3 r4 16
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 16, ctx.xer);
+## cmpwi cr3 r4 31
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 31, ctx.xer);
+## cmpwi cr3 r4 32
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 32, ctx.xer);
+## cmpwi cr3 r4 63
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 63, ctx.xer);
+## cmpwi cr3 r4 32767
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 32767, ctx.xer);
+## cmpwi cr3 r4 32768
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 32768, ctx.xer);
+## cmpwi cr3 r4 65535
+ctx.cr3.compare<int32_t>(ctx.r4.s32, 65535, ctx.xer);
+## cmpwi cr3 r4 -1
+ctx.cr3.compare<int32_t>(ctx.r4.s32, -1, ctx.xer);
+## cmpwi cr3 r4 -32768
+ctx.cr3.compare<int32_t>(ctx.r4.s32, -32768, ctx.xer);
+## cmpwi cr0 r0 0
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## cmpwi cr0 r0 1
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 1, ctx.xer);
+## cmpwi cr0 r0 5
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 5, ctx.xer);
+## cmpwi cr0 r0 16
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 16, ctx.xer);
+## cmpwi cr0 r0 31
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 31, ctx.xer);
+## cmpwi cr0 r0 32
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 32, ctx.xer);
+## cmpwi cr0 r0 63
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 63, ctx.xer);
+## cmpwi cr0 r0 32767
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 32767, ctx.xer);
+## cmpwi cr0 r0 32768
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 32768, ctx.xer);
+## cmpwi cr0 r0 65535
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 65535, ctx.xer);
+## cmpwi cr0 r0 -1
+ctx.cr0.compare<int32_t>(ctx.r0.s32, -1, ctx.xer);
+## cmpwi cr0 r0 -32768
+ctx.cr0.compare<int32_t>(ctx.r0.s32, -32768, ctx.xer);
+## cmpwi cr7 r0 0
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## cmpwi cr7 r0 1
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 1, ctx.xer);
+## cmpwi cr7 r0 5
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 5, ctx.xer);
+## cmpwi cr7 r0 16
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 16, ctx.xer);
+## cmpwi cr7 r0 31
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 31, ctx.xer);
+## cmpwi cr7 r0 32
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 32, ctx.xer);
+## cmpwi cr7 r0 63
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 63, ctx.xer);
+## cmpwi cr7 r0 32767
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 32767, ctx.xer);
+## cmpwi cr7 r0 32768
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 32768, ctx.xer);
+## cmpwi cr7 r0 65535
+ctx.cr7.compare<int32_t>(ctx.r0.s32, 65535, ctx.xer);
+## cmpwi cr7 r0 -1
+ctx.cr7.compare<int32_t>(ctx.r0.s32, -1, ctx.xer);
+## cmpwi cr7 r0 -32768
+ctx.cr7.compare<int32_t>(ctx.r0.s32, -32768, ctx.xer);
+## cmpwi cr5 r12 0
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 0, ctx.xer);
+## cmpwi cr5 r12 1
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 1, ctx.xer);
+## cmpwi cr5 r12 5
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 5, ctx.xer);
+## cmpwi cr5 r12 16
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 16, ctx.xer);
+## cmpwi cr5 r12 31
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 31, ctx.xer);
+## cmpwi cr5 r12 32
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 32, ctx.xer);
+## cmpwi cr5 r12 63
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 63, ctx.xer);
+## cmpwi cr5 r12 32767
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 32767, ctx.xer);
+## cmpwi cr5 r12 32768
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 32768, ctx.xer);
+## cmpwi cr5 r12 65535
+ctx.cr5.compare<int32_t>(ctx.r12.s32, 65535, ctx.xer);
+## cmpwi cr5 r12 -1
+ctx.cr5.compare<int32_t>(ctx.r12.s32, -1, ctx.xer);
+## cmpwi cr5 r12 -32768
+ctx.cr5.compare<int32_t>(ctx.r12.s32, -32768, ctx.xer);
+## add. r3 r4 r5
+ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+## add. r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 + ctx.r0.u64;
+## add. r31 r0 r3
+ctx.r31.u64 = ctx.r0.u64 + ctx.r3.u64;
+## add. r13 r12 r11
+ctx.r13.u64 = ctx.r12.u64 + ctx.r11.u64;
+## subfc. r3 r4 r5
+ctx.xer.ca = ctx.r5.u32 >= ctx.r4.u32;
+ctx.r3.u64 = ctx.r5.u64 - ctx.r4.u64;
+## subfc. r0 r0 r0
+ctx.xer.ca = ctx.r0.u32 >= ctx.r0.u32;
+ctx.r0.u64 = ctx.r0.u64 - ctx.r0.u64;
+## subfc. r31 r0 r3
+ctx.xer.ca = ctx.r3.u32 >= ctx.r0.u32;
+ctx.r31.u64 = ctx.r3.u64 - ctx.r0.u64;
+## subfc. r13 r12 r11
+ctx.xer.ca = ctx.r11.u32 >= ctx.r12.u32;
+ctx.r13.u64 = ctx.r11.u64 - ctx.r12.u64;
+## cmpw. cr3 r4 r5
+ctx.cr3.compare<int32_t>(ctx.r4.s32, ctx.r5.s32, ctx.xer);
+## cmpw. cr0 r0 r0
+ctx.cr0.compare<int32_t>(ctx.r0.s32, ctx.r0.s32, ctx.xer);
+## cmpw. cr7 r0 r3
+ctx.cr7.compare<int32_t>(ctx.r0.s32, ctx.r3.s32, ctx.xer);
+## cmpw. cr5 r12 r11
+ctx.cr5.compare<int32_t>(ctx.r12.s32, ctx.r11.s32, ctx.xer);

@@ -1,0 +1,3713 @@
+## nop
+## attn
+## sync
+## lwsync
+## eieio
+## db16cyc
+## cctpl
+## cctpm
+## cctph
+## dcbf
+## dcbt
+## dcbtst
+## dcbst
+## dcbz r3 r4
+ea = (ctx.r3.u32 + ctx.r4.u32) & ~31;
+memset((void*)PPC_RAW_ADDR(ea), 0, 32);
+## dcbz r0 r0
+ea = (ctx.r0.u32) & ~31;
+memset((void*)PPC_RAW_ADDR(ea), 0, 32);
+## dcbz r31 r0
+ea = (ctx.r31.u32 + ctx.r0.u32) & ~31;
+memset((void*)PPC_RAW_ADDR(ea), 0, 32);
+## dcbz r13 r12
+ea = (ctx.r13.u32 + ctx.r12.u32) & ~31;
+memset((void*)PPC_RAW_ADDR(ea), 0, 32);
+## dcbzl r3 r4
+ea = (ctx.r3.u32 + ctx.r4.u32) & ~127;
+memset((void*)PPC_RAW_ADDR(ea), 0, 128);
+## dcbzl r0 r0
+ea = (ctx.r0.u32) & ~127;
+memset((void*)PPC_RAW_ADDR(ea), 0, 128);
+## dcbzl r31 r0
+ea = (ctx.r31.u32 + ctx.r0.u32) & ~127;
+memset((void*)PPC_RAW_ADDR(ea), 0, 128);
+## dcbzl r13 r12
+ea = (ctx.r13.u32 + ctx.r12.u32) & ~127;
+memset((void*)PPC_RAW_ADDR(ea), 0, 128);
+## mr r3 r4
+ctx.r3.u64 = ctx.r4.u64;
+## mr r0 r0
+ctx.r0.u64 = ctx.r0.u64;
+## mr r31 r0
+ctx.r31.u64 = ctx.r0.u64;
+## mr r13 r12
+ctx.r13.u64 = ctx.r12.u64;
+## mcrf cr3 cr4
+ctx.cr3 = ctx.cr4;
+## mcrf cr0 cr0
+ctx.cr0 = ctx.cr0;
+## mcrf cr7 cr0
+ctx.cr7 = ctx.cr0;
+## mcrf cr5 cr4
+ctx.cr5 = ctx.cr4;
+## mfxer r3
+ctx.r3.u64 = (ctx.xer.so << 31) | (ctx.xer.ov << 30) | (ctx.xer.ca << 29);
+## mfxer r0
+ctx.r0.u64 = (ctx.xer.so << 31) | (ctx.xer.ov << 30) | (ctx.xer.ca << 29);
+## mfxer r31
+ctx.r31.u64 = (ctx.xer.so << 31) | (ctx.xer.ov << 30) | (ctx.xer.ca << 29);
+## mfxer r13
+ctx.r13.u64 = (ctx.xer.so << 31) | (ctx.xer.ov << 30) | (ctx.xer.ca << 29);
+## mfctr r3
+ctx.r3.u64 = ctx.ctr.u64;
+## mfctr r0
+ctx.r0.u64 = ctx.ctr.u64;
+## mfctr r31
+ctx.r31.u64 = ctx.ctr.u64;
+## mfctr r13
+ctx.r13.u64 = ctx.ctr.u64;
+## mfcr r3
+ctx.r3.u64 = ctx.cr0.lt ? 0x80000000 : 0;
+ctx.r3.u64 |= ctx.cr0.gt ? 0x40000000 : 0;
+ctx.r3.u64 |= ctx.cr0.eq ? 0x20000000 : 0;
+ctx.r3.u64 |= ctx.cr0.so ? 0x10000000 : 0;
+ctx.r3.u64 |= ctx.cr1.lt ? 0x8000000 : 0;
+ctx.r3.u64 |= ctx.cr1.gt ? 0x4000000 : 0;
+ctx.r3.u64 |= ctx.cr1.eq ? 0x2000000 : 0;
+ctx.r3.u64 |= ctx.cr1.so ? 0x1000000 : 0;
+ctx.r3.u64 |= ctx.cr2.lt ? 0x800000 : 0;
+ctx.r3.u64 |= ctx.cr2.gt ? 0x400000 : 0;
+ctx.r3.u64 |= ctx.cr2.eq ? 0x200000 : 0;
+ctx.r3.u64 |= ctx.cr2.so ? 0x100000 : 0;
+ctx.r3.u64 |= ctx.cr3.lt ? 0x80000 : 0;
+ctx.r3.u64 |= ctx.cr3.gt ? 0x40000 : 0;
+ctx.r3.u64 |= ctx.cr3.eq ? 0x20000 : 0;
+ctx.r3.u64 |= ctx.cr3.so ? 0x10000 : 0;
+ctx.r3.u64 |= ctx.cr4.lt ? 0x8000 : 0;
+ctx.r3.u64 |= ctx.cr4.gt ? 0x4000 : 0;
+ctx.r3.u64 |= ctx.cr4.eq ? 0x2000 : 0;
+ctx.r3.u64 |= ctx.cr4.so ? 0x1000 : 0;
+ctx.r3.u64 |= ctx.cr5.lt ? 0x800 : 0;
+ctx.r3.u64 |= ctx.cr5.gt ? 0x400 : 0;
+ctx.r3.u64 |= ctx.cr5.eq ? 0x200 : 0;
+ctx.r3.u64 |= ctx.cr5.so ? 0x100 : 0;
+ctx.r3.u64 |= ctx.cr6.lt ? 0x80 : 0;
+ctx.r3.u64 |= ctx.cr6.gt ? 0x40 : 0;
+ctx.r3.u64 |= ctx.cr6.eq ? 0x20 : 0;
+ctx.r3.u64 |= ctx.cr6.so ? 0x10 : 0;
+ctx.r3.u64 |= ctx.cr7.lt ? 0x8 : 0;
+ctx.r3.u64 |= ctx.cr7.gt ? 0x4 : 0;
+ctx.r3.u64 |= ctx.cr7.eq ? 0x2 : 0;
+ctx.r3.u64 |= ctx.cr7.so ? 0x1 : 0;
+## mfcr r0
+ctx.r0.u64 = ctx.cr0.lt ? 0x80000000 : 0;
+ctx.r0.u64 |= ctx.cr0.gt ? 0x40000000 : 0;
+ctx.r0.u64 |= ctx.cr0.eq ? 0x20000000 : 0;
+ctx.r0.u64 |= ctx.cr0.so ? 0x10000000 : 0;
+ctx.r0.u64 |= ctx.cr1.lt ? 0x8000000 : 0;
+ctx.r0.u64 |= ctx.cr1.gt ? 0x4000000 : 0;
+ctx.r0.u64 |= ctx.cr1.eq ? 0x2000000 : 0;
+ctx.r0.u64 |= ctx.cr1.so ? 0x1000000 : 0;
+ctx.r0.u64 |= ctx.cr2.lt ? 0x800000 : 0;
+ctx.r0.u64 |= ctx.cr2.gt ? 0x400000 : 0;
+ctx.r0.u64 |= ctx.cr2.eq ? 0x200000 : 0;
+ctx.r0.u64 |= ctx.cr2.so ? 0x100000 : 0;
+ctx.r0.u64 |= ctx.cr3.lt ? 0x80000 : 0;
+ctx.r0.u64 |= ctx.cr3.gt ? 0x40000 : 0;
+ctx.r0.u64 |= ctx.cr3.eq ? 0x20000 : 0;
+ctx.r0.u64 |= ctx.cr3.so ? 0x10000 : 0;
+ctx.r0.u64 |= ctx.cr4.lt ? 0x8000 : 0;
+ctx.r0.u64 |= ctx.cr4.gt ? 0x4000 : 0;
+ctx.r0.u64 |= ctx.cr4.eq ? 0x2000 : 0;
+ctx.r0.u64 |= ctx.cr4.so ? 0x1000 : 0;
+ctx.r0.u64 |= ctx.cr5.lt ? 0x800 : 0;
+ctx.r0.u64 |= ctx.cr5.gt ? 0x400 : 0;
+ctx.r0.u64 |= ctx.cr5.eq ? 0x200 : 0;
+ctx.r0.u64 |= ctx.cr5.so ? 0x100 : 0;
+ctx.r0.u64 |= ctx.cr6.lt ? 0x80 : 0;
+ctx.r0.u64 |= ctx.cr6.gt ? 0x40 : 0;
+ctx.r0.u64 |= ctx.cr6.eq ? 0x20 : 0;
+ctx.r0.u64 |= ctx.cr6.so ? 0x10 : 0;
+ctx.r0.u64 |= ctx.cr7.lt ? 0x8 : 0;
+ctx.r0.u64 |= ctx.cr7.gt ? 0x4 : 0;
+ctx.r0.u64 |= ctx.cr7.eq ? 0x2 : 0;
+ctx.r0.u64 |= ctx.cr7.so ? 0x1 : 0;
+## mfcr r31
+ctx.r31.u64 = ctx.cr0.lt ? 0x80000000 : 0;
+ctx.r31.u64 |= ctx.cr0.gt ? 0x40000000 : 0;
+ctx.r31.u64 |= ctx.cr0.eq ? 0x20000000 : 0;
+ctx.r31.u64 |= ctx.cr0.so ? 0x10000000 : 0;
+ctx.r31.u64 |= ctx.cr1.lt ? 0x8000000 : 0;
+ctx.r31.u64 |= ctx.cr1.gt ? 0x4000000 : 0;
+ctx.r31.u64 |= ctx.cr1.eq ? 0x2000000 : 0;
+ctx.r31.u64 |= ctx.cr1.so ? 0x1000000 : 0;
+ctx.r31.u64 |= ctx.cr2.lt ? 0x800000 : 0;
+ctx.r31.u64 |= ctx.cr2.gt ? 0x400000 : 0;
+ctx.r31.u64 |= ctx.cr2.eq ? 0x200000 : 0;
+ctx.r31.u64 |= ctx.cr2.so ? 0x100000 : 0;
+ctx.r31.u64 |= ctx.cr3.lt ? 0x80000 : 0;
+ctx.r31.u64 |= ctx.cr3.gt ? 0x40000 : 0;
+ctx.r31.u64 |= ctx.cr3.eq ? 0x20000 : 0;
+ctx.r31.u64 |= ctx.cr3.so ? 0x10000 : 0;
+ctx.r31.u64 |= ctx.cr4.lt ? 0x8000 : 0;
+ctx.r31.u64 |= ctx.cr4.gt ? 0x4000 : 0;
+ctx.r31.u64 |= ctx.cr4.eq ? 0x2000 : 0;
+ctx.r31.u64 |= ctx.cr4.so ? 0x1000 : 0;
+ctx.r31.u64 |= ctx.cr5.lt ? 0x800 : 0;
+ctx.r31.u64 |= ctx.cr5.gt ? 0x400 : 0;
+ctx.r31.u64 |= ctx.cr5.eq ? 0x200 : 0;
+ctx.r31.u64 |= ctx.cr5.so ? 0x100 : 0;
+ctx.r31.u64 |= ctx.cr6.lt ? 0x80 : 0;
+ctx.r31.u64 |= ctx.cr6.gt ? 0x40 : 0;
+ctx.r31.u64 |= ctx.cr6.eq ? 0x20 : 0;
+ctx.r31.u64 |= ctx.cr6.so ? 0x10 : 0;
+ctx.r31.u64 |= ctx.cr7.lt ? 0x8 : 0;
+ctx.r31.u64 |= ctx.cr7.gt ? 0x4 : 0;
+ctx.r31.u64 |= ctx.cr7.eq ? 0x2 : 0;
+ctx.r31.u64 |= ctx.cr7.so ? 0x1 : 0;
+## mfcr r13
+ctx.r13.u64 = ctx.cr0.lt ? 0x80000000 : 0;
+ctx.r13.u64 |= ctx.cr0.gt ? 0x40000000 : 0;
+ctx.r13.u64 |= ctx.cr0.eq ? 0x20000000 : 0;
+ctx.r13.u64 |= ctx.cr0.so ? 0x10000000 : 0;
+ctx.r13.u64 |= ctx.cr1.lt ? 0x8000000 : 0;
+ctx.r13.u64 |= ctx.cr1.gt ? 0x4000000 : 0;
+ctx.r13.u64 |= ctx.cr1.eq ? 0x2000000 : 0;
+ctx.r13.u64 |= ctx.cr1.so ? 0x1000000 : 0;
+ctx.r13.u64 |= ctx.cr2.lt ? 0x800000 : 0;
+ctx.r13.u64 |= ctx.cr2.gt ? 0x400000 : 0;
+ctx.r13.u64 |= ctx.cr2.eq ? 0x200000 : 0;
+ctx.r13.u64 |= ctx.cr2.so ? 0x100000 : 0;
+ctx.r13.u64 |= ctx.cr3.lt ? 0x80000 : 0;
+ctx.r13.u64 |= ctx.cr3.gt ? 0x40000 : 0;
+ctx.r13.u64 |= ctx.cr3.eq ? 0x20000 : 0;
+ctx.r13.u64 |= ctx.cr3.so ? 0x10000 : 0;
+ctx.r13.u64 |= ctx.cr4.lt ? 0x8000 : 0;
+ctx.r13.u64 |= ctx.cr4.gt ? 0x4000 : 0;
+ctx.r13.u64 |= ctx.cr4.eq ? 0x2000 : 0;
+ctx.r13.u64 |= ctx.cr4.so ? 0x1000 : 0;
+ctx.r13.u64 |= ctx.cr5.lt ? 0x800 : 0;
+ctx.r13.u64 |= ctx.cr5.gt ? 0x400 : 0;
+ctx.r13.u64 |= ctx.cr5.eq ? 0x200 : 0;
+ctx.r13.u64 |= ctx.cr5.so ? 0x100 : 0;
+ctx.r13.u64 |= ctx.cr6.lt ? 0x80 : 0;
+ctx.r13.u64 |= ctx.cr6.gt ? 0x40 : 0;
+ctx.r13.u64 |= ctx.cr6.eq ? 0x20 : 0;
+ctx.r13.u64 |= ctx.cr6.so ? 0x10 : 0;
+ctx.r13.u64 |= ctx.cr7.lt ? 0x8 : 0;
+ctx.r13.u64 |= ctx.cr7.gt ? 0x4 : 0;
+ctx.r13.u64 |= ctx.cr7.eq ? 0x2 : 0;
+ctx.r13.u64 |= ctx.cr7.so ? 0x1 : 0;
+## mfocrf r3 0
+ctx.r3.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r3 1
+ctx.r3.u64 = (ctx.cr7.lt << 3) | (ctx.cr7.gt << 2) | (ctx.cr7.eq << 1) | (ctx.cr7.so << 0);
+## mfocrf r3 5
+ctx.r3.u64 = (ctx.cr5.lt << 11) | (ctx.cr5.gt << 10) | (ctx.cr5.eq << 9) | (ctx.cr5.so << 8);
+## mfocrf r3 16
+ctx.r3.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r3 31
+ctx.r3.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r3 32
+ctx.r3.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r3 63
+ctx.r3.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r3 32767
+ctx.r3.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r3 32768
+ctx.r3.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r3 65535
+ctx.r3.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r3 -1
+ctx.r3.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r3 -32768
+ctx.r3.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r0 0
+ctx.r0.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r0 1
+ctx.r0.u64 = (ctx.cr7.lt << 3) | (ctx.cr7.gt << 2) | (ctx.cr7.eq << 1) | (ctx.cr7.so << 0);
+## mfocrf r0 5
+ctx.r0.u64 = (ctx.cr5.lt << 11) | (ctx.cr5.gt << 10) | (ctx.cr5.eq << 9) | (ctx.cr5.so << 8);
+## mfocrf r0 16
+ctx.r0.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r0 31
+ctx.r0.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r0 32
+ctx.r0.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r0 63
+ctx.r0.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r0 32767
+ctx.r0.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r0 32768
+ctx.r0.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r0 65535
+ctx.r0.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r0 -1
+ctx.r0.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r0 -32768
+ctx.r0.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r31 0
+ctx.r31.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r31 1
+ctx.r31.u64 = (ctx.cr7.lt << 3) | (ctx.cr7.gt << 2) | (ctx.cr7.eq << 1) | (ctx.cr7.so << 0);
+## mfocrf r31 5
+ctx.r31.u64 = (ctx.cr5.lt << 11) | (ctx.cr5.gt << 10) | (ctx.cr5.eq << 9) | (ctx.cr5.so << 8);
+## mfocrf r31 16
+ctx.r31.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r31 31
+ctx.r31.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r31 32
+ctx.r31.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r31 63
+ctx.r31.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r31 32767
+ctx.r31.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r31 32768
+ctx.r31.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r31 65535
+ctx.r31.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r31 -1
+ctx.r31.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r31 -32768
+ctx.r31.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r13 0
+ctx.r13.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r13 1
+ctx.r13.u64 = (ctx.cr7.lt << 3) | (ctx.cr7.gt << 2) | (ctx.cr7.eq << 1) | (ctx.cr7.so << 0);
+## mfocrf r13 5
+ctx.r13.u64 = (ctx.cr5.lt << 11) | (ctx.cr5.gt << 10) | (ctx.cr5.eq << 9) | (ctx.cr5.so << 8);
+## mfocrf r13 16
+ctx.r13.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r13 31
+ctx.r13.u64 = (ctx.cr3.lt << 19) | (ctx.cr3.gt << 18) | (ctx.cr3.eq << 17) | (ctx.cr3.so << 16);
+## mfocrf r13 32
+ctx.r13.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r13 63
+ctx.r13.u64 = (ctx.cr2.lt << 23) | (ctx.cr2.gt << 22) | (ctx.cr2.eq << 21) | (ctx.cr2.so << 20);
+## mfocrf r13 32767
+ctx.r13.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r13 32768
+ctx.r13.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r13 65535
+ctx.r13.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r13 -1
+ctx.r13.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mfocrf r13 -32768
+ctx.r13.u64 = (ctx.cr0.lt << 31) | (ctx.cr0.gt << 30) | (ctx.cr0.eq << 29) | (ctx.cr0.so << 28);
+## mflr r3
+ctx.r3.u64 = ctx.lr;
+## mflr r0
+ctx.r0.u64 = ctx.lr;
+## mflr r31
+ctx.r31.u64 = ctx.lr;
+## mflr r13
+ctx.r13.u64 = ctx.lr;
+## mfmsr r3
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.r3.u64 = PPC_CHECK_GLOBAL_LOCK();
+## mfmsr r0
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.r0.u64 = PPC_CHECK_GLOBAL_LOCK();
+## mfmsr r31
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.r31.u64 = PPC_CHECK_GLOBAL_LOCK();
+## mfmsr r13
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.r13.u64 = PPC_CHECK_GLOBAL_LOCK();
+## mffs f3
+ctx.f3.u64 = ctx.fpscr.loadFromHost();
+## mffs f0
+ctx.f0.u64 = ctx.fpscr.loadFromHost();
+## mffs f31
+ctx.f31.u64 = ctx.fpscr.loadFromHost();
+## mffs f13
+ctx.f13.u64 = ctx.fpscr.loadFromHost();
+## mftb r3
+ctx.r3.u64 = PPC_QUERY_TIMEBASE();
+## mftb r0
+ctx.r0.u64 = PPC_QUERY_TIMEBASE();
+## mftb r31
+ctx.r31.u64 = PPC_QUERY_TIMEBASE();
+## mftb r13
+ctx.r13.u64 = PPC_QUERY_TIMEBASE();
+## mftbu r3
+ctx.r3.u64 = PPC_QUERY_TIMEBASE() >> 32;
+## mftbu r0
+ctx.r0.u64 = PPC_QUERY_TIMEBASE() >> 32;
+## mftbu r31
+ctx.r31.u64 = PPC_QUERY_TIMEBASE() >> 32;
+## mftbu r13
+ctx.r13.u64 = PPC_QUERY_TIMEBASE() >> 32;
+## mtcr r3
+ctx.cr0.lt = (ctx.r3.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r3.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r3.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r3.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r3.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r3.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r3.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r3.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcr r0
+ctx.cr0.lt = (ctx.r0.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r0.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r0.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r0.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r0.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r0.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r0.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r0.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcr r31
+ctx.cr0.lt = (ctx.r31.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r31.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r31.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r31.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r31.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r31.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r31.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r31.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcr r13
+ctx.cr0.lt = (ctx.r13.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r13.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r13.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r13.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r13.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r13.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r13.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r13.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf 0 r3
+## mtcrf 1 r3
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcrf 5 r3
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcrf 16 r3
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+## mtcrf 31 r3
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcrf 32 r3
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+## mtcrf 63 r3
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcrf 32767 r3
+ctx.cr0.lt = (ctx.r3.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r3.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r3.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r3.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r3.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r3.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r3.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r3.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcrf 32768 r3
+## mtcrf 65535 r3
+ctx.cr0.lt = (ctx.r3.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r3.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r3.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r3.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r3.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r3.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r3.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r3.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcrf -1 r3
+ctx.cr0.lt = (ctx.r3.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r3.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r3.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r3.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r3.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r3.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r3.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r3.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtcrf -32768 r3
+## mtcrf 0 r0
+## mtcrf 1 r0
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcrf 5 r0
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcrf 16 r0
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+## mtcrf 31 r0
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcrf 32 r0
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+## mtcrf 63 r0
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcrf 32767 r0
+ctx.cr0.lt = (ctx.r0.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r0.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r0.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r0.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r0.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r0.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r0.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r0.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcrf 32768 r0
+## mtcrf 65535 r0
+ctx.cr0.lt = (ctx.r0.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r0.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r0.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r0.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r0.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r0.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r0.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r0.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcrf -1 r0
+ctx.cr0.lt = (ctx.r0.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r0.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r0.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r0.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r0.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r0.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r0.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r0.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtcrf -32768 r0
+## mtcrf 0 r31
+## mtcrf 1 r31
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcrf 5 r31
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcrf 16 r31
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+## mtcrf 31 r31
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcrf 32 r31
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+## mtcrf 63 r31
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcrf 32767 r31
+ctx.cr0.lt = (ctx.r31.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r31.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r31.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r31.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r31.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r31.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r31.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r31.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcrf 32768 r31
+## mtcrf 65535 r31
+ctx.cr0.lt = (ctx.r31.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r31.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r31.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r31.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r31.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r31.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r31.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r31.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcrf -1 r31
+ctx.cr0.lt = (ctx.r31.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r31.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r31.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r31.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r31.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r31.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r31.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r31.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtcrf -32768 r31
+## mtcrf 0 r13
+## mtcrf 1 r13
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf 5 r13
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf 16 r13
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+## mtcrf 31 r13
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf 32 r13
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+## mtcrf 63 r13
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf 32767 r13
+ctx.cr0.lt = (ctx.r13.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r13.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r13.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r13.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r13.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r13.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r13.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r13.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf 32768 r13
+## mtcrf 65535 r13
+ctx.cr0.lt = (ctx.r13.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r13.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r13.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r13.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r13.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r13.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r13.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r13.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf -1 r13
+ctx.cr0.lt = (ctx.r13.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r13.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r13.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r13.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r13.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r13.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r13.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r13.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtcrf -32768 r13
+## mtocrf 0 r3
+## mtocrf 1 r3
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtocrf 5 r3
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtocrf 16 r3
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+## mtocrf 31 r3
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtocrf 32 r3
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+## mtocrf 63 r3
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtocrf 32767 r3
+ctx.cr0.lt = (ctx.r3.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r3.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r3.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r3.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r3.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r3.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r3.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r3.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtocrf 32768 r3
+## mtocrf 65535 r3
+ctx.cr0.lt = (ctx.r3.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r3.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r3.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r3.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r3.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r3.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r3.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r3.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtocrf -1 r3
+ctx.cr0.lt = (ctx.r3.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r3.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r3.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r3.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r3.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r3.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r3.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r3.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r3.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r3.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r3.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r3.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r3.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r3.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r3.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r3.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r3.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r3.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r3.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r3.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r3.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r3.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r3.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r3.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r3.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r3.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r3.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r3.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r3.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r3.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r3.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r3.u32 & 0x1) != 0;
+## mtocrf -32768 r3
+## mtocrf 0 r0
+## mtocrf 1 r0
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtocrf 5 r0
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtocrf 16 r0
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+## mtocrf 31 r0
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtocrf 32 r0
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+## mtocrf 63 r0
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtocrf 32767 r0
+ctx.cr0.lt = (ctx.r0.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r0.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r0.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r0.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r0.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r0.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r0.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r0.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtocrf 32768 r0
+## mtocrf 65535 r0
+ctx.cr0.lt = (ctx.r0.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r0.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r0.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r0.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r0.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r0.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r0.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r0.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtocrf -1 r0
+ctx.cr0.lt = (ctx.r0.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r0.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r0.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r0.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r0.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r0.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r0.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r0.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r0.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r0.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r0.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r0.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r0.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r0.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r0.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r0.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r0.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r0.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r0.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r0.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r0.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r0.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r0.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r0.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r0.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r0.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r0.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r0.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r0.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r0.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r0.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r0.u32 & 0x1) != 0;
+## mtocrf -32768 r0
+## mtocrf 0 r31
+## mtocrf 1 r31
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtocrf 5 r31
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtocrf 16 r31
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+## mtocrf 31 r31
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtocrf 32 r31
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+## mtocrf 63 r31
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtocrf 32767 r31
+ctx.cr0.lt = (ctx.r31.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r31.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r31.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r31.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r31.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r31.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r31.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r31.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtocrf 32768 r31
+## mtocrf 65535 r31
+ctx.cr0.lt = (ctx.r31.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r31.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r31.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r31.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r31.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r31.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r31.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r31.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtocrf -1 r31
+ctx.cr0.lt = (ctx.r31.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r31.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r31.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r31.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r31.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r31.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r31.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r31.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r31.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r31.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r31.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r31.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r31.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r31.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r31.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r31.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r31.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r31.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r31.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r31.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r31.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r31.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r31.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r31.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r31.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r31.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r31.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r31.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r31.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r31.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r31.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r31.u32 & 0x1) != 0;
+## mtocrf -32768 r31
+## mtocrf 0 r13
+## mtocrf 1 r13
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtocrf 5 r13
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtocrf 16 r13
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+## mtocrf 31 r13
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtocrf 32 r13
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+## mtocrf 63 r13
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtocrf 32767 r13
+ctx.cr0.lt = (ctx.r13.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r13.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r13.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r13.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r13.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r13.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r13.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r13.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtocrf 32768 r13
+## mtocrf 65535 r13
+ctx.cr0.lt = (ctx.r13.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r13.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r13.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r13.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r13.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r13.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r13.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r13.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtocrf -1 r13
+ctx.cr0.lt = (ctx.r13.u32 & 0x80000000) != 0;
+ctx.cr0.gt = (ctx.r13.u32 & 0x40000000) != 0;
+ctx.cr0.eq = (ctx.r13.u32 & 0x20000000) != 0;
+ctx.cr0.so = (ctx.r13.u32 & 0x10000000) != 0;
+ctx.cr1.lt = (ctx.r13.u32 & 0x8000000) != 0;
+ctx.cr1.gt = (ctx.r13.u32 & 0x4000000) != 0;
+ctx.cr1.eq = (ctx.r13.u32 & 0x2000000) != 0;
+ctx.cr1.so = (ctx.r13.u32 & 0x1000000) != 0;
+ctx.cr2.lt = (ctx.r13.u32 & 0x800000) != 0;
+ctx.cr2.gt = (ctx.r13.u32 & 0x400000) != 0;
+ctx.cr2.eq = (ctx.r13.u32 & 0x200000) != 0;
+ctx.cr2.so = (ctx.r13.u32 & 0x100000) != 0;
+ctx.cr3.lt = (ctx.r13.u32 & 0x80000) != 0;
+ctx.cr3.gt = (ctx.r13.u32 & 0x40000) != 0;
+ctx.cr3.eq = (ctx.r13.u32 & 0x20000) != 0;
+ctx.cr3.so = (ctx.r13.u32 & 0x10000) != 0;
+ctx.cr4.lt = (ctx.r13.u32 & 0x8000) != 0;
+ctx.cr4.gt = (ctx.r13.u32 & 0x4000) != 0;
+ctx.cr4.eq = (ctx.r13.u32 & 0x2000) != 0;
+ctx.cr4.so = (ctx.r13.u32 & 0x1000) != 0;
+ctx.cr5.lt = (ctx.r13.u32 & 0x800) != 0;
+ctx.cr5.gt = (ctx.r13.u32 & 0x400) != 0;
+ctx.cr5.eq = (ctx.r13.u32 & 0x200) != 0;
+ctx.cr5.so = (ctx.r13.u32 & 0x100) != 0;
+ctx.cr6.lt = (ctx.r13.u32 & 0x80) != 0;
+ctx.cr6.gt = (ctx.r13.u32 & 0x40) != 0;
+ctx.cr6.eq = (ctx.r13.u32 & 0x20) != 0;
+ctx.cr6.so = (ctx.r13.u32 & 0x10) != 0;
+ctx.cr7.lt = (ctx.r13.u32 & 0x8) != 0;
+ctx.cr7.gt = (ctx.r13.u32 & 0x4) != 0;
+ctx.cr7.eq = (ctx.r13.u32 & 0x2) != 0;
+ctx.cr7.so = (ctx.r13.u32 & 0x1) != 0;
+## mtocrf -32768 r13
+## mtctr r3
+ctx.ctr.u64 = ctx.r3.u64;
+## mtctr r0
+ctx.ctr.u64 = ctx.r0.u64;
+## mtctr r31
+ctx.ctr.u64 = ctx.r31.u64;
+## mtctr r13
+ctx.ctr.u64 = ctx.r13.u64;
+## mtlr r3
+ctx.lr = ctx.r3.u64;
+## mtlr r0
+ctx.lr = ctx.r0.u64;
+## mtlr r31
+ctx.lr = ctx.r31.u64;
+## mtlr r13
+ctx.lr = ctx.r13.u64;
+## mtmsrd r3
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.msr = (ctx.r3.u32 & 0x8020) | (ctx.msr & ~0x8020);
+PPC_LEAVE_GLOBAL_LOCK();
+## mtmsrd r0
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.msr = (ctx.r0.u32 & 0x8020) | (ctx.msr & ~0x8020);
+PPC_LEAVE_GLOBAL_LOCK();
+## mtmsrd r31
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.msr = (ctx.r31.u32 & 0x8020) | (ctx.msr & ~0x8020);
+PPC_LEAVE_GLOBAL_LOCK();
+## mtmsrd r13
+std::atomic_thread_fence(std::memory_order_seq_cst);
+ctx.msr = (ctx.r13.u32 & 0x8020) | (ctx.msr & ~0x8020);
+PPC_ENTER_GLOBAL_LOCK();
+## mtfsf 0 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f3.u32 & 0x00000000));
+## mtfsf 1 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0FFFFFFF) | (ctx.f3.u32 & 0xF0000000));
+## mtfsf 5 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0F0FFFFF) | (ctx.f3.u32 & 0xF0F00000));
+## mtfsf 16 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFF0FFF) | (ctx.f3.u32 & 0x0000F000));
+## mtfsf 31 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x00000FFF) | (ctx.f3.u32 & 0xFFFFF000));
+## mtfsf 32 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFF0FF) | (ctx.f3.u32 & 0x00000F00));
+## mtfsf 63 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x000000FF) | (ctx.f3.u32 & 0xFFFFFF00));
+## mtfsf 32767 f3
+ctx.fpscr.storeFromGuest(ctx.f3.u32);
+## mtfsf 32768 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f3.u32 & 0x00000000));
+## mtfsf 65535 f3
+ctx.fpscr.storeFromGuest(ctx.f3.u32);
+## mtfsf -1 f3
+ctx.fpscr.storeFromGuest(ctx.f3.u32);
+## mtfsf -32768 f3
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f3.u32 & 0x00000000));
+## mtfsf 0 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f0.u32 & 0x00000000));
+## mtfsf 1 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0FFFFFFF) | (ctx.f0.u32 & 0xF0000000));
+## mtfsf 5 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0F0FFFFF) | (ctx.f0.u32 & 0xF0F00000));
+## mtfsf 16 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFF0FFF) | (ctx.f0.u32 & 0x0000F000));
+## mtfsf 31 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x00000FFF) | (ctx.f0.u32 & 0xFFFFF000));
+## mtfsf 32 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFF0FF) | (ctx.f0.u32 & 0x00000F00));
+## mtfsf 63 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x000000FF) | (ctx.f0.u32 & 0xFFFFFF00));
+## mtfsf 32767 f0
+ctx.fpscr.storeFromGuest(ctx.f0.u32);
+## mtfsf 32768 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f0.u32 & 0x00000000));
+## mtfsf 65535 f0
+ctx.fpscr.storeFromGuest(ctx.f0.u32);
+## mtfsf -1 f0
+ctx.fpscr.storeFromGuest(ctx.f0.u32);
+## mtfsf -32768 f0
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f0.u32 & 0x00000000));
+## mtfsf 0 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f31.u32 & 0x00000000));
+## mtfsf 1 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0FFFFFFF) | (ctx.f31.u32 & 0xF0000000));
+## mtfsf 5 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0F0FFFFF) | (ctx.f31.u32 & 0xF0F00000));
+## mtfsf 16 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFF0FFF) | (ctx.f31.u32 & 0x0000F000));
+## mtfsf 31 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x00000FFF) | (ctx.f31.u32 & 0xFFFFF000));
+## mtfsf 32 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFF0FF) | (ctx.f31.u32 & 0x00000F00));
+## mtfsf 63 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x000000FF) | (ctx.f31.u32 & 0xFFFFFF00));
+## mtfsf 32767 f31
+ctx.fpscr.storeFromGuest(ctx.f31.u32);
+## mtfsf 32768 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f31.u32 & 0x00000000));
+## mtfsf 65535 f31
+ctx.fpscr.storeFromGuest(ctx.f31.u32);
+## mtfsf -1 f31
+ctx.fpscr.storeFromGuest(ctx.f31.u32);
+## mtfsf -32768 f31
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f31.u32 & 0x00000000));
+## mtfsf 0 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f13.u32 & 0x00000000));
+## mtfsf 1 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0FFFFFFF) | (ctx.f13.u32 & 0xF0000000));
+## mtfsf 5 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x0F0FFFFF) | (ctx.f13.u32 & 0xF0F00000));
+## mtfsf 16 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFF0FFF) | (ctx.f13.u32 & 0x0000F000));
+## mtfsf 31 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x00000FFF) | (ctx.f13.u32 & 0xFFFFF000));
+## mtfsf 32 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFF0FF) | (ctx.f13.u32 & 0x00000F00));
+## mtfsf 63 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0x000000FF) | (ctx.f13.u32 & 0xFFFFFF00));
+## mtfsf 32767 f13
+ctx.fpscr.storeFromGuest(ctx.f13.u32);
+## mtfsf 32768 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f13.u32 & 0x00000000));
+## mtfsf 65535 f13
+ctx.fpscr.storeFromGuest(ctx.f13.u32);
+## mtfsf -1 f13
+ctx.fpscr.storeFromGuest(ctx.f13.u32);
+## mtfsf -32768 f13
+ctx.fpscr.storeFromGuest((ctx.fpscr.loadFromHost() & 0xFFFFFFFF) | (ctx.f13.u32 & 0x00000000));
+## mtxer r3
+ctx.xer.so = (ctx.r3.u64 & 0x80000000) != 0;
+ctx.xer.ov = (ctx.r3.u64 & 0x40000000) != 0;
+ctx.xer.ca = (ctx.r3.u64 & 0x20000000) != 0;
+## mtxer r0
+ctx.xer.so = (ctx.r0.u64 & 0x80000000) != 0;
+ctx.xer.ov = (ctx.r0.u64 & 0x40000000) != 0;
+ctx.xer.ca = (ctx.r0.u64 & 0x20000000) != 0;
+## mtxer r31
+ctx.xer.so = (ctx.r31.u64 & 0x80000000) != 0;
+ctx.xer.ov = (ctx.r31.u64 & 0x40000000) != 0;
+ctx.xer.ca = (ctx.r31.u64 & 0x20000000) != 0;
+## mtxer r13
+ctx.xer.so = (ctx.r13.u64 & 0x80000000) != 0;
+ctx.xer.ov = (ctx.r13.u64 & 0x40000000) != 0;
+ctx.xer.ca = (ctx.r13.u64 & 0x20000000) != 0;
+## clrldi r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 & 0x7FFFFFFFFFFFFFFF;
+## clrldi r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 & 0x7FFFFFFFFFFFFFF;
+## clrldi r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFF;
+## clrldi r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 & 0x1FFFFFFFF;
+## clrldi r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFF;
+## clrldi r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 & 0x1;
+## clrldi r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF;
+## clrldi r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFF;
+## clrldi r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFF;
+## clrldi r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 & 0x1FFFFFFFF;
+## clrldi r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFF;
+## clrldi r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 & 0x1;
+## clrldi r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF;
+## clrldi r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFF;
+## clrldi r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFF;
+## clrldi r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 & 0x1FFFFFFFF;
+## clrldi r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFF;
+## clrldi r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 & 0x1;
+## clrldi r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 & 0x7FFFFFFFFFFFFFFF;
+## clrldi r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 & 0x7FFFFFFFFFFFFFF;
+## clrldi r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFF;
+## clrldi r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 & 0x1FFFFFFFF;
+## clrldi r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFF;
+## clrldi r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 & 0x1;
+## clrldi r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF;
+## clrldi r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF;
+## crand cr0lt cr1gt cr7so
+ctx.cr0.lt = ctx.cr1.gt & ctx.cr7.so;
+## crand cr3eq cr3eq cr6un
+ctx.cr3.eq = ctx.cr3.eq & ctx.cr6.so;
+## crand cr2gt cr5lt cr4eq
+ctx.cr2.gt = ctx.cr5.lt & ctx.cr4.eq;
+## crandc cr0lt cr1gt cr7so
+ctx.cr0.lt = ctx.cr1.gt & !(ctx.cr7.so);
+## crandc cr3eq cr3eq cr6un
+ctx.cr3.eq = ctx.cr3.eq & !(ctx.cr6.so);
+## crandc cr2gt cr5lt cr4eq
+ctx.cr2.gt = ctx.cr5.lt & !(ctx.cr4.eq);
+## creqv cr0lt cr1gt cr7so
+ctx.cr0.lt = !(ctx.cr1.gt ^ ctx.cr7.so);
+## creqv cr3eq cr3eq cr6un
+ctx.cr3.eq = !(ctx.cr3.eq ^ ctx.cr6.so);
+## creqv cr2gt cr5lt cr4eq
+ctx.cr2.gt = !(ctx.cr5.lt ^ ctx.cr4.eq);
+## crnand cr0lt cr1gt cr7so
+ctx.cr0.lt = !(ctx.cr1.gt & ctx.cr7.so);
+## crnand cr3eq cr3eq cr6un
+ctx.cr3.eq = !(ctx.cr3.eq & ctx.cr6.so);
+## crnand cr2gt cr5lt cr4eq
+ctx.cr2.gt = !(ctx.cr5.lt & ctx.cr4.eq);
+## crnor cr0lt cr1gt cr7so
+ctx.cr0.lt = !(ctx.cr1.gt | ctx.cr7.so);
+## crnor cr3eq cr3eq cr6un
+ctx.cr3.eq = !(ctx.cr3.eq | ctx.cr6.so);
+## crnor cr2gt cr5lt cr4eq
+ctx.cr2.gt = !(ctx.cr5.lt | ctx.cr4.eq);
+## cror cr0lt cr1gt cr7so
+ctx.cr0.lt = ctx.cr1.gt | ctx.cr7.so;
+## cror cr3eq cr3eq cr6un
+ctx.cr3.eq = ctx.cr3.eq | ctx.cr6.so;
+## cror cr2gt cr5lt cr4eq
+ctx.cr2.gt = ctx.cr5.lt | ctx.cr4.eq;
+## crorc cr0lt cr1gt cr7so
+ctx.cr0.lt = ctx.cr1.gt | !(ctx.cr7.so);
+## crorc cr3eq cr3eq cr6un
+ctx.cr3.eq = ctx.cr3.eq | !(ctx.cr6.so);
+## crorc cr2gt cr5lt cr4eq
+ctx.cr2.gt = ctx.cr5.lt | !(ctx.cr4.eq);
+## crxor cr0lt cr1gt cr7so
+ctx.cr0.lt = ctx.cr1.gt ^ ctx.cr7.so;
+## crxor cr3eq cr3eq cr6un
+ctx.cr3.eq = ctx.cr3.eq ^ ctx.cr6.so;
+## crxor cr2gt cr5lt cr4eq
+ctx.cr2.gt = ctx.cr5.lt ^ ctx.cr4.eq;
+## mr. r3 r4
+ctx.r3.u64 = ctx.r4.u64;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## mr. r0 r0
+ctx.r0.u64 = ctx.r0.u64;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## mr. r31 r0
+ctx.r31.u64 = ctx.r0.u64;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## mr. r13 r12
+ctx.r13.u64 = ctx.r12.u64;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 & 0x7FFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 & 0x7FFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 & 0x1FFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 & 0x1;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## clrldi. r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 & 0x1FFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 & 0x1;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## clrldi. r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 & 0x1FFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 & 0x1;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## clrldi. r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 & 0x7FFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 & 0x7FFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 & 0x1FFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 & 0x1;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## clrldi. r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## crand cr0 cr1 cr2
+ctx.cr0.lt = ctx.cr0.gt & ctx.cr0.eq;
+## crand cr7 cr3 cr5
+ctx.cr1.so = ctx.cr0.so & ctx.cr1.gt;
+## twi @0x0C000005
+## twi @0x0C008000
+## twi @0x0C030005
+## twi @0x0C038000
+## twi @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twi @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twi @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twi @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twi @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twi @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twi @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twi @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twi @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twi @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twi @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twi @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twi @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twi @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twi @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twi @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twlgti @0x0C000005
+## twlgti @0x0C008000
+## twlgti @0x0C030005
+## twlgti @0x0C038000
+## twlgti @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgti @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgti @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgti @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgti @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgti @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgti @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgti @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgti @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgti @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgti @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgti @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgti @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twlgti @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twlgti @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twlgti @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twllti @0x0C000005
+## twllti @0x0C008000
+## twllti @0x0C030005
+## twllti @0x0C038000
+## twllti @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twllti @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllti @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twllti @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllti @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twllti @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllti @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twllti @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllti @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twllti @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllti @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twllti @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllti @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twllti @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twllti @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twllti @0x0FE38000
+ppc_trap(ctx, base, 0);
+## tweqi @0x0C000005
+## tweqi @0x0C008000
+## tweqi @0x0C030005
+## tweqi @0x0C038000
+## tweqi @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## tweqi @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## tweqi @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## tweqi @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## tweqi @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## tweqi @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## tweqi @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## tweqi @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## tweqi @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## tweqi @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## tweqi @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## tweqi @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## tweqi @0x0FE00005
+ppc_trap(ctx, base, 5);
+## tweqi @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## tweqi @0x0FE30005
+ppc_trap(ctx, base, 0);
+## tweqi @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twlgei @0x0C000005
+## twlgei @0x0C008000
+## twlgei @0x0C030005
+## twlgei @0x0C038000
+## twlgei @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgei @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgei @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgei @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgei @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgei @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgei @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgei @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgei @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgei @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgei @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlgei @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlgei @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twlgei @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twlgei @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twlgei @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twlnli @0x0C000005
+## twlnli @0x0C008000
+## twlnli @0x0C030005
+## twlnli @0x0C038000
+## twlnli @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlnli @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlnli @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlnli @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlnli @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlnli @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlnli @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlnli @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlnli @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlnli @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlnli @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlnli @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlnli @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twlnli @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twlnli @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twlnli @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twllei @0x0C000005
+## twllei @0x0C008000
+## twllei @0x0C030005
+## twllei @0x0C038000
+## twllei @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twllei @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllei @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twllei @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllei @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twllei @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllei @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twllei @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllei @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twllei @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllei @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twllei @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twllei @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twllei @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twllei @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twllei @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twlngi @0x0C000005
+## twlngi @0x0C008000
+## twlngi @0x0C030005
+## twlngi @0x0C038000
+## twlngi @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlngi @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlngi @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlngi @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlngi @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlngi @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlngi @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlngi @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlngi @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlngi @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlngi @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlngi @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlngi @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twlngi @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twlngi @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twlngi @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twgti @0x0C000005
+## twgti @0x0C008000
+## twgti @0x0C030005
+## twgti @0x0C038000
+## twgti @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twgti @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgti @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twgti @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgti @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twgti @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgti @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twgti @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgti @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twgti @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgti @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twgti @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgti @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twgti @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twgti @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twgti @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twgei @0x0C000005
+## twgei @0x0C008000
+## twgei @0x0C030005
+## twgei @0x0C038000
+## twgei @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twgei @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgei @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twgei @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgei @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twgei @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgei @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twgei @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgei @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twgei @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgei @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twgei @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twgei @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twgei @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twgei @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twgei @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twnli @0x0C000005
+## twnli @0x0C008000
+## twnli @0x0C030005
+## twnli @0x0C038000
+## twnli @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twnli @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnli @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twnli @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnli @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twnli @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnli @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twnli @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnli @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twnli @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnli @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twnli @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnli @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twnli @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twnli @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twnli @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twlti @0x0C000005
+## twlti @0x0C008000
+## twlti @0x0C030005
+## twlti @0x0C038000
+## twlti @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlti @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlti @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlti @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlti @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlti @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlti @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlti @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlti @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlti @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlti @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlti @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlti @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twlti @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twlti @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twlti @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twlei @0x0C000005
+## twlei @0x0C008000
+## twlei @0x0C030005
+## twlei @0x0C038000
+## twlei @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlei @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlei @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlei @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlei @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlei @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlei @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlei @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlei @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twlei @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlei @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twlei @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twlei @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twlei @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twlei @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twlei @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twngi @0x0C000005
+## twngi @0x0C008000
+## twngi @0x0C030005
+## twngi @0x0C038000
+## twngi @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twngi @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twngi @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twngi @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twngi @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twngi @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twngi @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twngi @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twngi @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twngi @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twngi @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twngi @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twngi @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twngi @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twngi @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twngi @0x0FE38000
+ppc_trap(ctx, base, 0);
+## twnei @0x0C000005
+## twnei @0x0C008000
+## twnei @0x0C030005
+## twnei @0x0C038000
+## twnei @0x0C800005
+if (ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twnei @0x0C808000
+if (ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnei @0x0C830005
+if (ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twnei @0x0C838000
+if (ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnei @0x0D800005
+if (ctx.r0.s32 > 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twnei @0x0D808000
+if (ctx.r0.s32 > -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnei @0x0D830005
+if (ctx.r3.s32 > 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twnei @0x0D838000
+if (ctx.r3.s32 > -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnei @0x0E800005
+if (ctx.r0.s32 < 5 || ctx.r0.s32 == 5) ppc_trap(ctx, base, 0);
+## twnei @0x0E808000
+if (ctx.r0.s32 < -32768 || ctx.r0.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnei @0x0E830005
+if (ctx.r3.s32 < 5 || ctx.r3.s32 == 5) ppc_trap(ctx, base, 0);
+## twnei @0x0E838000
+if (ctx.r3.s32 < -32768 || ctx.r3.s32 == -32768) ppc_trap(ctx, base, 0);
+## twnei @0x0FE00005
+ppc_trap(ctx, base, 5);
+## twnei @0x0FE08000
+ppc_trap(ctx, base, 32768);
+## twnei @0x0FE30005
+ppc_trap(ctx, base, 0);
+## twnei @0x0FE38000
+ppc_trap(ctx, base, 0);
+## tdi @0x08000005
+## tdi @0x08008000
+## tdi @0x08030005
+## tdi @0x08038000
+## tdi @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdi @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdi @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdi @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdi @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdi @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdi @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdi @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdi @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdi @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdi @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdi @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdi @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdi @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdi @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdi @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdlgti @0x08000005
+## tdlgti @0x08008000
+## tdlgti @0x08030005
+## tdlgti @0x08038000
+## tdlgti @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgti @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdlgti @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdlgti @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdlgti @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdllti @0x08000005
+## tdllti @0x08008000
+## tdllti @0x08030005
+## tdllti @0x08038000
+## tdllti @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllti @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllti @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllti @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllti @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllti @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllti @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllti @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllti @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllti @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllti @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllti @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllti @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdllti @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdllti @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdllti @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdeqi @0x08000005
+## tdeqi @0x08008000
+## tdeqi @0x08030005
+## tdeqi @0x08038000
+## tdeqi @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdeqi @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdeqi @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdeqi @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdeqi @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdlgei @0x08000005
+## tdlgei @0x08008000
+## tdlgei @0x08030005
+## tdlgei @0x08038000
+## tdlgei @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlgei @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdlgei @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdlgei @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdlgei @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdlnli @0x08000005
+## tdlnli @0x08008000
+## tdlnli @0x08030005
+## tdlnli @0x08038000
+## tdlnli @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlnli @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdlnli @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdlnli @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdlnli @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdllei @0x08000005
+## tdllei @0x08008000
+## tdllei @0x08030005
+## tdllei @0x08038000
+## tdllei @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllei @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllei @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllei @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllei @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllei @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllei @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllei @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllei @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllei @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllei @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdllei @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdllei @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdllei @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdllei @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdllei @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdlngi @0x08000005
+## tdlngi @0x08008000
+## tdlngi @0x08030005
+## tdlngi @0x08038000
+## tdlngi @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlngi @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdlngi @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdlngi @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdlngi @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdgti @0x08000005
+## tdgti @0x08008000
+## tdgti @0x08030005
+## tdgti @0x08038000
+## tdgti @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgti @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgti @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgti @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgti @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgti @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgti @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgti @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgti @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgti @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgti @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgti @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgti @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdgti @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdgti @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdgti @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdgei @0x08000005
+## tdgei @0x08008000
+## tdgei @0x08030005
+## tdgei @0x08038000
+## tdgei @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgei @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgei @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgei @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgei @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgei @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgei @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgei @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgei @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgei @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgei @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdgei @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdgei @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdgei @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdgei @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdgei @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdnli @0x08000005
+## tdnli @0x08008000
+## tdnli @0x08030005
+## tdnli @0x08038000
+## tdnli @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnli @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnli @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnli @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnli @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnli @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnli @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnli @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnli @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnli @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnli @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnli @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnli @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdnli @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdnli @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdnli @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdlti @0x08000005
+## tdlti @0x08008000
+## tdlti @0x08030005
+## tdlti @0x08038000
+## tdlti @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlti @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlti @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlti @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlti @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlti @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlti @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlti @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlti @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlti @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlti @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlti @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlti @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdlti @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdlti @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdlti @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdlei @0x08000005
+## tdlei @0x08008000
+## tdlei @0x08030005
+## tdlei @0x08038000
+## tdlei @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlei @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlei @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlei @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlei @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlei @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlei @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlei @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlei @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlei @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlei @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdlei @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdlei @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdlei @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdlei @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdlei @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdngi @0x08000005
+## tdngi @0x08008000
+## tdngi @0x08030005
+## tdngi @0x08038000
+## tdngi @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdngi @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdngi @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdngi @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdngi @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdngi @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdngi @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdngi @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdngi @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdngi @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdngi @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdngi @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdngi @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdngi @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdngi @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdngi @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tdnei @0x08000005
+## tdnei @0x08008000
+## tdnei @0x08030005
+## tdnei @0x08038000
+## tdnei @0x08800005
+if (ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnei @0x08808000
+if (ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnei @0x08830005
+if (ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnei @0x08838000
+if (ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnei @0x09800005
+if (ctx.r0.s64 > 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnei @0x09808000
+if (ctx.r0.s64 > -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnei @0x09830005
+if (ctx.r3.s64 > 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnei @0x09838000
+if (ctx.r3.s64 > -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnei @0x0A800005
+if (ctx.r0.s64 < 5ll || ctx.r0.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnei @0x0A808000
+if (ctx.r0.s64 < -32768ll || ctx.r0.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnei @0x0A830005
+if (ctx.r3.s64 < 5ll || ctx.r3.s64 == 5ll) ppc_trap(ctx, base, 0);
+## tdnei @0x0A838000
+if (ctx.r3.s64 < -32768ll || ctx.r3.s64 == -32768ll) ppc_trap(ctx, base, 0);
+## tdnei @0x0BE00005
+ppc_trap(ctx, base, 0);
+## tdnei @0x0BE08000
+ppc_trap(ctx, base, 0);
+## tdnei @0x0BE30005
+ppc_trap(ctx, base, 0);
+## tdnei @0x0BE38000
+ppc_trap(ctx, base, 0);
+## tw @0x7C002000
+## tw @0x7C032000
+## tw @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tw @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tw @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tw @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tw @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tw @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tw @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tw @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twge @0x7C002000
+## twge @0x7C032000
+## twge @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twge @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twge @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twge @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twge @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twge @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twge @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twge @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twgt @0x7C002000
+## twgt @0x7C032000
+## twgt @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twgt @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twgt @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twgt @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twgt @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twgt @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twgt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twgt @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twle @0x7C002000
+## twle @0x7C032000
+## twle @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twle @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twle @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twle @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twle @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twle @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twle @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twle @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twlt @0x7C002000
+## twlt @0x7C032000
+## twlt @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlt @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlt @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlt @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlt @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlt @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twlt @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tweq @0x7C002000
+## tweq @0x7C032000
+## tweq @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tweq @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tweq @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tweq @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tweq @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tweq @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## tweq @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tweq @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twne @0x7C002000
+## twne @0x7C032000
+## twne @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twne @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twne @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twne @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twne @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twne @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twne @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twne @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twlge @0x7C002000
+## twlge @0x7C032000
+## twlge @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlge @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlge @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlge @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlge @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlge @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlge @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twlge @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twlgt @0x7C002000
+## twlgt @0x7C032000
+## twlgt @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlgt @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlgt @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlgt @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlgt @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlgt @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlgt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twlgt @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twlle @0x7C002000
+## twlle @0x7C032000
+## twlle @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlle @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlle @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlle @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlle @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlle @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twlle @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twlle @0x7FE32000
+ppc_trap(ctx, base, 0);
+## twllt @0x7C002000
+## twllt @0x7C032000
+## twllt @0x7C802000
+if (ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twllt @0x7C832000
+if (ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twllt @0x7D802000
+if (ctx.r0.s32 > ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twllt @0x7D832000
+if (ctx.r3.s32 > ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twllt @0x7E802000
+if (ctx.r0.s32 < ctx.r4.s32 || ctx.r0.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twllt @0x7E832000
+if (ctx.r3.s32 < ctx.r4.s32 || ctx.r3.s32 == ctx.r4.s32) ppc_trap(ctx, base, 0);
+## twllt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## twllt @0x7FE32000
+ppc_trap(ctx, base, 0);
+## td @0x7C002000
+## td @0x7C032000
+## td @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## td @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## td @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## td @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## td @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## td @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## td @0x7FE02000
+ppc_trap(ctx, base, 0);
+## td @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdge @0x7C002000
+## tdge @0x7C032000
+## tdge @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdge @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdge @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdge @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdge @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdge @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdge @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdge @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdgt @0x7C002000
+## tdgt @0x7C032000
+## tdgt @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdgt @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdgt @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdgt @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdgt @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdgt @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdgt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdgt @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdle @0x7C002000
+## tdle @0x7C032000
+## tdle @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdle @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdle @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdle @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdle @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdle @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdle @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdle @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdlt @0x7C002000
+## tdlt @0x7C032000
+## tdlt @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlt @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlt @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlt @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlt @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlt @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdlt @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdeq @0x7C002000
+## tdeq @0x7C032000
+## tdeq @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdeq @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdeq @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdeq @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdeq @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdeq @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdeq @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdeq @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdne @0x7C002000
+## tdne @0x7C032000
+## tdne @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdne @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdne @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdne @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdne @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdne @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdne @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdne @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdlge @0x7C002000
+## tdlge @0x7C032000
+## tdlge @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlge @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlge @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlge @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlge @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlge @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlge @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdlge @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdlgt @0x7C002000
+## tdlgt @0x7C032000
+## tdlgt @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlgt @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlgt @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlgt @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlgt @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlgt @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlgt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdlgt @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdlle @0x7C002000
+## tdlle @0x7C032000
+## tdlle @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlle @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlle @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlle @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlle @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlle @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdlle @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdlle @0x7FE32000
+ppc_trap(ctx, base, 0);
+## tdllt @0x7C002000
+## tdllt @0x7C032000
+## tdllt @0x7C802000
+if (ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdllt @0x7C832000
+if (ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdllt @0x7D802000
+if (ctx.r0.s64 > ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdllt @0x7D832000
+if (ctx.r3.s64 > ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdllt @0x7E802000
+if (ctx.r0.s64 < ctx.r4.s64 || ctx.r0.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdllt @0x7E832000
+if (ctx.r3.s64 < ctx.r4.s64 || ctx.r3.s64 == ctx.r4.s64) ppc_trap(ctx, base, 0);
+## tdllt @0x7FE02000
+ppc_trap(ctx, base, 0);
+## tdllt @0x7FE32000
+ppc_trap(ctx, base, 0);
