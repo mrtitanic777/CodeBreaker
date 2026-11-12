@@ -285,6 +285,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dos.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
