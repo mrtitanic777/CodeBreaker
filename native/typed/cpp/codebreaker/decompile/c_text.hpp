@@ -2,10 +2,10 @@
 // header keeps the old py:: surface for the ports and the dynamic exe that still use it: the records the decompiler and the lanes read (a
 // module made compilable, its facts), and the functions that make one. Conversion and forwarding only.
 //
-// What the module asks of the decompiler (running the native program, writing a function's C from its L2 document) and of the symbol
-// tables is answered by forwarding to the old ports (COMPAT(py): remove with decompile/decompiler, which is the last of them): that is
-// `OldServices` in c_text_impl.hpp, which this header ends by including through decompiler.hpp (the decompiler's own header includes
-// this one for the facts, so the functions that call it are defined after both).
+// What the module asks of the decompiler (running the native program, writing a function's C from its L2 document) is the new decompiler,
+// native/cb/decompile/decompiler*, and of the symbol tables the old ports (COMPAT(py): `OldEnvironment` in decompiler.hpp): the functions
+// that need them are in c_text_impl.hpp, which this header ends by including through decompiler.hpp (the decompiler's own header ends by
+// including it, so the functions that call it are defined after both).
 //
 // Not carried over (see cb/decompile/c_text_test.cpp): compilable16's result is not kept in the build cache (Python kept it pickled);
 // `generation()` is the decompiler's own with the version of this port.
@@ -287,12 +287,6 @@ inline std::optional<py::str> _string_literal(const py::bytes& chunk) {
 inline py::list<int64_t> _ss_store_places(const py::bytes& code, int64_t start, int64_t end) {
     return ::cb::compat::guard([&] { return ::cb::compat::to_py(nc::ss_store_places(::cb::compat::from_py(code), start, end)); });
 }
-
-// ---- the facts as the back end's Wire dict (decompiler::c_from_l2 builds the one and reads the other) -------------------
-// The facts a function is written with, as the Python's dict (backends/c.function's `facts`), and what the back end leaves
-// in that dict, read back into the module facts.
-inline translate::native_l2::Wire facts_wire(const ModuleFacts& m);
-inline void read_back(ModuleFacts& m, const translate::native_l2::Wire& w);
 
 // ---- what needs the decompiler (c_text_impl.hpp, defined once decompiler.hpp is) -------------------------------------
 // The version of what makes a module compilable (compilable16): (the source stamp its keys carry, the decompiler's own
