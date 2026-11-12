@@ -465,7 +465,7 @@ std::optional<std::pair<std::uint32_t, std::uint32_t>> find_entry(const ne::Modu
 
 std::string annotate_row(const Seg& seg, const Row& row) {
     std::string line = std::format("    {:04x}:  {}", row.offset, row.text);
-    const std::string& text = row.text;
+    const std::string_view text = row.text;
     if (is_call_or_jump(text)) {
         if (const auto call = seg.resolve_call(row.offset, text)) {
             if (call->kind == CallKind::System) {

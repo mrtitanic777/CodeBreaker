@@ -177,9 +177,12 @@ private:
         const le::Object* o = object_of(object);
         return o == nullptr || (o->flags & kBigSegment) != 0;   // a USE16 segment decodes as 16-bit code
     }
-    std::optional<le::Fixup> fixup_at(std::uint32_t object, std::int64_t offset) const {
-        const le::Fixup* f = r_.fixups.find(Place{object, offset});
-        return f ? std::optional<le::Fixup>(*f) : std::nullopt;
+    // The fix-up at a place, nullptr when there is none; it lives as long as the recovery's table of fix-ups (which no step adds to).
+    const le::Fixup* fixup_at(std::uint32_t object, std::int64_t offset) const { return r_.fixups.find(Place{object, offset}); }
+    // The same when it is an internal one.
+    const le::InternalFixup* internal_at(std::uint32_t object, std::int64_t offset) const {
+        const le::Fixup* f = fixup_at(object, offset);
+        return f != nullptr ? std::get_if<le::InternalFixup>(f) : nullptr;
     }
 
     // The first instruction of `window` read as code of the object's width at `address`, nullopt when nothing decodes.
@@ -205,18 +208,26 @@ private:
         const le::Ddb& db = *r_.ddb;
         const std::uint32_t oi = db.object;
         mark_data(oi, db.rva, kDdbSize);   // the DDB itself is data, not code
-        const std::string device = db.name.empty() ? std::string("Device") : db.name;
-        for (const auto& [field, suffix] : {std::pair{kDdbControlProc, "_Control"}, std::pair{kDdbV86ApiProc, "_V86_API"}, std::pair{kDdbPmApiProc, "_PM_API"}}) {
-            const le::InternalFixup* f = internal_of(fixup_at(oi, db.rva + field));
+        std::string device = "Device";
+        if (!db.name.empty()) device = db.name;
+        struct EntryProcedure {
+            std::uint32_t field;
+            const char* suffix;   // what the label adds to the device's name
+        };
+        const EntryProcedure procedures[] = {{kDdbControlProc, "_Control"}, {kDdbV86ApiProc, "_V86_API"}, {kDdbPmApiProc, "_PM_API"}};
+        for (const EntryProcedure& procedure : procedures) {
+            const le::InternalFixup* f = internal_at(oi, db.rva + procedure.field);
             const auto target = f ? target_place(*f) : std::nullopt;
             if (target && is_executable(target->object)) {
                 seeds.push_back(*target);
                 add_bit(target->object, target->offset, 1, kIsEntry);
-                r_.labels[*target] = device + suffix;
+                std::string label = device;
+                label += procedure.suffix;
+                r_.labels[*target] = std::move(label);
             }
         }
         // the service table: DDB_Service_Table_Ptr points at DDB_Service_Size dword procedures
-        const le::InternalFixup* table = internal_of(fixup_at(oi, db.rva + kDdbServiceTable));
+        const le::InternalFixup* table = internal_at(oi, db.rva + kDdbServiceTable);
         const auto base_place = table ? target_place(*table) : std::nullopt;
         if (base_place) {
             const std::uint32_t table_object = base_place->object;
@@ -228,7 +239,7 @@ private:
             const std::size_t slots = known ? static_cast<std::size_t>(size) : kMaxServices;   // (VMM has 406: a fixed 256 cap dropped the rest)
             std::size_t count = 0;
             for (std::size_t j = 0; j < slots; ++j) {
-                const le::InternalFixup* entry = internal_of(fixup_at(table_object, base + static_cast<std::int64_t>(4 * j)));
+                const le::InternalFixup* entry = internal_at(table_object, base + static_cast<std::int64_t>(4 * j));
                 const auto handler = entry ? target_place(*entry) : std::nullopt;
                 if (!handler) {   // a reserved slot (dd 0, no fix-up): with a known size skip it and go on, else the first gap ends the run
                     if (known) {
@@ -240,8 +251,16 @@ private:
                 if (is_executable(handler->object)) {
                     seeds.push_back(*handler);
                     add_bit(handler->object, handler->offset, 1, kIsEntry);   // a service handler always starts an instruction
-                    const std::optional<std::string> known_name = names_.services().name(db.name, static_cast<std::uint32_t>(j));
-                    r_.labels.try_emplace(*handler, known_name && !known_name->empty() ? *known_name : std::format("{}_Service_{:02}", db.name.empty() ? std::string("Dev") : db.name, j));
+                    // this driver's own DDK service name, else its number
+                    std::string label;
+                    if (const std::optional<std::string> known_name = names_.services().name(db.name, static_cast<std::uint32_t>(j)); known_name && !known_name->empty()) {
+                        label = *known_name;
+                    } else {
+                        std::string owner = "Dev";
+                        if (!db.name.empty()) owner = db.name;
+                        label = std::format("{}_Service_{:02}", owner, j);
+                    }
+                    r_.labels.try_emplace(*handler, std::move(label));
                 }
                 ++count;
             }
@@ -314,8 +333,8 @@ private:
                     if (!is_free(oi, a, kServiceCallSize)) break;
                     if (has_bits(oi, static_cast<std::uint64_t>(a + 1), static_cast<std::uint64_t>(a + 6), kIsEntry)) break;   // must not span a service or DDB entry point
                     ServiceCall call;
-                    const std::optional<le::Fixup> site = fixup_at(oi, a + 2);
-                    if (const auto* imported = site ? std::get_if<le::ImportFixup>(&*site) : nullptr) {
+                    const le::Fixup* site = fixup_at(oi, a + 2);
+                    if (const auto* imported = site != nullptr ? std::get_if<le::ImportFixup>(site) : nullptr) {
                         call = ServiceCall{imported->module, imported->ordinal, true};
                     } else {
                         const std::uint32_t dword = static_cast<std::uint32_t>(little_endian_value(ByteView(code).subspan(at + 2, 4)));
@@ -382,7 +401,7 @@ private:
     void jump_table(std::uint32_t object, std::int64_t at, std::int64_t size, std::vector<Place>& work) {
         std::optional<Place> base;   // the table's base is the fix-up inside this instruction
         for (std::int64_t k = at + 1; k < at + size; ++k) {
-            if (const le::InternalFixup* f = internal_of(fixup_at(object, k))) {
+            if (const le::InternalFixup* f = internal_at(object, k)) {
                 base = target_place(*f);
                 break;
             }
@@ -390,7 +409,7 @@ private:
         if (!base) return;
         std::vector<Place> targets;
         for (std::size_t j = 0; j < kMaxJumpTable; ++j) {
-            const le::InternalFixup* entry = internal_of(fixup_at(base->object, base->offset + static_cast<std::int64_t>(4 * j)));
+            const le::InternalFixup* entry = internal_at(base->object, base->offset + static_cast<std::int64_t>(4 * j));
             const auto target = entry ? target_place(*entry) : std::nullopt;
             if (!target) break;
             targets.push_back(*target);
@@ -585,7 +604,7 @@ private:
                 if (insn.mnemonic == "jmp" && insn.operands.find("*4") != std::string::npos) {
                     const std::vector<Place>* table = nullptr;
                     for (std::int64_t k = at + 1; k < at + static_cast<std::int64_t>(insn.size); ++k) {
-                        if (const le::InternalFixup* f = internal_of(fixup_at(entry.object, k))) {
+                        if (const le::InternalFixup* f = internal_at(entry.object, k)) {
                             if (const auto t = target_place(*f)) {
                                 const auto found = r_.jump_tables.find(*t);
                                 if (found != r_.jump_tables.end()) table = &found->second;
