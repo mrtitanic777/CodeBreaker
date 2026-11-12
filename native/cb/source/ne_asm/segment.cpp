@@ -69,11 +69,13 @@ const char* lookup_name(const std::array<NamedValue, N>& table, std::uint32_t va
 constexpr std::string_view kPushBp = "push   bp";
 constexpr std::string_view kMovBpSp = "mov    bp,sp";
 
-// The prologue scan (`push bp` followed by `mov bp,sp` starts a function) is OFF. The Python module this replaced wrote the
-// `push bp` of its test with one space where objdump writes three, so the scan never found anything; switching it on adds
-// 1,413 function starts to the Setup chain's modules (none to the 15 MINI.CAB ones), and the source those starts carve is
-// what the byte-match gates were run on. state/work/typed-port/_bugs/LIST.md has the numbers; this is Logan's call.
-constexpr bool kScanPushBpPrologue = false;
+// The prologue scan (`push bp` followed by `mov bp,sp` starts a function) is ON (Logan, 2026-11-12). The Python module this
+// replaced wrote the `push bp` of its test with one space where objdump writes three, so the scan never found anything; it
+// adds 1,413 function starts to the Setup chain's modules (none to the 15 MINI.CAB ones), checked by a Setup boot.
+constexpr bool kScanPushBpPrologue = true;
+// The instructions a far procedure's frame may follow (objdump's spelling): `mov ax,ds / nop / inc bp` of an exported
+// function (MakeProcInstance patches the first two), `push ds / pop ax`, and the odd BP marking a far frame.
+constexpr std::array<std::string_view, 6> kFramePreamble{"mov    ax,ds", "nop", "inc    bp", "push   ds", "pop    ax", "xchg   ax,ax"};
 
 // <prefix><hex digits>; with `to_end` the digits are the rest of the text. The digits are lower case, as objdump writes them.
 std::optional<std::uint32_t> hex_after(std::string_view text, std::string_view prefix, bool to_end) {
@@ -220,9 +222,16 @@ void Seg::find_starts() {
     for (const Row& row : rows_) {
         if (const auto target = branch_target(row.text, "call")) starts_.insert(*target);
     }
-    // (4) the prologue `push bp; mov bp,sp` (off: see kScanPushBpPrologue)
+    // (4) the prologue `push bp; mov bp,sp` (see kScanPushBpPrologue)
     for (std::size_t i = 0; kScanPushBpPrologue && i + 1 < rows_.size(); ++i) {
-        if (rows_[i].text == kPushBp && rows_[i + 1].text.starts_with(kMovBpSp)) starts_.insert(rows_[i].offset);
+        if (rows_[i].text != kPushBp || !rows_[i + 1].text.starts_with(kMovBpSp)) continue;
+        // back up over the far-proc preamble the frame follows: the function starts at its first instruction
+        std::size_t j = i;
+        while (j > 0 && std::find(kFramePreamble.begin(), kFramePreamble.end(), rows_[j - 1].text) != kFramePreamble.end()) --j;
+        while (j < i && (rows_[j].text == "nop" || rows_[j].text == "xchg   ax,ax")) ++j;   // alignment before it is not part of it
+        bool known = false;                                                             // a start already there stands
+        for (std::size_t k = j; k <= i && !known; ++k) known = starts_.contains(rows_[k].offset);
+        if (!known) starts_.insert(rows_[j].offset);
     }
     // (5) the other standard far-proc frame, `enter N,0`: the GDI and USER modules use it beside the push-bp form, and
     // without it a function that no call of the segment reaches (called through a far pointer or from another segment) is

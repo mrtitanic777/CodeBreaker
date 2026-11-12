@@ -20,6 +20,14 @@
 // documents and cross as JSON text in `plans`.
 #pragma once
 
+// <windows.h> defines `near` and `far` as empty macros; this header uses them as names, whatever was included before it.
+#ifdef near
+#undef near
+#endif
+#ifdef far
+#undef far
+#endif
+
 #include <cstdint>
 #include <filesystem>
 #include <map>

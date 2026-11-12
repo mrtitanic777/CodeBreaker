@@ -41,11 +41,11 @@ seg3: CODE 0x18 bytes  1 functions discovered  0 fixups (0 syscalls)
 seg4: CODE 0x1f8 bytes  4 functions discovered  5 fixups (5 syscalls)
 seg5: CODE 0x192 bytes  3 functions discovered  0 fixups (0 syscalls)
 seg6: CODE 0x10c bytes  2 functions discovered  2 fixups (2 syscalls)
-seg7: CODE 0x2f0 bytes  2 functions discovered  19 fixups (19 syscalls)
-seg8: CODE 0x248 bytes  2 functions discovered  5 fixups (5 syscalls)
+seg7: CODE 0x2f0 bytes  3 functions discovered  19 fixups (19 syscalls)
+seg8: CODE 0x248 bytes  4 functions discovered  5 fixups (5 syscalls)
 seg9: CODE 0x33a bytes  1 functions discovered  8 fixups (8 syscalls)
-seg10: CODE 0x2f8 bytes  5 functions discovered  12 fixups (12 syscalls)
-seg11: CODE 0x372 bytes  7 functions discovered  13 fixups (13 syscalls)
+seg10: CODE 0x2f8 bytes  6 functions discovered  12 fixups (12 syscalls)
+seg11: CODE 0x372 bytes  13 functions discovered  13 fixups (13 syscalls)
 seg12: DATA 0x284 bytes
 @@@ list 6
 # 2 functions in seg6
