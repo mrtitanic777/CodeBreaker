@@ -212,6 +212,10 @@ target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source)   # (cb_source: the NE disassembler of debug_build)
 
+# Where the function store is, opening it, and what `codebreaker versions` asks of it (the Ledger over the corpus, the store and the bodies).
+cb_area(store)
+target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare)
+
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats)   # (cb_base: the Converted project; cb_formats: PE and media images)
 
@@ -348,7 +352,9 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b2.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

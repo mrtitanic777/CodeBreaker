@@ -233,6 +233,8 @@ void record_shipped_read(const py::str& module) {
 
 }  // namespace
 
+const ::cb::symbols::ordinals::Ordinals& shared_ordinals() { return ordinals(); }
+
 std::optional<py::str> linker_name(const py::str& module, int64_t ordinal) {
     const auto n = ordinal_of(ordinal);
     record_shipped_read(module);
