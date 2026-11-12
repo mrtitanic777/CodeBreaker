@@ -71,6 +71,7 @@ namespace live
             std::optional<Party> party;
             std::vector<Chat> chats;
             std::string channel = "party";
+            std::array<uint8_t, 16> onlineKey{}; // SetOnlineKey (console_proof)
         };
 
         // ---- TLS (Windows Schannel; docs/network_protocol.md "Encryption") ----
@@ -124,6 +125,12 @@ namespace live
             for (uint8_t b : hash)
                 hex += std::format("{:02x}", b);
             return hex;
+        }
+
+        bool HmacSha256(const uint8_t* key, size_t keySize, const std::vector<uint8_t>& message, uint8_t (&out)[32])
+        {
+            return BCryptHash(BCRYPT_HMAC_SHA256_ALG_HANDLE, const_cast<PUCHAR>(key), ULONG(keySize),
+                              const_cast<PUCHAR>(message.data()), ULONG(message.size()), out, sizeof(out)) == 0;
         }
 
         // "AB:CD ..." -> "abcd..."
@@ -366,6 +373,11 @@ namespace live
             std::array<UserState, kMaxUsers> users;
             std::map<uint64_t, PublicProfile> profiles; // other players' public profiles (session cache)
             std::map<std::string, std::string> livehive;
+            // This connection's hello: answered (helloed; sign-ins wait for it, the server's link_nonce goes with
+            // console_proof) and its nonce (none: an older server, no proof).
+            bool helloed = false;
+            std::optional<std::array<uint8_t, 16>> linkNonce;
+            std::condition_variable helloAnswered;
             std::map<std::string, std::vector<uint8_t>> content; // downloaded content files, by "package/file"
             bool xonSchemaSent = false; // this connection has the service schema (op xon_schema)
             std::function<void(const Event&)> handler;
@@ -702,9 +714,14 @@ namespace live
             std::string gamertag, title, rich;
             uint32_t titleId;
             json profile;
+            std::string proof;
             {
-                std::lock_guard lock(S().mutex);
+                std::unique_lock lock(S().mutex);
+                // The hello's link_nonce first (the server's console accounts need console_proof made with it).
+                S().helloAnswered.wait_for(lock, std::chrono::seconds(10), [] { return S().helloed || !S().connected; });
                 const UserState& u = S().users[user];
+                if (S().linkNonce && u.onlineKey != std::array<uint8_t, 16>{})
+                    proof = ConsoleProof(u.onlineKey, *S().linkNonce, u.xuid);
                 xuid = u.xuid;
                 gamertag = u.gamertag;
                 profile = ProfileJson(u.profile);
@@ -719,6 +736,8 @@ namespace live
             // The key here too: a sign-in can reach the server before the hello that carries it (another thread).
             if (!S().config.key.empty())
                 signin["key"] = S().config.key;
+            if (!proof.empty())
+                signin["console_proof"] = proof;
             const auto reply = Request(signin);
             std::optional<std::string> error;
             if (!reply)
@@ -1124,6 +1143,8 @@ namespace live
                     std::lock_guard lock(s.mutex);
                     s.socket = sock;
                     s.connected = true;
+                    s.helloed = false;
+                    s.linkNonce.reset();
                     s.xonSchemaSent = false;
                     s.server = server;
                     s.attempts++;
@@ -1142,6 +1163,19 @@ namespace live
                     if (!S().config.key.empty())
                         helloRequest["key"] = S().config.key;
                     const auto hello = Request(helloRequest);
+                    {
+                        std::lock_guard lock(S().mutex);
+                        S().helloed = true;
+                        if (hello)
+                            if (const std::string nonce = Str(*hello, "link_nonce"); nonce.size() == 32)
+                            {
+                                std::array<uint8_t, 16> n{};
+                                for (size_t i = 0; i < 16; i++)
+                                    n[i] = uint8_t(std::stoul(nonce.substr(2 * i, 2), nullptr, 16));
+                                S().linkNonce = n;
+                            }
+                        S().helloAnswered.notify_all();
+                    }
                     if (hello)
                     {
                         std::lock_guard lock(S().mutex);
@@ -1178,6 +1212,7 @@ namespace live
                     s.socket = INVALID_SOCKET;
                     TlsReset(s.tls);
                     s.connected = false;
+                    s.helloAnswered.notify_all();
                     for (UserState& u : s.users)
                     {
                         u.held = u.held || u.wanted; // offline until the player connects again
@@ -1516,6 +1551,32 @@ namespace live
             u.held = error.has_value();
         }
         return error;
+    }
+
+    void SetOnlineKey(uint32_t user, const std::array<uint8_t, 16>& key)
+    {
+        std::lock_guard lock(S().mutex);
+        if (user < kMaxUsers)
+            S().users[user].onlineKey = key;
+    }
+
+    std::string ConsoleProof(const std::array<uint8_t, 16>& onlineKey, const std::array<uint8_t, 16>& nonce, uint64_t xuid)
+    {
+        static constexpr char kKeyLabel[] = "XLS-LINK-v1 key", kSignInLabel[] = "XLS-LINK-v1 signin";
+        uint8_t linkKey[32], proof[32];
+        if (!HmacSha256(onlineKey.data(), onlineKey.size(), std::vector<uint8_t>(kKeyLabel, kKeyLabel + sizeof(kKeyLabel) - 1), linkKey))
+            return {};
+        std::vector<uint8_t> message(kSignInLabel, kSignInLabel + sizeof(kSignInLabel) - 1);
+        message.push_back(0);
+        message.insert(message.end(), nonce.begin(), nonce.end());
+        const std::string id = std::format("{:016X}", xuid);
+        message.insert(message.end(), id.begin(), id.end());
+        if (!HmacSha256(linkKey, sizeof(linkKey), message, proof))
+            return {};
+        std::string hex;
+        for (uint8_t b : proof)
+            hex += std::format("{:02x}", b);
+        return hex;
     }
 
     bool Connect()

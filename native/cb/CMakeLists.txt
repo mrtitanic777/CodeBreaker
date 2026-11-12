@@ -288,6 +288,22 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/build_lib.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/harness.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/keystore.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/shadowboot.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xcp_dumper.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xsm3.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/kv_tool.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/export_keys.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/exp_signer.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/hypervisor.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xekeys_signer.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/cpu_key.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/create_key.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/sd_signer.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/se_patcher.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/volumes.cpp"   # (the callers of the XeCrypt and heavyiron shims)
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)

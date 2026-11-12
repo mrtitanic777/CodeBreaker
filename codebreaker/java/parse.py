@@ -264,6 +264,13 @@ def _looks_like_method(decl):
     return eq == -1 or lp < eq
 
 
+def _first_char(body, start):
+    """Index of the first non-blank character at or after `start` (a member's own first line)."""
+    while start < len(body) and body[start].isspace():
+        start += 1
+    return start
+
+
 def _iter_members(body, body_offset, src):
     """Yield ('field', decl, line) and ('method', header, body_text, line)."""
     i, n, start = 0, len(body), 0
@@ -292,7 +299,7 @@ def _iter_members(body, body_offset, src):
         if c == ';':
             decl = body[start:i].strip()
             if decl:
-                yield ('decl', decl, _line_of(src, body_offset + start))
+                yield ('decl', decl, _line_of(src, body_offset + _first_char(body, start)))
             i += 1; start = i; seen_eq = False; continue
         if c == '{':
             if seen_eq:                                # field initializer `= ... { ... }` (array/aggregate),
@@ -310,7 +317,7 @@ def _iter_members(body, body_offset, src):
             elif htoks <= _MODIFIERS:
                 pass                                   # other modifier-only block -- skip
             else:
-                yield ('method', header, inner, _line_of(src, body_offset + start),
+                yield ('method', header, inner, _line_of(src, body_offset + _first_char(body, start)),
                        _line_of(src, body_offset + i + 1))
             i = close; start = i; seen_eq = False; continue
         i += 1
