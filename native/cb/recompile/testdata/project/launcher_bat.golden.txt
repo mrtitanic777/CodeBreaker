@@ -1,0 +1,29 @@
+@echo off
+title game - recompiled by CodeBreaker
+cd /d "%~dp0"
+
+rem locate a built executable (build layout varies by generator)
+set "EXE="
+if exist "build\game.exe" set "EXE=build\game.exe"
+if exist "build\Release\game.exe" set "EXE=build\Release\game.exe"
+if exist "build\Debug\game.exe" set "EXE=build\Debug\game.exe"
+
+if "%EXE%"=="" (
+    echo First run - building game with CMake...
+    where cmake >nul 2>nul || (echo(  CMake not found in PATH. Install CMake, then run this again. & pause & exit /b 1)
+    cmake -S . -B build && cmake --build build --config Release
+    if exist "build\game.exe" set "EXE=build\game.exe"
+    if exist "build\Release\game.exe" set "EXE=build\Release\game.exe"
+    if exist "build\Debug\game.exe" set "EXE=build\Debug\game.exe"
+)
+
+if "%EXE%"=="" (
+    echo(  Build did not produce game.exe - see the output above.
+    pause & exit /b 1
+)
+
+echo Launching game ...
+"%EXE%"
+echo.
+echo game exited.
+pause

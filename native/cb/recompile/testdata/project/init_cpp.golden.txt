@@ -1,0 +1,10 @@
+#include "game.h"
+
+PPC_FUNC(sub_82000700);
+
+// The function-pointer table: guest address -> recompiled function.
+PPCFuncMapping PPCFuncMappings[] = {
+	{ 0x82000000, sub_82000000 },
+	{ 0x82000040, sub_82000040 },
+	{ 0, nullptr },
+};

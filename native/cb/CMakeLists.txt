@@ -169,7 +169,7 @@ cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 
 cb_area(recompile)
-target_link_libraries(cb_recompile PUBLIC cb_core cb_platforms cb_formats)
+target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_formats)   # (cb_base: the converted projects of the recompile-project command)
 # the shims at the old header paths are tested too: their test file includes the old layer, so it builds at /W3
 set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/recompile/builders_shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
@@ -338,6 +338,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b2.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b9.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b11.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
