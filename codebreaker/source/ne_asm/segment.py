@@ -106,6 +106,12 @@ def disasm_whole(code, base=0):
     return rows
 
 
+
+# The instructions a far procedure's frame may follow (objdump's spelling): `mov ax,ds / nop / inc bp` of an exported
+# function (MakeProcInstance patches the first two), `push ds / pop ax`, and the odd BP marking a far frame.
+_FRAME_PREAMBLE = ("mov    ax,ds", "nop", "inc    bp", "push   ds", "pop    ax", "xchg   ax,ax")
+_PADDING = ("nop", "xchg   ax,ax")
+
 class Seg:
     """One CODE segment: disassembled, with functions discovered and calls resolved."""
     def __init__(self, ne, seg_index, ordinals, name_override=None):
@@ -175,10 +181,16 @@ class Seg:
                 starts.add(int(m.group(1), 16))
         # (4) prologue scan: push bp ; mov bp,sp
         for i in range(len(self.rows)-1):
-            if self.rows[i][1] == "push bp" and self.rows[i+1][1].startswith("mov    bp,sp"):
-                # back up over a MakeProcInstance-style export thunk if present
-                s = self.rows[i][0]
-                starts.add(s)
+            if self.rows[i][1] == "push   bp" and self.rows[i+1][1].startswith("mov    bp,sp"):
+                # back up over the far-proc preamble the frame follows (`mov ax,ds / nop / inc bp`, `push ds / pop ax`):
+                # the function starts at its first instruction, not at `push bp`
+                j = i
+                while j > 0 and self.rows[j-1][1] in _FRAME_PREAMBLE:
+                    j -= 1
+                while j < i and self.rows[j][1] in _PADDING:          # alignment before the function is not part of it
+                    j += 1
+                if not any(self.rows[k][0] in starts for k in range(j, i + 1)):   # a start already there stands
+                    starts.add(self.rows[j][0])
         # (5) the `enter N,0` prologue — the other standard 16-bit far-proc
         #     frame setup (opcode 0xC8). The GDI/USER modules use it alongside the
         #     push-bp form; without it a function that no intra-segment call

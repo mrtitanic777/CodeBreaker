@@ -61,9 +61,10 @@ def _setup():
 def ne_modules():
     """Every NE module under the system tree, de-duplicated by basename."""
     _setup()
-    base = paths.root()
     seen, out = set(), []
-    for sub in (base + "/SYSTEM", base + "/SYSTEM32", base, base + "/COMMAND"):
+    # the system tree is the corpus root itself or its WINDOWS folder (the corpus as Setup installs it)
+    subs = [b + s for b in (paths.root(), os.path.join(paths.root(), "WINDOWS")) for s in ("/SYSTEM", "/SYSTEM32", "", "/COMMAND")]
+    for sub in subs:
         for ext in ("exe", "dll", "drv", "386", "cpl", "scr", "fon"):
             for p in sorted(glob.glob(os.path.join(sub, "*." + ext))):
                 nm = os.path.basename(p).lower()

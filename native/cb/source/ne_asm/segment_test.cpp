@@ -7,8 +7,7 @@
 //
 // DIVERGES from the Python module, by design: the generated C skeleton says "ne-asm segment --cskel" where the Python said
 // "trace.py --cskel"; the prologue scan the Python described (`push bp; mov bp,sp` starts a function) never ran there, because the
-// Python's test spelled the instruction with one space where objdump writes three, and stays off here (kScanPushBpPrologue; the
-// golden is the Python's, so a start of that kind is not in it); the API surface of a trace is sorted by module and ordinal with a
+// Python's test spelled the instruction with one space where objdump writes three; it is on in both now (kScanPushBpPrologue); the API surface of a trace is sorted by module and ordinal with a
 // name ordering for an import by name (the Python raised a ValueError on one); a segment that does not exist is a UsageError (the
 // Python indexed a list); a segment with no data in the file has no code (the Python took the start of the file for it).
 #include "cb/source/ne_asm/segment.hpp"
@@ -263,8 +262,11 @@ CB_TEST("source.ne_asm.segment.function_discovery_rules", [] {
     CB_CHECK(starts_of("0\tcall   0x10,0x1\n3\tnop\n10\tnop\n").first == std::vector<std::uint32_t>{0});   // trailing text: not a plain call
     // (5) `enter` starts a function
     CB_CHECK(starts_of("0\tnop\n8\tenter  0x4,0x0\n").first == (std::vector<std::uint32_t>{0, 8}));
-    // (4) the prologue scan stays off: `push   bp; mov    bp,sp` is no start by itself
-    CB_CHECK(starts_of("0\tnop\n8\tpush   bp\n9\tmov    bp,sp\n").first == std::vector<std::uint32_t>{0});
+    // (4) the prologue `push   bp; mov    bp,sp` starts a function; `push bp` alone does not
+    CB_CHECK(starts_of("0\tnop\n8\tpush   bp\n9\tmov    bp,sp\n").first == (std::vector<std::uint32_t>{0, 8}));
+    CB_CHECK(starts_of("0\tnop\n8\tpush   bp\n9\tnop\n").first == std::vector<std::uint32_t>{0});
+    // ... from the first instruction of the far-proc preamble it follows (`mov ax,ds / nop / inc bp`), not from `push bp`
+    CB_CHECK(starts_of("0\tret\n1\tmov    ax,ds\n3\tnop\n4\tinc    bp\n5\tpush   bp\n6\tmov    bp,sp\n").first == (std::vector<std::uint32_t>{0, 1}));
     // (6) a routine two short thunks tail-jump to; one thunk is not enough, a jump far from any start does not count
     CB_CHECK(starts_of("0\tmov    cl,0x1\n2\tjmp    0x40\n5\tnop\n6\tmov    cl,0x2\n8\tjmp    0x40\n40\tnop\n").first == (std::vector<std::uint32_t>{0, 0x40}));
     CB_CHECK(starts_of("0\tmov    cl,0x1\n2\tjmp    0x40\n40\tnop\n").first == std::vector<std::uint32_t>{0});

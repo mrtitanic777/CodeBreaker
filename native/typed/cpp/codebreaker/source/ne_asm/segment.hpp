@@ -6,7 +6,7 @@
 //   * The reports (`print_function`, `cmd_*`) go to CodeBreaker's stdout (cb::out), not to the old layer's.
 //   * `_ord2name`, `_export_names`, `_find_starts` and `_carve` (the steps of the constructor) are not offered: nothing used them.
 //   * `fixups`, `export_names`, `funcs` are in offset order; `ordinals` and `rows` are as the new code reads them.
-//   * The prologue scan the Python described and never ran stays off (see cb/source/ne_asm/segment.cpp, kScanPushBpPrologue).
+//   * The prologue scan the Python described and never ran is on (see cb/source/ne_asm/segment.cpp, kScanPushBpPrologue).
 //   * `Seg` keeps its NEFile by reference, as the old class did: the NEFile must outlive it.
 #pragma once
 
