@@ -1,0 +1,603 @@
+feat|03|desugar	33
+feat|03|0|body|Animal.name	null
+feat|03|1|body|Animal.walk	["return this->legs * n;"]
+feat|03|2|ctor0|Animal.False	["super", null, []]
+feat|03|3|ctor0|Animal.True	["super", null, []]
+feat|03|4|field_init|Animal.legs	"4"
+feat|03|5|array_items|Animal.legs	null
+feat|03|6|field_init|Animal.table	"(JArrayInit<int >(), 1, 2, 3)"
+feat|03|7|array_items|Animal.table	["1", "2", "3"]
+feat|03|8|instance_inits|Animal	["this->legs = 4;"]
+feat|03|9|static_blocks|Animal	[]
+feat|03|10|ctor|Box.False	["super", null, ["this->x = a;", "this->y = b;"]]
+feat|03|11|ctor|Box.True	["super", null, ["this->x = a;", "this->y = b;"]]
+feat|03|12|body|Box.touch	[]
+feat|03|13|body|Box.create	["return new Box(a, a);"]
+feat|03|14|body|Box.make	["return new Box(a, a);"]
+feat|03|15|ctor0|Box.False	null
+feat|03|16|ctor0|Box.True	null
+feat|03|17|field_init|Box.x	null
+feat|03|18|array_items|Box.x	null
+feat|03|19|field_init|Box.y	null
+feat|03|20|array_items|Box.y	null
+feat|03|21|instance_inits|Box	[]
+feat|03|22|static_blocks|Box	[]
+feat|03|23|ctor|Circle0.False	["super", "j2xToInt(r)", ["this->r = r;"]]
+feat|03|24|ctor|Circle0.True	["super", "j2xToInt(r)", ["this->r = r;"]]
+feat|03|25|ctor|Circle0.False	["super", "", []]
+feat|03|26|ctor|Circle0.True	["super", "", []]
+feat|03|27|ctor|Circle0.False	["super", "j2xToInt(((double)((a + b))))", ["{", "\tdouble j2xD0_r = (double)((a + b));", "\tthis->r = j2xD0_r;", "}", "this->pts = (JArrayInit<int >(), a, b);"]]
+feat|03|28|ctor|Circle0.True	["this", null, ["Circle0::j2xInit((double)((a + b)));", "this->pts = (JArrayInit<int >(), a, b);"]]
+feat|03|29|body|Circle0.area	["return Shape0::area() + j2xToInt((this->r * this->r));"]
+feat|03|30|body|Circle0.describe	["return (JCat() + Shape0::describe() + \"c\" + this->label + this->label);"]
+feat|03|31|body|Circle0.total	["return this->size + this->size + Shape0::s_count + Shape0::s_count;"]
+feat|03|32|ctor0|Circle0.False	["super", "", []]
+feat|03|33|ctor0|Circle0.True	["super", "", []]
+feat|03|34|field_init|Circle0.r	"1.5"
+feat|03|35|array_items|Circle0.r	null
+feat|03|36|field_init|Circle0.pts	null
+feat|03|37|array_items|Circle0.pts	null
+feat|03|38|instance_inits|Circle0	["this->r = 1.5;"]
+feat|03|39|static_blocks|Circle0	[]
+feat|03|40|body|Dog.name	["return \"dog\";"]
+feat|03|41|body|Dog.walk	["return Animal::walk(n) + 1;"]
+feat|03|42|body|Dog.outerRef	["return this->legs + this->legs + Animal::s_table[0] + Animal::s_table[1];"]
+feat|03|43|ctor0|Dog.False	["super", null, []]
+feat|03|44|ctor0|Dog.True	["super", null, []]
+feat|03|45|instance_inits|Dog	[]
+feat|03|46|static_blocks|Dog	[]
+feat|03|47|ctor0|Empty1.False	["super", null, []]
+feat|03|48|ctor0|Empty1.True	["super", null, []]
+feat|03|49|instance_inits|Empty1	[]
+feat|03|50|static_blocks|Empty1	[]
+feat|03|51|ctor0|Kind.False	["super", null, []]
+feat|03|52|ctor0|Kind.True	["super", null, []]
+feat|03|53|enum_args|Kind.A	[]
+feat|03|54|enum_args|Kind.B	[]
+feat|03|55|enum_args|Kind.NULL	[]
+feat|03|56|enum_args|Kind.TRUE	[]
+feat|03|57|instance_inits|Kind	[]
+feat|03|58|static_blocks|Kind	[]
+feat|03|59|body|Marked.m	[]
+feat|03|60|body|Marked.call	["this->m(1);", "this->m(NULL, 2);"]
+feat|03|61|body|Marked.sum	["int r = 0;", "for (int i = 0; i < xs.length; i++) {", "\tr += xs[i];", "}", "return r;"]
+feat|03|62|body|Marked.va	["int j2xo1 = 0;", "int j2xo2 = 0;", "int j2xo3 = 0;", "int j2xo4 = 0;", "int j2xo5 = 0;", "int j2xo6 = 0;", "int j2xo7 = 0;", "int j2xo8 = 0;", "int j2xo9 = 0;", "int j2xo10 = 0;", "return (j2xo9 = (j2xo7 = (j2xo5 = (j2xo3 = (j2xo1 = this->sum(JArray<int >()), j2xo2 = this->sum((JArrayInit<int >(), 1)), j2xo1 + j2xo2), j2xo4 = this->sum((JArrayInit<int >(), 1, 2, 3)), j2xo3 + j2xo4), j2xo6 = this->sum((JArrayInit<int >(), 4, 5)), j2xo5 + j2xo6), j2xo8 = this->fmt(\"b\", (JArrayInit<JObject >(), 1, \"b\")), j2xo7 + j2xo8), j2xo10 = this->fmt(\"z\", JArray<JObject >()), j2xo9 + j2xo10);"]
+feat|03|63|body|Marked.fmt	["return args.length;"]
+feat|03|64|ctor0|Marked.False	["super", null, []]
+feat|03|65|ctor0|Marked.True	["super", null, []]
+feat|03|66|instance_inits|Marked	[]
+feat|03|67|static_blocks|Marked	[]
+feat|03|68|body|Mod.sw	["{", "\tint j2x_sw1;", "\tswitch(c) {", "\tcase Color::RED:", "\t{", "\t\t{", "\t\t\tj2x_sw1 = 1;", "\t\t\tgoto j2x_sw2_brk;", "\t\t}", "\t}", "\tcase Color::GREEN:", "\t{", "\t\t{", "\t\t\tj2x_sw1 = 2;", "\t\t\tgoto j2x_sw2_brk;", "\t\t}", "\t}", "\tdefault:", "\t{", "\t\t{", "\t\t\tj2x_sw1 = 3;", "\t\t\tgoto j2x_sw2_brk;", "\t\t}", "\t}", "\t}", "\tj2x_sw2_brk:;", "\treturn j2x_sw1;", "}"]
+feat|03|69|body|Mod.sw2	["JavaString s;", "switch(v) {", "case 1:", "case 2:", "{", "\t{", "\t\ts = \"low\";", "\t\tgoto j2x_sw3_brk;", "\t}", "}", "case 3:", "{", "\t{", "\t\tJavaString t = \"m\";", "\t\t{", "\t\t\ts = (JCat() + t + t);", "\t\t\tgoto j2x_sw3_brk;", "\t\t}", "\t}", "}", "default:", "{", "\t{", "\t\ts = \"hi\";", "\t\tgoto j2x_sw3_brk;", "\t}", "}", "}", "j2x_sw3_brk:;", "return s;"]
+feat|03|70|body|Mod.sw3	["{", "\tJavaString j2x_sw4;", "\t{", "\t\tJavaString j2x_s6 = (s);", "\t\t{", "\t\t\tif(JavaString(\"b\").equals(j2x_s6) || JavaString(\"b\").equals(j2x_s6)) {", "\t\t\t\t{", "\t\t\t\t\tj2x_sw4 = \"bb\";", "\t\t\t\t\tgoto j2x_sw5_brk;", "\t\t\t\t}", "\t\t\t} else {", "\t\t\t\t{", "\t\t\t\t\tj2x_sw4 = \"other\";", "\t\t\t\t\tgoto j2x_sw5_brk;", "\t\t\t\t}", "\t\t\t}", "\t\t}", "\t\tj2x_sw5_brk:;", "\t}", "\treturn j2x_sw4;", "}"]
+feat|03|71|body|Mod.sw4	["int r;", "switch(v) {", "case 0:", "{", "\t{", "\t\tr = 5;", "\t\tgoto j2x_sw7_brk;", "\t}", "}", "default:", "{", "\t{", "\t\tr = 6;", "\t\tgoto j2x_sw7_brk;", "\t}", "}", "}", "j2x_sw7_brk:;", "return r;"]
+feat|03|72|body|Mod.sw5	["switch(v) {", "case 0:", "{", "\t{", "\t\tthis->field = 1;", "\t\tgoto j2x_sw8_brk;", "\t}", "}", "default:", "{", "\t{", "\t\tthis->field = 2;", "\t\tgoto j2x_sw8_brk;", "\t}", "}", "}", "j2x_sw8_brk:;"]
+feat|03|73|body|Mod.sw6	["{", "\tint j2x_sw9;", "\tswitch(v) {", "\tcase 0:", "\t{", "\t\t{", "\t\t\tj2x_sw9 = 1;", "\t\t\tgoto j2x_sw10_brk;", "\t\t}", "\t}", "\tdefault:", "\t{", "\t\t{", "\t\t\tj2x_sw9 = 2;", "\t\t\tgoto j2x_sw10_brk;", "\t\t}", "\t}", "\t}", "\tj2x_sw10_brk:;", "\tl.add(j2x_sw9);", "}"]
+feat|03|74|body|Mod.sw7	["{", "\tint j2x_sw11;", "\tswitch(v) {", "\tcase 0:", "\t{", "\t\t{", "\t\t\tj2x_sw11 = 1;", "\t\t\tgoto j2x_sw12_brk;", "\t\t}", "\t}", "\tdefault:", "\t{", "\t\t{", "\t\t\tj2x_sw11 = 2;", "\t\t\tgoto j2x_sw12_brk;", "\t\t}", "\t}", "\t}", "\tj2x_sw12_brk:;", "\treturn 1 + j2x_sw11;", "}"]
+feat|03|75|body|Mod.sw8	["switch(c) {", "case Color::RED:", "{", "\treturn 1;", "}", "case Color::GREEN:", "{", "\treturn 2;", "}", "default:", "{", "\treturn 3;", "}", "}"]
+feat|03|76|body|Mod.sw9	["{", "\tint j2x_sw13;", "\tswitch(v) {", "\tcase 0:", "\t{", "\t\tthrow new IllegalStateException();", "\t}", "\tdefault:", "\t{", "\t\t{", "\t\t\tj2x_sw13 = v;", "\t\t\tgoto j2x_sw14_brk;", "\t\t}", "\t}", "\t}", "\tj2x_sw14_brk:;", "\treturn j2x_sw13;", "}"]
+feat|03|77|body|Mod.sw10	["JavaString r;", "{", "\tJavaString j2x_s16 = (s);", "\t{", "\t\tif(JavaString(\"b\").equals(j2x_s16)) {", "\t\t\t{", "\t\t\t\tr = \"x\";", "\t\t\t\tgoto j2x_sw15_brk;", "\t\t\t}", "\t\t} else if(JavaString(\"b\").equals(j2x_s16)) {", "\t\t\t{", "\t\t\t\t{", "\t\t\t\t\tr = \"y\";", "\t\t\t\t\tgoto j2x_sw15_brk;", "\t\t\t\t}", "\t\t\t}", "\t\t} else {", "\t\t\t{", "\t\t\t\tr = \"z\";", "\t\t\t\tgoto j2x_sw15_brk;", "\t\t\t}", "\t\t}", "\t}", "\tj2x_sw15_brk:;", "}", "return r;"]
+feat|03|78|body|Mod.sw11	["int r;", "switch(v) {", "case 0:", "{", "\t{", "\t\tr = 1;", "\t\tgoto j2x_sw17_brk;", "\t}", "}", "case 1:", "{", "\t{", "\t\tif(v > 3) {", "\t\t\t{", "\t\t\t\tr = 4;", "\t\t\t\tgoto j2x_sw17_brk;", "\t\t\t}", "\t\t}", "\t\t{", "\t\t\tr = 5;", "\t\t\tgoto j2x_sw17_brk;", "\t\t}", "\t}", "}", "default:", "{", "\t{", "\t\tr = 2;", "\t\tgoto j2x_sw17_brk;", "\t}", "}", "}", "j2x_sw17_brk:;", "return r;"]
+feat|03|79|body|Mod.pat	["JavaString s;", "if(((o).isString() && (s = (JavaString)o) != NULL) && s.length() > 2) {", "\treturn s.length();", "}", "int i;", "if((o).isInteger() && (i = (o).intValue()) != NULL) {", "\treturn i;", "}", "return 0;"]
+feat|03|80|body|Mod.pat2	["Mod* m;", "if(!(((o).is<Mod>() && (m = (Mod*)o) != NULL))) {", "\treturn -1;", "}", "return m->field;"]
+feat|03|81|body|Mod.pat3	["int r = 0;", "Mod* m;", "if((dynamic_cast<Mod*>(o) != NULL) && (m = (Mod*)o) != NULL) {", "\tr = m->field;", "}", "Mod* m2;", "if((dynamic_cast<Mod*>(o) != NULL) && (m2 = (Mod*)o) != NULL) {", "\tr += m2->field;", "} else {", "\tr--;", "}", "JavaString s;", "while((o).isString() && (s = (JavaString)o) != NULL) {", "\tr += s.length();", "\to = NULL;", "}", "return r;"]
+feat|03|82|body|Mod.pat4	["Mod* m;", "return ((o).is<Mod>() && (m = (Mod*)o) != NULL ? m->field : 0);"]
+feat|03|83|body|Mod.each	["int r = 0;", "{", "\tJArray<int > j2x_a18 = xs;", "\tfor (int j2x_i19 = 0; j2x_i19 < j2x_a18.length; j2x_i19++) {", "\t\tint x = j2x_a18[j2x_i19];", "\t\tr += x;", "\t}", "}", "for (Iterator<JavaString> j2x_it20 = ys.iterator(); j2x_it20.hasNext(); ) {", "\tJavaString y = j2x_it20.next();", "\tr += y.length();", "}", "for (Iterator<int> j2x_it21 = zs.iterator(); j2x_it21.hasNext(); ) {", "\tint z = (j2x_it21.next()).intValue();", "\tr += z;", "}", "{", "\tJArray<int > j2x_a22 = xs;", "\tfor (int j2x_i23 = 0; j2x_i23 < j2x_a22.length; j2x_i23++) {", "\t\t{", "\t\t\tint x = j2x_a22[j2x_i23];", "\t\t\tif(x > 2) {", "\t\t\t\tgoto lbl_cont;", "\t\t\t}", "\t\t\tr++;", "\t\t}", "\t\tlbl_cont:;", "\t}", "}", "return r;"]
+feat|03|84|body|Mod.each2	["int r = 0;", "for (Iterator<Entry<JavaString, int>*> j2x_it24 = m.entrySet().iterator(); j2x_it24.hasNext(); ) {", "\tEntry<JavaString, int> e = j2x_it24.next();", "\tr += e.getValue();", "}", "for (Iterator<JavaString> j2x_it25 = m.keySet().iterator(); j2x_it25.hasNext(); ) {", "\tJavaString k = j2x_it25.next();", "\tr += k.length();", "}", "return r;"]
+feat|03|85|body|Mod.each3	["int r = 0;", "for (Iterator<JObject> j2x_it26 = l.iterator(); j2x_it26.hasNext(); ) {", "\tNumber* n = j2x_it26.next();", "\tr += n->intValue();", "}", "return r;"]
+feat|03|86|body|Mod.each4	["int r = 0;", "{", "\tJArray<JArray<int > > j2x_a29 = g;", "\tfor (int j2x_i30 = 0; j2x_i30 < j2x_a29.length; j2x_i30++) {", "\t\tJArray<int > row = j2x_a29[j2x_i30];", "\t\tJArray<int > j2x_a27 = row;", "\t\tfor (int j2x_i28 = 0; j2x_i28 < j2x_a27.length; j2x_i28++) {", "\t\t\tint v = j2x_a27[j2x_i28];", "\t\t\tr += v;", "\t\t}", "\t}", "}", "return r;"]
+feat|03|87|body|Mod.each5	["int r = 0;", "for (Iterator<JavaString> j2x_it31 = it.iterator(); j2x_it31.hasNext(); ) {", "\tJavaString s = j2x_it31.next();", "\tr += s.length();", "}", "return r;"]
+feat|03|88|body|Mod.each6	["int r = 0;", "for (Iterator<JObject> j2x_it32 = raw.iterator(); j2x_it32.hasNext(); ) {", "\tJObject o = j2x_it32.next();", "\tr++;", "}", "return r;"]
+feat|03|89|body|Mod.each7	["int r = 0;", "for (Iterator<JObject> j2x_it33 = l.iterator(); j2x_it33.hasNext(); ) {", "\tJObject t = j2x_it33.next();", "\tr++;", "}", "return r;"]
+feat|03|90|ctor0|Mod.False	["super", null, []]
+feat|03|91|ctor0|Mod.True	["super", null, []]
+feat|03|92|field_init|Mod.field	null
+feat|03|93|array_items|Mod.field	null
+feat|03|94|instance_inits|Mod	[]
+feat|03|95|static_blocks|Mod	[]
+feat|03|96|body|Ops.shifts	null
+feat|03|97|body|Ops.shiftField	null
+feat|03|98|body|Ops.fmods	["float c = (float)fmod((double)(a), (double)(2.5F));", "double d = fmod(b, 3.0);", "return c + (float)d;"]
+feat|03|99|body|Ops.fmodAssign	null
+feat|03|100|body|Ops.casts	["int i = j2xToInt(d) + j2xToInt(l) + j2xToInt(f) + c + b;", "long long j = j2xToLong(d) + j2xToLong(f);", "signed char bb = (signed char)i;", "unsigned char cc = (unsigned char)((i + 1));", "short ss = (short)l;", "float ff = (float)d;", "double dd = (double)l;", "return i + j2xToInt(j) + bb + cc + ss + j2xToInt(ff) + j2xToInt(dd);"]
+feat|03|101|body|Ops.ternaries	["JavaString r = (a > 0 ? JavaString(s) : JavaString());", "JObject q = (a > 1 ? ob : (JObject)(s));", "double m = (a > 2 ? (double)(1) : 2.5);", "JObject z = (a > 3 ? NULL : NULL);", "return (r == NULL ? JavaString(\"none\") : JavaString(((JCat() + r + ((a > 4 ? 'x' : 'y'))))._s));"]
+feat|03|102|body|Ops.arrays	["JArray<int > a = JArray<int >(n);", "JArray<int > b = (JArrayInit<int >(), 1, 2, 3);", "JArray<JArray<int > > c = (JArrayInit<JArray<int > >(), (JArrayInit<int >(), 1, 2), (JArrayInit<int >(), 3));", "JArray<JArray<int > > d = j2x_newarr2<int >(n, n);", "JArray<JavaString > e = JArray<JavaString >(n);", "JArray<Ops* > f = (JArrayInit<Ops* >(), new Ops(), NULL);", "JArray<JArray<JArray<long long > > > g = j2x_newarr3<long long >(2, 3, 4);", "JArray<JArray<int > > h = JArray<JArray<int > >(2);", "a[0] = b[1] + c[1][0] + d[0][0] + e.length + f.length + j2xToInt(g[0][0][0]) + h.length;", "a[n - 1]++;", "--a[0];", "return a[0] + a.length + this->cells.length + this->grid[1][2] + this->jag.length;"]
+feat|03|103|body|Ops.loops	["int s = 0;", "for (int i = 0, j = n; i < j; i++, j--) {", "\ts += i * j;", "}", "int k;", "for (k = 0; k < 3; k++) {", "\ts += k;", "}", "for (; ; ) {", "\tif(s > 10) {", "\t\tbreak;", "\t}", "\ts++;", "}", "while(s < 100) {", "\ts += 7;", "\tif(s % 2 == 0) {", "\t\tcontinue;", "\t}", "\ts++;", "}", "do {", "\ts--;", "} while(s > 50);", "for (int a = 0; a < 5; a++) {", "\t{", "\t\tfor (int b = 0; b < 5; b++) {", "\t\t\tif(a * b == n) {", "\t\t\t\ts += 1;", "\t\t\t\tgoto outer_brk;", "\t\t\t}", "\t\t\tif(b > a) {", "\t\t\t\tgoto outer_cont;", "\t\t\t}", "\t\t}", "\t}", "\touter_cont:;", "}", "outer_brk:;", "{", "\ts++;", "\tif(s > 0) {", "\t\tgoto lbl_brk;", "\t}", "\ts--;", "}", "lbl_brk:;", "int w = 0;", "while(w < 3) {", "\t{", "\t\tw++;", "\t\tif(w == 2) {", "\t\t\tgoto wl_cont;", "\t\t}", "\t}", "\twl_cont:;", "}", "do {", "\tw--;", "\tif(w == 1) {", "\t\tgoto dl_brk;", "\t}", "} while(w > 0);", "dl_brk:;", "return s;"]
+feat|03|104|body|Ops.switches	["int r = 0;", "switch(v & 3) {", "case 0:", "{", "\tr = 1;", "}", "case 1:", "{", "\tr += 2;", "\tbreak;", "}", "case 2:", "{", "\t{", "\t\tr = 3;", "\t\tbreak;", "\t}", "}", "default:", "{", "\tr = -1;", "}", "}", "switch(ch) {", "case 'b':", "{", "\tr++;", "\tbreak;", "}", "case 'b':", "{", "}", "case 'c':", "{", "\tr += 2;", "\tbreak;", "}", "}", "switch(v) {", "default:", "{", "\tbreak;", "}", "}", "return r;"]
+feat|03|105|body|Ops.strSwitch	null
+feat|03|106|body|Ops.strSwitch2	["int r = 0;", "{", "\tJavaString j2x_s35 = (s);", "\t{", "\t\tif(JavaString(\"x\").equals(j2x_s35)) {", "\t\t\tr = 1;", "\t\t\tgoto j2x_sw34_brk;", "\t\t} else if(JavaString(\"y\").equals(j2x_s35)) {", "\t\t\tr = 2;", "\t\t\tgoto j2x_sw34_brk;", "\t\t} else {", "\t\t\tr = 3;", "\t\t}", "\t}", "\tj2x_sw34_brk:;", "}", "return r;"]
+feat|03|107|body|Ops.strSwitch3	null
+feat|03|108|body|Ops.order	["JArray<int > p = JArray<int >(10);", "int j2xo1 = 0;", "int j2xo2 = 0;", "(j2xo1 = i, j2xo2 = i++, p[j2xo1] = j2xo2);", "int j2xo3 = 0;", "int j2xo4 = 0;", "int a = (j2xo3 = i++, j2xo4 = i++, Ops::f(j2xo3, j2xo4));", "int j2xo5 = 0;", "int j2xo6 = 0;", "int b = (j2xo5 = Ops::g(), j2xo6 = Ops::g(), Ops::f(j2xo5, j2xo6));", "int j2xo7 = 0;", "int j2xo8 = 0;", "int c = (j2xo7 = Ops::g(), j2xo8 = Ops::g() * i, j2xo7 + j2xo8);", "Ops::s_total += Ops::f(Ops::s_total++, 1);", "int j2xo9 = 0;", "int j2xo10 = 0;", "(j2xo9 = i, j2xo10 = i = 3, this->cells[j2xo9] = j2xo10);", "int j2xo11 = 0;", "int j2xo12 = 0;", "JavaString s = (j2xo11 = Ops::g(), j2xo12 = Ops::g(), (JCat() + \"b\" + j2xo11 + j2xo12));", "return a + b + c + p[0];"]
+feat|03|109|body|Ops.g	["return Ops::s_cnt++;"]
+feat|03|110|body|Ops.f	["return a - b;"]
+feat|03|111|body|Ops.strs	["JavaString r = (JCat() + \"b\" + i + l + c + d + b + o + s + NULL);", "r += i;", "r += \"x\";", "s = (JCat() + s + 1);", "return (JCat() + r + s.length() + s.charAt(0) + s.substring(1) + s.equals(\"q\") + s.indexOf('x'));"]
+feat|03|112|body|Ops.boxes	null
+feat|03|113|body|Ops.objs	null
+feat|03|114|body|Ops.maths	["return ::sin(x) + ::abs(n) + floor(x) + pow(x, 2) + javaMathSqrt(x) + 3.141592653589793 + max(n, 3) + min(x, 1.0) + javaMathRound(x) + ::atan2(x, x) + javaMathRandom() + javaMathSignum(x) + ceil(x);"]
+feat|03|115|body|Ops.lib	["System::out.println(\"hi\");", "System::err.println(n);", "int m = Integer::MAX_VALUE + Integer::parseInt(\"3\");", "long long j2xo1 = 0;", "long long j2xo2 = 0;", "long long t = (j2xo1 = System::currentTimeMillis(), j2xo2 = System::nanoTime(), j2xo1 + j2xo2);", "StringBuilder* sb = new StringBuilder();", "sb->append(n)->append(\"x\")->append('c');", "JList<JavaString> list = JList<JavaString>();", "list.add(\"b\");", "JMap<JavaString, int> map = JMap<JavaString, int>();", "map.put(\"b\", 1);", "Iterator<JavaString> it = list.iterator();", "while(it.hasNext()) {", "\tJavaString s = it.next();", "}", "JavaString f = String::format(\"%d %s\", (JArrayInit<JObject >(), n, \"x\"));", "JList<int> asl = Arrays::asList((JArrayInit<JObject >(), 1, 2, 3));", "File* file = new File(JavaString(((JCat() + \"b/\" + n))._s));", "file->delete_();", "Random* rnd = new Random(5LL);", "rnd->nextInt(10);", "Thread* th = new Thread();", "unsigned char ch = Character::toUpperCase('b');", "JavaString vs = String::valueOf(n);", "double pi = 3.141592653589793;", "JArray<int > copy = JArray<int >(3);", "System::arraycopy(this->cells, 0, copy, 0, 3);", "System::exit(0);"]
+feat|03|116|body|Ops.refl	["// J2X-REVIEW[reflection-unsupported]: newInstance() has no C++ equivalent -- the runtime stub returns NULL. Replace with a hand-written factory (a class-keyed switch / registry), then null-check the result.", "JObject x = Class::forName(n).newInstance();", "return x;"]
+feat|03|117|body|Ops.sync	["/* J2X-REVIEW[synchronized-dropped]: was synchronized((this)) -- add a lock if this state is touched by another thread (network/pool) */ {", "\tOps::s_total++;", "}"]
+feat|03|118|body|Ops.anon	null
+feat|03|119|body|Ops.lam	null
+feat|03|120|body|Ops.local	null
+feat|03|121|body|Ops.tries	null
+feat|03|122|body|Ops.tryLoop	["int r = 0;", "for (int i = 0; i < n; i++) {", "\t{", "\t\tint j2xFin1 = 0;", "\t\tint j2xRet1;", "\t\ttry {", "\t\t\t{", "\t\t\t\tif(i == 2) {", "\t\t\t\t\tj2xFin1 = 3; goto j2xFinally1;", "\t\t\t\t}", "\t\t\t\tif(i == 4) {", "\t\t\t\t\tj2xFin1 = 2; goto j2xFinally1;", "\t\t\t\t}", "\t\t\t\tr += i;", "\t\t\t}", "\t\t} catch (...) {", "\t\t\tr++;", "\t\t\tthrow;", "\t\t}", "\t\tj2xFinally1:;", "\t\t{", "\t\t\tr++;", "\t\t}", "\t\tif (j2xFin1 == 1) return j2xRet1;", "\t\tif (j2xFin1 == 2) break;", "\t\tif (j2xFin1 == 3) continue;", "\t}", "}", "return r;"]
+feat|03|123|body|Ops.tryInner	null
+feat|03|124|body|Ops.tryRes	null
+feat|03|125|body|Ops.thrower	["if(n < 0) {", "\tthrow new IllegalArgumentException(\"neg\");", "}"]
+feat|03|126|body|Ops.tryNpe	["try {", "\treturn j2xNN<NullPointerException>(o)->cells.length + j2xNN<NullPointerException>(j2xNN<NullPointerException>(o)->next)->cells[0] + j2xNN<NullPointerException>(j2xNN<NullPointerException>(j2xNN<NullPointerException>(o)->next)->next)->grid.length;", "} catch (NullPointerException*) {", "\treturn -1;", "}"]
+feat|03|127|body|Ops.tryLabelled	null
+feat|03|128|body|Ops.tryVoid	["{", "\tint j2xFin1 = 0;", "\ttry {", "\t\t{", "\t\t\tOps::s_total++;", "\t\t\tif(Ops::s_total > 3) {", "\t\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t\t}", "\t\t}", "\t} catch (...) {", "\t\tOps::s_total--;", "\t\tthrow;", "\t}", "\tj2xFinally1:;", "\t{", "\t\tOps::s_total--;", "\t}", "\tif (j2xFin1 == 1) return;", "}"]
+feat|03|129|body|Ops.tryThrow	["{", "\tint j2xFin1 = 0;", "\tint j2xRet1;", "\ttry {", "\t\ttry {", "\t\t\tif(a > 1) {", "\t\t\t\tthrow new RuntimeException(\"x\");", "\t\t\t}", "\t\t\tj2xRet1 = 1;", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t} catch (RuntimeException*) {", "\t\t\tj2xRet1 = 2;", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t}", "\t} catch (...) {", "\t\tOps::s_total++;", "\t\tthrow;", "\t}", "\tj2xFinally1:;", "\t{", "\t\tOps::s_total++;", "\t}", "\treturn j2xRet1;", "}"]
+feat|03|130|body|Ops.nested	["return o->next->cells[2] + this->next->grid[1][1] + this->next->next->next->cells.length + o->names.length;"]
+feat|03|131|body|Ops.chain	["return this;"]
+feat|03|132|body|Ops.callChain	["int j2xo1 = 0;", "int j2xo2 = 0;", "return (j2xo1 = this->chain()->chain()->cells[0], j2xo2 = this->chain()->next->cells[1], j2xo1 + j2xo2);"]
+feat|03|133|body|Ops.unaries	["int r = -a + +a + ~a;", "r = j2xToInt(-b);", "return (c ? r : (!c ? 1 : 0));"]
+feat|03|134|body|Ops.cmp	["return a == b || a != c && s == NULL || o != NULL && s != \"q\" && a < b && a >= c;"]
+feat|03|135|body|Ops.compound	null
+feat|03|136|ctor0|Ops.False	["super", null, []]
+feat|03|137|ctor0|Ops.True	["super", null, []]
+feat|03|138|field_init|Ops.total	null
+feat|03|139|array_items|Ops.total	null
+feat|03|140|field_init|Ops.big	"(-9223372036854775807LL - 1)"
+feat|03|141|array_items|Ops.big	null
+feat|03|142|field_init|Ops.small	"(-2147483647 - 1)"
+feat|03|143|array_items|Ops.small	null
+feat|03|144|field_init|Ops.f1	"1.5F"
+feat|03|145|array_items|Ops.f1	null
+feat|03|146|field_init|Ops.d1	"10000000000.0"
+feat|03|147|array_items|Ops.d1	null
+feat|03|148|field_init|Ops.d2	"0.1"
+feat|03|149|array_items|Ops.d2	null
+feat|03|150|field_init|Ops.d3	"1.0e-05"
+feat|03|151|array_items|Ops.d3	null
+feat|03|152|field_init|Ops.f2	"3.0e-07F"
+feat|03|153|array_items|Ops.f2	null
+feat|03|154|field_init|Ops.d4	"100.0"
+feat|03|155|array_items|Ops.d4	null
+feat|03|156|field_init|Ops.c1	"'b'"
+feat|03|157|array_items|Ops.c1	null
+feat|03|158|field_init|Ops.c2	"(unsigned char)10"
+feat|03|159|array_items|Ops.c2	null
+feat|03|160|field_init|Ops.c3	"(unsigned char)39"
+feat|03|161|array_items|Ops.c3	null
+feat|03|162|field_init|Ops.c4	"(unsigned char)92"
+feat|03|163|array_items|Ops.c4	null
+feat|03|164|field_init|Ops.c5	"'A'"
+feat|03|165|array_items|Ops.c5	null
+feat|03|166|field_init|Ops.c6	"65535"
+feat|03|167|array_items|Ops.c6	null
+feat|03|168|field_init|Ops.c7	"(unsigned char)(200)"
+feat|03|169|array_items|Ops.c7	null
+feat|03|170|field_init|Ops.s1	"\"he sbid \\\"hi\\\"\\n\\t\\\\ B A ? \\r end\""
+feat|03|171|array_items|Ops.s1	null
+feat|03|172|field_init|Ops.b1	"(signed char)(200)"
+feat|03|173|array_items|Ops.b1	null
+feat|03|174|field_init|Ops.sh	"12345"
+feat|03|175|array_items|Ops.sh	null
+feat|03|176|field_init|Ops.flag	"true"
+feat|03|177|array_items|Ops.flag	null
+feat|03|178|field_init|Ops.cnt	null
+feat|03|179|array_items|Ops.cnt	null
+feat|03|180|field_init|Ops.cells	"JArray<int >(8)"
+feat|03|181|array_items|Ops.cells	null
+feat|03|182|field_init|Ops.grid	"j2x_newarr2<int >(3, 4)"
+feat|03|183|array_items|Ops.grid	null
+feat|03|184|field_init|Ops.jag	"JArray<JArray<int > >(3)"
+feat|03|185|array_items|Ops.jag	null
+feat|03|186|field_init|Ops.names	"(JArrayInit<JavaString >(), \"b\", \"b\")"
+feat|03|187|array_items|Ops.names	["\"b\"", "\"b\""]
+feat|03|188|field_init|Ops.longs	null
+feat|03|189|array_items|Ops.longs	null
+feat|03|190|field_init|Ops.cube	"j2x_newarr3<double >(2, 2, 2)"
+feat|03|191|array_items|Ops.cube	null
+feat|03|192|field_init|Ops.o	null
+feat|03|193|array_items|Ops.o	null
+feat|03|194|field_init|Ops.boxed	"5"
+feat|03|195|array_items|Ops.boxed	null
+feat|03|196|field_init|Ops.next	null
+feat|03|197|array_items|Ops.next	null
+feat|03|198|instance_inits|Ops	["this->cells = JArray<int >(8);", "this->grid = j2x_newarr2<int >(3, 4);", "this->jag = JArray<JArray<int > >(3);", "this->names = (JArrayInit<JavaString >(), \"b\", \"b\");", "this->cube = j2x_newarr3<double >(2, 2, 2);", "this->boxed = 5;"]
+feat|03|199|static_blocks|Ops	[]
+feat|03|200|ctor|Own.False	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|03|201|ctor|Own.True	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|03|202|body|Own.setPos	["this->bb = new Box(a, b);"]
+feat|03|203|body|Own.reset	["this->bb = Box::create(1);", "this->bb = Box::make(2);", "this->bb = new Box(3, 4);", "int q = 0;"]
+feat|03|204|body|Own.twice	["this->bb = new Box(1, 1);", "this->bb = new Box(2, 2);"]
+feat|03|205|body|Own.other	["this->bb = b;"]
+feat|03|206|body|Own.cubes	["JList<Box*> out = JList<Box*>();", "out.add(new Box(1, 2));", "return out;"]
+feat|03|207|body|Own.grow	["return new Box(d, d);"]
+feat|03|208|body|Own.use	["JList<Box*> c = this->cubes(area);", "J2X_ScopedFreeElems<JList<Box*> > _j2xfree_c(c);   // J2X no-gc-return-leak: free the heap elements cubes() handed back (caller-frees; Java GC'd them)", "int n = c.size();", "c.get(0).touch();", "int h = c.get(0).x;", "Box* _j2xarg_1 = this->grow(1);", "J2X_ScopedDelete<Box > _j2xargd_1(_j2xarg_1);   // J2X no-gc-arg-leak: free the heap Box that grow() returned (take() only reads it)", "sink->take(_j2xarg_1);", "sink->keep(this->grow(2));", "{ Box _j2xleak0(5, 6); _j2xleak0.touch(); }", "if (this->list[0] != NULL) { this->list[0]->touch(); }", "if (this->list[n] != NULL) { this->list[n]->touch(); }", "return n + h;"]
+feat|03|209|body|Own.use2	["JList<Box*> c = this->cubes(area);", "Box* first = c.get(0);", "return first->x;"]
+feat|03|210|body|Own.leakTemp	["(new Sink())->run();", "{ Box _j2xleak0(1, 2); _j2xleak0.touch(); }", "Thread* t = new Thread();", "{ Sink _j2xleak1; _j2xleak1.keep(NULL); }"]
+feat|03|211|ctor0|Own.False	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|03|212|ctor0|Own.True	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|03|213|field_init|Own.bb	null
+feat|03|214|array_items|Own.bb	null
+feat|03|215|field_init|Own.list	null
+feat|03|216|array_items|Own.list	null
+feat|03|217|field_init|Own.held	"JList<Box*>()"
+feat|03|218|array_items|Own.held	null
+feat|03|219|instance_inits|Own	["this->held = JList<Box*>();"]
+feat|03|220|static_blocks|Own	[]
+feat|03|221|ctor|Shape0.False	["super", "", ["{", "\tint j2xD0_s = 1;", "\t{", "\t\tint j2xD1_s = j2xD0_s;", "\t\tint j2xD1_k = 3;", "\t\tthis->size = j2xD1_s * j2xD1_k;", "\t\tthis->scale += j2xD1_k;", "\t}", "}"]]
+feat|03|222|ctor|Shape0.True	["this", null, ["Shape0::j2xInit(1);"]]
+feat|03|223|ctor|Shape0.False	["super", "", ["{", "\tint j2xD0_s = s;", "\tint j2xD0_k = 3;", "\tthis->size = j2xD0_s * j2xD0_k;", "\tthis->scale += j2xD0_k;", "}"]]
+feat|03|224|ctor|Shape0.True	["this", null, ["Shape0::j2xInit(s, 3);"]]
+feat|03|225|ctor|Shape0.False	["super", "", ["this->size = s * k;", "this->scale += k;"]]
+feat|03|226|ctor|Shape0.True	["super", "", ["this->size = s * k;", "this->scale += k;"]]
+feat|03|227|body|Shape0.area	["return this->size * this->scale;"]
+feat|03|228|body|Shape0.describe	["return (JCat() + this->label + \":\" + this->size);"]
+feat|03|229|body|Shape0.make	["return new Shape0(n);"]
+feat|03|230|ctor0|Shape0.False	["super", "", ["{", "\tint j2xD0_s = 1;", "\t{", "\t\tint j2xD1_s = j2xD0_s;", "\t\tint j2xD1_k = 3;", "\t\tthis->size = j2xD1_s * j2xD1_k;", "\t\tthis->scale += j2xD1_k;", "\t}", "}"]]
+feat|03|231|ctor0|Shape0.True	["this", null, ["Shape0::j2xInit(1);"]]
+feat|03|232|field_init|Shape0.size	null
+feat|03|233|array_items|Shape0.size	null
+feat|03|234|field_init|Shape0.scale	"2"
+feat|03|235|array_items|Shape0.scale	null
+feat|03|236|field_init|Shape0.label	"\"s\""
+feat|03|237|array_items|Shape0.label	null
+feat|03|238|field_init|Shape0.count	null
+feat|03|239|array_items|Shape0.count	null
+feat|03|240|instance_inits|Shape0	["this->scale = 2;", "this->label = \"s\";", "Shape0::s_count++;"]
+feat|03|241|static_blocks|Shape0	[]
+feat|03|242|body|Sink.take	["int q = b->x;"]
+feat|03|243|body|Sink.keep	["this->held = b;"]
+feat|03|244|body|Sink.run	[]
+feat|03|245|ctor0|Sink.False	["super", null, []]
+feat|03|246|ctor0|Sink.True	["super", null, []]
+feat|03|247|field_init|Sink.held	null
+feat|03|248|array_items|Sink.held	null
+feat|03|249|instance_inits|Sink	[]
+feat|03|250|static_blocks|Sink	[]
+feat|03|251|ctor|Tool.False	["super", null, ["this->lvl = l;", "this->nm = n;"]]
+feat|03|252|ctor|Tool.True	["super", null, ["this->lvl = l;", "this->nm = n;"]]
+feat|03|253|body|Tool.level	["return this->lvl;"]
+feat|03|254|body|Tool.pick	["return Tool::values()[i];"]
+feat|03|255|ctor0|Tool.False	null
+feat|03|256|ctor0|Tool.True	null
+feat|03|257|field_init|Tool.lvl	null
+feat|03|258|array_items|Tool.lvl	null
+feat|03|259|field_init|Tool.nm	null
+feat|03|260|array_items|Tool.nm	null
+feat|03|261|enum_args|Tool.WOOD	["1", "\"w\""]
+feat|03|262|enum_args|Tool.STONE	["2", "\"s\""]
+feat|03|263|instance_inits|Tool	[]
+feat|03|264|static_blocks|Tool	[]
+feat|03|265|body|Use.run	["int j2xo1 = 0;", "int j2xo2 = 0;", "int j2xo3 = 0;", "int j2xo4 = 0;", "int j2xo5 = 0;", "int j2xo6 = 0;", "int r = (j2xo5 = (j2xo3 = (j2xo1 = Kind::_J2X_COUNT, j2xo2 = (kk), j2xo1 + j2xo2), j2xo4 = Tool::WOOD->level(), j2xo3 + j2xo4), j2xo6 = Tool::pick(1)->level(), j2xo5 + j2xo6);", "switch(kk) {", "case Kind::A:", "{", "\tr++;", "\tbreak;", "}", "case Kind::B:", "{", "\tr += 2;", "\tbreak;", "}", "default:", "{", "\tr--;", "}", "}", "int other = Kind::NULL_;", "if(kk == other || kk == Kind::TRUE_) {", "\tr++;", "}", "{", "\tJArray<Tool* > j2x_a36 = Tool::values();", "\tfor (int j2x_i37 = 0; j2x_i37 < j2x_a36.length; j2x_i37++) {", "\t\tTool* tt = j2x_a36[j2x_i37];", "\t\tr += tt->level();", "\t}", "}", "return r + Use::s_table[1] + Use::s_t2[1][1] + Use::s_strs.length + Use::s_kinds.length;"]
+feat|03|266|ctor0|Use.False	["super", null, []]
+feat|03|267|ctor0|Use.True	["super", null, []]
+feat|03|268|field_init|Use.k	"Kind::A"
+feat|03|269|array_items|Use.k	null
+feat|03|270|field_init|Use.t	"Tool::WOOD"
+feat|03|271|array_items|Use.t	null
+feat|03|272|field_init|Use.table	"(JArrayInit<int >(), 1, 2, 3)"
+feat|03|273|array_items|Use.table	["1", "2", "3"]
+feat|03|274|field_init|Use.t2	"(JArrayInit<JArray<int > >(), (JArrayInit<int >(), 1), (JArrayInit<int >(), 2, 3))"
+feat|03|275|array_items|Use.t2	["(JArrayInit<int >(), 1)", "(JArrayInit<int >(), 2, 3)"]
+feat|03|276|field_init|Use.strs	"(JArrayInit<JavaString >(), \"b\", NULL)"
+feat|03|277|array_items|Use.strs	["\"b\"", "JavaString()"]
+feat|03|278|field_init|Use.kinds	"(JArrayInit<int >(), Kind::A, Kind::B)"
+feat|03|279|array_items|Use.kinds	["Kind::A", "Kind::B"]
+feat|03|280|field_init|Use.legs	"4"
+feat|03|281|array_items|Use.legs	null
+feat|03|282|instance_inits|Use	["this->legs = 4;", "this->legs++;"]
+feat|03|283|static_blocks|Use	[["Use::s_table[0] = 9;"]]
+feat|03|284|body|Walker.walk	null
+feat|03|285|ctor0|Walker.False	null
+feat|03|286|ctor0|Walker.True	null
+feat|03|287|instance_inits|Walker	[]
+feat|03|288|static_blocks|Walker	[]
+feat|03|289|body|NoSuchClass	null
+feat|03|290|field_init|nofield	null
+feat|03|291|array_items|nofield	null
+feat|03|292|enum_args|noconst	null
+feat|03|293|ctor|NoSuchClass	null
+feat|03|294|field_init|NoSuchClass	null
+feat|03|295|array_items|NoSuchClass	null
+feat|03|296|enum_args|NoSuchClass	null
+feat|03|297|instance_inits|NoSuchClass	null
+feat|03|298|static_blocks|NoSuchClass	null
+feat|03|counts	[80, 42, {"no": 2, "ctor not found": 7, ">>>=": 1, "static": 2, "floating": 1, "switch": 2, "instanceof": 1, "Object": 2, "anonymous": 1, "expression": 1, "statement": 1, "a": 2, "try-with-resources": 1, "not found": 1}, {"no body": 2, ">>>=": 1, "static field through an instance": 2, "floating %=": 1, "switch on a string": 2, "instanceof String": 1, "Object method hashCode": 2, "anonymous or inner class": 1, "expression Lambda": 1, "statement LocalClass": 1, "a finally with jumps inside another": 1, "try-with-resources": 1, "a labelled jump out of a finally": 1}, ["Animal", "Box", "Circle0", "Dog", "Empty1", "Kind", "Marked", "Mod", "Ops", "Own", "Shape0", "Sink", "Tool", "Use", "Walker"]]
+feat|03|ledger	[["Ops.cpp", 227, "RISK", "HIGH", "emit", "reflection-unsupported", "reflection newInstance() has no C++ equivalent -- stub returns NULL; needs a hand-written factory (J2X-REVIEW[reflection-unsupported])", ""], ["Own.cpp", 16, "RULE", "MED", "emit", "leak-temp-stackified", "leak fixed: throwaway `(new Box(...))->touch(...)` -> scoped stack object (Java GC temp leaked every call)", ""], ["Own.cpp", 16, "RISK", "MED", "emit", "null-deref-guard", "null-deref guard inserted before list-indexed call (an unregistered/NULL slot would be a virtual call through NULL -- undefined behaviour in C++)", ""], ["Own.cpp", 16, "RISK", "MED", "emit", "null-deref-guard", "null-deref guard inserted before list-indexed call (an unregistered/NULL slot would be a virtual call through NULL -- undefined behaviour in C++)", ""], ["Own.cpp", 35, "RULE", "MED", "emit", "leak-temp-stackified", "leak fixed: throwaway `(new Box(...))->touch(...)` -> scoped stack object (Java GC temp leaked every call)", ""], ["Own.cpp", 35, "RULE", "MED", "emit", "leak-temp-stackified", "leak fixed: throwaway `(new Sink(...))->keep(...)` -> scoped stack object (Java GC temp leaked every call)", ""]]
+feat|17|0|body|Animal.name	null
+feat|17|1|body|Animal.walk	["return this->legs * n;"]
+feat|17|2|ctor0|Animal.False	["super", null, []]
+feat|17|3|ctor0|Animal.True	["super", null, []]
+feat|17|4|field_init|Animal.legs	"4"
+feat|17|5|array_items|Animal.legs	null
+feat|17|6|field_init|Animal.table	"(JArrayInit<int >(), 1, 2, 3)"
+feat|17|7|array_items|Animal.table	["1", "2", "3"]
+feat|17|8|instance_inits|Animal	["this->legs = 4;"]
+feat|17|9|static_blocks|Animal	[]
+feat|17|10|ctor|Box.False	["super", null, ["this->x = a;", "this->y = b;"]]
+feat|17|11|ctor|Box.True	["super", null, ["this->x = a;", "this->y = b;"]]
+feat|17|12|body|Box.touch	[]
+feat|17|13|body|Box.create	["return new Box(a, a);"]
+feat|17|14|body|Box.make	["return new Box(a, a);"]
+feat|17|15|ctor0|Box.False	null
+feat|17|16|ctor0|Box.True	null
+feat|17|17|field_init|Box.x	null
+feat|17|18|array_items|Box.x	null
+feat|17|19|field_init|Box.y	null
+feat|17|20|array_items|Box.y	null
+feat|17|21|instance_inits|Box	[]
+feat|17|22|static_blocks|Box	[]
+feat|17|23|ctor|Circle0.False	["super", "j2xToInt(r)", ["this->r = r;"]]
+feat|17|24|ctor|Circle0.True	["super", "j2xToInt(r)", ["this->r = r;"]]
+feat|17|25|ctor|Circle0.False	["super", "", []]
+feat|17|26|ctor|Circle0.True	["super", "", []]
+feat|17|27|ctor|Circle0.False	["super", "j2xToInt(((double)((a + b))))", ["{", "\tdouble j2xD0_r = (double)((a + b));", "\tthis->r = j2xD0_r;", "}", "this->pts = (JArrayInit<int >(), a, b);"]]
+feat|17|28|ctor|Circle0.True	["this", null, ["Circle0::j2xInit((double)((a + b)));", "this->pts = (JArrayInit<int >(), a, b);"]]
+feat|17|29|body|Circle0.area	["return Shape0::area() + j2xToInt((this->r * this->r));"]
+feat|17|30|body|Circle0.describe	["return (JCat() + Shape0::describe() + \"c\" + this->label + this->label);"]
+feat|17|31|body|Circle0.total	["return this->size + this->size + Shape0::s_count + Shape0::s_count;"]
+feat|17|32|ctor0|Circle0.False	["super", "", []]
+feat|17|33|ctor0|Circle0.True	["super", "", []]
+feat|17|34|field_init|Circle0.r	"1.5"
+feat|17|35|array_items|Circle0.r	null
+feat|17|36|field_init|Circle0.pts	null
+feat|17|37|array_items|Circle0.pts	null
+feat|17|38|instance_inits|Circle0	["this->r = 1.5;"]
+feat|17|39|static_blocks|Circle0	[]
+feat|17|40|body|Dog.name	["return \"dog\";"]
+feat|17|41|body|Dog.walk	["return Animal::walk(n) + 1;"]
+feat|17|42|body|Dog.outerRef	["return this->legs + this->legs + Animal::s_table[0] + Animal::s_table[1];"]
+feat|17|43|ctor0|Dog.False	["super", null, []]
+feat|17|44|ctor0|Dog.True	["super", null, []]
+feat|17|45|instance_inits|Dog	[]
+feat|17|46|static_blocks|Dog	[]
+feat|17|47|ctor0|Empty1.False	["super", null, []]
+feat|17|48|ctor0|Empty1.True	["super", null, []]
+feat|17|49|instance_inits|Empty1	[]
+feat|17|50|static_blocks|Empty1	[]
+feat|17|51|ctor0|Kind.False	["super", null, []]
+feat|17|52|ctor0|Kind.True	["super", null, []]
+feat|17|53|enum_args|Kind.A	[]
+feat|17|54|enum_args|Kind.B	[]
+feat|17|55|enum_args|Kind.NULL	[]
+feat|17|56|enum_args|Kind.TRUE	[]
+feat|17|57|instance_inits|Kind	[]
+feat|17|58|static_blocks|Kind	[]
+feat|17|59|body|Marked.m	[]
+feat|17|60|body|Marked.call	["this->m(1);", "this->m(__null, 2);"]
+feat|17|61|body|Marked.sum	["int r = 0;", "for (int i = 0; i < xs.length; i++) {", "\tr += xs[i];", "}", "return r;"]
+feat|17|62|body|Marked.va	["int j2xo1 = 0;", "int j2xo2 = 0;", "int j2xo3 = 0;", "int j2xo4 = 0;", "int j2xo5 = 0;", "int j2xo6 = 0;", "int j2xo7 = 0;", "int j2xo8 = 0;", "int j2xo9 = 0;", "int j2xo10 = 0;", "return (j2xo9 = (j2xo7 = (j2xo5 = (j2xo3 = (j2xo1 = this->sum(JArray<int >()), j2xo2 = this->sum((JArrayInit<int >(), 1)), j2xo1 + j2xo2), j2xo4 = this->sum((JArrayInit<int >(), 1, 2, 3)), j2xo3 + j2xo4), j2xo6 = this->sum((JArrayInit<int >(), 4, 5)), j2xo5 + j2xo6), j2xo8 = this->fmt(\"b\", (JArrayInit<JObject >(), 1, \"b\")), j2xo7 + j2xo8), j2xo10 = this->fmt(\"z\", JArray<JObject >()), j2xo9 + j2xo10);"]
+feat|17|63|body|Marked.fmt	["return args.length;"]
+feat|17|64|ctor0|Marked.False	["super", null, []]
+feat|17|65|ctor0|Marked.True	["super", null, []]
+feat|17|66|instance_inits|Marked	[]
+feat|17|67|static_blocks|Marked	[]
+feat|17|68|body|Mod.sw	["return [&]() -> int {\n\tswitch(c) {\n\tcase Color::RED:\n\t{\n\t\treturn 1;\n\t}\n\tcase Color::GREEN:\n\t{\n\t\treturn 2;\n\t}\n\tdefault:\n\t{\n\t\treturn 3;\n\t}\n\t}\n\tthrow 0;\n}();"]
+feat|17|69|body|Mod.sw2	null
+feat|17|70|body|Mod.sw3	null
+feat|17|71|body|Mod.sw4	["int r;", "r = [&]() -> int {\n\tswitch(v) {\n\tcase 0:\n\t{\n\t\treturn 5;\n\t}\n\tdefault:\n\t{\n\t\treturn 6;\n\t}\n\t}\n\tthrow 0;\n}();", "return r;"]
+feat|17|72|body|Mod.sw5	["this->field = [&]() -> int {\n\tswitch(v) {\n\tcase 0:\n\t{\n\t\treturn 1;\n\t}\n\tdefault:\n\t{\n\t\treturn 2;\n\t}\n\t}\n\tthrow 0;\n}();"]
+feat|17|73|body|Mod.sw6	["l.add([&]() -> int {\n\tswitch(v) {\n\tcase 0:\n\t{\n\t\treturn 1;\n\t}\n\tdefault:\n\t{\n\t\treturn 2;\n\t}\n\t}\n\tthrow 0;\n}());"]
+feat|17|74|body|Mod.sw7	["return 1 + [&]() -> int {\n\tswitch(v) {\n\tcase 0:\n\t{\n\t\treturn 1;\n\t}\n\tdefault:\n\t{\n\t\treturn 2;\n\t}\n\t}\n\tthrow 0;\n}();"]
+feat|17|75|body|Mod.sw8	["switch(c) {", "case Color::RED:", "{", "\treturn 1;", "}", "case Color::GREEN:", "{", "\treturn 2;", "}", "default:", "{", "\treturn 3;", "}", "}"]
+feat|17|76|body|Mod.sw9	["return [&]() -> int {\n\tswitch(v) {\n\tcase 0:\n\t{\n\t\tthrow new IllegalStateException();\n\t}\n\tdefault:\n\t{\n\t\treturn v;\n\t}\n\t}\n\tthrow 0;\n}();"]
+feat|17|77|body|Mod.sw10	null
+feat|17|78|body|Mod.sw11	null
+feat|17|79|body|Mod.pat	["JavaString s;", "if(((o).isString() && (s = (JavaString)o) != __null) && s.length() > 2) {", "\treturn s.length();", "}", "int i;", "if((o).isInteger() && (i = (o).intValue()) != __null) {", "\treturn i;", "}", "return 0;"]
+feat|17|80|body|Mod.pat2	["Mod* m;", "if(!(((o).is<Mod>() && (m = (Mod*)o) != nullptr))) {", "\treturn -1;", "}", "return m->field;"]
+feat|17|81|body|Mod.pat3	["int r = 0;", "Mod* m;", "if((dynamic_cast<Mod*>(o) != __null) && (m = (Mod*)o) != nullptr) {", "\tr = m->field;", "}", "Mod* m2;", "if((dynamic_cast<Mod*>(o) != __null) && (m2 = (Mod*)o) != nullptr) {", "\tr += m2->field;", "} else {", "\tr--;", "}", "JavaString s;", "while((o).isString() && (s = (JavaString)o) != __null) {", "\tr += s.length();", "\to = __null;", "}", "return r;"]
+feat|17|82|body|Mod.pat4	["Mod* m;", "return ((o).is<Mod>() && (m = (Mod*)o) != nullptr ? m->field : 0);"]
+feat|17|83|body|Mod.each	null
+feat|17|84|body|Mod.each2	null
+feat|17|85|body|Mod.each3	["int r = 0;", "for (Number* n : l) {", "\tr += n->intValue();", "}", "return r;"]
+feat|17|86|body|Mod.each4	["int r = 0;", "{", "\tJArray<JArray<int > > j2x_a1 = g;", "\tfor (int j2x_i1 = 0; j2x_i1 < j2x_a1.length; j2x_i1++) {", "\t\tJArray<int > row = j2x_a1[j2x_i1];", "\t\t{", "\t\t\tJArray<int > j2x_a2 = row;", "\t\t\tfor (int j2x_i2 = 0; j2x_i2 < j2x_a2.length; j2x_i2++) {", "\t\t\t\tint v = j2x_a2[j2x_i2];", "\t\t\t\tr += v;", "\t\t\t}", "\t\t}", "\t}", "}", "return r;"]
+feat|17|87|body|Mod.each5	["int r = 0;", "for (JavaString s : it) {", "\tr += s.length();", "}", "return r;"]
+feat|17|88|body|Mod.each6	["int r = 0;", "for (JObject o : raw) {", "\tr++;", "}", "return r;"]
+feat|17|89|body|Mod.each7	["int r = 0;", "for (JObject t : l) {", "\tr++;", "}", "return r;"]
+feat|17|90|ctor0|Mod.False	["super", null, []]
+feat|17|91|ctor0|Mod.True	["super", null, []]
+feat|17|92|field_init|Mod.field	null
+feat|17|93|array_items|Mod.field	null
+feat|17|94|instance_inits|Mod	[]
+feat|17|95|static_blocks|Mod	[]
+feat|17|96|body|Ops.shifts	null
+feat|17|97|body|Ops.shiftField	null
+feat|17|98|body|Ops.fmods	["float c = (float)fmod((double)(a), (double)(2.5F));", "double d = fmod(b, 3.0);", "return c + (float)d;"]
+feat|17|99|body|Ops.fmodAssign	null
+feat|17|100|body|Ops.casts	["int i = j2xToInt(d) + j2xToInt(l) + j2xToInt(f) + c + b;", "long long j = j2xToLong(d) + j2xToLong(f);", "signed char bb = (signed char)i;", "unsigned char cc = (unsigned char)((i + 1));", "short ss = (short)l;", "float ff = (float)d;", "double dd = (double)l;", "return i + j2xToInt(j) + bb + cc + ss + j2xToInt(ff) + j2xToInt(dd);"]
+feat|17|101|body|Ops.ternaries	["JavaString r = (a > 0 ? JavaString(s) : JavaString());", "JObject q = (a > 1 ? ob : (JObject)(s));", "double m = (a > 2 ? (double)(1) : 2.5);", "JObject z = (a > 3 ? __null : __null);", "return (r == __null ? JavaString(\"none\") : JavaString(((JCat() + r + ((a > 4 ? 'x' : 'y'))))._s));"]
+feat|17|102|body|Ops.arrays	["JArray<int > a = JArray<int >(n);", "JArray<int > b = (JArrayInit<int >(), 1, 2, 3);", "JArray<JArray<int > > c = (JArrayInit<JArray<int > >(), (JArrayInit<int >(), 1, 2), (JArrayInit<int >(), 3));", "JArray<JArray<int > > d = j2x_newarr2<int >(n, n);", "JArray<JavaString > e = JArray<JavaString >(n);", "JArray<Ops* > f = (JArrayInit<Ops* >(), new Ops(), __null);", "JArray<JArray<JArray<long long > > > g = j2x_newarr3<long long >(2, 3, 4);", "JArray<JArray<int > > h = JArray<JArray<int > >(2);", "a[0] = b[1] + c[1][0] + d[0][0] + e.length + f.length + j2xToInt(g[0][0][0]) + h.length;", "a[n - 1]++;", "--a[0];", "return a[0] + a.length + this->cells.length + this->grid[1][2] + this->jag.length;"]
+feat|17|103|body|Ops.loops	["int s = 0;", "for (int i = 0, j = n; i < j; i++, j--) {", "\ts += i * j;", "}", "int k;", "for (k = 0; k < 3; k++) {", "\ts += k;", "}", "for (; ; ) {", "\tif(s > 10) {", "\t\tbreak;", "\t}", "\ts++;", "}", "while(s < 100) {", "\ts += 7;", "\tif(s % 2 == 0) {", "\t\tcontinue;", "\t}", "\ts++;", "}", "do {", "\ts--;", "} while(s > 50);", "for (int a = 0; a < 5; a++) {", "\t{", "\t\tfor (int b = 0; b < 5; b++) {", "\t\t\tif(a * b == n) {", "\t\t\t\ts += 1;", "\t\t\t\tgoto outer_brk;", "\t\t\t}", "\t\t\tif(b > a) {", "\t\t\t\tgoto outer_cont;", "\t\t\t}", "\t\t}", "\t}", "\touter_cont:;", "}", "outer_brk:;", "{", "\ts++;", "\tif(s > 0) {", "\t\tgoto lbl_brk;", "\t}", "\ts--;", "}", "lbl_brk:;", "int w = 0;", "while(w < 3) {", "\t{", "\t\tw++;", "\t\tif(w == 2) {", "\t\t\tgoto wl_cont;", "\t\t}", "\t}", "\twl_cont:;", "}", "do {", "\tw--;", "\tif(w == 1) {", "\t\tgoto dl_brk;", "\t}", "} while(w > 0);", "dl_brk:;", "return s;"]
+feat|17|104|body|Ops.switches	["int r = 0;", "switch(v & 3) {", "case 0:", "{", "\tr = 1;", "}", "case 1:", "{", "\tr += 2;", "\tbreak;", "}", "case 2:", "{", "\t{", "\t\tr = 3;", "\t\tbreak;", "\t}", "}", "default:", "{", "\tr = -1;", "}", "}", "switch(ch) {", "case 'b':", "{", "\tr++;", "\tbreak;", "}", "case 'b':", "{", "}", "case 'c':", "{", "\tr += 2;", "\tbreak;", "}", "}", "switch(v) {", "default:", "{", "\tbreak;", "}", "}", "return r;"]
+feat|17|105|body|Ops.strSwitch	null
+feat|17|106|body|Ops.strSwitch2	["int r = 0;", "{", "\tJavaString j2x_s2 = (s);", "\t{", "\t\tif(JavaString(\"x\").equals(j2x_s2)) {", "\t\t\tr = 1;", "\t\t\tgoto j2x_sw1_brk;", "\t\t} else if(JavaString(\"y\").equals(j2x_s2)) {", "\t\t\tr = 2;", "\t\t\tgoto j2x_sw1_brk;", "\t\t} else {", "\t\t\tr = 3;", "\t\t}", "\t}", "\tj2x_sw1_brk:;", "}", "return r;"]
+feat|17|107|body|Ops.strSwitch3	null
+feat|17|108|body|Ops.order	["JArray<int > p = JArray<int >(10);", "int j2xo1 = 0;", "int j2xo2 = 0;", "(j2xo1 = i, j2xo2 = i++, p[j2xo1] = j2xo2);", "int j2xo3 = 0;", "int j2xo4 = 0;", "int a = (j2xo3 = i++, j2xo4 = i++, Ops::f(j2xo3, j2xo4));", "int j2xo5 = 0;", "int j2xo6 = 0;", "int b = (j2xo5 = Ops::g(), j2xo6 = Ops::g(), Ops::f(j2xo5, j2xo6));", "int j2xo7 = 0;", "int j2xo8 = 0;", "int c = (j2xo7 = Ops::g(), j2xo8 = Ops::g() * i, j2xo7 + j2xo8);", "Ops::s_total += Ops::f(Ops::s_total++, 1);", "int j2xo9 = 0;", "int j2xo10 = 0;", "(j2xo9 = i, j2xo10 = i = 3, this->cells[j2xo9] = j2xo10);", "int j2xo11 = 0;", "int j2xo12 = 0;", "JavaString s = (j2xo11 = Ops::g(), j2xo12 = Ops::g(), (JCat() + \"b\" + j2xo11 + j2xo12));", "return a + b + c + p[0];"]
+feat|17|109|body|Ops.g	["return Ops::s_cnt++;"]
+feat|17|110|body|Ops.f	["return a - b;"]
+feat|17|111|body|Ops.strs	["JavaString r = (JCat() + \"b\" + i + l + c + d + b + o + s + __null);", "r += i;", "r += \"x\";", "s = (JCat() + s + 1);", "return (JCat() + r + s.length() + s.charAt(0) + s.substring(1) + s.equals(\"q\") + s.indexOf('x'));"]
+feat|17|112|body|Ops.boxes	null
+feat|17|113|body|Ops.objs	null
+feat|17|114|body|Ops.maths	["return ::sin(x) + ::abs(n) + floor(x) + pow(x, 2) + javaMathSqrt(x) + 3.141592653589793 + max(n, 3) + min(x, 1.0) + javaMathRound(x) + ::atan2(x, x) + javaMathRandom() + javaMathSignum(x) + ceil(x);"]
+feat|17|115|body|Ops.lib	["System::out.println(\"hi\");", "System::err.println(n);", "int m = Integer::MAX_VALUE + Integer::parseInt(\"3\");", "long long j2xo1 = 0;", "long long j2xo2 = 0;", "long long t = (j2xo1 = System::currentTimeMillis(), j2xo2 = System::nanoTime(), j2xo1 + j2xo2);", "auto* sb = new StringBuilder();", "sb->append(n)->append(\"x\")->append('c');", "JList<JavaString> list = JList<JavaString>();", "list.add(\"b\");", "JMap<JavaString, int> map = JMap<JavaString, int>();", "map.put(\"b\", 1);", "Iterator<JavaString> it = list.iterator();", "while(it.hasNext()) {", "\tJavaString s = it.next();", "}", "JavaString f = String::format(\"%d %s\", (JArrayInit<JObject >(), n, \"x\"));", "JList<int> asl = Arrays::asList((JArrayInit<JObject >(), 1, 2, 3));", "auto* file = new File(JavaString(((JCat() + \"b/\" + n))._s));", "file->delete_();", "auto* rnd = new Random(5LL);", "rnd->nextInt(10);", "auto* th = new Thread();", "unsigned char ch = Character::toUpperCase('b');", "JavaString vs = String::valueOf(n);", "double pi = 3.141592653589793;", "JArray<int > copy = JArray<int >(3);", "System::arraycopy(this->cells, 0, copy, 0, 3);", "System::exit(0);"]
+feat|17|116|body|Ops.refl	["// J2X-REVIEW[reflection-unsupported]: newInstance() has no C++ equivalent -- the runtime stub returns __null. Replace with a hand-written factory (a class-keyed switch / registry), then null-check the result.", "JObject x = Class::forName(n).newInstance();", "return x;"]
+feat|17|117|body|Ops.sync	["/* J2X-REVIEW[synchronized-dropped]: was synchronized((this)) -- add a lock if this state is touched by another thread (network/pool) */ {", "\tOps::s_total++;", "}"]
+feat|17|118|body|Ops.anon	null
+feat|17|119|body|Ops.lam	null
+feat|17|120|body|Ops.local	null
+feat|17|121|body|Ops.tries	null
+feat|17|122|body|Ops.tryLoop	["int r = 0;", "for (int i = 0; i < n; i++) {", "\t{", "\t\tint j2xFin1 = 0;", "\t\tint j2xRet1;", "\t\ttry {", "\t\t\t{", "\t\t\t\tif(i == 2) {", "\t\t\t\t\tj2xFin1 = 3; goto j2xFinally1;", "\t\t\t\t}", "\t\t\t\tif(i == 4) {", "\t\t\t\t\tj2xFin1 = 2; goto j2xFinally1;", "\t\t\t\t}", "\t\t\t\tr += i;", "\t\t\t}", "\t\t} catch (...) {", "\t\t\tr++;", "\t\t\tthrow;", "\t\t}", "\t\tj2xFinally1:;", "\t\t{", "\t\t\tr++;", "\t\t}", "\t\tif (j2xFin1 == 1) return j2xRet1;", "\t\tif (j2xFin1 == 2) break;", "\t\tif (j2xFin1 == 3) continue;", "\t}", "}", "return r;"]
+feat|17|123|body|Ops.tryInner	null
+feat|17|124|body|Ops.tryRes	null
+feat|17|125|body|Ops.thrower	["if(n < 0) {", "\tthrow new IllegalArgumentException(\"neg\");", "}"]
+feat|17|126|body|Ops.tryNpe	["try {", "\treturn j2xNN<NullPointerException>(o)->cells.length + j2xNN<NullPointerException>(j2xNN<NullPointerException>(o)->next)->cells[0] + j2xNN<NullPointerException>(j2xNN<NullPointerException>(j2xNN<NullPointerException>(o)->next)->next)->grid.length;", "} catch (NullPointerException*) {", "\treturn -1;", "}"]
+feat|17|127|body|Ops.tryLabelled	null
+feat|17|128|body|Ops.tryVoid	["{", "\tint j2xFin1 = 0;", "\ttry {", "\t\t{", "\t\t\tOps::s_total++;", "\t\t\tif(Ops::s_total > 3) {", "\t\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t\t}", "\t\t}", "\t} catch (...) {", "\t\tOps::s_total--;", "\t\tthrow;", "\t}", "\tj2xFinally1:;", "\t{", "\t\tOps::s_total--;", "\t}", "\tif (j2xFin1 == 1) return;", "}"]
+feat|17|129|body|Ops.tryThrow	["{", "\tint j2xFin1 = 0;", "\tint j2xRet1;", "\ttry {", "\t\ttry {", "\t\t\tif(a > 1) {", "\t\t\t\tthrow new RuntimeException(\"x\");", "\t\t\t}", "\t\t\tj2xRet1 = 1;", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t} catch (RuntimeException*) {", "\t\t\tj2xRet1 = 2;", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t}", "\t} catch (...) {", "\t\tOps::s_total++;", "\t\tthrow;", "\t}", "\tj2xFinally1:;", "\t{", "\t\tOps::s_total++;", "\t}", "\treturn j2xRet1;", "}"]
+feat|17|130|body|Ops.nested	["return o->next->cells[2] + this->next->grid[1][1] + this->next->next->next->cells.length + o->names.length;"]
+feat|17|131|body|Ops.chain	["return this;"]
+feat|17|132|body|Ops.callChain	["int j2xo1 = 0;", "int j2xo2 = 0;", "return (j2xo1 = this->chain()->chain()->cells[0], j2xo2 = this->chain()->next->cells[1], j2xo1 + j2xo2);"]
+feat|17|133|body|Ops.unaries	["int r = -a + +a + ~a;", "r = j2xToInt(-b);", "return (c ? r : (!c ? 1 : 0));"]
+feat|17|134|body|Ops.cmp	["return a == b || a != c && s == __null || o != __null && s != \"q\" && a < b && a >= c;"]
+feat|17|135|body|Ops.compound	null
+feat|17|136|ctor0|Ops.False	["super", null, []]
+feat|17|137|ctor0|Ops.True	["super", null, []]
+feat|17|138|field_init|Ops.total	null
+feat|17|139|array_items|Ops.total	null
+feat|17|140|field_init|Ops.big	"(-9223372036854775807LL - 1)"
+feat|17|141|array_items|Ops.big	null
+feat|17|142|field_init|Ops.small	"(-2147483647 - 1)"
+feat|17|143|array_items|Ops.small	null
+feat|17|144|field_init|Ops.f1	"1.5F"
+feat|17|145|array_items|Ops.f1	null
+feat|17|146|field_init|Ops.d1	"10000000000.0"
+feat|17|147|array_items|Ops.d1	null
+feat|17|148|field_init|Ops.d2	"0.1"
+feat|17|149|array_items|Ops.d2	null
+feat|17|150|field_init|Ops.d3	"1.0e-05"
+feat|17|151|array_items|Ops.d3	null
+feat|17|152|field_init|Ops.f2	"3.0e-07F"
+feat|17|153|array_items|Ops.f2	null
+feat|17|154|field_init|Ops.d4	"100.0"
+feat|17|155|array_items|Ops.d4	null
+feat|17|156|field_init|Ops.c1	"'b'"
+feat|17|157|array_items|Ops.c1	null
+feat|17|158|field_init|Ops.c2	"(unsigned char)10"
+feat|17|159|array_items|Ops.c2	null
+feat|17|160|field_init|Ops.c3	"(unsigned char)39"
+feat|17|161|array_items|Ops.c3	null
+feat|17|162|field_init|Ops.c4	"(unsigned char)92"
+feat|17|163|array_items|Ops.c4	null
+feat|17|164|field_init|Ops.c5	"'A'"
+feat|17|165|array_items|Ops.c5	null
+feat|17|166|field_init|Ops.c6	"65535"
+feat|17|167|array_items|Ops.c6	null
+feat|17|168|field_init|Ops.c7	"(unsigned char)(200)"
+feat|17|169|array_items|Ops.c7	null
+feat|17|170|field_init|Ops.s1	"\"he sbid \\\"hi\\\"\\n\\t\\\\ B A ? \\r end\""
+feat|17|171|array_items|Ops.s1	null
+feat|17|172|field_init|Ops.b1	"(signed char)(200)"
+feat|17|173|array_items|Ops.b1	null
+feat|17|174|field_init|Ops.sh	"12345"
+feat|17|175|array_items|Ops.sh	null
+feat|17|176|field_init|Ops.flag	"true"
+feat|17|177|array_items|Ops.flag	null
+feat|17|178|field_init|Ops.cnt	null
+feat|17|179|array_items|Ops.cnt	null
+feat|17|180|field_init|Ops.cells	"JArray<int >(8)"
+feat|17|181|array_items|Ops.cells	null
+feat|17|182|field_init|Ops.grid	"j2x_newarr2<int >(3, 4)"
+feat|17|183|array_items|Ops.grid	null
+feat|17|184|field_init|Ops.jag	"JArray<JArray<int > >(3)"
+feat|17|185|array_items|Ops.jag	null
+feat|17|186|field_init|Ops.names	"(JArrayInit<JavaString >(), \"b\", \"b\")"
+feat|17|187|array_items|Ops.names	["\"b\"", "\"b\""]
+feat|17|188|field_init|Ops.longs	null
+feat|17|189|array_items|Ops.longs	null
+feat|17|190|field_init|Ops.cube	"j2x_newarr3<double >(2, 2, 2)"
+feat|17|191|array_items|Ops.cube	null
+feat|17|192|field_init|Ops.o	null
+feat|17|193|array_items|Ops.o	null
+feat|17|194|field_init|Ops.boxed	"5"
+feat|17|195|array_items|Ops.boxed	null
+feat|17|196|field_init|Ops.next	null
+feat|17|197|array_items|Ops.next	null
+feat|17|198|instance_inits|Ops	["this->cells = JArray<int >(8);", "this->grid = j2x_newarr2<int >(3, 4);", "this->jag = JArray<JArray<int > >(3);", "this->names = (JArrayInit<JavaString >(), \"b\", \"b\");", "this->cube = j2x_newarr3<double >(2, 2, 2);", "this->boxed = 5;"]
+feat|17|199|static_blocks|Ops	[]
+feat|17|200|ctor|Own.False	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|17|201|ctor|Own.True	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|17|202|body|Own.setPos	["this->bb = new Box(a, b);"]
+feat|17|203|body|Own.reset	["this->bb = Box::create(1);", "this->bb = Box::make(2);", "this->bb = new Box(3, 4);", "int q = 0;"]
+feat|17|204|body|Own.twice	["this->bb = new Box(1, 1);", "this->bb = new Box(2, 2);"]
+feat|17|205|body|Own.other	["this->bb = b;"]
+feat|17|206|body|Own.cubes	["JList<Box*> out = JList<Box*>();", "out.add(new Box(1, 2));", "return out;"]
+feat|17|207|body|Own.grow	["return new Box(d, d);"]
+feat|17|208|body|Own.use	["JList<Box*> c = this->cubes(area);", "J2X_ScopedFreeElems<JList<Box*> > _j2xfree_c(c);   // J2X no-gc-return-leak: free the heap elements cubes() handed back (caller-frees; Java GC'd them)", "int n = c.size();", "c.get(0).touch();", "int h = c.get(0).x;", "Box* _j2xarg_1 = this->grow(1);", "J2X_ScopedDelete<Box > _j2xargd_1(_j2xarg_1);   // J2X no-gc-arg-leak: free the heap Box that grow() returned (take() only reads it)", "sink->take(_j2xarg_1);", "sink->keep(this->grow(2));", "{ Box _j2xleak0(5, 6); _j2xleak0.touch(); }", "if (this->list[0] != __null) { this->list[0]->touch(); }", "if (this->list[n] != __null) { this->list[n]->touch(); }", "return n + h;"]
+feat|17|209|body|Own.use2	["JList<Box*> c = this->cubes(area);", "Box* first = c.get(0);", "return first->x;"]
+feat|17|210|body|Own.leakTemp	["(new Sink())->run();", "{ Box _j2xleak0(1, 2); _j2xleak0.touch(); }", "auto* t = new Thread();", "{ Sink _j2xleak1; _j2xleak1.keep(__null); }"]
+feat|17|211|ctor0|Own.False	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|17|212|ctor0|Own.True	["super", null, ["this->bb = new Box(0, 0);"]]
+feat|17|213|field_init|Own.bb	null
+feat|17|214|array_items|Own.bb	null
+feat|17|215|field_init|Own.list	null
+feat|17|216|array_items|Own.list	null
+feat|17|217|field_init|Own.held	"JList<Box*>()"
+feat|17|218|array_items|Own.held	null
+feat|17|219|instance_inits|Own	["this->held = JList<Box*>();"]
+feat|17|220|static_blocks|Own	[]
+feat|17|221|ctor|Shape0.False	["super", "", ["{", "\tint j2xD0_s = 1;", "\t{", "\t\tint j2xD1_s = j2xD0_s;", "\t\tint j2xD1_k = 3;", "\t\tthis->size = j2xD1_s * j2xD1_k;", "\t\tthis->scale += j2xD1_k;", "\t}", "}"]]
+feat|17|222|ctor|Shape0.True	["this", null, ["Shape0::j2xInit(1);"]]
+feat|17|223|ctor|Shape0.False	["super", "", ["{", "\tint j2xD0_s = s;", "\tint j2xD0_k = 3;", "\tthis->size = j2xD0_s * j2xD0_k;", "\tthis->scale += j2xD0_k;", "}"]]
+feat|17|224|ctor|Shape0.True	["this", null, ["Shape0::j2xInit(s, 3);"]]
+feat|17|225|ctor|Shape0.False	["super", "", ["this->size = s * k;", "this->scale += k;"]]
+feat|17|226|ctor|Shape0.True	["super", "", ["this->size = s * k;", "this->scale += k;"]]
+feat|17|227|body|Shape0.area	["return this->size * this->scale;"]
+feat|17|228|body|Shape0.describe	["return (JCat() + this->label + \":\" + this->size);"]
+feat|17|229|body|Shape0.make	["return new Shape0(n);"]
+feat|17|230|ctor0|Shape0.False	["super", "", ["{", "\tint j2xD0_s = 1;", "\t{", "\t\tint j2xD1_s = j2xD0_s;", "\t\tint j2xD1_k = 3;", "\t\tthis->size = j2xD1_s * j2xD1_k;", "\t\tthis->scale += j2xD1_k;", "\t}", "}"]]
+feat|17|231|ctor0|Shape0.True	["this", null, ["Shape0::j2xInit(1);"]]
+feat|17|232|field_init|Shape0.size	null
+feat|17|233|array_items|Shape0.size	null
+feat|17|234|field_init|Shape0.scale	"2"
+feat|17|235|array_items|Shape0.scale	null
+feat|17|236|field_init|Shape0.label	"\"s\""
+feat|17|237|array_items|Shape0.label	null
+feat|17|238|field_init|Shape0.count	null
+feat|17|239|array_items|Shape0.count	null
+feat|17|240|instance_inits|Shape0	["this->scale = 2;", "this->label = \"s\";", "Shape0::s_count++;"]
+feat|17|241|static_blocks|Shape0	[]
+feat|17|242|body|Sink.take	["int q = b->x;"]
+feat|17|243|body|Sink.keep	["this->held = b;"]
+feat|17|244|body|Sink.run	[]
+feat|17|245|ctor0|Sink.False	["super", null, []]
+feat|17|246|ctor0|Sink.True	["super", null, []]
+feat|17|247|field_init|Sink.held	null
+feat|17|248|array_items|Sink.held	null
+feat|17|249|instance_inits|Sink	[]
+feat|17|250|static_blocks|Sink	[]
+feat|17|251|ctor|Tool.False	["super", null, ["this->lvl = l;", "this->nm = n;"]]
+feat|17|252|ctor|Tool.True	["super", null, ["this->lvl = l;", "this->nm = n;"]]
+feat|17|253|body|Tool.level	["return this->lvl;"]
+feat|17|254|body|Tool.pick	["return Tool::values()[i];"]
+feat|17|255|ctor0|Tool.False	null
+feat|17|256|ctor0|Tool.True	null
+feat|17|257|field_init|Tool.lvl	null
+feat|17|258|array_items|Tool.lvl	null
+feat|17|259|field_init|Tool.nm	null
+feat|17|260|array_items|Tool.nm	null
+feat|17|261|enum_args|Tool.WOOD	["1", "\"w\""]
+feat|17|262|enum_args|Tool.STONE	["2", "\"s\""]
+feat|17|263|instance_inits|Tool	[]
+feat|17|264|static_blocks|Tool	[]
+feat|17|265|body|Use.run	["int j2xo1 = 0;", "int j2xo2 = 0;", "int j2xo3 = 0;", "int j2xo4 = 0;", "int j2xo5 = 0;", "int j2xo6 = 0;", "int r = (j2xo5 = (j2xo3 = (j2xo1 = Kind::_J2X_COUNT, j2xo2 = (kk), j2xo1 + j2xo2), j2xo4 = Tool::WOOD->level(), j2xo3 + j2xo4), j2xo6 = Tool::pick(1)->level(), j2xo5 + j2xo6);", "switch(kk) {", "case Kind::A:", "{", "\tr++;", "\tbreak;", "}", "case Kind::B:", "{", "\tr += 2;", "\tbreak;", "}", "default:", "{", "\tr--;", "}", "}", "int other = Kind::NULL_;", "if(kk == other || kk == Kind::TRUE_) {", "\tr++;", "}", "{", "\tJArray<Tool* > j2x_a7 = Tool::values();", "\tfor (int j2x_i7 = 0; j2x_i7 < j2x_a7.length; j2x_i7++) {", "\t\tTool* tt = j2x_a7[j2x_i7];", "\t\tr += tt->level();", "\t}", "}", "return r + Use::s_table[1] + Use::s_t2[1][1] + Use::s_strs.length + Use::s_kinds.length;"]
+feat|17|266|ctor0|Use.False	["super", null, []]
+feat|17|267|ctor0|Use.True	["super", null, []]
+feat|17|268|field_init|Use.k	"Kind::A"
+feat|17|269|array_items|Use.k	null
+feat|17|270|field_init|Use.t	"Tool::WOOD"
+feat|17|271|array_items|Use.t	null
+feat|17|272|field_init|Use.table	"(JArrayInit<int >(), 1, 2, 3)"
+feat|17|273|array_items|Use.table	["1", "2", "3"]
+feat|17|274|field_init|Use.t2	"(JArrayInit<JArray<int > >(), (JArrayInit<int >(), 1), (JArrayInit<int >(), 2, 3))"
+feat|17|275|array_items|Use.t2	["(JArrayInit<int >(), 1)", "(JArrayInit<int >(), 2, 3)"]
+feat|17|276|field_init|Use.strs	"(JArrayInit<JavaString >(), \"b\", __null)"
+feat|17|277|array_items|Use.strs	["\"b\"", "JavaString()"]
+feat|17|278|field_init|Use.kinds	"(JArrayInit<int >(), Kind::A, Kind::B)"
+feat|17|279|array_items|Use.kinds	["Kind::A", "Kind::B"]
+feat|17|280|field_init|Use.legs	"4"
+feat|17|281|array_items|Use.legs	null
+feat|17|282|instance_inits|Use	["this->legs = 4;", "this->legs++;"]
+feat|17|283|static_blocks|Use	[["Use::s_table[0] = 9;"]]
+feat|17|284|body|Walker.walk	null
+feat|17|285|ctor0|Walker.False	null
+feat|17|286|ctor0|Walker.True	null
+feat|17|287|instance_inits|Walker	[]
+feat|17|288|static_blocks|Walker	[]
+feat|17|289|body|NoSuchClass	null
+feat|17|290|field_init|nofield	null
+feat|17|291|array_items|nofield	null
+feat|17|292|enum_args|noconst	null
+feat|17|293|ctor|NoSuchClass	null
+feat|17|294|field_init|NoSuchClass	null
+feat|17|295|array_items|NoSuchClass	null
+feat|17|296|enum_args|NoSuchClass	null
+feat|17|297|instance_inits|NoSuchClass	null
+feat|17|298|static_blocks|NoSuchClass	null
+feat|17|counts	[74, 42, {"no": 2, "ctor not found": 7, "a": 4, "switch": 4, "for-each": 2, ">>>=": 1, "static": 2, "floating": 1, "instanceof": 1, "Object": 2, "anonymous": 1, "expression": 1, "statement": 1, "try-with-resources": 1, "not found": 1}, {"no body": 2, "a yield inside a nested statement": 2, "switch on a string": 4, "for-each over JSet<int>": 1, "for-each over JList": 1, ">>>=": 1, "static field through an instance": 2, "floating %=": 1, "instanceof String": 1, "Object method hashCode": 2, "anonymous or inner class": 1, "expression Lambda": 1, "statement LocalClass": 1, "a finally with jumps inside another": 1, "try-with-resources": 1, "a labelled jump out of a finally": 1}, ["Animal", "Box", "Circle0", "Dog", "Empty1", "Kind", "Marked", "Mod", "Ops", "Own", "Shape0", "Sink", "Tool", "Use", "Walker"]]
+feat|17|ledger	[["Ops.cpp", 227, "RISK", "HIGH", "emit", "reflection-unsupported", "reflection newInstance() has no C++ equivalent -- stub returns NULL; needs a hand-written factory (J2X-REVIEW[reflection-unsupported])", ""], ["Own.cpp", 16, "RULE", "MED", "emit", "leak-temp-stackified", "leak fixed: throwaway `(new Box(...))->touch(...)` -> scoped stack object (Java GC temp leaked every call)", ""], ["Own.cpp", 16, "RISK", "MED", "emit", "null-deref-guard", "null-deref guard inserted before list-indexed call (an unregistered/NULL slot would be a virtual call through NULL -- undefined behaviour in C++)", ""], ["Own.cpp", 16, "RISK", "MED", "emit", "null-deref-guard", "null-deref guard inserted before list-indexed call (an unregistered/NULL slot would be a virtual call through NULL -- undefined behaviour in C++)", ""], ["Own.cpp", 35, "RULE", "MED", "emit", "leak-temp-stackified", "leak fixed: throwaway `(new Box(...))->touch(...)` -> scoped stack object (Java GC temp leaked every call)", ""], ["Own.cpp", 35, "RULE", "MED", "emit", "leak-temp-stackified", "leak fixed: throwaway `(new Sink(...))->keep(...)` -> scoped stack object (Java GC temp leaked every call)", ""]]

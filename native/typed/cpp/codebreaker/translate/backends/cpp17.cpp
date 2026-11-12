@@ -62,8 +62,4 @@ py::str program(const py::list<ir::NodeP>& units, const std::optional<py::str>& 
     return S(r.str());
 }
 
-std::shared_ptr<cpp03::Bodies17> Bodies(const py::ref<cpp03::Context>& ctx, const py::list<ir::NodeP>& units) {
-    return std::make_shared<cpp03::Bodies17>(ctx, units);
-}
-
 }  // namespace codebreaker::translate::backends::cpp17

@@ -1,0 +1,125 @@
+sample|03|desugar	2
+sample|03|0|ctor|AxisAlignedBB.False	["super", null, ["this->minX = var1;", "this->minY = var3;", "this->minZ = var5;", "this->maxX = var7;", "this->maxY = var9;", "this->maxZ = var11;"]]
+sample|03|1|ctor|AxisAlignedBB.True	["super", null, ["this->minX = var1;", "this->minY = var3;", "this->minZ = var5;", "this->maxX = var7;", "this->maxY = var9;", "this->maxZ = var11;"]]
+sample|03|2|body|AxisAlignedBB.intersectsWith	["if(var1->maxX <= this->minX || var1->minX >= this->maxX) {", "\treturn false;", "}", "return var1->maxY > this->minY && var1->minY < this->maxY;"]
+sample|03|3|ctor0|AxisAlignedBB.False	null
+sample|03|4|ctor0|AxisAlignedBB.True	null
+sample|03|5|field_init|AxisAlignedBB.minX	null
+sample|03|6|array_items|AxisAlignedBB.minX	null
+sample|03|7|field_init|AxisAlignedBB.minY	null
+sample|03|8|array_items|AxisAlignedBB.minY	null
+sample|03|9|field_init|AxisAlignedBB.minZ	null
+sample|03|10|array_items|AxisAlignedBB.minZ	null
+sample|03|11|field_init|AxisAlignedBB.maxX	null
+sample|03|12|array_items|AxisAlignedBB.maxX	null
+sample|03|13|field_init|AxisAlignedBB.maxY	null
+sample|03|14|array_items|AxisAlignedBB.maxY	null
+sample|03|15|field_init|AxisAlignedBB.maxZ	null
+sample|03|16|array_items|AxisAlignedBB.maxZ	null
+sample|03|17|instance_inits|AxisAlignedBB	[]
+sample|03|18|static_blocks|AxisAlignedBB	[]
+sample|03|19|body|FixtureMain.main	["JArray<double > ds = (JArrayInit<double >(), 0.0, 0.5, -0.5, 1.999, -1.001, 12345.678, -98765.4321);", "{", "\tJArray<double > j2x_a1 = ds;", "\tfor (int j2x_i2 = 0; j2x_i2 < j2x_a1.length; j2x_i2++) {", "\t\tdouble d = j2x_a1[j2x_i2];", "\t\tdouble j2xo1 = 0;", "\t\tint j2xo2 = 0;", "\t\tfloat j2xo3 = 0;", "\t\tSystem::out.println(JavaString(((j2xo1 = d, j2xo2 = MathHelper::floor_double(d), j2xo3 = MathHelper::sqrt_float((float)(::abs(d))), (JCat() + \"floor(\" + j2xo1 + \")=\" + j2xo2 + \" sqrt=\" + j2xo3)))._s));", "\t}", "}", "Vec3D* a = new Vec3D(1.0, 2.0, 3.0);", "Vec3D* b = new Vec3D(4.5, -2.0, 0.25);", "Vec3D* d = a->subtract(b);", "System::out.println(JavaString(((JCat() + \"subtract \" + d->xCoord + \" \" + d->yCoord + \" \" + d->zCoord))._s));", "Vec3D* m = a->getIntermediateWithXValue(b, 2.0);", "System::out.println(JavaString(((JCat() + \"intermediate \" + ((m == NULL ? JavaString(\"null\") : JavaString(((JCat() + m->xCoord + \",\" + m->yCoord + \",\" + m->zCoord))._s)))))._s));", "Vec3D* n = a->getIntermediateWithXValue(new Vec3D(1.0000001, 0.0, 0.0), 2.0);", "System::out.println(JavaString(((JCat() + \"near \" + ((n == NULL ? \"null\" : \"made\"))))._s));", "AxisAlignedBB* box = new AxisAlignedBB(0, 0, 0, 1, 1, 1);", "JArray<AxisAlignedBB* > others = (JArrayInit<AxisAlignedBB* >(), new AxisAlignedBB(0.5, 0.5, 0.5, 2, 2, 2), new AxisAlignedBB(1, 0, 0, 2, 1, 1), new AxisAlignedBB(-1, -1, -1, 0.01, 0.01, 0.01), new AxisAlignedBB(0.2, 3, 0.2, 0.8, 4, 0.8));", "{", "\tJArray<AxisAlignedBB* > j2x_a3 = others;", "\tfor (int j2x_i4 = 0; j2x_i4 < j2x_a3.length; j2x_i4++) {", "\t\tAxisAlignedBB* o = j2x_a3[j2x_i4];", "\t\tSystem::out.println(JavaString(((JCat() + \"intersects \" + box->intersectsWith(o)))._s));", "\t}", "}", "System::out.println(JavaString(((JCat() + \"pool \" + Vec3D::s_nextVector + \" \" + Vec3D::s_vectorList.length))._s));"]
+sample|03|20|ctor0|FixtureMain.False	["super", null, []]
+sample|03|21|ctor0|FixtureMain.True	["super", null, []]
+sample|03|22|instance_inits|FixtureMain	[]
+sample|03|23|static_blocks|FixtureMain	[]
+sample|03|24|body|MathHelper.sqrt_float	["return (float)(javaMathSqrt((double)var0));"]
+sample|03|25|body|MathHelper.floor_double	["int var2 = j2xToInt(var0);", "return (var0 < (double)var2 ? var2 - 1 : var2);"]
+sample|03|26|ctor0|MathHelper.False	["super", null, []]
+sample|03|27|ctor0|MathHelper.True	["super", null, []]
+sample|03|28|field_init|MathHelper.SIN_TABLE	"JArray<float >(65536)"
+sample|03|29|array_items|MathHelper.SIN_TABLE	null
+sample|03|30|instance_inits|MathHelper	[]
+sample|03|31|static_blocks|MathHelper	[["for (int var0 = 0; var0 < 65536; ++var0) {", "\tMathHelper::s_SIN_TABLE[var0] = (float)(::sin((double)var0 * 3.141592653589793 * 2.0 / 65536.0));", "}"]]
+sample|03|32|ctor|Vec3D.False	["super", null, ["this->xCoord = var1;", "this->yCoord = var3;", "this->zCoord = var5;"]]
+sample|03|33|ctor|Vec3D.True	["super", null, ["this->xCoord = var1;", "this->yCoord = var3;", "this->zCoord = var5;"]]
+sample|03|34|body|Vec3D.subtract	["return new Vec3D(var1->xCoord - this->xCoord, var1->yCoord - this->yCoord, var1->zCoord - this->zCoord);"]
+sample|03|35|body|Vec3D.getIntermediateWithXValue	["double var4 = var1->xCoord - this->xCoord;", "if(var4 * var4 < 1.0e-07) {", "\treturn NULL;", "}", "return new Vec3D(var2, this->yCoord, this->zCoord);"]
+sample|03|36|ctor0|Vec3D.False	null
+sample|03|37|ctor0|Vec3D.True	null
+sample|03|38|field_init|Vec3D.nextVector	"0"
+sample|03|39|array_items|Vec3D.nextVector	null
+sample|03|40|field_init|Vec3D.vectorList	"JArray<Vec3D* >(256)"
+sample|03|41|array_items|Vec3D.vectorList	null
+sample|03|42|field_init|Vec3D.xCoord	null
+sample|03|43|array_items|Vec3D.xCoord	null
+sample|03|44|field_init|Vec3D.yCoord	null
+sample|03|45|array_items|Vec3D.yCoord	null
+sample|03|46|field_init|Vec3D.zCoord	null
+sample|03|47|array_items|Vec3D.zCoord	null
+sample|03|48|instance_inits|Vec3D	[]
+sample|03|49|static_blocks|Vec3D	[]
+sample|03|50|body|NoSuchClass	null
+sample|03|51|field_init|nofield	null
+sample|03|52|array_items|nofield	null
+sample|03|53|enum_args|noconst	null
+sample|03|54|ctor|NoSuchClass	null
+sample|03|55|field_init|NoSuchClass	null
+sample|03|56|array_items|NoSuchClass	null
+sample|03|57|enum_args|NoSuchClass	null
+sample|03|58|instance_inits|NoSuchClass	null
+sample|03|59|static_blocks|NoSuchClass	null
+sample|03|counts	[6, 8, {"ctor not found": 5, "not found": 1}, {}, ["AxisAlignedBB", "FixtureMain", "MathHelper", "Vec3D"]]
+sample|03|ledger	[]
+sample|17|0|ctor|AxisAlignedBB.False	["super", null, ["this->minX = var1;", "this->minY = var3;", "this->minZ = var5;", "this->maxX = var7;", "this->maxY = var9;", "this->maxZ = var11;"]]
+sample|17|1|ctor|AxisAlignedBB.True	["super", null, ["this->minX = var1;", "this->minY = var3;", "this->minZ = var5;", "this->maxX = var7;", "this->maxY = var9;", "this->maxZ = var11;"]]
+sample|17|2|body|AxisAlignedBB.intersectsWith	["if(var1->maxX <= this->minX || var1->minX >= this->maxX) {", "\treturn false;", "}", "return var1->maxY > this->minY && var1->minY < this->maxY;"]
+sample|17|3|ctor0|AxisAlignedBB.False	null
+sample|17|4|ctor0|AxisAlignedBB.True	null
+sample|17|5|field_init|AxisAlignedBB.minX	null
+sample|17|6|array_items|AxisAlignedBB.minX	null
+sample|17|7|field_init|AxisAlignedBB.minY	null
+sample|17|8|array_items|AxisAlignedBB.minY	null
+sample|17|9|field_init|AxisAlignedBB.minZ	null
+sample|17|10|array_items|AxisAlignedBB.minZ	null
+sample|17|11|field_init|AxisAlignedBB.maxX	null
+sample|17|12|array_items|AxisAlignedBB.maxX	null
+sample|17|13|field_init|AxisAlignedBB.maxY	null
+sample|17|14|array_items|AxisAlignedBB.maxY	null
+sample|17|15|field_init|AxisAlignedBB.maxZ	null
+sample|17|16|array_items|AxisAlignedBB.maxZ	null
+sample|17|17|instance_inits|AxisAlignedBB	[]
+sample|17|18|static_blocks|AxisAlignedBB	[]
+sample|17|19|body|FixtureMain.main	["JArray<double > ds = (JArrayInit<double >(), 0.0, 0.5, -0.5, 1.999, -1.001, 12345.678, -98765.4321);", "{", "\tJArray<double > j2x_a1 = ds;", "\tfor (int j2x_i1 = 0; j2x_i1 < j2x_a1.length; j2x_i1++) {", "\t\tdouble d = j2x_a1[j2x_i1];", "\t\tdouble j2xo2 = 0;", "\t\tint j2xo3 = 0;", "\t\tfloat j2xo4 = 0;", "\t\tSystem::out.println(JavaString(((j2xo2 = d, j2xo3 = MathHelper::floor_double(d), j2xo4 = MathHelper::sqrt_float((float)(::abs(d))), (JCat() + \"floor(\" + j2xo2 + \")=\" + j2xo3 + \" sqrt=\" + j2xo4)))._s));", "\t}", "}", "auto* a = new Vec3D(1.0, 2.0, 3.0);", "auto* b = new Vec3D(4.5, -2.0, 0.25);", "Vec3D* d = a->subtract(b);", "System::out.println(JavaString(((JCat() + \"subtract \" + d->xCoord + \" \" + d->yCoord + \" \" + d->zCoord))._s));", "Vec3D* m = a->getIntermediateWithXValue(b, 2.0);", "System::out.println(JavaString(((JCat() + \"intermediate \" + ((m == nullptr ? JavaString(\"null\") : JavaString(((JCat() + m->xCoord + \",\" + m->yCoord + \",\" + m->zCoord))._s)))))._s));", "Vec3D* n = a->getIntermediateWithXValue(new Vec3D(1.0000001, 0.0, 0.0), 2.0);", "System::out.println(JavaString(((JCat() + \"near \" + ((n == nullptr ? \"null\" : \"made\"))))._s));", "auto* box = new AxisAlignedBB(0, 0, 0, 1, 1, 1);", "JArray<AxisAlignedBB* > others = (JArrayInit<AxisAlignedBB* >(), new AxisAlignedBB(0.5, 0.5, 0.5, 2, 2, 2), new AxisAlignedBB(1, 0, 0, 2, 1, 1), new AxisAlignedBB(-1, -1, -1, 0.01, 0.01, 0.01), new AxisAlignedBB(0.2, 3, 0.2, 0.8, 4, 0.8));", "{", "\tJArray<AxisAlignedBB* > j2x_a5 = others;", "\tfor (int j2x_i5 = 0; j2x_i5 < j2x_a5.length; j2x_i5++) {", "\t\tAxisAlignedBB* o = j2x_a5[j2x_i5];", "\t\tSystem::out.println(JavaString(((JCat() + \"intersects \" + box->intersectsWith(o)))._s));", "\t}", "}", "System::out.println(JavaString(((JCat() + \"pool \" + Vec3D::s_nextVector + \" \" + Vec3D::s_vectorList.length))._s));"]
+sample|17|20|ctor0|FixtureMain.False	["super", null, []]
+sample|17|21|ctor0|FixtureMain.True	["super", null, []]
+sample|17|22|instance_inits|FixtureMain	[]
+sample|17|23|static_blocks|FixtureMain	[]
+sample|17|24|body|MathHelper.sqrt_float	["return (float)(javaMathSqrt((double)var0));"]
+sample|17|25|body|MathHelper.floor_double	["int var2 = j2xToInt(var0);", "return (var0 < (double)var2 ? var2 - 1 : var2);"]
+sample|17|26|ctor0|MathHelper.False	["super", null, []]
+sample|17|27|ctor0|MathHelper.True	["super", null, []]
+sample|17|28|field_init|MathHelper.SIN_TABLE	"JArray<float >(65536)"
+sample|17|29|array_items|MathHelper.SIN_TABLE	null
+sample|17|30|instance_inits|MathHelper	[]
+sample|17|31|static_blocks|MathHelper	[["for (int var0 = 0; var0 < 65536; ++var0) {", "\tMathHelper::s_SIN_TABLE[var0] = (float)(::sin((double)var0 * 3.141592653589793 * 2.0 / 65536.0));", "}"]]
+sample|17|32|ctor|Vec3D.False	["super", null, ["this->xCoord = var1;", "this->yCoord = var3;", "this->zCoord = var5;"]]
+sample|17|33|ctor|Vec3D.True	["super", null, ["this->xCoord = var1;", "this->yCoord = var3;", "this->zCoord = var5;"]]
+sample|17|34|body|Vec3D.subtract	["return new Vec3D(var1->xCoord - this->xCoord, var1->yCoord - this->yCoord, var1->zCoord - this->zCoord);"]
+sample|17|35|body|Vec3D.getIntermediateWithXValue	["double var4 = var1->xCoord - this->xCoord;", "if(var4 * var4 < 1.0e-07) {", "\treturn __null;", "}", "return new Vec3D(var2, this->yCoord, this->zCoord);"]
+sample|17|36|ctor0|Vec3D.False	null
+sample|17|37|ctor0|Vec3D.True	null
+sample|17|38|field_init|Vec3D.nextVector	"0"
+sample|17|39|array_items|Vec3D.nextVector	null
+sample|17|40|field_init|Vec3D.vectorList	"JArray<Vec3D* >(256)"
+sample|17|41|array_items|Vec3D.vectorList	null
+sample|17|42|field_init|Vec3D.xCoord	null
+sample|17|43|array_items|Vec3D.xCoord	null
+sample|17|44|field_init|Vec3D.yCoord	null
+sample|17|45|array_items|Vec3D.yCoord	null
+sample|17|46|field_init|Vec3D.zCoord	null
+sample|17|47|array_items|Vec3D.zCoord	null
+sample|17|48|instance_inits|Vec3D	[]
+sample|17|49|static_blocks|Vec3D	[]
+sample|17|50|body|NoSuchClass	null
+sample|17|51|field_init|nofield	null
+sample|17|52|array_items|nofield	null
+sample|17|53|enum_args|noconst	null
+sample|17|54|ctor|NoSuchClass	null
+sample|17|55|field_init|NoSuchClass	null
+sample|17|56|array_items|NoSuchClass	null
+sample|17|57|enum_args|NoSuchClass	null
+sample|17|58|instance_inits|NoSuchClass	null
+sample|17|59|static_blocks|NoSuchClass	null
+sample|17|counts	[6, 8, {"ctor not found": 5, "not found": 1}, {}, ["AxisAlignedBB", "FixtureMain", "MathHelper", "Vec3D"]]
+sample|17|ledger	[]

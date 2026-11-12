@@ -1,0 +1,59 @@
+shapes|03|desugar	8
+shapes|03|0|body|Shapes.Circle	null
+shapes|03|1|body|Shapes.Rect	null
+shapes|03|2|body|Shapes.Square	null
+shapes|03|3|body|Shapes.classify	["if(area < 10) {", "\treturn Size::SMALL;", "}", "if(area < 100) {", "\treturn Size::MEDIUM;", "}", "return Size::LARGE;"]
+shapes|03|4|body|Shapes.sizeWord	null
+shapes|03|5|body|Shapes.sides	["Square* sq;", "if((o).is<Square>() && (sq = (Square*)o) != NULL) {", "\treturn 4 + sq->side() * 0;", "}", "Rect* r;", "int j2xo1 = 0;", "int j2xo2 = 0;", "if(((o).is<Rect>() && (r = (Rect*)o) != NULL) && (j2xo1 = r->w(), j2xo2 = r->h(), j2xo1 != j2xo2)) {", "\treturn 4;", "}", "if((o).is<Circle>()) {", "\treturn 0;", "}", "return -1;"]
+shapes|03|6|body|Shapes.rectArea	["Rect* r = new Rect(::abs(w) % 1000, ::abs(h) % 1000);", "return j2xToInt(r->area());"]
+shapes|03|7|body|Shapes.sameRect	["Rect* j2xo1 = NULL;", "Rect* j2xo2 = NULL;", "return (j2xo1 = new Rect(a & 15, b & 15), j2xo2 = new Rect(b & 15, a & 15), j2xo1->equals(j2xo2));"]
+shapes|03|8|body|Shapes.rectText	["return (new Rect(a & 255, b & 255))->toString();"]
+shapes|03|9|body|Shapes.rectHash	["return (new Rect(a & 255, b & 255))->hashCode();"]
+shapes|03|10|body|Shapes.dayKind	["{", "\tJavaString j2x_sw3;", "\t{", "\t\tJavaString j2x_s5 = (day);", "\t\t{", "\t\t\tif(JavaString(\"sat\").equals(j2x_s5) || JavaString(\"sun\").equals(j2x_s5)) {", "\t\t\t\t{", "\t\t\t\t\tj2x_sw3 = \"weekend\";", "\t\t\t\t\tgoto j2x_sw4_brk;", "\t\t\t\t}", "\t\t\t} else if(JavaString(\"mon\").equals(j2x_s5) || JavaString(\"tue\").equals(j2x_s5) || JavaString(\"wed\").equals(j2x_s5) || JavaString(\"thu\").equals(j2x_s5) || JavaString(\"fri\").equals(j2x_s5)) {", "\t\t\t\t{", "\t\t\t\t\tj2x_sw3 = \"weekday\";", "\t\t\t\t\tgoto j2x_sw4_brk;", "\t\t\t\t}", "\t\t\t} else {", "\t\t\t\t{", "\t\t\t\t\tj2x_sw3 = \"unknown\";", "\t\t\t\t\tgoto j2x_sw4_brk;", "\t\t\t\t}", "\t\t\t}", "\t\t}", "\t\tj2x_sw4_brk:;", "\t}", "\treturn j2x_sw3;", "}"]
+shapes|03|11|body|Shapes.countKinds	["JList<Shape*> shapes = JList<Shape*>();", "for (int i = 0; i < n % 20; i++) {", "\t{", "\t\tShape* j2x_sw6;", "\t\tswitch(i % 3) {", "\t\tcase 0:", "\t\t{", "\t\t\t{", "\t\t\t\tj2x_sw6 = new Circle(i);", "\t\t\t\tgoto j2x_sw7_brk;", "\t\t\t}", "\t\t}", "\t\tcase 1:", "\t\t{", "\t\t\t{", "\t\t\t\tj2x_sw6 = new Rect(i, i + 1);", "\t\t\t\tgoto j2x_sw7_brk;", "\t\t\t}", "\t\t}", "\t\tdefault:", "\t\t{", "\t\t\t{", "\t\t\t\tj2x_sw6 = new Square(i);", "\t\t\t\tgoto j2x_sw7_brk;", "\t\t\t}", "\t\t}", "\t\t}", "\t\tj2x_sw7_brk:;", "\t\tshapes.add(j2x_sw6);", "\t}", "}", "int total = 0;", "for (Iterator<Shape*> j2x_it8 = shapes.iterator(); j2x_it8.hasNext(); ) {", "\tShape* s = j2x_it8.next();", "\ttotal += Shapes::sides(s);", "}", "return total;"]
+shapes|03|12|body|Shapes.main	null
+shapes|03|13|ctor0|Shapes.False	["super", null, []]
+shapes|03|14|ctor0|Shapes.True	["super", null, []]
+shapes|03|15|instance_inits|Shapes	[]
+shapes|03|16|static_blocks|Shapes	[]
+shapes|03|17|body|NoSuchClass	null
+shapes|03|18|field_init|nofield	null
+shapes|03|19|array_items|nofield	null
+shapes|03|20|enum_args|noconst	null
+shapes|03|21|ctor|NoSuchClass	null
+shapes|03|22|field_init|NoSuchClass	null
+shapes|03|23|array_items|NoSuchClass	null
+shapes|03|24|enum_args|NoSuchClass	null
+shapes|03|25|instance_inits|NoSuchClass	null
+shapes|03|26|static_blocks|NoSuchClass	null
+shapes|03|counts	[8, 2, {"not found": 4, "library": 2, "ctor not found": 1}, {"library static call Size.values": 1, "library static call List.of": 1}, ["Shapes"]]
+shapes|03|ledger	[]
+shapes|17|0|body|Shapes.Circle	null
+shapes|17|1|body|Shapes.Rect	null
+shapes|17|2|body|Shapes.Square	null
+shapes|17|3|body|Shapes.classify	["if(area < 10) {", "\treturn Size::SMALL;", "}", "if(area < 100) {", "\treturn Size::MEDIUM;", "}", "return Size::LARGE;"]
+shapes|17|4|body|Shapes.sizeWord	null
+shapes|17|5|body|Shapes.sides	["Square* sq;", "if((o).is<Square>() && (sq = (Square*)o) != nullptr) {", "\treturn 4 + sq->side() * 0;", "}", "Rect* r;", "int j2xo1 = 0;", "int j2xo2 = 0;", "if(((o).is<Rect>() && (r = (Rect*)o) != nullptr) && (j2xo1 = r->w(), j2xo2 = r->h(), j2xo1 != j2xo2)) {", "\treturn 4;", "}", "if((o).is<Circle>()) {", "\treturn 0;", "}", "return -1;"]
+shapes|17|6|body|Shapes.rectArea	["auto* r = new Rect(::abs(w) % 1000, ::abs(h) % 1000);", "return j2xToInt(r->area());"]
+shapes|17|7|body|Shapes.sameRect	["Rect* j2xo1 = __null;", "Rect* j2xo2 = __null;", "return (j2xo1 = new Rect(a & 15, b & 15), j2xo2 = new Rect(b & 15, a & 15), j2xo1->equals(j2xo2));"]
+shapes|17|8|body|Shapes.rectText	["return (new Rect(a & 255, b & 255))->toString();"]
+shapes|17|9|body|Shapes.rectHash	["return (new Rect(a & 255, b & 255))->hashCode();"]
+shapes|17|10|body|Shapes.dayKind	null
+shapes|17|11|body|Shapes.countKinds	["JList<Shape*> shapes = JList<Shape*>();", "for (int i = 0; i < n % 20; i++) {", "\tshapes.add([&]() -> Shape* {\n\tswitch(i % 3) {\n\tcase 0:\n\t{\n\t\treturn new Circle(i);\n\t}\n\tcase 1:\n\t{\n\t\treturn new Rect(i, i + 1);\n\t}\n\tdefault:\n\t{\n\t\treturn new Square(i);\n\t}\n\t}\n\tthrow 0;\n}());", "}", "int total = 0;", "for (Shape* s : shapes) {", "\ttotal += Shapes::sides(s);", "}", "return total;"]
+shapes|17|12|body|Shapes.main	null
+shapes|17|13|ctor0|Shapes.False	["super", null, []]
+shapes|17|14|ctor0|Shapes.True	["super", null, []]
+shapes|17|15|instance_inits|Shapes	[]
+shapes|17|16|static_blocks|Shapes	[]
+shapes|17|17|body|NoSuchClass	null
+shapes|17|18|field_init|nofield	null
+shapes|17|19|array_items|nofield	null
+shapes|17|20|enum_args|noconst	null
+shapes|17|21|ctor|NoSuchClass	null
+shapes|17|22|field_init|NoSuchClass	null
+shapes|17|23|array_items|NoSuchClass	null
+shapes|17|24|enum_args|NoSuchClass	null
+shapes|17|25|instance_inits|NoSuchClass	null
+shapes|17|26|static_blocks|NoSuchClass	null
+shapes|17|counts	[7, 2, {"not found": 4, "library": 2, "switch": 1, "ctor not found": 1}, {"library static call Size.values": 1, "switch on a string": 1, "library static call List.of": 1}, ["Shapes"]]
+shapes|17|ledger	[]

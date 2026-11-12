@@ -1,0 +1,43 @@
+bank|03|desugar	3
+bank|03|0|body|Bank.simulate	null
+bank|03|1|body|Bank.wordFreq	null
+bank|03|2|body|Bank.ordered	["JMap<int, JavaString> lm = JMap<int, JavaString>();", "JMap<int, JavaString> tm = JMap<int, JavaString>();", "for (int i = 0; i < n % 10; i++) {", "\tint k = (i * 7 + 3) % 11;", "\tlm.put(k, JavaString(((JCat() + \"v\" + i))._s));", "\ttm.put(k, JavaString(((JCat() + \"v\" + i))._s));", "}", "JSet j2xo1 = JSet(0LL);", "JList j2xo2 = JList(0LL);", "return (j2xo1 = lm.keySet(), j2xo2 = tm.values(), (JCat() + j2xo1 + \"|\" + j2xo2));"]
+bank|03|3|body|Bank.hashOrder	["JMap<JavaString, int> m = JMap<JavaString, int>();", "for (int i = 0; i < n % 40; i++) {", "\tm.put(JavaString(((JCat() + \"key\" + (i * 13 % 17)))._s), i);", "}", "int h = 0;", "for (Iterator<JavaString> j2x_it4 = m.keySet().iterator(); j2x_it4.hasNext(); ) {", "\tJavaString k = j2x_it4.next();", "\th = h * 31 + k.hashCode();", "}", "return h;"]
+bank|03|4|body|Bank.main	null
+bank|03|5|ctor0|Bank.False	["super", null, []]
+bank|03|6|ctor0|Bank.True	["super", null, []]
+bank|03|7|instance_inits|Bank	[]
+bank|03|8|static_blocks|Bank	[]
+bank|03|9|body|NoSuchClass	null
+bank|03|10|field_init|nofield	null
+bank|03|11|array_items|nofield	null
+bank|03|12|enum_args|noconst	null
+bank|03|13|ctor|NoSuchClass	null
+bank|03|14|field_init|NoSuchClass	null
+bank|03|15|array_items|NoSuchClass	null
+bank|03|16|enum_args|NoSuchClass	null
+bank|03|17|instance_inits|NoSuchClass	null
+bank|03|18|static_blocks|NoSuchClass	null
+bank|03|counts	[2, 2, {"library": 2, "expression": 1, "not found": 1, "ctor not found": 1}, {"library field InsufficientFunds.shortBy": 1, "expression MethodRef": 1, "library static Account.opened": 1}, ["Bank"]]
+bank|03|ledger	[]
+bank|17|0|body|Bank.simulate	null
+bank|17|1|body|Bank.wordFreq	null
+bank|17|2|body|Bank.ordered	["JMap<int, JavaString> lm = JMap<int, JavaString>();", "JMap<int, JavaString> tm = JMap<int, JavaString>();", "for (int i = 0; i < n % 10; i++) {", "\tint k = (i * 7 + 3) % 11;", "\tlm.put(k, JavaString(((JCat() + \"v\" + i))._s));", "\ttm.put(k, JavaString(((JCat() + \"v\" + i))._s));", "}", "JSet j2xo1 = JSet(0LL);", "JList j2xo2 = JList(0LL);", "return (j2xo1 = lm.keySet(), j2xo2 = tm.values(), (JCat() + j2xo1 + \"|\" + j2xo2));"]
+bank|17|3|body|Bank.hashOrder	null
+bank|17|4|body|Bank.main	null
+bank|17|5|ctor0|Bank.False	["super", null, []]
+bank|17|6|ctor0|Bank.True	["super", null, []]
+bank|17|7|instance_inits|Bank	[]
+bank|17|8|static_blocks|Bank	[]
+bank|17|9|body|NoSuchClass	null
+bank|17|10|field_init|nofield	null
+bank|17|11|array_items|nofield	null
+bank|17|12|enum_args|noconst	null
+bank|17|13|ctor|NoSuchClass	null
+bank|17|14|field_init|NoSuchClass	null
+bank|17|15|array_items|NoSuchClass	null
+bank|17|16|enum_args|NoSuchClass	null
+bank|17|17|instance_inits|NoSuchClass	null
+bank|17|18|static_blocks|NoSuchClass	null
+bank|17|counts	[1, 2, {"library": 2, "expression": 1, "for-each": 1, "not found": 1, "ctor not found": 1}, {"library field InsufficientFunds.shortBy": 1, "expression MethodRef": 1, "for-each over JSet": 1, "library static Account.opened": 1}, ["Bank"]]
+bank|17|ledger	[]

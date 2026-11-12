@@ -1,0 +1,45 @@
+modernlib|03|desugar	5
+modernlib|03|0|body|Library.filter	["JList<JObject> out = JList<JObject>();", "for (Iterator<JObject> j2x_it1 = xs.iterator(); j2x_it1.hasNext(); ) {", "\tJObject x = j2x_it1.next();", "\tif(keep.test(x)) {", "\t\tout.add(x);", "\t}", "}", "return out;"]
+modernlib|03|1|body|Library.map	["JList<JObject> out = JList<JObject>();", "for (Iterator<JObject> j2x_it2 = xs.iterator(); j2x_it2.hasNext(); ) {", "\tJObject x = j2x_it2.next();", "\tout.add(f.apply(x));", "}", "return out;"]
+modernlib|03|2|body|Library.category	null
+modernlib|03|3|body|Library.findPair	["int found = -1;", "for (int r = 0; r < grid.length; r++) {", "\t{", "\t\tfor (int c = 0; c < grid[r].length; c++) {", "\t\t\tif(grid[r][c] < 0) {", "\t\t\t\tgoto outer_cont;", "\t\t\t}", "\t\t\tif(grid[r][c] == target) {", "\t\t\t\tfound = r * 10 + c;", "\t\t\t\tgoto outer_brk;", "\t\t\t}", "\t\t}", "\t}", "\touter_cont:;", "}", "outer_brk:;", "return found;"]
+modernlib|03|4|body|Library.parse	["{", "\tint j2xFin1 = 0;", "\tint j2xRet1;", "\ttry {", "\t\ttry {", "\t\t\tj2xRet1 = Integer::parseInt(s);", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t} catch (NumberFormatException*) {", "\t\t\tj2xRet1 = -1;", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t}", "\t} catch (...) {", "\t\tSystem::out.println(JavaString(((JCat() + \"parsed \" + s))._s));", "\t\tthrow;", "\t}", "\tj2xFinally1:;", "\t{", "\t\tSystem::out.println(JavaString(((JCat() + \"parsed \" + s))._s));", "\t}", "\treturn j2xRet1;", "}"]
+modernlib|03|5|body|Library.main	null
+modernlib|03|6|ctor0|Library.False	["super", null, []]
+modernlib|03|7|ctor0|Library.True	["super", null, []]
+modernlib|03|8|instance_inits|Library	[]
+modernlib|03|9|static_blocks|Library	[]
+modernlib|03|10|body|NoSuchClass	null
+modernlib|03|11|field_init|nofield	null
+modernlib|03|12|array_items|nofield	null
+modernlib|03|13|enum_args|noconst	null
+modernlib|03|14|ctor|NoSuchClass	null
+modernlib|03|15|field_init|NoSuchClass	null
+modernlib|03|16|array_items|NoSuchClass	null
+modernlib|03|17|enum_args|NoSuchClass	null
+modernlib|03|18|instance_inits|NoSuchClass	null
+modernlib|03|19|static_blocks|NoSuchClass	null
+modernlib|03|counts	[4, 2, {"switch": 1, "expression": 1, "not found": 1, "ctor not found": 1}, {"switch on a string": 1, "expression Lambda": 1}, ["Library"]]
+modernlib|03|ledger	[]
+modernlib|17|0|body|Library.filter	["JList<JObject> out = JList<JObject>();", "for (JObject x : xs) {", "\tif(keep.test(x)) {", "\t\tout.add(x);", "\t}", "}", "return out;"]
+modernlib|17|1|body|Library.map	["JList<JObject> out = JList<JObject>();", "for (JObject x : xs) {", "\tout.add(f.apply(x));", "}", "return out;"]
+modernlib|17|2|body|Library.category	null
+modernlib|17|3|body|Library.findPair	["int found = -1;", "for (int r = 0; r < grid.length; r++) {", "\t{", "\t\tfor (int c = 0; c < grid[r].length; c++) {", "\t\t\tif(grid[r][c] < 0) {", "\t\t\t\tgoto outer_cont;", "\t\t\t}", "\t\t\tif(grid[r][c] == target) {", "\t\t\t\tfound = r * 10 + c;", "\t\t\t\tgoto outer_brk;", "\t\t\t}", "\t\t}", "\t}", "\touter_cont:;", "}", "outer_brk:;", "return found;"]
+modernlib|17|4|body|Library.parse	["{", "\tint j2xFin1 = 0;", "\tint j2xRet1;", "\ttry {", "\t\ttry {", "\t\t\tj2xRet1 = Integer::parseInt(s);", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t} catch (NumberFormatException*) {", "\t\t\tj2xRet1 = -1;", "\t\t\tj2xFin1 = 1; goto j2xFinally1;", "\t\t}", "\t} catch (...) {", "\t\tSystem::out.println(JavaString(((JCat() + \"parsed \" + s))._s));", "\t\tthrow;", "\t}", "\tj2xFinally1:;", "\t{", "\t\tSystem::out.println(JavaString(((JCat() + \"parsed \" + s))._s));", "\t}", "\treturn j2xRet1;", "}"]
+modernlib|17|5|body|Library.main	null
+modernlib|17|6|ctor0|Library.False	["super", null, []]
+modernlib|17|7|ctor0|Library.True	["super", null, []]
+modernlib|17|8|instance_inits|Library	[]
+modernlib|17|9|static_blocks|Library	[]
+modernlib|17|10|body|NoSuchClass	null
+modernlib|17|11|field_init|nofield	null
+modernlib|17|12|array_items|nofield	null
+modernlib|17|13|enum_args|noconst	null
+modernlib|17|14|ctor|NoSuchClass	null
+modernlib|17|15|field_init|NoSuchClass	null
+modernlib|17|16|array_items|NoSuchClass	null
+modernlib|17|17|enum_args|NoSuchClass	null
+modernlib|17|18|instance_inits|NoSuchClass	null
+modernlib|17|19|static_blocks|NoSuchClass	null
+modernlib|17|counts	[4, 2, {"switch": 1, "expression": 1, "not found": 1, "ctor not found": 1}, {"switch on a string": 1, "expression Lambda": 1}, ["Library"]]
+modernlib|17|ledger	[]
