@@ -18,6 +18,8 @@
 //     Inst               an instance of a class of the program: `name` is the class's qualified name
 //     Cls Fn Module      a class, function or module as a value (calls resolve through them)
 //     Extern             something of a library the front end does not map: `name` says which
+//     Iter               what range, enumerate, zip, reversed and dict views give: `args[0]` is the item type, `lo` the
+//                        number of passes when bounded (hi is unused)
 //
 // The interval bounds are `Wide` integers (wide.hpp): exact to 2**256, saturating beyond, which is far past the 2**128
 // at which a bound is dropped as unbounded. The functions on intervals (add, multiply, shifts, ...) are what the
@@ -38,7 +40,7 @@ namespace cb::translate::frontends::python::pytypes {
 using Bound = std::optional<Wide>;   // an interval bound; nullopt is unbounded
 
 enum class Kind {
-    Bottom, Top, None, Bool, Float, Str, Int, Bytes, Bytearray, Tuple, Opt, List, Dict, Set, Inst, Cls, Fn, Module, Extern
+    Bottom, Top, None, Bool, Float, Str, Int, Bytes, Bytearray, Tuple, Opt, List, Dict, Set, Inst, Cls, Fn, Module, Extern, Iter
 };
 
 // "bottom", "top", "int", "bytes" ...: the kind as the ledgers and refusal reasons name it.
@@ -99,6 +101,8 @@ Type bytes_of(const Bound& max_len = std::nullopt, Kind kind = Kind::Bytes);
 // `t` or None (a type that is already optional, None, Top or Bottom stays as it is).
 Type optional_of(const Type& t);
 Type tuple_of(std::vector<Type> elements);
+// An iterator over `item`s with `passes` items at most (nullopt: not bounded).
+Type iter_of(const Type& item, const Bound& passes = std::nullopt);
 // The type inside an Opt, else the type itself.
 Type strip_optional(const Type& t);
 
