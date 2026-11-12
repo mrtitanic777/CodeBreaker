@@ -81,9 +81,10 @@ def unit(u):
     """One function's part of the file: its status line as a comment, then its C."""
     kind = u.get("node")
     if kind == "MethodDecl":
-        return "/* %s */\n%s\n" % ((u.get("comments") or [""])[0], u.get("text") or "")
+        # (a status holding "*/" would end its own comment: it is broken apart there)
+        return "/* %s */\n%s\n" % ((u.get("comments") or [""])[0].replace("*/", "* /"), u.get("text") or "")
     if kind == "Comment":
-        return "/* %s */\n" % (u.get("text") or "")
+        return "/* %s */\n" % (u.get("text") or "").replace("*/", "* /")
     raise _asm.Decline("document %s" % kind)
 
 

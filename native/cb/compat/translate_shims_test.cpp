@@ -1,6 +1,7 @@
 // Tests of the shims at the old header paths for the translator, verify/authored and process helpers: the old py:: API over
 // the new modules. Built at /W3 (the old layer is not warning-clean), like py_bridge_test.cpp.
 #include "codebreaker/translate/backends/asm.hpp"
+#include "codebreaker/translate/backends/module_file.hpp"
 #include "codebreaker/translate/dotnet/package.hpp"
 #include "codebreaker/translate/frontends/python/pytypes.hpp"
 #include "codebreaker/translate/frontends/python/structfmt.hpp"
@@ -10,6 +11,7 @@
 #include "cb/core/testing.hpp"
 
 namespace asm_old = codebreaker::translate::backends::asm_;
+namespace mf_old = codebreaker::translate::backends::module_file;
 namespace sf_old = codebreaker::translate::frontends::python::structfmt;
 namespace pt_old = codebreaker::translate::frontends::python::pytypes;
 namespace shape_old = codebreaker::verify::authored::shape;
@@ -199,4 +201,63 @@ CB_TEST("compat.translate.dotnet_run_process", [] {
     // the program cannot be started: OSError; a timeout: TimeoutExpired
     CB_CHECK_THROWS_AS(py::FileNotFoundError, (void)dn_old::run_process(py::list<py::str>{py::str("no-such-program-cb")}));
     CB_CHECK_THROWS_AS(dn_old::TimeoutExpired, (void)dn_old::run_process(py::list<py::str>{py::str("cmd"), py::str("/c"), py::str("ping -n 6 127.0.0.1 >nul")}, std::nullopt, std::nullopt, 0.5));
+});
+
+// ---- backends/module_file ---------------------------------------------------------------------------------------
+CB_TEST("compat.translate.module_file", [] {
+    mf_old::Facts facts;
+    facts.name = py::str("lz32.dll");
+    facts.stem = py::str("lz32");
+    facts.date = py::str("2026-11-11");
+    facts.digest = py::str("ab12");
+    facts.order = py::list<py::str>{py::str("verified"), py::str("weak")};
+    facts.titles.set(py::str("verified"), py::str("VERIFIED"));
+    facts.titles.set(py::str("weak"), py::str("WEAK"));
+    facts.counts.set(py::str("verified"), 2);
+    facts.counts.set(py::str("weak"), 1);
+    facts.total = 3;
+    facts.kind = py::str("pe");
+    facts.header = true;
+
+    mf_old::Document doc;
+    doc.node = py::str("Module");
+    mf_old::Unit fn;
+    fn.node = py::str("MethodDecl");
+    fn.comments = py::list<py::str>{py::str("VERIFIED")};
+    fn.text = py::str("int f(void) { return 1; }");
+    mf_old::Unit none;
+    none.node = py::str("Comment");
+    none.text = py::str("WEAK  sub_2");
+    doc.units = py::list<mf_old::Unit>{fn, none};
+
+    const auto files = mf_old::c(doc, facts, 0);
+    CB_CHECK_EQ(files.size(), 1);
+    CB_CHECK_EQ(std::get<0>(files[0]).utf8(), "lz32.c");
+    const std::string text = std::get<1>(files[0]).utf8();
+    CB_CHECK(text.starts_with("/* lz32.dll -- reconstructed source.\n *\n"));
+    CB_CHECK(text.find(" *   VERIFIED                         2   66.7%\n") != std::string::npos);
+    CB_CHECK(text.ends_with("#include \"lz32.h\"\n\n/* VERIFIED */\nint f(void) { return 1; }\n\n/* WEAK  sub_2 */\n"));
+    CB_CHECK_EQ(mf_old::c(doc, facts, 1).size(), 2);
+    CB_CHECK_EQ(mf_old::banner(facts)[0].utf8(), "/* lz32.dll -- reconstructed source.");
+
+    // a document that is not a Module, or has a unit that is neither: Decline
+    doc.node = py::str("Unit");
+    CB_CHECK_THROWS_AS(asm_old::Decline, (void)mf_old::c(doc, facts, 0));
+    doc.node = py::str("Module");
+    mf_old::Unit other;
+    other.node = py::str("Function");
+    doc.units = py::list<mf_old::Unit>{other};
+    CB_CHECK_THROWS_AS(asm_old::Decline, (void)mf_old::c(doc, facts, 0));
+
+    // the assembly file: the status as comments, then the source
+    asm_old::Document source;
+    source.node = py::str("Module");
+    asm_old::Unit frag;
+    frag.node = py::str("MachineFragment");
+    frag.asm_ = py::str("mov ax, 1");
+    source.units = py::list<asm_old::Unit>{frag};
+    const std::string listing = mf_old::asm_(source, facts).utf8();
+    CB_CHECK(listing.starts_with("; lz32.dll -- reconstructed source.\n;\n"));
+    CB_CHECK(listing.ends_with(";\nmov ax, 1"));
+    CB_CHECK_EQ(mf_old::asm_banner(facts).size(), 7);
 });
