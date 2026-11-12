@@ -1,71 +1,33 @@
-// codebreaker/build/resources.hpp -- typed C++ of codebreaker.build.resources
+// codebreaker/build/resources.hpp -- COMPAT SHIM over cb/build/resources.hpp (docs/CPP_DESIGN.md 6.3), for the old
+// codebreaker/build/resources.py port (build/module's whole-module build). Deleted with its last py:: consumer.
 //
-// resources.py -- a module's resources as source: `.rc` text and payload files, compiled back to `.res`.
+// The module itself is native/cb/build/resources.{hpp,cpp}: a module's resources as `.rc` text and payload files, compiled
+// back to `.res` by OpenWatcom's resource compiler and compared with the original. This header keeps the old py:: surface the
+// callers use -- Result, rebuild(path, outdir), compare(original, rebuilt, wide), read_res and main -- as conversion and
+// forwarding. The OpenWatcom tree is found where the old layer finds it (watcom::openwatcom_root()).
 //
-//     python -m codebreaker resources <module> [--out DIR]
+// Not carried over (nothing outside the old resources.cpp called them): the statement pieces (quoted, ident, _memory,
+// _number, _style, _stem), the per-kind writers (dialog_text ...), _members, write_rc / _write_rc and their Span / How
+// records, compile_rc, and the module's two exception classes (a statement with no source form is a Result there, not a
+// throw).
 //
-//     Result r = resources::rebuild(module_path, outdir);      // write, compile, compare; r.res is the .res
-//     r.total, r.identical, r.equivalent, r.different, r.missing
-//     r.as_text, r.as_files, r.opaque, r.fallback     // how each resource was written
-//
-// What is written, per kind of resource:
-//
-//     text        string tables, dialogs, menus, accelerator tables and version blocks are decoded
-//                 (formats/resources) and written as the `.rc` statements they came from
-//     files       an icon or cursor group with its member images becomes a real .ico / .cur file,
-//                 a bitmap a .bmp, each named by an ICON / CURSOR / BITMAP statement
-//     opaque      kinds with no source form here (fonts, type libraries, raw data, anything
-//                 user-defined) are carried as a payload file named by a raw-data statement
-//
-// The `.rc` is compiled with OpenWatcom's resource compiler and the result is compared with the
-// original, resource by resource: IDENTICAL bytes, or EQUIVALENT (it decodes to the same thing --
-// the compiler pads, orders or numbers something differently). A resource that comes back
-// different, or whose statement the compiler rejects, is written again as a payload of its
-// original bytes ("fallback"), so the `.res` always holds the module's resources; how many needed
-// that is reported, because those are not yet source.
-//
-// EQUIVALENT covers three things the compiler decides for itself: it numbers the member images of
-// an icon or cursor group, it pads, and it stamps the build time into a version block's file date
-// (the original's is zero).
-//
-// Facts about the compiler, each found by a round trip that failed:
-//
-//   * `-zm` makes it write the Microsoft `.res` layout (its default is a layout of its own). That
-//     file is for comparing; the LINKER must be given the default layout (`r.link_res`), because
-//     from a Microsoft-layout file it binds every resource with language 0.
-//   * In the Microsoft layout it does not pad bodies consistently, so entries do not always start
-//     on four-byte boundaries (`read_res` looks for the next entry rather than computing it).
-//   * A quoted type or name is taken literally: a resource called MENU is not the keyword.
-//   * A CONTROL statement's style has WS_CHILD and WS_VISIBLE unless they are taken out with NOT.
-//   * A string ends at a zero character, however it is written: text with one inside has no
-//     source form.
-//   * Text outside Latin-1 needs a UTF-8 source (`-zku8`), and there the compiler miscounts a
-//     string table's strings (UTF-8 bytes instead of characters): in a module that needs UTF-8,
-//     string tables with anything beyond ASCII are carried as payloads.
-//   * It writes a 16-bit version block with lengths that do not add up; 16-bit version blocks
-//     are carried as payloads.
-//   * It keeps only 16 bits of a control's or menu item's identifier, also in the extended
-//     templates that have room for 32 (where -1 is common): those are carried as payloads.
-//   * Without the preprocessor (`-zn`) a comment is a syntax error.
-//   * Like every OpenWatcom tool it has to be started by its full path.
-//
-// Typing notes (how the Python's dynamic parts are typed here):
-//   * A resource's key (type, name, language) is `Key`; a type or a name is formats::resources::Ident.
-//   * `wide` is the int 0 / WIDE / UNICODE of the Python (a bool where it is only passed to the format decoders).
-//   * `_members` answers {group key: [member resource]}: the members are given as indexes into `found`, which is
-//     what the Python's `id(member)` identity comes to (the same resource object is the same index).
-//   * `write_rc` answers (rc path, spans, how, wide); `how` is {how written: [resource key]}.
-//   * The Python's Result is the struct `Result`; `rc`, `res` and `link_res` are None until set.
-//   * The module's own exceptions NoSourceForm and BeyondLatin1 are py::Exception subclasses of those names.
+// COMPAT(py): main() reaches the corpus (`corpus::retail`) and the project folder (`converted::project`) through the old base/
+// layer; remove when those are used through cb::base.
 #pragma once
 
 #include <cstdint>
 #include <optional>
 #include <tuple>
+#include <vector>
 
+#include "cb/build/resources.hpp"
+#include "cb/compat/legacy_settings.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "codebreaker/base/converted.hpp"
+#include "codebreaker/base/corpus.hpp"
+#include "codebreaker/build/watcom.hpp"
 #include "codebreaker/formats/resources.hpp"
 #include "py.hpp"
-#include "py_os.hpp"
 
 namespace codebreaker::build::resources {
 
@@ -74,22 +36,43 @@ namespace R = codebreaker::formats::resources;
 using Ident = R::Ident;
 using Key = std::tuple<Ident, Ident, std::optional<int64_t>>;     // Resource.key: (type, name, language)
 
-// How text is written, which is also how a resource is decoded: 0 for a 16-bit module, WIDE for a
-// 32-bit one whose text fits Latin-1, UNICODE for a 32-bit one with text beyond it.
-inline constexpr int64_t WIDE = 1, UNICODE = 2;
+// How text is written: 0 for a 16-bit module, WIDE for a 32-bit one whose text fits Latin-1, UTF8_SOURCE for one with text
+// beyond it.
+inline constexpr int64_t WIDE = 1, UTF8_SOURCE = 2;   // (the Python's UNICODE: a macro in this build)
 
-// This resource uses something the `.rc` statements written here cannot say.
-struct NoSourceForm : py::Exception {
-    NoSourceForm() : py::Exception() {}
-    explicit NoSourceForm(const std::string& m) : py::Exception(m) {}
-    const char* type() const override { return "NoSourceForm"; }
-};
+namespace shim_ {
 
-// The module has text outside Latin-1: its `.rc` has to be UTF-8.
-struct BeyondLatin1 : py::Exception {
-    BeyondLatin1() : py::Exception() {}
-    const char* type() const override { return "BeyondLatin1"; }
-};
+namespace nb = ::cb::build::resources;
+
+inline Key to_old(const nb::Key& k) {
+    std::optional<int64_t> language;
+    if (k.language) language = static_cast<int64_t>(*k.language);
+    return Key(R::shim_::to_old(k.type), R::shim_::to_old(k.name), language);
+}
+inline nb::Key to_new(const Key& k) {
+    nb::Key out;
+    out.type = R::shim_::to_new(std::get<0>(k));
+    out.name = R::shim_::to_new(std::get<1>(k));
+    if (std::get<2>(k)) out.language = ::cb::compat::int_from_py<std::uint32_t>(*std::get<2>(k));
+    return out;
+}
+inline py::list<Key> to_old(const std::vector<nb::Key>& keys) {
+    py::list<Key> out;
+    for (const nb::Key& k : keys) out.append(to_old(k));
+    return out;
+}
+inline std::vector<nb::Key> to_new(const py::list<Key>& keys) {
+    std::vector<nb::Key> out;
+    for (const Key& k : keys.vec()) out.push_back(to_new(k));
+    return out;
+}
+inline std::vector<::cb::formats::resources::Resource> to_new(const py::list<R::Resource>& rs) {
+    std::vector<::cb::formats::resources::Resource> out;
+    for (const R::Resource& r : rs.vec()) out.push_back(R::shim_::to_new(r));
+    return out;
+}
+
+}  // namespace shim_
 
 // What a rebuild produced and how it compares with the original.
 struct Result {
@@ -104,84 +87,103 @@ struct Result {
     py::str line() const;
 };
 
-// ---------------------------------------------------------------------------------------------
-// the pieces of a statement
-// ---------------------------------------------------------------------------------------------
-// A string literal. Control characters and everything above ASCII are written as
-// three-digit octal escapes (a fixed width, so a digit after one cannot join it, and no code
-// page is involved: the compiler takes each as one character of that value). That reaches
-// Latin-1. A 32-bit module with text beyond it is written in UTF-8 instead, where the compiler
-// gets a length-counted string (`counted`: a string table's) wrong -- it counts UTF-8 bytes --
-// so such a string has no source form there. Nor has a string with a zero character in it
-// anywhere: the compiler ends the string at it.
-py::str quoted(const py::str& text, int64_t wide, bool counted = false);
+namespace shim_ {
 
-// A resource's name or type as a token: a number, or the string in quotes.
-py::str ident(const Ident& value, int64_t wide);
+inline std::optional<std::filesystem::path> to_new_path(const std::optional<py::str>& p) {
+    return p ? std::optional<std::filesystem::path>(::cb::compat::legacy::path_of(*p)) : std::nullopt;
+}
+inline std::optional<py::str> to_old_path(const std::optional<std::filesystem::path>& p) {
+    return p ? std::optional<py::str>(::cb::compat::legacy::native(*p)) : std::nullopt;
+}
 
-py::str _memory(int64_t flags, int64_t wide);
+inline nb::Rebuilt to_new_result(const Result& r) {
+    nb::Rebuilt out;
+    out.rc = to_new_path(r.rc);
+    out.res = to_new_path(r.res);
+    out.link_res = to_new_path(r.link_res);
+    out.total = static_cast<std::size_t>(r.total);
+    out.identical = static_cast<std::size_t>(r.identical);
+    out.equivalent = static_cast<std::size_t>(r.equivalent);
+    out.different = to_new(r.different);
+    out.missing = to_new(r.missing);
+    out.extra = to_new(r.extra);
+    out.as_text = static_cast<std::size_t>(r.as_text);
+    out.as_files = static_cast<std::size_t>(r.as_files);
+    out.opaque = static_cast<std::size_t>(r.opaque);
+    out.fallback = static_cast<std::size_t>(r.fallback);
+    out.not_source = to_new(r.not_source);
+    out.error = ::cb::compat::from_py(r.error);
+    return out;
+}
 
-// An identifier. An extended dialog or menu has room for 32 bits, but the compiler keeps 16
-// however the number is written (-1 comes out as 0xFFFF).
-py::str _number(int64_t value);
+inline Result to_old_result(const nb::Rebuilt& r) {
+    Result out;
+    out.rc = to_old_path(r.rc);
+    out.res = to_old_path(r.res);
+    out.link_res = to_old_path(r.link_res);
+    out.total = static_cast<int64_t>(r.total);
+    out.identical = static_cast<int64_t>(r.identical);
+    out.equivalent = static_cast<int64_t>(r.equivalent);
+    out.different = to_old(r.different);
+    out.missing = to_old(r.missing);
+    out.extra = to_old(r.extra);
+    out.as_text = static_cast<int64_t>(r.as_text);
+    out.as_files = static_cast<int64_t>(r.as_files);
+    out.opaque = static_cast<int64_t>(r.opaque);
+    out.fallback = static_cast<int64_t>(r.fallback);
+    out.not_source = to_old(r.not_source);
+    out.error = ::cb::compat::to_py(r.error);
+    return out;
+}
 
-// A control's style: the two bits a CONTROL statement adds by itself are removed when the
-// original does not have them.
-py::str _style(int64_t value);
+// The OpenWatcom tree the old layer names (settings.json, CB_OPENWATCOM).
+inline ::cb::build::watcom::OpenWatcom open_watcom() {
+    return ::cb::build::watcom::OpenWatcom(::cb::compat::legacy::path_of(watcom::openwatcom_root()));
+}
 
-py::str _stem(const R::Resource& resource);
+}  // namespace shim_
 
-// ---------------------------------------------------------------------------------------------
-// statements for the kinds that have a source form
-// ---------------------------------------------------------------------------------------------
-py::list<py::str> dialog_text(const R::Resource& r, int64_t wide);
-py::list<py::str> menu_text(const R::Resource& r, int64_t wide);
-py::list<py::str> accelerators_text(const R::Resource& r, int64_t wide);
-py::list<py::str> version_text(const R::Resource& r, int64_t wide);
+inline bool Result::same() const { return shim_::to_new_result(*this).same(); }
+inline py::str Result::line() const { return ::cb::compat::to_py(shim_::to_new_result(*this).line()); }
 
-// ---------------------------------------------------------------------------------------------
-// writing the .rc
-// ---------------------------------------------------------------------------------------------
-// {(member type, id): [resource]} and, per group that can be put back together as a file,
-// the members it takes: {group key: [member resource]} -- as indexes into `found`.
-py::dict<Key, py::list<int64_t>> _members(const py::list<R::Resource>& found, int64_t wide);
+// Write a module's resources as source, compile them, and compare with the original (see cb/build/resources.hpp).
+inline Result rebuild(const py::str& module_path, const py::str& outdir, int64_t rounds = 12) {
+    return ::cb::compat::guard([&] {
+        return shim_::to_old_result(::cb::build::resources::rebuild(shim_::open_watcom(), ::cb::compat::legacy::path_of(module_path),
+                                                                    ::cb::compat::legacy::path_of(outdir), static_cast<int>(rounds)));
+    });
+}
 
-using Span = std::tuple<int64_t, int64_t, Key>;                      // (first line, last line, resource key)
-using How = py::dict<py::str, py::list<Key>>;                        // {how written: [resource key]}
-
-// Write `<module>.rc` and its payload files under `outdir`. Resources whose key is in
-// `verbatim` are written as payloads of their original bytes whatever their kind.
-// -> (rc path, [(first line, last line, resource key)], {how written: [resource key]}, how text is written)
-std::tuple<py::str, py::list<Span>, How, int64_t> write_rc(const py::str& module_path, const py::str& outdir,
-                                                           const py::set<Key>& verbatim = py::set<Key>());
-std::tuple<py::str, py::list<Span>, How, int64_t> _write_rc(const py::str& module_path, const py::str& outdir,
-                                                            py::set<Key> verbatim, int64_t wide);
-
-// ---------------------------------------------------------------------------------------------
-// compiling, and reading what the compiler wrote
-// ---------------------------------------------------------------------------------------------
-// Run the resource compiler. -> (.res path or None, its messages). `microsoft` chooses the
-// layout of the .res: the Microsoft one, which read_res reads, or the compiler's own
-// (`<name>_link.res`), which is the one to hand the linker -- from a Microsoft-layout file
-// the linker binds every resource with language 0.
-std::tuple<std::optional<py::str>, py::str> compile_rc(const py::str& rc, int64_t wide, bool microsoft = true);
+// Compare two sets of resources; `result` (counts so far) is continued when given. `wide` is the Python's int 0 / WIDE / UNICODE.
+inline Result compare(const py::list<R::Resource>& original, const py::list<R::Resource>& rebuilt, int64_t wide,
+                      const std::optional<Result>& result = std::nullopt) {
+    shim_::nb::Rebuilt into = result ? shim_::to_new_result(*result) : shim_::nb::Rebuilt();
+    ::cb::build::resources::compare(shim_::to_new(original), shim_::to_new(rebuilt), wide != 0, into);
+    return shim_::to_old_result(into);
+}
 
 // The resources in a compiled `.res` file (Microsoft layout).
-py::list<R::Resource> read_res(const py::str& path, int64_t wide);
-
-// Compare two sets of resources. An icon or cursor group is compared with its member images
-// in order, since the compiler numbers members itself. -> Result (counts and the keys that differ).
-Result compare(const py::list<R::Resource>& original, const py::list<R::Resource>& rebuilt, int64_t wide,
-               const std::optional<Result>& result = std::nullopt);
-
-// Write a module's resources as source, compile them, and compare with the original. A
-// resource that does not survive is carried as a payload of its original bytes and the build
-// repeated, so the `.res` this returns is complete whenever the compiler accepts it at all.
-Result rebuild(const py::str& module_path, const py::str& outdir, int64_t rounds = 12);
+inline py::list<R::Resource> read_res(const py::str& path, int64_t wide) {
+    return ::cb::compat::guard([&] {
+        return R::shim_::to_old(::cb::build::resources::read_res(::cb::fs::read_file(::cb::compat::legacy::path_of(path)), wide != 0));
+    });
+}
 
 // python -m codebreaker resources <module> [--out DIR]
-//
-// Without --out the resources go into the module's project folder: Converted/<name>/assets/resources/.
-int64_t main(const py::list<py::str>& argv);
+inline int64_t main(const py::list<py::str>& argv) {
+    ::cb::build::resources::Environment env;
+    env.open_watcom = shim_::open_watcom();
+    env.retail = [](std::string_view name) -> std::optional<std::filesystem::path> {
+        const std::optional<py::str> found = base::corpus::retail(::cb::compat::to_py(name));
+        return found ? std::optional<std::filesystem::path>(::cb::compat::legacy::path_of(*found)) : std::nullopt;
+    };
+    env.project = [](const std::filesystem::path& module) {
+        const base::converted::Project old = base::converted::project(::cb::compat::legacy::native(module));
+        return ::cb::base::converted::Project(::cb::compat::legacy::path_of(old.root));
+    };
+    std::vector<std::string> args{"resources"};
+    for (const py::str& a : argv.vec()) args.push_back(a.utf8());
+    return ::cb::compat::guard([&] { return static_cast<int64_t>(::cb::cli::Cli("codebreaker", {::cb::build::resources::command(env)}).run(args)); });
+}
 
 }  // namespace codebreaker::build::resources
