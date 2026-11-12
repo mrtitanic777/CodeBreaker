@@ -1,5 +1,10 @@
 // codebreaker/translate/rewrite.hpp -- typed C++ port of codebreaker.translate.rewrite.
 //
+// NOT YET A SHIM (W1-B26): the pass tools are now native/cb/translate/rewrite.{hpp,cpp} over the typed tree. This port stays, as it was,
+// because the callbacks of `replace` and every other tool here work on the OLD IR's nodes (py::ref); the legacy IR form of the
+// Minecraft fix passes (java/projects/minecraft/applet_ping, render_fix, sound_fix) is its last consumer. It goes with them, when
+// translate/ir's old tree does.
+//
 // rewrite.py -- small tools for passes that change the IR in place (docs/TRANSLATOR_DESIGN.md, passes).
 //
 // A pass matches a shape in the tree -- by node kinds, symbols and types, never by the text a back end

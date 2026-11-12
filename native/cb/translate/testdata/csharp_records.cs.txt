@@ -1,0 +1,66 @@
+// Translated by CodeBreaker from Records (csharp).
+using System;
+
+namespace Corpus.Records
+{
+    public abstract record Shape
+    {
+    }
+
+    public record Circle(double R) : Shape;
+
+    public record Box(int W, int H) : Shape;
+
+    public record Named(string Label, int Size);
+
+    public static class Program
+    {
+        static string Classify(Shape s) => s is Circle c && c.R > 10 ? "big circle" : s is Circle c2 ? "circle " + c2.R : s is Box && ((Box)s).W == 0 ? "flat box" : s is Box b ? "box " + b.W * b.H : "unknown";
+
+        static string Grade(int score) => score >= 90 ? "A" : score >= 80 && score < 90 ? "B" : score < 0 ? "invalid" : "C";
+
+        static string Day(int d) => d switch { 0 => "sun", 6 => "sat", _ => "weekday" };
+
+        static int? Find(int[] xs, int want)
+        {
+            for (int i = 0; i < xs.Length; i++)
+            {
+                if (xs[i] == want)
+                {
+                    return i;
+                }
+            }
+            return null;
+        }
+
+        public static void Main()
+        {
+            Shape[] shapes = new Shape[] { new Circle(2.5), new Circle(11), new Box(0, 5), new Box(3, 4) };
+            foreach (Shape s in shapes)
+            {
+                Console.WriteLine(Classify(s));
+            }
+            Console.WriteLine(Grade(95) + Grade(85) + Grade(-1) + Grade(10));
+            Console.WriteLine($"{Day(0)} {Day(3)} {Day(6)}");
+            var a = new Named("x", 1);
+            var b = new Named("x", 1);
+            Console.WriteLine($"equal {a == b} {a.Equals(b)} {a}");
+            object o = "hello";
+            if (o is string str && str.Length > 3)
+            {
+                Console.WriteLine("long string " + str);
+            }
+            string? maybe = null;
+            Console.WriteLine($"null? {maybe == null} len {(maybe?.Length ?? -1)}");
+            maybe = "abc";
+            Console.WriteLine("len " + (maybe?.Length ?? -1));
+            int[] xs = new int[] { 5, 8, 13 };
+            int? at = Find(xs, 8);
+            int? none = Find(xs, 4);
+            Console.WriteLine($"found {(at ?? -1)} missing {(none ?? -1)} has {at.HasValue} {none.HasValue}");
+            object n = 42;
+            string? asText = n is string ? (string)n : null;
+            Console.WriteLine("as " + (asText == null ? "null" : asText));
+        }
+    }
+}

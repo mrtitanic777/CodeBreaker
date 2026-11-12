@@ -208,8 +208,22 @@ target_link_libraries(cb_xna PUBLIC cb_core)
 
 # The translator's back ends, front ends and the whole-program judge; the terminal interface's helpers (the terminal
 # interface itself stays Python: docs/CPP_DESIGN.md section 9).
+# pyfront: the Python parser the translator's Python front end reads programs with (source -> an AST shaped like CPython's
+# `ast`). Compiled as it is from native/pyfront (its own flags, not /W4 /WX); the C ABI (capi.cpp) is not needed here.
+add_library(cb_pyfront STATIC
+  "${CB_NATIVE_ROOT}/pyfront/src/lexer.cpp" "${CB_NATIVE_ROOT}/pyfront/src/literals.cpp"
+  "${CB_NATIVE_ROOT}/pyfront/src/unicode.cpp" "${CB_NATIVE_ROOT}/pyfront/src/parser.cpp"
+  "${CB_NATIVE_ROOT}/pyfront/src/dump.cpp")
+set_target_properties(cb_pyfront PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+target_include_directories(cb_pyfront PUBLIC "${CB_NATIVE_ROOT}/pyfront/include")
+target_compile_options(cb_pyfront PRIVATE /permissive- /utf-8 /EHsc /W3 /O2)
+if(CB_ASAN)
+  target_compile_options(cb_pyfront PRIVATE /fsanitize=address /Zi)
+endif()
+
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
@@ -256,14 +270,14 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/m68k.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/decompile/xbox_effect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/sm83.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/gb.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/shadow.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"

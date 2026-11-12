@@ -389,7 +389,11 @@ class Lowering(object):
         if inv.get('implicit'):
             kind += ':implicit'
         self.pending, self.effects = [], 0
-        args = self.args(inv, s)
+        try:
+            args = self.args(inv, s)
+        except _Refuse as e:
+            self.pending = None
+            return ir.ExprStmt(expr=self.unsupported(st, e.kind, e.why, ir.ANY), **self.pos(st))
         pre, self.pending = self.pending, None
         cc = ir.CtorCall(kind=kind, sym=s, args=args, target=None, **self.pos(st))
         if pre:
@@ -700,6 +704,8 @@ class Lowering(object):
             if n.get('isLifted'):
                 raise _Refuse('lifted', 'lifted nullable arithmetic')
             op = _BINARY.get(n.get('operatorKind'))
+            if op is None:
+                raise _Refuse('compound', 'the compound operator %s' % n.get('operatorKind'))
             target = self.expr(n['target'])
             value = self.expr(n['value'])
             self.effects += 1
@@ -809,25 +815,24 @@ class Lowering(object):
         compiler filled in kept (every target then sees the value)."""
         items = list(n.get('arguments', []))
         order = [a.get('parameter', {}).get('ordinal', i) if a.get('parameter') else i for i, a in enumerate(items)]
-        if order != sorted(order):
-            vals = [self.expr(a['value']) for a in items]
-            if any(_effects(v) for v in vals):
-                raise _Refuse('named-args', 'named arguments out of parameter order, with effects')
-            items = [x for _o, x in sorted(zip(order, items), key=lambda z: z[0])]
-        out = []
+        lowered = []                                              # each argument lowered once, as written
         for a in items:
             v = a['value']
             if a.get('argumentKind') == 'ParamArray' and v['k'] == 'ArrayCreation' and v.get('implicit'):
                 init = v.get('initializer')
-                out.extend(self.expr(e) for e in (init or {}).get('elementValues', []))
+                lowered.append([self.expr(e) for e in (init or {}).get('elementValues', [])])
                 continue
             x = self.expr(v)
             if a.get('argumentKind') == 'DefaultValue' and a.get('parameter'):
                 pt = ty(a['parameter'].get('type'))
                 if x.type != pt and pt.kind != 'any':             # the default as the parameter's type, so an
                     x = ir.Cast(x=x, type=pt, **self.pos(n))      # overload is chosen as the compiler chose it
-            out.append(x)
-        return out
+            lowered.append([x])
+        if order != sorted(order):                                # named arguments out of order: only where no effect moves
+            if any(_effects(v) for vs in lowered for v in vs):
+                raise _Refuse('named-args', 'named arguments out of parameter order, with effects')
+            lowered = [vs for _o, vs in sorted(zip(order, lowered), key=lambda z: z[0])]
+        return [v for vs in lowered for v in vs]
 
     def call(self, n, t, p):
         s = sym(n['targetMethod'])
@@ -892,6 +897,8 @@ class Lowering(object):
             if t.info.get('rank', 1) != 1:
                 raise _Refuse('array', 'a rectangular array initialiser')
             items = [self.expr(e) for e in init.get('elementValues', [])]
+            if not items:
+                dims = [ir.Lit(value=0, type=ir.I32, **p)]
         return ir.NewArray(elem=elem, dims=dims, init=items, type=t, **p)
 
     def binary(self, n, t, p):
@@ -1020,6 +1027,8 @@ class Lowering(object):
             return ir.InstanceOf(x=v, test=ty(pat.get('matchedType')), binding=None, type=ir.BOOL, **p)
         if k == 'RelationalPattern':
             op = _BINARY.get(pat.get('operatorKind'))
+            if op is None:
+                raise _Refuse('pattern', 'the relational operator %s' % pat.get('operatorKind'))
             return ir.Binary(op=op, left=v, right=self.expr(pat['value']), type=ir.BOOL, **p)
         if k == 'NegatedPattern':
             return ir.Unary(op='!', x=self.pattern(pat['pattern'], v, p), postfix=False, type=ir.BOOL, **p)
