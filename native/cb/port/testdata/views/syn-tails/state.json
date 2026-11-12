@@ -1,0 +1,88 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "node.h": "struct pnode {\n\tstruct pnode *kid[3];\t/* (pa: the word after it, its element 2) */\n};\n"
+  },
+  "kept": [
+   "a.c",
+   "node.h"
+  ],
+  "fns": [
+   {
+    "name": "walk",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct pnode *p"
+     ],
+     [
+      "i",
+      "int i"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "node.h": "struct pnode {\n\tstruct pnode *kid[3];\t/* (pa: the word after it, its element 2) */\n};\n"
+  },
+  "kept": [
+   "a.c",
+   "node.h"
+  ],
+  "fns": [
+   {
+    "name": "walk",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct pnode *p"
+     ],
+     [
+      "i",
+      "int i"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn p->kid[i] != 0;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

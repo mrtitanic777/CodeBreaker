@@ -1,0 +1,258 @@
+{
+ "profile": "dos_msc3",
+ "members": {
+  "rec.n": "char *"
+ },
+ "ctor": {
+  "kept": [
+   "a.c",
+   "rec.h"
+  ],
+  "left_out": [],
+  "notes": [
+   [
+    "an anonymous structure given by value, a header's member's too: one type, by a tag",
+    [
+     "a.c (rec_hd)"
+    ]
+   ],
+   [
+    "an anonymous structure of a parameter: a tag (a prototype names it)",
+    [
+     "a.c (a_p)"
+    ]
+   ]
+  ],
+  "union_notes": [],
+  "member_fixes": [
+   "rec.h: struct rec's n is char * (as the program uses it)"
+  ],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    137,
+    3537381651
+   ],
+   "rec.h": [
+    60,
+    2750173077
+   ]
+  },
+  "files": {
+   "a.c": [
+    138,
+    7273435
+   ],
+   "rec.h": [
+    67,
+    2648596450
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     146,
+     673371288
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "a.c:2",
+       "a.c:2"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     138,
+     7273435
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     138,
+     7273435
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     138,
+     7273435
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     138,
+     7273435
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     138,
+     7273435
+    ],
+    [],
+    []
+   ]
+  },
+  "rec.h": {
+   "widths": [
+    [
+     67,
+     2648596450
+    ],
+    []
+   ],
+   "formats": [
+    [
+     67,
+     2648596450
+    ],
+    []
+   ],
+   "header_data": [
+    [
+     67,
+     2648596450
+    ],
+    [],
+    []
+   ],
+   "old_declarations": [
+    [
+     67,
+     2648596450
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     67,
+     2648596450
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     67,
+     2648596450
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     67,
+     2648596450
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     174,
+     1433521561
+    ],
+    [
+     174,
+     1433521561
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     174,
+     1433521561
+    ],
+    [
+     174,
+     1433521561
+    ]
+   ],
+   [
+    "offset_views",
+    "rec.h",
+    [
+     67,
+     2648596450
+    ],
+    [
+     67,
+     2648596450
+    ]
+   ],
+   [
+    "bss_ends",
+    "rec.h",
+    [
+     67,
+     2648596450
+    ],
+    [
+     67,
+     2648596450
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     138,
+     7273435
+    ],
+    [
+     138,
+     7273435
+    ]
+   ],
+   "rec.h": [
+    [
+     67,
+     2648596450
+    ],
+    [
+     67,
+     2648596450
+    ]
+   ]
+  }
+ }
+}

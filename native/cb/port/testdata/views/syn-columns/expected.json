@@ -1,0 +1,150 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c"
+  ],
+  "left_out": [],
+  "notes": [
+   [
+    "a table's int * column given pointers' places too (a word was either): intptr_t *, the ints placed in it intptr_t",
+    [
+     "a.c (struct ent: val)"
+    ]
+   ],
+   [
+    "an int whose place a column of pointers' places is given: intptr_t",
+    [
+     "cnt"
+    ]
+   ]
+  ],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    123,
+    3047908591
+   ]
+  },
+  "files": {
+   "a.c": [
+    188,
+    1774596093
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     188,
+     1774596093
+    ],
+    []
+   ],
+   "formats": [
+    [
+     188,
+     1774596093
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     188,
+     1774596093
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     188,
+     1774596093
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     188,
+     1774596093
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     188,
+     1774596093
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     206,
+     3219647104
+    ],
+    [
+     206,
+     3219647104
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     206,
+     3219647104
+    ],
+    [
+     206,
+     3219647104
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     188,
+     1774596093
+    ],
+    [
+     188,
+     1774596093
+    ]
+   ]
+  }
+ }
+}

@@ -930,3 +930,15 @@ Old = the Python module (these four had no typed-port harness of their own that 
 | java/probe: the pure parts (inputs, harness text, what can be run) | microseconds in both; a probe's time is javac, the JVM, the C++ compiler and the linker (the end-to-end test on a one-class program: about 2 s, almost all in those four) | the same |
 
 The page ECC is a bit-serial sum (a word of the page per 32 steps, the spare's 102 bits at the end): the new code keeps the algorithm and runs it on `uint32_t` words with no big-integer arithmetic, which is the whole gain. `write_god` streams a subpart (204 blocks) at a time to the part file instead of collecting a part (166 MB) in memory and handing it to the DLL, and the reader takes the rest of a subpart in one read where the old one took a block at a time.
+
+## W2-B10: port/pre_ansi (part 1 and part 3) and port/asmdata
+
+Old = the Python (the old typed port cannot be built here without the whole exe); New = native/cb/port, Release, over the two MS C 3.00 trees (159 and 294 files).
+
+| What | Old | New |
+|---|---|---|
+| Port constructor, msc-3.00-p3 + msc-3.00-p0 | 3.71 s + 1.17 s (Python) | 3.6 s for the whole test (both constructors, reading the files, comparing every file to the golden) |
+| offset_views / bss_ends over every file, views built once | inside modernize: 10.9 s for p3 (Python) | 2.5 s including loading the state |
+| 7 text passes on every file | not timed separately | 2.4 s including loading |
+
+Not much faster than the Python: the time is the regex engine over about 700 KB of C. Not profiled further.

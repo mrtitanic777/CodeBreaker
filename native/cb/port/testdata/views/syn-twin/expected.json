@@ -1,0 +1,349 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "b.c",
+   "c.c",
+   "mac.h"
+  ],
+  "left_out": [],
+  "notes": [
+   [
+    "a file's own structure that is another's bytes, ints where it has pointers: its members of the other's types",
+    [
+     "b.c (struct macro as struct mac)"
+    ]
+   ]
+  ],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "b.c": [
+    144,
+    2201471302
+   ],
+   "c.c": [
+    54,
+    1175434430
+   ],
+   "mac.h": [
+    59,
+    1096690739
+   ]
+  },
+  "files": {
+   "b.c": [
+    199,
+    637903813
+   ],
+   "c.c": [
+    54,
+    1175434430
+   ],
+   "mac.h": [
+    59,
+    1096690739
+   ]
+  }
+ },
+ "text_passes": {
+  "b.c": {
+   "widths": [
+    [
+     203,
+     2465299325
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "b.c:5"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     199,
+     637903813
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     175,
+     36210724
+    ],
+    [
+     [
+      "old declaration removed (proto.h / the C library declare it)",
+      [
+       "b.c:7"
+      ]
+     ]
+    ]
+   ],
+   "mem_sizes": [
+    [
+     199,
+     637903813
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     199,
+     637903813
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     199,
+     637903813
+    ],
+    [],
+    []
+   ]
+  },
+  "c.c": {
+   "widths": [
+    [
+     54,
+     1175434430
+    ],
+    []
+   ],
+   "formats": [
+    [
+     54,
+     1175434430
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     54,
+     1175434430
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     54,
+     1175434430
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     54,
+     1175434430
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     54,
+     1175434430
+    ],
+    [],
+    []
+   ]
+  },
+  "mac.h": {
+   "widths": [
+    [
+     63,
+     3912772400
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "mac.h:4"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     59,
+     1096690739
+    ],
+    []
+   ],
+   "header_data": [
+    [
+     59,
+     1096690739
+    ],
+    [],
+    []
+   ],
+   "old_declarations": [
+    [
+     59,
+     1096690739
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     59,
+     1096690739
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     59,
+     1096690739
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     59,
+     1096690739
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "b.c",
+    [
+     209,
+     978075267
+    ],
+    [
+     209,
+     978075267
+    ]
+   ],
+   [
+    "bss_ends",
+    "b.c",
+    [
+     209,
+     978075267
+    ],
+    [
+     209,
+     978075267
+    ]
+   ],
+   [
+    "offset_views",
+    "c.c",
+    [
+     75,
+     2411273302
+    ],
+    [
+     75,
+     2411273302
+    ]
+   ],
+   [
+    "bss_ends",
+    "c.c",
+    [
+     75,
+     2411273302
+    ],
+    [
+     75,
+     2411273302
+    ]
+   ],
+   [
+    "offset_views",
+    "mac.h",
+    [
+     63,
+     3912772400
+    ],
+    [
+     63,
+     3912772400
+    ]
+   ],
+   [
+    "bss_ends",
+    "mac.h",
+    [
+     63,
+     3912772400
+    ],
+    [
+     63,
+     3912772400
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "b.c": [
+    [
+     199,
+     637903813
+    ],
+    [
+     199,
+     637903813
+    ]
+   ],
+   "c.c": [
+    [
+     54,
+     1175434430
+    ],
+    [
+     54,
+     1175434430
+    ]
+   ],
+   "mac.h": [
+    [
+     59,
+     1096690739
+    ],
+    [
+     59,
+     1096690739
+    ]
+   ]
+  }
+ }
+}

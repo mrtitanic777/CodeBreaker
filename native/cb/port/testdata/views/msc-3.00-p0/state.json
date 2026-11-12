@@ -1,0 +1,7092 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "d00d74.c": "/* main.c: the pass's switches (getflags.c reads the table), the lists of names they gather, the token file */\n#include <stdio.h>\n#include \"getflags.h\"\nstatic char *sccsid = \"@(#)main.c:1.13\";\nchar *g_05d2 = \"\";              /* -il: the intermediate files' name */\nint g_05d4 = 0;\nintptr_t g_05d6 = 0;                 /* -C */\nintptr_t g_05d8 = 0;                 /* -E */\nintptr_t g_05da = 0;                 /* -P */\nintptr_t g_05dc = 0;                 /* -xc */\nintptr_t g_05de = 2;                 /* -W: the warning level */\nint g_05e0 = 0;                 /* -Ze */\nint g_05e2 = 0;                 /* -Zp */\nint g_05e4 = 0;                 /* -Zd */\nint g_05e6 = 0;                 /* -Zg */\nFILE *g_05e8 = stdout;          /* the token file */\nint g_05ea = 0x16f;             /* (?) */\nstruct slots g_05ec_s = { 20, { 0 } };\t/* (g_05ec, g_05ee: one place, as the old linker kept them) */\n\nstruct slots g_0616 = { 20 };   /* -D: the names defined */\nintptr_t g_0640 = 0;                 /* -db */\nchar *g_0642 = 0;               /* -f: the source file */\nintptr_t g_0644 = 0;                 /* a switch not known */\nstatic struct sub zsubs[] = {\n    { 'p', 1, &g_05e2 },\n    { 'e', 1, &g_05e0 },\n    { 'd', 1, &g_05e4 },\n    { 'g', 1, &g_05e6 },\n    { 0 },\n};\nstruct flagdef g_0664[] = {\n    { \"-C\", &g_05d6, 1, 0x01 },\n    { \"-D#\", (intptr_t *)&g_0616, 1, 0x46 },\n    { \"-E\", &g_05d8, 1, 0x01 },\n    { \"-I#\", (intptr_t *)&g_05ec, 1, 0x46 },\n    { \"-P\", &g_05da, 1, 0x01 },\n    { \"-f\", (intptr_t *)&g_0642, 1, 0x42 },\n    { \"-W#\", &g_05de, 1, 0x44 },\n    { \"-Z*\", (intptr_t *)zsubs, 1, 0x43 },\n    { \"-db#\", &g_0640, 1, 0x42 },\n    { \"-il#\", (intptr_t *)&g_05d2, 1, 0x42 },\n    { \"-xc\", &g_05dc, 1, 0x01 },\n    { \"*\", &g_0644, 0, 0x42 },\n    { 0 },\n};\n",
+   "d00f89.c": "#include \"pool.h\"\nextern char g_19d0[], g_1dcc[], g_1fd8[], g_21e4[], g_23f0[];  /* (the pools' first blocks) */\nchar *g_06fe = \"@(#)memallo.c:1.5\";\nstruct pool g_0700[] = {\n    { (char **)g_19d0, 4064, g_19d0 + 4, (char **)g_19d0, 4064, 1 },\n    { (char **)g_1dcc, 2080, g_1dcc + 4, (char **)g_1dcc, 2080, 1 },\n    { (char **)g_1fd8, 2080, g_1fd8 + 4, (char **)g_1fd8, 2080, 1 },\n    { (char **)g_21e4, 2080, g_21e4 + 4, (char **)g_21e4, 2080, 1 },\n    { (char **)g_23f0, 2080, g_23f0 + 4, (char **)g_23f0, 2080, 1 },\n};\n",
+   "d02acb.c": "char *g_0e52 = \"@(#)p0scanner.c:1.13\";\nchar g_0e54[2] = \"\";\nint g_0e56 = 0;\nchar *g_0e58 = \"^*%=!\";\nint g_0e5a[10] = { 303, 282, 291, 309, 275, 318, 312, 314, 301, 302 };\t/* (one table: g_0e5a, g_0e64) */\nchar *g_0e6e = \"+-&|<>\";\nint g_0e70[18] = { 292, 293, 289, 304, 297, 299, 310, 311, 317, 319, 298, 300, 277, 278, 305, 306, 295, 296 };\t/* (one table: g_0e70, g_0e7c, g_0e88) */\n",
+   "f00167.c": "extern intptr_t g_05de;\nextern f0018c();\n\nf00167(level, fmt, args)\nint level;\nchar *fmt;\n{\n    if (level <= g_05de)\n        f0018c(\"warning : \", fmt, &args);\n}\n",
+   "f00d9a.c": "#include <stdio.h>\n#include \"getflags.h\"\nextern intptr_t g_05d8; extern int g_3770, g_0644,  g_05da, g_05d4, g_09d6;\nextern char **g_3b74;\nextern char *g_05d2, *g_0642;\nextern struct flagdef g_0664[];\nextern struct slots g_0616;\nextern FILE *g_05e8, *g_0232;\nextern char *f00d74(), *f00ba5();\nextern f0030c(), f00143(), f01eaf(), f01bc7(), f00e5c(), f00c14();\n\nmain(argc, argv)\nint argc;\nchar **argv;\n{\n    g_3770 = argc;\n    g_3b74 = argv;\n    while (f0030c(g_0664, f00d74(), f00d74, 0))\n        ;\n    if (g_0644)\n        f00143(\"bad flag = %s\\n\", g_0644);\n    if ((g_05d4 = g_05d8 || g_05da) == 0)\n        g_05e8 = f00ba5(g_05d2, \"pr\", \"w\", \"token file\");\n    g_0232 = g_05e8;\n    if (g_0642)\n        f01eaf(g_0642, &g_0616);\n    else\n        f00143(\"no input file specified\");\n    if (g_05d4)\n        f01bc7();\n    else\n        f00e5c();\n    f00c14(g_0232);\n    exit(g_09d6);\n}\n",
+   "f011b3.c": "#include \"macro.h\"\nstruct macro {\t/* (as struct mac is: its bytes) */\n    struct mac *f0;\n    char *f2;\n    int f4;\n    struct btok *body;\n    char nparams;\n};\nextern int g_082a, g_25fc;\nextern char *g_25fe;\nextern struct arg *g_3772;\nextern char g_2600[];          /* the actual parameters' text (2K) */\nextern int (*g_09dc)();\nextern struct macro *f0208c();\nextern f00143(), f03a28(), f00167(), f01406(), f0129a();\n\nf011b3(name)\nchar *name;\n{\n    register int c, np;\n    int u, x;                   /* (not used) */\n    struct macro *m;\n\n    if ((m = f0208c(name)) == 0)\n        return 0;\n    if (g_082a++ > 1000)\n        f00143(\"compiler limit : possibly a recursively defined macro\");\n    else if (m->nparams == 0) {\n        f01406(m->body, 0, 0);\n        return 1;\n    }\n    if ((c = f03a28()) != '(') {\n        (*g_09dc)(c);\n        f00167(1, \"macro `%s' requires parameters\", name);\n        f01406(m->body, 0, 0);\n        return 1;\n    }\n    np = m->nparams;\n    if (np == -1)\n        np = 0;\n    g_25fc = 0;\n    g_25fe = g_2600;\n    while (f0129a())\n        ;\n    if (g_25fc > np)\n        f00167(1, \"too many actual parameters for macro `%s'\", name);\n    else if (g_25fc < np)\n        f00167(1, \"not enough actual parameters for macro `%s'\", name);\n    f01406(m->body, g_3772, g_25fc);\n    g_3772 = 0;\n    return 1;\n}\n",
+   "f01cd2.c": "#include <stdio.h>\nextern FILE *g_0a44;\nextern intptr_t g_05d8; extern int g_09d8;\nextern char *g_09d4;\nextern f01c46(), f01e3e();\n\nf01cd2()\n{\n    register int c;\n\n    for (;;) {\n        switch (c = getc(g_0a44)) {\n        case '\\n':\n            g_09d8++;\n            f01c46();\n        default:\n            return c;\n        case EOF:\n            break;\n        }\n        if (f01e3e() == EOF)\n            return EOF;\n        if (g_05d8)\n            printf(\"\\n#line %d %s\", g_09d8 + 1, g_09d4);\n    }\n}\n",
+   "f01d6e.c": "#include <stdio.h>\n#include \"incl.h\"\nextern FILE *g_0a44;\nextern intptr_t g_05d8; extern int g_0a42, g_09d8;\nextern char *g_09d4;\nextern struct incl g_09de[];\nextern char *f01135();\nextern f00143(), f00f49(), f03180();\n\nf01d6e(name, must)\nchar *name;\nint must;\n{\n    if (!name)\n        g_0a44 = stdin;\n    else if ((g_0a44 = fopen(name, \"rt\")) == 0) {\n        if (must == 1)\n            f00143(\"cannot open `%s'\", name);\n        return 0;\n    }\n    if (++g_0a42 >= 10)\n        f00143(\"too many include files\\n\");\n    g_09de[g_0a42].fp = g_0a44;\n    g_09de[g_0a42].line = g_09d8;\n    g_09de[g_0a42].name = g_09d4;\n    g_09d8 = 1;\n    g_09d4 = f01135(name, 0);\n    g_09de[g_0a42].iname = g_09d4;\n    if (g_05d8)\n        printf(\"#line 1 %s\\n\", g_09d4);\n    f00f49();\n    f03180();\n    return 1;\n}\n",
+   "f0350b.c": "#include <ctype.h>\n#include \"tokval.h\"\nextern intptr_t g_05dc; extern int  g_05d4;\nextern int (*g_09da)(), (*g_09dc)();\nextern char g_3370[], g_3470[];\nextern char *f03a85();\nextern double atof();\nextern f00167(), f0010e();\n\n/* the rest of a floating constant (after its integer part, intpart, if any): its token */\nf0350b(intpart, v)\nchar *intpart;\nunion tokval *v;\n{\n    register int c;\n    register char *p;\n\n    p = g_3370;\n    c = (*g_09da)();\n    if (g_05dc) {\n        f00167(1, \"float constant in a cross compilation\");\n        g_05dc = 0;\n    }\n    if (isdigit(c) || c == '.')\n        do {\n            *p++ = c;\n            c = (*g_09da)();\n        } while (isdigit(c));\n    if (c == 'E' || c == 'e') {\n        *p++ = c;\n        c = (*g_09da)();\n        if (c == '+' || c == '-') {\n            *p++ = c;\n            c = (*g_09da)();\n        }\n        if (!isdigit(c)) {\n            f0010e(\"expected exponent value, not `%c'\", c);\n            *p++ = '0';\n        } else\n            while (isdigit(c)) {\n                *p++ = c;\n                c = (*g_09da)();\n            }\n    }\n    (*g_09dc)(c);\n    *p = 0;\n    if (intpart)\n        sprintf(g_3470, \"%s%s\", intpart, g_3370);\n    else\n        sprintf(g_3470, \"%s\", g_3370);\n    if (g_05d4) {\n        v->str.n = strlen(g_3470) + 1;\n        v->str.f4 = 0;\n        v->s = f03a85(g_3470, v->str.n, 3);\n    } else\n        v->d = atof(g_3470);\n    return 0x107;\n}\n",
+   "f03949.c": "#include <stdio.h>\nextern intptr_t g_05d6;\nextern f0391c(), f01fd0();\n\n/* after a '/': a comment, skipped (echoed under -C) */\nf03949()\n{\n    register int c;\n\n    if (!f0391c('*'))\n        return 0;\n    if (g_05d6) {\n        printf(\"/*\");\n        for (;;) {\n            if ((c = f01fd0()) == '*' && f0391c('/')) {\n                printf(\"*/\");\n                break;\n            }\n            putc(c, stdout);\n        }\n    } else\n        while (!((c = f01fd0()) == '*' && f0391c('/')))\n            ;\n    return 1;\n}\n",
+   "getflags.h": "/* getflags.c: one switch of a table of switches (flags.c) */\nstruct flagdef {\n    char *pat;                  /* the switch's text: # an argument, * a pattern, - either - or / */\n    intptr_t *var;\t/* (a word's place - a pointer's in some rows) */\n    char val;                   /* what the match returns */\n    unsigned char flags;        /* 0: the table's end */\n};\n/* one letter of a switch of letters (kind C) */\nstruct sub {\n    int c;\n    int type;\n    int *var;\n};\n/* a list of names a switch gathers: its count of free places, then the places (filled from the end) */\nstruct slots {\n    int top;\n    char *v[20];\n};\n",
+   "tokval.h": "/* what a token carries (P0's scanner) */\nunion tokval {\n    int i;\n    char *s;\n    long l;\n    double d;\n    struct tokval_str {\n        char *s;\n        int n;\n        int f4;\n    } str;\n    struct tokval_sl {                    /* the same, its length as a long (the scanner's view) */\n        char *s;\n        long len;\n    } sl;\n};\n"
+  },
+  "kept": [
+   "d00002.c",
+   "d00081.c",
+   "d0010e.c",
+   "d0030c.c",
+   "d005c1.c",
+   "d005e4.c",
+   "d00c74.c",
+   "d00ce3.c",
+   "d00d74.c",
+   "d00d9a.c",
+   "d00f89.c",
+   "d011b3.c",
+   "d015fc.c",
+   "d01928.c",
+   "d01bc7.c",
+   "d01c46.c",
+   "d01e3e.c",
+   "d01ff6.c",
+   "d021ac.c",
+   "d024ab.c",
+   "d02acb.c",
+   "d03378.c",
+   "d03b0d.c",
+   "f00002.c",
+   "f00026.c",
+   "f00081.c",
+   "f000c6.c",
+   "f000f6.c",
+   "f00102.c",
+   "f0010e.c",
+   "f00143.c",
+   "f00167.c",
+   "f0018c.c",
+   "f001db.c",
+   "f00213.c",
+   "f0022c.c",
+   "f0030c.c",
+   "f003cd.c",
+   "f0054b.c",
+   "f00577.c",
+   "f005c1.c",
+   "f005e4.c",
+   "f00613.c",
+   "f0066f.c",
+   "f006f4.c",
+   "f007c2.c",
+   "f007f3.c",
+   "f00824.c",
+   "f0085b.c",
+   "f0089e.c",
+   "f008dd.c",
+   "f00940.c",
+   "f009ed.c",
+   "f00aff.c",
+   "f00b1d.c",
+   "f00b3b.c",
+   "f00b5a.c",
+   "f00b85.c",
+   "f00ba5.c",
+   "f00c14.c",
+   "f00c74.c",
+   "f00ce3.c",
+   "f00d74.c",
+   "f00d9a.c",
+   "f00e5c.c",
+   "f00ea0.c",
+   "f00f49.c",
+   "f00f89.c",
+   "f00ff1.c",
+   "f01033.c",
+   "f010b8.c",
+   "f010fa.c",
+   "f01135.c",
+   "f01166.c",
+   "f0118b.c",
+   "f011b3.c",
+   "f0129a.c",
+   "f01406.c",
+   "f01485.c",
+   "f014bb.c",
+   "f014fb.c",
+   "f0153c.c",
+   "f01555.c",
+   "f015b0.c",
+   "f015fc.c",
+   "f0163f.c",
+   "f01682.c",
+   "f016b4.c",
+   "f016e6.c",
+   "f01718.c",
+   "f01763.c",
+   "f017da.c",
+   "f01822.c",
+   "f01869.c",
+   "f018d1.c",
+   "f01928.c",
+   "f01989.c",
+   "f019a0.c",
+   "f019b9.c",
+   "f01b16.c",
+   "f01b28.c",
+   "f01bc7.c",
+   "f01c46.c",
+   "f01c68.c",
+   "f01c90.c",
+   "f01cd2.c",
+   "f01d42.c",
+   "f01d6e.c",
+   "f01e3e.c",
+   "f01eaf.c",
+   "f01f2e.c",
+   "f01fd0.c",
+   "f01ff6.c",
+   "f0208c.c",
+   "f020d9.c",
+   "f0213a.c",
+   "f021ac.c",
+   "f024ab.c",
+   "f024c8.c",
+   "f024e0.c",
+   "f024f2.c",
+   "f025a4.c",
+   "f02817.c",
+   "f02855.c",
+   "f028ca.c",
+   "f0291d.c",
+   "f02988.c",
+   "f029b1.c",
+   "f02acb.c",
+   "f03180.c",
+   "f031f7.c",
+   "f03248.c",
+   "f0330d.c",
+   "f03378.c",
+   "f0350b.c",
+   "f0363f.c",
+   "f036f5.c",
+   "f03710.c",
+   "f03731.c",
+   "f03784.c",
+   "f0391c.c",
+   "f03949.c",
+   "f039e2.c",
+   "f03a28.c",
+   "f03a59.c",
+   "f03a85.c",
+   "f03ac1.c",
+   "f03ada.c",
+   "f03b0d.c",
+   "f03b38.c",
+   "getflags.h",
+   "incl.h",
+   "keywords.h",
+   "macro.h",
+   "pool.h",
+   "tokens-data.c",
+   "tokens.h",
+   "tokval.h",
+   "version-data.c"
+  ],
+  "fns": [
+   {
+    "name": "f00002",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int args"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00002.c",
+    "body": ""
+   },
+   {
+    "name": "f00026",
+    "ret": "",
+    "params": [
+     [
+      "file",
+      "int file"
+     ],
+     [
+      "line",
+      "int line"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00026.c",
+    "body": ""
+   },
+   {
+    "name": "f00081",
+    "ret": "",
+    "params": [
+     [
+      "file",
+      "char *file"
+     ],
+     [
+      "line",
+      "int line"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00081.c",
+    "body": ""
+   },
+   {
+    "name": "f000c6",
+    "ret": "",
+    "params": [
+     [
+      "expr",
+      "char *expr"
+     ],
+     [
+      "file",
+      "char *file"
+     ],
+     [
+      "line",
+      "int line"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f000c6.c",
+    "body": ""
+   },
+   {
+    "name": "f000f6",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f000f6.c",
+    "body": ""
+   },
+   {
+    "name": "f00102",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00102.c",
+    "body": ""
+   },
+   {
+    "name": "f0010e",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int args"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f0010e.c",
+    "body": ""
+   },
+   {
+    "name": "f00143",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int args"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00143.c",
+    "body": ""
+   },
+   {
+    "name": "f00167",
+    "ret": "",
+    "params": [
+     [
+      "level",
+      "int level"
+     ],
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int args"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00167.c",
+    "body": ""
+   },
+   {
+    "name": "f0018c",
+    "ret": "",
+    "params": [
+     [
+      "prefix",
+      "char *prefix"
+     ],
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int *args"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0018c.c",
+    "body": ""
+   },
+   {
+    "name": "f001db",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int args"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f001db.c",
+    "body": ""
+   },
+   {
+    "name": "f00213",
+    "ret": "",
+    "params": [
+     [
+      "buf",
+      "char *buf"
+     ],
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int args"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00213.c",
+    "body": ""
+   },
+   {
+    "name": "f0022c",
+    "ret": "",
+    "params": [
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "f",
+      "register char *f"
+     ],
+     [
+      "args",
+      "int *args"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0022c.c",
+    "body": ""
+   },
+   {
+    "name": "f0030c",
+    "ret": "",
+    "params": [
+     [
+      "t",
+      "register struct flagdef *t"
+     ],
+     [
+      "arg",
+      "char *arg"
+     ],
+     [
+      "func",
+      "char *(*func)()"
+     ],
+     [
+      "farg",
+      "int farg"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0030c.c",
+    "body": ""
+   },
+   {
+    "name": "f003cd",
+    "ret": "",
+    "params": [
+     [
+      "t",
+      "struct flagdef *t"
+     ],
+     [
+      "val",
+      "char *val"
+     ],
+     [
+      "isdup",
+      "int isdup"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f003cd.c",
+    "body": ""
+   },
+   {
+    "name": "f0054b",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0054b.c",
+    "body": ""
+   },
+   {
+    "name": "f00577",
+    "ret": "",
+    "params": [
+     [
+      "pat",
+      "char *pat"
+     ],
+     [
+      "s",
+      "char *s"
+     ],
+     [
+      "flags",
+      "int flags"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00577.c",
+    "body": ""
+   },
+   {
+    "name": "f005c1",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f005c1.c",
+    "body": ""
+   },
+   {
+    "name": "f005e4",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f005e4.c",
+    "body": ""
+   },
+   {
+    "name": "f00613",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00613.c",
+    "body": ""
+   },
+   {
+    "name": "f0066f",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0066f.c",
+    "body": ""
+   },
+   {
+    "name": "f006f4",
+    "ret": "long",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f006f4.c",
+    "body": ""
+   },
+   {
+    "name": "f007c2",
+    "ret": "double",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f007c2.c",
+    "body": ""
+   },
+   {
+    "name": "f007f3",
+    "ret": "double",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f007f3.c",
+    "body": ""
+   },
+   {
+    "name": "f00824",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char *p"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00824.c",
+    "body": ""
+   },
+   {
+    "name": "f0085b",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char *p"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0085b.c",
+    "body": ""
+   },
+   {
+    "name": "f0089e",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "char *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0089e.c",
+    "body": ""
+   },
+   {
+    "name": "f008dd",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f008dd.c",
+    "body": ""
+   },
+   {
+    "name": "f00940",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register int *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00940.c",
+    "body": ""
+   },
+   {
+    "name": "f009ed",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register long *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f009ed.c",
+    "body": ""
+   },
+   {
+    "name": "f00aff",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "float *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00aff.c",
+    "body": ""
+   },
+   {
+    "name": "f00b1d",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "double *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b1d.c",
+    "body": ""
+   },
+   {
+    "name": "f00b3b",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b3b.c",
+    "body": ""
+   },
+   {
+    "name": "f00b5a",
+    "ret": "",
+    "params": [
+     [
+      "n",
+      "int n"
+     ],
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b5a.c",
+    "body": ""
+   },
+   {
+    "name": "f00b85",
+    "ret": "",
+    "params": [
+     [
+      "ok",
+      "int ok"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b85.c",
+    "body": ""
+   },
+   {
+    "name": "f00ba5",
+    "ret": "FILE *",
+    "params": [
+     [
+      "dir",
+      "char *dir"
+     ],
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "mode",
+      "char *mode"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ba5.c",
+    "body": ""
+   },
+   {
+    "name": "f00c14",
+    "ret": "",
+    "params": [
+     [
+      "fp",
+      "FILE *fp"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00c14.c",
+    "body": ""
+   },
+   {
+    "name": "f00c74",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00c74.c",
+    "body": ""
+   },
+   {
+    "name": "f00ce3",
+    "ret": "",
+    "params": [
+     [
+      "val",
+      "long val"
+     ],
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "base",
+      "int base"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ce3.c",
+    "body": ""
+   },
+   {
+    "name": "f00d74",
+    "ret": "char *",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00d74.c",
+    "body": ""
+   },
+   {
+    "name": "main",
+    "ret": "",
+    "params": [
+     [
+      "argc",
+      "int argc"
+     ],
+     [
+      "argv",
+      "char **argv"
+     ]
+    ],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00d9a.c",
+    "body": ""
+   },
+   {
+    "name": "f00e5c",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00e5c.c",
+    "body": ""
+   },
+   {
+    "name": "f00ea0",
+    "ret": "",
+    "params": [
+     [
+      "tok",
+      "register int tok"
+     ],
+     [
+      "vp",
+      "register union tokval *vp"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ea0.c",
+    "body": ""
+   },
+   {
+    "name": "f00f49",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00f49.c",
+    "body": ""
+   },
+   {
+    "name": "f00f89",
+    "ret": "",
+    "params": [
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00f89.c",
+    "body": ""
+   },
+   {
+    "name": "f00ff1",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register long *p"
+     ],
+     [
+      "n",
+      "register int n"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ff1.c",
+    "body": ""
+   },
+   {
+    "name": "f01033",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "int n"
+     ],
+     [
+      "size",
+      "int size"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01033.c",
+    "body": ""
+   },
+   {
+    "name": "f010b8",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "int n"
+     ],
+     [
+      "v",
+      "int v"
+     ],
+     [
+      "pool",
+      "int pool"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f010b8.c",
+    "body": ""
+   },
+   {
+    "name": "f010fa",
+    "ret": "",
+    "params": [
+     [
+      "size",
+      "int size"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f010fa.c",
+    "body": ""
+   },
+   {
+    "name": "f01135",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "char *s"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01135.c",
+    "body": ""
+   },
+   {
+    "name": "f01166",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char **p"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01166.c",
+    "body": ""
+   },
+   {
+    "name": "f0118b",
+    "ret": "",
+    "params": [
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0118b.c",
+    "body": ""
+   },
+   {
+    "name": "f011b3",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 17,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f011b3.c",
+    "body": ""
+   },
+   {
+    "name": "f0129a",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0129a.c",
+    "body": ""
+   },
+   {
+    "name": "f01406",
+    "ret": "",
+    "params": [
+     [
+      "t",
+      "register struct btok *t"
+     ],
+     [
+      "args",
+      "char *args"
+     ],
+     [
+      "nargs",
+      "int nargs"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01406.c",
+    "body": ""
+   },
+   {
+    "name": "f01485",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "register int n"
+     ],
+     [
+      "a",
+      "register struct arg *a"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01485.c",
+    "body": ""
+   },
+   {
+    "name": "f014bb",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f014bb.c",
+    "body": ""
+   },
+   {
+    "name": "f014fb",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f014fb.c",
+    "body": ""
+   },
+   {
+    "name": "f0153c",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0153c.c",
+    "body": ""
+   },
+   {
+    "name": "f01555",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "register union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01555.c",
+    "body": ""
+   },
+   {
+    "name": "f015b0",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f015b0.c",
+    "body": ""
+   },
+   {
+    "name": "f015fc",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f015fc.c",
+    "body": ""
+   },
+   {
+    "name": "f0163f",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0163f.c",
+    "body": ""
+   },
+   {
+    "name": "f01682",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01682.c",
+    "body": ""
+   },
+   {
+    "name": "f016b4",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f016b4.c",
+    "body": ""
+   },
+   {
+    "name": "f016e6",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f016e6.c",
+    "body": ""
+   },
+   {
+    "name": "f01718",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01718.c",
+    "body": ""
+   },
+   {
+    "name": "f01763",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01763.c",
+    "body": ""
+   },
+   {
+    "name": "f017da",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f017da.c",
+    "body": ""
+   },
+   {
+    "name": "f01822",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01822.c",
+    "body": ""
+   },
+   {
+    "name": "f01869",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01869.c",
+    "body": ""
+   },
+   {
+    "name": "f018d1",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f018d1.c",
+    "body": ""
+   },
+   {
+    "name": "f01928",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01928.c",
+    "body": ""
+   },
+   {
+    "name": "f01989",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01989.c",
+    "body": ""
+   },
+   {
+    "name": "f019a0",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f019a0.c",
+    "body": ""
+   },
+   {
+    "name": "f019b9",
+    "ret": "",
+    "params": [
+     [
+      "want",
+      "int want"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f019b9.c",
+    "body": ""
+   },
+   {
+    "name": "f01b16",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01b16.c",
+    "body": ""
+   },
+   {
+    "name": "f01b28",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01b28.c",
+    "body": ""
+   },
+   {
+    "name": "f01bc7",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01bc7.c",
+    "body": ""
+   },
+   {
+    "name": "f01c46",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01c46.c",
+    "body": ""
+   },
+   {
+    "name": "f01c68",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "char *s"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01c68.c",
+    "body": ""
+   },
+   {
+    "name": "f01c90",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01c90.c",
+    "body": ""
+   },
+   {
+    "name": "f01cd2",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01cd2.c",
+    "body": ""
+   },
+   {
+    "name": "f01d42",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "int c"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01d42.c",
+    "body": ""
+   },
+   {
+    "name": "f01d6e",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "must",
+      "int must"
+     ]
+    ],
+    "static": false,
+    "line": 10,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01d6e.c",
+    "body": ""
+   },
+   {
+    "name": "f01e3e",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01e3e.c",
+    "body": ""
+   },
+   {
+    "name": "f01eaf",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "defs",
+      "register struct slots *defs"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01eaf.c",
+    "body": ""
+   },
+   {
+    "name": "f01f2e",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01f2e.c",
+    "body": ""
+   },
+   {
+    "name": "f01fd0",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01fd0.c",
+    "body": ""
+   },
+   {
+    "name": "f01ff6",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "body",
+      "struct btok *body"
+     ],
+     [
+      "np",
+      "char np"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01ff6.c",
+    "body": ""
+   },
+   {
+    "name": "f0208c",
+    "ret": "struct mac *",
+    "params": [
+     [
+      "name",
+      "register char *name"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0208c.c",
+    "body": ""
+   },
+   {
+    "name": "f020d9",
+    "ret": "",
+    "params": [
+     [
+      "a",
+      "register struct btok *a"
+     ],
+     [
+      "b",
+      "register struct btok *b"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f020d9.c",
+    "body": ""
+   },
+   {
+    "name": "f0213a",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0213a.c",
+    "body": ""
+   },
+   {
+    "name": "f021ac",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "char *p"
+     ]
+    ],
+    "static": false,
+    "line": 15,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f021ac.c",
+    "body": ""
+   },
+   {
+    "name": "f024ab",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024ab.c",
+    "body": ""
+   },
+   {
+    "name": "f024c8",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024c8.c",
+    "body": ""
+   },
+   {
+    "name": "f024e0",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024e0.c",
+    "body": ""
+   },
+   {
+    "name": "f024f2",
+    "ret": "",
+    "params": [
+     [
+      "how",
+      "int how"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024f2.c",
+    "body": ""
+   },
+   {
+    "name": "f025a4",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f025a4.c",
+    "body": ""
+   },
+   {
+    "name": "f02817",
+    "ret": "struct btok *",
+    "params": [
+     [
+      "kind",
+      "int kind"
+     ],
+     [
+      "argno",
+      "char argno"
+     ],
+     [
+      "text",
+      "char *text"
+     ],
+     [
+      "t",
+      "register struct btok *t"
+     ],
+     [
+      "pool",
+      "int pool"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02817.c",
+    "body": ""
+   },
+   {
+    "name": "f02855",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02855.c",
+    "body": ""
+   },
+   {
+    "name": "f028ca",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f028ca.c",
+    "body": ""
+   },
+   {
+    "name": "f0291d",
+    "ret": "char *",
+    "params": [
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "n",
+      "register char *n"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0291d.c",
+    "body": ""
+   },
+   {
+    "name": "f02988",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "register union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02988.c",
+    "body": ""
+   },
+   {
+    "name": "f029b1",
+    "ret": "struct btok *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f029b1.c",
+    "body": ""
+   },
+   {
+    "name": "f02acb",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 20,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02acb.c",
+    "body": ""
+   },
+   {
+    "name": "f03180",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03180.c",
+    "body": ""
+   },
+   {
+    "name": "f031f7",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f031f7.c",
+    "body": ""
+   },
+   {
+    "name": "f03248",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03248.c",
+    "body": ""
+   },
+   {
+    "name": "f0330d",
+    "ret": "char *",
+    "params": [
+     [
+      "c",
+      "register int c"
+     ]
+    ],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0330d.c",
+    "body": ""
+   },
+   {
+    "name": "f03378",
+    "ret": "",
+    "params": [
+     [
+      "base",
+      "int base"
+     ],
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03378.c",
+    "body": ""
+   },
+   {
+    "name": "f0350b",
+    "ret": "",
+    "params": [
+     [
+      "intpart",
+      "char *intpart"
+     ],
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 11,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0350b.c",
+    "body": ""
+   },
+   {
+    "name": "f0363f",
+    "ret": "long",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "base",
+      "int base"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0363f.c",
+    "body": ""
+   },
+   {
+    "name": "f036f5",
+    "ret": "",
+    "params": [
+     [
+      "l",
+      "long l"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f036f5.c",
+    "body": ""
+   },
+   {
+    "name": "f03710",
+    "ret": "",
+    "params": [
+     [
+      "l",
+      "long l"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03710.c",
+    "body": ""
+   },
+   {
+    "name": "f03731",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03731.c",
+    "body": ""
+   },
+   {
+    "name": "f03784",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03784.c",
+    "body": ""
+   },
+   {
+    "name": "f0391c",
+    "ret": "",
+    "params": [
+     [
+      "want",
+      "register int want"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0391c.c",
+    "body": ""
+   },
+   {
+    "name": "f03949",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03949.c",
+    "body": ""
+   },
+   {
+    "name": "f039e2",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "register int c"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f039e2.c",
+    "body": ""
+   },
+   {
+    "name": "f03a28",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03a28.c",
+    "body": ""
+   },
+   {
+    "name": "f03a59",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03a59.c",
+    "body": ""
+   },
+   {
+    "name": "f03a85",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "n",
+      "register int n"
+     ],
+     [
+      "pool",
+      "int pool"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03a85.c",
+    "body": ""
+   },
+   {
+    "name": "f03ac1",
+    "ret": "",
+    "params": [
+     [
+      "l",
+      "long l"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03ac1.c",
+    "body": ""
+   },
+   {
+    "name": "f03ada",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "register int c"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03ada.c",
+    "body": ""
+   },
+   {
+    "name": "f03b0d",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03b0d.c",
+    "body": ""
+   },
+   {
+    "name": "f03b38",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03b38.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [
+   "g_05ec",
+   "g_05ee"
+  ],
+  "view_headers": [
+   "getflags.h"
+  ],
+  "param_types": [],
+  "bss": [
+   [
+    "g_00fe",
+    10
+   ],
+   [
+    "g_0230",
+    10
+   ],
+   [
+    "g_0232",
+    10
+   ],
+   [
+    "g_0234",
+    10
+   ],
+   [
+    "g_03d6",
+    10
+   ],
+   [
+    "g_052e",
+    10
+   ],
+   [
+    "g_056c",
+    10
+   ],
+   [
+    "g_056e",
+    10
+   ],
+   [
+    "g_0582",
+    10
+   ],
+   [
+    "g_05d2",
+    10
+   ],
+   [
+    "g_05d4",
+    10
+   ],
+   [
+    "g_05d6",
+    10
+   ],
+   [
+    "g_05d8",
+    10
+   ],
+   [
+    "g_05da",
+    10
+   ],
+   [
+    "g_05dc",
+    10
+   ],
+   [
+    "g_05de",
+    10
+   ],
+   [
+    "g_05e0",
+    10
+   ],
+   [
+    "g_05e2",
+    10
+   ],
+   [
+    "g_05e4",
+    10
+   ],
+   [
+    "g_05e6",
+    10
+   ],
+   [
+    "g_05e8",
+    10
+   ],
+   [
+    "g_05ea",
+    10
+   ],
+   [
+    "g_05ec",
+    10
+   ],
+   [
+    "g_05ee",
+    10
+   ],
+   [
+    "g_0616",
+    10
+   ],
+   [
+    "g_0640",
+    10
+   ],
+   [
+    "g_0642",
+    10
+   ],
+   [
+    "g_0644",
+    10
+   ],
+   [
+    "g_0664",
+    10
+   ],
+   [
+    "g_06ea",
+    10
+   ],
+   [
+    "g_06fe",
+    10
+   ],
+   [
+    "g_0700",
+    10
+   ],
+   [
+    "g_0828",
+    10
+   ],
+   [
+    "g_082a",
+    10
+   ],
+   [
+    "g_082c",
+    10
+   ],
+   [
+    "g_08e6",
+    10
+   ],
+   [
+    "g_08e8",
+    10
+   ],
+   [
+    "g_091a",
+    10
+   ],
+   [
+    "g_091e",
+    10
+   ],
+   [
+    "g_09d2",
+    10
+   ],
+   [
+    "g_09d4",
+    10
+   ],
+   [
+    "g_09d6",
+    10
+   ],
+   [
+    "g_09d8",
+    10
+   ],
+   [
+    "g_09da",
+    10
+   ],
+   [
+    "g_09dc",
+    10
+   ],
+   [
+    "g_09de",
+    10
+   ],
+   [
+    "g_0a42",
+    10
+   ],
+   [
+    "g_0a44",
+    10
+   ],
+   [
+    "g_0a8e",
+    10
+   ],
+   [
+    "g_0ad2",
+    10
+   ],
+   [
+    "g_0ad4",
+    10
+   ],
+   [
+    "g_0ad6",
+    10
+   ],
+   [
+    "g_0c28",
+    10
+   ],
+   [
+    "g_0c3c",
+    10
+   ],
+   [
+    "g_0e52",
+    10
+   ],
+   [
+    "g_0e54",
+    10
+   ],
+   [
+    "g_0e56",
+    10
+   ],
+   [
+    "g_0e58",
+    10
+   ],
+   [
+    "g_0e5a",
+    10
+   ],
+   [
+    "g_0e64",
+    10
+   ],
+   [
+    "g_0e6e",
+    10
+   ],
+   [
+    "g_0e70",
+    10
+   ],
+   [
+    "g_0e7c",
+    10
+   ],
+   [
+    "g_0e88",
+    10
+   ],
+   [
+    "g_0f06",
+    10
+   ],
+   [
+    "g_123a",
+    10
+   ],
+   [
+    "g_1394",
+    10
+   ],
+   [
+    "g_151c",
+    10
+   ],
+   [
+    "g_151e",
+    10
+   ],
+   [
+    "g_19c6",
+    10
+   ],
+   [
+    "g_19c8",
+    10
+   ],
+   [
+    "g_19ca",
+    10
+   ],
+   [
+    "g_19cc",
+    10
+   ],
+   [
+    "g_19d0",
+    4080
+   ],
+   [
+    "g_1dcc",
+    2096
+   ],
+   [
+    "g_1f78",
+    10
+   ],
+   [
+    "g_1fd8",
+    2096
+   ],
+   [
+    "g_21e4",
+    2096
+   ],
+   [
+    "g_23f0",
+    2096
+   ],
+   [
+    "g_25fc",
+    10
+   ],
+   [
+    "g_25fe",
+    10
+   ],
+   [
+    "g_2600",
+    10
+   ],
+   [
+    "g_2e00",
+    10
+   ],
+   [
+    "g_2e02",
+    10
+   ],
+   [
+    "g_2e42",
+    10
+   ],
+   [
+    "g_2f42",
+    10
+   ],
+   [
+    "g_3042",
+    10
+   ],
+   [
+    "g_3270",
+    10
+   ],
+   [
+    "g_3370",
+    10
+   ],
+   [
+    "g_3470",
+    10
+   ],
+   [
+    "g_3770",
+    10
+   ],
+   [
+    "g_3772",
+    10
+   ],
+   [
+    "g_3974",
+    10
+   ],
+   [
+    "g_3b74",
+    10
+   ],
+   [
+    "g_3b76",
+    10
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_0e64",
+    "(&g_0e5a[5])",
+    "int g_0e5a[10];"
+   ],
+   [
+    "g_0e7c",
+    "(&g_0e70[6])",
+    "int g_0e70[18];"
+   ],
+   [
+    "g_0e88",
+    "(&g_0e70[12])",
+    "int g_0e70[18];"
+   ]
+  ]
+ },
+ "offset_views": {
+  "files_changed": {
+   "d00d74.c": "/* main.c: the pass's switches (getflags.c reads the table), the lists of names they gather, the token file */\n#include <stdio.h>\n#include \"getflags.h\"\nstatic char *sccsid = \"@(#)main.c:1.13\";\nchar *g_05d2 = \"\";              /* -il: the intermediate files' name */\nint g_05d4 = 0;\nintptr_t g_05d6 = 0;                 /* -C */\nintptr_t g_05d8 = 0;                 /* -E */\nintptr_t g_05da = 0;                 /* -P */\nintptr_t g_05dc = 0;                 /* -xc */\nintptr_t g_05de = 2;                 /* -W: the warning level */\nint g_05e0 = 0;                 /* -Ze */\nint g_05e2 = 0;                 /* -Zp */\nint g_05e4 = 0;                 /* -Zd */\nint g_05e6 = 0;                 /* -Zg */\nFILE *g_05e8 = stdout;          /* the token file */\nint g_05ea = 0x16f;             /* (?) */\nstruct slots g_05ec_s = { 20, { 0 } };\t/* (g_05ec, g_05ee: one place, as the old linker kept them) */\n\nstruct slots g_0616 = { 20 };   /* -D: the names defined */\nintptr_t g_0640 = 0;                 /* -db */\nchar *g_0642 = 0;               /* -f: the source file */\nintptr_t g_0644 = 0;                 /* a switch not known */\nstatic struct sub zsubs[] = {\n    { 'p', 1, &g_05e2 },\n    { 'e', 1, &g_05e0 },\n    { 'd', 1, &g_05e4 },\n    { 'g', 1, &g_05e6 },\n    { 0 },\n};\nstruct flagdef g_0664[] = {\n    { \"-C\", &g_05d6, 1, 0x01 },\n    { \"-D#\", (intptr_t *)&g_0616, 1, 0x46 },\n    { \"-E\", &g_05d8, 1, 0x01 },\n    { \"-I#\", (intptr_t *)&g_05ec, 1, 0x46 },\n    { \"-P\", &g_05da, 1, 0x01 },\n    { \"-f\", (intptr_t *)&g_0642, 1, 0x42 },\n    { \"-W#\", &g_05de, 1, 0x44 },\n    { \"-Z*\", (intptr_t *)zsubs, 1, 0x43 },\n    { \"-db#\", &g_0640, 1, 0x42 },\n    { \"-il#\", (intptr_t *)&g_05d2, 1, 0x42 },\n    { \"-xc\", &g_05dc, 1, 0x01 },\n    { \"*\", &g_0644, 0, 0x42 },\n    { 0 },\n};\n",
+   "d00f89.c": "#include \"pool.h\"\nextern char g_19d0[], g_1dcc[], g_1fd8[], g_21e4[], g_23f0[];  /* (the pools' first blocks) */\nchar *g_06fe = \"@(#)memallo.c:1.5\";\nstruct pool g_0700[] = {\n    { (char **)g_19d0, 4064, g_19d0 + 4, (char **)g_19d0, 4064, 1 },\n    { (char **)g_1dcc, 2080, g_1dcc + 4, (char **)g_1dcc, 2080, 1 },\n    { (char **)g_1fd8, 2080, g_1fd8 + 4, (char **)g_1fd8, 2080, 1 },\n    { (char **)g_21e4, 2080, g_21e4 + 4, (char **)g_21e4, 2080, 1 },\n    { (char **)g_23f0, 2080, g_23f0 + 4, (char **)g_23f0, 2080, 1 },\n};\n",
+   "d02acb.c": "char *g_0e52 = \"@(#)p0scanner.c:1.13\";\nchar g_0e54[2] = \"\";\nint g_0e56 = 0;\nchar *g_0e58 = \"^*%=!\";\nint g_0e5a[10] = { 303, 282, 291, 309, 275, 318, 312, 314, 301, 302 };\t/* (one table: g_0e5a, g_0e64) */\nchar *g_0e6e = \"+-&|<>\";\nint g_0e70[18] = { 292, 293, 289, 304, 297, 299, 310, 311, 317, 319, 298, 300, 277, 278, 305, 306, 295, 296 };\t/* (one table: g_0e70, g_0e7c, g_0e88) */\n",
+   "f00167.c": "extern intptr_t g_05de;\nextern f0018c();\n\nf00167(level, fmt, args)\nint level;\nchar *fmt;\n{\n    if (level <= g_05de)\n        f0018c(\"warning : \", fmt, &args);\n}\n",
+   "f00d9a.c": "#include <stdio.h>\n#include \"getflags.h\"\nextern intptr_t g_05d8; extern int g_3770, g_0644,  g_05da, g_05d4, g_09d6;\nextern char **g_3b74;\nextern char *g_05d2, *g_0642;\nextern struct flagdef g_0664[];\nextern struct slots g_0616;\nextern FILE *g_05e8, *g_0232;\nextern char *f00d74(), *f00ba5();\nextern f0030c(), f00143(), f01eaf(), f01bc7(), f00e5c(), f00c14();\n\nmain(argc, argv)\nint argc;\nchar **argv;\n{\n    g_3770 = argc;\n    g_3b74 = argv;\n    while (f0030c(g_0664, f00d74(), f00d74, 0))\n        ;\n    if (g_0644)\n        f00143(\"bad flag = %s\\n\", g_0644);\n    if ((g_05d4 = g_05d8 || g_05da) == 0)\n        g_05e8 = f00ba5(g_05d2, \"pr\", \"w\", \"token file\");\n    g_0232 = g_05e8;\n    if (g_0642)\n        f01eaf(g_0642, &g_0616);\n    else\n        f00143(\"no input file specified\");\n    if (g_05d4)\n        f01bc7();\n    else\n        f00e5c();\n    f00c14(g_0232);\n    exit(g_09d6);\n}\n",
+   "f011b3.c": "#include \"macro.h\"\nstruct macro {\t/* (as struct mac is: its bytes) */\n    struct mac *f0;\n    char *f2;\n    int f4;\n    struct btok *body;\n    char nparams;\n};\nextern int g_082a, g_25fc;\nextern char *g_25fe;\nextern struct arg *g_3772;\nextern char g_2600[];          /* the actual parameters' text (2K) */\nextern int (*g_09dc)();\nextern struct macro *f0208c();\nextern f00143(), f03a28(), f00167(), f01406(), f0129a();\n\nf011b3(name)\nchar *name;\n{\n    register int c, np;\n    int u, x;                   /* (not used) */\n    struct macro *m;\n\n    if ((m = f0208c(name)) == 0)\n        return 0;\n    if (g_082a++ > 1000)\n        f00143(\"compiler limit : possibly a recursively defined macro\");\n    else if (m->nparams == 0) {\n        f01406(m->body, 0, 0);\n        return 1;\n    }\n    if ((c = f03a28()) != '(') {\n        (*g_09dc)(c);\n        f00167(1, \"macro `%s' requires parameters\", name);\n        f01406(m->body, 0, 0);\n        return 1;\n    }\n    np = m->nparams;\n    if (np == -1)\n        np = 0;\n    g_25fc = 0;\n    g_25fe = g_2600;\n    while (f0129a())\n        ;\n    if (g_25fc > np)\n        f00167(1, \"too many actual parameters for macro `%s'\", name);\n    else if (g_25fc < np)\n        f00167(1, \"not enough actual parameters for macro `%s'\", name);\n    f01406(m->body, g_3772, g_25fc);\n    g_3772 = 0;\n    return 1;\n}\n",
+   "f01cd2.c": "#include <stdio.h>\nextern FILE *g_0a44;\nextern intptr_t g_05d8; extern int g_09d8;\nextern char *g_09d4;\nextern f01c46(), f01e3e();\n\nf01cd2()\n{\n    register int c;\n\n    for (;;) {\n        switch (c = getc(g_0a44)) {\n        case '\\n':\n            g_09d8++;\n            f01c46();\n        default:\n            return c;\n        case EOF:\n            break;\n        }\n        if (f01e3e() == EOF)\n            return EOF;\n        if (g_05d8)\n            printf(\"\\n#line %d %s\", g_09d8 + 1, g_09d4);\n    }\n}\n",
+   "f01d6e.c": "#include <stdio.h>\n#include \"incl.h\"\nextern FILE *g_0a44;\nextern intptr_t g_05d8; extern int g_0a42, g_09d8;\nextern char *g_09d4;\nextern struct incl g_09de[];\nextern char *f01135();\nextern f00143(), f00f49(), f03180();\n\nf01d6e(name, must)\nchar *name;\nint must;\n{\n    if (!name)\n        g_0a44 = stdin;\n    else if ((g_0a44 = fopen(name, \"rt\")) == 0) {\n        if (must == 1)\n            f00143(\"cannot open `%s'\", name);\n        return 0;\n    }\n    if (++g_0a42 >= 10)\n        f00143(\"too many include files\\n\");\n    g_09de[g_0a42].fp = g_0a44;\n    g_09de[g_0a42].line = g_09d8;\n    g_09de[g_0a42].name = g_09d4;\n    g_09d8 = 1;\n    g_09d4 = f01135(name, 0);\n    g_09de[g_0a42].iname = g_09d4;\n    if (g_05d8)\n        printf(\"#line 1 %s\\n\", g_09d4);\n    f00f49();\n    f03180();\n    return 1;\n}\n",
+   "f0350b.c": "#include <ctype.h>\n#include \"tokval.h\"\nextern intptr_t g_05dc; extern int  g_05d4;\nextern int (*g_09da)(), (*g_09dc)();\nextern char g_3370[], g_3470[];\nextern char *f03a85();\nextern double atof();\nextern f00167(), f0010e();\n\n/* the rest of a floating constant (after its integer part, intpart, if any): its token */\nf0350b(intpart, v)\nchar *intpart;\nunion tokval *v;\n{\n    register int c;\n    register char *p;\n\n    p = g_3370;\n    c = (*g_09da)();\n    if (g_05dc) {\n        f00167(1, \"float constant in a cross compilation\");\n        g_05dc = 0;\n    }\n    if (isdigit(c) || c == '.')\n        do {\n            *p++ = c;\n            c = (*g_09da)();\n        } while (isdigit(c));\n    if (c == 'E' || c == 'e') {\n        *p++ = c;\n        c = (*g_09da)();\n        if (c == '+' || c == '-') {\n            *p++ = c;\n            c = (*g_09da)();\n        }\n        if (!isdigit(c)) {\n            f0010e(\"expected exponent value, not `%c'\", c);\n            *p++ = '0';\n        } else\n            while (isdigit(c)) {\n                *p++ = c;\n                c = (*g_09da)();\n            }\n    }\n    (*g_09dc)(c);\n    *p = 0;\n    if (intpart)\n        sprintf(g_3470, \"%s%s\", intpart, g_3370);\n    else\n        sprintf(g_3470, \"%s\", g_3370);\n    if (g_05d4) {\n        v->str.n = strlen(g_3470) + 1;\n        v->str.f4 = 0;\n        v->s = f03a85(g_3470, v->str.n, 3);\n    } else\n        v->d = atof(g_3470);\n    return 0x107;\n}\n",
+   "f03949.c": "#include <stdio.h>\nextern intptr_t g_05d6;\nextern f0391c(), f01fd0();\n\n/* after a '/': a comment, skipped (echoed under -C) */\nf03949()\n{\n    register int c;\n\n    if (!f0391c('*'))\n        return 0;\n    if (g_05d6) {\n        printf(\"/*\");\n        for (;;) {\n            if ((c = f01fd0()) == '*' && f0391c('/')) {\n                printf(\"*/\");\n                break;\n            }\n            putc(c, stdout);\n        }\n    } else\n        while (!((c = f01fd0()) == '*' && f0391c('/')))\n            ;\n    return 1;\n}\n",
+   "getflags.h": "/* getflags.c: one switch of a table of switches (flags.c) */\nstruct flagdef {\n    char *pat;                  /* the switch's text: # an argument, * a pattern, - either - or / */\n    intptr_t *var;\t/* (a word's place - a pointer's in some rows) */\n    char val;                   /* what the match returns */\n    unsigned char flags;        /* 0: the table's end */\n};\n/* one letter of a switch of letters (kind C) */\nstruct sub {\n    int c;\n    int type;\n    int *var;\n};\n/* a list of names a switch gathers: its count of free places, then the places (filled from the end) */\nstruct slots {\n    int top;\n    char *v[20];\n};\n",
+   "tokval.h": "/* what a token carries (P0's scanner) */\nunion tokval {\n    int i;\n    char *s;\n    long l;\n    double d;\n    struct tokval_str {\n        char *s;\n        int n;\n        int f4;\n    } str;\n    struct tokval_sl {                    /* the same, its length as a long (the scanner's view) */\n        char *s;\n        long len;\n    } sl;\n};\n"
+  },
+  "kept": [
+   "d00002.c",
+   "d00081.c",
+   "d0010e.c",
+   "d0030c.c",
+   "d005c1.c",
+   "d005e4.c",
+   "d00c74.c",
+   "d00ce3.c",
+   "d00d74.c",
+   "d00d9a.c",
+   "d00f89.c",
+   "d011b3.c",
+   "d015fc.c",
+   "d01928.c",
+   "d01bc7.c",
+   "d01c46.c",
+   "d01e3e.c",
+   "d01ff6.c",
+   "d021ac.c",
+   "d024ab.c",
+   "d02acb.c",
+   "d03378.c",
+   "d03b0d.c",
+   "f00002.c",
+   "f00026.c",
+   "f00081.c",
+   "f000c6.c",
+   "f000f6.c",
+   "f00102.c",
+   "f0010e.c",
+   "f00143.c",
+   "f00167.c",
+   "f0018c.c",
+   "f001db.c",
+   "f00213.c",
+   "f0022c.c",
+   "f0030c.c",
+   "f003cd.c",
+   "f0054b.c",
+   "f00577.c",
+   "f005c1.c",
+   "f005e4.c",
+   "f00613.c",
+   "f0066f.c",
+   "f006f4.c",
+   "f007c2.c",
+   "f007f3.c",
+   "f00824.c",
+   "f0085b.c",
+   "f0089e.c",
+   "f008dd.c",
+   "f00940.c",
+   "f009ed.c",
+   "f00aff.c",
+   "f00b1d.c",
+   "f00b3b.c",
+   "f00b5a.c",
+   "f00b85.c",
+   "f00ba5.c",
+   "f00c14.c",
+   "f00c74.c",
+   "f00ce3.c",
+   "f00d74.c",
+   "f00d9a.c",
+   "f00e5c.c",
+   "f00ea0.c",
+   "f00f49.c",
+   "f00f89.c",
+   "f00ff1.c",
+   "f01033.c",
+   "f010b8.c",
+   "f010fa.c",
+   "f01135.c",
+   "f01166.c",
+   "f0118b.c",
+   "f011b3.c",
+   "f0129a.c",
+   "f01406.c",
+   "f01485.c",
+   "f014bb.c",
+   "f014fb.c",
+   "f0153c.c",
+   "f01555.c",
+   "f015b0.c",
+   "f015fc.c",
+   "f0163f.c",
+   "f01682.c",
+   "f016b4.c",
+   "f016e6.c",
+   "f01718.c",
+   "f01763.c",
+   "f017da.c",
+   "f01822.c",
+   "f01869.c",
+   "f018d1.c",
+   "f01928.c",
+   "f01989.c",
+   "f019a0.c",
+   "f019b9.c",
+   "f01b16.c",
+   "f01b28.c",
+   "f01bc7.c",
+   "f01c46.c",
+   "f01c68.c",
+   "f01c90.c",
+   "f01cd2.c",
+   "f01d42.c",
+   "f01d6e.c",
+   "f01e3e.c",
+   "f01eaf.c",
+   "f01f2e.c",
+   "f01fd0.c",
+   "f01ff6.c",
+   "f0208c.c",
+   "f020d9.c",
+   "f0213a.c",
+   "f021ac.c",
+   "f024ab.c",
+   "f024c8.c",
+   "f024e0.c",
+   "f024f2.c",
+   "f025a4.c",
+   "f02817.c",
+   "f02855.c",
+   "f028ca.c",
+   "f0291d.c",
+   "f02988.c",
+   "f029b1.c",
+   "f02acb.c",
+   "f03180.c",
+   "f031f7.c",
+   "f03248.c",
+   "f0330d.c",
+   "f03378.c",
+   "f0350b.c",
+   "f0363f.c",
+   "f036f5.c",
+   "f03710.c",
+   "f03731.c",
+   "f03784.c",
+   "f0391c.c",
+   "f03949.c",
+   "f039e2.c",
+   "f03a28.c",
+   "f03a59.c",
+   "f03a85.c",
+   "f03ac1.c",
+   "f03ada.c",
+   "f03b0d.c",
+   "f03b38.c",
+   "getflags.h",
+   "incl.h",
+   "keywords.h",
+   "macro.h",
+   "pool.h",
+   "tokens-data.c",
+   "tokens.h",
+   "tokval.h",
+   "version-data.c"
+  ],
+  "fns": [
+   {
+    "name": "f00002",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": [
+     "args",
+     "fmt"
+    ],
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00002.c",
+    "body": "{ DOS_VA_WORDS(args, fmt);\n    f0018c(\"                          \", fmt, args);\n    exit(1);\n}"
+   },
+   {
+    "name": "f00026",
+    "ret": "",
+    "params": [
+     [
+      "file",
+      "int file"
+     ],
+     [
+      "line",
+      "int line"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00026.c",
+    "body": "{\n    g_09d6++;\n    if (file == g_19c6 && line == g_19ca && g_19cc == g_09d8) {\n        if (++g_19c8 > 25)\n            f00002(\"                     \", 0);\n    } else {\n        g_19c8 = 0;\n        g_19c6 = file;\n        g_19ca = line;\n        g_19cc = g_09d8;\n    }\n}"
+   },
+   {
+    "name": "f00081",
+    "ret": "",
+    "params": [
+     [
+      "file",
+      "char *file"
+     ],
+     [
+      "line",
+      "int line"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00081.c",
+    "body": "{\n    g_09d6++;\n    f00026(file, line);\n    f001db(\"                                                        \", file, line, g_09d8);\n    if (++g_00fe > 5)\n        f00143(\"                                               \");\n}"
+   },
+   {
+    "name": "f000c6",
+    "ret": "",
+    "params": [
+     [
+      "expr",
+      "char *expr"
+     ],
+     [
+      "file",
+      "char *file"
+     ],
+     [
+      "line",
+      "int line"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f000c6.c",
+    "body": "{\n    g_09d6++;\n    f00026(file, line);\n    f001db(\"                                                             \", expr, file, line, g_09d8);\n}"
+   },
+   {
+    "name": "f000f6",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 1,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f000f6.c",
+    "body": "{\n}"
+   },
+   {
+    "name": "f00102",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 1,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00102.c",
+    "body": "{\n}"
+   },
+   {
+    "name": "f0010e",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": [
+     "args",
+     "fmt"
+    ],
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f0010e.c",
+    "body": "{ DOS_VA_WORDS(args, fmt);\n    f0018c(0, fmt, args);\n    if (++g_09d6 > 100)\n        f00143(\"                                            \", 100);\n}"
+   },
+   {
+    "name": "f00143",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": [
+     "args",
+     "fmt"
+    ],
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00143.c",
+    "body": "{ DOS_VA_WORDS(args, fmt);\n    f0018c(\"        \", fmt, args);\n    exit(255);\n}"
+   },
+   {
+    "name": "f00167",
+    "ret": "",
+    "params": [
+     [
+      "level",
+      "int level"
+     ],
+     [
+      "fmt",
+      "char *fmt"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": [
+     "args",
+     "fmt"
+    ],
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00167.c",
+    "body": "{ DOS_VA_WORDS(args, fmt);\n    if (level <= g_05de)\n        f0018c(\"          \", fmt, args);\n}"
+   },
+   {
+    "name": "f0018c",
+    "ret": "",
+    "params": [
+     [
+      "prefix",
+      "char *prefix"
+     ],
+     [
+      "fmt",
+      "char *fmt"
+     ],
+     [
+      "args",
+      "int *args"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0018c.c",
+    "body": "{\n    char buf[100];\n\n    f001db(\"         \", g_09d4, g_09d8);\n    if (prefix)\n        f001db(prefix);\n    f0022c(buf, fmt, args);\n    f001db(buf);\n    f001db(\"  \");\n}"
+   },
+   {
+    "name": "f001db",
+    "ret": "",
+    "params": [
+     [
+      "fmt",
+      "char *fmt"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": [
+     "args",
+     "fmt"
+    ],
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f001db.c",
+    "body": "{ DOS_VA_WORDS(args, fmt);\n    char buf[82];\n\n    f0022c(buf, fmt, args);\n    fwrite(buf, strlen(buf), 1, stderr);\n}"
+   },
+   {
+    "name": "f00213",
+    "ret": "",
+    "params": [
+     [
+      "buf",
+      "char *buf"
+     ],
+     [
+      "fmt",
+      "char *fmt"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": [
+     "args",
+     "fmt"
+    ],
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [
+     "args"
+    ],
+    "file": "f00213.c",
+    "body": "{ DOS_VA_WORDS(args, fmt);\n    f0022c(buf, fmt, args);\n}"
+   },
+   {
+    "name": "f0022c",
+    "ret": "",
+    "params": [
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "f",
+      "register char *f"
+     ],
+     [
+      "args",
+      "int *args"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0022c.c",
+    "body": "{\n    int base;\n    int longf;\n\n    for (longf = 0; *f; longf = 0) {\n        if (*f == ' ') {\nagain:\n            switch (f[1]) {\n            case ' ':\n                longf = 1;\n                f++;\n                goto again;\n            case ' ':\n                if (*args) {\n                    strcpy(d, *args);\n                    d += strlen(*args);\n                }\n                f += 2;\n                args++;\n                break;\n            case ' ':\n            case ' ':\n                base = f[1] == ' ' ? 10 : 16;\n                if (longf) {\n                    d += f00ce3(*(long *)args, d, base);\n                    args += 2;\n                } else {\n                    d += f00ce3((long)*args, d, base);\n                    args++;\n                }\n                f += 2;\n                break;\n            case ' ':\n                *d++ = *args;\n                args++;\n                f += 2;\n                break;\n            default:\n                *d++ = *f++;\n                break;\n            }\n        } else\n            *d++ = *f++;\n    }\n    *d = 0;\n}"
+   },
+   {
+    "name": "f0030c",
+    "ret": "",
+    "params": [
+     [
+      "t",
+      "register struct flagdef *t"
+     ],
+     [
+      "arg",
+      "char *arg"
+     ],
+     [
+      "func",
+      "char *(*func)()"
+     ],
+     [
+      "farg",
+      "int farg"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0030c.c",
+    "body": "{\n    register char *p;\n    char *s;\n\n    if (!arg)\n        return 0;\n    g_1f78 = arg;\n    for (; t->flags; t++) {\n        p = t->pat;\n        s = arg;\n        for (;;)\n            switch (*p) {\n            default:\n                if (*s++ == *p++)\n                    continue;\n                goto nomatch;\n            case ' ':\n                if (!*s) {\n                    f003cd(t, (*func)(), farg);\n                    return t->val;\n                }\n                f003cd(t, s, farg);\n                return t->val;\n            case ' ':\n                if (!*s || !f00577(p, s, t->flags))\n                    goto nomatch;\n                f003cd(t, s, farg);\n                return t->val;\n            case '  ':\n                if (*s)\n                    goto nomatch;\n                if (t->flags & 0x40) {\n                    f003cd(t, (*func)(), farg);\n                    return t->val;\n                }\n                f003cd(t, 0, farg);\n                return t->val;\n            case ' ':\n                if (*s != ' ')\n                    goto nomatch;\n                s++;\n                p++;\n                continue;\n            }\nnomatch:\n        ;\n    }\n    return 0;\n}"
+   },
+   {
+    "name": "f003cd",
+    "ret": "",
+    "params": [
+     [
+      "t",
+      "struct flagdef *t"
+     ],
+     [
+      "val",
+      "char *val"
+     ],
+     [
+      "isdup",
+      "int isdup"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f003cd.c",
+    "body": "{\n    char *arg;\n    register struct sub *sp;\n    struct slots *fs;\n\n    arg = val;\n    switch (t->flags) {\n    case 1:\n        *t->var = 1;\n        break;\n    case 5:\n        *t->var = 0;\n        break;\n    case ' ':\n        if (*t->var) {\n            f0010e(\"                                         \", t->pat, *t->var, val);\n            break;\n        }\n    case ' ':\n        *t->var = isdup ? strdup(val) : val;\n        break;\n    case ' ':\n        *t->var = atoi(val);\n        break;\n    case ' ':\n        fs = (struct slots *)t->var;\n        if (fs->top > 0)\n            fs->v[--fs->top] = isdup ? strdup(val) : val;\n        else\n            f0010e(\"                       \", t->pat, val);\n        break;\n    case ' ':\n        for (; *val; val++) {\n            for (sp = (struct sub *)t->var; sp->c; sp++)\n                if (*val == sp->c) {\n                    switch (sp->type) {\n                    case 1:\n                        *sp->var = 1;\n                        break;\n                    case 5:\n                        *sp->var = 0;\n                        break;\n                    default:\n                        f00081(g_1394, 178);\n                    }\n                    break;\n                }\n            if (!sp->c)\n                f0010e(\"                           \", *val, g_1f78);\n        }\n        break;\n    default:\n        f00081(g_1394, 188);\n    }\n}"
+   },
+   {
+    "name": "f0054b",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0054b.c",
+    "body": "{\n    if (s)\n        while (*s)\n            if (*s++ == c)\n                return 1;\n    return 0;\n}"
+   },
+   {
+    "name": "f00577",
+    "ret": "",
+    "params": [
+     [
+      "pat",
+      "char *pat"
+     ],
+     [
+      "s",
+      "char *s"
+     ],
+     [
+      "flags",
+      "int flags"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00577.c",
+    "body": "{\n    register char *p, *q;\n\n    p = pat;\n    q = s;\n    if (!p[1])\n        return 1;\n    while (p[1])\n        p++;\n    while (q[1])\n        q++;\n    while (*q == *p) {\n        q--;\n        p--;\n    }\n    return pat == p && s <= q;\n}"
+   },
+   {
+    "name": "f005c1",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f005c1.c",
+    "body": "{\n    register int h;\n\n    h = 0;\n    while (*s)\n        h += *s++;\n    return h;\n}"
+   },
+   {
+    "name": "f005e4",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f005e4.c",
+    "body": "{\n    return getc(g_0234);\n}"
+   },
+   {
+    "name": "f00613",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00613.c",
+    "body": "{\n    register char *p;\n    int w;\n\n    p = (char *)&w;\n    p[0] = getc(g_0234);\n    p[1] = getc(g_0234);\n    return w;\n}"
+   },
+   {
+    "name": "f0066f",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0066f.c",
+    "body": "{\n    char c;\n    int w;\n\n    if ((c = getc(g_0234)) != (char)0x80)\n        return c;\n    {\n        register char *p;\n\n        p = (char *)&w;\n        p[0] = getc(g_0234);\n        p[1] = getc(g_0234);\n    }\n    return w;\n}"
+   },
+   {
+    "name": "f006f4",
+    "ret": "long",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f006f4.c",
+    "body": "{\n    char c;\n    long l;\n\n    if ((c = getc(g_0234)) != (char)0x80)\n        return c;\n    {\n        register char *p;\n\n        p = (char *)&l;\n        p[0] = getc(g_0234);\n        p[1] = getc(g_0234);\n        p[2] = getc(g_0234);\n        p[3] = getc(g_0234);\n    }\n    return l;\n}"
+   },
+   {
+    "name": "f007c2",
+    "ret": "double",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f007c2.c",
+    "body": "{\n    float f;\n\n    fread(&f, 4, 1, g_0234);\n    return f;\n}"
+   },
+   {
+    "name": "f007f3",
+    "ret": "double",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f007f3.c",
+    "body": "{\n    double d;\n\n    fread(&d, 8, 1, g_0234);\n    return d;\n}"
+   },
+   {
+    "name": "f00824",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char *p"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00824.c",
+    "body": "{\n    register char *e;\n\n    e = p + n;\n    do\n        *p = f005e4();\n    while (*p++);\n    f00b85(p <= e);\n}"
+   },
+   {
+    "name": "f0085b",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char *p"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0085b.c",
+    "body": "{\n    register int len;\n    int i;\n\n    len = f0066f();\n    f00b85(n >= len);\n    for (i = 0; i < len; i++)\n        *p++ = f005e4();\n    return len;\n}"
+   },
+   {
+    "name": "f0089e",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "char *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0089e.c",
+    "body": "{\n    return putc(*p, g_0232);\n}"
+   },
+   {
+    "name": "f008dd",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f008dd.c",
+    "body": "{\n    putc(p[0], g_0232);\n    putc(p[1], g_0232);\n}"
+   },
+   {
+    "name": "f00940",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register int *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00940.c",
+    "body": "{\n    if (*p <= 127 && *p >= -127)\n        putc(*(char *)p, g_0232);\n    else {\n        putc(0x80, g_0232);\n        putc(((char *)p)[0], g_0232);\n        putc(((char *)p)[1], g_0232);\n    }\n}"
+   },
+   {
+    "name": "f009ed",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register long *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f009ed.c",
+    "body": "{\n    if (*p <= 127 && *p >= -127)\n        putc(*(char *)p, g_0232);\n    else {\n        putc(0x80, g_0232);\n        putc(((char *)p)[0], g_0232);\n        putc(((char *)p)[1], g_0232);\n        putc(((char *)p)[2], g_0232);\n        putc(((char *)p)[3], g_0232);\n    }\n}"
+   },
+   {
+    "name": "f00aff",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "float *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00aff.c",
+    "body": "{\n    fwrite(p, 4, 1, g_0232);\n}"
+   },
+   {
+    "name": "f00b1d",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "double *p"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b1d.c",
+    "body": "{\n    fwrite(p, 8, 1, g_0232);\n}"
+   },
+   {
+    "name": "f00b3b",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b3b.c",
+    "body": "{\n    do\n        f0089e(s);\n    while (*s++);\n}"
+   },
+   {
+    "name": "f00b5a",
+    "ret": "",
+    "params": [
+     [
+      "n",
+      "int n"
+     ],
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b5a.c",
+    "body": "{\n    f00940(&n);\n    while (--n >= 0)\n        f0089e(s++);\n}"
+   },
+   {
+    "name": "f00b85",
+    "ret": "",
+    "params": [
+     [
+      "ok",
+      "int ok"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00b85.c",
+    "body": "{\n    if (!ok)\n        f00143(\"                           \", stderr);\n}"
+   },
+   {
+    "name": "f00ba5",
+    "ret": "FILE *",
+    "params": [
+     [
+      "dir",
+      "char *dir"
+     ],
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "mode",
+      "char *mode"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ba5.c",
+    "body": "{\n    char path[64];\n    FILE *fp;\n\n    strcpy(path, dir);\n    strcat(path, name);\n    if (strlen(path) > 64)\n        f00081(g_0230, 382);\n    if ((fp = fopen(path, mode)) == 0) {\n        perror(\"                                   \");\n        exit(1);\n    }\n    return fp;\n}"
+   },
+   {
+    "name": "f00c14",
+    "ret": "",
+    "params": [
+     [
+      "fp",
+      "FILE *fp"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00c14.c",
+    "body": "{\n    char tmp[512];\n    long nw;\n\n    fflush(fp);\n    if (fp->_flag & 0x20) {\n        *(int *)&nw = write(fp->_file, tmp, 512);                                                   \n        if (nw != 512) {\n            perror(\"                                   \");\n            exit(255);\n        } else\n            f00143(\"                                   \");\n    }\n}"
+   },
+   {
+    "name": "f00c74",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00c74.c",
+    "body": "{\n    register int h;\n    register struct sym *p;\n\n    h = f005c1(name);\n    for (p = g_056c[(unsigned)h % g_056e]; p; p = p->next)\n        if (p->hash == h && !strcmp(p->name, name)) {\n            if (!g_05e0)\n                switch (p->val) {\n                case 0x11b:\n                case 0x11c:\n                case 0x11e:\n                case 0x11f:\n                    return 0x101;\n                }\n            return p->val;\n        }\n    return 0x101;\n}"
+   },
+   {
+    "name": "f00ce3",
+    "ret": "",
+    "params": [
+     [
+      "val",
+      "long val"
+     ],
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "base",
+      "int base"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ce3.c",
+    "body": "{\n    register char *p;\n    int cnt;\n    char buf[32];\n    unsigned long x;\n\n    cnt = 0;\n    p = buf;\n    *p++ = 0;\n    if (val < 0 && base == 10) {\n        *d++ = ' ';\n        x = -val;\n        cnt++;\n    } else\n        x = val;\n    do\n        *p++ = g_0582[x % base];\n    while ((x /= base) != 0);\n    while ((*d++ = *--p) != 0)\n        cnt++;\n    return cnt;\n}"
+   },
+   {
+    "name": "f00d74",
+    "ret": "char *",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00d74.c",
+    "body": "{\n    if (--g_3770 > 0)\n        return *++g_3b74;\n    return 0;\n}"
+   },
+   {
+    "name": "main",
+    "ret": "int",
+    "params": [
+     [
+      "argc",
+      "int argc"
+     ],
+     [
+      "argv",
+      "char **argv"
+     ]
+    ],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00d9a.c",
+    "body": "{\n    g_3770 = argc;\n    g_3b74 = argv;\n    while (f0030c(g_0664, f00d74(), f00d74, 0))\n        ;\n    if (g_0644)\n        f00143(\"               \", g_0644);\n    if ((g_05d4 = g_05d8 || g_05da) == 0)\n        g_05e8 = f00ba5(g_05d2, \"  \", \" \", \"          \");\n    g_0232 = g_05e8;\n    if (g_0642)\n        f01eaf(g_0642, &g_0616);\n    else\n        f00143(\"                       \");\n    if (g_05d4)\n        f01bc7();\n    else\n        f00e5c();\n    f00c14(g_0232);\n    exit(g_09d6);\n}"
+   },
+   {
+    "name": "f00e5c",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00e5c.c",
+    "body": "{\n    int tok;\n    union tokval val;\n\n    for (;;) {\n        tok = f01555(&val);\n        if (tok == 0x16b || tok == 0x16f)\n            continue;\n        f00ea0(tok, &val);\n        if (tok == 0x169)\n            return;\n        f00f89(3);\n    }\n}"
+   },
+   {
+    "name": "f00ea0",
+    "ret": "",
+    "params": [
+     [
+      "tok",
+      "register int tok"
+     ],
+     [
+      "vp",
+      "register union tokval *vp"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ea0.c",
+    "body": "{\n    int w;\n\n    if (g_05d4)\n        return;\n    if (tok == 0x16e) {\n        g_06ea = vp->i;\n        return;\n    }\n    if (g_06ea != -1) {\n        w = 0x16e;\n        f00940(&w);\n        f00940(&g_06ea);\n        g_06ea = -1;\n    }\n    w = tok;\n    f00940(&w);\n    switch (tok) {\n    case 0x101:\n    case 0x16c:\n    case 0x16d:\n        f00b3b(vp->s);\n        break;\n    case 0x108:\n        f00b5a(vp->str.n, vp->str.s);\n        break;\n    case 0x103:\n    case 0x104:\n        f009ed(&vp->l);\n        break;\n    case 0x107:\n        f00b1d(&vp->d);\n        break;\n    }\n}"
+   },
+   {
+    "name": "f00f49",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00f49.c",
+    "body": "{\n    union tokval v;\n\n    if (!g_05d4) {\n        v.s = g_09d4;\n        f00ea0(0x16d, &v);\n        v.l = g_09d8;\n        f00ea0(0x16e, &v);\n    }\n}"
+   },
+   {
+    "name": "f00f89",
+    "ret": "",
+    "params": [
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00f89.c",
+    "body": "{\n    register struct pool *p;\n    register int size;\n\n    p = &g_0700[n];\n    if (p->cur == p->base)\n        size = (p->size - p->left + 7) & ~7;\n    else {\n        size = p->size;\n        f01166(*p->base);\n        *p->base = 0;\n        p->cur = p->base;\n        p->nblocks = 1;\n    }\n    p->ptr = (char *)p->base + 4;\n    p->left = p->size;\n    f00ff1(p->ptr, size);\n}"
+   },
+   {
+    "name": "f00ff1",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register long *p"
+     ],
+     [
+      "n",
+      "register int n"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f00ff1.c",
+    "body": "{\n    long zero;\n\n    zero = 0;\n    if ((n >>= 3) > 0)\n        do {\n            *p++ = zero;\n            *p++ = zero;\n        } while (--n > 0);\n}"
+   },
+   {
+    "name": "f01033",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "int n"
+     ],
+     [
+      "size",
+      "int size"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01033.c",
+    "body": "{\n    register struct pool *p;\n    register char **q;\n\n    p = &g_0700[n];\n    size = (size + 1) & ~1;\n    q = p->cur;\n    if (size > p->left) {\n        if (*q == 0) {\n            p->nblocks++;\n            if ((*q = malloc(p->size + 4)) == 0)\n                f00143(\"                                            \");\n            *(char **)*q = 0;\n        }\n        p->ptr = (char *)(p->cur = (char **)*q) + 4;\n        f00ff1(p->ptr, p->left = p->size);\n    }\n    q = (char **)p->ptr;\n    p->ptr += size;\n    p->left -= size;\n    return (char *)q;\n}"
+   },
+   {
+    "name": "f010b8",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "int n"
+     ],
+     [
+      "v",
+      "int v"
+     ],
+     [
+      "pool",
+      "int pool"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f010b8.c",
+    "body": "{\n    char *p;\n\n    if (n < 2)\n        f00081(g_06fe, 320);\n    if ((p = f01033(pool, n)) == 0)\n        return 0;\n    *(int *)p = v;\n    return p;\n}"
+   },
+   {
+    "name": "f010fa",
+    "ret": "",
+    "params": [
+     [
+      "size",
+      "int size"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f010fa.c",
+    "body": "{\n    register struct pool *p;\n\n    if (!f01033(n, size))\n        return 0;\n    p = &g_0700[n];\n    p->ptr -= size;\n    p->left += size;\n    return 1;\n}"
+   },
+   {
+    "name": "f01135",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "char *s"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01135.c",
+    "body": "{\n    char *p;\n\n    p = f01033(n, strlen(s) + 1);\n    strcpy(p, s);\n    return p;\n}"
+   },
+   {
+    "name": "f01166",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register char **p"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01166.c",
+    "body": "{\n    register char **q;\n\n    while (p) {\n        q = (char **)*p;\n        free(p);\n        p = q;\n    }\n}"
+   },
+   {
+    "name": "f0118b",
+    "ret": "",
+    "params": [
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0118b.c",
+    "body": "{\n    while (n--)\n        *d++ = *s++;\n}"
+   },
+   {
+    "name": "f011b3",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 17,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f011b3.c",
+    "body": "{\n    register int c, np;\n    int u, x;                                   \n    struct macro *m;\n\n    if ((m = f0208c(name)) == 0)\n        return 0;\n    if (g_082a++ > 1000)\n        f00143(\"                                                     \");\n    else if (m->nparams == 0) {\n        f01406(m->body, 0, 0);\n        return 1;\n    }\n    if ((c = f03a28()) != ' ') {\n        (*g_09dc)(c);\n        f00167(1, \"                              \", name);\n        f01406(m->body, 0, 0);\n        return 1;\n    }\n    np = m->nparams;\n    if (np == -1)\n        np = 0;\n    g_25fc = 0;\n    g_25fe = g_2600;\n    while (f0129a())\n        ;\n    if (g_25fc > np)\n        f00167(1, \"                                         \", name);\n    else if (g_25fc < np)\n        f00167(1, \"                                           \", name);\n    f01406(m->body, g_3772, g_25fc);\n    g_3772 = 0;\n    return 1;\n}"
+   },
+   {
+    "name": "f0129a",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0129a.c",
+    "body": "{\n    register int c;\n    register char *p;\n    int depth;\n    int c2;\n\n    if ((c = f03a28()) == ' ')\n        return 0;\n    depth = 0;\n    g_25fc++;\n    if (!g_3772)\n        g_3772 = g_3b76 = (struct arg *)f01033(3, 4);\n    else\n        g_3b76 = g_3b76->next = (struct arg *)f01033(3, 4);\n    p = g_3b76->text = g_25fe;\n    for (;;) {\n        if (c == ' ' && depth == 0)\n            break;\n        switch (c) {\n        case ' ':\n        case '  ':\n            *p++ = c;\n            for (;;) {\n                if ((c2 = f01fd0()) == c)\n                    break;\n                if (c2 == '  ') {\n                    if (f0391c('  '))\n                        continue;\n                    *p++ = c2;\n                    c2 = f01fd0();\n                } else if (c2 == '  ') {\n                    f0010e(\"                   \");\n                    break;\n                }\n                *p++ = c2;\n                if (p == AEND) {\n                    f0010e(\"                                   \");\n                    goto full;\n                }\n            }\n            break;\n        case ' ':\n            depth++;\n            break;\n        case ' ':\n            if (depth == 0)\n                goto done;\n            depth--;\n            break;\n        case ' ':\n            if (f039e2(c)) {\n                c = f01fd0();\n                continue;\n            }\n            break;\n        case '  ':\n            if (!f0391c('  '))\n                *p++ = c;\n            c = f01fd0();\n            break;\n        }\n        *p++ = c;\n        if (p == AEND) {\n            f0010e(\"                                   \");\nfull:\n            *--p = 0;\n            return 0;\n        }\n        c = f01fd0();\n    }\ndone:\n    if (c == ' ')\n        (*g_09dc)(c);\n    *p = 0;\n    g_25fe += strlen(g_3b76->text) + 1;\n    return 1;\n}"
+   },
+   {
+    "name": "f01406",
+    "ret": "",
+    "params": [
+     [
+      "t",
+      "register struct btok *t"
+     ],
+     [
+      "args",
+      "char *args"
+     ],
+     [
+      "nargs",
+      "int nargs"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01406.c",
+    "body": "{\n    register int n;\n\n    g_3270[0] = 0;\n    for (; t; t = t->next)\n        if (t->kind == 0x17a) {\n            n = t->argno;\n            if (nargs > n)\n                strcat(g_3270, f01485(n, args));\n        } else if (t->kind == 0x108)\n            strcat(g_3270, t->text);\n        else\n            f00081(g_0828, 224);\n    f014bb(g_3270);\n    if (g_09da != f014fb) {\n        g_09da = f014fb;\n        g_09dc = f0153c;\n    }\n}"
+   },
+   {
+    "name": "f01485",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "register int n"
+     ],
+     [
+      "a",
+      "register struct arg *a"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01485.c",
+    "body": "{\n    while (n--)\n        a = a->next;\n    if (!a)\n        f00081(g_0828, 241);\n    return a->text;\n}"
+   },
+   {
+    "name": "f014bb",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f014bb.c",
+    "body": "{\n    register char *p;\n\n    p = g_082c - strlen(s);\n    if (p < EXBUF)\n        f00143(\"                                        \");\n    g_082c = p;\n    while (*s)\n        *p++ = *s++;\n}"
+   },
+   {
+    "name": "f014fb",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f014fb.c",
+    "body": "{\n    if (g_082c < EXEND)\n        return *g_082c++;\n    g_09da = f01cd2;\n    g_09dc = f01d42;\n    g_082a = 0;\n    f00f89(4);\n    return (*g_09da)();\n}"
+   },
+   {
+    "name": "f0153c",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0153c.c",
+    "body": "{\n    *--g_082c = c;\n}"
+   },
+   {
+    "name": "f01555",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "register union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01555.c",
+    "body": "{\n    register int x;\n    int tok;\n    char *name;\n\n    for (x = 0; x < 1000; x++) {\n        if ((tok = f02acb(v)) != 0x101)\n            return tok;\n        name = v->s;\n        if (!f011b3(name))\n            return f00c74(name);\n    }\n    f00143(\"                              \", name);\n}"
+   },
+   {
+    "name": "f015b0",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f015b0.c",
+    "body": "{\n    register int c, a;\n    int b;\n\n    c = f015fc();\n    if (f019b9(0x133)) {\n        a = f015fc();\n        if (f019b9(0x134))\n            b = f015fc();\n        return c ? a : b;\n    }\n    return c;\n}"
+   },
+   {
+    "name": "f015fc",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f015fc.c",
+    "body": "{\n    register int r;\n\n    r = f0163f();\n    if (g_08e6)\n        return 0;\n    while (f019b9(0x132))\n        r = f0163f() || r;\n    return r;\n}"
+   },
+   {
+    "name": "f0163f",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0163f.c",
+    "body": "{\n    register int r;\n\n    r = f01682();\n    if (g_08e6)\n        return 0;\n    while (f019b9(0x131))\n        r = f01682() && r;\n    return r;\n}"
+   },
+   {
+    "name": "f01682",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01682.c",
+    "body": "{\n    register int r;\n\n    r = f016b4();\n    while (f019b9(0x130) && !g_08e6)\n        r |= f016b4();\n    return r;\n}"
+   },
+   {
+    "name": "f016b4",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f016b4.c",
+    "body": "{\n    register int r;\n\n    r = f016e6();\n    while (f019b9(0x12f) && !g_08e6)\n        r ^= f016e6();\n    return r;\n}"
+   },
+   {
+    "name": "f016e6",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f016e6.c",
+    "body": "{\n    register int r;\n\n    r = f01718();\n    while (f019b9(0x121) && !g_08e6)\n        r &= f01718();\n    return r;\n}"
+   },
+   {
+    "name": "f01718",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01718.c",
+    "body": "{\n    register int r;\n\n    r = f01763();\n    if (f019b9(0x12d))\n        return r == f01763();\n    if (f019b9(0x12e))\n        return r != f01763();\n    return r;\n}"
+   },
+   {
+    "name": "f01763",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01763.c",
+    "body": "{\n    register int r;\n\n    r = f017da();\n    if (f019b9(0x129))\n        return r < f017da();\n    if (f019b9(0x12b))\n        return r > f017da();\n    if (f019b9(0x12a))\n        return r <= f017da();\n    if (f019b9(0x12c))\n        return r >= f017da();\n    return r;\n}"
+   },
+   {
+    "name": "f017da",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f017da.c",
+    "body": "{\n    register int r;\n\n    r = f01822();\n    if (f019b9(0x128))\n        return r >> f01822();\n    if (f019b9(0x127))\n        return r << f01822();\n    return r;\n}"
+   },
+   {
+    "name": "f01822",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01822.c",
+    "body": "{\n    register int r;\n\n    r = f01869();\n    while (!g_08e6)\n        if (f019b9(0x124))\n            r += f01869();\n        else if (f019b9(0x125))\n            r -= f01869();\n        else\n            break;\n    return r;\n}"
+   },
+   {
+    "name": "f01869",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01869.c",
+    "body": "{\n    register int r;\n\n    r = f018d1();\n    while (!g_08e6)\n        if (f019b9(0x11a))\n            r *= f018d1();\n        else if (f019b9(0x122))\n            r /= f018d1();\n        else if (f019b9(0x123))\n            r %= f018d1();\n        else\n            break;\n    return r;\n}"
+   },
+   {
+    "name": "f018d1",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f018d1.c",
+    "body": "{\n    if (f019b9(0x113))\n        return !f01928();\n    if (f019b9(0x114))\n        return ~f01928();\n    if (f019b9(0x125))\n        return -f01928();\n    return f01928();\n}"
+   },
+   {
+    "name": "f01928",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01928.c",
+    "body": "{\n    register int r;\n\n    if (f019b9(0x10c)) {\n        r = f015b0();\n        if (!f019b9(0x10d)) {\n            g_08e6 = 1;\n            f00143(\"                       \");\n        }\n        return r;\n    }\n    if (!f019b9(0x103)) {\n        g_08e6 = 1;\n        g_08e8 = \"                      \";\n    }\n    return (int)g_091a;\n}"
+   },
+   {
+    "name": "f01989",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01989.c",
+    "body": "{\n    return *g_2e00++;\n}"
+   },
+   {
+    "name": "f019a0",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f019a0.c",
+    "body": "{\n    *--g_2e00 = c;\n}"
+   },
+   {
+    "name": "f019b9",
+    "ret": "",
+    "params": [
+     [
+      "want",
+      "int want"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f019b9.c",
+    "body": "{\n    register int c;\n    register char *p;\n    union tokval v;\n    int (*fnextc)(), (*putback)();                                                            \n\n    if (g_091e == 0x16f) {\n        c = f03a28();\n        (*g_09dc)(c);\n        if (c == '  ')\n            return 0;\n        g_091e = f01555(&v);\n        p = v.s;\n        if (!g_05d4 && (g_091e == 0x103 || g_091e == 0x104)) {\n            g_091e = 0x103;\n            g_091a = v.l;\n        } else if (g_091e == 0x103) {\n            if (*p == '  ') {\n                p++;\n                if (*p == '  ') {\n                    p++;\n                    fnextc = g_09da;\n                    putback = g_09dc;\n                    g_09da = f01989;\n                    g_09dc = f019a0;\n                    g_2e00 = p;\n                    g_05d4 = !g_05d4;\n                    g_091a = f03784();\n                    g_05d4 = !g_05d4;\n                    g_09da = fnextc;\n                    g_09dc = putback;\n                } else if (*p == '  ')\n                    g_091a = 0;\n                else\n                    g_091a = *p;\n            } else\n                g_091a = f0363f(p, 10);\n        } else if (g_091e == 0x105) {\n            p += 2;\n            g_091a = f0363f(p, 16);\n            g_091e = 0x103;\n        } else if (g_091e == 0x106) {\n            p++;\n            g_091a = f0363f(p, 8);\n            g_091e = 0x103;\n        } else if (g_091e == 0x104) {\n            g_091a = f0363f(p, 10);\n            g_091e = 0x103;\n        } else if (g_091e == 0x101) {\n            g_091a = f01b28(p);\n            g_091e = 0x103;\n        }\n    }\n    if (want != g_091e)\n        return 0;\n    g_091e = 0x16f;\n    return 1;\n}"
+   },
+   {
+    "name": "f01b16",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01b16.c",
+    "body": "{\n    g_091e = 0x16f;\n}"
+   },
+   {
+    "name": "f01b28",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01b28.c",
+    "body": "{\n    register int c;\n    int r;\n\n    if (strcmp(name, \"       \"))\n        return 0;\n    if ((c = f03a28()) != ' ') {\n        f0010e(\"                                          \");\n        (*g_09dc)(c);\n        return 0;\n    }\n    name = f0330d(f03a28());\n    if (!*name) {\n        f0010e(\"                      \");\n        r = 0;\n    } else\n        r = f0208c(name) != 0;\n    if ((c = f03a28()) != ' ') {\n        f00167(1, \"                                         \");\n        (*g_09dc)(c);\n    }\n    return r;\n}"
+   },
+   {
+    "name": "f01bc7",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01bc7.c",
+    "body": "{\n    int tok;\n    union tokval val;\n\n    for (;;) {\n        if ((tok = f01555(&val)) == 0x169)\n            return;\n        switch (tok) {\n        case 0x101:\n        case 0x103:\n        case 0x104:\n        case 0x105:\n        case 0x106:\n        case 0x107:\n            printf(\"  \", val.s);\n            break;\n        case 0x108:\n            printf(\"      \", val.s);\n            break;\n        case 0x16a:\n            printf(\"  \", g_0e54);\n            break;\n        case 0x16b:\n        case 0x16f:\n            break;\n        default:\n            printf(\"  \", g_123a[tok - 0x101].name);\n            break;\n        }\n        f00f89(3);\n    }\n}"
+   },
+   {
+    "name": "f01c46",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01c46.c",
+    "body": "{\n    union tokval v;\n\n    v.l = g_09d8;\n    f00ea0(0x16e, &v);\n}"
+   },
+   {
+    "name": "f01c68",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "char *s"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01c68.c",
+    "body": "{\n    union tokval v;\n\n    if (!g_05d4) {\n        v.s = s;\n        f00ea0(0x16c, &v);\n    }\n}"
+   },
+   {
+    "name": "f01c90",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01c90.c",
+    "body": "{\n    register int c;\n\n    if ((c = getc(g_0a44)) == '  ') {\n        g_09d8++;\n        f01c46();\n    }\n    return c;\n}"
+   },
+   {
+    "name": "f01cd2",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01cd2.c",
+    "body": "{\n    register int c;\n\n    for (;;) {\n        switch (c = getc(g_0a44)) {\n        case '  ':\n            g_09d8++;\n            f01c46();\n        default:\n            return c;\n        case EOF:\n            break;\n        }\n        if (f01e3e() == EOF)\n            return EOF;\n        if (g_05d8)\n            printf(\"             \", g_09d8 + 1, g_09d4);\n    }\n}"
+   },
+   {
+    "name": "f01d42",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "int c"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01d42.c",
+    "body": "{\n    if (c != EOF)\n        ungetc(c, g_0a44);\n    if (c == '  ') {\n        g_09d8--;\n        f01c46();\n    }\n}"
+   },
+   {
+    "name": "f01d6e",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "must",
+      "int must"
+     ]
+    ],
+    "static": false,
+    "line": 10,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01d6e.c",
+    "body": "{\n    if (!name)\n        g_0a44 = stdin;\n    else if ((g_0a44 = fopen(name, \"  \")) == 0) {\n        if (must == 1)\n            f00143(\"                \", name);\n        return 0;\n    }\n    if (++g_0a42 >= 10)\n        f00143(\"                        \");\n    g_09de[g_0a42].fp = g_0a44;\n    g_09de[g_0a42].line = g_09d8;\n    g_09de[g_0a42].name = g_09d4;\n    g_09d8 = 1;\n    g_09d4 = f01135(name, 0);\n    g_09de[g_0a42].iname = g_09d4;\n    if (g_05d8)\n        printf(\"            \", g_09d4);\n    f00f49();\n    f03180();\n    return 1;\n}"
+   },
+   {
+    "name": "f01e3e",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01e3e.c",
+    "body": "{\n    int line;\n\n    if (g_0a42 == -1)\n        return EOF;\n    fclose(g_0a44);\n    g_09d4 = g_09de[g_0a42].name;\n    line = g_09d8;\n    g_09d8 = g_09de[g_0a42].line;\n    if (--g_0a42 < 0) {\n        g_09d8 = line;\n        return EOF;\n    }\n    f00f49();\n    g_0a44 = g_09de[g_0a42].fp;\n    return 0;\n}"
+   },
+   {
+    "name": "f01eaf",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "defs",
+      "register struct slots *defs"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01eaf.c",
+    "body": "{\n    register char *s;\n    char *eq;\n    int i;\n\n    f01c68(name);\n    for (i = defs->top; i < 20; i++) {\n        s = defs->v[i];\n        if (eq = f03b0d(s, ' ')) {\n            *eq++ = 0;\n            f01ff6(s, f02817(0x108, 0, eq, 0, 0), 0);\n        } else\n            f01ff6(s, &g_0a8e, 0);\n    }\n    f01d6e(name, 1);\n}"
+   },
+   {
+    "name": "f01f2e",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01f2e.c",
+    "body": "{\n    register int i;\n    char *n;\n    register char *p;\n    char *iname;\n    char *to;\n\n    for (i = g_0a42; i >= 0; i--) {\n        iname = g_09de[i].iname;\n        if ((p = f03b38(iname, ' ')) == 0)\n            f00213(g_3270, \"  \", name);\n        else {\n            for (to = g_3270; iname <= p; )\n                *to++ = *iname++;\n            n = name;\n            while (*to++ = *n++)\n                ;\n        }\n        if (f01d6e(g_3270, 0))\n            return 1;\n    }\n    return 0;\n}"
+   },
+   {
+    "name": "f01fd0",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01fd0.c",
+    "body": "{\n    register int c;\n\n    c = (*g_09da)();\n    if (c == EOF)\n        f00143(\"              \");\n    return c;\n}"
+   },
+   {
+    "name": "f01ff6",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ],
+     [
+      "body",
+      "struct btok *body"
+     ],
+     [
+      "np",
+      "char np"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f01ff6.c",
+    "body": "{\n    register struct mac *m;\n    register int h;\n    int u;\n\n    if (m = f0208c(name)) {\n        if (!f020d9(m->body, body))\n            return;\n        f00167(1, \"                   \", name);\n    } else {\n        h = f005c1(name);\n        m = g_0ad6[(unsigned)h % 47] = (struct mac *)f010b8(10, g_0ad6[(unsigned)h % 47], 0);\n        m->name = name;\n        m->hash = h;\n    }\n    m->body = body;\n    m->nparams = np;\n}"
+   },
+   {
+    "name": "f0208c",
+    "ret": "struct mac *",
+    "params": [
+     [
+      "name",
+      "register char *name"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0208c.c",
+    "body": "{\n    register struct mac *m;\n    int h;\n\n    h = f005c1(name);\n    for (m = g_0ad6[(unsigned)h % 47]; m; m = m->next)\n        if (h == m->hash && !strcmp(name, m->name))\n            break;\n    return m;\n}"
+   },
+   {
+    "name": "f020d9",
+    "ret": "",
+    "params": [
+     [
+      "a",
+      "register struct btok *a"
+     ],
+     [
+      "b",
+      "register struct btok *b"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f020d9.c",
+    "body": "{\n    while (a || b) {\n        if (!a || !b)\n            return 1;\n        if (a->kind != b->kind)\n            return 1;\n        switch (a->kind) {\n        case 0x108:\n            if (strcmp(a->text, b->text))\n                return 1;\n            break;\n        case 0x17a:\n            if (a->argno != a->argno)                                        \n                return 1;\n            break;\n        }\n        a = a->next;\n        b = b->next;\n    }\n    return 0;\n}"
+   },
+   {
+    "name": "f0213a",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0213a.c",
+    "body": "{\n    register struct mac *m, *pm;\n    unsigned bucket;\n    unsigned h;\n\n    h = f005c1(name);\n    bucket = h % 47;\n    pm = 0;\n    for (m = g_0ad6[bucket]; m; pm = m, m = m->next)\n        if (h == m->hash && !strcmp(name, m->name)) {\n            if (!pm)\n                g_0ad6[bucket] = m->next;\n            else\n                pm->next = m->next;\n            return 1;\n        }\n    return 0;\n}"
+   },
+   {
+    "name": "f021ac",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "char *p"
+     ]
+    ],
+    "static": false,
+    "line": 15,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f021ac.c",
+    "body": "{\n    register int tok, c;\n    union tokval val;\n    char ch;\n    int kw, state;\n    int what;\n    char *file;\n\n    ch = *p;\n    *p = ' ';\n    tok = 0x16f;\n    c = f03a28();\n    (*g_09dc)(c);\n    switch (kw = f00c74(p)) {\n    case 0x174:                                                      \n        return f025a4();\n    case 0x16e:                                                    \n        f01b16();\n        if (f019b9(0x103)) {\n            g_09d8 = (int)g_091a - 1;\n            c = f03a28();\n            (*g_09dc)(c);\n            if (c == '  ')\n                return 0x16f;\n            f024c8();\n            tok = f01555(&val);\n            f024e0();\n            if (tok == 0x108) {\n                g_09d4 = f01135(val.s, 0);\n                f00f49();\n            }\n            if (g_05d4)\n                printf(\"             \", g_09d8 + 1, g_09d4);\n        } else\n            f0010e(\"                            \");\n        break;\n    case 0x173:                                                       \n        if (c == '  ')\n            return 0x16f;\n        f024c8();\n        g_0ad4 = 1;\n        tok = f01555(&val);\n        g_0ad4 = 0;\n        f024e0();\n        if (tok == 0x129)\n            return f02855();\n        if (tok != 0x108) {\n            f0010e(\"                              \");\n            break;\n        }\n        file = val.s;\n        f03a59();\n        if (*file == ' ') {\n            if (f01d6e(file, 0))\n                break;\n            f00143(\"                \", file);\n            break;\n        }\n        if (f01f2e(file))\n            return 0x16f;\n        return f028ca(file);\n    case 0x175:                                                     \n    case 0x176:                                                      \n        if (c == '  ')\n            tok = 0x16f;\n        else {\n            f024c8();\n            tok = f02acb(&val);\n            f024e0();\n        }\n        if (tok != 0x101) {\n            f00143(\"                                \");\n            break;\n        }\n        state = f0208c(val.s) != 0;\n        if (kw == 0x176)\n            state = !state;\n        if (state == 1)\n            goto taken;\n        if (f024f2(5) != 3)\n            break;\n        goto taken;\n    case 0x158:                                                  \n        g_08e6 = 0;\n        f01b16();\n        state = f015b0();\n        if (g_08e6)\n            f00143(g_08e8);\n        if (state)\n            goto taken;\n        if ((what = f024f2(5)) == 3) {\ntaken:\n            g_2e02[++g_0c28] = 1;\n            break;\n        }\n        if (what != 2)\n            break;\n        return f021ac(\"  \");\n    case 0x177:                                                    \n        if (g_0c28-- < 0)\n            f00143(\"                  \");\n        while (f024f2(5) != 4)\n            ;\n        break;\n    case 0x153:                                                    \n        if (g_2e02[g_0c28] != 1)\n            f00143(\"                  \");\n        f024f2(6);\n        break;\n    case 0x178:                                                     \n        if (g_0c28-- < 0)\n            f00143(\"                   \");\n        break;\n    case 0x179:                                                     \n        if (c == '  ')\n            return 0x16f;\n        if ((tok = f02acb(&val)) != 0x101)\n            f00167(1, \"                             \");\n        f0213a(val.s);\n        break;\n    default:\n        *p = ch;\n        f00143(\"                             \", p);\n        break;\n    }\n    f03a59();\n    return 0x16f;\n}"
+   },
+   {
+    "name": "f024ab",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024ab.c",
+    "body": "{\n    if (g_0c28 >= 0)\n        f00143(\"                 \");\n}"
+   },
+   {
+    "name": "f024c8",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024c8.c",
+    "body": "{\n    g_0c3c = g_05d4;\n    g_05d4 = 0;\n}"
+   },
+   {
+    "name": "f024e0",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024e0.c",
+    "body": "{\n    g_05d4 = g_0c3c;\n}"
+   },
+   {
+    "name": "f024f2",
+    "ret": "",
+    "params": [
+     [
+      "how",
+      "int how"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f024f2.c",
+    "body": "{\n    register int c;\n    register char *id;\n    int kw;\n    int level;\n\n    level = 0;\n    do {\n        for (;;) {\n            f03a59();\n            (*g_09da)();\n            if ((c = f03a28()) == ' ')\n                break;\n            if (c == '  ')\n                (*g_09dc)(c);\n        }\n        c = f03a28();\n        id = f0330d(c);\n        *id = ' ';\n        kw = f00c74(id);\n        if (kw == 0x175 || kw == 0x176 || kw == 0x158)\n            level++;\n        else if (level == 0 && (kw == 0x153 || kw == 0x177)) {\n            if (how == 6)\n                f00143(\"                 \");\n            else\n                return kw == 0x177 ? 2 : 3;\n        } else if (kw == 0x178)\n            level--;\n    } while (level >= 0);\n    return 4;\n}"
+   },
+   {
+    "name": "f025a4",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f025a4.c",
+    "body": "{\n    register int ci;\n    struct btok *t;\n    register char *to;\n    struct btok *flist, *form;\n    int k;\n    char *ip;\n    struct btok *tail;\n    int nformals;\n    struct btok *bl;\n    char *mac;\n    struct btok *dup;\n    struct btok *new;\n\n    ci = f01fd0();\n    if (!isalpha(ci) && ci != ' ') {\n        f0010e(\"              \");\n        f03a59();\n        return 0x16f;\n    }\n    ip = f0330d(ci);\n    mac = f01135(ip, 0);\n    tail = flist = 0;\n    g_0ad2 = 1;\n    ci = (*g_09da)();\n    if (!isspace(ci) && ci && ci != ' ' && ci != '  ')\n        f0010e(\"                                     \", ci);\n    else if (ci == '  ' || ci == '  ')\n        (*g_09dc)(ci);\n    nformals = 0;\n    if (ci == ' ') {\n        for (;;) {\n            ci = f03a28();\nagain:\n            if (!isalpha(ci) && ci != ' ')\n                break;\n            new = f02817(0x101, 0, f0330d(ci), 0, 3);\n            if (!flist) {\n                flist = tail = new;\n                nformals = 1;\n            } else {\n                for (dup = flist; dup; dup = dup->next)\n                    if (!strcmp(new->text, dup->text))\n                        f0010e(\"                          \", new->text);\n                tail = tail->next = new;\n                nformals++;\n            }\n            if ((ci = f03a28()) != ' ')\n                goto again;\n        }\n        if (ci != ' ')\n            f0010e(\"                                \", ci);\n        else if (!flist)\n            nformals = -1;\n    }\n    ci = f03a28();\n    to = g_3270;\n    k = 0;\n    for (;;) {\n        if (ci == '  ')\n            break;\n        if (!(ci == '  ' && f0391c('  ')) && !f039e2(ci)) {\n            if (k == 0xff) {\n                f0010e(\"                         \", mac);\n                break;\n            }\n            *to++ = ci;\n            k++;\n        }\n        ci = (*g_09da)();\n    }\n    (*g_09dc)(ci);\n    *to = 0;\n    bl = 0;\n    for (t = f029b1(g_3270); t; t = t->next) {\n        if (t->kind == 0x101) {\n            k = 0;\n            for (form = flist; form; form = form->next, k++)\n                if (!strcmp(form->text, t->text)) {\n                    t->kind = 0x17a;\n                    t->argno = k;\n                    break;\n                }\n            if (!form)\n                t->kind = 0x108;\n        }\n        bl = f02817(t->kind, t->argno, t->text, bl, 0);\n    }\n    f01ff6(mac, bl, nformals);\n    g_0ad2 = 0;\n    return 1;\n}"
+   },
+   {
+    "name": "f02817",
+    "ret": "struct btok *",
+    "params": [
+     [
+      "kind",
+      "int kind"
+     ],
+     [
+      "argno",
+      "char argno"
+     ],
+     [
+      "text",
+      "char *text"
+     ],
+     [
+      "t",
+      "register struct btok *t"
+     ],
+     [
+      "pool",
+      "int pool"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02817.c",
+    "body": "{\n    t = (struct btok *)f010b8(8, t, pool);\n    t->text = f01135(text, pool);\n    t->kind = kind;\n    t->argno = argno;\n    return t;\n}"
+   },
+   {
+    "name": "f02855",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02855.c",
+    "body": "{\n    register char *p;\n    char ch;\n    int u;                                      \n\n    p = g_3270;\n    if ((ch = f03a28()) == '  ') {\n        f0010e(\"                          \");\n        return 0x16f;\n    }\n    while (!isspace(ch) && ch && ch != ' ') {\n        *p++ = ch;\n        ch = f01fd0();\n    }\n    *p = 0;\n    while (ch != ' ') {\n        if (ch == '  ') {\n            f0010e(\"           \");\n            return 0x16f;\n        }\n        ch = f01fd0();\n    }\n    f03a59();\n    return f028ca(g_3270);\n}"
+   },
+   {
+    "name": "f028ca",
+    "ret": "",
+    "params": [
+     [
+      "name",
+      "char *name"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f028ca.c",
+    "body": "{\n    register int i, n;\n    char *file;\n\n    n = g_05ec;\n    for (i = 19; i >= n; i--) {\n        file = f0291d(g_05ee[i], name);\n        if (f01d6e(file, 0))\n            return 0x16f;\n    }\n    f00143(\"                \", name);\n    return 0x16f;\n}"
+   },
+   {
+    "name": "f0291d",
+    "ret": "char *",
+    "params": [
+     [
+      "d",
+      "register char *d"
+     ],
+     [
+      "n",
+      "register char *n"
+     ]
+    ],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0291d.c",
+    "body": "{\n    char *p;\n\n    if (!*d)\n        return n;\n    p = g_2e42;\n    if (!strcmp(d, \"  \"))\n        return n;\n    while (*p++ = *d++)\n        ;\n    if (d[-2] != ' ' && d[-2] != ' ')\n        p[-1] = ' ';\n    else\n        p--;\n    while (*p++ = *n++)\n        ;\n    return g_2e42;\n}"
+   },
+   {
+    "name": "f02988",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "register union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02988.c",
+    "body": "{\n    register int tok;\n\n    do\n        tok = f02acb(v);\n    while (tok == 0x16f || tok == 0x16a);\n}"
+   },
+   {
+    "name": "f029b1",
+    "ret": "struct btok *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ]
+    ],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f029b1.c",
+    "body": "{\n    char pc;\n    char *q;\n    int x1;                                              \n    register struct btok *list;\n    int x2, x3, x4;\n\n    pc = ' ';\n    g_2f42[0] = 0;\n    list = 0;\n    while (*s)\n        if (isalpha(*s) || *s == ' ') {\n            q = g_2f42;\n            while (isalnum(*s) || *s == ' ') {\n                pc = *s;\n                *q++ = *s++;\n            }\n            *q = 0;\n            list = f02817(0x101, 0, g_2f42, list, 3);\n        } else if (*s == ' ') {\n            list = f02817(0x108, 0, \"  \", list, 3);\n            pc = *s++;\n        } else {\n            q = g_2f42;\n            for (;;) {\n                if (!*s)\n                    break;\n                if (*s == '  ') {\n                    pc = *s;\n                    *q++ = *s++;\n                } else {\n                    if (!isalnum(pc) && pc != ' ' && (isalpha(*s) || *s == ' '))\n                        break;\n                    if (*s == ' ')\n                        break;\n                    pc = *s;\n                }\n                *q++ = *s++;\n            }\n            *q = 0;\n            if (q == g_2f42)\n                continue;\n            list = f02817(0x108, 0, g_2f42, list, 3);\n        }\n    return list;\n}"
+   },
+   {
+    "name": "f02acb",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 20,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f02acb.c",
+    "body": "{\n    register int c;\n    register char *p;\n    int base;\n    int cnt;\n    int a;                                              \n    int ln;\n    int ok;\n    int w;\n\n    c = (*g_09da)();\n    if ((isspace(c) || !c) && c != '  ') {\n        if (!g_05d4)\n            return 0x16f;\n        g_0e54[0] = c;\n        return 0x16a;\n    }\n    switch (c) {\n    case EOF:\n        return 0x169;\n    case '  ':\n        if (g_05d4)\n            putc('  ', stdout);\n        return f03180();\n    case ' ':\n        return 0x10a;\n    case ' ':\n        return 0x10b;\n    case ' ':\n        return 0x10c;\n    case ' ':\n        return 0x10d;\n    case ' ':\n        return 0x10e;\n    case ' ':\n        return 0x10f;\n    case ' ':\n        return 0x114;\n    case ' ':\n        return 0x133;\n    case ' ':\n        return 0x134;\n    case ' ':\n        return 0x140;\n    case ' ':\n        return 0x112;\n    case ' ':\n        if (!g_05d4) {\n            f0010e(\"                                                       \");\n            f03a59();\n            return 0x16b;\n        }\n        g_0e54[0] = ' ';\n        return 0x16a;\n    case ' ':\n        c = (*g_09da)();\n        (*g_09dc)(c);\n        if (isdigit(c))\n            return f0350b(\" \", v);\n        return 0x110;\n    case ' ':\n        if (f03949())\n            return 0x16f;\n        if (f0391c(' '))\n            return 0x139;\n        return 0x122;\n    case ' ':\n        if (!g_05d4 && f0391c(' ')) {\n            f00167(1, \"                            \");\n            return 0x16f;\n        }\n    case ' ':\n    case ' ':\n    case ' ':\n    case ' ':\n        if (f0391c(' '))\n            return g_0e64[f03b0d(g_0e58, c) - g_0e58];\n        return g_0e5a[f03b0d(g_0e58, c) - g_0e58];\n    case ' ':\n        if (f0391c(' '))\n            return 0x111;\n    case ' ':\n    case ' ':\n    case ' ':\n    case ' ':\n    case ' ':\n        if (f0391c(' '))\n            return g_0e7c[f03b0d(g_0e6e, c) - g_0e6e];\n        if (f0391c(c)) {\n            if (f03b0d(\"  \", c) && f0391c(' '))\n                return c == ' ' ? 0x13b : 0x13c;\n            return g_0e88[f03b0d(g_0e6e, c) - g_0e6e];\n        }\n        return g_0e70[f03b0d(g_0e6e, c) - g_0e6e];\n    case ' ':\n        if (g_05d4) {\n            for (;;) {\n                if (c == '  ') {\n                    (*g_09dc)(c);\n                    return 0x16f;\n                }\n                putc(c, stdout);\n                if (c == '  ')\n                    putc(f01fd0(), stdout);\n                if ((c = f01fd0()) == ' ') {\n                    putc(c, stdout);\n                    return 0x16f;\n                }\n            }\n        }\n        ok = 1;\n        p = g_3042;\n        cnt = 0;\n        g_0e56 = 1;\n        for (;;) {\n            if ((c = f01fd0()) == ' ')\n                break;\n            if (c == '  ' && !g_0ad4) {\n                if (f0391c('  '))\n                    continue;\n                c = f03784();\n            } else if (c == '  ') {\n                f00167(1, \"                          \");\n                break;\n            }\n            if (cnt >= 512) {\n                if (ok) {\n                    f00167(1, \"                                        \");\n                    ok = 0;\n                }\n                p--;\n                cnt--;\n            }\n            *p++ = c;\n            cnt++;\n        }\n        g_0e56 = 0;\n        *p = 0;\n        cnt++;\n        v->s = f03a85(g_3042, cnt, 3);\n        v->sl.len = cnt;\n        return 0x108;\n    case '  ':\n        if (g_05d4) {\n            p = g_3042;\n            for (;;) {\n                if (c == '  ') {\n                    (*g_09dc)(c);\n                    break;\n                }\n                *p++ = c;\n                if (c == '  ')\n                    *p++ = f01fd0();\n                if ((c = f01fd0()) == '  ')\n                    break;\n            }\n            if (c == '  ')\n                *p++ = c;\n            *p = 0;\n            ln = strlen(g_3042);\n            v->s = f03a85(g_3042, ln, 3);\n            v->sl.len = ln;\n            return 0x103;\n        }\n        if (f0391c('  ')) {\n            if (f0391c('  '))\n                goto plain;\n            g_0e56 = 1;\n            v->l = f03784();\n            g_0e56 = 0;\n        } else if (f0391c('  ')) {\n            f00167(1, \"                 \");\n            v->l = 0;\n            return 0x103;\n        } else\nplain:      v->l = (*g_09da)();\n        if (!f0391c('  ')) {\n            f0010e(\"                          \");\n            for (;;) {\n                if ((c = (*g_09da)()) == '  ')\n                    break;\n                if (c == '  ' || c == EOF) {\n                    f0010e(\"                       \");\n                    break;\n                }\n            }\n        }\n        return 0x103;\n    case '  ':\n        if (g_05d4) {\n            putc('  ', stdout);\n            putc(f01fd0(), stdout);\n            return 0x16f;\n        }\n        if ((c = (*g_09da)()) == '  ')\n            return f02acb(v);\n        (*g_09dc)(c);\n        f0010e(\"                       \");\n        return 0x16f;\n    case ' ':\n        if (f0391c(' ') || f0391c(' '))\n            base = 16;\n        else if (f0391c(' '))\n            return f0350b(\"  \", v);\n        else\n            base = 8;\n        return f03378(base, v);\n    default:\n        if (isalpha(c) || c == ' ') {\n            v->s = f0330d(c);\n            v->sl.len = strlen(v->s);\n            if (!g_0ad2)\n                return f03248(v);\n            return 0x101;\n        }\n        if (isdigit(c)) {\n            (*g_09dc)(c);\n            return f03378(10, v);\n        }\n        if (g_05d4) {\n            g_0e54[0] = c;\n            return 0x16a;\n        }\n        f0010e(\"                        \", c);\n        return 0x16f;\n    }\n}"
+   },
+   {
+    "name": "f03180",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03180.c",
+    "body": "{\n    register int c;\n\n    if (g_09da != f01cd2)\n        return 0x16f;\n    while ((isspace(c = f01c90()) || !c) && c != '  ' && c != EOF)\n        if (g_05d4)\n            putc(c, stdout);\n    if (c == ' ')\n        return f031f7();\n    (*g_09dc)(c);\n    return 0x16f;\n}"
+   },
+   {
+    "name": "f031f7",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f031f7.c",
+    "body": "{\n    register int c;\n    char *id;\n\n    c = f03a28();\n    if (!isalpha(c)) {\n        if (c == '  ')\n            (*g_09dc)(c);\n        else {\n            f0010e(\"                                         \", c);\n            f03a59();\n        }\n        return 0x16f;\n    }\n    id = f0330d(c);\n    f021ac(id);\n    return 0x16b;\n}"
+   },
+   {
+    "name": "f03248",
+    "ret": "",
+    "params": [
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03248.c",
+    "body": "{\n    register char *s;\n\n    s = v->s;\n    if (*s == ' ') {\n        if (!strcmp(s, \"        \")) {\n            if (g_05d4) {\n                sprintf(g_3042, \"  \", g_09d8);\n                v->str.n = strlen(g_3042) + 1;\n                v->str.f4 = 0;\n                v->s = f03a85(g_3042, v->str.n, 3);\n            } else\n                v->l = g_09d8;\n            return 0x103;\n        }\n        if (!strcmp(s, \"        \")) {\n            v->str.n = strlen(g_09d4) + 1;\n            v->str.f4 = 0;\n            v->s = f03a85(g_09d4, v->str.n, 0);\n            return 0x108;\n        }\n    }\n    return 0x101;\n}"
+   },
+   {
+    "name": "f0330d",
+    "ret": "char *",
+    "params": [
+     [
+      "c",
+      "register int c"
+     ]
+    ],
+    "static": false,
+    "line": 9,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0330d.c",
+    "body": "{\n    register char *p;\n\n    p = g_3042;\n    while (isalnum(c) || c == ' ') {\n        *p++ = c;\n        c = (*g_09da)();\n    }\n    (*g_09dc)(c);\n    *p = 0;\n    if (!g_05d4 && strlen(g_3042) >= 32) {\n        g_3042[31] = 0;\n        f00167(1, \"                            \", g_3042);\n    }\n    return g_3042;\n}"
+   },
+   {
+    "name": "f03378",
+    "ret": "",
+    "params": [
+     [
+      "base",
+      "int base"
+     ],
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03378.c",
+    "body": "{\n    register char *p;\n    register int c;\n    int x4, x3;                                 \n    int tok;\n\n    tok = 0x103;\n    p = g_3270;\n    if (base == 10) {\n        while (isdigit(c = (*g_09da)()))\n            *p++ = c;\n        if (c == ' ' || c == ' ' || c == ' ') {\n            (*g_09dc)(c);\n            *p = 0;\n            return f0350b(g_3270, v);\n        }\n    } else if (base == 16) {\n        if (g_05d4) {\n            *p++ = ' ';\n            *p++ = ' ';\n        }\n        while (isdigit(c = (*g_09da)()) || isxdigit(c))\n            *p++ = c;\n    } else if (base == 8) {\n        if (g_05d4)\n            *p++ = ' ';\n        while (isdigit(c = (*g_09da)())) {\n            if (c > ' ')\n                f0010e(\"                     \", c);\n            *p++ = c;\n        }\n    }\n    if (!g_0e56 && (c == ' ' || c == ' ')) {\n        tok = 0x104;\n        if (g_05d4)\n            *p++ = c;\n    } else\n        (*g_09dc)(c);\n    *p = 0;\n    if (g_05d4) {\n        v->str.n = strlen(g_3270) + 1;\n        v->str.f4 = 0;\n        v->s = f03a85(g_3270, v->str.n, 3);\n        if (base == 16)\n            tok = 0x105;\n        else if (base == 8)\n            tok = 0x106;\n    } else {\n        v->l = f0363f(g_3270, base);\n        if (g_0f06)\n            tok = 0x104;\n        else if (tok != 0x104)\n            tok = base == 10 ? f03710(v->l) : f036f5(v->l);\n    }\n    return tok;\n}"
+   },
+   {
+    "name": "f0350b",
+    "ret": "",
+    "params": [
+     [
+      "intpart",
+      "char *intpart"
+     ],
+     [
+      "v",
+      "union tokval *v"
+     ]
+    ],
+    "static": false,
+    "line": 11,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0350b.c",
+    "body": "{\n    register int c;\n    register char *p;\n\n    p = g_3370;\n    c = (*g_09da)();\n    if (g_05dc) {\n        f00167(1, \"                                     \");\n        g_05dc = 0;\n    }\n    if (isdigit(c) || c == ' ')\n        do {\n            *p++ = c;\n            c = (*g_09da)();\n        } while (isdigit(c));\n    if (c == ' ' || c == ' ') {\n        *p++ = c;\n        c = (*g_09da)();\n        if (c == ' ' || c == ' ') {\n            *p++ = c;\n            c = (*g_09da)();\n        }\n        if (!isdigit(c)) {\n            f0010e(\"                                 \", c);\n            *p++ = ' ';\n        } else\n            while (isdigit(c)) {\n                *p++ = c;\n                c = (*g_09da)();\n            }\n    }\n    (*g_09dc)(c);\n    *p = 0;\n    if (intpart)\n        sprintf(g_3470, \"    \", intpart, g_3370);\n    else\n        sprintf(g_3470, \"  \", g_3370);\n    if (g_05d4) {\n        v->str.n = strlen(g_3470) + 1;\n        v->str.f4 = 0;\n        v->s = f03a85(g_3470, v->str.n, 3);\n    } else\n        v->d = atof(g_3470);\n    return 0x107;\n}"
+   },
+   {
+    "name": "f0363f",
+    "ret": "long",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "base",
+      "int base"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0363f.c",
+    "body": "{\n    long val, prev;\n\n    g_0f06 = prev = val = 0;\n    while (*s) {\n        val *= base;\n        val += f03731(*s);\n        s++;\n        if (base == 10) {\n            if (val < prev) {\n                s--;\n                break;\n            }\n        } else if (*s)\n            if (base == 8) {\n                if (val & 0xe0000000L)\n                    break;\n            } else if (val & 0xf0000000L)\n                break;\n        prev = val;\n    }\n    if (*s) {\n        f00167(1, \"                \");\n        g_0f06 = 1;\n        val = 0x7fffffffL;\n    }\n    return val;\n}"
+   },
+   {
+    "name": "f036f5",
+    "ret": "",
+    "params": [
+     [
+      "l",
+      "long l"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f036f5.c",
+    "body": "{\n    return l & 0xffff0000L ? 0x104 : 0x103;\n}"
+   },
+   {
+    "name": "f03710",
+    "ret": "",
+    "params": [
+     [
+      "l",
+      "long l"
+     ]
+    ],
+    "static": false,
+    "line": 1,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03710.c",
+    "body": "{\n    return (l &= 0xffff8000L) ? 0x104 : 0x103;\n}"
+   },
+   {
+    "name": "f03731",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03731.c",
+    "body": "{\n    if (isdigit(c))\n        return c - ' ';\n    if (isupper(c))\n        return c - ' ' + 10;\n    if (islower(c))\n        return c - ' ' + 10;\n    f00081(g_0e52, 736);\n}"
+   },
+   {
+    "name": "f03784",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03784.c",
+    "body": "{\n    register int n;\n    char c;\n    int mm;                                              \n    long hval;\n    int a;\n    long ov;\n    long l;\n    int w;\n\n    switch (c = (*g_09da)()) {\n    case ' ':\n        c = 8;\n        break;\n    case ' ':\n        c = 0xc;\n        break;\n    case ' ':\n        c = 0xa;\n        break;\n    case ' ':\n        c = 0xd;\n        break;\n    case ' ':\n        c = 9;\n        break;\n    case ' ':\n        c = 0xb;\n        break;\n    case '  ':\n        c = '  ';\n        break;\n    default:\n        if (c >= ' ' && c <= ' ') {\n            for (n = 1, ov = f03ada(c); c = (*g_09da)(), n < 3; n++) {\n                if (c < ' ' || c > ' ')\n                    break;\n                ov *= 8;\n                ov += f03ada(c);\n            }\n            (*g_09dc)(c);\n            l = ov;\n        } else if (c == ' ' || c == ' ') {\n            hval = 0;\n            n = 1;\n            c = (*g_09da)();\n            while (n <= 2 && isxdigit(c)) {\n                hval *= 16;\n                hval += f03ada(c);\n                c = (*g_09da)();\n                n++;\n            }\n            (*g_09dc)(c);\n            l = hval;\n        } else\n            break;\n        if (!g_05d4) {\n            c = l;\n            if (l > 255)\n                f03ac1(l);\n        }\n    }\n    return c;\n}"
+   },
+   {
+    "name": "f0391c",
+    "ret": "",
+    "params": [
+     [
+      "want",
+      "register int want"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f0391c.c",
+    "body": "{\n    register int c;\n\n    if ((c = (*g_09da)()) == want)\n        return 1;\n    (*g_09dc)(c);\n    return 0;\n}"
+   },
+   {
+    "name": "f03949",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03949.c",
+    "body": "{\n    register int c;\n\n    if (!f0391c(' '))\n        return 0;\n    if (g_05d6) {\n        printf(\"  \");\n        for (;;) {\n            if ((c = f01fd0()) == ' ' && f0391c(' ')) {\n                printf(\"  \");\n                break;\n            }\n            putc(c, stdout);\n        }\n    } else\n        while (!((c = f01fd0()) == ' ' && f0391c(' ')))\n            ;\n    return 1;\n}"
+   },
+   {
+    "name": "f039e2",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "register int c"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f039e2.c",
+    "body": "{\n    register int d;\n\n    if (c != ' ' || !f0391c(' '))\n        return 0;\n    while (!((d = f01fd0()) == ' ' && f0391c(' ')))\n        ;\n    return 1;\n}"
+   },
+   {
+    "name": "f03a28",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03a28.c",
+    "body": "{\n    register int c;\n\n    do\n        c = f01fd0();\n    while (f039e2(c) || (isspace(c) || !c) && c != '  ');\n    return c;\n}"
+   },
+   {
+    "name": "f03a59",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 5,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03a59.c",
+    "body": "{\n    register int c;\n\n    do\n        c = f01fd0();\n    while (f039e2(c) || c != '  ');\n    (*g_09dc)(c);\n}"
+   },
+   {
+    "name": "f03a85",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "n",
+      "register int n"
+     ],
+     [
+      "pool",
+      "int pool"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03a85.c",
+    "body": "{\n    char *p, *q;\n\n    q = p = f01033(pool, n);\n    while (n--)\n        *q++ = *s++;\n    return p;\n}"
+   },
+   {
+    "name": "f03ac1",
+    "ret": "",
+    "params": [
+     [
+      "l",
+      "long l"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": true,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03ac1.c",
+    "body": "{\n    f0010e(\"                        \", l);\n}"
+   },
+   {
+    "name": "f03ada",
+    "ret": "",
+    "params": [
+     [
+      "c",
+      "register int c"
+     ]
+    ],
+    "static": false,
+    "line": 4,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03ada.c",
+    "body": "{\n    if (isdigit(c))\n        return c - ' ';\n    if (islower(c))\n        return c - ' ' + 10;\n    if (isupper(c))\n        return c - ' ' + 10;\n}"
+   },
+   {
+    "name": "f03b0d",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03b0d.c",
+    "body": "{\n    while (*s && c != *s)\n        s++;\n    return *s ? s : 0;\n}"
+   },
+   {
+    "name": "f03b38",
+    "ret": "char *",
+    "params": [
+     [
+      "s",
+      "register char *s"
+     ],
+     [
+      "c",
+      "char c"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "f03b38.c",
+    "body": "{\n    register char *last;\n\n    last = 0;\n    while (*s) {\n        if (c == *s)\n            last = s;\n        s++;\n    }\n    return last;\n}"
+   }
+  ],
+  "view_vars": [
+   "g_05ec",
+   "g_05ee"
+  ],
+  "view_headers": [
+   "getflags.h"
+  ],
+  "param_types": [],
+  "bss": [
+   [
+    "g_00fe",
+    10
+   ],
+   [
+    "g_0230",
+    10
+   ],
+   [
+    "g_0232",
+    10
+   ],
+   [
+    "g_0234",
+    10
+   ],
+   [
+    "g_03d6",
+    10
+   ],
+   [
+    "g_052e",
+    10
+   ],
+   [
+    "g_056c",
+    10
+   ],
+   [
+    "g_056e",
+    10
+   ],
+   [
+    "g_0582",
+    10
+   ],
+   [
+    "g_05d2",
+    10
+   ],
+   [
+    "g_05d4",
+    10
+   ],
+   [
+    "g_05d6",
+    10
+   ],
+   [
+    "g_05d8",
+    10
+   ],
+   [
+    "g_05da",
+    10
+   ],
+   [
+    "g_05dc",
+    10
+   ],
+   [
+    "g_05de",
+    10
+   ],
+   [
+    "g_05e0",
+    10
+   ],
+   [
+    "g_05e2",
+    10
+   ],
+   [
+    "g_05e4",
+    10
+   ],
+   [
+    "g_05e6",
+    10
+   ],
+   [
+    "g_05e8",
+    10
+   ],
+   [
+    "g_05ea",
+    10
+   ],
+   [
+    "g_05ec",
+    10
+   ],
+   [
+    "g_05ee",
+    10
+   ],
+   [
+    "g_0616",
+    10
+   ],
+   [
+    "g_0640",
+    10
+   ],
+   [
+    "g_0642",
+    10
+   ],
+   [
+    "g_0644",
+    10
+   ],
+   [
+    "g_0664",
+    10
+   ],
+   [
+    "g_06ea",
+    10
+   ],
+   [
+    "g_06fe",
+    10
+   ],
+   [
+    "g_0700",
+    10
+   ],
+   [
+    "g_0828",
+    10
+   ],
+   [
+    "g_082a",
+    10
+   ],
+   [
+    "g_082c",
+    10
+   ],
+   [
+    "g_08e6",
+    10
+   ],
+   [
+    "g_08e8",
+    10
+   ],
+   [
+    "g_091a",
+    10
+   ],
+   [
+    "g_091e",
+    10
+   ],
+   [
+    "g_09d2",
+    10
+   ],
+   [
+    "g_09d4",
+    10
+   ],
+   [
+    "g_09d6",
+    10
+   ],
+   [
+    "g_09d8",
+    10
+   ],
+   [
+    "g_09da",
+    10
+   ],
+   [
+    "g_09dc",
+    10
+   ],
+   [
+    "g_09de",
+    10
+   ],
+   [
+    "g_0a42",
+    10
+   ],
+   [
+    "g_0a44",
+    10
+   ],
+   [
+    "g_0a8e",
+    10
+   ],
+   [
+    "g_0ad2",
+    10
+   ],
+   [
+    "g_0ad4",
+    10
+   ],
+   [
+    "g_0ad6",
+    10
+   ],
+   [
+    "g_0c28",
+    10
+   ],
+   [
+    "g_0c3c",
+    10
+   ],
+   [
+    "g_0e52",
+    10
+   ],
+   [
+    "g_0e54",
+    10
+   ],
+   [
+    "g_0e56",
+    10
+   ],
+   [
+    "g_0e58",
+    10
+   ],
+   [
+    "g_0e5a",
+    10
+   ],
+   [
+    "g_0e64",
+    10
+   ],
+   [
+    "g_0e6e",
+    10
+   ],
+   [
+    "g_0e70",
+    10
+   ],
+   [
+    "g_0e7c",
+    10
+   ],
+   [
+    "g_0e88",
+    10
+   ],
+   [
+    "g_0f06",
+    10
+   ],
+   [
+    "g_123a",
+    10
+   ],
+   [
+    "g_1394",
+    10
+   ],
+   [
+    "g_151c",
+    10
+   ],
+   [
+    "g_151e",
+    10
+   ],
+   [
+    "g_19c6",
+    10
+   ],
+   [
+    "g_19c8",
+    10
+   ],
+   [
+    "g_19ca",
+    10
+   ],
+   [
+    "g_19cc",
+    10
+   ],
+   [
+    "g_19d0",
+    4080
+   ],
+   [
+    "g_1dcc",
+    2096
+   ],
+   [
+    "g_1f78",
+    10
+   ],
+   [
+    "g_1fd8",
+    2096
+   ],
+   [
+    "g_21e4",
+    2096
+   ],
+   [
+    "g_23f0",
+    2096
+   ],
+   [
+    "g_25fc",
+    10
+   ],
+   [
+    "g_25fe",
+    10
+   ],
+   [
+    "g_2600",
+    10
+   ],
+   [
+    "g_2e00",
+    10
+   ],
+   [
+    "g_2e02",
+    10
+   ],
+   [
+    "g_2e42",
+    10
+   ],
+   [
+    "g_2f42",
+    10
+   ],
+   [
+    "g_3042",
+    10
+   ],
+   [
+    "g_3270",
+    10
+   ],
+   [
+    "g_3370",
+    10
+   ],
+   [
+    "g_3470",
+    10
+   ],
+   [
+    "g_3770",
+    10
+   ],
+   [
+    "g_3772",
+    10
+   ],
+   [
+    "g_3974",
+    10
+   ],
+   [
+    "g_3b74",
+    10
+   ],
+   [
+    "g_3b76",
+    10
+   ]
+  ],
+  "aliases": [
+   [
+    "g_05ec",
+    "(g_05ec_s.top)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_05ee",
+    "(g_05ec_s.v)",
+    "struct slots g_05ec_s;"
+   ],
+   [
+    "g_0e64",
+    "(&g_0e5a[5])",
+    "int g_0e5a[10];"
+   ],
+   [
+    "g_0e7c",
+    "(&g_0e70[6])",
+    "int g_0e70[18];"
+   ],
+   [
+    "g_0e88",
+    "(&g_0e70[12])",
+    "int g_0e70[18];"
+   ]
+  ]
+ }
+}

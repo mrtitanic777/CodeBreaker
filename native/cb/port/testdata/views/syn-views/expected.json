@@ -1,0 +1,167 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c"
+  ],
+  "left_out": [],
+  "notes": [
+   [
+    "globals one after another that are a structure's members, the first's place taken: one variable of it",
+    [
+     "a.c (struct stk: top, v)"
+    ]
+   ]
+  ],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [
+   [
+    "top",
+    "(top_s.top)",
+    "struct stk top_s;"
+   ],
+   [
+    "v",
+    "(top_s.v)",
+    "struct stk top_s;"
+   ]
+  ],
+  "view_vars": [
+   "top",
+   "v"
+  ],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    132,
+    963419098
+   ]
+  },
+  "files": {
+   "a.c": [
+    195,
+    1959654672
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     199,
+     2675064792
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "a.c:2"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     195,
+     1959654672
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     195,
+     1959654672
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     195,
+     1959654672
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     195,
+     1959654672
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     195,
+     1959654672
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     222,
+     2824392281
+    ],
+    [
+     222,
+     2824392281
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     222,
+     2824392281
+    ],
+    [
+     222,
+     2824392281
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [
+   "q"
+  ],
+  "post": {
+   "a.c": [
+    [
+     195,
+     1959654672
+    ],
+    [
+     195,
+     1959654672
+    ]
+   ]
+  }
+ }
+}

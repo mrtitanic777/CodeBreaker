@@ -190,7 +190,9 @@ std::vector<Token> identifiers(std::string_view s) {
 
 }  // namespace
 
-std::optional<Declaration> declarators(std::string_view decl) {
+std::optional<Declaration> declarators(std::string_view decl) { return declarators(decl, false); }
+
+std::optional<Declaration> declarators(std::string_view decl, bool size_t_is_type) {
     std::string_view d = text::trim(decl);
     while (!d.empty() && d.back() == ';') d.remove_suffix(1);
     const std::vector<std::string_view> parts = split_top(d, ',');
@@ -199,7 +201,7 @@ std::optional<Declaration> declarators(std::string_view decl) {
     std::optional<Token> name;
     for (std::size_t i = 0; i < toks.size(); ++i) {
         const std::string_view w = first.substr(toks[i].start, toks[i].end - toks[i].start);
-        if (is_type_word(w)) continue;
+        if (is_type_word(w) || (size_t_is_type && w == "size_t")) continue;
         if (i > 0) {
             const std::string_view prev = first.substr(toks[i - 1].start, toks[i - 1].end - toks[i - 1].start);
             if (prev == "struct" || prev == "union" || prev == "enum") continue;

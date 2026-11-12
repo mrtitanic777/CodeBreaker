@@ -1,3 +1,4 @@
+// cb-unity: alone (its helpers share names with old_c_passes.cpp's)
 // The passes of mend.hpp that work on the whole program rather than on a complaint: parameters and members that
 // carried a pointer, the union a value belongs in, the tags a file sees.
 #include <algorithm>

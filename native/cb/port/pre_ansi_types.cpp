@@ -54,13 +54,17 @@ Profile Profile::load(const std::string& path) {
 }
 
 std::string SplitDecl::operator()(const RegexMatch& m) const {
+    return (*this)(m.group(1), m.group(2), m.group(3), m.group(4));
+}
+
+std::string SplitDecl::operator()(std::string_view lead_text, std::string_view base, std::string_view before, std::string_view after) const {
     // the names of the list that stay: the ones before the retyped name and the ones after it
-    std::string joined = std::string(m.group(3)) + std::string(m.group(4));
+    std::string joined = std::string(before) + std::string(after);
     std::replace(joined.begin(), joined.end(), ',', ' ');
     std::vector<std::string> rest;
     for (std::string_view w : text::split_ws(joined)) rest.emplace_back(w);
-    const std::string lead(m.group(1));
-    std::string out = rest.empty() ? lead : lead + std::string(m.group(2)) + " " + text::join(rest, ", ") + "; ";
+    const std::string lead(lead_text);
+    std::string out = rest.empty() ? lead : lead + std::string(base) + " " + text::join(rest, ", ") + "; ";
     std::string storage;   // its storage class: so (extern int a, v, b;  -> extern for the new declaration too)
     if (!rest.empty()) {
         for (std::string_view w : text::split_ws(lead)) {

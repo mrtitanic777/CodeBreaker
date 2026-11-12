@@ -1,0 +1,132 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "a.c": "#include \"s.h\"\nstruct comsym {\n\tchar head[10];\n\tint count;\n};\nstruct rfld { int a_old; int b_old; };\nint bump(sym)\nstruct sym *sym;\n{\n\treturn ((struct comsym *)sym)->count;\n}\ng(us)\nstruct usym *us;\n{\n\tstruct rfld *r;\n\tchar *fp;\n\tr = (struct rfld *)&us->u.rfl;\n\tfp = dos_far(0x40, 0x10);\n\treturn r->x;\n}\n/* an empty stand-in */\n",
+   "s.h": "struct sym {\n\tchar *name;\n\tint kind;\n\tchar *link;\n};\nstruct usym {\n\tint kind;\n\tunion {\n\t\tstruct s_rfl { int a_old; int b_old; } rfl;\n\t\tchar c;\n\t} u;\n};\n",
+   "same.c": "extern int lost();\nint kept;\n"
+  },
+  "kept": [
+   "a.c",
+   "s.h",
+   "same.c"
+  ],
+  "fns": [
+   {
+    "name": "bump",
+    "ret": "int",
+    "params": [
+     [
+      "sym",
+      "struct sym *sym"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   },
+   {
+    "name": "g",
+    "ret": "",
+    "params": [
+     [
+      "us",
+      "struct usym *us"
+     ]
+    ],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "a.c": "#include \"s.h\"\nstruct comsym {\n\tchar head[10];\n\tint count;\n};\nstruct rfld { int a_old; int b_old; };\nint bump(sym)\nstruct sym *sym;\n{\n\treturn ((struct comsym *)sym)->count;\n}\ng(us)\nstruct usym *us;\n{\n\tstruct rfld *r;\n\tchar *fp;\n\tr = (struct rfld *)&us->u.rfl;\n\tfp = dos_far(0x40, 0x10);\n\treturn r->x;\n}\n/* an empty stand-in */\n",
+   "s.h": "struct sym {\n\tchar *name;\n\tint kind;\n\tchar *link;\n};\nstruct usym {\n\tint kind;\n\tunion {\n\t\tstruct s_rfl { int a_old; int b_old; } rfl;\n\t\tchar c;\n\t} u;\n};\n",
+   "same.c": "extern int lost();\nint kept;\n"
+  },
+  "kept": [
+   "a.c",
+   "s.h",
+   "same.c"
+  ],
+  "fns": [
+   {
+    "name": "bump",
+    "ret": "int",
+    "params": [
+     [
+      "sym",
+      "struct sym *sym"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn ((struct comsym *)sym)->count;\n}"
+   },
+   {
+    "name": "g",
+    "ret": "",
+    "params": [
+     [
+      "us",
+      "struct usym *us"
+     ]
+    ],
+    "static": false,
+    "line": 12,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\tstruct rfld *r;\n\tchar *fp;\n\tr = (struct rfld *)&us->u.rfl;\n\tfp = dos_far(0x40, 0x10);\n\treturn r->x;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

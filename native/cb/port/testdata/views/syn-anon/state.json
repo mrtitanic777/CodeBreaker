@@ -1,0 +1,128 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "a.c": "#include \"rec.h\"\nstruct a_p { int a; int b; };\nfa(h)\nstruct rec_hd h;\n{\n\treturn h.kind;\n}\nfb(p)\nregister struct a_p *p;\n{\n\treturn p->a;\n}\n",
+   "rec.h": "struct rec {\n\tstruct rec_hd { char kind, flags; } hd;\n\tchar *n;\n};\n"
+  },
+  "kept": [
+   "a.c",
+   "rec.h"
+  ],
+  "fns": [
+   {
+    "name": "fa",
+    "ret": "",
+    "params": [
+     [
+      "h",
+      "struct rec_hd h"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   },
+   {
+    "name": "fb",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register struct a_p *p"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "a.c": "#include \"rec.h\"\nstruct a_p { int a; int b; };\nfa(h)\nstruct rec_hd h;\n{\n\treturn h.kind;\n}\nfb(p)\nregister struct a_p *p;\n{\n\treturn p->a;\n}\n",
+   "rec.h": "struct rec {\n\tstruct rec_hd { char kind, flags; } hd;\n\tchar *n;\n};\n"
+  },
+  "kept": [
+   "a.c",
+   "rec.h"
+  ],
+  "fns": [
+   {
+    "name": "fa",
+    "ret": "",
+    "params": [
+     [
+      "h",
+      "struct rec_hd h"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn h.kind;\n}"
+   },
+   {
+    "name": "fb",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "register struct a_p *p"
+     ]
+    ],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn p->a;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

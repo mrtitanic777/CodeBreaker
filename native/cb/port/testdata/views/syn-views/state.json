@@ -1,0 +1,106 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "a.c": "struct stk {\n\tint top;\n\tchar *v[20];\n};\nstruct stk top_s = { 20, { 0 } };\t/* (top, v: one place, as the old linker kept them) */\n\npush(p)\nchar *p;\n{\n\tchar **q;\n\tq = &top;\n\tv[0] = p;\n\treturn 0;\n}\n"
+  },
+  "kept": [
+   "a.c"
+  ],
+  "fns": [
+   {
+    "name": "push",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "char *p"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [
+   "top",
+   "v"
+  ],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": [
+   [
+    "top",
+    "(top_s.top)",
+    "struct stk top_s;"
+   ],
+   [
+    "v",
+    "(top_s.v)",
+    "struct stk top_s;"
+   ]
+  ]
+ },
+ "offset_views": {
+  "files_changed": {
+   "a.c": "struct stk {\n\tint top;\n\tchar *v[20];\n};\nstruct stk top_s = { 20, { 0 } };\t/* (top, v: one place, as the old linker kept them) */\n\npush(p)\nchar *p;\n{\n\tchar **q;\n\tq = &top;\n\tv[0] = p;\n\treturn 0;\n}\n"
+  },
+  "kept": [
+   "a.c"
+  ],
+  "fns": [
+   {
+    "name": "push",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "char *p"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\tchar **q;\n\tq = &top;\n\tv[0] = p;\n\treturn 0;\n}"
+   }
+  ],
+  "view_vars": [
+   "top",
+   "v"
+  ],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": [
+   [
+    "top",
+    "(top_s.top)",
+    "struct stk top_s;"
+   ],
+   [
+    "v",
+    "(top_s.v)",
+    "struct stk top_s;"
+   ]
+  ]
+ }
+}

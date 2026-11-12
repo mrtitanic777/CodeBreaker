@@ -1,0 +1,108 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "b.c": "#include \"mac.h\"\nstruct macro {\t/* (as struct mac is: its bytes) */\n    struct mac *f0;\n    char *f2;\n    int f4;\n};\nstruct macro *getmac();\nuse()\n{\n\tstruct macro *m;\n\tm = getmac();\n\treturn m->f0;\n}\n"
+  },
+  "kept": [
+   "b.c",
+   "c.c",
+   "mac.h"
+  ],
+  "fns": [
+   {
+    "name": "use",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "b.c",
+    "body": ""
+   },
+   {
+    "name": "getmac",
+    "ret": "struct mac *",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "c.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "b.c": "#include \"mac.h\"\nstruct macro {\t/* (as struct mac is: its bytes) */\n    struct mac *f0;\n    char *f2;\n    int f4;\n};\nstruct macro *getmac();\nuse()\n{\n\tstruct macro *m;\n\tm = getmac();\n\treturn m->f0;\n}\n"
+  },
+  "kept": [
+   "b.c",
+   "c.c",
+   "mac.h"
+  ],
+  "fns": [
+   {
+    "name": "use",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 8,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "b.c",
+    "body": "{\n\tstruct macro *m;\n\tm = getmac();\n\treturn m->f0;\n}"
+   },
+   {
+    "name": "getmac",
+    "ret": "struct mac *",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "c.c",
+    "body": "{\n\treturn 0;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

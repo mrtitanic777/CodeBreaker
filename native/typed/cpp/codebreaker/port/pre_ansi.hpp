@@ -1,16 +1,20 @@
-// codebreaker/port/pre_ansi.hpp -- typed C++ port of codebreaker.port.pre_ansi.
+// codebreaker/port/pre_ansi.hpp -- the old API of codebreaker.port.pre_ansi over py::, kept for the ports that are not
+// refactored yet, now over native/cb/port (docs/CPP_DESIGN.md 6.3).
 //
 // pre_ansi.py -- C of before the standard made C a compiler of today takes, the meaning kept.
-// (The module docstring is kept in pre_ansi.cpp.)
 //
-// TYPING NOTES (shared by the parts of this port)
-//   * The port is split over several translation units (one per stretch of the Python file):
-//       pre_ansi.cpp     lines 1-885 of the Python (rules, text helpers, the rewriting functions, Port.__init__)
-//                        and the mend loop (4761-end)
-//       pre_ansi_p2.cpp  Port methods 886-2145 (agree_globals ... _globals)
-//       pre_ansi_p3.cpp  Port methods 2144-3077 (anon_tags ... offset_views)
-//       pre_ansi_p4.cpp  Port methods 3077-3735 and the free functions 3739-4600
-//     Each part declares its functions in its own section of this header.
+// What this header declares is the Python module as the old callers (port/__main__, port/sanitize, asm16's consumers)
+// use it. Everything behind it is in native/cb/port: the text passes in old_c_text.hpp, the structure passes in
+// views.hpp, the first reading of a program in program_prep.hpp, the passes over the whole program in old_c_data.hpp,
+// the mending in mend.hpp. The translation units here only convert (py::str <-> UTF-8, py::dict <-> the new records)
+// and forward:
+//
+//       pre_ansi.cpp     the module's free functions and Port.__init__, PART 3's Port methods
+//       pre_ansi_p2.cpp  Port methods agree_globals ... _globals, and the order of work of modernize
+//       pre_ansi_p4.cpp  Port methods bss_views ... _same_def and the free functions that follow
+//       pre_ansi_p5.hpp  the free functions of the mending loop
+//
+// TYPING NOTES
 //   * `definitions` returns (Fn, first line, '{' line, last line) with the Fn shared (std::shared_ptr<Fn>), as
 //     Python's Fn objects are shared references.
 //   * The Python Fn gets attributes at run time (file, ret_set, implicit, varargs, va_slots, int_ret, keep_int,
@@ -33,13 +37,7 @@
 
 namespace codebreaker::port::pre_ansi {
 
-// ---------------------------------------------------------------- shared constants and records
-
-extern const py::set<py::str> KEYWORDS;
-extern const py::set<py::str> STDINT;      // (the Python's frozenset)
-extern const py::set<py::str> TYPEWORDS;
-extern const py::set<py::str> PRINTF;
-extern const py::set<py::str> RULES_OFF;   // (empty)
+// ---------------------------------------------------------------- shared records
 
 // the profile of the old runtime (runtimes/NAME.json): the keys the port reads
 struct Profile {
@@ -85,7 +83,6 @@ struct Fn {
     Fn(const py::str& name_, const py::str& ret_, const py::list<std::tuple<py::str, py::str>>& params_, bool static__,
        int64_t line_)
         : name(name_), ret(ret_), params(params_), static_(static__), line(line_) {}
-    py::str proto(bool names = true) const;
 };
 using FnP = std::shared_ptr<Fn>;
 
@@ -98,39 +95,22 @@ using Span = std::tuple<int64_t, int64_t>;
 // notes: {why: [places]}
 using Notes = py::dict<py::str, py::list<py::str>>;
 
-// ---------------------------------------------------------------- PART 1: pre_ansi.cpp (lines 1-885)
+// ---------------------------------------------------------------- PART 1: the module's free functions
 
 bool rule(const py::str& name);
-py::list<int64_t> depths(const py::list<py::str>& code_lines);
-py::list<py::str> split_top(const py::str& s, const py::str& sep = py::str(","));
-// 'register struct s *a, b[3]' -> (base type, [(name, its declarator)]) - or None
+// 'register struct s *a, b[3]' -> (base type, [(name, its declarator)]) - or None (size_t is a type word with `types` given)
 std::optional<std::tuple<py::str, py::list<std::tuple<py::str, py::str>>>> declarators(const py::str& decl);
 std::optional<std::tuple<py::str, py::list<std::tuple<py::str, py::str>>>> declarators(const py::str& decl,
                                                                                          const py::set<py::str>& types);
-py::str array_param(const py::str& t, const py::str& n);
 py::list<Definition> definitions(const py::list<py::str>& lines, const py::list<py::str>& code);
 std::tuple<py::str, py::str> widths(py::str text, py::str code, Notes& notes, const py::str& fname, bool int16 = false);
+// (the code of the text is its own: `code` is not read)
 py::str formats(py::str text, const py::str& code, Notes& notes, const py::str& fname, bool int16 = false,
                 bool hex_upper = false);
 
-// the constants of lines 305-315 (patterns as text; GLOBAL_DECL / LOCAL_DECL take the variable by % as the Python)
-extern py::dict<py::str, py::set<std::tuple<py::str, int64_t>>> POOLS;   // ({allocator: {(struct, old size)}})
-extern const py::str ARGCAST;
-extern const py::str ALLOC_PATTERN;      // (ALLOC, compiled in pre_ansi.cpp)
-extern const py::str CASTCALL_PATTERN;
-extern const py::list<py::str> MEMFNS;
-extern const py::str GLOBAL_DECL;
-extern const py::str LOCAL_DECL;
-extern const py::re::Pattern ALLOC;
-extern const py::re::Pattern CASTCALL;
+// ({allocator: {(struct, old size)}}: of struct_sizes)
+extern py::dict<py::str, py::set<std::tuple<py::str, int64_t>>> POOLS;
 
-bool used_as_number(const py::str& code, const py::str& var);
-// the functions of a text, new style and then old: (name, first line, '{' line, last line)
-py::list<std::tuple<py::str, int64_t, int64_t, int64_t>> function_map(const py::str& text);
-std::optional<std::tuple<py::str, int64_t, int64_t, int64_t>> enclosing(const py::str& text, int64_t ln);
-bool declares_local(const py::str& text, const std::tuple<py::str, int64_t, int64_t, int64_t>& fn, const py::str& var);
-py::str apply_local_retypes(const py::str& text, const py::str& fname,
-                            const py::dict<std::tuple<py::str, py::str, py::str>, py::str>& retypes);
 // int16_t a, tag, b;  ->  int16_t a, b; struct tag *tag;  (a re.sub replacement: one name of a list retyped)
 struct split_decl {
     py::str name, typ;
@@ -142,7 +122,6 @@ struct split_decl {
 py::str mem_sizes(py::str text, const py::dict<py::str, int64_t>& olds, const py::dict<py::str, int64_t>& elems,
                   Notes& notes, const py::str& fname);
 py::str header_offsets(py::str text, const asm16::Layouts& old, Notes& notes, const py::str& fname);
-std::optional<py::str> prefix_member(const asm16::Layout* lay, int64_t n);
 // allocs: {allocator: the argument places its size was given at}
 py::str struct_sizes(py::str text, const asm16::Layouts& old, Notes& notes, const py::str& fname,
                      const py::dict<py::str, py::set<int64_t>>& allocs = py::dict<py::str, py::set<int64_t>>());
@@ -154,29 +133,6 @@ std::tuple<py::str, py::list<py::str>> header_data(const py::str& text, const py
 // ---------------------------------------------------------------- the Port (state: PART 1 owns the ones set in
 // __init__; a part that needs another member declares it in its own block below, after looking that no other part
 // has it; the type of a member is the type of what the Python keeps in it)
-
-// ---- PART 3 types: a file's own view of another structure (offset_views). mapping: a member of the view ->
-// either the other's members it is ("names"), or a "pun" (a part of a member of the other's, or a word over two
-// of its bytes: base member, byte offset, C type)
-struct ViewMap {
-    bool pun = false;
-    py::list<py::str> names;       // (not a pun: the other's members)
-    py::str base;                  // (a pun: ("pun", base, off, ct))
-    int64_t off = 0;
-    py::str ct;
-    friend bool operator==(const ViewMap& a, const ViewMap& b) {
-        return a.pun == b.pun && a.names == b.names && a.base == b.base && a.off == b.off && a.ct == b.ct;
-    }
-};
-// (y, mapping, n): the other structure, the mapping, the file the view is in
-struct ViewEntry {
-    py::str y;
-    py::dict<py::str, ViewMap> mapping;
-    py::str n;
-    friend bool operator==(const ViewEntry& a, const ViewEntry& b) {
-        return a.y == b.y && a.mapping == b.mapping && a.n == b.n;
-    }
-};
 
 // ---- PART 4 type: a rule of sanitize.py's null-segment reads: (file, variable, type) or with a kind ("var",
 // "assign", "mem"); kind absent = the plain 3-tuple
@@ -197,8 +153,9 @@ struct DeclRule {
 };
 py::str apply_decl_rule(const DeclRule& rule, const py::str& text);
 
-struct P4Native;   // (the new code's state for PART 4: pre_ansi_p4.cpp)
 struct P2Native;   // (the new code's facts about the original program, for PART 2: pre_ansi_p2.cpp)
+struct P3Native;   // (the new code's caches of the structure passes, for PART 3: pre_ansi.cpp)
+struct P4Native;   // (the new code's state for PART 4: pre_ansi_p4.cpp)
 
 class Port {
   public:
@@ -240,12 +197,7 @@ class Port {
     py::set<py::str> view_vars;
     py::list<py::str> view_puns_refused;
     py::list<py::str> notes_view_wide;
-    std::optional<py::dict<py::str, ViewEntry>> _views;       // (hasattr(self, "_views"))
-    py::set<py::str> _views_weak;
-    py::set<py::str> _views_new;
-    std::optional<py::set<py::str>> _copied;
-    std::optional<py::set<py::str>> _ptr2;
-    bool _pass_done = false;
+    std::shared_ptr<P3Native> p3_native_;                     // (the structure passes' caches: made when first needed)
     // ---- PART 4 members ----
     py::dict<py::str, py::str> asm_protos;                    // (the program's assembly routines: their C declarations) [F4]
     py::list<std::tuple<py::str, py::str>> asm_data;          // ((module, definition) of a module of data alone) [F4]
@@ -308,7 +260,6 @@ class Port {
     void twin_structs();
     void struct_views();
     void word_columns();
-    static py::str _widen(const py::re::Match& m, const py::str& v);
     py::str bss_ends(const py::str& t, const py::str& fname);
     const py::set<py::str>& copied_members();
     const py::set<py::str>& ptr2_names();
@@ -339,10 +290,6 @@ class Port {
 // ---------------------------------------------------------------- PART 2 free declarations
 // (modernize calls part 5's word_unions, word_copies, stdio_inits, file_internals, whole_word_stores, block_heads,
 // agree_wide, numbered_places, old_c_ways: declared in PART 5's section)
-// ---------------------------------------------------------------- PART 3 free declarations
-// (owned by other parts, declared here for part 3's calls; no default arguments, the owners' declarations give them)
-std::optional<py::list<Span>> call_args(const py::str& line, const py::str& fn, bool partial);          // F4
-std::optional<py::str> widen_member(const py::str& text, const py::str& tag, const py::str& mem);       // F5
 // ---------------------------------------------------------------- PART 4 free declarations
 // the size a declaration had in the original (its pointers ptr bytes) - or None (fixed here: asm16 calls it)
 std::optional<int64_t> size_of(const py::str& base, const py::str& decl, const py::str& name, int64_t ptr,
@@ -385,7 +332,7 @@ bool truthy(const py::str& body, const py::str& name);
 extern const py::list<std::tuple<py::str, py::list<py::str>>> SAYS;
 extern const py::str CAST;
 std::tuple<std::optional<py::str>, std::optional<py::re::Match>> said(const py::str& text);
-// ---------------------------------------------------------------- PART 5 free declarations  [F5: pre_ansi_p5.cpp]
+// ---------------------------------------------------------------- PART 5 free declarations  [F5: pre_ansi_p5.hpp]
 // the local variable key of Port.retyped (the Python's tuple (file, function, variable))
 py::str retyped_key(const py::str& file, const py::str& function, const py::str& variable);
 // (function, argument index, (start, end)) of the innermost call with an argument at col (0-based) - or None

@@ -1,0 +1,30 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "a.c": "struct ent {\n\tchar *name;\n\tintptr_t *val;\t/* (a word's place - a pointer's in some rows) */\n};\nchar *buf;\nintptr_t cnt;\nstruct ent tab[] = {\n\t{ \"a\", (intptr_t *)&buf },\n\t{ \"b\", &cnt },\n};\n"
+  },
+  "kept": [
+   "a.c"
+  ],
+  "fns": [],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "a.c": "struct ent {\n\tchar *name;\n\tintptr_t *val;\t/* (a word's place - a pointer's in some rows) */\n};\nchar *buf;\nintptr_t cnt;\nstruct ent tab[] = {\n\t{ \"a\", (intptr_t *)&buf },\n\t{ \"b\", &cnt },\n};\n"
+  },
+  "kept": [
+   "a.c"
+  ],
+  "fns": [],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

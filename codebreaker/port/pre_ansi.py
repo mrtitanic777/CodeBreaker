@@ -432,7 +432,7 @@ def mem_sizes(text, olds, elems, notes, fname):
             lit = re.fullmatch(r"\s*(0[xX][0-9a-fA-F]+|\d+)\s*", code[a:b])
             if not lit:
                 continue
-            n = int(lit.group(1), 0) if not re.fullmatch(r"0\d+", lit.group(1)) else int(lit.group(1))
+            n = c_int(lit.group(1))
             for nm in names:
                 if olds[nm] == n and n > 1:
                     e = elems.get(nm)                       # (as many elements as it had, of today's size: the
@@ -617,8 +617,8 @@ def struct_sizes(text, old, notes, fname, allocs=()):
         nums = [x for x in re.finditer(r"(?<![\w.])(0[xX][0-9a-fA-F]+|\d+)(?![\w.])", code[a:b])]
         if not nums:
             continue
-        x = max(nums, key=lambda x: int(x.group(1), 0) if not re.fullmatch(r"0\d+", x.group(1)) else int(x.group(1)))
-        n, size = int(x.group(1), 0) if not re.fullmatch(r"0\d+", x.group(1)) else int(x.group(1)), old[s]["@size"]
+        x = max(nums, key=lambda x: c_int(x.group(1)))
+        n, size = c_int(x.group(1)), old[s]["@size"]
         if n < size // 2:
             continue                                        # (a count, not the structure)
         rest = n - size
@@ -655,7 +655,7 @@ def struct_sizes(text, old, notes, fname, allocs=()):
             for a in re.finditer(r"\b%s\s*=\s*([^;=]+);" % re.escape(var), code[start:m.start()]):
                 terms = [t.strip() for t in re.split(r"\+", a.group(1))]
                 lits = [t for t in terms if re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", t)]
-                if len(lits) != 1 or int(lits[0], 0) not in offs or int(lits[0], 0) < 2 or "-" in a.group(1):
+                if len(lits) != 1 or c_int(lits[0]) not in offs or c_int(lits[0]) < 2 or "-" in a.group(1):
                     continue
                 keep = [t for t in terms if t not in lits and not re.fullmatch(r"\w+\s*\[[^\]]*\]", t)]
                 x, e = start + a.start(1), start + a.end(1)
@@ -754,6 +754,8 @@ class Port:
                 if not m:
                     continue
                 end = t.find("};", m.end())
+                if end < 0:                                 # (no closing of it: nothing to correct)
+                    continue
                 body = t[m.end():end]
                 new = re.sub(r"(?m)^([ \t]*)[^;{}\n]*?\b%s\s*;" % re.escape(mem),
                               lambda x: "%s%s%s%s;" % (x.group(1), typ, "" if typ.endswith("*") else " ", mem), body,
@@ -2021,7 +2023,7 @@ class Port:
             t = self.offset_views(t, n)
             t = block_heads(t, self.notes, n, self.ptr2_names())
             t = self.bss_ends(t, n)
-            t = formats(t, code, self.notes, n, self.int16, self.profile.get("printf_hex_upper", False))
+            t = formats(t, blank(t), self.notes, n, self.int16, self.profile.get("printf_hex_upper", False))
             t = struct_sizes(t, self.old_layouts_for(n), self.notes, n, self.allocators())
             t = header_offsets(t, self.old_layouts_for(n), self.notes, n)
             t = mem_sizes(t, self.old_var_sizes(), self.old_elem_sizes(), self.notes, n)
@@ -2232,7 +2234,12 @@ class Port:
         allcode = "\n".join(blank(t) for t in self.files.values())
         for n in sorted(self.files):
             t = self.files[n]
-            for sm in list(re.finditer(r"\bstruct\s+(\w+)\s*\{([^{}]*)\}", blank(t))):
+            pos, head = 0, re.compile(r"\bstruct\s+(\w+)\s*\{([^{}]*)\}")
+            while True:                                     # (each structure of the text as it is now)
+                sm = head.search(blank(t), pos)
+                if not sm:
+                    break
+                pos = sm.end()
                 tag, lay = sm.group(1), lays.get("struct " + sm.group(1))
                 if not lay:
                     continue
@@ -2262,6 +2269,7 @@ class Port:
                     body2 = body[:a1] + new_d1 + body[b1:a2] + "\t/* (%s: the word after it, its element %d) */" % (
                         wn, count) + body[b2:]
                     t = t[:sm.start(2)] + body2 + t[sm.end(2):]
+                    pos = sm.start(2) + len(body2) + 1
                     self.files[n] = t
                     self.notes["a word after an array that its next element was (indexed past it, never named): "
                                "the array one longer"].append("%s (struct %s: %s[%d], %s)" % (n, tag, an, count, wn))
@@ -2680,7 +2688,7 @@ class Port:
                            "the ints placed in it intptr_t"].append("%s (struct %s: %s)" % (
                                n, st_, ", ".join(mem[c_] for c_ in sorted(cs))))
         for n, t in self.files.items():                     # (the ints: intptr_t, wherever declared)
-            for v in widen:
+            for v in sorted(widen):                         # (one order: two on a line, the first is widened)
                 t = re.sub(r"(?m)^([ \t]*(?:extern\s+|static\s+)?)(?:int|unsigned|short|unsigned int)\s+([^;(){}]*)\b%s\b"
                            r"(\s*(?:=[^,;]*)?)\s*([,;])" % re.escape(v), lambda m: self._widen(m, v), t)
             self.files[n] = t

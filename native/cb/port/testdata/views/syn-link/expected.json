@@ -1,0 +1,240 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c",
+   "isym.h"
+  ],
+  "left_out": [],
+  "notes": [
+   [
+    "a structure's first word its chain's link (read as a pointer): a pointer",
+    [
+     "isym.h (struct isym: link)"
+    ]
+   ]
+  ],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    118,
+    3288623234
+   ],
+   "isym.h": [
+    40,
+    1489219661
+   ]
+  },
+  "files": {
+   "a.c": [
+    118,
+    3288623234
+   ],
+   "isym.h": [
+    80,
+    541859148
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     118,
+     3288623234
+    ],
+    []
+   ],
+   "formats": [
+    [
+     118,
+     3288623234
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     118,
+     3288623234
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     118,
+     3288623234
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     118,
+     3288623234
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     118,
+     3288623234
+    ],
+    [],
+    []
+   ]
+  },
+  "isym.h": {
+   "widths": [
+    [
+     80,
+     541859148
+    ],
+    []
+   ],
+   "formats": [
+    [
+     80,
+     541859148
+    ],
+    []
+   ],
+   "header_data": [
+    [
+     80,
+     541859148
+    ],
+    [],
+    []
+   ],
+   "old_declarations": [
+    [
+     80,
+     541859148
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     80,
+     541859148
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     80,
+     541859148
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     80,
+     541859148
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     150,
+     4050516881
+    ],
+    [
+     150,
+     4050516881
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     150,
+     4050516881
+    ],
+    [
+     150,
+     4050516881
+    ]
+   ],
+   [
+    "offset_views",
+    "isym.h",
+    [
+     80,
+     541859148
+    ],
+    [
+     80,
+     541859148
+    ]
+   ],
+   [
+    "bss_ends",
+    "isym.h",
+    [
+     80,
+     541859148
+    ],
+    [
+     80,
+     541859148
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     118,
+     3288623234
+    ],
+    [
+     118,
+     3288623234
+    ]
+   ],
+   "isym.h": [
+    [
+     80,
+     541859148
+    ],
+    [
+     80,
+     541859148
+    ]
+   ]
+  }
+ }
+}

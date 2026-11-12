@@ -1,0 +1,82 @@
+{
+ "pass_through": {
+  "files_changed": {},
+  "kept": [
+   "a.c"
+  ],
+  "fns": [
+   {
+    "name": "f",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [
+   [
+    "g_1000",
+    10
+   ],
+   [
+    "g_100a",
+    10
+   ]
+  ],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {},
+  "kept": [
+   "a.c"
+  ],
+  "fns": [
+   {
+    "name": "f",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\tchar *p;\n\tp = (char *)&g_100a;\n\treturn 0;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [
+   [
+    "g_1000",
+    10
+   ],
+   [
+    "g_100a",
+    10
+   ]
+  ],
+  "aliases": []
+ }
+}
