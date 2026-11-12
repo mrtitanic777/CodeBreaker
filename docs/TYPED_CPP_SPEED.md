@@ -1068,3 +1068,10 @@ New = Release /O2, one thread, `native/cb`; measured on the Windows 95 and 98 co
 |---|---|---|
 | prove: the beam search, the mendings, the ranks, the history | the old port needs the whole old draft layer and a period compiler's kit to run: not timed | the search is tested without a compiler (24 cases, a fraction of a second); a compile is the cost, as before: a batch of 16 candidates is one run of the compiler, counted as two compiles |
 | native_dosexec | glue only | environment reads and a library load |
+
+## W2-B11 leftover, W3-B11 (source writers)
+
+| What | Old | New |
+|---|---|---|
+| the console writers over real programs (Master System HelloWorld 128 KB, SMSAudio; Game Boy Color uCity 25 functions; Genesis 2048 38 functions): read, walk the flow, write the source, assemble it again with CodeBreaker's assembler and compare | Python (the live implementation; the typed port needs the whole old layer): 126 ms, 169 ms, 920 ms, 755 ms per run including the interpreter's start (about 60 ms) and imports | 10 ms, 12 ms, 38 ms, 36 ms; the source written is byte for byte the Python writer's on all of them, and on the five small programs of the tests |
+| nasm rounds, classes writer, module writer, java writer | nothing to time (they run NASM, a function store or a corpus) | not hot: the module writer is a pass over the store's rows |

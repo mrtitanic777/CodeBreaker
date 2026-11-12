@@ -1,43 +1,32 @@
-// codebreaker/source/genesis_writer.hpp -- typed C++ of codebreaker.source.genesis_writer.
+// codebreaker/source/genesis_writer.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/source/genesis_writer.{hpp,cpp}; this
+// header keeps the old py:: surface (reconstruct and main, with the tables) for the ports and the dynamic exe that still use it. Conversion and
+// forwarding only: the result is the old image_writer::Result (codebreaker/source/image_writer.hpp, itself still the old port for the x86
+// writers). Deleted with its last py:: consumer.
 //
-// genesis_writer.py -- a Genesis / Mega Drive program as assembly source that builds back into it.
-//
-//     genesis_writer::main(argv)                 python -m codebreaker.source.genesis_writer <game.md> [<out folder>]
-//     r = genesis_writer::reconstruct(path, folder);
-//     r.source                     game.asm (Motorola syntax: asm68k, vasm)
-//     r.same                       the source, built, is the cartridge image byte for byte
-//     r.functions                  {address: Function(name)}
-//
-// Typing notes: reconstruct() gives image_writer's Result (the Python's dict); "rom bytes" is in its `more`.
+// Not carried over: the internals the module's own port exposed (_HEADER, _HEADER_AT, _length, _walk, _refs).
 #pragma once
 
-#include <tuple>
-
-#include "codebreaker/decompile/m68k.hpp"
-#include "codebreaker/formats/genesis.hpp"
+#include "cb/compat/source_writers.hpp"
+#include "cb/source/genesis_writer.hpp"
 #include "codebreaker/source/image_writer.hpp"
 #include "py.hpp"
-#include "py_os.hpp"
 
 namespace codebreaker::source::genesis_writer {
 
-// the module's docstring (w.main prints its first paragraph)
-extern const py::str DOC;
+inline const py::str DOC("genesis_writer.py -- a Genesis / Mega Drive program as assembly source that builds back into it.");
 
 // the console's registers, by the names the hardware documentation gives them
-extern const py::dict<int64_t, py::str> HARDWARE;
-extern const py::list<std::tuple<int64_t, int64_t, py::str>> _HEADER;
-extern const py::dict<int64_t, std::tuple<int64_t, py::str>> _HEADER_AT;
+inline const py::dict<int64_t, py::str> HARDWARE = [] {
+    py::dict<int64_t, py::str> d;
+    for (const auto& [address, name] : cb::source::genesis_writer::hardware()) d.set(static_cast<int64_t>(address), py::str(name));
+    return d;
+}();
 
-int64_t _length(const decompile::m68k::Insn& insn);
+inline image_writer::Result reconstruct(const py::str& path, const py::str& folder) {
+    namespace c = cb::compat::source;
+    return cb::compat::guard([&] { return c::old_result(cb::source::genesis_writer::reconstruct(c::path_of(path), c::path_of(folder)), "rom bytes"); });
+}
 
-std::tuple<py::dict<int64_t, decompile::m68k::Insn>, py::set<int64_t>, py::list<int64_t>> _walk(const formats::genesis::ROM& rom);
-
-// Addresses an instruction's operands name (absolute, PC-relative, long immediates): (value, kind).
-py::list<std::tuple<int64_t, py::str>> _refs(const decompile::m68k::Insn& insn);
-
-image_writer::Result reconstruct(const py::str& path, const py::str& folder);
-
-int64_t main(const py::list<py::str>& argv);
+inline int64_t main(const py::list<py::str>& argv) { return image_writer::main(argv, reconstruct, DOC); }
 
 }  // namespace codebreaker::source::genesis_writer
