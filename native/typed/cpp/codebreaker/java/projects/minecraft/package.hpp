@@ -32,6 +32,8 @@
 
 namespace codebreaker::java::projects::minecraft {
 
+using NewMinecraft = ::cb::java::projects::minecraft::Minecraft;   // (the refactored project the hooks forward to)
+
 namespace shim_mc {
 
 namespace cbm = cb::java::projects::minecraft;
@@ -158,7 +160,7 @@ class Minecraft : public Project {
         cb::compat::guard([&] {
             const std::vector<std::string> files = cb::compat::from_py(runtime_files);
             // the same Alpha reference layer the old module looked for
-            cbm::Minecraft project(console::shim::path_of(_paths::data_path(py::list<py::str>{py::str("platform"), py::str("reference")})));
+            NewMinecraft project(console::shim::path_of(_paths::data_path(py::list<py::str>{py::str("platform"), py::str("reference")})));
             project.reports(console::shim::path_of(java_dir), console::shim::path_of(out_dir), files, line_sink(prog));
             return 0;
         });
@@ -168,7 +170,7 @@ class Minecraft : public Project {
     static shim_mc::cbp::Progress line_sink(const Progress& prog) {
         return [&prog](std::string_view line) { prog(cb::compat::to_py(std::string(line))); };
     }
-    cbm::Minecraft project_;
+    NewMinecraft project_;
 };
 
 // PROJECT = Minecraft()
