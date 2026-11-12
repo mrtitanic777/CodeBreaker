@@ -901,7 +901,8 @@ std::vector<DataFile> draft(const Project& project, const modules::Row& row, con
         std::set<std::string> used;
         for (const std::string& l : lines) {
             const std::string body = l.find('=') == std::string::npos ? std::string() : l.substr(l.find('=') + 1);
-            for (std::string_view word : words_of(string_literal.replace_all(body, ""))) {
+            const std::string without_strings = string_literal.replace_all(body, "");
+            for (std::string_view word : words_of(without_strings)) {
                 if (known.contains(std::string(word))) used.insert(std::string(word));
             }
         }
