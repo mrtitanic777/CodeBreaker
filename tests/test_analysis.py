@@ -131,6 +131,18 @@ def test_globals_and_strings():
     assert all(len(r) == 4 and r[1][:3] in ("ebp", "esp") for r in strings.stack_strings(img))
 
 
+def test_globals_count_indexed_arrays():
+    """The report's `arrays` counted by_type keys that end in "]", but the keys are cut at "[" (and strings are one
+    key): it was always 0. It is the number of variables typed as an indexed array ("unsigned long[]")."""
+    img = _image("notepad.exe")
+    var = global_variables.variables(img)
+    counts = global_variables.analyse(img)["counts"]
+    want = sum(1 for g in var.values() if g["type"].endswith("[]"))
+    assert counts["arrays"] == want
+    assert want > 0, "notepad indexes some table: the count is not 0"
+    assert counts["arrays"] + counts["strings"] <= counts["globals"]
+
+
 def test_structures():
     img = _image("lzexpand.dll")
     found = structures.recover(img)
@@ -208,7 +220,7 @@ def test_report_and_fact_table():
 
 def main():
     for fn in (test_image_32, test_image_16_and_driver, test_arguments_of_a_call, test_call_graph, test_conventions,
-               test_globals_and_strings, test_structures, test_dispatch_and_resources, test_classes_none_in_c,
+               test_globals_and_strings, test_globals_count_indexed_arrays, test_structures, test_dispatch_and_resources, test_classes_none_in_c,
                test_observation_arithmetic, test_report_and_fact_table):
         check(fn)
     for name, status, detail in RESULTS:

@@ -130,7 +130,6 @@ cb_apply_flags(cb_worker_probe)
 target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 
 cb_area(verify)
-target_link_libraries(cb_verify PUBLIC cb_core)
 
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core)
@@ -270,6 +269,14 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/data.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"   # (the native_win16 shim)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"   # (the compare shim)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"   # (the compare and concolic shims)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/isolated16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"

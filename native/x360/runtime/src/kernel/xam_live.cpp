@@ -194,6 +194,9 @@ namespace
             kernel::BroadcastNotification(kXnPartyMembersChanged, 0);
             guide::LiveChanged(e.user);
             break;
+        case live::EventKind::ChatChanged: // a private chat's members or invitations (the Guide's Chat)
+            guide::LiveChanged(e.user);
+            break;
         case live::EventKind::MessageArrived:
             // XAM's mailbox list changed (0x818E5718): 0x82000006 with the user index, for system listeners.
             kernel::BroadcastNotification(0x82000006, e.user);
@@ -478,6 +481,11 @@ void kernel::users::LiveSignIn(uint32_t user, const Profile& signedIn)
         titles.push_back(std::move(summary));
     }
     live::SetPlayedTitles(user, std::move(titles));
+    // The online key (XAMACCOUNTINFO +0x68): our server's console accounts need console_proof made with it.
+    std::array<uint8_t, 16> onlineKey{};
+    if (const auto account = kernel::profile::ReadAccount(profile.xuid); account && account->info.size() >= 0x78)
+        std::copy_n(account->info.begin() + 0x68, 16, onlineKey.begin());
+    live::SetOnlineKey(user, onlineKey);
     if (const auto error = live::SignIn(user, profile.onlineXuid, profile.gamertag, card))
         Log("Live: {} could not sign in ({}): offline until Connect to Xbox LIVE", profile.gamertag, *error);
     kernel::RefreshPresence(user); // (signing in starts with the title alone)

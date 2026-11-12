@@ -1,51 +1,40 @@
-// codebreaker/java/report.hpp -- typed C++ port of codebreaker.java.report.
+// codebreaker/java/report.hpp -- SHIM over cb/java/report.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last py::
+// consumer.
 //
-// report.py -- render a Ledger into the report bundle.
-//
-// Outputs (under <output_dir>/report/ by default):
-//   index.md        -- run summary: totals, severity, the RISK-RANKED file list,
-//                      and the override / backport-debt section. Read this first.
-//   <File>.md       -- per-file ledger: every event for that file, grouped by
-//                      category, with line numbers + snippets.
-//   report.json     -- the whole ledger, machine-readable (for the GUI / diffs).
-//
-// The risk ranking is the point: it tells you WHICH few files to inspect before
-// you build, instead of discovering it by crashing on hardware.
-//
-// Notes on the port:
-//   * the files are written in Python's text mode (encoding utf-8, newline '\n' becoming '\r\n' on
-//     Windows), as the Python's open(..., 'w', encoding='utf-8') does;
-//   * `meta` is a {str: str} dict (the four keys the index reads are profile, output_dir, build_log and
-//     generated); a value that is missing, None or '' is skipped alike, so None needs no type here;
-//   * `report_dir=None` is std::nullopt (an empty string counts as None too, as `report_dir or ...` does).
+// Only what the converter and the `analyze` command call is here: write_reports. The page-building helpers of the
+// Python (_bar, _safe, _write_index, _write_file_report) are the new module's own now.
 #pragma once
 
-#include <cstdint>
 #include <optional>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/java/report.hpp"
 #include "codebreaker/java/ledger.hpp"
+#include "py.hpp"
 
 namespace codebreaker::java::report {
 
-// Friendly one-liners describing each category, shown in the report legend.
-extern const py::dict<py::str, py::str> _CAT_BLURB;
-
-extern const py::dict<py::str, py::str> _SEV_TAG;
-
-py::str _safe(const py::str& name);
-
-// -> the report folder
-py::str write_reports(const ledger::Ledger& ledger, const py::str& output_dir,
-                      const std::optional<py::str>& report_dir = std::nullopt,
-                      const py::dict<py::str, py::str>& meta = py::dict<py::str, py::str>());
-
-// a bar of `n` out of `total`, `width` cells wide ('' when there is no total)
-py::str _bar(int64_t n, int64_t width = 24, const std::optional<int64_t>& total = std::nullopt);
-
-void _write_index(const ledger::Ledger& ledger, const py::str& report_dir, const py::dict<py::str, py::str>& meta);
-
-void _write_file_report(const py::str& fname, const py::list<py::ref<ledger::Event>>& evs, const ledger::Ledger& ledger,
-                        const py::str& files_dir);
+// Render a Ledger into the report bundle; -> the report folder. `meta` holds the four keys the index reads
+// (profile, output_dir, build_log, generated); a missing or empty value is not shown.
+inline py::str write_reports(const ledger::Ledger& led, const py::str& output_dir,
+                             const std::optional<py::str>& report_dir = std::nullopt,
+                             const py::dict<py::str, py::str>& meta = py::dict<py::str, py::str>()) {
+    return cb::compat::guard([&] {
+        cb::java::report::Meta m;
+        auto pick = [&](const char* key) {
+            const std::optional<py::str> v = meta.get(py::str(key));
+            return v ? cb::compat::from_py(*v) : std::string();
+        };
+        m.profile = pick("profile");
+        m.output_dir = pick("output_dir");
+        m.build_log = pick("build_log");
+        m.generated = pick("generated");
+        std::optional<std::filesystem::path> dir;
+        if (report_dir && !report_dir->empty()) dir = cb::fs::from_text(cb::compat::from_py(*report_dir));
+        const std::filesystem::path out = cb::java::report::write_reports(led.to_new(), cb::fs::from_text(cb::compat::from_py(output_dir)), dir, m);
+        return cb::compat::to_py(cb::fs::to_text(out));
+    });
+}
 
 }  // namespace codebreaker::java::report

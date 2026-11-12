@@ -114,7 +114,7 @@ namespace xui
 
             // The Guide pane open in AppHostElementId (none for message boxes).
             enum class Pane { kNone, kSignIn, kKeyboard, kAchievements, kGuide, kCommunity, kProfile, kGamerZone,
-                              kDrill, kDeviceSelector, kWait, kQuickLaunch, kBeacons } // kDrill: a drill-down scene (its controls in buttons)
+                              kDrill, kDeviceSelector, kWait, kQuickLaunch, kBeacons, kChat } // kDrill: a drill-down scene (its controls in buttons)
                 pane = Pane::kNone;
             std::u16string clockText;            // what DateTimeTextId shows
             std::unique_ptr<Image> gamerPicture; // hudbkgnd's GamerPic (SetGamerPicture)
@@ -216,6 +216,11 @@ namespace xui
                 int focus = 0;
                 size_t actions = 0;
             } beacons;
+            // Chat's list while it shows (UpdateChatList) and the pictures decoded for its rows.
+            Element* chatList = nullptr;
+            std::vector<std::unique_ptr<Image>> chatPictures;
+            // UpdateBeaconTab calls that came before ShowBeacons' scene opened (its data was fetched first).
+            std::map<int, BeaconTab> beaconsPending;
             // Guide.Friends' ProfileRoot.xur while it is the pane (its tab, for the LB / RB transitions).
             struct ProfileRootScene
             {
@@ -1886,6 +1891,7 @@ namespace xui
         std::lock_guard lock(s.mutex);
         if (!Ready(s) || !EnsureHud(s))
             return;
+        s.beaconsPending.clear();
         ShowWhenClosed(s, [=](State& s) {
             Element* pane = OpenPane(s, kBeaconsPackage, "RootScene.xur");
             if (!pane)
@@ -1910,6 +1916,10 @@ namespace xui
                 Log("System UI: Beacons: RootScene's tabs or TabBaseScene.xur not found");
                 return;
             }
+            for (auto& [i, t] : s.beaconsPending)
+                if (i >= 0 && i < 3)
+                    b.data[size_t(i)] = t;
+            s.beaconsPending.clear();
             b.cur = std::clamp(tab, 0, 2);
             if (b.cur > 0)
             {
@@ -1928,8 +1938,13 @@ namespace xui
         State& s = S();
         std::lock_guard lock(s.mutex);
         auto& b = s.beacons;
-        if (s.phase != Phase::kOpen || s.pane != State::Pane::kBeacons || tab < 0 || tab > 2)
+        if (tab < 0 || tab > 2)
             return;
+        if (s.phase != Phase::kOpen || s.pane != State::Pane::kBeacons || b.kind != 0)
+        {
+            s.beaconsPending[tab] = data; // ShowBeacons' scene is still to open (another Beacons scene shows)
+            return;
+        }
         if (b.kind == 0)
         {
             if (size_t(tab) < b.data.size())
@@ -1939,11 +1954,6 @@ namespace xui
                 BeaconTabFill(s, b.tabScene[tab], data, uint32_t(std::max(0, s.list.cur)));
                 BeaconsLegend(s, !data.rows.empty());
             }
-        }
-        else if (b.kind == 1 && s.hosted)
-        {
-            BeaconTabFill(s, s.hosted, data, 0);
-            BeaconsLegend(s, !data.rows.empty());
         }
     }
 
@@ -2107,6 +2117,121 @@ namespace xui
             SetBeaconFocus(s, int(info.focus), true);
             BeaconsLegend(s, true);
         });
+    }
+
+    namespace
+    {
+        constexpr const char* kChatPackage = "guide.chatandmessenger.media";
+
+        void ChatFill(State& s, const std::vector<ChatRow>& rows, uint32_t focus)
+        {
+            Element* list = s.chatList;
+            if (!list)
+                return;
+            s.chatPictures.clear();
+            std::vector<const Image*> pictures;
+            for (const ChatRow& r : rows)
+            {
+                const Image* picture = nullptr;
+                if (!r.picture.empty())
+                {
+                    auto image = std::make_unique<Image>();
+                    std::string error;
+                    if (DecodePng(r.picture.data(), r.picture.size(), *image, error))
+                    {
+                        picture = image.get();
+                        s.chatPictures.push_back(std::move(image));
+                    }
+                }
+                pictures.push_back(picture);
+            }
+            while (!list->Children().empty())
+                list->Release(list->Children().back().get());
+            ListBuild(s, list, int(rows.size()), int(std::min<size_t>(focus, rows.empty() ? 0 : rows.size() - 1)),
+                      [rows, pictures](Element* item, int index) {
+                          State& st = S();
+                          if (size_t(index) >= rows.size())
+                              return;
+                          const ChatRow& r = rows[size_t(index)];
+                          for (auto& t : item->dataText)
+                              t.clear();
+                          for (auto& i : item->dataImage)
+                              i = nullptr;
+                          item->text.clear();
+                          item->dataText[3] = r.line1;
+                          item->dataText[4] = r.line2;
+                          item->image = r.icon.empty() ? nullptr : st.assets->LoadImage(r.icon, kChatPackage);
+                          item->dataImage[1] = r.smallIcon.empty() ? nullptr : st.assets->LoadImage(r.smallIcon, kChatPackage);
+                          item->dataImage[2] = pictures[size_t(index)];
+                      });
+            s.dirty = true;
+        }
+    }
+
+    void ShowChatList(const std::vector<ChatRow>& rows, uint32_t focus)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, kChatPackage, "rootscene.xur");
+            if (!pane)
+                return;
+            s.pane = State::Pane::kChat;
+            s.buttons.clear();
+            s.chatList = pane->Find("listItems");
+            if (!s.chatList)
+            {
+                Log("System UI: Chat: rootscene.xur has no listItems");
+                return;
+            }
+            ChatFill(s, rows, focus);
+        });
+    }
+
+    void UpdateChatList(const std::vector<ChatRow>& rows)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (s.phase != Phase::kOpen || s.pane != State::Pane::kChat || !s.chatList)
+            return;
+        ChatFill(s, rows, uint32_t(std::max(0, s.list.cur)));
+    }
+
+    void ShowChatOptions(const GamerCardInfo& card, const bool (&enabled)[4], uint32_t focus)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        const std::array<bool, 4> on = { enabled[0], enabled[1], enabled[2], enabled[3] };
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, kChatPackage, "VoicechatOptions.xur");
+            if (!pane)
+                return;
+            s.pane = State::Pane::kDrill;
+            s.buttons.clear();
+            s.buttonFocus = nullptr;
+            static const char* const kRows[4] = { "navJoinChat", "navEndChat", "navCallback", "navViewProfile" };
+            for (int i = 0; i < 4; i++)
+                if (Element* e = pane->Find(kRows[i]))
+                {
+                    e->enabled = on[size_t(i)];
+                    s.buttons.push_back(e);
+                }
+            if (Element* host = pane->Find("ctrGamerCard"))
+                FillGamerCard(s, host, card, false);
+            DrillFocus(s, focus, true);
+        });
+    }
+
+    std::u16string ChatString(size_t index, const char16_t* fallback)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        const auto* table = Ready(s) ? s.assets->Strings(Base17559(s, kChatPackage), "Strings.xus") : nullptr;
+        return table && index < table->size() ? Utf16((*table)[index]) : std::u16string(fallback);
     }
 
     std::u16string BeaconsString(size_t index, const char16_t* fallback)

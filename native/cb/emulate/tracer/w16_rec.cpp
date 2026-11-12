@@ -50,6 +50,10 @@ struct W16Run {
     int64_t *count = nullptr;
     std::unordered_set<uint64_t> intercept;
     cbt_w16_event on_sentinel = nullptr, on_intercept = nullptr, on_intr = nullptr, on_own = nullptr;
+    // an in-process caller's handlers (cbt_w16_set_context): one function with its own state, in place of the four above
+    void *user = nullptr;
+    cbt_w16_event_ctx ctx_event = nullptr;
+    bool ctx_own = false;
     Shadow *shadow = nullptr;
     uint64_t own_lo = 0, own_hi = 0;
 
@@ -64,16 +68,22 @@ struct W16Run {
     cbt_w16_result result;
 
     uint64_t eip() const { return reg(uc, eip_id); }
+    // The event handlers: the in-process caller's, or the four plain functions the C interface was given.
+    int fire_sentinel(int64_t a, int64_t n) { return ctx_event ? ctx_event(user, CBT_W16_SENTINEL, a, n) : on_sentinel(a, n); }
+    int fire_intercept(int64_t a, int64_t n) { return ctx_event ? ctx_event(user, CBT_W16_INTERCEPT, a, n) : on_intercept(a, n); }
+    int fire_intr(int64_t a, int64_t n) { return ctx_event ? ctx_event(user, CBT_W16_INTERRUPT, a, n) : on_intr(a, n); }
+    bool has_own() const { return ctx_event ? ctx_own : on_own != nullptr; }
+    int fire_own(int64_t a, int64_t n) { return ctx_event ? ctx_event(user, CBT_W16_OWN, a, n) : on_own(a, n); }
     void stop() { ucl().emu_stop(uc); }
     void bump() { insn_count++; if (count) *count = insn_count; }
 };
 
 static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
     W16Run *r = static_cast<W16Run *>(user);
-    if (r->own_lo <= address && address < r->own_hi && r->on_own) {
+    if (r->own_lo <= address && address < r->own_hi && r->has_own()) {
         // (a recorded-system context: the module's own code reached through a recorded far
         //  pointer -- that function of this side's build run, by name, Python's to redirect)
-        int got = r->on_own(int64_t(address), r->insn_count);
+        int got = r->fire_own(int64_t(address), r->insn_count);
         if (got == 2) {
             r->hook_error = 1;
             r->stop();
@@ -83,7 +93,7 @@ static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
             return;
     }
     if (!r->intercept.empty() && r->intercept.count(address) && r->insn_count) {
-        if (r->on_intercept(int64_t(address), r->insn_count)) {
+        if (r->fire_intercept(int64_t(address), r->insn_count)) {
             r->hook_error = 1;
             r->stop();
         }
@@ -108,7 +118,7 @@ static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
     if (int64_t(r->path.size()) < W_MAX_PATH)
         r->path.push_back(address);
     if (r->sent_lo <= address && address < r->sent_hi) {        // an import sentinel landing
-        if (r->on_sentinel(int64_t(address), r->insn_count)) {
+        if (r->fire_sentinel(int64_t(address), r->insn_count)) {
             r->hook_error = 1;
             r->stop();
         }
@@ -120,7 +130,7 @@ static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
 
 static void on_intr(uc_engine *, uint32_t intno, void *user) {
     W16Run *r = static_cast<W16Run *>(user);
-    if (r->on_intr(int64_t(intno), r->insn_count)) {
+    if (r->fire_intr(int64_t(intno), r->insn_count)) {
         r->hook_error = 1;
         r->stop();
     }
@@ -266,6 +276,13 @@ CBT_API int cbt_w16_attach(void *run) {
         e = w_add(r, UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED | UC_HOOK_MEM_FETCH_UNMAPPED,
                   (void *)on_unmapped, 1, 0);
     return e;
+}
+
+CBT_API void cbt_w16_set_context(void *run, void *user, cbt_w16_event_ctx event, int has_own) {
+    W16Run *r = static_cast<W16Run *>(run);
+    r->user = user;
+    r->ctx_event = event;
+    r->ctx_own = has_own != 0;
 }
 
 CBT_API void cbt_w16_state(void *run, int64_t *out) {

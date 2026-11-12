@@ -210,9 +210,10 @@ def rule_value_copy_owner(fname, text, header_text, plat):
     src = re.sub(r'/\*.*?\*/', lambda m: re.sub(r'[^\n]', ' ', m.group(0)), src, flags=re.S)
     for t in _HEAVY_TYPES:
         # by-value param:  (Type name  |  , Type name   -- but NOT Type& / Type*
-        param_pat = re.compile(r'[(,]\s*%s\s+(?!&|\*)\w+\s*[,)]' % re.escape(t))
-        # by-value return: ^Type Class::method(   or   Type method(
-        ret_pat = re.compile(r'(?:^|\n)\s*%s\s+(?!&|\*)\w[\w:]*\s*\(' % re.escape(t))
+        # (the terminator is a lookahead so it stays the introducer of the NEXT parameter: `(Type a, Type b)` flags both)
+        param_pat = re.compile(r'[(,]\s*%s\s+(?!&|\*)\w+(?=\s*[,)])' % re.escape(t))
+        # by-value return: ^Type Class::method(   or   Type method(   (group 1 is the type, on the line it is reported at)
+        ret_pat = re.compile(r'(?:^|\n)\s*(%s)\s+(?!&|\*)\w[\w:]*\s*\(' % re.escape(t))
         for m in param_pat.finditer(src):
             line = text.count('\n', 0, m.start()) + 1
             sev = Severity.HIGH if t in _HEAVY_HIGH else Severity.MED
@@ -221,7 +222,7 @@ def rule_value_copy_owner(fname, text, header_text, plat):
                    "const %s& / %s&." % (t, t, t),
                    text.split('\n')[line-1].strip()[:160])
         for m in ret_pat.finditer(src):
-            line = text.count('\n', 0, m.start()) + 1
+            line = text.count('\n', 0, m.start(1)) + 1
             sev = Severity.HIGH if t in _HEAVY_HIGH else Severity.MED
             yield (line, Category.GUESSED, sev, 'value-copy-owner',
                    "%s returned BY VALUE -- returns a full copy. getInstance() must return a reference." % t,

@@ -1,0 +1,54 @@
+class AxisAlignedBB package=sample parent=- interfaces=[] interface=false abstract=false enum=false
+  field public double minX line 5 static=false final=false init=-
+  field public double minY line 6 static=false final=false init=-
+  field public double minZ line 7 static=false final=false init=-
+  field public double maxX line 8 static=false final=false init=-
+  field public double maxY line 9 static=false final=false init=-
+  field public double maxZ line 10 static=false final=false init=-
+  method public - AxisAlignedBB(double var1, double var3, double var5, double var7, double var9, double var11) line 12 static=false abstract=false ctor=true body=8
+  method public boolean intersectsWith(AxisAlignedBB var1) line 21 static=false abstract=false ctor=false body=6
+class Block package=sample parent=- interfaces=[] interface=false abstract=false enum=false
+  field public Block[] blocksList line 6 static=true final=true init=`new Block[256]`
+  field public int blockID line 7 static=false final=false init=-
+  method public - Block(int var1, Material var2) line 9 static=false abstract=false ctor=true body=3
+  method public - Block(int var1, int var2, Material var3) line 13 static=false abstract=false ctor=true body=3
+class Entity package=sample parent=- interfaces=[] interface=false abstract=false enum=false
+  field public double posX line 6 static=false final=false init=-
+  field public double posY line 7 static=false final=false init=-
+  field public double posZ line 8 static=false final=false init=-
+  field public boolean isDead line 9 static=false final=false init=-
+  field public World worldObj line 10 static=false final=false init=-
+  method public - Entity(World var1) line 12 static=false abstract=false ctor=true body=4
+  method public void setPosition(double var1, double var3, double var5) line 17 static=false abstract=false ctor=false body=5
+  method public void onUpdate() line 23 static=false abstract=false ctor=false body=3
+class EntityMob package=sample parent=Entity interfaces=[] interface=false abstract=false enum=false
+  field public int health line 5 static=false final=false init=-
+  method public - EntityMob(World var1) line 7 static=false abstract=false ctor=true body=4
+  method public void onUpdate() line 12 static=false abstract=false ctor=false body=6
+class EnumOS1 package=sample parent=- interfaces=[] interface=false abstract=false enum=true
+  const linux()
+  const solaris()
+  const windows()
+  const macos()
+  const unknown()
+class ICamera package=sample parent=- interfaces=[] interface=true abstract=false enum=false
+  method package boolean isBoundingBoxInFrustum(AxisAlignedBB var1) line 0 static=false abstract=true ctor=false body=0
+  method package void setPosition(double var1, double var3, double var5) line 0 static=false abstract=true ctor=false body=0
+class IInventory package=sample parent=- interfaces=[] interface=true abstract=false enum=false
+  method package int getSizeInventory() line 0 static=false abstract=true ctor=false body=0
+  method package ItemStack getStackInSlot(int var1) line 0 static=false abstract=true ctor=false body=0
+  method package void setInventorySlotContents(int var1, ItemStack var2) line 0 static=false abstract=true ctor=false body=0
+  method package String getInvName() line 0 static=false abstract=true ctor=false body=0
+class MathHelper package=sample parent=- interfaces=[] interface=false abstract=false enum=false
+  field private float[] SIN_TABLE line 5 static=true final=false init=`new float[65536]`
+  method public float sqrt_float(float var0) line 7 static=true abstract=false ctor=false body=3
+  method public int floor_double(double var0) line 11 static=true abstract=false ctor=false body=4
+class Vec3D package=sample parent=- interfaces=[] interface=false abstract=false enum=false
+  field public int nextVector line 8 static=true final=false init=`0`
+  field public Vec3D[] vectorList line 9 static=true final=false init=`new Vec3D[256]`
+  field public double xCoord line 10 static=false final=false init=-
+  field public double yCoord line 11 static=false final=false init=-
+  field public double zCoord line 12 static=false final=false init=-
+  method public - Vec3D(double var1, double var3, double var5) line 14 static=false abstract=false ctor=true body=5
+  method public Vec3D subtract(Vec3D var1) line 20 static=false abstract=false ctor=false body=3
+  method public Vec3D getIntermediateWithXValue(Vec3D var1, double var2) line 24 static=false abstract=false ctor=false body=7

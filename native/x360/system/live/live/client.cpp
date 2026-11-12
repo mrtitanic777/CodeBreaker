@@ -69,6 +69,9 @@ namespace live
             std::vector<Friend> friends;
             std::vector<Message> messages;
             std::optional<Party> party;
+            std::vector<Chat> chats;
+            std::string channel = "party";
+            std::array<uint8_t, 16> onlineKey{}; // SetOnlineKey (console_proof)
         };
 
         // ---- TLS (Windows Schannel; docs/network_protocol.md "Encryption") ----
@@ -122,6 +125,12 @@ namespace live
             for (uint8_t b : hash)
                 hex += std::format("{:02x}", b);
             return hex;
+        }
+
+        bool HmacSha256(const uint8_t* key, size_t keySize, const std::vector<uint8_t>& message, uint8_t (&out)[32])
+        {
+            return BCryptHash(BCRYPT_HMAC_SHA256_ALG_HANDLE, const_cast<PUCHAR>(key), ULONG(keySize),
+                              const_cast<PUCHAR>(message.data()), ULONG(message.size()), out, sizeof(out)) == 0;
         }
 
         // "AB:CD ..." -> "abcd..."
@@ -364,6 +373,11 @@ namespace live
             std::array<UserState, kMaxUsers> users;
             std::map<uint64_t, PublicProfile> profiles; // other players' public profiles (session cache)
             std::map<std::string, std::string> livehive;
+            // This connection's hello: answered (helloed; sign-ins wait for it, the server's link_nonce goes with
+            // console_proof) and its nonce (none: an older server, no proof).
+            bool helloed = false;
+            std::optional<std::array<uint8_t, 16>> linkNonce;
+            std::condition_variable helloAnswered;
             std::map<std::string, std::vector<uint8_t>> content; // downloaded content files, by "package/file"
             bool xonSchemaSent = false; // this connection has the service schema (op xon_schema)
             std::function<void(const Event&)> handler;
@@ -548,6 +562,34 @@ namespace live
             return m;
         }
 
+        Chat ToChat(const json& j)
+        {
+            Chat c;
+            c.id = Str(j, "id");
+            c.created = I64(j, "created");
+            for (const char* field : { "members", "invited" })
+                if (const json& list = Get(j, field); list.is_array())
+                    for (const json& m : list)
+                        (std::string(field) == "members" ? c.members : c.invited)
+                            .push_back({ ParseHex64(Get(m, "xuid")), Str(m, "gamertag") });
+            return c;
+        }
+
+        // A chat's push or reply into the user's list (an ended one leaves it; the voice channel falls back to the
+        // party when its chat goes, as the server does).
+        void PutChat(UserState& u, const json& view)
+        {
+            const std::string id = Str(view, "id");
+            std::erase_if(u.chats, [&](const Chat& c) { return c.id == id; });
+            if (Bool(view, "ended"))
+            {
+                if (u.channel == "chat:" + id)
+                    u.channel = "party";
+                return;
+            }
+            u.chats.push_back(ToChat(view));
+        }
+
         std::optional<Party> ToParty(const json& j)
         {
             if (!j.is_object())
@@ -632,6 +674,7 @@ namespace live
             const auto friends = Request({ { "op", "friends" }, { "user", user } });
             const auto messages = Request({ { "op", "messages" }, { "user", user } });
             const auto party = Request({ { "op", "party" }, { "user", user } });
+            const auto chats = Request({ { "op", "chats" }, { "user", user } });
             std::lock_guard lock(S().mutex);
             UserState& u = S().users[user];
             if (friends && Bool(*friends, "ok"))
@@ -648,6 +691,13 @@ namespace live
             }
             if (party && Bool(*party, "ok"))
                 u.party = ToParty(Get(*party, "party"));
+            if (chats && Bool(*chats, "ok"))
+            {
+                u.chats.clear();
+                if (const json& list = Get(*chats, "chats"); list.is_array())
+                    for (const json& v : list)
+                        u.chats.push_back(ToChat(v));
+            }
         }
 
         // A public profile's text parts (the pictures go only with `signin`).
@@ -664,9 +714,14 @@ namespace live
             std::string gamertag, title, rich;
             uint32_t titleId;
             json profile;
+            std::string proof;
             {
-                std::lock_guard lock(S().mutex);
+                std::unique_lock lock(S().mutex);
+                // The hello's link_nonce first (the server's console accounts need console_proof made with it).
+                S().helloAnswered.wait_for(lock, std::chrono::seconds(10), [] { return S().helloed || !S().connected; });
                 const UserState& u = S().users[user];
+                if (S().linkNonce && u.onlineKey != std::array<uint8_t, 16>{})
+                    proof = ConsoleProof(u.onlineKey, *S().linkNonce, u.xuid);
                 xuid = u.xuid;
                 gamertag = u.gamertag;
                 profile = ProfileJson(u.profile);
@@ -681,6 +736,8 @@ namespace live
             // The key here too: a sign-in can reach the server before the hello that carries it (another thread).
             if (!S().config.key.empty())
                 signin["key"] = S().config.key;
+            if (!proof.empty())
+                signin["console_proof"] = proof;
             const auto reply = Request(signin);
             std::optional<std::string> error;
             if (!reply)
@@ -813,6 +870,11 @@ namespace live
                     u.party = ToParty(Get(j, "party"));
                     e.kind = EventKind::PartyChanged;
                 }
+                else if (op == "chat")
+                {
+                    PutChat(u, Get(j, "chat"));
+                    e.kind = EventKind::ChatChanged;
+                }
                 else if (op == "signed_out")
                 {
                     // The same account signed in on another console: off Xbox LIVE, and not signed in again by a
@@ -824,6 +886,8 @@ namespace live
                     u.friends.clear();
                     u.messages.clear();
                     u.party.reset();
+                    u.chats.clear();
+                    u.channel = "party";
                     e = { EventKind::SignedOut, user, xuid };
                 }
                 else if (op == "match_found" || op == "match_timeout")
@@ -1079,6 +1143,8 @@ namespace live
                     std::lock_guard lock(s.mutex);
                     s.socket = sock;
                     s.connected = true;
+                    s.helloed = false;
+                    s.linkNonce.reset();
                     s.xonSchemaSent = false;
                     s.server = server;
                     s.attempts++;
@@ -1097,6 +1163,19 @@ namespace live
                     if (!S().config.key.empty())
                         helloRequest["key"] = S().config.key;
                     const auto hello = Request(helloRequest);
+                    {
+                        std::lock_guard lock(S().mutex);
+                        S().helloed = true;
+                        if (hello)
+                            if (const std::string nonce = Str(*hello, "link_nonce"); nonce.size() == 32)
+                            {
+                                std::array<uint8_t, 16> n{};
+                                for (size_t i = 0; i < 16; i++)
+                                    n[i] = uint8_t(std::stoul(nonce.substr(2 * i, 2), nullptr, 16));
+                                S().linkNonce = n;
+                            }
+                        S().helloAnswered.notify_all();
+                    }
                     if (hello)
                     {
                         std::lock_guard lock(S().mutex);
@@ -1133,6 +1212,7 @@ namespace live
                     s.socket = INVALID_SOCKET;
                     TlsReset(s.tls);
                     s.connected = false;
+                    s.helloAnswered.notify_all();
                     for (UserState& u : s.users)
                     {
                         u.held = u.held || u.wanted; // offline until the player connects again
@@ -1140,6 +1220,8 @@ namespace live
                         u.friends.clear();
                         u.messages.clear();
                         u.party.reset();
+                        u.chats.clear(); // the server ends a player's chats when the connection drops
+                        u.channel = "party";
                     }
                     s.replied.notify_all();
                 }
@@ -1469,6 +1551,32 @@ namespace live
             u.held = error.has_value();
         }
         return error;
+    }
+
+    void SetOnlineKey(uint32_t user, const std::array<uint8_t, 16>& key)
+    {
+        std::lock_guard lock(S().mutex);
+        if (user < kMaxUsers)
+            S().users[user].onlineKey = key;
+    }
+
+    std::string ConsoleProof(const std::array<uint8_t, 16>& onlineKey, const std::array<uint8_t, 16>& nonce, uint64_t xuid)
+    {
+        static constexpr char kKeyLabel[] = "XLS-LINK-v1 key", kSignInLabel[] = "XLS-LINK-v1 signin";
+        uint8_t linkKey[32], proof[32];
+        if (!HmacSha256(onlineKey.data(), onlineKey.size(), std::vector<uint8_t>(kKeyLabel, kKeyLabel + sizeof(kKeyLabel) - 1), linkKey))
+            return {};
+        std::vector<uint8_t> message(kSignInLabel, kSignInLabel + sizeof(kSignInLabel) - 1);
+        message.push_back(0);
+        message.insert(message.end(), nonce.begin(), nonce.end());
+        const std::string id = std::format("{:016X}", xuid);
+        message.insert(message.end(), id.begin(), id.end());
+        if (!HmacSha256(linkKey, sizeof(linkKey), message, proof))
+            return {};
+        std::string hex;
+        for (uint8_t b : proof)
+            hex += std::format("{:02x}", b);
+        return hex;
     }
 
     bool Connect()
@@ -1858,6 +1966,77 @@ namespace live
     {
         std::lock_guard lock(S().mutex);
         return user < kMaxUsers ? S().users[user].party : std::nullopt;
+    }
+
+    std::vector<Chat> Chats(uint32_t user)
+    {
+        std::lock_guard lock(S().mutex);
+        return user < kMaxUsers ? S().users[user].chats : std::vector<Chat>();
+    }
+
+    std::string VoiceChannel(uint32_t user)
+    {
+        std::lock_guard lock(S().mutex);
+        return user < kMaxUsers ? S().users[user].channel : std::string("party");
+    }
+
+    namespace
+    {
+        std::optional<std::string> ChatRequest(json request, uint32_t user)
+        {
+            const auto reply = Request(std::move(request));
+            if (!reply)
+                return Connected() ? std::string("timeout") : std::string("not connected");
+            if (!Bool(*reply, "ok"))
+                return Str(*reply, "error");
+            if (const auto it = reply->find("chat"); it != reply->end() && it->is_object() && user < kMaxUsers)
+            {
+                std::lock_guard lock(S().mutex);
+                PutChat(S().users[user], *it);
+            }
+            return std::nullopt;
+        }
+    }
+
+    std::optional<std::string> InviteToChat(uint32_t user, uint64_t xuid, const std::string& chat)
+    {
+        json request = { { "op", "chat_invite" }, { "user", user }, { "xuid", Hex64(xuid) } };
+        if (!chat.empty())
+            request["chat"] = chat;
+        return ChatRequest(std::move(request), user);
+    }
+
+    std::optional<std::string> JoinChat(uint32_t user, const std::string& chat)
+    {
+        return ChatRequest({ { "op", "chat_join" }, { "user", user }, { "chat", chat } }, user);
+    }
+
+    std::optional<std::string> LeaveChat(uint32_t user, const std::string& chat)
+    {
+        const auto error = Simple({ { "op", "chat_leave" }, { "user", user }, { "chat", chat } });
+        if (!error && user < kMaxUsers)
+        {
+            // The leaver gets no push: the chat leaves its list here.
+            std::lock_guard lock(S().mutex);
+            UserState& u = S().users[user];
+            std::erase_if(u.chats, [&](const Chat& c) { return c.id == chat; });
+            if (u.channel == "chat:" + chat)
+                u.channel = "party";
+        }
+        return error;
+    }
+
+    std::optional<std::string> SetVoiceChannel(uint32_t user, const std::string& channel)
+    {
+        const auto reply = Request({ { "op", "voice_channel" }, { "user", user }, { "channel", channel } });
+        if (!reply)
+            return Connected() ? std::string("timeout") : std::string("not connected");
+        if (!Bool(*reply, "ok"))
+            return Str(*reply, "error");
+        std::lock_guard lock(S().mutex);
+        if (user < kMaxUsers)
+            S().users[user].channel = Str(*reply, "channel").empty() ? channel : Str(*reply, "channel");
+        return std::nullopt;
     }
 
     namespace
@@ -2900,7 +3079,9 @@ namespace live::detail
         if (!S().connected)
             return t;
         for (const UserState& u : S().users)
-            if (u.signedIn && u.party)
+            if (u.signedIn && u.channel != "game" &&
+                (u.channel.starts_with("chat:") ? std::any_of(u.chats.begin(), u.chats.end(), [&](const Chat& c) {
+                     return "chat:" + c.id == u.channel; }) : bool(u.party)))
             {
                 t.active = true;
                 t.host = S().server.first;
