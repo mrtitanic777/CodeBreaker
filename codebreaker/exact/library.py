@@ -195,7 +195,7 @@ def _locate(prj):
             if s != s0 or not src:
                 continue
             a = (syms[n] if src == "SYMBOLS" else refs[n])[1] - off
-            if a not in placed and a + len(b) <= len(img) and all(img[a + x] == b[x] for x in range(len(b)) if x not in h):
+            if a >= 0 and a not in placed and a + len(b) <= len(img) and all(img[a + x] == b[x] for x in range(len(b)) if x not in h):
                 placed[a] = Placed(m, a, why="(by %s, which %s names)" % (n, src))
                 break
     coded = [placed[a] for a in sorted(placed)]
@@ -273,7 +273,7 @@ def _locate(prj):
                 if a is None:
                     continue
                 base = a - off
-                ok = n in syms or m.data and all(dg + base + x < len(img) and img[dg + base + x] == m.data[0][x]
+                ok = n in syms or m.data and all(0 <= dg + base + x < len(img) and img[dg + base + x] == m.data[0][x]
                                                  for x in range(len(m.data[0])) if x not in m.data[1])
                 if ok:
                     got = (base, "(by %s, %04x%s)" % (n, a, " in SYMBOLS" if n in syms else ": a word of the code"))

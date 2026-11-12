@@ -282,7 +282,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/ledger.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/data.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"

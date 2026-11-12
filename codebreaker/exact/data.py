@@ -238,7 +238,7 @@ def draft(prj, row):
             fn = after.lstrip("_")                          # (its variables were declared before that function)
         if lo >= hi:
             continue
-        key = ("d" + file_of[fn][1:] + ".c") if fn in file_of else (os.path.splitext(row[0])[0] + "-data.c" if row[1] is None else "e%05x.c" % fnaddr[-1][1])
+        key = ("d" + file_of[fn][1:] + ".c") if fn in file_of else (os.path.splitext(row[0])[0] + "-data.c" if row[1] is None or not fnaddr else "e%05x.c" % fnaddr[-1][1])
         lo2 = lo + 1 if lo & 1 and ds[lo] == 0 else lo
         varruns.append((key, lo2, hi))
     # inside the variables' runs nothing is a literal: what looks like a string there is a variable's bytes, and a
