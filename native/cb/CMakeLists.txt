@@ -243,7 +243,7 @@ add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
 target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
-target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
