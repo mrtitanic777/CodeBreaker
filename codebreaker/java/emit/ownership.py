@@ -147,11 +147,14 @@ def owned_containers(cls, resolver):
     EVERY element is a fresh allocation and never a borrowed element -- the destructor loop-deletes them.
     accessor is '.length' (JArray) or '.size()' (JList). A single borrowed add disqualifies the field
     (e.g. a listener list that stores passed-in observers)."""
-    add_alloc, add_borrow = set(), set()
+    add_alloc, add_borrow = {}, set()            # add_alloc: a dict, so the fields come out in the order they are first added
     for text in _method_texts(cls):
         for pat in (_ADD_CALL, _ELEM_SET):               # `c.add(x)` / `c[i] = x` -- own iff x is a fresh alloc
             for m in pat.finditer(text):
-                (add_alloc if _is_alloc_rhs(m.group(2).strip()) else add_borrow).add(m.group(1))
+                if _is_alloc_rhs(m.group(2).strip()):
+                    add_alloc.setdefault(m.group(1))
+                else:
+                    add_borrow.add(m.group(1))
     out = {}
     for name in add_alloc:
         if name in add_borrow:
