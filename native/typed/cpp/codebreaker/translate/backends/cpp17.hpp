@@ -12,8 +12,7 @@
 //                            source, {function: (first, last) source line})
 //     program(units, main)   a whole Java program from L2 -> its C++ text (the modern forms C++17 has no word
 //                            for are lowered first: translate/desugar.py)
-//     Bodies(ctx, units)     inside the Java transpiler (`convert(..., cpp_std='C++17')`): every body written
-//                            by the C++03 back end's writer with the C++17 forms (cpp03.Bodies17)
+//     (the transpiler's C++17 bodies are cb/translate/backends/cpp03 with Dialect::Cpp17: this module no longer forwards them)
 //
 // Both raise Decline for what the back end cannot write.
 //
@@ -22,7 +21,6 @@
 //   * RUNTIME and API_MAPS are found from this source file's place in the tree
 //     (<repo>/native/typed/cpp/codebreaker/translate/backends/cpp17.cpp -> <repo>/codebreaker/...).
 //   * _native() (the check that the library loads) has nothing to check, the library being linked in.
-//   * Bodies(ctx, units) is cpp03's Bodies17, which the Python imports from backends.cpp03 at the call.
 #pragma once
 
 #include <cstdint>
@@ -30,7 +28,6 @@
 #include <optional>
 #include <tuple>
 
-#include "codebreaker/translate/backends/cpp03.hpp"
 #include "codebreaker/translate/ir.hpp"
 #include "codebreaker/translate/native_l2.hpp"
 #include "py.hpp"
@@ -57,7 +54,5 @@ std::tuple<py::str, py::str, py::dict<py::str, std::tuple<int64_t, int64_t>>> wr
 // The C++17 text of a whole Java program (its L2 units), or raise Decline.
 py::str program(const py::list<ir::NodeP>& units, const std::optional<py::str>& main = std::nullopt);
 
-// The transpiler's bodies in C++17 (cpp03's writer with the C++17 forms).
-std::shared_ptr<cpp03::Bodies17> Bodies(const py::ref<cpp03::Context>& ctx, const py::list<ir::NodeP>& units);
 
 }  // namespace codebreaker::translate::backends::cpp17

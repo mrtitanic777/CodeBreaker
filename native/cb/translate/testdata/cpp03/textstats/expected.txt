@@ -1,0 +1,61 @@
+textstats|03|desugar	3
+textstats|03|0|body|TextStats.vowels	["int n = 0;", "{", "\tJArray<unsigned char > j2x_a1 = s.toLowerCase().toCharArray();", "\tfor (int j2x_i2 = 0; j2x_i2 < j2x_a1.length; j2x_i2++) {", "\t\tunsigned char c = j2x_a1[j2x_i2];", "\t\tswitch(c) {", "\t\tcase 'a':", "\t\t{", "\t\t}", "\t\tcase 'e':", "\t\t{", "\t\t}", "\t\tcase 'i':", "\t\t{", "\t\t}", "\t\tcase 'o':", "\t\t{", "\t\t}", "\t\tcase 'u':", "\t\t{", "\t\t\tn++;", "\t\t\tbreak;", "\t\t}", "\t\tdefault:", "\t\t{", "\t\t\tbreak;", "\t\t}", "\t\t}", "\t}", "}", "return n;"]
+textstats|03|1|body|TextStats.histogram	["JArray<int > counts = JArray<int >(26);", "for (int i = 0; i < s.length(); i++) {", "\tunsigned char c = Character::toLowerCase(s.charAt(i));", "\tif(c >= 'a' && c <= 'z') {", "\t\tcounts[c - 'a']++;", "\t}", "}", "StringBuilder* sb = new StringBuilder();", "for (int i = 0; i < 26; i++) {", "\tif(counts[i] > 0) {", "\t\tsb->append((unsigned char)(('a' + i)))->append(counts[i]);", "\t}", "}", "return sb->toString();"]
+textstats|03|2|body|TextStats.reverseWords	["JArray<JavaString > parts = s.trim().split(\" \");", "StringBuilder* sb = new StringBuilder();", "for (int i = parts.length - 1; i >= 0; i--) {", "\tif(parts[i].isEmpty()) {", "\t\tcontinue;", "\t}", "\tif(sb->length() > 0) {", "\t\tsb->append(' ');", "\t}", "\tsb->append((new StringBuilder(parts[i]))->reverse());", "}", "return sb->toString();"]
+textstats|03|3|body|TextStats.sortedDigits	["JArray<unsigned char > cs = Integer::toString(v).toCharArray();", "Arrays::sort(cs);", "return JavaString(cs);"]
+textstats|03|4|body|TextStats.mix	["int h = a * -1640531535 + (b << 7) - (static_cast<int>(static_cast<unsigned int>(b) >> (3))) + (a >> 5);", "return h ^ (static_cast<int>(static_cast<unsigned int>(h) >> (16)));"]
+textstats|03|5|body|TextStats.mixLong	["return (a << s) ^ (static_cast<long long>(static_cast<unsigned long long>(a) >> ((s + 3)))) ^ (a * 1000003LL);"]
+textstats|03|6|body|TextStats.safeDiv	["try {", "\treturn a / b + a % b;", "} catch (ArithmeticException*) {", "\treturn Integer::MIN_VALUE;", "}"]
+textstats|03|7|body|TextStats.saturate	["return j2xToInt((d * 1000000000.0));"]
+textstats|03|8|body|TextStats.firstPair	["int found = -1;", "for (int i = 1; i < 50; i++) {", "\t{", "\t\tfor (int j = i + 1; j < 50; j++) {", "\t\t\tif((i * j) % (::abs(n % 97) + 3) == 0 && i + j > 10) {", "\t\t\t\tfound = i * 100 + j;", "\t\t\t\tgoto outer_brk;", "\t\t\t}", "\t\t\tif(j > i + 20) {", "\t\t\t\tgoto outer_cont;", "\t\t\t}", "\t\t}", "\t}", "\touter_cont:;", "}", "outer_brk:;", "return found;"]
+textstats|03|9|body|TextStats.isPalindrome	["int i = 0;", "int j = s.length() - 1;", "while(i < j) {", "\twhile(i < j && !Character::isLetterOrDigit(s.charAt(i))) {", "\t\ti++;", "\t}", "\twhile(i < j && !Character::isLetterOrDigit(s.charAt(j))) {", "\t\tj--;", "\t}", "\tif(Character::toLowerCase(s.charAt(i)) != Character::toLowerCase(s.charAt(j))) {", "\t\treturn false;", "\t}", "\ti++;", "\tj--;", "}", "return true;"]
+textstats|03|10|body|TextStats.caesar	null
+textstats|03|11|body|TextStats.main	["JArray<JavaString > lines = TextStats::s_POEM.split(\"\\n\");", "System::out.println(JavaString(((JCat() + lines.length + \" lines, \" + TextStats::vowels(TextStats::s_POEM) + \" vowels\"))._s));", "{", "\tJArray<JavaString > j2x_a5 = lines;", "\tfor (int j2x_i6 = 0; j2x_i6 < j2x_a5.length; j2x_i6++) {", "\t\tJavaString line = j2x_a5[j2x_i6];", "\t\tSystem::out.println(JavaString(((JCat() + line.length() + \": \" + TextStats::reverseWords(line)))._s));", "\t}", "}", "System::out.println(TextStats::histogram(TextStats::s_POEM));", "JavaString j2xo1 = JavaString();", "int j2xo2 = 0;", "long long j2xo3 = 0;", "System::out.println(JavaString(((j2xo1 = TextStats::sortedDigits(907153), j2xo2 = TextStats::mix(12345, 678), j2xo3 = TextStats::mixLong(-987654321LL, 9), (JCat() + j2xo1 + \" \" + j2xo2 + \" \" + j2xo3)))._s));", "int j2xo4 = 0;", "int j2xo5 = 0;", "int j2xo6 = 0;", "System::out.println(JavaString(((j2xo4 = TextStats::safeDiv(17, 5), j2xo5 = TextStats::safeDiv(3, 0), j2xo6 = TextStats::safeDiv(Integer::MIN_VALUE, -1), (JCat() + j2xo4 + \" \" + j2xo5 + \" \" + j2xo6)))._s));", "int j2xo7 = 0;", "int j2xo8 = 0;", "int j2xo9 = 0;", "System::out.println(JavaString(((j2xo7 = TextStats::saturate(3.5), j2xo8 = TextStats::saturate(-1.0e+300), j2xo9 = TextStats::saturate(Double::NaN), (JCat() + j2xo7 + \" \" + j2xo8 + \" \" + j2xo9)))._s));", "int j2xo10 = 0;", "bool j2xo11 = false;", "JavaString j2xo12 = JavaString();", "System::out.println(JavaString(((j2xo10 = TextStats::firstPair(12), j2xo11 = TextStats::isPalindrome(\"A man, a plan, a canal: Panama\"), j2xo12 = TextStats::caesar(\"Hello, World\", 29), (JCat() + j2xo10 + \" \" + j2xo11 + \" \" + j2xo12)))._s));", "int x = Integer::MAX_VALUE;", "x++;", "long long big = Long::MAX_VALUE;", "big += 2;", "System::out.println(JavaString(((JCat() + x + \" \" + big + \" \" + (unsigned char)(65) + j2xToInt('z') + \" \" + (signed char)(200) + \" \" + (short)(70000)))._s));", "System::out.println(JavaString(((JCat() + 1.0 / 3 + \" \" + 100.0 + \" \" + 1.0e-05 + \" \" + 12345678.9 + \" \" + (float)(0.1) + \" \" + -0.0))._s));"]
+textstats|03|12|ctor0|TextStats.False	["super", null, []]
+textstats|03|13|ctor0|TextStats.True	["super", null, []]
+textstats|03|14|field_init|TextStats.POEM	"\"Shall I compare thee\\nto a summer's day?\\nThou art more lovely\\nand more temperate.\\n\""
+textstats|03|15|array_items|TextStats.POEM	null
+textstats|03|16|instance_inits|TextStats	[]
+textstats|03|17|static_blocks|TextStats	[]
+textstats|03|18|body|NoSuchClass	null
+textstats|03|19|field_init|nofield	null
+textstats|03|20|array_items|nofield	null
+textstats|03|21|enum_args|noconst	null
+textstats|03|22|ctor|NoSuchClass	null
+textstats|03|23|field_init|NoSuchClass	null
+textstats|03|24|array_items|NoSuchClass	null
+textstats|03|25|enum_args|NoSuchClass	null
+textstats|03|26|instance_inits|NoSuchClass	null
+textstats|03|27|static_blocks|NoSuchClass	null
+textstats|03|counts	[11, 2, {"Math.floorMod": 1, "not found": 1, "ctor not found": 1}, {"Math.floorMod": 1}, ["TextStats"]]
+textstats|03|ledger	[]
+textstats|17|0|body|TextStats.vowels	["int n = 0;", "{", "\tJArray<unsigned char > j2x_a1 = s.toLowerCase().toCharArray();", "\tfor (int j2x_i1 = 0; j2x_i1 < j2x_a1.length; j2x_i1++) {", "\t\tunsigned char c = j2x_a1[j2x_i1];", "\t\tswitch(c) {", "\t\tcase 'a':", "\t\t{", "\t\t}", "\t\tcase 'e':", "\t\t{", "\t\t}", "\t\tcase 'i':", "\t\t{", "\t\t}", "\t\tcase 'o':", "\t\t{", "\t\t}", "\t\tcase 'u':", "\t\t{", "\t\t\tn++;", "\t\t\tbreak;", "\t\t}", "\t\tdefault:", "\t\t{", "\t\t\tbreak;", "\t\t}", "\t\t}", "\t}", "}", "return n;"]
+textstats|17|1|body|TextStats.histogram	["JArray<int > counts = JArray<int >(26);", "for (int i = 0; i < s.length(); i++) {", "\tunsigned char c = Character::toLowerCase(s.charAt(i));", "\tif(c >= 'a' && c <= 'z') {", "\t\tcounts[c - 'a']++;", "\t}", "}", "auto* sb = new StringBuilder();", "for (int i = 0; i < 26; i++) {", "\tif(counts[i] > 0) {", "\t\tsb->append((unsigned char)(('a' + i)))->append(counts[i]);", "\t}", "}", "return sb->toString();"]
+textstats|17|2|body|TextStats.reverseWords	["JArray<JavaString > parts = s.trim().split(\" \");", "auto* sb = new StringBuilder();", "for (int i = parts.length - 1; i >= 0; i--) {", "\tif(parts[i].isEmpty()) {", "\t\tcontinue;", "\t}", "\tif(sb->length() > 0) {", "\t\tsb->append(' ');", "\t}", "\tsb->append((new StringBuilder(parts[i]))->reverse());", "}", "return sb->toString();"]
+textstats|17|3|body|TextStats.sortedDigits	["JArray<unsigned char > cs = Integer::toString(v).toCharArray();", "Arrays::sort(cs);", "return JavaString(cs);"]
+textstats|17|4|body|TextStats.mix	["int h = a * -1640531535 + (b << 7) - (static_cast<int>(static_cast<unsigned int>(b) >> (3))) + (a >> 5);", "return h ^ (static_cast<int>(static_cast<unsigned int>(h) >> (16)));"]
+textstats|17|5|body|TextStats.mixLong	["return (a << s) ^ (static_cast<long long>(static_cast<unsigned long long>(a) >> ((s + 3)))) ^ (a * 1000003LL);"]
+textstats|17|6|body|TextStats.safeDiv	["try {", "\treturn a / b + a % b;", "} catch (ArithmeticException*) {", "\treturn Integer::MIN_VALUE;", "}"]
+textstats|17|7|body|TextStats.saturate	["return j2xToInt((d * 1000000000.0));"]
+textstats|17|8|body|TextStats.firstPair	["int found = -1;", "for (int i = 1; i < 50; i++) {", "\t{", "\t\tfor (int j = i + 1; j < 50; j++) {", "\t\t\tif((i * j) % (::abs(n % 97) + 3) == 0 && i + j > 10) {", "\t\t\t\tfound = i * 100 + j;", "\t\t\t\tgoto outer_brk;", "\t\t\t}", "\t\t\tif(j > i + 20) {", "\t\t\t\tgoto outer_cont;", "\t\t\t}", "\t\t}", "\t}", "\touter_cont:;", "}", "outer_brk:;", "return found;"]
+textstats|17|9|body|TextStats.isPalindrome	["int i = 0;", "int j = s.length() - 1;", "while(i < j) {", "\twhile(i < j && !Character::isLetterOrDigit(s.charAt(i))) {", "\t\ti++;", "\t}", "\twhile(i < j && !Character::isLetterOrDigit(s.charAt(j))) {", "\t\tj--;", "\t}", "\tif(Character::toLowerCase(s.charAt(i)) != Character::toLowerCase(s.charAt(j))) {", "\t\treturn false;", "\t}", "\ti++;", "\tj--;", "}", "return true;"]
+textstats|17|10|body|TextStats.caesar	null
+textstats|17|11|body|TextStats.main	["JArray<JavaString > lines = TextStats::s_POEM.split(\"\\n\");", "System::out.println(JavaString(((JCat() + lines.length + \" lines, \" + TextStats::vowels(TextStats::s_POEM) + \" vowels\"))._s));", "{", "\tJArray<JavaString > j2x_a1 = lines;", "\tfor (int j2x_i1 = 0; j2x_i1 < j2x_a1.length; j2x_i1++) {", "\t\tJavaString line = j2x_a1[j2x_i1];", "\t\tSystem::out.println(JavaString(((JCat() + line.length() + \": \" + TextStats::reverseWords(line)))._s));", "\t}", "}", "System::out.println(TextStats::histogram(TextStats::s_POEM));", "JavaString j2xo2 = JavaString();", "int j2xo3 = 0;", "long long j2xo4 = 0;", "System::out.println(JavaString(((j2xo2 = TextStats::sortedDigits(907153), j2xo3 = TextStats::mix(12345, 678), j2xo4 = TextStats::mixLong(-987654321LL, 9), (JCat() + j2xo2 + \" \" + j2xo3 + \" \" + j2xo4)))._s));", "int j2xo5 = 0;", "int j2xo6 = 0;", "int j2xo7 = 0;", "System::out.println(JavaString(((j2xo5 = TextStats::safeDiv(17, 5), j2xo6 = TextStats::safeDiv(3, 0), j2xo7 = TextStats::safeDiv(Integer::MIN_VALUE, -1), (JCat() + j2xo5 + \" \" + j2xo6 + \" \" + j2xo7)))._s));", "int j2xo8 = 0;", "int j2xo9 = 0;", "int j2xo10 = 0;", "System::out.println(JavaString(((j2xo8 = TextStats::saturate(3.5), j2xo9 = TextStats::saturate(-1.0e+300), j2xo10 = TextStats::saturate(Double::NaN), (JCat() + j2xo8 + \" \" + j2xo9 + \" \" + j2xo10)))._s));", "int j2xo11 = 0;", "bool j2xo12 = false;", "JavaString j2xo13 = JavaString();", "System::out.println(JavaString(((j2xo11 = TextStats::firstPair(12), j2xo12 = TextStats::isPalindrome(\"A man, a plan, a canal: Panama\"), j2xo13 = TextStats::caesar(\"Hello, World\", 29), (JCat() + j2xo11 + \" \" + j2xo12 + \" \" + j2xo13)))._s));", "int x = Integer::MAX_VALUE;", "x++;", "long long big = Long::MAX_VALUE;", "big += 2;", "System::out.println(JavaString(((JCat() + x + \" \" + big + \" \" + (unsigned char)(65) + j2xToInt('z') + \" \" + (signed char)(200) + \" \" + (short)(70000)))._s));", "System::out.println(JavaString(((JCat() + 1.0 / 3 + \" \" + 100.0 + \" \" + 1.0e-05 + \" \" + 12345678.9 + \" \" + (float)(0.1) + \" \" + -0.0))._s));"]
+textstats|17|12|ctor0|TextStats.False	["super", null, []]
+textstats|17|13|ctor0|TextStats.True	["super", null, []]
+textstats|17|14|field_init|TextStats.POEM	"\"Shall I compare thee\\nto a summer's day?\\nThou art more lovely\\nand more temperate.\\n\""
+textstats|17|15|array_items|TextStats.POEM	null
+textstats|17|16|instance_inits|TextStats	[]
+textstats|17|17|static_blocks|TextStats	[]
+textstats|17|18|body|NoSuchClass	null
+textstats|17|19|field_init|nofield	null
+textstats|17|20|array_items|nofield	null
+textstats|17|21|enum_args|noconst	null
+textstats|17|22|ctor|NoSuchClass	null
+textstats|17|23|field_init|NoSuchClass	null
+textstats|17|24|array_items|NoSuchClass	null
+textstats|17|25|enum_args|NoSuchClass	null
+textstats|17|26|instance_inits|NoSuchClass	null
+textstats|17|27|static_blocks|NoSuchClass	null
+textstats|17|counts	[11, 2, {"Math.floorMod": 1, "not found": 1, "ctor not found": 1}, {"Math.floorMod": 1}, ["TextStats"]]
+textstats|17|ledger	[]
