@@ -32,6 +32,7 @@
 
 #include "codebreaker/translate/backends/cpp03.hpp"
 #include "codebreaker/translate/ir.hpp"
+#include "codebreaker/translate/native_l2.hpp"
 #include "py.hpp"
 
 namespace codebreaker::translate::backends::cpp17 {
@@ -43,12 +44,7 @@ extern const py::list<py::str> FLAGS;
 extern const py::str API_MAPS;
 
 // The C++17 back end does not write this unit (the reason says why).
-struct Decline : py::Exception {
-    Decline() : py::Exception() {}
-    explicit Decline(const std::string& m) : py::Exception(m) {}
-    explicit Decline(const py::str& m) : py::Exception(m.utf8()) {}
-    const char* type() const override { return "Decline"; }
-};
+using Decline = translate::native_l2::Cpp17Decline;   // (the library raises it for the C++17 back end)
 
 py::str header_path(const py::str& module);
 py::str source_path(const py::str& module);
