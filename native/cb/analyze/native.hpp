@@ -221,6 +221,16 @@ struct Argument {
 // instructions); nothing if it cannot tell.
 std::optional<Argument> definition(const Function& fn, int i, std::string_view reg, int depth = 14);
 
+// What `definition` found, with the operand in full (a memory operand keeps its base, index and scale, which an
+// Argument does not): `kind` says what the register holds, `operand` is what it was loaded from for Register,
+// Immediate and Memory (a zeroing `xor` is an Immediate of 0), `call_target` the callee of a CallResult.
+struct Definition {
+    Argument::Kind kind = Argument::Kind::Immediate;
+    Operand operand;
+    std::optional<Va> call_target;
+};
+std::optional<Definition> definition_operand(const Function& fn, int i, std::string_view reg, int depth = 14);
+
 // The operands of the `n` pushes before function.insns[i], nearest first (a pushed register is replaced by what it
 // holds, when that can be told).
 std::vector<Argument> arguments(const Function& fn, int i, std::size_t n);

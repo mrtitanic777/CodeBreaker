@@ -609,11 +609,15 @@ bool Image::looks_like_code(Va va, int most) {
 
 namespace {
 
+Argument::Kind argument_kind(const Operand& op) {
+    return op.kind == Operand::Kind::Register    ? Argument::Kind::Register
+           : op.kind == Operand::Kind::Immediate ? Argument::Kind::Immediate
+                                                 : Argument::Kind::Memory;
+}
+
 Argument argument_of(const Operand& op) {
     Argument a;
-    a.kind = op.kind == Operand::Kind::Register    ? Argument::Kind::Register
-             : op.kind == Operand::Kind::Immediate ? Argument::Kind::Immediate
-                                                   : Argument::Kind::Memory;
+    a.kind = argument_kind(op);
     a.reg = op.reg;
     a.value = op.value;
     return a;
@@ -621,20 +625,20 @@ Argument argument_of(const Operand& op) {
 
 }  // namespace
 
-std::optional<Argument> definition(const Function& fn, int i, std::string_view reg, int depth) {
+std::optional<Definition> definition_operand(const Function& fn, int i, std::string_view reg, int depth) {
     const std::string f(family(reg));
     for (int j = i - 1; j > std::max(-1, i - 1 - depth); --j) {
         const Instruction& ins = fn.insns[static_cast<std::size_t>(j)];
         if (ins.flow == Flow::Jump || ins.flow == Flow::Return) return std::nullopt;
         if (ins.flow == Flow::Call) {
             if (f == "eax") {   // the result of the call just made
-                Argument a;
-                a.kind = Argument::Kind::CallResult;
-                if (ins.target) a.call_target = ins.target;
+                Definition d;
+                d.kind = Argument::Kind::CallResult;
+                if (ins.target) d.call_target = ins.target;
                 else if (!ins.operands.empty() && ins.operands[0].kind == Operand::Kind::Memory &&
                          ins.operands[0].base.empty() && ins.operands[0].index.empty())
-                    a.call_target = ins.operands[0].value;   // the slot it calls through
-                return a;
+                    d.call_target = ins.operands[0].value;   // the slot it calls through
+                return d;
             }
             if (f == "ecx" || f == "edx") return std::nullopt;   // clobbered by the call
             continue;
@@ -644,31 +648,45 @@ std::optional<Argument> definition(const Function& fn, int i, std::string_view r
         if (ops.size() == 2 && ops[0].kind == Operand::Kind::Register && family(ops[0].reg) == f) {
             if (ins.mnemonic == "mov" || ins.mnemonic == "movzx") {
                 if (ops[1].kind == Operand::Kind::Register) {
-                    if (auto inner = definition(fn, j, ops[1].reg, depth - (i - j))) return inner;
+                    if (auto inner = definition_operand(fn, j, ops[1].reg, depth - (i - j))) return inner;
                 }
-                return argument_of(ops[1]);
+                return Definition{argument_kind(ops[1]), ops[1], std::nullopt};
             }
             if (ins.mnemonic == "lea" && ops[1].kind == Operand::Kind::Memory) {
-                Argument a;
-                a.kind = Argument::Kind::LoadAddress;
-                return a;
+                return Definition{Argument::Kind::LoadAddress, {}, std::nullopt};
             }
             if ((ins.mnemonic == "xor" || ins.mnemonic == "sub") && ops[1].kind == Operand::Kind::Register &&
                 ops[1].reg == ops[0].reg) {
-                Argument a;
-                a.kind = Argument::Kind::Immediate;
-                a.value = 0;
-                return a;
+                Operand zero;
+                zero.kind = Operand::Kind::Immediate;
+                return Definition{Argument::Kind::Immediate, zero, std::nullopt};
             }
         }
         if (ins.mnemonic == "pop" && j != 0 && fn.insns[static_cast<std::size_t>(j) - 1].mnemonic == "push") {   // push K / pop reg
             const Instruction& push = fn.insns[static_cast<std::size_t>(j) - 1];
             if (push.operands.empty()) return std::nullopt;
-            return argument_of(push.operands[0]);
+            return Definition{argument_kind(push.operands[0]), push.operands[0], std::nullopt};
         }
         return std::nullopt;
     }
     return std::nullopt;
+}
+
+std::optional<Argument> definition(const Function& fn, int i, std::string_view reg, int depth) {
+    const std::optional<Definition> d = definition_operand(fn, i, reg, depth);
+    if (!d) return std::nullopt;
+    if (d->kind == Argument::Kind::LoadAddress) {
+        Argument a;
+        a.kind = Argument::Kind::LoadAddress;
+        return a;
+    }
+    if (d->kind == Argument::Kind::CallResult) {
+        Argument a;
+        a.kind = Argument::Kind::CallResult;
+        a.call_target = d->call_target;
+        return a;
+    }
+    return argument_of(d->operand);
 }
 
 std::vector<Argument> arguments(const Function& fn, int i, std::size_t n) {

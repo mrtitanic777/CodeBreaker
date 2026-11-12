@@ -100,6 +100,9 @@ target_compile_definitions(cb_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
 
 cb_area(core)
 target_link_libraries(cb_core PUBLIC bcrypt)
+# core16_types.hpp: the records of the core16 cycle (header only; its test sits beside it, not in an area)
+get_property(CB_TESTS_BEFORE_CORE16 GLOBAL PROPERTY CB_TEST_SOURCES)
+set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_TESTS_BEFORE_CORE16} "${CMAKE_CURRENT_LIST_DIR}/core16_types_test.cpp")
 # The SQLite amalgamation (third-party C, its own flags). It stays where the engine keeps it until native/engine
 # moves into this tree (docs/CPP_DESIGN.md section 8), when it moves to third_party/ with nlohmann.
 set(CB_SQLITE_DIR "${CB_NATIVE_ROOT}/engine/third_party/sqlite")
@@ -141,7 +144,7 @@ target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbo
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
-target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
+target_link_libraries(cb_java PUBLIC cb_core cb_translate PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
@@ -149,10 +152,10 @@ file(GLOB_RECURSE CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*sh
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
-target_link_libraries(cb_decompile PUBLIC cb_core)
+target_link_libraries(cb_decompile PUBLIC cb_core cb_formats)
 
 cb_area(analyze)
-target_link_libraries(cb_analyze PUBLIC cb_core)
+target_link_libraries(cb_analyze PUBLIC cb_core cb_formats cb_symbols)
 
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
@@ -160,7 +163,7 @@ target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OM
 cb_area(compare)
 target_link_libraries(cb_compare PUBLIC cb_core)
 cb_area(emulate)
-target_link_libraries(cb_emulate PUBLIC cb_core)
+target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile)
 
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
@@ -203,7 +206,7 @@ file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/inve
 set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(port)
-target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify)
+target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
 
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge cb_compare cb_platforms)
@@ -232,7 +235,7 @@ target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
-target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms PRIVATE cb_zlib ws2_32)
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ws2_32)
 
 # The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
 add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
@@ -292,7 +295,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"
@@ -335,6 +337,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b16.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
