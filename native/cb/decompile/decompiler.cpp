@@ -496,7 +496,8 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
         std::sort(wanted.begin(), wanted.end());
     } else {
         std::set<Va> found;
-        for (const std::string_view line : text::lines(fs::read_text(description)))
+        const std::string description_text = fs::read_text(description);   // (lines views it: keep it alive through the loop)
+        for (const std::string_view line : text::lines(description_text))
             if (line.starts_with("F\t")) {
                 const std::vector<std::string_view> p = text::split(line, '\t');
                 if (p.size() > 1) found.insert(hex_field(p[1], "function address"));
