@@ -1,0 +1,759 @@
+{
+ "function_0002": [
+  "f2",
+  "int f2(void) { return 4; }"
+ ],
+ "stages": [
+  {
+   "build": [
+    0,
+    1
+   ],
+   "built": {
+    "0000": [
+     "built",
+     "1029237977d2af203807dc1cbb61b8314698b769"
+    ],
+    "0001": [
+     "built",
+     "16b44baed52e96c87662af7e400ebd23c246311e"
+    ],
+    "0002": [
+     "built",
+     "8413acdc160adb20edcfdaff8a2794c76743f593"
+    ],
+    "0003": [
+     "built",
+     "64096e96f988555ec8c71897f4c15c01ff30a937"
+    ]
+   },
+   "judged": [
+    "0000",
+    "0001",
+    "0002",
+    "0003"
+   ],
+   "keys": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   },
+   "rows": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "built": {
+     "0000": "1029237977d2af203807dc1cbb61b8314698b769",
+     "0001": "16b44baed52e96c87662af7e400ebd23c246311e",
+     "0002": "8413acdc160adb20edcfdaff8a2794c76743f593",
+     "0003": "64096e96f988555ec8c71897f4c15c01ff30a937"
+    },
+    "header": "typedef int int4;",
+    "profile": "p1",
+    "rows": [
+     {
+      "addr": "ffff",
+      "name": "",
+      "problem": "none",
+      "reason": "the decompiler produced nothing for this function",
+      "sig": "-",
+      "source": null,
+      "verdict": "no-source"
+     },
+     {
+      "addr": "0000",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f0",
+      "reason": "",
+      "sig": "3015c36ff2b16252cec420c3763987acd6458521",
+      "source": "int f0(void) { return 2; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0001",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f1",
+      "reason": "",
+      "sig": "40f1a8e58294b6d5d21458146c6677368d243502",
+      "source": "int f1(void) { return 7; }",
+      "verdict": "divergent"
+     },
+     {
+      "addr": "0002",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f2",
+      "reason": "",
+      "sig": "3b4869cfe919d9fd73d2d6164e7376e4b7360d61",
+      "source": "int f2(void) { return 4; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0003",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f3",
+      "reason": "",
+      "sig": "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "source": "int f3(void) { return 9; }",
+      "verdict": "divergent"
+     }
+    ],
+    "settings": "{}"
+   },
+   "stage": "first",
+   "texts": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "functions": {
+     "0000": [
+      "f0",
+      "3015c36ff2b16252cec420c3763987acd6458521",
+      "int f0(void) { return 2; }"
+     ],
+     "0001": [
+      "f1",
+      "40f1a8e58294b6d5d21458146c6677368d243502",
+      "int f1(void) { return 7; }"
+     ],
+     "0002": [
+      "f2",
+      "3b4869cfe919d9fd73d2d6164e7376e4b7360d61",
+      "int f2(void) { return 4; }"
+     ],
+     "0003": [
+      "f3",
+      "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "int f3(void) { return 9; }"
+     ]
+    },
+    "header": "typedef int int4;",
+    "order": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   }
+  },
+  {
+   "build": [
+    1,
+    0
+   ],
+   "built": {
+    "0000": [
+     "built",
+     "1029237977d2af203807dc1cbb61b8314698b769"
+    ],
+    "0001": [
+     "built",
+     "16b44baed52e96c87662af7e400ebd23c246311e"
+    ],
+    "0002": [
+     "built",
+     "8413acdc160adb20edcfdaff8a2794c76743f593"
+    ],
+    "0003": [
+     "built",
+     "64096e96f988555ec8c71897f4c15c01ff30a937"
+    ]
+   },
+   "judged": [],
+   "keys": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   },
+   "rows": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "built": {
+     "0000": "1029237977d2af203807dc1cbb61b8314698b769",
+     "0001": "16b44baed52e96c87662af7e400ebd23c246311e",
+     "0002": "8413acdc160adb20edcfdaff8a2794c76743f593",
+     "0003": "64096e96f988555ec8c71897f4c15c01ff30a937"
+    },
+    "header": "typedef int int4;",
+    "profile": "p1",
+    "rows": [
+     {
+      "addr": "ffff",
+      "name": "",
+      "problem": "none",
+      "reason": "the decompiler produced nothing for this function",
+      "sig": "-",
+      "source": null,
+      "verdict": "no-source"
+     },
+     {
+      "addr": "0000",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f0",
+      "reason": "",
+      "sig": "3015c36ff2b16252cec420c3763987acd6458521",
+      "source": "int f0(void) { return 2; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0001",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f1",
+      "reason": "",
+      "sig": "40f1a8e58294b6d5d21458146c6677368d243502",
+      "source": "int f1(void) { return 7; }",
+      "verdict": "divergent"
+     },
+     {
+      "addr": "0002",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f2",
+      "reason": "",
+      "sig": "3b4869cfe919d9fd73d2d6164e7376e4b7360d61",
+      "source": "int f2(void) { return 4; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0003",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f3",
+      "reason": "",
+      "sig": "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "source": "int f3(void) { return 9; }",
+      "verdict": "divergent"
+     }
+    ],
+    "settings": "{}"
+   },
+   "stage": "again",
+   "texts": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "functions": {
+     "0000": [
+      "f0",
+      "3015c36ff2b16252cec420c3763987acd6458521",
+      "int f0(void) { return 2; }"
+     ],
+     "0001": [
+      "f1",
+      "40f1a8e58294b6d5d21458146c6677368d243502",
+      "int f1(void) { return 7; }"
+     ],
+     "0002": [
+      "f2",
+      "3b4869cfe919d9fd73d2d6164e7376e4b7360d61",
+      "int f2(void) { return 4; }"
+     ],
+     "0003": [
+      "f3",
+      "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "int f3(void) { return 9; }"
+     ]
+    },
+    "header": "typedef int int4;",
+    "order": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   }
+  },
+  {
+   "build": [
+    0,
+    1
+   ],
+   "built": {
+    "0000": [
+     "built",
+     "1029237977d2af203807dc1cbb61b8314698b769"
+    ],
+    "0001": [
+     "built",
+     "16b44baed52e96c87662af7e400ebd23c246311e"
+    ],
+    "0002": [
+     "built",
+     "8413acdc160adb20edcfdaff8a2794c76743f593"
+    ],
+    "0003": [
+     "built",
+     "64096e96f988555ec8c71897f4c15c01ff30a937"
+    ]
+   },
+   "judged": [],
+   "keys": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   },
+   "rows": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "built": {
+     "0000": "1029237977d2af203807dc1cbb61b8314698b769",
+     "0001": "16b44baed52e96c87662af7e400ebd23c246311e",
+     "0002": "8413acdc160adb20edcfdaff8a2794c76743f593",
+     "0003": "64096e96f988555ec8c71897f4c15c01ff30a937"
+    },
+    "header": "typedef int int4;",
+    "profile": "p1",
+    "rows": [
+     {
+      "addr": "ffff",
+      "name": "",
+      "problem": "none",
+      "reason": "the decompiler produced nothing for this function",
+      "sig": "-",
+      "source": null,
+      "verdict": "no-source"
+     },
+     {
+      "addr": "0000",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f0",
+      "reason": "",
+      "sig": "3015c36ff2b16252cec420c3763987acd6458521",
+      "source": "int f0(void) { return 2; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0001",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f1",
+      "reason": "",
+      "sig": "40f1a8e58294b6d5d21458146c6677368d243502",
+      "source": "int f1(void) { return 7; }",
+      "verdict": "divergent"
+     },
+     {
+      "addr": "0002",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f2",
+      "reason": "",
+      "sig": "a4102fc4c20ac04410de3c7b83a3a45175d095e9",
+      "source": "int f2(void) { return 4; } /* by hand */",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0003",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f3",
+      "reason": "",
+      "sig": "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "source": "int f3(void) { return 9; }",
+      "verdict": "divergent"
+     }
+    ],
+    "settings": "{}"
+   },
+   "stage": "comment",
+   "texts": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "functions": {
+     "0000": [
+      "f0",
+      "3015c36ff2b16252cec420c3763987acd6458521",
+      "int f0(void) { return 2; }"
+     ],
+     "0001": [
+      "f1",
+      "40f1a8e58294b6d5d21458146c6677368d243502",
+      "int f1(void) { return 7; }"
+     ],
+     "0002": [
+      "f2",
+      "a4102fc4c20ac04410de3c7b83a3a45175d095e9",
+      "int f2(void) { return 4; } /* by hand */"
+     ],
+     "0003": [
+      "f3",
+      "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "int f3(void) { return 9; }"
+     ]
+    },
+    "header": "typedef int int4;",
+    "order": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   }
+  },
+  {
+   "build": [
+    0,
+    1
+   ],
+   "built": {
+    "0000": [
+     "built",
+     "1029237977d2af203807dc1cbb61b8314698b769"
+    ],
+    "0001": [
+     "built",
+     "16b44baed52e96c87662af7e400ebd23c246311e"
+    ],
+    "0002": [
+     "built",
+     "2a2be78bce82525890ce9dc10d5049fa8189c15e"
+    ],
+    "0003": [
+     "dropped",
+     "it does not compile"
+    ]
+   },
+   "judged": [
+    "0002"
+   ],
+   "keys": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   },
+   "rows": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "built": {
+     "0000": "1029237977d2af203807dc1cbb61b8314698b769",
+     "0001": "16b44baed52e96c87662af7e400ebd23c246311e",
+     "0002": "2a2be78bce82525890ce9dc10d5049fa8189c15e",
+     "0003": "41d72767cf93256dfe1a645f405b13adef3ae93e"
+    },
+    "header": "typedef int int4;",
+    "profile": "p1",
+    "rows": [
+     {
+      "addr": "ffff",
+      "name": "",
+      "problem": "none",
+      "reason": "the decompiler produced nothing for this function",
+      "sig": "-",
+      "source": null,
+      "verdict": "no-source"
+     },
+     {
+      "addr": "0000",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f0",
+      "reason": "",
+      "sig": "3015c36ff2b16252cec420c3763987acd6458521",
+      "source": "int f0(void) { return 2; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0001",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f1",
+      "reason": "",
+      "sig": "40f1a8e58294b6d5d21458146c6677368d243502",
+      "source": "int f1(void) { return 7; }",
+      "verdict": "divergent"
+     },
+     {
+      "addr": "0002",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f2",
+      "reason": "",
+      "sig": "d64f260fa6a892c1b0308cbef2a1d30607f30375",
+      "source": "int f2(void) { return 6; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0003",
+      "detail": "",
+      "limits": "",
+      "name": "f3",
+      "problem": "compile",
+      "reason": "it does not compile",
+      "sig": "9853598f6715b55b5718b561fe0892e853be3257",
+      "source": "int f3(void) { return x; }",
+      "verdict": "no-compile"
+     }
+    ],
+    "settings": "{}"
+   },
+   "stage": "code",
+   "texts": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "functions": {
+     "0000": [
+      "f0",
+      "3015c36ff2b16252cec420c3763987acd6458521",
+      "int f0(void) { return 2; }"
+     ],
+     "0001": [
+      "f1",
+      "40f1a8e58294b6d5d21458146c6677368d243502",
+      "int f1(void) { return 7; }"
+     ],
+     "0002": [
+      "f2",
+      "d64f260fa6a892c1b0308cbef2a1d30607f30375",
+      "int f2(void) { return 6; }"
+     ],
+     "0003": [
+      "f3",
+      "9853598f6715b55b5718b561fe0892e853be3257",
+      "int f3(void) { return x; }"
+     ]
+    },
+    "header": "typedef int int4;",
+    "order": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   }
+  },
+  {
+   "build": [
+    0,
+    1
+   ],
+   "built": {
+    "0000": [
+     "built",
+     "1029237977d2af203807dc1cbb61b8314698b769"
+    ],
+    "0001": [
+     "built",
+     "16b44baed52e96c87662af7e400ebd23c246311e"
+    ],
+    "0002": [
+     "built",
+     "8413acdc160adb20edcfdaff8a2794c76743f593"
+    ],
+    "0003": [
+     "built",
+     "64096e96f988555ec8c71897f4c15c01ff30a937"
+    ]
+   },
+   "judged": [
+    "0002",
+    "0003"
+   ],
+   "keys": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   },
+   "rows": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "built": {
+     "0000": "1029237977d2af203807dc1cbb61b8314698b769",
+     "0001": "16b44baed52e96c87662af7e400ebd23c246311e",
+     "0002": "8413acdc160adb20edcfdaff8a2794c76743f593",
+     "0003": "64096e96f988555ec8c71897f4c15c01ff30a937"
+    },
+    "header": "typedef int int4;",
+    "profile": "p1",
+    "rows": [
+     {
+      "addr": "ffff",
+      "name": "",
+      "problem": "none",
+      "reason": "the decompiler produced nothing for this function",
+      "sig": "-",
+      "source": null,
+      "verdict": "no-source"
+     },
+     {
+      "addr": "0000",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f0",
+      "reason": "",
+      "sig": "3015c36ff2b16252cec420c3763987acd6458521",
+      "source": "int f0(void) { return 2; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0001",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f1",
+      "reason": "",
+      "sig": "40f1a8e58294b6d5d21458146c6677368d243502",
+      "source": "int f1(void) { return 7; }",
+      "verdict": "divergent"
+     },
+     {
+      "addr": "0002",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f2",
+      "reason": "",
+      "sig": "3b4869cfe919d9fd73d2d6164e7376e4b7360d61",
+      "source": "int f2(void) { return 4; }",
+      "verdict": "equivalent"
+     },
+     {
+      "addr": "0003",
+      "detail": "",
+      "limits": "coverage=100",
+      "name": "f3",
+      "reason": "",
+      "sig": "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "source": "int f3(void) { return 9; }",
+      "verdict": "divergent"
+     }
+    ],
+    "settings": "{}"
+   },
+   "stage": "forgotten",
+   "texts": {
+    "all_keys": [
+     "0000",
+     "0001",
+     "0002",
+     "0003",
+     "ffff"
+    ],
+    "functions": {
+     "0000": [
+      "f0",
+      "3015c36ff2b16252cec420c3763987acd6458521",
+      "int f0(void) { return 2; }"
+     ],
+     "0001": [
+      "f1",
+      "40f1a8e58294b6d5d21458146c6677368d243502",
+      "int f1(void) { return 7; }"
+     ],
+     "0002": [
+      "f2",
+      "3b4869cfe919d9fd73d2d6164e7376e4b7360d61",
+      "int f2(void) { return 4; }"
+     ],
+     "0003": [
+      "f3",
+      "8e532d871acde763db274cf67ebdd32d965fb9ae",
+      "int f3(void) { return 9; }"
+     ]
+    },
+    "header": "typedef int int4;",
+    "order": [
+     "0000",
+     "0001",
+     "0002",
+     "0003"
+    ]
+   }
+  }
+ ]
+}

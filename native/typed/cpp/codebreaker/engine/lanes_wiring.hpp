@@ -1,3 +1,5 @@
+// NOTE (W5-B2): refactored as native/cb/engine/lanes_wiring.hpp (the steps over the typed Kind, documents for facts). This old port stays: it has no header-only shim
+// because its callers (the old build/module and verify/reconstruct) hand it their py:: Built and Kind objects; it goes when they are refactored.
 // codebreaker/engine/lanes_wiring.hpp -- the platforms that have a lane, handed to the engine (what `platforms.all()` is to engine/lanes.py).
 //
 // engine/lanes.py builds its steps for every platform that has a lane (KINDS = [_declare(p) for p in platforms.all() if p.lane]) and
