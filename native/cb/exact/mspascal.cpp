@@ -201,7 +201,8 @@ Bytes name_procedures(ByteView object, std::string_view listing, std::string_vie
     const ByteView code = ByteView(whole).subspan(0, std::min<std::size_t>(whole.size(), *o.filled.find(seg)));
     OrderedMap<std::string, std::uint32_t> procs;
     std::string current;
-    for (const std::string_view line : text::split(text::replace_all(text::replace_all(std::string(listing), "\r", ""), "\f", ""), '\n')) {   // (the code listing: each procedure's first address)
+    const std::string listing_text = text::replace_all(text::replace_all(std::string(listing), "\r", ""), "\f", "");   // (split views it)
+    for (const std::string_view line : text::split(listing_text, '\n')) {   // (the code listing: each procedure's first address)
         if (const auto m = procedure_line.search(line)) {
             current = pas_upper_word(m->group(1));
             continue;
@@ -328,7 +329,8 @@ modules::CompileResult MsPascal::run_passes(const Bytes& source, const std::stri
         const stdfs::path listing = work.path() / "T.LST";
         const std::string errs = stdfs::is_regular_file(listing) ? text::from_latin1(fs::read_file(listing)) : std::string();
         std::string shown;
-        for (const std::string_view line : text::split(text::replace_all(errs, "\r", ""), '\n')) {
+        const std::string errs_text = text::replace_all(errs, "\r", "");   // (split views it)
+        for (const std::string_view line : text::split(errs_text, '\n')) {
             if (line.find('^') == std::string_view::npos && line.find("Error") == std::string_view::npos) continue;
             shown += (shown.empty() ? "" : "\n") + std::string(line);
         }
