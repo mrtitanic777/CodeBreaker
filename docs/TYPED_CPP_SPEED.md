@@ -859,3 +859,17 @@ Old = the typed ports on the py:: layer, timed by their own harnesses (state/wor
 | ne_asm/segment and fixups: 172 segments, the whole digest | not run here | 11 s, of which nearly all is starting objdump once or twice per segment (the module's own work is the text of its listing) |
 
 The gains of the disassembly are the per-byte states (an array of three bits per byte of an object, where the Python and the port kept a set of (object, offset) places for every byte of code, of data and of entry points), the places kept in ordered maps instead of dict handles, the decoder opened once per width (the port looked one up for every instruction), and the listing built by appends. coalesce reads each fix-up record once into a record and writes the grouped ones from a sorted index; its time is the copy of the file. The segment tools run objdump, an external program, and read its text: nothing in them is on a hot path.
+
+## cb refactor W1-B25: translate/l2, translate/desugar, translate/javajudge, translate/native_l2 (2026-11-11)
+
+Old = the live Python (codebreaker/translate/l2.py and desugar.py, CPython, best of 50 runs); the typed ports on the py:: layer were not timed beside the new code (they need the old IR tree and the py:: runtime, which cb_tests cannot link). New = native/cb/translate, Release, one thread, the same machine, best of 200 runs, on the front ends' own documents (testdata/l2_java_units.json: the Java front end's units for a program of modern Java, 487 nodes; testdata/l2_python_unit.json: the Python front end's Unit, 677 nodes). "Read" is a parsed document to a tree, "write" is a tree to a document (a JSON value, not text); the cost of parsing or printing the text is cb::json's, not l2's.
+
+| What | Python | New |
+|---|---|---|
+| l2 read, Java units | 8.6 ms | 0.52 ms |
+| l2 write, Java units | 4.7 ms | 1.9 ms |
+| l2 read, Python unit | 12.8 ms | 0.87 ms |
+| l2 write, Python unit | 8.0 ms | 3.0 ms |
+| desugar.run over the Java units (5 constructs lowered) | 7.8 ms | 0.15 ms |
+
+The gains are the tree (nodes in an arena, slots that are typed members instead of attribute lookups by name) and one description of every kind's slots that both directions use. The write is the slower half because a JSON value is built node by node (ordered objects); a producer that wants text goes straight from the tree. translate/javajudge and translate/native_l2 are orchestration of programs (javac, the JVM, the L2 library's DLL): nothing in them is on a hot path, and none was timed.

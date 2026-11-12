@@ -108,6 +108,7 @@ class _Desugar(object):
             return [s]
         if isinstance(s, ir.Labeled):
             if isinstance(s.body, ir.ForEach) and 'foreach' in self.forms:
+                s.body.body = self.sub(s.body.body)        # the loop's own body first, as for a loop with no label
                 got = self.foreach(s.body)
                 if got is not None:                        # the label goes on the loop, not its set-up
                     pre, loop = got

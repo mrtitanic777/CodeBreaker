@@ -26,16 +26,7 @@ bool truthy(const ir::Val& v) {
 }
 }  // namespace
 
-const py::list<py::str> MOVED = names(
-    {"far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers",
-     "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
-     "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
-     "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-     "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads",
-     "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports",
-     "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments",
-     "code_pointers", "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast",
-     "fit_calls", "struct_fields", "wide_address", "homed_arguments", "uint8_result"});
+const py::list<py::str> MOVED = native_l2::default_moved();   // (the one list: the native_l2 shim holds it)
 
 const py::list<py::str> IN_MODULE = names(
     {"model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
