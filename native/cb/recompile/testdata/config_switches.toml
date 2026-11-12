@@ -1,0 +1,24 @@
+# Switch tables, found by CodeBreaker (codebreaker/recompile/switches.py)
+
+# absolute table, guard at 0x0
+[[switch]]
+base = 0x82100504
+r = 11
+default = 0x0
+labels = [
+    0x82100510,
+    0x82100520,
+    0x82100530,
+]
+
+# absolute table, guard at 0x0
+[[switch]]
+base = 0x82100114
+r = 11
+default = 0x0
+labels = [
+    0x82100150,
+    0x82100160,
+    0x821001AC,
+]
+

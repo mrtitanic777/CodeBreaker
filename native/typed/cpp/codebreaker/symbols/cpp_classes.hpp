@@ -1,4 +1,4 @@
-// codebreaker/symbols/cpp_classes.hpp -- C++17 port of codebreaker.symbols.cpp_classes.
+// codebreaker/symbols/cpp_classes.hpp -- compat shim for cb/symbols/cpp_classes.hpp (docs/CPP_DESIGN.md 6.3); cpp_classes.cpp is its translation unit
 //
 // cpp_classes.py -- the C++ classes of a PowerPC (Xbox 360) program, from Microsoft's run-time type
 // information: each class's bases, its virtual function tables, and the class that introduces each

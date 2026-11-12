@@ -1,0 +1,21 @@
+[[switch]]
+base = 0x82100500
+r = 11
+default = 0x82100540
+labels = [0x82100510, 0x82100520]
+
+[[switch]]
+base = 0x82100110
+r = 12
+labels = [0x82100150, 0x82100160, 0x821001AC]
+
+[[switch]]
+base = 0x821007F0
+r = 3
+labels = [0x821007F8]
+
+[[switch]]
+base = 0x82100108
+r = 3
+labels = [0x82100150]
+

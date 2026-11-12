@@ -62,16 +62,32 @@ enum class Kind : std::uint8_t {
     MemberExpr,
     ArraySubscriptExpr,
     CallExpr,
+    // what port/oldlayout reads besides: the records and their fields, and the statements that say whether a value is used
+    RecordDecl,
+    FieldDecl,
+    CompoundStmt,
+    IfStmt,
+    WhileStmt,
+    DoStmt,
+    ForStmt,
+    SwitchStmt,
+    CaseStmt,
+    DefaultStmt,
+    LabelStmt,
 };
 
-enum class CastKind : std::uint8_t { Other, LValueToRValue, NoOp, IntegralCast };
+enum class CastKind : std::uint8_t { Other, LValueToRValue, NoOp, IntegralCast, PointerToIntegral, IntegralToPointer };
 
 // The operators of a BinaryOperator or UnaryOperator node (a unary minus and a binary one are both Sub).
 enum class Op : std::uint8_t {
     Other, Add, Sub, Mul, Div, Rem, Shl, Shr, And, Or, Xor,    // arithmetic
     Lt, Gt, Le, Ge, Eq, Ne, LogAnd, LogOr,                      // comparison and logic
     Comma, Assign, Not, BitNot, Plus, Inc, Dec, Deref, AddrOf,   // , = ! ~ + ++ -- * &
+    AddAssign, SubAssign, MulAssign, DivAssign, RemAssign, ShlAssign, ShrAssign, AndAssign, XorAssign, OrAssign,   // += -= ...
 };
+
+// The operator as C spells it (a unary minus and a binary one are both "-"); "" for Other.
+std::string_view op_text(Op op);
 
 // A place in a file: the byte offset and the length of the token there. A location in a macro has an expansion
 // (where the macro was used) and, instead of a place of its own, says it has a spelling (where its text is).
@@ -99,6 +115,13 @@ struct Node {
     std::string qual_type;                     // the type as the source names it; empty: the node has none
     std::optional<Prim> prim;                  // the 8086's type of qual_type, when it is one of those
     std::optional<std::int64_t> value;         // an IntegerLiteral's or CharacterLiteral's value
+    // What the declarations carry (port/oldlayout): clang's id of the node (an address; 0 for none), and for a MemberExpr
+    // the id of the field it names; the name of a RecordDecl or FieldDecl, and of what a DeclRefExpr refers to.
+    std::uint64_t id = 0;
+    std::uint64_t member_decl = 0;
+    std::string name;
+    bool complete = false;                     // a RecordDecl that is defined, not only declared
+    bool is_union = false;                     // a RecordDecl written `union` (else `struct`)
     Loc loc;
     Range range;
     std::vector<Node> inner;

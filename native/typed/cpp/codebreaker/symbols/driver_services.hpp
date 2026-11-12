@@ -1,4 +1,4 @@
-// codebreaker/symbols/driver_services.hpp -- typed C++ of codebreaker.symbols.driver_services
+// codebreaker/symbols/driver_services.hpp -- compat shim for cb/symbols/driver_services.hpp (docs/CPP_DESIGN.md 6.3); driver_services.cpp is its translation unit
 //
 // driver_services.py -- the real names of the services ring-0 drivers call.
 //

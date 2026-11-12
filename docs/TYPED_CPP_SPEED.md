@@ -873,3 +873,40 @@ Old = the live Python (codebreaker/translate/l2.py and desugar.py, CPython, best
 | desugar.run over the Java units (5 constructs lowered) | 7.8 ms | 0.15 ms |
 
 The gains are the tree (nodes in an arena, slots that are typed members instead of attribute lookups by name) and one description of every kind's slots that both directions use. The write is the slower half because a JSON value is built node by node (ordered objects); a producer that wants text goes straight from the tree. translate/javajudge and translate/native_l2 are orchestration of programs (javac, the JVM, the L2 library's DLL): nothing in them is on a hot path, and none was timed.
+
+## W1-B24: symbols/runtime_library, api_arguments, cpp_classes, driver_services
+
+The old ports (py:: layer) cannot be linked into the test executable, and a full exe build is not allowed on this drive, so they
+are not timed here. The new code is timed against the ORIGINAL Python on real inputs, with the Python's answers as the oracle:
+every answer below was compared one for one and was the same (the oracle ran as a temporary test, not kept: it reads the Win95
+corpus and C:/Nexia360 and the Python's dumps). Release /O2, one thread, C++ times include building the module's inputs from the
+dump (hex-decoding the code of a DLL) and exclude finding the function starts (the formats reader's carve), which the Python's
+`identify` includes. The typed ports were measured at 3.5x (api_arguments, ordinals, runtime_library, names) and 4.7x
+(cpp_classes) over the Python above; the new code is faster than that in every row.
+
+| Work | Python | New C++ |
+|---|---|---|
+| api_arguments: the stack bytes of every export of 14 Win95 DLLs (kernel32, user32, gdi32, advapi32, comctl32, shell32, lz32, crtdll, mfc40, mnmcpi32, ole32, comdlg32, wsock32, winmm: 12,131 exports, all equal) | 26.2 s | 0.37 s |
+| cpp_classes: Minecraft.Client.xex (115 classes), 545107DE default.xex (1,274 classes, 3,418 virtual functions, 657 found by layout) | 0.13 s, 0.27 s | 0.0024 s, 0.021 s |
+| driver_services: read the 87 include files of the driver kit (108 devices, 37 service tables, 51 messages) | 0.036 s | 0.017 s |
+| runtime_library: identify crtdll.dll (578 functions) / mfc30.dll (1,759) / mfc40.dll / vbrun300.dll (72, 16-bit) / user.exe (16-bit) | 0.13 / 0.65 / 0.71 / 2.3 / 2.6 s | 0.014 / 0.35 / 0.073 / 0.042 / 0.029 s |
+| runtime_library: shell32.dll, user32.dll (the two modules where most of the time is the matching) | 0.67 / 0.064 s | 0.68 / 0.073 s |
+
+The shell32 and user32 rows are level with the Python, whose time there also includes the formats reader's function carve that the
+C++ row leaves out: what is left is the matching itself, one SHA-1 per candidate row of the table whose leading bytes fit (a start
+that begins `push ebp / mov ebp, esp` fits hundreds), which both do the same number of times; a table that grouped the rows of one
+size and mask so that each was digested once per start is the next step if this ever shows in a profile. The gains elsewhere are the
+table (a hash of leading bytes over byte strings, not a dict of `py::bytes` lists), the walk (a flat decoder record, no regular
+expression per instruction) and the search (sets over words, no `py::dict` of dicts).
+## W1-B21: recompile/powerpc (and config, port/oldlayout)
+
+Old = the Python (the old typed port could not be linked into the test executable: it reads its image through the old PowerPC PE
+reader), new = `native/cb/recompile/powerpc.cpp`, Release /O2, one thread, the whole 16 KB Minecraft slice (4,096 instructions) as one
+function with its jump-table recovery, per round.
+
+| Work | Old (Python) | New |
+|---|---|---|
+| powerpc.recompile_function, 4,096 instructions | 48.9 ms | 10.8 ms |
+
+What remains is mostly Capstone's decode. config (one `config.make` of a 2 KB program: 0.5 ms in the Python) and oldlayout (clang
+dominates) were not timed separately.
