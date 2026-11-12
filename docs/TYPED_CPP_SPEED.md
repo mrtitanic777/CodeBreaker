@@ -846,3 +846,16 @@ Old = the live Python (the old typed port was not timed: it ran the same regexes
 | platform_coverage provided_symbols / used_holder_symbols | 31 / 8 ms | 5 / 0 ms |
 
 Per MB the applet and render passes run at about 2 and 3 ms; the Python's were 7 and 7 ms per MB, so nothing is slower. The platform_config, platform_refs and edition modules are a few file writes and string builds (microseconds); not timed.
+
+## cb refactor W1-B23: source/ne_asm (segment, fixups) and source/vxd (disassembly, coalesce) (2026-11-11)
+
+Old = the typed ports on the py:: layer, timed by their own harnesses (state/work/typed-port/source.vxd.disassembly and source.vxd.coalesce, rc_run.log); New = native/cb/source/{vxd/disassembly*.cpp, vxd/coalesce.cpp, ne_asm/*.cpp}, Release, one thread, the same machine. The new code was first compared on meaning with the Python module's own results over the same inputs, each with an environment variable that names the harness folder (the tests skip without it): `CB_VXD_DISASSEMBLY_HARNESS` -- 225 real Windows 95 drivers, instructions, code bytes, labels, jump tables, service table and device name all equal; `CB_VXD_COALESCE_HARNESS` -- 1,855 cases (coalesce, the three restores, finalize, over 54 sampled drivers and their split-record, padded-name, short-name and no-version variants), byte for byte (SHA-1) equal except 4 cases on 2 deliberately damaged copies, where the Python read past the end of a page; `CB_NE_SEGMENT_HARNESS` -- 172 segments of the Windows 3.x and Setup modules, the whole digest equal (rows, fix-ups, exports, function starts and spans, arguments, calls, window-procedure dispatch, handler calls, a checksum of the annotated rows, the call graph).
+
+| What | Old (typed port) | New |
+|---|---|---|
+| vxd/disassembly: the 273 `disasm` cases (open the module, recursive descent, summary hashes) | 19.4 s | 1.5 s for the recovery of the 225 drivers that have an answer (the whole test, with opening and comparing: about 2.2 s) |
+| vxd/disassembly: the listing of each driver (`emit`) | 14.6 s | 0.87 s (225 listings, 49 MB of text) |
+| vxd/coalesce: the five operations of the harness (coalesce 2.46 s, finalize 0.57, restore_entry_point 0.27, restore_metadata 0.25, restore_version_resource 0.20) | 3.75 s | 0.4 s for 1,855 cases, with reading each file, opening the oracle and the SHA-1 of every answer |
+| ne_asm/segment and fixups: 172 segments, the whole digest | not run here | 11 s, of which nearly all is starting objdump once or twice per segment (the module's own work is the text of its listing) |
+
+The gains of the disassembly are the per-byte states (an array of three bits per byte of an object, where the Python and the port kept a set of (object, offset) places for every byte of code, of data and of entry points), the places kept in ordered maps instead of dict handles, the decoder opened once per width (the port looked one up for every instruction), and the listing built by appends. coalesce reads each fix-up record once into a record and writes the grouped ones from a sorted index; its time is the copy of the file. The segment tools run objdump, an external program, and read its text: nothing in them is on a hot path.

@@ -1,0 +1,18 @@
+0	push   bp
+1	mov    bp,sp
+3	push   si
+4	mov    ax,WORD PTR [bp+0xc]
+7	sub    ax,0x1
+a	cmp    ax,0x2
+d	ja     0x40
+f	add    ax,ax
+11	mov    bx,ax
+13	jmp    WORD PTR cs:[bx+0x20]
+18	call   0x0:0x0
+1d	ret
+40	call   0x80
+43	ret
+46	call   0x0:0x0
+4b	ret
+80	mov    ax,0x1
+83	retf

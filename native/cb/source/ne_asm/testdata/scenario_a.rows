@@ -1,0 +1,47 @@
+0	push   bp
+1	mov    bp,sp
+3	push   si
+4	mov    ax,WORD PTR [bp+0xc]
+7	cmp    ax,0x1
+a	je     0x40
+c	cmp    ax,0x2
+f	jne    0x20
+11	jmp    0x50
+14	cmp    ax,0x10
+17	jne    0x20
+19	nop
+1a	nop
+20	cmp    WORD PTR [bp+0xc],0x110
+25	je     0x60
+27	xor    ax,ax
+29	jmp    0x80
+40	mov    ax,0x1
+43	push   ax
+44	call   0x0:0x0
+49	pop    ax
+4a	jmp    0x80
+50	call   0x90
+53	call   0xc0
+56	ret
+60	mov    ah,0x3d
+62	int    0x21
+64	mov    ah,0x99
+66	jmp    0x80
+80	pop    si
+81	pop    bp
+82	retf   0xa
+90	push   bp
+91	mov    bp,sp
+93	mov    ax,WORD PTR [bp+0x6]
+96	mov    bx,WORD PTR [bp+0xa]
+99	pop    bp
+9a	ret    0x4
+a0	enter  0x2,0x0
+a4	mov    bx,WORD PTR [bp+0x8]
+a8	call   0x0:0x0
+ad	retf
+c0	mov    bx,0x1234
+c3	push   bx
+c4	jmp    0x90
+c7	nop
+c8	int3
