@@ -4,6 +4,11 @@
 // shims stay honest until their last consumer is refactored. (The shims are header-only: including them compiles every
 // definition in them.)
 #include "codebreaker/translate/backends/c.hpp"
+#include "codebreaker/translate/backends/csharp.hpp"
+#include "codebreaker/translate/backends/csharp_java.hpp"
+#include "codebreaker/translate/backends/java.hpp"
+#include "codebreaker/translate/backends/java_libc.hpp"
+#include "codebreaker/translate/backends/java_objects.hpp"
 #include "codebreaker/translate/backends/cpp17.hpp"
 #include "codebreaker/translate/desugar.hpp"
 #include "codebreaker/translate/dotnet/judge.hpp"
@@ -81,6 +86,35 @@ inline void touch_desugar_and_judge() {
     (void)&judge::lower_program;
     (void)&judge::build;
     (void)&judge::set_java_frontend;
+}
+
+inline void touch_java_and_csharp_backends() {
+    // the Java back end's entry point and the C# back end's Program over the old IR tree (the new modules write the typed tree the
+    // old one is read back as; the old tree itself cannot be linked into cb_tests)
+    namespace jb = codebreaker::translate::backends::java;
+    namespace cs = codebreaker::translate::backends::csharp;
+    namespace jo = codebreaker::translate::backends::java_objects;
+    namespace jlc = codebreaker::translate::backends::java_libc;
+    namespace ir = codebreaker::translate::ir;
+    (void)static_cast<jb::Program (*)(const py::list<ir::NodeP>&, const py::str&, const py::str&)>(&jb::program);
+    (void)&jo::method_name;
+    (void)&jlc::registry;
+    (void)&cs::write;
+    (void)&cs::RUNTIME;
+    (void)&cs::set_here;
+    (void)&cs::ident;
+    py::ref<cs::Program> p = cs::write(py::list<ir::NodeP>());
+    (void)p->files();
+    (void)p->ledger;
+    (void)p->write(py::str("out"));
+    try {
+        throw jb::Refused("x");
+    } catch (const jb::Refused&) {
+    }
+    try {
+        throw cs::Decline(py::str("kind"), py::str("why"));
+    } catch (const cs::Decline&) {
+    }
 }
 
 inline void touch_csharp_lower() {

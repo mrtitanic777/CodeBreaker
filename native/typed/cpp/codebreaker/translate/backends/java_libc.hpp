@@ -1,17 +1,9 @@
-// codebreaker/translate/backends/java_libc.hpp -- typed C++ port of codebreaker.translate.backends.java_libc.
+// codebreaker/translate/backends/java_libc.hpp -- COMPAT SHIM over cb/translate/backends/java_libc.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// java_libc.py -- a C library call as Java: which method (codebreaker/java/api_maps/libc.json, the API
-// map's C rows) and how its arguments travel.
-//
-// crt.LibC's methods take C's parameters by their Java types (a pointer is an int address, size_t a
-// long), except that a `char *` parameter is an Object: a string literal travels as a Java String, so
-// `printf("%d\n", x)` stays `printf("%d\n", x)`; any other char pointer is its address. Arguments past a
-// variadic prototype's last parameter go as they are (boxed), and LibC's printf reads them as the format
-// says, as C's does. A row of kind 'direct' names the JDK's own method (Math.sqrt); 'unsupported' and
-// missing rows are refused with the reason.
-//
-// Typing notes: `w` is the FnWriter (java.hpp; an ObjWriter is one); the registry is
-// codebreaker/java/apimap's, loaded once (the Python's module list `_REG`).
+// The module is native/cb/translate/backends/java_libc.{hpp,cpp}: a C library call as Java, over the API-mapping registry. It is
+// used by the Java back end's writers (cb/translate/backends/java and java_objects), which take it as a java::LibraryCalls; the old
+// writers that called `java_libc::call` with their own function-writer type are gone with the old java.hpp, which is a shim now. What
+// is left here is the registry accessor the old module had, over the old registry shim's cache.
 #pragma once
 
 #include <memory>
@@ -21,10 +13,7 @@
 
 namespace codebreaker::translate::backends::java_libc {
 
-namespace jb = codebreaker::translate::backends::java;
-
-std::shared_ptr<codebreaker::java::apimap::Registry> registry();
-// w: the FnWriter; e: the ir.Call; -> jb::J.
-jb::J call(jb::FnWriter& w, const py::ref<jb::ir::Call>& e, const py::str& name, const py::list<jb::NodeP>& args);
+// The API-mapping registry the C library rows are read from (loaded once).
+inline std::shared_ptr<codebreaker::java::apimap::Registry> registry() { return codebreaker::java::apimap::load(); }
 
 }  // namespace codebreaker::translate::backends::java_libc

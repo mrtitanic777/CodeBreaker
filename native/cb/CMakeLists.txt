@@ -118,6 +118,7 @@ cb_area(build)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_symbols)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb_source cb_symbols)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
+target_link_libraries(cb_build PUBLIC cb_decompile)   # (sm83_asm: the Game Boy instruction encoder)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
@@ -155,7 +156,8 @@ cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core cb_formats)
 
 cb_area(analyze)
-target_link_libraries(cb_analyze PUBLIC cb_core cb_formats cb_symbols)
+target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
+
 
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
@@ -212,7 +214,7 @@ cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source)   # (cb_source: the NE disassembler of debug_build)
 
 cb_area(xna)
-target_link_libraries(cb_xna PUBLIC cb_core)
+target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats)   # (cb_base: the Converted project; cb_formats: PE and media images)
 
 # The translator's back ends, front ends and the whole-program judge; the terminal interface's helpers (the terminal
 # interface itself stays Python: docs/CPP_DESIGN.md section 9).
@@ -231,7 +233,7 @@ if(CB_ASAN)
 endif()
 
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
@@ -280,6 +282,9 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3_staged.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b8.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
@@ -315,7 +320,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/build_lib.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/harness.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/keystore.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/shadowboot.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xcp_dumper.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xsm3.cpp"

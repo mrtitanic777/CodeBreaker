@@ -1,0 +1,216 @@
+// ==== Base.cs ====
+// Translated by CodeBreaker from Base (java).
+#nullable disable
+
+public class Base
+{
+    public int size;
+    public int scale = 2;
+
+    public Base(int var1)
+    {
+        size = var1 * scale;
+    }
+
+    public Base(int var1, int var2) : this(var1)
+    {
+        scale += var2;
+    }
+}
+// ==== Calc.cs ====
+// Translated by CodeBreaker from Calc (java).
+#nullable disable
+using System;
+using System.Collections.Generic;
+
+public class Calc
+{
+    public static int total;
+    public static int[] table;
+    private int[] cells = new int[8];
+    private List<object> items = new List<object>();
+    public string name = "calc";
+
+    public Calc()
+    {
+    }
+
+    public virtual int fill(int var1)
+    {
+        int var2 = 0;
+        for (int var3 = 0; var3 < cells.Length; ++var3)
+        {
+            cells[var3] = var1 * var3 - (var3 >>> 1);
+            var2 += cells[var3];
+        }
+        total += var2;
+        return var2 > 100 ? var2 % 7 : -var2;
+    }
+
+    public static long mix(long var0, int var2)
+    {
+        long var3 = var0 ^ (long)var2 << 3;
+        while (var3 > 1000L)
+        {
+            var3 >>>= 2;
+        }
+        return var3 >>> 1;
+    }
+
+    public static float wrap(float var0)
+    {
+        return var0 % 3.5f + (float)Math.Floor((double)var0);
+    }
+
+    public virtual string label(int var1)
+    {
+        string var2 = var1 < 0 ? null : JavaRt.Str(name) + ":" + var1;
+        return var2 == null ? "none" : JavaRt.Str(var2) + (char)(65 + (var1 & 7));
+    }
+
+    public virtual int guarded(int var1)
+    {
+        Calc var2 = var1 > 0 ? null : this;
+        try
+        {
+            return var2.cells.Length + var1;
+        }
+        catch (Exception var3)
+        {
+            return -7;
+        }
+    }
+
+    public virtual int cleanup(int var1)
+    {
+        int var2 = 0;
+        try
+        {
+            var2 = 100 / (var1 & 3);
+        }
+        catch (ArithmeticException var3)
+        {
+            var2 = -1;
+        }
+        finally
+        {
+            total += 1;
+        }
+        return var2 + total;
+    }
+
+    public virtual int search(int var1)
+    {
+        int var2 = 0;
+        for (int var3 = 0; var3 < 5; ++var3)
+        {
+            for (int var4 = 0; var4 < 5; ++var4)
+            {
+                if (var3 * var4 == (var1 & 15))
+                {
+                    var2 = var3 * 10 + var4;
+                    goto label9_break;
+                }
+                if (var4 > var3)
+                {
+                    goto label9_continue;
+                }
+            }
+        label9_continue:;
+        }
+        label9_break:;
+        return var2;
+    }
+
+    public static int sum(params int[] var0)
+    {
+        int var1 = 0;
+        for (int var2 = 0; var2 < var0.Length; ++var2)
+        {
+            var1 += var0[var2];
+        }
+        return var1;
+    }
+
+    public static int sums(int var0)
+    {
+        return sum() + sum(var0) + sum(var0, 2, 3) + sum(new int[] { var0, var0 });
+    }
+
+    public static int tabled(int var0)
+    {
+        return table[var0 & 3] + total;
+    }
+
+    public static int made(int var0)
+    {
+        var var1 = new Base(var0, 3);
+        return var1.size + var1.scale;
+    }
+
+    public virtual int count(int var1)
+    {
+        items.Add(name);
+        switch (var1 & 3)
+        {
+            case 0:
+                return items.Count;
+            case 1:
+                items.Clear();
+                goto default;
+            default:
+                return -1;
+        }
+    }
+
+    static Calc()
+    {
+        table = new int[4];
+        table[1] = 5;
+        total = table[1] * 2;
+    }
+}
+// ==== CalcMain.cs ====
+// Translated by CodeBreaker from CalcMain (java).
+#nullable disable
+using System;
+
+public class CalcMain
+{
+    public CalcMain()
+    {
+    }
+
+    public static void Main(string[] args)
+    {
+        var c = new Calc();
+        int[] inputs = new int[] { 0, 1, -1, 7, 13, 100, int.MinValue, int.MaxValue };
+        for (int i = 0; i < inputs.Length; i++)
+        {
+            int x = inputs[i];
+            Console.WriteLine("fill(" + x + ")=" + c.fill(x) + " label=" + JavaRt.Str(c.label(x)) + " guarded=" + c.guarded(x) + " cleanup=" + c.cleanup(x) + " search=" + c.search(x) + " count=" + c.count(x));
+            Console.WriteLine("  mix=" + Calc.mix((long)x * 31L, x) + " wrap=" + JavaRt.Str(Calc.wrap((float)x / 3.0f)) + " sums=" + Calc.sums(x) + " tabled=" + Calc.tabled(x) + " made=" + Calc.made(x) + " build=" + Sub.build(x));
+        }
+        Console.WriteLine("total=" + Calc.total + " name=" + JavaRt.Str(c.name));
+    }
+}
+// ==== Sub.cs ====
+// Translated by CodeBreaker from Sub (java).
+#nullable disable
+
+public class Sub : Base
+{
+    public int extra;
+
+    public Sub(int var1) : base(var1 + 1)
+    {
+        extra = 7;
+        extra += size;
+    }
+
+    public static int build(int var0)
+    {
+        var var1 = new Sub(var0);
+        return var1.extra * 3 + var1.size;
+    }
+}

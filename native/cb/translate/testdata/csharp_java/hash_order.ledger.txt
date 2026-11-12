@@ -1,0 +1,1 @@
+HashOrder.walk	hash-order	iterating a java.util.HashMap: Java visits it in hash order, .NET in another

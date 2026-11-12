@@ -1,5 +1,11 @@
 // codebreaker/xna/run.hpp -- typed C++ of codebreaker.xna.run.
 //
+// NOT YET A SHIM (W2-B17): the module is native/cb/xna/run.{hpp,cpp} (the tools, the assemblies, de4dot and ILSpy, the Converted
+// project and its reports, with the settings and folders given as values). This port stays, as it was, because xna/port.cpp (the
+// next unit) is written against its `detail` helpers (state paths, text files, the JSON layout, copytree, EnvGuard) and its
+// py::str `assemblies`, and the old layer reads the settings it builds from; when port is refactored this port becomes a shim.
+//
+//
 // run.py -- `codebreaker xna <package, folder or game .exe> [--name N] [--no-content]`: an XNA game as
 // a Converted project; `codebreaker xna port <project>` then builds its C# for the PC (xna/port.py).
 //

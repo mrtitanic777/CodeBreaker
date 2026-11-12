@@ -1,0 +1,1 @@
+EnumObject.<init>	enum	a Java enum with fields, methods or constructor arguments (an enum of objects)

@@ -1,0 +1,145 @@
+// ==== AxisAlignedBB.cs ====
+// Translated by CodeBreaker from AxisAlignedBB (java).
+#nullable disable
+
+namespace sample
+{
+    public class AxisAlignedBB
+    {
+        public double minX;
+        public double minY;
+        public double minZ;
+        public double maxX;
+        public double maxY;
+        public double maxZ;
+
+        public AxisAlignedBB(double var1, double var3, double var5, double var7, double var9, double var11)
+        {
+            minX = var1;
+            minY = var3;
+            minZ = var5;
+            maxX = var7;
+            maxY = var9;
+            maxZ = var11;
+        }
+
+        public virtual bool intersectsWith(AxisAlignedBB var1)
+        {
+            if (var1.maxX <= minX || var1.minX >= maxX)
+            {
+                return false;
+            }
+            return var1.maxY > minY && var1.minY < maxY;
+        }
+    }
+}
+// ==== FixtureMain.cs ====
+// Translated by CodeBreaker from FixtureMain (java).
+#nullable disable
+using System;
+
+namespace sample
+{
+    public class FixtureMain
+    {
+        public FixtureMain()
+        {
+        }
+
+        public static void Main(string[] args)
+        {
+            double[] ds = new double[] { 0.0, 0.5, -0.5, 1.999, -1.001, 12345.678, -98765.4321 };
+            foreach (double d2 in ds)
+            {
+                Console.WriteLine("floor(" + JavaRt.Str(d2) + ")=" + MathHelper.floor_double(d2) + " sqrt=" + JavaRt.Str(MathHelper.sqrt_float((float)Math.Abs(d2))));
+            }
+            var a = new Vec3D(1.0, 2.0, 3.0);
+            var b = new Vec3D(4.5, -2.0, 0.25);
+            Vec3D d = a.subtract(b);
+            Console.WriteLine("subtract " + JavaRt.Str(d.xCoord) + " " + JavaRt.Str(d.yCoord) + " " + JavaRt.Str(d.zCoord));
+            Vec3D m = a.getIntermediateWithXValue(b, 2.0);
+            Console.WriteLine("intermediate " + JavaRt.Str(m == null ? "null" : JavaRt.Str(m.xCoord) + "," + JavaRt.Str(m.yCoord) + "," + JavaRt.Str(m.zCoord)));
+            Vec3D n = a.getIntermediateWithXValue(new Vec3D(1.0000001, 0.0, 0.0), 2.0);
+            Console.WriteLine("near " + JavaRt.Str(n == null ? "null" : "made"));
+            var box = new AxisAlignedBB(0, 0, 0, 1, 1, 1);
+            AxisAlignedBB[] others = new AxisAlignedBB[] { new AxisAlignedBB(0.5, 0.5, 0.5, 2, 2, 2), new AxisAlignedBB(1, 0, 0, 2, 1, 1), new AxisAlignedBB(-1, -1, -1, 0.01, 0.01, 0.01), new AxisAlignedBB(0.2, 3, 0.2, 0.8, 4, 0.8) };
+            foreach (AxisAlignedBB o in others)
+            {
+                Console.WriteLine("intersects " + JavaRt.Str(box.intersectsWith(o)));
+            }
+            Console.WriteLine("pool " + Vec3D.nextVector + " " + Vec3D.vectorList.Length);
+        }
+    }
+}
+// ==== MathHelper.cs ====
+// Translated by CodeBreaker from MathHelper (java).
+#nullable disable
+using System;
+
+namespace sample
+{
+    public class MathHelper
+    {
+        public MathHelper()
+        {
+        }
+        private static float[] SIN_TABLE;
+
+        public static float sqrt_float(float var0)
+        {
+            return (float)Math.Sqrt((double)var0);
+        }
+
+        public static int floor_double(double var0)
+        {
+            int var2 = (int)var0;
+            return var0 < (double)var2 ? var2 - 1 : var2;
+        }
+
+        static MathHelper()
+        {
+            SIN_TABLE = new float[65536];
+            for (int var0 = 0; var0 < 65536; ++var0)
+            {
+                SIN_TABLE[var0] = (float)Math.Sin((double)var0 * Math.PI * 2.0 / 65536.0);
+            }
+        }
+    }
+}
+// ==== Vec3D.cs ====
+// Translated by CodeBreaker from Vec3D (java).
+#nullable disable
+
+namespace sample
+{
+    public class Vec3D
+    {
+        public static int nextVector = 0;
+        public static Vec3D[] vectorList = new Vec3D[256];
+        public double xCoord;
+        public double yCoord;
+        public double zCoord;
+
+        public Vec3D(double var1, double var3, double var5)
+        {
+            xCoord = var1;
+            yCoord = var3;
+            zCoord = var5;
+        }
+
+        public virtual Vec3D subtract(Vec3D var1)
+        {
+            return new Vec3D(var1.xCoord - xCoord, var1.yCoord - yCoord, var1.zCoord - zCoord);
+        }
+
+        public virtual Vec3D getIntermediateWithXValue(Vec3D var1, double var2)
+        {
+            double var4 = var1.xCoord - xCoord;
+            if (var4 * var4 < 1E-07)
+            {
+                return null;
+            }
+            return new Vec3D(var2, yCoord, zCoord);
+        }
+    }
+}

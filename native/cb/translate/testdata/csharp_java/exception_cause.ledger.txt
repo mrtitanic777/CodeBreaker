@@ -1,0 +1,1 @@
+ExceptionCause.wrap	exception	an exception made with a cause

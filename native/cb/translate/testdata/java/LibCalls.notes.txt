@@ -1,0 +1,2 @@
+gap: use_mystery (library function mystery: not in the C runtime for Java (api_maps/libc.json))
+faithful tier: a void pointer, raw memory (qsort)

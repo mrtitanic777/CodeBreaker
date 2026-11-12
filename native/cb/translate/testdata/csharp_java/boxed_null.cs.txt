@@ -1,0 +1,21 @@
+// ==== BoxedNull.cs ====
+// Translated by CodeBreaker from BoxedNull (java).
+#nullable disable
+
+public class BoxedNull
+{
+    public BoxedNull()
+    {
+    }
+
+    internal static int absent()
+    {
+        throw new System.NotSupportedException("CB-GAP: a null Integer: Java boxes it, the translation keeps it a value");
+    }
+
+    internal static int present()
+    {
+        int x = 5;
+        return x + 1;
+    }
+}

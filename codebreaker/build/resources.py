@@ -597,7 +597,11 @@ def rebuild(module_path, outdir, rounds=12):
         return result
     for _ in range(rounds):
         result = Result()
-        result.rc, spans, how, wide = write_rc(module_path, outdir, verbatim)
+        try:
+            result.rc, spans, how, wide = write_rc(module_path, outdir, verbatim)
+        except NoSourceForm as e:                            # a resource's own name cannot be written (a zero character in it)
+            result.error = "a resource cannot be written as source: %s" % e
+            return result
         res, log = compile_rc(result.rc, wide)
         if not res:
             m = _ERROR_LINE.search(log)

@@ -1,34 +1,12 @@
-// codebreaker/analyze/facts.hpp -- typed C++ port of codebreaker.analyze.facts.
+// codebreaker/analyze/facts.hpp -- COMPAT SHIM over cb/analyze/facts.hpp (docs/CPP_DESIGN.md 6.3), for the old
+// codebreaker/analyze/facts.py port. Deleted with its last py:: consumer (none today: the analyses that write facts
+// are the not-yet-refactored classes/observe/structures/dispatch).
 //
-// facts.py -- the fact table: what the analyses found, kept beside the function store.
-//
-//     auto fs = facts::open();                            // the function store's own sqlite file
-//     fs->put(sha, "conventions", rows);                  // replaces that module's facts of that analysis
-//     fs->get(sha, "conventions", "bfee83ad");
-//     fs->get(sha, std::nullopt, std::nullopt, "structure");
-//     fs->tally(sha);                                     // {analysis: {kind: count}}
-//
-// A fact is one thing an analysis established: about a function (`addr` is that function's key
-// in the function store -- the address in hex for a 32-bit module or a driver, "segment:offset"
-// for a 16-bit one) or about the module as a whole (`addr` empty). `kind` says what it is
-// ("convention", "structure", "global", "class", "switch", ...) and `value` holds the rest as JSON.
-//
-// The table lives in the same file as the function store (store/functions.py), so a function's
-// reconstruction, its verdicts and what is known about it are one query apart; it is created
-// here, on first use, and nothing in the store depends on it.
-//
-// Notes on the port:
-//   * A fact's value is `Json` (knowledge::sources::Json, the tagged union that is what json.loads gives):
-//     the one place the Python genuinely mixes types. It is stored as json.dumps(value, sort_keys=True,
-//     default=_plain) writes it: a tuple (a List marked `tuple`) as a list; a set, or any other object the
-//     analyses hold, is turned into JSON by _plain() before it is put (the overloads below), as json.dumps's
-//     `default` hook does for the values it cannot write itself.
-//   * key(img, va) takes the image's kind: the Python reads only `img.kind`; an overload takes the typed
-//     analyze::image::Image.
-//   * The sqlite3 module is base::cache::Db (the C++ port's connection over the sqlite3 amalgamation).
-//     executescript(_SCHEMA) is its four statements run one after another; `with self.db:` is the
-//     transaction put() commits (or rolls back when it fails).
-//   * get() returns Fact records (the dicts {analysis, addr, kind, value}); tally() is {analysis: {kind: n}}.
+// The fact table is native/cb/analyze/facts.hpp. The old API is kept as it was: a FactStore opened on a path (the function
+// store's own file when none), put(module, analysis, rows), get(...), tally(...), key(), and dumps/loads of a fact's
+// JSON value, which is the old tagged `Json` here and a knowledge::Value there (conversion only). The old `_plain`
+// hook (what json.dumps's `default=` did for a set or an object) is not carried: a fact's value is built as a
+// document by the analysis that makes it.
 #pragma once
 
 #include <cstdint>
@@ -36,8 +14,9 @@
 #include <optional>
 #include <tuple>
 
+#include "cb/analyze/facts.hpp"
+#include "cb/compat/py_bridge.hpp"
 #include "codebreaker/analyze/image.hpp"
-#include "codebreaker/base/cache.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "py.hpp"
 
@@ -45,9 +24,59 @@ namespace codebreaker::analyze::facts {
 
 using Json = knowledge::sources::Json;
 
-// The function store's key for an address of an image ('' for None).
-py::str key(const py::str& kind, const std::optional<int64_t>& va);
-py::str key(const image::Image& img, const std::optional<int64_t>& va);
+namespace detail {
+
+// The old tagged Json as a document, and back.
+inline ::cb::knowledge::Value to_value(const Json& j) {
+    using V = ::cb::knowledge::Value;
+    switch (j.kind) {
+        case Json::None: return V();
+        case Json::Bool: return V(j.b);
+        case Json::Int: return V(static_cast<std::int64_t>(j.i));
+        case Json::Float: return V(j.d);
+        case Json::Str: return V(j.s.utf8());
+        case Json::List: {
+            V::List items;
+            for (const Json& x : j.list) items.push_back(to_value(x));
+            return V(std::move(items));
+        }
+        case Json::Dict: {
+            V::Map items;
+            for (const auto& kv : j.dict.items()) items.insert_or_assign(std::get<0>(kv).utf8(), to_value(std::get<1>(kv)));
+            return V(std::move(items));
+        }
+    }
+    return V();
+}
+
+inline Json from_value(const ::cb::knowledge::Value& v) {
+    using K = ::cb::knowledge::Value::Kind;
+    Json j;
+    switch (v.kind()) {
+        case K::Null: break;
+        case K::Bool: j.kind = Json::Bool; j.b = *v.boolean(); break;
+        case K::Int: j.kind = Json::Int; j.i = *v.integer(); break;
+        case K::Double: j.kind = Json::Float; j.d = *v.number(); break;
+        case K::Text: j.kind = Json::Str; j.s = py::str(*v.text()); break;
+        case K::List:
+            j.kind = Json::List;
+            for (const auto& x : *v.list()) j.list.push_back(from_value(x));
+            break;
+        case K::Map:
+            j.kind = Json::Dict;
+            for (const auto& kv : *v.map()) j.dict.set(py::str(kv.first), from_value(kv.second));
+            break;
+    }
+    return j;
+}
+
+}  // namespace detail
+
+// The function store's key for an address of an image kind ("ne", "pe", "le"); '' for None.
+inline py::str key(const py::str& kind, const std::optional<int64_t>& va) {
+    return py::str(::cb::analyze::facts::key(kind == py::str("ne") ? ::cb::analyze::ImageKind::Ne : ::cb::analyze::ImageKind::Pe, va));
+}
+inline py::str key(const image::Image& img, const std::optional<int64_t>& va) { return key(img.kind, va); }
 
 // (addr key, kind, value): one row of what an analysis has to say about a module
 using Row = std::tuple<py::str, py::str, Json>;
@@ -62,36 +91,60 @@ struct Fact {
 
 class FactStore {
   public:
-    explicit FactStore(const std::optional<py::str>& path = std::nullopt);
+    explicit FactStore(const std::optional<py::str>& path = std::nullopt)
+        : impl_(std::make_shared<::cb::analyze::facts::FactStore>(::cb::analyze::facts::FactStore::open(
+              path && !path->empty() ? std::filesystem::path(path->utf8())
+                                     : ::cb::analyze::facts::default_path(::cb::config::current())))),
+          path(py::str(impl_->path().generic_string())) {}
     FactStore(const FactStore&) = delete;
     FactStore& operator=(const FactStore&) = delete;
 
-    py::str path;
-    std::shared_ptr<base::cache::Db> db;
+    void close() { impl_.reset(); }
 
-    void close();
+    void put(const py::str& module, const py::str& analysis, const py::list<Row>& rows) {
+        ::cb::compat::guard([&] {
+            std::vector<::cb::analyze::facts::Row> out;
+            for (const Row& r : rows) out.push_back({std::get<0>(r).utf8(), std::get<1>(r).utf8(), detail::to_value(std::get<2>(r))});
+            impl_->put(module.utf8(), analysis.utf8(), out);
+        });
+    }
 
-    // rows: [(addr key, kind, value)] -- everything `analysis` has to say about `module`.
-    void put(const py::str& module, const py::str& analysis, const py::list<Row>& rows);
-
-    // [{analysis, addr, kind, value}] for a module, narrowed by whatever is given.
     py::list<Fact> get(const py::str& module, const std::optional<py::str>& analysis = std::nullopt,
-                       const std::optional<py::str>& addr = std::nullopt, const std::optional<py::str>& kind = std::nullopt);
+                       const std::optional<py::str>& addr = std::nullopt, const std::optional<py::str>& kind = std::nullopt) {
+        return ::cb::compat::guard([&] {
+            const auto narrow = [](const std::optional<py::str>& s) { return s ? std::optional<std::string>(s->utf8()) : std::nullopt; };
+            py::list<Fact> out;
+            for (auto& f : impl_->get(module.utf8(), {.analysis = narrow(analysis), .addr = narrow(addr), .kind = narrow(kind)}))
+                out.append(Fact{py::str(f.analysis), py::str(f.addr), py::str(f.kind), detail::from_value(f.value)});
+            return out;
+        });
+    }
 
-    py::dict<py::str, py::dict<py::str, int64_t>> tally(const py::str& module);
+    py::dict<py::str, py::dict<py::str, int64_t>> tally(const py::str& module) {
+        return ::cb::compat::guard([&] {
+            py::dict<py::str, py::dict<py::str, int64_t>> out;
+            for (const auto& [analysis, kinds] : impl_->tally(module.utf8())) {
+                py::dict<py::str, int64_t> row;
+                for (const auto& [kind, n] : kinds) row.set(py::str(kind), n);
+                out.set(py::str(analysis), row);
+            }
+            return out;
+        });
+    }
+
+  private:
+    std::shared_ptr<::cb::analyze::facts::FactStore> impl_;
+
+  public:
+    py::str path;
 };
 
-// json.dumps(value, sort_keys=True, default=_plain)
-py::str dumps(const Json& value);
-// json.loads(text)
-Json loads(const py::str& text);
+// json.dumps(value, sort_keys=True) / json.loads(text)
+inline py::str dumps(const Json& value) { return py::str(::cb::analyze::facts::to_text(detail::to_value(value))); }
+inline Json loads(const py::str& text) {
+    return ::cb::compat::guard([&] { return detail::from_value(::cb::analyze::facts::from_text(text.utf8())); });
+}
 
-// JSON for what the analyses hold in sets and tuples: a set sorted by repr, as a list.
-Json _plain(const py::set<int64_t>& x);
-Json _plain(const py::set<py::str>& x);
-// ... and str(x) for anything else.
-Json _plain(const py::str& str_of_x);
-
-std::shared_ptr<FactStore> open(const std::optional<py::str>& path = std::nullopt);   // as store.functions.open
+inline std::shared_ptr<FactStore> open(const std::optional<py::str>& path = std::nullopt) { return std::make_shared<FactStore>(path); }
 
 }  // namespace codebreaker::analyze::facts

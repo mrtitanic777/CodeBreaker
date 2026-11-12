@@ -5,6 +5,8 @@
 #include "codebreaker/verify/gate16/setup16.hpp"
 #include "codebreaker/verify/lanes/dos.hpp"
 #include "codebreaker/verify/lanes/image_lane.hpp"
+#include "codebreaker/verify/lanes/msx.hpp"
+#include "codebreaker/verify/lanes/zx.hpp"
 
 namespace shim_check {
 
@@ -35,6 +37,24 @@ inline void touch_verify_gate() {
     (void)&image::Lane::build;
     (void)&image::Lane::prepare;
     (void)&image::Lane::profile;
+}
+
+inline void touch_flat_machines() {
+    // the flat Z80 lane's two machines: the new modules' values as the old layer's, and the lane made over the old z80_flat
+    namespace msx = codebreaker::verify::lanes::msx;
+    namespace zx = codebreaker::verify::lanes::zx;
+    (void)msx::KIND;
+    (void)msx::REV;
+    (void)&msx::SAME;
+    (void)msx::ROM_LO;
+    (void)msx::ROM_HI;
+    (void)&msx::lane;
+    (void)zx::KIND;
+    (void)zx::REV;
+    (void)&zx::SAME;
+    (void)zx::ROM_LO;
+    (void)zx::ROM_HI;
+    (void)&zx::lane;
 }
 
 }  // namespace shim_check
