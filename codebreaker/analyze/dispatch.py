@@ -120,7 +120,7 @@ def _origin(fn, i, op):
             return ("r", family(op[1])), family(op[1])
     base = family(op[1]) if op[1] else None
     if op[2] is not None:
-        return ("m", base, family(op[2]), op[4]), "[%s+%s*%d%+#x]" % (base, family(op[2]), op[3], op[4])
+        return ("m", base, family(op[2]), op[4]), "[%s%s*%d%+#x]" % (base + "+" if base else "", family(op[2]), op[3], op[4])
     return ("m", base, op[4]), ("[%s%+#x]" % (base, op[4])) if base else "[%#x]" % op[4]
 
 
@@ -384,7 +384,7 @@ def analyse(img):
               "command_dispatchers": sum(1 for m in msgs if m["commands"]),
               "command_ids": sum(len(m["commands"]) for m in msgs),
               "keyword_dispatchers": len(kw), "keywords": sum(len(k["keywords"]) for k in kw),
-              "interrupt_sites": len(ints), "named_services": sum(1 for x in ints if "function ?" not in x[4] and "interrupt " not in x[4]),
+              "interrupt_sites": len(ints), "named_services": sum(1 for x in ints if (x[3] is not None if x[2] in (0x21, 0x31) else x[2] in _BIOS)),
               "driver_control_messages": len(ctl["handles"]) if ctl else 0}
     text = []
     for m in msgs[:6]:

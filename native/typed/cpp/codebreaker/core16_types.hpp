@@ -1,3 +1,6 @@
+// COMPAT note: the idiomatic version of these records and of the Uc interface is native/cb/core16_types.hpp (namespace cb::core16: std types,
+// Bytes, typed L2 node); this header keeps the py:: shapes the not-yet-refactored ports use. It is already pure data, so it is its own shim,
+// and goes with the last of them.
 // codebreaker/core16_types.hpp -- records shared by the 33 modules of the "core16" import cycle
 // (analyze.*, build.*, decompile.*, emulate.*, engine.lanes, source.*, symbols.*, verify.*), so that their
 // headers do not include each other in a circle.  Each group edits only its own section.

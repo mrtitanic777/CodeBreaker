@@ -995,3 +995,15 @@ Old = the Python (the old typed port cannot be built here without the whole exe)
 | 7 text passes on every file | not timed separately | 2.4 s including loading |
 
 Not much faster than the Python: the time is the regex engine over about 700 KB of C. Not profiled further.
+
+## W2-B2: analyze/dos_functions, analyze/dispatch, analyze/structures, verify/lane_common
+
+Old = the Python (the old typed port cannot be built here without the whole exe); New = native/cb/analyze and native/cb/verify, Release.
+
+| What | Old | New |
+|---|---|---|
+| dos_functions `discover` over the 700 made-up real-mode programs of the old harness (code, tables, vectors, far pointers, mutations) | 0.78 s (Python, patched) | 0.029 s |
+| dos_functions `discover` over the 133 real-mode programs of the Windows 95 corpus (the Python needs the formats DLL to read them) | not timed | 1.22 s (the largest, 100 KB programs, are most of it) |
+| lane_common (argument text, the memory digest, a run's fingerprint) | per call, microseconds either way | not timed: no loop of its own, the cost is the emulator's |
+
+The gain of dos_functions is the byte arrays (`mark`, `guess`) and the instruction cache being vectors and one hash map over plain structs where the Python held a dict of objects per instruction, and the decoded operands being kept (the Python decoded every instruction a second time to read its registers). dispatch and structures are timed at the end of this section when the Python could be run over the corpus modules (see the report).
