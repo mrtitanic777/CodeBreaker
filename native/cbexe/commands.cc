@@ -214,6 +214,27 @@ int corpus_executables(const std::vector<var>& a) {
     return 0;
 }
 
+}  // namespace
+
+// native/cb's commands (cb/app/native_commands.hpp): the switch-over's entry. Linked in with the cb libraries.
+extern "C" int cb_native_command(int argc, const char* const* argv, int* handled);
+
+namespace {
+
+// `cb <command line>`: a command native/cb runs itself (codebreaker/__main__.py hands it the whole line, --corpus
+// included). Exit 2 when the command is not one of them.
+int cb_command(const std::vector<var>& a) {
+    std::vector<std::string> words;
+    for (const var& w : a) words.push_back(py::str_utf8(w));
+    std::vector<const char*> argv;
+    for (const std::string& w : words) argv.push_back(w.c_str());
+    py::import("sys").getattr("stdout").call("flush");   // what the Python wrote comes first
+    int handled = 0;
+    const int code = cb_native_command(static_cast<int>(argv.size()), argv.data(), &handled);
+    if (!handled) return usage("cb " + (words.empty() ? std::string("<command>") : words[0]) + ": not a native command");
+    return code;
+}
+
 void init(const var& m) {
     // main(argv): argv[0] is the command (the table's fixed argument), the rest its arguments
     py::mod_def(m, "main", [](const py::CallArgs& c) -> var {
@@ -226,6 +247,7 @@ void init(const var& m) {
         if (cmd == "xenon-config") return var((int64_t)xenon_config(a));
         if (cmd == "switch-tables") return var((int64_t)switch_tables(a));
         if (cmd == "corpus-executables") return var((int64_t)corpus_executables(a));
+        if (cmd == "cb") return var((int64_t)cb_command(a));
         return var((int64_t)usage(cmd + ": not a command of codebreaker_native"));
     });
 }
