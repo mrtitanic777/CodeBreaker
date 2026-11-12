@@ -1,0 +1,35 @@
+minecraft|03|desugar	0
+minecraft|03|0|body|NoiseMain.main	null
+minecraft|03|1|ctor0|NoiseMain.False	["super", null, []]
+minecraft|03|2|ctor0|NoiseMain.True	["super", null, []]
+minecraft|03|3|instance_inits|NoiseMain	[]
+minecraft|03|4|static_blocks|NoiseMain	[]
+minecraft|03|5|body|NoSuchClass	null
+minecraft|03|6|field_init|nofield	null
+minecraft|03|7|array_items|nofield	null
+minecraft|03|8|enum_args|noconst	null
+minecraft|03|9|ctor|NoSuchClass	null
+minecraft|03|10|field_init|NoSuchClass	null
+minecraft|03|11|array_items|NoSuchClass	null
+minecraft|03|12|enum_args|NoSuchClass	null
+minecraft|03|13|instance_inits|NoSuchClass	null
+minecraft|03|14|static_blocks|NoSuchClass	null
+minecraft|03|counts	[0, 2, {"type": 1, "not found": 1, "ctor not found": 1}, {"type any": 1}, ["NoiseMain"]]
+minecraft|03|ledger	[]
+minecraft|17|0|body|NoiseMain.main	null
+minecraft|17|1|ctor0|NoiseMain.False	["super", null, []]
+minecraft|17|2|ctor0|NoiseMain.True	["super", null, []]
+minecraft|17|3|instance_inits|NoiseMain	[]
+minecraft|17|4|static_blocks|NoiseMain	[]
+minecraft|17|5|body|NoSuchClass	null
+minecraft|17|6|field_init|nofield	null
+minecraft|17|7|array_items|nofield	null
+minecraft|17|8|enum_args|noconst	null
+minecraft|17|9|ctor|NoSuchClass	null
+minecraft|17|10|field_init|NoSuchClass	null
+minecraft|17|11|array_items|NoSuchClass	null
+minecraft|17|12|enum_args|NoSuchClass	null
+minecraft|17|13|instance_inits|NoSuchClass	null
+minecraft|17|14|static_blocks|NoSuchClass	null
+minecraft|17|counts	[0, 2, {"type": 1, "not found": 1, "ctor not found": 1}, {"type any": 1}, ["NoiseMain"]]
+minecraft|17|ledger	[]

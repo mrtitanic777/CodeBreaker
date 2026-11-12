@@ -1,0 +1,55 @@
+streams|03|desugar	1
+streams|03|0|body|Streams.Person	null
+streams|03|1|body|Streams.sumOfSquares	null
+streams|03|2|body|Streams.countEven	null
+streams|03|3|body|Streams.joined	null
+streams|03|4|body|Streams.applyTwice	null
+streams|03|5|body|Streams.upperWords	null
+streams|03|6|body|Streams.firstOver	null
+streams|03|7|body|Streams.composed	null
+streams|03|8|body|Streams.counter	null
+streams|03|9|body|Streams.people	["JList<Person*> ps = JList<Person*>();", "ps.add(new Person(\"Ada\", 36));", "ps.add(new Person(\"Linus\", 21));", "ps.add(new Person(\"Grace\", 85));", "ps.add(new Person(\"Alan\", 41));", "ps.add(new Person(\"Barbara\", 36));", "return ps;"]
+streams|03|10|body|Streams.main	null
+streams|03|11|ctor0|Streams.False	["super", null, []]
+streams|03|12|ctor0|Streams.True	["super", null, []]
+streams|03|13|instance_inits|Streams	[]
+streams|03|14|static_blocks|Streams	[]
+streams|03|15|body|NoSuchClass	null
+streams|03|16|field_init|nofield	null
+streams|03|17|array_items|nofield	null
+streams|03|18|enum_args|noconst	null
+streams|03|19|ctor|NoSuchClass	null
+streams|03|20|field_init|NoSuchClass	null
+streams|03|21|array_items|NoSuchClass	null
+streams|03|22|enum_args|NoSuchClass	null
+streams|03|23|instance_inits|NoSuchClass	null
+streams|03|24|static_blocks|NoSuchClass	null
+streams|03|counts	[1, 2, {"not found": 2, "expression": 9, "ctor not found": 1}, {"expression Lambda": 6, "expression MethodRef": 3}, ["Streams"]]
+streams|03|ledger	[]
+streams|17|0|body|Streams.Person	null
+streams|17|1|body|Streams.sumOfSquares	null
+streams|17|2|body|Streams.countEven	null
+streams|17|3|body|Streams.joined	null
+streams|17|4|body|Streams.applyTwice	null
+streams|17|5|body|Streams.upperWords	null
+streams|17|6|body|Streams.firstOver	null
+streams|17|7|body|Streams.composed	null
+streams|17|8|body|Streams.counter	null
+streams|17|9|body|Streams.people	["JList<Person*> ps = JList<Person*>();", "ps.add(new Person(\"Ada\", 36));", "ps.add(new Person(\"Linus\", 21));", "ps.add(new Person(\"Grace\", 85));", "ps.add(new Person(\"Alan\", 41));", "ps.add(new Person(\"Barbara\", 36));", "return ps;"]
+streams|17|10|body|Streams.main	null
+streams|17|11|ctor0|Streams.False	["super", null, []]
+streams|17|12|ctor0|Streams.True	["super", null, []]
+streams|17|13|instance_inits|Streams	[]
+streams|17|14|static_blocks|Streams	[]
+streams|17|15|body|NoSuchClass	null
+streams|17|16|field_init|nofield	null
+streams|17|17|array_items|nofield	null
+streams|17|18|enum_args|noconst	null
+streams|17|19|ctor|NoSuchClass	null
+streams|17|20|field_init|NoSuchClass	null
+streams|17|21|array_items|NoSuchClass	null
+streams|17|22|enum_args|NoSuchClass	null
+streams|17|23|instance_inits|NoSuchClass	null
+streams|17|24|static_blocks|NoSuchClass	null
+streams|17|counts	[1, 2, {"not found": 2, "expression": 9, "ctor not found": 1}, {"expression Lambda": 6, "expression MethodRef": 3}, ["Streams"]]
+streams|17|ledger	[]

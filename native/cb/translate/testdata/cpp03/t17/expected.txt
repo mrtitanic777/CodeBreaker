@@ -1,0 +1,51 @@
+t17|03|desugar	7
+t17|03|0|body|Modern.Point	null
+t17|03|1|body|Modern.Sq	null
+t17|03|2|body|Modern.Circ	null
+t17|03|3|body|Modern.area	["Sq* q;", "if((dynamic_cast<Sq*>(s) != NULL) && (q = (Sq*)s) != NULL) {", "\tint j2xo1 = 0;", "\tint j2xo2 = 0;", "\treturn (j2xo1 = q->side(), j2xo2 = q->side(), j2xo1 * j2xo2);", "}", "Circ* c;", "if((dynamic_cast<Circ*>(s) != NULL) && (c = (Circ*)s) != NULL) {", "\tint j2xo3 = 0;", "\tint j2xo4 = 0;", "\treturn (j2xo3 = 3 * c->r(), j2xo4 = c->r(), j2xo3 * j2xo4);", "}", "return 0;"]
+t17|03|4|body|Modern.name	["{", "\tJavaString j2x_sw1;", "\tswitch(c) {", "\tcase Color::RED:", "\t{", "\t\t{", "\t\t\tj2x_sw1 = \"r\";", "\t\t\tgoto j2x_sw2_brk;", "\t\t}", "\t}", "\tcase Color::GREEN:", "\t{", "\t\t{", "\t\t\tj2x_sw1 = \"g\";", "\t\t\tgoto j2x_sw2_brk;", "\t\t}", "\t}", "\tdefault:", "\t{", "\t\t{", "\t\t\tJavaString b = \"b\";", "\t\t\t{", "\t\t\t\tj2x_sw1 = (JCat() + b + b);", "\t\t\t\tgoto j2x_sw2_brk;", "\t\t\t}", "\t\t}", "\t}", "\t}", "\tj2x_sw2_brk:;", "\treturn j2x_sw1;", "}"]
+t17|03|5|body|Modern.sum	["int s = 0;", "for (Iterator<int> j2x_it3 = xs.iterator(); j2x_it3.hasNext(); ) {", "\tint v = (j2x_it3.next()).intValue();", "\ts += v;", "}", "return s;"]
+t17|03|6|body|Modern.squares	null
+t17|03|7|body|Modern.words	["{", "\tJavaString j2x_sw4;", "\t{", "\t\tJavaString j2x_s6 = (s);", "\t\t{", "\t\t\tif(JavaString(\"a\").equals(j2x_s6) || JavaString(\"b\").equals(j2x_s6)) {", "\t\t\t\t{", "\t\t\t\t\tj2x_sw4 = \"ab\";", "\t\t\t\t\tgoto j2x_sw5_brk;", "\t\t\t\t}", "\t\t\t} else {", "\t\t\t\t{", "\t\t\t\t\tj2x_sw4 = \"other\";", "\t\t\t\t\tgoto j2x_sw5_brk;", "\t\t\t\t}", "\t\t\t}", "\t\t}", "\t\tj2x_sw5_brk:;", "\t}", "\treturn j2x_sw4;", "}"]
+t17|03|8|body|Modern.main	null
+t17|03|9|ctor0|Modern.False	["super", null, []]
+t17|03|10|ctor0|Modern.True	["super", null, []]
+t17|03|11|instance_inits|Modern	[]
+t17|03|12|static_blocks|Modern	[]
+t17|03|13|body|NoSuchClass	null
+t17|03|14|field_init|nofield	null
+t17|03|15|array_items|nofield	null
+t17|03|16|enum_args|noconst	null
+t17|03|17|ctor|NoSuchClass	null
+t17|03|18|field_init|NoSuchClass	null
+t17|03|19|array_items|NoSuchClass	null
+t17|03|20|enum_args|NoSuchClass	null
+t17|03|21|instance_inits|NoSuchClass	null
+t17|03|22|static_blocks|NoSuchClass	null
+t17|03|counts	[4, 2, {"not found": 4, "expression": 2, "ctor not found": 1}, {"expression Lambda": 2}, ["Modern"]]
+t17|03|ledger	[]
+t17|17|0|body|Modern.Point	null
+t17|17|1|body|Modern.Sq	null
+t17|17|2|body|Modern.Circ	null
+t17|17|3|body|Modern.area	["Sq* q;", "if((dynamic_cast<Sq*>(s) != __null) && (q = (Sq*)s) != nullptr) {", "\tint j2xo1 = 0;", "\tint j2xo2 = 0;", "\treturn (j2xo1 = q->side(), j2xo2 = q->side(), j2xo1 * j2xo2);", "}", "Circ* c;", "if((dynamic_cast<Circ*>(s) != __null) && (c = (Circ*)s) != nullptr) {", "\tint j2xo3 = 0;", "\tint j2xo4 = 0;", "\treturn (j2xo3 = 3 * c->r(), j2xo4 = c->r(), j2xo3 * j2xo4);", "}", "return 0;"]
+t17|17|4|body|Modern.name	null
+t17|17|5|body|Modern.sum	["int s = 0;", "for (int v : xs) {", "\ts += v;", "}", "return s;"]
+t17|17|6|body|Modern.squares	null
+t17|17|7|body|Modern.words	null
+t17|17|8|body|Modern.main	null
+t17|17|9|ctor0|Modern.False	["super", null, []]
+t17|17|10|ctor0|Modern.True	["super", null, []]
+t17|17|11|instance_inits|Modern	[]
+t17|17|12|static_blocks|Modern	[]
+t17|17|13|body|NoSuchClass	null
+t17|17|14|field_init|nofield	null
+t17|17|15|array_items|nofield	null
+t17|17|16|enum_args|noconst	null
+t17|17|17|ctor|NoSuchClass	null
+t17|17|18|field_init|NoSuchClass	null
+t17|17|19|array_items|NoSuchClass	null
+t17|17|20|enum_args|NoSuchClass	null
+t17|17|21|instance_inits|NoSuchClass	null
+t17|17|22|static_blocks|NoSuchClass	null
+t17|17|counts	[2, 2, {"not found": 4, "a": 1, "expression": 2, "switch": 1, "ctor not found": 1}, {"a yield inside a nested statement": 1, "expression Lambda": 2, "switch on a string": 1}, ["Modern"]]
+t17|17|ledger	[]
