@@ -1,0 +1,2852 @@
+# made by gen_powerpc_golden.py; see there
+[image_default]
+agg funcs=11 total=472 translated=150 unimpl=322 discovered=8 tail=3 lo=82100000 hi=82100600
+decls 82100000 82100040 82100100 82100180 821001C0 82100200 82100240 82100430 821004C0 82100520 82100600
+chosen 82100000 82100040 82100100 82100180 821001C0 82100200 82100240 82100430 821004C0 82100520 82100600
+skipped 
+[image_default.body]
+| #include "rex_ppc_min.h"
+| 
+| PPC_FUNC(sub_82100000);
+| PPC_FUNC(sub_82100040);
+| PPC_FUNC(sub_82100100);
+| PPC_FUNC(sub_82100180);
+| PPC_FUNC(sub_821001C0);
+| PPC_FUNC(sub_82100200);
+| PPC_FUNC(sub_82100240);
+| PPC_FUNC(sub_82100430);
+| PPC_FUNC(sub_821004C0);
+| PPC_FUNC(sub_82100520);
+| PPC_FUNC(sub_82100600);
+| 
+| PPC_FUNC_IMPL(sub_82100000) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// stw r12, -8(r1)
+| 	PPC_STORE_U32(ctx.r1.u32 + -8, ctx.r12.u32);
+| 	// bl 0x82100100
+| 	ctx.lr = 0x8210000C;
+| 	sub_82100100(ctx, base);
+| 	// beq 0x82100030
+| 	if (ctx.cr0.eq) { goto loc_82100030; }
+| 	// b 0x82100180
+| 	sub_82100180(ctx, base); return;
+| 	// bne 0x821001c0
+| 	if (!ctx.cr0.eq) { sub_821001C0(ctx, base); return; }
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| loc_82100030:
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100040) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// addi r1, r1, -0x60
+| 	ctx.r1.s64 = ctx.r1.s64 + -96;
+| 	// bl 0x82100200
+| 	ctx.lr = 0x82100048;
+| 	sub_82100200(ctx, base);
+| 	// b 0x82100240
+| 	sub_82100240(ctx, base); return;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100100) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// li r3, 1
+| 	ctx.r3.s64 = 1;
+| 	// beq 0x82100110
+| 	if (ctx.cr0.eq) { goto loc_82100110; }
+| 	// bl 0x82100520
+| 	ctx.lr = 0x82100110;
+| 	sub_82100520(ctx, base);
+| loc_82100110:
+| 	// mtctr r11
+| 	ctx.ctr.u64 = ctx.r11.u64;
+| 	// bctr
+| 	PPC_CALL_INDIRECT_FUNC(ctx.ctr.u32); return;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100180) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| }
+| 
+| PPC_FUNC_IMPL(sub_821001C0) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100200) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// std r14, -0x90(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -144, ctx.r14.u64);
+| 	// std r14, -0x88(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -136, ctx.r14.u64);
+| 	// std r14, -0x80(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -128, ctx.r14.u64);
+| 	// std r14, -0x78(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -120, ctx.r14.u64);
+| 	// std r14, -0x70(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -112, ctx.r14.u64);
+| 	// std r14, -0x68(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -104, ctx.r14.u64);
+| 	// std r14, -0x60(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -96, ctx.r14.u64);
+| 	// std r14, -0x58(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -88, ctx.r14.u64);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// ld r14, -0x90(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -144);
+| 	// ld r14, -0x88(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -136);
+| 	// ld r14, -0x80(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -128);
+| 	// ld r14, -0x78(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -120);
+| 	// ld r14, -0x70(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -112);
+| 	// ld r14, -0x68(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -104);
+| 	// ld r14, -0x60(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -96);
+| 	// ld r14, -0x58(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -88);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// lvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)ctx.v14.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)PPC_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x400
+| 	ctx.r11.s64 = -1024;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// add r3, r4, r5
+| 	ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// lwz r0, 0x134(r4)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r4.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// std r1, 0x90(r3)
+| 	PPC_STORE_U64(ctx.r3.u32 + 144, ctx.r1.u64);
+| 	// li r3, 0
+| 	ctx.r3.s64 = 0;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100240) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// ld r14, -0x90(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -144);
+| 	// ld r14, -0x88(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -136);
+| 	// ld r14, -0x80(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -128);
+| 	// ld r14, -0x78(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -120);
+| 	// ld r14, -0x70(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -112);
+| 	// ld r14, -0x68(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -104);
+| 	// ld r14, -0x60(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -96);
+| 	// ld r14, -0x58(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -88);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// lvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)ctx.v14.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)PPC_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x400
+| 	ctx.r11.s64 = -1024;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// add r3, r4, r5
+| 	ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// lwz r0, 0x134(r4)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r4.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// std r1, 0x90(r3)
+| 	PPC_STORE_U64(ctx.r3.u32 + 144, ctx.r1.u64);
+| 	// li r3, 0
+| 	ctx.r3.s64 = 0;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100430) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// lwz r0, 0x134(r3)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r3.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_821004C0) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100520) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100600) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+[image_default.mapping]
+| #include "rex_ppc_min.h"
+| 
+| struct PPCFuncMapping { uint32_t addr; PPCFunc* func; };
+| PPCFuncMapping PPCFuncMappings[] = {
+| 	{ 0x82100000, sub_82100000 },
+| 	{ 0x82100040, sub_82100040 },
+| 	{ 0x82100100, sub_82100100 },
+| 	{ 0x82100180, sub_82100180 },
+| 	{ 0x821001C0, sub_821001C0 },
+| 	{ 0x82100200, sub_82100200 },
+| 	{ 0x82100240, sub_82100240 },
+| 	{ 0x82100430, sub_82100430 },
+| 	{ 0x821004C0, sub_821004C0 },
+| 	{ 0x82100520, sub_82100520 },
+| 	{ 0x82100600, sub_82100600 },
+| 	{ 0, nullptr },
+| };
+| 
+[image_skip]
+agg funcs=10 total=408 translated=118 unimpl=290 discovered=8 tail=3 lo=82100000 hi=82100600
+decls 82100000 82100040 82100100 82100180 821001C0 82100200 82100240 82100430 821004C0 82100520 82100600
+chosen 82100000 82100040 82100100 82100180 821001C0 82100200 82100240 82100430 821004C0 82100520 82100600
+skipped 82100100
+[image_skip.body]
+| #include "rex_ppc_min.h"
+| 
+| PPC_FUNC(sub_82100000);
+| PPC_FUNC(sub_82100040);
+| PPC_FUNC(sub_82100100);
+| PPC_FUNC(sub_82100180);
+| PPC_FUNC(sub_821001C0);
+| PPC_FUNC(sub_82100200);
+| PPC_FUNC(sub_82100240);
+| PPC_FUNC(sub_82100430);
+| PPC_FUNC(sub_821004C0);
+| PPC_FUNC(sub_82100520);
+| PPC_FUNC(sub_82100600);
+| 
+| PPC_FUNC_IMPL(sub_82100000) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// stw r12, -8(r1)
+| 	PPC_STORE_U32(ctx.r1.u32 + -8, ctx.r12.u32);
+| 	// bl 0x82100100
+| 	ctx.lr = 0x8210000C;
+| 	sub_82100100(ctx, base);
+| 	// beq 0x82100030
+| 	if (ctx.cr0.eq) { goto loc_82100030; }
+| 	// b 0x82100180
+| 	sub_82100180(ctx, base); return;
+| 	// bne 0x821001c0
+| 	if (!ctx.cr0.eq) { sub_821001C0(ctx, base); return; }
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| loc_82100030:
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100040) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// addi r1, r1, -0x60
+| 	ctx.r1.s64 = ctx.r1.s64 + -96;
+| 	// bl 0x82100200
+| 	ctx.lr = 0x82100048;
+| 	sub_82100200(ctx, base);
+| 	// b 0x82100240
+| 	sub_82100240(ctx, base); return;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100180) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| }
+| 
+| PPC_FUNC_IMPL(sub_821001C0) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100200) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// std r14, -0x90(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -144, ctx.r14.u64);
+| 	// std r14, -0x88(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -136, ctx.r14.u64);
+| 	// std r14, -0x80(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -128, ctx.r14.u64);
+| 	// std r14, -0x78(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -120, ctx.r14.u64);
+| 	// std r14, -0x70(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -112, ctx.r14.u64);
+| 	// std r14, -0x68(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -104, ctx.r14.u64);
+| 	// std r14, -0x60(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -96, ctx.r14.u64);
+| 	// std r14, -0x58(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -88, ctx.r14.u64);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// ld r14, -0x90(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -144);
+| 	// ld r14, -0x88(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -136);
+| 	// ld r14, -0x80(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -128);
+| 	// ld r14, -0x78(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -120);
+| 	// ld r14, -0x70(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -112);
+| 	// ld r14, -0x68(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -104);
+| 	// ld r14, -0x60(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -96);
+| 	// ld r14, -0x58(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -88);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// lvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)ctx.v14.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)PPC_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x400
+| 	ctx.r11.s64 = -1024;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// add r3, r4, r5
+| 	ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// lwz r0, 0x134(r4)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r4.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// std r1, 0x90(r3)
+| 	PPC_STORE_U64(ctx.r3.u32 + 144, ctx.r1.u64);
+| 	// li r3, 0
+| 	ctx.r3.s64 = 0;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100240) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// ld r14, -0x90(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -144);
+| 	// ld r14, -0x88(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -136);
+| 	// ld r14, -0x80(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -128);
+| 	// ld r14, -0x78(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -120);
+| 	// ld r14, -0x70(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -112);
+| 	// ld r14, -0x68(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -104);
+| 	// ld r14, -0x60(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -96);
+| 	// ld r14, -0x58(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -88);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// lvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)ctx.v14.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)PPC_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x400
+| 	ctx.r11.s64 = -1024;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// add r3, r4, r5
+| 	ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// lwz r0, 0x134(r4)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r4.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// std r1, 0x90(r3)
+| 	PPC_STORE_U64(ctx.r3.u32 + 144, ctx.r1.u64);
+| 	// li r3, 0
+| 	ctx.r3.s64 = 0;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100430) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// lwz r0, 0x134(r3)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r3.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_821004C0) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100520) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100600) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+[image_skip.mapping]
+| #include "rex_ppc_min.h"
+| 
+| struct PPCFuncMapping { uint32_t addr; PPCFunc* func; };
+| PPCFuncMapping PPCFuncMappings[] = {
+| 	{ 0x82100000, sub_82100000 },
+| 	{ 0x82100040, sub_82100040 },
+| 	{ 0x82100100, sub_82100100 },
+| 	{ 0x82100180, sub_82100180 },
+| 	{ 0x821001C0, sub_821001C0 },
+| 	{ 0x82100200, sub_82100200 },
+| 	{ 0x82100240, sub_82100240 },
+| 	{ 0x82100430, sub_82100430 },
+| 	{ 0x821004C0, sub_821004C0 },
+| 	{ 0x82100520, sub_82100520 },
+| 	{ 0x82100600, sub_82100600 },
+| 	{ 0, nullptr },
+| };
+| 
+[image_limit]
+agg funcs=2 total=24 translated=21 unimpl=3 discovered=8 tail=0 lo=82100000 hi=82100040
+decls 82100000 82100040 82100100 82100180 821001C0 82100200 82100240
+chosen 82100000 82100040
+skipped 
+[image_limit.body]
+| #include "rex_ppc_min.h"
+| 
+| PPC_FUNC(sub_82100000);
+| PPC_FUNC(sub_82100040);
+| PPC_FUNC(sub_82100100);
+| PPC_FUNC(sub_82100180);
+| PPC_FUNC(sub_821001C0);
+| PPC_FUNC(sub_82100200);
+| PPC_FUNC(sub_82100240);
+| 
+| PPC_FUNC_IMPL(sub_82100000) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// stw r12, -8(r1)
+| 	PPC_STORE_U32(ctx.r1.u32 + -8, ctx.r12.u32);
+| 	// bl 0x82100100
+| 	ctx.lr = 0x8210000C;
+| 	sub_82100100(ctx, base);
+| 	// beq 0x82100030
+| 	if (ctx.cr0.eq) { goto loc_82100030; }
+| 	// b 0x82100180
+| 	sub_82100180(ctx, base); return;
+| 	// bne 0x821001c0
+| 	if (!ctx.cr0.eq) { sub_821001C0(ctx, base); return; }
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| loc_82100030:
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100040) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// addi r1, r1, -0x60
+| 	ctx.r1.s64 = ctx.r1.s64 + -96;
+| 	// bl 0x82100200
+| 	ctx.lr = 0x82100048;
+| 	sub_82100200(ctx, base);
+| 	// b 0x82100240
+| 	sub_82100240(ctx, base); return;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| }
+| 
+[image_limit.mapping]
+| #include "rex_ppc_min.h"
+| 
+| struct PPCFuncMapping { uint32_t addr; PPCFunc* func; };
+| PPCFuncMapping PPCFuncMappings[] = {
+| 	{ 0x82100000, sub_82100000 },
+| 	{ 0x82100040, sub_82100040 },
+| 	{ 0, nullptr },
+| };
+| 
+[image_seeds]
+agg funcs=13 total=396 translated=131 unimpl=265 discovered=10 tail=3 lo=82100000 hi=82100600
+decls 82100000 82100040 82100100 82100180 821001C0 82100200 82100240 82100300 82100320 82100430 821004C0 82100520 82100600
+chosen 82100000 82100040 82100100 82100180 821001C0 82100200 82100240 82100300 82100320 82100430 821004C0 82100520 82100600
+skipped 
+[image_seeds.body]
+| #include "rex_ppc_min.h"
+| 
+| PPC_FUNC(sub_82100000);
+| PPC_FUNC(sub_82100040);
+| PPC_FUNC(sub_82100100);
+| PPC_FUNC(sub_82100180);
+| PPC_FUNC(sub_821001C0);
+| PPC_FUNC(sub_82100200);
+| PPC_FUNC(sub_82100240);
+| PPC_FUNC(sub_82100300);
+| PPC_FUNC(sub_82100320);
+| PPC_FUNC(sub_82100430);
+| PPC_FUNC(sub_821004C0);
+| PPC_FUNC(sub_82100520);
+| PPC_FUNC(sub_82100600);
+| 
+| PPC_FUNC_IMPL(sub_82100000) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// stw r12, -8(r1)
+| 	PPC_STORE_U32(ctx.r1.u32 + -8, ctx.r12.u32);
+| 	// bl 0x82100100
+| 	ctx.lr = 0x8210000C;
+| 	sub_82100100(ctx, base);
+| 	// beq 0x82100030
+| 	if (ctx.cr0.eq) { goto loc_82100030; }
+| 	// b 0x82100180
+| 	sub_82100180(ctx, base); return;
+| 	// bne 0x821001c0
+| 	if (!ctx.cr0.eq) { sub_821001C0(ctx, base); return; }
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| loc_82100030:
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100040) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// addi r1, r1, -0x60
+| 	ctx.r1.s64 = ctx.r1.s64 + -96;
+| 	// bl 0x82100200
+| 	ctx.lr = 0x82100048;
+| 	sub_82100200(ctx, base);
+| 	// b 0x82100240
+| 	sub_82100240(ctx, base); return;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100100) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// li r3, 1
+| 	ctx.r3.s64 = 1;
+| 	// beq 0x82100110
+| 	if (ctx.cr0.eq) { goto loc_82100110; }
+| 	// bl 0x82100520
+| 	ctx.lr = 0x82100110;
+| 	sub_82100520(ctx, base);
+| loc_82100110:
+| 	// mtctr r11
+| 	ctx.ctr.u64 = ctx.r11.u64;
+| 	// bctr
+| 	PPC_CALL_INDIRECT_FUNC(ctx.ctr.u32); return;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100180) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| }
+| 
+| PPC_FUNC_IMPL(sub_821001C0) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100200) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// std r14, -0x90(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -144, ctx.r14.u64);
+| 	// std r14, -0x88(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -136, ctx.r14.u64);
+| 	// std r14, -0x80(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -128, ctx.r14.u64);
+| 	// std r14, -0x78(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -120, ctx.r14.u64);
+| 	// std r14, -0x70(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -112, ctx.r14.u64);
+| 	// std r14, -0x68(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -104, ctx.r14.u64);
+| 	// std r14, -0x60(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -96, ctx.r14.u64);
+| 	// std r14, -0x58(r1)
+| 	PPC_STORE_U64(ctx.r1.u32 + -88, ctx.r14.u64);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// ld r14, -0x90(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -144);
+| 	// ld r14, -0x88(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -136);
+| 	// ld r14, -0x80(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -128);
+| 	// ld r14, -0x78(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -120);
+| 	// ld r14, -0x70(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -112);
+| 	// ld r14, -0x68(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -104);
+| 	// ld r14, -0x60(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -96);
+| 	// ld r14, -0x58(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -88);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100240) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// ld r14, -0x90(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -144);
+| 	// ld r14, -0x88(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -136);
+| 	// ld r14, -0x80(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -128);
+| 	// ld r14, -0x78(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -120);
+| 	// ld r14, -0x70(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -112);
+| 	// ld r14, -0x68(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -104);
+| 	// ld r14, -0x60(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -96);
+| 	// ld r14, -0x58(r1)
+| 	ctx.r14.u64 = PPC_LOAD_U64(ctx.r1.u32 + -88);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100300) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100320) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// lvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)ctx.v14.u8, simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)PPC_RAW_ADDR(ea)), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x400
+| 	ctx.r11.s64 = -1024;
+| 	// stvx v14, r11, r12
+| 	ea = (ctx.r11.u32 + ctx.r12.u32) & ~0xF;
+| 	simde_mm_store_si128((simde__m128i*)PPC_RAW_ADDR(ea), simde_mm_shuffle_epi8(simde_mm_load_si128((simde__m128i*)ctx.v14.u8), simde_mm_load_si128((simde__m128i*)VectorMaskL)));
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// li r11, -0x120
+| 	ctx.r11.s64 = -288;
+| 	// add r3, r4, r5
+| 	ctx.r3.u64 = ctx.r4.u64 + ctx.r5.u64;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// lwz r0, 0x134(r4)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r4.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// std r1, 0x90(r3)
+| 	PPC_STORE_U64(ctx.r3.u32 + 144, ctx.r1.u64);
+| 	// li r3, 0
+| 	ctx.r3.s64 = 0;
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100430) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// mflr r12
+| 	ctx.r12.u64 = ctx.lr;
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// lwz r0, 0x134(r3)
+| 	ctx.r0.u64 = PPC_LOAD_U32(ctx.r3.u32 + 308);
+| 	// nop
+| 	// lwz r1, 0x90(r3)
+| 	ctx.r1.u64 = PPC_LOAD_U32(ctx.r3.u32 + 144);
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_821004C0) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100520) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+| PPC_FUNC_IMPL(sub_82100600) {
+| 	PPC_FUNC_PROLOGUE();
+| 	uint32_t ea{};
+| 	PPCRegister temp{};
+| 	// nop
+| 	// nop
+| 	// blr
+| 	return;
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| 	// .long 0x00000000
+| 	PPC_UNIMPLEMENTED(".long 0x00000000");
+| }
+| 
+[image_seeds.mapping]
+| #include "rex_ppc_min.h"
+| 
+| struct PPCFuncMapping { uint32_t addr; PPCFunc* func; };
+| PPCFuncMapping PPCFuncMappings[] = {
+| 	{ 0x82100000, sub_82100000 },
+| 	{ 0x82100040, sub_82100040 },
+| 	{ 0x82100100, sub_82100100 },
+| 	{ 0x82100180, sub_82100180 },
+| 	{ 0x821001C0, sub_821001C0 },
+| 	{ 0x82100200, sub_82100200 },
+| 	{ 0x82100240, sub_82100240 },
+| 	{ 0x82100300, sub_82100300 },
+| 	{ 0x82100320, sub_82100320 },
+| 	{ 0x82100430, sub_82100430 },
+| 	{ 0x821004C0, sub_821004C0 },
+| 	{ 0x82100520, sub_82100520 },
+| 	{ 0x82100600, sub_82100600 },
+| 	{ 0, nullptr },
+| };
+| 

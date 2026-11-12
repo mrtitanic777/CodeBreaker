@@ -1,0 +1,7 @@
+olds struct expr
+found struct expr | e_left | struct expr *
+found struct expr | e_p | struct sym *
+found struct expr | e_right | struct expr *
+found struct expr | e_sym | struct sym *
+refused prog.c 1101 &
+refused prog.c 1112 ++
