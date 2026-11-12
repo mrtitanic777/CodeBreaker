@@ -653,6 +653,9 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             // states the host cannot do stay on the ROV), so a depth buffer is never compared both ways.
             bool hostAll_ = false;
             uint64_t hostDraws_ = 0, rovDraws_ = 0;
+            // The sample -> EDRAM address mapping (msaa, pitch, bases) of the last ROV draw: ROV orders invocations of one
+            // pixel only, so a draw that reaches the same EDRAM dwords through other pixels needs a UAV barrier first.
+            std::array<uint32_t, 7> rovMapping_ = {};
             static uint32_t TileHeight(uint32_t msaa) { return msaa == 0 ? 16 : 8; }
             HostTarget* Target(bool depth, uint32_t base, uint32_t pitch, uint32_t msaa, uint32_t rows);
             bool Stale(const HostTarget& t) const;
@@ -2930,6 +2933,21 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
             const D3D12_CPU_DESCRIPTOR_HANDLE msaaDummyView =
                 !host && pipelineKey.forcedSamples ? MsaaDummy(uint32_t(right), uint32_t(std::max(drawBottom, 1))) : D3D12_CPU_DESCRIPTOR_HANDLE{};
 
+            if (!host)
+            {
+                // ROV only orders invocations at the same pixel position. Draws at a different MSAA / pitch / base reach the same
+                // EDRAM dwords through other pixels (Minecraft clears depth with a 4x 640-wide rectangle, then draws 1x 1280-wide),
+                // so without this barrier the later draw races the clear and keeps stale depth in blocks and stipples.
+                std::array<uint32_t, 7> mapping = { msaa, pitchTiles, om.depthControl ? depthBase0 : 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu };
+                for (uint32_t rt = 0; rt < 4; rt++)
+                    if (om.colorFormat[rt] != kRtDisabled)
+                        mapping[3 + rt] = Reg(kColorInfo[rt]) & 0x7FF;
+                if (mapping != rovMapping_)
+                {
+                    UavBarrier(edram_.Get());
+                    rovMapping_ = mapping;
+                }
+            }
             list_->SetPipelineState(pipeline);
             if (host)
             {
