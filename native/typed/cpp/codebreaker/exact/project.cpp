@@ -6,6 +6,8 @@
 #include <map>
 #include <string>
 
+#include "cb/core/fs.hpp"
+#include "cb/exact/project.hpp"
 #include "codebreaker/exact/carve.hpp"
 #include "codebreaker/exact/mspascal.hpp"
 #include "json.hpp"
@@ -180,34 +182,29 @@ str read_text(const str& p) {
     return t;
 }
 
-// the lines of a text file as `for l in open(p)` gives them
-py::list<str> lines_of(const str& p) {
-    py::file f = py::open(p);
-    py::list<str> out;
-    for (const str& l : f) out.append(l);
-    return out;
+// a path as the old layer's strings had it (os.path: backslashes)
+str native(const std::filesystem::path& p) {
+    std::string t = cb::fs::to_text(p);
+    std::replace(t.begin(), t.end(), '/', '\\');
+    return S(t);
 }
 
-// s.split(): whitespace runs separate
-py::list<str> split_ws(const str& s) {
-    py::list<str> out;
-    const std::u32string& u = s.u32();
-    auto sp = [](char32_t c) { return str(std::u32string(1, c)).isspace(); };
-    size_t i = 0;
-    while (true) {
-        while (i < u.size() && sp(u[i])) ++i;
-        if (i >= u.size()) break;
-        size_t j = i;
-        while (j < u.size() && !sp(u[j])) ++j;
-        out.append(str(u.substr(i, j - i)));
-        i = j;
+// the old layer's SYMBOLS (name -> (kind letter, address)) and the new layer's
+Symbols symbols_to_py(const cb::exact::SymbolTable& t) {
+    Symbols out;
+    for (const auto& kv : t) out.set(S(kv.first), std::make_tuple(S(std::string(1, cb::exact::sym_kind_letter(kv.second.kind))), kv.second.address));
+    return out;
+}
+cb::exact::SymbolTable symbols_from_py(const Symbols& s) {
+    cb::exact::SymbolTable out;
+    for (const auto& kv : s.items()) {
+        const std::string k = std::get<0>(std::get<1>(kv)).utf8();
+        cb::exact::SymKind kind = k == "C" ? cb::exact::SymKind::Code : k == "D" ? cb::exact::SymKind::Data : k == "S" ? cb::exact::SymKind::Segment : cb::exact::SymKind::Unknown;
+        out.insert_or_assign(std::get<0>(kv).utf8(), cb::exact::SymPlace{kind, std::get<1>(std::get<1>(kv))});
     }
     return out;
 }
-
-int64_t hex(const str& s) { return py::int_parse(s, 16); }
-
-bool all_hex(const str& s) { return re::fullmatch(str("[0-9a-fA-F]+"), s).has_value(); }
+py::bytes bytes_of(cb::ByteView v) { return py::bytes(std::string(cb::as_text(v))); }
 
 compare::Decoder& decoder_slot() {
     static compare::Decoder d;
@@ -216,27 +213,6 @@ compare::Decoder& decoder_slot() {
 ProveTexts& prove_slot() {
     static ProveTexts f;
     return f;
-}
-
-// the struct.unpack_from("<14H", b, 0) of an MZ header
-py::list<int64_t> header_words(const bytes& b) {
-    if (b.size() < 28) {
-        throw py::StructError("unpack_from requires a buffer of at least 28 bytes for unpacking 28 bytes at offset 0 (actual buffer size is " +
-                              std::to_string(b.size()) + ")");
-    }
-    py::list<int64_t> h;
-    for (int64_t i = 0; i < 14; ++i) h.append(py::unpack_from1<int64_t>("<H", b, 2 * i));
-    return h;
-}
-
-// struct.iter_unpack("<HH", buf): [(a, b)]
-py::list<std::tuple<int64_t, int64_t>> pairs_of(const bytes& buf) {
-    if (buf.size() % 4 != 0) throw py::StructError("iterative unpacking requires a buffer of a multiple of 4 bytes");
-    py::list<std::tuple<int64_t, int64_t>> out;
-    for (int64_t i = 0; i < buf.size(); i += 4) {
-        out.append(std::make_tuple(py::unpack_from1<int64_t>("<H", buf, i), py::unpack_from1<int64_t>("<H", buf, i + 2)));
-    }
-    return out;
 }
 
 // ---------------------------------------------------------------------------------------------- the adapters
@@ -593,46 +569,27 @@ Project::Project(const str& folder, const std::optional<str>& override_json) {
     }
     cfg = from_value(d);
     const Config& c = cfg;
-    exe = py::os::path::normpath(py::os::path::join(dir, c.image));
-    src = py::os::path::join(dir, c.src);
-    for (const str& x : c.include) include.append(py::os::path::normpath(py::os::path::join(dir, x)));
-    dgroup = c.dgroup ? num(*c.dgroup) : 0;
-    if (c.code_segments_text) {
-        if (*c.code_segments_text == "relocs") {            // (worked out below)
-            code_segments = py::list<int64_t>({0});
-        } else {
-            py::list<int64_t> v;
-            for (char32_t ch : c.code_segments_text->u32()) v.append(num(Num(str(std::u32string(1, ch)))));
-            code_segments = py::sorted(v);
-        }
-    } else {
-        py::list<int64_t> v;
-        for (const Num& x : c.code_segments) v.append(num(x));
-        code_segments = py::sorted(v);
-    }
-    loadseg = num(c.loadseg);
-    code_end = num(c.code_end);
+    // the logic: the new layer's project (the program's header, relocations and image, the code segments, DGROUP)
+    impl_ = cb::exact::project::Project::open(std::filesystem::path(dir.utf8()), nullptr, override_json ? std::optional<std::string>(override_json->utf8()) : std::nullopt);
+    const cb::exact::project::Project& ip = *impl_;
+    exe = native(ip.exe());
+    src = native(ip.src());
+    for (const auto& x : ip.include()) include.append(native(x));
+    dgroup = ip.dgroup();
+    code_segments = py::list<int64_t>();
+    for (uint32_t x : ip.code_segments()) code_segments.append(x);
+    loadseg = ip.loadseg();
+    code_end = ip.code_end();
     switches = c.switches;
+    file = bytes_of(ip.file());
+    image = bytes_of(ip.image());
+    if (ip.header()) {
+        for (uint16_t w : *ip.header()) header.append(w);
+    }
     {
-        py::file f = py::open_rb(exe);
-        file = f.read();
-        f.close();
-    }
-    const bytes& b = file;
-    if (b.slice(0, 2) == bytes("MZ") || b.slice(0, 2) == bytes("ZM")) {
-        header = header_words(b);
-        const py::list<int64_t>& h = header;
-        image = b.slice(h[4] * 16, h[2] * 512 - (h[1] ? (512 - h[1]) : 0));
-    } else {
-        image = b;
-    }
-    if (!c.dgroup && !header.empty() && header[3]) {        // (no place given: a small program's relocations all hold one paragraph - DGROUP's)
-        py::set<int64_t> ws;
-        for (const auto& os_ : pairs_of(b.slice(header[12], header[12] + 4 * header[3]))) {
-            int64_t o = std::get<0>(os_), s = std::get<1>(os_);
-            if (o + s * 16 + 2 <= image.size()) ws.add(py::unpack_from1<int64_t>("<H", image, o + s * 16));
-        }
-        if (ws.size() == 1) dgroup = *ws.begin() * 16;
+        py::set<int64_t> r;
+        for (uint32_t a : ip.relocs()) r.add(a);
+        relocs_ = r;
     }
     if (c.packed && !c.packed->empty()) {                   // (the original as EXEPACK left it)
         py::file f = py::open_rb(py::os::path::normpath(py::os::path::join(dir, *c.packed)));
@@ -640,34 +597,9 @@ Project::Project(const str& folder, const std::optional<str>& override_json) {
         f.close();
         packed = exepack::read(packed_file);
     }
-    if (c.code_segments_text == std::optional<str>(str("relocs")) || (c.code == "far" && !c.has_code_segments)) {
-        // (far code: the segments the loader sets, from the words the relocation table points at - those outside the data segment)
-        int64_t dend = num(c.data_end);
-        py::set<int64_t> segs;
-        for (int64_t a : relocs()) {
-            if (a + 2 <= image.size()) segs.add(py::unpack_from1<int64_t>("<H", image, a) * 16);
-        }
-        py::set<int64_t> keep;
-        keep.add(0);
-        for (int64_t s : segs) {
-            bool in_data = dgroup <= s && s < (dend ? dend : dgroup + 1);
-            if (s < image.size() && !in_data) keep.add(s);
-        }
-        code_segments = py::sorted(keep);
-    }
 }
 
-const py::set<int64_t>& Project::relocs() const {
-    if (!relocs_) {
-        py::set<int64_t> r;
-        if (!header.empty()) {
-            const py::list<int64_t>& h = header;
-            for (const auto& os_ : pairs_of(file.slice(h[12], h[12] + 4 * h[3]))) r.add(std::get<0>(os_) + std::get<1>(os_) * 16);
-        }
-        relocs_ = r;
-    }
-    return *relocs_;
-}
+const py::set<int64_t>& Project::relocs() const { return *relocs_; }
 
 py::list<std::shared_ptr<Project>> Project::sets() {
     py::list<std::shared_ptr<Project>> out;
@@ -704,13 +636,11 @@ int64_t Project::own_end() {
 }
 
 std::optional<py::list<int64_t>> Project::starts() const {
-    if (!cfg.starts || cfg.starts->empty()) return std::nullopt;
-    str p = py::os::path::join(dir, *cfg.starts);
+    auto v = impl_->starts();
+    if (!v) return std::nullopt;
     py::list<int64_t> out;
-    for (const str& l : lines_of(p)) {
-        if (!l.strip().empty() && !l.startswith(str("#"))) out.append(hex(split_ws(l)[0]));
-    }
-    return py::sorted(out);
+    for (uint32_t x : *v) out.append(x);
+    return out;
 }
 
 py::list<std::tuple<str, std::shared_ptr<toolchain::Toolchain>>> Project::toolchains() const {
@@ -731,104 +661,24 @@ std::shared_ptr<toolchain::Toolchain> Project::toolchain() const { return std::g
 
 str Project::path(const str& name) const { return py::os::path::join(src, name); }
 
-Symbols Project::symbols() const {
-    Symbols s;
-    str p = path(str("SYMBOLS"));
-    if (py::os::path::exists(p)) {
-        for (const str& l : lines_of(p)) {
-            py::list<str> c = split_ws(l);
-            if (l.startswith(str("#")) || py::len(c) < 2) continue;
-            if (py::len(c) >= 3 && (c[1] == "C" || c[1] == "D" || c[1] == "S")) {
-                s.set(c[0], std::make_tuple(c[1], hex(c[2])));
-            } else if (all_hex(c[1])) {                     // (name address: of the code or the data, unsaid)
-                s.set(c[0], std::make_tuple(str("?"), hex(c[1])));
-            }
-        }
-    }
-    return s;
-}
+Symbols Project::symbols() const { return symbols_to_py(impl_->symbols()); }
 
-void Project::save_symbols(const Symbols& s) const {
-    py::file f = py::open(path(str("SYMBOLS")), str("w"), std::nullopt, std::nullopt, str("\n"));
-    f.write(str("# name, C (code: image offset) or D (data: offset in the data segment), address\n"));
-    auto items = s.items();
-    std::sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
-        const auto& va = std::get<1>(a);
-        const auto& vb = std::get<1>(b);
-        return std::make_tuple(std::get<0>(va), std::get<1>(va), std::get<0>(a)) < std::make_tuple(std::get<0>(vb), std::get<1>(vb), std::get<0>(b));
-    });
-    for (const auto& kv : items) {
-        f.write(py::percent(str("%s %s %04x\n"), std::get<0>(kv), std::get<0>(std::get<1>(kv)), std::get<1>(std::get<1>(kv))));
-    }
-    f.close();
-}
+void Project::save_symbols(const Symbols& s) const { impl_->save_symbols(symbols_from_py(s)); }
 
 py::list<std::tuple<int64_t, str>> Project::sources() const {
     py::list<std::tuple<int64_t, str>> out;
-    const str rx = cfg.sources;                             // (project "sources": the pattern of the file names, group 1 the address)
-    for (const str& f : py::os::listdir(src)) {
-        auto m = re::fullmatch(rx, f, re::I);
-        if (m) out.append(std::make_tuple(hex(m->group(1)), py::os::path::join(src, f)));
-    }
-    if (cfg.place_by && !cfg.place_by->empty()) {           // (whole files placed by a list of names and places)
-        py::dict<str, int64_t> places;
-        py::file pf = py::open(path(*cfg.place_by), str("r"), str("utf-8"));
-        for (const str& l : pf) {
-            py::list<str> c = split_ws(py::split(l, str("#"))[0]);
-            if (py::len(c) >= 2) {
-                auto m = re::fullmatch(str("[fF]?([0-9a-fA-F]{4,5})"), c[1]);
-                if (m) places.set(c[0].upper().slice(0, 8), hex(m->group(1)));
-            }
-        }
-        pf.close();
-        for (const str& f : py::sorted(py::os::listdir(src))) {
-            if (!f.lower().endswith(str(".c"))) continue;
-            py::file tf = py::open(py::os::path::join(src, f), str("r"), str("latin1"));
-            str t = tf.read_text();
-            tf.close();
-            t = re::sub(str("/\\*.*?\\*/"), str(""), t, 0, re::S);
-            for (const auto& m : re::finditer(str("(?m)^(?:[A-Za-z_][\\w \\*]*?\\s)?\\**\\s*([A-Za-z_]\\w*)\\s*\\([^;{]*$"), t)) {
-                str g = m.group(1);
-                if (g == "if" || g == "while" || g == "for" || g == "switch" || g == "return") continue;
-                if (places.contains(g.upper().slice(0, 8))) {
-                    out.append(std::make_tuple(places.at(g.upper().slice(0, 8)), py::os::path::join(src, f)));
-                    break;
-                }
-            }
-        }
-    }
-    if (cfg.unplaced && !cfg.unplaced->empty()) {           // (files with no place in their name: address -1)
-        for (const str& f : py::sorted(py::os::listdir(src))) {
-            if (re::fullmatch(*cfg.unplaced, f, re::I)) out.append(std::make_tuple(int64_t(-1), py::os::path::join(src, f)));
-        }
-    }
-    str p = path(str("ORDER"));
-    if (py::os::path::exists(p)) {
-        for (const str& l : lines_of(p)) {
-            py::list<str> c = split_ws(py::split(l, str("#"))[0]);
-            if (py::len(c) >= 2 && all_hex(c[1]) && py::os::path::exists(path(c[0]))) out.append(std::make_tuple(hex(c[1]), path(c[0])));
-        }
-    }
-    return py::sorted(out);
+    for (const auto& x : impl_->sources()) out.append(std::make_tuple(x.at, native(x.path)));
+    return out;
 }
 
-bool Project::whole(const str& path_) const {
-    return cfg.whole || !re::fullmatch(str("f[0-9a-f]{5}\\.c"), py::os::path::basename(path_)).has_value();
-}
+bool Project::whole(const str& path_) const { return impl_->whole(std::filesystem::path(path_.utf8())); }
 
 py::dict<str, bytes> Project::headers() const {
     const ProfileParts& pp = profile_parts(*toolchain());
+    std::vector<std::string> exts;
+    for (const str& e : pp.headers) exts.push_back(e.utf8());
     py::dict<str, bytes> out;
-    for (const str& f : py::sorted(py::os::listdir(src))) {
-        str lf = f.lower();
-        bool ok = false;
-        for (const str& e : pp.headers) ok = ok || lf.endswith(e);
-        if (ok) {
-            py::file h = py::open_rb(py::os::path::join(src, f));
-            out.set(f, h.read());
-            h.close();
-        }
-    }
+    for (const auto& kv : impl_->headers_with(exts)) out.set(S(kv.first), bytes_of(kv.second));
     return out;
 }
 

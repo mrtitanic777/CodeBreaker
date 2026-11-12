@@ -1,0 +1,10 @@
+# comment
+_main C 0010
+_buf D 0100
+seg@x S 0004
+bare 0020
+xx C
+  weird
+dup C 0010
+dup D 0200
+C
