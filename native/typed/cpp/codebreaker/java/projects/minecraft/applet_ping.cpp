@@ -1,5 +1,7 @@
-// codebreaker/java/projects/minecraft/applet_ping.cpp -- C++ port of codebreaker.java.projects.minecraft.applet_ping
-// (see the header).
+// codebreaker/java/projects/minecraft/applet_ping.cpp -- the legacy IR form (patch) of the applet-ping pass, over the OLD
+// translate IR (py::ref nodes). COMPAT(py): remove when translate/ir and translate/rewrite are refactored and
+// their shims land; the tree-shape pass then lives only in cb/java/projects/minecraft/applet_ping.cpp (over the new IR).
+// The text form (process / run / stranded) forwards to the new module (see the header).
 
 #include "codebreaker/java/projects/minecraft/applet_ping.hpp"
 
@@ -14,56 +16,6 @@ namespace codebreaker::java::projects::minecraft::applet_ping {
 
 namespace ir = codebreaker::translate::ir;
 namespace rw = codebreaker::translate::rewrite;
-
-const py::re::Pattern _PING = py::re::compile(py::str(
-    R"(try\s*\{[^{}]*?getDocumentBase\(\)[^{}]*?openStream\b[^{}]*?)"
-    R"(if\s*\([^{}]*?\)\s*\{\s*(this->\w+\s*=\s*\w+\s*;)\s*\}\s*)"
-    R"(\}\s*catch\s*\([^)]*\)\s*\{\s*\})"));
-
-const py::str _NOTE = py::str(
-    "   // J2X applet-ping-bypass: console has no applet -- getDocumentBase()->openStream() is a "
-    "NULL-returning stub and readLine() on it FAULTS (an access violation, NOT caught by try/catch). "
-    "Drop the ping and set the level directly (matches the OG Indev hand-port). [generator: applet_ping.py]");
-
-const py::re::Pattern _SURVIVOR = py::re::compile(py::str(R"(try\s*\{[^{}]*?getDocumentBase\(\)[^{}]*?openStream\b)"));
-
-std::tuple<py::str, int64_t> process(const py::str& text) {
-    return _PING.subn([](const py::re::Match& m) { return m.group(1) + _NOTE; }, text);
-}
-
-Result run(const py::str& out_dir) {
-    py::list<py::str> files;
-    for (const py::str& f : py::sorted(py::os::listdir(out_dir))) {
-        if (f.endswith(py::str(".cpp"))) {
-            files.append(f);
-        }
-    }
-    Result res;
-    for (const py::str& f : files) {
-        py::str path = py::os::path::join(out_dir, f);
-        py::str text;
-        try {
-            text = py::open(path, py::str("r"), py::str("utf-8"), py::str("replace")).read_text();
-        } catch (const py::OSError&) {                     // (IOError, OSError)
-            continue;
-        }
-        if (!text.contains(py::str("getDocumentBase")) || !text.contains(py::str("openStream"))) {
-            continue;
-        }
-        auto [new_text, n] = process(text);
-        if (new_text != text) {
-            py::file fh = py::open(path, py::str("w"), py::str("utf-8"));
-            fh.write(new_text);
-            fh.close();
-            res.files.append(Touched{f, n});
-            res.sites += n;
-        }
-        if (_SURVIVOR.search(new_text)) {
-            res.stranded.append(f);
-        }
-    }
-    return res;
-}
 
 namespace {
 
@@ -188,24 +140,6 @@ Result patch(const py::list<ir::NodeP>& units) {
         res.sites += kv.second;
     }
     return res;
-}
-
-py::list<py::str> stranded(const py::str& out_dir) {
-    py::list<py::str> out;
-    for (const py::str& f : py::sorted(py::os::listdir(out_dir))) {
-        if (f.endswith(py::str(".cpp"))) {
-            py::str text;
-            try {
-                text = py::open(py::os::path::join(out_dir, f), py::str("r"), py::str("utf-8"), py::str("replace")).read_text();
-            } catch (const py::OSError&) {                 // (IOError, OSError)
-                continue;
-            }
-            if (_SURVIVOR.search(text)) {
-                out.append(f);
-            }
-        }
-    }
-    return out;
 }
 
 }  // namespace codebreaker::java::projects::minecraft::applet_ping

@@ -815,6 +815,37 @@ Old = the typed port on the py:: layer (its harness, state/work/typed-port/port.
 | all of it | about 5.1 s (the Python: about 8.9 s) | 0.5 s |
 
 The gains are the registers (an array, not a map of strings), the operands (parsed once per line, not at every step of the fixed point), the states (origin sets shared and copied on write) and the text work (scans, not backtracking regular expressions).
+## W1-B22: recompile/discover and recompile/builders (arith, logical, memory, system, vector)
+
+Old = the typed port on the py:: layer (`py::list<py::str>` statements, helpers as `std::function` over `py::str`), new =
+`native/cb/recompile/builders` (tables of statement text, `std::format`, an `Operands` interface), both Release /O2 in one test
+executable, one thread, every case of the golden file (the statements of the instruction, operand tokens parsed in each call),
+repeated; times for the whole loop.
+
+| Work | Old | New |
+|---|---|---|
+| arith, 544 cases x60 | 39 ms | 12 ms |
+| logical, 930 cases x60 | 114 ms | 26 ms |
+| memory, 1,068 cases x60 | 147 ms | 43 ms |
+| system, 1,195 cases x30 | 66 ms | 21 ms |
+| vector, 1,137 cases x30 | 61 ms | 38 ms |
+
+`discover` over the 16 KB Minecraft slice (4,096 words, a data section of 57 pointers, 37 functions): 0.04 ms a run with the pointer
+scan (50 runs in 2 ms). The old port could not be timed beside it in the test executable (it reads its image through the old PowerPC
+PE reader, which the new tests cannot link).
+
+## cb refactor W1-B18: java/console platform_config + platform_refs, java/projects/minecraft fix passes, edition, platform_coverage, profiles (2026-11-11)
+
+Old = the live Python (the old typed port was not timed: it ran the same regexes through the py:: layer). Converted-looking C++ text made by repeating the test fixtures; best of one, shared machine.
+
+| What | Python (0.3 MB / 100 repeats) | New (3.2 MB / 1000 repeats) |
+|---|---|---|
+| applet_ping rewrite | 2 ms | 6 ms |
+| sound_fix rewrite (200 SFX sites: Python replaces the whole file once per site) | 6112 ms (quadratic; did not finish in 4 min at 1000 repeats) | 19 ms (a local routed once, then skipped) |
+| render_fix rewrite | 2 ms | 10 ms |
+| platform_coverage provided_symbols / used_holder_symbols | 31 / 8 ms | 5 / 0 ms |
+
+Per MB the applet and render passes run at about 2 and 3 ms; the Python's were 7 and 7 ms per MB, so nothing is slower. The platform_config, platform_refs and edition modules are a few file writes and string builds (microseconds); not timed.
 
 ## cb refactor W1-B23: source/ne_asm (segment, fixups) and source/vxd (disassembly, coalesce) (2026-11-11)
 

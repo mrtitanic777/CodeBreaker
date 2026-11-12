@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <optional>
 #include <tuple>
 
@@ -57,6 +58,34 @@ private:
     const BaseExpression& base_;
     const AddressExpression& addr_;
 };
+
+// The body every builder shim shares (arith, logical, memory, system, vector too): the old call in, the new `emit` called, the
+// statements back as a py::list. `rv` is the register-value helper in either of the old shapes (the register number as an int64_t,
+// or as an optional of one); `word` is the raw instruction word (the trap builders decode it).
+template <class NewEmit, class Rv>
+inline std::optional<py::list<py::str>> forward(NewEmit new_emit, const py::str& mn, const py::list<py::str>& ops, const OperandNumber& _reg,
+                                                const OperandNumber& _vreg, const OperandNumber& _freg, const OperandNumber& _imm,
+                                                const OperandNumber& _cr, const MemOperand& _mem, const Rv& rv, const BaseExpression& _base_expr,
+                                                const AddressExpression& _addr, int64_t va, int64_t word) {
+    return cb::compat::guard([&]() -> std::optional<py::list<py::str>> {
+        std::vector<std::string> tokens;
+        for (const py::str& t : ops) tokens.push_back(cb::compat::from_py(t));
+        const std::string mnemonic = cb::compat::from_py(mn);
+        const RegisterValue register_value = [&rv](int64_t n, const py::str& field) { return rv(n, field); };
+        const Helpers helpers(_reg, _vreg, _freg, _imm, _cr, _mem, register_value, _base_expr, _addr);
+        const auto statements =
+            new_emit(cb::recompile::builders::Instruction{mnemonic, tokens, static_cast<std::uint32_t>(va), static_cast<std::uint32_t>(word)}, helpers);
+        if (!statements) return std::nullopt;
+        return cb::compat::to_py(*statements);
+    });
+}
+
+// The mnemonics of a builder as the old list.
+inline py::list<py::str> mnemonic_list(std::span<const std::string_view> names) {
+    py::list<py::str> out;
+    for (const std::string_view m : names) out.append(cb::compat::to_py(m));
+    return out;
+}
 
 }  // namespace shim_
 

@@ -32,8 +32,27 @@ struct Profile {
     py::list<py::str> heavy_types_high;                           // () by default
 };
 
+// The old record of a new-tree profile (the era profiles' shims use it; the new tree has no such record).
+inline Profile from_cb(const cb::java::profiles::Profile& p) {
+    namespace cc = cb::compat;
+    Profile o;
+    o.name = cc::to_py(p.name);
+    o.static_init_order = cc::to_py(p.static_init_order);
+    o.package_roles = cc::to_py(p.package_roles);
+    o.heavy_types = cc::to_py(p.heavy_types);
+    for (const auto& f : p.vcxproj_filters) o.vcxproj_filters.append(std::make_tuple(cc::to_py(f.pattern), cc::to_py(f.folder)));
+    o.dead_types = cc::to_py(p.dead_types);
+    o.optional_types = cc::to_py(p.optional_types);
+    o.nullable = cc::to_py(p.type.nullable);
+    o.nullable_fields = cc::to_py(p.type.nullable_fields);
+    o.nullable_getters = cc::to_py(p.type.nullable_getters);
+    o.nullable_getter_return_type = cc::to_py(p.type.nullable_getter_return_type);
+    o.heavy_types_high = cc::to_py(p.heavy_types_high);
+    return o;
+}
+
 namespace shim_ {
-namespace cbx = cb::java::projects::minecraft::profiles::minecraft_xbox360;
+namespace cbx =cb::java::projects::minecraft::profiles::minecraft_xbox360;
 inline py::list<std::tuple<py::str, py::str>> filters() {
     py::list<std::tuple<py::str, py::str>> out;
     for (const auto& f : cbx::vcxproj_filters()) out.append(std::make_tuple(cb::compat::to_py(f.pattern), cb::compat::to_py(f.folder)));

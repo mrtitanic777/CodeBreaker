@@ -171,7 +171,9 @@ def scan_stub_markers(output_dir):
 # What a header PROVIDES: declared function names + named constants.
 # ---------------------------------------------------------------------------
 _FN_DECL = re.compile(r'\b([A-Za-z_]\w*)\s*\(')
-_CONST_DECL = re.compile(r'\b(?:const\s+\w[\w:<>]*|#define)\s+([A-Z][A-Z0-9_]{2,})\b')
+# (`\b` belongs to `const` only: in front of `#` it required a word character before the hash, so `#define NAME`
+# lines -- the usual way a header declares a constant -- were never counted.)
+_CONST_DECL = re.compile(r'(?:\bconst\s+\w[\w:<>]*|#\s*define)\s+([A-Z][A-Z0-9_]{2,})\b')
 _ENUM_CONST = re.compile(r'\b([A-Z][A-Z0-9_]{2,})\s*=')
 
 
