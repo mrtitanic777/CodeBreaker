@@ -902,3 +902,18 @@ Both are one-shot, per-program work (the object model of a Java program; the hea
 microseconds to a millisecond; neither has a hot path, so no old-versus-new timing was taken. The cycle search of jmodel
 is now linear in the classes plus edges (the Python rescanned every class for each subclass lookup); module_file builds each
 file with one pass over its parts instead of repeated list concatenation.
+
+## translate/frontends/python/program (W1-B29)
+
+`Program` is the symbol tables and facts of the Python front end; the work that is not a one-off is loading a package and building
+its symbol tables (`add_tree` + `index`). Timed on the 552 modules of `codebreaker/` (7,374 functions, 456 classes), best of three,
+a heavily loaded machine (other builds running), Release:
+
+| step | Python (program.py) | C++ (cb) |
+|---|---|---|
+| add_tree: read and parse 552 modules | 2,980 ms | 846 ms |
+| index: symbol tables, bases, `none_aware`, `index_params` | 1,951 ms | 133 ms |
+
+The old typed port (`native/typed/cpp/.../program.cpp`) links only into the translated executable, so it was not timed on its own; it
+does the same work over `py::str` and `py::dict`. Parsing is pyfront's (unchanged); `index` was the Python's ast walks and is now one
+walk per function over a flat child list.
