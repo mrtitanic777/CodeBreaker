@@ -220,4 +220,11 @@ public:
     }
 };
 
+// The old event for a new one (the shims of the analyzers append what the new code finds to an old ledger).
+inline py::ref<Event> from_new(const cbl::Event& e) {
+    return std::make_shared<Event>(cb::compat::to_py(e.file), cb::compat::to_py(cbl::name(e.category)), cb::compat::to_py(e.message),
+                                   static_cast<int64_t>(e.line), cb::compat::to_py(cbl::name(e.severity)), cb::compat::to_py(e.source),
+                                   cb::compat::to_py(e.rule), cb::compat::to_py(e.snippet));
+}
+
 }  // namespace codebreaker::java::ledger

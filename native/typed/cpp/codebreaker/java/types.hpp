@@ -1,35 +1,25 @@
-// codebreaker/java/types.hpp -- typed C++ from codebreaker.java.types.
+// codebreaker/java/types.hpp -- SHIM over cb/java/types.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last py::
+// consumer.
 //
-// types.py -- Module 3: resolve a Java type to its C++03 form + OWNERSHIP.
-//
-// Ownership is the decision that fixes the converter's #1 bug class (value vs
-// pointer -> `.` vs `->`, C2227/C2228). It is decided ONCE, here, from the type --
-// not patched afterward by regex. `emit` asks this resolver and emits correct code
-// the first time.
-//
-//   ownership(jtype) -> "value"   stack object, accessed with '.'   (int, Vec3D, std::string)
-//                    -> "pointer" heap object, accessed with '->'   (Block*, World*, Entity*)
-//
-// cpp_type(jtype, context) produces the C++ spelling for a field / param / return /
-// local / generic-or-array element, applying the proven array and string rules.
-//
-// Notes on the port:
-//   * the Python's `None` defaults of TypeResolver's constructor ("not given" vs "given empty" matters for
-//     value_types) are std::optional parameters;
-//   * a JType is a py::ref<ir::JType> (shared, as in Python); "or None" results are a null ref;
-//   * `members` is {class_name: {'fields': {...}, 'methods': {...}, 'parent': ...}}: a record (MemberEnv)
-//     whose `parent` is optional (the Python reads it with .get());
-//   * the namedtuple OwnershipCatalog is a struct of its four fields.
+// The old resolver is a shared, mutable record that the pipeline fills in after construction (`markers`,
+// `own_catalog`) and the emitters read field by field (`typed_enums`, `values`, `known` ...), so the shim keeps the
+// data members as they were. What the resolver DECIDES goes through the new resolver, which is built from the
+// classification sets on first use and rebuilt if one of them grows (the pipeline only ever adds to them).
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/java/types.hpp"
 #include "codebreaker/java/ir.hpp"
 #include "codebreaker/java/typemap.hpp"
 #include "py.hpp"
 
 namespace codebreaker::java::types {
+
+namespace cbt = cb::java::types;
 
 using JTypeRef = py::ref<ir::JType>;
 
@@ -44,7 +34,10 @@ struct OwnershipCatalog {
     py::dict<py::str, py::set<int64_t>> retained_params;
     py::set<py::str> corpus_methods;
 
-    static OwnershipCatalog empty();
+    static OwnershipCatalog empty() {
+        return OwnershipCatalog{py::set<py::str>(), py::dict<py::str, py::str>(), py::dict<py::str, py::set<int64_t>>(),
+                                py::set<py::str>()};
+    }
 };
 
 // One class's entry of the member environment (inheritance already flattened in).
@@ -56,76 +49,126 @@ struct MemberEnv {
 
 class TypeResolver {
   public:
-    // user-defined classes parsed from the corpus (everything here is a reference type)
     py::set<py::str> known;
-    // class names that are C++ VALUE/struct types (stack, '.' access)
     py::set<py::str> values;
     py::set<py::str> interfaces;
     py::set<py::str> enums;
-    // TYPED enums (constants carry state/behaviour) -> emitted as real pointer-classes with a
-    // static instance table, NOT int constants. Still in `enums` so `Enum.CONST` resolves to
-    // `Enum::CONST` (no s_ prefix), but ownership/cpp_type treat them as pointers.
+    // TYPED enums -> emitted as real pointer-classes; still in `enums`
     py::set<py::str> typed_enums;
-    // classes whose objects run asynchronously (Thread subclasses / Runnable) -> the leak
-    // transform must NEVER stack-allocate them (the object must outlive the started thread).
     py::set<py::str> thread_like;
     // dropped MCP EmptyN marker types -> strip `(EmptyN*)NULL` bridge args at call sites.
     py::set<py::str> markers;
-    // member environment for expression-type inference (chained '.' vs '->'):
-    //   {class_name: {'fields': {name: JType}, 'methods': {name: return JType}}}
-    // inheritance is already flattened in (closer definitions win). Built by the
-    // pipeline from the full corpus; empty in unit tests that don't need chains.
     py::dict<py::str, MemberEnv> members;
-    // {class: set(method names colliding with a field)} -> emit those methods as `name_`
     py::dict<py::str, py::set<py::str>> method_renames;
-    // whole-program no-GC ownership catalog (caller-frees analysis for the source emitter). Populated
-    // by pipeline.build_resolver over the whole corpus; empty in unit tests that don't set it.
     OwnershipCatalog own_catalog;
 
     TypeResolver(const std::optional<py::set<py::str>>& known_classes = std::nullopt,
                  const std::optional<py::set<py::str>>& value_types = std::nullopt,
                  const std::optional<py::set<py::str>>& interface_types = std::nullopt,
                  const std::optional<py::set<py::str>>& enum_types = std::nullopt,
-                 const std::optional<py::dict<py::str, MemberEnv>>& members = std::nullopt,
-                 const std::optional<py::dict<py::str, py::set<py::str>>>& method_renames = std::nullopt,
+                 const std::optional<py::dict<py::str, MemberEnv>>& members_ = std::nullopt,
+                 const std::optional<py::dict<py::str, py::set<py::str>>>& method_renames_ = std::nullopt,
                  const std::optional<py::set<py::str>>& typed_enum_types = std::nullopt,
-                 const std::optional<py::set<py::str>>& thread_like = std::nullopt);
+                 const std::optional<py::set<py::str>>& thread_like_ = std::nullopt)
+        : known(copy_of_(known_classes)),
+          values(value_types ? py::set<py::str>::from(*value_types) : py::set<py::str>::from(typemap::DEFAULT_VALUE_TYPES)),
+          interfaces(copy_of_(interface_types)),
+          enums(copy_of_(enum_types)),
+          typed_enums(copy_of_(typed_enum_types)),
+          thread_like(copy_of_(thread_like_)),
+          members(members_ && !members_->empty() ? *members_ : py::dict<py::str, MemberEnv>()),
+          method_renames(method_renames_ && !method_renames_->empty() ? *method_renames_
+                                                                      : py::dict<py::str, py::set<py::str>>()),
+          own_catalog(OwnershipCatalog::empty()) {}
 
-    // The C++ emit name for a method: `name_` if it collides with a same-named field in
-    // class_name's hierarchy (so field and method don't clash), else name unchanged.
-    py::str renamed_method(const py::str& class_name, const py::str& method_name) const;
+    py::str renamed_method(const py::str& class_name, const py::str& method_name) const {
+        return cb::compat::to_py(impl_().renamed_method(cb::compat::from_py(class_name), cb::compat::from_py(method_name)));
+    }
 
     // -- classification ------------------------------------------------------
-    bool is_primitive(const JTypeRef& jtype) const;
-    // "value" or "pointer".
-    py::str ownership(const JTypeRef& jtype) const;
-    bool is_pointer(const JTypeRef& jtype) const;
-    bool is_value(const JTypeRef& jtype) const;
+    bool is_primitive(const JTypeRef& jtype) const { return impl_().is_primitive(ir::to_new(*jtype)); }
+    py::str ownership(const JTypeRef& jtype) const {
+        return cb::compat::to_py(cbt::to_string(impl_().ownership(ir::to_new(*jtype))));
+    }
+    bool is_pointer(const JTypeRef& jtype) const { return impl_().is_pointer(ir::to_new(*jtype)); }
+    bool is_value(const JTypeRef& jtype) const { return impl_().is_value(ir::to_new(*jtype)); }
 
     // -- member environment (for chained '.' vs '->' inference) ---------------
-    // JType of class_name's field (own or inherited), or null if unknown.
-    JTypeRef member_field_type(const py::str& class_name, const py::str& field_name) const;
-    // Return JType of class_name's method (own or inherited), or null if unknown.
-    JTypeRef member_method_type(const py::str& class_name, const py::str& method_name) const;
-    // True if class_name (transitively) derives from a by-value container (JList/JMap/JSet) --
-    // e.g. argo's J_JsonNodeList : List, J_JsonObjectNodeList : Map. Such a class instance IS the
-    // container value, so `new X(...)` must be dereferenced where the base container value is wanted.
-    bool extends_value_container(const py::str& class_name) const;
-    // A PORT message if this type is mapped lossily, else None (for emit's ledger).
-    std::optional<py::str> port_note(const JTypeRef& jtype) const;
+    JTypeRef member_field_type(const py::str& class_name, const py::str& field_name) const {
+        const auto* t = impl_().member_field_type(cb::compat::from_py(class_name), cb::compat::from_py(field_name));
+        return t ? ir::from_new(*t) : nullptr;
+    }
+    JTypeRef member_method_type(const py::str& class_name, const py::str& method_name) const {
+        const auto* t = impl_().member_method_type(cb::compat::from_py(class_name), cb::compat::from_py(method_name));
+        return t ? ir::from_new(*t) : nullptr;
+    }
+    bool extends_value_container(const py::str& class_name) const {
+        return impl_().extends_value_container(cb::compat::from_py(class_name));
+    }
+    std::optional<py::str> port_note(const JTypeRef& jtype) const {
+        const auto note = impl_().port_note(ir::to_new(*jtype));
+        if (!note) return std::nullopt;
+        return cb::compat::to_py(*note);
+    }
 
     // -- C++ spelling --------------------------------------------------------
-    py::str base_cpp(const py::str& name) const;
-    // C++03 type for a use site.
-    //
+    py::str base_cpp(const py::str& name) const { return cb::compat::to_py(impl_().base_cpp(cb::compat::from_py(name))); }
     // context: 'field' | 'param' | 'return' | 'local' | 'element'
-    // 'element' = inside an array or generic; the caller adds any pointer star.
-    py::str cpp_type(const JTypeRef& jtype, const py::str& context = py::str("field")) const;
+    py::str cpp_type(const JTypeRef& jtype, const py::str& context = py::str("field")) const {
+        return cb::compat::to_py(impl_().cpp_type(ir::to_new(*jtype), use_(context)));
+    }
+    py::str field_type(const JTypeRef& jtype) const { return cpp_type(jtype, py::str("field")); }
+    py::str param_type(const JTypeRef& jtype) const { return cpp_type(jtype, py::str("param")); }
+    py::str return_type(const JTypeRef& jtype) const { return cpp_type(jtype, py::str("return")); }
 
-    // convenience wrappers mirroring the call sites emit will use
-    py::str field_type(const JTypeRef& jtype) const;
-    py::str param_type(const JTypeRef& jtype) const;
-    py::str return_type(const JTypeRef& jtype) const;
+  private:
+    static py::set<py::str> copy_of_(const std::optional<py::set<py::str>>& x) {
+        return x ? py::set<py::str>::from(*x) : py::set<py::str>();
+    }
+    static cbt::Use use_(const py::str& context) {
+        const std::string c = cb::compat::from_py(context);
+        if (c == "param") return cbt::Use::Param;
+        if (c == "return") return cbt::Use::Return;
+        if (c == "local") return cbt::Use::Local;
+        if (c == "element") return cbt::Use::Element;
+        return cbt::Use::Field;
+    }
+    static cb::java::typemap::NameSet names_(const py::set<py::str>& s) {
+        cb::java::typemap::NameSet out;
+        for (const py::str& n : s) out.insert(cb::compat::from_py(n));
+        return out;
+    }
+
+    // The new resolver, built on first use from the sets the old code fills in, and again when one of them has
+    // grown (they are only ever added to).
+    const cbt::TypeResolver& impl_() const {
+        const std::int64_t stamp = known.size() * 3 + values.size() * 5 + interfaces.size() * 7 + enums.size() * 11 +
+                                   typed_enums.size() * 13 + members.size() * 17 + method_renames.size() * 19;
+        if (!impl_cache_ || stamp != stamp_) {
+            cbt::ResolverData d;
+            d.known = names_(known);
+            d.values = names_(values);
+            d.interfaces = names_(interfaces);
+            d.enums = names_(enums);
+            d.typed_enums = names_(typed_enums);
+            for (const auto& kv : method_renames.items()) {
+                d.method_renames[cb::compat::from_py(std::get<0>(kv))] = names_(std::get<1>(kv));
+            }
+            for (const auto& kv : members.items()) {
+                cbt::MemberEnv& e = d.members[cb::compat::from_py(std::get<0>(kv))];
+                const MemberEnv& old = std::get<1>(kv);
+                for (const auto& f : old.fields.items()) e.fields.emplace(cb::compat::from_py(std::get<0>(f)), ir::to_new(*std::get<1>(f)));
+                for (const auto& m : old.methods.items()) e.methods.emplace(cb::compat::from_py(std::get<0>(m)), ir::to_new(*std::get<1>(m)));
+                if (old.parent) e.parent = cb::compat::from_py(*old.parent);
+            }
+            impl_cache_ = std::make_shared<cbt::TypeResolver>(std::move(d));
+            stamp_ = stamp;
+        }
+        return *impl_cache_;
+    }
+
+    mutable std::shared_ptr<cbt::TypeResolver> impl_cache_;
+    mutable std::int64_t stamp_ = -1;
 };
 
 }  // namespace codebreaker::java::types
