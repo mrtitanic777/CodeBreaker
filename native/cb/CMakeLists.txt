@@ -17,7 +17,7 @@ function(cb_apply_flags target)
   target_compile_options(${target} PRIVATE /permissive- /utf-8 /EHsc /W4 /WX /Zc:__cplusplus /Zc:char8_t- /bigobj)
   if(CB_ASAN)
     target_compile_options(${target} PRIVATE /fsanitize=address /Z7)   # /Z7: debug info in each object, so the shared precompiled header works
-    target_link_options(${target} PUBLIC /INCREMENTAL:NO)
+    target_link_options(${target} PUBLIC /INCREMENTAL:NO /DEBUG)   # /DEBUG: a .pdb, so the sanitizer names the functions in its stacks
   endif()
   cb_speed_up(${target})
 endfunction()
