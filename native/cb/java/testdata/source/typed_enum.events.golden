@@ -1,0 +1,2 @@
+has_init_statics=true
+TypedEn.cpp|PORTED|LOW|emit|typed-enum|0|typed enum source: 3 singletons built in initStatics()

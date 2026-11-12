@@ -1,39 +1,24 @@
-// codebreaker/java/emit/source.hpp -- typed C++ port of codebreaker.java.emit.source.
+// codebreaker/java/emit/source.hpp -- SHIM over cb/java/emit/source.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last py::
+// consumer.
 //
-// source.py -- render a class's .cpp from IR + a TypeResolver.
-//
-// This is where the console-crash classes are prevented BY CONSTRUCTION:
-//   * static/array allocations get value-init `new T[n]()`  (Java zero-fills; C++ doesn't)
-//   * every constructor zero-inits its instance fields in the member-init list
-//     (no uninitialized members)
-//   * a class that allocates heap in a constructor gets a destructor that frees it
-//     (Rule-of-Three leak fix)
-//   * `this(...)` constructor delegation is inlined by the back end, never silently dropped (the
-//     Block blockID=0 / BlockContainer flag bugs)
-//
-// Every body, constructor and initialiser is written from the typed IR by the translator's back end
-// (codebreaker/translate/backends/cpp03.py); what it declines is an explicit, ledgered J2X-GAP.
-//
-// Notes on the port:
-//   * cls is the typed ir::JClass (a py::ref), resolver the typed types::TypeResolver, ledger a
-//     ledger::Ledger (a pointer: null is the Python's `ledger=None`);
-//   * cpp_std is codebreaker.java.transpile.CppStandard (no typed port of that module): the record
-//     header::CppStd (year and label) stands in for it, as in the header port;
-//   * the Python reads `getattr(resolver, 'two_phase', ())` -- an attribute the pipeline sets on the
-//     resolver: it is the `two_phase` parameter of render_source (set of class names built in two phases;
-//     absent -> none);
-//   * TREE_BODIES is the module global the transpiler sets to a translate.backends.cpp03.Bodies; that
-//     back end has no typed port yet, so `Bodies` is the interface source.py calls on it (the methods and
-//     results of cpp03.Bodies), and TREE_BODIES a pointer to one (null is None).
+// Render a class's .cpp from the IR and a TypeResolver. The old class and resolver are converted to the new IR for the call
+// (ir::to_new, types::TypeResolver::resolver()); the ledger events the new renderer records are appended to the old
+// ledger. The translator's back end is the old cpp03 `Bodies`, which answers by class name and old method, so the new
+// back-end interface is answered by an adapter over it: a member of the converted class is found again by its position in
+// the old class. `TREE_BODIES` is the module global the transpiler sets for a conversion; `two_phase` is the set of class
+// names built in two phases (the pipeline sets it on the Python's resolver; here it is a parameter).
 #pragma once
 
 #include <cstdint>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/java/emit/source.hpp"
 #include "codebreaker/java/emit/header.hpp"
 #include "codebreaker/java/ir.hpp"
 #include "codebreaker/java/ledger.hpp"
+#include "codebreaker/java/typemap.hpp"
 #include "codebreaker/java/types.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
@@ -42,8 +27,6 @@ namespace codebreaker::java::emit::source {
 
 using ClassRef = py::ref<ir::JClass>;
 using MethodRef = py::ref<ir::Method>;
-using FieldRef = py::ref<ir::Field>;
-using JTypeRef = py::ref<ir::JType>;
 using types::TypeResolver;
 using header::CppStd;
 
@@ -54,8 +37,8 @@ struct CtorParts {
     py::list<py::str> body;
 };
 
-// The translator's back end (translate.backends.cpp03.Bodies): every body, constructor and
-// initialiser is written from the typed IR. Each lookup returns nullopt when it declined.
+// The translator's back end (translate.backends.cpp03.Bodies): every body, constructor and initialiser is written from the
+// typed IR. Each lookup returns nullopt when it declined.
 class Bodies {
   public:
     virtual ~Bodies() = default;
@@ -76,130 +59,103 @@ class Bodies {
 };
 
 // Set by the transpiler for the conversion; null: no back end (everything is a J2X-GAP).
-extern Bodies* TREE_BODIES;
+inline Bodies* TREE_BODIES = nullptr;
 
-// Multi-dimensional aggregate `new T[][]{...}` / `new T[][][]{...}` (2+ empty `[]` dims then `{`).
-// aggregate_array_body() intentionally handles only the 1-D `new T[]{...}` file-static-data form;
-// nested aggregates can't be a flat C array, so they build a nested JArrayInit instead (C++03 has no
-// braced new[][]). One `[]` is NOT matched here -- that stays the ownership.aggregate_array_body path.
-extern const py::re::Pattern _NEW_ARRAY_AGG_MULTI;
-// zero-initialised in every constructor's member-init list, as Java zeroes every field. FIXED BUG
-// byte-fields-uninitialised: 'signed char' (Java byte) was missing when byte stopped being plain char, so
-// every byte field -- packet types, yaw/pitch, NBT tags -- held garbage until assigned (the behavioural
-// judge: Packet24MobSpawn.type -64, Packet34EntityTeleport.yaw -72 on a fresh packet).
-extern const py::set<py::str> _PRIMITIVE_CPP;
+namespace shim_ {
 
-py::str _banner(const py::str& cls_name, const std::optional<CppStd>& cpp_std = std::nullopt,
-                const std::optional<py::str>& platform_label = std::nullopt);
+namespace cbs = cb::java::emit::source;
 
-// The zero/null literal for a member-init, or None for value types (default ctor).
-std::optional<py::str> _default_value(const py::str& cpp_type);
+inline py::list<py::str> to_old_lines(const std::vector<std::string>& lines) { return cb::compat::to_py(lines); }
+inline std::vector<std::string> from_old_lines(const py::list<py::str>& lines) { return cb::compat::from_py(lines); }
 
-// ---------------------------------------------------------------------------
-// static field definitions
-// ---------------------------------------------------------------------------
-// The C++ element spelling for a T[] field, i.e. the JArray<...> template argument. Must MATCH
-// types.cpp_type's array handling exactly, or the aggregate data array (`static elem _data[]`) and
-// the JArray<elem> field type disagree -- e.g. byte[] is JArray<unsigned char> (a buffer) even though
-// a SCALAR byte is signed char, so the element here must be unsigned char too.
-py::str _array_elem_cpp(const JTypeRef& jtype, const TypeResolver& resolver);
+// The new back-end interface over the old one, for one class.
+class Adapter : public cbs::BodySource {
+  public:
+    Adapter(Bodies& old, const ClassRef& cls) : old_(old), cls_(cls) {}
 
-// J2X-BUGFIX 2026-08-13 static-init-order: a FUNCTION-CALL static field initializer (e.g. StatList's
-// `s_mineBlockStatArray = func_25153_a(...)`) leaked out as an eager file-scope global ctor. Global ctors
-// run in UNDEFINED cross-TU order BEFORE main()/j2x_initAll(), so func_25153_a() -> Block::s_waterStill->
-// blockID derefed a NULL Block static -> silent crash before main() (black screen, no boot markers). Fix:
-// also defer lowercase-initial function-call initializers into the ordered initStatics(). See below.
-//
-// True if a static initializer must run AFTER zero-init, in CONTROLLED order -- so that cross-
-// translation-unit global-ctor order (which C++ leaves UNDEFINED) can't crash the boot before main().
-// Deferred inits move into the ordered initStatics(); the field def is zero-initialized. Compile-time
-// constants and `const` members (can't be reassigned) stay eager.
-//
-// Order-sensitive when the initializer:
-//   - constructs an object (`new`) or reads another class's statics (`::` / `->`); OR
-//   - CALLS a free/static function -- a lowercase-initial identifier (incl. obfuscated `func_NNNNN`)
-//     immediately before `(`. Such a call runs arbitrary code at static-init time that may touch other
-//     classes' not-yet-constructed statics. The real bug this catches: `StatList::s_mineBlockStatArray
-//     = func_25153_a("stat.mineBlock", 16777216)` -- func_25153_a() indexes Block::s_blocksList, whose
-//     TU may not have run its global ctors yet -> null deref BEFORE main() (silent black screen).
-// Constructor calls (PascalCase type, e.g. `JArray<T>(N)`, `JavaString(...)`) only allocate and are
-// order-independent, so they stay eager.
-bool _is_deferrable_static_init(const py::str& init, const py::str& ft);
+    std::optional<std::string> field_init(const cb::java::ir::JClass& cls, const cb::java::ir::Field& f) override {
+        const auto r = old_.field_init(cb::compat::to_py(cls.name), cb::compat::to_py(f.name));
+        return r ? std::optional<std::string>(cb::compat::from_py(*r)) : std::nullopt;
+    }
+    std::optional<std::vector<std::string>> array_items(const cb::java::ir::JClass& cls, const cb::java::ir::Field& f) override {
+        const auto r = old_.array_items(cb::compat::to_py(cls.name), cb::compat::to_py(f.name));
+        return r ? std::optional<std::vector<std::string>>(from_old_lines(*r)) : std::nullopt;
+    }
+    std::optional<std::vector<std::string>> instance_inits(const cb::java::ir::JClass& cls) override {
+        const auto r = old_.instance_inits(cb::compat::to_py(cls.name));
+        return r ? std::optional<std::vector<std::string>>(from_old_lines(*r)) : std::nullopt;
+    }
+    std::optional<cbs::CtorBody> ctor(const cb::java::ir::JClass& cls, const cb::java::ir::Method* m, bool two_phase) override {
+        const auto r = old_.ctor(cb::compat::to_py(cls.name), m != nullptr ? method_of(cls, *m) : MethodRef(), two_phase);
+        if (!r) return std::nullopt;
+        cbs::CtorBody out;
+        if (r->kind && *r->kind == py::str("super")) out.call = cbs::CtorCall::Super;
+        else if (r->kind && *r->kind == py::str("this")) out.call = cbs::CtorCall::This;
+        if (r->args) out.super_args = cb::compat::from_py(*r->args);
+        out.lines = from_old_lines(r->body);
+        return out;
+    }
+    std::optional<std::vector<std::string>> enum_args(const cb::java::ir::JClass& cls, const cb::java::ir::EnumConst& c) override {
+        const auto r = old_.enum_args(cb::compat::to_py(cls.name), cb::compat::to_py(c.name));
+        return r ? std::optional<std::vector<std::string>>(from_old_lines(*r)) : std::nullopt;
+    }
+    std::optional<std::vector<std::vector<std::string>>> static_blocks(const cb::java::ir::JClass& cls) override {
+        const auto r = old_.static_blocks(cb::compat::to_py(cls.name));
+        if (!r) return std::nullopt;
+        std::vector<std::vector<std::string>> blocks;
+        for (const py::list<py::str>& b : r->vec()) blocks.push_back(from_old_lines(b));
+        return blocks;
+    }
+    std::optional<std::vector<std::string>> body(const cb::java::ir::JClass& cls, const cb::java::ir::Method& m) override {
+        const auto r = old_.body(cb::compat::to_py(cls.name), method_of(cls, m));
+        return r ? std::optional<std::vector<std::string>>(from_old_lines(*r)) : std::nullopt;
+    }
 
-// Returns (def_lines, init_lines): the static field DEFINITIONS (zero-init for deferrable ones)
-// and the DEFERRED initializer statements that initStatics() must run in dependency order.
-std::tuple<py::list<py::str>, py::list<py::str>> _render_statics(const ClassRef& cls, const TypeResolver& resolver,
-                                                                  ledger::Ledger* ledger);
+  private:
+    // The old method at the converted method's position in the class (to_new keeps the order).
+    MethodRef method_of(const cb::java::ir::JClass& cls, const cb::java::ir::Method& m) const {
+        return cls_->methods[static_cast<int64_t>(&m - cls.methods.data())];
+    }
 
-// ---------------------------------------------------------------------------
-// constructors
-// ---------------------------------------------------------------------------
-py::list<py::str> _init_list(const ClassRef& cls, const TypeResolver& resolver);
+    Bodies& old_;
+    ClassRef cls_;
+};
 
-// What the IR's back end could not write: said in the code and the ledger, and thrown if it runs
-// -- never a guess.
-py::list<py::str> _gap(const ClassRef& cls, ledger::Ledger* ledger, const py::str& what, int64_t line = 0);
+}  // namespace shim_
 
-// C++ for Java INSTANCE field initializers + instance `{ }` blocks, in declaration order.
-// Java runs these at the top of every constructor that does NOT delegate via this(...). Dropping
-// them was the null-deref / uninitialized-field crash class (e.g. EntityPlayer.inventory).
-py::list<py::str> _instance_init_lines(const ClassRef& cls, const TypeResolver& resolver, ledger::Ledger* ledger);
+inline std::optional<py::str> render_source(const ClassRef& cls, const TypeResolver& resolver, ledger::Ledger* ledger = nullptr,
+                                            const std::optional<CppStd>& cpp_std = std::nullopt,
+                                            const std::optional<py::str>& platform_label = std::nullopt,
+                                            const std::optional<py::set<py::str>>& two_phase = std::nullopt) {
+    return cb::compat::guard([&]() -> std::optional<py::str> {
+        namespace cbs = cb::java::emit::source;
+        cbs::Options options;
+        if (cpp_std) options.cpp_std = cb::java::emit::header::CppStd{static_cast<int>(cpp_std->year), cb::compat::from_py(cpp_std->label)};
+        if (platform_label) options.platform_label = cb::compat::from_py(*platform_label);
+        if (two_phase) {
+            for (const py::str& n : *two_phase) options.two_phase.insert(cb::compat::from_py(n));
+        }
+        cb::java::ir::JClass converted = ir::to_new(*cls);
+        std::vector<cb::java::ir::Method> forwarded;   // what the MI forwards point at: alive for the call
+        forwarded.reserve(static_cast<std::size_t>(cls->mi_forwards.size()));
+        for (const auto& [method, base] : cls->mi_forwards) forwarded.push_back(ir::to_new(*method));
+        std::size_t i = 0;
+        for (const auto& [method, base] : cls->mi_forwards) converted.mi_forwards.push_back({&forwarded[i++], cb::compat::from_py(base)});
 
-py::list<py::str> _render_ctor(const ClassRef& cls, const MethodRef& m, const TypeResolver& resolver,
-                               ledger::Ledger* ledger);
-
-// A two-phase class (see twophase.py): `C::C()` zeroes the fields, and each Java constructor becomes
-// `C* C::j2xInit(params)` -- the parent's j2xInit (Java's super(...)), the instance initialisers, the
-// body, `return this`. this(args) is a call to the other j2xInit, which does the parent and initialisers.
-// (`two_phase` is resolver.two_phase.)
-py::list<py::str> _render_two_phase(const ClassRef& cls, const TypeResolver& resolver, ledger::Ledger* ledger,
-                                    const py::set<py::str>& two_phase);
-
-// ---------------------------------------------------------------------------
-// destructor (Rule of Three: free heap allocated in constructors)
-// ---------------------------------------------------------------------------
-py::list<py::str> _render_dtor(const ClassRef& cls, const TypeResolver& resolver, ledger::Ledger* ledger);
-
-// ---------------------------------------------------------------------------
-// methods
-// ---------------------------------------------------------------------------
-py::list<py::str> _render_method(const ClassRef& cls, const MethodRef& m, const TypeResolver& resolver,
-                                 ledger::Ledger* ledger);
-
-// A synthesized MI-diamond forwarding override: `R Cls::m(args) { [return] Base::m(args); }`
-// so an interface pure-virtual already implemented by a base class is satisfied here too.
-py::list<py::str> _render_mi_forward(const ClassRef& cls, const MethodRef& im, const py::str& base,
-                                     const TypeResolver& resolver, ledger::Ledger* ledger);
-
-// All known user-type names this class references (for full #includes in the .cpp).
-py::list<py::str> _referenced_types(const ClassRef& cls, const TypeResolver& resolver, const py::str& body_text);
-
-// Emit the .cpp for a typed enum: static const/instance defs, the ctor(s)/dtor/methods via the
-// normal renderers, and an initStatics() that builds the singleton instance table (in ctor-body
-// dependency order via j2x_initAll), assigns ordinals, and fills values().
-py::str _render_typed_enum_source(const ClassRef& cls, const TypeResolver& resolver, ledger::Ledger* ledger,
-                                  const std::optional<CppStd>& cpp_std, const std::optional<py::str>& platform_label);
-
-// J2X-BUGFIX 2026-08-13 static-init-cycle: Java initializes a class LAZILY on first static access, so a
-// self-singleton getter called mid-init (StatList::func_25157_c -> CraftingManager::getInstance(), whose
-// instance is built in a LATER-ordered initStatics()) returns NULL and crashes. A linear j2x_initAll can't
-// reproduce lazy init for a true cycle. Emulate it: a `X::s_foo = new X(...)` singleton makes its pure
-// getter (`return s_foo;`) build on demand, and initStatics() becomes idempotent (the driver may also call
-// it). Detects the singleton field from the deferred init lines.
-std::optional<py::str> _detect_self_singleton(const py::str& clsname, const py::list<py::str>& static_init_lines);
-
-// If a rendered method is a PURE getter that returns the singleton field, prepend a lazy-init guard so
-// first access builds it (Java's <clinit>-on-static-access). Only touches single-statement `return field;`
-// bodies -- never a method that does other work.
-py::list<py::str> _inject_lazy_singleton(py::list<py::str> mlines, const py::str& clsname, const py::str& field);
-
-// The class's static {} blocks, in source order.
-py::list<py::str> _static_block_lines(const ClassRef& cls, ledger::Ledger* ledger);
-
-// Returns the .cpp text, or None for interfaces / constant-only enums (header-only).
-std::optional<py::str> render_source(const ClassRef& cls, const TypeResolver& resolver, ledger::Ledger* ledger = nullptr,
-                                     const std::optional<CppStd>& cpp_std = std::nullopt,
-                                     const std::optional<py::str>& platform_label = std::nullopt,
-                                     const std::optional<py::set<py::str>>& two_phase = std::nullopt);
+        std::optional<shim_::Adapter> adapter;
+        if (TREE_BODIES != nullptr) {
+            adapter.emplace(*TREE_BODIES, cls);
+            options.bodies = &*adapter;
+        }
+        cb::java::ledger::Ledger recorded;
+        if (ledger != nullptr) options.ledger = &recorded;
+        const cbs::Rendered r = cbs::render_source(converted, resolver.resolver(), options);
+        if (ledger != nullptr) {
+            for (const cb::java::ledger::Event& e : recorded.events()) ledger->events.append(ledger::from_new(e));
+        }
+        cls->has_init_statics = r.has_init_statics;
+        return r.text ? std::optional<py::str>(cb::compat::to_py(*r.text)) : std::nullopt;
+    });
+}
 
 }  // namespace codebreaker::java::emit::source

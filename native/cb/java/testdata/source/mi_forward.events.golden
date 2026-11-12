@@ -1,0 +1,4 @@
+has_init_statics=false
+MiChild.cpp|RULE|LOW|emit|mi-forward|0|MI-diamond: synthesized onChanged() forwarding to MiBase:: (interface decl + base impl unified into one vtable override)
+MiChild.cpp|RULE|LOW|emit|mi-forward|0|MI-diamond: synthesized count() forwarding to MiBase:: (interface decl + base impl unified into one vtable override)
+MiChild.cpp|PORTED|LOW|emit|source|0|generated source for MiChild

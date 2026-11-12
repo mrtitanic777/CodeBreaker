@@ -1,0 +1,4 @@
+has_init_statics=true
+GapEn.cpp|STUBBED|HIGH|emit|untranslated|0|untranslated enum constant GapEn.GAPC: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+GapEn.cpp|STUBBED|HIGH|emit|untranslated|0|untranslated static field GapEn.fx: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+GapEn.cpp|PORTED|LOW|emit|typed-enum|0|typed enum source: 2 singletons built in initStatics()

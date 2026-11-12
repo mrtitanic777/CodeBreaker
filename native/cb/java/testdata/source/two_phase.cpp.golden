@@ -1,0 +1,60 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from TwoPh.java
+// Target: unknown / C++03
+
+#include "TwoPh.h"
+#include "Foo.h"
+#include "Gap.h"
+#include "TwoParent.h"
+#include "UnsupportedOperationException.h"
+
+TwoPh::TwoPh()
+	: extra(0)
+	, helper(NULL)
+{
+}
+
+TwoPh* TwoPh::j2xInit()
+{
+	TwoParent::j2xInit();
+	// inst TwoPh
+	// ctor0p
+	return this;
+}
+
+TwoPh* TwoPh::j2xInit(int hp)
+{
+	TwoParent::j2xInit(a0);
+	// inst TwoPh
+	// ctor1p
+	return this;
+}
+
+TwoPh* TwoPh::j2xInit(int a, int b)
+{
+	// ctor2p
+	return this;
+}
+
+TwoPh* TwoPh::j2xInit(Gap* g)
+{
+	// J2X-GAP: constructor TwoPh(Gap* g) was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+TwoPh::~TwoPh()
+{
+	delete helper;
+	helper = NULL;
+}
+
+void TwoPh::init()
+{
+	// body TwoPh.init/0
+}
+
+void TwoPh::initStatics()
+{
+}

@@ -1,0 +1,3 @@
+has_init_statics=true
+Single.cpp|RISK|MED|emit|static-init-ordered|0|static field inits + static{} blocks deferred into initStatics(), run in dependency order by j2x_initAll() (kills the static-init-order crash class)
+Single.cpp|PORTED|LOW|emit|source|0|generated source for Single

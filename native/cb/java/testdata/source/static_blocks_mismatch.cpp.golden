@@ -1,0 +1,20 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from BadBlocks.java
+// Target: unknown / C++03
+
+#include "BadBlocks.h"
+#include "UnsupportedOperationException.h"
+
+int BadBlocks::s_a = 0;
+
+BadBlocks::~BadBlocks()
+{
+}
+
+void BadBlocks::initStatics()
+{
+	// J2X-GAP: static {} blocks of BadBlocks was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}

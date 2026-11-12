@@ -1,0 +1,3 @@
+has_init_statics=false
+TwoPhImplicit.cpp|RULE|LOW|emit|two-phase-ctor|0|two-phase construction: constructors are j2xInit(...) so their virtual calls reach the override, as in Java
+TwoPhImplicit.cpp|PORTED|LOW|emit|source|0|generated source for TwoPhImplicit

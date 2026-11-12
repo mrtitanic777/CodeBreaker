@@ -1,0 +1,23 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from GapImplicit.java
+// Target: unknown / C++03
+
+#include "GapImplicit.h"
+#include "UnsupportedOperationException.h"
+
+GapImplicit::GapImplicit()
+	: a(0)
+{
+	// J2X-GAP: instance initialisers of GapImplicit was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+GapImplicit::~GapImplicit()
+{
+}
+
+void GapImplicit::initStatics()
+{
+}
