@@ -1,5 +1,7 @@
-// codebreaker/java/projects/minecraft/sound_fix.cpp -- C++ port of codebreaker.java.projects.minecraft.sound_fix
-// (see the header).
+// codebreaker/java/projects/minecraft/sound_fix.cpp -- the legacy IR form (patch) of the sound-fix pass, over the OLD
+// translate IR (py::ref nodes). COMPAT(py): remove when translate/ir and translate/rewrite are refactored and
+// their shims land; the tree-shape pass then lives only in cb/java/projects/minecraft/sound_fix.cpp (over the new IR).
+// The text form (process / run / stranded) forwards to the new module (see the header).
 
 #include "codebreaker/java/projects/minecraft/sound_fix.hpp"
 
@@ -14,114 +16,6 @@ namespace codebreaker::java::projects::minecraft::sound_fix {
 
 namespace ir = codebreaker::translate::ir;
 namespace rw = codebreaker::translate::rewrite;
-
-const py::re::Pattern _SFX_SITE = py::re::compile(py::str(
-    R"((SoundPoolEntry\s*\*\s*(\w+)\s*=\s*[^;]*?\bsoundPoolSounds\s*->\s*)"
-    R"(getRandomSoundFromSoundPool\s*\(\s*(\w+)\s*\)\s*;))"
-    R"((\s*)if\s*\(\s*\2\s*!=\s*NULL\s*(?:&&\s*([^)]*?)\s*)?\))"));
-
-const py::str _NOTE = py::str(
-    "   // J2X sfx-bypass: console OGG pool is empty; drop the null-guard and route the sound name to "
-    "the XACT bridge (newSource identifier == cue). [generator: sound_fix.py]");
-
-const py::re::Pattern _SURVIVOR =
-    py::re::compile(py::str(R"(soundPoolSounds\s*->\s*getRandomSoundFromSoundPool[^;]*;\s*if\s*\([^)]*!=\s*NULL)"));
-
-const py::re::Pattern _MUSIC_SITE = py::re::compile(py::str(
-    R"((SoundPoolEntry\s*\*\s*(\w+)\s*=\s*[^;]*?\bsoundPoolMusic\s*->\s*getRandomSound\s*\(\s*\)\s*;))"
-    R"((\s*)if\s*\(\s*\2\s*!=\s*NULL\s*\)\s*\{([^{}]*)\})"));
-
-const py::str _MUSIC_NOTE = py::str(
-    "   // J2X music-bypass: console music pool is empty; run the play() path unconditionally so "
-    "the XACT playlist starts, keeping only the SoundPoolEntry deref (backgroundMusic) guarded. "
-    "[generator: sound_fix.py]");
-
-const py::re::Pattern _MUSIC_SURVIVOR =
-    py::re::compile(py::str(R"(soundPoolMusic\s*->\s*getRandomSound\s*\(\s*\)\s*;\s*if\s*\([^)]*!=\s*NULL)"));
-
-std::tuple<py::str, int64_t, int64_t> process(const py::str& text) {
-    py::list<std::tuple<py::str, py::str>> sfx;
-
-    auto sfx_repl = [&](const py::re::Match& m) {
-        py::str V = m.group(2);
-        py::str NAME = m.group(3);
-        py::str ws = m.group(4);
-        std::optional<py::str> extra = m.group_opt(5);
-        // keep any volume gate; else run always
-        py::str guard = (extra && py::truthy(extra->strip())) ? extra->strip() : py::str("true");
-        sfx.append({V, NAME});
-        // DROP the empty-pool query itself, don't just ignore its result. On console soundPoolSounds is empty
-        // and getRandomSoundFromSoundPool(absent) HANGS: JMap.get(absent) returns a NON-null garbage value,
-        // JList::operator==(long long) is hardcoded false so the `<V> == NULL` guard never fires, and it reaches
-        // `list[rand.nextInt(garbageSize)]` where nextInt(negative bound) infinite-loops. <V> is unused after the
-        // guard becomes if(true) (SFX routes the NAME to the XACT cue), so declare it NULL instead of querying.
-        return py::percent(py::str("SoundPoolEntry* %s = NULL;%s%sif(%s)"), V, _NOTE, ws, guard);
-    };
-
-    py::str out = _SFX_SITE.sub(sfx_repl, text);
-    // SFX: kill the now-NULL SoundPoolEntry derefs for each rewritten site -- the entry is NULL on console, so
-    // route (void*)NULL as the url and the sound NAME as the cue identifier (matches the hand-fix). <V> is a
-    // unique per-site local, so a whole-file replace of `<V>->soundUrl/soundName` only touches this method.
-    for (const auto& vn : sfx) {
-        const py::str& V = std::get<0>(vn);
-        const py::str& NAME = std::get<1>(vn);
-        out = py::re::sub(py::percent(py::str(R"(\b%s\b\s*->\s*soundUrl\b)"), py::re::escape(V)), py::str("(void*)NULL"), out);
-        out = py::re::sub(py::percent(py::str(R"(\b%s\b\s*->\s*soundName\b)"), py::re::escape(V)), NAME, out);
-    }
-
-    // MUSIC: make the outer guard unconditional (play("BgMusic") -> XACT playlist fires) and inline-guard only
-    // the SoundPoolEntry deref line (backgroundMusic), which is simply skipped on the empty console pool.
-    int64_t n_music = 0;
-
-    auto music_repl = [&](const py::re::Match& m) {
-        py::str decl = m.group(1);
-        py::str V = m.group(2);
-        py::str ws = m.group(3);
-        py::str body = m.group(4);
-        py::str newbody = py::re::sub(py::percent(py::str(R"((\n[ \t]*)([^\n]*\b%s\s*->[^\n]*;))"), py::re::escape(V)),
-                                      py::percent(py::str(R"(\1if(%s != NULL) \2)"), V), body);
-        n_music += 1;
-        return py::percent(py::str("%s%s%sif(true) {%s}"), decl, _MUSIC_NOTE, ws, newbody);
-    };
-
-    out = _MUSIC_SITE.sub(music_repl, out);
-    return {out, py::len(sfx), n_music};
-}
-
-Result run(const py::str& out_dir) {
-    py::list<py::str> files;
-    for (const py::str& f : py::sorted(py::os::listdir(out_dir))) {
-        if (f.endswith(py::str(".cpp"))) {
-            files.append(f);
-        }
-    }
-    Result res;
-    for (const py::str& f : files) {
-        py::str path = py::os::path::join(out_dir, f);
-        py::str text;
-        try {
-            text = py::open(path, py::str("r"), py::str("utf-8"), py::str("replace")).read_text();
-        } catch (const py::OSError&) {                     // (IOError, OSError)
-            continue;
-        }
-        if (!text.contains(py::str("getRandomSound")) ||
-            (!text.contains(py::str("soundPoolSounds")) && !text.contains(py::str("soundPoolMusic")))) {
-            continue;
-        }
-        auto [new_text, n_sfx, n_music] = process(text);
-        if (new_text != text) {
-            py::file fh = py::open(path, py::str("w"), py::str("utf-8"));
-            fh.write(new_text);
-            fh.close();
-            res.files.append(Touched{f, n_sfx, n_music});
-            res.sites += n_sfx + n_music;
-        }
-        if (_SURVIVOR.search(new_text) || _MUSIC_SURVIVOR.search(new_text)) {
-            res.stranded.append(f);
-        }
-    }
-    return res;
-}
 
 namespace {
 
@@ -226,24 +120,6 @@ Result patch(const py::list<ir::NodeP>& units) {
         res.sites += kv.second[0] + kv.second[1];
     }
     return res;
-}
-
-py::list<py::str> stranded(const py::str& out_dir) {
-    py::list<py::str> out;
-    for (const py::str& f : py::sorted(py::os::listdir(out_dir))) {
-        if (f.endswith(py::str(".cpp"))) {
-            py::str text;
-            try {
-                text = py::open(py::os::path::join(out_dir, f), py::str("r"), py::str("utf-8"), py::str("replace")).read_text();
-            } catch (const py::OSError&) {                 // (IOError, OSError)
-                continue;
-            }
-            if (_SURVIVOR.search(text) || _MUSIC_SURVIVOR.search(text)) {
-                out.append(f);
-            }
-        }
-    }
-    return out;
 }
 
 }  // namespace codebreaker::java::projects::minecraft::sound_fix
