@@ -144,11 +144,11 @@ class Analysis(object):
                 if kind in (2, 4) and len(got.operands) == 1 and got.operands[0].type == X.X86_OP_MEM:
                     m = got.operands[0].mem
                     indexed = m.index or m.base in (X.X86_REG_BX, X.X86_REG_SI, X.X86_REG_DI)
-                    if indexed and m.disp and m.segment in (0, X.X86_REG_CS, X.X86_REG_DS):
+                    if indexed and m.disp and m.segment in (0, X.X86_REG_CS, X.X86_REG_DS) and (m.segment == X.X86_REG_CS or p.ds is not None):
                         ins.table = (cs if m.segment == X.X86_REG_CS else p.ds * 16) + (m.disp & 0xFFFF)
                 if len(got.operands) == 1 and got.operands[0].type == X.X86_OP_MEM:
                     m = got.operands[0].mem                   # through one pointer variable
-                    if not m.index and not m.base and m.segment in (0, X.X86_REG_CS, X.X86_REG_DS):
+                    if not m.index and not m.base and m.segment in (0, X.X86_REG_CS, X.X86_REG_DS) and (m.segment == X.X86_REG_CS or p.ds is not None):
                         ins.variable = (cs if m.segment == X.X86_REG_CS else p.ds * 16) + (m.disp & 0xFFFF)
                         ins.far = kind in (3, 5)
         self._cache[va] = ins
@@ -395,6 +395,8 @@ class Analysis(object):
                 if i < 2 or self._mark[i] in (1, 2) or self._mark[i - 2] in (1, 2):
                     continue
                 seg, off = p.word(site), p.word(site - 2)
+                if seg is None or off is None:                  # a relocation on the last byte of the image is no far pointer
+                    continue
                 t = seg * 16 + off
                 if seg * 16 in bases and p.inside(t) and t not in self.functions and self._mark[t - p.base] == 0 \
                         and self._looks_like_code(t, seg * 16):
