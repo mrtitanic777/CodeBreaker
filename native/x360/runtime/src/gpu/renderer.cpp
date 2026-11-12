@@ -2598,7 +2598,8 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                 anyColor |= om.colorFormat[rt] != kRtDisabled;
             if (!anyColor && !om.depthControl)
                 return; // nothing would be written
-            if (std::getenv("CB_OM_SURVEY"))
+            static const bool omSurvey = std::getenv("CB_OM_SURVEY") != nullptr;
+            if (omSurvey)
                 LogOnce(std::format("OM survey: msaa {} rt0 fmt {} mask {:X} blend {:08X} rt1 fmt {} depth {:08X} dfmt {} "
                                     "alphatest {:X} shaderdepth {} runsShader {}", om.msaa, om.colorFormat[0],
                                     om.colorMask[0], om.blendControl[0], om.colorFormat[1], om.depthControl,
