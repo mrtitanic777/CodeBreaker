@@ -1,0 +1,63 @@
+arch	x86:LE:32:default:windows
+bytes	bfea1000	lz32.dll	400	46a
+bytes	bfea2000	lz32.dll	a00	8a
+bytes	bfea3000	lz32.dll	c00	17e
+bytes	bfea4000	lz32.dll	e00	121
+bytes	bfea5000	lz32.dll	1000	394
+bytes	bfea6000	lz32.dll	1400	8a
+F	bfea1000	sub_001000	12
+F	bfea1057	sub_001057	8
+F	bfea1075	sub_001075	12
+F	bfea1077	sub_001077	12
+F	bfea10a5	sub_0010A5	4
+F	bfea10a7	sub_0010A7	4
+F	bfea10bd	sub_0010BD	12
+F	bfea10bf	sub_0010BF	12
+F	bfea10e2	sub_0010E2	12
+F	bfea10e4	sub_0010E4	12
+F	bfea1109	sub_001109	4
+F	bfea110b	sub_00110B	4
+F	bfea1123	LZStart	0
+F	bfea1125	sub_001125	0
+F	bfea1135	sub_001135	8
+F	bfea1139	sub_001139	8
+F	bfea113b	sub_00113B	8
+F	bfea115b	LZDone	0
+F	bfea115d	sub_00115D	0
+F	bfea116c	sub_00116C	8
+F	bfea116e	sub_00116E	8
+F	bfea1198	GetExpandedNameW	8
+F	bfea11a1	LZOpenFileW	12
+F	bfea11aa	LZCopy	8
+F	bfea11dd	LZClose	4
+F	bfea1201	LZInit	4
+F	bfea1238	LZOpenFileA	12
+F	bfea12d8	GetExpandedNameA	8
+F	bfea1330	CopyLZFile	8
+F	bfea1363	LZRead	12
+F	bfea13d4	LZSeek	12
+F	bfea13fa	sub_0013FA	4
+F	bfea1400	sub_001400	0
+F	bfea140c	sub_00140C	0
+F	bfea1412	sub_001412	0
+F	bfea1424	sub_001424	0
+F	bfea1430	sub_001430	4
+F	bfea1436	sub_001436	4
+F	bfea143c	sub_00143C	4
+I	bfea3070	KERNEL32_ord_21	4
+I	bfea3074	SMapLS_IP_EBP_12	0
+I	bfea3078	KERNEL32_ord_89	0
+I	bfea307c	SMapLS_IP_EBP_8	0
+I	bfea3080	SUnMapLS_IP_EBP_12	0
+I	bfea3084	KERNEL32_ord_41	20
+I	bfea3088	KERNEL32_ord_90	-1
+I	bfea308c	SUnMapLS_IP_EBP_8	0
+I	bfea3090	KERNEL32_ord_17	-1
+I	bfea3094	DisableThreadLibraryCalls	4
+I	bfea3098	KERNEL32_ord_22	4
+I	bfea309c	KERNEL32_ord_20	4
+I	bfea30a0	OpenFile	12
+I	bfea30a4	GlobalFree	4
+I	bfea30a8	GetShortPathNameA	12
+I	bfea30ac	SetLastError	4
+I	bfea30b0	GlobalAlloc	8

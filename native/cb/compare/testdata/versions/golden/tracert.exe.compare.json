@@ -1,0 +1,377 @@
+{
+ "added": [
+  {
+   "key": "10019c0",
+   "name": "sub_0019C0",
+   "size": 19
+  },
+  {
+   "key": "10019f0",
+   "name": "sub_0019F0",
+   "size": 1
+  },
+  {
+   "key": "10019f8",
+   "name": "sub_0019F8",
+   "size": 6
+  }
+ ],
+ "code": {
+  "added": 26,
+  "changed": 2095,
+  "identical": 116,
+  "to_bytes": 2237
+ },
+ "counts": {
+  "added": 3,
+  "changed": 7,
+  "identical": 13,
+  "identical_bytes": 13,
+  "identical_text": 0,
+  "removed": 9
+ },
+ "from": {
+  "bytes": 2334,
+  "code": 3584,
+  "functions": 29,
+  "kind": "pe",
+  "name": "tracert.exe"
+ },
+ "names": [],
+ "pairs": [
+  {
+   "from": "1f810fc",
+   "from_name": "sub_0010FC",
+   "how": "calls",
+   "level": "",
+   "score": 0.872,
+   "sizes": [
+    44,
+    40
+   ],
+   "status": "changed",
+   "to": "1001110",
+   "to_name": "sub_001110"
+  },
+  {
+   "from": "1f81128",
+   "from_name": "sub_001128",
+   "how": "calls",
+   "level": "",
+   "score": 0.866,
+   "sizes": [
+    83,
+    83
+   ],
+   "status": "changed",
+   "to": "1001138",
+   "to_name": "sub_001138"
+  },
+  {
+   "from": "1f8117b",
+   "from_name": "sub_00117B",
+   "how": "calls",
+   "level": "",
+   "score": 0.941,
+   "sizes": [
+    197,
+    194
+   ],
+   "status": "changed",
+   "to": "100118b",
+   "to_name": "sub_00118B"
+  },
+  {
+   "from": "1f81240",
+   "from_name": "sub_001240",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    44,
+    44
+   ],
+   "status": "identical",
+   "to": "100124d",
+   "to_name": "sub_00124D"
+  },
+  {
+   "from": "1f8126c",
+   "from_name": "sub_00126C",
+   "how": "calls",
+   "level": "",
+   "score": 0.784,
+   "sizes": [
+    102,
+    101
+   ],
+   "status": "changed",
+   "to": "1001279",
+   "to_name": "sub_001279"
+  },
+  {
+   "from": "1f812d2",
+   "from_name": "sub_0012D2",
+   "how": "calls",
+   "level": "",
+   "score": 0.889,
+   "sizes": [
+    128,
+    123
+   ],
+   "status": "changed",
+   "to": "10012de",
+   "to_name": "sub_0012DE"
+  },
+  {
+   "from": "1f81352",
+   "from_name": "sub_001352",
+   "how": "calls",
+   "level": "",
+   "score": 0.915,
+   "sizes": [
+    1248,
+    1230
+   ],
+   "status": "changed",
+   "to": "1001359",
+   "to_name": "sub_001359"
+  },
+  {
+   "from": "1f81832",
+   "from_name": "sub_001832",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "1001828",
+   "to_name": "sub_001828"
+  },
+  {
+   "from": "1f81838",
+   "from_name": "sub_001838",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "100182e",
+   "to_name": "sub_00182E"
+  },
+  {
+   "from": "1f8183e",
+   "from_name": "sub_00183E",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "1001834",
+   "to_name": "sub_001834"
+  },
+  {
+   "from": "1f81844",
+   "from_name": "sub_001844",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "100183a",
+   "to_name": "sub_00183A"
+  },
+  {
+   "from": "1f8184a",
+   "from_name": "sub_00184A",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "1001840",
+   "to_name": "sub_001840"
+  },
+  {
+   "from": "1f81850",
+   "from_name": "sub_001850",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "1001846",
+   "to_name": "sub_001846"
+  },
+  {
+   "from": "1f81856",
+   "from_name": "sub_001856",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "100184c",
+   "to_name": "sub_00184C"
+  },
+  {
+   "from": "1f8185c",
+   "from_name": "sub_00185C",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "1001852",
+   "to_name": "sub_001852"
+  },
+  {
+   "from": "1f81862",
+   "from_name": "sub_001862",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "1001858",
+   "to_name": "sub_001858"
+  },
+  {
+   "from": "1f81868",
+   "from_name": "sub_001868",
+   "how": "position",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "1001860",
+   "to_name": "sub_001860"
+  },
+  {
+   "from": "1f8186e",
+   "from_name": "sub_00186E",
+   "how": "calls",
+   "level": "",
+   "score": 0.541,
+   "sizes": [
+    199,
+    324
+   ],
+   "status": "changed",
+   "to": "1001866",
+   "to_name": "sub_001866"
+  },
+  {
+   "from": "1f8194e",
+   "from_name": "sub_00194E",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "10019b0",
+   "to_name": "sub_0019B0"
+  },
+  {
+   "from": "1f8195a",
+   "from_name": "sub_00195A",
+   "how": "calls",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    6,
+    6
+   ],
+   "status": "identical",
+   "to": "10019b6",
+   "to_name": "sub_0019B6"
+  }
+ ],
+ "removed": [
+  {
+   "key": "1f81936",
+   "name": "sub_001936",
+   "size": 6
+  },
+  {
+   "key": "1f8193c",
+   "name": "sub_00193C",
+   "size": 6
+  },
+  {
+   "key": "1f81942",
+   "name": "sub_001942",
+   "size": 6
+  },
+  {
+   "key": "1f81948",
+   "name": "sub_001948",
+   "size": 6
+  },
+  {
+   "key": "1f81954",
+   "name": "sub_001954",
+   "size": 6
+  },
+  {
+   "key": "1f81960",
+   "name": "sub_001960",
+   "size": 1
+  },
+  {
+   "key": "1f8196c",
+   "name": "sub_00196C",
+   "size": 174
+  },
+  {
+   "key": "1f81a36",
+   "name": "sub_001A36",
+   "size": 6
+  },
+  {
+   "key": "1f81a3c",
+   "name": "sub_001A3C",
+   "size": 6
+  }
+ ],
+ "to": {
+  "bytes": 2237,
+  "code": 3584,
+  "functions": 23,
+  "kind": "pe",
+  "name": "tracert.exe"
+ }
+}

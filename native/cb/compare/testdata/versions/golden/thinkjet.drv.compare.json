@@ -1,0 +1,497 @@
+{
+ "added": [],
+ "code": {
+  "added": 0,
+  "changed": 0,
+  "identical": 1514,
+  "to_bytes": 1514
+ },
+ "counts": {
+  "added": 0,
+  "changed": 0,
+  "identical": 33,
+  "identical_bytes": 33,
+  "identical_text": 0,
+  "removed": 0
+ },
+ "from": {
+  "bytes": 1514,
+  "code": 1534,
+  "functions": 33,
+  "kind": "ne",
+  "name": "thinkjet.drv"
+ },
+ "names": [],
+ "pairs": [
+  {
+   "from": "1:0000",
+   "from_name": "sub_1_0000",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    33,
+    33
+   ],
+   "status": "identical",
+   "to": "1:0000",
+   "to_name": "sub_1_0000"
+  },
+  {
+   "from": "1:0022",
+   "from_name": "CONTROL",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    44,
+    44
+   ],
+   "status": "identical",
+   "to": "1:0022",
+   "to_name": "CONTROL"
+  },
+  {
+   "from": "1:004e",
+   "from_name": "DEVBITBLT",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    61,
+    61
+   ],
+   "status": "identical",
+   "to": "1:004e",
+   "to_name": "DEVBITBLT"
+  },
+  {
+   "from": "1:008c",
+   "from_name": "DEVSTRETCHBLT",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    69,
+    69
+   ],
+   "status": "identical",
+   "to": "1:008c",
+   "to_name": "DEVSTRETCHBLT"
+  },
+  {
+   "from": "1:00d2",
+   "from_name": "PIXEL",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    45,
+    45
+   ],
+   "status": "identical",
+   "to": "1:00d2",
+   "to_name": "PIXEL"
+  },
+  {
+   "from": "1:0100",
+   "from_name": "OUTPUT",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    57,
+    57
+   ],
+   "status": "identical",
+   "to": "1:0100",
+   "to_name": "OUTPUT"
+  },
+  {
+   "from": "1:013a",
+   "from_name": "STRBLT",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    27,
+    27
+   ],
+   "status": "identical",
+   "to": "1:013a",
+   "to_name": "STRBLT"
+  },
+  {
+   "from": "1:0156",
+   "from_name": "SCANLR",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    26,
+    26
+   ],
+   "status": "identical",
+   "to": "1:0156",
+   "to_name": "SCANLR"
+  },
+  {
+   "from": "1:0170",
+   "from_name": "ENUMOBJ",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    44,
+    44
+   ],
+   "status": "identical",
+   "to": "1:0170",
+   "to_name": "ENUMOBJ"
+  },
+  {
+   "from": "1:019c",
+   "from_name": "COLORINFO",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    41,
+    41
+   ],
+   "status": "identical",
+   "to": "1:019c",
+   "to_name": "COLORINFO"
+  },
+  {
+   "from": "1:01c6",
+   "from_name": "DEVICEMODE",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    41,
+    41
+   ],
+   "status": "identical",
+   "to": "1:01c6",
+   "to_name": "DEVICEMODE"
+  },
+  {
+   "from": "1:01f0",
+   "from_name": "REALIZEOBJECT",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    48,
+    48
+   ],
+   "status": "identical",
+   "to": "1:01f0",
+   "to_name": "REALIZEOBJECT"
+  },
+  {
+   "from": "1:0220",
+   "from_name": "ENUMDFONTS",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    45,
+    45
+   ],
+   "status": "identical",
+   "to": "1:0220",
+   "to_name": "ENUMDFONTS"
+  },
+  {
+   "from": "1:024e",
+   "from_name": "ENABLE",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    85,
+    85
+   ],
+   "status": "identical",
+   "to": "1:024e",
+   "to_name": "ENABLE"
+  },
+  {
+   "from": "1:02a4",
+   "from_name": "DISABLE",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    33,
+    33
+   ],
+   "status": "identical",
+   "to": "1:02a4",
+   "to_name": "DISABLE"
+  },
+  {
+   "from": "1:02c6",
+   "from_name": "DEVEXTTEXTOUT",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    69,
+    69
+   ],
+   "status": "identical",
+   "to": "1:02c6",
+   "to_name": "DEVEXTTEXTOUT"
+  },
+  {
+   "from": "1:030c",
+   "from_name": "DEVGETCHARWIDTH",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    53,
+    53
+   ],
+   "status": "identical",
+   "to": "1:030c",
+   "to_name": "DEVGETCHARWIDTH"
+  },
+  {
+   "from": "1:0342",
+   "from_name": "DEVICEBITMAP",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    26,
+    26
+   ],
+   "status": "identical",
+   "to": "1:0342",
+   "to_name": "DEVICEBITMAP"
+  },
+  {
+   "from": "1:035c",
+   "from_name": "FASTBORDER",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    26,
+    26
+   ],
+   "status": "identical",
+   "to": "1:035c",
+   "to_name": "FASTBORDER"
+  },
+  {
+   "from": "1:0376",
+   "from_name": "SETATTRIBUTE",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    26,
+    26
+   ],
+   "status": "identical",
+   "to": "1:0376",
+   "to_name": "SETATTRIBUTE"
+  },
+  {
+   "from": "1:0390",
+   "from_name": "EXTDEVICEMODE",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    56,
+    56
+   ],
+   "status": "identical",
+   "to": "1:0390",
+   "to_name": "EXTDEVICEMODE"
+  },
+  {
+   "from": "1:03c8",
+   "from_name": "EXTDEVICEMODEPROPSHEET",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    53,
+    53
+   ],
+   "status": "identical",
+   "to": "1:03c8",
+   "to_name": "EXTDEVICEMODEPROPSHEET"
+  },
+  {
+   "from": "1:03fe",
+   "from_name": "DEVICECAPABILITIES",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    59,
+    59
+   ],
+   "status": "identical",
+   "to": "1:03fe",
+   "to_name": "DEVICECAPABILITIES"
+  },
+  {
+   "from": "1:043a",
+   "from_name": "ADVANCEDSETUPDIALOG",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    41,
+    41
+   ],
+   "status": "identical",
+   "to": "1:043a",
+   "to_name": "ADVANCEDSETUPDIALOG"
+  },
+  {
+   "from": "1:0464",
+   "from_name": "DIBBLT",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    56,
+    56
+   ],
+   "status": "identical",
+   "to": "1:0464",
+   "to_name": "DIBBLT"
+  },
+  {
+   "from": "1:049c",
+   "from_name": "CREATEDIBITMAP",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    24,
+    24
+   ],
+   "status": "identical",
+   "to": "1:049c",
+   "to_name": "CREATEDIBITMAP"
+  },
+  {
+   "from": "1:04b4",
+   "from_name": "SETDIBITSTODEVICE",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    61,
+    61
+   ],
+   "status": "identical",
+   "to": "1:04b4",
+   "to_name": "SETDIBITSTODEVICE"
+  },
+  {
+   "from": "1:04f2",
+   "from_name": "STRETCHDIB",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    80,
+    80
+   ],
+   "status": "identical",
+   "to": "1:04f2",
+   "to_name": "STRETCHDIB"
+  },
+  {
+   "from": "1:0542",
+   "from_name": "DEVINSTALL",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    44,
+    44
+   ],
+   "status": "identical",
+   "to": "1:0542",
+   "to_name": "DEVINSTALL"
+  },
+  {
+   "from": "1:056e",
+   "from_name": "BITMAPBITS",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    45,
+    45
+   ],
+   "status": "identical",
+   "to": "1:056e",
+   "to_name": "BITMAPBITS"
+  },
+  {
+   "from": "1:059c",
+   "from_name": "DEVICESELECTBITMAP",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    45,
+    45
+   ],
+   "status": "identical",
+   "to": "1:059c",
+   "to_name": "DEVICESELECTBITMAP"
+  },
+  {
+   "from": "1:05ca",
+   "from_name": "WEP",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    24,
+    24
+   ],
+   "status": "identical",
+   "to": "1:05ca",
+   "to_name": "WEP"
+  },
+  {
+   "from": "1:05e2",
+   "from_name": "sub_1_05E2",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    27,
+    27
+   ],
+   "status": "identical",
+   "to": "1:05e2",
+   "to_name": "sub_1_05E2"
+  }
+ ],
+ "removed": [],
+ "to": {
+  "bytes": 1514,
+  "code": 1534,
+  "functions": 33,
+  "kind": "ne",
+  "name": "thinkjet.drv"
+ }
+}

@@ -1,0 +1,161 @@
+{
+ "added": [],
+ "code": {
+  "added": 0,
+  "changed": 0,
+  "identical": 712,
+  "to_bytes": 712
+ },
+ "counts": {
+  "added": 0,
+  "changed": 0,
+  "identical": 9,
+  "identical_bytes": 9,
+  "identical_text": 0,
+  "removed": 0
+ },
+ "from": {
+  "bytes": 712,
+  "code": 1588,
+  "functions": 9,
+  "kind": "dos",
+  "name": "dblbuff.sys"
+ },
+ "names": [],
+ "pairs": [
+  {
+   "from": "10016",
+   "from_name": "DblBuff_strategy",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    11,
+    11
+   ],
+   "status": "identical",
+   "to": "10016",
+   "to_name": "DblBuff_strategy"
+  },
+  {
+   "from": "10021",
+   "from_name": "DblBuff_interrupt",
+   "how": "name",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    71,
+    71
+   ],
+   "status": "identical",
+   "to": "10021",
+   "to_name": "DblBuff_interrupt"
+  },
+  {
+   "from": "10380",
+   "from_name": "sub_10380",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    89,
+    89
+   ],
+   "status": "identical",
+   "to": "10380",
+   "to_name": "sub_10380"
+  },
+  {
+   "from": "103d9",
+   "from_name": "sub_103D9",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    86,
+    86
+   ],
+   "status": "identical",
+   "to": "103d9",
+   "to_name": "sub_103D9"
+  },
+  {
+   "from": "1042f",
+   "from_name": "sub_1042F",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    54,
+    54
+   ],
+   "status": "identical",
+   "to": "1042f",
+   "to_name": "sub_1042F"
+  },
+  {
+   "from": "10466",
+   "from_name": "sub_10466",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    46,
+    46
+   ],
+   "status": "identical",
+   "to": "10466",
+   "to_name": "sub_10466"
+  },
+  {
+   "from": "10497",
+   "from_name": "sub_10497",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    29,
+    29
+   ],
+   "status": "identical",
+   "to": "10497",
+   "to_name": "sub_10497"
+  },
+  {
+   "from": "104b4",
+   "from_name": "sub_104B4",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    29,
+    29
+   ],
+   "status": "identical",
+   "to": "104b4",
+   "to_name": "sub_104B4"
+  },
+  {
+   "from": "10509",
+   "from_name": "sub_10509",
+   "how": "bytes",
+   "level": "bytes",
+   "score": 1.0,
+   "sizes": [
+    297,
+    297
+   ],
+   "status": "identical",
+   "to": "10509",
+   "to_name": "sub_10509"
+  }
+ ],
+ "removed": [],
+ "to": {
+  "bytes": 712,
+  "code": 1588,
+  "functions": 9,
+  "kind": "dos",
+  "name": "dblbuff.sys"
+ }
+}
