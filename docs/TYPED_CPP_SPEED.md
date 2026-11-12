@@ -800,3 +800,18 @@ big-number parts: they carried their own BigInt).
 | RSA-2048 key generation x3 | 97 | 86 (CNG; with a seeded RandomSource the primes are searched here: ~270 ms each) |
 | rot_sum_sha over 8 MB x5 | 3097 | 81 |
 | RC4 over 8 MB x5 | 52 | 52 (state and indices in locals; about 4 cycles a byte, the dependency-chain limit of RC4, as OpenSSL's) |
+
+## cb refactor W1-B20: port/asm16 (2026-11-11)
+
+Old = the typed port on the py:: layer (its harness, state/work/typed-port/port.asm16, rc_run.log); New = native/cb/port/asm16*.cpp. The same work: the five Microsoft tools (lib 2.20, link 2.44, masm 4.00, msc 1.04, masm 5.10), 40 assembly modules each ported twice (plain; then with argument types, far routines, a data map, a listing and aliases), one run on the shared machine (+-30%). Results first compared on meaning: the text emitted, the kinds before every line, each routine's exit and writes, the arguments found, the C types (36,798 comparisons, port.asm16.oracle) -- all equal to the Python's.
+
+| What | Old (typed port) | New |
+|---|---|---|
+| CTypes of each tree (layouts, variables, far pointers) | 0.36 s | 0.03 s |
+| c_functions of each tree | 0.23 s | 0.03 s |
+| Port() of every module, both variants (reading, labels, code, data) | 0.35 s | 0.03 s |
+| run() of every module, both variants (the kinds, to a fixed point) | 4.05 s | 0.39 s |
+| emit() of every module, both variants | 0.09 s | 0.01 s |
+| all of it | about 5.1 s (the Python: about 8.9 s) | 0.5 s |
+
+The gains are the registers (an array, not a map of strings), the operands (parsed once per line, not at every step of the fixed point), the states (origin sets shared and copied on write) and the text work (scans, not backtracking regular expressions).

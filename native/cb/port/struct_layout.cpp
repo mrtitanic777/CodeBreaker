@@ -19,16 +19,17 @@ struct Pending {
 };
 
 void set_member(StructLayout& lay, const std::string& name, std::uint32_t offset, std::uint32_t size,
-                const std::string& declarator, bool pointer) {
+                const std::string& declarator, bool pointer, const std::string& type) {
     for (Member& m : lay.members)
         if (m.name == name) {
             m.offset = offset;
             m.size = size;
             m.declarator = declarator;
             m.pointer = pointer;
+            m.type = type;
             return;
         }
-    lay.members.push_back({name, offset, size, declarator, pointer});
+    lay.members.push_back({name, offset, size, declarator, pointer, type});
 }
 
 // The layout of a structure's (or union's) members.
@@ -55,9 +56,11 @@ StructLayout lay_out_body(std::string_view body, bool is_union, unsigned ptr, un
     }
     StructLayout lay;
     std::uint32_t off = 0;
-    auto place = [&](const std::string& name, std::uint32_t size, const std::string& declarator, bool pointer) {
+    lay.is_union = is_union;
+    auto place = [&](const std::string& name, std::uint32_t size, const std::string& declarator, bool pointer,
+                     const std::string& type) {
         if (size > 1 && off % 2) ++off;
-        set_member(lay, name, is_union ? 0 : off, size, declarator, pointer);
+        set_member(lay, name, is_union ? 0 : off, size, declarator, pointer, type);
         off = is_union ? std::max(off, size) : off + size;
     };
     for (const std::string& s : members) {
@@ -72,9 +75,10 @@ StructLayout lay_out_body(std::string_view body, bool is_union, unsigned ptr, un
             const StructLayout inner = lay_out_body(nest->group(2), inner_union, ptr, far_ptr, out,
                                                     path + "." + (names.empty() ? "?" : names[0]));
             for (std::string& nm : names) nm = array_tail.replace_all(nm, "");
-            for (const std::string& nm : names) out.try_emplace(path + "." + nm, inner);   // (its members, for what is inside it)
+            // (its members, for what is inside it; the latest round's layout, once the sizes have settled)
+            for (const std::string& nm : names) out.insert_or_assign(path + "." + nm, inner);
             const bool all_pointers = std::all_of(inner.members.begin(), inner.members.end(), [](const Member& m) { return m.pointer; });
-            for (const std::string& nm : names) place(nm, inner.size, nm, all_pointers);
+            for (const std::string& nm : names) place(nm, inner.size, nm, all_pointers, std::string(nest->group(1)));
             continue;
         }
         const bool is_far = far_word.test(s);
@@ -84,7 +88,8 @@ StructLayout lay_out_body(std::string_view body, bool is_union, unsigned ptr, un
             const auto sz = size_of(r->base, dn.text, dn.name, is_far ? far_ptr : ptr, out);
             std::string without_name = dn.text;   // (a pointer: a '*' left once the member's own name is taken out)
             if (const std::size_t at = without_name.find(dn.name); at != std::string::npos) without_name.erase(at, dn.name.size());
-            place(dn.name, static_cast<std::uint32_t>(sz.value_or(2)), dn.text, without_name.find('*') != std::string::npos);
+            place(dn.name, static_cast<std::uint32_t>(sz.value_or(2)), dn.text, without_name.find('*') != std::string::npos,
+                  std::string(text::trim(r->base)));
         }
     }
     lay.size = off + (off > 1 ? off % 2 : 0);

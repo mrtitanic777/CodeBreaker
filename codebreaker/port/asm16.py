@@ -116,6 +116,8 @@ def parse(text):
         if op in ("rep", "repe", "repz", "repne", "repnz"):
             l.prefix = op
             w2 = rest.split(None, 1)
+            if not w2:
+                raise Asm16Error("line %d: a prefix with no instruction after it" % no)
             op, rest = w2[0].lower(), (w2[1] if len(w2) > 1 else "")
         l.op = op
         l.args = split_ops(rest)
@@ -230,6 +232,10 @@ def operand(a, equ=None):
     m = re.fullmatch(r"(?i)offset\s+(?:\w+:)?([\w$@?]+)\s*(?:([+-])\s*(\w+))?", s)
     if m:
         d = number(m.group(3)) if m.group(3) else 0
+        if d is None and equ and m.group(3) in equ:          # (an equate's value)
+            d = number(equ[m.group(3)])
+        if d is None:
+            raise Asm16Error("the displacement of %r is not a number" % a)
         return ("off", m.group(1), -d if m.group(2) == "-" else d)
     size = None
     m = re.match(r"(?i)(byte|word|dword|qword|tbyte)\s+ptr\s+(.*)$", s)
@@ -1979,7 +1985,8 @@ class Port:
                     return done("push\t" + M(0, 8))
                 return done("movzx\tr11d, " + M(0, 2), "push\tr11")
             if a[0][0] == "off":
-                return ["lea\tr11, %s" % self.sym(a[0][1]), "push\tr11"]
+                dd = self.own_place(a[0][1], a[0][2])       # (`offset sym+4`: the +4 stays)
+                return ["lea\tr11, %s" % (self.sym(a[0][1]) + ("%+d" % dd if dd else "")), "push\tr11"]
             return ["push\t%s" % l.args[0]]
         if op == "pop":
             if a[0][0] == "reg":
@@ -2118,7 +2125,8 @@ class Port:
                     return pre + ["movsx\tr8, %s" % where, "%s\t%s, r8" % (op, R64[d])]
                 return done("%s\t%s, %s" % (op, d, M(1, 2)))
             if src[0] == "off":
-                return ["lea\tr11, %s" % self.sym(src[1]), "%s\t%s, r11" % (op, R64[d])]
+                dd = self.own_place(src[1], src[2])
+                return ["lea\tr11, %s" % (self.sym(src[1]) + ("%+d" % dd if dd else "")), "%s\t%s, r11" % (op, R64[d])]
             if op == "cmp" and kd and kd.kind == "ptr" and kd.to == "code" and number(l.args[1]) is not None and \
                     (self.data_address(l.seg, number(l.args[1])) or self.code_label(l.seg, number(l.args[1]))):
                 lab, dist = self.data_address(l.seg, number(l.args[1])) or self.code_label(l.seg, number(l.args[1]))
