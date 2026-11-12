@@ -245,6 +245,10 @@ target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
+# Where the function store is, opening it, and what `codebreaker versions` asks of it (the Ledger over the corpus, the store and the bodies).
+cb_area(store)
+target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare)
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -348,7 +352,9 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
