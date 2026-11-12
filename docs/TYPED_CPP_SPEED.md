@@ -785,3 +785,18 @@ numbers that matter are that nothing got slower and that the recorder, the solve
 | analyze/image: load_pe of 3 real PE modules, functions carved and discovered (formats::pe + Capstone) | not timed (the old loader needs the Python, formats.dll and the DLL) | 1.1 s for all three, decode included |
 | verify/concolic: the 17 explorer tests, each a real Z3 session (own context) | the z3++ binding over py:: lists | 1.8 s for 72 checks, 0.19 s of it process start |
 | emulate/native_win16: the recorder is the same tracer code (w16_rec.cpp); the 16 callback trampolines became one context callback (cbt_w16_set_context) | 16 fixed slots, each call through a closure | one indirect call per event |
+
+## cb refactor W1-B20: port/asm16 (2026-11-11)
+
+Old = the typed port on the py:: layer (its harness, state/work/typed-port/port.asm16, rc_run.log); New = native/cb/port/asm16*.cpp. The same work: the five Microsoft tools (lib 2.20, link 2.44, masm 4.00, msc 1.04, masm 5.10), 40 assembly modules each ported twice (plain; then with argument types, far routines, a data map, a listing and aliases), one run on the shared machine (+-30%). Results first compared on meaning: the text emitted, the kinds before every line, each routine's exit and writes, the arguments found, the C types (36,798 comparisons, port.asm16.oracle) -- all equal to the Python's.
+
+| What | Old (typed port) | New |
+|---|---|---|
+| CTypes of each tree (layouts, variables, far pointers) | 0.36 s | 0.03 s |
+| c_functions of each tree | 0.23 s | 0.03 s |
+| Port() of every module, both variants (reading, labels, code, data) | 0.35 s | 0.03 s |
+| run() of every module, both variants (the kinds, to a fixed point) | 4.05 s | 0.39 s |
+| emit() of every module, both variants | 0.09 s | 0.01 s |
+| all of it | about 5.1 s (the Python: about 8.9 s) | 0.5 s |
+
+The gains are the registers (an array, not a map of strings), the operands (parsed once per line, not at every step of the fixed point), the states (origin sets shared and copied on write) and the text work (scans, not backtracking regular expressions).

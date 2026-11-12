@@ -1,0 +1,64 @@
+Microsoft (R) Macro Assembler Version 5.10                  1/16/89 12:00:00
+                                                             Page     1-1
+
+
+				; strlen(s): how many characters a string has b
+				efore its 0
+				
+ 0000				_TEXT	SEGMENT	BYTE PUBLIC 'CODE'
+					ASSUME	CS:_TEXT
+					EXTRN	cret:NEAR
+					PUBLIC	_strlen
+ 0000				_strlen	PROC	NEAR
+ 0000  55				PUSH	BP
+ 0001  8B EC				MOV	BP,SP
+ 0003  57				PUSH	DI
+ 0004  56				PUSH	SI
+ 0005  06				PUSH	ES
+ 0006  1E				PUSH	DS
+ 0007  07				POP	ES
+ 0008  8B 7E 04				MOV	DI,[BP+4]
+ 000B  8B F7				MOV	SI,DI
+ 000D  33 C0				XOR	AX,AX
+ 000F  8B C8				MOV	CX,AX
+ 0011  F7 D1				NOT	CX
+ 0013  FC				CLD
+ 0014  F2/ AE				REPNE	SCASB
+ 0016  2B FE				SUB	DI,SI
+ 0018  8B C7				MOV	AX,DI
+ 001A  48				DEC	AX
+ 001B  07				POP	ES
+ 001C  E9 0000 E			JMP	cret
+ 001F				_strlen	ENDP
+ 001F				_TEXT	ENDS
+					END
+Microsoft (R) Macro Assembler Version 5.10                  1/16/89 12:00:00
+                                                             Symbols-1
+
+
+Segments and Groups:
+
+                N a m e         	Length	 Align	Combine Class
+
+_TEXT  . . . . . . . . . . . . .  	001F	BYTE	PUBLIC	'CODE'
+
+Symbols:            
+
+                N a m e         	Type	 Value	 Attr
+
+cret . . . . . . . . . . . . . .  	L NEAR	0000	_TEXT	External
+
+@Cpu . . . . . . . . . . . . . .  	TEXT  0101h		
+@FileName  . . . . . . . . . . .  	TEXT  T		
+@Version . . . . . . . . . . . .  	TEXT  510		
+_strlen  . . . . . . . . . . . .  	N PROC	0000	_TEXT	Global	Length = 001F
+
+
+     29 Source  Lines
+     29 Total   Lines
+      9 Symbols
+
+  48022 + 465685 Bytes symbol space free
+
+      0 Warning Errors
+      0 Severe  Errors

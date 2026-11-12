@@ -1,0 +1,820 @@
+{
+ "lib220_movbytes": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [],
+  "cname": [
+   [
+    "_movbyte",
+    "movbyte"
+   ]
+  ],
+  "data_used": [],
+  "far": [],
+  "labels": [
+   [
+    "_movbyte",
+    0
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [
+   [
+    "_movbyte",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      6,
+      2
+     ]
+    ]
+   ]
+  ],
+  "pascal": [],
+  "unreached": [],
+  "used_int21": false,
+  "used_null": true
+ },
+ "lib220_string": {
+  "asm_calls": [
+   "_strlen"
+  ],
+  "c_calls": [],
+  "called": [
+   "_strcpy",
+   "_strlen"
+  ],
+  "cname": [
+   [
+    "_strcat",
+    "strcat"
+   ],
+   [
+    "_strcpy",
+    "strcpy"
+   ]
+  ],
+  "data_used": [],
+  "far": [],
+  "labels": [
+   [
+    "_strcpy",
+    0
+   ],
+   [
+    "CPY1",
+    10
+   ],
+   [
+    "_strcat",
+    16
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [
+   [
+    "_strcat",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ]
+    ]
+   ],
+   [
+    "_strcpy",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ]
+    ]
+   ]
+  ],
+  "pascal": [],
+  "unreached": [],
+  "used_int21": false,
+  "used_null": true
+ },
+ "lib220_strlen": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [],
+  "cname": [
+   [
+    "_strlen",
+    "strlen"
+   ]
+  ],
+  "data_used": [],
+  "far": [],
+  "labels": [
+   [
+    "_strlen",
+    0
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [
+   [
+    "_strlen",
+    [
+     [
+      2,
+      2
+     ]
+    ]
+   ]
+  ],
+  "pascal": [],
+  "unreached": [],
+  "used_int21": false,
+  "used_null": true
+ },
+ "synth_m1_0": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [
+   "[bx]",
+   "__ffree",
+   "_cfun",
+   "_lenp",
+   "_malloc",
+   "_other",
+   "cs:[tb2+bx]",
+   "done"
+  ],
+  "cname": [
+   [
+    "_dosit",
+    "dosit"
+   ],
+   [
+    "_far1",
+    "far1"
+   ],
+   [
+    "_lenp",
+    "lenp"
+   ],
+   [
+    "_sum",
+    "sum"
+   ],
+   [
+    "_walk",
+    "walk"
+   ],
+   [
+    "strx",
+    "strx"
+   ]
+  ],
+  "data_used": [],
+  "far": [
+   "_dosit",
+   "_far1",
+   "strx"
+  ],
+  "labels": [
+   [
+    "_walk",
+    0
+   ],
+   [
+    "done",
+    113
+   ],
+   [
+    "_sum",
+    118
+   ],
+   [
+    "_lenp",
+    128
+   ],
+   [
+    "lp",
+    132
+   ],
+   [
+    "lq",
+    137
+   ],
+   [
+    "strx",
+    138
+   ],
+   [
+    "_far1",
+    145
+   ],
+   [
+    "_dosit",
+    149
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [
+   [
+    "_far1",
+    [
+     [
+      4,
+      2
+     ]
+    ]
+   ],
+   [
+    "_lenp",
+    [
+     [
+      2,
+      2
+     ]
+    ]
+   ],
+   [
+    "_sum",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      6,
+      2
+     ]
+    ]
+   ],
+   [
+    "_walk",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      6,
+      2
+     ],
+     [
+      8,
+      4
+     ]
+    ]
+   ],
+   [
+    "strx",
+    [
+     [
+      4,
+      4
+     ],
+     [
+      8,
+      2
+     ]
+    ]
+   ]
+  ],
+  "pascal": [
+   "strx"
+  ],
+  "unreached": [
+   110,
+   111,
+   112,
+   113,
+   114,
+   115,
+   116,
+   117,
+   118,
+   123,
+   170,
+   171
+  ],
+  "used_int21": true,
+  "used_null": true
+ },
+ "synth_m1_1": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [
+   "[bx]",
+   "__ffree",
+   "_cfun",
+   "_lenp",
+   "_malloc",
+   "_other",
+   "cs:[tb2+bx]",
+   "done"
+  ],
+  "cname": [
+   [
+    "_dosit",
+    "dosit"
+   ],
+   [
+    "_far1",
+    "far1"
+   ],
+   [
+    "_lenp",
+    "lenp"
+   ],
+   [
+    "_sum",
+    "sum"
+   ],
+   [
+    "_walk",
+    "walk"
+   ],
+   [
+    "strx",
+    "strx"
+   ]
+  ],
+  "data_used": [
+   "_arr"
+  ],
+  "far": [
+   "_dosit",
+   "_far1",
+   "strx"
+  ],
+  "labels": [
+   [
+    "_walk",
+    0
+   ],
+   [
+    "done",
+    113
+   ],
+   [
+    "_sum",
+    118
+   ],
+   [
+    "_lenp",
+    128
+   ],
+   [
+    "lp",
+    132
+   ],
+   [
+    "lq",
+    137
+   ],
+   [
+    "strx",
+    138
+   ],
+   [
+    "_far1",
+    145
+   ],
+   [
+    "_dosit",
+    149
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [
+   [
+    "_far1",
+    [
+     [
+      4,
+      2
+     ]
+    ]
+   ],
+   [
+    "_lenp",
+    [
+     [
+      2,
+      2
+     ]
+    ]
+   ],
+   [
+    "_sum",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      6,
+      2
+     ]
+    ]
+   ],
+   [
+    "_walk",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      6,
+      2
+     ],
+     [
+      8,
+      4
+     ]
+    ]
+   ],
+   [
+    "strx",
+    [
+     [
+      4,
+      4
+     ],
+     [
+      8,
+      2
+     ]
+    ]
+   ]
+  ],
+  "pascal": [],
+  "unreached": [
+   110,
+   111,
+   112,
+   113,
+   114,
+   115,
+   116,
+   117,
+   118,
+   123,
+   170,
+   171
+  ],
+  "used_int21": true,
+  "used_null": true
+ },
+ "synth_m1_2": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [
+   "[bx]",
+   "__ffree",
+   "_cfun",
+   "_lenp",
+   "_malloc",
+   "_other",
+   "cs:[tb2+bx]",
+   "done"
+  ],
+  "cname": [
+   [
+    "_dosit",
+    "dosit"
+   ],
+   [
+    "_far1",
+    "far1"
+   ],
+   [
+    "_lenp",
+    "lenp"
+   ],
+   [
+    "_sum",
+    "sum"
+   ],
+   [
+    "_walk",
+    "walk"
+   ],
+   [
+    "strx",
+    "strx"
+   ]
+  ],
+  "data_used": [
+   "_arr"
+  ],
+  "far": [
+   "_dosit",
+   "_far1",
+   "strx"
+  ],
+  "labels": [
+   [
+    "_walk",
+    0
+   ],
+   [
+    "done",
+    113
+   ],
+   [
+    "_sum",
+    118
+   ],
+   [
+    "_lenp",
+    128
+   ],
+   [
+    "lp",
+    132
+   ],
+   [
+    "lq",
+    137
+   ],
+   [
+    "strx",
+    138
+   ],
+   [
+    "_far1",
+    145
+   ],
+   [
+    "_dosit",
+    149
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [
+   [
+    "_far1",
+    [
+     [
+      4,
+      2
+     ]
+    ]
+   ],
+   [
+    "_lenp",
+    [
+     [
+      2,
+      2
+     ]
+    ]
+   ],
+   [
+    "_sum",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      6,
+      2
+     ]
+    ]
+   ],
+   [
+    "_walk",
+    [
+     [
+      2,
+      2
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      6,
+      2
+     ],
+     [
+      8,
+      4
+     ]
+    ]
+   ],
+   [
+    "strx",
+    [
+     [
+      4,
+      4
+     ],
+     [
+      8,
+      2
+     ]
+    ]
+   ]
+  ],
+  "pascal": [
+   "_sum",
+   "strx"
+  ],
+  "unreached": [
+   110,
+   111,
+   112,
+   113,
+   114,
+   115,
+   116,
+   117,
+   118,
+   123,
+   170,
+   171
+  ],
+  "used_int21": true,
+  "used_null": true
+ },
+ "synth_m2_0": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [
+   "_p3"
+  ],
+  "cname": [
+   [
+    "_p2",
+    "p2"
+   ],
+   [
+    "_p3",
+    "p3"
+   ]
+  ],
+  "data_used": [],
+  "far": [],
+  "labels": [
+   [
+    "_p2",
+    0
+   ],
+   [
+    "_p3",
+    9
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [],
+  "pascal": [],
+  "unreached": [],
+  "used_int21": false,
+  "used_null": false
+ },
+ "synth_m2_1": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [
+   "_p3"
+  ],
+  "cname": [
+   [
+    "_p2",
+    "p2"
+   ],
+   [
+    "_p3",
+    "p3"
+   ]
+  ],
+  "data_used": [],
+  "far": [
+   "strx"
+  ],
+  "labels": [
+   [
+    "_p2",
+    0
+   ],
+   [
+    "_p3",
+    9
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [],
+  "pascal": [],
+  "unreached": [],
+  "used_int21": false,
+  "used_null": false
+ },
+ "synth_m2_2": {
+  "asm_calls": [],
+  "c_calls": [],
+  "called": [
+   "_p3"
+  ],
+  "cname": [
+   [
+    "_p2",
+    "p2"
+   ],
+   [
+    "_p3",
+    "p3"
+   ]
+  ],
+  "data_used": [],
+  "far": [],
+  "labels": [
+   [
+    "_p2",
+    0
+   ],
+   [
+    "_p3",
+    9
+   ]
+  ],
+  "notes": [],
+  "own_ptr": [],
+  "params": [],
+  "pascal": [],
+  "unreached": [],
+  "used_int21": false,
+  "used_null": false
+ },
+ "synth_m3_0": {
+  "error": "line 5 (call    nowhere): a call of nowhere, outside the module (not yet ported)"
+ },
+ "synth_m3_1": {
+  "error": "line 5 (call    nowhere): a call of nowhere, outside the module (not yet ported)"
+ },
+ "synth_m3_2": {
+  "error": "line 5 (call    nowhere): a call of nowhere, outside the module (not yet ported)"
+ },
+ "synth_m4_0": {
+  "error": "line 6 (pop     [bx]): pop to memory"
+ },
+ "synth_m4_1": {
+  "error": "line 6 (pop     [bx]): pop to memory"
+ },
+ "synth_m4_2": {
+  "error": "line 6 (pop     [bx]): pop to memory"
+ },
+ "synth_m5_0": {
+  "error": "line 5 (frobnicate ax): no rule for frobnicate"
+ },
+ "synth_m5_1": {
+  "error": "line 5 (frobnicate ax): no rule for frobnicate"
+ },
+ "synth_m5_2": {
+  "error": "line 5 (frobnicate ax): no rule for frobnicate"
+ }
+}

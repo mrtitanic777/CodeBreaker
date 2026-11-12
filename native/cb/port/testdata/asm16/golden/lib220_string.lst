@@ -1,0 +1,83 @@
+Microsoft (R) Macro Assembler Version 5.10                  1/16/89 12:00:00
+                                                             Page     1-1
+
+
+				; strcpy(to, from), strcat(to, from): a string,
+				 with its 0, copied; to is the answer
+				
+ 0000				_TEXT	SEGMENT	PARA PUBLIC 'CODE'
+					ASSUME	CS:_TEXT
+					EXTRN	cret:NEAR, _strlen:NEAR
+					PUBLIC	_strcpy, _strcat
+ 0000				_strcpy	PROC	NEAR
+ 0000  55				PUSH	BP
+ 0001  8B EC				MOV	BP,SP
+ 0003  57				PUSH	DI
+ 0004  56				PUSH	SI
+ 0005  8B 76 06				MOV	SI,[BP+6]
+ 0008  8B 7E 04				MOV	DI,[BP+4]
+ 000B  8B D7				MOV	DX,DI
+ 000D  FC				CLD
+ 000E  33 C0				XOR	AX,AX
+ 0010  8A 04			CPY1:	MOV	AL,[SI]
+ 0012  A4				MOVSB
+ 0013  0B C0				OR	AX,AX
+ 0015  75 F9				JNZ	CPY1
+ 0017  8B C2				MOV	AX,DX
+ 0019  E9 0000 E			JMP	cret
+ 001C				_strcpy	ENDP
+				
+ 001C				_strcat	PROC	NEAR
+ 001C  55				PUSH	BP
+ 001D  8B EC				MOV	BP,SP
+ 001F  57				PUSH	DI
+ 0020  56				PUSH	SI
+ 0021  8B 7E 04				MOV	DI,[BP+4]
+ 0024  8B D7				MOV	DX,DI
+ 0026  57				PUSH	DI
+ 0027  E8 0000 E			CALL	_strlen
+ 002A  5B				POP	BX
+ 002B  03 F8				ADD	DI,AX			; the e
+				nd of what is there
+ 002D  FF 76 06				PUSH	[BP+6]
+ 0030  57				PUSH	DI
+ 0031  E8 0000 R			CALL	_strcpy
+ 0034  83 C4 04				ADD	SP,4
+ 0037  8B C2				MOV	AX,DX
+ 0039  E9 0000 E			JMP	cret
+ 003C				_strcat	ENDP
+ 003C				_TEXT	ENDS
+					END
+Microsoft (R) Macro Assembler Version 5.10                  1/16/89 12:00:00
+                                                             Symbols-1
+
+
+Segments and Groups:
+
+                N a m e         	Length	 Align	Combine Class
+
+_TEXT  . . . . . . . . . . . . .  	003C	PARA	PUBLIC	'CODE'
+
+Symbols:            
+
+                N a m e         	Type	 Value	 Attr
+
+CPY1 . . . . . . . . . . . . . .  	L NEAR	0010	_TEXT
+cret . . . . . . . . . . . . . .  	L NEAR	0000	_TEXT	External
+
+@Cpu . . . . . . . . . . . . . .  	TEXT  0101h		
+@FileName  . . . . . . . . . . .  	TEXT  T		
+@Version . . . . . . . . . . . .  	TEXT  510		
+_strcat  . . . . . . . . . . . .  	N PROC	001C	_TEXT	Global	Length = 0020
+_strcpy  . . . . . . . . . . . .  	N PROC	0000	_TEXT	Global	Length = 001C
+_strlen  . . . . . . . . . . . .  	L NEAR	0000	_TEXT	External
+
+
+     44 Source  Lines
+     44 Total   Lines
+     12 Symbols
+
+  48022 + 465685 Bytes symbol space free
+
+      0 Warning Errors
+      0 Severe  Errors

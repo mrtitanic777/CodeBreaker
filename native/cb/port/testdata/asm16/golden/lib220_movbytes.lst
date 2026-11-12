@@ -1,0 +1,59 @@
+Microsoft (R) Macro Assembler Version 5.10                  1/16/89 12:00:00
+                                                             Page     1-1
+
+
+				; movbytes(count, from, to): count bytes moved,
+				 within the data segment
+				
+ 0000				_TEXT	SEGMENT	PARA PUBLIC 'CODE'
+					ASSUME	CS:_TEXT
+					EXTRN	cret:NEAR
+					PUBLIC	_movbyte
+ 0000				_movbyte	PROC	NEAR
+ 0000  55				PUSH	BP
+ 0001  8B EC				MOV	BP,SP
+ 0003  57				PUSH	DI
+ 0004  56				PUSH	SI
+ 0005  06				PUSH	ES
+ 0006  8B 4E 04				MOV	CX,[BP+4]
+ 0009  8B 76 06				MOV	SI,[BP+6]
+ 000C  8B 7E 08				MOV	DI,[BP+8]
+ 000F  1E				PUSH	DS
+ 0010  07				POP	ES
+ 0011  FC				CLD
+ 0012  F3/ A4				REP	MOVSB
+ 0014  07				POP	ES
+ 0015  E9 0000 E			JMP	cret
+ 0018				_movbyte	ENDP
+ 0018				_TEXT	ENDS
+					END
+Microsoft (R) Macro Assembler Version 5.10                  1/16/89 12:00:00
+                                                             Symbols-1
+
+
+Segments and Groups:
+
+                N a m e         	Length	 Align	Combine Class
+
+_TEXT  . . . . . . . . . . . . .  	0018	PARA	PUBLIC	'CODE'
+
+Symbols:            
+
+                N a m e         	Type	 Value	 Attr
+
+cret . . . . . . . . . . . . . .  	L NEAR	0000	_TEXT	External
+
+@Cpu . . . . . . . . . . . . . .  	TEXT  0101h		
+@FileName  . . . . . . . . . . .  	TEXT  T		
+@Version . . . . . . . . . . . .  	TEXT  510		
+_movbyte . . . . . . . . . . . .  	N PROC	0000	_TEXT	Global	Length = 0018
+
+
+     24 Source  Lines
+     24 Total   Lines
+      9 Symbols
+
+  48022 + 465685 Bytes symbol space free
+
+      0 Warning Errors
+      0 Severe  Errors
