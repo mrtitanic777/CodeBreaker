@@ -965,3 +965,12 @@ nodes) from the parsed dump to the typed IR, best of 7: Python 10.6 ms, native/c
 this module's but is the larger cost of the path: nlohmann's ordered_json 18.9 ms for the four, Python's json.load 28.6 ms. (The
 Roslyn run that makes the dump takes seconds and dominates a real conversion.) The old typed port (py::ref nodes over the
 imitation layer) was not timed: it cannot be linked into cb_tests, and its shim now runs the new module through the L2 document.
+## translate/backends/java and translate/rewrite (W1-B26)
+
+Old = `java.py` (the typed port runs the same loops over py:: values), new = `native/cb/translate/backends/java`, Release /O2, one thread, best of 5, the clang front end's L2 for `FaithfulArith.c` (about 400 small functions: every integer width and sign, conversions, compound assignment, comparisons) written as Java by the faithful tier, document already read into nodes.
+
+| Work | Old (Python) | New |
+|---|---|---|
+| java.program, FaithfulArith, 45 KB of Java | 112 ms | 2.2 ms |
+
+`rewrite` is a handful of tree walks (a method list, a statement-list scan, a bottom-up rebuild); no hot path, not timed.
