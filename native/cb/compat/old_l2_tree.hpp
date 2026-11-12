@@ -1,51 +1,53 @@
-// codebreaker/translate/l2.cpp -- typed C++ port of codebreaker.translate.l2 (see l2.hpp).
-#include "codebreaker/translate/l2.hpp"
+// cb/compat/old_l2_tree.hpp -- the old IR tree (codebreaker/translate/ir.hpp: py::ref nodes) as L2 documents (the old
+// ir::Dict), kept for the ports that still hold trees of the old kind (docs/CPP_DESIGN.md 6.3).
+//
+// This is the tree half of the old translate/l2.cpp, moved here when l2 became cb/translate/l2 (typed nodes, the Json edge)
+// and the old header became a shim: reading and writing an old tree is the one thing the new module cannot do for it. It is
+// deleted with the last port that holds an old tree (translate/ir is the next module to leave; its shim then needs none of
+// it). Nothing outside the shims includes it.
+#pragma once
 
 #include <cmath>
-#include <fstream>
 #include <map>
-#include <mutex>
-#include <sstream>
 #include <string>
 
-#include "../../../../l2/src/json.hpp"   // (native/l2/src: not "json.hpp" -- this folder has its own l2.hpp)
-#include "../../../../l2/src/l2.hpp"
+#include "codebreaker/translate/ir.hpp"
+#include "py.hpp"
 
 namespace codebreaker::translate::l2 {
 
-namespace {
+namespace ir = codebreaker::translate::ir;
+using ir::Dict;
+using ir::NodeP;
+using ir::SymP;
+using ir::TypeP;
+using ir::Val;
 
-py::str K(const char* s) { return py::str(s); }
+// what the Python front end says of a class type: a record (a value struct, or shared when `ref`), held by reference or not,
+// an exception (made and thrown as a value)
+inline const py::list<py::str> CLASS_FACTS_ = {py::str("record"), py::str("ref"), py::str("exception")};
 
-py::str utf8_str(const std::string& s) { return py::bytes(s).decode("utf-8"); }
+// (defined below: the helpers use them before their place)
+inline Dict to_json(const NodeP& node);
+inline NodeP from_json(const Dict& d);
+inline NodeP from_json(const Val& d);
 
-}  // namespace
+namespace old_l2_detail {
+inline py::str K(const char* s) { return py::str(s); }
+inline py::str utf8_str(const std::string& s) { return py::bytes(s).decode("utf-8"); }
+}  // namespace old_l2_detail
+using namespace old_l2_detail;
 
-// where l2.schema.json is: <repo>/codebreaker/translate/, found from this source file's place in the tree
-// (<repo>/native/typed/cpp/codebreaker/translate/l2.cpp)
-static py::str schema_path_() {
-    std::string p = __FILE__;
-    for (int up = 0; up < 6; ++up) {
-        size_t cut = p.find_last_of("/\\");
-        if (cut == std::string::npos) break;
-        p = p.substr(0, cut);
-    }
-    return utf8_str(p + "/codebreaker/translate/l2.schema.json");
-}
-py::str SCHEMA = schema_path_();
-
-const py::list<py::str> CLASS_FACTS_ = {py::str("record"), py::str("ref"), py::str("exception")};
-
-namespace {
+namespace old_l2_detail {
 
 // ---------------------------------------------------------------------------------------------- Val helpers
-bool val_none(const Val& v) { return v.is_none(); }
+inline bool val_none(const Val& v) { return v.is_none(); }
 
 template <class T> bool holds(const Val& v) { return std::holds_alternative<T>(v.v); }
 template <class T> const T& as(const Val& v) { return std::get<T>(v.v); }
 
 // Python truthiness of a value
-bool truthy(const Val& v) {
+inline bool truthy(const Val& v) {
     return std::visit(
         [](const auto& x) -> bool {
             using T = std::decay_t<decltype(x)>;
@@ -61,67 +63,67 @@ bool truthy(const Val& v) {
 }
 
 // `v != 1` (the default `rank` of an array)
-bool not_one(const Val& v) {
+inline bool not_one(const Val& v) {
     if (holds<bool>(v)) return (as<bool>(v) ? 1 : 0) != 1;
     if (holds<int64_t>(v)) return as<int64_t>(v) != 1;
     if (holds<double>(v)) return as<double>(v) != 1.0;
     return true;
 }
 
-bool dhas(const Dict& d, const char* key) { return d.contains(K(key)); }
-Val dget(const Dict& d, const char* key) { return d.get(K(key), Val()); }          // d.get(key)
-Val dget(const Dict& d, const char* key, const Val& dflt) { return d.get(K(key), dflt); }
-Val dat(const Dict& d, const char* key) { return d.at(K(key)); }                   // d[key]: KeyError
-void dset(const Dict& d, const char* key, const Val& v) { d.set(K(key), v); }
+inline bool dhas(const Dict& d, const char* key) { return d.contains(K(key)); }
+inline Val dget(const Dict& d, const char* key) { return d.get(K(key), Val()); }          // d.get(key)
+inline Val dget(const Dict& d, const char* key, const Val& dflt) { return d.get(K(key), dflt); }
+inline Val dat(const Dict& d, const char* key) { return d.at(K(key)); }                   // d[key]: KeyError
+inline void dset(const Dict& d, const char* key, const Val& v) { d.set(K(key), v); }
 
-[[noreturn]] void type_error(const char* what, const Val& v) {
+[[noreturn]] inline void type_error(const char* what, const Val& v) {
     throw py::TypeError(py::str(what) + v.repr());
 }
 
-const Dict& dict_of(const Val& v, const char* what) {
+inline const Dict& dict_of(const Val& v, const char* what) {
     if (!holds<Dict>(v)) type_error(what, v);
     return as<Dict>(v);
 }
 
-py::str str_of(const Val& v, const char* what) {
+inline py::str str_of(const Val& v, const char* what) {
     if (!holds<py::str>(v)) type_error(what, v);
     return as<py::str>(v);
 }
 
-std::optional<py::str> opt_str_of(const Val& v, const char* what) {
+inline std::optional<py::str> opt_str_of(const Val& v, const char* what) {
     if (val_none(v)) return std::nullopt;
     return str_of(v, what);
 }
 
-py::list<py::str> strs_of(const Val& v, const char* what) {
+inline py::list<py::str> strs_of(const Val& v, const char* what) {
     if (!holds<Val::List>(v)) type_error(what, v);
     py::list<py::str> out;
     for (const Val& x : as<Val::List>(v)) out.append(str_of(x, what));
     return out;
 }
 
-int64_t int_of(const Val& v, const char* what) {
+inline int64_t int_of(const Val& v, const char* what) {
     if (val_none(v)) return 0;
     if (!holds<int64_t>(v)) type_error(what, v);
     return as<int64_t>(v);
 }
 
 // a Type (or None) held in a Val: AttributeError for anything else (the Python reads .kind of it)
-TypeP type_in(const Val& v) {
+inline TypeP type_in(const Val& v) {
     if (val_none(v)) return nullptr;
     if (holds<ir::TypeP>(v)) return as<ir::TypeP>(v);
     throw py::AttributeError(py::str("object has no attribute 'kind': ") + v.repr());
 }
 
 // `for x in v`: the items of a list (TypeError for anything else)
-const Val::List& list_in(const Val& v) {
+inline const Val::List& list_in(const Val& v) {
     if (!holds<Val::List>(v)) type_error("object is not iterable: ", v);
     return as<Val::List>(v);
 }
 
 // dict(v): a copy of a dict; an empty str or list is an empty dict; a longer str is a ValueError (its characters are not
 // pairs) and any other value a TypeError
-Dict dict_copy_of(const Val& v) {
+inline Dict dict_copy_of(const Val& v) {
     if (holds<Dict>(v)) return as<Dict>(v).copy();
     if (holds<py::str>(v)) {
         if (py::len(as<py::str>(v))) throw py::ValueError("dictionary update sequence element #0 has length 1; 2 is required");
@@ -132,16 +134,17 @@ Dict dict_copy_of(const Val& v) {
 }
 
 // dict(p, type=t): a copy of p with its 'type' set (a key already there keeps its place)
-Dict with_type(const Val& p, const Val& t) {
+inline Dict with_type(const Val& p, const Val& t) {
     Dict q = dict_of(p, "dict() argument is not a mapping: ").copy();
     dset(q, "type", t);
     return q;
 }
 
-}  // namespace
+}  // namespace old_l2_detail
+using namespace old_l2_detail;
 
 // ---------------------------------------------------------------------------------------------- types
-Val type_json(const TypeP& t) {
+inline Val type_json(const TypeP& t) {
     if (!t) return Val();
     const py::str& k = t->kind;
     const Dict& info = t->info;
@@ -252,7 +255,7 @@ Val type_json(const TypeP& t) {
     throw py::ValueError(py::str("no L2 form for type kind ") + py::repr(k));
 }
 
-TypeP type_from(const Val& dv) {
+inline TypeP type_from(const Val& dv) {
     if (val_none(dv)) return nullptr;
     const Dict& d = dict_of(dv, "L2 type is not a dict: ");
     Val kv = dat(d, "kind");
@@ -360,7 +363,7 @@ TypeP type_from(const Val& dv) {
 }
 
 // ---------------------------------------------------------------------------------------------- symbols
-Val sym_json(const SymP& s) {
+inline Val sym_json(const SymP& s) {
     if (!s) return Val();
     Dict d;
     dset(d, "kind", Val(s->kind));
@@ -390,7 +393,7 @@ Val sym_json(const SymP& s) {
     return Val(d);
 }
 
-SymP sym_from(const Val& dv) {
+inline SymP sym_from(const Val& dv) {
     if (val_none(dv)) return nullptr;
     const Dict& d = dict_of(dv, "L2 symbol is not a dict: ");
     py::str kind = str_of(dat(d, "kind"), "symbol kind is not a str: ");
@@ -411,11 +414,11 @@ SymP sym_from(const Val& dv) {
 }
 
 // ---------------------------------------------------------------------------------------------- nodes
-namespace {
+namespace old_l2_detail {
 
 // _value(v) of a Val: types in lists are made into their L2 form, JSON has no NaN/inf (a Lit keeps them
 // as text), a dict is kept as it is
-Val value_of(const Val& v) {
+inline Val value_of(const Val& v) {
     if (holds<ir::TypeP>(v)) return type_json(as<ir::TypeP>(v));
     if (holds<Val::List>(v)) {
         Val::List out;
@@ -428,33 +431,33 @@ Val value_of(const Val& v) {
 
 // -- to_json: one overload per type a slot has. `keep`: an empty list is written (a slot of `fields`, or
 // params / args); else it is left out.
-void put(const Dict& d, const py::str& key, bool keep, const NodeP& v);
-void put(const Dict& d, const py::str& key, bool keep, const TypeP& v) {
+inline void put(const Dict& d, const py::str& key, bool keep, const NodeP& v);
+inline void put(const Dict& d, const py::str& key, bool keep, const TypeP& v) {
     (void)keep;
     if (v) d.set(key, type_json(v));
 }
-void put(const Dict& d, const py::str& key, bool keep, const SymP& v) {
+inline void put(const Dict& d, const py::str& key, bool keep, const SymP& v) {
     (void)keep;
     if (v) d.set(key, sym_json(v));
 }
-void put(const Dict& d, const py::str& key, bool, const py::str& v) { d.set(key, Val(v)); }
-void put(const Dict& d, const py::str& key, bool, int64_t v) { d.set(key, Val(v)); }
-void put(const Dict& d, const py::str& key, bool, bool v) { d.set(key, Val(v)); }
-void put(const Dict& d, const py::str& key, bool, const Dict& v) { d.set(key, Val(v)); }
-void put(const Dict& d, const py::str& key, bool keep, const Val& v) {
+inline void put(const Dict& d, const py::str& key, bool, const py::str& v) { d.set(key, Val(v)); }
+inline void put(const Dict& d, const py::str& key, bool, int64_t v) { d.set(key, Val(v)); }
+inline void put(const Dict& d, const py::str& key, bool, bool v) { d.set(key, Val(v)); }
+inline void put(const Dict& d, const py::str& key, bool, const Dict& v) { d.set(key, Val(v)); }
+inline void put(const Dict& d, const py::str& key, bool keep, const Val& v) {
     if (val_none(v)) return;
     if (!keep && holds<Val::List>(v) && as<Val::List>(v).empty()) return;
     d.set(key, value_of(v));
 }
-void put(const Dict& d, const py::str& key, bool keep, const py::list<NodeP>& v);
-void put(const Dict& d, const py::str& key, bool keep, const py::list<TypeP>& v) {
+inline void put(const Dict& d, const py::str& key, bool keep, const py::list<NodeP>& v);
+inline void put(const Dict& d, const py::str& key, bool keep, const py::list<TypeP>& v) {
     if (!keep && v.empty()) return;
     Val::List out;
     for (const TypeP& x : v) out.append(type_json(x));
     d.set(key, Val(out));
 }
-void put(const Dict& d, const py::str& key, bool keep, const std::variant<py::list<TypeP>, py::list<Val>>& v);
-void put(const Dict& d, const py::str& key, bool keep, const py::list<py::str>& v) {
+inline void put(const Dict& d, const py::str& key, bool keep, const std::variant<py::list<TypeP>, py::list<Val>>& v);
+inline void put(const Dict& d, const py::str& key, bool keep, const py::list<py::str>& v) {
     if (!keep && v.empty()) return;
     Val::List out;
     for (const py::str& x : v) out.append(Val(x));
@@ -463,7 +466,7 @@ void put(const Dict& d, const py::str& key, bool keep, const py::list<py::str>& 
 template <class T> void put(const Dict& d, const py::str& key, bool keep, const std::optional<T>& v) {
     if (v) put(d, key, keep, *v);
 }
-void put(const Dict& d, const py::str& key, bool keep, const std::variant<py::list<TypeP>, py::list<Val>>& v) {
+inline void put(const Dict& d, const py::str& key, bool keep, const std::variant<py::list<TypeP>, py::list<Val>>& v) {
     if (std::holds_alternative<py::list<TypeP>>(v)) {
         put(d, key, keep, std::get<py::list<TypeP>>(v));
         return;
@@ -472,17 +475,17 @@ void put(const Dict& d, const py::str& key, bool keep, const std::variant<py::li
     if (!keep && l.empty()) return;
     d.set(key, value_of(Val(l)));
 }
-void put(const Dict& d, const py::str& key, bool keep, const ir::NodeOrList& v) {
+inline void put(const Dict& d, const py::str& key, bool keep, const ir::NodeOrList& v) {
     if (std::holds_alternative<NodeP>(v)) put(d, key, keep, std::get<NodeP>(v));
     else put(d, key, keep, std::get<py::list<NodeP>>(v));
 }
 
-Dict to_json_impl(const NodeP& node);
+inline Dict to_json_impl(const NodeP& node);
 
-void put(const Dict& d, const py::str& key, bool, const NodeP& v) {
+inline void put(const Dict& d, const py::str& key, bool, const NodeP& v) {
     if (v) d.set(key, Val(to_json_impl(v)));
 }
-void put(const Dict& d, const py::str& key, bool keep, const py::list<NodeP>& v) {
+inline void put(const Dict& d, const py::str& key, bool keep, const py::list<NodeP>& v) {
     if (!keep && v.empty()) return;
     Val::List out;
     for (const NodeP& x : v) out.append(x ? Val(to_json_impl(x)) : Val());
@@ -505,33 +508,33 @@ template <class D> Dict to_json_as(const NodeP& node) {
 }
 
 // -- from_json: the value of a slot, in the kind the slot is typed with
-NodeP node_in(const Val& v);
+inline NodeP node_in(const Val& v);
 
-void assign(NodeP& m, const Val& v) {
+inline void assign(NodeP& m, const Val& v) {
     if (val_none(v)) {
         m = nullptr;
         return;
     }
     m = node_in(v);
 }
-void assign(TypeP& m, const Val& v) { m = type_from(v); }
-void assign(SymP& m, const Val& v) { m = sym_from(v); }
-void assign(py::str& m, const Val& v) { m = str_of(v, "slot is not a str: "); }
-void assign(ir::OptStr& m, const Val& v) { m = opt_str_of(v, "slot is not a str: "); }
-void assign(ir::OptInt& m, const Val& v) {
+inline void assign(TypeP& m, const Val& v) { m = type_from(v); }
+inline void assign(SymP& m, const Val& v) { m = sym_from(v); }
+inline void assign(py::str& m, const Val& v) { m = str_of(v, "slot is not a str: "); }
+inline void assign(ir::OptStr& m, const Val& v) { m = opt_str_of(v, "slot is not a str: "); }
+inline void assign(ir::OptInt& m, const Val& v) {
     if (val_none(v)) m.reset();
     else m = int_of(v, "slot is not an int: ");
 }
-void assign(ir::OptBool& m, const Val& v) {
+inline void assign(ir::OptBool& m, const Val& v) {
     if (val_none(v)) m.reset();
     else if (holds<bool>(v)) m = as<bool>(v);
     else type_error("slot is not a bool: ", v);
 }
-void assign(ir::Strs& m, const Val& v) {
+inline void assign(ir::Strs& m, const Val& v) {
     if (val_none(v)) m.reset();
     else m = strs_of(v, "slot is not a list of str: ");
 }
-void assign(ir::Nodes& m, const Val& v) {
+inline void assign(ir::Nodes& m, const Val& v) {
     if (val_none(v)) {
         m.reset();
         return;
@@ -540,7 +543,7 @@ void assign(ir::Nodes& m, const Val& v) {
     for (const Val& x : list_in(v)) out.append(val_none(x) ? nullptr : node_in(x));   // (None stays None)
     m = out;
 }
-void assign(ir::Types& m, const Val& v) {
+inline void assign(ir::Types& m, const Val& v) {
     if (val_none(v)) {
         m.reset();
         return;
@@ -549,12 +552,12 @@ void assign(ir::Types& m, const Val& v) {
     for (const Val& x : list_in(v)) out.append(type_from(x));
     m = out;
 }
-void assign(Val& m, const Val& v) { m = v; }
-void assign(std::optional<Dict>& m, const Val& v) {
+inline void assign(Val& m, const Val& v) { m = v; }
+inline void assign(std::optional<Dict>& m, const Val& v) {
     if (val_none(v)) m.reset();
     else m = dict_of(v, "slot is not a dict: ");
 }
-void assign(ir::NodeOrList& m, const Val& v) {
+inline void assign(ir::NodeOrList& m, const Val& v) {
     if (holds<Val::List>(v)) {
         py::list<NodeP> out;
         for (const Val& x : as<Val::List>(v)) out.append(val_none(x) ? nullptr : node_in(x));
@@ -567,7 +570,7 @@ void assign(ir::NodeOrList& m, const Val& v) {
 }
 
 // Call.typeargs: a list of type dicts is Types; any other list (a struct format, a count) is kept as the values it is
-void assign(ir::TypeArgs& m, const Val& v) {
+inline void assign(ir::TypeArgs& m, const Val& v) {
     if (val_none(v)) {
         m.reset();
         return;
@@ -612,7 +615,7 @@ struct NodeKind {
     Dict (*to)(const NodeP&);
     NodeP (*from)(const Dict&);
 };
-const std::map<std::string, NodeKind>& node_kinds() {
+inline const std::map<std::string, NodeKind>& node_kinds() {
     static const std::map<std::string, NodeKind> table = {
 #define L2_ENTRY(C) {#C, {&to_json_as<ir::C>, &from_json_as<ir::C>}},
         L2_NODE_KINDS(L2_ENTRY)
@@ -621,24 +624,25 @@ const std::map<std::string, NodeKind>& node_kinds() {
     return table;
 }
 
-Dict to_json_impl(const NodeP& node) {
+inline Dict to_json_impl(const NodeP& node) {
     if (!node) throw py::AttributeError("'NoneType' object has no attribute 'line'");
     auto it = node_kinds().find(node->class_name().utf8());
     if (it == node_kinds().end()) throw py::KeyError(py::repr(node->class_name()));
     return it->second.to(node);
 }
 
-NodeP node_in(const Val& v) {
+inline NodeP node_in(const Val& v) {
     if (!holds<Dict>(v) || !as<Dict>(v).contains(K("node")))
         throw py::TypeError(py::str("a node slot holds a document without 'node': ") + v.repr());
     return from_json(as<Dict>(v));
 }
 
-}  // namespace
+}  // namespace old_l2_detail
+using namespace old_l2_detail;
 
-Dict to_json(const NodeP& node) { return to_json_impl(node); }
+inline Dict to_json(const NodeP& node) { return to_json_impl(node); }
 
-NodeP from_json(const Dict& d) {
+inline NodeP from_json(const Dict& d) {
     Val name = dat(d, "node");
     if (!holds<py::str>(name)) throw py::KeyError(name.repr());
     auto it = node_kinds().find(as<py::str>(name).utf8());
@@ -646,353 +650,7 @@ NodeP from_json(const Dict& d) {
     return it->second.from(d);
 }
 
-NodeP from_json(const Val& d) {
+inline NodeP from_json(const Val& d) {
     return from_json(dict_of(d, "an L2 document is not a dict: "));
 }
-
-// ---------------------------------------------------------------------------------------------- schema
-namespace {
-
-Val from_v(const py::V& v) {
-    switch (v.k) {
-        case py::K::None: return Val();
-        case py::K::Bool: return Val(v.b);
-        case py::K::Int: return Val(v.i);
-        case py::K::Float: return Val(v.f);
-        case py::K::Str: return Val(utf8_str(v.str()));
-        case py::K::List:
-        case py::K::Tuple: {
-            Val::List out;
-            for (const py::V& x : v.seq()) out.append(from_v(x));
-            return Val(out);
-        }
-        case py::K::Dict: {
-            Dict out;
-            for (const auto& kv : v.items()) out.set(utf8_str(kv.first.str()), from_v(kv.second));
-            return Val(out);
-        }
-        default: break;
-    }
-    throw py::TypeError("a set is not JSON");
-}
-
-py::V to_v(const Val& v) {
-    return std::visit(
-        [](const auto& x) -> py::V {
-            using T = std::decay_t<decltype(x)>;
-            if constexpr (std::is_same_v<T, std::monostate>) return py::V();
-            else if constexpr (std::is_same_v<T, bool>) return py::V(x);
-            else if constexpr (std::is_same_v<T, int64_t>) return py::V((long long)x);
-            else if constexpr (std::is_same_v<T, double>) return py::V(x);
-            else if constexpr (std::is_same_v<T, py::str>) return py::V(x.utf8());
-            else if constexpr (std::is_same_v<T, ir::TypeP>) throw py::TypeError("Object of type Type is not JSON serializable");
-            else if constexpr (std::is_same_v<T, Val::List>) {
-                std::vector<py::V> items;
-                for (const Val& e : x) items.push_back(to_v(e));
-                return py::V::list(items);
-            } else {
-                py::V out = py::V::dict();
-                for (const auto& kv : x.items()) out.set(std::get<0>(kv).utf8(), to_v(std::get<1>(kv)));
-                return out;
-            }
-        },
-        v.v);
-}
-
-std::string read_file_(const py::str& path) {
-    std::ifstream f(path.utf8(), std::ios::binary);
-    if (!f) throw py::Exception("cannot open " + path.utf8());   // (FileNotFoundError)
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
-
-}  // namespace
-
-Val schema() { return from_v(py::json_parse(read_file_(SCHEMA))); }
-
-void validate(const Dict& doc) {
-    static std::mutex mu;
-    static std::shared_ptr<::l2::Schema> compiled;
-    static py::str compiled_for;
-    std::shared_ptr<::l2::Schema> s;
-    {
-        std::lock_guard<std::mutex> lock(mu);
-        if (!compiled || !(compiled_for == SCHEMA)) {
-            compiled = std::make_shared<::l2::Schema>(py::json_parse(read_file_(SCHEMA)));
-            compiled_for = SCHEMA;
-        }
-        s = compiled;
-    }
-    std::string why;
-    if (!s->valid(to_v(Val(doc)), &why)) throw ValidationError(why);
-}
-
-// ------------------------------------------------------------------------------------ the module model
-Dict module(const py::list<Val>& units, const std::optional<py::str>& header, const std::optional<Dict>& origin) {
-    Dict d;
-    dset(d, "node", Val("Module"));
-    Val::List us;
-    for (const Val& u : units) us.append(u);
-    dset(d, "units", Val(us));
-    if (header) dset(d, "header", Val(*header));
-    if (origin) dset(d, "origin", Val(*origin));
-    return d;
-}
-
-Dict function(const py::str& name, const std::optional<py::str>& text, const std::optional<Dict>& origin,
-              const std::optional<py::list<py::str>>& comments, const Dict& fields) {
-    Dict d;
-    dset(d, "node", Val("MethodDecl"));
-    dset(d, "name", Val(name));
-    dset(d, "kind", Val("function"));
-    if (origin) dset(d, "origin", Val(*origin));
-    if (comments) {
-        Val::List cs;
-        for (const py::str& c : *comments) cs.append(Val(c));
-        dset(d, "comments", Val(cs));
-    }
-    if (text) dset(d, "text", Val(*text));
-    d.update(fields);
-    return d;
-}
-
-Dict fragment(const std::optional<py::str>& asm_, const std::optional<py::str>& name, const std::optional<py::str>& syntax,
-              const std::optional<Dict>& origin, const std::optional<py::str>& reason, const std::optional<py::str>& why,
-              const std::optional<int64_t>& length, const std::optional<py::str>& within) {
-    Dict d;
-    dset(d, "node", Val("MachineFragment"));
-    if (origin) dset(d, "origin", Val(*origin));
-    if (name) dset(d, "name", Val(*name));
-    if (reason) dset(d, "reason", Val(*reason));
-    if (why) dset(d, "why", Val(*why));
-    if (length) dset(d, "length", Val(*length));
-    if (syntax) dset(d, "syntax", Val(*syntax));
-    if (asm_) dset(d, "asm", Val(*asm_));
-    if (within) dset(d, "within", Val(*within));
-    return d;
-}
-
-Dict comment(const py::str& text) {
-    Dict d;
-    dset(d, "node", Val("Comment"));
-    dset(d, "text", Val(text));
-    return d;
-}
-
-py::list<Dict> units(const Dict& doc, const std::optional<py::str>& node) {
-    Val us = dget(doc, "units");
-    if (!truthy(us)) us = Val(Val::List());
-    Val::List items;
-    if (holds<Val::List>(us)) items = as<Val::List>(us);
-    else items.append(us);
-    py::list<Dict> out;
-    for (const Val& u : items) {
-        if (!holds<Dict>(u)) {
-            if (node) throw py::AttributeError(py::str("object has no attribute 'get': ") + u.repr());
-            type_error("a unit is not a dict: ", u);
-        }
-        const Dict& ud = as<Dict>(u);
-        if (!node) {
-            out.append(ud);
-            continue;
-        }
-        Val n = dget(ud, "node");
-        if (holds<py::str>(n) && as<py::str>(n) == *node) out.append(ud);
-    }
-    return out;
-}
-
-py::dict<py::str, py::str> texts(const Dict& doc) {
-    py::dict<py::str, py::str> out;
-    for (const Dict& u : units(doc, py::str("MethodDecl"))) {
-        Val t = dget(u, "text");
-        if (val_none(t)) continue;
-        out.set(str_of(dat(u, "name"), "a function name is not a str: "), str_of(t, "a function text is not a str: "));
-    }
-    return out;
-}
-
-namespace {
-
-Val::List unit_vals(const py::list<Dict>& us) {
-    Val::List out;
-    for (const Dict& u : us) out.append(Val(u));
-    return out;
-}
-
-// dict(doc, units=us)
-Dict with_units(const Dict& doc, const Val::List& us) {
-    Dict d = doc.copy();
-    dset(d, "units", Val(us));
-    return d;
-}
-
-}  // namespace
-
-Made::Made(const py::str& name_, const py::str& header, const std::optional<py::dict<py::str, py::str>>& texts_,
-           const std::optional<py::list<py::str>>& order_, const std::optional<py::dict<int64_t, py::str>>& by_va,
-           const Dict& facts_)
-    : name(name_), doc(module(py::list<Val>(), header)), facts(facts_) {
-    py::dict<py::str, py::str> tx = texts_ ? texts_->copy() : py::dict<py::str, py::str>();
-    py::dict<py::str, int64_t> place;
-    if (by_va) {
-        for (const auto& kv : by_va->items()) place.set(std::get<1>(kv), std::get<0>(kv));
-    }
-    py::list<py::str> ord;
-    if (order_) ord = order_->copy();
-    else {
-        for (const py::str& n : tx) ord.append(n);
-    }
-    py::set<py::str> listed;
-    for (const py::str& n : ord) listed.add(n);
-    Val::List us;
-    auto one = [&](const py::str& n) {
-        std::optional<py::str> text;
-        if (tx.contains(n)) text = tx.at(n);
-        std::optional<Dict> origin;
-        if (place.contains(n)) {
-            Dict o;
-            dset(o, "module", Val(name));
-            dset(o, "va", Val(place.at(n)));
-            origin = o;
-        }
-        us.append(Val(function(n, text, origin)));
-    };
-    for (const py::str& n : ord) one(n);
-    for (const py::str& n : tx) {
-        if (!listed.contains(n)) one(n);
-    }
-    dset(doc, "units", Val(us));
-}
-
-void Made::add(const py::str& name_, const std::optional<py::str>& text, const std::optional<int64_t>& va) {
-    std::optional<Dict> origin;
-    if (va) {
-        Dict o;
-        dset(o, "module", Val(name));
-        dset(o, "va", Val(*va));
-        origin = o;
-    }
-    Val::List us = unit_vals(units(doc));
-    us.append(Val(function(name_, text, origin)));
-    doc = with_units(doc, us);
-}
-
-py::list<Dict> Made::_functions() const { return units(doc, py::str("MethodDecl")); }
-
-py::dict<py::str, py::str> Made::texts() const { return l2::texts(doc); }
-
-void Made::set_texts(const py::dict<py::str, py::str>& new_texts) {
-    py::dict<py::str, py::str> nw = new_texts.copy();
-    Val::List us;
-    for (const Dict& u : units(doc)) {
-        Val node = dget(u, "node");
-        bool method = holds<py::str>(node) && as<py::str>(node) == py::str("MethodDecl");
-        if (method) {
-            Val nm = dat(u, "name");
-            if (holds<py::str>(nm) && nw.contains(as<py::str>(nm))) {
-                Dict c = u.copy();
-                dset(c, "text", Val(nw.at(as<py::str>(nm))));
-                us.append(Val(c));
-                continue;
-            }
-        }
-        us.append(Val(u));
-    }
-    py::set<py::str> have;
-    for (const Val& u : us) {
-        const Dict& ud = as<Dict>(u);
-        Val node = dget(ud, "node");
-        if (holds<py::str>(node) && as<py::str>(node) == py::str("MethodDecl"))
-            have.add(str_of(dat(ud, "name"), "a function name is not a str: "));
-    }
-    for (const auto& kv : nw.items()) {
-        if (!have.contains(std::get<0>(kv))) us.append(Val(function(std::get<0>(kv), std::get<1>(kv))));
-    }
-    doc = with_units(doc, us);
-}
-
-void Made::set_text(const py::str& name_, const py::str& text) {
-    py::dict<py::str, py::str> one;
-    one.set(name_, text);
-    set_texts(one);
-}
-
-void Made::update_texts(const py::dict<py::str, py::str>& new_texts) { set_texts(new_texts); }
-
-py::str Made::header() const {
-    Val h = dget(doc, "header");
-    if (!truthy(h)) return py::str("");
-    return str_of(h, "a header is not a str: ");
-}
-
-void Made::set_header(const py::str& text) {
-    Dict d = doc.copy();
-    dset(d, "header", Val(text));
-    doc = d;
-}
-
-py::list<py::str> Made::order() const {
-    py::list<py::str> out;
-    for (const Dict& u : _functions()) out.append(str_of(dat(u, "name"), "a function name is not a str: "));
-    return out;
-}
-
-namespace {
-
-// `"va" in (u.get("origin") or {})`, and the place u["origin"]["va"]
-std::optional<int64_t> va_of(const Dict& u) {
-    Val o = dget(u, "origin");
-    if (!truthy(o)) return std::nullopt;
-    const Dict& od = dict_of(o, "an origin is not a dict: ");
-    if (!dhas(od, "va")) return std::nullopt;
-    return int_of(dat(od, "va"), "an address is not an int: ");
-}
-
-}  // namespace
-
-py::dict<int64_t, py::str> Made::by_va() const {
-    py::dict<int64_t, py::str> out;
-    for (const Dict& u : _functions()) {
-        std::optional<int64_t> va = va_of(u);
-        if (va) out.set(*va, str_of(dat(u, "name"), "a function name is not a str: "));
-    }
-    return out;
-}
-
-py::dict<int64_t, std::tuple<py::str, std::optional<py::str>>> Made::functions() const {
-    py::dict<int64_t, std::tuple<py::str, std::optional<py::str>>> out;
-    for (const Dict& u : _functions()) {
-        std::optional<int64_t> va = va_of(u);
-        if (va)
-            out.set(*va, std::make_tuple(str_of(dat(u, "name"), "a function name is not a str: "),
-                                         opt_str_of(dget(u, "text"), "a function text is not a str: ")));
-    }
-    return out;
-}
-
-Assembly::Assembly(const py::list<py::str>& lines, const std::optional<py::str>& syntax_, const std::optional<py::str>& module_,
-                   const py::str& name, const py::str& reason)
-    : py::list<py::str>(py::list<py::str>::from(lines)), syntax(syntax_), module(module_) {
-    _parts.emplace_back(0, name, reason, std::nullopt, std::nullopt);
-}
-
-void Assembly::part(const py::str& name, const py::str& reason, const std::optional<Dict>& origin, const std::optional<int64_t>& length) {
-    _parts.emplace_back(size(), name, reason, origin, length);
-}
-
-Dict Assembly::document() const {
-    py::list<Val> out;
-    for (size_t i = 0; i < _parts.size(); ++i) {
-        int64_t start = std::get<0>(_parts[i]);
-        int64_t end = i + 1 < _parts.size() ? std::get<0>(_parts[i + 1]) : size();
-        if (end > start) {
-            out.append(Val(fragment(py::join(py::str("\n"), slice(start, end)), std::get<1>(_parts[i]), syntax, std::get<3>(_parts[i]),
-                                    std::get<2>(_parts[i]), std::nullopt, std::get<4>(_parts[i]))));
-        }
-    }
-    return l2::module(out);
-}
-
 }  // namespace codebreaker::translate::l2

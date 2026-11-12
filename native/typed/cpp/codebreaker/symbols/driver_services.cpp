@@ -1,10 +1,16 @@
-// codebreaker/symbols/driver_services.cpp -- typed C++ of codebreaker.symbols.driver_services (see driver_services.hpp).
+// codebreaker/symbols/driver_services.cpp -- the shim's translation unit (see driver_services.hpp). The new module
+// (cb/symbols/driver_services) holds the table and reads the kit's include files; this file gives it the knowledge base's rows
+// (through the old knowledge reader) and the corpus's drivers (through the old LE reader), and converts types.
 
 #include "codebreaker/symbols/driver_services.hpp"
 
 #include <algorithm>
+#include <format>
 #include <map>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/symbols/driver_services.hpp"
 #include "codebreaker/base/corpus.hpp"
 #include "codebreaker/formats/le.hpp"
 #include "py_json.hpp"
@@ -15,7 +21,10 @@ namespace codebreaker::symbols::driver_services {
 namespace {
 
 namespace ks = knowledge::sources;
+namespace nds = cb::symbols::driver_services;
 using Json = ks::Json;
+using cb::compat::from_py;
+using cb::compat::to_py;
 
 // the base's store, as far as sources.authored asks of it: a kind's rows, made again when the file's stamp is new
 class MemoryBase : public ks::KnowledgeBase {
@@ -43,23 +52,6 @@ void ensure_store() {
     }
 }
 
-py::re::Pattern re_(const char* pattern, int64_t flags = 0) { return py::re::compile(py::str(pattern), flags); }
-
-const py::re::Pattern& BEGIN() { static const py::re::Pattern p = re_(R"(^\s*Begin_Service_Table\s+(\w+))", py::re::I); return p; }
-const py::re::Pattern& END() { static const py::re::Pattern p = re_(R"(^\s*End_Service_Table\b)", py::re::I); return p; }
-const py::re::Pattern& ID_ASM() { static const py::re::Pattern p = re_(R"(^\s*(\w+?)_Device_ID\s+(?:equ|=)\s+([^;]+))", py::re::I); return p; }
-const py::re::Pattern& ID_C() { static const py::re::Pattern p = re_(R"(^\s*#define\s+(\w+?)_Device_ID\s+(\w+))", py::re::I); return p; }
-const py::re::Pattern& EQU() { static const py::re::Pattern p = re_(R"(^\s*(\w+)\s+(?:equ|=)\s+([0-9][0-9A-Fa-f]*h?)\s*(?:;.*)?$)", py::re::I); return p; }
-
-std::string hex_pad(int64_t v, int width) {   // "%0*X" of Python (the width counts a minus sign)
-    char b[40];
-    std::snprintf(b, sizeof b, "%llX", static_cast<unsigned long long>(v < 0 ? -v : v));
-    std::string digits = b;
-    std::string sign = v < 0 ? "-" : "";
-    while (static_cast<int>(sign.size() + digits.size()) < width) digits = "0" + digits;
-    return sign + digits;
-}
-
 int64_t hex_key(const py::str& k) { return py::int_parse(k, 16); }
 
 py::str name_of(const Json& j) {
@@ -71,6 +63,29 @@ py::dict<int64_t, py::str> names_table(const ks::Rows& rows) {
     py::dict<int64_t, py::str> out;
     for (const auto& kv : rows.items()) out.set(hex_key(std::get<0>(kv)), name_of(std::get<1>(kv)));
     return out;
+}
+
+// The rows the new module reads, made from the table the old layer loaded.
+cb::knowledge::Rows rows_of(const py::dict<int64_t, py::str>& names) {
+    cb::knowledge::Rows rows;
+    for (const auto& kv : names.items()) rows.insert_or_assign(std::format("{:04X}", static_cast<std::uint32_t>(std::get<0>(kv))), cb::knowledge::Value(from_py(std::get<1>(kv))));
+    return rows;
+}
+
+cb::knowledge::Rows rows_of(const py::dict<int64_t, py::list<py::str>>& lists) {
+    cb::knowledge::Rows rows;
+    for (const auto& kv : lists.items()) {
+        cb::knowledge::Value::List names;
+        for (const py::str& n : std::get<1>(kv)) names.emplace_back(from_py(n));
+        rows.insert_or_assign(std::format("{:04X}", static_cast<std::uint32_t>(std::get<0>(kv))), cb::knowledge::Value(std::move(names)));
+    }
+    return rows;
+}
+
+// the table the new module reads, rebuilt with `_loaded()`
+std::optional<nds::Table>& loaded_new() {
+    static std::optional<nds::Table> t;
+    return t;
 }
 
 }  // namespace
@@ -104,200 +119,81 @@ const Table& _table() {
         }
         t.drivers = names_table(table(py::str("vxd"), py::str("driver")));
         t.messages = names_table(table(py::str("vxd"), py::str("message")));
+        loaded_new() = cb::compat::guard([&] { return nds::Table::from_rows(rows_of(t.devices), rows_of(t.services), rows_of(t.drivers), rows_of(t.messages)); });
         _loaded() = t;
     }
     return *_loaded();
 }
 
+namespace {
+const nds::Table& table_() {
+    _table();
+    return *loaded_new();
+}
+std::optional<py::str> to_old(const std::optional<std::string>& v) { return v ? std::optional<py::str>(to_py(*v)) : std::nullopt; }
+std::optional<std::uint32_t> as_number(int64_t v) { return v >= 0 && v <= 0xFFFFFFFFLL ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(v)) : std::nullopt; }
+}  // namespace
+
 std::optional<py::str> device_name(int64_t device) {
-    const Table& t = _table();
-    std::optional<py::str> kit = t.devices.get(device);
-    if (kit && !kit->empty()) return kit;
-    return t.drivers.get(device);
+    const auto n = as_number(device);
+    return n ? to_old(table_().device_name(*n)) : std::nullopt;
 }
 
 std::optional<py::str> service_name(int64_t device, int64_t service) {
-    const Table& t = _table();
-    std::optional<py::list<py::str>> names = t.services.get(device);
-    int64_t n = service & 0x7FFF;
-    if (names && n < names->size() && !(*names)[n].empty()) return (*names)[n];
-    return std::nullopt;
+    const auto d = as_number(device);
+    const auto s = as_number(service & 0xFFFFFFFFLL);
+    return d && s ? to_old(table_().service_name(*d, *s)) : std::nullopt;
 }
 
 py::str label(int64_t device, int64_t service) {
-    std::optional<py::str> real = service_name(device, service);
-    if (real && !real->empty()) return *real;
-    int64_t n = service & 0x7FFF;
-    std::optional<py::str> dev = device_name(device);
-    if (dev && !dev->empty()) return py::str(py::re::sub(py::str(R"(\W)"), py::str("_"), *dev).utf8() + "_Service_" + hex_pad(n, 4));
-    return device == 1 ? py::str("VMM_" + hex_pad(n, 4)) : py::str("VxD_" + hex_pad(device, 4) + "_" + hex_pad(n, 4));
+    const auto d = as_number(device);
+    return to_py(table_().label(d.value_or(0), static_cast<std::uint32_t>(service & 0xFFFFFFFFLL)));
 }
 
 py::dict<int64_t, py::str> messages() { return _table().messages.copy(); }
 
-std::optional<py::str> message_name(int64_t number) { return _table().messages.get(number); }
+std::optional<py::str> message_name(int64_t number) {
+    const auto n = as_number(number);
+    return n ? to_old(table_().message_name(*n)) : std::nullopt;
+}
 
 std::tuple<int64_t, int64_t, int64_t> size() {
-    const Table& t = _table();
-    int64_t named = 0;
-    for (const auto& kv : t.services.items())
-        for (const py::str& n : std::get<1>(kv))
-            if (!n.empty()) ++named;
-    py::set<int64_t> numbers;
-    for (int64_t k : t.devices.keys()) numbers.add(k);
-    for (int64_t k : t.drivers.keys()) numbers.add(k);
-    return std::make_tuple(t.services.size(), named, numbers.size());
+    const nds::Table::Size s = table_().size();
+    return std::make_tuple(static_cast<int64_t>(s.service_tables), static_cast<int64_t>(s.services_named), static_cast<int64_t>(s.devices_named));
 }
 
 // ---- Making the table
 py::str include_dir() {
-    std::vector<py::str> cands;
     auto kit = py::os::environ_::get(py::str("CB_DRIVER_KIT"));
-    cands.push_back(kit ? *kit : py::str(""));
-    py::str ref = py::os::path::join(base::corpus::design_dir(), py::str("reference"));
-    cands.push_back(py::os::path::join(py::os::path::join(ref, py::str("Microsoft Windows 95 DDK")), py::str("INC32")));
-    cands.push_back(py::os::path::join(py::os::path::join(ref, py::str("win95ddk")), py::str("INC32")));
-    for (const py::str& c : cands)
-        if (!c.empty() && py::os::path::isfile(py::os::path::join(c, py::str("VMM.INC")))) return c;
-    return py::str("");
+    const std::filesystem::path found =
+        nds::find_include_dir(kit ? from_py(*kit) : std::string(), cb::fs::from_text(from_py(py::os::path::join(base::corpus::design_dir(), py::str("reference")))));
+    return found.empty() ? py::str("") : py::str(found.string());
 }
 
 std::optional<int64_t> _number(const py::str& text, const py::dict<py::str, int64_t>& known) {
-    static const py::re::Pattern hex0x = re_("0x([0-9A-Fa-f]+)");
-    static const py::re::Pattern hexh = re_("([0-9][0-9A-Fa-f]*)h", py::re::I);
-    int64_t total = 0;
-    for (py::str part : py::split(text.replace(py::str("("), py::str(" ")).replace(py::str(")"), py::str(" ")), py::str("+"))) {
-        part = part.strip();
-        std::optional<py::re::Match> m = hex0x.fullmatch(part);
-        if (!m) m = hexh.fullmatch(part);
-        if (m) total += py::int_parse(m->group(1), 16);
-        else if (part.isdigit()) total += py::int_parse(part, 10);
-        else if (known.contains(part.upper())) total += known.at(part.upper());
-        else return std::nullopt;
-    }
-    return total;
+    std::map<std::string, std::uint32_t> names;
+    for (const auto& kv : known.items()) names[from_py(std::get<0>(kv))] = static_cast<std::uint32_t>(std::get<1>(kv));
+    const auto n = nds::parse_device_number(from_py(text), names);
+    return n ? std::optional<int64_t>(*n) : std::nullopt;
 }
 
 std::tuple<py::dict<int64_t, py::str>, py::dict<int64_t, py::list<py::str>>> read_include_files(const py::str& folder) {
-    auto upper_ends = [](const py::str& n, const char* suffix) { return n.upper().endswith(py::str(suffix)); };
-    std::vector<py::str> files;
-    for (const py::str& n : py::os::listdir(folder)) files.push_back(n);
-    // sorted(key=lambda n: (not n.upper().endswith(".INC"), n.upper())) -- stable
-    std::stable_sort(files.begin(), files.end(), [&](const py::str& a, const py::str& b) {
-        bool na = !upper_ends(a, ".INC"), nb = !upper_ends(b, ".INC");
-        if (na != nb) return !na && nb;
-        return a.upper().u32() < b.upper().u32();
-    });
-    std::vector<std::pair<py::str, py::list<py::str>>> texts;
-    for (const py::str& fn : files)
-        if (upper_ends(fn, ".INC") || upper_ends(fn, ".H")) {
-            py::file f = py::open(py::os::path::join(folder, fn), py::str("r"), py::str("latin1"));
-            texts.emplace_back(fn, py::splitlines(f.read_text()));
-            f.close();
-        }
-    py::dict<py::str, int64_t> equates;
-    py::dict<py::str, py::str> pending, spelled, first;
-    for (const auto& ft : texts) {
-        const py::str& fn = ft.first;
-        for (const py::str& line : ft.second) {
-            std::optional<py::re::Match> m = ID_ASM().match(line);
-            if (!m) m = ID_C().match(line);
-            if (m) {
-                pending.setdefault(m->group(1).upper(), m->group(2).strip());
-                spelled.setdefault(m->group(1).upper(), m->group(1));
-                first.setdefault(m->group(1).upper(), fn.upper());
-                continue;
-            }
-            m = EQU().match(line);
-            if (m) {
-                std::optional<int64_t> v = _number(m->group(2), py::dict<py::str, int64_t>());
-                if (v) equates.setdefault(m->group(1).upper(), *v);
-            }
-        }
-    }
-    py::dict<py::str, int64_t> ids;
-    for (int round = 0; round < 4; ++round) {          // a number may be another device's name
-        py::dict<py::str, int64_t> known = equates.copy();
-        for (const auto& kv : ids.items()) known.set(std::get<0>(kv) + py::str("_DEVICE_ID"), std::get<1>(kv));
-        for (const auto& kv : pending.items()) {
-            const py::str& name = std::get<0>(kv);
-            if (!ids.contains(name)) {
-                std::optional<int64_t> v = _number(std::get<1>(kv), known);
-                if (v) ids.set(name, *v);
-            }
-        }
-    }
-    // tables: {table name upper: {file: [service names]}}, in the order met
-    py::dict<py::str, py::dict<py::str, py::list<py::str>>> tables;
-    for (const auto& ft : texts) {
-        const py::str& fn = ft.first;
-        std::optional<py::str> cur;
-        std::optional<py::re::Pattern> macro;
-        for (const py::str& line : ft.second) {
-            py::str code = py::split(line, py::str(";"), 1)[0];
-            std::optional<py::re::Match> m = BEGIN().match(code);
-            if (m && !code.upper().contains(py::str("MACRO"))) {
-                cur = m->group(1);
-                macro = py::re::compile(py::str("^\\s*") + py::re::escape(*cur) + py::str("_Service\\s+(\\w+)"), py::re::I);
-                py::dict<py::str, py::list<py::str>> by_file = tables.setdefault(cur->upper(), py::dict<py::str, py::list<py::str>>());
-                by_file.setdefault(fn, py::list<py::str>());
-                continue;
-            }
-            if (cur && END().match(code)) cur.reset();
-            else if (cur) {
-                m = macro->match(code);
-                if (m) tables.at(cur->upper()).at(fn).append(m->group(1));
-            }
-        }
-    }
+    const nds::KitTables kit = cb::compat::guard([&] { return nds::read_include_files(cb::fs::from_text(from_py(folder))); });
     py::dict<int64_t, py::str> devices;
     py::dict<int64_t, py::list<py::str>> services;
-    std::vector<py::str> names = ids.keys();
-    std::stable_sort(names.begin(), names.end(), [&](const py::str& a, const py::str& b) {
-        bool na = !(first.at(a) == py::str("VMM.INC")), nb = !(first.at(b) == py::str("VMM.INC"));
-        if (na != nb) return !na && nb;
-        const std::u32string &fa = first.at(a).u32(), &fb = first.at(b).u32();
-        if (fa != fb) return fa < fb;
-        return a.u32() < b.u32();
-    });
-    for (const py::str& name : names)
-        if (0 < ids.at(name) && ids.at(name) < 0x10000) devices.setdefault(ids.at(name), spelled.at(name));   // several names, one number: the kit's main list names it
-    for (const auto& kv : tables.items()) {
-        const py::str& name = std::get<0>(kv);
-        std::optional<int64_t> number = ids.get(name);
-        std::optional<py::list<py::str>> best;
-        for (const auto& fl : std::get<1>(kv).items())                  // max(by_file.values(), key=len): the first longest
-            if (!best || std::get<1>(fl).size() > best->size()) best = std::get<1>(fl);
-        if (!number || best->empty()) continue;
-        std::optional<py::list<py::str>> have = services.get(*number);
-        if (best->size() > (have ? have->size() : 0)) {
-            services.set(*number, *best);
-            std::optional<py::str> sp = spelled.get(name);
-            devices.set(*number, sp ? *sp : name);
-        }
+    for (const auto& [n, name] : kit.devices) devices.set(n, to_py(name));
+    for (const auto& [n, names] : kit.services) {
+        py::list<py::str> list;
+        for (const std::string& s : names) list.append(to_py(s));
+        services.set(n, list);
     }
     return std::make_tuple(devices, services);
 }
 
 py::dict<int64_t, py::str> read_messages(const py::str& folder) {
-    static const py::re::Pattern line_re = re_(R"(^(\w+)\s+EQU\s+(00[0-9A-F]{2})H\s*$)", py::re::I);
+    const auto found = cb::compat::guard([&] { return nds::read_messages(cb::fs::from_text(from_py(folder))); });
     py::dict<int64_t, py::str> out;
-    bool inside = false;
-    py::file f = py::open(py::os::path::join(folder, py::str("VMM.INC")), py::str("r"), py::str("latin1"));
-    py::str text = f.read_text();
-    f.close();
-    const std::u32string& u = text.u32();
-    size_t i = 0;
-    while (i < u.size()) {                                          // for line in f: each line keeps its "\n"
-        size_t j = u.find(U'\n', i);
-        size_t stop = j == std::u32string::npos ? u.size() : j + 1;
-        py::str line{u.substr(i, stop - i)};
-        i = stop;
-        std::optional<py::re::Match> m = line_re.match(line);
-        if (m && m->group(1).upper() == py::str("SYS_CRITICAL_INIT")) inside = true;
-        if (m && m->group(1).upper() == py::str("MAX_SYSTEM_CONTROL")) break;
-        if (m && inside) out.setdefault(py::int_parse(m->group(2), 16), m->group(1).upper());
-    }
+    for (const auto& [n, name] : found) out.set(n, to_py(name));
     return out;
 }
 
@@ -316,68 +212,17 @@ py::dict<int64_t, py::str> corpus_drivers() {
     return out;
 }
 
-namespace {
-// json.dump(...)'s text for {"key": {"0001": value, ...}} (indent=1)
-template <class V, class Put>
-void put_table(std::string& o, const py::dict<int64_t, V>& d, const Put& put) {
-    std::vector<int64_t> keys = d.keys();
-    std::sort(keys.begin(), keys.end());
-    if (keys.empty()) {
-        o += "{}";
-        return;
-    }
-    o += "{\n";
-    for (size_t i = 0; i < keys.size(); ++i) {
-        o += "  ";
-        py::json::put(o, py::str(hex_pad(keys[i], 4)));
-        o += ": ";
-        put(o, d.at(keys[i]));
-        o += i + 1 < keys.size() ? ",\n" : "\n";
-    }
-    o += " }";
-}
-}  // namespace
-
 std::tuple<int64_t, int64_t, int64_t> generate(const std::optional<py::str>& folder_, const std::optional<py::str>& out_) {
     py::str folder = folder_ && !folder_->empty() ? *folder_ : include_dir();
     py::str out = out_ ? *out_ : TABLE();
     if (folder.empty()) throw py::SystemExit(py::str("the driver kit's include files were not found; set CB_DRIVER_KIT to its INC32 folder"));
-    auto [devices, services] = read_include_files(folder);
-    py::dict<int64_t, py::str> drivers;
-    for (const auto& kv : corpus_drivers().items())
-        if (!devices.contains(std::get<0>(kv))) drivers.set(std::get<0>(kv), std::get<1>(kv));
-    {
-        py::file f = py::open(out, py::str("w"), py::str("utf-8"), std::nullopt, py::str("\n"));      // (opened, so truncated, before the rest is read)
-        std::string o = "{\n \"source\": ";
-        py::json::put(o, py::str("Windows 95 driver kit include files (INC32): Begin_Service_Table lists and "
-                                 "*_Device_ID equates; \"drivers\" from the corpus drivers' own descriptors"));
-        auto put_name = [](std::string& s, const py::str& v) { py::json::put(s, v); };
-        auto put_names = [](std::string& s, const py::list<py::str>& v) {
-            if (v.empty()) {
-                s += "[]";
-                return;
-            }
-            s += "[\n";
-            for (int64_t i = 0; i < v.size(); ++i) {
-                s += "   ";
-                py::json::put(s, v[i]);
-                s += i + 1 < v.size() ? ",\n" : "\n";
-            }
-            s += "  ]";
-        };
-        o += ",\n \"devices\": ";
-        put_table(o, devices, put_name);
-        o += ",\n \"services\": ";
-        put_table(o, services, put_names);
-        o += ",\n \"drivers\": ";
-        put_table(o, drivers, put_name);
-        o += ",\n \"messages\": ";
-        put_table(o, read_messages(folder), put_name);
-        o += "\n}";
-        f.write(py::str(o));
-        f.write(py::str("\n"));
-        f.close();
-    }
+    std::map<std::uint32_t, std::string> drivers;
+    for (const auto& kv : corpus_drivers().items()) drivers[static_cast<std::uint32_t>(std::get<0>(kv))] = from_py(std::get<1>(kv));
+    cb::compat::guard([&] {
+        const std::filesystem::path kit_folder = cb::fs::from_text(from_py(folder));
+        const nds::KitTables kit = nds::read_include_files(kit_folder);
+        cb::fs::write_text(cb::fs::from_text(from_py(out)), nds::format_table(kit, drivers, nds::read_messages(kit_folder)));
+    });
     ensure_store();
     ks::changed(out);                                               // the knowledge base loads it again
     _loaded().reset();
@@ -385,20 +230,15 @@ std::tuple<int64_t, int64_t, int64_t> generate(const std::optional<py::str>& fol
 }
 
 std::tuple<int64_t, int64_t, py::dict<std::tuple<int64_t, int64_t>, int64_t>> coverage(const py::str& path) {
-    int64_t calls = 0, named = 0;
-    py::dict<std::tuple<int64_t, int64_t>, int64_t> missing;
+    std::vector<nds::ServiceCall> calls;
     for (const auto& member : formats::le::members(path)) {
-        for (const auto& c : formats::le::service_calls(std::get<1>(member))) {
-            ++calls;
-            std::optional<py::str> nm = service_name(std::get<2>(c), std::get<3>(c));
-            if (nm && !nm->empty()) ++named;
-            else {
-                auto key = std::make_tuple(std::get<2>(c), std::get<3>(c) & 0x7FFF);
-                missing.set(key, missing.get(key, 0) + 1);
-            }
-        }
+        for (const auto& c : formats::le::service_calls(std::get<1>(member)))
+            calls.push_back({static_cast<std::uint32_t>(std::get<2>(c)), static_cast<std::uint32_t>(std::get<3>(c))});
     }
-    return std::make_tuple(calls, named, missing);
+    const nds::Coverage found = nds::coverage(table_(), calls);
+    py::dict<std::tuple<int64_t, int64_t>, int64_t> missing;
+    for (const auto& [key, n] : found.missing) missing.set(std::make_tuple(static_cast<int64_t>(key.first), static_cast<int64_t>(key.second)), static_cast<int64_t>(n));
+    return std::make_tuple(static_cast<int64_t>(found.calls), static_cast<int64_t>(found.named), missing);
 }
 
 int64_t main(const py::list<py::str>& argv) {
@@ -408,26 +248,19 @@ int64_t main(const py::list<py::str>& argv) {
                                     std::to_string(devices) + " device numbers"));
         return 0;
     }
-    auto [tables, names, devices] = size();
-    py::print(py::str(std::to_string(tables) + " service tables, " + std::to_string(names) + " services named, " + std::to_string(devices) +
-                      " device numbers named"));
+    py::print(to_py(nds::size_line(table_().size())));
     for (const py::str& arg : argv) {
         std::optional<py::str> path = base::corpus::retail(arg);
         if (!path || path->empty()) {
             py::print(arg + py::str(": not found"));
             continue;
         }
-        auto [calls, named, missing] = coverage(*path);
-        auto items = missing.items();
-        std::sort(items.begin(), items.end());                      // sorted(missing.items())
-        std::string tail;
-        for (size_t i = 0; i < items.size() && i < 6; ++i) {
-            const auto& it = items[i];
-            tail += "  " + label(std::get<0>(std::get<0>(it)), std::get<1>(std::get<0>(it))).utf8() + " x" + std::to_string(std::get<1>(it));
+        std::vector<nds::ServiceCall> calls;
+        for (const auto& member : formats::le::members(*path)) {
+            for (const auto& c : formats::le::service_calls(std::get<1>(member)))
+                calls.push_back({static_cast<std::uint32_t>(std::get<2>(c)), static_cast<std::uint32_t>(std::get<3>(c))});
         }
-        char counts[80];
-        std::snprintf(counts, sizeof counts, " %4lld service calls, %4lld named", static_cast<long long>(calls), static_cast<long long>(named));
-        py::print(py::os::path::basename(*path).ljust(16) + py::str(counts) + py::str(tail));
+        py::print(to_py(nds::coverage_line(table_(), from_py(py::os::path::basename(*path)), nds::coverage(table_(), calls))));
     }
     return 0;
 }

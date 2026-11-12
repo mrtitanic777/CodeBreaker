@@ -1,4 +1,4 @@
-// codebreaker/symbols/api_arguments.hpp -- interface of codebreaker.symbols.api_arguments (typed C++; implementation pending).
+// codebreaker/symbols/api_arguments.hpp -- compat shim for cb/symbols/api_arguments.hpp (docs/CPP_DESIGN.md 6.3).
 //
 // How many bytes of arguments an imported function removes from the stack -- read from the
 // retail module that EXPORTS it.
@@ -7,9 +7,12 @@
 //     stack_bytes("CRTDLL", "memchr")       -> 0        (cdecl: the caller cleans up)
 //     stack_bytes("KERNEL32", "nonesuch")   -> None     (not found / not decidable)
 //
+// The stack walk, the 16-bit sizes and the choosing between the headers and the code are cb/symbols/api_arguments; this shim's
+// translation unit (api_arguments.cpp) gives it the corpus, the knowledge base and the 16-bit readers the old layer has, and
+// converts types. Deleted with its last old-layer consumer.
+//
 // Typing notes:
-//   * _Mod is a class (a PE module read for its exports/imports/code); the capstone decoder it holds
-//     (platforms.decoder(32)) has no typed port, so it is an opaque handle `md`.
+//   * _Mod is a class (a PE module read for its exports/imports/code); the cb module the scan reads is the opaque `cb_module`.
 //   * _mod() answers None as a null shared_ptr.
 //   * _module() answers None or (NEFile, {ordinal: Entry}, {segment idx: Segment}) -- `NeModule`.
 #pragma once
@@ -39,9 +42,8 @@ class _Mod {
     py::dict<py::str, int64_t> exports;   // name -> rva
     py::dict<int64_t, int64_t> ords;      // ordinal -> rva
     py::dict<uint64_t, std::tuple<py::str, py::str>> imports;   // iat slot va -> (dll, name)
-    std::shared_ptr<void> md;             // platforms.decoder(32): the capstone decoder (opaque)
+    std::shared_ptr<void> cb_module;      // the cb::symbols::api_arguments::ExportingModule the scan reads (opaque)
     int64_t exp_lo = 0, exp_hi = 0;       // the export directory's rva range
-    py::dict<int64_t, std::optional<int64_t>> _memo;   // _scan's results by rva (Python: m.__dict__["_memo"])
 
     explicit _Mod(const py::str& path);
     py::bytes bytes_at(int64_t rva, int64_t n) const;

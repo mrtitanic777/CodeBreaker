@@ -1,4 +1,6 @@
-// codebreaker/symbols/api_arguments.cpp -- typed C++ port of codebreaker.symbols.api_arguments (see api_arguments.hpp).
+// codebreaker/symbols/api_arguments.cpp -- the shim's translation unit (see api_arguments.hpp). The new module
+// (cb/symbols/api_arguments) walks the code and chooses between the headers and the code; this file gives it the corpus, the
+// knowledge base and the 16-bit readers the old layer has, and converts types.
 
 #include "codebreaker/symbols/api_arguments.hpp"
 
@@ -6,6 +8,8 @@
 #include <mutex>
 #include <set>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/symbols/api_arguments.hpp"
 #include "codebreaker/base/corpus.hpp"
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/engine/facts.hpp"
@@ -13,7 +17,6 @@
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/knowledge/store.hpp"
-#include "codebreaker/symbols/x86.hpp"
 #include "py_json.hpp"
 #include "py_stdlib.hpp"
 
@@ -21,13 +24,11 @@ namespace codebreaker::symbols::api_arguments {
 
 namespace {
 
+namespace aa = cb::symbols::api_arguments;
+using cb::compat::from_py;
+using cb::compat::to_py;
 using engine::facts::Json;
 using engine::facts::Value;
-
-const py::re::Pattern IAT("dword ptr \\[(0x[0-9a-f]+)\\]", 0);      // _IAT
-const py::re::Pattern ESP_NUMBER("esp, (-?(?:0x)?[0-9a-f]+)", 0);
-const py::re::Pattern ESP_EBP("esp, \\[ebp( [-+] (?:0x)?[0-9a-f]+)?\\]", 0);
-const py::re::Pattern API_NAME("([A-Za-z0-9_]+?)[._]@?(\\d+)", 0);
 
 std::mutex g_mods_lock;
 py::dict<py::str, std::shared_ptr<_Mod>> _MODS;                 // DLL stem (upper) -> _Mod | None
@@ -46,8 +47,29 @@ std::optional<int64_t> int_of(const Json& j) {
     return std::nullopt;
 }
 
-// int(text, 0) as the Python parses a capstone operand (ValueError when it is not a number)
-int64_t int0(const py::str& s) { return py::int_parse(s, 0); }
+std::optional<int64_t> widen(const std::optional<std::uint32_t>& v) { return v ? std::optional<int64_t>(*v) : std::nullopt; }
+std::optional<std::uint32_t> narrow(const std::optional<int64_t>& v) {
+    return v && *v >= 0 && *v <= 0xFFFFFFFFLL ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(*v)) : std::nullopt;
+}
+
+const aa::ExportingModule* cb_module_of(const _Mod& m) { return static_cast<const aa::ExportingModule*>(m.cb_module.get()); }
+
+// The corpus as the stack walk asks for it: the modules the old layer found.
+class OldModules final : public aa::ModuleSource {
+public:
+    std::shared_ptr<const aa::ExportingModule> find(std::string_view stem) override {
+        const std::shared_ptr<_Mod> m = _mod(to_py(stem));
+        return m ? std::static_pointer_cast<const aa::ExportingModule>(m->cb_module) : nullptr;
+    }
+};
+
+// The one scanner (a scan is serialised: the decoders and the modules' memos belong to one thread at a time).
+std::mutex g_scan_lock;
+aa::StackScanner& scanner() {
+    static OldModules modules;
+    static aa::StackScanner s(modules);
+    return s;
+}
 
 }  // namespace
 
@@ -68,35 +90,25 @@ _Mod::_Mod(const py::str& path) {
         if (n && !n->empty()) exports.set(*n, rva);
     }
     imports = pe->imports();
-    md = std::make_shared<int>(32);   // platforms.decoder(32): symbols::x86 holds the real handle, per thread
+    cb_module = std::make_shared<aa::ExportingModule>(cb::formats::pe::Image::parse(cb::to_bytes(pe->data.raw()), from_py(path)));
     std::tuple<int64_t, int64_t> ed = pe->datadirs.empty() ? std::tuple<int64_t, int64_t>{0, 0} : pe->datadirs[0];
     exp_lo = std::get<0>(ed);
     exp_hi = std::get<0>(ed) + std::get<1>(ed);
 }
 
 py::bytes _Mod::bytes_at(int64_t rva, int64_t n) const {
-    std::optional<int64_t> off = pe->_rva_to_off(rva);
-    return off ? pe->data.slice(*off, *off + n) : py::bytes();
+    return to_py(cb_module_of(*this)->bytes_at(rva, static_cast<std::size_t>(std::max<int64_t>(n, 0))));
 }
 
 std::optional<py::str> _Mod::forwarder(int64_t rva) const {
-    if (!(exp_lo <= rva && rva < exp_hi)) return std::nullopt;
-    py::bytes raw_b = bytes_at(rva, 128);
-    const std::string& r = raw_b.raw();
-    py::str raw = py::bytes(r.substr(0, r.find('\0'))).decode("latin1", "replace");
-    if (raw.contains(py::str("."))) return raw;
-    return std::nullopt;
+    if (rva < 0 || rva > 0xFFFFFFFFLL) return std::nullopt;
+    const std::optional<std::string> fwd = cb_module_of(*this)->forwarder(static_cast<std::uint32_t>(rva));
+    return fwd ? std::optional<py::str>(to_py(*fwd)) : std::nullopt;
 }
 
 // ---- the DLL that exports a function -----------------------------------------------------------------------------
 
-py::str _stem(const py::str& dll) {
-    py::str s = py::os::path::basename(dll).upper();
-    for (const py::str& e : _EXTS) {
-        if (s.endswith(e.upper())) return s.slice(0, s.size() - e.size());
-    }
-    return s;
-}
+py::str _stem(const py::str& dll) { return to_py(aa::stem(from_py(dll))); }
 
 std::shared_ptr<_Mod> _mod(const py::str& stem) {
     std::lock_guard<std::mutex> hold(g_mods_lock);
@@ -119,185 +131,13 @@ std::shared_ptr<_Mod> _mod(const py::str& stem) {
 }
 
 std::optional<int64_t> _scan(_Mod& m, int64_t rva, int64_t hops) {
-    // Stack bytes removed by the function at `rva`, or None.
-    //
-    // Every path from the entry is walked with the stack depth tracked, so the answer is right for
-    // the hand-written wrappers Windows 95 is full of as well as for compiled code:
-    //
-    //     FindWindowA:  pop ecx / push 0 / push 0 / push ecx / jmp FindWindowExA     -> 16 - 8 = 8
-    //
-    // A `ret N` reached with D bytes still pushed means the function itself took N - D. Calls are
-    // resolved the same way (the callee's own answer is what it pops). Paths whose depth is lost
-    // (an indirect call) still report their `ret N`, but only count if no exact path was found.
-    py::dict<int64_t, std::optional<int64_t>>& memo = m._memo;
-    if (memo.contains(rva)) return memo.at(rva);
-    memo.set(rva, std::nullopt);                    // recursion guard
-    std::set<int64_t> thunk, strong, weak, bycl;
-    // (rva, depth, depth at `mov ebp, esp`, cl, depth is exact, it was exact at `mov ebp, esp`)
-    struct Work {
-        int64_t at;
-        std::optional<int64_t> d, dbp, cl;
-        bool exact, xbp;
-    };
-    std::vector<Work> work{{rva, 0, std::nullopt, std::nullopt, true, true}};
-    std::set<int64_t> seen;
-    int64_t budget = _MAX_INSNS;
-    while (!work.empty() && budget > 0 && strong.size() < 4) {
-        Work w = work.back();
-        work.pop_back();
-        int64_t at = w.at;
-        std::optional<int64_t> d = w.d, dbp = w.dbp, cl = w.cl;
-        bool exact = w.exact, xbp = w.xbp;
-        while (budget > 0) {
-            if (seen.count(at)) break;
-            py::bytes code = m.bytes_at(at, 16);
-            std::optional<x86::Lite> ins;
-            if (!code.empty()) ins = x86::first_lite(32, code.raw(), static_cast<int64_t>(m.base) + at);
-            if (!ins) break;
-            seen.insert(at);
-            budget -= 1;
-            int64_t size = ins->size;
-            py::str mn(ins->mnemonic), ops(ins->op_str);
-            int64_t nxt = at + size;
-            if (mn == py::str("ret")) {
-                int64_t n = !ops.empty() ? int0(ops) : 0;
-                // Depth that came through a call is only as good as the callee's answer: compiled
-                // code returns with the stack balanced, so trust `ret N` itself there.
-                if (!d || (*d != 0 && !exact)) {
-                    weak.insert(n);
-                } else if (n - *d >= 0) {
-                    strong.insert(n - *d);
-                }
-                break;
-            }
-            if (mn == py::str("retf") || mn == py::str("int3") || mn == py::str("hlt") || mn == py::str("iretd")) break;
-            if (mn == py::str("jmp")) {
-                std::optional<py::re::Match> mm = IAT.fullmatch(ops);
-                if (mm) {                                               // tail call through an import
-                    auto imp = m.imports.get(static_cast<uint64_t>(py::int_parse(mm->group(1), 16)));
-                    std::optional<int64_t> r;
-                    if (imp && hops > 0) r = _resolve(std::get<0>(*imp), std::get<1>(*imp), hops - 1);
-                    if (r) {
-                        (!d ? weak : strong).insert(*r - d.value_or(0));
-                    } else if (cl && d && *d == 0 && exact) {
-                        bycl.insert(4 * *cl);
-                    }
-                    break;
-                }
-                try {
-                    at = int0(ops) - static_cast<int64_t>(m.base);
-                    continue;
-                } catch (const py::ValueError&) {
-                    if (cl && d && *d == 0 && exact) bycl.insert(4 * *cl);      // `mov cl, N / jmp [common]`
-                    break;
-                }
-            }
-            if (mn.slice(0, 1) == py::str("j") || mn.startswith(py::str("loop"))) {   // conditional: walk both ways
-                try {
-                    work.push_back({int0(ops) - static_cast<int64_t>(m.base), d, dbp, cl, exact, xbp});
-                } catch (const py::ValueError&) {
-                }
-            } else if (mn == py::str("call")) {
-                cl = std::nullopt;
-                exact = false;
-                std::optional<int64_t> r;
-                std::optional<py::re::Match> mm = IAT.fullmatch(ops);
-                if (mm) {
-                    auto imp = m.imports.get(static_cast<uint64_t>(py::int_parse(mm->group(1), 16)));
-                    if (imp && hops > 0) r = _resolve(std::get<0>(*imp), std::get<1>(*imp), hops - 1);
-                } else {
-                    try {
-                        r = hops > 0 ? _scan(m, int0(ops) - static_cast<int64_t>(m.base), hops - 1) : std::nullopt;
-                    } catch (const py::ValueError&) {
-                        r = std::nullopt;
-                    }
-                }
-                d = (d && r) ? std::optional<int64_t>(*d - *r) : std::nullopt;
-            } else if (mn == py::str("push")) {
-                d = d ? std::optional<int64_t>(*d + 4) : std::nullopt;
-            } else if (mn == py::str("pop")) {
-                d = (!d || ops == py::str("esp")) ? std::nullopt : std::optional<int64_t>(*d - 4);
-            } else if (mn == py::str("pushal")) {
-                d = d ? std::optional<int64_t>(*d + 32) : std::nullopt;
-            } else if (mn == py::str("popal")) {
-                d = d ? std::optional<int64_t>(*d - 32) : std::nullopt;
-            } else if (mn == py::str("pushfd") || mn == py::str("popfd")) {
-                d = d ? std::optional<int64_t>(*d + (mn == py::str("pushfd") ? 4 : -4)) : std::nullopt;
-            } else if (mn == py::str("leave")) {            // the frame pointer restores a known depth
-                d = dbp ? std::optional<int64_t>(*dbp - 4) : std::nullopt;
-                exact = xbp;
-            } else if (mn == py::str("mov") && ops == py::str("ebp, esp")) {
-                dbp = d;
-                xbp = exact;
-            } else if (mn == py::str("mov") && ops == py::str("esp, ebp")) {
-                d = dbp;
-                exact = xbp;
-            } else if (mn == py::str("mov") && ops.startswith(py::str("edx, 0x")) && cl) {
-                // The thunk compiler's 32->16 stub: `mov cl, index / mov edx, argc<<16|flags /
-                // jmp common`. The argument count is in the instruction.
-                if (d && exact) thunk.insert(4 * (py::int_parse(ops.slice(5, ops.size()), 16) >> 16) - *d);
-                break;
-            } else if (mn == py::str("mov") && ops.startswith(py::str("cl, "))) {
-                try {
-                    cl = int0(ops.slice(4, ops.size()));
-                } catch (const py::ValueError&) {
-                    cl = std::nullopt;
-                }
-            } else if (ops.startswith(py::str("esp, ")) || ops == py::str("esp")) {
-                std::optional<py::re::Match> mm = ESP_NUMBER.fullmatch(ops);
-                if ((mn == py::str("sub") || mn == py::str("add")) && mm && d) {
-                    *d += int0(mm->group(1)) * (mn == py::str("sub") ? 1 : -1);
-                } else {
-                    mm = ESP_EBP.fullmatch(ops);
-                    if (mn == py::str("lea") && mm && dbp) {
-                        std::optional<py::str> g = mm->group_opt(1);
-                        d = *dbp - int0((g ? *g : py::str("0")).replace(py::str(" "), py::str("")));
-                        exact = xbp;
-                    } else {
-                        d = std::nullopt;
-                    }
-                }
-            }
-            at = nxt;
-        }
-    }
-    for (const std::set<int64_t>* cand0 : {&thunk, &strong, &weak, &bycl}) {
-        std::set<int64_t> cand;
-        for (int64_t c : *cand0)
-            if (c >= 0 && c % 4 == 0) cand.insert(c);
-        if (!cand.empty()) {
-            memo.set(rva, cand.size() == 1 ? std::optional<int64_t>(*cand.begin()) : std::nullopt);
-            break;
-        }
-    }
-    return memo.at(rva);
+    std::lock_guard<std::mutex> hold(g_scan_lock);
+    return widen(scanner().scan(*cb_module_of(m), rva, static_cast<int>(std::clamp<int64_t>(hops, -1, aa::kMaxHops))));
 }
 
 std::optional<int64_t> _resolve(const py::str& dll, const py::str& name, int64_t hops) {
-    std::shared_ptr<_Mod> m = _mod(_stem(dll));
-    if (!m || name.empty()) return std::nullopt;
-    std::optional<int64_t> rva;
-    if (name.startswith(py::str("#"))) {
-        try {
-            rva = m->ords.get(py::int_parse(name.slice(1, name.size()), 10));
-        } catch (const py::ValueError&) {
-            rva = std::nullopt;
-        }
-    } else {
-        rva = m->exports.get(name);
-    }
-    if (!rva || *rva == 0) return std::nullopt;
-    std::optional<py::str> fwd = m->forwarder(*rva);
-    if (fwd) {
-        if (hops <= 0) return std::nullopt;
-        auto [d, sep, n] = fwd->partition(py::str("."));
-        return _resolve(d, n, hops - 1);
-    }
-    try {
-        return _scan(*m, *rva, hops);
-    } catch (const std::exception&) {
-        return std::nullopt;
-    }
+    std::lock_guard<std::mutex> hold(g_scan_lock);
+    return widen(scanner().resolve(from_py(dll), from_py(name), static_cast<int>(std::clamp<int64_t>(hops, -1, aa::kMaxHops))));
 }
 
 // The table an older CodeBreaker kept for `stem` beside the corpus (apiarity/<stem>.json), or {}: carried into the
@@ -351,44 +191,53 @@ void save_(const py::str& stem, const py::str& name) {
                                   Value(json_of(_CACHE.at(stem).at(name))), stem.lower() + py::str("'s code"));
 }
 
+// What the headers and the knowledge base hold of 32-bit exports.
+class OldWin32Memory final : public aa::Win32Memory {
+public:
+    std::optional<std::uint32_t> header_bytes(std::string_view name) override {
+        // win32_arguments.json beside this file (tools/make_api_table.py regenerates it), as the knowledge base has it
+        if (!_TABLE) {
+            py::dict<py::str, std::optional<int64_t>> t;
+            for (const auto& kv : knowledge::_table(py::str("win32"), py::str("argument_bytes.header")).items())
+                t.set(std::get<0>(kv), int_of(std::get<Json>(std::get<1>(kv))));
+            _TABLE = t;
+        }
+        knowledge::reads::record(py::str("win32"), py::str("argument_bytes.header"), to_py(name));       // (knowledge/reads.py)
+        return narrow(_TABLE->get(to_py(name)).value_or(std::nullopt));
+    }
+    std::optional<aa::Known> scanned(std::string_view stem, std::string_view name) override {
+        const py::str s = to_py(stem), n = to_py(name);
+        py::dict<py::str, std::optional<int64_t>> c = load_(s);
+        if (!c.contains(n)) return std::nullopt;
+        knowledge::reads::record(py::str("win32"), py::str("argument_bytes.code"), s + py::str(".") + n);
+        return aa::Known{narrow(c.at(n))};
+    }
+    void remember(std::string_view stem, std::string_view name, std::optional<std::uint32_t> bytes) override {
+        const py::str s = to_py(stem), n = to_py(name);
+        load_(s);
+        _CACHE.at(s).set(n, widen(bytes));
+        save_(s, n);
+        knowledge::reads::record(py::str("win32"), py::str("argument_bytes.code"), s + py::str(".") + n);
+    }
+};
+
 }  // namespace
 
 std::optional<int64_t> header_bytes(const py::str& name) {
-    // Argument bytes for `name` as the Win32 headers declare it, or None when the headers do not settle it (no
-    // prototype; variadic; caller-cleans; a wide by-value parameter). Read from win32_arguments.json beside
-    // this file (tools/make_api_table.py regenerates it), as the knowledge base has it.
-    if (!_TABLE) {
-        py::dict<py::str, std::optional<int64_t>> t;
-        for (const auto& kv : knowledge::_table(py::str("win32"), py::str("argument_bytes.header")).items())
-            t.set(std::get<0>(kv), int_of(std::get<Json>(std::get<1>(kv))));
-        _TABLE = t;
-    }
-    knowledge::reads::record(py::str("win32"), py::str("argument_bytes.header"), name);       // (knowledge/reads.py)
-    return _TABLE->get(name).value_or(std::nullopt);
+    OldWin32Memory memory;
+    return widen(memory.header_bytes(from_py(name)));
 }
 
 std::optional<int64_t> stack_bytes(const py::str& dll, const py::str& name) {
-    // Two sources, checked against each other over eight system DLLs (they agree on 1,669 of 1,695
-    // functions): the Win32 header prototype, and the exporting DLL's own code. The header wins
-    // where it applies -- the disagreements were all the code scan misreading a hand-written
-    // wrapper -- and the scan covers what the headers do not: undocumented functions, and
-    // functions taking a structure by value.
-    std::optional<int64_t> h = header_bytes(name);
-    if (h) return h;
-    py::str stem = _stem(dll);
-    py::dict<py::str, std::optional<int64_t>> c = load_(stem);
-    if (!c.contains(name)) {
-        c.set(name, _resolve(stem, name, _MAX_HOPS));
-        save_(stem, name);
-    }
-    knowledge::reads::record(py::str("win32"), py::str("argument_bytes.code"), stem + py::str(".") + name);
-    return c.at(name);
+    OldWin32Memory memory;
+    std::lock_guard<std::mutex> hold(g_scan_lock);
+    return widen(aa::Win32Arguments(memory, scanner()).stack_bytes(from_py(dll), from_py(name)));
 }
 
 std::optional<int64_t> argc(const py::str& dll, const py::str& name) {
-    std::optional<int64_t> b = stack_bytes(dll, name);
-    if (!b || *b % 4 != 0) return std::nullopt;
-    return *b / 4;
+    OldWin32Memory memory;
+    std::lock_guard<std::mutex> hold(g_scan_lock);
+    return widen(aa::Win32Arguments(memory, scanner()).argc(from_py(dll), from_py(name)));
 }
 
 // ---- 16-bit ----------------------------------------------------------------------------------------------------
@@ -454,28 +303,74 @@ py::dict<py::str, std::optional<int64_t>>& load16_() {
     return *g_cache;
 }
 
+// The sizes of this product and reading, as the knowledge base has them.
+class OldWin16Memory final : public aa::Win16Memory {
+public:
+    std::optional<aa::Known> remembered(std::string_view key) override {
+        const py::str k = to_py(key);
+        py::dict<py::str, std::optional<int64_t>>& cache = load16_();
+        if (!cache.contains(k)) return std::nullopt;
+        knowledge::reads::record(py::str("win16"), py::str("argument_bytes"), g_scoped + k);
+        return aa::Known{narrow(cache.at(k))};
+    }
+    std::map<std::string, std::optional<std::uint32_t>> table() override {
+        std::map<std::string, std::optional<std::uint32_t>> out;
+        for (const auto& kv : load16_().items()) out[from_py(std::get<0>(kv))] = narrow(std::get<1>(kv));
+        return out;
+    }
+    void remember(std::string_view key, std::optional<std::uint32_t> bytes, std::string_view source) override {
+        const py::str k = to_py(key);
+        load16_().set(k, widen(bytes));
+        knowledge::store::open()->put(py::str("win16"), py::str("argument_bytes"), g_scoped + k, Value(json_of(widen(bytes))), to_py(source));
+        knowledge::reads::record(py::str("win16"), py::str("argument_bytes"), g_scoped + k);
+    }
+};
+
+// How the exports of the corpus's 16-bit modules return, read by describe.
+class OldWin16Exports final : public aa::Win16Exports {
+public:
+    std::optional<Found> find(std::string_view module, std::uint32_t ordinal) override {
+        std::optional<NeModule> mod = _module(to_py(module));
+        if (!mod) return std::nullopt;
+        const formats::ne::NEFile& nef = std::get<0>(*mod);
+        const auto& entries = std::get<1>(*mod);
+        const auto& segs = std::get<2>(*mod);
+        Found found;
+        found.file = from_py(nef.path);
+        std::optional<formats::ne::Entry> e = entries.get(ordinal);
+        std::optional<formats::ne::Segment> s;
+        if (e && e->seg) s = segs.get(*e->seg);
+        if (s && s->kind == py::str("CODE") && s->file_off) {
+            py::bytes code = nef.data.slice(s->file_off, s->file_off + s->length);
+            // (a thunk that puts a word of its own under the return address and goes on: what its callers push
+            // is what the body removes less what it added -- Win95 USER.471, lstrcmpi, read as its body's `retf
+            // 0Ah` gave the C two arguments too many)
+            decompile::describe::Description own{py::str(""), {}, {}, {}};
+            for (const auto& kv : segs.items()) {
+                const formats::ne::Segment& g = std::get<1>(kv);
+                if (g.kind == py::str("CODE") && g.file_off)
+                    own.segment_bytes.set(std::get<0>(kv), nef.data.slice(g.file_off, g.file_off + g.length));
+            }
+            std::optional<int64_t> fwd = decompile::describe::forwards(own, *e->seg, e->offset.value_or(0), py::str("far"));
+            auto [kind, pop] = decompile::describe::returns(code, e->offset.value_or(0));
+            aa::ExportReturn r;
+            r.forwarded = narrow(fwd);
+            r.far_return = kind && *kind == py::str("far");
+            r.pop = pop;
+            found.what = r;
+        }
+        return found;
+    }
+};
+
 }  // namespace
 
 py::bytes sizes16() {
     // The table of sizes found so far for this product and reading, as bytes (sorted JSON): what a cache of the
     // checker's verdicts is keyed by, since the checker answers calls by it.
-    py::dict<py::str, std::optional<int64_t>>& t = load16_();
-    std::vector<py::str> keys;
-    for (const py::str& k : t.keys()) keys.push_back(k);
-    std::sort(keys.begin(), keys.end(), [](const py::str& a, const py::str& b) { return a.u32() < b.u32(); });
-    std::string out = "{";
-    bool first = true;
-    for (const py::str& k : keys) {
-        if (!first) out += ", ";
-        first = false;
-        py::json::put(out, k);
-        out += ": ";
-        std::optional<int64_t> v = t.at(k);
-        if (v) out += std::to_string(*v);
-        else out += "null";
-    }
-    out += "}";
-    return py::bytes(out);
+    OldWin16Memory memory;
+    OldWin16Exports exports;
+    return py::bytes(aa::Win16Arguments(memory, exports).table_text());
 }
 
 std::optional<NeModule> _module(const py::str& name_in) {
@@ -510,49 +405,17 @@ std::optional<NeModule> _module(const py::str& name_in) {
 
 std::optional<int64_t> arg_bytes(const py::str& module, int64_t ordinal) {
     // Bytes of arguments the export removes on return; None when unknown.
-    py::str key = py::percent(py::str("%s.%d"), module.upper(), ordinal);
-    py::dict<py::str, std::optional<int64_t>>& cache = load16_();
-    if (!cache.contains(key)) {
-        std::optional<int64_t> value;
-        std::optional<NeModule> mod = _module(module);
-        if (mod) {
-            const formats::ne::NEFile& nef = std::get<0>(*mod);
-            const auto& entries = std::get<1>(*mod);
-            const auto& segs = std::get<2>(*mod);
-            std::optional<formats::ne::Entry> e = entries.get(ordinal);
-            std::optional<formats::ne::Segment> s;
-            if (e && e->seg) s = segs.get(*e->seg);
-            if (s && s->kind == py::str("CODE") && s->file_off) {
-                py::bytes code = nef.data.slice(s->file_off, s->file_off + s->length);
-                // (a thunk that puts a word of its own under the return address and goes on: what its callers push
-                // is what the body removes less what it added -- Win95 USER.471, lstrcmpi, read as its body's `retf
-                // 0Ah` gave the C two arguments too many)
-                decompile::describe::Description own{py::str(""), {}, {}, {}};
-                for (const auto& kv : segs.items()) {
-                    const formats::ne::Segment& g = std::get<1>(kv);
-                    if (g.kind == py::str("CODE") && g.file_off)
-                        own.segment_bytes.set(std::get<0>(kv), nef.data.slice(g.file_off, g.file_off + g.length));
-                }
-                std::optional<int64_t> fwd = decompile::describe::forwards(own, *e->seg, e->offset.value_or(0), py::str("far"));
-                auto [kind, pop] = decompile::describe::returns(code, e->offset.value_or(0));
-                if (fwd) value = fwd;
-                else if (kind && *kind == py::str("far") && pop >= 0) value = pop;
-            }
-        }
-        cache.set(key, value);
-        knowledge::store::open()->put(py::str("win16"), py::str("argument_bytes"), g_scoped + key, Value(json_of(value)),
-                                      py::percent(py::str("%s's code"),
-                                                  mod ? py::os::path::basename(std::get<0>(*mod).path).lower() : module.upper()));
-    }
-    knowledge::reads::record(py::str("win16"), py::str("argument_bytes"), g_scoped + key);
-    return cache.at(key);
+    if (ordinal < 0 || ordinal > 0xFFFFFFFFLL) return std::nullopt;
+    OldWin16Memory memory;
+    OldWin16Exports exports;
+    return widen(aa::Win16Arguments(memory, exports).arg_bytes(from_py(module), static_cast<std::uint32_t>(ordinal)));
 }
 
 std::optional<int64_t> of(const std::optional<py::str>& api) {
     // arg_bytes for a name as the emulator reports it: 'USER.@171' or 'USER_171'.
-    std::optional<py::re::Match> m = API_NAME.fullmatch(api ? *api : py::str(""));
-    if (!m) return std::nullopt;
-    return arg_bytes(m->group(1), py::int_parse(m->group(2), 10));
+    OldWin16Memory memory;
+    OldWin16Exports exports;
+    return widen(aa::Win16Arguments(memory, exports).of(api ? from_py(*api) : std::string()));
 }
 
 }  // namespace codebreaker::symbols::api_arguments

@@ -123,7 +123,9 @@ def _c_name(symbol):
     if symbol.startswith("?"):
         return symbol
     name = symbol[1:] if symbol.startswith("_") else symbol
-    return name.split("@")[0] if "@" in name and name.rsplit("@", 1)[1].isdigit() else name
+    if "@" in name and name.rsplit("@", 1)[1].isdigit():     # `_f@8` stdcall, `@f@8` fastcall (a leading @ is not the cut)
+        return name[1:].split("@")[0] if name.startswith("@") else name.split("@")[0]
+    return name
 
 
 THUNK_COMPILER = "Microsoft thunk compiler: a 32-to-16-bit flat thunk"
@@ -239,6 +241,8 @@ def _rich(data, end):
     while p >= 0x40:
         a, b = (x ^ key for x in struct.unpack_from("<II", data, p))
         if a == 0x536E6144:                                  # "DanS": where the block starts
+            if out and out[-1] == (0, 0, 0):                 # (the last pair read is the block's zero padding, not a record)
+                out.pop()
             break
         out.append((a >> 16, a & 0xFFFF, b))
         p -= 8
