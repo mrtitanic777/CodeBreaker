@@ -773,3 +773,22 @@ checks), PeSeg of lz32 (rows, functions, names, relocation mask). media -- the v
 and every file's bytes of 11 images (floppy, hard disk, partitioned disk, El Torito disc, raw 2352-byte discs, Windows 95
 Setup disc, a pre-DOS-2.0 floppy, two Windows 1.0 boot images), long and plain names, equal Python's line for line (966
 lines); put() on copies of three of them gives images byte for byte equal to Python's.
+
+## W1-B15: formats/xbox heavyiron and XeCrypt (2026-11-12)
+
+New idiomatic C++ (native/cb/formats/xbox) against the original Python on the same inputs, release build, one machine, the work
+in a loop of N (ms for the whole loop). Python = the original `heavyiron.py` / `XeCrypt.py` (its RSA is `pow()` on Python ints,
+keygen is OpenSSL's through `cryptography`); the old typed ports are not timed (they were never faster than the Python for the
+big-number parts: they carried their own BigInt).
+
+| Work | Python | C++ |
+|---|---|---|
+| heavyiron parse of BULK.ho (7.8 MB, 1283 assets) x20 | 31 | 1.0 |
+| XeCrypt RSA-2048 bootloader signature (sign) x50 | 302 | 185 |
+| XeCrypt RSA-2048 verify x50 | 47 | 32 |
+| RSA-2048 key generation x3 | 97 | 86 (CNG; with a seeded RandomSource the primes are searched here: ~270 ms each) |
+| rot_sum_sha over 8 MB x5 | 3097 | 81 |
+| RC4 over 8 MB x5 | 52 | 106 (Python: OpenSSL RC4; here a plain C++ loop) |
+
+RC4 is the one row where the C++ is slower than the Python (it hands the 8 MB to OpenSSL): the keyfile and bootloader streams it
+runs on are a few hundred KB, so it was left as the plain loop.
