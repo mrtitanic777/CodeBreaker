@@ -1,3 +1,4 @@
+// cb-unity: alone (its hook functions share names with driver_rec.cpp's)
 // w16_rec.cc -- the 16-bit recorder (codebreaker/emulate/windows16.py trace_function16): the
 // per-instruction code hook's plain path and the memory hooks of one NE function's run, in C++.
 // Python still lays the module out, starts the run (uc_emu_start to SENT_BASE) and reads the
