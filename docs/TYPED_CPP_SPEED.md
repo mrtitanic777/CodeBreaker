@@ -785,6 +785,54 @@ numbers that matter are that nothing got slower and that the recorder, the solve
 | analyze/image: load_pe of 3 real PE modules, functions carved and discovered (formats::pe + Capstone) | not timed (the old loader needs the Python, formats.dll and the DLL) | 1.1 s for all three, decode included |
 | verify/concolic: the 17 explorer tests, each a real Z3 session (own context) | the z3++ binding over py:: lists | 1.8 s for 72 checks, 0.19 s of it process start |
 | emulate/native_win16: the recorder is the same tracer code (w16_rec.cpp); the 16 callback trampolines became one context callback (cbt_w16_set_context) | 16 fixed slots, each call through a closure | one indirect call per event |
+## W1-B15: formats/xbox heavyiron and XeCrypt (2026-11-12)
+
+New idiomatic C++ (native/cb/formats/xbox) against the original Python on the same inputs, release build, one machine, the work
+in a loop of N (ms for the whole loop). Python = the original `heavyiron.py` / `XeCrypt.py` (its RSA is `pow()` on Python ints,
+keygen is OpenSSL's through `cryptography`); the old typed ports are not timed (they were never faster than the Python for the
+big-number parts: they carried their own BigInt).
+
+| Work | Python | C++ |
+|---|---|---|
+| heavyiron parse of BULK.ho (7.8 MB, 1283 assets) x20 | 31 | 1.0 |
+| XeCrypt RSA-2048 bootloader signature (sign) x50 | 302 | 185 |
+| XeCrypt RSA-2048 verify x50 | 47 | 32 |
+| RSA-2048 key generation x3 | 97 | 86 (CNG; with a seeded RandomSource the primes are searched here: ~270 ms each) |
+| rot_sum_sha over 8 MB x5 | 3097 | 81 |
+| RC4 over 8 MB x5 | 52 | 52 (state and indices in locals; about 4 cycles a byte, the dependency-chain limit of RC4, as OpenSSL's) |
+
+## cb refactor W1-B20: port/asm16 (2026-11-11)
+
+Old = the typed port on the py:: layer (its harness, state/work/typed-port/port.asm16, rc_run.log); New = native/cb/port/asm16*.cpp. The same work: the five Microsoft tools (lib 2.20, link 2.44, masm 4.00, msc 1.04, masm 5.10), 40 assembly modules each ported twice (plain; then with argument types, far routines, a data map, a listing and aliases), one run on the shared machine (+-30%). Results first compared on meaning: the text emitted, the kinds before every line, each routine's exit and writes, the arguments found, the C types (36,798 comparisons, port.asm16.oracle) -- all equal to the Python's.
+
+| What | Old (typed port) | New |
+|---|---|---|
+| CTypes of each tree (layouts, variables, far pointers) | 0.36 s | 0.03 s |
+| c_functions of each tree | 0.23 s | 0.03 s |
+| Port() of every module, both variants (reading, labels, code, data) | 0.35 s | 0.03 s |
+| run() of every module, both variants (the kinds, to a fixed point) | 4.05 s | 0.39 s |
+| emit() of every module, both variants | 0.09 s | 0.01 s |
+| all of it | about 5.1 s (the Python: about 8.9 s) | 0.5 s |
+
+The gains are the registers (an array, not a map of strings), the operands (parsed once per line, not at every step of the fixed point), the states (origin sets shared and copied on write) and the text work (scans, not backtracking regular expressions).
+## W1-B22: recompile/discover and recompile/builders (arith, logical, memory, system, vector)
+
+Old = the typed port on the py:: layer (`py::list<py::str>` statements, helpers as `std::function` over `py::str`), new =
+`native/cb/recompile/builders` (tables of statement text, `std::format`, an `Operands` interface), both Release /O2 in one test
+executable, one thread, every case of the golden file (the statements of the instruction, operand tokens parsed in each call),
+repeated; times for the whole loop.
+
+| Work | Old | New |
+|---|---|---|
+| arith, 544 cases x60 | 39 ms | 12 ms |
+| logical, 930 cases x60 | 114 ms | 26 ms |
+| memory, 1,068 cases x60 | 147 ms | 43 ms |
+| system, 1,195 cases x30 | 66 ms | 21 ms |
+| vector, 1,137 cases x30 | 61 ms | 38 ms |
+
+`discover` over the 16 KB Minecraft slice (4,096 words, a data section of 57 pointers, 37 functions): 0.04 ms a run with the pointer
+scan (50 runs in 2 ms). The old port could not be timed beside it in the test executable (it reads its image through the old PowerPC
+PE reader, which the new tests cannot link).
 
 ## cb refactor W1-B18: java/console platform_config + platform_refs, java/projects/minecraft fix passes, edition, platform_coverage, profiles (2026-11-11)
 

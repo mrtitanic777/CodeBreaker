@@ -163,7 +163,7 @@ target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 cb_area(recompile)
 target_link_libraries(cb_recompile PUBLIC cb_core cb_platforms cb_formats)
 # the shims at the old header paths are tested too: their test file includes the old layer, so it builds at /W3
-set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/recompile/builders_shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 # The recompiler's own pieces (builders, disassembler, the title project) and the source writers (placement, assembly,
 # the NE assembly tools).
@@ -221,6 +221,13 @@ cb_apply_flags(cb_fake_qemu)
 target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
 
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
+  # the legacy IR forms (patch) of the Minecraft fix passes, over the old translate IR, and the project package that uses them
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp")
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -248,6 +255,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asm16.cpp"   # (listing_offsets: the old emulator wrapper)
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
@@ -271,6 +279,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/powerpc.cpp"   # (the consumers of the builder and discover shims)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/config.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"   # (the native_win16 shim)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"   # (the compare shim)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"   # (the compare and concolic shims)
@@ -287,12 +297,23 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
-  # the legacy IR forms (patch) of the Minecraft fix passes, over the old translate IR, and the project package that uses them
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/build_lib.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/harness.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/keystore.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/shadowboot.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xcp_dumper.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xsm3.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/kv_tool.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/export_keys.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/exp_signer.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/hypervisor.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xekeys_signer.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/cpu_key.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/create_key.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/sd_signer.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/se_patcher.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/volumes.cpp"   # (the callers of the XeCrypt and heavyiron shims)
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
