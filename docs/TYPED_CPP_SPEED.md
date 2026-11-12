@@ -86,6 +86,7 @@ run.cmd resolves to the MSYS `test` where NoDefaultCurrentDirectoryInExePath is 
 | translate.backends.csharp | 37.4 s | 45.7 s | **0.82x** | 18 s of it is JSON tree loading (since sped up); back end alone faster |
 | translate.backends.cpp03 / desugar | ~25 s | 22–25 s | ~1.05x | |
 | translate.backends.cpp03 (cb/translate/backends, 2026-11-12) | 10.4 s (queries + build, all 15 programs, both dialects) | 6.5 s for alpha + beta incl. source parse and L2 load, 0.3 s retromcp | ~1.6x | answers identical on alpha/beta (22k) |
+| translate.dotnet.cs2cpp (cb/translate/dotnet, 2026-11-12) | not timed by the harness (the Python half dominated) | 10 programs (corpus, XNA, runtime) in well under 1 s incl. L2 load | not slower | refusals and skeletons identical |
 | translate.native_l2 / c / cpp17 | 61.7 s | 54.2 s | 1.14x | program() runs inside the native library on both |
 | translate.frontends.python (program/infer/methods) | 97 s | 69 s | 1.4x | |
 | translate.frontends.python.lower | — | — | — | lowering 0.09 s; rest is infer |

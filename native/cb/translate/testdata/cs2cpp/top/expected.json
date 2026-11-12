@@ -1,0 +1,1 @@
+{"units": 1, "refused": [["Program.main", "library", "List.Sort/0"]], "skeletons": [["Program", "import java.util.ArrayList;\n\nclass Program {\n\tstatic int main(String[] args) {\n\t\treturn 0;\n\t}\n}\n"]]}
