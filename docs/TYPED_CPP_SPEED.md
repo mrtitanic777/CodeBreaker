@@ -1113,6 +1113,18 @@ Old = the master codebreaker.exe (the typed port of decompiler.py); New = the ex
 | vmouse.vxd | 24.36 | 24.05 | 7.05 | 6.86 | 76,353 |
 
 A first pass gave the same bytes and times within the same noise (mmsystem cold 23.26 / 23.55, warm 9.85 / 10.22). Nearly all of a cold run is the native program and describe, unchanged and shared.
+## W4-B3 (build/module)
+
+Old = the Python (the old typed port needs the whole old layer -- decompiler, lanes, emulators, the gate -- and is not built in isolation); New = native/cb Release /O2.
+
+The module is a driver: nearly all of a build is the OpenWatcom compiler, assembler and linker, run by build/functions (compiles side by side, kept by content in the build cache) and the gate (the emulators). What the module itself does is bounded by the original's size:
+
+| What | Old | New |
+|---|---|---|
+| scans of the original's instructions (registers C cannot carry, near-pointer tables, VxD calls) | Python, per the earlier harness notes: seconds on USER.EXE | one decoder pass per segment (Capstone, shared with describe); not timed on USER.EXE |
+| the 18 unit tests of the area's `build.module` (packing, report, check, run, the gate's kept verdicts, the L2 documents) | not applicable | 0.1 s |
+
+A whole build compared with the Python's needs the module made compilable (the decompiler's services), which exist only in the old layer inside the exe; the commit message says what was and was not compared.
 
 ## W5-B1 (emulate/windows16, emulate/driver) -- HOT paths: the 16-bit judge's emulator
 
