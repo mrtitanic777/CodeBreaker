@@ -632,7 +632,7 @@ def _arith(opc, osize, vals, args, sh):
     elif opc == "SUBPIECE":
         lo = 8 * bc
         width = min(8 * asize - lo, 8 * osize)
-        s = S.zext(S.extract(A, lo, width), 8 * osize)
+        s = S.zext(S.extract(A, lo, width), 8 * osize) if width > 0 else S.const(0, 8 * osize)
     elif opc == "POPCOUNT":
         s = ("popcount", 8 * osize, A)
     else:
