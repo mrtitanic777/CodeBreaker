@@ -413,7 +413,7 @@ class OldProject : public cb::java::projects::Project {
 // The translator of the old world: javac's trees lowered by the old front end, the old project's fixes made on that old tree, and the tree
 // crossed to the typed one (as its L2 documents) for the new C++03 / C++17 back end (cb/translate/backends/cpp03), which answers the new
 // back-end interface itself.
-inline translate::backends::cpp03::Lowered old_lowering(cb::Arena& arena, const cbt::TranslateRequest& request) {
+inline cb::translate::backends::cpp03::Lowered old_lowering(cb::Arena& arena, const cbt::TranslateRequest& request) {
     namespace cpp03 = translate::backends::cpp03;
     // the translator's reading of the project: its fixes
     std::shared_ptr<projects::Project> old_project = projects::GENERIC();
@@ -431,7 +431,7 @@ inline translate::backends::cpp03::Lowered old_lowering(cb::Arena& arena, const 
     const std::optional<py::str> platform = request.platform ? std::optional<py::str>(cb::compat::to_py(*request.platform)) : std::nullopt;
     const projects::Patched patched = old_project->ir_patches(units, platform);
     if (wrapped != nullptr) wrapped->patched = patched;
-    cpp03::Lowered out;
+    cb::translate::backends::cpp03::Lowered out;
     for (const translate::ir::NodeP& u : units) out.units.push_back(cb::translate::l2::from_json(arena, cb::compat::to_json_value(translate::l2::to_json(u))));
     return out;
 }
@@ -443,7 +443,7 @@ class OldTranslator : public cbt::BodyTranslator {
     cbt::TranslatedBodies translate(const cbt::TranslateRequest& request) override { return back_end_.translate(request); }
 
   private:
-    translate::backends::cpp03::Translator back_end_;
+    cb::translate::backends::cpp03::Translator back_end_;
 };
 
 }  // namespace shim_
