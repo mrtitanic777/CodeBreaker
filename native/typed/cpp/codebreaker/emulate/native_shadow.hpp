@@ -214,6 +214,12 @@ class Shadow {
     int64_t steps() { return export_().steps; }
     bool off() { return export_().off; }
 
+    // The new shadow this one wraps, for a run on the new code (cb/emulate/emulator): the recorder steps it from here on, so what was read back is stale.
+    ns::Shadow* new_shadow() {
+        got_ = nullptr;
+        return impl_.get();
+    }
+
   private:
     friend void* handle_of(Shadow* shadow);
     struct Export {

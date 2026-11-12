@@ -164,7 +164,7 @@ target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats)   # (omf_objec
 cb_area(compare)
 target_link_libraries(cb_compare PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_decompile cb_jobs)   # (the readers and the corpus, the decoder, the function starts of each kind, the pool of the product comparison)
 cb_area(emulate)
-target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile)
+target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile cb_formats cb_symbols cb_knowledge)   # (the tracer's module loader reads PE files, prototypes and the win32 model)
 
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
@@ -293,7 +293,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/gb.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/shadow.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b1.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"

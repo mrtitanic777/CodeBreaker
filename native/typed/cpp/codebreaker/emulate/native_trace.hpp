@@ -541,9 +541,8 @@ class Run {
         }
     }
 
-  private:
-    void sync() { gov->n = governor_.n; }
-
+  public:
+    // The record's fields, from the new recorder's record, as trace_function's Python hooks leave them.
     static void convert(const cb::emulate::native_trace::TraceRecord& r, TraceRecord& rec, bool lean, bool branches) {
         namespace nt = cb::emulate::native_trace;
         rec.insn_count = r.insn_count;
@@ -643,6 +642,9 @@ class Run {
             rec.branches = log;
         }
     }
+
+  private:
+    void sync() { gov->n = governor_.n; }
 
     bool lean_ = false, branches_ = false;
     cb::emulate::native_trace::Governor governor_;
