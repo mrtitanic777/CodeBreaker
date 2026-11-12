@@ -83,7 +83,7 @@ def analyse(img):
               "typed_beyond_size": sum(n for k, n in by_type.items() if k not in plain and "bytes" not in k),
               "pointers": by_type.get("pointer", 0) + by_type.get("char *", 0) + by_type.get("far pointer", 0),
               "function_pointers": by_type.get("function pointer", 0),
-              "strings": by_type.get("string", 0), "arrays": sum(n for k, n in by_type.items() if k.endswith("]") or "[]" in k),
+              "strings": by_type.get("string", 0), "arrays": sum(1 for g in var.values() if g["type"].endswith("[]")),
               "counters": by_type.get("counter", 0), "flags": by_type.get("flags", 0),
               "results_of_system_calls": by_type.get("result of a system call", 0),
               "floats": by_type.get("float", 0) + by_type.get("double", 0),

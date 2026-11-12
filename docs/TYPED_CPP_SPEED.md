@@ -773,3 +773,15 @@ checks), PeSeg of lz32 (rows, functions, names, relocation mask). media -- the v
 and every file's bytes of 11 images (floppy, hard disk, partitioned disk, El Torito disc, raw 2352-byte discs, Windows 95
 Setup disc, a pre-DOS-2.0 floppy, two Windows 1.0 boot images), long and plain names, equal Python's line for line (966
 lines); put() on copies of three of them gives images byte for byte equal to Python's.
+
+## cb refactor W1-B2: verify/compare, verify/concolic, emulate/native_win16, analyze/globals, analyze/ppc_calls, analyze/image (2026-11-11)
+
+Old = the engine or typed port the new code replaces (same inputs, best of 3, shared machine, +-30%). These modules are small passes; the
+numbers that matter are that nothing got slower and that the recorder, the solver and the decoder (the real costs) are the same code.
+
+| What | Old | New |
+|---|---|---|
+| analyze/globals: cbanalyze.dll's globals.variables + globals.tables on one loaded module (lz32 / dpwsock / password.cpl / vswks / pa3dmxd.drv; the DLL's answer alone, JSON out, from Python) | 0.5 / 0.5 / 0.9 / 0.9 / 2.6 ms | not isolated: the golden test decodes, builds the call graph and the strings table and then runs the pass for all 15 modules in 1.5 s wall (0.19 s process start); the pass is the same loop over the same references without the JSON |
+| analyze/image: load_pe of 3 real PE modules, functions carved and discovered (formats::pe + Capstone) | not timed (the old loader needs the Python, formats.dll and the DLL) | 1.1 s for all three, decode included |
+| verify/concolic: the 17 explorer tests, each a real Z3 session (own context) | the z3++ binding over py:: lists | 1.8 s for 72 checks, 0.19 s of it process start |
+| emulate/native_win16: the recorder is the same tracer code (w16_rec.cpp); the 16 callback trampolines became one context callback (cbt_w16_set_context) | 16 fixed slots, each call through a closure | one indirect call per event |
