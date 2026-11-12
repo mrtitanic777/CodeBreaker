@@ -22,6 +22,14 @@
 // decoder with details; whole_body takes another decoder when the instructions are already at hand.
 #pragma once
 
+// <windows.h> defines `near` and `far` as empty macros; this header uses them as names, whatever was included before it.
+#ifdef near
+#undef near
+#endif
+#ifdef far
+#undef far
+#endif
+
 #include <array>
 #include <cstdint>
 #include <functional>
