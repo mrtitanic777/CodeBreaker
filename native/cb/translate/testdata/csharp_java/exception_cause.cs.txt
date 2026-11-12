@@ -1,0 +1,21 @@
+// ==== ExceptionCause.cs ====
+// Translated by CodeBreaker from ExceptionCause (java).
+#nullable disable
+using System;
+
+public class ExceptionCause
+{
+    public ExceptionCause()
+    {
+    }
+
+    internal static void wrap()
+    {
+        throw new System.NotSupportedException("CB-GAP: an exception made with a cause");
+    }
+
+    internal static void plain()
+    {
+        throw new ArgumentException("bad");
+    }
+}

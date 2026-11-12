@@ -214,7 +214,7 @@ cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge cb_compare cb_platforms)
 
 cb_area(xna)
-target_link_libraries(cb_xna PUBLIC cb_core)
+target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats)   # (cb_base: the Converted project; cb_formats: PE and media images)
 
 # The translator's back ends, front ends and the whole-program judge; the terminal interface's helpers (the terminal
 # interface itself stays Python: docs/CPP_DESIGN.md section 9).
@@ -233,7 +233,7 @@ if(CB_ASAN)
 endif()
 
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 

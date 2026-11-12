@@ -1,0 +1,5 @@
+// ==== InnerOuter.cs ====
+// Translated by CodeBreaker from InnerOuter (java).
+#nullable disable
+
+// CB-GAP: InnerOuter was not translated: an inner class that uses its outer instance (Counter)

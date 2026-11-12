@@ -1,6 +1,7 @@
 // Tests of the shims at the old header paths for the translator, verify/authored and process helpers: the old py:: API over
 // the new modules. Built at /W3 (the old layer is not warning-clean), like py_bridge_test.cpp.
 #include "codebreaker/translate/backends/asm.hpp"
+#include "codebreaker/translate/backends/c.hpp"
 #include "codebreaker/translate/backends/module_file.hpp"
 #include "codebreaker/translate/dotnet/package.hpp"
 #include "codebreaker/translate/frontends/python/pytypes.hpp"
@@ -10,6 +11,7 @@
 
 #include "cb/core/testing.hpp"
 
+namespace c_old = codebreaker::translate::backends::c;
 namespace asm_old = codebreaker::translate::backends::asm_;
 namespace mf_old = codebreaker::translate::backends::module_file;
 namespace sf_old = codebreaker::translate::frontends::python::structfmt;
@@ -260,4 +262,32 @@ CB_TEST("compat.translate.module_file", [] {
     CB_CHECK(listing.starts_with("; lz32.dll -- reconstructed source.\n;\n"));
     CB_CHECK(listing.ends_with(";\nmov ax, 1"));
     CB_CHECK_EQ(mf_old::asm_banner(facts).size(), 7);
+});
+
+// ---- backends/c -----------------------------------------------------------------------------------------------
+CB_TEST("compat.translate.c", [] {
+    // the lists are the new module's as py lists, in the order the old native_l2 shim lists every pass
+    const auto& all = codebreaker::translate::native_l2::default_moved();
+    CB_CHECK_EQ(c_old::MOVED.size(), all.size());
+    for (int64_t i = 0; i < all.size(); ++i) CB_CHECK_EQ(c_old::MOVED[i].utf8(), all[i].utf8());
+    CB_CHECK_EQ(c_old::IN_MODULE.size(), 42);
+    CB_CHECK_EQ(c_old::FLAT.size(), 13);
+    CB_CHECK_EQ(c_old::POWERPC.size(), 8);
+    CB_CHECK_EQ(c_old::FLAT[0].utf8(), "pieces");
+    CB_CHECK_EQ(c_old::SIZEOF.size(), 22);
+    CB_CHECK_EQ(c_old::SIZEOF.get(py::str("int2"), int64_t(0)), 2);
+    CB_CHECK_EQ(c_old::SIZEOF.get(py::str("float10"), int64_t(0)), 10);
+    CB_CHECK_EQ(c_old::SIZEOF.get(py::str("nope"), int64_t(-1)), -1);
+    // _param_name: the symbol's name, else the parameter's own, else the empty text
+    namespace ir = codebreaker::translate::ir;
+    ir::Dict sym;
+    sym.set(py::str("name"), ir::Val(py::str("count")));
+    ir::Dict with_sym;
+    with_sym.set(py::str("sym"), ir::Val(sym));
+    with_sym.set(py::str("name"), ir::Val(py::str("other")));
+    CB_CHECK_EQ(std::get<py::str>(c_old::_param_name(with_sym).v).utf8(), "count");
+    ir::Dict named;
+    named.set(py::str("name"), ir::Val(py::str("other")));
+    CB_CHECK_EQ(std::get<py::str>(c_old::_param_name(named).v).utf8(), "other");
+    CB_CHECK_EQ(std::get<py::str>(c_old::_param_name(ir::Dict()).v).utf8(), "");
 });

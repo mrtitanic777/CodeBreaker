@@ -1,0 +1,62 @@
+// ==== Calls.cs ====
+// Translated by CodeBreaker from Calls (java).
+#nullable disable
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+public class Calls
+{
+    public Calls()
+    {
+    }
+
+    internal static string describe(string s, List<string> names, IDictionary<string, int> counts)
+    {
+        int n = s.Length;
+        string sub = JavaRt.Substring(s, 1, 3).ToUpperInvariant();
+        char c = s[0];
+        bool same = s.Equals("x");
+        int idx = s.IndexOf("a", StringComparison.Ordinal);
+        names.Add(sub);
+        string first = names[0];
+        names.RemoveAt(0);
+        counts[s] = 1;
+        bool has = counts.ContainsKey(s);
+        int m = Math.Max(n, JavaRt.Abs(idx));
+        int p = JavaRt.ParseInt("12");
+        string t = p.ToString() + m;
+        var sb = new StringBuilder();
+        sb.Append(c).Append(n).Append(JavaRt.Str(sub));
+        Console.WriteLine(sb.ToString() + JavaRt.Str(t) + JavaRt.Str(first) + JavaRt.Str(same) + JavaRt.Str(has));
+        Console.Error.WriteLine("err");
+        int[] arr = new int[] { 3, 1, 2 };
+        Array.Sort(arr);
+        JavaRt.Sort(names);
+        return JavaRt.Str(t) + names.Count + JavaRt.Str(names.Count == 0);
+    }
+
+    internal static int sorted(SortedSet<int> ts)
+    {
+        int total = 0;
+        foreach (int x in ts)
+        {
+            total += x;
+        }
+        return total;
+    }
+
+    internal static int hashed(ISet<int> hs)
+    {
+        throw new System.NotSupportedException("CB-GAP: iterating a java.util.Set: Java visits it in hash order, .NET in another");
+    }
+
+    internal static List<string> make()
+    {
+        List<string> @out = new List<string>();
+        ISet<int> seen = new HashSet<int>();
+        seen.Add(1);
+        @out.Add("a" + seen.Count);
+        return @out;
+    }
+}
