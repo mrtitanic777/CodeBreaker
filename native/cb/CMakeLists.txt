@@ -238,6 +238,10 @@ target_link_libraries(cb_ui PUBLIC cb_core)
 
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ws2_32)
 
+# The native program the decompiler's tests start in place of decompiler.exe (decompile/fake_decompiler_main.cpp), built beside cb_tests.
+add_executable(cb_fake_decompiler decompile/fake_decompiler_main.cpp)
+cb_apply_flags(cb_fake_decompiler)
+
 # The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
 add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
@@ -254,6 +258,10 @@ target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms c
 target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client)
 
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
+
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b15.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/module.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp")
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -365,8 +373,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b11.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/engine/lanes_wiring.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b15.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/module.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b5.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
@@ -412,7 +419,7 @@ target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
 # the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
 target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
-add_dependencies(cb_tests cb_worker_probe cb_fake_qemu)
+add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 enable_testing()
@@ -438,5 +445,7 @@ foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
     add_dependencies(cb_tests_${area} cb_worker_probe)
   elseif(area STREQUAL "verify")
     add_dependencies(cb_tests_${area} cb_fake_qemu)
+  elseif(area STREQUAL "decompile")
+    add_dependencies(cb_tests_${area} cb_fake_decompiler)
   endif()
 endforeach()

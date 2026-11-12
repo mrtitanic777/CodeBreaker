@@ -40,7 +40,8 @@ Assembled assemble(const std::filesystem::path& nasm, std::string_view source, c
 
 LabelMap read_map(const std::filesystem::path& path) {
     LabelMap labels;
-    for (const std::string_view line : text::lines(fs::read_text(path))) {
+    const std::string content = fs::read_text(path);   // (the lines are views into it: it must outlive the loop)
+    for (const std::string_view line : text::lines(content)) {
         const std::vector<std::string_view> parts = text::split_ws(line);
         if (parts.size() != 3 || !upper_hex(parts[0]) || !upper_hex(parts[1])) continue;
         const auto place = text::parse_int<std::uint64_t>(parts[0], 16);

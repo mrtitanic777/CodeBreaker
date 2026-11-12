@@ -43,7 +43,8 @@ Bytes chr_bank() {
 
 std::vector<std::string> lines_of(const std::filesystem::path& p) {
     std::vector<std::string> out;
-    for (const std::string_view l : text::lines(fs::read_text(p))) out.emplace_back(l);
+    const std::string content = fs::read_text(p);   // (the lines are views into it)
+    for (const std::string_view l : text::lines(content)) out.emplace_back(l);
     return out;
 }
 

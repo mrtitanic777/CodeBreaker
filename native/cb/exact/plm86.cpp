@@ -116,7 +116,8 @@ modules::CompileResult Plm86::run_tool(const Bytes& source, const std::vector<st
     }
     if (!stdfs::is_regular_file(object) || !ok) {
         std::string errors;
-        for (const std::string_view line : text::split(text::replace_all(lst, "\r", ""), '\n')) {
+        const std::string listing_text = text::replace_all(lst, "\r", "");   // (split views it: keep it alive through the loop)
+        for (const std::string_view line : text::split(listing_text, '\n')) {
             if (line.find("***") == std::string_view::npos && line.find("ERROR") == std::string_view::npos) continue;
             errors += (errors.empty() ? "" : "\n") + std::string(line);
         }
