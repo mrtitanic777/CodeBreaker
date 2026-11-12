@@ -103,7 +103,9 @@ def resolve(items):
         if it[0]=="b": out+=it[1]; off+=len(it[1])
         elif it[0]=="L": pass
         elif it[0]=="j":
-            rel=pos[it[2]]-(off+2); out+=bytes([it[1], rel&0xff]); off+=2
+            rel=pos[it[2]]-(off+2)
+            if not -128 <= rel <= 127: raise ValueError("short jump out of range (%d)" % rel)   # (it used to wrap into a wrong byte)
+            out+=bytes([it[1], rel&0xff]); off+=2
     return bytes(out)
 
 def model(func):
