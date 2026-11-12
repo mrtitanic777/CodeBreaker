@@ -155,7 +155,7 @@ cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core)
 
 cb_area(analyze)
-target_link_libraries(cb_analyze PUBLIC cb_core)
+target_link_libraries(cb_analyze PUBLIC cb_core cb_formats cb_symbols)
 
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
@@ -235,7 +235,7 @@ target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
-target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms PRIVATE cb_zlib ws2_32)
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ws2_32)
 
 # The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
 add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
