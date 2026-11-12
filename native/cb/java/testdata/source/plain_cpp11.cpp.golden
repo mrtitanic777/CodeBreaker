@@ -1,0 +1,127 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from Plain.java
+// Target: xbox360 / C++11
+
+#include "Plain.h"
+#include "Base.h"
+#include "Foo.h"
+#include "Gap.h"
+#include "UnsupportedOperationException.h"
+
+int Plain::s_LIMIT = INIT(16);
+JavaString Plain::s_NAME = INIT("plain");
+Foo* Plain::s_shared;
+Foo* Plain::s_made = INIT(Foo.make(3));
+int Plain::s_computed;
+static int _Plain_s_table_data[] = { 1, 2, 3 };
+JArray<int > Plain::s_table(_Plain_s_table_data, 3);
+static unsigned char _Plain_s_raw_data[] = { 1, 2 };
+JArray<unsigned char > Plain::s_raw(_Plain_s_raw_data, 2);
+JArray<JArray<int > > Plain::s_grid;
+JArray<Foo* > Plain::s_gapItems;
+int Plain::s_gapInit;
+long long Plain::s_counter = 0;
+Foo* Plain::s_unset = nullptr;  // [C++11] nullptr replaces NULL
+
+Plain::Plain()
+	: owner(nullptr)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+{
+	// inst Plain
+	// ctor0
+}
+
+Plain::Plain(int count)
+	: Base(a0)
+	, owner(nullptr)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+{
+	// inst Plain
+	// ctor1
+}
+
+Plain::Plain(int count, const JavaString& label)
+	: owner(nullptr)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+{
+	// inst Plain
+	// ctor2
+}
+
+Plain::Plain(int a, int b, int c)
+	: Base()
+	, owner(nullptr)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+{
+	// inst Plain
+	// ctor3
+}
+
+Plain::Plain(Gap* g)
+	: owner(nullptr)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+{
+	// J2X-GAP: constructor Plain(Gap* g) was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain::~Plain()
+{
+	delete owner;
+	owner = nullptr;
+}
+
+void Plain::tick()
+{
+	// body Plain.tick/0
+}
+
+int Plain::size_()
+{
+	// body Plain.size/0
+}
+
+Foo* Plain::find(Foo* f, const JavaString& s)
+{
+	// body Plain.find/2
+}
+
+void Plain::gapMethod()
+{
+	// J2X-GAP: method gapMethod was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain* Plain::make()
+{
+	// body Plain.make/0
+}
+
+void Plain::initStatics()
+{
+	Plain::s_shared = INIT(new Foo());
+	Plain::s_computed = INIT(compute(2));
+	Plain::s_grid = INIT(new int[][]{{1, 2}, {3}});
+	// J2X-GAP: static field Plain.gapItems was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.gapInit was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// static block 0
+}

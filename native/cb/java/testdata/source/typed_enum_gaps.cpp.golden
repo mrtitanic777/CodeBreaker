@@ -1,0 +1,46 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from GapEn.java
+// Target: unknown / C++03
+
+#include "GapEn.h"
+#include "UnsupportedOperationException.h"
+
+GapEn* GapEn::GAPC;
+GapEn* GapEn::D;
+Foo* GapEn::fx;
+JArray<GapEn* > GapEn::_j2x_values;
+
+GapEn::GapEn(int l)
+	: level(0)
+{
+	// ctor1
+}
+
+GapEn::~GapEn()
+{
+}
+
+int GapEn::ordinal()
+{
+	return this->__ordinal;
+}
+
+JArray<GapEn* >& GapEn::values()
+{
+	return _j2x_values;
+}
+
+void GapEn::initStatics()
+{
+	// J2X-GAP: enum constant GapEn.GAPC was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	D = new GapEn(1, "D");
+	D->__ordinal = 1;
+	// J2X-GAP: static field GapEn.fx was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	_j2x_values = JArray<GapEn* >(2);
+	_j2x_values[0] = GAPC;
+	_j2x_values[1] = D;
+}

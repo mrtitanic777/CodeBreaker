@@ -1,0 +1,146 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from Plain.java
+// Target: unknown / C++03
+
+#include "Plain.h"
+#include "Base.h"
+#include "Foo.h"
+#include "Gap.h"
+#include "UnsupportedOperationException.h"
+
+int Plain::s_LIMIT;
+JavaString Plain::s_NAME;
+Foo* Plain::s_shared;
+Foo* Plain::s_made;
+int Plain::s_computed;
+JArray<int > Plain::s_table;
+JArray<unsigned char > Plain::s_raw;
+JArray<JArray<int > > Plain::s_grid;
+JArray<Foo* > Plain::s_gapItems;
+int Plain::s_gapInit;
+long long Plain::s_counter = 0;
+Foo* Plain::s_unset = NULL;
+
+Plain::Plain()
+	: owner(NULL)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+	, pos(NULL)
+{
+	// J2X-GAP: constructor Plain() was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain::Plain(int count)
+	: owner(NULL)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+	, pos(NULL)
+{
+	// J2X-GAP: constructor Plain(int count) was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain::Plain(int count, const JavaString& label)
+	: owner(NULL)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+	, pos(NULL)
+{
+	// J2X-GAP: constructor Plain(int count, const JavaString& label) was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain::Plain(int a, int b, int c)
+	: owner(NULL)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+	, pos(NULL)
+{
+	// J2X-GAP: constructor Plain(int a, int b, int c) was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain::Plain(Gap* g)
+	: owner(NULL)
+	, count(0)
+	, scale(0)
+	, tag(0)
+	, flag(0)
+	, pos(NULL)
+{
+	// J2X-GAP: constructor Plain(Gap* g) was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain::~Plain()
+{
+	delete owner;
+	owner = NULL;
+}
+
+void Plain::tick()
+{
+	// J2X-GAP: method tick was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+int Plain::size()
+{
+	// J2X-GAP: method size was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Foo* Plain::find(Foo* f, const JavaString& s)
+{
+	// J2X-GAP: method find was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+void Plain::gapMethod()
+{
+	// J2X-GAP: method gapMethod was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+Plain* Plain::make()
+{
+	// J2X-GAP: method make was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}
+
+void Plain::initStatics()
+{
+	// J2X-GAP: static field Plain.LIMIT was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.NAME was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.shared was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.made was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.computed was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.table was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.raw was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.grid was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.gapItems was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.gapInit was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static {} blocks of Plain was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+}

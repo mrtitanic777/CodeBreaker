@@ -1,0 +1,5 @@
+has_init_statics=false
+AbstractCall.cpp|RISK|MED|emit|abstract-called-in-ctor|0|abstract entityInit() is called from a constructor -- emitted an empty base definition (C++ calls the base, not the override, during base construction)
+AbstractCall.cpp|RISK|MED|emit|abstract-called-in-ctor|0|abstract setup() is called from a constructor -- emitted an empty base definition (C++ calls the base, not the override, during base construction)
+AbstractCall.cpp|RISK|MED|emit|abstract-called-in-ctor|0|abstract compute() is called from a constructor -- emitted an empty base definition (C++ calls the base, not the override, during base construction)
+AbstractCall.cpp|PORTED|LOW|emit|source|0|generated source for AbstractCall

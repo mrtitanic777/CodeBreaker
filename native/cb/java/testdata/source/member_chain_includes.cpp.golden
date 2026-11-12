@@ -1,0 +1,30 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from Chain.java
+// Target: unknown / C++03
+
+#include "Chain.h"
+#include "Hop.h"
+#include "Leaf.h"
+#include "Node.h"
+
+Chain::Chain(Hop* h)
+	: first(NULL)
+{
+	// inst Chain
+	// ctor1
+}
+
+Chain::~Chain()
+{
+}
+
+int Chain::deep()
+{
+	// body Chain.deep/0
+}
+
+void Chain::initStatics()
+{
+}

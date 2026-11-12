@@ -1,0 +1,11 @@
+has_init_statics=true
+Plain.cpp|RISK|LOW|emit|static-aggregate-array|9|static array new T[]{...} -> JArray over a file-static data array (C++03 has no braced new[]; length tracked)
+Plain.cpp|RISK|LOW|emit|static-aggregate-array|10|static array new T[]{...} -> JArray over a file-static data array (C++03 has no braced new[]; length tracked)
+Plain.cpp|RISK|LOW|emit|static-aggregate-array-nd|11|multi-dim static array new T[][]{...} -> nested JArrayInit (C++03 has no braced new[][]; each level length-tracked)
+Plain.cpp|STUBBED|HIGH|emit|untranslated|12|untranslated static field Plain.gapItems: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+Plain.cpp|STUBBED|HIGH|emit|untranslated|13|untranslated static field Plain.gapInit: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+Plain.cpp|STUBBED|HIGH|emit|untranslated|48|untranslated constructor Plain(Gap* g): the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+Plain.cpp|RISK|MED|emit|rule-of-three-dtor|0|Rule-of-Three: synthesized destructor frees 1 heap-owning field(s): owner
+Plain.cpp|STUBBED|HIGH|emit|untranslated|63|untranslated method gapMethod: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+Plain.cpp|RISK|MED|emit|static-init-ordered|0|static field inits + static{} blocks deferred into initStatics(), run in dependency order by j2x_initAll() (kills the static-init-order crash class)
+Plain.cpp|PORTED|LOW|emit|source|0|generated source for Plain

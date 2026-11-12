@@ -1,0 +1,37 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from AbstractCall.java
+// Target: unknown / C++03
+
+#include "AbstractCall.h"
+#include "Foo.h"
+
+AbstractCall::AbstractCall()
+	: id(0)
+{
+	// inst AbstractCall
+	// ctor0
+}
+
+AbstractCall::~AbstractCall()
+{
+}
+
+void AbstractCall::entityInit()
+{
+}
+
+int AbstractCall::setup()
+{
+	return 0;
+}
+
+Foo* AbstractCall::compute(int a)
+{
+	return NULL;
+}
+
+void AbstractCall::initStatics()
+{
+}

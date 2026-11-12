@@ -1,0 +1,3 @@
+has_init_statics=false
+GapImplicit.cpp|STUBBED|HIGH|emit|untranslated|0|untranslated instance initialisers of GapImplicit: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+GapImplicit.cpp|PORTED|LOW|emit|source|0|generated source for GapImplicit

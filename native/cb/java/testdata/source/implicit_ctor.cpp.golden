@@ -1,0 +1,31 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from Implicit.java
+// Target: unknown / C++03
+
+#include "Implicit.h"
+#include "Foo.h"
+
+Implicit::Implicit()
+	: a(0)
+	, b(NULL)
+	, c(0)
+{
+	// inst Implicit
+}
+
+Implicit::~Implicit()
+{
+	delete b;
+	b = NULL;
+}
+
+int Implicit::a()
+{
+	// body Implicit.a/0
+}
+
+void Implicit::initStatics()
+{
+}

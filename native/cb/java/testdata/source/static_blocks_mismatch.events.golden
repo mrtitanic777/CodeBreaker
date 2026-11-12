@@ -1,0 +1,4 @@
+has_init_statics=true
+BadBlocks.cpp|STUBBED|HIGH|emit|untranslated|0|untranslated static {} blocks of BadBlocks: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+BadBlocks.cpp|RISK|MED|emit|static-init-ordered|0|static field inits + static{} blocks deferred into initStatics(), run in dependency order by j2x_initAll() (kills the static-init-order crash class)
+BadBlocks.cpp|PORTED|LOW|emit|source|0|generated source for BadBlocks

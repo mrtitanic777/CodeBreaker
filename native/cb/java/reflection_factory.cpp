@@ -167,9 +167,10 @@ bool Registrars::matches_line(std::string_view line) const {
         std::size_t k = j;
         while (k < line.size() && text::is_space(line[k])) ++k;
         if (k < line.size() && line[k] == '(') {
-            if (names.empty() ? ident.starts_with("register") : std::find(names.begin(), names.end(), ident) != names.end()) {
-                return true;
-            }
+            const bool by_default = names.empty() && prefixes.empty() && ident.starts_with("register");
+            const bool by_name = std::find(names.begin(), names.end(), ident) != names.end();
+            const bool by_prefix = std::any_of(prefixes.begin(), prefixes.end(), [ident](const std::string& p) { return ident.starts_with(p); });
+            if (by_default || by_name || by_prefix) return true;
         }
         i = j;
     }
