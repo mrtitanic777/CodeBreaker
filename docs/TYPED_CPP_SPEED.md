@@ -930,3 +930,18 @@ Old = the Python module (these four had no typed-port harness of their own that 
 | java/probe: the pure parts (inputs, harness text, what can be run) | microseconds in both; a probe's time is javac, the JVM, the C++ compiler and the linker (the end-to-end test on a one-class program: about 2 s, almost all in those four) | the same |
 
 The page ECC is a bit-serial sum (a word of the page per 32 steps, the spare's 102 bits at the end): the new code keeps the algorithm and runs it on `uint32_t` words with no big-integer arithmetic, which is the whole gain. `write_god` streams a subpart (204 blocks) at a time to the part file instead of collecting a part (166 MB) in memory and handing it to the DLL, and the reader takes the rest of a subpart in one read where the old one took a block at a time.
+
+## translate/frontends/python/program (W1-B29)
+
+`Program` is the symbol tables and facts of the Python front end; the work that is not a one-off is loading a package and building
+its symbol tables (`add_tree` + `index`). Timed on the 552 modules of `codebreaker/` (7,374 functions, 456 classes), best of three,
+a heavily loaded machine (other builds running), Release:
+
+| step | Python (program.py) | C++ (cb) |
+|---|---|---|
+| add_tree: read and parse 552 modules | 2,980 ms | 846 ms |
+| index: symbol tables, bases, `none_aware`, `index_params` | 1,951 ms | 133 ms |
+
+The old typed port (`native/typed/cpp/.../program.cpp`) links only into the translated executable, so it was not timed on its own; it
+does the same work over `py::str` and `py::dict`. Parsing is pyfront's (unchanged); `index` was the Python's ast walks and is now one
+walk per function over a flat child list.
