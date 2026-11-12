@@ -1,0 +1,1 @@
+T63595.C(87) : warning : `=' : different levels of indirection

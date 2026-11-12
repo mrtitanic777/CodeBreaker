@@ -1007,3 +1007,13 @@ Old = the Python (the old typed port cannot be built here without the whole exe)
 | lane_common (argument text, the memory digest, a run's fingerprint) | per call, microseconds either way | not timed: no loop of its own, the cost is the emulator's |
 
 The gain of dos_functions is the byte arrays (`mark`, `guess`) and the instruction cache being vectors and one hash map over plain structs where the Python held a dict of objects per instruction, and the decoded operands being kept (the Python decoded every instruction a second time to read its registers). dispatch and structures are timed at the end of this section when the Python could be run over the corpus modules (see the report).
+## W2-B4: decompile/xbox_effect (with formats/xbox/effect and shader), coverage/reach, engine/function_store
+
+Old = the Python (the old typed ports cannot be built here without the whole exe); New = native/cb, Release.
+
+| What | Old | New |
+|---|---|---|
+| xbox_effect: the 484 cases of the old harness (44 effects, each cut at many lengths; 111 give text, 373 are refused) | 0.41 s (Python, interpreter start not counted) | 0.14 s for the whole test process (start, reading the 44 files, comparing every text) |
+| function store: 20,000 functions recorded in one call | (the C engine's store.cc: same SQL; not built here) | 0.17 s |
+| function store: best + tally of those 20,000 | same | 0.14 s |
+| reach: describe / gap / spread / report | not timed (a few ms a file) | not timed |

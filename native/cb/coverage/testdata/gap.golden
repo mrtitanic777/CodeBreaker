@@ -1,0 +1,31 @@
+aarch64.elf	ELF program	AArch64
+app.apk	Android app	Dalvik
+arm.elf	ELF program	ARM
+ds.nds	Nintendo DS	ARM9 / ARM7
+empty.bin	-
+gb_demo.asm	-
+gba.gba	Game Boy Advance	ARM7TDMI
+gbahead.bin	-
+genesis_demo.asm	-
+mips.elf	ELF program	MIPS
+msx_demo.asm	-
+n64.n64	Nintendo 64	MIPS R4300
+n64.v64	Nintendo 64	MIPS R4300
+n64.z64	Nintendo 64	MIPS R4300
+nes_demo.cfg	-
+nes_demo.s	-
+notapk.zip	-
+odd.elf	ELF program	machine 0x1234
+ppc.elf	ELF program	PowerPC
+ppc64.elf	ELF program	PowerPC 64
+random.dat	-
+sh.elf	ELF program	SuperH
+short.elf	-
+sms_demo.asm	-
+snes.sfc	Super Nintendo	65816
+snes.smc	Super Nintendo	65816
+spu.elf	ELF program	Cell SPU
+text.txt	-
+x64.elf	ELF program	x86-64
+x86.elf	ELF program	x86
+zx_demo.asm	-

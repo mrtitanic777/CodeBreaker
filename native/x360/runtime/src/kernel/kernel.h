@@ -103,6 +103,9 @@ namespace kernel
     uint32_t ShowCommunityTab(uint32_t user, int tab);
     // XLiveBase 0x58020 (XFriendsCreateEnumerator) on its argument slots (kernel/xam_live.cpp).
     uint32_t FriendsCreateEnumerator(uint32_t arguments);
+    // XUserAreUsersFriends (kernel/xam_msg.cpp): *result = whether every one of `count` XUIDs at `xuids` is a friend of
+    // `user`; a Win32 error (ERROR_INVALID_PARAMETER for bad arguments).
+    uint32_t AreUsersFriends(uint32_t user, uint32_t xuids, uint32_t count, uint32_t result);
     // XLiveBase 0x58024 (XMessageEnumerate: the user's message summaries) on its argument slots.
     uint32_t MessageEnumerate(uint32_t arguments);
     // XLiveBase 0x58007 (XOnlineGetServiceInfo).

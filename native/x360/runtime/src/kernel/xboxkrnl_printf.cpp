@@ -13,6 +13,8 @@
 
 #include "kernel/kernel.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -235,6 +237,41 @@ namespace
         return alternate ? text : CropZeros(text);
     }
 
+    // An infinity or NaN as the Xbox CRT's (MSVC 2005-2008) _cfltcvt writes it: the digit string "1#INF", "1#QNAN",
+    // "1#SNAN" or, for the default NaN of the FPU (negative quiet, no payload), "1#IND", laid out as the digits 1.#INF00
+    // of the conversion: one digit, the point (unless the precision is 0 without '#'), then the rest cut or padded with
+    // zeros to the precision; %e adds "e+000". %g (precision = significant digits) drops the trailing zeros unless '#'.
+    // The sign is the caller's (kNegative).
+    std::string FormatNonFinite(double value, char conversion, int precision, bool alternate, bool upper)
+    {
+        uint64_t bits;
+        std::memcpy(&bits, &value, sizeof(bits));
+        const char* digits = std::isinf(value)                          ? "1#INF"
+                             : bits == 0xFFF8000000000000ull            ? "1#IND"
+                             : (bits & 0x0008000000000000ull) != 0      ? "1#QNAN"
+                                                                        : "1#SNAN";
+        std::string text(1, '1');
+        std::string rest = std::string(digits + 1);
+        const int fraction = conversion == 'g' ? precision - 1 : precision;
+        rest.resize(size_t(std::max(fraction, 0)), '0'); // cut, or padded with zeros
+        if (fraction > 0 || alternate)
+            text += '.';
+        text += rest;
+        if (conversion == 'g' && !alternate)
+        {
+            while (!text.empty() && text.back() == '0')
+                text.pop_back();
+            if (!text.empty() && text.back() == '.')
+                text.pop_back();
+        }
+        if (conversion == 'e')
+            text += "e+000";
+        if (upper)
+            for (char& ch : text)
+                ch = char(std::toupper(static_cast<unsigned char>(ch)));
+        return text;
+    }
+
     // Formats into code units: bytes for narrow output, UTF-16 code units for wide output.
     template<bool Wide>
     class Formatter
@@ -271,8 +308,9 @@ namespace
         // Narrow output can only hold characters the C locale's wctomb accepts.
         char16_t ToOutput(char16_t c) const
         {
+            // The CRT's wctomb fails for them (the C locale maps only U+0000-U+00FF); the output writes '?' for that.
             if (!Wide && c > 0xFF)
-                Fatal("printf: wide character U+{:04X} in narrow output (format at {:08X})", uint32_t(c), format);
+                return u'?';
             return c;
         }
 
@@ -368,6 +406,14 @@ namespace
             }
             p += kUnit; // past the conversion character
 
+            // "%%": a literal '%', as the CRT's state machine writes it (the class of '%' leads straight back to
+            // normal output, so no width or flag applies). TU46's Settings menu stopped here (format at 8210C398).
+            if (c == '%')
+            {
+                out += u'%';
+                return p;
+            }
+
             std::u16string text;
             std::u16string prefix;
             switch (c)
@@ -442,8 +488,6 @@ namespace
             {
                 flags |= kSigned;
                 const double value = args.NextDouble();
-                if (!std::isfinite(value))
-                    Fatal("printf: non-finite floating-point value (format at {:08X})", format);
                 if (std::signbit(value))
                     flags |= kNegative;
                 const bool alternate = (flags & kAlternate) != 0;
@@ -451,7 +495,10 @@ namespace
                 if (digits > 512)
                     digits = 512; // MAXPRECISION
                 std::string converted;
-                if (c == 'e' || c == 'E')
+                if (!std::isfinite(value))
+                    converted = FormatNonFinite(value, char(c | 0x20), c == 'g' || c == 'G' ? (digits == 0 ? 1 : digits) : digits,
+                                                alternate, c == 'E' || c == 'G');
+                else if (c == 'e' || c == 'E')
                     converted = FormatE(value, digits, alternate, c == 'E');
                 else if (c == 'f')
                     converted = FormatF(value, digits, alternate);

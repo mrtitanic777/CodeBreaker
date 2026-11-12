@@ -987,8 +987,9 @@ GUEST_IMPORT(XamShowCreateProfileUI)
 // DWORD XamShowSigninUI(DWORD PaneCount, DWORD Flags) (XShowSigninUI): the Guide's sign-in panes, shown
 // asynchronously; ERROR_SUCCESS once open. The XDK: one-pane sign-in is additive (the profile picked is signed in to
 // the controller that picked it, if it was not signed in and that controller was not in use; otherwise it moves or
-// replaces); when sign-in completes and a signed-in player changed, XN_SYS_SIGNINCHANGED is sent with a bit per user
-// index signed in by this sign-in (sent before XN_SYS_UI 0, as Xenia orders them); cancelling changes nothing.
+// replaces); when sign-in completes with a pick, XN_SYS_SIGNINCHANGED is sent with a bit per user index signed in
+// by this sign-in, also when the profile picked was already signed in there (sent before XN_SYS_UI 0, as Xenia orders
+// them); cancelling changes nothing and sends none.
 // Every profile here is a local offline one (kernel/users.h): XSSUI_FLAGS_SHOWONLYONLINEENABLED lists none, and
 // without a LIVE-enabled sponsor there is no guest option (XSSUI_FLAGS_ENABLE_GUEST). XSSUI_FLAGS_ADDUSER leaves out
 // profiles already signed in. The pane is driven by any controller: A on a profile signs it in to that controller's
@@ -997,8 +998,8 @@ GUEST_IMPORT(XamShowCreateProfileUI)
 // for 2/4 panes only together with SHOWONLYONLINEENABLED; the cases it never uses stop with a message.
 // Drawn as XAM's one-pane sign-in (signin1.xur): the eligible profiles, then "Create Profile" (closes the pane and
 // starts XamShowCreateProfileUI's flow for that controller) and "Download Profile", which copies the new profiles of the `profiles` folder (kernel/profile_import.h; the console
-// would recover one from Xbox LIVE) and lists them; a 2/4-pane request that lists no profile shows the same pane
-// (deviation: the console would show signin2/4.xur). A profile signing in raises XAM's toast.
+// would recover one from Xbox LIVE) and lists them; a 2/4-pane request shows the same pane (deviation: the console
+// would show signin2/4.xur). A profile signing in raises XAM's toast.
 GUEST_IMPORT(XamShowSigninUI)
 {
     const uint32_t panes = ctx.r3.u32, flags = ctx.r4.u32;
@@ -1054,14 +1055,17 @@ GUEST_IMPORT(XamShowSigninUI)
     dialog->user = kUserIndexAny;
     dialog->title = u"Sign In";
     list(*dialog);
-    if (panes != 1 && !eligible->empty())
-        Fatal("XamShowSigninUI({}, {:08X}): sign-in with several panes is not implemented", panes, flags);
+    // 2/4 panes (TU46 asks for 4 with SHOWONLYONLINEENABLED when a world is created): the one pane, which any
+    // controller drives and which is additive, so each player can sign in from it in turn (deviation: signin2/4.xur).
     dialog->complete = [eligible](uint32_t answer, uint32_t user) {
         if (answer >= eligible->size() || user >= kernel::users::kMaxUsers)
             return;
         const kernel::users::Profile profile = kernel::users::Profiles()[(*eligible)[answer]];
+        // Already signed in to this controller: nothing changes, but the pick still completes the sign-in with
+        // XN_SYS_SIGNINCHANGED for that user. TU46's sign-in helper (0x824CE760) waits for it after the pane closes and
+        // takes its absence as a failed sign-in, so re-picking the LIVE profile of user 0 at world creation looped.
         if (kernel::users::Xuid(user) == profile.xuid)
-            return; // already signed in to this controller: nothing changed
+            return kernel::BroadcastNotification(kXnSysSigninChanged, 1u << user);
         kernel::users::SignIn(user, (*eligible)[answer]);
         kernel::BroadcastNotification(kXnSysSigninChanged, 1u << user);
         // XAM's toast for the sign-in: "<gamertag> signed in" for a local profile; an Xbox LIVE profile's once its LIVE
@@ -1304,6 +1308,13 @@ namespace
 // Party is a friend's action there).
 GUEST_IMPORT(XamShowPartyInviteUI)
 {
+    ctx.r3.u64 = guide::ShowCommunity(ctx.r3.u32, guide::Tab::kFriends);
+}
+
+// DWORD XamShowFriendsUI(DWORD UserIndex) (XShowFriendsUI): the Guide's friends list.
+GUEST_IMPORT(XamShowFriendsUI)
+{
+    Log("XamShowFriendsUI(user {})", ctx.r3.u32);
     ctx.r3.u64 = guide::ShowCommunity(ctx.r3.u32, guide::Tab::kFriends);
 }
 
@@ -1628,6 +1639,66 @@ GUEST_IMPORT(XamShowGoldUpgradeUI)
         return;
     }
     ctx.r3.u64 = Marketplace(user, 0xF, "XamShowGoldUpgradeUI");
+}
+
+// The Marketplace has no server here: XamShowMarketplaceUI and XamShowMarketplaceDownloadItemsUI show a message box
+// saying so (one OK button) and close like a Marketplace the gamer left: XN_SYS_UI 1 / 0 around the box, and an
+// overlapped request completes with InternalLow ERROR_SUCCESS and ERROR_CANCELLED as its extended error (as the
+// keyboard's Cancel does), `result` (an HRESULT*, when given) gets HRESULT_FROM_WIN32(ERROR_CANCELLED).
+namespace
+{
+    uint32_t ShowMarketplaceNotAvailable(uint32_t user, uint32_t overlapped, uint32_t result, const char* name)
+    {
+        Log("{}(user {}): the Marketplace is not available on this server: message box", name, user);
+        auto dialog = std::make_shared<Dialog>();
+        dialog->kind = "message box";
+        dialog->user = user < 4 ? user : 0;
+        dialog->title = u"Marketplace";
+        dialog->text = u"The Marketplace is not available on this server.";
+        dialog->buttons = { xui::CommonString(0x79, u"OK") };
+        dialog->icon = xui::MessageIcon::kError;
+        dialog->overlapped = overlapped;
+        dialog->complete = [overlapped, result](uint32_t, uint32_t) {
+            if (result)
+                guest::g_memory.Write32(result, 0x80070000 | kErrorCancelled);
+            if (overlapped)
+                kernel::CompleteOverlapped(overlapped, kErrorSuccess, kErrorCancelled, 0);
+        };
+        if (overlapped)
+            kernel::BeginOverlapped(overlapped);
+        if (!Open(dialog))
+        {
+            // Another system UI is open: the Marketplace is not shown, as a cancelled one.
+            if (result)
+                guest::g_memory.Write32(result, 0x80070000 | kErrorCancelled);
+            if (overlapped)
+                kernel::CompleteOverlapped(overlapped, kErrorSuccess, kErrorCancelled, 0);
+        }
+        return overlapped ? kernel::kErrorIoPending : kErrorSuccess;
+    }
+}
+
+// DWORD XamShowMarketplaceUI(DWORD UserIndex, DWORD EntryPoint, ULONGLONG OfferId, DWORD ContentCategories, DWORD
+// TitleId?, DWORD) (XShowMarketplaceUI; Minecraft 0x822B5AE8 passes the entry point 1 with an offer ID and -1): the user
+// index must be below 4. Always the "not available" box above; no overlapped request.
+GUEST_IMPORT(XamShowMarketplaceUI)
+{
+    const uint32_t user = ctx.r3.u32;
+    Log("XamShowMarketplaceUI(user {}, entry point {}, offer {:016X})", user, ctx.r4.u32, ctx.r5.u64);
+    ctx.r3.u64 = user >= 4 ? kErrorInvalidParameter : ShowMarketplaceNotAvailable(user, 0, 0, "XamShowMarketplaceUI");
+}
+
+// DWORD XamShowMarketplaceDownloadItemsUI(DWORD UserIndex, DWORD EntryPoint, const ULONGLONG* OfferIds, DWORD
+// OfferCount, DWORD, HRESULT* Result, PXOVERLAPPED Overlapped, DWORD) (XShowMarketplaceDownloadItemsUI). INFER: the
+// last two pointers' roles from Minecraft's wrapper (0x822B4838: entry point 1001, a 4-byte result at +100 and a
+// 28-byte XOVERLAPPED at +72 of its request block); a user not below 4 is ERROR_INVALID_PARAMETER.
+GUEST_IMPORT(XamShowMarketplaceDownloadItemsUI)
+{
+    const uint32_t user = ctx.r3.u32, result = ctx.r8.u32, overlapped = ctx.r9.u32;
+    Log("XamShowMarketplaceDownloadItemsUI(user {}, entry point {}, {} offers, result {:08X}, overlapped {:08X})", user,
+        ctx.r4.u32, ctx.r6.u32, result, overlapped);
+    ctx.r3.u64 = user >= 4 ? kErrorInvalidParameter
+                           : ShowMarketplaceNotAvailable(user, overlapped, result, "XamShowMarketplaceDownloadItemsUI");
 }
 
 // DWORD XamShowMarketplaceUIEx(DWORD UserIndex, DWORD Mode, ULONGLONG OfferId, DWORD ContentCategories, ...,

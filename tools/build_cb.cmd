@@ -2,6 +2,7 @@
 rem build_cb.cmd [asan] [-- cb_tests args] -- build native/cb (docs/CPP_DESIGN.md) and run its tests.
 rem
 rem     tools\build_cb.cmd                       Release build in state\cxx\cb, run every test
+rem     tools\build_cb.cmd area exact            only area exact: its library, what it links, its tests (fast)
 rem     tools\build_cb.cmd shims                 compile check of the old-path shims only (merge checks run it)
 rem     tools\build_cb.cmd asan                  /fsanitize=address build in state\cxx\cb-asan, run every test
 rem     tools\build_cb.cmd -- --filter core.io   run only the tests whose name contains core.io
@@ -26,6 +27,12 @@ if "%1"=="asan" (
 if "%1"=="--" shift
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
 if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release %EXTRA% || exit /b 1
+rem tools\build_cb.cmd area NAME [args] -- only one area's library, what it links, and its own tests, then run them
+if "%1"=="area" (
+  cmake --build "%B%" --target cb_tests_%2 -j %JOBS% || exit /b 1
+  "%B%\bin\cb_tests_%2.exe" %3 %4 %5 %6 %7 %8 %9
+  exit /b %ERRORLEVEL%
+)
 rem tools\build_cb.cmd shims -- only the compile check of the old-path shims (cb_shim_check; not in the default build)
 if "%1"=="shims" (
   cmake --build "%B%" --target cb_shim_check -j %JOBS%

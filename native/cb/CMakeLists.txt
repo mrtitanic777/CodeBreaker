@@ -73,6 +73,7 @@ function(cb_area dir)
   set_property(GLOBAL APPEND PROPERTY CB_AREAS cb_${dir})
   get_property(all_tests GLOBAL PROPERTY CB_TEST_SOURCES)
   set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${all_tests} ${tests})
+  set_property(GLOBAL APPEND PROPERTY CB_AREA_TESTS_${dir} ${tests})   # for cb_tests_<area> (end of this file)
 endfunction()
 
 # CodeBreaker's one XEX reader (native/xex/reader.cmake: the parser, the basefile's decryption and decompression):
@@ -121,11 +122,15 @@ cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
 cb_area(engine)
-target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge)
+target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify)   # (cb_verify: the verdict and class vocabulary)
 cb_area(jobs)
 target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
 target_link_libraries(cb_platforms PUBLIC cb_core cb_formats)
+# What CodeBreaker made of every program it was given (reach); the platform registry, the media readers and the
+# function store's tally reach it through Services.
+cb_area(coverage)
+target_link_libraries(cb_coverage PUBLIC cb_core cb_formats cb_platforms)
 
 # The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
 add_executable(cb_worker_probe jobs/worker_probe_main.cpp)
@@ -135,7 +140,7 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 cb_area(verify)
 
 cb_area(app)
-target_link_libraries(cb_app PUBLIC cb_core)
+target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols)
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
@@ -272,10 +277,10 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asm16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_coverage.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/decompile/xbox_effect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
@@ -288,7 +293,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/ledger.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/data.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
@@ -387,3 +391,26 @@ set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_S
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
+
+# cb_tests_<area>: one area's tests alone, built on request (tools\build_cb.cmd area <name>). A change to one area needs
+# only that area's library, what it links, and its own tests -- not every area's tests (40% of a full build) nor the
+# shim tests that compile the old py:: layer (24%). The merge check still builds and runs the whole cb_tests.
+get_property(CB_AREAS_FOR_AREA_TESTS GLOBAL PROPERTY CB_AREAS)
+foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
+  string(REGEX REPLACE "^cb_" "" area "${lib}")
+  get_property(area_tests GLOBAL PROPERTY CB_AREA_TESTS_${area})
+  list(FILTER area_tests EXCLUDE REGEX "shims")
+  if(NOT area_tests)
+    continue()
+  endif()
+  add_executable(cb_tests_${area} EXCLUDE_FROM_ALL core/testing_main.cpp ${area_tests} cb.manifest)
+  cb_apply_flags(cb_tests_${area})
+  target_compile_definitions(cb_tests_${area} PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
+  target_link_libraries(cb_tests_${area} PRIVATE ${lib} cb_core)
+  cb_copy_prebuilt_dlls(cb_tests_${area})
+  if(area STREQUAL "jobs")
+    add_dependencies(cb_tests_${area} cb_worker_probe)
+  elseif(area STREQUAL "verify")
+    add_dependencies(cb_tests_${area} cb_fake_qemu)
+  endif()
+endforeach()

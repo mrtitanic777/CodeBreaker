@@ -302,15 +302,28 @@ namespace
             Fatal("XUserWriteAchievements: buffer of {} bytes", length);
         const uint32_t count = mem.Read32(buffer), list = mem.Read32(buffer + 4);
         std::vector<const kernel::spa::Achievement*> earnedBy[4];
+        // Checked before anything is stored: a user who is not signed in (a guest, or a controller nobody is on)
+        // fails with HRESULT_FROM_WIN32(ERROR_NO_SUCH_USER), an achievement that is not in the SPA with E_INVALIDARG.
         for (uint32_t i = 0; i < count; i++)
         {
             const uint32_t user = mem.Read32(list + i * 8), id = mem.Read32(list + i * 8 + 4);
+            const auto& all = kernel::spa::Achievements();
             if (user >= 4 || !kernel::UserSignedIn(user))
-                Fatal("XUserWriteAchievements for user {}, who is not signed in", user);
+            {
+                Log("XUserWriteAchievements for user {}, who is not signed in: ERROR_NO_SUCH_USER", user);
+                return 0x80070525;
+            }
+            if (std::none_of(all.begin(), all.end(), [&](const kernel::spa::Achievement& a) { return a.id == id; }))
+            {
+                Log("XUserWriteAchievements: achievement {} is not in the title's SPA: E_INVALIDARG", id);
+                return 0x80070057;
+            }
+        }
+        for (uint32_t i = 0; i < count; i++)
+        {
+            const uint32_t user = mem.Read32(list + i * 8), id = mem.Read32(list + i * 8 + 4);
             const auto& all = kernel::spa::Achievements();
             const auto it = std::find_if(all.begin(), all.end(), [&](const kernel::spa::Achievement& a) { return a.id == id; });
-            if (it == all.end())
-                Fatal("XUserWriteAchievements: achievement {} is not in the title's SPA", id);
             const uint64_t xuid = kernel::users::Xuid(user);
             if (const auto earned = kernel::profile::ReadAchievement(xuid, kernel::TitleId(), id);
                 earned && (earned->flags & kAchievementAchieved))
@@ -536,21 +549,8 @@ namespace
             // pfResult), args = { user index, count, the XUIDs (8 bytes each) }. INFER: the layout from Minecraft's
             // request (00000000 00000001 <XUID>) and its source; XAM's handler (0x818CCE08 case 0xE) was not followed.
             // TRUE when every XUID is an accepted friend of the user on our Xbox LIVE.
-            const uint32_t user = mem.Read32(buffer), count = mem.Read32(buffer + 4), result = length;
-            if (user >= 4 || count == 0 || count > 100 || result == 0)
-                return 0x80070057;
-            bool all = true;
-            const auto friends = live::Friends(user);
-            for (uint32_t i = 0; i < count && all; i++)
-            {
-                const uint64_t xuid = mem.Read64(buffer + 8 + i * 8);
-                all = std::any_of(friends.begin(), friends.end(),
-                                  [&](const live::Friend& f) { return f.xuid == xuid && f.request.empty(); });
-            }
-            mem.Write32(result, all ? 1 : 0);
-            Log("XUserAreUsersFriends: user {}, {} XUIDs (first {:016X}): {}", user, count, mem.Read64(buffer + 8),
-                all ? "friends" : "not all friends");
-            return kernel::kErrorSuccess;
+            const uint32_t error = kernel::AreUsersFriends(mem.Read32(buffer), buffer + 8, mem.Read32(buffer + 4), length);
+            return error ? 0x80070000 | error : kernel::kErrorSuccess;
         }
         // Exploration only (as for imports): CB_CONTINUE_UNIMPLEMENTED=1 logs the message and fails it with E_FAIL.
         static const bool keepGoing = [] { const char* v = std::getenv("CB_CONTINUE_UNIMPLEMENTED"); return v && v[0] == '1'; }();
@@ -567,6 +567,28 @@ namespace
 
 namespace kernel
 {
+    // XUserAreUsersFriends (XMsgInProcessCall 0xFC / 0x5800E, and XamUserAreUsersFriends): *result = TRUE when every
+    // one of the `count` XUIDs (8 bytes each, big-endian, at `xuids`) is an accepted friend of the user on our Xbox LIVE.
+    // Returns a Win32 error: ERROR_INVALID_PARAMETER for a user index not below 4, a count outside 1-100 or no result.
+    uint32_t AreUsersFriends(uint32_t user, uint32_t xuids, uint32_t count, uint32_t result)
+    {
+        auto& mem = guest::g_memory;
+        if (user >= 4 || count == 0 || count > 100 || xuids == 0 || result == 0)
+            return 0x57;
+        bool all = true;
+        const auto friends = live::Friends(user);
+        for (uint32_t i = 0; i < count && all; i++)
+        {
+            const uint64_t xuid = mem.Read64(xuids + i * 8);
+            all = std::any_of(friends.begin(), friends.end(),
+                              [&](const live::Friend& f) { return f.xuid == xuid && f.request.empty(); });
+        }
+        mem.Write32(result, all ? 1 : 0);
+        Log("XUserAreUsersFriends: user {}, {} XUIDs (first {:016X}): {}", user, count, mem.Read64(xuids),
+            all ? "friends" : "not all friends");
+        return kernel::kErrorSuccess;
+    }
+
     std::map<uint32_t, std::vector<uint8_t>> UserMatchmakingValues(uint32_t user)
     {
         std::map<uint32_t, std::vector<uint8_t>> out;
