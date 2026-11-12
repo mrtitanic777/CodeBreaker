@@ -1,0 +1,144 @@
+@@@ map
+# LZEXPAND   Windows file expansion library
+# imports: KERNEL, USER
+# 12 segments
+
+Exports:
+   @1    LZCOPY                   seg4:0x015c
+   @2    LZOPENFILE               seg2:0x0262
+   @3    LZINIT                   seg2:0x0000
+   @4    LZSEEK                   seg2:0x02ee
+   @5    LZREAD                   seg2:0x03d6
+   @6    LZCLOSE                  seg2:0x06f0
+   @7    LZSTART                  seg4:0x0000
+   @8    COPYLZFILE               seg4:0x013a
+   @9    LZDONE                   seg4:0x00a6
+   @10   GETEXPANDEDNAME          seg2:0x01bc
+   @11   WEP                      seg3:0x0000
+   @12   ___EXPORTEDSTUB          seg11:0x035e
+   @13                            seg10:0x0124
+   @14                            seg10:0x01b6
+   @15                            seg8:0x01a2
+   @16                            seg8:0x00aa
+   @17                            seg5:0x0052
+   @18                            seg5:0x0000
+   @19                            seg5:0x00d0
+   @20                            seg9:0x0000
+   @21                            seg7:0x00f4
+   @22                            seg1:0x00b2
+   @23                            seg1:0x0000
+   @24                            seg1:0x0116
+   @25                            seg10:0x02a8
+   @26                            seg6:0x00a4
+   @27                            seg6:0x0000
+   @28                            seg11:0x0042
+   @29                            seg11:0x0010
+   @30                            seg11:0x034e
+
+seg1: CODE 0x1c8 bytes  3 functions discovered  13 fixups (13 syscalls)
+seg2: CODE 0x75a bytes  6 functions discovered  37 fixups (37 syscalls)
+seg3: CODE 0x18 bytes  1 functions discovered  0 fixups (0 syscalls)
+seg4: CODE 0x1f8 bytes  4 functions discovered  5 fixups (5 syscalls)
+seg5: CODE 0x192 bytes  3 functions discovered  0 fixups (0 syscalls)
+seg6: CODE 0x10c bytes  2 functions discovered  2 fixups (2 syscalls)
+seg7: CODE 0x2f0 bytes  2 functions discovered  19 fixups (19 syscalls)
+seg8: CODE 0x248 bytes  2 functions discovered  5 fixups (5 syscalls)
+seg9: CODE 0x33a bytes  1 functions discovered  8 fixups (8 syscalls)
+seg10: CODE 0x2f8 bytes  5 functions discovered  12 fixups (12 syscalls)
+seg11: CODE 0x372 bytes  7 functions discovered  13 fixups (13 syscalls)
+seg12: DATA 0x284 bytes
+@@@ list 6
+# 2 functions in seg6
+
+==== sub_0000  seg6:0x0000  (65 instrs, 0x0000..0x00a4)
+   args (PASCAL frame slots read): [bp+0x06], [bp+0x0a]
+   syscalls: KERNEL.82 = _lread
+
+==== sub_00a4  seg6:0x00a4  (49 instrs, 0x00a4..0x010c)
+   args (PASCAL frame slots read): [bp+0x06], [bp+0x08]
+   syscalls: KERNEL.86 = _lwrite
+@@@ list 3
+# 1 functions in seg3
+
+==== WEP  seg3:0x0000  (16 instrs, 0x0000..0x0018)
+@@@ fn 6 a4
+==== sub_00a4  seg6:0x00a4  (49 instrs, 0x00a4..0x010c)
+   args (PASCAL frame slots read): [bp+0x06], [bp+0x08]
+   syscalls: KERNEL.86 = _lwrite
+
+    00a4:  push   ds
+    00a5:  pop    ax
+    00a6:  nop
+    00a7:  inc    bp
+    00a8:  push   bp
+    00a9:  mov    bp,sp
+    00ab:  push   ds
+    00ac:  mov    ds,ax
+    00ae:  sub    sp,0x2
+    00b1:  push   di
+    00b2:  push   si
+    00b3:  mov    cx,WORD PTR [bp+0x8]
+    00b6:  mov    si,WORD PTR ds:0x5c
+    00ba:  sub    si,WORD PTR ds:0x54
+    00be:  mov    ax,ds:0x54
+    00c1:  mov    dx,WORD PTR ds:0x56
+    00c5:  mov    ds:0x5c,ax
+    00c8:  mov    WORD PTR ds:0x5e,dx
+    00cc:  cmp    cx,0xfffe
+    00cf:  je     0xf0
+    00d1:  push   cx
+    00d2:  push   dx
+    00d3:  push   ax
+    00d4:  push   si
+    00d5:  call   0x0:0xffff      ; KERNEL.86 = _lwrite
+    00da:  mov    di,ax
+    00dc:  cmp    di,si
+    00de:  je     0xf0
+    00e0:  cmp    di,0xffff
+    00e3:  jne    0xea
+    00e5:  mov    ax,0xfffe
+    00e8:  jmp    0x101
+    00ea:  mov    ax,0xfffc
+    00ed:  jmp    0x101
+    00ef:  nop
+    00f0:  mov    al,BYTE PTR [bp+0x6]
+    00f3:  les    bx,DWORD PTR ds:0x5c
+    00f7:  mov    BYTE PTR es:[bx],al
+    00fa:  inc    WORD PTR ds:0x5c
+    00fe:  mov    ax,0x1
+    0101:  pop    si
+    0102:  pop    di
+    0103:  dec    bp
+    0104:  dec    bp
+    0105:  mov    sp,bp
+    0107:  pop    ds
+    0108:  pop    bp
+    0109:  dec    bp
+    010a:  retf
+@@@ trace 3 0
+# call graph from seg3:0x0000 - 1 reachable functions in this segment
+
+External API surface (all reachable functions):
+
+======================================================================
+
+==== WEP  seg3:0x0000  (16 instrs, 0x0000..0x0018)
+
+    0000:  push   ds
+    0001:  pop    ax
+    0002:  nop
+    0003:  inc    bp
+    0004:  push   bp
+    0005:  mov    bp,sp
+    0007:  push   ds
+    0008:  mov    ds,ax
+    000a:  sub    sp,0x2
+    000d:  dec    bp
+    000e:  dec    bp
+    000f:  mov    sp,bp
+    0011:  pop    ds
+    0012:  pop    bp
+    0013:  dec    bp
+    0014:  retf   0x2
+@@@ wndprocs
+
