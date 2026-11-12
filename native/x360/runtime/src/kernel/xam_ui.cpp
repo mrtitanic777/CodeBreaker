@@ -1311,6 +1311,13 @@ GUEST_IMPORT(XamShowPartyInviteUI)
     ctx.r3.u64 = guide::ShowCommunity(ctx.r3.u32, guide::Tab::kFriends);
 }
 
+// DWORD XamShowFriendsUI(DWORD UserIndex) (XShowFriendsUI): the Guide's friends list.
+GUEST_IMPORT(XamShowFriendsUI)
+{
+    Log("XamShowFriendsUI(user {})", ctx.r3.u32);
+    ctx.r3.u64 = guide::ShowCommunity(ctx.r3.u32, guide::Tab::kFriends);
+}
+
 // DWORD XamShowFriendRequestUI(DWORD UserIndex, XUID Xuid) (the dash's Lua ShowAddFriendUI passes 0): with no XUID the
 // Guide's Add Friend (gamertag on the keyboard); with one, a friend request to that player after the console's
 // question.
@@ -1632,6 +1639,66 @@ GUEST_IMPORT(XamShowGoldUpgradeUI)
         return;
     }
     ctx.r3.u64 = Marketplace(user, 0xF, "XamShowGoldUpgradeUI");
+}
+
+// The Marketplace has no server here: XamShowMarketplaceUI and XamShowMarketplaceDownloadItemsUI show a message box
+// saying so (one OK button) and close like a Marketplace the gamer left: XN_SYS_UI 1 / 0 around the box, and an
+// overlapped request completes with InternalLow ERROR_SUCCESS and ERROR_CANCELLED as its extended error (as the
+// keyboard's Cancel does), `result` (an HRESULT*, when given) gets HRESULT_FROM_WIN32(ERROR_CANCELLED).
+namespace
+{
+    uint32_t ShowMarketplaceNotAvailable(uint32_t user, uint32_t overlapped, uint32_t result, const char* name)
+    {
+        Log("{}(user {}): the Marketplace is not available on this server: message box", name, user);
+        auto dialog = std::make_shared<Dialog>();
+        dialog->kind = "message box";
+        dialog->user = user < 4 ? user : 0;
+        dialog->title = u"Marketplace";
+        dialog->text = u"The Marketplace is not available on this server.";
+        dialog->buttons = { xui::CommonString(0x79, u"OK") };
+        dialog->icon = xui::MessageIcon::kError;
+        dialog->overlapped = overlapped;
+        dialog->complete = [overlapped, result](uint32_t, uint32_t) {
+            if (result)
+                guest::g_memory.Write32(result, 0x80070000 | kErrorCancelled);
+            if (overlapped)
+                kernel::CompleteOverlapped(overlapped, kErrorSuccess, kErrorCancelled, 0);
+        };
+        if (overlapped)
+            kernel::BeginOverlapped(overlapped);
+        if (!Open(dialog))
+        {
+            // Another system UI is open: the Marketplace is not shown, as a cancelled one.
+            if (result)
+                guest::g_memory.Write32(result, 0x80070000 | kErrorCancelled);
+            if (overlapped)
+                kernel::CompleteOverlapped(overlapped, kErrorSuccess, kErrorCancelled, 0);
+        }
+        return overlapped ? kernel::kErrorIoPending : kErrorSuccess;
+    }
+}
+
+// DWORD XamShowMarketplaceUI(DWORD UserIndex, DWORD EntryPoint, ULONGLONG OfferId, DWORD ContentCategories, DWORD
+// TitleId?, DWORD) (XShowMarketplaceUI; Minecraft 0x822B5AE8 passes the entry point 1 with an offer ID and -1): the user
+// index must be below 4. Always the "not available" box above; no overlapped request.
+GUEST_IMPORT(XamShowMarketplaceUI)
+{
+    const uint32_t user = ctx.r3.u32;
+    Log("XamShowMarketplaceUI(user {}, entry point {}, offer {:016X})", user, ctx.r4.u32, ctx.r5.u64);
+    ctx.r3.u64 = user >= 4 ? kErrorInvalidParameter : ShowMarketplaceNotAvailable(user, 0, 0, "XamShowMarketplaceUI");
+}
+
+// DWORD XamShowMarketplaceDownloadItemsUI(DWORD UserIndex, DWORD EntryPoint, const ULONGLONG* OfferIds, DWORD
+// OfferCount, DWORD, HRESULT* Result, PXOVERLAPPED Overlapped, DWORD) (XShowMarketplaceDownloadItemsUI). INFER: the
+// last two pointers' roles from Minecraft's wrapper (0x822B4838: entry point 1001, a 4-byte result at +100 and a
+// 28-byte XOVERLAPPED at +72 of its request block); a user not below 4 is ERROR_INVALID_PARAMETER.
+GUEST_IMPORT(XamShowMarketplaceDownloadItemsUI)
+{
+    const uint32_t user = ctx.r3.u32, result = ctx.r8.u32, overlapped = ctx.r9.u32;
+    Log("XamShowMarketplaceDownloadItemsUI(user {}, entry point {}, {} offers, result {:08X}, overlapped {:08X})", user,
+        ctx.r4.u32, ctx.r6.u32, result, overlapped);
+    ctx.r3.u64 = user >= 4 ? kErrorInvalidParameter
+                           : ShowMarketplaceNotAvailable(user, overlapped, result, "XamShowMarketplaceDownloadItemsUI");
 }
 
 // DWORD XamShowMarketplaceUIEx(DWORD UserIndex, DWORD Mode, ULONGLONG OfferId, DWORD ContentCategories, ...,

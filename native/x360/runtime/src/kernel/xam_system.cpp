@@ -3,6 +3,7 @@
 // decompilation) and Nexia360 (BSD-3), which runs this dash.xex over an HLE XAM.
 
 #include "kernel/kernel.h"
+#include "kernel/objects.h"
 #include "kernel/overlapped.h"
 #include "settings.h"
 #include "xex.h"
@@ -710,5 +711,36 @@ GUEST_IMPORT(XamResetInactivity)
 
 GUEST_IMPORT(XamEnableInactivityProcessing)
 {
+    ctx.r3.u64 = 0;
+}
+
+// HRESULT XamTaskSchedule(PVOID Callback, PVOID Message, DWORD Optional, PHANDLE Task) (XAM's task pool; the XDK's
+// xonline library schedules its XEnumerate / XMsgStartIORequest calls with it, Minecraft 0x826B29D0 -> 0x826B2B48):
+// Callback(Message) runs once on a worker thread of its own, and *Task (when given) receives a handle to that thread,
+// which is signalled when the callback has returned. Minecraft's callback does the whole job itself (its
+// XMsgInProcessCall and then XMsgCompleteIORequest of the request's XOVERLAPPED), so the callback's return value is not
+// used. Optional (0 there; XAM's task flags) is not interpreted. Returns S_OK, or E_OUTOFMEMORY when the thread cannot
+// be made. Deviation: XAM runs the tasks on a pool of its own; here each one is its own guest thread (title process).
+GUEST_IMPORT(XamTaskSchedule)
+{
+    kernel::ThreadParams params;
+    params.stackSize = kernel::CurrentThread()->params.stackSize;
+    params.startAddress = ctx.r3.u32;
+    params.startContext = ctx.r4.u32;
+    if (params.startAddress == 0)
+    {
+        ctx.r3.u64 = 0x80070057; // E_INVALIDARG
+        return;
+    }
+    kernel::GuestThread* thread = kernel::CreateThread(params);
+    if (thread == nullptr)
+    {
+        ctx.r3.u64 = 0x8007000E; // E_OUTOFMEMORY
+        return;
+    }
+    if (ctx.r6.u32)
+        guest::g_memory.Write32(ctx.r6.u32, kernel::CreateHandle(thread->threadObject));
+    Log("XamTaskSchedule: task {:08X}({:08X}) on thread {}", params.startAddress, params.startContext, thread->id);
+    kernel::StartThread(thread);
     ctx.r3.u64 = 0;
 }
