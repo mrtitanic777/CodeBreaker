@@ -7,7 +7,12 @@
 #include "codebreaker/base/corpus.hpp"
 #include "codebreaker/build/module.hpp"
 #include "codebreaker/build/watcom.hpp"
+#include "codebreaker/decompile/decompiler.hpp"
+#include "codebreaker/engine/facts.hpp"
 #include "codebreaker/engine/lanes.hpp"
+#include "codebreaker/store/functions.hpp"
+#include "codebreaker/symbols/names.hpp"
+#include "codebreaker/symbols/runtime_library.hpp"
 #include "codebreaker/engine/win16.hpp"
 #include "codebreaker/formats/pe.hpp"
 #include "codebreaker/platforms/win16.hpp"
@@ -38,6 +43,88 @@ bool recognises_pe(const py::str& path) {
     } catch (const py::ValueError&) {
         return false;
     }
+}
+
+
+// reconstruct::run, its decompile, build and judge made by the engine (engine/lanes): only what changed is made again, and the store is given the
+// rows that differ from what it holds. (It was part of verify/reconstruct before that module was refactored; the shim of reconstruct asks for it
+// through reconstruct::hooks().) nullopt: the engine is not on for this module.
+using NE = engine::native_engine::Cell;
+
+py::str engine_cell_text(const NE& c) {
+    if (std::holds_alternative<py::str>(c)) return std::get<py::str>(c);
+    if (std::holds_alternative<int64_t>(c)) return std::get<int64_t>(c) ? py::to_str(std::get<int64_t>(c)) : py::str("");
+    if (std::holds_alternative<double>(c)) return std::get<double>(c) != 0.0 ? py::to_str(std::get<double>(c)) : py::str("");
+    return py::str("");
+}
+NE engine_cell_of(const py::str& s) { return NE(s); }
+NE engine_cell_of(const std::optional<py::str>& s) { return s ? NE(*s) : NE(); }
+
+std::optional<std::tuple<py::str, py::str>> run_on_engine(const py::str& module_path, const std::shared_ptr<recon::Kind>& kind,
+                                                          const std::shared_ptr<engine::native_engine::FunctionStore>& fs,
+                                                          const std::function<void(const py::str&)>& log) {
+    if (!lanes::on(module_path)) return std::nullopt;
+    const py::str sha = recon::module_sha(*kind, module_path);
+    const py::str name = py::os::path::basename(py::os::path::normpath(module_path)).lower();
+    const double t0 = py::time::time();
+    lanes::Judged j = lanes::judged(module_path);
+    fs->add_module(sha, name, module_path, kind->KIND());
+    fs->add_profile(j.profile, j.settings);
+    fs->add_functions(sha, j.all_keys);
+    fs->put_text(sha, recon::SOURCE, py::str("header"), j.header);
+    if (kind->LIBRARY()) {
+        py::dict<py::str, std::tuple<py::str, py::str>> found;
+        for (const auto& kv : symbols::runtime_library::identify(module_path).items())
+            found.set(symbols::names::key(module_path, std::get<0>(kv)), std::get<1>(kv));
+        fs->set_identified(sha, found);
+    }
+    py::dict<py::str, engine::native_engine::Candidate> known = fs->judged(sha, j.profile, recon::SOURCE);
+    py::list<engine::native_engine::FunctionStore::RecordRow> rows;
+    int64_t fresh_rows = 0;
+    for (const lanes::JudgedRow& r : j.rows) {
+        bool differs = !known.contains(r.addr);
+        if (!differs) {
+            const engine::native_engine::Candidate& k = known.at(r.addr);
+            differs = !(engine_cell_text(k.sig) == r.sig && engine_cell_text(k.name) == r.name &&
+                        engine_cell_text(k.source) == (r.source ? *r.source : py::str("")) && engine_cell_text(k.verdict) == r.verdict &&
+                        engine_cell_text(k.reason) == r.reason && engine_cell_text(k.limits) == r.limits && engine_cell_text(k.detail) == r.detail);
+        }
+        if (!differs) continue;
+        engine::native_engine::FunctionStore::RecordRow out;
+        out.addr = r.addr;
+        out.name = engine_cell_of(r.name);
+        out.source = engine_cell_of(r.source);
+        out.sig = NE(r.sig);
+        out.verdict = r.verdict;
+        out.reason = engine_cell_of(r.reason);
+        out.limits = engine_cell_of(r.limits);
+        out.detail = engine_cell_of(r.detail);
+        out.problem = engine_cell_of(r.problem);
+        rows.append(out);
+        fresh_rows += 1;
+    }
+    NE rev = NE(kind->SOURCE_REV() ? *kind->SOURCE_REV() : py::to_str(decompile::decompiler::REV));
+    fs->record_many(sha, recon::SOURCE, rev, j.profile, rows);
+    if (!j.built.empty()) fs->set_built(sha, j.profile, j.built);
+    py::list<int64_t> kept_made = j.made.get(py::percent("lane.%s.verdict", kind->KIND()), py::list<int64_t>{0, 0});
+    py::dict<py::str, NE> c = fs->scores(j.profile, sha);
+    py::list<py::str> parts;
+    for (const py::str& k : store::functions::SCORED()) {
+        const NE& n = c.at(k);
+        const int64_t count = std::holds_alternative<int64_t>(n) ? std::get<int64_t>(n) : 0;
+        if (count) parts.append(py::percent("%s %d", store::functions::TITLE().at(k), count));
+    }
+    log(py::percent("%s: %d functions on the engine, %d judged now, %d kept, %d rows new to the store: %s  (%.0fs)", name, j.all_keys.size(),
+                    kept_made[1], kept_made[0], fresh_rows, py::join(py::str(", "), parts), py::time::time() - t0));
+    engine::facts::hold();
+    return std::tuple<py::str, py::str>{sha, j.profile};
+}
+
+// reconstruct::kind_name: the first platform that recognises the file, when it has a lane
+std::optional<py::str> kind_name_of(const py::str& module_path) {
+    for (const lanes::LanePlatform& p : lanes::platforms())
+        if (p.identifies && p.identifies(module_path)) return p.name;
+    return std::nullopt;
 }
 
 lanes::LanePlatform win16_platform() {
@@ -92,6 +179,8 @@ void register_core_platforms() {
         lanes::_declare(ne);
         lanes::_declare(pe);
         win16::declare();
+        recon::hooks().kind_name = kind_name_of;
+        recon::hooks().engine_run = run_on_engine;
     });
 }
 
