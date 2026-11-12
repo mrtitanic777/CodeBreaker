@@ -828,3 +828,29 @@ namespace
 {
     kernel::DynamicExportRegistrar g_lockLogonPreviewMode("xam.xex", 1566, __imp__XamUserLockLogonPreviewMode);
 }
+
+// DWORD XamUserAreUsersFriends(DWORD UserIndex, PXUID Xuids, DWORD XuidCount, PBOOL Result, PXOVERLAPPED Overlapped)
+// (XUserAreUsersFriends): *Result is TRUE when every XUID is an accepted friend of the user on our Xbox LIVE (the logic
+// of XLiveBase message 0x5800E, kernel::AreUsersFriends). Without an overlapped request the answer is the return value
+// (ERROR_SUCCESS, or ERROR_INVALID_PARAMETER for a bad user index, count or pointer); with one the request completes
+// at once (the work is done here) and the call returns ERROR_IO_PENDING.
+GUEST_IMPORT(XamUserAreUsersFriends)
+{
+    const uint32_t user = ctx.r3.u32, overlapped = ctx.r7.u32;
+    const uint32_t error = kernel::AreUsersFriends(user, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32);
+    if (overlapped)
+    {
+        kernel::BeginOverlapped(overlapped);
+        kernel::CompleteOverlappedWin32(overlapped, error, 0);
+        ctx.r3.u64 = kernel::kErrorIoPending;
+        return;
+    }
+    ctx.r3.u64 = error;
+}
+
+// DWORD XamUserGetOnlineCountryFromXUID(XUID Xuid): the XONLINE_COUNTRY_* of an Xbox LIVE account (the callers keep the
+// low byte); every account of the ports' own LIVE is in XONLINE_COUNTRY_UNITED_STATES (103).
+GUEST_IMPORT(XamUserGetOnlineCountryFromXUID)
+{
+    ctx.r3.u64 = 103;
+}

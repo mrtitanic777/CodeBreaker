@@ -18,23 +18,29 @@ namespace
 
     std::mutex g_mutex;
     std::set<uint32_t> g_enumerators; // objects made by XamCreateEnumeratorHandle for title servers
+    // Marketplace offer enumerators (XamCreateEnumeratorHandle app 0xFC, message 0x58040, 72 bytes of private data, the
+    // title's XMarketplaceCreateOfferEnumerator): the server has no marketplace, so they hold no offers.
+    constexpr uint32_t kOfferMessage = 0x58040, kOfferPrivateSize = 72;
+    std::set<uint32_t> g_offerEnumerators;
 }
 
 // DWORD XamCreateEnumeratorHandle(DWORD UserIndex, DWORD AppId, DWORD EnumerateMessage, DWORD CloseMessage, DWORD
 // ExtraSize, DWORD ItemsPerEnumerate, DWORD Flags, PHANDLE Handle): an enumerator object (X_KENUMERATOR: app, enumerate
 // message, close message, user index, items per enumerate, flags; 0x18 bytes) followed by ExtraSize bytes of private
-// data that the creating library fills. Only the XLSP enumerator (app 0xFC, message 0x58039) is served here: the others
-// are answered by XAM apps this runtime does not have.
+// data that the creating library fills. Only the XLSP enumerator (app 0xFC, message 0x58039) and the Marketplace offer
+// enumerator (app 0xFC, message 0x58040, always empty: the server has no marketplace) are served here: the others are
+// answered by XAM apps this runtime does not have.
 GUEST_IMPORT(XamCreateEnumeratorHandle)
 {
     auto& mem = guest::g_memory;
     const uint32_t user = ctx.r3.u32, app = ctx.r4.u32, message = ctx.r5.u32, close = ctx.r6.u32, extra = ctx.r7.u32,
                    items = ctx.r8.u32, flags = ctx.r9.u32, handlePtr = ctx.r10.u32;
-    if (app != kernel::titleserver::kAppXLive || message != kernel::titleserver::kEnumerateMessage ||
-        close != kernel::titleserver::kCloseMessage)
+    const bool offers = app == kernel::titleserver::kAppXLive && message == kOfferMessage;
+    if (!offers && (app != kernel::titleserver::kAppXLive || message != kernel::titleserver::kEnumerateMessage ||
+                    close != kernel::titleserver::kCloseMessage))
         Fatal("XamCreateEnumeratorHandle(user {:X}, app {:02X}, message {:08X}, close {:08X}): enumerators served by XAM "
               "apps are not implemented", user, app, message, close);
-    if (handlePtr == 0 || extra != kernel::titleserver::kPrivateSize || items == 0)
+    if (handlePtr == 0 || extra != (offers ? kOfferPrivateSize : kernel::titleserver::kPrivateSize) || items == 0)
     {
         ctx.r3.u64 = kErrorInvalidParameter;
         return;
@@ -49,11 +55,14 @@ GUEST_IMPORT(XamCreateEnumeratorHandle)
     mem.Write32(object + 0x14, flags);
     {
         std::lock_guard lock(g_mutex);
-        g_enumerators.insert(object);
+        (offers ? g_offerEnumerators : g_enumerators).insert(object);
     }
+    if (offers)
+        Log("XamCreateEnumeratorHandle: Marketplace offer enumerator (user {:X}, {} per enumerate): no offers", user, items);
     kernel::SetObjectCleanup(object, [object] {
         std::lock_guard lock(g_mutex);
         g_enumerators.erase(object);
+        g_offerEnumerators.erase(object);
     });
     mem.Write32(handlePtr, kernel::CreateHandle(object));
     ctx.r3.u64 = 0;
@@ -67,7 +76,7 @@ GUEST_IMPORT(XamGetPrivateEnumStructureFromHandle)
     bool ours;
     {
         std::lock_guard lock(g_mutex);
-        ours = object != 0 && g_enumerators.count(object) != 0;
+        ours = object != 0 && (g_enumerators.count(object) != 0 || g_offerEnumerators.count(object) != 0);
     }
     if (!ours || ctx.r4.u32 == 0)
     {
@@ -86,6 +95,12 @@ namespace kernel
     {
         {
             std::lock_guard lock(g_mutex);
+            if (g_offerEnumerators.count(object))
+            {
+                written = 0;
+                error = titleserver::kErrorNoMoreFiles; // the end of an enumeration with no offers
+                return true;
+            }
             if (!g_enumerators.count(object))
                 return false;
         }

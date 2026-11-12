@@ -1037,6 +1037,8 @@ namespace gpu
 
         void CommandProcessorThread()
         {
+            // The title spins on the ring's read pointer: the command processor must run the moment it has work.
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
             g_cpThread = CreateSystemThread();
             g_cpContext = kernel::AttachHostThread(g_cpThread);
             uint32_t idleSpins = 0;

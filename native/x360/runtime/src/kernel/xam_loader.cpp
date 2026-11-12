@@ -225,7 +225,12 @@ GUEST_IMPORT(XamLoaderLaunchTitleEx)
 // VOID XamLoaderLaunchTitle(LPCSTR ImagePath, DWORD Flags) (XLaunchNewImage): as the Recompiled runtime reads it
 // (its kernel/xam_loader.cpp, from the dash's XLaunchNewImage 0x92198000): NULL with flags 0x100 (XLNI_DASH_ARCADE:
 // Minecraft's main menu Exit Game -> "Return to Xbox Dashboard" OK) or 0 (XLNI_DASH) starts the dashboard again.
-// Deviation (as there): at its home, not the Arcade area. Images by path and the other XLNI_ names stop.
+// Deviation (as there): at its home, not the Arcade area.
+// An image by path (Minecraft 0x82281580 passes one with flags 0 after XamLoaderSetLaunchData: its own restart, e.g. for
+// a changed install) is a title relaunch: this runtime has one executable per title and no other images to start, so
+// the process starts again as a new one (RelaunchDashboard: sign-ins and the launch data the title set kept, back to the
+// host dashboard when one started it); the path (and other flags) are only logged. Deviation: another title's image
+// restarts this title (or the dashboard) instead.
 GUEST_IMPORT(XamLoaderLaunchTitle)
 {
     auto& mem = guest::g_memory;
@@ -235,8 +240,9 @@ GUEST_IMPORT(XamLoaderLaunchTitle)
         Log("XamLoaderLaunchTitle(NULL, flags {:X}): back to the dashboard", ctx.r4.u32);
         kernel::RelaunchDashboard(nullptr);
     }
-    Fatal("XamLoaderLaunchTitle(\"{}\", flags {:X}): only the dashboard (NULL, 0 / 0x100) is implemented", path,
-          ctx.r4.u32);
+    Log("XamLoaderLaunchTitle(\"{}\", flags {:X}): relaunching the title (this runtime has no other images to start)",
+        path, ctx.r4.u32);
+    kernel::RelaunchDashboard(nullptr);
 }
 
 GUEST_IMPORT(XamLoaderRebootToDash)

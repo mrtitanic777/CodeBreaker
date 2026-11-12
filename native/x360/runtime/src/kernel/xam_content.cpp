@@ -2254,3 +2254,16 @@ namespace
     kernel::DynamicExportRegistrar g_contentCreateInternal("xam.xex", 625, __imp__XamContentCreateInternal);
     kernel::DynamicExportRegistrar g_contentAggregateCreateEnumerator("xam.xex", 633, __imp__XamContentAggregateCreateEnumerator);
 }
+
+// DWORD XamContentInstall(DWORD UserIndex, PVOID Package, PVOID Result, PXOVERLAPPED Overlapped) (installs downloaded
+// content into the user's storage; Minecraft's startup chain 0x824CAF3C calls it with user 255 for the content it found
+// waiting after the device selector). There is no Marketplace and no download queue here, so there is nothing to
+// install: ERROR_NOT_FOUND at once, with the overlapped request left alone (the title takes any code other than 0 or
+// ERROR_IO_PENDING as "nothing started" and carries on; 0 / 997 would make it wait for the install to finish).
+// INFER: the argument roles from that call site (user, a pointer from the title's block, an output at +44, the block's
+// XOVERLAPPED).
+GUEST_IMPORT(XamContentInstall)
+{
+    Log("XamContentInstall(user {:X}): nothing to install", ctx.r3.u32);
+    ctx.r3.u64 = 0x490; // ERROR_NOT_FOUND
+}

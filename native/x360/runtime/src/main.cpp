@@ -124,6 +124,11 @@ namespace
 int main(int argc, char** argv)
 {
     const std::filesystem::path folder = FindTitleFolder(argc, argv);
+    // The emulated console is the foreground workload: above normal so a busy machine (compiles, other games) does
+    // not starve the guest threads, the command processor and the audio feeders (late frames, 100+ ms frames).
+    // CB_NORMAL_PRIORITY=1 keeps the default.
+    if (const char* v = std::getenv("CB_NORMAL_PRIORITY"); !(v && v[0] == '1'))
+        SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
     std::filesystem::current_path(folder);
     AddVectoredExceptionHandler(1, GuestFaultHandler);
     LoadSettings(folder.string());

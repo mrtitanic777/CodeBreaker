@@ -21,6 +21,7 @@
 #include "kernel/xam_titleserver_core.h"
 #include "live/client.h"
 #include "live/game.h"
+#include "pool.h"
 #include "settings.h"
 
 #ifndef NOMINMAX
@@ -2084,4 +2085,180 @@ GUEST_IMPORT(NetDll_WSAWaitForMultipleEvents)
     if (status == 0xC0)
         kernel::DeliverUserApcs(ctx);
     ctx.r3.u64 = status;
+}
+
+// ---- DNS (XNetDnsLookup), the XNET key calls and the XNP logon wrappers -------------------------------------------------
+
+// INT NetDll_XNetDnsLookup(XNCALLER_TYPE Caller, const char* Host, WSAEVENT Event, XNDNS** Result)
+// The XDK's XNDNS (40 bytes): INT iStatus, UINT cina, IN_ADDR aina[8]. The lookup is asynchronous: *Result is a new
+// XNDNS at once with iStatus XNET_DNS_LOOKUP_PENDING (WSAEINPROGRESS); the host resolver (getaddrinfo, IPv4 only, up
+// to 8 addresses) then fills cina / aina, sets iStatus to 0 (found) or WSAHOST_NOT_FOUND (11001) and signals Event
+// (when given). The caller frees the structure with XNetDnsRelease. Returns 0, or WSAEINVAL for a missing host or
+// result, WSAENOBUFS when the pool is exhausted.
+namespace
+{
+    constexpr uint32_t kXndnsSize = 0x28, kXndnsMaxAddresses = 8;
+    constexpr uint32_t kWsaEInProgress = 10036, kWsaHostNotFound = 11001, kWsaENoBufs = 10055;
+    std::mutex g_dnsMutex;
+    std::set<uint32_t> g_dnsLookups; // the live XNDNS structures (released ones are gone: a late answer is dropped)
+}
+
+GUEST_IMPORT(NetDll_XNetDnsLookup)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t hostPtr = ctx.r4.u32, event = ctx.r5.u32, resultPtr = ctx.r6.u32;
+    if (hostPtr == 0 || resultPtr == 0)
+    {
+        ctx.r3.u64 = kWsaEInval;
+        return;
+    }
+    std::string host;
+    for (uint32_t i = 0; i < 256; i++)
+    {
+        const char c = char(mem.Read8(hostPtr + i));
+        if (c == 0)
+            break;
+        host += c;
+    }
+    const uint32_t xndns = KernelPool().Allocate(kXndnsSize); // zero-filled
+    if (xndns == 0)
+    {
+        ctx.r3.u64 = kWsaENoBufs;
+        return;
+    }
+    mem.Write32(xndns, kWsaEInProgress);
+    {
+        std::lock_guard lock(g_dnsMutex);
+        g_dnsLookups.insert(xndns);
+    }
+    mem.Write32(resultPtr, xndns);
+    Log("XNetDnsLookup(\"{}\"): XNDNS {:08X}", host, xndns);
+    std::thread([host, xndns, event] {
+        std::vector<uint32_t> addresses; // host order
+        addrinfo hints = {};
+        hints.ai_family = AF_INET;
+        addrinfo* found = nullptr;
+        if (getaddrinfo(host.c_str(), nullptr, &hints, &found) == 0)
+        {
+            for (addrinfo* a = found; a && addresses.size() < kXndnsMaxAddresses; a = a->ai_next)
+                if (a->ai_family == AF_INET)
+                {
+                    const uint32_t address = ntohl(reinterpret_cast<sockaddr_in*>(a->ai_addr)->sin_addr.s_addr);
+                    if (std::find(addresses.begin(), addresses.end(), address) == addresses.end())
+                        addresses.push_back(address);
+                }
+            freeaddrinfo(found);
+        }
+        {
+            std::lock_guard lock(g_dnsMutex);
+            if (!g_dnsLookups.count(xndns))
+                return; // released before the answer
+            auto& mem = guest::g_memory;
+            mem.Write32(xndns + 4, uint32_t(addresses.size()));
+            for (size_t i = 0; i < addresses.size(); i++)
+                mem.Write32(xndns + 8 + uint32_t(i) * 4, addresses[i]);
+            mem.Write32(xndns, addresses.empty() ? kWsaHostNotFound : 0); // last: says the lookup is over
+        }
+        Log("XNetDnsLookup(\"{}\"): {} addresses", host, addresses.size());
+        SetGuestEvent(event, true);
+    }).detach();
+    ctx.r3.u64 = 0;
+}
+
+// INT NetDll_XNetDnsRelease(XNCALLER_TYPE Caller, XNDNS* Dns): frees the structure (a lookup still running drops its
+// answer). WSAEINVAL for a null or unknown one.
+GUEST_IMPORT(NetDll_XNetDnsRelease)
+{
+    const uint32_t xndns = ctx.r4.u32;
+    {
+        std::lock_guard lock(g_dnsMutex);
+        if (xndns == 0 || g_dnsLookups.erase(xndns) == 0)
+        {
+            ctx.r3.u64 = kWsaEInval;
+            return;
+        }
+    }
+    KernelPool().Free(xndns);
+    ctx.r3.u64 = 0;
+}
+
+// DWORD XNetLogonGetTitleID(): the title ID the console reports to Xbox LIVE: the running title's.
+GUEST_IMPORT(XNetLogonGetTitleID)
+{
+    ctx.r3.u64 = kernel::TitleId();
+}
+
+// INT NetDll_XNetReplaceKey(XNCALLER_TYPE Caller, const XNKID* Unregister, const XNKID* Replace): swaps a key-exchange
+// key id for another one in XNet's key registry. Nothing here is keyed (the PC's sockets carry the traffic as it is),
+// so there is nothing to replace: 0.
+GUEST_IMPORT(NetDll_XNetReplaceKey)
+{
+    ctx.r3.u64 = 0;
+}
+
+// NetDll_XnpLogon*: the thin wrappers of XNet's logon queue (xnp), which XAM's logon machine owns. The runtime's
+// Xbox LIVE logon is the ports' own LIVE (kernel::UserOnLive) and has no such queue, so they keep what a caller sets
+// (flags and values per queue, the event) and answer 0. INFER: the argument roles (queue id first after the caller type);
+// no code in TU46's own paths calls them (only xnet.lib's wrappers reach the imports).
+namespace
+{
+    struct XnpQueue
+    {
+        uint32_t flags = 0, event = 0;
+        uint32_t values[2] = {};
+    };
+    std::mutex g_xnpMutex;
+    std::map<uint32_t, XnpQueue> g_xnpQueues;
+}
+
+GUEST_IMPORT(NetDll_XnpLogonGetStatus)
+{
+    ctx.r3.u64 = 0;
+}
+
+GUEST_IMPORT(NetDll_XnpLogonSetPState)
+{
+    ctx.r3.u64 = 0;
+}
+
+GUEST_IMPORT(NetDll_XnpLogonGetQFlags)
+{
+    std::lock_guard lock(g_xnpMutex);
+    ctx.r3.u64 = g_xnpQueues[ctx.r4.u32].flags;
+}
+
+GUEST_IMPORT(NetDll_XnpLogonSetQFlags)
+{
+    std::lock_guard lock(g_xnpMutex);
+    g_xnpQueues[ctx.r4.u32].flags = ctx.r5.u32;
+    ctx.r3.u64 = 0;
+}
+
+GUEST_IMPORT(NetDll_XnpLogonGetQVals)
+{
+    std::lock_guard lock(g_xnpMutex);
+    const XnpQueue& q = g_xnpQueues[ctx.r4.u32];
+    ctx.r3.u64 = q.values[0];
+}
+
+GUEST_IMPORT(NetDll_XnpLogonSetQVals)
+{
+    std::lock_guard lock(g_xnpMutex);
+    g_xnpQueues[ctx.r4.u32].values[0] = ctx.r5.u32;
+    g_xnpQueues[ctx.r4.u32].values[1] = ctx.r6.u32;
+    ctx.r3.u64 = 0;
+}
+
+GUEST_IMPORT(NetDll_XnpLogonSetQEvent)
+{
+    std::lock_guard lock(g_xnpMutex);
+    g_xnpQueues[ctx.r4.u32].event = ctx.r5.u32;
+    ctx.r3.u64 = 0;
+}
+
+GUEST_IMPORT(NetDll_XnpLogonClearQEvent)
+{
+    std::lock_guard lock(g_xnpMutex);
+    g_xnpQueues[ctx.r4.u32].event = 0;
+    ctx.r3.u64 = 0;
 }

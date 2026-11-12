@@ -854,3 +854,25 @@ GUEST_IMPORT(XamUserReadUserPreference)
     }
     ctx.r3.u64 = result;
 }
+
+// DWORD XamWriteGamerTile(DWORD UserIndex, DWORD TitleId, DWORD LargeTileKey, DWORD SmallTileKey, BOOL, PXOVERLAPPED
+// Overlapped): stores a gamer picture (an achievement's, from the title's tile store; Minecraft's 0x822B5040 passes the
+// tile id | 0x20000 and | 0x10000, a 1 and the overlapped of its award) in the user's profile. The profile store here has
+// no place for gamer pictures (the achievement's picture is drawn from the SPA), so nothing is stored: success. An
+// overlapped request completes at once and the call returns ERROR_IO_PENDING; without one it returns ERROR_SUCCESS.
+// INFER: the argument roles from that wrapper. ERROR_NO_SUCH_USER for a user who is not signed in.
+GUEST_IMPORT(XamWriteGamerTile)
+{
+    const uint32_t user = ctx.r3.u32, overlapped = ctx.r8.u32;
+    const uint32_t result = user >= 4 || !kernel::UserSignedIn(user) ? 0x525u : 0u;
+    Log("XamWriteGamerTile(user {}, title {:08X}, tiles {:08X} / {:08X}): {}", user, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32,
+        result ? "not signed in" : "not stored (success)");
+    if (overlapped)
+    {
+        kernel::BeginOverlapped(overlapped);
+        kernel::CompleteOverlappedImmediate(overlapped, result);
+        ctx.r3.u64 = kernel::kErrorIoPending;
+        return;
+    }
+    ctx.r3.u64 = result;
+}

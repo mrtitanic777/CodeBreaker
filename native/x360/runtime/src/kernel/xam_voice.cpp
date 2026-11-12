@@ -30,8 +30,16 @@ GUEST_IMPORT(XamVoiceCreate)
     auto& mem = guest::g_memory;
     const uint32_t user = ctx.r3.u32;
     const uint32_t voicePtr = ctx.r5.u32;
-    if (voicePtr == 0 || user >= 4 || !kernel::UserSignedIn(user))
+    if (voicePtr == 0)
         Fatal("XamVoiceCreate(user {}, {} packets, {:08X}): unexpected arguments", user, ctx.r4.u32, voicePtr);
+    if (user >= 4 || !kernel::UserSignedIn(user))
+    {
+        // A controller nobody is signed in on (a guest, or a player who signed out): HRESULT_FROM_WIN32(ERROR_NO_SUCH_USER).
+        Log("XamVoiceCreate(user {}): not signed in: ERROR_NO_SUCH_USER", user);
+        mem.Write32(voicePtr, 0);
+        ctx.r3.u64 = 0x80070525;
+        return;
+    }
     const uint32_t voice = KernelPool().Allocate(kVoiceObjectSize);
     if (voice == 0)
         Fatal("XamVoiceCreate: kernel pool exhausted");

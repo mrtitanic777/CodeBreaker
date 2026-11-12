@@ -473,6 +473,47 @@ GUEST_IMPORT(NtSetInformationFile)
             setHost(FileBasicInfo, &basic, sizeof(basic));
         break;
     }
+    case 10: // FileRenameInformation: BOOLEAN ReplaceIfExists, HANDLE RootDirectory, ANSI_STRING FileName (inline)
+    {
+        // The target is resolved like NtCreateFile's names; both ends must be on a writable mount. An existing target
+        // is replaced when ReplaceIfExists, else STATUS_OBJECT_NAME_COLLISION. The handle stays open (the host handles
+        // are opened with FILE_SHARE_DELETE) and now names the new path.
+        const bool replace = mem.Read8(info) != 0;
+        const uint32_t root = mem.Read32(info + 4);
+        const uint16_t length = mem.Read16(info + 8);
+        const uint32_t buffer = mem.Read32(info + 12);
+        if (root != 0 && root != kObDosDevicesHandle)
+            Fatal("NtSetInformationFile: rename of {} relative to directory handle {:08X} is not implemented",
+                file->path.string(), root);
+        uint32_t status = kStatusSuccess;
+        if (file->readOnly || length == 0 || buffer == 0)
+            status = file->readOnly ? kStatusAccessDenied : kStatusObjectNameNotFound;
+        else
+        {
+            const std::string target(reinterpret_cast<const char*>(mem.Translate(buffer)), length);
+            const auto resolved = vfs::Resolve(target);
+            if (!resolved)
+                status = kStatusObjectPathNotFound;
+            else if (resolved->readOnly)
+                status = kStatusAccessDenied;
+            else if (!replace && Stat(resolved->host).exists)
+                status = kStatusObjectNameCollision;
+            else if (!MoveFileExW(file->path.c_str(), resolved->host.c_str(), replace ? MOVEFILE_REPLACE_EXISTING : 0))
+            {
+                Log("NtSetInformationFile: rename {} -> {} failed (error {})", file->path.string(), resolved->host.string(),
+                    GetLastError());
+                status = kStatusAccessDenied;
+            }
+            else
+            {
+                Log("Rename \"{}\" -> \"{}\"", file->path.string(), resolved->host.string());
+                file->path = resolved->host;
+            }
+        }
+        WriteIoStatus(iosb, status, 0);
+        ctx.r3.u64 = status;
+        return;
+    }
     case 13: // FileDispositionInformation: BOOLEAN DeleteFile (the file goes when its last handle closes)
     {
         FILE_DISPOSITION_INFO disposition{ mem.Read8(info) != 0 };
