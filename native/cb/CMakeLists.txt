@@ -163,7 +163,7 @@ cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
 
 cb_area(compare)
-target_link_libraries(cb_compare PUBLIC cb_core)
+target_link_libraries(cb_compare PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_decompile cb_jobs)   # (the readers and the corpus, the decoder, the function starts of each kind, the pool of the product comparison)
 cb_area(emulate)
 target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile)
 
@@ -346,6 +346,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b11.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b12.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b13.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b1.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp")
 cb_apply_flags(cb_shim_check)
