@@ -1,35 +1,37 @@
-#include "cb/java/projects/minecraft/ir_edit.hpp"
+#include "cb/translate/rewrite.hpp"
 
-namespace cb::java::projects::minecraft::ir_edit {
+namespace cb::translate::rewrite {
 
-ir::Node* strip(ir::Node* e) {
-    while (const auto* p = ir::get<ir::Paren>(e)) e = p->x;
-    return e;
+ir::Node* strip(ir::Node* expr) {
+    while (const auto* p = ir::get<ir::Paren>(expr)) expr = p->x;
+    return expr;
 }
 
 namespace {
 
-void collect_classes(ir::Node* decl, std::vector<ir::ClassDecl*>& out) {
-    ir::ClassDecl* c = ir::get<ir::ClassDecl>(decl);
+// The class node and every class nested in it (a class's members that are classes, recursively), outer first.
+void rw_collect_classes(ir::Node* decl, std::vector<ir::Node*>& out) {
+    const ir::ClassDecl* c = ir::get<ir::ClassDecl>(decl);
     if (c == nullptr) return;
-    out.push_back(c);
-    for (ir::Node* member : c->members) collect_classes(member, out);
+    out.push_back(decl);
+    for (ir::Node* member : c->members) rw_collect_classes(member, out);
 }
 
 }  // namespace
 
 std::vector<MethodInClass> methods(const std::vector<ir::Node*>& units) {
-    std::vector<ir::ClassDecl*> classes;
+    std::vector<ir::Node*> classes;
     for (ir::Node* u : units) {
         if (const ir::Unit* unit = ir::get<ir::Unit>(u)) {
-            for (ir::Node* t : unit->types) collect_classes(t, classes);
+            for (ir::Node* t : unit->types) rw_collect_classes(t, classes);
         }
     }
     std::vector<MethodInClass> out;
-    for (ir::ClassDecl* c : classes) {
+    for (ir::Node* class_node : classes) {
+        ir::ClassDecl* c = ir::get<ir::ClassDecl>(class_node);
         for (ir::Node* member : c->members) {
             ir::MethodDecl* m = ir::get<ir::MethodDecl>(member);
-            if (m != nullptr && ir::present(m->body)) out.push_back({c, m});
+            if (m != nullptr && ir::present(m->body)) out.push_back({c, m, member});
         }
     }
     return out;
@@ -45,6 +47,7 @@ std::vector<std::vector<ir::Node*>*> stmt_lists(ir::Node* node) {
 }
 
 void replace(ir::Node* node, const std::function<ir::Node*(ir::Node*)>& fn) {
+    if (node == nullptr) return;
     ir::visit(*node, [&](auto& kind) {
         if constexpr (requires { kind.each_child([](ir::Node*&) {}); }) {
             kind.each_child([&](ir::Node*& slot) {
@@ -55,8 +58,8 @@ void replace(ir::Node* node, const std::function<ir::Node*(ir::Node*)>& fn) {
     });
 }
 
-bool is_name(ir::Node* e, const ir::Sym& sym) {
-    const ir::Name* n = ir::get<ir::Name>(strip(e));
+bool is_name(ir::Node* expr, const ir::Sym& sym) {
+    const ir::Name* n = ir::get<ir::Name>(strip(expr));
     return n != nullptr && n->sym != nullptr && n->sym->name == sym.name;
 }
 
@@ -68,16 +71,16 @@ bool mentions(ir::Node* node, const ir::Sym& sym) {
     return false;
 }
 
-bool is_call(ir::Node* e, std::string_view name, std::string_view on_field) {
-    const ir::Call* c = ir::get<ir::Call>(strip(e));
+bool is_call(ir::Node* expr, std::string_view name, std::string_view on_field) {
+    const ir::Call* c = ir::get<ir::Call>(strip(expr));
     if (c == nullptr || c->sym == nullptr || c->sym->name != name) return false;
     if (on_field.empty()) return true;
     const ir::Select* t = c->target != nullptr ? ir::get<ir::Select>(strip(c->target)) : nullptr;
     return t != nullptr && ir::is<ir::This>(t->obj) && t->sym != nullptr && t->sym->name == on_field;
 }
 
-bool is_null_test(ir::Node* e, const ir::Sym& sym, std::string_view op) {
-    const ir::Binary* b = ir::get<ir::Binary>(strip(e));
+bool is_null_test(ir::Node* expr, const ir::Sym& sym, std::string_view op) {
+    const ir::Binary* b = ir::get<ir::Binary>(strip(expr));
     if (b == nullptr || b->op != op || !is_name(b->left, sym)) return false;
     const ir::Lit* l = ir::get<ir::Lit>(strip(b->right));
     return l != nullptr && std::holds_alternative<std::monostate>(l->value);
@@ -90,9 +93,7 @@ std::vector<ir::Node*> block_or_single(const ir::Suite& suite) {
     return ir::statements(suite);
 }
 
-ir::Node* lit_int(Arena& arena, std::int64_t value, ir::TypeP type) {
-    return ir::make(arena, ir::Lit{.value = value}, std::move(type));
-}
+ir::Node* lit_int(Arena& arena, std::int64_t value, ir::TypeP type) { return ir::make(arena, ir::Lit{.value = value}, std::move(type)); }
 
 ir::Node* null_lit(Arena& arena) { return ir::make(arena, ir::Lit{}, ir::null_type()); }
 
@@ -112,4 +113,4 @@ ir::Node* if_then(Arena& arena, ir::Node* cond, ir::Node* then) {
     return ir::make(arena, ir::If{.cond = cond, .then = then});
 }
 
-}  // namespace cb::java::projects::minecraft::ir_edit
+}  // namespace cb::translate::rewrite

@@ -203,7 +203,7 @@ def _overflows(e):
             if op in ('<<', '>>', '>>>'):
                 b &= bits - 1
             r = {'+': lambda: a + b, '-': lambda: a - b, '*': lambda: a * b,
-                 '/': lambda: int(a / b) if b else None, '%': lambda: (abs(a) % abs(b)) * (1 if a >= 0 else -1) if b else None,
+                 '/': lambda: (abs(a) // abs(b)) * (1 if (a >= 0) == (b >= 0) else -1) if b else None, '%': lambda: (abs(a) % abs(b)) * (1 if a >= 0 else -1) if b else None,
                  '<<': lambda: a << b, '>>': lambda: a >> b, '>>>': lambda: (a % (1 << bits)) >> b,
                  '&': lambda: a & b, '|': lambda: a | b, '^': lambda: a ^ b}.get(op, lambda: None)()
             if op in ('<', '>', '<=', '>=', '==', '!='):
@@ -313,7 +313,10 @@ class Program(object):
             out = {}
             for u in self.units:
                 w = Writer(self, u)
-                name = os.path.splitext(os.path.basename(u.path or 'Unit'))[0] or 'Unit'
+                stem = os.path.splitext(os.path.basename(u.path or 'Unit'))[0] or 'Unit'
+                name, k = stem, 2
+                while name + '.cs' in out:      # two units of one stem were one file, the first lost
+                    name, k = '%s_%d' % (stem, k), k + 1
                 out[name + '.cs'] = w.unit()
             for r in sorted(self.runtime):
                 with open(os.path.join(RUNTIME, r + '.cs'), encoding='utf-8') as f:
