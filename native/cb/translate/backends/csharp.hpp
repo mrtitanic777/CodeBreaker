@@ -202,6 +202,15 @@ public:
     ir::Node* init_override(const ir::Node* field) const { return inits_.at(field); }
     // Nodes a library makes (statements moved into a constructor) live here, as long as the program.
     Arena& arena() { return arena_; }
+    // A member a library adds to a class (an abstract copy of an interface method). Kept here, never added to the
+    // caller's tree: the units outlive the program, and a node in arena() must not be reachable from them.
+    void add_member(const ir::ClassDecl& c, ir::Node* member) { added_[&c].push_back(member); }
+    // A class's members as written: its own, then those added to it.
+    std::vector<ir::Node*> members(const ir::ClassDecl& c) const {
+        std::vector<ir::Node*> out(c.members.begin(), c.members.end());
+        if (const auto it = added_.find(&c); it != added_.end()) out.insert(out.end(), it->second.begin(), it->second.end());
+        return out;
+    }
     void note(Gap gap) { ledger_.push_back(std::move(gap)); }
     const Options& options() const { return options_; }
 
@@ -218,6 +227,7 @@ private:
     std::unordered_map<const ir::Node*, ir::Node*> inits_;       // lookup only
     std::map<std::string, std::unique_ptr<Library>, std::less<>> libraries_;
     std::optional<std::vector<File>> files_;
+    std::unordered_map<const ir::ClassDecl*, std::vector<ir::Node*>> added_;   // add_member's, by class
     Arena arena_;
 };
 

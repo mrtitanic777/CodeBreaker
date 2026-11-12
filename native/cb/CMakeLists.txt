@@ -17,7 +17,7 @@ function(cb_apply_flags target)
   target_compile_options(${target} PRIVATE /permissive- /utf-8 /EHsc /W4 /WX /Zc:__cplusplus /Zc:char8_t- /bigobj)
   if(CB_ASAN)
     target_compile_options(${target} PRIVATE /fsanitize=address /Z7)   # /Z7: debug info in each object, so the shared precompiled header works
-    target_link_options(${target} PUBLIC /INCREMENTAL:NO)
+    target_link_options(${target} PUBLIC /INCREMENTAL:NO /DEBUG)   # /DEBUG: a .pdb, so the sanitizer names the functions in its stacks
   endif()
   cb_speed_up(${target})
 endfunction()
@@ -120,7 +120,7 @@ target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
 target_link_libraries(cb_build PUBLIC cb_decompile)   # (sm83_asm: the Game Boy instruction encoder)
 cb_area(knowledge)
-target_link_libraries(cb_knowledge PUBLIC cb_core)
+target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
 cb_area(engine)
 target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify)   # (cb_verify: the verdict and class vocabulary)
@@ -212,10 +212,6 @@ target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source)   # (cb_source: the NE disassembler of debug_build)
 
-# Where the function store is, opening it, and what `codebreaker versions` asks of it (the Ledger over the corpus, the store and the bodies).
-cb_area(store)
-target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare)
-
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats)   # (cb_base: the Converted project; cb_formats: PE and media images)
 
@@ -247,7 +243,15 @@ add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
 target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
-target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly)
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
+
+# Where the function store is, opening it, and what `codebreaker versions` asks of it (the Ledger over the corpus, the store and the bodies).
+cb_area(store)
+target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare)
+
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp")
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -339,7 +343,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b16.cpp"
@@ -353,8 +356,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

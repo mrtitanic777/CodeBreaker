@@ -157,12 +157,14 @@ CB_TEST("translate.judge_native_jvm.two_runs_compared", [] {
 CB_TEST("translate.judge_native_jvm.running_a_program", [] {
     cb::fs::ScopedTempDir dir("cbrun");
     const jj::Run done = jj::run_program({"cmd", "/c", "echo hello&exit /b 3"}, {}, dir.path());
-    CB_CHECK_EQ(cb::text::trim(cb::text::from_latin1(done.out)), "hello");
+    const std::string done_out = cb::text::from_latin1(done.out);   // (trim views its argument: keep the text alive)
+    CB_CHECK_EQ(cb::text::trim(done_out), "hello");
     CB_CHECK_EQ(done.exit_code.value_or(-1), 3);
     CB_CHECK(!done.timed_out());
     // stdin reaches the program
     const jj::Run echoed = jj::run_program({"findstr", "."}, cb::as_bytes("from stdin\r\n"), dir.path());
-    CB_CHECK_EQ(cb::text::trim(cb::text::from_latin1(echoed.out)), "from stdin");
+    const std::string echoed_out = cb::text::from_latin1(echoed.out);
+    CB_CHECK_EQ(cb::text::trim(echoed_out), "from stdin");
     // the working folder is the one given
     const jj::Run where = jj::run_program({"cmd", "/c", "cd"}, {}, dir.path());
     CB_CHECK(cb::text::from_latin1(where.out).find(cb::fs::to_text(dir.path().filename())) != std::string::npos);
@@ -197,10 +199,10 @@ CB_TEST("translate.judge_native_jvm.the_runtime_is_compiled_once", [] {
     World world;
     const stdfs::path first = jj::runtime_classes(world.host);
     CB_CHECK(stdfs::exists(first / "crt" / "LibC.class"));
-    CB_CHECK_EQ(cb::text::trim(world.log_of("javac.log")), "run");
+    CB_CHECK_EQ(std::string(cb::text::trim(world.log_of("javac.log"))), "run");
     const stdfs::path again = jj::runtime_classes(world.host);
     CB_CHECK_EQ(cb::fs::to_text(again), cb::fs::to_text(first));
-    CB_CHECK_EQ(cb::text::trim(world.log_of("javac.log")), "run");   // not compiled a second time
+    CB_CHECK_EQ(std::string(cb::text::trim(world.log_of("javac.log"))), "run");   // not compiled a second time
     // a change to the runtime's sources is a new folder
     cb::fs::write_text(world.dir.path() / "runtime" / "crt" / "LibC.java", "package crt; public class LibC { int x; }\n");
     CB_CHECK(cb::fs::to_text(jj::runtime_classes(world.host)) != cb::fs::to_text(first));

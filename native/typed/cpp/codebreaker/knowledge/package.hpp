@@ -1,4 +1,6 @@
 // codebreaker/knowledge/package.hpp -- typed C++ port of codebreaker/knowledge/__init__.py.
+// The platform vocabulary (PLATFORMS, platform, _bare) forwards to cb/knowledge/package.hpp (cb::knowledge::Knowledge is the refactored
+// facade, over cb::knowledge::Store); the rest stays here over engine/native_engine until that is refactored (COMPAT(py): remove then).
 //
 // knowledge -- one knowledge base: what CodeBreaker knows about each platform, kept in one place.
 //
