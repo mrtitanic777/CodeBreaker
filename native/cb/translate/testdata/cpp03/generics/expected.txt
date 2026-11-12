@@ -1,0 +1,61 @@
+generics|03|desugar	4
+generics|03|0|body|Generics.B>	null
+generics|03|1|body|Generics.max	["JObject best = xs.get(0);", "for (Iterator<JObject> j2x_it1 = xs.iterator(); j2x_it1.hasNext(); ) {", "\tJObject x = j2x_it1.next();", "\tif(x.compareTo(best) > 0) {", "\t\tbest = x;", "\t}", "}", "return best;"]
+generics|03|2|body|Generics.countMatching	["int n = 0;", "for (Iterator<JObject> j2x_it2 = xs.iterator(); j2x_it2.hasNext(); ) {", "\tJObject x = j2x_it2.next();", "\tif(p.test(x)) {", "\t\tn++;", "\t}", "}", "return n;"]
+generics|03|3|body|Generics.boxed	null
+generics|03|4|body|Generics.pairText	["Pair<int, JavaString> p = Pair<int, JavaString>(a, b);", "JavaString j2xo1 = JavaString();", "JObject j2xo2 = JObject();", "return (j2xo1 = p.swap().toString(), j2xo2 = p.first(), (JCat() + j2xo1 + j2xo2));"]
+generics|03|5|body|Generics.maxOf	["JList<int> xs = JList<int>();", "xs.add(a);", "xs.add(b);", "xs.add(a ^ b);", "return Generics::max(xs);"]
+generics|03|6|body|Generics.maxWord	null
+generics|03|7|body|Generics.stackSum	["Stack<int> st = Stack<int>();", "for (int i = 0; i < n % 40; i++) {", "\tst.push(i * i);", "}", "int sum = 0;", "for (Iterator<int> j2x_it3 = st.iterator(); j2x_it3.hasNext(); ) {", "\tint v = (j2x_it3.next()).intValue();", "\tsum = sum * 3 + v;", "}", "return sum;"]
+generics|03|8|body|Generics.visit	null
+generics|03|9|body|Generics.hits	null
+generics|03|10|body|Generics.innerHits	["return (new Generics())->hits(n);"]
+generics|03|11|body|Generics.main	null
+generics|03|12|ctor0|Generics.False	["super", null, []]
+generics|03|13|ctor0|Generics.True	["super", null, []]
+generics|03|14|field_init|Generics.total	null
+generics|03|15|array_items|Generics.total	null
+generics|03|16|instance_inits|Generics	[]
+generics|03|17|static_blocks|Generics	[]
+generics|03|18|body|NoSuchClass	null
+generics|03|19|field_init|nofield	null
+generics|03|20|array_items|nofield	null
+generics|03|21|enum_args|noconst	null
+generics|03|22|ctor|NoSuchClass	null
+generics|03|23|field_init|NoSuchClass	null
+generics|03|24|array_items|NoSuchClass	null
+generics|03|25|enum_args|NoSuchClass	null
+generics|03|26|instance_inits|NoSuchClass	null
+generics|03|27|static_blocks|NoSuchClass	null
+generics|03|counts	[6, 2, {"not found": 2, "expression": 1, "library": 2, "anonymous": 2, "ctor not found": 1}, {"expression Lambda": 1, "library static call List.of": 2, "anonymous or inner class": 2}, ["Generics"]]
+generics|03|ledger	[]
+generics|17|0|body|Generics.B>	null
+generics|17|1|body|Generics.max	["JObject best = xs.get(0);", "for (JObject x : xs) {", "\tif(x.compareTo(best) > 0) {", "\t\tbest = x;", "\t}", "}", "return best;"]
+generics|17|2|body|Generics.countMatching	["int n = 0;", "for (JObject x : xs) {", "\tif(p.test(x)) {", "\t\tn++;", "\t}", "}", "return n;"]
+generics|17|3|body|Generics.boxed	null
+generics|17|4|body|Generics.pairText	["Pair<int, JavaString> p = Pair<int, JavaString>(a, b);", "JavaString j2xo1 = JavaString();", "JObject j2xo2 = JObject();", "return (j2xo1 = p.swap().toString(), j2xo2 = p.first(), (JCat() + j2xo1 + j2xo2));"]
+generics|17|5|body|Generics.maxOf	["JList<int> xs = JList<int>();", "xs.add(a);", "xs.add(b);", "xs.add(a ^ b);", "return Generics::max(xs);"]
+generics|17|6|body|Generics.maxWord	null
+generics|17|7|body|Generics.stackSum	null
+generics|17|8|body|Generics.visit	null
+generics|17|9|body|Generics.hits	null
+generics|17|10|body|Generics.innerHits	["return (new Generics())->hits(n);"]
+generics|17|11|body|Generics.main	null
+generics|17|12|ctor0|Generics.False	["super", null, []]
+generics|17|13|ctor0|Generics.True	["super", null, []]
+generics|17|14|field_init|Generics.total	null
+generics|17|15|array_items|Generics.total	null
+generics|17|16|instance_inits|Generics	[]
+generics|17|17|static_blocks|Generics	[]
+generics|17|18|body|NoSuchClass	null
+generics|17|19|field_init|nofield	null
+generics|17|20|array_items|nofield	null
+generics|17|21|enum_args|noconst	null
+generics|17|22|ctor|NoSuchClass	null
+generics|17|23|field_init|NoSuchClass	null
+generics|17|24|array_items|NoSuchClass	null
+generics|17|25|enum_args|NoSuchClass	null
+generics|17|26|instance_inits|NoSuchClass	null
+generics|17|27|static_blocks|NoSuchClass	null
+generics|17|counts	[5, 2, {"not found": 2, "expression": 1, "library": 1, "for-each": 2, "anonymous": 2, "ctor not found": 1}, {"expression Lambda": 1, "library static call List.of": 1, "for-each over Stack<int>": 1, "anonymous or inner class": 2, "for-each over Stack<JavaString>": 1}, ["Generics"]]
+generics|17|ledger	[]

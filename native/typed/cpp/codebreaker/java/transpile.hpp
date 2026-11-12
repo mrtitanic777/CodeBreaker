@@ -43,8 +43,9 @@
 #include "codebreaker/java/typemap.hpp"
 #include "codebreaker/java/types.hpp"
 #include "codebreaker/translate/backends/cpp03.hpp"
-#include "codebreaker/translate/backends/cpp17.hpp"
-#include "codebreaker/translate/desugar.hpp"
+#include "cb/compat/old_val_json.hpp"
+#include "cb/translate/l2.hpp"
+#include "codebreaker/translate/l2.hpp"
 #include "codebreaker/translate/frontends/java/lower.hpp"
 #include "codebreaker/translate/ir.hpp"
 #include "py.hpp"
@@ -409,129 +410,40 @@ class OldProject : public cb::java::projects::Project {
     }
 };
 
-// The new back-end interface over the old cpp03 `Bodies`: a member of the converted class is found again by its position in the old
-// class. What the old back end records on its ledger moves to the new one after each answer.
-class OldBodies : public cb::java::emit::source::BodySource {
-  public:
-    OldBodies(std::shared_ptr<translate::backends::cpp03::Bodies> bodies, py::ref<ledger::Ledger> old_ledger, cb::java::ledger::Ledger& ledger,
-              std::map<std::string, ClassRef> classes)
-        : bodies_(std::move(bodies)), old_ledger_(std::move(old_ledger)), ledger_(ledger), classes_(std::move(classes)) {}
+// The translator of the old world: javac's trees lowered by the old front end, the old project's fixes made on that old tree, and the tree
+// crossed to the typed one (as its L2 documents) for the new C++03 / C++17 back end (cb/translate/backends/cpp03), which answers the new
+// back-end interface itself.
+inline cb::translate::backends::cpp03::Lowered old_lowering(cb::Arena& arena, const cbt::TranslateRequest& request) {
+    namespace cpp03 = translate::backends::cpp03;
+    // the translator's reading of the project: its fixes
+    std::shared_ptr<projects::Project> old_project = projects::GENERIC();
+    OldProject* wrapped = dynamic_cast<OldProject*>(&request.project);
+    if (wrapped != nullptr) old_project = wrapped->old_;
+    const py::str java_dir = cb::compat::to_py(cb::fs::to_text(request.java_dir));
+    py::list<py::str> cp = probe::libraries();
+    py::str shim = py::truthy(cp) ? probe::shims(state(py::list<py::str>{py::str("translate")}), std::get<0>(verify::lanes::java::jdk())) : py::str();
+    py::list<py::str> dump_cp;
+    if (py::truthy(shim)) dump_cp.append(shim);
+    dump_cp.extend(cp);
+    py::list<translate::ir::NodeP> units = cpp03::java_units(dump_trees(java_dir, dump_cp));
+    // the console's fixes to the game's own logic, made on the tree before it is written (by shape, so no printing of the C++ hides a
+    // site): sound routed to XACT, the applet ping, the render budget and NaN
+    const std::optional<py::str> platform = request.platform ? std::optional<py::str>(cb::compat::to_py(*request.platform)) : std::nullopt;
+    const projects::Patched patched = old_project->ir_patches(units, platform);
+    if (wrapped != nullptr) wrapped->patched = patched;
+    cb::translate::backends::cpp03::Lowered out;
+    for (const translate::ir::NodeP& u : units) out.units.push_back(cb::translate::l2::from_json(arena, cb::compat::to_json_value(translate::l2::to_json(u))));
+    return out;
+}
 
-    std::optional<std::string> field_init(const cb::java::ir::JClass& cls, const cb::java::ir::Field& f) override {
-        const auto r = bodies_->field_init(cb::compat::to_py(cls.name), cb::compat::to_py(f.name));
-        drain();
-        return r ? std::optional<std::string>(cb::compat::from_py(*r)) : std::nullopt;
-    }
-    std::optional<std::vector<std::string>> array_items(const cb::java::ir::JClass& cls, const cb::java::ir::Field& f) override {
-        return lines(bodies_->array_items(cb::compat::to_py(cls.name), cb::compat::to_py(f.name)));
-    }
-    std::optional<std::vector<std::string>> instance_inits(const cb::java::ir::JClass& cls) override { return lines(bodies_->instance_inits(cb::compat::to_py(cls.name))); }
-    std::optional<cb::java::emit::source::CtorBody> ctor(const cb::java::ir::JClass& cls, const cb::java::ir::Method* m, bool two_phase) override {
-        const auto r = bodies_->ctor(cb::compat::to_py(cls.name), m != nullptr ? method_of(cls, *m) : MethodRef(), two_phase);
-        drain();
-        if (!r) return std::nullopt;
-        cb::java::emit::source::CtorBody out;
-        if (r->kind && *r->kind == py::str("super")) out.call = cb::java::emit::source::CtorCall::Super;
-        else if (r->kind && *r->kind == py::str("this")) out.call = cb::java::emit::source::CtorCall::This;
-        if (r->args) out.super_args = cb::compat::from_py(*r->args);
-        out.lines = cb::compat::from_py(r->body);
-        return out;
-    }
-    std::optional<std::vector<std::string>> enum_args(const cb::java::ir::JClass& cls, const cb::java::ir::EnumConst& c) override {
-        return lines(bodies_->enum_args(cb::compat::to_py(cls.name), cb::compat::to_py(c.name)));
-    }
-    std::optional<std::vector<std::vector<std::string>>> static_blocks(const cb::java::ir::JClass& cls) override {
-        const auto r = bodies_->static_blocks(cb::compat::to_py(cls.name));
-        drain();
-        if (!r) return std::nullopt;
-        std::vector<std::vector<std::string>> blocks;
-        for (const py::list<py::str>& b : r->vec()) blocks.push_back(cb::compat::from_py(b));
-        return blocks;
-    }
-    std::optional<std::vector<std::string>> body(const cb::java::ir::JClass& cls, const cb::java::ir::Method& m) override {
-        return lines(bodies_->body(cb::compat::to_py(cls.name), method_of(cls, m)));
-    }
-
-  private:
-    // the old method at the converted method's position in its class (the conversion keeps the order)
-    MethodRef method_of(const cb::java::ir::JClass& cls, const cb::java::ir::Method& m) const {
-        return classes_.at(cls.name)->methods[static_cast<int64_t>(&m - cls.methods.data())];
-    }
-    std::optional<std::vector<std::string>> lines(const std::optional<py::list<py::str>>& r) {
-        drain();
-        return r ? std::optional<std::vector<std::string>>(cb::compat::from_py(*r)) : std::nullopt;
-    }
-    void drain() {   // the events the old back end recorded since the last answer
-        for (; drained_ < old_ledger_->events.size(); ++drained_) ledger_.add(old_ledger_->events[drained_]->to_new());
-    }
-
-    std::shared_ptr<translate::backends::cpp03::Bodies> bodies_;
-    py::ref<ledger::Ledger> old_ledger_;
-    cb::java::ledger::Ledger& ledger_;
-    std::map<std::string, ClassRef> classes_;
-    int64_t drained_ = 0;
-};
-
-// The translator of the old world: javac's trees lowered to the translator's IR, the project's fixes on that tree, and the C++03 or C++17
-// back end over it.
+// The new back end with the old front end in front of it.
 class OldTranslator : public cbt::BodyTranslator {
   public:
-    cbt::TranslatedBodies translate(const cbt::TranslateRequest& request) override {
-        namespace cpp03 = translate::backends::cpp03;
-        const auto old_resolver = to_old_resolver(request.resolver);
-        // the old classes, with the derived members the new passes computed (the conversion does not carry them)
-        py::list<ClassRef> classes;
-        std::map<std::string, ClassRef> by_name;
-        std::unordered_map<const cb::java::ir::Field*, py::ref<ir::Field>> old_field;
-        std::unordered_map<const cb::java::ir::Method*, MethodRef> old_method;
-        for (const cb::java::ir::JClass& c : request.classes) {
-            ClassRef o = ir::from_new(c);
-            for (std::size_t i = 0; i < c.fields.size(); ++i) old_field[&c.fields[i]] = o->fields[static_cast<int64_t>(i)];
-            for (std::size_t i = 0; i < c.methods.size(); ++i) old_method[&c.methods[i]] = o->methods[static_cast<int64_t>(i)];
-            classes.append(o);
-            by_name[c.name] = o;
-        }
-        for (std::size_t k = 0; k < request.classes.size(); ++k) {
-            const cb::java::ir::JClass& c = request.classes[k];
-            ClassRef& o = classes[static_cast<int64_t>(k)];
-            for (const cb::java::ir::Field* f : c.inherited_fields) o->inherited_fields.append(old_field.at(f));
-            for (const cb::java::ir::MiForward& m : c.mi_forwards) o->mi_forwards.append(std::make_tuple(old_method.at(m.interface_method), cb::compat::to_py(m.base_class)));
-        }
-        // the translator's reading of the project: its font, its fixes
-        std::shared_ptr<projects::Project> old_project = projects::GENERIC();
-        OldProject* wrapped = dynamic_cast<OldProject*>(&request.project);
-        if (wrapped != nullptr) old_project = wrapped->old_;
+    OldTranslator() : back_end_(*runtime::shim_::views().runtime, old_lowering) {}
+    cbt::TranslatedBodies translate(const cbt::TranslateRequest& request) override { return back_end_.translate(request); }
 
-        auto old_ledger = std::make_shared<ledger::Ledger>();
-        auto ctx = std::make_shared<cpp03::Context>(old_resolver, classes);
-        ctx->ledger = old_ledger;
-        ctx->char_map = old_project->char_map.copy();
-        const py::str java_dir = cb::compat::to_py(cb::fs::to_text(request.java_dir));
-        py::list<py::str> cp = probe::libraries();
-        py::str shim = py::truthy(cp) ? probe::shims(state(py::list<py::str>{py::str("translate")}), std::get<0>(verify::lanes::java::jdk())) : py::str();
-        py::list<py::str> dump_cp;
-        if (py::truthy(shim)) dump_cp.append(shim);
-        dump_cp.extend(cp);
-        py::list<translate::ir::NodeP> units = cpp03::java_units(dump_trees(java_dir, dump_cp));
-        // the console's fixes to the game's own logic, made on the tree before it is written (by shape, so no printing of the C++ hides a
-        // site): sound routed to XACT, the applet ping, the render budget and NaN
-        const std::optional<py::str> platform = request.platform ? std::optional<py::str>(cb::compat::to_py(*request.platform)) : std::nullopt;
-        const projects::Patched patched = old_project->ir_patches(units, platform);
-        if (wrapped != nullptr) wrapped->patched = patched;
-        std::shared_ptr<cpp03::Bodies> tree;
-        if (request.cpp_year >= 2017) {   // the C++17 forms (backends/cpp17.Bodies: cpp03.Bodies17)
-            tree = translate::backends::cpp17::Bodies(ctx, units);
-        } else {   // modern Java lowered to what C++03 can say (desugar.py)
-            translate::desugar::run(units);
-            tree = std::make_shared<cpp03::Bodies>(ctx, units);
-        }
-        cbt::TranslatedBodies out;
-        out.bodies = std::make_unique<OldBodies>(tree, old_ledger, request.ledger, std::move(by_name));
-        out.classes_lowered = static_cast<std::size_t>(tree->decls.size());
-        out.methods_written = static_cast<std::size_t>(tree->written);
-        for (const auto& [reason, count] : tree->declined.items()) out.declined.emplace_back(cb::compat::from_py(reason), static_cast<std::size_t>(count));
-        return out;
-    }
+  private:
+    cb::translate::backends::cpp03::Translator back_end_;
 };
 
 }  // namespace shim_

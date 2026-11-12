@@ -1,0 +1,123 @@
+t03|03|desugar	0
+t03|03|0|ctor|Base.False	["super", null, ["this->size = var1 * this->scale;"]]
+t03|03|1|ctor|Base.True	["super", null, ["this->size = var1 * this->scale;"]]
+t03|03|2|ctor|Base.False	[null, null, ["{", "\tint j2xD0_var1 = var1;", "\tthis->size = j2xD0_var1 * this->scale;", "}", "this->scale += var2;"]]
+t03|03|3|ctor|Base.True	["this", null, ["Base::j2xInit(var1);", "this->scale += var2;"]]
+t03|03|4|ctor0|Base.False	null
+t03|03|5|ctor0|Base.True	null
+t03|03|6|field_init|Base.size	null
+t03|03|7|array_items|Base.size	null
+t03|03|8|field_init|Base.scale	"2"
+t03|03|9|array_items|Base.scale	null
+t03|03|10|instance_inits|Base	["this->scale = 2;"]
+t03|03|11|static_blocks|Base	[]
+t03|03|12|ctor|Calc.False	["super", null, []]
+t03|03|13|ctor|Calc.True	["super", null, []]
+t03|03|14|body|Calc.fill	["int var2 = 0;", "for (int var3 = 0; var3 < this->cells.length; ++var3) {", "\tthis->cells[var3] = var1 * var3 - (static_cast<int>(static_cast<unsigned int>(var3) >> (1)));", "\tvar2 += this->cells[var3];", "}", "Calc::s_total += var2;", "return (var2 > 100 ? var2 % 7 : -var2);"]
+t03|03|15|body|Calc.mix	["long long var3 = var0 ^ (j2xToLong(var2) << 3);", "while(var3 > 1000LL) {", "\tvar3 = static_cast<long long>(static_cast<unsigned long long>(var3) >> (2));", "}", "return static_cast<long long>(static_cast<unsigned long long>(var3) >> (1));"]
+t03|03|16|body|Calc.wrap	["return (float)fmod((double)(var0), (double)(3.5F)) + (float)(floor((double)var0));"]
+t03|03|17|body|Calc.label	["JavaString var2 = (var1 < 0 ? JavaString() : JavaString(((JCat() + this->name + \":\" + var1))._s));", "return (var2 == NULL ? JavaString(\"none\") : JavaString(((JCat() + var2 + (unsigned char)((65 + (var1 & 7)))))._s));"]
+t03|03|18|body|Calc.guarded	["Calc* var2 = (var1 > 0 ? NULL : this);", "try {", "\treturn j2xNN<NullPointerException>(var2)->cells.length + var1;", "} catch (Exception*) {", "\treturn -7;", "}"]
+t03|03|19|body|Calc.cleanup	["int var2 = 0;", "try {", "\ttry {", "\t\tvar2 = 100 / (var1 & 3);", "\t} catch (ArithmeticException*) {", "\t\tvar2 = -1;", "\t}", "} catch (...) {", "\tCalc::s_total += 1;", "\tthrow;", "}", "{", "\tCalc::s_total += 1;", "}", "return var2 + Calc::s_total;"]
+t03|03|20|body|Calc.search	["int var2 = 0;", "for (int var3 = 0; var3 < 5; ++var3) {", "\t{", "\t\tfor (int var4 = 0; var4 < 5; ++var4) {", "\t\t\tif(var3 * var4 == (var1 & 15)) {", "\t\t\t\tvar2 = var3 * 10 + var4;", "\t\t\t\tgoto label9_brk;", "\t\t\t}", "\t\t\tif(var4 > var3) {", "\t\t\t\tgoto label9_cont;", "\t\t\t}", "\t\t}", "\t}", "\tlabel9_cont:;", "}", "label9_brk:;", "return var2;"]
+t03|03|21|body|Calc.sum	["int var1 = 0;", "for (int var2 = 0; var2 < var0.length; ++var2) {", "\tvar1 += var0[var2];", "}", "return var1;"]
+t03|03|22|body|Calc.sums	["int j2xo1 = 0;", "int j2xo2 = 0;", "int j2xo3 = 0;", "int j2xo4 = 0;", "int j2xo5 = 0;", "int j2xo6 = 0;", "return (j2xo5 = (j2xo3 = (j2xo1 = Calc::sum(JArray<int >()), j2xo2 = Calc::sum((JArrayInit<int >(), var0)), j2xo1 + j2xo2), j2xo4 = Calc::sum((JArrayInit<int >(), var0, 2, 3)), j2xo3 + j2xo4), j2xo6 = Calc::sum((JArrayInit<int >(), var0, var0)), j2xo5 + j2xo6);"]
+t03|03|23|body|Calc.tabled	["return Calc::s_table[var0 & 3] + Calc::s_total;"]
+t03|03|24|body|Calc.made	["Base* var1 = new Base(var0, 3);", "return var1->size + var1->scale;"]
+t03|03|25|body|Calc.count	["this->items.add(this->name);", "switch(var1 & 3) {", "case 0:", "{", "\treturn this->items.size();", "}", "case 1:", "{", "\tthis->items.clear();", "}", "default:", "{", "\treturn -1;", "}", "}"]
+t03|03|26|ctor0|Calc.False	["super", null, []]
+t03|03|27|ctor0|Calc.True	["super", null, []]
+t03|03|28|field_init|Calc.total	null
+t03|03|29|array_items|Calc.total	null
+t03|03|30|field_init|Calc.table	null
+t03|03|31|array_items|Calc.table	null
+t03|03|32|field_init|Calc.cells	"JArray<int >(8)"
+t03|03|33|array_items|Calc.cells	null
+t03|03|34|field_init|Calc.items	"JList<JObject>()"
+t03|03|35|array_items|Calc.items	null
+t03|03|36|field_init|Calc.name	"\"calc\""
+t03|03|37|array_items|Calc.name	null
+t03|03|38|instance_inits|Calc	["this->cells = JArray<int >(8);", "this->items = JList<JObject>();", "this->name = \"calc\";"]
+t03|03|39|static_blocks|Calc	[["Calc::s_table = JArray<int >(4);", "Calc::s_table[1] = 5;", "Calc::s_total = Calc::s_table[1] * 2;"]]
+t03|03|40|ctor|Sub.False	["super", "var1 + 1", ["this->extra += this->size;"]]
+t03|03|41|ctor|Sub.True	["super", "var1 + 1", ["this->extra += this->size;"]]
+t03|03|42|body|Sub.build	["Sub* var1 = new Sub(var0);", "return var1->extra * 3 + var1->size;"]
+t03|03|43|ctor0|Sub.False	null
+t03|03|44|ctor0|Sub.True	null
+t03|03|45|field_init|Sub.extra	"7"
+t03|03|46|array_items|Sub.extra	null
+t03|03|47|instance_inits|Sub	["this->extra = 7;"]
+t03|03|48|static_blocks|Sub	[]
+t03|03|49|body|NoSuchClass	null
+t03|03|50|field_init|nofield	null
+t03|03|51|array_items|nofield	null
+t03|03|52|enum_args|noconst	null
+t03|03|53|ctor|NoSuchClass	null
+t03|03|54|field_init|NoSuchClass	null
+t03|03|55|array_items|NoSuchClass	null
+t03|03|56|enum_args|NoSuchClass	null
+t03|03|57|instance_inits|NoSuchClass	null
+t03|03|58|static_blocks|NoSuchClass	null
+t03|03|counts	[13, 10, {"ctor not found": 5, "not found": 1}, {}, ["Base", "Calc", "Sub"]]
+t03|03|ledger	[]
+t03|17|0|ctor|Base.False	["super", null, ["this->size = var1 * this->scale;"]]
+t03|17|1|ctor|Base.True	["super", null, ["this->size = var1 * this->scale;"]]
+t03|17|2|ctor|Base.False	[null, null, ["{", "\tint j2xD0_var1 = var1;", "\tthis->size = j2xD0_var1 * this->scale;", "}", "this->scale += var2;"]]
+t03|17|3|ctor|Base.True	["this", null, ["Base::j2xInit(var1);", "this->scale += var2;"]]
+t03|17|4|ctor0|Base.False	null
+t03|17|5|ctor0|Base.True	null
+t03|17|6|field_init|Base.size	null
+t03|17|7|array_items|Base.size	null
+t03|17|8|field_init|Base.scale	"2"
+t03|17|9|array_items|Base.scale	null
+t03|17|10|instance_inits|Base	["this->scale = 2;"]
+t03|17|11|static_blocks|Base	[]
+t03|17|12|ctor|Calc.False	["super", null, []]
+t03|17|13|ctor|Calc.True	["super", null, []]
+t03|17|14|body|Calc.fill	["int var2 = 0;", "for (int var3 = 0; var3 < this->cells.length; ++var3) {", "\tthis->cells[var3] = var1 * var3 - (static_cast<int>(static_cast<unsigned int>(var3) >> (1)));", "\tvar2 += this->cells[var3];", "}", "Calc::s_total += var2;", "return (var2 > 100 ? var2 % 7 : -var2);"]
+t03|17|15|body|Calc.mix	["long long var3 = var0 ^ (j2xToLong(var2) << 3);", "while(var3 > 1000LL) {", "\tvar3 = static_cast<long long>(static_cast<unsigned long long>(var3) >> (2));", "}", "return static_cast<long long>(static_cast<unsigned long long>(var3) >> (1));"]
+t03|17|16|body|Calc.wrap	["return (float)fmod((double)(var0), (double)(3.5F)) + (float)(floor((double)var0));"]
+t03|17|17|body|Calc.label	["JavaString var2 = (var1 < 0 ? JavaString() : JavaString(((JCat() + this->name + \":\" + var1))._s));", "return (var2 == __null ? JavaString(\"none\") : JavaString(((JCat() + var2 + (unsigned char)((65 + (var1 & 7)))))._s));"]
+t03|17|18|body|Calc.guarded	["Calc* var2 = (var1 > 0 ? __null : this);", "try {", "\treturn j2xNN<NullPointerException>(var2)->cells.length + var1;", "} catch (Exception*) {", "\treturn -7;", "}"]
+t03|17|19|body|Calc.cleanup	["int var2 = 0;", "try {", "\ttry {", "\t\tvar2 = 100 / (var1 & 3);", "\t} catch (ArithmeticException*) {", "\t\tvar2 = -1;", "\t}", "} catch (...) {", "\tCalc::s_total += 1;", "\tthrow;", "}", "{", "\tCalc::s_total += 1;", "}", "return var2 + Calc::s_total;"]
+t03|17|20|body|Calc.search	["int var2 = 0;", "for (int var3 = 0; var3 < 5; ++var3) {", "\t{", "\t\tfor (int var4 = 0; var4 < 5; ++var4) {", "\t\t\tif(var3 * var4 == (var1 & 15)) {", "\t\t\t\tvar2 = var3 * 10 + var4;", "\t\t\t\tgoto label9_brk;", "\t\t\t}", "\t\t\tif(var4 > var3) {", "\t\t\t\tgoto label9_cont;", "\t\t\t}", "\t\t}", "\t}", "\tlabel9_cont:;", "}", "label9_brk:;", "return var2;"]
+t03|17|21|body|Calc.sum	["int var1 = 0;", "for (int var2 = 0; var2 < var0.length; ++var2) {", "\tvar1 += var0[var2];", "}", "return var1;"]
+t03|17|22|body|Calc.sums	["int j2xo1 = 0;", "int j2xo2 = 0;", "int j2xo3 = 0;", "int j2xo4 = 0;", "int j2xo5 = 0;", "int j2xo6 = 0;", "return (j2xo5 = (j2xo3 = (j2xo1 = Calc::sum(JArray<int >()), j2xo2 = Calc::sum((JArrayInit<int >(), var0)), j2xo1 + j2xo2), j2xo4 = Calc::sum((JArrayInit<int >(), var0, 2, 3)), j2xo3 + j2xo4), j2xo6 = Calc::sum((JArrayInit<int >(), var0, var0)), j2xo5 + j2xo6);"]
+t03|17|23|body|Calc.tabled	["return Calc::s_table[var0 & 3] + Calc::s_total;"]
+t03|17|24|body|Calc.made	["auto* var1 = new Base(var0, 3);", "return var1->size + var1->scale;"]
+t03|17|25|body|Calc.count	["this->items.add(this->name);", "switch(var1 & 3) {", "case 0:", "{", "\treturn this->items.size();", "}", "case 1:", "{", "\tthis->items.clear();", "}", "default:", "{", "\treturn -1;", "}", "}"]
+t03|17|26|ctor0|Calc.False	["super", null, []]
+t03|17|27|ctor0|Calc.True	["super", null, []]
+t03|17|28|field_init|Calc.total	null
+t03|17|29|array_items|Calc.total	null
+t03|17|30|field_init|Calc.table	null
+t03|17|31|array_items|Calc.table	null
+t03|17|32|field_init|Calc.cells	"JArray<int >(8)"
+t03|17|33|array_items|Calc.cells	null
+t03|17|34|field_init|Calc.items	"JList<JObject>()"
+t03|17|35|array_items|Calc.items	null
+t03|17|36|field_init|Calc.name	"\"calc\""
+t03|17|37|array_items|Calc.name	null
+t03|17|38|instance_inits|Calc	["this->cells = JArray<int >(8);", "this->items = JList<JObject>();", "this->name = \"calc\";"]
+t03|17|39|static_blocks|Calc	[["Calc::s_table = JArray<int >(4);", "Calc::s_table[1] = 5;", "Calc::s_total = Calc::s_table[1] * 2;"]]
+t03|17|40|ctor|Sub.False	["super", "var1 + 1", ["this->extra += this->size;"]]
+t03|17|41|ctor|Sub.True	["super", "var1 + 1", ["this->extra += this->size;"]]
+t03|17|42|body|Sub.build	["auto* var1 = new Sub(var0);", "return var1->extra * 3 + var1->size;"]
+t03|17|43|ctor0|Sub.False	null
+t03|17|44|ctor0|Sub.True	null
+t03|17|45|field_init|Sub.extra	"7"
+t03|17|46|array_items|Sub.extra	null
+t03|17|47|instance_inits|Sub	["this->extra = 7;"]
+t03|17|48|static_blocks|Sub	[]
+t03|17|49|body|NoSuchClass	null
+t03|17|50|field_init|nofield	null
+t03|17|51|array_items|nofield	null
+t03|17|52|enum_args|noconst	null
+t03|17|53|ctor|NoSuchClass	null
+t03|17|54|field_init|NoSuchClass	null
+t03|17|55|array_items|NoSuchClass	null
+t03|17|56|enum_args|NoSuchClass	null
+t03|17|57|instance_inits|NoSuchClass	null
+t03|17|58|static_blocks|NoSuchClass	null
+t03|17|counts	[13, 10, {"ctor not found": 5, "not found": 1}, {}, ["Base", "Calc", "Sub"]]
+t03|17|ledger	[]

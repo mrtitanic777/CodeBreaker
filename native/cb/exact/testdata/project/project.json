@@ -1,0 +1,58 @@
+{
+ "image": "PROG.EXE",
+ "toolchain": "fake",
+ "variant": "v1",
+ "switches": "/Ox",
+ "code_segments": [
+  "0x10",
+  0
+ ],
+ "loadseg": "0x10",
+ "code_end": "0x50",
+ "starts": "starts.txt",
+ "src": "src",
+ "include": [
+  "inc",
+  "../up"
+ ],
+ "library_gap": 100,
+ "library_start": "0x30",
+ "libraries": [
+  {
+   "tag": "EM",
+   "path": "em.lib"
+  },
+  {
+   "path": "KIT:x.lib"
+  }
+ ],
+ "first_objects": [
+  "BIN.OBJ"
+ ],
+ "data_sizes": {
+  "_iob": 32
+ },
+ "data_pads": {
+  "0100": 16,
+  "00a0": 4
+ },
+ "model": "M",
+ "also": [
+  {
+   "src": "asm",
+   "sources": "f([0-9a-f]{5})\\.asm",
+   "toolchain": "fake2",
+   "place_by": null,
+   "unplaced": null
+  }
+ ],
+ "link": {
+  "linker": "LINK.EXE",
+  "order": "ORDER",
+  "switches": "/B"
+ },
+ "unplaced": "u.*\\.c",
+ "place_by": "PLACES",
+ "names": "NAMES",
+ "named_by": "x"
+}
