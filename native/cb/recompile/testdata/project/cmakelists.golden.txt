@@ -1,0 +1,60 @@
+cmake_minimum_required(VERSION 3.20)
+project(my_game_pc CXX)
+
+# c++23 when bridged onto the vendored RexGlue runtime (its context.h uses
+# std::byteswap etc.); harmless for the standalone path too.
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# the rexglue kernel core. Its PUBLIC target settings (c++23, header-only fmt, include
+# roots) propagate to the recompiled code that links it, so the generated functions
+# compile against its PPCContext (rex_ppc_min.h bridges onto <rex/ppc/context.h> when
+# present). Added first: the shader translator below leaves out its stand-ins for what
+# the kernel's base library provides.
+if(EXISTS "${CMAKE_SOURCE_DIR}/kernel/rex_kernel/CMakeLists.txt")
+    add_subdirectory(kernel/rex_kernel)
+endif()
+
+# the rexglue (Xenia-derived) DXBC shader translator builds as its own static lib
+# (c++23 + header-only fmt) and exposes only the clean rex_dxbc_translate.h API.
+if(EXISTS "${CMAKE_SOURCE_DIR}/graphics/rex_dxbc/CMakeLists.txt")
+    add_subdirectory(graphics/rex_dxbc)
+endif()
+
+# every translation unit under src/ (the sharded recomp + init + runtime) and the
+# native GPU subsystem under graphics/ (top level only; rex_dxbc/ builds itself)
+file(GLOB MY_GAME_SOURCES CONFIGURE_DEPENDS
+     "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/graphics/*.cpp")
+add_executable(my_game ${MY_GAME_SOURCES})
+target_include_directories(my_game PRIVATE
+     "${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}/graphics")
+
+# link the shader translator (also propagates the clean-header include path, which
+# is what makes the ShaderTranslator seam's __has_include fire).
+if(TARGET rex_dxbc)
+    target_link_libraries(my_game PRIVATE rex_dxbc)
+endif()
+
+# link the RexGlue kernel core. PUBLIC on rex_kernel means this also puts its
+# include roots + c++23 + FMT_HEADER_ONLY onto the recompiled code, so rex_ppc_min.h
+# bridges onto RexGlue's PPCContext for the whole title.
+if(TARGET rex_kernel)
+    target_link_libraries(my_game PUBLIC rex_kernel)
+endif()
+
+# native D3D12 backend (see xe_d3d12.cpp) links the system graphics libraries; on
+# MSVC these arrive via #pragma comment(lib, ...).
+if(WIN32 AND NOT MSVC)
+    target_link_libraries(my_game PRIVATE d3d12 dxgi dxguid)
+endif()
+
+# recompiled code uses __builtin_bswap / rotate; GCC or Clang recommended.
+if (MSVC)
+    target_compile_options(my_game PRIVATE /bigobj /Od /wd4267 /wd4244 /wd4018)
+else()
+    target_compile_options(my_game PRIVATE -O1 -fno-strict-aliasing -w)
+endif()
+
+# so assets/my_game.bin resolves when debugging from the IDE
+set_target_properties(my_game PROPERTIES
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

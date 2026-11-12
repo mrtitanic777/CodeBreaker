@@ -1,0 +1,43 @@
+// rex_host.h - host implementations for tractable kernel/CRT imports.
+// A guest bump heap (allocate in guest memory, hand back guest addresses), the
+// block-memory helpers, and big-endian guest-memory accessors + a host clock the
+// kernel shims use to write results into guest structures. Our from-scratch
+// kernel layer, built out per the Xenia decomposition; threading / real VM / XAM
+// / the object manager are the ongoing grind.
+#pragma once
+#include <cstdint>
+#include <chrono>
+extern uint32_t g_heap_ptr;      // next free guest address
+extern uint32_t g_heap_end;
+inline void rex_heap_init(uint32_t start, uint32_t size) {
+    g_heap_ptr = start; g_heap_end = start + size;
+}
+inline uint32_t rex_heap_alloc(uint32_t size) {
+    uint32_t a = (g_heap_ptr + 15u) & ~15u;      // 16-byte aligned
+    g_heap_ptr = a + size;
+    return (a + size <= g_heap_end) ? a : 0;     // 0 == out of guest heap
+}
+
+// --- big-endian guest memory access (the guest is big-endian) ----------------
+inline void rex_store32(uint8_t* base, uint32_t addr, uint32_t v) {
+    uint8_t* p = base + addr;
+    p[0] = uint8_t(v >> 24); p[1] = uint8_t(v >> 16);
+    p[2] = uint8_t(v >> 8);  p[3] = uint8_t(v);
+}
+inline void rex_store64(uint8_t* base, uint32_t addr, uint64_t v) {
+    rex_store32(base, addr, uint32_t(v >> 32));
+    rex_store32(base, addr + 4, uint32_t(v));
+}
+inline uint32_t rex_load32(const uint8_t* base, uint32_t addr) {
+    const uint8_t* p = base + addr;
+    return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) |
+           (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+}
+
+// Windows FILETIME: 100ns intervals since 1601-01-01 (what Ke*Time returns).
+inline uint64_t rex_system_time_100ns() {
+    using namespace std::chrono;
+    uint64_t unix_100ns =
+        (uint64_t)duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count() / 100;
+    return unix_100ns + 116444736000000000ull;   // 1601->1970 epoch offset
+}
