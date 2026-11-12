@@ -51,12 +51,7 @@ extern const py::list<py::str> FLAT;
 extern const py::list<py::str> POWERPC;
 
 // A node this back end does not write.
-struct Decline : py::Exception {
-    Decline() : py::Exception() {}
-    explicit Decline(const std::string& m) : py::Exception(m) {}
-    explicit Decline(const py::str& m) : py::Exception(m.utf8()) {}
-    const char* type() const override { return "Decline"; }
-};
+using Decline = native_l2::Decline;   // (the C back end is the L2 core library: its decline is the one native_l2 raises)
 
 // (bytes of the decompiler's scalar type names)
 extern const py::dict<py::str, int64_t> SIZEOF;

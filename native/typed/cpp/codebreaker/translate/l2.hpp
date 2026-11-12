@@ -1,55 +1,42 @@
-// codebreaker/translate/l2.hpp -- typed C++ port of codebreaker.translate.l2.
+// codebreaker/translate/l2.hpp -- COMPAT SHIM over cb/translate/l2.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// l2.py -- the IR as L2 JSON, the document format every producer and consumer shares.
+// The module is native/cb/translate/l2.{hpp,cpp}: L2 documents over the typed tree, and the module model. This header keeps
+// the old py:: API for the ports that still hold the old IR tree (py::ref nodes) and L2 documents as ir::Dict:
 //
-// L2 is defined by codebreaker/translate/l2.schema.json (docs/IR_UNIFICATION.md: one IR family, three
-// levels; L2 is the typed hub tree). ir.py is the Python implementation; the decompiler's PrintIR and the
-// Rust core produce and read the same JSON. A document is one Node, usually a Module or a Unit:
+//   * the tree itself -- type_json / type_from / sym_json / sym_from / to_json / from_json over old nodes -- is the old
+//     codec, moved to cb/compat/old_l2_tree.hpp (the new module cannot read an old tree);
+//   * the module model (module, function, fragment, comment, units, texts, Made, Assembly) forwards to the new module through
+//     the document's JSON form;
+//   * validate / schema ask the L2 core library (native_l2) with the schema this file names.
 //
-//     {"node": "Binary", "line": 7, "col": 16, "op": ">>>", "type": {"kind": "i32"},
-//      "left": {...}, "right": {...}}
-//
-//     to_json(node) -> dict          from_json(dict) -> node          validate(dict) (needs jsonschema)
-//
-// Typing notes (how the Python's values are typed here):
-//   * A JSON document is a Dict (py::dict<py::str, Val>) of Vals: the ir.hpp Val is exactly what a document
-//     holds -- None, bool, int, float, str, a list, a dict. (A Val may also hold a Type, which only an IR
-//     tree's Lit.value or Type.info can: to_json turns the ones in lists of a slot into their L2 form, as the
-//     Python's _value does, and leaves the ones in dicts as they are.)
-//   * type_json / sym_json return a Val (a Dict, or None for None); the others return a Dict.
-//   * to_json reads the typed slots of each node class through the class's each_slot(); from_json builds the
-//     class named by d['node'] and gives each slot the kind of value the class types it with. Where the
-//     Python stores a document value of another kind than its slot's (a dict without 'node' in a node slot,
-//     a list of raw dicts where a node list has a None in it), the slot's type cannot hold it: that is a
-//     TypeError here, and a list of nodes keeps None as None. (The real documents hold no such value: the
-//     slots they fill more widely than the first reading are widened in ir.hpp.)
-//   * Python's `**fields` / `**facts` keyword dicts are a Dict argument. A dict subclass with a write-through
-//     (Made.texts' _Texts) is a copy here, with set_text() / update_texts() for the writes. Made's cached
-//     views (_view) are not kept: each view is made from the document when asked for (the values are the same).
-//     Made's pickling and copy hooks go with them (copying a Made shares its doc, which is never changed in
-//     place, as the Python's __copy__ does).
-//   * The slots the real documents fill with more than the node classes' first reading (a statement body that is a bare
-//     list of statements, Call.typeargs that is a struct format) are ir.hpp's NodeOrList and TypeArgs; from_json
-//     reads a list of type dicts as Types and any other typeargs list as the plain values it is.
-//   * Identifier spellings that are C++ keywords: the `asm` argument of fragment() is asm_.
-//   * Python ints are int64_t here.
+// No logic of its own beyond that: convert, forward, and turn a failure into the exception the old code expects.
 #pragma once
 
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <vector>
 
+#include "cb/compat/old_l2_tree.hpp"
+#include "cb/compat/old_val_json.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/core/json.hpp"
+#include "cb/translate/l2.hpp"
+#include "cb/translate/native_l2.hpp"
 #include "codebreaker/translate/ir.hpp"
 #include "py.hpp"
 
+// the L2 core library's two functions (native/l2/src/api.cc), linked into the program that includes this
+extern "C" {
+int l2_call(const char* fn, const char* in, size_t inlen, char** out, size_t* outlen);
+void l2_free(char* p);
+}
+
 namespace codebreaker::translate::l2 {
 
-namespace ir = codebreaker::translate::ir;
-using ir::Dict;
-using ir::NodeP;
-using ir::SymP;
-using ir::TypeP;
-using ir::Val;
+namespace newl2 = cb::translate::l2;
+namespace nir = cb::translate::ir;
 
 // jsonschema.ValidationError, as validate() raises it
 struct ValidationError : py::Exception {
@@ -58,141 +45,239 @@ struct ValidationError : py::Exception {
     const char* type() const override { return "ValidationError"; }
 };
 
-// The path of l2.schema.json (the Python's: beside l2.py -- here, from this source file's place in the
-// tree: <repo>/codebreaker/translate/l2.schema.json). A variable: a caller with the schema elsewhere sets it.
-extern py::str SCHEMA;
+// The path of l2.schema.json: <repo>/codebreaker/translate/l2.schema.json, found from this file's place in the tree
+// (<repo>/native/typed/cpp/codebreaker/translate/l2.hpp). A variable: a caller with the schema elsewhere sets it.
+inline py::str& schema_path_variable() {
+    static py::str path = [] {
+        std::string p = __FILE__;
+        for (int up = 0; up < 6; ++up) {
+            const std::size_t cut = p.find_last_of("/\\");
+            if (cut == std::string::npos) break;
+            p = p.substr(0, cut);
+        }
+        return py::bytes(p + "/codebreaker/translate/l2.schema.json").decode("utf-8");
+    }();
+    return path;
+}
+inline py::str& SCHEMA = schema_path_variable();
 
-// ---------------------------------------------------------------------------------------------- types
-// what the Python front end says of a class type (frontends/python/lower.py): a record (a value struct,
-// or shared when `ref`), held by reference or not, an exception (made and thrown as a value)
-extern const py::list<py::str> CLASS_FACTS_;
+namespace shim_detail {
 
-// a Type as its L2 dict (None for None). ValueError for a kind with no L2 form.
-Val type_json(const TypeP& t);
-// the Type of an L2 type dict (None for None). KeyError for a missing key, ValueError for an unknown kind.
-TypeP type_from(const Val& d);
+inline cb::translate::native_l2::Library& library() {
+    static cb::translate::native_l2::Library lib(&l2_call, &l2_free);
+    return lib;
+}
 
-// ---------------------------------------------------------------------------------------------- symbols
-Val sym_json(const SymP& s);
-SymP sym_from(const Val& d);
+inline cb::Json doc_json(const Dict& d) { return cb::compat::to_json_value(d); }
+inline Dict doc_dict(const cb::Json& j) {
+    const Val v = cb::compat::from_json_value(j);
+    return std::get<Dict>(v.v);
+}
 
-// ---------------------------------------------------------------------------------------------- nodes
-// a node as its L2 dict (AttributeError for None, as the Python's node.line is)
-Dict to_json(const NodeP& node);
-// the node an L2 dict describes; KeyError for a dict with no 'node' or an unknown one
-NodeP from_json(const Dict& d);
-NodeP from_json(const Val& d);       // (TypeError where the Python would fail on a value that is not a dict)
+// an old origin dict ({module, va} ...) as the new tree's
+inline std::optional<nir::Origin> origin_of(const std::optional<Dict>& origin) {
+    if (!origin) return std::nullopt;
+    cb::Json holder = cb::Json::object();
+    holder["node"] = "Empty";
+    holder["origin"] = doc_json(*origin);
+    cb::Arena arena;
+    const nir::Node* n = newl2::from_json(arena, holder);
+    if (!n->origin) return std::nullopt;
+    return *n->origin;
+}
 
-// the parsed l2.schema.json
-Val schema();
-// Raise ValidationError if `doc` is not L2. (The Python hands the schema to jsonschema; here the native L2
-// core's validator, native/l2/src/l2.cc, which is written to decide as l2.validate does.)
-void validate(const Dict& doc);
+}  // namespace shim_detail
 
 // ------------------------------------------------------------------------------------ the module model
-// A module, of any lane and whatever each part of it came back as, is one L2 Module document: its units
-// in order -- a function rebuilt as a tree (a MethodDecl with a body), one whose source is still text
-// (a MethodDecl with `text`), what stays machine code (a MachineFragment: its assembly, or only its name
-// and place), a comment at its place. Every lane's module is this one model (docs/ARCHITECTURE.md, "one
-// Module model"): the decompiler's (build/module.module_document), the readable pass's
-// (source/readable.Readable), the 16-bit port's (port/asm16.Port), a library's members
-// (exact/library.Member), and every assembly writer's (l2.Assembly, written by backends/asm.py).
-
 // A Module document. -> {"node": "Module", "units": [...]}
-Dict module(const py::list<Val>& units = py::list<Val>(), const std::optional<py::str>& header = std::nullopt,
-            const std::optional<Dict>& origin = std::nullopt);
+inline Dict module(const py::list<Val>& units = py::list<Val>(), const std::optional<py::str>& header = std::nullopt,
+                   const std::optional<Dict>& origin = std::nullopt) {
+    return cb::compat::guard([&] {
+        cb::Arena arena;
+        std::vector<nir::Node*> nodes;
+        for (const Val& u : units) nodes.push_back(newl2::from_json(arena, cb::compat::to_json_value(u)));
+        nir::Node* m = newl2::module_node(arena, nodes, cb::compat::from_py(header));
+        if (const auto o = shim_detail::origin_of(origin)) m->origin = std::make_shared<const nir::Origin>(*o);
+        return shim_detail::doc_dict(newl2::to_json(*m));
+    });
+}
 
 // A function of a module: a MethodDecl (kind "function"), its source as `text` while it is not a tree.
 // `fields` are the Python's **fields (they override what is set before them).
-Dict function(const py::str& name, const std::optional<py::str>& text = std::nullopt,
-              const std::optional<Dict>& origin = std::nullopt,
-              const std::optional<py::list<py::str>>& comments = std::nullopt, const Dict& fields = Dict());
+inline Dict function(const py::str& name, const std::optional<py::str>& text = std::nullopt, const std::optional<Dict>& origin = std::nullopt,
+                     const std::optional<py::list<py::str>>& comments = std::nullopt, const Dict& fields = Dict()) {
+    return cb::compat::guard([&] {
+        cb::Arena arena;
+        newl2::FunctionSpec spec;
+        spec.name = name.utf8();
+        spec.text = cb::compat::from_py(text);
+        spec.origin = shim_detail::origin_of(origin);
+        if (comments) spec.comments = cb::compat::from_py(*comments);
+        Dict d = shim_detail::doc_dict(newl2::to_json(*newl2::function_node(arena, spec)));
+        for (const auto& kv : fields.items()) d.set(std::get<0>(kv), std::get<1>(kv));
+        return d;
+    });
+}
 
 // What stays machine code: a MachineFragment (L2_BINARY_TYPES.md section 7).
-Dict fragment(const std::optional<py::str>& asm_ = std::nullopt, const std::optional<py::str>& name = std::nullopt,
-              const std::optional<py::str>& syntax = std::nullopt, const std::optional<Dict>& origin = std::nullopt,
-              const std::optional<py::str>& reason = std::nullopt, const std::optional<py::str>& why = std::nullopt,
-              const std::optional<int64_t>& length = std::nullopt, const std::optional<py::str>& within = std::nullopt);
+inline Dict fragment(const std::optional<py::str>& asm_ = std::nullopt, const std::optional<py::str>& name = std::nullopt,
+                     const std::optional<py::str>& syntax = std::nullopt, const std::optional<Dict>& origin = std::nullopt,
+                     const std::optional<py::str>& reason = std::nullopt, const std::optional<py::str>& why = std::nullopt,
+                     const std::optional<int64_t>& length = std::nullopt, const std::optional<py::str>& within = std::nullopt) {
+    return cb::compat::guard([&] {
+        cb::Arena arena;
+        nir::MachineFragment f;
+        f.assembly = cb::compat::from_py(asm_);
+        f.name = cb::compat::from_py(name);
+        f.syntax = cb::compat::from_py(syntax);
+        f.reason = cb::compat::from_py(reason);
+        f.why = cb::compat::from_py(why);
+        if (length) f.length = cb::compat::int_from_py<std::uint64_t>(*length);
+        f.within = cb::compat::from_py(within);
+        return shim_detail::doc_dict(newl2::to_json(*newl2::fragment_node(arena, std::move(f), shim_detail::origin_of(origin))));
+    });
+}
 
-Dict comment(const py::str& text);
+inline Dict comment(const py::str& text) {
+    cb::Arena arena;
+    return shim_detail::doc_dict(newl2::to_json(*newl2::comment_node(arena, text.utf8())));
+}
 
-// The units of a Module document (those of one kind, given `node`). AttributeError for a unit that is not
-// a dict, as the Python's u.get is.
-py::list<Dict> units(const Dict& doc, const std::optional<py::str>& node = std::nullopt);
+// The units of a Module document (those of one kind, given `node`).
+inline py::list<Dict> units(const Dict& doc, const std::optional<py::str>& node = std::nullopt) {
+    return cb::compat::guard([&] {
+        cb::Arena arena;
+        const nir::Node* m = newl2::from_json(arena, shim_detail::doc_json(doc));
+        py::list<Dict> out;
+        for (const nir::Node* u : newl2::units(m)) {
+            if (node && nir::kind_name(*u) != node->utf8()) continue;
+            out.append(shim_detail::doc_dict(newl2::to_json(*u)));
+        }
+        return out;
+    });
+}
 
 // {name: text} of a module's functions whose source is text, in their order.
-py::dict<py::str, py::str> texts(const Dict& doc);
+inline py::dict<py::str, py::str> texts(const Dict& doc) {
+    return cb::compat::guard([&] {
+        cb::Arena arena;
+        const nir::Node* m = newl2::from_json(arena, shim_detail::doc_json(doc));
+        return cb::compat::to_py(newl2::texts(m));
+    });
+}
 
-// A module made compilable for a lane's build (decompile/c_text: compilable16, compilable32,
-// compilable_powerpc), as the one module model: an L2 Module document, `doc` -- each function a
-// MethodDecl with its C as `text` and its place as `origin` ({module, va}), in the module's
-// order, the header the Module's -- and, beside it, what the lane keeps
-// of the module as attributes (16-bit: near, wide, novalue, interrupts, selector_imports, ...;
-// 32-bit: imports, in_ecx, in_edx; PowerPC: externs, argc, image) -- `facts` here.
-//
-//     Made m("lzexpand.dll", header, texts, order, by_va, facts);
-//     m.texts() / m.order() / m.by_va() / m.header() / m.functions()      views of m.doc
-//     m.set_text(name, text), m.update_texts({...}), m.set_texts({...}),
-//     m.set_header(...)                                                    rewrite m.doc
-//     m.add(name, text, va)                                               one more function, last
-//
-// (A change makes a new document rather than changing the one there: a copy of m and m share
-// it until one of them changes.)
+// The parsed l2.schema.json
+inline Val schema() {
+    return cb::compat::guard([&] { return cb::compat::from_json_value(cb::json::load(cb::fs::from_text(SCHEMA.utf8()))); });
+}
+
+// Raise ValidationError if `doc` is not L2. (The L2 core library decides: it is written to decide as l2.validate does.)
+inline void validate(const Dict& doc) {
+    const std::string text = cb::compat::guard([&] { return cb::fs::read_text(cb::fs::from_text(SCHEMA.utf8())); });
+    const auto verdict = cb::compat::guard([&] { return shim_detail::library().validate(shim_detail::doc_json(doc), text); });
+    if (!verdict.valid) throw ValidationError(verdict.why);
+}
+
+// A module made compilable for a lane's build, as the one module model (decompile/c_text: compilable16, compilable32,
+// compilable_powerpc): the functions with their C as text and their places, in the module's order, the header the Module's --
+// and, beside it, what the lane keeps of the module as attributes (`facts`; the lanes' own structs derived from this keep them
+// as typed members).
 struct Made {
     py::str name;
-    Dict doc;
     Dict facts;         // what the Python keeps as attributes of the object beside name and doc
+    cb::translate::l2::Made impl;
 
-    Made(const py::str& name = py::str(""), const py::str& header = py::str(""),
+    Made(const py::str& name_ = py::str(""), const py::str& header = py::str(""),
          const std::optional<py::dict<py::str, py::str>>& texts = std::nullopt,
          const std::optional<py::list<py::str>>& order = std::nullopt,
-         const std::optional<py::dict<int64_t, py::str>>& by_va = std::nullopt, const Dict& facts = Dict());
+         const std::optional<py::dict<int64_t, py::str>>& by_va = std::nullopt, const Dict& facts_ = Dict())
+        : name(name_), facts(facts_) {
+        const auto new_texts = texts ? cb::compat::from_py(*texts) : cb::OrderedMap<std::string, std::string>();
+        const std::vector<std::string> new_order = order ? cb::compat::from_py(*order) : std::vector<std::string>();
+        cb::OrderedMap<std::uint64_t, std::string> places;
+        if (by_va) {
+            for (const auto& kv : by_va->items()) {
+                places.insert_or_assign(cb::compat::int_from_py<std::uint64_t>(std::get<0>(kv)), std::get<1>(kv).utf8());
+            }
+        }
+        impl = cb::translate::l2::Made::of(name_.utf8(), header.utf8(), new_texts, new_order, places);
+    }
 
-    void add(const py::str& name, const std::optional<py::str>& text, const std::optional<int64_t>& va = std::nullopt);
+    void add(const py::str& name_, const std::optional<py::str>& text, const std::optional<int64_t>& va = std::nullopt) {
+        std::optional<std::uint64_t> place;
+        if (va) place = cb::compat::int_from_py<std::uint64_t>(*va);
+        impl.add(name_.utf8(), cb::compat::from_py(text), place);
+    }
 
-    py::list<Dict> _functions() const;
+    py::list<Dict> _functions() const {
+        return cb::compat::guard([&] {
+            cb::Arena arena;
+            const nir::Node* m = impl.document(arena);
+            py::list<Dict> out;
+            for (const nir::Node* u : newl2::units_of<nir::MethodDecl>(m)) out.append(shim_detail::doc_dict(newl2::to_json(*u)));
+            return out;
+        });
+    }
 
     // `made.texts`: {name: C text}, in the module's order (a copy; write with set_text / update_texts)
-    py::dict<py::str, py::str> texts() const;
+    py::dict<py::str, py::str> texts() const { return cb::compat::to_py(impl.texts()); }
     // `made.texts = new`
-    void set_texts(const py::dict<py::str, py::str>& new_texts);
+    void set_texts(const py::dict<py::str, py::str>& new_texts) { impl.update_texts(cb::compat::from_py(new_texts)); }
     // `made.texts[name] = text`
-    void set_text(const py::str& name, const py::str& text);
+    void set_text(const py::str& name_, const py::str& text) { impl.set_text(name_.utf8(), text.utf8()); }
     // `made.texts.update(new)`
-    void update_texts(const py::dict<py::str, py::str>& new_texts);
+    void update_texts(const py::dict<py::str, py::str>& new_texts) { set_texts(new_texts); }
 
-    py::str header() const;
-    void set_header(const py::str& text);
+    py::str header() const { return cb::compat::to_py(impl.header()); }
+    void set_header(const py::str& text) { impl.set_header(text.utf8()); }
 
-    py::list<py::str> order() const;
-    py::dict<int64_t, py::str> by_va() const;
+    py::list<py::str> order() const { return cb::compat::to_py(impl.order()); }
+    py::dict<int64_t, py::str> by_va() const { return cb::compat::to_py(impl.by_va()); }
     // {address: (name, text)}
-    py::dict<int64_t, std::tuple<py::str, std::optional<py::str>>> functions() const;
+    py::dict<int64_t, std::tuple<py::str, std::optional<py::str>>> functions() const {
+        py::dict<int64_t, std::tuple<py::str, std::optional<py::str>>> out;
+        for (const auto& [va, f] : impl.functions()) out.set(cb::compat::to_py(va), std::make_tuple(cb::compat::to_py(f.first), cb::compat::to_py(f.second)));
+        return out;
+    }
 };
 
 // A module being written as assembly language, built as its L2 Module as it goes.
-//
-//     Assembly L(lines, "nasm", "lzexpand.dll", ...);
-//     L.append(...); L.extend(...)                 // lines, as to a list (every writer's helpers take one)
-//     L.part("seg1", "section", origin);           // the next fragment begins here
-//     Dict doc = L.document();                     // a Module of MachineFragments: backends/asm.py writes it
-//
-// Each part() begins a MachineFragment at the next line; the lines before the first part are the
-// head's. A part with no lines is left out, so the fragments joined by a line break are the lines
-// joined, as they were written.
 struct Assembly : py::list<py::str> {
     std::optional<py::str> syntax;
     std::optional<py::str> module;
     // (start line, name, reason, origin, length) of each part
     std::vector<std::tuple<int64_t, py::str, py::str, std::optional<Dict>, std::optional<int64_t>>> _parts;
 
-    Assembly(const py::list<py::str>& lines = py::list<py::str>(), const std::optional<py::str>& syntax = std::nullopt,
-             const std::optional<py::str>& module = std::nullopt, const py::str& name = py::str("head"),
-             const py::str& reason = py::str("head"));
+    Assembly(const py::list<py::str>& lines = py::list<py::str>(), const std::optional<py::str>& syntax_ = std::nullopt,
+             const std::optional<py::str>& module_ = std::nullopt, const py::str& name = py::str("head"), const py::str& reason = py::str("head"))
+        : py::list<py::str>(lines), syntax(syntax_), module(module_) {
+        _parts.emplace_back(0, name, reason, std::nullopt, std::nullopt);
+    }
 
     void part(const py::str& name, const py::str& reason = py::str("section"), const std::optional<Dict>& origin = std::nullopt,
-              const std::optional<int64_t>& length = std::nullopt);
-    Dict document() const;
+              const std::optional<int64_t>& length = std::nullopt) {
+        _parts.emplace_back(static_cast<int64_t>(this->size()), name, reason, origin, length);
+    }
+
+    Dict document() const {
+        return cb::compat::guard([&] {
+            const std::vector<std::string> lines = cb::compat::from_py(static_cast<const py::list<py::str>&>(*this));
+            newl2::Assembly out({}, cb::compat::from_py(syntax), cb::compat::from_py(module), std::get<1>(_parts[0]).utf8(), std::get<2>(_parts[0]).utf8());
+            for (std::size_t k = 0; k < _parts.size(); ++k) {
+                const auto& [start, name, reason, origin, length] = _parts[k];
+                if (k > 0) {
+                    std::optional<std::uint64_t> n;
+                    if (length) n = cb::compat::int_from_py<std::uint64_t>(*length);
+                    out.part(name.utf8(), reason.utf8(), shim_detail::origin_of(origin), n);
+                }
+                const std::size_t from = static_cast<std::size_t>(start);
+                const std::size_t to = k + 1 < _parts.size() ? static_cast<std::size_t>(std::get<0>(_parts[k + 1])) : lines.size();
+                for (std::size_t i = from; i < to && i < lines.size(); ++i) out.append(lines[i]);
+            }
+            cb::Arena arena;
+            return shim_detail::doc_dict(newl2::to_json(*out.document(arena)));
+        });
+    }
 };
 
 }  // namespace codebreaker::translate::l2
