@@ -60,6 +60,8 @@ struct Declaration {
 };
 // 'register struct s *a, b[3]' -> base type and [(a, "*a"), (b, "b[3]")]; empty if there is no name in it.
 std::optional<Declaration> declarators(std::string_view decl);
+// The same, with size_t among the words a type is made of (the structures' members are read so).
+std::optional<Declaration> declarators(std::string_view decl, bool size_t_is_type);
 
 // A parameter declared an array (`T a[]`, `T a[][3]`) as the pointer it is (`T *a`, `T (*a)[3]`), which a prototype
 // can name before T is complete.

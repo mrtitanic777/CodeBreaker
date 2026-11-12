@@ -1,0 +1,144 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c"
+  ],
+  "left_out": [],
+  "notes": [],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    80,
+    2839703304
+   ]
+  },
+  "files": {
+   "a.c": [
+    80,
+    2839703304
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     84,
+     4174261118
+    ],
+    [
+     [
+      "int -> int16_t (16 bits, as it was)",
+      [
+       "a.c:2"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     80,
+     2839703304
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     80,
+     2839703304
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     80,
+     2839703304
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     80,
+     2839703304
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     80,
+     2839703304
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     114,
+     3614304577
+    ],
+    [
+     114,
+     3614304577
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     114,
+     3614304577
+    ],
+    [
+     112,
+     3601403480
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     80,
+     2839703304
+    ],
+    [
+     78,
+     1221107807
+    ]
+   ]
+  }
+ }
+}

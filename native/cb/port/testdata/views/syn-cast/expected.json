@@ -1,0 +1,342 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c",
+   "a.h",
+   "b.c"
+  ],
+  "left_out": [],
+  "notes": [
+   [
+    "a structure that is another's, under its own name (cast to it, the old bytes alike): its members of the other's types",
+    [
+     "b.c (struct opt as struct flagdef)"
+    ]
+   ]
+  ],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    62,
+    1982437985
+   ],
+   "a.h": [
+    43,
+    468747198
+   ],
+   "b.c": [
+    83,
+    1153933803
+   ]
+  },
+  "files": {
+   "a.c": [
+    62,
+    1982437985
+   ],
+   "a.h": [
+    43,
+    468747198
+   ],
+   "b.c": [
+    145,
+    1414237999
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     62,
+     1982437985
+    ],
+    []
+   ],
+   "formats": [
+    [
+     62,
+     1982437985
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     62,
+     1982437985
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     62,
+     1982437985
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     62,
+     1982437985
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     62,
+     1982437985
+    ],
+    [],
+    []
+   ]
+  },
+  "a.h": {
+   "widths": [
+    [
+     47,
+     675579159
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "a.h:3"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     43,
+     468747198
+    ],
+    []
+   ],
+   "header_data": [
+    [
+     43,
+     468747198
+    ],
+    [],
+    []
+   ],
+   "old_declarations": [
+    [
+     43,
+     468747198
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     43,
+     468747198
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     43,
+     468747198
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     43,
+     468747198
+    ],
+    [],
+    []
+   ]
+  },
+  "b.c": {
+   "widths": [
+    [
+     149,
+     764286133
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "b.c:3"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     145,
+     1414237999
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     145,
+     1414237999
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     145,
+     1414237999
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     145,
+     1414237999
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     145,
+     1414237999
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     85,
+     2598038512
+    ],
+    [
+     85,
+     2598038512
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     85,
+     2598038512
+    ],
+    [
+     85,
+     2598038512
+    ]
+   ],
+   [
+    "offset_views",
+    "a.h",
+    [
+     47,
+     675579159
+    ],
+    [
+     47,
+     675579159
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.h",
+    [
+     47,
+     675579159
+    ],
+    [
+     47,
+     675579159
+    ]
+   ],
+   [
+    "offset_views",
+    "b.c",
+    [
+     175,
+     2487808962
+    ],
+    [
+     175,
+     2487808962
+    ]
+   ],
+   [
+    "bss_ends",
+    "b.c",
+    [
+     175,
+     2487808962
+    ],
+    [
+     175,
+     2487808962
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     62,
+     1982437985
+    ],
+    [
+     62,
+     1982437985
+    ]
+   ],
+   "a.h": [
+    [
+     43,
+     468747198
+    ],
+    [
+     43,
+     468747198
+    ]
+   ],
+   "b.c": [
+    [
+     145,
+     1414237999
+    ],
+    [
+     145,
+     1414237999
+    ]
+   ]
+  }
+ }
+}

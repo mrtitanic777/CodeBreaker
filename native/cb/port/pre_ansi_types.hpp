@@ -123,6 +123,8 @@ struct SplitDecl {
     std::string type;
     // `m` is a match of the rule's pattern: groups 1 (the lead), 2 (the base), 3 and 4 (the names before and after)
     std::string operator()(const RegexMatch& m) const;
+    // The same from the four pieces (lead, base, names before, names after), for a caller that has no RegexMatch.
+    std::string operator()(std::string_view lead, std::string_view base, std::string_view before, std::string_view after) const;
     friend bool operator==(const SplitDecl&, const SplitDecl&) = default;
 };
 

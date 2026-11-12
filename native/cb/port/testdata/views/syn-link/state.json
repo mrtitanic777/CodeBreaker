@@ -1,0 +1,88 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "isym.h": "struct isym {\n\tstruct isym *link;\t/* (the chain's link: NEXT) */\n\tchar kind;\n};\n"
+  },
+  "kept": [
+   "a.c",
+   "isym.h"
+  ],
+  "fns": [
+   {
+    "name": "chain",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct isym *p"
+     ],
+     [
+      "q",
+      "struct isym *q"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "isym.h": "struct isym {\n\tstruct isym *link;\t/* (the chain's link: NEXT) */\n\tchar kind;\n};\n"
+  },
+  "kept": [
+   "a.c",
+   "isym.h"
+  ],
+  "fns": [
+   {
+    "name": "chain",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct isym *p"
+     ],
+     [
+      "q",
+      "struct isym *q"
+     ]
+    ],
+    "static": false,
+    "line": 3,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\tNEXT(p) = q;\n\treturn 0;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

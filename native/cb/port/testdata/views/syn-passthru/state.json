@@ -1,0 +1,118 @@
+{
+ "pass_through": {
+  "files_changed": {},
+  "kept": [
+   "a.c",
+   "t.h"
+  ],
+  "fns": [
+   {
+    "name": "relay",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct a *p"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   },
+   {
+    "name": "top",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {},
+  "kept": [
+   "a.c",
+   "t.h"
+  ],
+  "fns": [
+   {
+    "name": "relay",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct b *p"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn use(p);\n}"
+   },
+   {
+    "name": "top",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\tstruct b *q;\n\treturn relay(q);\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [
+   [
+    "relay",
+    0,
+    "struct b *p"
+   ]
+  ],
+  "bss": [],
+  "aliases": []
+ }
+}

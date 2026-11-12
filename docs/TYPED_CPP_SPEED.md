@@ -957,3 +957,41 @@ already lowered, so only the writing is timed; best of five):
 
 (The previous typed port, an imitation of the Python on `py::str`, was not timed: it ran only inside the exe.)
 The writer was not profiled beyond that: it allocates a string per line and per expression, which is the next cost if it is ever hot.
+
+## translate/frontends/csharp/lower (W1-B30)
+
+Lowering the four real corpus programs of testdata (Shapes, Numbers, Records, Linq: 370 KB of Roslyn dump, about 1,300 IR
+nodes) from the parsed dump to the typed IR, best of 7: Python 10.6 ms, native/cb 3.0 ms (3.5x). The dump's JSON parse is not
+this module's but is the larger cost of the path: nlohmann's ordered_json 18.9 ms for the four, Python's json.load 28.6 ms. (The
+Roslyn run that makes the dump takes seconds and dominates a real conversion.) The old typed port (py::ref nodes over the
+imitation layer) was not timed: it cannot be linked into cb_tests, and its shim now runs the new module through the L2 document.
+## translate/backends/java and translate/rewrite (W1-B26)
+
+Old = `java.py` (the typed port runs the same loops over py:: values), new = `native/cb/translate/backends/java`, Release /O2, one thread, best of 5, the clang front end's L2 for `FaithfulArith.c` (about 400 small functions: every integer width and sign, conversions, compound assignment, comparisons) written as Java by the faithful tier, document already read into nodes.
+
+| Work | Old (Python) | New |
+|---|---|---|
+| java.program, FaithfulArith, 45 KB of Java | 112 ms | 2.2 ms |
+
+`rewrite` is a handful of tree walks (a method list, a statement-list scan, a bottom-up rebuild); no hot path, not timed.
+## cb refactor W2-B1: emulate/m68k, emulate/sm83 (2026-11-11)
+
+Old = the typed ports (`py::list`/`py::dict` registers and memory, a `std::function` handler table keyed by mnemonic strings, the condition as a string looked up per branch; built from git HEAD with the old layer and linked against the same decoders); New = `native/cb/emulate/{m68k,sm83}.cpp`, Release /O2, one thread, a 200,000-step loop run 20 times (4,000,000 instructions), the interpreter's steady state (every address decoded once).
+
+| Work | Old | New |
+|---|---|---|
+| m68k: `MOVEQ`/`ADD.L`/`SUBQ.L`/`BNE` loop, per instruction | 334 ns | 15.7 ns (21x) |
+| sm83: `ADD A,B` / `LD (HL),A` / `DEC B` / `JR NZ` loop, per instruction | 424 ns | 12.4 ns (34x) |
+
+The gain is the dispatch: a decoded instruction is prepared once (mnemonic to an enum, the condition and shift kind to enums, an SM83 pattern to a small program), registers are `std::array<uint32_t,8>` / bytes, and a step does one hash lookup, one `switch`, and no allocation. The sm83 step still re-reads the instruction's bytes through the bus on every step (a device sees each fetch, and code that changes is decoded again); the m68k step decodes an address once, as the Python did.
+## W2-B10: port/pre_ansi (part 1 and part 3) and port/asmdata
+
+Old = the Python (the old typed port cannot be built here without the whole exe); New = native/cb/port, Release, over the two MS C 3.00 trees (159 and 294 files).
+
+| What | Old | New |
+|---|---|---|
+| Port constructor, msc-3.00-p3 + msc-3.00-p0 | 3.71 s + 1.17 s (Python) | 3.6 s for the whole test (both constructors, reading the files, comparing every file to the golden) |
+| offset_views / bss_ends over every file, views built once | inside modernize: 10.9 s for p3 (Python) | 2.5 s including loading the state |
+| 7 text passes on every file | not timed separately | 2.4 s including loading |
+
+Not much faster than the Python: the time is the regex engine over about 700 KB of C. Not profiled further.

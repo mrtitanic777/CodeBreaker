@@ -7,6 +7,8 @@
 #include "codebreaker/translate/backends/cpp17.hpp"
 #include "codebreaker/translate/desugar.hpp"
 #include "codebreaker/translate/dotnet/judge.hpp"
+#include "codebreaker/translate/frontends/csharp/lower.hpp"
+#include "codebreaker/translate/frontends/csharp/package.hpp"
 #include "codebreaker/translate/javajudge.hpp"
 #include "codebreaker/translate/l2.hpp"
 #include "codebreaker/translate/native_l2.hpp"
@@ -79,6 +81,16 @@ inline void touch_desugar_and_judge() {
     (void)&judge::lower_program;
     (void)&judge::build;
     (void)&judge::set_java_frontend;
+}
+
+inline void touch_csharp_lower() {
+    // the old front end's calls over the old tree (package.cpp is the one caller)
+    namespace lower = codebreaker::translate::frontends::csharp::lower;
+    namespace ir = codebreaker::translate::ir;
+    (void)static_cast<ir::Dict (*)(const py::str&)>(&lower::load_tree);
+    (void)static_cast<py::ref<ir::Unit> (*)(const ir::Dict&, const std::optional<py::str>&)>(&lower::lower);
+    (void)&lower::lower_with_refusals;
+    (void)&lower::LANG;
 }
 
 }  // namespace shim_check_translate

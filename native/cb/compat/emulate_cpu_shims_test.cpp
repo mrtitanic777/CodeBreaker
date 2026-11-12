@@ -115,3 +115,66 @@ CB_TEST("compat.emulate_cpu_shims.native_driver_types", [] {
     nd::RunArgs a;
     CB_CHECK(a.gov == nullptr);
 });
+
+#include "codebreaker/emulate/m68k.hpp"
+#include "codebreaker/emulate/sm83.hpp"
+
+CB_TEST("compat.emulate_cpu_shims.m68k_bus_and_run", [] {
+    namespace om68k = codebreaker::emulate::m68k;
+    py::bytearray mem = py::bytearray::zeros(0x10000);
+    const unsigned char code[] = {0x30, 0x39, 0x00, 0xC0, 0x00, 0x04, 0x4E, 0x75};   // MOVE.W $C00004,D0 ; RTS
+    for (size_t i = 0; i < sizeof code; ++i) mem[0x200 + static_cast<int64_t>(i)] = code[i];
+    auto bus = std::make_shared<om68k::Bus>(mem);
+    bus->map(0xC00000, 0xC0000F, [](int64_t a, int64_t) -> int64_t { return (a & ~int64_t(1)) == 0xC00004 ? 0x0008 : 0; });
+    om68k::RunOptions kw;
+    kw.sp = 0x8000;
+    const auto run = om68k::recorded(bus, 0x200, kw);
+    CB_CHECK(run.exit && *run.exit == py::str("return"));
+    CB_CHECK(run.endian == py::str("big"));
+    CB_CHECK_EQ(std::get<int64_t>(run.results.at(py::str("D0"))), 8);
+    CB_CHECK_EQ(std::get<int64_t>(run.results.at(py::str("A7"))), 0x8000);
+    CB_CHECK_EQ(py::len(run.io), 1);
+    CB_CHECK(run.io[0].kind == py::str("r2"));
+    CB_CHECK_EQ(run.io[0].port, 0xC00004);
+    CB_CHECK_EQ(py::len(bus->log), 1);                                       // the old log member is kept up
+    // the bus shares the caller's bytearray, big-endian
+    bus->write(0x20, 2, 0x1234);
+    CB_CHECK_EQ(static_cast<int64_t>(mem[0x20]), 0x12);
+    CB_CHECK_EQ(bus->read(0x20, 2), 0x1234);
+    // registers given as lists
+    py::list<int64_t> d;
+    for (int i = 0; i < 8; i++) d.append(i + 1);
+    om68k::RunOptions k2;
+    k2.sp = 0x8000;
+    k2.d = d;
+    const auto r2 = om68k::run(std::make_shared<om68k::Bus>(mem), 0x200, k2.steps, k2.d, k2.a, k2.sp, k2.sr);
+    CB_CHECK(r2.end == py::str("return"));
+    CB_CHECK_EQ(r2.d[1], 2);
+});
+
+CB_TEST("compat.emulate_cpu_shims.sm83_run_on_a_bus_and_on_plain_memory", [] {
+    namespace osm = codebreaker::emulate::sm83;
+    py::bytearray mem = py::bytearray::zeros(0x10000);
+    const unsigned char code[] = {0xF0, 0x44, 0xEA, 0x00, 0xC0, 0xC9};   // LDH A,($FF44) ; LD ($C000),A ; RET
+    for (size_t i = 0; i < sizeof code; ++i) mem[0x8000 + static_cast<int64_t>(i)] = code[i];
+    auto bus = std::make_shared<osm::Bus>(mem);
+    bus->map(0xFF00, 0xFF7F, [](int64_t a) -> int64_t { return a == 0xFF44 ? 0x90 : 0; });
+    const auto run = osm::recorded(osm::Memory(bus), 0x8000);
+    CB_CHECK(run.exit && *run.exit == py::str("return"));
+    CB_CHECK_EQ(static_cast<int64_t>(mem[0xC000]), 0x90);                    // what the function wrote is in the caller's bytearray
+    CB_CHECK_EQ(std::get<int64_t>(run.results.at(py::str("A"))), 0x90);
+    CB_CHECK_EQ(py::len(run.io), 1);
+    CB_CHECK(run.io[0].kind == py::str("r"));
+    CB_CHECK_EQ(run.io[0].port, 0xFF44);
+    // plain memory: no bus, no log
+    const auto r2 = osm::run(osm::Memory(mem), 0x8000);
+    CB_CHECK(r2.end == py::str("return"));
+    CB_CHECK_EQ(py::len(r2.io), 0);
+    // the registers it starts from
+    osm::RunOptions kw;
+    kw.regs.b = 7;
+    const unsigned char add[] = {0x80, 0xC9};   // ADD A,B ; RET
+    for (size_t i = 0; i < sizeof add; ++i) mem[0x9000 + static_cast<int64_t>(i)] = add[i];
+    const auto r3 = osm::run(osm::Memory(mem), 0x9000, kw.steps, kw.sp, kw.regs);
+    CB_CHECK_EQ(r3.a, 7);
+});

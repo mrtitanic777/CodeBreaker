@@ -1,0 +1,152 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c"
+  ],
+  "left_out": [],
+  "notes": [
+   [
+    "a function parameter given functions of pointers (int was a pointer's width): a function of that pointer",
+    [
+     "a.c (fn of run: char *)"
+    ]
+   ]
+  ],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    135,
+    1822821380
+   ]
+  },
+  "files": {
+   "a.c": [
+    137,
+    3868462789
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     145,
+     109438829
+    ],
+    [
+     [
+      "int -> int16_t (16 bits, as it was)",
+      [
+       "a.c:3",
+       "a.c:9"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     137,
+     3868462789
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     137,
+     3868462789
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     137,
+     3868462789
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     137,
+     3868462789
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     137,
+     3868462789
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     169,
+     2769506283
+    ],
+    [
+     169,
+     2769506283
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     169,
+     2769506283
+    ],
+    [
+     169,
+     2769506283
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     137,
+     3868462789
+    ],
+    [
+     137,
+     3868462789
+    ]
+   ]
+  }
+ }
+}

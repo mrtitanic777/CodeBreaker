@@ -1,0 +1,118 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "b.c": "struct opt {\t/* (as struct flagdef is: one structure, two names) */\n    char *pat;\n    int *o2;\n};\nstruct opt o;\nmain()\n{\n\tuse(&o);\n\treturn 0;\n}\n"
+  },
+  "kept": [
+   "a.c",
+   "a.h",
+   "b.c"
+  ],
+  "fns": [
+   {
+    "name": "use",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct flagdef *p"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   },
+   {
+    "name": "main",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "b.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "b.c": "struct opt {\t/* (as struct flagdef is: one structure, two names) */\n    char *pat;\n    int *o2;\n};\nstruct opt o;\nmain()\n{\n\tuse(&o);\n\treturn 0;\n}\n"
+  },
+  "kept": [
+   "a.c",
+   "a.h",
+   "b.c"
+  ],
+  "fns": [
+   {
+    "name": "use",
+    "ret": "",
+    "params": [
+     [
+      "p",
+      "struct flagdef *p"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn *p->var;\n}"
+   },
+   {
+    "name": "main",
+    "ret": "int",
+    "params": [],
+    "static": false,
+    "line": 6,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "b.c",
+    "body": "{\n\tuse(&o);\n\treturn 0;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}
