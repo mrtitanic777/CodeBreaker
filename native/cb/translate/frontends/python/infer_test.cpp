@@ -69,7 +69,12 @@ const InferTestLibrary& test_library() {
     return library;
 }
 
-std::string inference_read(const std::string& relative) { return cb::fs::read_text(cb::testing::data_path(relative)); }
+// (git may check the data out with CRLF line ends)
+std::string inference_read(const std::string& relative) {
+    std::string text = cb::fs::read_text(cb::testing::data_path(relative));
+    std::erase(text, '\r');
+    return text;
+}
 
 void inference_load(pr::Program& p, const std::string& source) {
     p.add_module("app", source);

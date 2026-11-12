@@ -1,0 +1,44 @@
+[
+ {
+  "name": "ct_mymath_c",
+  "path": "C:\\proj\\mymath.c",
+  "language": "c",
+  "std": null,
+  "own": null
+ },
+ {
+  "name": "hdr_main",
+  "path": "C:\\proj\\hdr\\main.c",
+  "language": "c",
+  "std": null,
+  "own": [
+   "C:\\proj\\hdr\\main.c",
+   "C:\\proj\\hdr\\shared.h"
+  ]
+ },
+ {
+  "name": "gen_p69c",
+  "path": "C:\\proj\\gen\\p69.c",
+  "language": "c",
+  "std": null,
+  "own": null
+ },
+ {
+  "name": "gen_p33cpp",
+  "path": "C:\\proj\\gen\\p33.cpp",
+  "language": "c++",
+  "std": "",
+  "own": [
+   "C:\\proj\\gen\\p33.cpp.other"
+  ]
+ },
+ {
+  "name": "gen_p29cpp",
+  "path": "C:\\proj\\gen\\p29.cpp",
+  "language": "cpp",
+  "std": "c++14",
+  "own": [
+   "C:\\proj\\gen\\p29.cpp"
+  ]
+ }
+]

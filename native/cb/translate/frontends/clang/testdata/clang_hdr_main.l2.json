@@ -1,0 +1,558 @@
+{
+ "node": "Unit",
+ "path": "c:\\proj\\hdr\\main.c",
+ "package": "",
+ "types": [
+  {
+   "node": "ClassDecl",
+   "line": 1,
+   "col": 8,
+   "name": "Shared",
+   "qname": "Shared",
+   "kind": "struct",
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 1,
+     "col": 21,
+     "sym": {
+      "kind": "field",
+      "name": "a",
+      "owner": "Shared",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 1,
+     "col": 31,
+     "sym": {
+      "kind": "field",
+      "name": "b",
+      "owner": "Shared",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     },
+     "mods": [
+      "public"
+     ]
+    }
+   ],
+   "layout": {
+    "kind": "record",
+    "size": 16,
+    "fields": [
+     {
+      "name": "a",
+      "offset": 0,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     {
+      "name": "b",
+      "offset": 8,
+      "type": {
+       "kind": "f64"
+      }
+     }
+    ],
+    "name": "Shared",
+    "role": "struct",
+    "packed": false
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 2,
+   "col": 19,
+   "sym": {
+    "kind": "function",
+    "name": "twice",
+    "owner": "main",
+    "static": true,
+    "params": [
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "twice",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 2,
+     "col": 29,
+     "sym": {
+      "kind": "param",
+      "name": "x",
+      "owner": "twice",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 2,
+    "col": 19,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 2,
+      "col": 19,
+      "expr": {
+       "node": "Binary",
+       "line": 2,
+       "col": 19,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "*",
+       "left": {
+        "node": "Name",
+        "line": 2,
+        "col": 19,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "param",
+         "name": "x",
+         "owner": "twice",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Lit",
+        "line": 2,
+        "col": 19,
+        "type": {
+         "kind": "i32"
+        },
+        "value": 2
+       }
+      }
+     }
+    ]
+   },
+   "mods": [
+    "internal",
+    "inline"
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 4,
+   "col": 8,
+   "sym": {
+    "kind": "global",
+    "name": "SH_A",
+    "owner": "main",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 3
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:"
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 4,
+   "col": 18,
+   "sym": {
+    "kind": "global",
+    "name": "SH_B",
+    "owner": "main",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 4
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:"
+   ]
+  },
+  {
+   "node": "MethodDecl",
+   "line": 2,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "helper",
+    "owner": "main",
+    "static": true,
+    "params": [
+     {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "class",
+       "name": "Shared"
+      }
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "helper",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 2,
+     "col": 27,
+     "sym": {
+      "kind": "param",
+      "name": "s",
+      "owner": "helper",
+      "type": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "class",
+        "name": "Shared"
+       }
+      }
+     },
+     "type": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "class",
+       "name": "Shared"
+      }
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 2,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 2,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 2,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Call",
+        "line": 2,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "function",
+         "name": "twice",
+         "owner": "main",
+         "static": true,
+         "params": [
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "args": [
+         {
+          "node": "Select",
+          "line": 2,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "obj": {
+           "node": "Unary",
+           "line": 2,
+           "col": 5,
+           "type": {
+            "kind": "class",
+            "name": "Shared"
+           },
+           "op": "*",
+           "x": {
+            "node": "Name",
+            "line": 2,
+            "col": 5,
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Shared"
+             }
+            },
+            "sym": {
+             "kind": "param",
+             "name": "s",
+             "owner": "helper",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "Shared"
+              }
+             }
+            }
+           },
+           "postfix": false
+          },
+          "sym": {
+           "kind": "field",
+           "name": "a",
+           "owner": "Shared",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        ]
+       },
+       "right": {
+        "node": "Name",
+        "line": 2,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "global",
+         "name": "SH_B",
+         "owner": "main",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 3,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "main",
+    "owner": "main",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "main",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 3,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Local",
+      "line": 3,
+      "col": 32,
+      "sym": {
+       "kind": "local",
+       "name": "s",
+       "owner": "main",
+       "type": {
+        "kind": "class",
+        "name": "Shared"
+       }
+      },
+      "type": {
+       "kind": "class",
+       "name": "Shared"
+      },
+      "init": {
+       "node": "New",
+       "line": 3,
+       "col": 32,
+       "type": {
+        "kind": "class",
+        "name": "Shared"
+       },
+       "sym": {
+        "kind": "ctor",
+        "name": "<aggregate>",
+        "owner": "Shared",
+        "params": []
+       },
+       "args": [
+        {
+         "node": "Lit",
+         "line": 3,
+         "col": 32,
+         "type": {
+          "kind": "i32"
+         },
+         "value": 1
+        },
+        {
+         "node": "Lit",
+         "line": 3,
+         "col": 32,
+         "type": {
+          "kind": "f64"
+         },
+         "value": 2.5
+        }
+       ],
+       "memory": "stack"
+      }
+     },
+     {
+      "node": "Return",
+      "line": 3,
+      "col": 5,
+      "expr": {
+       "node": "Call",
+       "line": 3,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "sym": {
+        "kind": "function",
+        "name": "helper",
+        "owner": "main",
+        "static": true,
+        "params": [
+         {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Shared"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "i32"
+        }
+       },
+       "args": [
+        {
+         "node": "Unary",
+         "line": 3,
+         "col": 5,
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Shared"
+          }
+         },
+         "op": "&",
+         "x": {
+          "node": "Name",
+          "line": 3,
+          "col": 5,
+          "type": {
+           "kind": "class",
+           "name": "Shared"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "s",
+           "owner": "main",
+           "type": {
+            "kind": "class",
+            "name": "Shared"
+           }
+          }
+         },
+         "postfix": false
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "target": {
+  "triple": "x86_64-pc-windows-msvc",
+  "pointer": 8,
+  "long": 4,
+  "wchar": 2,
+  "char_signed": true,
+  "language": "c",
+  "std": ""
+ }
+}
