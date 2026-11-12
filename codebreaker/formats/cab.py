@@ -23,6 +23,7 @@ Block checksums are verified where a cabinet carries them.
 """
 import collections
 import os
+import struct
 import sys
 
 from codebreaker.formats import native
@@ -170,7 +171,7 @@ def main(argv):
             size = write(files, args[1], compress="none" if store else "mszip")
             print("wrote %s: %d files, %d bytes" % (args[1], len(files), size))
             return 0
-    except (CabError, OSError) as problem:
+    except (CabError, OSError, struct.error) as problem:   # struct.error: a cabinet cut short
         print("cab: %s" % problem, file=sys.stderr)
         return 1
     print(main.__doc__, file=sys.stderr)

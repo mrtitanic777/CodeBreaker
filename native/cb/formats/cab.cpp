@@ -60,10 +60,12 @@ std::string Cabinet::compression_of(const FileEntry& file) const {
 }
 
 Cabinet parse(ByteView data, const std::filesystem::path& path) {
+    // Errors name the file when there is one.
+    const std::string reader = path.empty() ? std::string(kReader) : path_text(path);
     if (data.size() < kHeaderSize || std::string_view(reinterpret_cast<const char*>(data.data()), 4) != "MSCF") {
-        bad("not a cabinet (no MSCF signature)");
+        throw FormatError(reader, 0, "not a cabinet (no MSCF signature)");
     }
-    io::ByteReader r(data, kReader);
+    io::ByteReader r(data, reader);
     Cabinet c;
     c.path = path;
     r.seek(8);
