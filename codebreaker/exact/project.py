@@ -131,7 +131,7 @@ class Project(object):
                 c = l.split()
                 if l.startswith("#") or len(c) < 2:
                     continue
-                if len(c) >= 3 and c[1] in ("C", "D", "S"):
+                if len(c) >= 3 and c[1] in ("C", "D", "S", "?"):   # ("?": the kind unsaid, as save_symbols writes it)
                     s[c[0]] = (c[1], int(c[2], 16))
                 elif re.fullmatch(r"[0-9a-fA-F]+", c[1]):     # (name address: of the code or the data, unsaid)
                     s[c[0]] = ("?", int(c[1], 16))

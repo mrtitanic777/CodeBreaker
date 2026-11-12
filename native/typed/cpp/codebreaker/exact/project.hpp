@@ -1,4 +1,11 @@
-// codebreaker/exact/project.hpp -- typed C++ of codebreaker.exact.project
+// codebreaker/exact/project.hpp -- compat shim for cb/exact/project.hpp (docs/CPP_DESIGN.md 6.3) over the old layer's types.
+//
+// The logic (project.json, the program's header and relocations, SYMBOLS, the source files, the "starts" file, the headers)
+// is cb::exact::project::Project's, which this class holds (`impl_`) and converts from; what stays here is what the old
+// layer's callers read in their own types (py::str/py::list, the old toolchain, the old stage interfaces the adapters
+// below hand out). Deleted with its last old-layer consumer (exact/carve, bench, bss, link, names, run, seed).
+//
+// (the description of the old port follows)
 //
 // project.py -- one program being rebuilt: a directory and its plain-text descriptions.
 //
@@ -81,6 +88,7 @@
 #include <tuple>
 #include <variant>
 
+#include "cb/exact/project.hpp"
 #include "codebreaker/exact/batch.hpp"
 #include "codebreaker/exact/compare.hpp"
 #include "codebreaker/exact/data.hpp"
@@ -258,6 +266,9 @@ class Project : public std::enable_shared_from_this<Project> {
     // the project.json of the folder read again, cfg[key][sub] = value (setdefault(key, {})), written back
     // (json.dump(cfg, f, indent=1)) and kept as the project's cfg: what link.fit does to "data_sizes" and "data_pads"
     void set_project_entry(const py::str& key, const py::str& sub, int64_t value);
+
+    // the project as the new layer reads it (the logic of the members below)
+    std::shared_ptr<cb::exact::project::Project> impl_;
 
     // prj._library: the library stage's answer is kept in the library adapter of the project (as_library); forget it
     // (`prj._library = None`)
