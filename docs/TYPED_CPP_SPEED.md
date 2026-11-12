@@ -974,3 +974,13 @@ Old = `java.py` (the typed port runs the same loops over py:: values), new = `na
 | java.program, FaithfulArith, 45 KB of Java | 112 ms | 2.2 ms |
 
 `rewrite` is a handful of tree walks (a method list, a statement-list scan, a bottom-up rebuild); no hot path, not timed.
+## cb refactor W2-B1: emulate/m68k, emulate/sm83 (2026-11-11)
+
+Old = the typed ports (`py::list`/`py::dict` registers and memory, a `std::function` handler table keyed by mnemonic strings, the condition as a string looked up per branch; built from git HEAD with the old layer and linked against the same decoders); New = `native/cb/emulate/{m68k,sm83}.cpp`, Release /O2, one thread, a 200,000-step loop run 20 times (4,000,000 instructions), the interpreter's steady state (every address decoded once).
+
+| Work | Old | New |
+|---|---|---|
+| m68k: `MOVEQ`/`ADD.L`/`SUBQ.L`/`BNE` loop, per instruction | 334 ns | 15.7 ns (21x) |
+| sm83: `ADD A,B` / `LD (HL),A` / `DEC B` / `JR NZ` loop, per instruction | 424 ns | 12.4 ns (34x) |
+
+The gain is the dispatch: a decoded instruction is prepared once (mnemonic to an enum, the condition and shift kind to enums, an SM83 pattern to a small program), registers are `std::array<uint32_t,8>` / bytes, and a step does one hash lookup, one `switch`, and no allocation. The sm83 step still re-reads the instruction's bytes through the bus on every step (a device sees each fetch, and code that changes is decoded again); the m68k step decodes an address once, as the Python did.
