@@ -3,6 +3,7 @@
 // still the translated Python's.
 //
 //     codebreaker info <file-or-module|folder> ...     cb::formats::inspect
+//     codebreaker flat-thunk <module> ...              cb::build::flat_thunk
 //
 // The exe reaches this through one C entry point, cb_native_command(), called from native/cbexe/commands.cc; the
 // translated codebreaker/__main__.py hands it a command line whose command is_native() before anything else reads it

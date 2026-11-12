@@ -132,7 +132,7 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 cb_area(verify)
 
 cb_area(app)
-target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats)
+target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols)
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)

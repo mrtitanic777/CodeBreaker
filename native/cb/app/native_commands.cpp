@@ -7,15 +7,19 @@
 
 #include "cb/base/config.hpp"
 #include "cb/base/corpus.hpp"
+#include "cb/build/flat_thunk.hpp"
+#include "cb/build/watcom.hpp"
+#include "cb/core/error.hpp"
 #include "cb/core/log.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/inspect.hpp"
+#include "cb/symbols/prototypes.hpp"
 
 namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 1> kNative{"info"};
+constexpr std::array<std::string_view, 2> kNative{"info", "flat-thunk"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -52,6 +56,25 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     formats::inspect::InfoEnvironment env;
     env.resolve = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
     table.set(formats::inspect::info_command(std::move(env)));
+
+    // flat-thunk: the period tools from the settings, the SDK prototypes read from the headers when first asked
+    const config::Config& config = config::current();
+    build::flat_thunk::Services ft;
+    std::filesystem::path reference;
+    try {
+        reference = corpus->reference();
+    } catch (const Error&) {   // no reference folder: flat-thunk says so when it needs one; other commands do not care
+    }
+    if (!reference.empty()) ft.locations.reference_roots.push_back(reference);
+    ft.locations.period_compiler = config.path("period_compiler").value_or(std::filesystem::path{});
+    ft.locations.openwatcom = build::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
+    ft.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
+    const std::filesystem::path ow_root = ft.locations.openwatcom.root();
+    ft.sdk = [ow_root, reference] {
+        const auto folders = symbols::prototypes::HeaderFolders::standard(ow_root, reference);
+        return build::flat_thunk::sdk_prototypes(symbols::prototypes::PrototypeTable(symbols::prototypes::read_headers(folders)));
+    };
+    table.set(build::flat_thunk::command(std::move(ft)));
 }
 
 bool is_native_command(std::string_view name) {
