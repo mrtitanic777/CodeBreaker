@@ -20,8 +20,10 @@
 #include <optional>
 #include <variant>
 
+#include "cb/base/config.hpp"
 #include "cb/compat/old_val_json.hpp"
 #include "cb/compat/py_bridge.hpp"
+#include "cb/translate/backends/java.hpp"
 #include "cb/translate/judge_native_jvm.hpp"
 #include "cb/translate/l2.hpp"
 #include "codebreaker/java/transpile.hpp"
@@ -149,7 +151,7 @@ inline cbj::Host host() {
     cbj::Host h;
     const auto [javac, java_] = codebreaker::verify::lanes::java::jdk();
     h.jdk = {path_of(javac), path_of(java_)};
-    h.runtime_sources = path_of(jback::RUNTIME());
+    h.runtime_sources = cb::config::current().checkout_root() / cb::translate::backends::java::kRuntimeDir;
     h.state_folder = path_of(py::os::path::join(py::settings::get_str(py::str("state")), py::str("translate")));
     h.clang = [fe]() -> std::optional<std::filesystem::path> {
         const auto c = fe.clang();
