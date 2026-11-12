@@ -833,3 +833,16 @@ repeated; times for the whole loop.
 `discover` over the 16 KB Minecraft slice (4,096 words, a data section of 57 pointers, 37 functions): 0.04 ms a run with the pointer
 scan (50 runs in 2 ms). The old port could not be timed beside it in the test executable (it reads its image through the old PowerPC
 PE reader, which the new tests cannot link).
+
+## W1-B21: recompile/powerpc (and config, port/oldlayout)
+
+Old = the Python (the old typed port could not be linked into the test executable: it reads its image through the old PowerPC PE
+reader), new = `native/cb/recompile/powerpc.cpp`, Release /O2, one thread, the whole 16 KB Minecraft slice (4,096 instructions) as one
+function with its jump-table recovery, per round.
+
+| Work | Old (Python) | New |
+|---|---|---|
+| powerpc.recompile_function, 4,096 instructions | 48.9 ms | 10.8 ms |
+
+What remains is mostly Capstone's decode. config (one `config.make` of a 2 KB program: 0.5 ms in the Python) and oldlayout (clang
+dominates) were not timed separately.
