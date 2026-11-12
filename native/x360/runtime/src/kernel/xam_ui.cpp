@@ -987,8 +987,9 @@ GUEST_IMPORT(XamShowCreateProfileUI)
 // DWORD XamShowSigninUI(DWORD PaneCount, DWORD Flags) (XShowSigninUI): the Guide's sign-in panes, shown
 // asynchronously; ERROR_SUCCESS once open. The XDK: one-pane sign-in is additive (the profile picked is signed in to
 // the controller that picked it, if it was not signed in and that controller was not in use; otherwise it moves or
-// replaces); when sign-in completes and a signed-in player changed, XN_SYS_SIGNINCHANGED is sent with a bit per user
-// index signed in by this sign-in (sent before XN_SYS_UI 0, as Xenia orders them); cancelling changes nothing.
+// replaces); when sign-in completes with a pick, XN_SYS_SIGNINCHANGED is sent with a bit per user index signed in
+// by this sign-in, also when the profile picked was already signed in there (sent before XN_SYS_UI 0, as Xenia orders
+// them); cancelling changes nothing and sends none.
 // Every profile here is a local offline one (kernel/users.h): XSSUI_FLAGS_SHOWONLYONLINEENABLED lists none, and
 // without a LIVE-enabled sponsor there is no guest option (XSSUI_FLAGS_ENABLE_GUEST). XSSUI_FLAGS_ADDUSER leaves out
 // profiles already signed in. The pane is driven by any controller: A on a profile signs it in to that controller's
@@ -997,8 +998,8 @@ GUEST_IMPORT(XamShowCreateProfileUI)
 // for 2/4 panes only together with SHOWONLYONLINEENABLED; the cases it never uses stop with a message.
 // Drawn as XAM's one-pane sign-in (signin1.xur): the eligible profiles, then "Create Profile" (closes the pane and
 // starts XamShowCreateProfileUI's flow for that controller) and "Download Profile", which copies the new profiles of the `profiles` folder (kernel/profile_import.h; the console
-// would recover one from Xbox LIVE) and lists them; a 2/4-pane request that lists no profile shows the same pane
-// (deviation: the console would show signin2/4.xur). A profile signing in raises XAM's toast.
+// would recover one from Xbox LIVE) and lists them; a 2/4-pane request shows the same pane (deviation: the console
+// would show signin2/4.xur). A profile signing in raises XAM's toast.
 GUEST_IMPORT(XamShowSigninUI)
 {
     const uint32_t panes = ctx.r3.u32, flags = ctx.r4.u32;
@@ -1054,14 +1055,17 @@ GUEST_IMPORT(XamShowSigninUI)
     dialog->user = kUserIndexAny;
     dialog->title = u"Sign In";
     list(*dialog);
-    if (panes != 1 && !eligible->empty())
-        Fatal("XamShowSigninUI({}, {:08X}): sign-in with several panes is not implemented", panes, flags);
+    // 2/4 panes (TU46 asks for 4 with SHOWONLYONLINEENABLED when a world is created): the one pane, which any
+    // controller drives and which is additive, so each player can sign in from it in turn (deviation: signin2/4.xur).
     dialog->complete = [eligible](uint32_t answer, uint32_t user) {
         if (answer >= eligible->size() || user >= kernel::users::kMaxUsers)
             return;
         const kernel::users::Profile profile = kernel::users::Profiles()[(*eligible)[answer]];
+        // Already signed in to this controller: nothing changes, but the pick still completes the sign-in with
+        // XN_SYS_SIGNINCHANGED for that user. TU46's sign-in helper (0x824CE760) waits for it after the pane closes and
+        // takes its absence as a failed sign-in, so re-picking the LIVE profile of user 0 at world creation looped.
         if (kernel::users::Xuid(user) == profile.xuid)
-            return; // already signed in to this controller: nothing changed
+            return kernel::BroadcastNotification(kXnSysSigninChanged, 1u << user);
         kernel::users::SignIn(user, (*eligible)[answer]);
         kernel::BroadcastNotification(kXnSysSigninChanged, 1u << user);
         // XAM's toast for the sign-in: "<gamertag> signed in" for a local profile; an Xbox LIVE profile's once its LIVE
