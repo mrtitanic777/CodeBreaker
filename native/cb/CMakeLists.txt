@@ -231,7 +231,7 @@ if(CB_ASAN)
 endif()
 
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 

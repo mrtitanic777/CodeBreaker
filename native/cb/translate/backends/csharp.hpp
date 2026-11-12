@@ -153,7 +153,8 @@ public:
     virtual std::optional<std::string> iterable(Context&, ir::Node*) { return std::nullopt; }
     // What a local holds, as the unit declares it (a Map that is a TreeMap).
     virtual void record(Context&, const ir::SymP&, ir::Node* /*init*/) {}
-    virtual void check_lambda(Context&, ir::Lambda&) {}
+    // A lambda of this type (the node's: the interface it is written for).
+    virtual void check_lambda(Context&, ir::Lambda&, const ir::TypeP& /*type*/) {}
 };
 
 // A library for a language, made once per Program.

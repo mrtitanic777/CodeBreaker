@@ -2148,7 +2148,7 @@ Ex Writer::dispatch(Node* e) {
     if (const auto* x = ir::get<ir::Lambda>(e)) {
         if (java_) {
             auto* lam = ir::get<ir::Lambda>(e);
-            lib().check_lambda(*this, *lam);
+            lib().check_lambda(*this, *lam, e->type);
         }
         // untyped parameters: a lambda here always has a target type (an argument, a typed local, a return)
         struct RestoreLocals {

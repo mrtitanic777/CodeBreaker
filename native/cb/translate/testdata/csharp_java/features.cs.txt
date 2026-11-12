@@ -1,0 +1,172 @@
+// ==== Features.cs ====
+// Translated by CodeBreaker from Features (java).
+#nullable disable
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace feat
+{
+    public class Features
+    {
+        public Features()
+        {
+        }
+
+        class Resource : IDisposable
+        {
+            internal Resource()
+            {
+            }
+
+            public virtual void Dispose()
+            {
+                Console.WriteLine("closed");
+            }
+        }
+
+        abstract class Shape : IComparable<Shape>
+        {
+            internal Shape()
+            {
+            }
+
+            internal abstract double area();
+
+            public virtual int CompareTo(Shape o)
+            {
+                return JavaRt.CompareDouble(area(), o.area());
+            }
+
+            public override string ToString()
+            {
+                return "Shape(" + JavaRt.Str(area()) + ")";
+            }
+        }
+
+        sealed class Square : Shape
+        {
+            internal double side;
+
+            internal Square(double side)
+            {
+                this.side = side;
+            }
+
+            internal override double area()
+            {
+                return side * side;
+            }
+
+            public override bool Equals(object o)
+            {
+                return o is Square && ((Square)o).side == side;
+            }
+
+            public override int GetHashCode()
+            {
+                return (int)side;
+            }
+        }
+
+        interface Greeter
+        {
+            string greet(string name);
+        }
+
+        abstract class Partial : Greeter
+        {
+            internal Partial()
+            {
+            }
+
+            public abstract string greet(string name);
+        }
+
+        class Polite : Partial
+        {
+            internal Polite()
+            {
+            }
+
+            public override string greet(string name)
+            {
+                return "hello " + JavaRt.Str(name);
+            }
+        }
+
+        class Base
+        {
+            internal int v = 1;
+
+            internal Base()
+            {
+                Console.WriteLine("base " + v);
+            }
+        }
+
+        class Derived : Base
+        {
+            internal int w;
+
+            internal Derived() : base()
+            {
+                w = 2;
+                w += 1;
+                Console.WriteLine("derived " + w);
+            }
+        }
+        internal const int LIMIT = 10;
+        internal const string NAME = "features";
+        internal static int counter;
+
+        internal static int compute()
+        {
+            return 41;
+        }
+
+        public static void Main(string[] args)
+        {
+            var sb = new StringBuilder("x");
+            sb.Append(1).Append("a");
+            List<int> xs = new List<int>();
+            xs.Add(3);
+            xs.Add(4);
+            IDictionary<string, int> sorted = new SortedDictionary<string, int>();
+            sorted["b"] = 2;
+            sorted["a"] = 1;
+            foreach (KeyValuePair<string, int> e in sorted)
+            {
+                Console.WriteLine(JavaRt.Str(e.Key) + "=" + JavaRt.Str(e.Value));
+            }
+            var rnd = new JavaRandom(7);
+            double d = 2.5;
+            float f = 1.5f;
+            string s = null;
+            Console.WriteLine("d=" + JavaRt.Str(d) + " f=" + JavaRt.Str(f) + " s=" + JavaRt.Str(s) + " b=" + JavaRt.Str(xs.Count > 1));
+            Console.WriteLine(int.MaxValue + " " + JavaRt.Str(Math.PI) + " " + rnd.NextInt(10));
+            Func<int, int> inc = x => x + 1;
+            Action run = () => Console.WriteLine("run " + JavaRt.Str(inc(1)));
+            run();
+            using (var r = new Resource())
+            {
+                Console.WriteLine(JavaRt.Str(new Polite().greet("you")) + JavaRt.Str(new Square(2)));
+            }
+            string a = "left";
+            string b = sb.ToString();
+            Console.WriteLine(JavaRt.Str((object)a == (object)b));
+            if (args == null)
+            {
+                throw new InvalidOperationException("never");
+            }
+            new Derived();
+            Console.WriteLine(counter + LIMIT + NAME.Length);
+        }
+
+        static Features()
+        {
+            counter = compute();
+            counter += 1;
+        }
+    }
+}
