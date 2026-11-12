@@ -1,0 +1,512 @@
+@@@ ordinals
+KERNEL.15=GlobalAlloc
+KERNEL.16=GlobalReAlloc
+KERNEL.17=GlobalFree
+KERNEL.18=GlobalLock
+KERNEL.19=GlobalUnlock
+KERNEL.81=_lclose
+KERNEL.82=_lread
+KERNEL.83=_lcreat
+KERNEL.84=_llseek
+KERNEL.85=_lopen
+KERNEL.86=_lwrite
+LZEXPAND.15=LZCopy
+USER.107=DefWindowProc
+@@@ a starts
+0 90 a0 c0
+@@@ a funcs
+0-90 sub_0000
+90-a0 sub_0090
+a0-c0 sub_00a0
+c0-1c8 sub_00c0
+@@@ a exports
+
+@@@ a function 0
+==== sub_0000  seg1:0x0000  (32 instrs, 0x0000..0x0090)
+   args (PASCAL frame slots read): [bp+0x0c]
+   WndProc dispatch (4 messages):
+      WM_CREATE            0x0001 -> handler @0x0040
+      WM_DESTROY           0x0002 -> handler @0x0050
+      WM_CLOSE             0x0010 -> handler @0x0019
+      WM_INITDIALOG        0x0110 -> handler @0x0060
+   syscalls: KERNEL.15 = GlobalAlloc
+   internal: -> sub_0090 (seg1:0x0090)
+
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0003:  push   si
+    0004:  mov    ax,WORD PTR [bp+0xc]
+    0007:  cmp    ax,0x1
+    000a:  je     0x40
+    000c:  cmp    ax,0x2
+    000f:  jne    0x20
+    0011:  jmp    0x50
+    0014:  cmp    ax,0x10
+    0017:  jne    0x20
+    0019:  nop
+    001a:  nop
+    0020:  cmp    WORD PTR [bp+0xc],0x110
+    0025:  je     0x60
+    0027:  xor    ax,ax
+    0029:  jmp    0x80
+    0040:  mov    ax,0x1
+    0043:  push   ax
+    0044:  call   0x0:0x0
+    0049:  pop    ax
+    004a:  jmp    0x80
+    0050:  call   0x90      ; -> sub_0090
+    0053:  call   0xc0      ; KERNEL.15 = GlobalAlloc
+    0056:  ret
+    0060:  mov    ah,0x3d      ; AH=3d DOS OPEN
+    0062:  int    0x21      ; DOS call
+    0064:  mov    ah,0x99
+    0066:  jmp    0x80
+    0080:  pop    si
+    0081:  pop    bp
+    0082:  retf   0xa
+@@@ a facts 0
+dispatch [(1, 64), (2, 80), (16, 25), (272, 96)]
+args [12]
+thunk None
+calls [('int', '-> sub_0090 (seg1:0x0090)'), ('sys', 'KERNEL.15 = GlobalAlloc')]
+handler 40: []
+handler 50: ['->sub_0090', 'KERNEL.15=GlobalAlloc']
+handler 19: []
+handler 60: []
+@@@ a function 90
+==== sub_0090  seg1:0x0090  (6 instrs, 0x0090..0x00a0)
+   args (PASCAL frame slots read): [bp+0x06], [bp+0x0a]
+
+    0090:  push   bp
+    0091:  mov    bp,sp
+    0093:  mov    ax,WORD PTR [bp+0x6]
+    0096:  mov    bx,WORD PTR [bp+0xa]
+    0099:  pop    bp
+    009a:  ret    0x4
+@@@ a facts 90
+dispatch []
+args [6, 10]
+thunk None
+calls []
+@@@ a function a0
+==== sub_00a0  seg1:0x00a0  (4 instrs, 0x00a0..0x00c0)
+   args (PASCAL frame slots read): [bp+0x08]
+
+    00a0:  enter  0x2,0x0
+    00a4:  mov    bx,WORD PTR [bp+0x8]
+    00a8:  call   0x0:0x0
+    00ad:  retf
+@@@ a facts a0
+dispatch []
+args [8]
+thunk None
+calls []
+@@@ a function c0
+==== sub_00c0  seg1:0x00c0  (3 instrs, 0x00c0..0x01c8)
+
+    00c0:  mov    bx,0x1234
+    00c3:  push   bx
+    00c4:  jmp    0x90
+@@@ a facts c0
+dispatch []
+args []
+thunk 144
+calls []
+@@@ a call graph 0
+0 90
+@@@ a cskel
+/* AUTO-SKELETON from trace.py --cskel  seg1:0x0000  (dialog proc) */
+BOOL FAR PASCAL sub_0000(HWND hDlg, unsigned message, WORD wParam, LONG lParam)
+{
+    switch (message) {
+    case WM_CREATE:  /* @0x0040  (no resolved calls) */
+        break;
+    case WM_DESTROY:  /* @0x0050  calls: ->sub_0090; KERNEL.15=GlobalAlloc */
+        break;
+    case WM_CLOSE:  /* @0x0019  (no resolved calls) */
+        break;
+    case WM_INITDIALOG:  /* @0x0060  (no resolved calls) */
+        break;
+    }
+    return FALSE;
+}
+
+/* --- 1 reachable internal functions (documented-partial templates) --- */
+/* sub_0090  seg1:0x0090  (6 instrs; args [bp+0x06], [bp+0x0a])
+ *   [documented partial] */
+@@@ a trace
+# call graph from seg1:0x0000 - 2 reachable functions in this segment
+
+External API surface (all reachable functions):
+   KERNEL.15 = GlobalAlloc
+
+======================================================================
+
+==== sub_0000  seg1:0x0000  (32 instrs, 0x0000..0x0090)
+   args (PASCAL frame slots read): [bp+0x0c]
+   WndProc dispatch (4 messages):
+      WM_CREATE            0x0001 -> handler @0x0040
+      WM_DESTROY           0x0002 -> handler @0x0050
+      WM_CLOSE             0x0010 -> handler @0x0019
+      WM_INITDIALOG        0x0110 -> handler @0x0060
+   syscalls: KERNEL.15 = GlobalAlloc
+   internal: -> sub_0090 (seg1:0x0090)
+
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0003:  push   si
+    0004:  mov    ax,WORD PTR [bp+0xc]
+    0007:  cmp    ax,0x1
+    000a:  je     0x40
+    000c:  cmp    ax,0x2
+    000f:  jne    0x20
+    0011:  jmp    0x50
+    0014:  cmp    ax,0x10
+    0017:  jne    0x20
+    0019:  nop
+    001a:  nop
+    0020:  cmp    WORD PTR [bp+0xc],0x110
+    0025:  je     0x60
+    0027:  xor    ax,ax
+    0029:  jmp    0x80
+    0040:  mov    ax,0x1
+    0043:  push   ax
+    0044:  call   0x0:0x0
+    0049:  pop    ax
+    004a:  jmp    0x80
+    0050:  call   0x90      ; -> sub_0090
+    0053:  call   0xc0      ; KERNEL.15 = GlobalAlloc
+    0056:  ret
+    0060:  mov    ah,0x3d      ; AH=3d DOS OPEN
+    0062:  int    0x21      ; DOS call
+    0064:  mov    ah,0x99
+    0066:  jmp    0x80
+    0080:  pop    si
+    0081:  pop    bp
+    0082:  retf   0xa
+
+==== sub_0090  seg1:0x0090  (6 instrs, 0x0090..0x00a0)
+   args (PASCAL frame slots read): [bp+0x06], [bp+0x0a]
+
+    0090:  push   bp
+    0091:  mov    bp,sp
+    0093:  mov    ax,WORD PTR [bp+0x6]
+    0096:  mov    bx,WORD PTR [bp+0xa]
+    0099:  pop    bp
+    009a:  ret    0x4
+@@@ a wndprocs
+seg1:0x0000  - 4 messages
+    WM_CREATE            0x0001 -> 0x0040
+    WM_DESTROY           0x0002 -> 0x0050
+    WM_CLOSE             0x0010 -> 0x0019
+    WM_INITDIALOG        0x0110 -> 0x0060
+@@@ a resolve
+11 jmp    0x50 -> (None, None)
+29 jmp    0x80 -> (None, None)
+44 call   0x0:0x0 -> (None, None)
+4a jmp    0x80 -> (None, None)
+50 call   0x90 -> ('int', 144)
+53 call   0xc0 -> ('sys', ('KERNEL.15', 'GlobalAlloc'))
+66 jmp    0x80 -> (None, None)
+a8 call   0x0:0x0 -> (None, None)
+c4 jmp    0x90 -> (None, None)
+@@@ a annotate
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0003:  push   si
+    0004:  mov    ax,WORD PTR [bp+0xc]
+    0007:  cmp    ax,0x1
+    000a:  je     0x40
+    000c:  cmp    ax,0x2
+    000f:  jne    0x20
+    0011:  jmp    0x50
+    0014:  cmp    ax,0x10
+    0017:  jne    0x20
+    0019:  nop
+    001a:  nop
+    0020:  cmp    WORD PTR [bp+0xc],0x110
+    0025:  je     0x60
+    0027:  xor    ax,ax
+    0029:  jmp    0x80
+    0040:  mov    ax,0x1
+    0043:  push   ax
+    0044:  call   0x0:0x0
+    0049:  pop    ax
+    004a:  jmp    0x80
+    0050:  call   0x90      ; -> sub_0090
+    0053:  call   0xc0      ; KERNEL.15 = GlobalAlloc
+    0056:  ret
+    0060:  mov    ah,0x3d      ; AH=3d DOS OPEN
+    0062:  int    0x21      ; DOS call
+    0064:  mov    ah,0x99
+    0066:  jmp    0x80
+    0080:  pop    si
+    0081:  pop    bp
+    0082:  retf   0xa
+    0090:  push   bp
+    0091:  mov    bp,sp
+    0093:  mov    ax,WORD PTR [bp+0x6]
+    0096:  mov    bx,WORD PTR [bp+0xa]
+    0099:  pop    bp
+    009a:  ret    0x4
+    00a0:  enter  0x2,0x0
+    00a4:  mov    bx,WORD PTR [bp+0x8]
+    00a8:  call   0x0:0x0
+    00ad:  retf
+    00c0:  mov    bx,0x1234
+    00c3:  push   bx
+    00c4:  jmp    0x90
+    00c7:  nop
+    00c8:  int3
+@@@ a word_at
+22558 26624 37067 None None
+@@@ b starts
+0 80
+@@@ b funcs
+0-80 LZINIT
+80-75a sub_0080
+@@@ b exports
+0 LZINIT
+1bc GETEXPANDEDNAME
+262 LZOPENFILE
+2ee LZSEEK
+3d6 LZREAD
+6f0 LZCLOSE
+@@@ b function 0
+==== LZINIT  seg2:0x0000  (16 instrs, 0x0000..0x0080)
+   args (PASCAL frame slots read): [bp+0x0c]
+   WndProc dispatch (3 messages):
+      WM_CREATE            0x0001 -> handler @0xf08b
+      WM_DESTROY           0x0002 -> handler @0xfe83
+      WM_MOVE              0x0003 -> handler @0x7401
+   syscalls: LZEXPAND.16  [unidentified]; LZEXPAND.15 = LZCopy
+   internal: -> sub_0080 (seg2:0x0080)
+
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0003:  push   si
+    0004:  mov    ax,WORD PTR [bp+0xc]
+    0007:  sub    ax,0x1
+    000a:  cmp    ax,0x2
+    000d:  ja     0x40
+    000f:  add    ax,ax
+    0011:  mov    bx,ax
+    0013:  jmp    WORD PTR cs:[bx+0x20]      ; LZEXPAND.16  [UNIDENTIFIED — leave raw]
+    0018:  call   0x0:0x0      ; LZEXPAND.16  [UNIDENTIFIED — leave raw]
+    001d:  ret
+    0040:  call   0x80      ; -> sub_0080
+    0043:  ret
+    0046:  call   0x0:0x0      ; LZEXPAND.15 = LZCopy
+    004b:  ret
+@@@ b facts 0
+dispatch [(1, 61579), (2, 65155), (3, 29697)]
+args [12]
+thunk None
+calls [('sys', 'LZEXPAND.16  [unidentified]'), ('int', '-> sub_0080 (seg2:0x0080)'), ('sys', 'LZEXPAND.15 = LZCopy')]
+handler f08b: []
+handler fe83: []
+handler 7401: []
+@@@ b function 80
+==== sub_0080  seg2:0x0080  (2 instrs, 0x0080..0x075a)
+
+    0080:  mov    ax,0x1
+    0083:  retf
+@@@ b facts 80
+dispatch []
+args []
+thunk None
+calls []
+@@@ b call graph 0
+0 80
+@@@ b cskel
+/* AUTO-SKELETON from trace.py --cskel  seg2:0x0000  (window proc) */
+long FAR PASCAL LZINIT(HWND hWnd, unsigned message, WORD wParam, LONG lParam)
+{
+    switch (message) {
+    case WM_CREATE:  /* @0xf08b  (no resolved calls) */
+        break;
+    case WM_DESTROY:  /* @0xfe83  (no resolved calls) */
+        break;
+    case WM_MOVE:  /* @0x7401  (no resolved calls) */
+        break;
+    default:
+        return DefWindowProc(hWnd, message, wParam, lParam); /* USER.107 */
+    }
+    return 0L;
+}
+
+/* --- 1 reachable internal functions (documented-partial templates) --- */
+/* sub_0080  seg2:0x0080  (2 instrs; args none)
+ *   [documented partial] */
+@@@ b trace
+# call graph from seg2:0x0000 - 2 reachable functions in this segment
+
+External API surface (all reachable functions):
+   LZEXPAND.15 = LZCopy
+   LZEXPAND.16  [unidentified]
+
+======================================================================
+
+==== LZINIT  seg2:0x0000  (16 instrs, 0x0000..0x0080)
+   args (PASCAL frame slots read): [bp+0x0c]
+   WndProc dispatch (3 messages):
+      WM_CREATE            0x0001 -> handler @0xf08b
+      WM_DESTROY           0x0002 -> handler @0xfe83
+      WM_MOVE              0x0003 -> handler @0x7401
+   syscalls: LZEXPAND.16  [unidentified]; LZEXPAND.15 = LZCopy
+   internal: -> sub_0080 (seg2:0x0080)
+
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0003:  push   si
+    0004:  mov    ax,WORD PTR [bp+0xc]
+    0007:  sub    ax,0x1
+    000a:  cmp    ax,0x2
+    000d:  ja     0x40
+    000f:  add    ax,ax
+    0011:  mov    bx,ax
+    0013:  jmp    WORD PTR cs:[bx+0x20]      ; LZEXPAND.16  [UNIDENTIFIED — leave raw]
+    0018:  call   0x0:0x0      ; LZEXPAND.16  [UNIDENTIFIED — leave raw]
+    001d:  ret
+    0040:  call   0x80      ; -> sub_0080
+    0043:  ret
+    0046:  call   0x0:0x0      ; LZEXPAND.15 = LZCopy
+    004b:  ret
+
+==== sub_0080  seg2:0x0080  (2 instrs, 0x0080..0x075a)
+
+    0080:  mov    ax,0x1
+    0083:  retf
+@@@ b wndprocs
+seg2:0x0000  [export LZINIT]  - 3 messages
+    WM_CREATE            0x0001 -> 0xf08b
+    WM_DESTROY           0x0002 -> 0xfe83
+    WM_MOVE              0x0003 -> 0x7401
+@@@ b resolve
+13 jmp    WORD PTR cs:[bx+0x20] -> ('sys', ('LZEXPAND.16', None))
+18 call   0x0:0x0 -> ('sys', ('LZEXPAND.16', None))
+40 call   0x80 -> ('int', 128)
+46 call   0x0:0x0 -> ('sys', ('LZEXPAND.15', 'LZCopy'))
+@@@ b annotate
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0003:  push   si
+    0004:  mov    ax,WORD PTR [bp+0xc]
+    0007:  sub    ax,0x1
+    000a:  cmp    ax,0x2
+    000d:  ja     0x40
+    000f:  add    ax,ax
+    0011:  mov    bx,ax
+    0013:  jmp    WORD PTR cs:[bx+0x20]      ; LZEXPAND.16  [UNIDENTIFIED — leave raw]
+    0018:  call   0x0:0x0      ; LZEXPAND.16  [UNIDENTIFIED — leave raw]
+    001d:  ret
+    0040:  call   0x80      ; -> sub_0080
+    0043:  ret
+    0046:  call   0x0:0x0      ; LZEXPAND.15 = LZCopy
+    004b:  ret
+    0080:  mov    ax,0x1
+    0083:  retf
+@@@ b word_at
+22558 61579 60545 40684 None
+@@@ c starts
+0 90
+@@@ c funcs
+0-90 sub_0000
+90-1c8 sub_0090
+@@@ c exports
+
+@@@ c function 0
+==== sub_0000  seg1:0x0000  (6 instrs, 0x0000..0x0090)
+   internal: -> sub_0090 (seg1:0x0090)
+   far:      -> seg2:0x0120 (other segment)
+
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0020:  call   0x0:0x0      ; -> seg2:0x0120
+    0052:  call   0x0:0x0      ; -> seg2:0x0120
+    0070:  jmp    0x0:0x0      ; -> seg2:0x0120
+    008a:  call   0x0:0x0      ; -> sub_0090
+@@@ c facts 0
+dispatch []
+args []
+thunk None
+calls [('far', '-> seg2:0x0120 (other segment)'), ('int', '-> sub_0090 (seg1:0x0090)')]
+@@@ c function 90
+==== sub_0090  seg1:0x0090  (5 instrs, 0x0090..0x01c8)
+   internal: -> sub_0090 (seg1:0x0090)
+
+    0090:  push   bp
+    0091:  mov    bp,sp
+    0093:  pop    bp
+    0094:  ret
+    00a0:  jmp    0x0:0x0      ; -> sub_0090
+@@@ c facts 90
+dispatch []
+args []
+thunk None
+calls [('int', '-> sub_0090 (seg1:0x0090)')]
+@@@ c call graph 0
+0 90
+@@@ c cskel
+/* AUTO-SKELETON from trace.py --cskel  seg1:0x0000  (window proc) */
+long FAR PASCAL sub_0000(HWND hWnd, unsigned message, WORD wParam, LONG lParam)
+{
+    switch (message) {
+    default:
+        return DefWindowProc(hWnd, message, wParam, lParam); /* USER.107 */
+    }
+    return 0L;
+}
+
+/* --- 1 reachable internal functions (documented-partial templates) --- */
+/* sub_0090  seg1:0x0090  (5 instrs; args none)
+ *   internal: -> sub_0090 (seg1:0x0090)
+ *   [documented partial] */
+@@@ c trace
+# call graph from seg1:0x0000 - 2 reachable functions in this segment
+
+External API surface (all reachable functions):
+
+======================================================================
+
+==== sub_0000  seg1:0x0000  (6 instrs, 0x0000..0x0090)
+   internal: -> sub_0090 (seg1:0x0090)
+   far:      -> seg2:0x0120 (other segment)
+
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0020:  call   0x0:0x0      ; -> seg2:0x0120
+    0052:  call   0x0:0x0      ; -> seg2:0x0120
+    0070:  jmp    0x0:0x0      ; -> seg2:0x0120
+    008a:  call   0x0:0x0      ; -> sub_0090
+
+==== sub_0090  seg1:0x0090  (5 instrs, 0x0090..0x01c8)
+   internal: -> sub_0090 (seg1:0x0090)
+
+    0090:  push   bp
+    0091:  mov    bp,sp
+    0093:  pop    bp
+    0094:  ret
+    00a0:  jmp    0x0:0x0      ; -> sub_0090
+@@@ c wndprocs
+
+@@@ c resolve
+20 call   0x0:0x0 -> ('far', 'seg2:0x0120')
+52 call   0x0:0x0 -> ('far', 'seg2:0x0120')
+70 jmp    0x0:0x0 -> ('far', 'seg2:0x0120')
+8a call   0x0:0x0 -> ('int', 144)
+a0 jmp    0x0:0x0 -> ('int', 144)
+@@@ c annotate
+    0000:  push   bp
+    0001:  mov    bp,sp
+    0020:  call   0x0:0x0      ; -> seg2:0x0120
+    0052:  call   0x0:0x0      ; -> seg2:0x0120
+    0070:  jmp    0x0:0x0      ; -> seg2:0x0120
+    008a:  call   0x0:0x0      ; -> sub_0090
+    0090:  push   bp
+    0091:  mov    bp,sp
+    0093:  pop    bp
+    0094:  ret
+    00a0:  jmp    0x0:0x0      ; -> sub_0090
+@@@ c word_at
+22558 26624 37067 None None

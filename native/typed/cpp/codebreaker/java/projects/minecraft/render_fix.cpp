@@ -1,5 +1,7 @@
-// codebreaker/java/projects/minecraft/render_fix.cpp -- C++ port of codebreaker.java.projects.minecraft.render_fix
-// (see the header).
+// codebreaker/java/projects/minecraft/render_fix.cpp -- the legacy IR form (patch) of the render-fix pass, over the OLD
+// translate IR (py::ref nodes). COMPAT(py): remove when translate/ir and translate/rewrite are refactored and
+// their shims land; the tree-shape pass then lives only in cb/java/projects/minecraft/render_fix.cpp (over the new IR).
+// The text form (process / run / stranded) forwards to the new module (see the header).
 
 #include "codebreaker/java/projects/minecraft/render_fix.hpp"
 
@@ -16,97 +18,10 @@ namespace codebreaker::java::projects::minecraft::render_fix {
 namespace ir = codebreaker::translate::ir;
 namespace rw = codebreaker::translate::rewrite;
 
-const py::re::Pattern _UPDATE_RENDERERS = py::re::compile(py::str(
-    R"RX(int\s+(\w+)\s*=\s*this->(\w+)\.size\(\)\s*-\s*1;\s*)RX"          // int var2 = this->FIELD.size() - 1;
-    R"RX(int\s+(\w+)\s*=\s*this->\2\.size\(\);\s*)RX"                     // int var3 = this->FIELD.size();
-    R"RX(for\s*\(int\s+(\w+)\s*=\s*0;\s*\4\s*<\s*\3;\s*\+\+\4\)\s*\{\s*)RX"
-    R"RX((\w+)\*\s*(\w+)\s*=\s*\(\5\*\)this->\2\[\1\s*-\s*\4\];\s*)RX"    // WorldRenderer* var5 = (..)FIELD[var2-var4];
-    R"RX(if\(\6->distanceToEntitySquared\((\w+)\)\s*>\s*2500\.0F\s*&&\s*\4\s*>\s*4\)\s*\{\s*)RX"
-    R"RX(return;\s*\}\s*)RX"
-    R"RX(this->\2\.remove\(\6\);\s*)RX"
-    R"RX(\6->updateRenderer\(\);\s*)RX"
-    R"RX(\6->needsUpdate\s*=\s*false;\s*)RX"
-    R"RX(\})RX"));
-
 const int64_t _BUDGET = 8;
 
-py::str _update_renderers_repl(const py::re::Match& m) {
-    py::str field = m.group(2), szv = m.group(1), boundv = m.group(3), loopv = m.group(4), wr = m.group(5), chunk = m.group(6);
-    py::str n = py::percent(py::str("%d"), _BUDGET);
-    py::str sz = szv, bound = boundv, loop = loopv;
-    return py::str("// J2X render-budget: rebuild at most ") + n +
-           py::str(" chunks/frame (nearest first), not the whole dirty\n"
-                   "\t// set in one blocking frame -- a fresh world is 1000+ dirty chunks and would never present\n"
-                   "\t// (stuck on \"Spawning\"). The rest keep needsUpdate and rebuild over the next frames. "
-                   "[generator: render_fix.py]\n"
-                   "\tint ") +
-           bound + py::str(" = ") + n + py::str(";\n\tfor (int ") + loop + py::str(" = 0; ") + loop + py::str(" < ") + bound +
-           py::str("; ++") + loop + py::str(") {\n\tint ") + sz + py::str(" = this->") + field + py::str(".size();\n\tif(") + sz +
-           py::str(" == 0) {\n\treturn;\n\t}\n\t") + wr + py::str("* ") + chunk + py::str(" = (") + wr + py::str("*)this->") + field +
-           py::str("[") + sz + py::str(" - 1];\n\tthis->") + field + py::str(".remove(") + chunk + py::str(");\n\tif(") + chunk +
-           py::str(" != NULL) {\n\t") + chunk + py::str("->updateRenderer();\n\t") + chunk +
-           py::str("->needsUpdate = false;\n\t}\n\t}");
-}
-
-const py::re::Pattern _UPDATE_SURVIVOR =
-    py::re::compile(py::str(R"RX(distanceToEntitySquared\(\w+\)\s*>\s*2500\.0F\s*&&\s*\w+\s*>\s*4)RX"));
-
-const py::re::Pattern _HURT =
-    py::re::compile(py::str(R"RX(if\((\w+)\s*>=\s*0\.0F\)\s*\{(\s*)(\w+)\s*/=\s*\(float\)(\w+)->maxHurtTime;)RX"));
-
-py::str _hurt_repl(const py::re::Match& m) {
-    py::str v3 = m.group(1), ws = m.group(2), v3b = m.group(3), v2 = m.group(4);
-    return py::str("if(") + v3 + py::str(" >= 0.0F && ") + v2 +
-           py::str("->hurtTime > 0) {  // J2X hurt-NaN guard: on spawn hurtTime=0 & partialTick=0 -> ") + v3 +
-           py::str("=0 entered -> 0/0 NaN camera -> invisible world [render_fix.py]") + ws + v3b + py::str(" /= (float)") + v2 +
-           py::str("->maxHurtTime;");
-}
-
-const py::re::Pattern _HURT_SURVIVOR =
-    py::re::compile(py::str(R"RX(if\(\w+\s*>=\s*0\.0F\)\s*\{\s*\w+\s*/=\s*\(float\)\w+->maxHurtTime;)RX"));
-
-std::tuple<py::str, int64_t, int64_t> process(const py::str& text_in) {
-    auto [text, n_update] = _UPDATE_RENDERERS.subn(_update_renderers_repl, text_in);
-    auto [text2, n_hurt] = _HURT.subn(_hurt_repl, text);
-    return {text2, n_update, n_hurt};
-}
-
-Result run(const py::str& out_dir) {
-    py::list<py::str> files;
-    for (const py::str& f : py::sorted(py::os::listdir(out_dir))) {
-        if (f.endswith(py::str(".cpp"))) {
-            files.append(f);
-        }
-    }
-    Result res;
-    for (const py::str& f : files) {
-        py::str path = py::os::path::join(out_dir, f);
-        py::str text;
-        try {
-            text = py::open(path, py::str("r"), py::str("utf-8"), py::str("replace")).read_text();
-        } catch (const py::OSError&) {                     // (IOError, OSError)
-            continue;
-        }
-        bool has_update = text.contains(py::str("worldRenderersToUpdate")) && text.contains(py::str("distanceToEntitySquared"));
-        bool has_hurt = text.contains(py::str("maxHurtTime"));
-        if (!(has_update || has_hurt)) {
-            continue;
-        }
-        auto [new_text, n_u, n_h] = process(text);
-        if (new_text != text) {
-            py::file fh = py::open(path, py::str("w"), py::str("utf-8"));
-            fh.write(new_text);
-            fh.close();
-            res.files.append(Touched{f, n_u, n_h});
-            res.update += n_u;
-            res.hurt += n_h;
-        }
-        if (_UPDATE_SURVIVOR.search(new_text) || _HURT_SURVIVOR.search(new_text)) {
-            res.stranded.append(f);
-        }
-    }
-    return res;
-}
+bool _budget(const py::list<ir::NodeP>& ss, int64_t i);
+bool _hurt(const ir::NodeP& s);
 
 namespace {
 
@@ -291,24 +206,6 @@ bool _hurt(const ir::NodeP& s_n) {
     hurt->type = ir::I32;
     s->cond = rw::binary(py::str("&&"), s->cond, rw::binary(py::str(">"), hurt, rw::lit(ir::Val(int64_t(0)), ir::I32), ir::BOOL), ir::BOOL);
     return true;
-}
-
-py::list<py::str> stranded(const py::str& out_dir) {
-    py::list<py::str> out;
-    for (const py::str& f : py::sorted(py::os::listdir(out_dir))) {
-        if (f.endswith(py::str(".cpp"))) {
-            py::str text;
-            try {
-                text = py::open(py::os::path::join(out_dir, f), py::str("r"), py::str("utf-8"), py::str("replace")).read_text();
-            } catch (const py::OSError&) {                 // (IOError, OSError)
-                continue;
-            }
-            if (_UPDATE_SURVIVOR.search(text) || _HURT_SURVIVOR.search(text)) {
-                out.append(f);
-            }
-        }
-    }
-    return out;
 }
 
 }  // namespace codebreaker::java::projects::minecraft::render_fix
