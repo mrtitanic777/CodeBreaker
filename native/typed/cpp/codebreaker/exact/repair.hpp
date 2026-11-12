@@ -1,77 +1,62 @@
-// codebreaker/exact/repair.hpp -- typed C++ port of codebreaker.exact.repair.
+// codebreaker/exact/repair.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/exact/repair.{hpp,cpp}; this header
+// keeps the old py:: surface (_shifts, candidates, main) for the ports and the dynamic exe that still use it. Conversion and forwarding only: the old
+// project is seen by the new module through ledger::detail::NewView. Deleted with its last py:: consumer.
 //
-// repair.py -- a function that differs from the program by what the comparison names, mended in its source and
-// kept only when the compiler proves it.
+// Not carried over: Job, _only, _piece_of, _pascal and _sourced (the new module's own jobs() and mend()).
 //
-//     python -m codebreaker exact PROJECT repair [--write] [-v]
-//
-// The ledger's comparison says where a function parts from the program; some of what it says is a fix it can
-// try. For each such function the source file is changed, compiled again, and held to the program: a change is
-// kept only if the function comes out identical and no function of the file that was identical stops being so.
-// Without --write the changes are only reported.
-//
-//   values each +N   bytes that differ alone, each by the same amount (an immediate): the source names a constant
-//                    or an enumeration's member with another value. Tried, in order: the names that end in a
-//                    number equal to such a value (an enumeration named by its members' ordinals: DK46) with the
-//                    number moved by N - those alone, then every name of that family; a literal of that value
-//                    made the program's.
-//
-// A Pascal program's change is written to the project's own overlay (its first source folder), so the lower
-// layers stay what they are for the other programs built from them.
-//
-// Typing notes:
-//   * `prj` is ledger::Project (the members of exact.project.Project that ledger.py reads). The Pascal path reads
-//     the project through pascal_project() (pascal_join's view of it); the Python's `_only(prj, name)` -- a copy
-//     of the project whose compilands are the one named -- is that view with its compilands cut to the one.
-//   * a job (the Python's dict(fn=, at=, path=, dest=, mine=, d=, unit=, check=)) is the struct Job; its check()
-//     gives the ledger's rows (the first six fields of each), of which main() reads the function and the verdict.
-//   * main() writes what the Python prints to `out`. open(..., encoding="latin1", newline="") is py::file::open
-//     with that encoding and newline.
-//   * `verbose` is accepted and not used, as in the Python.
+// DIVERGES, for the old callers: source text crosses as Latin-1 (every character a byte, as the sources of the period are), the candidates
+// come in the order the new module tries them, and a Pascal piece that cannot be found or compiled is left out of the jobs instead of
+// raising (StopIteration, TypeError, IndexError).
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <iostream>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/text.hpp"
+#include "cb/exact/repair.hpp"
 #include "codebreaker/exact/ledger.hpp"
-#include "codebreaker/exact/pascal_join.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::repair {
 
-using Row = ledger::Row;
+namespace shim_ {
+// the source as bytes (the old text is Latin-1 decoded) and back
+inline std::string latin1_bytes(const py::str& s) {
+    const cb::Bytes b = cb::text::to_latin1(cb::compat::from_py(s));
+    return std::string(cb::as_text(b));
+}
+inline py::str from_latin1_bytes(const std::string& s) { return cb::compat::to_py(cb::text::from_latin1(cb::as_bytes(s))); }
+}  // namespace shim_
 
 // what a note names: the shift of the values and the places in the program where they differ -> (shift, offsets), or None
-std::optional<std::tuple<int64_t, py::list<int64_t>>> _shifts(const py::list<py::str>& notes);
+inline std::optional<std::tuple<int64_t, py::list<int64_t>>> _shifts(const py::list<py::str>& notes) {
+    std::vector<std::string> n;
+    for (const py::str& x : notes) n.push_back(cb::compat::from_py(x));
+    const auto s = cb::exact::repair::shifts(n);
+    if (!s) return std::nullopt;
+    py::list<int64_t> offsets;
+    for (std::int64_t o : s->offsets) offsets.append(o);
+    return std::make_tuple(s->by, offsets);
+}
 
 // the source changed so that the values `mine` become mine + d -> [(what, text)]
-py::list<std::tuple<py::str, py::str>> candidates(const py::str& text, const py::list<int64_t>& mine, int64_t d);
+inline py::list<std::tuple<py::str, py::str>> candidates(const py::str& text, const py::list<int64_t>& mine, int64_t d) {
+    std::vector<std::int64_t> values;
+    for (int64_t v : mine) values.push_back(v);
+    py::list<std::tuple<py::str, py::str>> out;
+    for (const auto& c : cb::exact::repair::candidates(shim_::latin1_bytes(text), values, d))
+        out.append(std::make_tuple(cb::compat::to_py(c.what), shim_::from_latin1_bytes(c.text)));
+    return out;
+}
 
-struct Job {
-    std::optional<py::str> fn;
-    std::optional<int64_t> at;
-    py::str path;
-    py::str dest;
-    py::list<int64_t> mine;
-    int64_t d = 0;
-    std::optional<py::str> unit;
-    std::function<py::list<Row>()> check;
-};
-
-// the project with only the compiland `name` (for pascal_join.run)
-pascal_join::Project _only(const pascal_join::Project& prj, const py::str& name);
-
-// the file whose first line declares P<h> (a piece, or one nested in a piece's .d folder), the top layer's
-std::optional<py::str> _piece_of(const pascal_join::Compiland& c, const py::str& h);
-
-py::list<Job> _pascal(const ledger::Project& prj, bool verbose);
-
-// the ledger's files (one function a file, or whole files): each differing function the note can mend
-py::list<Job> _sourced(const ledger::Project& prj, bool verbose);
-
-int64_t main(const ledger::Project& prj, const py::list<py::str>& argv, std::ostream& out = std::cout);
+inline int64_t main(const ledger::Project& prj, const py::list<py::str>& argv, std::ostream& out = std::cout) {
+    std::vector<std::string> args;
+    for (const py::str& a : argv) args.push_back(cb::compat::from_py(a));
+    const ledger::detail::NewView view(prj);
+    return cb::exact::repair::command(view, args, [&out](std::string_view line) { out << line << "\n"; });
+}
 
 }  // namespace codebreaker::exact::repair

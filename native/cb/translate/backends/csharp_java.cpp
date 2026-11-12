@@ -259,12 +259,12 @@ void JavaLibrary::prepare(cs::Program& program) {
         std::set<std::pair<std::string, std::size_t>> have;   // (name, arity) of what the class and its bases declare
         std::set<std::string> seen;
         for (ir::ClassDecl* k = &c; k != nullptr && k->qname && seen.insert(*k->qname).second; k = program.base_of(*k)) {
-            for (Node* m : k->members) {
+            for (Node* m : program.members(*k)) {
                 if (const ir::MethodDecl* md = ir::get<ir::MethodDecl>(m)) have.emplace(md->name.value_or(""), md->params.size());
             }
         }
         for (ir::ClassDecl* i : cj_interfaces(program, c)) {
-            for (Node* mn : std::vector<Node*>(i->members)) {
+            for (Node* mn : program.members(*i)) {
                 const ir::MethodDecl* m = ir::get<ir::MethodDecl>(mn);
                 if (m == nullptr || ir::present(m->body) || cj_has(m->mods, "static")) continue;
                 const std::pair<std::string, std::size_t> key{m->name.value_or(""), m->params.size()};
@@ -277,7 +277,7 @@ void JavaLibrary::prepare(cs::Program& program) {
                 abstract_copy.ret = m->ret;
                 abstract_copy.mods = {"public", "abstract"};
                 abstract_copy.typeparams = m->typeparams;
-                c.members.push_back(ir::make(program.arena(), std::move(abstract_copy), ir::TypeP{}, mn->line, mn->col));
+                program.add_member(c, ir::make(program.arena(), std::move(abstract_copy), ir::TypeP{}, mn->line, mn->col));
                 have.insert(key);
             }
         }

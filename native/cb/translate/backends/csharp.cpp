@@ -620,7 +620,7 @@ bool Program::overrides(const ir::ClassDecl& c, const ir::MethodDecl& m) const {
     const auto mine = signature(m);
     std::set<std::string> seen;
     for (const ir::ClassDecl* b = base_of(c); b != nullptr && b->qname && seen.insert(*b->qname).second; b = base_of(*b)) {
-        for (Node* xn : b->members) {
+        for (Node* xn : members(*b)) {
             const auto* x = ir::get<ir::MethodDecl>(xn);
             if (x != nullptr && x->kind == "method" && x->name == m.name && signature(*x) == mine && !has(x->mods, "static") &&
                 !has(x->mods, "private"))
@@ -1089,7 +1089,7 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
         if (!w.empty()) lines.push_back(ind + "    " + w);
     }
     std::vector<Node*> members;
-    for (Node* m : c.members) {
+    for (Node* m : prog_.members(c)) {
         const auto* pr = ir::get<ir::Property>(m);
         if (pr != nullptr && has(pr->mods, "positional") && pr->sym && positional.contains(pr->sym->name)) continue;
         if (primary_node != nullptr && m == primary_node) continue;
