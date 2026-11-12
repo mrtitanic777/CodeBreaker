@@ -1,0 +1,288 @@
+buffers	0	0
+long_returns	0	1
+long_pairs	0	4
+long_ladders	0	0
+local_pointers	0	0
+void_variant	0	0
+registers_last	0	0
+register_slots	0	2
+frame_chars	0	3
+fp_types	0	4
+unsigned_locals	0	0	3
+register_variables	0	0	0
+structs	0	0	1
+fill_frame	0	0	10	0	_pf
+string_variants	0	0	0
+long_helpers	0	0	1
+fp_conversions	0	1	3
+localize	0	4	1	2
+candidates	0	2	0	0	1	0
+buffers	1	0
+void_variant	1	0
+registers_last	1	1
+register_slots	1	4
+unsigned_locals	1	0	3
+register_variables	1	0	6
+string_variants	1	0	0
+localize	1	4	2	2
+buffers	2	0
+void_variant	2	0
+registers_last	2	4
+register_slots	2	2
+unsigned_locals	2	0	3
+register_variables	2	0	5
+fill_frame	2	0	14	1	_p%d
+string_variants	2	0	2
+localize	2	2	2	1
+fp_types	3	1
+buffers	4	0
+void_variant	4	0
+registers_last	4	2
+register_slots	4	3
+unsigned_locals	4	0	5
+string_variants	4	0	0
+localize	4	2	2	1
+candidates	4	4	2	0	1	1
+localize	6	0	0	2
+candidates	8	0	1	5	1	3
+localize	9	2	2	3
+localize	10	0	0	3
+buffers	11	0
+long_returns	11	4
+long_pairs	11	3
+long_ladders	11	0
+local_pointers	11	0
+void_variant	11	0
+registers_last	11	0
+register_slots	11	1
+frame_chars	11	3
+fp_types	11	4
+unsigned_locals	11	0	1
+register_variables	11	0	3
+structs	11	3	1
+fill_frame	11	0	14	0	_pf
+string_variants	11	0	3
+long_helpers	11	0	1
+fp_conversions	11	4	2
+localize	11	4	2	2
+buffers	12	0
+long_returns	12	1
+long_pairs	12	3
+long_ladders	12	0
+local_pointers	12	0
+void_variant	12	0
+registers_last	12	2
+register_slots	12	1
+frame_chars	12	4
+fp_types	12	3
+unsigned_locals	12	0	5
+register_variables	12	0	6
+structs	12	4	0
+fill_frame	12	0	20	0	_pf
+string_variants	12	0	3
+long_helpers	12	0	2
+fp_conversions	12	4	2
+localize	12	1	0	2
+candidates	12	1	1	4	3	3
+buffers	13	0
+void_variant	13	0
+registers_last	13	0
+register_slots	13	3
+unsigned_locals	13	0	1
+register_variables	13	0	6
+fill_frame	13	0	14	1	_p%d
+string_variants	13	0	1
+localize	13	2	2	2
+buffers	14	0
+void_variant	14	0
+registers_last	14	0
+register_slots	14	0
+unsigned_locals	14	0	5
+register_variables	14	0	1
+fill_frame	14	0	14	0	_pf
+string_variants	14	0	3
+localize	14	3	2	0
+register_variables	15	0	3
+fill_frame	15	0	20	1	_p%d
+localize	15	2	1	4
+localize	16	2	2	4
+candidates	16	0	2	1	2	0
+register_variables	17	0	2
+fill_frame	17	0	2	0	_p%d
+localize	18	0	2	2
+long_pairs	19	2
+buffers	20	0
+void_variant	20	0
+registers_last	20	2
+register_slots	20	4
+unsigned_locals	20	0	1
+string_variants	20	0	3
+localize	20	4	0	0
+buffers	21	0
+void_variant	21	0
+registers_last	21	4
+register_slots	21	0
+unsigned_locals	21	0	3
+string_variants	21	0	2
+fill_frame	22	0	20	1	_pf
+localize	22	3	2	3
+register_variables	23	0	6
+fill_frame	23	0	6	1	_p%d
+candidates	23	0	1	5	0	2
+buffers	24	0
+void_variant	24	0
+registers_last	24	1
+register_slots	24	1
+unsigned_locals	24	0	1
+string_variants	24	0	0
+localize	24	0	1	0
+localize	25	3	0	2
+register_variables	26	0	1
+localize	26	4	1	0
+candidates	27	2	1	6	0	3
+buffers	28	0
+void_variant	28	0
+registers_last	28	0
+register_slots	28	4
+unsigned_locals	28	0	5
+string_variants	28	0	2
+localize	28	2	0	4
+candidates	29	3	1	3	1	0
+localize	30	3	2	2
+candidates	30	3	0	2	0	0
+candidates	31	4	0	5	4	4
+register_variables	32	0	4
+fill_frame	32	0	20	0	_p%d
+localize	32	3	0	0
+candidates	33	0	2	5	3	4
+structs	34	3	3
+candidates	34	1	1	2	0	4
+structs	35	0	1
+candidates	36	0	2	0	2	4
+structs	37	4	1
+candidates	38	1	0	2	3	0
+structs	39	4	0
+candidates	40	3	1	6	2	4
+structs	41	3	3
+candidates	42	1	1	6	3	1
+structs	43	1	4
+long_pairs	44	3
+long_pairs	45	3
+candidates	46	3	0	3	2	1
+structs	47	4	3
+localize	47	4	0	1
+candidates	47	3	0	5	2	3
+candidates	48	0	0	6	4	1
+long_pairs	49	1
+candidates	50	1	2	5	0	2
+localize	51	0	0	3
+candidates	52	2	0	2	3	1
+localize	53	3	2	2
+candidates	54	4	0	3	4	0
+long_pairs	55	1
+register_variables	56	0	3
+fill_frame	56	0	20	0	_pf
+localize	56	2	2	2
+structs	57	4	3
+localize	57	1	0	1
+candidates	58	1	0	4	4	4
+register_variables	59	0	5
+fill_frame	59	0	6	0	_pf
+localize	59	2	0	3
+localize	60	3	0	3
+candidates	60	1	1	5	4	1
+register_variables	61	0	3
+fill_frame	61	0	14	1	_pf
+localize	61	1	2	3
+candidates	61	4	0	5	2	0
+structs	62	1	0
+candidates	63	4	2	5	0	0
+fill_frame	64	0	20	0	_p%d
+localize	64	0	2	2
+long_pairs	65	1
+candidates	66	4	2	6	2	0
+structs	67	3	1
+candidates	67	4	1	0	4	3
+candidates	68	4	0	6	0	2
+structs	69	0	2
+localize	70	3	2	2
+long_pairs	71	0
+candidates	71	2	2	3	3	1
+localize	72	4	0	4
+register_variables	73	0	3
+fill_frame	73	0	6	1	_pf
+localize	73	1	0	4
+candidates	74	3	2	6	1	3
+structs	75	2	0
+buffers	76	0
+void_variant	76	0
+registers_last	76	4
+register_slots	76	2
+unsigned_locals	76	0	5
+string_variants	76	0	0
+localize	76	4	2	2
+candidates	76	2	0	3	0	4
+candidates	77	4	2	1	0	1
+structs	78	1	0
+candidates	78	0	0	4	0	0
+long_pairs	79	4
+candidates	79	3	1	0	0	3
+candidates	80	1	2	4	4	0
+buffers	81	0
+void_variant	81	0
+registers_last	81	2
+register_slots	81	1
+unsigned_locals	81	0	5
+string_variants	81	0	2
+localize	81	4	1	2
+long_pairs	82	2
+candidates	83	3	1	0	0	4
+localize	84	2	1	1
+register_variables	85	0	2
+structs	85	4	2
+fill_frame	85	0	2	0	_pf
+localize	85	2	1	0
+localize2	5	4	0	0
+localize2	5	4	1	0
+localize2	5	4	2	0
+candidates	5	4	1	0	0	0
+localize	6	4	0	0
+localize2	6	4	0	0
+localize	6	4	1	0
+localize2	6	4	1	0
+localize2	6	4	2	0
+candidates	6	4	1	0	0	0
+localize2	7	4	0	0
+localize2	7	4	1	0
+localize2	7	4	2	0
+candidates	7	4	1	0	0	0
+byte_fields	-1	0	0	ok
+byte_fields	-1	0	0	ok
+byte_fields	-1	0	1	ok
+byte_fields	-1	0	1	ok
+byte_fields	-1	0	1	fail
+byte_fields	-1	0	1	failc
+byte_fields	-1	0	1	nomark
+byte_fields	-1	0	2	ok
+byte_fields	-1	0	2	ok
+byte_fields	-1	0	3	ok
+byte_fields	-1	0	3	ok
+byte_fields	-1	0	4	ok
+byte_fields	-1	0	4	ok
+byte_fields	-1	0	5	ok
+byte_fields	-1	0	5	ok
+byte_fields	-1	0	6	ok
+byte_fields	-1	0	6	ok
+byte_fields	-1	0	7	ok
+byte_fields	-1	0	7	ok
+byte_fields	-1	0	8	ok
+byte_fields	-1	0	8	ok
+byte_fields	-1	0	9	ok
+byte_fields	-1	0	9	ok
+byte_fields	-1	0	10	ok
+byte_fields	-1	0	10	ok
+byte_fields	-1	0	10	fail
+byte_fields	-1	0	10	failc
+byte_fields	-1	0	10	nomark
+byte_fields	-1	0	11	ok
+byte_fields	-1	0	11	ok

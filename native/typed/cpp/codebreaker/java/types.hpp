@@ -121,6 +121,9 @@ class TypeResolver {
     py::str param_type(const JTypeRef& jtype) const { return cpp_type(jtype, py::str("param")); }
     py::str return_type(const JTypeRef& jtype) const { return cpp_type(jtype, py::str("return")); }
 
+    // The new resolver the old one's sets stand for (for refactored code that takes a cb::java::types::TypeResolver).
+    const cbt::TypeResolver& resolver() const { return impl_(); }
+
   private:
     static py::set<py::str> copy_of_(const std::optional<py::set<py::str>>& x) {
         return x ? py::set<py::str>::from(*x) : py::set<py::str>();

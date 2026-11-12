@@ -1,44 +1,33 @@
-// codebreaker/exact/ledger.hpp -- typed C++ port of codebreaker.exact.ledger.
+// codebreaker/exact/ledger.hpp -- compat shim for cb/exact/ledger.hpp (docs/CPP_DESIGN.md 6.3). No logic: conversion
+// and forwarding. Deleted with its last old-layer consumer (exact/project, exact/identify, exact/repair).
 //
 // ledger.py -- every one-function source of a project compiled by its toolchain and put against the program.
 //
 //     python -m codebreaker exact PROJECT ledger [--learn] [-v] [--write]
 //
-// Each src/fADDR.c is compiled on its own; its first function is held to the program at ADDR, the others at
-// their places in SYMBOLS. A project with several toolchains has each file compiled by each; a function is
-// identical when one of them gives its bytes, and the ledger says which did.
-// --learn: the places identical functions show are added to SYMBOLS (a name is only learnt from a file all of
-// whose placed functions are identical under one toolchain). --write: src/LEDGER is written (otherwise only
-// the counts are printed).
-//
 //     ledger::run(project, learn=false) -> [(file, function, address, length, verdict, notes, by)]
 //         verdict: identical | differs | no place | does not compile
 //         by:      the labels of the toolchains that give the function's bytes
 //
-// Typing notes (the Python duck-types its `prj` and `tc`):
-//   * `prj` is the interface Project below: the members of exact.project.Project that ledger.py reads (src, dir,
-//     exe, path(), cfg.get() for the string keys it asks for, headers(), include, switches, starts(), whole(),
-//     image, code_end, toolchains(), symbols(), save_symbols(), sources(), sets()), and what compare.function
-//     takes of a project (dgroup, loadseg, code_base(), relocs()) with the 16-bit decoder (platforms.decoder(16),
-//     the module-global `_CS` of compare.py) as decoder(). A Toolchain is exact::modules::Toolchain (its
-//     compile()). The Python's project with a "compilands" entry hands itself to pascal_join; here it hands the
-//     pascal_join::Project that is its view (pascal_project()).
-//   * A row is (file, function or None, address or None, length, verdict, notes); a finished row has `by`
-//     (the toolchains' labels) after the notes, as a 7-tuple (Row7). `by` is a list of optional text: the
-//     Python puts the project's "toolchain" setting there for a compilands project, which may be None.
-//   * the files are read as bytes; a console text splits into lines as str.splitlines() does.
-//   * not ported: the `__name__` block (there is none): main(prj, argv) is the entry the command calls; it
-//     returns 0.
+// `Project` is the old layer's own interface (the members of exact.project.Project that ledger.py reads, and what
+// compare.function takes of a project); the real one implements it. A row is (file, function or None, address or
+// None, length, verdict, notes); a finished row has `by` after the notes, as a 7-tuple (Row7). What main prints goes
+// to stdout (cb::out), not to a stream. Not shimmed: the `__name__` block (there is none).
 #pragma once
 
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <unordered_set>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/exact/ledger.hpp"
 #include "codebreaker/exact/compare.hpp"
 #include "codebreaker/exact/modules.hpp"
 #include "codebreaker/exact/pascal_join.hpp"
+#include "codebreaker/exact/standin.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::ledger {
@@ -85,25 +74,227 @@ using Row = std::tuple<py::str, std::optional<py::str>, std::optional<int64_t>, 
 // ... and by
 using Row7 = std::tuple<py::str, std::optional<py::str>, std::optional<int64_t>, int64_t, py::str, py::list<py::str>, By>;
 
+namespace detail {
+
+namespace nl = cb::exact::ledger;
+using OldProject = codebreaker::exact::ledger::Project;   // (inside NewView, `Project` is the new layer's base class)
+
+inline std::filesystem::path path_of(const py::str& s) { return cb::fs::from_text(cb::compat::from_py(s)); }
+inline py::str text_of(const std::filesystem::path& p) { return cb::compat::to_py(cb::fs::to_text(p)); }
+
+inline nl::Verdict verdict_of(const py::str& v) {
+    namespace pj = cb::exact::pascal_join;
+    const std::string t = cb::compat::from_py(v);
+    for (const auto k : {pj::Verdict::DoesNotCompile, pj::Verdict::NoPlace, pj::Verdict::Identical, pj::Verdict::Equivalent, pj::Verdict::Differs})
+        if (pj::verdict_text(k) == t) return k;
+    return pj::Verdict::Differs;
+}
+
+inline Symbols symbols_to_old(const cb::exact::SymbolTable& table) {
+    Symbols out;
+    for (const auto& [name, place] : table)
+        out.set(cb::compat::to_py(name), std::make_tuple(cb::compat::to_py(std::string(1, cb::exact::sym_kind_letter(place.kind))), place.address));
+    return out;
+}
+
+inline Row7 row_to_old(const nl::Row& r) {
+    std::optional<py::str> function;
+    if (r.function) function = cb::compat::to_py(*r.function);
+    std::optional<int64_t> address;
+    if (r.address) address = *r.address;
+    By by;
+    for (const std::string& b : r.by) by.append(cb::compat::to_py(b));
+    return Row7(cb::compat::to_py(r.file), function, address, int64_t(r.length), cb::compat::to_py(cb::exact::pascal_join::verdict_text(r.verdict)),
+                cb::compat::to_py(r.notes), by);
+}
+
+inline nl::Row row_to_new(const Row7& r) {
+    nl::Row n;
+    n.file = cb::compat::from_py(std::get<0>(r));
+    if (std::get<1>(r)) n.function = cb::compat::from_py(*std::get<1>(r));
+    if (std::get<2>(r)) n.address = cb::compat::int_from_py<std::uint32_t>(*std::get<2>(r));
+    n.length = cb::compat::int_from_py<std::uint32_t>(std::get<3>(r));
+    n.verdict = verdict_of(std::get<4>(r));
+    for (const py::str& note : std::get<5>(r)) n.notes.push_back(cb::compat::from_py(note));
+    for (const auto& b : std::get<6>(r))
+        if (b) n.by.push_back(cb::compat::from_py(*b));
+    return n;
+}
+
+// The old project as the new layer's interface.
+class NewView final : public nl::Project {
+  public:
+    explicit NewView(std::shared_ptr<const OldProject> old) : old_(std::move(old)), decode_(old_->decoder()), decoder_(decode_) {}
+    explicit NewView(const OldProject& old) : NewView(std::shared_ptr<const OldProject>(std::shared_ptr<void>(), &old)) {}
+
+    std::filesystem::path dir() const override { return path_of(old_->dir()); }
+    std::filesystem::path src() const override { return path_of(old_->src()); }
+    std::string exe() const override { return cb::compat::from_py(old_->exe()); }
+    std::filesystem::path path(std::string_view name) const override { return path_of(old_->path(cb::compat::to_py(name))); }
+    std::optional<std::string> config_text(std::string_view key) const override {
+        const auto v = old_->cfg_str(cb::compat::to_py(key));
+        return v ? std::optional<std::string>(cb::compat::from_py(*v)) : std::nullopt;
+    }
+    const cb::exact::pascal_join::Project* compilands() const override {
+        if (!old_->has_compilands()) return nullptr;
+        if (!pascal_) {
+            pascal_.emplace(old_->pascal_project());
+            pascal_view_ = std::make_unique<pascal_join::detail::NewProject>(*pascal_);
+        }
+        return &pascal_view_->get();
+    }
+    std::map<std::string, cb::Bytes> headers() const override {
+        std::map<std::string, cb::Bytes> out;
+        for (const auto& kv : old_->headers().items()) out[cb::compat::from_py(std::get<0>(kv))] = cb::compat::from_py(std::get<1>(kv));
+        return out;
+    }
+    std::vector<std::string> include() const override {
+        std::vector<std::string> out;
+        for (const py::str& i : old_->include()) out.push_back(cb::compat::from_py(i));
+        return out;
+    }
+    std::optional<std::string> switches() const override {
+        const auto s = old_->switches();
+        return s ? std::optional<std::string>(cb::compat::from_py(*s)) : std::nullopt;
+    }
+    std::vector<std::uint32_t> starts() const override {
+        std::vector<std::uint32_t> out;
+        for (const int64_t s : old_->starts()) out.push_back(cb::compat::int_from_py<std::uint32_t>(s));
+        return out;
+    }
+    bool whole(const std::filesystem::path& file) const override { return old_->whole(text_of(file)); }
+    cb::ByteView image() const override {
+        if (!image_) image_ = cb::compat::from_py(old_->image());
+        return *image_;
+    }
+    std::uint32_t code_end() const override { return cb::compat::int_from_py<std::uint32_t>(old_->code_end()); }
+    std::vector<nl::LabelledToolchain> toolchains() const override {
+        std::vector<nl::LabelledToolchain> out;
+        for (const auto& [label, tc] : old_->toolchains())
+            out.push_back({cb::compat::from_py(label), std::make_shared<modules::detail::ToolchainAdapter>(tc)});
+        return out;
+    }
+    cb::exact::SymbolTable symbols() const override { return standin::detail::symbols_to_new(old_->symbols()); }
+    void save_symbols(const cb::exact::SymbolTable& table) const override { old_->save_symbols(symbols_to_old(table)); }
+    std::vector<nl::SourceFile> sources() const override {
+        std::vector<nl::SourceFile> out;
+        for (const auto& [at, path] : old_->sources()) out.push_back({at, path_of(path)});
+        return out;
+    }
+    std::vector<std::shared_ptr<const nl::Project>> sets() const override {
+        std::vector<std::shared_ptr<const nl::Project>> out;
+        for (const auto& s : old_->sets()) out.push_back(std::make_shared<NewView>(s));
+        return out;
+    }
+    cb::exact::compare::Program program() const override {
+        if (!relocs_) {
+            relocs_.emplace();
+            for (const int64_t r : old_->relocs()) relocs_->insert(cb::compat::int_from_py<std::uint32_t>(r));
+        }
+        cb::exact::compare::Program p;
+        p.dgroup = old_->dgroup();
+        p.loadseg = cb::compat::int_from_py<std::uint32_t>(old_->loadseg());
+        p.code_base = [o = old_](std::uint32_t a) { return cb::compat::int_from_py<std::uint32_t>(o->code_base(a)); };
+        p.relocs = &*relocs_;
+        return p;
+    }
+    const cb::exact::x86::Decoder16& decoder() const override { return decoder_; }
+
+  private:
+    std::shared_ptr<const OldProject> old_;
+    compare::Decoder decode_;
+    compare::detail::OldDecoder decoder_;
+    mutable std::optional<cb::Bytes> image_;
+    mutable std::optional<std::unordered_set<std::uint32_t>> relocs_;
+    mutable std::optional<pascal_join::Project> pascal_;
+    mutable std::unique_ptr<pascal_join::detail::NewProject> pascal_view_;
+};
+
+}  // namespace detail
+
 // one source file compiled by one toolchain and held to the program; `learnt` gets the places of the functions
 // found identical (when all of the file's placed functions are)
-py::list<Row> check_file(const Project& prj, const Toolchain& tc, const py::str& path, std::optional<int64_t> at, const Symbols& syms,
-                         Symbols& learnt);
+inline py::list<Row> check_file(const Project& prj, const Toolchain& tc, const py::str& path, std::optional<int64_t> at, const Symbols& syms,
+                                Symbols& learnt) {
+    return cb::compat::guard([&] {
+        namespace nl = cb::exact::ledger;
+        cb::exact::SymbolTable learned;
+        const detail::NewView view(prj);
+        const modules::detail::ToolchainAdapter adapter(std::shared_ptr<modules::Toolchain>(std::shared_ptr<void>(), const_cast<Toolchain*>(&tc)));
+        py::list<Row> out;
+        for (const nl::Row& r : nl::check_file(view, adapter, detail::path_of(path), at, standin::detail::symbols_to_new(syms), learned)) {
+            const Row7 full = detail::row_to_old(r);
+            out.append(Row(std::get<0>(full), std::get<1>(full), std::get<2>(full), std::get<3>(full), std::get<4>(full), std::get<5>(full)));
+        }
+        for (const auto& [name, place] : learned) {   // (what the old port put in `learnt`)
+            const Symbols one = detail::symbols_to_old(cb::exact::SymbolTable{{name, place}});
+            for (const auto& kv : one.items()) learnt.set(std::get<0>(kv), std::get<1>(kv));
+        }
+        return out;
+    });
+}
 
 // after a line /* SAMEFILE */: empty stand-ins of functions of the program's same file, which a far function
 // calls another way than one of another file (push cs, call near) - they are compiled and not compared
-py::set<py::str> _stubs(const py::bytes& src);
+inline py::set<py::str> _stubs(const py::bytes& src) {
+    return cb::compat::guard([&] {
+        py::set<py::str> out;
+        const cb::Bytes raw = cb::compat::from_py(src);
+        for (const std::string& s : cb::exact::ledger::stubs(cb::as_text(raw))) out.add(cb::compat::to_py(s));
+        return out;
+    });
+}
 
 // the function goes on to the next start (or to a pad of zeros before it: a segment's end)
-bool _reaches(const Project& prj, const py::list<int64_t>& starts, int64_t a, int64_t ln);
+inline bool _reaches(const Project& prj, const py::list<int64_t>& starts, int64_t a, int64_t ln) {
+    return cb::compat::guard([&] {
+        std::vector<std::uint32_t> s;
+        for (const int64_t x : starts) s.push_back(cb::compat::int_from_py<std::uint32_t>(x));
+        const cb::Bytes image = cb::compat::from_py(prj.image());
+        return cb::exact::ledger::reaches(s, cb::compat::int_from_py<std::uint32_t>(prj.code_end()), image, cb::compat::int_from_py<std::uint32_t>(a),
+                                          cb::compat::int_from_py<std::uint32_t>(ln));
+    });
+}
 
 // one file's rows under each toolchain [(label, rows)] -> its rows, a function identical when one gave it
-py::list<Row7> _merge(const py::list<std::tuple<py::str, py::list<Row>>>& per);
+inline py::list<Row7> _merge(const py::list<std::tuple<py::str, py::list<Row>>>& per) {
+    return cb::compat::guard([&] {
+        namespace nl = cb::exact::ledger;
+        std::vector<nl::Attempt> attempts;
+        for (const auto& [label, rows] : per) {
+            nl::Attempt a{cb::compat::from_py(label), {}};
+            for (const Row& r : rows)
+                a.rows.push_back(detail::row_to_new(Row7(std::get<0>(r), std::get<1>(r), std::get<2>(r), std::get<3>(r), std::get<4>(r), std::get<5>(r), By())));
+            attempts.push_back(std::move(a));
+        }
+        py::list<Row7> out;
+        for (const nl::Row& r : nl::merge(attempts)) out.append(detail::row_to_old(r));
+        return out;
+    });
+}
 
-py::list<Row7> run(const Project& prj, bool learn = false, bool verbose = false);
+inline py::list<Row7> run(const Project& prj, bool learn = false, bool verbose = false) {
+    return cb::compat::guard([&] {
+        py::list<Row7> out;
+        for (const cb::exact::ledger::Row& r : cb::exact::ledger::run(detail::NewView(prj), learn, verbose)) out.append(detail::row_to_old(r));
+        return out;
+    });
+}
 
-void write(const Project& prj, const py::list<Row7>& rows);
+inline void write(const Project& prj, const py::list<Row7>& rows) {
+    cb::compat::guard([&] {
+        std::vector<cb::exact::ledger::Row> rs;
+        for (const Row7& r : rows) rs.push_back(detail::row_to_new(r));
+        cb::exact::ledger::write(detail::NewView(prj), rs);
+    });
+}
 
-int64_t main(const Project& prj, const py::list<py::str>& argv);
+inline int64_t main(const Project& prj, const py::list<py::str>& argv) {
+    return cb::compat::guard([&] {
+        std::vector<std::string> args;
+        for (const py::str& a : argv) args.push_back(cb::compat::from_py(a));
+        return int64_t(cb::exact::ledger::command(detail::NewView(prj), args));
+    });
+}
 
 }  // namespace codebreaker::exact::ledger

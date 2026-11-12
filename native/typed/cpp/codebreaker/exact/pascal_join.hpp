@@ -158,6 +158,36 @@ inline std::map<std::string, nw::Equivalent> equivalents_of(const Project& prj) 
     return out;
 }
 
+// The old project as the new layer's (what `run` builds, and ledger builds for a project of compilands). Holds what
+// the new project points at: `prj` must outlive it (the decoder is read through it).
+class NewProject {
+  public:
+    explicit NewProject(const Project& prj) : image_(cb::compat::from_py(prj.image)), tc_(prj.toolchain()), decoder_(prj.decode) {
+        for (int64_t r : prj.compare.relocs()) relocs_.insert(cb::compat::int_from_py<std::uint32_t>(r));
+        p_.dir = cb::fs::from_text(utf8(prj.dir));
+        p_.config = config_to_new(prj.cfg);
+        p_.image = image_;
+        p_.toolchain = &tc_;
+        p_.symbols = standin::detail::symbols_to_new(prj.symbols());
+        p_.program.dgroup = prj.compare.dgroup;
+        p_.program.loadseg = cb::compat::int_from_py<std::uint32_t>(prj.compare.loadseg);
+        p_.program.code_base = [&prj](std::uint32_t a) { return cb::compat::int_from_py<std::uint32_t>(prj.compare.code_base(a)); };
+        p_.program.relocs = &relocs_;
+        p_.equivalents = equivalents_of(prj);
+        p_.decoder = &decoder_;
+    }
+    NewProject(const NewProject&) = delete;
+    NewProject& operator=(const NewProject&) = delete;
+    const nw::Project& get() const { return p_; }
+
+  private:
+    cb::Bytes image_;
+    ToolchainAdapter tc_;
+    std::unordered_set<std::uint32_t> relocs_;
+    compare::detail::OldDecoder decoder_;
+    nw::Project p_;
+};
+
 }  // namespace detail
 
 // A compiland: its pieces joined (the old layer's view of cb::exact::pascal_join::Compiland).
@@ -214,26 +244,9 @@ inline py::dict<int64_t, std::tuple<std::optional<int64_t>, std::optional<int64_
 inline py::list<Row> run(const Project& prj, bool verbose = false) {
     return cb::compat::guard([&] {
         namespace nw = cb::exact::pascal_join;
-        const detail::ToolchainAdapter tc(prj.toolchain());
-        const cb::Bytes image = cb::compat::from_py(prj.image);
-        const compare::Symbols syms = prj.symbols();
-        std::unordered_set<std::uint32_t> relocs;
-        for (int64_t r : prj.compare.relocs()) relocs.insert(cb::compat::int_from_py<std::uint32_t>(r));
-        const compare::detail::OldDecoder decoder(prj.decode);
-        nw::Project p;
-        p.dir = cb::fs::from_text(detail::utf8(prj.dir));
-        p.config = detail::config_to_new(prj.cfg);
-        p.image = image;
-        p.toolchain = &tc;
-        p.symbols = standin::detail::symbols_to_new(syms);
-        p.program.dgroup = prj.compare.dgroup;
-        p.program.loadseg = cb::compat::int_from_py<std::uint32_t>(prj.compare.loadseg);
-        p.program.code_base = [&](std::uint32_t a) { return cb::compat::int_from_py<std::uint32_t>(prj.compare.code_base(a)); };
-        p.program.relocs = &relocs;
-        p.equivalents = detail::equivalents_of(prj);
-        p.decoder = &decoder;
+        const detail::NewProject project(prj);
         py::list<Row> out;
-        for (const nw::Row& r : nw::run(p, verbose)) {
+        for (const nw::Row& r : nw::run(project.get(), verbose)) {
             std::optional<py::str> procedure;
             if (r.procedure) procedure = cb::compat::to_py(*r.procedure);
             std::optional<int64_t> address;
