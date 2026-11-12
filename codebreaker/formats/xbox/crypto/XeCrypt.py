@@ -119,6 +119,7 @@ class XECRYPT_RSAPUB_1024(BigEndianStructure):
 	]
 
 class XECRYPT_RSAPUB_1536(BigEndianStructure):
+	_anonymous_ = ["rsa"]
 	_fields_ = [
 		("rsa", XECRYPT_RSA),
 		("n", (BYTE * 192))
@@ -530,7 +531,7 @@ class XeCryptDes3:
 def XeCryptDesParity(data: BinLike) -> BinLike:
 	output = bytearray(len(data))
 	for i in range(len(data)):
-		p = data[i]
+		p = data[i] & 0xFE  # the parity of the seven key bits: the low bit is the one being set
 		p ^= p >> 4
 		p ^= p >> 2
 		p ^= p >> 1

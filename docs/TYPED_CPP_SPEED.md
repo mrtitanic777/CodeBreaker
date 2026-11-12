@@ -785,3 +785,18 @@ numbers that matter are that nothing got slower and that the recorder, the solve
 | analyze/image: load_pe of 3 real PE modules, functions carved and discovered (formats::pe + Capstone) | not timed (the old loader needs the Python, formats.dll and the DLL) | 1.1 s for all three, decode included |
 | verify/concolic: the 17 explorer tests, each a real Z3 session (own context) | the z3++ binding over py:: lists | 1.8 s for 72 checks, 0.19 s of it process start |
 | emulate/native_win16: the recorder is the same tracer code (w16_rec.cpp); the 16 callback trampolines became one context callback (cbt_w16_set_context) | 16 fixed slots, each call through a closure | one indirect call per event |
+## W1-B15: formats/xbox heavyiron and XeCrypt (2026-11-12)
+
+New idiomatic C++ (native/cb/formats/xbox) against the original Python on the same inputs, release build, one machine, the work
+in a loop of N (ms for the whole loop). Python = the original `heavyiron.py` / `XeCrypt.py` (its RSA is `pow()` on Python ints,
+keygen is OpenSSL's through `cryptography`); the old typed ports are not timed (they were never faster than the Python for the
+big-number parts: they carried their own BigInt).
+
+| Work | Python | C++ |
+|---|---|---|
+| heavyiron parse of BULK.ho (7.8 MB, 1283 assets) x20 | 31 | 1.0 |
+| XeCrypt RSA-2048 bootloader signature (sign) x50 | 302 | 185 |
+| XeCrypt RSA-2048 verify x50 | 47 | 32 |
+| RSA-2048 key generation x3 | 97 | 86 (CNG; with a seeded RandomSource the primes are searched here: ~270 ms each) |
+| rot_sum_sha over 8 MB x5 | 3097 | 81 |
+| RC4 over 8 MB x5 | 52 | 52 (state and indices in locals; about 4 cycles a byte, the dependency-chain limit of RC4, as OpenSSL's) |
