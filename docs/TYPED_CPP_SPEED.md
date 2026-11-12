@@ -1061,3 +1061,10 @@ New = Release /O2, one thread, `native/cb`; measured on the Windows 95 and 98 co
 | engine: 2,000 facts of one kind made side by side (4 jobs), then asked again | the old port runs the engine in native/engine through the old layer: not timed in isolation (its harness needs the whole old layer) | 214 ms to make, 32 ms to find all 2,000 current (a SQLite fact store per binary, one statement per fact) |
 | coverage ledger over three real Windows 95 modules and their functions | not timed (needs the old store and corpus) | milliseconds: the counts of a module are kept until the store's summary of it changes |
 | toolchain compile, repair candidates, identify scoring | nothing to time without the period compilers' kits (not in the repository) | the cached compile is a lookup; repair's candidate search is a scan of the source text |
+
+## W3-B6 (exact/draft/prove, exact/emu/native_dosexec)
+
+| What | Old | New |
+|---|---|---|
+| prove: the beam search, the mendings, the ranks, the history | the old port needs the whole old draft layer and a period compiler's kit to run: not timed | the search is tested without a compiler (24 cases, a fraction of a second); a compile is the cost, as before: a batch of 16 candidates is one run of the compiler, counted as two compiles |
+| native_dosexec | glue only | environment reads and a library load |
