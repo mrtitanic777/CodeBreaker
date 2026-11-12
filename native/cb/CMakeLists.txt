@@ -238,6 +238,10 @@ target_link_libraries(cb_ui PUBLIC cb_core)
 
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ws2_32)
 
+# The native program the decompiler's tests start in place of decompiler.exe (decompile/fake_decompiler_main.cpp), built beside cb_tests.
+add_executable(cb_fake_decompiler decompile/fake_decompiler_main.cpp)
+cb_apply_flags(cb_fake_decompiler)
+
 # The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
 add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
@@ -409,7 +413,7 @@ target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
 # the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
 target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
-add_dependencies(cb_tests cb_worker_probe cb_fake_qemu)
+add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 enable_testing()
@@ -435,5 +439,7 @@ foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
     add_dependencies(cb_tests_${area} cb_worker_probe)
   elseif(area STREQUAL "verify")
     add_dependencies(cb_tests_${area} cb_fake_qemu)
+  elseif(area STREQUAL "decompile")
+    add_dependencies(cb_tests_${area} cb_fake_decompiler)
   endif()
 endforeach()
