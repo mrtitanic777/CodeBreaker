@@ -1,6 +1,9 @@
 // The shim at codebreaker/emulate/native_win16.hpp: the old Run over a host Engine and the old record, through the new
 // recorder, on a real engine in real mode. Builds at /W3: the old layer is not warning-clean.
 #include <windows.h>   // (before the shim: it declares the two kernel32 calls itself unless windows.h is in)
+#undef VOID   // windows.h's VOID, far and near macros clash with names in translate/ir and native_l2, which these headers now bring in
+#undef far
+#undef near
 
 #include "codebreaker/emulate/native_win16.hpp"
 

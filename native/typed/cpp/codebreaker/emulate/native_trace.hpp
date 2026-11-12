@@ -40,9 +40,7 @@ __declspec(dllimport) void* __stdcall GetProcAddress(void*, const char*);
 }
 #endif
 
-namespace codebreaker::emulate::unicorn_uc {
-py::dict<py::str, int64_t> x86_register_table();   // unicorn_uc.hpp: unicorn.x86_const as {"UC_X86_REG_<NAME>": id}
-}
+#include "codebreaker/emulate/unicorn_uc.hpp"   // (x86_register_table: unicorn.x86_const as {"UC_X86_REG_<NAME>": id}; it ends by including this header)
 
 namespace cb::emulate::tracer {
 bool use_libraries(const wchar_t* unicorn_dll, const wchar_t* capstone_dll, char* err, std::size_t errlen);   // tracer/libs.hpp
@@ -142,6 +140,15 @@ struct UcError : py::Exception {
     explicit UcError(int64_t e) : py::Exception("Unicorn error " + std::to_string(e)), errno_(e) {}
     const char* type() const override { return "UcError"; }
 };
+
+}  // namespace codebreaker::emulate::native_trace
+
+namespace codebreaker::emulate::unicorn_uc {
+// (declared in unicorn_uc.hpp: the engine adapter throws what unicorn.UcError was)
+[[noreturn]] inline void throw_uc_error(int64_t code) { throw native_trace::UcError(code); }
+}  // namespace codebreaker::emulate::unicorn_uc
+
+namespace codebreaker::emulate::native_trace {
 
 // The Unicorn engine a run's hooks are attached to: the host's `uc` (its handle uc._uch, uc.emu_start).
 struct Engine {
