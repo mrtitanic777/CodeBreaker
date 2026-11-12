@@ -4,6 +4,7 @@
 #include "codebreaker/store/functions.hpp"
 #include "codebreaker/symbols/debug_build_estimate.hpp"
 #include "codebreaker/symbols/names.hpp"
+#include "codebreaker/translate/frontends/python/lower.hpp"
 
 namespace shim_check {
 

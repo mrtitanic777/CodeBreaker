@@ -69,8 +69,7 @@ inline py::dict<py::str, py::str> confident_names(const py::dict<py::str, Tier>&
 // The module run as a script: the KRNL386 estimate, names.json under state/idiomatic/krnl386, and the table printed.
 inline void main() {
     cb::compat::guard([&] {
-        const std::string none[] = {};
-        cbe::main({::codebreaker::base::corpus::detail::instance(), cb::compat::legacy::state_dir()}, std::span<const std::string>(none, 0));
+        cbe::main({::codebreaker::base::corpus::detail::instance(), cb::compat::legacy::state_dir()}, std::span<const std::string>());
         return 0;
     });
 }
