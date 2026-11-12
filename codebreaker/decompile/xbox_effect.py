@@ -116,12 +116,15 @@ def to_fx(data, name="Effect"):
     def function(blob, fname):
         if blob not in names:
             fname = "".join(c if c.isalnum() or c == "_" else "_" for c in fname)
-            names[blob] = fname
-            functions[fname] = xenos_hlsl.translate(shformat.read(blob), fname)
+            unique, n = fname, 2
+            while unique in functions:           # two shaders named alike are two functions, not one written over the other
+                unique, n = "%s_%d" % (fname, n), n + 1
+            names[blob] = unique
+            functions[unique] = xenos_hlsl.translate(shformat.read(blob), unique)
         return names[blob]
 
     variants, selectors = {}, set()
-    for t in fx.techniques:
+    for ti, t in enumerate(fx.techniques):       # (keyed by place: two techniques may share a name)
         for i, p in enumerate(t.passes):
             choices = {}
             for kind, prefix in (("VertexShader", "VS"), ("PixelShader", "PS")):
@@ -138,7 +141,7 @@ def to_fx(data, name="Effect"):
                 elif fx.objects.get(s.value):
                     choices[kind] = [function(fx.objects[s.value], "%s_%s_%s" % (prefix, t.name, p.name or "P%d" % i))]
             count = max([len(v) for v in choices.values()] or [1])
-            variants[(t.name, i)] = [tuple((choices[k][v if len(choices[k]) > 1 else 0] if k in choices else None)
+            variants[(ti, i)] = [tuple((choices[k][v if len(choices[k]) > 1 else 0] if k in choices else None)
                                            for k in ("VertexShader", "PixelShader")) for v in range(count)]
     # the parameters
     for p in fx.parameters:
@@ -187,14 +190,14 @@ def to_fx(data, name="Effect"):
     for f in functions.values():
         out.append(f.text)
     # the techniques (one per selector value when a pass chooses its shaders from arrays)
-    for t in fx.techniques:
-        count = max(len(variants[(t.name, i)]) for i in range(len(t.passes))) if t.passes else 1
+    for ti, t in enumerate(fx.techniques):
+        count = max(len(variants[(ti, i)]) for i in range(len(t.passes))) if t.passes else 1
         for v in range(count):
             if v == 0 and count > 1:
                 out.append("// %s__<n>: the shaders %s n chooses" % (t.name, " / ".join(sorted(selectors))))
             out.append("technique %s\n{" % (t.name if v == 0 else "%s__%d" % (t.name, v)))
             for i, p in enumerate(t.passes):
-                vs, ps = variants[(t.name, i)][min(v, len(variants[(t.name, i)]) - 1)]
+                vs, ps = variants[(ti, i)][min(v, len(variants[(ti, i)]) - 1)]
                 out.append("    pass %s\n    {" % (p.name or "P%d" % i))
                 for s in p.states:
                     if s.name == "VertexShader":

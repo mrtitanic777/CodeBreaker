@@ -118,11 +118,15 @@ cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
 cb_area(engine)
-target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge)
+target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify)   # (cb_verify: the verdict and class vocabulary)
 cb_area(jobs)
 target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
 target_link_libraries(cb_platforms PUBLIC cb_core cb_formats)
+# What CodeBreaker made of every program it was given (reach); the platform registry, the media readers and the
+# function store's tally reach it through Services.
+cb_area(coverage)
+target_link_libraries(cb_coverage PUBLIC cb_core cb_formats cb_platforms)
 
 # The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
 add_executable(cb_worker_probe jobs/worker_probe_main.cpp)
@@ -269,10 +273,10 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asm16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_coverage.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/decompile/xbox_effect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
