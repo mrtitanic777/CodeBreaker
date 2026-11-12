@@ -16,7 +16,7 @@ function(cb_apply_flags target)
   target_compile_definitions(${target} PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
   target_compile_options(${target} PRIVATE /permissive- /utf-8 /EHsc /W4 /WX /Zc:__cplusplus /Zc:char8_t- /bigobj)
   if(CB_ASAN)
-    target_compile_options(${target} PRIVATE /fsanitize=address /Zi)
+    target_compile_options(${target} PRIVATE /fsanitize=address /Z7)   # /Z7: debug info in each object, so the shared precompiled header works
     target_link_options(${target} PUBLIC /INCREMENTAL:NO)
   endif()
   cb_speed_up(${target})
@@ -29,7 +29,7 @@ endfunction()
 option(CB_UNITY "compile native/cb in unity batches" ON)
 set(CB_UNITY_BATCH 8 CACHE STRING "sources per unity batch")
 option(CB_PCH "precompile the standard headers of native/cb" ON)
-# Sources that cannot share a unity unit: they define file-local helpers with the same names as a neighbour's.
+# Sources that cannot share a unity unit: they define file-local helpers with the same names as a neighbour's. A source can also say so itself with a "// cb-unity: alone" comment.
 set(CB_UNITY_ALONE
   port/old_c_passes.cpp port/union_views.cpp source/vxd/symbols.cpp knowledge/value.cpp)
 function(cb_unity target sources)
@@ -41,7 +41,8 @@ function(cb_unity target sources)
     file(RELATIVE_PATH rel "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" "${src}")
     file(READ "${src}" text)
     # windows.h defines macros (far, near, pascal, min, LoadLibrary...) that would leak into the next file of the unit
-    if(rel IN_LIST CB_UNITY_ALONE OR text MATCHES "<[Ww]indows\\.h>")
+    # (or the source says so itself: a "cb-unity: alone" comment)
+    if(rel IN_LIST CB_UNITY_ALONE OR text MATCHES "<[Ww]indows\\.h>" OR text MATCHES "cb-unity: alone")
       set_source_files_properties("${src}" PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
     endif()
   endforeach()
@@ -139,7 +140,7 @@ target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
-file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/shims_w1b9_test.cpp")
+file(GLOB_RECURSE CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*shims*_test.cpp")   # every area's old-path shim tests
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
@@ -219,6 +220,7 @@ add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
 target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -232,6 +234,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/candidates.cpp"   # (uses the exact/draft/forms shim)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dpmi.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp"
@@ -281,7 +285,9 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

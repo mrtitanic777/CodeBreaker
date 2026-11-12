@@ -8,6 +8,7 @@
 #include "settings.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <format>
 #include <map>
 #include <mutex>
@@ -27,9 +28,23 @@ namespace kernel::profile_location
             return tree / name / "FFFE07D1" / "00010000" / name;
         }
 
+        uint32_t HardDriveId()
+        {
+            const auto devices = storage::Devices();
+            return devices.empty() ? 1 : devices.front().id; // the hard drive is listed first
+        }
+
         Location Lookup(uint64_t xuid)
         {
             std::error_code ec;
+            if (const fs::path host = HostProfiles(); !host.empty())
+            {
+                const fs::path package = PackageIn(host, xuid);
+                if (fs::is_directory(package, ec))
+                    return { HardDriveId(), package, false };
+                if (fs::is_regular_file(package, ec) && stfs_mount::IsPackageFile(package))
+                    return { HardDriveId(), package, true };
+            }
             for (const storage::Device& dev : storage::Devices())
             {
                 const fs::path package = PackageIn(storage::ContentTree(dev), xuid);
@@ -51,6 +66,18 @@ namespace kernel::profile_location
         }
     }
 
+    fs::path HostProfiles()
+    {
+        static const fs::path folder = [] {
+            const char* v = std::getenv("NATIVE_DASH_PROFILES");
+            if (!v || !*v)
+                return fs::path();
+            Log("Profiles: the dashboard's, in {} (NATIVE_DASH_PROFILES)", v);
+            return fs::path(v);
+        }();
+        return folder;
+    }
+
     Location Find(uint64_t xuid)
     {
         return Cached(xuid);
@@ -60,7 +87,7 @@ namespace kernel::profile_location
     {
         const Location where = Cached(xuid);
         if (where.device == 0)
-            return PackageIn(DataDirectory() / "content", xuid);
+            return PackageIn(HostProfiles().empty() ? DataDirectory() / "content" : HostProfiles(), xuid);
         if (!where.stfs)
             return where.package;
         std::string error;
@@ -85,8 +112,13 @@ namespace kernel::profile_location
     {
         std::vector<uint64_t> out;
         std::error_code ec;
+        std::vector<std::pair<uint32_t, fs::path>> trees;
+        if (const fs::path host = HostProfiles(); !host.empty())
+            trees.push_back({ HardDriveId(), host });
         for (const storage::Device& dev : storage::Devices())
-            for (const auto& owner : fs::directory_iterator(storage::ContentTree(dev), ec))
+            trees.push_back({ dev.id, storage::ContentTree(dev) });
+        for (const auto& [id, tree] : trees)
+            for (const auto& owner : fs::directory_iterator(tree, ec))
             {
                 const std::string name = owner.path().filename().string();
                 if (name.size() != 16 || name.find_first_not_of("0123456789ABCDEFabcdef") != std::string::npos)
@@ -94,7 +126,7 @@ namespace kernel::profile_location
                 const uint64_t xuid = std::stoull(name, nullptr, 16);
                 if ((xuid >> 60) != 0xE || std::find(out.begin(), out.end(), xuid) != out.end())
                     continue;
-                if (Cached(xuid).device == dev.id)
+                if (Cached(xuid).device == id)
                     out.push_back(xuid);
             }
         return out;

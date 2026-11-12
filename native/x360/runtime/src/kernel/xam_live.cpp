@@ -194,6 +194,9 @@ namespace
             kernel::BroadcastNotification(kXnPartyMembersChanged, 0);
             guide::LiveChanged(e.user);
             break;
+        case live::EventKind::ChatChanged: // a private chat's members or invitations (the Guide's Chat)
+            guide::LiveChanged(e.user);
+            break;
         case live::EventKind::MessageArrived:
             // XAM's mailbox list changed (0x818E5718): 0x82000006 with the user index, for system listeners.
             kernel::BroadcastNotification(0x82000006, e.user);

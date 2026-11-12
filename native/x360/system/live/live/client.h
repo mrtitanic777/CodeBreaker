@@ -66,6 +66,20 @@ namespace live
         uint32_t max = 8;        // the most members (XPARTY_MAX_USERS)
     };
 
+    // A private voice chat (protocol "Private chats and voice channels"; the Guide's Chat, Guide.ChatAndMessenger's
+    // QuickChat): its members and the players invited and not answered yet.
+    struct ChatMember
+    {
+        uint64_t xuid = 0;
+        std::string gamertag;
+    };
+    struct Chat
+    {
+        std::string id; // "C1" ...
+        std::vector<ChatMember> members, invited;
+        int64_t created = 0;
+    };
+
     // What a title needs to join a game it was invited to, or that a friend's presence shows (the console's
     // XINVITE_INFO; protocol "Invites and joining"): the session's XNKID, its host and the inviter, the game.
     struct InviteInfo
@@ -220,7 +234,7 @@ namespace live
     //   flag) within 30 s; `players` are the group's online XUIDs, this console's first; the others then get
     //   MatchFound with that session. MatchTimeout: the ticket's time ran out.
     enum class EventKind { Connected, Disconnected, SignedIn, SignedOut, FriendChanged, FriendRemoved, MessageArrived,
-                           PartyChanged, MatchFound, MatchTimeout };
+                           PartyChanged, MatchFound, MatchTimeout, ChatChanged };
     struct Event
     {
         EventKind kind;
@@ -322,6 +336,10 @@ namespace live
     // empty when not signed in or not connected).
     std::vector<RecentPlayer> RecentPlayers(uint32_t user);
     std::optional<Party> CurrentParty(uint32_t user);
+    // The private chats the user is in or invited to (kept from the server's pushes), and its active voice channel:
+    // "party" (the default), "chat:<id>" or "game" (none of the server's voice).
+    std::vector<Chat> Chats(uint32_t user);
+    std::string VoiceChannel(uint32_t user);
 
     // Blocking requests; nullopt on success, else the server's error text (or "not connected" / "timeout").
     std::optional<std::string> AddFriend(uint32_t user, const std::string& gamertag);
@@ -343,6 +361,13 @@ namespace live
     std::optional<std::string> CreateParty(uint32_t user);
     std::optional<std::string> InviteToParty(uint32_t user, uint64_t xuid);
     std::optional<std::string> JoinParty(uint32_t user, const std::string& party);
+    // Private chats: an invitation to `xuid` (into chat `chat`, or the user's chat with that player, made when there
+    // is none; the invitee gets a "chat_invite" message), joining one the user was invited to, leaving one (End Chat;
+    // declining an invitation), and the voice channel (VoiceChannel's values).
+    std::optional<std::string> InviteToChat(uint32_t user, uint64_t xuid, const std::string& chat = std::string());
+    std::optional<std::string> JoinChat(uint32_t user, const std::string& chat);
+    std::optional<std::string> LeaveChat(uint32_t user, const std::string& chat);
+    std::optional<std::string> SetVoiceChannel(uint32_t user, const std::string& channel);
     // Game invites (protocol "Invites and joining"). SendGameInvites: an invite to the game session `sessionId` (0: the
     // one `user` shows in presence) for each of `to` (XInviteSend, the Guide's Invite to Game); `results` says what became of
     // each. Refused as a whole (the returned text) when the session cannot take invites (ended, private, invites disabled,

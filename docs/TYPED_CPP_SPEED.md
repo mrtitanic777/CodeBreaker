@@ -564,6 +564,16 @@ Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2)
 |---|---|---|
 | fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
 | mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+
+## cb refactor: exact/draft/forms, batch W1-B11 (2026-11-11)
+
+Old = the typed port on the py:: layer (exact/draft/forms.cpp, /O2 in the harness `state/work/typed-port/exact.draft.forms`), same inputs, one run each, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| the harness: 482,355 pass runs over 8,475 draft bodies (every pass of the module, library passes against a fake kit), texts and cases read from the files, one JSON line written per case | 11.1 s | 5.6 s |
+
+The harness answers: the Python original (fixed: three bugs, see _bugs/LIST.md) and the C++ module give the same result for all 482,355 cases, the tables the passes fill included. The dynamic-pattern work of the old port (a regex built per name per call) is code now (`\b`-bounded word scans); the 129 patterns that are left are compiled once.
 | contract16: `_calls` over 250 functions (474 calls) of four Win95 16-bit modules | Python 199 ms (the old typed port could not be isolated: its harness times describe16 with it) | 42 ms (the whole test: parse the dump, decode, compare; process start 55 ms not counted) |
 | setup16 make_cd: the CD is patched in place (copy + two records) instead of written again by pycdlib; screen shrink 640x480 to 160x120 is the same Pillow filter | not timed (the old port had no ISO writer) | fixture CD in a few ms; the cost is the copy of the image |
 ## cb refactor: symbols/libraries, x86, wine16 and translate/ir, batch W0-B27 (2026-11-11)
@@ -724,6 +734,45 @@ calls) or message, strict reads of a field cut by the end of the file (42 calls)
 listed in the formats DIVERGES notes. Fixed on the way: omf rename_externs on an EXTDEF without a type index (26 MSVC
 1.52 MFC objects), omf patched with a non-ASCII segment name, ne.u16/u32 with a negative offset.
 
+## cb refactor W1-B10: exact/draft/shapes (2026-11-11)
+
+Old = the typed port on the py:: layer (exact/draft/shapes.cpp, py::re), new = cb::exact::draft::shapes (cb::Regex, hand scans), same inputs, one run each, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| the old harness: 853,952 pass runs (74 passes over 11,900 generated draft bodies of up to a few KB, results printed as JSON) | 30.2 s | 13.2 s (incl. JSON output and reading the 25 MB of cases) |
+
+The harness answers: 853,921 of the 853,952 results equal the Python module's (expected.txt: result, or its crc32 and length, and the tables the passes recorded); the other 31 are store_joins drafts on which the Python raised IndexError (fixed in the Python, which now answers as the C++ does).
+## formats/media and formats/pe_functions in native/cb/formats, 2026-11-11 (W1-B14)
+
+Old = the live implementation of the same algorithms (formats.dll: native/formats/media/media.cc and
+native/formats/win/pe_functions.cc, asked through native.call from Python; the typed ports ran this same code); new =
+cb::formats::media and cb::formats::pe_functions called directly. Each timing is the mean of 3-5 runs after a warm-up, on
+a machine running other builds. The old figures leave out opening the PE and the Python object work between calls, so the
+comparison favours the old side; the new figures include reading and parsing the file.
+
+| Work | old | new |
+|---|---|---|
+| kernel32.dll sweep + starts + extents (PeCarve) | 220 ms | 43 ms |
+| kernel32.dll function_spans | 77 ms | 33 ms |
+| gdi32.dll sweep (PeCarve / function_spans) | 67 / 30 ms | 14 / 13 ms |
+| user32.dll sweep (PeCarve / function_spans) | 8.5 / 5.2 ms | 3.2 / 2.2 ms |
+| kernel32.dll PeCarve + data_refs (every instruction decoded again) | 1,226 ms (Python) | 82 ms |
+| win95.iso volumes + file list (217 files) | 0.7 ms | 0.17 ms |
+| hd.img / floppy.img / parts.img volumes + list | 0.5 / 0.5 / 0.7 ms | 0.07 / 0.06 / 0.11 ms |
+| floppy.img, all 31 files read | 5.8 ms | 3.6 ms |
+| win95.iso, three files over 100 KB read | 3.3 ms | 1.3 ms |
+
+The sweep is faster because it steps through Capstone's iterator (one reused instruction record) instead of asking for an
+array of records per 64 KB window; the file readers keep the image open instead of opening it for every read.
+
+Answers: pe_functions -- funcs, call targets, starts, every decoded instruction with its operands (as Capstone gave them),
+resolved calls, calls_in, disasm_func, data_refs and function_spans on lz32, version, notepad, user32, kernel32 and gdi32
+equal the old harness's recorded values (60 checks), disasm_whole32 on its 11 blobs (noise included) at three bases (33
+checks), PeSeg of lz32 (rows, functions, names, relocation mask). media -- the volumes, boot facts, entries (with extents)
+and every file's bytes of 11 images (floppy, hard disk, partitioned disk, El Torito disc, raw 2352-byte discs, Windows 95
+Setup disc, a pre-DOS-2.0 floppy, two Windows 1.0 boot images), long and plain names, equal Python's line for line (966
+lines); put() on copies of three of them gives images byte for byte equal to Python's.
 
 ## cb refactor W1-B2: verify/compare, verify/concolic, emulate/native_win16, analyze/globals, analyze/ppc_calls, analyze/image (2026-11-11)
 

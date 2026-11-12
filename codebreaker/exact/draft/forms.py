@@ -570,7 +570,8 @@ def library_macros(text, macros):
             lines[k0:k2 + 1] = new
             text = "\n".join(lines)
             FILEPTR[f] = mac.get("type", "FILE")
-            FILEPTR["#include"] = mac.get("include")
+            if mac.get("include"):                          # (a macro without a header leaves the one an earlier gave)
+                FILEPTR["#include"] = mac["include"]
     return text
 
 
@@ -896,7 +897,7 @@ def default_after(text):
         if end is None:
             continue
         body = text[m.end():end.start()]
-        d = re.search(r"(?m)^%sdefault:\n((?:%s    [^\n]*\n)+)%s(case [^:\n]+:)\n%s    (return [^;\n]*;)\n$" %
+        d = re.search(r"(?m)^%sdefault:\n((?:%s    [^\n]*\n)+)%s(case [^:\n]+:)\n%s    (return [^;\n]*;)\n\s*\Z" %
                       (re.escape(ind), re.escape(ind), re.escape(ind), re.escape(ind)), body)
         if d and not re.search(r"(?m)^%s    (?:break|return|goto)\b" % re.escape(ind), d.group(1)):
             s_ = "".join(x[4:] + "\n" for x in d.group(1).rstrip("\n").split("\n"))
@@ -1545,7 +1546,7 @@ def register_temps(text):
     changed = False
     for k, l in enumerate(lines):
         m = re.match(r"(\s*)(\w+) = (\w+\((?:[^()]|\([^()]*\))*\));$", l)
-        if not m or not re.search(r"(?m)^[ \t]*register [\w ]+\**\s*%s;$" % m.group(2), body):
+        if not m or not re.search(r"(?m)^[ \t]*register [\w ]+\**\s*\b%s;$" % m.group(2), body):   # (\b: the name, not the end of a longer one)
             continue
         x = m.group(2)
         rest = [j for j in range(len(lines)) if j != k and re.search(r"\b%s\b" % x, lines[j]) and not re.match(r"\s*register\b", lines[j])]
@@ -1553,7 +1554,7 @@ def register_temps(text):
             continue
         lines[k + 1] = re.sub(r"\b%s\b" % x, lambda _: m.group(3), lines[k + 1])
         lines[k] = None
-        lines = [y for y in lines if y is None or not re.match(r"\s*register [\w ]+\**\s*%s;$" % x, y)]
+        lines = [y for y in lines if y is None or not re.match(r"\s*register [\w ]+\**\s*\b%s;$" % x, y)]
         changed = True
         break
     if not changed:

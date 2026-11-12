@@ -229,6 +229,45 @@ def test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same():
     assert again == first, again[0]
 
 
+def test_forms_library_macros_keep_the_include_a_macro_does_not_name():
+    """exact.draft.forms.library_macros: a macro without a header stored None over the header an earlier pass (or macro)
+    had put in FILEPTR["#include"], so the draft lost its #include; it now leaves what is there."""
+    from codebreaker.exact.draft import forms as F, text as T
+    src = ("{\n    stdin->f2--;\n    if ((stdin->f2 >= 0)) {\n        x = (*stdin->f0++ = *p);\n    } else {\n"
+           "        x = _filbuf(stdin);\n    }\n}")
+    T.FILEPTR.clear()
+    T.FILEPTR["#include"] = "stdio.h"
+    try:
+        out = F.library_macros(src, [{"call": "_filbuf", "as": "getc(%s)"}])
+        got = dict(T.FILEPTR)
+    finally:
+        T.FILEPTR.clear()
+    assert out == "{\n    ax = getc(stdin);\n}", out
+    assert got == {"#include": "stdio.h", "stdin": "FILE"}, got
+
+
+def test_forms_register_temps_asks_for_the_whole_register_name():
+    """exact.draft.forms.register_temps: `register int r_si;` was taken for the declaration of `si` (the pattern had no
+    word boundary before the name), so a call stored in the machine register si was folded away as if si were a
+    declared temporary. Only a declaration of the name itself counts."""
+    from codebreaker.exact.draft import forms as F
+    undeclared = "int f(x)\nint x;\n{\n    register int r_si;\n    si = foo(a);\n    x = (si + 1);\n}"
+    assert F.register_temps(undeclared) is None
+    declared = "int f(x)\nint x;\n{\n    register int r_si;\n    r_si = foo(a);\n    x = (strlen(b) + r_si);\n}"
+    assert F.register_temps(declared) == "int f(x)\nint x;\n{\n    x = (strlen(b) + foo(a));\n}"
+
+
+def test_forms_default_after_keeps_the_statements_after_the_default_cases_return():
+    """exact.draft.forms.default_after: the pattern ended `\\n$` (multi-line), so a blank line after the case's return
+    let it match with statements still following, and the rebuilt switch left them out. Only a return that is the
+    switch's last statement is moved."""
+    from codebreaker.exact.draft import forms as F
+    plain = "    switch (x) {\n    default:\n        foo(bx);\n    case 3:\n        return 0;\n    }"
+    assert F.default_after(plain) == "    switch (x) {\n    case 3:\n        return 0;\n    }\n    foo(bx);\n    return 0;"
+    more = "    switch (x) {\n    default:\n        foo(bx);\n    case 3:\n        return 0;\n\n        bar();\n    }"
+    assert F.default_after(more) is None
+
+
 def test_java_rules_findings_of_one_line_come_in_name_order():
     """java.rules: where one constructor or line matches several names of a set (virtual-call-in-ctor,
     map-read-insert, leak-drop-no-delete) the findings come in the sorted order of the names, not in the
@@ -369,15 +408,34 @@ def test_native_dosexec_loads_the_dll_once_from_two_threads():
         nd._WHY[:] = saved[1]
 
 
+def test_draft_shapes_store_joins_at_the_end_of_the_text_finds_nothing():
+    """exact.draft.shapes store_joins: a store the two arms meet at, with only closing braces after it to the end of
+    the text, looked at `lines[len(lines)]` for the line it closes to and raised IndexError (31 of the 11,900 drafts of
+    the refactor's harness; the candidate pass then lost every rewrite of that function). Such a store is not joined: the
+    text comes back as it is."""
+    from codebreaker.exact.draft import shapes as S
+
+    text = ("int f(x)\nint x;\n{\n    if (((f1234(r_1)) != 0)) {\n        v1 = ax;\n        return y;\n    }\n    f1234(n);\n"
+            "    return ax;\n    si = (y - 1);\n    break;\n    for (;;) {\n        r_1 = f1234(si);\n        if ((r_1 == 0)) break;\n"
+            "        v1 = (a - 2);\n    }\n    while (((ax != v1) || (n >= 0)) || ((x <= foo(ax)) && (x > i))) {\n        di = bx;\n"
+            "        if (!(!ax)) {\n            ax = dx;\n            L_2:\n            p->f2 = ax;\n        } else {\n"
+            "            bx++;\n            ax = v2;\n            goto L_2;\n        }\n    }\n}")
+    assert S.store_joins(text) == text
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
                test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
                test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch,
                test_xsm3_challenge_verify_answers_a_valid_packet, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same,
+               test_forms_library_macros_keep_the_include_a_macro_does_not_name,
+               test_forms_register_temps_asks_for_the_whole_register_name,
+               test_forms_default_after_keeps_the_statements_after_the_default_cases_return,
                test_java_rules_findings_of_one_line_come_in_name_order, test_data_declared_size_takes_the_first_declaration_by_name,
                test_segdiff_compile_group_leaves_no_work_folder,
                test_origin_notes_calls_to_compiler_helpers,
-               test_native_dosexec_loads_the_dll_once_from_two_threads):
+               test_native_dosexec_loads_the_dll_once_from_two_threads,
+               test_draft_shapes_store_joins_at_the_end_of_the_text_finds_nothing):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

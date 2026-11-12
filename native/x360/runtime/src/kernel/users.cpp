@@ -5,6 +5,7 @@
 #include "kernel/kernel.h"
 #include "kernel/profile_import.h"
 #include "kernel/profile_store.h"
+#include "kernel/profile_location.h"
 #include "live/client.h"
 #include "settings.h"
 
@@ -12,6 +13,7 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -59,9 +61,12 @@ namespace kernel::users
                 };
                 std::vector<Profile> list;
                 std::vector<bool> used(copied.size());
+                // The dashboard's profiles (NATIVE_DASH_PROFILES): the console has those only, not
+                // console_settings.ini's gamertags.
+                const bool host = !profile_location::HostProfiles().empty();
                 for (const std::string& name : Settings().profiles)
                 {
-                    if (name.empty())
+                    if (name.empty() || host)
                         continue;
                     size_t i = 0;
                     while (i < copied.size() && (used[i] || !same(copied[i].gamertag, name)))
@@ -131,6 +136,48 @@ namespace kernel::users
             added++;
         }
         return added;
+    }
+
+    namespace
+    {
+        // The host dashboard's sign-in file (NATIVE_DASH_SIGNIN_FILE), empty when this title runs on its own.
+        std::filesystem::path HostSignInFile()
+        {
+            const char* v = std::getenv("NATIVE_DASH_SIGNIN_FILE");
+            return v && *v ? std::filesystem::path(v) : std::filesystem::path();
+        }
+
+        std::string SignInText()
+        {
+            std::string text;
+            for (uint32_t user = 0; user < kMaxUsers; user++)
+                if (g_signedIn[user] != kNoProfile)
+                {
+                    const Profile& p = Profiles()[g_signedIn[user]];
+                    text += std::format("{} {:016X}{}\n", user, p.xuid,
+                                        p.liveEnabled && !live::SignedIn(user) ? " offline" : "");
+                }
+            return text;
+        }
+
+        // Every sign-in change, for the dashboard that started this title (g_mutex held).
+        void TellHost()
+        {
+            const auto file = HostSignInFile();
+            if (file.empty())
+                return;
+            const std::string text = SignInText();
+            if (FILE* f = _wfopen(file.c_str(), L"wb"))
+            {
+                std::fwrite(text.data(), 1, text.size(), f);
+                std::fclose(f);
+            }
+        }
+    }
+
+    bool HostedSignIns()
+    {
+        return std::getenv("NATIVE_DASH_SIGNED_IN") != nullptr;
     }
 
     void SaveSignIns()
@@ -221,6 +268,46 @@ namespace kernel::users
 
     void Initialize()
     {
+        if (const char* host = std::getenv("NATIVE_DASH_SIGNED_IN"))
+        {
+            // The dashboard's sign-ins: "<user>:<XUID>[ offline]" separated by commas, signed in as the sign-in UI
+            // signs a profile in (its LIVE logon in the background).
+            std::string text = host;
+            for (char& c : text)
+                if (c == ',' || c == ':')
+                    c = c == ',' ? ';' : ' ';
+            size_t n = 0;
+            size_t start = 0;
+            while (start < text.size())
+            {
+                const size_t end = std::min(text.find(';', start), text.size());
+                const std::string line = text.substr(start, end - start);
+                start = end + 1;
+                unsigned user = 0;
+                unsigned long long xuid = 0;
+                if (std::sscanf(line.c_str(), "%u %llx", &user, &xuid) != 2 || user >= kMaxUsers)
+                    continue;
+                const auto& list = Profiles();
+                const auto it = std::find_if(list.begin(), list.end(), [&](const Profile& p) { return p.xuid == xuid; });
+                if (it == list.end())
+                {
+                    Log("Users: the dashboard's user {} ({:016X}) is not one of this console's profiles", user, xuid);
+                    continue;
+                }
+                if (line.find("offline") != std::string::npos)
+                    live::Hold(user);
+                Log("Users: {} stays signed in to user {} (from the dashboard)", it->gamertag, user);
+                SignIn(user, size_t(it - list.begin()));
+                n++;
+            }
+            if (n == 0)
+            {
+                Log("Users: nobody signed in on the dashboard ({} profiles on the console)", Profiles().size());
+                std::lock_guard lock(g_mutex);
+                TellHost();
+            }
+            return;
+        }
         std::lock_guard lock(g_mutex);
         if (Profiles().empty())
         {
@@ -289,6 +376,7 @@ namespace kernel::users
             }
             g_signedIn[user] = profile;
             Log("Users: {} signed in to user {}", Profiles()[profile].gamertag, user);
+            TellHost();
         }
         for (const uint32_t other : signedOut)
             LiveSignOut(other);
@@ -307,6 +395,7 @@ namespace kernel::users
                 return;
             Log("Users: {} signed out of user {}", Profiles()[g_signedIn[user]].gamertag, user);
             g_signedIn[user] = kNoProfile;
+            TellHost();
         }
         LiveSignOut(user);
     }

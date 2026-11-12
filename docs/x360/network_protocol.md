@@ -320,3 +320,57 @@ those bits (one playing the sender's title first). Packets (big-endian), the tok
   payload.
 
 Client: live/game.h (Start with a receive handler, Send).
+
+## Private chats and voice channels
+
+Private voice chat for the ports front end, next to the party (wire: JSON lines on TCP 36074, voice frames `XV01` on
+UDP, unchanged). Server code (XboxLIVEServer): `src/ports/live_chats.cpp`, the `Session::channel` field and `Server::datagram` in
+`live_server.cpp`, the message bucket in `moderation.cpp`.
+
+**Ops** (every request carries `user`, as always; errors are the usual `{ok:false, error}`):
+
+- `chat_invite {user, xuid}` -- the caller's private chat with that player: the chat in which the caller is a member and
+  `xuid` is a member or already invited is reused, otherwise a new one is made (the caller a member, `xuid` invited).
+  Delivers a message `kind:"chat_invite"`, `text` = the chat id, `from` = the caller, as `party_invite` does (one open
+  invitation per inviter and chat: a repeat replaces it). Reply `{chat: view}`. Asking again for a player who already
+  joined returns the view and sends nothing. OURS, optional: `chat: "<id>"` invites `xuid` into that chat of the caller's
+  (how a chat grows past two; without it every player gets a chat of their own).
+- `chat_join {user, chat}` -- an invited player joins; the invitation message is used up. Reply `{chat: view}` (also when
+  already a member).
+- `chat_leave {user, chat}` -- End Chat. A member leaves; an invitee leaving is declining. Reply `{}`. The leaver gets no
+  push. When fewer than two members are left the chat ends: everyone left (members and invitees) is pushed
+  `{"op":"chat","chat":{"id":..,"ended":true}}`. A chat with one member and nobody left to answer an invitation ends too.
+- `chats {user}` -> `{chats:[view, ...]}`: the chats the caller is a member of or invited to.
+- `view` = `{id, members:[{xuid,gamertag}], invited:[{xuid,gamertag}], created}` (`created`: Unix seconds; ids look like `C1`).
+- `voice_channel {user, channel}` -> `{channel}`. `channel` is `"party"` (the default, what a session has until it sends this),
+  `"chat:<id>"` (the caller must be a member) or `"game"` (no server voice). Anything else: `bad channel`.
+
+**Pushes**: `{"op":"chat","chat":view}` to the members and the invitees on every change (invite, join, leave, decline, sign-out
+of a member or invitee); `{"op":"chat","chat":{"id":..,"ended":true}}` when it ends. Signing out or dropping the connection is a
+`chat_leave` from every chat the player is in (a chat has no held seat, unlike a party's minute) and drops the invitations
+to them (the invitation messages are removed from their inbox and the others' views lose them).
+
+**Voice routing**: a frame goes to the members of the sender's active channel whose own active channel is the same one
+(the party's members for `"party"`, the chat's for `"chat:<id>"`), except the sender and listeners who muted the sender.
+`"game"` sends and receives nothing. A player may be in a party and in chats at once; one channel is active. When the active
+chat ends or the player leaves it, the channel falls back to `"party"`. With no `voice_channel` ever sent every frame
+is routed exactly as before (the party).
+
+**Errors**: `no such chat`, `not invited`, `not a member of that chat`, `chat full`, `you cannot invite yourself`, `no such player`
+(unknown account), `that player is not online`, `bad xuid` / `bad chat` / `bad channel` (not a string, too long, not a XUID),
+`too many open chats` (a player is a member of at most 8), `that player has too many chat invitations` (16 unanswered),
+and the message bucket's `too many messages, try again in a minute` (`chat_invite` shares it with `message_send`,
+`party_invite`...: 30 a minute, burst 20). A chat holds 8 members and invitees together (`CHAT_MAX`).
+
+**Mutes**: the invitee's mute of the inviter drops the invitation silently, like `party_invite`: the inviter's reply
+is a normal view (the invitee listed as invited), but the invitee gets no message, no push, does not see the chat in `chats`
+and cannot join (`not invited`); unmuting makes a later invite work (the same one, asked again). A mute also keeps the
+muted player's voice from the muter, in chats as in the party.
+
+**Federation**: players of linked servers cannot be invited to private chats: `players on linked servers cannot be invited to
+private chats` (a chat is local state; the link carries no chat traffic yet).
+
+Tests: `tests/ports/test_chat.py` (every op and push, all the errors, mutes, disconnect cleanup, voice routing among chat, party,
+`game` and the default).
+
+Client: `native/x360/system/live/live/client.h` (Chats, InviteToChat, JoinChat, LeaveChat, SetVoiceChannel); the Guide's Chat: `native/x360/system/guide/guide/guide.cpp` (GuideChat).
