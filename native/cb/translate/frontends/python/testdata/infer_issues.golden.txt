@@ -1,0 +1,66 @@
+crashes {}
+issue app.f_bytes_percent 88 syntax:bytes %-formatting
+issue app.f_call_kw 124 conflict:no parameter z of f_assert
+issue app.f_call_kw 124 int-range:argument x in [None, None]
+issue app.f_call_many 128 conflict:too many arguments to f_assert
+issue app.f_cmp_mixed 54 conflict:ordering int against str
+issue app.f_complex 100 syntax:constant complex
+issue app.f_del 43 dynamic:del
+issue app.f_div 92 int-range:an int beyond 2**53 meets a float
+issue app.f_ellipsis 104 syntax:constant ellipsis
+issue app.f_gen 24 dynamic:generator
+issue app.f_global 2 dynamic:global
+issue app.f_ifexp 146 conflict:int and str mixed
+issue app.f_in_bytes 66 conflict:str in bytes
+issue app.f_is 58 dynamic:identity comparison of int
+issue app.f_lambda 19 dynamic:first-class lambda
+issue app.f_missing_arg 132 conflict:missing argument x to f_assert
+issue app.f_nested 7 syntax:nested function
+issue app.f_not_callable 150 conflict:calling a int
+issue app.f_percent 70 conflict:% with 1 values for 2 conversions
+issue app.f_pow 96 conflict:int ** a possibly negative int (a float)
+issue app.f_raise_from 32 syntax:raise from
+issue app.f_set_iter 136 dynamic:set iteration order
+issue app.f_star 27 dynamic:*args
+issue app.f_str_of_list 142 syntax:str() of a list
+issue app.f_subscript_int 154 conflict:subscript of a int
+issue app.f_try_finally 36 syntax:finally
+issue app.f_tuple_for 113 conflict:iterating a tuple of mixed items
+issue app.f_tuple_index 80 conflict:tuple index 5 out of range
+issue app.f_unpack_len 74 conflict:unpacking 3 items into 2
+issue app.f_walrus 48 syntax:walrus
+issue app.f_with 13 syntax:with
+param app.f_assert x int[-9223372036854775808..9223372036854775807]
+return app.f_assert int[1..9223372036854775807]
+return app.f_attr fn bmethod:int.bit_length
+return app.f_bytes_percent top(syntax:bytes %-formatting)
+return app.f_call_kw int[1..9223372036854775807]
+return app.f_call_many int[1..9223372036854775807]
+return app.f_cmp_mixed bool
+return app.f_complex top(syntax:constant complex)
+return app.f_del int[0..0]
+return app.f_div float
+return app.f_ellipsis top(syntax:constant ellipsis)
+return app.f_gen none
+return app.f_global int[1..1]
+return app.f_ifexp top(conflict:int and str mixed)
+return app.f_in_bytes bool
+return app.f_is bool
+return app.f_lambda int[1..1]
+return app.f_missing_arg int[1..9223372036854775807]
+return app.f_nested int[1..1]
+return app.f_not_callable top(conflict:calling a int)
+return app.f_percent str
+return app.f_pow top(conflict:int ** a possibly negative int (a float))
+return app.f_raise_from none
+return app.f_set_iter int[0..0]
+return app.f_slice_step bytes
+return app.f_star int[1..1]
+return app.f_str_of_list str
+return app.f_subscript_int top(conflict:subscript of a int)
+return app.f_try_finally int[1..1]
+return app.f_tuple_for int[0..0]
+return app.f_tuple_index top(conflict:tuple index 5 out of range)
+return app.f_walrus int[0..0]
+return app.f_with int[0..0]
+rounds 2

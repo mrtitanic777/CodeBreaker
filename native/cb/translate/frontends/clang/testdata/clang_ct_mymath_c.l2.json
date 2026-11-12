@@ -1,0 +1,231 @@
+{
+ "node": "Unit",
+ "path": "c:\\proj\\mymath.c",
+ "package": "",
+ "types": [
+  {
+   "node": "MethodDecl",
+   "line": 5,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "square",
+    "owner": "mymath",
+    "static": true,
+    "params": [
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "square",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 5,
+     "col": 16,
+     "sym": {
+      "kind": "param",
+      "name": "n",
+      "owner": "square",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 5,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 5,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 5,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "*",
+       "left": {
+        "node": "Name",
+        "line": 5,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "param",
+         "name": "n",
+         "owner": "square",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Name",
+        "line": 5,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "param",
+         "name": "n",
+         "owner": "square",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 9,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "cube",
+    "owner": "mymath",
+    "static": true,
+    "params": [
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "cube",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 9,
+     "col": 14,
+     "sym": {
+      "kind": "param",
+      "name": "n",
+      "owner": "cube",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 9,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 9,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 9,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "*",
+       "left": {
+        "node": "Binary",
+        "line": 9,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "op": "*",
+        "left": {
+         "node": "Name",
+         "line": 9,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "sym": {
+          "kind": "param",
+          "name": "n",
+          "owner": "cube",
+          "type": {
+           "kind": "i32"
+          }
+         }
+        },
+        "right": {
+         "node": "Name",
+         "line": 9,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "sym": {
+          "kind": "param",
+          "name": "n",
+          "owner": "cube",
+          "type": {
+           "kind": "i32"
+          }
+         }
+        }
+       },
+       "right": {
+        "node": "Name",
+        "line": 9,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "param",
+         "name": "n",
+         "owner": "cube",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "target": {
+  "triple": "x86_64-pc-windows-msvc",
+  "pointer": 8,
+  "long": 4,
+  "wchar": 2,
+  "char_signed": true,
+  "language": "c",
+  "std": ""
+ }
+}

@@ -153,7 +153,7 @@ file(GLOB_RECURSE CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*sh
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
-target_link_libraries(cb_decompile PUBLIC cb_core cb_formats)
+target_link_libraries(cb_decompile PUBLIC cb_core cb_formats cb_platforms cb_analyze cb_build)   # (cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment)
 
 cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
@@ -163,7 +163,7 @@ cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
 
 cb_area(compare)
-target_link_libraries(cb_compare PUBLIC cb_core)
+target_link_libraries(cb_compare PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_decompile cb_jobs)   # (the readers and the corpus, the decoder, the function starts of each kind, the pool of the product comparison)
 cb_area(emulate)
 target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile)
 
@@ -245,6 +245,8 @@ cb_apply_flags(cb_fake_qemu)
 target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly)
+
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -346,7 +348,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b11.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b12.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b13.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b1.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)

@@ -1036,6 +1036,14 @@ Old = the Python (the old typed ports cannot be built here without the whole exe
 |---|---|---|
 | build_lib, keystore, sd_signer, se_patcher | not timed: the cost is the RSA private-key operation per signed bootloader (big-number arithmetic in both) and, for the SE, the LZX library | the tests make and use about 20 2048-bit keys in under a second in all |
 
+## W3-B2 / W3-B1 (decompile/describe, compare/versions) -- HOT paths
+
+New = Release /O2, one thread, `native/cb`; measured on the Windows 95 and 98 corpus.
+
+| What | Old | New |
+|---|---|---|
+| describe16 of the 12 16-bit modules of the old harness (LZEXPAND ... USER.EXE, GDI.EXE) | the old typed port's harness case per module (describe16 plus every function-level reader, on top of the 16-bit facts it needs): 13.0 s in all (USER 5.8 s, GDI 4.3 s, MMSYSTEM 1.2 s, COMMDLG 1.0 s); the Python took ~5 minutes for USER and GDI alone | describe16 alone 2.7 s (USER 1.0 s, GDI 1.2 s); with the same function-level readers run on every segment (returns, popped_by_hand, args_read, register_arguments, register_helper, result_bytes, forwards, callers_say, callers_read_dx / ax, DxReturns.every_way, results with the caller-result rule) 6.7-7.5 s in all (USER 4.2 s, GDI 2.3 s). Every line of every description and 5,335 facts of the readers agree with the Python's |
+| compare/versions, the 50 comparisons of the old harness (18 pairs of Windows 95 / 98 modules, with and without listings) | the old typed port could not be run in isolation (its harness needs the whole old layer, `cycle.lib`): not timed | 0.52 s for all fifty; the big modules of the two products, one comparison each: USER32 0.07 s, GDI32 0.17 s, COMCTL32 0.80 s (1,102 -> 1,833 functions), SHELL32 1.03 s (1,897 -> 2,722), KERNEL32 0.43 s, USER.EXE 1.03 s, GDI.EXE 0.72 s; all 50 documents equal the Python's |
 ## W3-B7, W3-B8 (java/transpile, java/runtime, java/emit/source)
 
 | What | Old | New |

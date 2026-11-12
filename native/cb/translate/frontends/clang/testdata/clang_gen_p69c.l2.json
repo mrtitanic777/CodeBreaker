@@ -1,0 +1,1199 @@
+{
+ "node": "Unit",
+ "path": "c:\\proj\\gen\\p69.c",
+ "package": "",
+ "types": [
+  {
+   "node": "FieldDecl",
+   "line": 5,
+   "col": 8,
+   "sym": {
+    "kind": "global",
+    "name": "E690_0",
+    "owner": "p69",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 0
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:"
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 5,
+   "col": 16,
+   "sym": {
+    "kind": "global",
+    "name": "E690_1",
+    "owner": "p69",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 8
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:"
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 5,
+   "col": 43,
+   "sym": {
+    "kind": "global",
+    "name": "E690_2",
+    "owner": "p69",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 2
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:"
+   ]
+  },
+  {
+   "node": "MethodDecl",
+   "line": 6,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "use_e690",
+    "owner": "p69",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "use_e690",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 6,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 6,
+      "col": 5,
+      "expr": {
+       "node": "Cast",
+       "line": 6,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "x": {
+        "node": "Name",
+        "line": 6,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "global",
+         "name": "E690_2",
+         "owner": "p69",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "ClassDecl",
+   "line": 8,
+   "col": 8,
+   "name": "SZ691",
+   "qname": "SZ691",
+   "kind": "struct",
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 8,
+     "col": 21,
+     "sym": {
+      "kind": "field",
+      "name": "a",
+      "owner": "SZ691",
+      "type": {
+       "kind": "char",
+       "signed": true
+      }
+     },
+     "type": {
+      "kind": "char",
+      "signed": true
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 8,
+     "col": 30,
+     "sym": {
+      "kind": "field",
+      "name": "b",
+      "owner": "SZ691",
+      "type": {
+       "kind": "i16"
+      }
+     },
+     "type": {
+      "kind": "i16"
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 8,
+     "col": 37,
+     "sym": {
+      "kind": "field",
+      "name": "c",
+      "owner": "SZ691",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 8,
+     "col": 47,
+     "sym": {
+      "kind": "field",
+      "name": "d",
+      "owner": "SZ691",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 8,
+     "col": 55,
+     "sym": {
+      "kind": "field",
+      "name": "e",
+      "owner": "SZ691",
+      "type": {
+       "kind": "char",
+       "signed": true
+      }
+     },
+     "type": {
+      "kind": "char",
+      "signed": true
+     },
+     "mods": [
+      "public"
+     ]
+    }
+   ],
+   "layout": {
+    "kind": "record",
+    "size": 24,
+    "fields": [
+     {
+      "name": "a",
+      "offset": 0,
+      "type": {
+       "kind": "char",
+       "signed": true
+      }
+     },
+     {
+      "name": "b",
+      "offset": 2,
+      "type": {
+       "kind": "i16"
+      }
+     },
+     {
+      "name": "c",
+      "offset": 4,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     {
+      "name": "d",
+      "offset": 8,
+      "type": {
+       "kind": "f64"
+      }
+     },
+     {
+      "name": "e",
+      "offset": 16,
+      "type": {
+       "kind": "char",
+       "signed": true
+      }
+     }
+    ],
+    "name": "SZ691",
+    "role": "struct",
+    "packed": false
+   }
+  },
+  {
+   "node": "ClassDecl",
+   "line": 9,
+   "col": 7,
+   "name": "UZ691",
+   "qname": "UZ691",
+   "kind": "union",
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 9,
+     "col": 20,
+     "sym": {
+      "kind": "field",
+      "name": "a",
+      "owner": "UZ691",
+      "type": {
+       "kind": "char",
+       "signed": true
+      }
+     },
+     "type": {
+      "kind": "char",
+      "signed": true
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 9,
+     "col": 30,
+     "sym": {
+      "kind": "field",
+      "name": "d",
+      "owner": "UZ691",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 9,
+     "col": 37,
+     "sym": {
+      "kind": "field",
+      "name": "i",
+      "owner": "UZ691",
+      "type": {
+       "kind": "array",
+       "elem": {
+        "kind": "i32"
+       },
+       "count": 3
+      }
+     },
+     "type": {
+      "kind": "array",
+      "elem": {
+       "kind": "i32"
+      },
+      "count": 3
+     },
+     "mods": [
+      "public"
+     ]
+    }
+   ],
+   "layout": {
+    "kind": "record",
+    "size": 16,
+    "fields": [
+     {
+      "name": "a",
+      "offset": 0,
+      "type": {
+       "kind": "char",
+       "signed": true
+      }
+     },
+     {
+      "name": "d",
+      "offset": 0,
+      "type": {
+       "kind": "f64"
+      }
+     },
+     {
+      "name": "i",
+      "offset": 0,
+      "type": {
+       "kind": "array",
+       "elem": {
+        "kind": "i32"
+       },
+       "count": 3
+      }
+     }
+    ],
+    "name": "UZ691",
+    "role": "union",
+    "packed": false
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 10,
+   "col": 15,
+   "sym": {
+    "kind": "function",
+    "name": "sz691",
+    "owner": "p69",
+    "static": true,
+    "params": [
+     {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "i32"
+      }
+     }
+    ],
+    "ret": {
+     "kind": "u32"
+    }
+   },
+   "name": "sz691",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 10,
+     "col": 25,
+     "sym": {
+      "kind": "param",
+      "name": "arr",
+      "owner": "sz691",
+      "type": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "i32"
+       }
+      }
+     },
+     "type": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "i32"
+      }
+     }
+    }
+   ],
+   "ret": {
+    "kind": "u32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 10,
+    "col": 15,
+    "stmts": [
+     {
+      "node": "Local",
+      "line": 11,
+      "col": 7,
+      "sym": {
+       "kind": "local",
+       "name": "x",
+       "owner": "sz691",
+       "type": {
+        "kind": "array",
+        "elem": {
+         "kind": "i32"
+        },
+        "count": 7
+       }
+      },
+      "type": {
+       "kind": "array",
+       "elem": {
+        "kind": "i32"
+       },
+       "count": 7
+      }
+     },
+     {
+      "node": "Local",
+      "line": 11,
+      "col": 26,
+      "sym": {
+       "kind": "local",
+       "name": "s",
+       "owner": "sz691",
+       "type": {
+        "kind": "class",
+        "name": "SZ691"
+       }
+      },
+      "type": {
+       "kind": "class",
+       "name": "SZ691"
+      }
+     },
+     {
+      "node": "Return",
+      "line": 10,
+      "col": 15,
+      "expr": {
+       "node": "Cast",
+       "line": 10,
+       "col": 15,
+       "type": {
+        "kind": "u32"
+       },
+       "x": {
+        "node": "Binary",
+        "line": 10,
+        "col": 15,
+        "type": {
+         "kind": "u64"
+        },
+        "op": "+",
+        "left": {
+         "node": "Binary",
+         "line": 10,
+         "col": 15,
+         "type": {
+          "kind": "u64"
+         },
+         "op": "+",
+         "left": {
+          "node": "Binary",
+          "line": 10,
+          "col": 15,
+          "type": {
+           "kind": "u64"
+          },
+          "op": "+",
+          "left": {
+           "node": "Binary",
+           "line": 10,
+           "col": 15,
+           "type": {
+            "kind": "u64"
+           },
+           "op": "+",
+           "left": {
+            "node": "Binary",
+            "line": 10,
+            "col": 15,
+            "type": {
+             "kind": "u64"
+            },
+            "op": "+",
+            "left": {
+             "node": "Binary",
+             "line": 10,
+             "col": 15,
+             "type": {
+              "kind": "u64"
+             },
+             "op": "+",
+             "left": {
+              "node": "Binary",
+              "line": 10,
+              "col": 15,
+              "type": {
+               "kind": "u64"
+              },
+              "op": "+",
+              "left": {
+               "node": "Binary",
+               "line": 10,
+               "col": 15,
+               "type": {
+                "kind": "u64"
+               },
+               "op": "+",
+               "left": {
+                "node": "Binary",
+                "line": 10,
+                "col": 15,
+                "type": {
+                 "kind": "u64"
+                },
+                "op": "+",
+                "left": {
+                 "node": "Binary",
+                 "line": 10,
+                 "col": 15,
+                 "type": {
+                  "kind": "u64"
+                 },
+                 "op": "+",
+                 "left": {
+                  "node": "Binary",
+                  "line": 10,
+                  "col": 15,
+                  "type": {
+                   "kind": "u64"
+                  },
+                  "op": "+",
+                  "left": {
+                   "node": "Lit",
+                   "line": 10,
+                   "col": 15,
+                   "type": {
+                    "kind": "u64"
+                   },
+                   "value": 8,
+                   "text": "sizeof(u64)"
+                  },
+                  "right": {
+                   "node": "Lit",
+                   "line": 10,
+                   "col": 15,
+                   "type": {
+                    "kind": "u64"
+                   },
+                   "value": 8,
+                   "text": "sizeof(u64)"
+                  }
+                 },
+                 "right": {
+                  "node": "Lit",
+                  "line": 10,
+                  "col": 15,
+                  "type": {
+                   "kind": "u64"
+                  },
+                  "value": 2,
+                  "text": "sizeof(u16)"
+                 }
+                },
+                "right": {
+                 "node": "Lit",
+                 "line": 10,
+                 "col": 15,
+                 "type": {
+                  "kind": "u64"
+                 },
+                 "value": 2,
+                 "text": "sizeof(unsigned short)"
+                }
+               },
+               "right": {
+                "node": "Binary",
+                "line": 10,
+                "col": 15,
+                "type": {
+                 "kind": "u64"
+                },
+                "op": "/",
+                "left": {
+                 "node": "Lit",
+                 "line": 10,
+                 "col": 15,
+                 "type": {
+                  "kind": "u64"
+                 },
+                 "value": 28,
+                 "text": "sizeof expr"
+                },
+                "right": {
+                 "node": "Lit",
+                 "line": 10,
+                 "col": 15,
+                 "type": {
+                  "kind": "u64"
+                 },
+                 "value": 4,
+                 "text": "sizeof expr"
+                }
+               }
+              },
+              "right": {
+               "node": "Lit",
+               "line": 10,
+               "col": 15,
+               "type": {
+                "kind": "u64"
+               },
+               "value": 28,
+               "text": "sizeof expr"
+              }
+             },
+             "right": {
+              "node": "Lit",
+              "line": 10,
+              "col": 15,
+              "type": {
+               "kind": "u64"
+              },
+              "value": 24,
+              "text": "sizeof expr"
+             }
+            },
+            "right": {
+             "node": "Lit",
+             "line": 10,
+             "col": 15,
+             "type": {
+              "kind": "u64"
+             },
+             "value": 8,
+             "text": "sizeof expr"
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 10,
+            "col": 15,
+            "type": {
+             "kind": "u64"
+            },
+            "value": 8,
+            "text": "alignof(struct SZ691)"
+           }
+          },
+          "right": {
+           "node": "Lit",
+           "line": 10,
+           "col": 15,
+           "type": {
+            "kind": "u64"
+           },
+           "value": 4,
+           "text": "alignof(int)"
+          }
+         },
+         "right": {
+          "node": "Lit",
+          "line": 10,
+          "col": 15,
+          "type": {
+           "kind": "u64"
+          },
+          "value": 8,
+          "text": "sizeof expr"
+         }
+        },
+        "right": {
+         "node": "Lit",
+         "line": 10,
+         "col": 15,
+         "type": {
+          "kind": "u64"
+         },
+         "value": 48,
+         "text": "sizeof(int[3][4])"
+        }
+       },
+       "implicit": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "ClassDecl",
+   "line": 15,
+   "col": 8,
+   "name": "BF692",
+   "qname": "BF692",
+   "kind": "struct",
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 15,
+     "col": 25,
+     "sym": {
+      "kind": "field",
+      "name": "a",
+      "owner": "BF692",
+      "type": {
+       "kind": "u32"
+      }
+     },
+     "type": {
+      "kind": "u32"
+     },
+     "mods": [
+      "public",
+      "bitfield"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 15,
+     "col": 41,
+     "sym": {
+      "kind": "field",
+      "name": "b",
+      "owner": "BF692",
+      "type": {
+       "kind": "u32"
+      }
+     },
+     "type": {
+      "kind": "u32"
+     },
+     "mods": [
+      "public",
+      "bitfield"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 15,
+     "col": 52,
+     "sym": {
+      "kind": "field",
+      "name": "c",
+      "owner": "BF692",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "mods": [
+      "public",
+      "bitfield"
+     ]
+    }
+   ]
+  },
+  {
+   "node": "MethodDecl",
+   "line": 16,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "bf692",
+    "owner": "p69",
+    "static": true,
+    "params": [
+     {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "class",
+       "name": "BF692"
+      }
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "bf692",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 16,
+     "col": 25,
+     "sym": {
+      "kind": "param",
+      "name": "p",
+      "owner": "bf692",
+      "type": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "class",
+        "name": "BF692"
+       }
+      }
+     },
+     "type": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "class",
+       "name": "BF692"
+      }
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 16,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "ExprStmt",
+      "line": 16,
+      "col": 5,
+      "expr": {
+       "node": "Assign",
+       "line": 16,
+       "col": 5,
+       "type": {
+        "kind": "u32"
+       },
+       "target": {
+        "node": "Select",
+        "line": 16,
+        "col": 5,
+        "type": {
+         "kind": "u32"
+        },
+        "obj": {
+         "node": "Unary",
+         "line": 16,
+         "col": 5,
+         "type": {
+          "kind": "class",
+          "name": "BF692"
+         },
+         "op": "*",
+         "x": {
+          "node": "Name",
+          "line": 16,
+          "col": 5,
+          "type": {
+           "kind": "ptr",
+           "space": "flat",
+           "to": {
+            "kind": "class",
+            "name": "BF692"
+           }
+          },
+          "sym": {
+           "kind": "param",
+           "name": "p",
+           "owner": "bf692",
+           "type": {
+            "kind": "ptr",
+            "space": "flat",
+            "to": {
+             "kind": "class",
+             "name": "BF692"
+            }
+           }
+          }
+         },
+         "postfix": false
+        },
+        "sym": {
+         "kind": "field",
+         "name": "a",
+         "owner": "BF692",
+         "type": {
+          "kind": "u32"
+         }
+        }
+       },
+       "value": {
+        "node": "Cast",
+        "line": 16,
+        "col": 5,
+        "type": {
+         "kind": "u32"
+        },
+        "x": {
+         "node": "Lit",
+         "line": 16,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "value": 4
+        },
+        "implicit": true
+       }
+      }
+     },
+     {
+      "node": "Return",
+      "line": 16,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 16,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Binary",
+        "line": 16,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "op": "+",
+        "left": {
+         "node": "Cast",
+         "line": 16,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "node": "Select",
+          "line": 16,
+          "col": 5,
+          "type": {
+           "kind": "u32"
+          },
+          "obj": {
+           "node": "Unary",
+           "line": 16,
+           "col": 5,
+           "type": {
+            "kind": "class",
+            "name": "BF692"
+           },
+           "op": "*",
+           "x": {
+            "node": "Name",
+            "line": 16,
+            "col": 5,
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "BF692"
+             }
+            },
+            "sym": {
+             "kind": "param",
+             "name": "p",
+             "owner": "bf692",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "BF692"
+              }
+             }
+            }
+           },
+           "postfix": false
+          },
+          "sym": {
+           "kind": "field",
+           "name": "b",
+           "owner": "BF692",
+           "type": {
+            "kind": "u32"
+           }
+          }
+         },
+         "implicit": true
+        },
+        "right": {
+         "node": "Select",
+         "line": 16,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "obj": {
+          "node": "Unary",
+          "line": 16,
+          "col": 5,
+          "type": {
+           "kind": "class",
+           "name": "BF692"
+          },
+          "op": "*",
+          "x": {
+           "node": "Name",
+           "line": 16,
+           "col": 5,
+           "type": {
+            "kind": "ptr",
+            "space": "flat",
+            "to": {
+             "kind": "class",
+             "name": "BF692"
+            }
+           },
+           "sym": {
+            "kind": "param",
+            "name": "p",
+            "owner": "bf692",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "BF692"
+             }
+            }
+           }
+          },
+          "postfix": false
+         },
+         "sym": {
+          "kind": "field",
+          "name": "c",
+          "owner": "BF692",
+          "type": {
+           "kind": "i32"
+          }
+         }
+        }
+       },
+       "right": {
+        "node": "Cast",
+        "line": 16,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "x": {
+         "node": "Unsupported",
+         "line": 16,
+         "col": 5,
+         "type": {
+          "kind": "u64"
+         },
+         "kind": "expr:UnaryExprOrTypeTraitExpr",
+         "raw": "no layout for BF692"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 18,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "main",
+    "owner": "p69",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "main",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 18,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 18,
+      "col": 5,
+      "expr": {
+       "node": "Lit",
+       "line": 18,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "value": 0
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "target": {
+  "triple": "x86_64-pc-windows-msvc",
+  "pointer": 8,
+  "long": 4,
+  "wchar": 2,
+  "char_signed": true,
+  "language": "c",
+  "std": ""
+ }
+}

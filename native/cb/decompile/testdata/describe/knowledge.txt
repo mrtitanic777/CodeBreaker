@@ -1,0 +1,1448 @@
+ident	KERNEL	15	GlobalAlloc
+ident	KERNEL	17	GlobalFree
+ident	KERNEL	81	_lclose
+ident	KERNEL	83	_lcreat
+ident	KERNEL	84	_llseek
+ident	KERNEL	85	_lopen
+ident	KERNEL	18	GlobalLock
+ident	KERNEL	19	GlobalUnlock
+ident	KERNEL	74	OpenFile
+ident	KERNEL	82	_lread
+ident	KERNEL	88	lstrcpy
+ident	KERNEL	86	_lwrite
+ident	USER	430	lstrcmp
+ident	USER	435	IsCharUpper
+ident	USER	436	IsCharLower
+ident	KERNEL	89	lstrcat
+ident	KERNEL	90	lstrlen
+ident	KERNEL	1	FatalExit
+ident	KERNEL	137	FatalAppExit
+ident	KERNEL	178	__WINFLAGS
+ident	KERNEL	102	DOS3CALL
+ident	KERNEL	115	OutputDebugString
+of	KERNEL_15	6
+of	KERNEL_17	2
+of	KERNEL_81	2
+of	KERNEL_83	6
+of	KERNEL_84	8
+of	KERNEL_85	6
+of	KERNEL_18	2
+of	KERNEL_19	2
+of	KERNEL_74	10
+of	KERNEL_82	8
+of	KERNEL_88	8
+of	KERNEL_86	8
+of	USER_430	8
+of	USER_435	2
+of	USER_436	2
+of	KERNEL_89	8
+of	KERNEL_90	4
+of	KERNEL_1	2
+of	KERNEL_137	6
+of	KERNEL_178	N
+of	KERNEL_102	0
+of	KERNEL_115	4
+ident	KERNEL	4	LocalInit
+ident	KERNEL	5	LocalAlloc
+ident	KERNEL	173	__ROMBIOS
+ident	KERNEL	197	GlobalFix
+ident	KERNEL	230	GlobalSmartPageLock
+ident	KERNEL	111	GlobalWire
+ident	KERNEL	127	GetPrivateProfileInt
+ident	KERNEL	128	GetPrivateProfileString
+ident	KERNEL	6	LocalReAlloc
+ident	KERNEL	7	LocalFree
+ident	KERNEL	135	GetSystemDirectory
+ident	KERNEL	16	GlobalReAlloc
+ident	KERNEL	20	GlobalSize
+ident	KERNEL	170	ALLOCCSTODSALIAS
+ident	KERNEL	47	GetModuleHandle
+ident	KERNEL	176	FreeSelector
+ident	KERNEL	50	GetProcAddress
+ident	KERNEL	60	FindResource
+ident	KERNEL	61	LoadResource
+ident	KERNEL	62	LockResource
+ident	KERNEL	198	GlobalUnfix
+ident	KERNEL	231	GlobalSmartPageUnlock
+ident	KERNEL	112	GlobalUnWire
+ident	KERNEL	3	GetVersion
+ident	KERNEL	131	GetDOSEnvironment
+ident	KERNEL	114	__AHINCR
+ident	KERNEL	10	LocalSize
+ident	KERNEL	23	LockSegment
+ident	KERNEL	24	UnlockSegment
+ident	KERNEL	48	GetModuleUsage
+ident	KERNEL	205	CVWBREAK
+ident	KERNEL	91	INITTASK
+of	KERNEL_4	6
+of	KERNEL_5	4
+of	KERNEL_173	N
+of	KERNEL_197	2
+of	KERNEL_230	2
+of	KERNEL_111	2
+of	KERNEL_127	14
+of	KERNEL_128	22
+of	KERNEL_6	6
+of	KERNEL_7	2
+of	KERNEL_135	6
+of	KERNEL_16	8
+of	KERNEL_20	2
+of	KERNEL_170	2
+of	KERNEL_47	4
+of	KERNEL_176	2
+of	KERNEL_50	6
+of	KERNEL_60	10
+of	KERNEL_61	4
+of	KERNEL_62	2
+of	KERNEL_198	2
+of	KERNEL_231	2
+of	KERNEL_112	2
+of	KERNEL_3	0
+of	KERNEL_131	0
+of	KERNEL_114	N
+of	KERNEL_10	2
+of	KERNEL_23	2
+of	KERNEL_24	2
+of	KERNEL_48	2
+of	KERNEL_205	N
+of	KERNEL_91	0
+ident	KERNEL	132	GetWinFlags
+ident	KERNEL	192	GlobalPageUnlock
+ident	LZEXPAND	1	LZCopy
+ident	LZEXPAND	2	LZOpenFile
+ident	LZEXPAND	4	LZSeek
+ident	LZEXPAND	5	LZRead
+ident	LZEXPAND	6	LZClose
+ident	KERNEL	134	GetWindowsDirectory
+ident	KEYBOARD	5	AnsiToOem
+ident	KEYBOARD	6	OemToAnsi
+ident	KERNEL	175	AllocSelector
+ident	KERNEL	49	GetModuleFileName
+ident	USER	176	LoadString
+ident	KERNEL	186	GetSelectorBase
+ident	KERNEL	187	SetSelectorBase
+ident	KERNEL	189	SetSelectorLimit
+ident	USER	471	lstrcmpi
+ident	KERNEL	95	LoadLibrary
+ident	KERNEL	107	SetErrorMode
+of	KERNEL_132	0
+of	KERNEL_192	2
+of	LZEXPAND_1	4
+of	LZEXPAND_2	10
+of	LZEXPAND_4	8
+of	LZEXPAND_5	8
+of	LZEXPAND_6	2
+of	KERNEL_134	6
+of	KEYBOARD_5	8
+of	KEYBOARD_6	8
+of	KERNEL_175	2
+of	KERNEL_49	8
+of	USER_176	10
+of	KERNEL_186	2
+of	KERNEL_187	6
+of	KERNEL_189	6
+of	USER_471	8
+of	KERNEL_95	4
+of	KERNEL_107	2
+ident	USER	13	GetTickCount
+ident	KERNEL	22	GlobalFlags
+ident	KERNEL	150	DirectedYield
+ident	KERNEL	28	GLOBALMASTERHANDLE
+ident	KERNEL	36	GetCurrentTask
+ident	USER	179	GetSystemMetrics
+ident	KERNEL	202	REGISTERPTRACE
+of	USER_13	0
+of	KERNEL_22	2
+of	KERNEL_150	0
+of	KERNEL_28	0
+of	KERNEL_36	0
+of	USER_179	2
+of	KERNEL_202	4
+ident	KERNEL	29	Yield
+of	KERNEL_29	0
+ident	KERNEL	101	NOHOOKDOSCALL
+of	KERNEL_101	0
+ident	KERNEL	157	GETCURPID
+ident	USER	420	wsprintf
+ident	KERNEL	58	GetProfileString
+ident	KERNEL	59	WriteProfileString
+ident	KERNEL	63	FreeResource
+ident	USER	431	AnsiUpper
+ident	KERNEL	65	SizeofResource
+ident	KERNEL	21	GlobalHandle
+ident	KERNEL	56	Throw
+ident	USER	234	UnhookWindowsHook
+ident	USER	107	DefWindowProc
+ident	USER	235	DefHookProc
+ident	USER	109	PeekMessage
+ident	USER	110	PostMessage
+ident	USER	111	SendMessage
+ident	USER	114	DispatchMessage
+ident	USER	118	RegisterWindowMessage
+ident	USER	121	SetWindowsHook
+ident	USER	133	GetWindowWord
+ident	USER	262	GetWindow
+ident	USER	136	SetWindowLong
+ident	USER	268	GlobalAddAtom
+ident	USER	269	GlobalDeleteAtom
+ident	KERNEL	166	WinExec
+ident	USER	24	RemoveProp
+ident	USER	25	GetProp
+ident	USER	26	SetProp
+ident	USER	31	IsIconic
+ident	USER	287	GetLastActivePopup
+ident	USER	35	IsWindowEnabled
+ident	KERNEL	55	Catch
+ident	USER	41	CreateWindow
+ident	USER	42	ShowWindow
+ident	USER	45	BringWindowToTop
+ident	USER	46	GetParent
+ident	USER	47	IsWindow
+ident	USER	49	IsWindowVisible
+ident	USER	53	DestroyWindow
+ident	USER	54	EnumWindows
+ident	USER	59	SetActiveWindow
+ident	USER	60	GetActiveWindow
+ident	USER	135	GetWindowLong
+ident	KERNEL	97	GetTempFileName
+ident	USER	239	DialogBoxParam
+ident	USER	1	MessageBox
+ident	USER	36	GetWindowText
+ident	USER	171	WinHelp
+ident	KERNEL	96	FreeLibrary
+ident	USER	88	EndDialog
+ident	USER	91	GetDlgItem
+ident	USER	92	SetDlgItemText
+ident	USER	93	GetDlgItemText
+ident	USER	101	SendDlgItemMessage
+ident	GDI	128	MulDiv
+ident	USER	122	CallWindowProc
+ident	GDI	2	SetBkMode
+ident	GDI	9	SetTextColor
+ident	USER	10	SetTimer
+ident	USER	12	KillTimer
+ident	KERNEL	169	GetFreeSpace
+ident	GDI	34	BitBlt
+ident	USER	284	GetFreeSystemResources
+ident	USER	29	ScreenToClient
+ident	USER	32	GetWindowRect
+ident	KERNEL	51	MakeProcInstance
+ident	KERNEL	52	FreeProcInstance
+ident	USER	37	SetWindowText
+ident	GDI	45	SelectObject
+ident	USER	39	BeginPaint
+ident	USER	40	EndPaint
+ident	GDI	51	CreateCompatibleBitmap
+ident	GDI	52	CreateCompatibleDC
+ident	USER	175	LoadBitmap
+ident	GDI	56	CreateFont
+ident	GDI	68	DeleteDC
+ident	GDI	69	DeleteObject
+ident	USER	66	GetDC
+ident	USER	68	ReleaseDC
+ident	GDI	80	GetDeviceCaps
+ident	GDI	346	SetTextAlign
+ident	GDI	351	ExtTextOut
+ident	KERNEL	168	DIRECTRESALLOC
+ident	USER	174	LoadIcon
+ident	USER	455	GETICONID
+ident	USER	456	LOADICONHANDLER
+of	KERNEL_157	4
+of	USER_420	0
+of	KERNEL_58	18
+of	KERNEL_59	12
+of	KERNEL_63	2
+of	USER_431	4
+of	KERNEL_65	4
+of	KERNEL_21	2
+of	KERNEL_56	4
+of	USER_234	6
+of	USER_107	10
+of	USER_235	12
+of	USER_109	14
+of	USER_110	10
+of	USER_111	10
+of	USER_114	4
+of	USER_118	4
+of	USER_121	6
+of	USER_133	4
+of	USER_262	4
+of	USER_136	8
+of	USER_268	4
+of	USER_269	2
+of	KERNEL_166	6
+of	USER_24	6
+of	USER_25	6
+of	USER_26	8
+of	USER_31	2
+of	USER_287	2
+of	USER_35	2
+of	KERNEL_55	4
+of	USER_41	30
+of	USER_42	4
+of	USER_45	2
+of	USER_46	2
+of	USER_47	0
+of	USER_49	2
+of	USER_53	2
+of	USER_54	8
+of	USER_59	2
+of	USER_60	0
+of	USER_135	4
+of	KERNEL_97	12
+of	USER_239	16
+of	USER_1	12
+of	USER_36	8
+of	USER_171	12
+of	KERNEL_96	2
+of	USER_88	4
+of	USER_91	4
+of	USER_92	8
+of	USER_93	10
+of	USER_101	12
+of	GDI_128	6
+of	USER_122	18
+of	GDI_2	4
+of	GDI_9	6
+of	USER_10	N
+of	USER_12	N
+of	KERNEL_169	2
+of	GDI_34	20
+of	USER_284	2
+of	USER_29	6
+of	USER_32	6
+of	KERNEL_51	6
+of	KERNEL_52	4
+of	USER_37	6
+of	GDI_45	4
+of	USER_39	6
+of	USER_40	6
+of	GDI_51	6
+of	GDI_52	2
+of	USER_175	8
+of	GDI_56	30
+of	GDI_68	2
+of	GDI_69	2
+of	USER_66	2
+of	USER_68	4
+of	GDI_80	4
+of	GDI_346	4
+of	GDI_351	22
+of	KERNEL_168	6
+of	USER_174	14
+of	USER_455	6
+of	USER_456	4
+ident	USER	232	SetWindowPos
+ident	USER	240	DialogBoxIndirectParam
+ident	USER	244	EqualRect
+ident	USER	124	UpdateWindow
+ident	USER	125	InvalidateRect
+ident	USER	127	ValidateRect
+ident	GDI	19	LineTo
+ident	GDI	20	MoveTo
+ident	USER	16	ClipCursor
+ident	USER	18	SetCapture
+ident	GDI	154	GetNearestColor
+ident	GDI	27	Rectangle
+ident	USER	22	SetFocus
+ident	USER	23	GetFocus
+ident	USER	28	ClientToScreen
+ident	GDI	36	Polygon
+ident	USER	34	EnableWindow
+ident	USER	180	GetSysColor
+ident	GDI	61	CreatePen
+ident	USER	56	MoveWindow
+ident	GDI	66	CreateSolidBrush
+ident	USER	191	ChildWindowFromPoint
+ident	USER	74	CopyRect
+ident	USER	76	PtInRect
+ident	USER	78	InflateRect
+ident	GDI	87	GetStockObject
+ident	USER	79	IntersectRect
+ident	USER	81	FillRect
+ident	USER	466	DrawFocusRect
+ident	USER	83	FrameRect
+ident	USER	94	SetDlgItemInt
+ident	USER	95	GetDlgItemInt
+ident	USER	104	MessageBeep
+ident	KERNEL	121	LocalShrink
+ident	USER	243	GetDialogBaseUnits
+ident	KERNEL	136	GetDriveType
+ident	GDI	1	SetBkColor
+ident	USER	512	WNetGetConnection
+ident	USER	513	WNetGetCaps
+ident	USER	131	GetClassLong
+ident	USER	134	SetWindowWord
+ident	USER	525	WNetConnectDialog
+ident	GDI	156	CreateDiscardableBitmap
+ident	USER	33	GetClientRect
+ident	USER	173	LoadCursor
+ident	USER	432	AnsiLower
+ident	USER	185	GrayString
+ident	USER	189	GetSysModalWindow
+ident	KERNEL	207	IsDBCSLeadByte
+ident	USER	69	SetCursor
+ident	USER	71	ShowCursor
+ident	GDI	82	GetObject
+ident	GDI	91	GetTextExtent
+ident	GDI	93	GetTextMetrics
+ident	USER	472	AnsiNext
+ident	USER	97	CheckDlgButton
+ident	USER	98	IsDlgButtonChecked
+ident	USER	100	DlgDirList
+ident	USER	527	WNetConnectionDialog
+ident	GDI	153	CreateIC
+ident	GDI	38	Escape
+ident	GDI	53	CreateDC
+ident	USER	96	CheckRadioButton
+ident	GDI	3	SetMapMode
+ident	GDI	12	SetWindowExt
+ident	GDI	14	SetViewportExt
+ident	GDI	33	TextOut
+ident	GDI	57	CreateFontIndirect
+ident	GDI	442	CreateDIBitmap
+ident	GDI	81	GetMapMode
+ident	GDI	94	GetViewportExt
+ident	GDI	96	GetWindowExt
+ident	USER	242	CreateDialogIndirectParam
+of	USER_232	14
+of	USER_240	14
+of	USER_244	8
+of	USER_124	2
+of	USER_125	8
+of	USER_127	6
+of	GDI_19	6
+of	GDI_20	6
+of	USER_16	4
+of	USER_18	2
+of	GDI_154	6
+of	GDI_27	10
+of	USER_22	2
+of	USER_23	0
+of	USER_28	6
+of	GDI_36	8
+of	USER_34	4
+of	USER_180	2
+of	GDI_61	8
+of	USER_56	12
+of	GDI_66	4
+of	USER_191	6
+of	USER_74	8
+of	USER_76	8
+of	USER_78	8
+of	GDI_87	2
+of	USER_79	12
+of	USER_81	8
+of	USER_466	6
+of	USER_83	8
+of	USER_94	8
+of	USER_95	10
+of	USER_104	2
+of	KERNEL_121	4
+of	USER_243	0
+of	KERNEL_136	2
+of	GDI_1	6
+of	USER_512	12
+of	USER_513	2
+of	USER_131	4
+of	USER_134	6
+of	USER_525	4
+of	GDI_156	6
+of	USER_33	6
+of	USER_173	14
+of	USER_432	4
+of	USER_185	22
+of	USER_189	0
+of	KERNEL_207	2
+of	USER_69	2
+of	USER_71	2
+of	GDI_82	8
+of	GDI_91	8
+of	GDI_93	6
+of	USER_472	4
+of	USER_97	6
+of	USER_98	4
+of	USER_100	12
+of	USER_527	4
+of	GDI_153	16
+of	GDI_38	14
+of	GDI_53	16
+of	USER_96	8
+of	GDI_3	4
+of	GDI_12	6
+of	GDI_14	6
+of	GDI_33	12
+of	GDI_57	4
+of	GDI_442	20
+of	GDI_81	2
+of	GDI_94	2
+of	GDI_96	2
+of	USER_242	16
+ident	USER	116	PostAppMessage
+ident	KERNEL	167	GETEXPWINVER
+ident	USER	825	POSTMESSAGE32
+ident	KERNEL	335	IsBadWritePtr
+ident	KERNEL	346	IsBadHugeReadPtr
+ident	KERNEL	347	IsBadHugeWritePtr
+ident	KERNEL	357	MapSL
+ident	KERNEL	358	MapLS
+ident	KERNEL	359	UnMapLS
+ident	KERNEL	105	GETEXEVERSION
+ident	KERNEL	129	WritePrivateProfileString
+ident	USER	251	SendDriverMessage
+ident	USER	252	OpenDriver
+ident	USER	253	CloseDriver
+ident	USER	254	GetDriverModuleHandle
+ident	KERNEL	27	GETMODULENAME
+ident	USER	403	UnregisterClass
+ident	KERNEL	320	IsTask
+ident	USER	57	RegisterClass
+ident	USER	452	CreateWindowEx
+ident	KERNEL	471	N
+ident	KERNEL	216	RegEnumKey
+ident	KERNEL	217	RegOpenKey
+ident	KERNEL	218	RegCreateKey
+ident	KERNEL	219	RegDeleteKey
+ident	KERNEL	220	RegCloseKey
+ident	KERNEL	221	RegSetValue
+ident	KERNEL	222	RegDeleteValue
+ident	KERNEL	223	RegEnumValue
+ident	KERNEL	224	RegQueryValue
+ident	KERNEL	353	lstrcpyn
+ident	KERNEL	225	RegQueryValueEx
+ident	KERNEL	226	RegSetValueEx
+ident	KERNEL	491	RegisterServiceProcess
+ident	KERNEL	501	N
+ident	KERNEL	122	ISTASKLOCKED
+ident	KERNEL	69	FindAtom
+ident	KERNEL	70	AddAtom
+ident	KERNEL	71	DeleteAtom
+ident	KERNEL	72	GetAtomName
+ident	KERNEL	334	IsBadReadPtr
+ident	KERNEL	337	IsBadStringPtr
+ident	KERNEL	349	_hread
+ident	KERNEL	360	OpenFileEx
+ident	USER	113	TranslateMessage
+ident	USER	255	DefDriverProc
+ident	USER	6	PostQuitMessage
+ident	KERNEL	159	GLOBALHANDLENORIP
+ident	KERNEL	161	LOCALCOUNTFREE
+ident	KERNEL	162	LOCALHEAPSIZE
+ident	KERNEL	45	LoadModule
+ident	KERNEL	336	IsBadCodePtr
+ident	USER	108	GetMessage
+ident	USER	249	GetAsyncKeyState
+ident	USER	473	AnsiPrev
+ident	KERNEL	485	N
+ident	KERNEL	113	__AHSHIFT
+ident	KEYBOARD	134	AnsiToOemBuff
+ident	KERNEL	171	AllocDStoCSAlias
+ident	KERNEL	350	_hwrite
+ident	USER	224	GetWindowTask
+ident	KERNEL	651	ThunkConnect16
+ident	KERNEL	613	N
+ident	KERNEL	614	N
+ident	KERNEL	631	C16ThkSL01
+ident	KERNEL	455	N
+of	USER_116	10
+of	KERNEL_167	2
+of	USER_825	12
+of	KERNEL_335	6
+of	KERNEL_346	8
+of	KERNEL_347	8
+of	KERNEL_357	4
+of	KERNEL_358	4
+of	KERNEL_359	4
+of	KERNEL_105	0
+of	KERNEL_129	16
+of	USER_251	12
+of	USER_252	12
+of	USER_253	10
+of	USER_254	2
+of	KERNEL_27	8
+of	USER_403	6
+of	KERNEL_320	2
+of	USER_57	4
+of	USER_452	34
+of	KERNEL_471	0
+of	KERNEL_216	16
+of	KERNEL_217	12
+of	KERNEL_218	12
+of	KERNEL_219	8
+of	KERNEL_220	4
+of	KERNEL_221	20
+of	KERNEL_222	8
+of	KERNEL_223	32
+of	KERNEL_224	16
+of	KERNEL_353	10
+of	KERNEL_225	24
+of	KERNEL_226	24
+of	KERNEL_491	N
+of	KERNEL_501	2
+of	KERNEL_122	0
+of	KERNEL_69	4
+of	KERNEL_70	4
+of	KERNEL_71	2
+of	KERNEL_72	8
+of	KERNEL_334	6
+of	KERNEL_337	6
+of	KERNEL_349	10
+of	KERNEL_360	10
+of	USER_113	4
+of	USER_255	16
+of	USER_6	2
+of	KERNEL_159	2
+of	KERNEL_161	0
+of	KERNEL_162	0
+of	KERNEL_45	8
+of	KERNEL_336	4
+of	USER_108	10
+of	USER_249	2
+of	USER_473	8
+of	KERNEL_485	N
+of	KERNEL_113	N
+of	KEYBOARD_134	10
+of	KERNEL_171	2
+of	KERNEL_350	10
+of	USER_224	2
+of	KERNEL_651	24
+of	KERNEL_613	0
+of	KERNEL_614	0
+of	KERNEL_631	0
+of	KERNEL_455	N
+ident	SYSTEM	2	CREATESYSTEMTIMER
+ident	SYSTEM	3	KILLSYSTEMTIMER
+ident	SYSTEM	6	GETSYSTEMMSECCOUNT
+ident	KERNEL	450	N
+ident	KERNEL	451	N
+ident	KERNEL	327	N
+ident	KERNEL	464	N
+ident	KERNEL	479	N
+ident	KERNEL	480	N
+ident	KERNEL	481	N
+ident	KERNEL	625	N
+ident	KERNEL	133	GETEXEPTR
+ident	KERNEL	361	PIGLET_361
+ident	KERNEL	117	OLDYIELD
+ident	GDI	11	SetWindowOrg
+ident	GDI	13	SetViewportOrg
+ident	GDI	148	SetBrushOrg
+ident	GDI	150	UnrealizeObject
+ident	GDI	22	IntersectClipRect
+ident	KEYBOARD	4	ToAscii
+ident	GDI	30	SaveDC
+ident	KERNEL	535	N
+ident	KERNEL	536	N
+ident	GDI	161	PtInRegion
+ident	KERNEL	30	WaitEvent
+ident	KERNEL	31	PostEvent
+ident	GDI	39	RestoreDC
+ident	KERNEL	33	LOCKCURRENTTASK
+ident	GDI	172	SetRectRgn
+ident	GDI	47	CombineRgn
+ident	KERNEL	562	N
+ident	GDI	64	CreateRectRgn
+ident	KERNEL	447	N
+ident	KERNEL	191	GlobalPageLock
+ident	KERNEL	452	N
+ident	GDI	77	GetClipBox
+ident	GDI	462	IsGDIObject
+ident	GDI	79	GetDCOrg
+ident	KERNEL	458	N
+ident	KERNEL	459	N
+ident	KERNEL	460	N
+ident	GDI	475	GetWindowOrgEx
+ident	KERNEL	354	GETAPPCOMPATFLAGS
+ident	KERNEL	612	N
+ident	KERNEL	486	N
+ident	KERNEL	487	N
+ident	KERNEL	104	GetCodeInfo
+ident	KERNEL	489	N
+ident	KERNEL	32	SETPRIORITY
+ident	KERNEL	68	InitAtomTable
+ident	GDI	463	MAKEOBJECTPRIVATE
+ident	KERNEL	328	DebugOutput
+ident	KERNEL	209	K209
+ident	GDI	612	GetTextCharset
+ident	GDI	101	OffsetRgn
+ident	KERNEL	352	lstrcatn
+ident	KERNEL	490	N
+ident	GDI	129	SAVEVISRGN
+ident	GDI	130	RESTOREVISRGN
+ident	GDI	131	INQUIREVISRGN
+ident	GDI	134	GetRgnBox
+ident	GDI	29	PatBlt
+ident	GDI	173	GetClipRgn
+ident	GDI	67	DPtoLP
+ident	GDI	99	LPtoDP
+ident	GDI	105	SELECTVISRGN
+ident	GDI	7	SetStretchBltMode
+ident	GDI	21	ExcludeClipRect
+ident	GDI	149	GetBrushOrg
+ident	GDI	409	CREATEUSERDISCARDABLEBITMAP
+ident	GDI	411	GETCURLOGFONT
+ident	GDI	35	StretchBlt
+ident	GDI	44	SelectClipRgn
+ident	GDI	180	SETDCSTATE
+ident	GDI	181	RectInRegion
+ident	GDI	190	SETDCHOOK
+ident	GDI	192	SETHOOKFLAGS
+ident	GDI	65	CreateRectRgnIndirect
+ident	GDI	193	SetBoundsRect
+ident	GDI	194	GetBoundsRect
+ident	KERNEL	324	LogError
+ident	GDI	461	SetObjectOwner
+ident	GDI	90	GetTextColor
+ident	GDI	605	SYSDELETEOBJECT
+ident	GDI	106	SetBitmapBits
+ident	GDI	117	SETDCORG
+ident	GDI	8	SetTextCharacterExtra
+ident	GDI	407	CREATEUSERBITMAP
+ident	GDI	89	GetTextCharacterExtra
+ident	KERNEL	210	K210
+ident	KERNEL	211	K211
+ident	KERNEL	213	K213
+ident	GDI	98	INTERSECTVISRECT
+ident	GDI	75	GetBkColor
+ident	GDI	83	GetPixel
+ident	GDI	345	GetTextAlign
+ident	GDI	92	GetTextFace
+ident	KERNEL	8	LocalLock
+ident	KERNEL	9	LocalUnlock
+ident	KEYBOARD	135	OemToAnsiBuff
+ident	GDI	307	GetCharABCWidths
+ident	GDI	76	GetBkMode
+ident	GDI	350	GetCharWidth
+ident	KERNEL	348	hmemcpy
+ident	GDI	365	REALIZEDEFAULTPALETTE
+ident	SYSTEM	1	INQUIRESYSTEM
+ident	KERNEL	411	GetCurrentDirectory
+ident	KERNEL	412	SetCurrentDirectory
+ident	KEYBOARD	131	MapVirtualKey
+ident	GDI	412	ISDCCURRENTPALETTE
+ident	GDI	361	GDISELECTPALETTE
+ident	GDI	362	GDIREALIZEPALETTE
+ident	GDI	528	GDIPARAMETERSINFO
+ident	KERNEL	138	GETHEAPSPACES
+ident	KERNEL	13	LocalCompact
+ident	GDI	48	CreateBitmap
+ident	KERNEL	444	N
+ident	GDI	609	GDIFREERESOURCES
+ident	KERNEL	624	N
+ident	GDI	121	DEATH
+ident	GDI	122	RESURRECTION
+ident	KERNEL	2	EXITKERNEL
+ident	SYSTEM	4	ENABLESYSTEMTIMERS
+ident	SYSTEM	5	DISABLESYSTEMTIMERS
+ident	KERNEL	653	N
+ident	KEYBOARD	2	ENABLE
+ident	KEYBOARD	3	DISABLE
+ident	MOUSE	2	ENABLE
+ident	MOUSE	3	DISABLE
+ident	KERNEL	457	N
+ident	KERNEL	461	N
+ident	KERNEL	462	N
+ident	KERNEL	463	N
+ident	KERNEL	465	N
+ident	KERNEL	466	N
+ident	GDI	610	GDISIGNALPROC32
+ident	KERNEL	474	N
+ident	KERNEL	476	N
+ident	KERNEL	351	BUNNY_351
+ident	KERNEL	227	RegFlushKey
+ident	KERNEL	483	N
+ident	KERNEL	484	N
+ident	KERNEL	362	N
+ident	GDI	373	SetSystemPaletteUse
+ident	GDI	439	StretchDIBits
+ident	GDI	440	SetDIBits
+ident	GDI	441	GetDIBits
+ident	GDI	74	GetBitmapBits
+ident	GDI	603	GetDIBColorTable
+ident	GDI	489	CreateDIBSection
+ident	GDI	15	OffsetWindowOrg
+ident	GDI	376	ResetDC
+ident	KERNEL	454	N
+ident	GDI	529	CreateHalftonePalette
+ident	GDI	405	FINALGDIINIT
+ident	KEYBOARD	1	INQUIRE
+ident	KEYBOARD	7	SETSPEED
+ident	MOUSE	1	INQUIRE
+ident	GDI	50	CreateBrushIndirect
+ident	GDI	179	GETDCSTATE
+ident	GDI	60	CreatePatternBrush
+ident	KERNEL	57	GetProfileInt
+ident	KERNEL	441	N
+ident	KERNEL	442	N
+ident	KERNEL	453	N
+ident	KERNEL	208	K208
+ident	KERNEL	340	N
+ident	GDI	604	SETSOLIDBRUSH
+ident	GDI	606	SETMAGICCOLORS
+ident	GDI	614	ADDLPKTOGDI
+ident	KERNEL	174	__A000H
+ident	GDI	360	CreatePalette
+ident	KERNEL	229	K229
+ident	KERNEL	235	INVALIDATENLSCACHE
+ident	GDI	119	AddFontResource
+ident	COMM	1	INICOM
+ident	COMM	2	SETCOM
+ident	COMM	3	SETQUE
+ident	COMM	4	RECCOM
+ident	COMM	5	SNDCOM
+ident	COMM	6	CTX
+ident	COMM	7	TRMCOM
+ident	COMM	8	STACOM
+ident	COMM	9	CEXTFCN
+ident	COMM	10	CFLUSH
+ident	COMM	11	CEVT
+ident	COMM	12	CEVTGET
+ident	COMM	13	CSETBRK
+ident	COMM	14	CCLRBRK
+ident	COMM	15	GETDCB
+ident	GDI	127	DeleteMetaFile
+ident	GDI	410	ISVALIDMETAFILE
+ident	KERNEL	531	N
+ident	KERNEL	532	N
+ident	KERNEL	542	N
+ident	DDEML	14	DdeCreateDataHandle
+ident	DDEML	15	DdeAddData
+ident	DDEML	16	DdeGetData
+ident	DDEML	17	DdeAccessData
+ident	DDEML	18	DdeUnaccessData
+ident	DDEML	19	DdeFreeDataHandle
+ident	GDI	464	FIXUPBOGUSPUBLISHERMETAFILE
+ident	KERNEL	73	GetAtomHandle
+ident	GDI	493	DeleteEnhMetaFile
+ident	GDI	374	GetSystemPaletteUse
+ident	GDI	375	GetSystemPaletteEntries
+ident	KERNEL	517	CALLPROC32W
+ident	KERNEL	533	N
+ident	KERNEL	534	N
+ident	KERNEL	561	N
+ident	KERNEL	566	N
+ident	KERNEL	472	N
+ident	KERNEL	473	N
+ident	KERNEL	482	N
+ident	KERNEL	619	N
+ident	KERNEL	620	N
+ident	KERNEL	365	N
+ident	KERNEL	621	N
+ident	KERNEL	623	N
+ident	KEYBOARD	128	OemKeyScan
+ident	KEYBOARD	129	VkKeyScan
+ident	DDEML	36	DdeCmpStringHandles
+ident	KEYBOARD	132	GetKBCodePage
+ident	DDEML	37	DdeReconnect
+ident	KEYBOARD	133	GetKeyNameText
+ident	DDEML	3	DdeUninitialize
+ident	DDEML	5	DdeQueryNextServer
+ident	DDEML	6	DdeDisconnectList
+ident	DDEML	8	DdeDisconnect
+ident	DDEML	10	DdeSetUserHandle
+ident	DDEML	12	DdeAbandonTransaction
+ident	DDEML	13	DdePostAdvise
+ident	DDEML	20	DdeGetLastError
+ident	DDEML	21	DdeCreateStringHandle
+ident	DDEML	22	DdeFreeStringHandle
+ident	DDEML	23	DdeQueryString
+ident	DDEML	24	DdeKeepStringHandle
+ident	DDEML	26	DdeEnableCallback
+ident	DDEML	27	DdeNameService
+ident	DDEML	2	DdeInitialize
+ident	KERNEL	568	N
+ident	KERNEL	630	N
+ident	KERNEL	537	N
+ident	DDEML	4	DdeConnectList
+ident	DDEML	7	DdeConnect
+ident	DDEML	9	DdeQueryConvInfo
+ident	DDEML	11	DdeClientTransaction
+ident	KERNEL	602	N
+ident	KERNEL	610	N
+ident	KERNEL	615	N
+ident	KERNEL	616	N
+ident	KERNEL	617	N
+ident	KERNEL	618	N
+of	SYSTEM_2	6
+of	SYSTEM_3	2
+of	SYSTEM_6	0
+of	KERNEL_450	4
+of	KERNEL_451	4
+of	KERNEL_327	0
+of	KERNEL_464	4
+of	KERNEL_479	4
+of	KERNEL_480	0
+of	KERNEL_481	0
+of	KERNEL_625	0
+of	KERNEL_133	2
+of	KERNEL_361	0
+of	KERNEL_117	0
+of	GDI_11	6
+of	GDI_13	6
+of	GDI_148	6
+of	GDI_150	2
+of	GDI_22	10
+of	KEYBOARD_4	18
+of	GDI_30	2
+of	KERNEL_535	8
+of	KERNEL_536	8
+of	GDI_161	6
+of	KERNEL_30	2
+of	KERNEL_31	2
+of	GDI_39	4
+of	KERNEL_33	2
+of	GDI_172	10
+of	GDI_47	8
+of	KERNEL_562	8
+of	GDI_64	8
+of	KERNEL_447	0
+of	KERNEL_191	2
+of	KERNEL_452	4
+of	GDI_77	6
+of	GDI_462	0
+of	GDI_79	2
+of	KERNEL_458	4
+of	KERNEL_459	4
+of	KERNEL_460	N
+of	GDI_475	6
+of	KERNEL_354	2
+of	KERNEL_612	4
+of	KERNEL_486	4
+of	KERNEL_487	10
+of	KERNEL_104	8
+of	KERNEL_489	12
+of	KERNEL_32	4
+of	KERNEL_68	2
+of	GDI_463	4
+of	KERNEL_328	0
+of	KERNEL_209	14
+of	GDI_612	2
+of	GDI_101	6
+of	KERNEL_352	10
+of	KERNEL_490	2
+of	GDI_129	2
+of	GDI_130	2
+of	GDI_131	2
+of	GDI_134	6
+of	GDI_29	14
+of	GDI_173	2
+of	GDI_67	8
+of	GDI_99	8
+of	GDI_105	4
+of	GDI_7	4
+of	GDI_21	10
+of	GDI_149	2
+of	GDI_409	6
+of	GDI_411	2
+of	GDI_35	24
+of	GDI_44	4
+of	GDI_180	4
+of	GDI_181	6
+of	GDI_190	10
+of	GDI_192	4
+of	GDI_65	4
+of	GDI_193	8
+of	GDI_194	8
+of	KERNEL_324	6
+of	GDI_461	4
+of	GDI_90	2
+of	GDI_605	2
+of	GDI_106	10
+of	GDI_117	6
+of	GDI_8	4
+of	GDI_407	12
+of	GDI_89	2
+of	KERNEL_210	18
+of	KERNEL_211	10
+of	KERNEL_213	12
+of	GDI_98	10
+of	GDI_75	2
+of	GDI_83	6
+of	GDI_345	2
+of	GDI_92	8
+of	KERNEL_8	2
+of	KERNEL_9	2
+of	KEYBOARD_135	10
+of	GDI_307	10
+of	GDI_76	2
+of	GDI_350	10
+of	KERNEL_348	12
+of	GDI_365	2
+of	SYSTEM_1	4
+of	KERNEL_411	N
+of	KERNEL_412	4
+of	KEYBOARD_131	N
+of	GDI_412	2
+of	GDI_361	6
+of	GDI_362	2
+of	GDI_528	10
+of	KERNEL_138	2
+of	KERNEL_13	2
+of	GDI_48	12
+of	KERNEL_444	6
+of	GDI_609	4
+of	KERNEL_624	8
+of	GDI_121	2
+of	GDI_122	14
+of	KERNEL_2	2
+of	SYSTEM_4	0
+of	SYSTEM_5	0
+of	KERNEL_653	0
+of	KEYBOARD_2	8
+of	KEYBOARD_3	0
+of	MOUSE_2	4
+of	MOUSE_3	0
+of	KERNEL_457	8
+of	KERNEL_461	N
+of	KERNEL_462	0
+of	KERNEL_463	6
+of	KERNEL_465	N
+of	KERNEL_466	N
+of	GDI_610	14
+of	KERNEL_474	4
+of	KERNEL_476	4
+of	KERNEL_351	0
+of	KERNEL_227	4
+of	KERNEL_483	4
+of	KERNEL_484	N
+of	KERNEL_362	N
+of	GDI_373	4
+of	GDI_439	32
+of	GDI_440	18
+of	GDI_441	18
+of	GDI_74	10
+of	GDI_603	10
+of	GDI_489	20
+of	GDI_15	6
+of	GDI_376	6
+of	KERNEL_454	N
+of	GDI_529	2
+of	GDI_405	2
+of	KEYBOARD_1	N
+of	KEYBOARD_7	2
+of	MOUSE_1	4
+of	GDI_50	4
+of	GDI_179	2
+of	GDI_60	2
+of	KERNEL_57	10
+of	KERNEL_441	24
+of	KERNEL_442	0
+of	KERNEL_453	8
+of	KERNEL_208	14
+of	KERNEL_340	4
+of	GDI_604	6
+of	GDI_606	8
+of	GDI_614	4
+of	KERNEL_174	N
+of	GDI_360	4
+of	KERNEL_229	4
+of	KERNEL_235	N
+of	GDI_119	4
+of	COMM_1	4
+of	COMM_2	4
+of	COMM_3	6
+of	COMM_4	2
+of	COMM_5	4
+of	COMM_6	4
+of	COMM_7	2
+of	COMM_8	6
+of	COMM_9	4
+of	COMM_10	4
+of	COMM_11	4
+of	COMM_12	4
+of	COMM_13	2
+of	COMM_14	2
+of	COMM_15	2
+of	GDI_127	2
+of	GDI_410	2
+of	KERNEL_531	8
+of	KERNEL_532	6
+of	KERNEL_542	4
+of	DDEML_14	24
+of	DDEML_15	16
+of	DDEML_16	16
+of	DDEML_17	8
+of	DDEML_18	4
+of	DDEML_19	4
+of	GDI_464	6
+of	KERNEL_73	2
+of	GDI_493	2
+of	GDI_374	2
+of	GDI_375	10
+of	KERNEL_517	0
+of	KERNEL_533	6
+of	KERNEL_534	4
+of	KERNEL_561	8
+of	KERNEL_566	8
+of	KERNEL_472	0
+of	KERNEL_473	0
+of	KERNEL_482	4
+of	KERNEL_619	10
+of	KERNEL_620	0
+of	KERNEL_365	4
+of	KERNEL_621	0
+of	KERNEL_623	4
+of	KEYBOARD_128	N
+of	KEYBOARD_129	N
+of	DDEML_36	8
+of	KEYBOARD_132	0
+of	DDEML_37	4
+of	KEYBOARD_133	N
+of	DDEML_3	4
+of	DDEML_5	8
+of	DDEML_6	4
+of	DDEML_8	4
+of	DDEML_10	12
+of	DDEML_12	12
+of	DDEML_13	12
+of	DDEML_20	4
+of	DDEML_21	10
+of	DDEML_22	8
+of	DDEML_23	18
+of	DDEML_24	8
+of	DDEML_26	10
+of	DDEML_27	14
+of	DDEML_2	16
+of	KERNEL_568	10
+of	KERNEL_630	0
+of	KERNEL_537	4
+of	DDEML_4	20
+of	DDEML_7	16
+of	DDEML_9	12
+of	DDEML_11	28
+of	KERNEL_602	0
+of	KERNEL_610	8
+of	KERNEL_615	12
+of	KERNEL_616	12
+of	KERNEL_617	4
+of	KERNEL_618	4
+ident	KERNEL	180	LONGPTRADD
+ident	KERNEL	445	N
+ident	KERNEL	446	N
+ident	KERNEL	214	K214
+ident	KERNEL	93	GetCodeHandle
+ident	KERNEL	228	K228
+ident	KERNEL	627	ISBADFLATREADWRITEPTR
+ident	KERNEL	87	N
+ident	KERNEL	78	N
+ident	KERNEL	146	DeleteFile
+ident	KERNEL	147	SetLastError
+ident	KERNEL	148	GetLastError
+ident	KERNEL	92	GetTempDrive
+ident	KERNEL	237	K237
+ident	KERNEL	435	N
+ident	KERNEL	46	FreeModule
+ident	KERNEL	188	GetSelectorLimit
+ident	KERNEL	604	N
+ident	KERNEL	600	N
+ident	KERNEL	601	N
+ident	KERNEL	605	N
+of	KERNEL_180	8
+of	KERNEL_445	6
+of	KERNEL_446	4
+of	KERNEL_214	10
+of	KERNEL_93	4
+of	KERNEL_228	2
+of	KERNEL_627	10
+of	KERNEL_87	8
+of	KERNEL_78	8
+of	KERNEL_146	4
+of	KERNEL_147	4
+of	KERNEL_148	0
+of	KERNEL_92	2
+of	KERNEL_237	0
+of	KERNEL_435	2
+of	KERNEL_46	2
+of	KERNEL_188	2
+of	KERNEL_604	0
+of	KERNEL_600	2
+of	KERNEL_601	2
+of	KERNEL_605	8
+funcs	lz32.dll	bfea1000 bfea1057 bfea1075 bfea1077 bfea10a5 bfea10a7 bfea10bd bfea10bf bfea10e2 bfea10e4 bfea1109 bfea110b bfea1123 bfea1125 bfea1135 bfea1139 bfea113b bfea115b bfea115d bfea116c bfea116e bfea1198 bfea11a1 bfea11aa bfea11dd bfea1201 bfea1238 bfea12d8 bfea1330 bfea1363 bfea13d4 bfea13fa bfea1400 bfea140c bfea1412 bfea1424 bfea1430 bfea1436 bfea143c
+conv	lz32.dll	3219787776	stdcall
+conv	lz32.dll	3219787863	N
+conv	lz32.dll	3219787893	N
+conv	lz32.dll	3219787895	stdcall
+conv	lz32.dll	3219787941	N
+conv	lz32.dll	3219787943	stdcall
+conv	lz32.dll	3219787965	N
+conv	lz32.dll	3219787967	stdcall
+conv	lz32.dll	3219788002	N
+conv	lz32.dll	3219788004	stdcall
+conv	lz32.dll	3219788041	N
+conv	lz32.dll	3219788043	stdcall
+conv	lz32.dll	3219788067	N
+conv	lz32.dll	3219788069	cdecl
+conv	lz32.dll	3219788085	N
+conv	lz32.dll	3219788089	N
+conv	lz32.dll	3219788091	stdcall
+conv	lz32.dll	3219788123	N
+conv	lz32.dll	3219788125	cdecl
+conv	lz32.dll	3219788140	N
+conv	lz32.dll	3219788142	stdcall
+conv	lz32.dll	3219788184	N
+conv	lz32.dll	3219788193	N
+conv	lz32.dll	3219788202	stdcall
+conv	lz32.dll	3219788253	stdcall
+conv	lz32.dll	3219788289	stdcall
+conv	lz32.dll	3219788344	stdcall
+conv	lz32.dll	3219788504	stdcall
+conv	lz32.dll	3219788592	stdcall
+conv	lz32.dll	3219788643	stdcall
+conv	lz32.dll	3219788756	stdcall
+conv	lz32.dll	3219788794	N
+conv	lz32.dll	3219788800	N
+conv	lz32.dll	3219788806	N
+conv	lz32.dll	3219788812	N
+conv	lz32.dll	3219788818	N
+conv	lz32.dll	3219788830	N
+conv	lz32.dll	3219788836	N
+conv	lz32.dll	3219788848	N
+conv	lz32.dll	3219788854	N
+conv	lz32.dll	3219788860	N
+scan	lz32.dll	4096	12
+scan	lz32.dll	4183	8
+scan	lz32.dll	4213	12
+scan	lz32.dll	4215	12
+scan	lz32.dll	4261	4
+scan	lz32.dll	4263	4
+scan	lz32.dll	4285	12
+scan	lz32.dll	4287	12
+scan	lz32.dll	4322	12
+scan	lz32.dll	4324	12
+scan	lz32.dll	4361	4
+scan	lz32.dll	4363	4
+scan	lz32.dll	4387	0
+scan	lz32.dll	4389	0
+scan	lz32.dll	4405	8
+scan	lz32.dll	4409	8
+scan	lz32.dll	4411	8
+scan	lz32.dll	4443	0
+scan	lz32.dll	4445	0
+scan	lz32.dll	4460	8
+scan	lz32.dll	4462	8
+scan	lz32.dll	4504	8
+scan	lz32.dll	4513	12
+scan	lz32.dll	4522	8
+scan	lz32.dll	4573	4
+scan	lz32.dll	4609	4
+scan	lz32.dll	4664	12
+scan	lz32.dll	4824	8
+scan	lz32.dll	4912	8
+scan	lz32.dll	4963	12
+scan	lz32.dll	5076	12
+scan	lz32.dll	5114	4
+scan	lz32.dll	5120	0
+scan	lz32.dll	5132	0
+scan	lz32.dll	5138	0
+scan	lz32.dll	5156	0
+scan	lz32.dll	5168	4
+scan	lz32.dll	5174	4
+scan	lz32.dll	5180	4
+ident	KERNEL32	21	N
+stack	KERNEL32	#21	4
+stack	KERNEL32	SMapLS_IP_EBP_12	0
+ident	KERNEL32	89	N
+stack	KERNEL32	#89	0
+stack	KERNEL32	SMapLS_IP_EBP_8	0
+stack	KERNEL32	SUnMapLS_IP_EBP_12	0
+ident	KERNEL32	41	N
+stack	KERNEL32	#41	20
+ident	KERNEL32	90	N
+stack	KERNEL32	#90	N
+stack	KERNEL32	SUnMapLS_IP_EBP_8	0
+ident	KERNEL32	17	N
+stack	KERNEL32	#17	N
+stack	KERNEL32	DisableThreadLibraryCalls	4
+ident	KERNEL32	22	N
+stack	KERNEL32	#22	4
+ident	KERNEL32	20	N
+stack	KERNEL32	#20	4
+stack	KERNEL32	OpenFile	12
+stack	KERNEL32	GlobalFree	4
+stack	KERNEL32	GetShortPathNameA	12
+stack	KERNEL32	SetLastError	4
+stack	KERNEL32	GlobalAlloc	8
+stack	KERNEL32	SUnMapLS_IP_EBP_28	0
+stack	KERNEL32	SMapLS_IP_EBP_20	0
+stack	KERNEL32	SMapLS_IP_EBP_16	0
+stack	KERNEL32	SMapLS_IP_EBP_24	0
+stack	KERNEL32	SMapLS_IP_EBP_32	0
+stack	KERNEL32	SMapLS_IP_EBP_28	0
+stack	KERNEL32	UnMapLS	4
+stack	KERNEL32	ThunkConnect32	24
+stack	KERNEL32	SUnMapLS_IP_EBP_20	0
+stack	KERNEL32	SUnMapLS_IP_EBP_16	0
+stack	KERNEL32	SUnMapLS_IP_EBP_24	0
+stack	KERNEL32	SUnMapLS_IP_EBP_32	0
+stack	KERNEL32	MapLS	4
+stack	KERNEL32	UnMapSLFixArray	8
+stack	KERNEL32	MapSLFix	4
+stack	KERNEL32	FreeLibrary	4
+stack	KERNEL32	SizeofResource	8
+stack	KERNEL32	FindResourceA	12
+stack	KERNEL32	LoadLibraryExA	12
+stack	KERNEL32	RtlMoveMemory	12
+stack	KERNEL32	LoadResource	8
+stack	KERNEL32	SearchPathA	24
+stack	KERNEL32	LocalFree	4
+stack	KERNEL32	LocalAlloc	8
+stack	ADVAPI32	RegCloseKey	4
+stack	ADVAPI32	RegQueryValueExA	24
+stack	ADVAPI32	RegOpenKeyExA	20
+stack	ADVAPI32	RegQueryValueA	16
+stack	GDI32	DeleteObject	4
+stack	GDI32	LineTo	12
+stack	GDI32	MoveToEx	16
+stack	GDI32	GetStockObject	4
+stack	GDI32	SelectClipRgn	8
+stack	GDI32	CreateRectRgnIndirect	4
+stack	GDI32	Rectangle	20
+stack	GDI32	CreateFontA	56
+stack	GDI32	SetBkMode	8
+stack	GDI32	CreatePen	12
+stack	GDI32	DeleteDC	4
+stack	GDI32	GetDeviceCaps	8
+stack	GDI32	CreateICA	16
+stack	GDI32	CreateDCA	16
+stack	GDI32	GetTextMetricsA	8
+stack	GDI32	GetTextExtentPointA	16
+stack	GDI32	ExtTextOutA	32
+stack	GDI32	SetTextColor	8
+stack	GDI32	SetBkColor	8
+stack	GDI32	SelectObject	8
+stack	KERNEL32	GlobalUnlock	4
+stack	KERNEL32	GlobalLock	4
+stack	KERNEL32	GetProfileStringA	20
+stack	KERNEL32	GetProcessVersion	4
+stack	KERNEL32	LoadLibraryA	4
+stack	KERNEL32	lstrcmpA	8
+stack	KERNEL32	lstrcatA	8
+stack	KERNEL32	GlobalReAlloc	12
+stack	KERNEL32	GetLastError	0
+stack	KERNEL32	LocalReAlloc	12
+stack	KERNEL32	GetProcAddress	8
+stack	KERNEL32	LockResource	4
+stack	KERNEL32	GetLocaleInfoA	16
+stack	KERNEL32	GetCurrentDirectoryA	8
+stack	KERNEL32	CloseHandle	4
+stack	KERNEL32	CreateFileA	28
+stack	KERNEL32	GetDriveTypeA	4
+stack	KERNEL32	GetFileAttributesA	4
+stack	KERNEL32	DeleteFileA	4
+stack	KERNEL32	IsDBCSLeadByte	4
+stack	KERNEL32	InterlockedDecrement	4
+stack	KERNEL32	GetCurrentThreadId	0
+stack	KERNEL32	InterlockedIncrement	4
+stack	KERNEL32	GetTempFileNameA	16
+stack	KERNEL32	FreeResource	4
+ident	KERNEL32	45	N
+stack	KERNEL32	#45	N
+stack	KERNEL32	ReinitializeCriticalSection	4
+stack	KERNEL32	UninitializeCriticalSection	4
+stack	KERNEL32	TlsFree	4
+stack	KERNEL32	lstrlenA	4
+stack	KERNEL32	lstrcpyA	8
+stack	KERNEL32	IsBadWritePtr	8
+stack	KERNEL32	GetCurrentProcessId	0
+ident	KERNEL32	18	N
+stack	KERNEL32	#18	8
+ident	KERNEL32	19	N
+stack	KERNEL32	#19	4
+ident	KERNEL32	31	N
+stack	KERNEL32	#31	4
+stack	KERNEL32	TlsGetValue	4
+stack	KERNEL32	TlsAlloc	0
+stack	KERNEL32	EnterCriticalSection	4
+stack	KERNEL32	TlsSetValue	8
+stack	KERNEL32	LeaveCriticalSection	4
+stack	KERNEL32	lstrcmpiA	8
+stack	KERNEL32	lstrcpynA	12
+stack	KERNEL32	SetCurrentDirectoryA	4
+ident	KERNEL32	43	N
+stack	KERNEL32	#43	20
+stack	USER32	GetWindow	8
+stack	USER32	GetWindowTextA	12
+stack	USER32	MessageBoxA	16
+stack	USER32	LoadImageA	24
+stack	USER32	DialogBoxIndirectParamA	20
+stack	USER32	GetWindowLongA	8
+stack	USER32	GetDlgItemInt	16
+stack	USER32	GetKeyState	4
+stack	USER32	EndDialog	8
+stack	USER32	IsWindowEnabled	4
+stack	USER32	MoveWindow	24
+stack	USER32	ScreenToClient	8
+stack	USER32	GetWindowRect	8
+stack	USER32	GetParent	4
+stack	USER32	SetWindowLongA	12
+stack	USER32	SetFocus	4
+stack	USER32	InvalidateRect	12
+stack	USER32	InflateRect	12
+stack	USER32	GetClientRect	8
+stack	USER32	CallWindowProcA	20
+stack	USER32	ReleaseDC	8
+stack	USER32	DrawIcon	16
+stack	USER32	DrawTextA	20
+stack	USER32	GetDC	4
+stack	USER32	EndPaint	8
+stack	USER32	FillRect	12
+stack	USER32	BeginPaint	8
+stack	USER32	GetClassInfoExA	12
+stack	USER32	CreateWindowExA	48
+stack	USER32	GetClassInfoA	12
+stack	USER32	wsprintfA	0
+stack	USER32	SetDlgItemInt	16
+stack	USER32	GetSystemMetrics	4
+stack	USER32	SetWindowPos	28
+stack	USER32	wvsprintfA	12
+stack	USER32	PostMessageA	16
+stack	USER32	MapWindowPoints	16
+stack	USER32	GetFocus	0
+stack	USER32	LockWindowUpdate	4
+stack	USER32	RedrawWindow	16
+stack	USER32	PeekMessageA	20
+stack	USER32	CharNextA	4
+stack	USER32	MessageBeep	4
+stack	USER32	DestroyMenu	4
+stack	USER32	CreatePopupMenu	0
+stack	USER32	DrawFocusRect	8
+stack	USER32	GetSysColor	4
+stack	USER32	GetSysColorBrush	4
+stack	USER32	IsWindowVisible	4
+stack	USER32	GetWindowTextLengthA	4
+stack	USER32	CharPrevA	8
+stack	USER32	SetTimer	16
+stack	USER32	KillTimer	8
+stack	USER32	TranslateAcceleratorA	12
+stack	USER32	CallNextHookEx	16
+stack	USER32	UnhookWindowsHookEx	4
+stack	USER32	DialogBoxParamA	20
+stack	USER32	LoadAcceleratorsA	8
+stack	USER32	SetWindowsHookExA	16
+stack	USER32	LoadCursorA	8
+stack	USER32	SetCursor	4
+stack	USER32	RegisterClipboardFormatA	4
+stack	USER32	IsDlgButtonChecked	8
+stack	USER32	GetDlgItemTextA	16
+stack	USER32	CheckDlgButton	12
+stack	USER32	CheckRadioButton	16
+stack	USER32	SetDlgItemTextA	12
+stack	USER32	RemovePropA	8
+stack	USER32	DestroyWindow	4
+stack	USER32	GetPropA	8
+stack	USER32	WinHelpA	16
+stack	USER32	SetPropA	12
+stack	USER32	ShowWindow	8
+stack	USER32	UpdateWindow	4
+stack	USER32	SetWindowTextA	8
+stack	USER32	SendMessageA	16
+stack	USER32	SendDlgItemMessageA	20
+stack	USER32	GetDlgItem	8
+stack	USER32	EnableWindow	8
+stack	USER32	IsWindow	4
+stack	USER32	LoadStringA	16
+stack	USER32	RegisterWindowMessageA	4
+stack	USER32	CreateDialogIndirectParamA	20
+stack	USER32	WNDPROC_CALLBACK	N
+stack	USER32	LoadIconA	8

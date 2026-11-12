@@ -1,0 +1,139 @@
+arch	x86:LE:16:Protected Mode:default
+bytes	10000000	describe.bin	0	71
+bytes	10080000	describe.bin	71	801
+bytes	10100000	describe.bin	872	b7
+bytes	10180000	describe.bin	929	c8
+bytes	10200000	describe.bin	9f1	a5
+bytes	10280000	describe.bin	a96	36
+bytes	10300000	describe.bin	acc	f5
+bytes	10380000	describe.bin	bc1	a4
+bytes	10400000	describe.bin	c65	1114
+bytes	10480000	describe.bin	1d79	394
+reg	DS	1048
+F	10000000	sub_1_0000	0	__cdecl16far	2
+F	10080035	NEWTABLE	0	__cdecl16far	2
+F	1008004a	sub_2_004A	6	__stdcall16near	2
+F	10080106	sub_2_0106	2	__stdcall16near	2
+F	1008011a	sub_2_011A	4	__stdcall16near	2
+F	10080146	sub_2_0146	0	__cdecl16near	2
+F	100801ce	sub_2_01CE	0	__cdecl16far	2
+F	1008031f	sub_2_031F	0	__cdecl16far	2
+F	100803e4	INQUIRE	4	__stdcall16far
+F	10080403	sub_2_0403	8	__stdcall16far	2
+F	10080483	sub_2_0483	0	__fastcall16near	2
+F	100804e0	NEWTABLEEX	8	__stdcall16far	2
+F	100806b6	sub_2_06B6	0	__cdecl16near	2
+F	1008071b	sub_2_071B	0	__cdecl16near	2
+F	10100000	OEMKEYSCAN	2	__stdcall16far	4
+F	10180000	VKKEYSCAN	6	__stdcall16far	2
+F	10180013	VKKEYSCANEX	6	__stdcall16far	2
+F	10200020	SETSPEED	2	__stdcall16far	2
+F	10200074	sub_5_0074	0	__fastcall16near	2
+F	10280000	GETKEYBOARDTYPE	2	__stdcall16far	2
+F	10300000	MAPVIRTUALKEY	8	__stdcall16far	2
+F	10300013	MAPVIRTUALKEYEX	8	__stdcall16far	2
+F	10380000	GETKEYNAMETEXT	10	__stdcall16far	2
+F	1040002e	GETBIOSKEYPROC	0	__cdecl16far	4
+F	10400367	sub_9_0367	0	__fastcall16near	2
+F	10400430	sub_9_0430	0	__fastcall16near	2
+F	1040048e	sub_9_048E	0	__cdecl16far	4
+F	104004b4	sub_9_04B4	0	__fastcall16far	2
+F	104004c6	INQUIREEX	8	__stdcall16far	4
+F	1040052c	GETTABLESEG	0	__cdecl16far	2
+F	10400540	TOASCII	18	__stdcall16far	2
+F	10400553	TOASCIIEX	18	__stdcall16far	2
+F	10400871	sub_9_0871	0	__cdecl16near
+F	10400881	sub_9_0881	0	__cdecl16near	2
+F	10400889	sub_9_0889	0	__fastcall16near	2
+F	104009e8	GETKBCODEPAGE	0	__cdecl16far	2
+F	104009ed	ANSITOOEM	8	__stdcall16far	2
+F	10400a16	OEMTOANSI	8	__stdcall16far	2
+F	10400a62	sub_9_0A62	0	__cdecl16near	2
+F	10400a6b	sub_9_0A6B	-1	inline
+F	10400a79	sub_9_0A79	-1	inline
+F	10400a95	ANSITOOEMBUFF	10	__stdcall16far
+F	10400abd	OEMTOANSIBUFF	10	__stdcall16far
+F	10400afc	SCREENSWITCHENABLE	2	__stdcall16far
+F	10400aff	ENABLEKBSYSREQ	2	__stdcall16far	2
+F	10400b3c	ENABLE	8	__stdcall16far	2
+F	10400b73	sub_9_0B73	0	__cdecl16near
+F	10400baa	sub_9_0BAA	0	__fastcall16near
+F	10400bb7	DISABLE	0	__cdecl16far	2
+F	10400c04	WEP	2	__stdcall16far	2
+F	10400cd7	sub_9_0CD7	10	__stdcall16far	2
+F	10400cf0	sub_9_0CF0	0	__cdecl16near	2
+F	10400d44	sub_9_0D44	0	__cdecl16near	2
+F	10400d4e	sub_9_0D4E	0	__cdecl16near	2
+F	10400dc0	sub_9_0DC0	0	__cdecl16near	2
+F	10400dcf	sub_9_0DCF	0	__cdecl16near	2
+F	10400de2	sub_9_0DE2	0	__cdecl16near	2
+F	10400df8	sub_9_0DF8	0	__cdecl16near	4
+F	10400e62	sub_9_0E62	2	__stdcall16near	2
+F	10400e8d	sub_9_0E8D	2	__stdcall16near	2
+F	10400e9e	sub_9_0E9E	0	__fastcall16near	4
+F	10400eca	sub_9_0ECA	0	__cdecl16near	2
+F	10400fa3	sub_9_0FA3	0	__fastcall16near	2
+F	10401009	sub_9_1009	0	__fastcall16near	2
+F	1040102a	sub_9_102A	0	__cdecl16near	2
+F	1040103a	sub_9_103A	0	__cdecl16near	2
+F	10401084	sub_9_1084	0	__cdecl16near	2
+F	10401098	sub_9_1098	0	__cdecl16near	2
+F	104010f2	sub_9_10F2	0	__cdecl16near	2
+F	10401100	___EXPORTEDSTUB	0	__cdecl16far	2
+O	10080178	10080146	2	__cdecl16far
+O	10380096	10380000	10	__stdcall16far
+O	10400084	1040002e	4	__stdcall16far
+O	1040009d	1040002e	2	__cdecl16near
+O	10400337	1040002e	4	__stdcall16far
+O	1040036f	10400367	4	__stdcall16far
+O	10400394	10400367	2	__cdecl16near
+O	10400408	10400367	4	__stdcall16far
+O	10400cc6	10400c04	6	__cdecl16near
+O	10400ead	10400e9e	2	__cdecl16near
+O	10401074	1040103a	2	__cdecl16near
+O	104010a5	10401098	2	__cdecl16near
+O	104010b7	10401098	2	__cdecl16near
+J	10080411	10080428,1008043d,10080447,1008041a,1008041f,10080423
+X	e0000000	KERNEL_4	6	__stdcall16far
+X	e0000010	KERNEL_5	4	__stdcall16far
+X	e0000020	KERNEL_173	-1	__stdcall16far
+X	e0000030	KERNEL_197	2	__stdcall16far
+X	e0000040	KERNEL_230	2	__stdcall16far
+X	e0000050	KERNEL_111	2	__stdcall16far
+X	e0000060	KERNEL_127	14	__stdcall16far
+X	e0000070	KERNEL_128	22	__stdcall16far
+X	e0000080	KERNEL_6	6	__stdcall16far
+X	e0000090	KERNEL_7	2	__stdcall16far
+X	e00000a0	KERNEL_135	6	__stdcall16far
+X	e00000b0	KERNEL_16	8	__stdcall16far
+X	e00000c0	KERNEL_17	2	__stdcall16far
+X	e00000d0	KERNEL_20	2	__stdcall16far
+X	e00000e0	KERNEL_170	2	__stdcall16far
+X	e00000f0	KERNEL_47	4	__stdcall16far
+X	e0000100	KERNEL_176	2	__stdcall16far
+X	e0000110	KERNEL_50	6	__stdcall16far
+X	e0000120	KERNEL_60	10	__stdcall16far
+X	e0000130	KERNEL_61	4	__stdcall16far
+X	e0000140	KERNEL_62	2	__stdcall16far
+X	e0000150	KERNEL_198	2	__stdcall16far
+X	e0000160	KERNEL_74	10	__stdcall16far
+X	e0000170	KERNEL_81	2	__stdcall16far
+X	e0000180	KERNEL_82	8	__stdcall16far
+X	e0000190	KERNEL_84	8	__stdcall16far
+X	e00001a0	KERNEL_85	6	__stdcall16far
+X	e00001b0	KERNEL_89	8	__stdcall16far
+X	e00001c0	KERNEL_231	2	__stdcall16far
+X	e00001d0	KERNEL_112	2	__stdcall16far
+X	e00001e0	KERNEL_1	2	__stdcall16far
+X	e00001f0	KERNEL_3	0	__stdcall16far
+X	e0000200	KERNEL_131	0	__stdcall16far
+X	e0000210	KERNEL_137	6	__stdcall16far
+X	e0000220	KERNEL_114	-1	__stdcall16far
+X	e0000230	KERNEL_10	2	__stdcall16far
+X	e0000240	KERNEL_23	2	__stdcall16far
+X	e0000250	KERNEL_24	2	__stdcall16far
+X	e0000260	KERNEL_48	2	__stdcall16far
+X	e0000270	KERNEL_178	-1	__stdcall16far
+X	e0000280	KERNEL_205	-1	__stdcall16far
+X	e0000290	KERNEL_91	0	__stdcall16far
+X	e00002a0	KERNEL_102	0	__stdcall16far
