@@ -147,12 +147,23 @@ Rc4::Rc4(ByteView key) {
 
 Bytes Rc4::run(State& st, ByteView data) {
     Bytes out(data.size());
-    for (std::size_t k = 0; k < data.size(); ++k) {
-        st.i = static_cast<std::uint8_t>(st.i + 1);
-        st.j = static_cast<std::uint8_t>(st.j + st.s[st.i]);
-        std::swap(st.s[st.i], st.s[st.j]);
-        out[k] = data[k] ^ st.s[static_cast<std::uint8_t>(st.s[st.i] + st.s[st.j])];
+    std::uint8_t s[256];   // the state in locals: the compiler keeps i, j and the table in registers and cache
+    std::memcpy(s, st.s.data(), 256);
+    std::uint8_t i = st.i, j = st.j;
+    const std::uint8_t* in = data.data();
+    std::uint8_t* o = out.data();
+    for (std::size_t k = 0, n = data.size(); k < n; ++k) {
+        i = static_cast<std::uint8_t>(i + 1);
+        const std::uint8_t si = s[i];
+        j = static_cast<std::uint8_t>(j + si);
+        const std::uint8_t sj = s[j];
+        s[i] = sj;
+        s[j] = si;
+        o[k] = in[k] ^ s[static_cast<std::uint8_t>(si + sj)];
     }
+    std::memcpy(st.s.data(), s, 256);
+    st.i = i;
+    st.j = j;
     return out;
 }
 

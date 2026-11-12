@@ -788,7 +788,4 @@ big-number parts: they carried their own BigInt).
 | XeCrypt RSA-2048 verify x50 | 47 | 32 |
 | RSA-2048 key generation x3 | 97 | 86 (CNG; with a seeded RandomSource the primes are searched here: ~270 ms each) |
 | rot_sum_sha over 8 MB x5 | 3097 | 81 |
-| RC4 over 8 MB x5 | 52 | 106 (Python: OpenSSL RC4; here a plain C++ loop) |
-
-RC4 is the one row where the C++ is slower than the Python (it hands the 8 MB to OpenSSL): the keyfile and bootloader streams it
-runs on are a few hundred KB, so it was left as the plain loop.
+| RC4 over 8 MB x5 | 52 | 52 (state and indices in locals; about 4 cycles a byte, the dependency-chain limit of RC4, as OpenSSL's) |
