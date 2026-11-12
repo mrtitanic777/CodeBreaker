@@ -1,53 +1,37 @@
-// codebreaker/source/gb_writer.hpp -- typed C++ of codebreaker.source.gb_writer.
+// codebreaker/source/gb_writer.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/source/gb_writer.{hpp,cpp}; this
+// header keeps the old py:: surface (reconstruct and main, with the tables) for the ports and the dynamic exe that still use it. Conversion and
+// forwarding only: the result is the old image_writer::Result (codebreaker/source/image_writer.hpp, itself still the old port for the x86
+// writers). Deleted with its last py:: consumer.
 //
-// gb_writer.py -- a Game Boy program as assembly source that builds back into it.
-//
-//     gb_writer::main(argv)                  python -m codebreaker.source.gb_writer <game.gb> [<out folder>]
-//     r = gb_writer::reconstruct(path, folder);
-//     r.source                       game.asm (RGBDS syntax)
-//     r.same                         the source, built, is the cartridge image byte for byte
-//     r.functions                    {address: Function(name)}
-//
-// Game Boy programs were written in assembly, so assembly is what comes back. Code is what the
-// program's own flow reaches from the entry at $0100 and the interrupt vectors in the two banks
-// mapped at power-on (formats/gb.py); every byte it reaches is written as an instruction, every
-// other byte as data. The cartridge header ($0104-$014F) is written as data with its fields named
-// in comments. Functions are named for their vector (`entry`, `vblank`, `stat`, `timer`, `serial`,
-// `joypad`) or `sub_<address>`, jump targets `L_<address>`; the I/O registers by the names
-// Pan Docs gives them (rLCDC, rSTAT, ...), as hardware.inc does.
-//
-// It builds with CodeBreaker's own assembler (build/sm83_asm.py) or with RGBDS
-// (`rgbasm -o game.o game.asm && rgblink -o game.gb game.o`).
-//
-// Typing notes: the result is image_writer's Result, its "rom bytes" field in `more`; the module's
-// docstring (what the command line prints) is DOC; `_HEADER` is a list of (offset, size, field)
-// triples and `_HEADER_AT` its dictionary {offset: (size, field)}.
+// Not carried over: the internals the module's own port exposed (_HEADER, _HEADER_AT, _walk).
 #pragma once
 
-#include <tuple>
-
-#include "codebreaker/decompile/sm83.hpp"
-#include "codebreaker/formats/gb.hpp"
+#include "cb/compat/source_writers.hpp"
+#include "cb/source/gb_writer.hpp"
 #include "codebreaker/source/image_writer.hpp"
 #include "py.hpp"
-#include "py_os.hpp"
 
 namespace codebreaker::source::gb_writer {
 
-// the module's docstring (w.main prints its first paragraph)
-extern const py::str DOC;
+inline const py::str DOC("gb_writer.py -- a Game Boy program as assembly source that builds back into it.");
 
-// the I/O registers, as hardware.inc names them
-extern const py::dict<int64_t, py::str> REGISTERS;
-// the bank controller's registers (writes into ROM space), as hardware.inc names them
-extern const py::dict<int64_t, py::str> MBC_REGISTERS;
-extern const py::list<std::tuple<int64_t, int64_t, py::str>> _HEADER;
-extern const py::dict<int64_t, std::tuple<int64_t, py::str>> _HEADER_AT;
+namespace shim_ {
+inline py::dict<int64_t, py::str> table(const std::map<std::uint32_t, std::string>& t) {
+    py::dict<int64_t, py::str> d;
+    for (const auto& [address, name] : t) d.set(static_cast<int64_t>(address), py::str(name));
+    return d;
+}
+}  // namespace shim_
 
-std::tuple<py::dict<int64_t, decompile::sm83::Insn>, py::set<int64_t>, py::list<int64_t>> _walk(const formats::gb::ROM& rom);
+// the I/O registers, as hardware.inc names them; and the bank controller's (writes into ROM space)
+inline const py::dict<int64_t, py::str> REGISTERS = shim_::table(cb::source::gb_writer::registers());
+inline const py::dict<int64_t, py::str> MBC_REGISTERS = shim_::table(cb::source::gb_writer::mbc_registers());
 
-image_writer::Result reconstruct(const py::str& path, const py::str& folder);
+inline image_writer::Result reconstruct(const py::str& path, const py::str& folder) {
+    namespace c = cb::compat::source;
+    return cb::compat::guard([&] { return c::old_result(cb::source::gb_writer::reconstruct(c::path_of(path), c::path_of(folder)), "rom bytes"); });
+}
 
-int64_t main(const py::list<py::str>& argv);
+inline int64_t main(const py::list<py::str>& argv) { return image_writer::main(argv, reconstruct, DOC); }
 
 }  // namespace codebreaker::source::gb_writer

@@ -234,9 +234,9 @@ endif()
 cb_area(translate)
 target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
-target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client)
+target_link_libraries(cb_ui PUBLIC cb_core)
 
-target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ws2_32)
 
 # The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
 add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
@@ -248,6 +248,16 @@ target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms c
 # Where the function store is, opening it, and what `codebreaker versions` asks of it (the Ledger over the corpus, the store and the bodies).
 cb_area(store)
 target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare)
+
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
+
+target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client)
+
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
+
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/engine/lanes_wiring.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b15.cpp")
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -283,7 +293,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_coverage.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3_staged.cpp"
@@ -355,8 +364,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/engine/lanes_wiring.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b15.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b11.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

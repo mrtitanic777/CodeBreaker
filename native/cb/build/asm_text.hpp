@@ -19,11 +19,13 @@
 
 #include "cb/core/bytes.hpp"
 #include "cb/core/error.hpp"
+#include "cb/decompile/labels.hpp"
 
 namespace cb::build {
 
-// name -> value. Looked up only, never iterated into an output, so a hash map.
-using Labels = std::unordered_map<std::string, std::int64_t>;
+// name -> value. Looked up only, never iterated into an output, so a hash map. It is the decompilers' own label table
+// (decompile/labels.hpp), so an encoder hands it to their assemblers as it is, without a copy of every label per instruction.
+using Labels = decompile::NameLabels;
 
 // The source does not assemble. `line` is the 1-based line of the source (0 when no single line is at fault);
 // the message names the line's text and the reason.
