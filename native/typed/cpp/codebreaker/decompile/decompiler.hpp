@@ -163,3 +163,6 @@ std::tuple<py::str, int64_t, int64_t> as_c(const py::str& path);
 int64_t main(const py::list<py::str>& argv);
 
 }  // namespace codebreaker::decompile::decompiler
+
+// The functions of the c_text shim that call the decompiler (see c_text.hpp): defined once both headers are.
+#include "codebreaker/decompile/c_text_impl.hpp"

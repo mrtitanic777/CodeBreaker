@@ -2,6 +2,9 @@
 // real engine. The old lookup the shim calls (where unicorn.dll is) is pointed at cb's own DLL (CB_UNICORN_DLL), so the
 // engine the test makes and the recorder's table are one Unicorn.
 #include <windows.h>   // (before the shim: it declares the two kernel32 calls itself unless windows.h is in)
+#undef VOID   // windows.h's VOID, far and near macros clash with names in translate/ir and native_l2, which these headers now bring in
+#undef far
+#undef near
 
 #include "codebreaker/emulate/native_trace.hpp"
 
@@ -15,9 +18,6 @@
 #include <unicorn/x86.h>
 #pragma warning(pop)
 
-namespace codebreaker::emulate::unicorn_uc {
-py::dict<py::str, int64_t> x86_register_table() { return py::dict<py::str, int64_t>(); }   // (the recorder has its own)
-}  // namespace codebreaker::emulate::unicorn_uc
 
 namespace nt = codebreaker::emulate::native_trace;
 
