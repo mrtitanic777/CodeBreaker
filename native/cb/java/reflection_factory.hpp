@@ -25,10 +25,11 @@
 
 namespace cb::java::reflection_factory {
 
-// The calls that map ids/names to classes, whose lines carry the concrete class table. With no names, any call to
-// a function whose name starts with `register`. Names are plain identifiers, matched whole.
+// The calls that map ids/names to classes, whose lines carry the concrete class table. With no names and no prefixes, any call to
+// a function whose name starts with `register`. Names are plain identifiers, matched whole; a prefix matches any name starting with it.
 struct Registrars {
     std::vector<std::string> names;
+    std::vector<std::string> prefixes;   // calls whose name starts with one of these (`register` matches registerEntity)
     bool matches_line(std::string_view line) const;
 };
 

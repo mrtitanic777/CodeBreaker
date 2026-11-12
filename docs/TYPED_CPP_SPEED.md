@@ -1035,3 +1035,13 @@ Old = the Python (the old typed ports cannot be built here without the whole exe
 | What | Old | New |
 |---|---|---|
 | build_lib, keystore, sd_signer, se_patcher | not timed: the cost is the RSA private-key operation per signed bootloader (big-number arithmetic in both) and, for the SE, the LZX library | the tests make and use about 20 2048-bit keys in under a second in all |
+
+## W3-B7, W3-B8 (java/transpile, java/runtime, java/emit/source)
+
+| What | Old | New |
+|---|---|---|
+| runtime `generate_files` (xbox360, C++11), 20 times | 521 ms (Python, 26 ms each) | 113 ms (5.7 ms each) |
+| prune `coalesce_forwarders` over a synthetic emitted tree (1,200 files, 3.4 MB) | 51 ms (Python) | 24 ms (the files read side by side) |
+| prune `prune_unreferenced`, the same tree (108 files cut) | 279 ms (Python) | 55 ms (read and scanned side by side) |
+| `convert` of 18 small classes with a stand-in translator, 9 conversions over 3 configurations | 1.9 s (Python, 210 ms each) | 2.0-2.1 s (225 ms each): the cost is the file system, about 200 runtime headers written and deleted per conversion (62 ms to write them; the same in both) |
+| source emitter, corpus passes, finalisers, init driver | not timed apart: they are microseconds on the conversions above | |

@@ -70,12 +70,9 @@ runtime::GenerateOptions rt_options(const std::string& name) {
 }
 
 CB_TEST("java.runtime.file_sets_match_python", [] {
-    std::fprintf(stderr, "A\n");
     const RtGolden golden = rt_load_golden();
-    std::fprintf(stderr, "B\n");
     CB_CHECK_EQ(golden.files.size(), std::size_t{9});
     for (const auto& [config, expected] : golden.files) {
-        std::fprintf(stderr, "C %s\n", config.c_str());
         std::map<std::string, std::string, std::less<>> made;
         try {
             made = rt_runtime().generate_files(rt_options(config));

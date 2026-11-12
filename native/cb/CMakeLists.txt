@@ -346,6 +346,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b11.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b12.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b13.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
