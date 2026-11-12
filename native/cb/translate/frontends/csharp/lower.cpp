@@ -1913,6 +1913,7 @@ void group(Arena& arena, Node* root) {
 }
 
 Lowered lower(Arena& arena, const Json& tree, std::optional<std::string> path) {
+    if (!tree.is_object()) throw ParseError(kReader, 0, 0, "a file's dump is a JSON object");
     Lowering lowering(arena, std::move(path));
     Node* unit = lowering.unit(tree);
     group(arena, unit);

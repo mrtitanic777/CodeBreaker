@@ -917,3 +917,11 @@ Both are one-shot, per-program work (the object model of a Java program; the hea
 microseconds to a millisecond; neither has a hot path, so no old-versus-new timing was taken. The cycle search of jmodel
 is now linear in the classes plus edges (the Python rescanned every class for each subclass lookup); module_file builds each
 file with one pass over its parts instead of repeated list concatenation.
+
+## translate/frontends/csharp/lower (W1-B30)
+
+Lowering the four real corpus programs of testdata (Shapes, Numbers, Records, Linq: 370 KB of Roslyn dump, about 1,300 IR
+nodes) from the parsed dump to the typed IR, best of 7: Python 10.6 ms, native/cb 3.0 ms (3.5x). The dump's JSON parse is not
+this module's but is the larger cost of the path: nlohmann's ordered_json 18.9 ms for the four, Python's json.load 28.6 ms. (The
+Roslyn run that makes the dump takes seconds and dominates a real conversion.) The old typed port (py::ref nodes over the
+imitation layer) was not timed: it cannot be linked into cb_tests, and its shim now runs the new module through the L2 document.
