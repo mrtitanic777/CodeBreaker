@@ -1029,3 +1029,9 @@ Old = the Python (the old typed ports cannot be built here without the whole exe
 | resources `rebuild` of 14 modules (write, wrc twice, read, compare) | not timed | 55-88 ms each (almost all of it wrc's two runs) |
 | sm83_asm `build` of the demo program into a 64 KB ROM, 200 times | 268 ms (Python, 1.3 ms each) | 21.9 ms (0.11 ms each) |
 | facts / masm | not timed: the cost of masm is the assembler's (the native executive, DOSBox) and of facts the SQLite file | |
+
+## W2-B8 (formats/xbox/crypto)
+
+| What | Old | New |
+|---|---|---|
+| build_lib, keystore, sd_signer, se_patcher | not timed: the cost is the RSA private-key operation per signed bootloader (big-number arithmetic in both) and, for the SE, the LZX library | the tests make and use about 20 2048-bit keys in under a second in all |
