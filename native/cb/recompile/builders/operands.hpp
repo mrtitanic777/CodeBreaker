@@ -39,11 +39,13 @@ public:
     virtual std::string address(std::int64_t displacement, int base) const = 0;
 };
 
-// One instruction as the builders see it: the mnemonic, its operand tokens in the decoder's order, and its address.
+// One instruction as the builders see it: the mnemonic, its operand tokens in the decoder's order, its address, and the raw
+// instruction word (the trap builders decode TO, RA, RB and SIMM from it, so every spelling of a trap reaches one builder).
 struct Instruction {
     std::string_view mnemonic;
     std::span<const std::string> operands;
     std::uint32_t address = 0;
+    std::uint32_t word = 0;
 };
 
 }  // namespace cb::recompile::builders

@@ -163,7 +163,7 @@ target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 cb_area(recompile)
 target_link_libraries(cb_recompile PUBLIC cb_core cb_platforms cb_formats)
 # the shims at the old header paths are tested too: their test file includes the old layer, so it builds at /W3
-set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/recompile/builders_shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 # The recompiler's own pieces (builders, disassembler, the title project) and the source writers (placement, assembly,
 # the NE assembly tools).
@@ -272,6 +272,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/powerpc.cpp"   # (the consumers of the builder and discover shims)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/config.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"   # (the native_win16 shim)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"   # (the compare shim)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"   # (the compare and concolic shims)

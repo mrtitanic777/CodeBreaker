@@ -1,0 +1,2076 @@
+## and r3 r4 r5
+ctx.r3.u64 = ctx.r4.u64 & ctx.r5.u64;
+## and r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 & ctx.r0.u64;
+## and r31 r0 r3
+ctx.r31.u64 = ctx.r0.u64 & ctx.r3.u64;
+## and r13 r12 r11
+ctx.r13.u64 = ctx.r12.u64 & ctx.r11.u64;
+## andc r3 r4 r5
+ctx.r3.u64 = ctx.r4.u64 & ~ctx.r5.u64;
+## andc r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 & ~ctx.r0.u64;
+## andc r31 r0 r3
+ctx.r31.u64 = ctx.r0.u64 & ~ctx.r3.u64;
+## andc r13 r12 r11
+ctx.r13.u64 = ctx.r12.u64 & ~ctx.r11.u64;
+## andi r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 & 1;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 & 5;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 & 16;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 & 31;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 & 32;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 & 63;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 32767
+ctx.r3.u64 = ctx.r4.u64 & 32767;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 32768
+ctx.r3.u64 = ctx.r4.u64 & 32768;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 65535
+ctx.r3.u64 = ctx.r4.u64 & 65535;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 & -1;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 & -32768;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andi r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 & 1;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 & 5;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 & 16;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 & 31;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 & 32;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 & 63;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 32767
+ctx.r0.u64 = ctx.r0.u64 & 32767;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 32768
+ctx.r0.u64 = ctx.r0.u64 & 32768;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 65535
+ctx.r0.u64 = ctx.r0.u64 & 65535;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 & -1;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 & -32768;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andi r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 & 1;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 & 5;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 & 16;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 & 31;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 & 32;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 & 63;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 32767
+ctx.r31.u64 = ctx.r0.u64 & 32767;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 32768
+ctx.r31.u64 = ctx.r0.u64 & 32768;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 65535
+ctx.r31.u64 = ctx.r0.u64 & 65535;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 & -1;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 & -32768;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andi r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 & 1;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 & 5;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 & 16;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 & 31;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 & 32;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 & 63;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 32767
+ctx.r13.u64 = ctx.r12.u64 & 32767;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 32768
+ctx.r13.u64 = ctx.r12.u64 & 32768;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 65535
+ctx.r13.u64 = ctx.r12.u64 & 65535;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 & -1;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andi r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 & -32768;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 & 65536;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 & 327680;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 & 1048576;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 & 2031616;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 & 2097152;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 & 4128768;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 32767
+ctx.r3.u64 = ctx.r4.u64 & 2147418112;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 32768
+ctx.r3.u64 = ctx.r4.u64 & 2147483648;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 65535
+ctx.r3.u64 = ctx.r4.u64 & 4294901760;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 & -65536;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 & -2147483648;
+ctx.cr0.compare<int32_t>(ctx.r3.s32, 0, ctx.xer);
+## andis r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 & 65536;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 & 327680;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 & 1048576;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 & 2031616;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 & 2097152;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 & 4128768;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 32767
+ctx.r0.u64 = ctx.r0.u64 & 2147418112;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 32768
+ctx.r0.u64 = ctx.r0.u64 & 2147483648;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 65535
+ctx.r0.u64 = ctx.r0.u64 & 4294901760;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 & -65536;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 & -2147483648;
+ctx.cr0.compare<int32_t>(ctx.r0.s32, 0, ctx.xer);
+## andis r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 & 65536;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 & 327680;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 & 1048576;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 & 2031616;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 & 2097152;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 & 4128768;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 32767
+ctx.r31.u64 = ctx.r0.u64 & 2147418112;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 32768
+ctx.r31.u64 = ctx.r0.u64 & 2147483648;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 65535
+ctx.r31.u64 = ctx.r0.u64 & 4294901760;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 & -65536;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 & -2147483648;
+ctx.cr0.compare<int32_t>(ctx.r31.s32, 0, ctx.xer);
+## andis r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 & 0;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 & 65536;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 & 327680;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 & 1048576;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 & 2031616;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 & 2097152;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 & 4128768;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 32767
+ctx.r13.u64 = ctx.r12.u64 & 2147418112;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 32768
+ctx.r13.u64 = ctx.r12.u64 & 2147483648;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 65535
+ctx.r13.u64 = ctx.r12.u64 & 4294901760;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 & -65536;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## andis r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 & -2147483648;
+ctx.cr0.compare<int32_t>(ctx.r13.s32, 0, ctx.xer);
+## nand r3 r4 r5
+ctx.r3.u64 = ~(ctx.r4.u64 & ctx.r5.u64);
+## nand r0 r0 r0
+ctx.r0.u64 = ~(ctx.r0.u64 & ctx.r0.u64);
+## nand r31 r0 r3
+ctx.r31.u64 = ~(ctx.r0.u64 & ctx.r3.u64);
+## nand r13 r12 r11
+ctx.r13.u64 = ~(ctx.r12.u64 & ctx.r11.u64);
+## nor r3 r4 r5
+ctx.r3.u64 = ~(ctx.r4.u64 | ctx.r5.u64);
+## nor r0 r0 r0
+ctx.r0.u64 = ~(ctx.r0.u64 | ctx.r0.u64);
+## nor r31 r0 r3
+ctx.r31.u64 = ~(ctx.r0.u64 | ctx.r3.u64);
+## nor r13 r12 r11
+ctx.r13.u64 = ~(ctx.r12.u64 | ctx.r11.u64);
+## not r3 r4
+ctx.r3.u64 = ~ctx.r4.u64;
+## not r0 r0
+ctx.r0.u64 = ~ctx.r0.u64;
+## not r31 r0
+ctx.r31.u64 = ~ctx.r0.u64;
+## not r13 r12
+ctx.r13.u64 = ~ctx.r12.u64;
+## or r3 r4 r5
+ctx.r3.u64 = ctx.r4.u64 | ctx.r5.u64;
+## or r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 | ctx.r0.u64;
+## or r31 r0 r3
+ctx.r31.u64 = ctx.r0.u64 | ctx.r3.u64;
+## or r13 r12 r11
+ctx.r13.u64 = ctx.r12.u64 | ctx.r11.u64;
+## orc r3 r4 r5
+ctx.r3.u64 = ctx.r4.u64 | ~ctx.r5.u64;
+## orc r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 | ~ctx.r0.u64;
+## orc r31 r0 r3
+ctx.r31.u64 = ctx.r0.u64 | ~ctx.r3.u64;
+## orc r13 r12 r11
+ctx.r13.u64 = ctx.r12.u64 | ~ctx.r11.u64;
+## ori r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 | 0;
+## ori r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 | 1;
+## ori r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 | 5;
+## ori r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 | 16;
+## ori r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 | 31;
+## ori r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 | 32;
+## ori r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 | 63;
+## ori r3 r4 32767
+ctx.r3.u64 = ctx.r4.u64 | 32767;
+## ori r3 r4 32768
+ctx.r3.u64 = ctx.r4.u64 | 32768;
+## ori r3 r4 65535
+ctx.r3.u64 = ctx.r4.u64 | 65535;
+## ori r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 | -1;
+## ori r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 | -32768;
+## ori r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 | 0;
+## ori r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 | 1;
+## ori r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 | 5;
+## ori r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 | 16;
+## ori r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 | 31;
+## ori r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 | 32;
+## ori r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 | 63;
+## ori r0 r0 32767
+ctx.r0.u64 = ctx.r0.u64 | 32767;
+## ori r0 r0 32768
+ctx.r0.u64 = ctx.r0.u64 | 32768;
+## ori r0 r0 65535
+ctx.r0.u64 = ctx.r0.u64 | 65535;
+## ori r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 | -1;
+## ori r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 | -32768;
+## ori r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 | 0;
+## ori r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 | 1;
+## ori r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 | 5;
+## ori r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 | 16;
+## ori r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 | 31;
+## ori r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 | 32;
+## ori r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 | 63;
+## ori r31 r0 32767
+ctx.r31.u64 = ctx.r0.u64 | 32767;
+## ori r31 r0 32768
+ctx.r31.u64 = ctx.r0.u64 | 32768;
+## ori r31 r0 65535
+ctx.r31.u64 = ctx.r0.u64 | 65535;
+## ori r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 | -1;
+## ori r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 | -32768;
+## ori r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 | 0;
+## ori r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 | 1;
+## ori r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 | 5;
+## ori r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 | 16;
+## ori r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 | 31;
+## ori r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 | 32;
+## ori r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 | 63;
+## ori r13 r12 32767
+ctx.r13.u64 = ctx.r12.u64 | 32767;
+## ori r13 r12 32768
+ctx.r13.u64 = ctx.r12.u64 | 32768;
+## ori r13 r12 65535
+ctx.r13.u64 = ctx.r12.u64 | 65535;
+## ori r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 | -1;
+## ori r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 | -32768;
+## oris r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 | 0;
+## oris r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 | 65536;
+## oris r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 | 327680;
+## oris r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 | 1048576;
+## oris r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 | 2031616;
+## oris r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 | 2097152;
+## oris r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 | 4128768;
+## oris r3 r4 32767
+ctx.r3.u64 = ctx.r4.u64 | 2147418112;
+## oris r3 r4 32768
+ctx.r3.u64 = ctx.r4.u64 | 2147483648;
+## oris r3 r4 65535
+ctx.r3.u64 = ctx.r4.u64 | 4294901760;
+## oris r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 | 281474976645120;
+## oris r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 | 281472829227008;
+## oris r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 | 0;
+## oris r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 | 65536;
+## oris r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 | 327680;
+## oris r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 | 1048576;
+## oris r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 | 2031616;
+## oris r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 | 2097152;
+## oris r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 | 4128768;
+## oris r0 r0 32767
+ctx.r0.u64 = ctx.r0.u64 | 2147418112;
+## oris r0 r0 32768
+ctx.r0.u64 = ctx.r0.u64 | 2147483648;
+## oris r0 r0 65535
+ctx.r0.u64 = ctx.r0.u64 | 4294901760;
+## oris r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 | 281474976645120;
+## oris r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 | 281472829227008;
+## oris r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 | 0;
+## oris r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 | 65536;
+## oris r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 | 327680;
+## oris r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 | 1048576;
+## oris r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 | 2031616;
+## oris r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 | 2097152;
+## oris r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 | 4128768;
+## oris r31 r0 32767
+ctx.r31.u64 = ctx.r0.u64 | 2147418112;
+## oris r31 r0 32768
+ctx.r31.u64 = ctx.r0.u64 | 2147483648;
+## oris r31 r0 65535
+ctx.r31.u64 = ctx.r0.u64 | 4294901760;
+## oris r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 | 281474976645120;
+## oris r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 | 281472829227008;
+## oris r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 | 0;
+## oris r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 | 65536;
+## oris r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 | 327680;
+## oris r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 | 1048576;
+## oris r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 | 2031616;
+## oris r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 | 2097152;
+## oris r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 | 4128768;
+## oris r13 r12 32767
+ctx.r13.u64 = ctx.r12.u64 | 2147418112;
+## oris r13 r12 32768
+ctx.r13.u64 = ctx.r12.u64 | 2147483648;
+## oris r13 r12 65535
+ctx.r13.u64 = ctx.r12.u64 | 4294901760;
+## oris r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 | 281474976645120;
+## oris r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 | 281472829227008;
+## xor r3 r4 r5
+ctx.r3.u64 = ctx.r4.u64 ^ ctx.r5.u64;
+## xor r0 r0 r0
+ctx.r0.u64 = ctx.r0.u64 ^ ctx.r0.u64;
+## xor r31 r0 r3
+ctx.r31.u64 = ctx.r0.u64 ^ ctx.r3.u64;
+## xor r13 r12 r11
+ctx.r13.u64 = ctx.r12.u64 ^ ctx.r11.u64;
+## xori r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 ^ 0;
+## xori r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 ^ 1;
+## xori r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 ^ 5;
+## xori r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 ^ 16;
+## xori r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 ^ 31;
+## xori r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 ^ 32;
+## xori r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 ^ 63;
+## xori r3 r4 32767
+ctx.r3.u64 = ctx.r4.u64 ^ 32767;
+## xori r3 r4 32768
+ctx.r3.u64 = ctx.r4.u64 ^ 32768;
+## xori r3 r4 65535
+ctx.r3.u64 = ctx.r4.u64 ^ 65535;
+## xori r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 ^ -1;
+## xori r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 ^ -32768;
+## xori r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 ^ 0;
+## xori r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 ^ 1;
+## xori r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 ^ 5;
+## xori r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 ^ 16;
+## xori r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 ^ 31;
+## xori r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 ^ 32;
+## xori r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 ^ 63;
+## xori r0 r0 32767
+ctx.r0.u64 = ctx.r0.u64 ^ 32767;
+## xori r0 r0 32768
+ctx.r0.u64 = ctx.r0.u64 ^ 32768;
+## xori r0 r0 65535
+ctx.r0.u64 = ctx.r0.u64 ^ 65535;
+## xori r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 ^ -1;
+## xori r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 ^ -32768;
+## xori r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 ^ 0;
+## xori r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 ^ 1;
+## xori r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 ^ 5;
+## xori r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 ^ 16;
+## xori r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 ^ 31;
+## xori r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 ^ 32;
+## xori r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 ^ 63;
+## xori r31 r0 32767
+ctx.r31.u64 = ctx.r0.u64 ^ 32767;
+## xori r31 r0 32768
+ctx.r31.u64 = ctx.r0.u64 ^ 32768;
+## xori r31 r0 65535
+ctx.r31.u64 = ctx.r0.u64 ^ 65535;
+## xori r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 ^ -1;
+## xori r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 ^ -32768;
+## xori r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 ^ 0;
+## xori r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 ^ 1;
+## xori r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 ^ 5;
+## xori r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 ^ 16;
+## xori r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 ^ 31;
+## xori r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 ^ 32;
+## xori r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 ^ 63;
+## xori r13 r12 32767
+ctx.r13.u64 = ctx.r12.u64 ^ 32767;
+## xori r13 r12 32768
+ctx.r13.u64 = ctx.r12.u64 ^ 32768;
+## xori r13 r12 65535
+ctx.r13.u64 = ctx.r12.u64 ^ 65535;
+## xori r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 ^ -1;
+## xori r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 ^ -32768;
+## xoris r3 r4 0
+ctx.r3.u64 = ctx.r4.u64 ^ 0;
+## xoris r3 r4 1
+ctx.r3.u64 = ctx.r4.u64 ^ 65536;
+## xoris r3 r4 5
+ctx.r3.u64 = ctx.r4.u64 ^ 327680;
+## xoris r3 r4 16
+ctx.r3.u64 = ctx.r4.u64 ^ 1048576;
+## xoris r3 r4 31
+ctx.r3.u64 = ctx.r4.u64 ^ 2031616;
+## xoris r3 r4 32
+ctx.r3.u64 = ctx.r4.u64 ^ 2097152;
+## xoris r3 r4 63
+ctx.r3.u64 = ctx.r4.u64 ^ 4128768;
+## xoris r3 r4 32767
+ctx.r3.u64 = ctx.r4.u64 ^ 2147418112;
+## xoris r3 r4 32768
+ctx.r3.u64 = ctx.r4.u64 ^ 2147483648;
+## xoris r3 r4 65535
+ctx.r3.u64 = ctx.r4.u64 ^ 4294901760;
+## xoris r3 r4 -1
+ctx.r3.u64 = ctx.r4.u64 ^ -65536;
+## xoris r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u64 ^ -2147483648;
+## xoris r0 r0 0
+ctx.r0.u64 = ctx.r0.u64 ^ 0;
+## xoris r0 r0 1
+ctx.r0.u64 = ctx.r0.u64 ^ 65536;
+## xoris r0 r0 5
+ctx.r0.u64 = ctx.r0.u64 ^ 327680;
+## xoris r0 r0 16
+ctx.r0.u64 = ctx.r0.u64 ^ 1048576;
+## xoris r0 r0 31
+ctx.r0.u64 = ctx.r0.u64 ^ 2031616;
+## xoris r0 r0 32
+ctx.r0.u64 = ctx.r0.u64 ^ 2097152;
+## xoris r0 r0 63
+ctx.r0.u64 = ctx.r0.u64 ^ 4128768;
+## xoris r0 r0 32767
+ctx.r0.u64 = ctx.r0.u64 ^ 2147418112;
+## xoris r0 r0 32768
+ctx.r0.u64 = ctx.r0.u64 ^ 2147483648;
+## xoris r0 r0 65535
+ctx.r0.u64 = ctx.r0.u64 ^ 4294901760;
+## xoris r0 r0 -1
+ctx.r0.u64 = ctx.r0.u64 ^ -65536;
+## xoris r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u64 ^ -2147483648;
+## xoris r31 r0 0
+ctx.r31.u64 = ctx.r0.u64 ^ 0;
+## xoris r31 r0 1
+ctx.r31.u64 = ctx.r0.u64 ^ 65536;
+## xoris r31 r0 5
+ctx.r31.u64 = ctx.r0.u64 ^ 327680;
+## xoris r31 r0 16
+ctx.r31.u64 = ctx.r0.u64 ^ 1048576;
+## xoris r31 r0 31
+ctx.r31.u64 = ctx.r0.u64 ^ 2031616;
+## xoris r31 r0 32
+ctx.r31.u64 = ctx.r0.u64 ^ 2097152;
+## xoris r31 r0 63
+ctx.r31.u64 = ctx.r0.u64 ^ 4128768;
+## xoris r31 r0 32767
+ctx.r31.u64 = ctx.r0.u64 ^ 2147418112;
+## xoris r31 r0 32768
+ctx.r31.u64 = ctx.r0.u64 ^ 2147483648;
+## xoris r31 r0 65535
+ctx.r31.u64 = ctx.r0.u64 ^ 4294901760;
+## xoris r31 r0 -1
+ctx.r31.u64 = ctx.r0.u64 ^ -65536;
+## xoris r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u64 ^ -2147483648;
+## xoris r13 r12 0
+ctx.r13.u64 = ctx.r12.u64 ^ 0;
+## xoris r13 r12 1
+ctx.r13.u64 = ctx.r12.u64 ^ 65536;
+## xoris r13 r12 5
+ctx.r13.u64 = ctx.r12.u64 ^ 327680;
+## xoris r13 r12 16
+ctx.r13.u64 = ctx.r12.u64 ^ 1048576;
+## xoris r13 r12 31
+ctx.r13.u64 = ctx.r12.u64 ^ 2031616;
+## xoris r13 r12 32
+ctx.r13.u64 = ctx.r12.u64 ^ 2097152;
+## xoris r13 r12 63
+ctx.r13.u64 = ctx.r12.u64 ^ 4128768;
+## xoris r13 r12 32767
+ctx.r13.u64 = ctx.r12.u64 ^ 2147418112;
+## xoris r13 r12 32768
+ctx.r13.u64 = ctx.r12.u64 ^ 2147483648;
+## xoris r13 r12 65535
+ctx.r13.u64 = ctx.r12.u64 ^ 4294901760;
+## xoris r13 r12 -1
+ctx.r13.u64 = ctx.r12.u64 ^ -65536;
+## xoris r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u64 ^ -2147483648;
+## eqv r3 r4 r5
+ctx.r3.u64 = ~(ctx.r4.u64 ^ ctx.r5.u64);
+## eqv r0 r0 r0
+ctx.r0.u64 = ~(ctx.r0.u64 ^ ctx.r0.u64);
+## eqv r31 r0 r3
+ctx.r31.u64 = ~(ctx.r0.u64 ^ ctx.r3.u64);
+## eqv r13 r12 r11
+ctx.r13.u64 = ~(ctx.r12.u64 ^ ctx.r11.u64);
+## cntlzd r3 r4
+ctx.r3.u64 = ctx.r4.u64 == 0 ? 64 : __builtin_clzll(ctx.r4.u64);
+## cntlzd r0 r0
+ctx.r0.u64 = ctx.r0.u64 == 0 ? 64 : __builtin_clzll(ctx.r0.u64);
+## cntlzd r31 r0
+ctx.r31.u64 = ctx.r0.u64 == 0 ? 64 : __builtin_clzll(ctx.r0.u64);
+## cntlzd r13 r12
+ctx.r13.u64 = ctx.r12.u64 == 0 ? 64 : __builtin_clzll(ctx.r12.u64);
+## cntlzw r3 r4
+ctx.r3.u64 = ctx.r4.u32 == 0 ? 32 : __builtin_clz(ctx.r4.u32);
+## cntlzw r0 r0
+ctx.r0.u64 = ctx.r0.u32 == 0 ? 32 : __builtin_clz(ctx.r0.u32);
+## cntlzw r31 r0
+ctx.r31.u64 = ctx.r0.u32 == 0 ? 32 : __builtin_clz(ctx.r0.u32);
+## cntlzw r13 r12
+ctx.r13.u64 = ctx.r12.u32 == 0 ? 32 : __builtin_clz(ctx.r12.u32);
+## extsb r3 r4
+ctx.r3.s64 = ctx.r4.s8;
+## extsb r0 r0
+ctx.r0.s64 = ctx.r0.s8;
+## extsb r31 r0
+ctx.r31.s64 = ctx.r0.s8;
+## extsb r13 r12
+ctx.r13.s64 = ctx.r12.s8;
+## extsh r3 r4
+ctx.r3.s64 = ctx.r4.s16;
+## extsh r0 r0
+ctx.r0.s64 = ctx.r0.s16;
+## extsh r31 r0
+ctx.r31.s64 = ctx.r0.s16;
+## extsh r13 r12
+ctx.r13.s64 = ctx.r12.s16;
+## extsw r3 r4
+ctx.r3.s64 = ctx.r4.s32;
+## extsw r0 r0
+ctx.r0.s64 = ctx.r0.s32;
+## extsw r31 r0
+ctx.r31.s64 = ctx.r0.s32;
+## extsw r13 r12
+ctx.r13.s64 = ctx.r12.s32;
+## clrlwi r3 r4 0
+ctx.r3.u64 = ctx.r4.u32 & 0xFFFFFFFF;
+## clrlwi r3 r4 1
+ctx.r3.u64 = ctx.r4.u32 & 0x7FFFFFFF;
+## clrlwi r3 r4 5
+ctx.r3.u64 = ctx.r4.u32 & 0x7FFFFFF;
+## clrlwi r3 r4 16
+ctx.r3.u64 = ctx.r4.u32 & 0xFFFF;
+## clrlwi r3 r4 31
+ctx.r3.u64 = ctx.r4.u32 & 0x1;
+## clrlwi r3 r4 32
+ctx.r3.u64 = ctx.r4.u32 & 0x0;
+## clrlwi r3 r4 -1
+ctx.r3.u64 = ctx.r4.u32 & 0x1FFFFFFFF;
+## clrlwi r3 r4 -32768
+ctx.r3.u64 = ctx.r4.u32 & 0xFFFFFFFFFFFFFFFF;
+## clrlwi r0 r0 0
+ctx.r0.u64 = ctx.r0.u32 & 0xFFFFFFFF;
+## clrlwi r0 r0 1
+ctx.r0.u64 = ctx.r0.u32 & 0x7FFFFFFF;
+## clrlwi r0 r0 5
+ctx.r0.u64 = ctx.r0.u32 & 0x7FFFFFF;
+## clrlwi r0 r0 16
+ctx.r0.u64 = ctx.r0.u32 & 0xFFFF;
+## clrlwi r0 r0 31
+ctx.r0.u64 = ctx.r0.u32 & 0x1;
+## clrlwi r0 r0 32
+ctx.r0.u64 = ctx.r0.u32 & 0x0;
+## clrlwi r0 r0 -1
+ctx.r0.u64 = ctx.r0.u32 & 0x1FFFFFFFF;
+## clrlwi r0 r0 -32768
+ctx.r0.u64 = ctx.r0.u32 & 0xFFFFFFFFFFFFFFFF;
+## clrlwi r31 r0 0
+ctx.r31.u64 = ctx.r0.u32 & 0xFFFFFFFF;
+## clrlwi r31 r0 1
+ctx.r31.u64 = ctx.r0.u32 & 0x7FFFFFFF;
+## clrlwi r31 r0 5
+ctx.r31.u64 = ctx.r0.u32 & 0x7FFFFFF;
+## clrlwi r31 r0 16
+ctx.r31.u64 = ctx.r0.u32 & 0xFFFF;
+## clrlwi r31 r0 31
+ctx.r31.u64 = ctx.r0.u32 & 0x1;
+## clrlwi r31 r0 32
+ctx.r31.u64 = ctx.r0.u32 & 0x0;
+## clrlwi r31 r0 -1
+ctx.r31.u64 = ctx.r0.u32 & 0x1FFFFFFFF;
+## clrlwi r31 r0 -32768
+ctx.r31.u64 = ctx.r0.u32 & 0xFFFFFFFFFFFFFFFF;
+## clrlwi r13 r12 0
+ctx.r13.u64 = ctx.r12.u32 & 0xFFFFFFFF;
+## clrlwi r13 r12 1
+ctx.r13.u64 = ctx.r12.u32 & 0x7FFFFFFF;
+## clrlwi r13 r12 5
+ctx.r13.u64 = ctx.r12.u32 & 0x7FFFFFF;
+## clrlwi r13 r12 16
+ctx.r13.u64 = ctx.r12.u32 & 0xFFFF;
+## clrlwi r13 r12 31
+ctx.r13.u64 = ctx.r12.u32 & 0x1;
+## clrlwi r13 r12 32
+ctx.r13.u64 = ctx.r12.u32 & 0x0;
+## clrlwi r13 r12 -1
+ctx.r13.u64 = ctx.r12.u32 & 0x1FFFFFFFF;
+## clrlwi r13 r12 -32768
+ctx.r13.u64 = ctx.r12.u32 & 0xFFFFFFFFFFFFFFFF;
+## rldicl r3 r4 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r3 r4 0 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0x7FFFFFFFFFFFFFF;
+## rldicl r3 r4 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0x1FFFFFFFF;
+## rldicl r3 r4 0 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0x1;
+## rldicl r3 r4 5 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r3 r4 5 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0x7FFFFFFFFFFFFFF;
+## rldicl r3 r4 5 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0x1FFFFFFFF;
+## rldicl r3 r4 5 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0x1;
+## rldicl r3 r4 16 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r3 r4 16 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0x7FFFFFFFFFFFFFF;
+## rldicl r3 r4 16 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0x1FFFFFFFF;
+## rldicl r3 r4 16 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0x1;
+## rldicl r3 r4 31 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r3 r4 31 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0x7FFFFFFFFFFFFFF;
+## rldicl r3 r4 31 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0x1FFFFFFFF;
+## rldicl r3 r4 31 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0x1;
+## rldicl r3 r4 63 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r3 r4 63 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x7FFFFFFFFFFFFFF;
+## rldicl r3 r4 63 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x1FFFFFFFF;
+## rldicl r3 r4 63 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x1;
+## rldicl r3 r4 65535 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r3 r4 65535 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x7FFFFFFFFFFFFFF;
+## rldicl r3 r4 65535 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x1FFFFFFFF;
+## rldicl r3 r4 65535 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x1;
+## rldicl r0 r0 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r0 r0 0 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0x7FFFFFFFFFFFFFF;
+## rldicl r0 r0 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0x1FFFFFFFF;
+## rldicl r0 r0 0 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0x1;
+## rldicl r0 r0 5 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r0 r0 5 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0x7FFFFFFFFFFFFFF;
+## rldicl r0 r0 5 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0x1FFFFFFFF;
+## rldicl r0 r0 5 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0x1;
+## rldicl r0 r0 16 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r0 r0 16 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0x7FFFFFFFFFFFFFF;
+## rldicl r0 r0 16 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0x1FFFFFFFF;
+## rldicl r0 r0 16 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0x1;
+## rldicl r0 r0 31 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r0 r0 31 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0x7FFFFFFFFFFFFFF;
+## rldicl r0 r0 31 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0x1FFFFFFFF;
+## rldicl r0 r0 31 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0x1;
+## rldicl r0 r0 63 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r0 r0 63 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x7FFFFFFFFFFFFFF;
+## rldicl r0 r0 63 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x1FFFFFFFF;
+## rldicl r0 r0 63 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x1;
+## rldicl r0 r0 65535 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0xFFFFFFFFFFFFFFFF;
+## rldicl r0 r0 65535 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x7FFFFFFFFFFFFFF;
+## rldicl r0 r0 65535 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x1FFFFFFFF;
+## rldicl r0 r0 65535 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x1;
+## rldicr r3 r4 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0x8000000000000000;
+## rldicr r3 r4 0 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0xFC00000000000000;
+## rldicr r3 r4 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0xFFFFFFFF00000000;
+## rldicr r3 r4 0 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r3 r4 5 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0x8000000000000000;
+## rldicr r3 r4 5 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0xFC00000000000000;
+## rldicr r3 r4 5 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0xFFFFFFFF00000000;
+## rldicr r3 r4 5 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r3 r4 16 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0x8000000000000000;
+## rldicr r3 r4 16 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0xFC00000000000000;
+## rldicr r3 r4 16 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0xFFFFFFFF00000000;
+## rldicr r3 r4 16 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r3 r4 31 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0x8000000000000000;
+## rldicr r3 r4 31 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0xFC00000000000000;
+## rldicr r3 r4 31 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0xFFFFFFFF00000000;
+## rldicr r3 r4 31 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r3 r4 63 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x8000000000000000;
+## rldicr r3 r4 63 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0xFC00000000000000;
+## rldicr r3 r4 63 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0xFFFFFFFF00000000;
+## rldicr r3 r4 63 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r3 r4 65535 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x8000000000000000;
+## rldicr r3 r4 65535 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0xFC00000000000000;
+## rldicr r3 r4 65535 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0xFFFFFFFF00000000;
+## rldicr r3 r4 65535 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r0 r0 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0x8000000000000000;
+## rldicr r0 r0 0 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0xFC00000000000000;
+## rldicr r0 r0 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0xFFFFFFFF00000000;
+## rldicr r0 r0 0 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r0 r0 5 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0x8000000000000000;
+## rldicr r0 r0 5 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0xFC00000000000000;
+## rldicr r0 r0 5 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0xFFFFFFFF00000000;
+## rldicr r0 r0 5 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r0 r0 16 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0x8000000000000000;
+## rldicr r0 r0 16 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0xFC00000000000000;
+## rldicr r0 r0 16 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0xFFFFFFFF00000000;
+## rldicr r0 r0 16 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r0 r0 31 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0x8000000000000000;
+## rldicr r0 r0 31 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0xFC00000000000000;
+## rldicr r0 r0 31 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0xFFFFFFFF00000000;
+## rldicr r0 r0 31 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r0 r0 63 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x8000000000000000;
+## rldicr r0 r0 63 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0xFC00000000000000;
+## rldicr r0 r0 63 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0xFFFFFFFF00000000;
+## rldicr r0 r0 63 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0xFFFFFFFFFFFFFFFF;
+## rldicr r0 r0 65535 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x8000000000000000;
+## rldicr r0 r0 65535 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0xFC00000000000000;
+## rldicr r0 r0 65535 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0xFFFFFFFF00000000;
+## rldicr r0 r0 65535 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0xFFFFFFFFFFFFFFFF;
+## rldic r3 r4 0 0
+ctx.r3.u64 = ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF;
+## rldic r3 r4 0 5
+ctx.r3.u64 = ctx.r4.u64 & 0x7FFFFFFFFFFFFFF;
+## rldic r3 r4 0 31
+ctx.r3.u64 = ctx.r4.u64 & 0x1FFFFFFFF;
+## rldic r3 r4 0 63
+ctx.r3.u64 = ctx.r4.u64 & 0x1;
+## rldic r3 r4 5 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0xFFFFFFFFFFFFFFE0;
+## rldic r3 r4 5 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0x7FFFFFFFFFFFFE0;
+## rldic r3 r4 5 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0x1FFFFFFE0;
+## rldic r3 r4 5 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5) & 0xFFFFFFFFFFFFFFE1;
+## rldic r3 r4 16 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0xFFFFFFFFFFFF0000;
+## rldic r3 r4 16 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0x7FFFFFFFFFF0000;
+## rldic r3 r4 16 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0x1FFFF0000;
+## rldic r3 r4 16 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16) & 0xFFFFFFFFFFFF0001;
+## rldic r3 r4 31 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0xFFFFFFFF80000000;
+## rldic r3 r4 31 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0x7FFFFFF80000000;
+## rldic r3 r4 31 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0x180000000;
+## rldic r3 r4 31 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31) & 0xFFFFFFFF80000001;
+## rldic r3 r4 63 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x8000000000000000;
+## rldic r3 r4 63 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x87FFFFFFFFFFFFFF;
+## rldic r3 r4 63 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x80000001FFFFFFFF;
+## rldic r3 r4 63 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63) & 0x8000000000000001;
+## rldic r3 r4 65535 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x8000000000000000;
+## rldic r3 r4 65535 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x87FFFFFFFFFFFFFF;
+## rldic r3 r4 65535 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x80000001FFFFFFFF;
+## rldic r3 r4 65535 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535) & 0x8000000000000001;
+## rldic r0 r0 0 0
+ctx.r0.u64 = ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF;
+## rldic r0 r0 0 5
+ctx.r0.u64 = ctx.r0.u64 & 0x7FFFFFFFFFFFFFF;
+## rldic r0 r0 0 31
+ctx.r0.u64 = ctx.r0.u64 & 0x1FFFFFFFF;
+## rldic r0 r0 0 63
+ctx.r0.u64 = ctx.r0.u64 & 0x1;
+## rldic r0 r0 5 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0xFFFFFFFFFFFFFFE0;
+## rldic r0 r0 5 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0x7FFFFFFFFFFFFE0;
+## rldic r0 r0 5 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0x1FFFFFFE0;
+## rldic r0 r0 5 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5) & 0xFFFFFFFFFFFFFFE1;
+## rldic r0 r0 16 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0xFFFFFFFFFFFF0000;
+## rldic r0 r0 16 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0x7FFFFFFFFFF0000;
+## rldic r0 r0 16 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0x1FFFF0000;
+## rldic r0 r0 16 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16) & 0xFFFFFFFFFFFF0001;
+## rldic r0 r0 31 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0xFFFFFFFF80000000;
+## rldic r0 r0 31 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0x7FFFFFF80000000;
+## rldic r0 r0 31 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0x180000000;
+## rldic r0 r0 31 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31) & 0xFFFFFFFF80000001;
+## rldic r0 r0 63 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x8000000000000000;
+## rldic r0 r0 63 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x87FFFFFFFFFFFFFF;
+## rldic r0 r0 63 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x80000001FFFFFFFF;
+## rldic r0 r0 63 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63) & 0x8000000000000001;
+## rldic r0 r0 65535 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x8000000000000000;
+## rldic r0 r0 65535 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x87FFFFFFFFFFFFFF;
+## rldic r0 r0 65535 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x80000001FFFFFFFF;
+## rldic r0 r0 65535 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535) & 0x8000000000000001;
+## rldcl r3 r4 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0xFFFFFFFFFFFFFFFF;
+## rldcl r3 r4 0 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0x7FFFFFFFFFFFFFF;
+## rldcl r3 r4 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0x1FFFFFFFF;
+## rldcl r3 r4 0 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0x1;
+## rldcl r0 r0 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0xFFFFFFFFFFFFFFFF;
+## rldcl r0 r0 0 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0x7FFFFFFFFFFFFFF;
+## rldcl r0 r0 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0x1FFFFFFFF;
+## rldcl r0 r0 0 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0x1;
+## rldcr r3 r4 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0x8000000000000000;
+## rldcr r3 r4 0 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0xFC00000000000000;
+## rldcr r3 r4 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0xFFFFFFFF00000000;
+## rldcr r3 r4 0 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, ctx.r0.u8 & 0x3F) & 0xFFFFFFFFFFFFFFFF;
+## rldcr r0 r0 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0x8000000000000000;
+## rldcr r0 r0 0 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0xFC00000000000000;
+## rldcr r0 r0 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0xFFFFFFFF00000000;
+## rldcr r0 r0 0 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, ctx.r0.u8 & 0x3F) & 0xFFFFFFFFFFFFFFFF;
+## rldimi r3 r4 0 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 0) & 0xFFFFFFFFFFFFFFFF) | (ctx.r3.u64 & 0x0);
+## rldimi r3 r4 0 5
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 0) & 0x7FFFFFFFFFFFFFF) | (ctx.r3.u64 & 0xF800000000000000);
+## rldimi r3 r4 0 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 0) & 0x1FFFFFFFF) | (ctx.r3.u64 & 0xFFFFFFFE00000000);
+## rldimi r3 r4 0 63
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 0) & 0x1) | (ctx.r3.u64 & 0xFFFFFFFFFFFFFFFE);
+## rldimi r3 r4 5 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 5) & 0xFFFFFFFFFFFFFFE0) | (ctx.r3.u64 & 0x1F);
+## rldimi r3 r4 5 5
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 5) & 0x7FFFFFFFFFFFFE0) | (ctx.r3.u64 & 0xF80000000000001F);
+## rldimi r3 r4 5 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 5) & 0x1FFFFFFE0) | (ctx.r3.u64 & 0xFFFFFFFE0000001F);
+## rldimi r3 r4 5 63
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 5) & 0xFFFFFFFFFFFFFFE1) | (ctx.r3.u64 & 0x1E);
+## rldimi r3 r4 16 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 16) & 0xFFFFFFFFFFFF0000) | (ctx.r3.u64 & 0xFFFF);
+## rldimi r3 r4 16 5
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 16) & 0x7FFFFFFFFFF0000) | (ctx.r3.u64 & 0xF80000000000FFFF);
+## rldimi r3 r4 16 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 16) & 0x1FFFF0000) | (ctx.r3.u64 & 0xFFFFFFFE0000FFFF);
+## rldimi r3 r4 16 63
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 16) & 0xFFFFFFFFFFFF0001) | (ctx.r3.u64 & 0xFFFE);
+## rldimi r3 r4 31 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 31) & 0xFFFFFFFF80000000) | (ctx.r3.u64 & 0x7FFFFFFF);
+## rldimi r3 r4 31 5
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 31) & 0x7FFFFFF80000000) | (ctx.r3.u64 & 0xF80000007FFFFFFF);
+## rldimi r3 r4 31 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 31) & 0x180000000) | (ctx.r3.u64 & 0xFFFFFFFE7FFFFFFF);
+## rldimi r3 r4 31 63
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 31) & 0xFFFFFFFF80000001) | (ctx.r3.u64 & 0x7FFFFFFE);
+## rldimi r3 r4 63 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 63) & 0x8000000000000000) | (ctx.r3.u64 & 0x7FFFFFFFFFFFFFFF);
+## rldimi r3 r4 63 5
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 63) & 0x87FFFFFFFFFFFFFF) | (ctx.r3.u64 & 0x7800000000000000);
+## rldimi r3 r4 63 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 63) & 0x80000001FFFFFFFF) | (ctx.r3.u64 & 0x7FFFFFFE00000000);
+## rldimi r3 r4 63 63
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 63) & 0x8000000000000001) | (ctx.r3.u64 & 0x7FFFFFFFFFFFFFFE);
+## rldimi r3 r4 65535 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 65535) & 0x8000000000000000) | (ctx.r3.u64 & 0x7FFFFFFFFFFFFFFF);
+## rldimi r3 r4 65535 5
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 65535) & 0x87FFFFFFFFFFFFFF) | (ctx.r3.u64 & 0x7800000000000000);
+## rldimi r3 r4 65535 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 65535) & 0x80000001FFFFFFFF) | (ctx.r3.u64 & 0x7FFFFFFE00000000);
+## rldimi r3 r4 65535 63
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u64, 65535) & 0x8000000000000001) | (ctx.r3.u64 & 0x7FFFFFFFFFFFFFFE);
+## rldimi r0 r0 0 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 0) & 0xFFFFFFFFFFFFFFFF) | (ctx.r0.u64 & 0x0);
+## rldimi r0 r0 0 5
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 0) & 0x7FFFFFFFFFFFFFF) | (ctx.r0.u64 & 0xF800000000000000);
+## rldimi r0 r0 0 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 0) & 0x1FFFFFFFF) | (ctx.r0.u64 & 0xFFFFFFFE00000000);
+## rldimi r0 r0 0 63
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 0) & 0x1) | (ctx.r0.u64 & 0xFFFFFFFFFFFFFFFE);
+## rldimi r0 r0 5 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 5) & 0xFFFFFFFFFFFFFFE0) | (ctx.r0.u64 & 0x1F);
+## rldimi r0 r0 5 5
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 5) & 0x7FFFFFFFFFFFFE0) | (ctx.r0.u64 & 0xF80000000000001F);
+## rldimi r0 r0 5 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 5) & 0x1FFFFFFE0) | (ctx.r0.u64 & 0xFFFFFFFE0000001F);
+## rldimi r0 r0 5 63
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 5) & 0xFFFFFFFFFFFFFFE1) | (ctx.r0.u64 & 0x1E);
+## rldimi r0 r0 16 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 16) & 0xFFFFFFFFFFFF0000) | (ctx.r0.u64 & 0xFFFF);
+## rldimi r0 r0 16 5
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 16) & 0x7FFFFFFFFFF0000) | (ctx.r0.u64 & 0xF80000000000FFFF);
+## rldimi r0 r0 16 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 16) & 0x1FFFF0000) | (ctx.r0.u64 & 0xFFFFFFFE0000FFFF);
+## rldimi r0 r0 16 63
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 16) & 0xFFFFFFFFFFFF0001) | (ctx.r0.u64 & 0xFFFE);
+## rldimi r0 r0 31 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 31) & 0xFFFFFFFF80000000) | (ctx.r0.u64 & 0x7FFFFFFF);
+## rldimi r0 r0 31 5
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 31) & 0x7FFFFFF80000000) | (ctx.r0.u64 & 0xF80000007FFFFFFF);
+## rldimi r0 r0 31 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 31) & 0x180000000) | (ctx.r0.u64 & 0xFFFFFFFE7FFFFFFF);
+## rldimi r0 r0 31 63
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 31) & 0xFFFFFFFF80000001) | (ctx.r0.u64 & 0x7FFFFFFE);
+## rldimi r0 r0 63 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 63) & 0x8000000000000000) | (ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF);
+## rldimi r0 r0 63 5
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 63) & 0x87FFFFFFFFFFFFFF) | (ctx.r0.u64 & 0x7800000000000000);
+## rldimi r0 r0 63 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 63) & 0x80000001FFFFFFFF) | (ctx.r0.u64 & 0x7FFFFFFE00000000);
+## rldimi r0 r0 63 63
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 63) & 0x8000000000000001) | (ctx.r0.u64 & 0x7FFFFFFFFFFFFFFE);
+## rldimi r0 r0 65535 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 65535) & 0x8000000000000000) | (ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF);
+## rldimi r0 r0 65535 5
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 65535) & 0x87FFFFFFFFFFFFFF) | (ctx.r0.u64 & 0x7800000000000000);
+## rldimi r0 r0 65535 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 65535) & 0x80000001FFFFFFFF) | (ctx.r0.u64 & 0x7FFFFFFE00000000);
+## rldimi r0 r0 65535 63
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u64, 65535) & 0x8000000000000001) | (ctx.r0.u64 & 0x7FFFFFFFFFFFFFFE);
+## rotldi r3 r4 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 0);
+## rotldi r3 r4 1
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 1);
+## rotldi r3 r4 5
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 5);
+## rotldi r3 r4 16
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 16);
+## rotldi r3 r4 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 31);
+## rotldi r3 r4 32
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 32);
+## rotldi r3 r4 63
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 63);
+## rotldi r3 r4 32767
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 32767);
+## rotldi r3 r4 32768
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 32768);
+## rotldi r3 r4 65535
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, 65535);
+## rotldi r3 r4 -1
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, -1);
+## rotldi r3 r4 -32768
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u64, -32768);
+## rotldi r0 r0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 0);
+## rotldi r0 r0 1
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 1);
+## rotldi r0 r0 5
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 5);
+## rotldi r0 r0 16
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 16);
+## rotldi r0 r0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 31);
+## rotldi r0 r0 32
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 32);
+## rotldi r0 r0 63
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 63);
+## rotldi r0 r0 32767
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 32767);
+## rotldi r0 r0 32768
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 32768);
+## rotldi r0 r0 65535
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535);
+## rotldi r0 r0 -1
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, -1);
+## rotldi r0 r0 -32768
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u64, -32768);
+## rotldi r31 r0 0
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 0);
+## rotldi r31 r0 1
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 1);
+## rotldi r31 r0 5
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 5);
+## rotldi r31 r0 16
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 16);
+## rotldi r31 r0 31
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 31);
+## rotldi r31 r0 32
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 32);
+## rotldi r31 r0 63
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 63);
+## rotldi r31 r0 32767
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 32767);
+## rotldi r31 r0 32768
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 32768);
+## rotldi r31 r0 65535
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, 65535);
+## rotldi r31 r0 -1
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, -1);
+## rotldi r31 r0 -32768
+ctx.r31.u64 = __builtin_rotateleft64(ctx.r0.u64, -32768);
+## rotldi r13 r12 0
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 0);
+## rotldi r13 r12 1
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 1);
+## rotldi r13 r12 5
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 5);
+## rotldi r13 r12 16
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 16);
+## rotldi r13 r12 31
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 31);
+## rotldi r13 r12 32
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 32);
+## rotldi r13 r12 63
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 63);
+## rotldi r13 r12 32767
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 32767);
+## rotldi r13 r12 32768
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 32768);
+## rotldi r13 r12 65535
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, 65535);
+## rotldi r13 r12 -1
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, -1);
+## rotldi r13 r12 -32768
+ctx.r13.u64 = __builtin_rotateleft64(ctx.r12.u64, -32768);
+## rlwimi r3 r4 0 0 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x80000000) | (ctx.r3.u64 & 0xFFFFFFFF7FFFFFFF);
+## rlwimi r3 r4 0 0 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFE0) | (ctx.r3.u64 & 0xFFFFFFFF0000001F);
+## rlwimi r3 r4 0 0 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFF) | (ctx.r3.u64 & 0xFFFFFFFF00000000);
+## rlwimi r3 r4 0 5 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFF87FFFFFF) | (ctx.r3.u64 & 0x78000000);
+## rlwimi r3 r4 0 5 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x7FFFFE0) | (ctx.r3.u64 & 0xFFFFFFFFF800001F);
+## rlwimi r3 r4 0 5 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x7FFFFFF) | (ctx.r3.u64 & 0xFFFFFFFFF8000000);
+## rlwimi r3 r4 0 31 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFF80000001) | (ctx.r3.u64 & 0x7FFFFFFE);
+## rlwimi r3 r4 0 31 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFFFFFFFFE1) | (ctx.r3.u64 & 0x1E);
+## rlwimi r3 r4 0 31 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x1) | (ctx.r3.u64 & 0xFFFFFFFFFFFFFFFE);
+## rlwimi r3 r4 5 0 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x80000000) | (ctx.r3.u64 & 0xFFFFFFFF7FFFFFFF);
+## rlwimi r3 r4 5 0 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFE0) | (ctx.r3.u64 & 0xFFFFFFFF0000001F);
+## rlwimi r3 r4 5 0 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFF) | (ctx.r3.u64 & 0xFFFFFFFF00000000);
+## rlwimi r3 r4 5 5 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFF87FFFFFF) | (ctx.r3.u64 & 0x78000000);
+## rlwimi r3 r4 5 5 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x7FFFFE0) | (ctx.r3.u64 & 0xFFFFFFFFF800001F);
+## rlwimi r3 r4 5 5 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x7FFFFFF) | (ctx.r3.u64 & 0xFFFFFFFFF8000000);
+## rlwimi r3 r4 5 31 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFF80000001) | (ctx.r3.u64 & 0x7FFFFFFE);
+## rlwimi r3 r4 5 31 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFFFFFFFFE1) | (ctx.r3.u64 & 0x1E);
+## rlwimi r3 r4 5 31 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x1) | (ctx.r3.u64 & 0xFFFFFFFFFFFFFFFE);
+## rlwimi r3 r4 31 0 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x80000000) | (ctx.r3.u64 & 0xFFFFFFFF7FFFFFFF);
+## rlwimi r3 r4 31 0 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFE0) | (ctx.r3.u64 & 0xFFFFFFFF0000001F);
+## rlwimi r3 r4 31 0 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFF) | (ctx.r3.u64 & 0xFFFFFFFF00000000);
+## rlwimi r3 r4 31 5 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFF87FFFFFF) | (ctx.r3.u64 & 0x78000000);
+## rlwimi r3 r4 31 5 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x7FFFFE0) | (ctx.r3.u64 & 0xFFFFFFFFF800001F);
+## rlwimi r3 r4 31 5 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x7FFFFFF) | (ctx.r3.u64 & 0xFFFFFFFFF8000000);
+## rlwimi r3 r4 31 31 0
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFF80000001) | (ctx.r3.u64 & 0x7FFFFFFE);
+## rlwimi r3 r4 31 31 26
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFFFFFFFFE1) | (ctx.r3.u64 & 0x1E);
+## rlwimi r3 r4 31 31 31
+ctx.r3.u64 = (__builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x1) | (ctx.r3.u64 & 0xFFFFFFFFFFFFFFFE);
+## rlwimi r0 r0 0 0 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x80000000) | (ctx.r0.u64 & 0xFFFFFFFF7FFFFFFF);
+## rlwimi r0 r0 0 0 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFE0) | (ctx.r0.u64 & 0xFFFFFFFF0000001F);
+## rlwimi r0 r0 0 0 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFF) | (ctx.r0.u64 & 0xFFFFFFFF00000000);
+## rlwimi r0 r0 0 5 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFF87FFFFFF) | (ctx.r0.u64 & 0x78000000);
+## rlwimi r0 r0 0 5 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x7FFFFE0) | (ctx.r0.u64 & 0xFFFFFFFFF800001F);
+## rlwimi r0 r0 0 5 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x7FFFFFF) | (ctx.r0.u64 & 0xFFFFFFFFF8000000);
+## rlwimi r0 r0 0 31 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFF80000001) | (ctx.r0.u64 & 0x7FFFFFFE);
+## rlwimi r0 r0 0 31 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFFFFFFFFE1) | (ctx.r0.u64 & 0x1E);
+## rlwimi r0 r0 0 31 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x1) | (ctx.r0.u64 & 0xFFFFFFFFFFFFFFFE);
+## rlwimi r0 r0 5 0 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x80000000) | (ctx.r0.u64 & 0xFFFFFFFF7FFFFFFF);
+## rlwimi r0 r0 5 0 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFE0) | (ctx.r0.u64 & 0xFFFFFFFF0000001F);
+## rlwimi r0 r0 5 0 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFF) | (ctx.r0.u64 & 0xFFFFFFFF00000000);
+## rlwimi r0 r0 5 5 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFF87FFFFFF) | (ctx.r0.u64 & 0x78000000);
+## rlwimi r0 r0 5 5 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x7FFFFE0) | (ctx.r0.u64 & 0xFFFFFFFFF800001F);
+## rlwimi r0 r0 5 5 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x7FFFFFF) | (ctx.r0.u64 & 0xFFFFFFFFF8000000);
+## rlwimi r0 r0 5 31 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFF80000001) | (ctx.r0.u64 & 0x7FFFFFFE);
+## rlwimi r0 r0 5 31 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFFFFFFFFE1) | (ctx.r0.u64 & 0x1E);
+## rlwimi r0 r0 5 31 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x1) | (ctx.r0.u64 & 0xFFFFFFFFFFFFFFFE);
+## rlwimi r0 r0 31 0 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x80000000) | (ctx.r0.u64 & 0xFFFFFFFF7FFFFFFF);
+## rlwimi r0 r0 31 0 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFE0) | (ctx.r0.u64 & 0xFFFFFFFF0000001F);
+## rlwimi r0 r0 31 0 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFF) | (ctx.r0.u64 & 0xFFFFFFFF00000000);
+## rlwimi r0 r0 31 5 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFF87FFFFFF) | (ctx.r0.u64 & 0x78000000);
+## rlwimi r0 r0 31 5 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x7FFFFE0) | (ctx.r0.u64 & 0xFFFFFFFFF800001F);
+## rlwimi r0 r0 31 5 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x7FFFFFF) | (ctx.r0.u64 & 0xFFFFFFFFF8000000);
+## rlwimi r0 r0 31 31 0
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFF80000001) | (ctx.r0.u64 & 0x7FFFFFFE);
+## rlwimi r0 r0 31 31 26
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFFFFFFFFE1) | (ctx.r0.u64 & 0x1E);
+## rlwimi r0 r0 31 31 31
+ctx.r0.u64 = (__builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x1) | (ctx.r0.u64 & 0xFFFFFFFFFFFFFFFE);
+## rlwinm r3 r4 0 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x80000000;
+## rlwinm r3 r4 0 0 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFE0;
+## rlwinm r3 r4 0 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFF;
+## rlwinm r3 r4 0 5 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFF87FFFFFF;
+## rlwinm r3 r4 0 5 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x7FFFFE0;
+## rlwinm r3 r4 0 5 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x7FFFFFF;
+## rlwinm r3 r4 0 31 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFF80000001;
+## rlwinm r3 r4 0 31 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0xFFFFFFFFFFFFFFE1;
+## rlwinm r3 r4 0 31 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 0) & 0x1;
+## rlwinm r3 r4 5 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x80000000;
+## rlwinm r3 r4 5 0 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFE0;
+## rlwinm r3 r4 5 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFF;
+## rlwinm r3 r4 5 5 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFF87FFFFFF;
+## rlwinm r3 r4 5 5 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x7FFFFE0;
+## rlwinm r3 r4 5 5 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x7FFFFFF;
+## rlwinm r3 r4 5 31 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFF80000001;
+## rlwinm r3 r4 5 31 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0xFFFFFFFFFFFFFFE1;
+## rlwinm r3 r4 5 31 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 5) & 0x1;
+## rlwinm r3 r4 31 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x80000000;
+## rlwinm r3 r4 31 0 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFE0;
+## rlwinm r3 r4 31 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFF;
+## rlwinm r3 r4 31 5 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFF87FFFFFF;
+## rlwinm r3 r4 31 5 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x7FFFFE0;
+## rlwinm r3 r4 31 5 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x7FFFFFF;
+## rlwinm r3 r4 31 31 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFF80000001;
+## rlwinm r3 r4 31 31 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0xFFFFFFFFFFFFFFE1;
+## rlwinm r3 r4 31 31 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), 31) & 0x1;
+## rlwinm r0 r0 0 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x80000000;
+## rlwinm r0 r0 0 0 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFE0;
+## rlwinm r0 r0 0 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFF;
+## rlwinm r0 r0 0 5 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFF87FFFFFF;
+## rlwinm r0 r0 0 5 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x7FFFFE0;
+## rlwinm r0 r0 0 5 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x7FFFFFF;
+## rlwinm r0 r0 0 31 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFF80000001;
+## rlwinm r0 r0 0 31 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0xFFFFFFFFFFFFFFE1;
+## rlwinm r0 r0 0 31 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 0) & 0x1;
+## rlwinm r0 r0 5 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x80000000;
+## rlwinm r0 r0 5 0 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFE0;
+## rlwinm r0 r0 5 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFF;
+## rlwinm r0 r0 5 5 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFF87FFFFFF;
+## rlwinm r0 r0 5 5 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x7FFFFE0;
+## rlwinm r0 r0 5 5 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x7FFFFFF;
+## rlwinm r0 r0 5 31 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFF80000001;
+## rlwinm r0 r0 5 31 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0xFFFFFFFFFFFFFFE1;
+## rlwinm r0 r0 5 31 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 5) & 0x1;
+## rlwinm r0 r0 31 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x80000000;
+## rlwinm r0 r0 31 0 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFE0;
+## rlwinm r0 r0 31 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFF;
+## rlwinm r0 r0 31 5 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFF87FFFFFF;
+## rlwinm r0 r0 31 5 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x7FFFFE0;
+## rlwinm r0 r0 31 5 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x7FFFFFF;
+## rlwinm r0 r0 31 31 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFF80000001;
+## rlwinm r0 r0 31 31 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0xFFFFFFFFFFFFFFE1;
+## rlwinm r0 r0 31 31 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), 31) & 0x1;
+## rlwnm r3 r4 0 0 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0x80000000;
+## rlwnm r3 r4 0 0 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFE0;
+## rlwnm r3 r4 0 0 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFF;
+## rlwnm r3 r4 0 5 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFF87FFFFFF;
+## rlwnm r3 r4 0 5 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0x7FFFFE0;
+## rlwnm r3 r4 0 5 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0x7FFFFFF;
+## rlwnm r3 r4 0 31 0
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFF80000001;
+## rlwnm r3 r4 0 31 26
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFFFFFFFFE1;
+## rlwnm r3 r4 0 31 31
+ctx.r3.u64 = __builtin_rotateleft64(ctx.r4.u32 | (ctx.r4.u64 << 32), ctx.r0.u8 & 0x1F) & 0x1;
+## rlwnm r0 r0 0 0 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0x80000000;
+## rlwnm r0 r0 0 0 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFE0;
+## rlwnm r0 r0 0 0 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFF;
+## rlwnm r0 r0 0 5 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFF87FFFFFF;
+## rlwnm r0 r0 0 5 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0x7FFFFE0;
+## rlwnm r0 r0 0 5 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0x7FFFFFF;
+## rlwnm r0 r0 0 31 0
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFF80000001;
+## rlwnm r0 r0 0 31 26
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0xFFFFFFFFFFFFFFE1;
+## rlwnm r0 r0 0 31 31
+ctx.r0.u64 = __builtin_rotateleft64(ctx.r0.u32 | (ctx.r0.u64 << 32), ctx.r0.u8 & 0x1F) & 0x1;
+## rotlw r3 r4 r5
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, ctx.r5.u8 & 0x1F);
+## rotlw r0 r0 r0
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, ctx.r0.u8 & 0x1F);
+## rotlw r31 r0 r3
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, ctx.r3.u8 & 0x1F);
+## rotlw r13 r12 r11
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, ctx.r11.u8 & 0x1F);
+## rotlwi r3 r4 0
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 0);
+## rotlwi r3 r4 1
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 1);
+## rotlwi r3 r4 5
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 5);
+## rotlwi r3 r4 16
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 16);
+## rotlwi r3 r4 31
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 31);
+## rotlwi r3 r4 32
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 32);
+## rotlwi r3 r4 63
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 63);
+## rotlwi r3 r4 32767
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 32767);
+## rotlwi r3 r4 32768
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 32768);
+## rotlwi r3 r4 65535
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, 65535);
+## rotlwi r3 r4 -1
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, -1);
+## rotlwi r3 r4 -32768
+ctx.r3.u64 = __builtin_rotateleft32(ctx.r4.u32, -32768);
+## rotlwi r0 r0 0
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 0);
+## rotlwi r0 r0 1
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 1);
+## rotlwi r0 r0 5
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 5);
+## rotlwi r0 r0 16
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 16);
+## rotlwi r0 r0 31
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 31);
+## rotlwi r0 r0 32
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 32);
+## rotlwi r0 r0 63
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 63);
+## rotlwi r0 r0 32767
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 32767);
+## rotlwi r0 r0 32768
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 32768);
+## rotlwi r0 r0 65535
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, 65535);
+## rotlwi r0 r0 -1
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, -1);
+## rotlwi r0 r0 -32768
+ctx.r0.u64 = __builtin_rotateleft32(ctx.r0.u32, -32768);
+## rotlwi r31 r0 0
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 0);
+## rotlwi r31 r0 1
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 1);
+## rotlwi r31 r0 5
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 5);
+## rotlwi r31 r0 16
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 16);
+## rotlwi r31 r0 31
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 31);
+## rotlwi r31 r0 32
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 32);
+## rotlwi r31 r0 63
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 63);
+## rotlwi r31 r0 32767
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 32767);
+## rotlwi r31 r0 32768
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 32768);
+## rotlwi r31 r0 65535
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, 65535);
+## rotlwi r31 r0 -1
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, -1);
+## rotlwi r31 r0 -32768
+ctx.r31.u64 = __builtin_rotateleft32(ctx.r0.u32, -32768);
+## rotlwi r13 r12 0
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 0);
+## rotlwi r13 r12 1
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 1);
+## rotlwi r13 r12 5
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 5);
+## rotlwi r13 r12 16
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 16);
+## rotlwi r13 r12 31
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 31);
+## rotlwi r13 r12 32
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 32);
+## rotlwi r13 r12 63
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 63);
+## rotlwi r13 r12 32767
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 32767);
+## rotlwi r13 r12 32768
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 32768);
+## rotlwi r13 r12 65535
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, 65535);
+## rotlwi r13 r12 -1
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, -1);
+## rotlwi r13 r12 -32768
+ctx.r13.u64 = __builtin_rotateleft32(ctx.r12.u32, -32768);
+## sld r3 r4 r5
+ctx.r3.u64 = ctx.r5.u8 & 0x40 ? 0 : (ctx.r4.u64 << (ctx.r5.u8 & 0x7F));
+## sld r0 r0 r0
+ctx.r0.u64 = ctx.r0.u8 & 0x40 ? 0 : (ctx.r0.u64 << (ctx.r0.u8 & 0x7F));
+## sld r31 r0 r3
+ctx.r31.u64 = ctx.r3.u8 & 0x40 ? 0 : (ctx.r0.u64 << (ctx.r3.u8 & 0x7F));
+## sld r13 r12 r11
+ctx.r13.u64 = ctx.r11.u8 & 0x40 ? 0 : (ctx.r12.u64 << (ctx.r11.u8 & 0x7F));
+## slw r3 r4 r5
+ctx.r3.u64 = ctx.r5.u8 & 0x20 ? 0 : (ctx.r4.u32 << (ctx.r5.u8 & 0x3F));
+## slw r0 r0 r0
+ctx.r0.u64 = ctx.r0.u8 & 0x20 ? 0 : (ctx.r0.u32 << (ctx.r0.u8 & 0x3F));
+## slw r31 r0 r3
+ctx.r31.u64 = ctx.r3.u8 & 0x20 ? 0 : (ctx.r0.u32 << (ctx.r3.u8 & 0x3F));
+## slw r13 r12 r11
+ctx.r13.u64 = ctx.r11.u8 & 0x20 ? 0 : (ctx.r12.u32 << (ctx.r11.u8 & 0x3F));
+## srad r3 r4 r5
+temp.u64 = ctx.r5.u64 & 0x7F;
+if (temp.u64 > 0x3F) temp.u64 = 0x3F;
+ctx.xer.ca = (ctx.r4.s64 < 0) & (((ctx.r4.s64 >> temp.u64) << temp.u64) != ctx.r4.s64);
+ctx.r3.s64 = ctx.r4.s64 >> temp.u64;
+## srad r0 r0 r0
+temp.u64 = ctx.r0.u64 & 0x7F;
+if (temp.u64 > 0x3F) temp.u64 = 0x3F;
+ctx.xer.ca = (ctx.r0.s64 < 0) & (((ctx.r0.s64 >> temp.u64) << temp.u64) != ctx.r0.s64);
+ctx.r0.s64 = ctx.r0.s64 >> temp.u64;
+## srad r31 r0 r3
+temp.u64 = ctx.r3.u64 & 0x7F;
+if (temp.u64 > 0x3F) temp.u64 = 0x3F;
+ctx.xer.ca = (ctx.r0.s64 < 0) & (((ctx.r0.s64 >> temp.u64) << temp.u64) != ctx.r0.s64);
+ctx.r31.s64 = ctx.r0.s64 >> temp.u64;
+## srad r13 r12 r11
+temp.u64 = ctx.r11.u64 & 0x7F;
+if (temp.u64 > 0x3F) temp.u64 = 0x3F;
+ctx.xer.ca = (ctx.r12.s64 < 0) & (((ctx.r12.s64 >> temp.u64) << temp.u64) != ctx.r12.s64);
+ctx.r13.s64 = ctx.r12.s64 >> temp.u64;
+## sradi r3 r4 0
+ctx.xer.ca = 0;
+ctx.r3.s64 = ctx.r4.s64;
+## sradi r3 r4 1
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0x1) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 1;
+## sradi r3 r4 5
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0x1F) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 5;
+## sradi r3 r4 16
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0xFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 16;
+## sradi r3 r4 31
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0x7FFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 31;
+## sradi r3 r4 32
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0xFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 32;
+## sradi r3 r4 63
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 63;
+## sradi r3 r4 32767
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 32767;
+## sradi r3 r4 32768
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 32768;
+## sradi r3 r4 65535
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> 65535;
+## sradi r3 r4 -1
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> -1;
+## sradi r3 r4 -32768
+ctx.xer.ca = (ctx.r4.s64 < 0) & ((ctx.r4.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s64 >> -32768;
+## sradi r0 r0 0
+ctx.xer.ca = 0;
+ctx.r0.s64 = ctx.r0.s64;
+## sradi r0 r0 1
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x1) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 1;
+## sradi r0 r0 5
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x1F) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 5;
+## sradi r0 r0 16
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 16;
+## sradi r0 r0 31
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 31;
+## sradi r0 r0 32
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 32;
+## sradi r0 r0 63
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 63;
+## sradi r0 r0 32767
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 32767;
+## sradi r0 r0 32768
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 32768;
+## sradi r0 r0 65535
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> 65535;
+## sradi r0 r0 -1
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> -1;
+## sradi r0 r0 -32768
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s64 >> -32768;
+## sradi r31 r0 0
+ctx.xer.ca = 0;
+ctx.r31.s64 = ctx.r0.s64;
+## sradi r31 r0 1
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x1) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 1;
+## sradi r31 r0 5
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x1F) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 5;
+## sradi r31 r0 16
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 16;
+## sradi r31 r0 31
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 31;
+## sradi r31 r0 32
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 32;
+## sradi r31 r0 63
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 63;
+## sradi r31 r0 32767
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 32767;
+## sradi r31 r0 32768
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 32768;
+## sradi r31 r0 65535
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> 65535;
+## sradi r31 r0 -1
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> -1;
+## sradi r31 r0 -32768
+ctx.xer.ca = (ctx.r0.s64 < 0) & ((ctx.r0.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s64 >> -32768;
+## sradi r13 r12 0
+ctx.xer.ca = 0;
+ctx.r13.s64 = ctx.r12.s64;
+## sradi r13 r12 1
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0x1) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 1;
+## sradi r13 r12 5
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0x1F) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 5;
+## sradi r13 r12 16
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0xFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 16;
+## sradi r13 r12 31
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0x7FFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 31;
+## sradi r13 r12 32
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0xFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 32;
+## sradi r13 r12 63
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 63;
+## sradi r13 r12 32767
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 32767;
+## sradi r13 r12 32768
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 32768;
+## sradi r13 r12 65535
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> 65535;
+## sradi r13 r12 -1
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> -1;
+## sradi r13 r12 -32768
+ctx.xer.ca = (ctx.r12.s64 < 0) & ((ctx.r12.u64 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s64 >> -32768;
+## sraw r3 r4 r5
+temp.u32 = ctx.r5.u32 & 0x3F;
+if (temp.u32 > 0x1F) temp.u32 = 0x1F;
+ctx.xer.ca = (ctx.r4.s32 < 0) & (((ctx.r4.s32 >> temp.u32) << temp.u32) != ctx.r4.s32);
+ctx.r3.s64 = ctx.r4.s32 >> temp.u32;
+## sraw r0 r0 r0
+temp.u32 = ctx.r0.u32 & 0x3F;
+if (temp.u32 > 0x1F) temp.u32 = 0x1F;
+ctx.xer.ca = (ctx.r0.s32 < 0) & (((ctx.r0.s32 >> temp.u32) << temp.u32) != ctx.r0.s32);
+ctx.r0.s64 = ctx.r0.s32 >> temp.u32;
+## sraw r31 r0 r3
+temp.u32 = ctx.r3.u32 & 0x3F;
+if (temp.u32 > 0x1F) temp.u32 = 0x1F;
+ctx.xer.ca = (ctx.r0.s32 < 0) & (((ctx.r0.s32 >> temp.u32) << temp.u32) != ctx.r0.s32);
+ctx.r31.s64 = ctx.r0.s32 >> temp.u32;
+## sraw r13 r12 r11
+temp.u32 = ctx.r11.u32 & 0x3F;
+if (temp.u32 > 0x1F) temp.u32 = 0x1F;
+ctx.xer.ca = (ctx.r12.s32 < 0) & (((ctx.r12.s32 >> temp.u32) << temp.u32) != ctx.r12.s32);
+ctx.r13.s64 = ctx.r12.s32 >> temp.u32;
+## srawi r3 r4 0
+ctx.xer.ca = 0;
+ctx.r3.s64 = ctx.r4.s32;
+## srawi r3 r4 1
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0x1) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 1;
+## srawi r3 r4 5
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0x1F) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 5;
+## srawi r3 r4 16
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0xFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 16;
+## srawi r3 r4 31
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0x7FFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 31;
+## srawi r3 r4 32
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0xFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 32;
+## srawi r3 r4 63
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 63;
+## srawi r3 r4 32767
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 32767;
+## srawi r3 r4 32768
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 32768;
+## srawi r3 r4 65535
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> 65535;
+## srawi r3 r4 -1
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> -1;
+## srawi r3 r4 -32768
+ctx.xer.ca = (ctx.r4.s32 < 0) & ((ctx.r4.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r3.s64 = ctx.r4.s32 >> -32768;
+## srawi r0 r0 0
+ctx.xer.ca = 0;
+ctx.r0.s64 = ctx.r0.s32;
+## srawi r0 r0 1
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x1) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 1;
+## srawi r0 r0 5
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x1F) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 5;
+## srawi r0 r0 16
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 16;
+## srawi r0 r0 31
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 31;
+## srawi r0 r0 32
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 32;
+## srawi r0 r0 63
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 63;
+## srawi r0 r0 32767
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 32767;
+## srawi r0 r0 32768
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 32768;
+## srawi r0 r0 65535
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> 65535;
+## srawi r0 r0 -1
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> -1;
+## srawi r0 r0 -32768
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r0.s64 = ctx.r0.s32 >> -32768;
+## srawi r31 r0 0
+ctx.xer.ca = 0;
+ctx.r31.s64 = ctx.r0.s32;
+## srawi r31 r0 1
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x1) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 1;
+## srawi r31 r0 5
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x1F) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 5;
+## srawi r31 r0 16
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 16;
+## srawi r31 r0 31
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 31;
+## srawi r31 r0 32
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 32;
+## srawi r31 r0 63
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 63;
+## srawi r31 r0 32767
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 32767;
+## srawi r31 r0 32768
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 32768;
+## srawi r31 r0 65535
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> 65535;
+## srawi r31 r0 -1
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> -1;
+## srawi r31 r0 -32768
+ctx.xer.ca = (ctx.r0.s32 < 0) & ((ctx.r0.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r31.s64 = ctx.r0.s32 >> -32768;
+## srawi r13 r12 0
+ctx.xer.ca = 0;
+ctx.r13.s64 = ctx.r12.s32;
+## srawi r13 r12 1
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0x1) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 1;
+## srawi r13 r12 5
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0x1F) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 5;
+## srawi r13 r12 16
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0xFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 16;
+## srawi r13 r12 31
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0x7FFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 31;
+## srawi r13 r12 32
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0xFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 32;
+## srawi r13 r12 63
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 63;
+## srawi r13 r12 32767
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 32767;
+## srawi r13 r12 32768
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 32768;
+## srawi r13 r12 65535
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> 65535;
+## srawi r13 r12 -1
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0x7FFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> -1;
+## srawi r13 r12 -32768
+ctx.xer.ca = (ctx.r12.s32 < 0) & ((ctx.r12.u32 & 0xFFFFFFFFFFFFFFFF) != 0);
+ctx.r13.s64 = ctx.r12.s32 >> -32768;
+## srd r3 r4 r5
+ctx.r3.u64 = ctx.r5.u8 & 0x40 ? 0 : (ctx.r4.u64 >> (ctx.r5.u8 & 0x7F));
+## srd r0 r0 r0
+ctx.r0.u64 = ctx.r0.u8 & 0x40 ? 0 : (ctx.r0.u64 >> (ctx.r0.u8 & 0x7F));
+## srd r31 r0 r3
+ctx.r31.u64 = ctx.r3.u8 & 0x40 ? 0 : (ctx.r0.u64 >> (ctx.r3.u8 & 0x7F));
+## srd r13 r12 r11
+ctx.r13.u64 = ctx.r11.u8 & 0x40 ? 0 : (ctx.r12.u64 >> (ctx.r11.u8 & 0x7F));
+## srw r3 r4 r5
+ctx.r3.u64 = ctx.r5.u8 & 0x20 ? 0 : (ctx.r4.u32 >> (ctx.r5.u8 & 0x3F));
+## srw r0 r0 r0
+ctx.r0.u64 = ctx.r0.u8 & 0x20 ? 0 : (ctx.r0.u32 >> (ctx.r0.u8 & 0x3F));
+## srw r31 r0 r3
+ctx.r31.u64 = ctx.r3.u8 & 0x20 ? 0 : (ctx.r0.u32 >> (ctx.r3.u8 & 0x3F));
+## srw r13 r12 r11
+ctx.r13.u64 = ctx.r11.u8 & 0x20 ? 0 : (ctx.r12.u32 >> (ctx.r11.u8 & 0x3F));
