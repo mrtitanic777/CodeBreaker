@@ -1,7 +1,8 @@
-// Compile check of the shims at the old header paths for decompile/m68k, decompile/xenos_hlsl and decompile/vmx128: the
+// Compile check of the shims at the old header paths for decompile/m68k, decompile/xenos_hlsl, decompile/xbox_effect and decompile/vmx128: the
 // surface the old callers use is instantiated here (the shims have no .cpp of their own). See CMakeLists.txt, cb_shim_check.
 #include "codebreaker/decompile/m68k.hpp"
 #include "codebreaker/decompile/vmx128.hpp"
+#include "codebreaker/decompile/xbox_effect.hpp"
 #include "codebreaker/decompile/xenos_hlsl.hpp"
 
 namespace codebreaker::shim_check {
@@ -17,6 +18,7 @@ py::str decompile_shims(const py::bytes& code, const decompile::xenos_hlsl::shad
     out += py::str(m::assemble(py::str("RTS"), 0x1000).size() > 0 ? "x" : "y");
     out += py::str(std::to_string(m::_value(py::str("1+2"), py::dict<py::str, int64_t>(), 0)));
     out += decompile::xenos_hlsl::translate(shader, py::str("S")).text + decompile::xenos_hlsl::HELPERS + decompile::xenos_hlsl::_num(1.5);
+    out += py::str(decompile::xbox_effect::to_fx(code, py::str("E")).size() > 0 ? "x" : "y");
     out += py::str(std::to_string(decompile::vmx128::coverage(image).size()));
     if (auto d = decompile::vmx128::decode(0x102320C3)) out += std::get<0>(*d);
     out += decompile::vmx128::sleigh();
