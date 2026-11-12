@@ -1,0 +1,5 @@
+arch	6502:LE:16:NES:default
+bytes	8000	cpu.bin	0	8000
+F	8000	reset	-1
+F	8010	irq	-1
+F	8020	nmi	-1

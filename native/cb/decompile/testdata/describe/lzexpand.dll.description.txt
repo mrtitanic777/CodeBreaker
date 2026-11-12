@@ -1,0 +1,120 @@
+arch	x86:LE:16:Protected Mode:default
+bytes	10000000	describe.bin	0	1c8
+bytes	10080000	describe.bin	1c8	75a
+bytes	10100000	describe.bin	922	18
+bytes	10180000	describe.bin	93a	1f8
+bytes	10200000	describe.bin	b32	192
+bytes	10280000	describe.bin	cc4	10c
+bytes	10300000	describe.bin	dd0	2f0
+bytes	10380000	describe.bin	10c0	248
+bytes	10400000	describe.bin	1308	33a
+bytes	10480000	describe.bin	1642	2f8
+bytes	10500000	describe.bin	193a	372
+bytes	10580000	describe.bin	1cac	284
+reg	DS	1058
+F	10000000	sub_1_0000	0	__cdecl16far	2
+F	100000b2	sub_1_00B2	0	__cdecl16far	2
+F	10000116	sub_1_0116	0	__cdecl16far	2
+F	10080000	LZINIT	2	__stdcall16far	2
+F	100801bc	GETEXPANDEDNAME	8	__stdcall16far	2
+F	10080262	LZOPENFILE	10	__stdcall16far	2
+F	100802ee	LZSEEK	8	__stdcall16far	2
+F	100803d6	LZREAD	8	__stdcall16far	2
+F	100806f0	LZCLOSE	2	__stdcall16far
+F	10100000	WEP	2	__stdcall16far
+F	10180000	LZSTART	0	__cdecl16far	2
+F	101800a6	LZDONE	0	__cdecl16far
+F	1018013a	COPYLZFILE	4	__stdcall16far	4
+F	1018015c	LZCOPY	4	__stdcall16far	4
+F	10200000	sub_5_0000	0	__cdecl16far	2
+F	10200052	sub_5_0052	0	__cdecl16far	2
+F	102000d0	sub_5_00D0	0	__cdecl16far	2
+F	10280000	sub_6_0000	0	__cdecl16far	2
+F	102800a4	sub_6_00A4	0	__cdecl16far	2
+F	10300000	sub_7_0000	0	__cdecl16far	2
+F	103000f4	sub_7_00F4	0	__cdecl16far	2
+F	103001e0	sub_7_01E0	0	__cdecl16far	2
+F	103800aa	sub_8_00AA	0	__cdecl16far	2
+F	103801a2	sub_8_01A2	0	__cdecl16far	2
+F	103801ec	sub_8_01EC	0	__cdecl16far	2
+F	10400000	sub_9_0000	0	__cdecl16far	2
+F	10480000	sub_10_0000	0	__cdecl16far	2
+F	1048004e	sub_10_004E	0	__cdecl16far	4
+F	104800a2	sub_10_00A2	0	__cdecl16far	2
+F	10480124	sub_10_0124	0	__cdecl16far	2
+F	104801b6	sub_10_01B6	0	__cdecl16far	4
+F	104802a8	sub_10_02A8	0	__cdecl16far	2
+F	10500010	sub_11_0010	0	__cdecl16far
+F	10500042	sub_11_0042	0	__cdecl16far
+F	105000ab	sub_11_00AB	0	__fastcall16near	2
+F	105000d8	sub_11_00D8	0	__cdecl16far	2
+F	105001b7	sub_11_01B7	0	__cdecl16far	2
+F	105001c5	sub_11_01C5	0	__cdecl16far	2
+F	105001d4	sub_11_01D4	0	__cdecl16far	2
+F	105001e5	sub_11_01E5	0	__cdecl16far	2
+F	10500253	sub_11_0253	0	__cdecl16near	2
+F	105002a0	sub_11_02A0	0	__cdecl16near	2
+F	105002e2	sub_11_02E2	2	__stdcall16far	2
+F	10500319	sub_11_0319	2	__stdcall16far	2
+F	1050034e	sub_11_034E	0	__cdecl16far	2
+F	1050035e	___EXPORTEDSTUB	0	__cdecl16far	2
+O	10080018	10080000	6	__cdecl16far
+O	10080049	10080000	4	__cdecl16far
+O	10080121	10080000	4	__cdecl16far
+O	10080173	10080000	4	__cdecl16far
+O	100801f2	100801bc	6	__cdecl16far
+O	10080235	100801bc	4	__cdecl16far
+O	1008024a	100801bc	6	__cdecl16far
+O	100802a8	10080262	4	__cdecl16far
+O	1008047d	100803d6	4	__cdecl16far
+O	10080652	100803d6	12	__cdecl16far
+O	100806b0	100803d6	4	__cdecl16far
+O	101801c2	1018015c	4	__cdecl16far
+O	102000ea	102000d0	4	__cdecl16far
+O	1030010c	103000f4	6	__cdecl16far
+O	10300133	103000f4	4	__cdecl16far
+O	10300172	103000f4	12	__cdecl16far
+O	10300181	103000f4	4	__cdecl16far
+O	10300193	103000f4	4	__cdecl16far
+O	103001a8	103000f4	4	__cdecl16far
+O	103001fe	103001e0	10	__cdecl16far
+O	10300218	103001e0	6	__cdecl16far
+O	10300263	103001e0	6	__cdecl16far
+O	10300270	103001e0	4	__cdecl16far
+O	1030028c	103001e0	10	__cdecl16far
+O	103002af	103001e0	10	__cdecl16far
+O	103002cb	103001e0	4	__cdecl16far
+O	104000e2	10400000	6	__cdecl16far
+O	10400155	10400000	6	__cdecl16far
+O	1040019d	10400000	4	__cdecl16far
+O	104001f6	10400000	6	__cdecl16far
+O	10400213	10400000	6	__cdecl16far
+O	1040028a	10400000	4	__cdecl16far
+O	10480063	1048004e	4	__cdecl16far
+O	104800b9	104800a2	4	__cdecl16far
+O	1048013f	10480124	4	__cdecl16far
+O	104801cd	104801b6	4	__cdecl16far
+O	104802be	104802a8	6	__cdecl16far
+O	104802db	104802a8	6	__cdecl16far
+X	e0000000	KERNEL_15	6	__stdcall16far
+X	e0000010	KERNEL_17	2	__stdcall16far
+X	e0000020	KERNEL_81	2	__stdcall16far
+X	e0000030	KERNEL_83	6	__stdcall16far
+X	e0000040	KERNEL_84	8	__stdcall16far
+X	e0000050	KERNEL_85	6	__stdcall16far
+X	e0000060	KERNEL_18	2	__stdcall16far
+X	e0000070	KERNEL_19	2	__stdcall16far
+X	e0000080	KERNEL_74	10	__stdcall16far
+X	e0000090	KERNEL_82	8	__stdcall16far
+X	e00000a0	KERNEL_88	8	__stdcall16far
+X	e00000b0	KERNEL_86	8	__stdcall16far
+X	e00000c0	USER_430	8	__stdcall16far
+X	e00000d0	USER_435	2	__stdcall16far
+X	e00000e0	USER_436	2	__stdcall16far
+X	e00000f0	KERNEL_89	8	__stdcall16far
+X	e0000100	KERNEL_90	4	__stdcall16far
+X	e0000110	KERNEL_1	2	__stdcall16far
+X	e0000120	KERNEL_137	6	__stdcall16far
+X	e0000130	KERNEL_178	-1	__stdcall16far
+X	e0000140	KERNEL_102	0	__stdcall16far
+X	e0000150	KERNEL_115	4	__stdcall16far
