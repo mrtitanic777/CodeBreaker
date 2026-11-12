@@ -131,7 +131,7 @@ target_link_libraries(cb_platforms PUBLIC cb_core cb_formats)
 # What CodeBreaker made of every program it was given (reach); the platform registry, the media readers and the
 # function store's tally reach it through Services.
 cb_area(coverage)
-target_link_libraries(cb_coverage PUBLIC cb_core cb_formats cb_platforms)
+target_link_libraries(cb_coverage PUBLIC cb_core cb_formats cb_platforms cb_base cb_engine cb_verify)   # (ledger: the corpus, the function store, the verdict vocabulary)
 
 # The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
 add_executable(cb_worker_probe jobs/worker_probe_main.cpp)
@@ -159,7 +159,7 @@ cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
 
 cb_area(exact)
-target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
+target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats)   # (omf_object: an OMF module as the lanes' object record)
 
 cb_area(compare)
 target_link_libraries(cb_compare PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_decompile cb_jobs)   # (the readers and the corpus, the decoder, the function starts of each kind, the pool of the product comparison)
@@ -293,7 +293,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dos.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
@@ -347,6 +346,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b13.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b1.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b2.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp")
 cb_apply_flags(cb_shim_check)
