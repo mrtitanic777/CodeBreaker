@@ -895,3 +895,10 @@ function with its jump-table recovery, per round.
 
 What remains is mostly Capstone's decode. config (one `config.make` of a 2 KB program: 0.5 ms in the Python) and oldlayout (clang
 dominates) were not timed separately.
+
+## translate/backends/jmodel and module_file (W1-B28)
+
+Both are one-shot, per-program work (the object model of a Java program; the head and parts of one source file), a few
+microseconds to a millisecond; neither has a hot path, so no old-versus-new timing was taken. The cycle search of jmodel
+is now linear in the classes plus edges (the Python rescanned every class for each subclass lookup); module_file builds each
+file with one pass over its parts instead of repeated list concatenation.
