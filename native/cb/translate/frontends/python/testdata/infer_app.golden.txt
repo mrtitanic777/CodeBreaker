@@ -1,0 +1,41 @@
+attr app.Labeled label str
+attr app.Point x int[-9223372036854775808..9223372036854775807]
+attr app.Point y int[-9223372036854775808..9223372036854775807]
+crashes {}
+global app LIMIT int[100..100]
+global app NAMES list#1
+issue app.Point.total 12 int-range:return value in [-18446744073709551616, 18446744073709551614]
+issue app.bad 107 unresolved:missing_name
+issue app.caller 30 int-range:return value in [-18446744073709551616, 18446744073709551614]
+issue app.count_up 42 int-range:return value in [0, None]
+issue app.grow 58 int-range:return value in [0, None]
+param app.Labeled.__init__ label str
+param app.Labeled.__init__ x int[3..3]
+param app.Point.__init__ x int[-9223372036854775808..9223372036854775807]
+param app.Point.__init__ y int[1..2]
+param app.make n int[5..300]
+param app.opt x opt[int[3..3]]
+param app.str_of data bytes
+return app.Labeled.__init__ none
+return app.Labeled.describe str
+return app.Point.__init__ none
+return app.Point.total int[-9223372036854775808..9223372036854775807]
+return app.bad top(unresolved:missing_name)
+return app.build dict#2
+return app.caller int[-9223372036854775808..9223372036854775807]
+return app.clamp int[0..255]
+return app.collect list#3
+return app.count_up int[0..9223372036854775807]
+return app.fmt str
+return app.grow int[0..9223372036854775807]
+return app.head str
+return app.labeled str
+return app.make int[-9223372036854775808..9223372036854775807]
+return app.mixed top(int and str mixed)
+return app.opt int[0..3]
+return app.read int[0..510]
+return app.str_of str
+return app.sum_range int[0..90]
+return app.unpack int[1..1]
+return app.uses_opt int[0..6]
+rounds 3

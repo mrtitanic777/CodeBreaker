@@ -1,0 +1,1700 @@
+{
+ "node": "Unit",
+ "path": "c:\\proj\\gen\\p33.cpp",
+ "package": "",
+ "types": [
+  {
+   "node": "MethodDecl",
+   "line": 5,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "sw330",
+    "owner": "p33",
+    "static": true,
+    "params": [
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "sw330",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 5,
+     "col": 15,
+     "sym": {
+      "kind": "param",
+      "name": "x",
+      "owner": "sw330",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 5,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Switch",
+      "line": 5,
+      "col": 5,
+      "expr": {
+       "node": "Name",
+       "line": 5,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "sym": {
+        "kind": "param",
+        "name": "x",
+        "owner": "sw330",
+        "type": {
+         "kind": "i32"
+        }
+       }
+      },
+      "cases": [
+       {
+        "node": "Case",
+        "line": 5,
+        "col": 5,
+        "labels": [
+         {
+          "node": "Lit",
+          "line": 5,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 1
+         }
+        ],
+        "default": false,
+        "body": [
+         {
+          "node": "Return",
+          "line": 5,
+          "col": 5,
+          "expr": {
+           "node": "Lit",
+           "line": 5,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 1
+          }
+         }
+        ]
+       },
+       {
+        "node": "Case",
+        "line": 5,
+        "col": 5,
+        "labels": [],
+        "default": true,
+        "body": [
+         {
+          "node": "Break",
+          "line": 5,
+          "col": 5
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "node": "Return",
+      "line": 5,
+      "col": 5,
+      "expr": {
+       "node": "Lit",
+       "line": 5,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "value": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 5,
+   "col": 86,
+   "sym": {
+    "kind": "function",
+    "name": "stat330",
+    "owner": "p33",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "ptr",
+     "space": "flat",
+     "to": {
+      "kind": "i32"
+     }
+    }
+   },
+   "name": "stat330",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "ptr",
+    "space": "flat",
+    "to": {
+     "kind": "i32"
+    }
+   },
+   "body": {
+    "node": "Block",
+    "line": 5,
+    "col": 86,
+    "stmts": [
+     {
+      "node": "Local",
+      "line": 5,
+      "col": 109,
+      "sym": {
+       "kind": "local",
+       "name": "v",
+       "owner": "stat330",
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "init": {
+       "node": "Lit",
+       "line": 5,
+       "col": 109,
+       "type": {
+        "kind": "i32"
+       },
+       "value": 3
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "Return",
+      "line": 5,
+      "col": 86,
+      "expr": {
+       "node": "Unary",
+       "line": 5,
+       "col": 86,
+       "type": {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "i32"
+        }
+       },
+       "op": "&",
+       "x": {
+        "node": "Name",
+        "line": 5,
+        "col": 86,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "local",
+         "name": "v",
+         "owner": "stat330",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "postfix": false
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 7,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "io331",
+    "owner": "p33",
+    "static": true,
+    "params": [
+     {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "char",
+       "signed": true
+      }
+     },
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "io331",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 7,
+     "col": 23,
+     "sym": {
+      "kind": "param",
+      "name": "s",
+      "owner": "io331",
+      "type": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "char",
+        "signed": true
+       }
+      }
+     },
+     "type": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "char",
+       "signed": true
+      }
+     }
+    },
+    {
+     "node": "Param",
+     "line": 7,
+     "col": 30,
+     "sym": {
+      "kind": "param",
+      "name": "n",
+      "owner": "io331",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 7,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Local",
+      "line": 7,
+      "col": 39,
+      "sym": {
+       "kind": "local",
+       "name": "r",
+       "owner": "io331",
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "init": {
+       "node": "Call",
+       "line": 7,
+       "col": 39,
+       "type": {
+        "kind": "i32"
+       },
+       "sym": {
+        "kind": "function",
+        "name": "printf",
+        "owner": "p33",
+        "static": true,
+        "params": [
+         {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "char",
+           "signed": true
+          }
+         }
+        ],
+        "ret": {
+         "kind": "i32"
+        },
+        "varargs": true
+       },
+       "args": [
+        {
+         "node": "Cast",
+         "line": 7,
+         "col": 39,
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "char",
+           "signed": true
+          }
+         },
+         "x": {
+          "node": "Lit",
+          "line": 7,
+          "col": 39,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "char",
+            "signed": true
+           },
+           "count": 9
+          },
+          "value": "%%s %%d\n"
+         },
+         "implicit": true
+        },
+        {
+         "node": "Name",
+         "line": 7,
+         "col": 39,
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "char",
+           "signed": true
+          }
+         },
+         "sym": {
+          "kind": "param",
+          "name": "s",
+          "owner": "io331",
+          "type": {
+           "kind": "ptr",
+           "space": "flat",
+           "to": {
+            "kind": "char",
+            "signed": true
+           }
+          }
+         }
+        },
+        {
+         "node": "Name",
+         "line": 7,
+         "col": 39,
+         "type": {
+          "kind": "i32"
+         },
+         "sym": {
+          "kind": "param",
+          "name": "n",
+          "owner": "io331",
+          "type": {
+           "kind": "i32"
+          }
+         }
+        }
+       ]
+      }
+     },
+     {
+      "node": "Return",
+      "line": 7,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 7,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Name",
+        "line": 7,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "local",
+         "name": "r",
+         "owner": "io331",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Cast",
+        "line": 7,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "x": {
+         "node": "Cast",
+         "line": 7,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "node": "Call",
+          "line": 7,
+          "col": 5,
+          "type": {
+           "kind": "u64"
+          },
+          "sym": {
+           "kind": "function",
+           "name": "__builtin_strlen",
+           "owner": "p33",
+           "static": true,
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Name",
+            "line": 7,
+            "col": 5,
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "char",
+              "signed": true
+             }
+            },
+            "sym": {
+             "kind": "param",
+             "name": "s",
+             "owner": "io331",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "char",
+               "signed": true
+              }
+             }
+            }
+           }
+          ]
+         },
+         "implicit": true
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 9,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "io332",
+    "owner": "p33",
+    "static": true,
+    "params": [
+     {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "char",
+       "signed": true
+      }
+     },
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "io332",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 9,
+     "col": 23,
+     "sym": {
+      "kind": "param",
+      "name": "s",
+      "owner": "io332",
+      "type": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "char",
+        "signed": true
+       }
+      }
+     },
+     "type": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "char",
+       "signed": true
+      }
+     }
+    },
+    {
+     "node": "Param",
+     "line": 9,
+     "col": 30,
+     "sym": {
+      "kind": "param",
+      "name": "n",
+      "owner": "io332",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 9,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Local",
+      "line": 9,
+      "col": 39,
+      "sym": {
+       "kind": "local",
+       "name": "r",
+       "owner": "io332",
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "init": {
+       "node": "Call",
+       "line": 9,
+       "col": 39,
+       "type": {
+        "kind": "i32"
+       },
+       "sym": {
+        "kind": "function",
+        "name": "printf",
+        "owner": "p33",
+        "static": true,
+        "params": [
+         {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "char",
+           "signed": true
+          }
+         }
+        ],
+        "ret": {
+         "kind": "i32"
+        },
+        "varargs": true
+       },
+       "args": [
+        {
+         "node": "Cast",
+         "line": 9,
+         "col": 39,
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "char",
+           "signed": true
+          }
+         },
+         "x": {
+          "node": "Lit",
+          "line": 9,
+          "col": 39,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "char",
+            "signed": true
+           },
+           "count": 9
+          },
+          "value": "%%s %%d\n"
+         },
+         "implicit": true
+        },
+        {
+         "node": "Name",
+         "line": 9,
+         "col": 39,
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "char",
+           "signed": true
+          }
+         },
+         "sym": {
+          "kind": "param",
+          "name": "s",
+          "owner": "io332",
+          "type": {
+           "kind": "ptr",
+           "space": "flat",
+           "to": {
+            "kind": "char",
+            "signed": true
+           }
+          }
+         }
+        },
+        {
+         "node": "Name",
+         "line": 9,
+         "col": 39,
+         "type": {
+          "kind": "i32"
+         },
+         "sym": {
+          "kind": "param",
+          "name": "n",
+          "owner": "io332",
+          "type": {
+           "kind": "i32"
+          }
+         }
+        }
+       ]
+      }
+     },
+     {
+      "node": "Return",
+      "line": 9,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 9,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Name",
+        "line": 9,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "local",
+         "name": "r",
+         "owner": "io332",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Cast",
+        "line": 9,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "x": {
+         "node": "Cast",
+         "line": 9,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "node": "Call",
+          "line": 9,
+          "col": 5,
+          "type": {
+           "kind": "u64"
+          },
+          "sym": {
+           "kind": "function",
+           "name": "__builtin_strlen",
+           "owner": "p33",
+           "static": true,
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Name",
+            "line": 9,
+            "col": 5,
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "char",
+              "signed": true
+             }
+            },
+            "sym": {
+             "kind": "param",
+             "name": "s",
+             "owner": "io332",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "char",
+               "signed": true
+              }
+             }
+            }
+           }
+          ]
+         },
+         "implicit": true
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "FieldDecl",
+   "line": 11,
+   "col": 26,
+   "sym": {
+    "kind": "global",
+    "name": "g",
+    "owner": "p33",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "line": 11,
+    "col": 26,
+    "type": {
+     "kind": "i32"
+    },
+    "value": 7
+   },
+   "mods": [
+    "static"
+   ]
+  },
+  {
+   "node": "ClassDecl",
+   "line": 11,
+   "col": 58,
+   "name": "P",
+   "qname": "outer333.inner.P",
+   "kind": "struct",
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 11,
+     "col": 66,
+     "sym": {
+      "kind": "field",
+      "name": "a",
+      "owner": "outer333.inner.P",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "mods": [
+      "public"
+     ]
+    }
+   ],
+   "layout": {
+    "kind": "record",
+    "size": 4,
+    "fields": [
+     {
+      "name": "a",
+      "offset": 0,
+      "type": {
+       "kind": "i32"
+      }
+     }
+    ],
+    "name": "outer333.inner.P",
+    "role": "struct",
+    "packed": false
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 11,
+   "col": 76,
+   "sym": {
+    "kind": "function",
+    "name": "f",
+    "owner": "p33",
+    "static": true,
+    "params": [
+     {
+      "kind": "class",
+      "name": "outer333.inner.P"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "f",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 11,
+     "col": 80,
+     "sym": {
+      "kind": "param",
+      "name": "p",
+      "owner": "f",
+      "type": {
+       "kind": "class",
+       "name": "outer333.inner.P"
+      }
+     },
+     "type": {
+      "kind": "class",
+      "name": "outer333.inner.P"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 11,
+    "col": 76,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 11,
+      "col": 76,
+      "expr": {
+       "node": "Binary",
+       "line": 11,
+       "col": 76,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Select",
+        "line": 11,
+        "col": 76,
+        "type": {
+         "kind": "i32"
+        },
+        "obj": {
+         "node": "Name",
+         "line": 11,
+         "col": 76,
+         "type": {
+          "kind": "class",
+          "name": "outer333.inner.P"
+         },
+         "sym": {
+          "kind": "param",
+          "name": "p",
+          "owner": "f",
+          "type": {
+           "kind": "class",
+           "name": "outer333.inner.P"
+          }
+         }
+        },
+        "sym": {
+         "kind": "field",
+         "name": "a",
+         "owner": "outer333.inner.P",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Name",
+        "line": 11,
+        "col": 76,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "global",
+         "name": "g",
+         "owner": "p33",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "FieldDecl",
+   "line": 12,
+   "col": 19,
+   "sym": {
+    "kind": "global",
+    "name": "hidden",
+    "owner": "p33",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "line": 12,
+    "col": 19,
+    "type": {
+     "kind": "i32"
+    },
+    "value": 3
+   },
+   "mods": [
+    "static"
+   ]
+  },
+  {
+   "node": "MethodDecl",
+   "line": 12,
+   "col": 37,
+   "sym": {
+    "kind": "function",
+    "name": "useh",
+    "owner": "p33",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "useh",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 12,
+    "col": 37,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 12,
+      "col": 37,
+      "expr": {
+       "node": "Binary",
+       "line": 12,
+       "col": 37,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Name",
+        "line": 12,
+        "col": 37,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "global",
+         "name": "hidden",
+         "owner": "p33",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Call",
+        "line": 12,
+        "col": 37,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "function",
+         "name": "f",
+         "owner": "p33",
+         "static": true,
+         "params": [
+          {
+           "kind": "class",
+           "name": "outer333.inner.P"
+          }
+         ],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "args": [
+         {
+          "node": "New",
+          "line": 12,
+          "col": 37,
+          "type": {
+           "kind": "class",
+           "name": "outer333.inner.P"
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<aggregate>",
+           "owner": "outer333.inner.P",
+           "params": []
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 12,
+            "col": 37,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           }
+          ],
+          "memory": "stack"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "ClassDecl",
+   "line": 12,
+   "col": 98,
+   "name": "Mode",
+   "qname": "outer333.Mode",
+   "kind": "enum",
+   "mods": [
+    "scoped"
+   ],
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 12,
+     "col": 105,
+     "sym": {
+      "kind": "field",
+      "name": "A",
+      "owner": "outer333.Mode",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "init": {
+      "node": "Lit",
+      "type": {
+       "kind": "i32"
+      },
+      "value": 0
+     },
+     "mods": [
+      "public",
+      "static",
+      "const"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 12,
+     "col": 108,
+     "sym": {
+      "kind": "field",
+      "name": "B",
+      "owner": "outer333.Mode",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "init": {
+      "node": "Lit",
+      "type": {
+       "kind": "i32"
+      },
+      "value": 4
+     },
+     "mods": [
+      "public",
+      "static",
+      "const"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 12,
+     "col": 115,
+     "sym": {
+      "kind": "field",
+      "name": "C",
+      "owner": "outer333.Mode",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "init": {
+      "node": "Lit",
+      "type": {
+       "kind": "i32"
+      },
+      "value": 5
+     },
+     "mods": [
+      "public",
+      "static",
+      "const"
+     ]
+    }
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 12,
+   "col": 133,
+   "sym": {
+    "kind": "global",
+    "name": "X",
+    "owner": "p33",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 0
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:Plain"
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 12,
+   "col": 136,
+   "sym": {
+    "kind": "global",
+    "name": "Y",
+    "owner": "p33",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 2
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:Plain"
+   ]
+  },
+  {
+   "node": "MethodDecl",
+   "line": 13,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "ns333",
+    "owner": "p33",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "ns333",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 13,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Local",
+      "line": 13,
+      "col": 34,
+      "sym": {
+       "kind": "local",
+       "name": "p",
+       "owner": "ns333",
+       "type": {
+        "kind": "class",
+        "name": "outer333.inner.P"
+       }
+      },
+      "type": {
+       "kind": "class",
+       "name": "outer333.inner.P"
+      },
+      "init": {
+       "node": "New",
+       "line": 13,
+       "col": 34,
+       "type": {
+        "kind": "class",
+        "name": "outer333.inner.P"
+       },
+       "sym": {
+        "kind": "ctor",
+        "name": "<aggregate>",
+        "owner": "outer333.inner.P",
+        "params": []
+       },
+       "args": [
+        {
+         "node": "Lit",
+         "line": 13,
+         "col": 34,
+         "type": {
+          "kind": "i32"
+         },
+         "value": 2
+        }
+       ],
+       "memory": "stack"
+      }
+     },
+     {
+      "node": "Local",
+      "line": 13,
+      "col": 60,
+      "sym": {
+       "kind": "local",
+       "name": "m",
+       "owner": "ns333",
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "init": {
+       "node": "Select",
+       "line": 13,
+       "col": 60,
+       "type": {
+        "kind": "i32"
+       },
+       "obj": {
+        "node": "TypeName",
+        "line": 13,
+        "col": 60,
+        "type": {
+         "kind": "class",
+         "name": "outer333.Mode"
+        }
+       },
+       "sym": {
+        "kind": "field",
+        "name": "B",
+        "owner": "outer333.Mode",
+        "static": true,
+        "type": {
+         "kind": "i32"
+        }
+       }
+      }
+     },
+     {
+      "node": "Return",
+      "line": 13,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 13,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Binary",
+        "line": 13,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "op": "+",
+        "left": {
+         "node": "Binary",
+         "line": 13,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "op": "+",
+         "left": {
+          "node": "Binary",
+          "line": 13,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "+",
+          "left": {
+           "node": "Binary",
+           "line": 13,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "+",
+           "left": {
+            "node": "Call",
+            "line": 13,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "function",
+             "name": "f",
+             "owner": "p33",
+             "static": true,
+             "params": [
+              {
+               "kind": "class",
+               "name": "outer333.inner.P"
+              }
+             ],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": [
+             {
+              "node": "Name",
+              "line": 13,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "outer333.inner.P"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "p",
+               "owner": "ns333",
+               "type": {
+                "kind": "class",
+                "name": "outer333.inner.P"
+               }
+              }
+             }
+            ]
+           },
+           "right": {
+            "node": "Cast",
+            "line": 13,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "x": {
+             "node": "Name",
+             "line": 13,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "m",
+              "owner": "ns333",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           }
+          },
+          "right": {
+           "node": "Cast",
+           "line": 13,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Select",
+            "line": 13,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "obj": {
+             "node": "TypeName",
+             "line": 13,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "outer333.Mode"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "C",
+             "owner": "outer333.Mode",
+             "static": true,
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         },
+         "right": {
+          "node": "Cast",
+          "line": 13,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "x": {
+           "node": "Name",
+           "line": 13,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "global",
+            "name": "X",
+            "owner": "p33",
+            "static": true,
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "implicit": true
+         }
+        },
+        "right": {
+         "node": "Cast",
+         "line": 13,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "node": "Name",
+          "line": 13,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "global",
+           "name": "Y",
+           "owner": "p33",
+           "static": true,
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "implicit": true
+        }
+       },
+       "right": {
+        "node": "Call",
+        "line": 13,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "function",
+         "name": "useh",
+         "owner": "p33",
+         "static": true,
+         "params": [],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "args": []
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 16,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "main",
+    "owner": "p33",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "main",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 16,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 16,
+      "col": 5,
+      "expr": {
+       "node": "Lit",
+       "line": 16,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "value": 0
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "target": {
+  "triple": "x86_64-pc-windows-msvc",
+  "pointer": 8,
+  "long": 4,
+  "wchar": 2,
+  "char_signed": true,
+  "language": "c++",
+  "std": ""
+ }
+}

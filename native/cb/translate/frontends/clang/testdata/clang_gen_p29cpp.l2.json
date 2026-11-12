@@ -1,0 +1,2086 @@
+{
+ "node": "Unit",
+ "path": "c:\\proj\\gen\\p29.cpp",
+ "package": "",
+ "types": [
+  {
+   "node": "ClassDecl",
+   "line": 5,
+   "col": 8,
+   "name": "Err290",
+   "qname": "Err290",
+   "kind": "struct",
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 5,
+     "col": 21,
+     "sym": {
+      "kind": "field",
+      "name": "code",
+      "owner": "Err290",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "MethodDecl",
+     "line": 5,
+     "col": 27,
+     "sym": {
+      "kind": "ctor",
+      "name": "Err290",
+      "owner": "Err290",
+      "params": [
+       {
+        "kind": "i32"
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      }
+     },
+     "name": "Err290",
+     "kind": "ctor",
+     "params": [
+      {
+       "node": "Param",
+       "line": 5,
+       "col": 38,
+       "sym": {
+        "kind": "param",
+        "name": "c",
+        "owner": "Err290",
+        "type": {
+         "kind": "i32"
+        }
+       },
+       "type": {
+        "kind": "i32"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "void"
+     },
+     "body": {
+      "node": "Block",
+      "line": 5,
+      "col": 27,
+      "stmts": [
+       {
+        "node": "ExprStmt",
+        "line": 5,
+        "col": 27,
+        "expr": {
+         "node": "Assign",
+         "line": 5,
+         "col": 27,
+         "type": {
+          "kind": "i32"
+         },
+         "target": {
+          "node": "Select",
+          "line": 5,
+          "col": 27,
+          "type": {
+           "kind": "i32"
+          },
+          "obj": {
+           "node": "Unary",
+           "line": 5,
+           "col": 27,
+           "type": {
+            "kind": "class",
+            "name": "Err290"
+           },
+           "op": "*",
+           "x": {
+            "node": "This",
+            "line": 5,
+            "col": 27,
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Err290"
+             }
+            }
+           },
+           "postfix": false
+          },
+          "sym": {
+           "kind": "field",
+           "name": "code",
+           "owner": "Err290",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "value": {
+          "node": "Name",
+          "line": 5,
+          "col": 27,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "param",
+           "name": "c",
+           "owner": "Err290",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        }
+       }
+      ]
+     },
+     "mods": [
+      "public"
+     ]
+    }
+   ],
+   "layout": {
+    "kind": "record",
+    "size": 4,
+    "fields": [
+     {
+      "name": "code",
+      "offset": 0,
+      "type": {
+       "kind": "i32"
+      }
+     }
+    ],
+    "name": "Err290",
+    "role": "struct",
+    "packed": false
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 6,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "thr290",
+    "owner": "p29",
+    "static": true,
+    "params": [
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "thr290",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 6,
+     "col": 16,
+     "sym": {
+      "kind": "param",
+      "name": "x",
+      "owner": "thr290",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 6,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "If",
+      "line": 6,
+      "col": 5,
+      "cond": {
+       "node": "Binary",
+       "line": 6,
+       "col": 5,
+       "type": {
+        "kind": "bool"
+       },
+       "op": "<",
+       "left": {
+        "node": "Name",
+        "line": 6,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "param",
+         "name": "x",
+         "owner": "thr290",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Lit",
+        "line": 6,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "value": 0
+       }
+      },
+      "then": {
+       "node": "Throw",
+       "line": 6,
+       "col": 5,
+       "expr": {
+        "node": "New",
+        "line": 6,
+        "col": 5,
+        "type": {
+         "kind": "class",
+         "name": "Err290"
+        },
+        "sym": {
+         "kind": "ctor",
+         "name": "Err290",
+         "owner": "Err290",
+         "params": [
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "args": [
+         {
+          "node": "Name",
+          "line": 6,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "param",
+           "name": "x",
+           "owner": "thr290",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        ],
+        "memory": "stack"
+       }
+      }
+     },
+     {
+      "node": "If",
+      "line": 6,
+      "col": 5,
+      "cond": {
+       "node": "Binary",
+       "line": 6,
+       "col": 5,
+       "type": {
+        "kind": "bool"
+       },
+       "op": ">",
+       "left": {
+        "node": "Name",
+        "line": 6,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "param",
+         "name": "x",
+         "owner": "thr290",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Lit",
+        "line": 6,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "value": 100
+       }
+      },
+      "then": {
+       "node": "Throw",
+       "line": 6,
+       "col": 5,
+       "expr": {
+        "node": "Lit",
+        "line": 6,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "value": 5
+       }
+      }
+     },
+     {
+      "node": "Return",
+      "line": 6,
+      "col": 5,
+      "expr": {
+       "node": "Name",
+       "line": 6,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "sym": {
+        "kind": "param",
+        "name": "x",
+        "owner": "thr290",
+        "type": {
+         "kind": "i32"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 7,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "exc290",
+    "owner": "p29",
+    "static": true,
+    "params": [
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "exc290",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 7,
+     "col": 16,
+     "sym": {
+      "kind": "param",
+      "name": "x",
+      "owner": "exc290",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 7,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Try",
+      "line": 7,
+      "col": 5,
+      "resources": [],
+      "body": {
+       "node": "Block",
+       "line": 7,
+       "col": 5,
+       "stmts": [
+        {
+         "node": "Return",
+         "line": 7,
+         "col": 5,
+         "expr": {
+          "node": "Call",
+          "line": 7,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "function",
+           "name": "thr290",
+           "owner": "p29",
+           "static": true,
+           "params": [
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "i32"
+           }
+          },
+          "args": [
+           {
+            "node": "Name",
+            "line": 7,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "exc290",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "catches": [
+       {
+        "node": "Catch",
+        "line": 7,
+        "col": 5,
+        "sym": {
+         "kind": "local",
+         "name": "e",
+         "owner": "exc290",
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Err290"
+          },
+          "ref": true
+         }
+        },
+        "types": [
+         {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Err290"
+          },
+          "ref": true
+         }
+        ],
+        "body": {
+         "node": "Block",
+         "line": 7,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 7,
+           "col": 5,
+           "expr": {
+            "node": "Select",
+            "line": 7,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "obj": {
+             "node": "Unary",
+             "line": 7,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "Err290"
+             },
+             "op": "*",
+             "x": {
+              "node": "Name",
+              "line": 7,
+              "col": 5,
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Err290"
+               },
+               "ref": true
+              },
+              "sym": {
+               "kind": "local",
+               "name": "e",
+               "owner": "exc290",
+               "type": {
+                "kind": "ptr",
+                "space": "flat",
+                "to": {
+                 "kind": "class",
+                 "name": "Err290"
+                },
+                "ref": true
+               }
+              }
+             },
+             "postfix": false
+            },
+            "sym": {
+             "kind": "field",
+             "name": "code",
+             "owner": "Err290",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "Catch",
+        "line": 7,
+        "col": 5,
+        "sym": {
+         "kind": "local",
+         "name": "n",
+         "owner": "exc290",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "types": [
+         {
+          "kind": "i32"
+         }
+        ],
+        "body": {
+         "node": "Block",
+         "line": 7,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 7,
+           "col": 5,
+           "expr": {
+            "node": "Name",
+            "line": 7,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "n",
+             "owner": "exc290",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "Catch",
+        "line": 7,
+        "col": 5,
+        "body": {
+         "node": "Block",
+         "line": 7,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 7,
+           "col": 5,
+           "expr": {
+            "node": "Unary",
+            "line": 7,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "-",
+            "x": {
+             "node": "Lit",
+             "line": 7,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 1
+            },
+            "postfix": false
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 10,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "exc2290",
+    "owner": "p29",
+    "static": true,
+    "params": [
+     {
+      "kind": "i32"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "exc2290",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 10,
+     "col": 17,
+     "sym": {
+      "kind": "param",
+      "name": "x",
+      "owner": "exc2290",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 10,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Try",
+      "line": 10,
+      "col": 5,
+      "resources": [],
+      "body": {
+       "node": "Block",
+       "line": 10,
+       "col": 5,
+       "stmts": [
+        {
+         "node": "ExprStmt",
+         "line": 10,
+         "col": 5,
+         "expr": {
+          "node": "Unary",
+          "line": 10,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "++",
+          "x": {
+           "node": "Name",
+           "line": 10,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "x",
+            "owner": "exc2290",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "postfix": true
+         }
+        }
+       ]
+      },
+      "catches": [
+       {
+        "node": "Catch",
+        "line": 10,
+        "col": 5,
+        "sym": {
+         "kind": "local",
+         "name": "tmp",
+         "owner": "exc2290",
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Err290"
+          },
+          "ref": true
+         }
+        },
+        "types": [
+         {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Err290"
+          },
+          "ref": true
+         }
+        ],
+        "body": {
+         "node": "Block",
+         "line": 10,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Throw",
+           "line": 10,
+           "col": 5
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "node": "Return",
+      "line": 10,
+      "col": 5,
+      "expr": {
+       "node": "Name",
+       "line": 10,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "sym": {
+        "kind": "param",
+        "name": "x",
+        "owner": "exc2290",
+        "type": {
+         "kind": "i32"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 12,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "tern291",
+    "owner": "p29",
+    "static": true,
+    "params": [
+     {
+      "kind": "bool"
+     },
+     {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "i32"
+      }
+     },
+     {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "i32"
+      },
+      "ref": true
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "tern291",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 12,
+     "col": 18,
+     "sym": {
+      "kind": "param",
+      "name": "b",
+      "owner": "tern291",
+      "type": {
+       "kind": "bool"
+      }
+     },
+     "type": {
+      "kind": "bool"
+     }
+    },
+    {
+     "node": "Param",
+     "line": 12,
+     "col": 26,
+     "sym": {
+      "kind": "param",
+      "name": "p",
+      "owner": "tern291",
+      "type": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "i32"
+       }
+      }
+     },
+     "type": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "i32"
+      }
+     }
+    },
+    {
+     "node": "Param",
+     "line": 12,
+     "col": 34,
+     "sym": {
+      "kind": "param",
+      "name": "r",
+      "owner": "tern291",
+      "type": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "i32"
+       },
+       "ref": true
+      }
+     },
+     "type": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "i32"
+      },
+      "ref": true
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 12,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 12,
+      "col": 5,
+      "expr": {
+       "node": "Cast",
+       "line": 12,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "x": {
+        "node": "Binary",
+        "line": 12,
+        "col": 5,
+        "type": {
+         "kind": "f64"
+        },
+        "op": "+",
+        "left": {
+         "node": "Cast",
+         "line": 12,
+         "col": 5,
+         "type": {
+          "kind": "f64"
+         },
+         "x": {
+          "node": "Binary",
+          "line": 12,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "+",
+          "left": {
+           "node": "Paren",
+           "line": 12,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Cond",
+            "line": 12,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "cond": {
+             "node": "Name",
+             "line": 12,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "b",
+              "owner": "tern291",
+              "type": {
+               "kind": "bool"
+              }
+             }
+            },
+            "then": {
+             "node": "Unary",
+             "line": 12,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "*",
+             "x": {
+              "node": "Name",
+              "line": 12,
+              "col": 5,
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "i32"
+               }
+              },
+              "sym": {
+               "kind": "param",
+               "name": "p",
+               "owner": "tern291",
+               "type": {
+                "kind": "ptr",
+                "space": "flat",
+                "to": {
+                 "kind": "i32"
+                }
+               }
+              }
+             },
+             "postfix": false
+            },
+            "orelse": {
+             "node": "Unary",
+             "line": 12,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "*",
+             "x": {
+              "node": "Name",
+              "line": 12,
+              "col": 5,
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "i32"
+               },
+               "ref": true
+              },
+              "sym": {
+               "kind": "param",
+               "name": "r",
+               "owner": "tern291",
+               "type": {
+                "kind": "ptr",
+                "space": "flat",
+                "to": {
+                 "kind": "i32"
+                },
+                "ref": true
+               }
+              }
+             },
+             "postfix": false
+            }
+           }
+          },
+          "right": {
+           "node": "Paren",
+           "line": 12,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Cond",
+            "line": 12,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "cond": {
+             "node": "Cast",
+             "line": 12,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "x": {
+              "node": "Name",
+              "line": 12,
+              "col": 5,
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "i32"
+               }
+              },
+              "sym": {
+               "kind": "param",
+               "name": "p",
+               "owner": "tern291",
+               "type": {
+                "kind": "ptr",
+                "space": "flat",
+                "to": {
+                 "kind": "i32"
+                }
+               }
+              }
+             },
+             "implicit": true
+            },
+            "then": {
+             "node": "Lit",
+             "line": 12,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 1
+            },
+            "orelse": {
+             "node": "Lit",
+             "line": 12,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 0
+            }
+           }
+          }
+         },
+         "implicit": true
+        },
+        "right": {
+         "node": "Paren",
+         "line": 12,
+         "col": 5,
+         "type": {
+          "kind": "f64"
+         },
+         "x": {
+          "node": "Cond",
+          "line": 12,
+          "col": 5,
+          "type": {
+           "kind": "f64"
+          },
+          "cond": {
+           "node": "Name",
+           "line": 12,
+           "col": 5,
+           "type": {
+            "kind": "bool"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "b",
+            "owner": "tern291",
+            "type": {
+             "kind": "bool"
+            }
+           }
+          },
+          "then": {
+           "node": "Cast",
+           "line": 12,
+           "col": 5,
+           "type": {
+            "kind": "f64"
+           },
+           "x": {
+            "node": "Lit",
+            "line": 12,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           },
+           "implicit": true
+          },
+          "orelse": {
+           "node": "Lit",
+           "line": 12,
+           "col": 5,
+           "type": {
+            "kind": "f64"
+           },
+           "value": 3.5
+          }
+         }
+        }
+       },
+       "implicit": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "FieldDecl",
+   "line": 14,
+   "col": 26,
+   "sym": {
+    "kind": "global",
+    "name": "g",
+    "owner": "p29",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "line": 14,
+    "col": 26,
+    "type": {
+     "kind": "i32"
+    },
+    "value": 1
+   },
+   "mods": [
+    "static"
+   ]
+  },
+  {
+   "node": "ClassDecl",
+   "line": 14,
+   "col": 58,
+   "name": "P",
+   "qname": "outer292.inner.P",
+   "kind": "struct",
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 14,
+     "col": 66,
+     "sym": {
+      "kind": "field",
+      "name": "a",
+      "owner": "outer292.inner.P",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "mods": [
+      "public"
+     ]
+    }
+   ],
+   "layout": {
+    "kind": "record",
+    "size": 4,
+    "fields": [
+     {
+      "name": "a",
+      "offset": 0,
+      "type": {
+       "kind": "i32"
+      }
+     }
+    ],
+    "name": "outer292.inner.P",
+    "role": "struct",
+    "packed": false
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 14,
+   "col": 76,
+   "sym": {
+    "kind": "function",
+    "name": "f",
+    "owner": "p29",
+    "static": true,
+    "params": [
+     {
+      "kind": "class",
+      "name": "outer292.inner.P"
+     }
+    ],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "f",
+   "kind": "function",
+   "params": [
+    {
+     "node": "Param",
+     "line": 14,
+     "col": 80,
+     "sym": {
+      "kind": "param",
+      "name": "p",
+      "owner": "f",
+      "type": {
+       "kind": "class",
+       "name": "outer292.inner.P"
+      }
+     },
+     "type": {
+      "kind": "class",
+      "name": "outer292.inner.P"
+     }
+    }
+   ],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 14,
+    "col": 76,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 14,
+      "col": 76,
+      "expr": {
+       "node": "Binary",
+       "line": 14,
+       "col": 76,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Select",
+        "line": 14,
+        "col": 76,
+        "type": {
+         "kind": "i32"
+        },
+        "obj": {
+         "node": "Name",
+         "line": 14,
+         "col": 76,
+         "type": {
+          "kind": "class",
+          "name": "outer292.inner.P"
+         },
+         "sym": {
+          "kind": "param",
+          "name": "p",
+          "owner": "f",
+          "type": {
+           "kind": "class",
+           "name": "outer292.inner.P"
+          }
+         }
+        },
+        "sym": {
+         "kind": "field",
+         "name": "a",
+         "owner": "outer292.inner.P",
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Name",
+        "line": 14,
+        "col": 76,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "global",
+         "name": "g",
+         "owner": "p29",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "FieldDecl",
+   "line": 15,
+   "col": 19,
+   "sym": {
+    "kind": "global",
+    "name": "hidden",
+    "owner": "p29",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "line": 15,
+    "col": 19,
+    "type": {
+     "kind": "i32"
+    },
+    "value": 3
+   },
+   "mods": [
+    "static"
+   ]
+  },
+  {
+   "node": "MethodDecl",
+   "line": 15,
+   "col": 37,
+   "sym": {
+    "kind": "function",
+    "name": "useh",
+    "owner": "p29",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "useh",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 15,
+    "col": 37,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 15,
+      "col": 37,
+      "expr": {
+       "node": "Binary",
+       "line": 15,
+       "col": 37,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Name",
+        "line": 15,
+        "col": 37,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "global",
+         "name": "hidden",
+         "owner": "p29",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       "right": {
+        "node": "Call",
+        "line": 15,
+        "col": 37,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "function",
+         "name": "f",
+         "owner": "p29",
+         "static": true,
+         "params": [
+          {
+           "kind": "class",
+           "name": "outer292.inner.P"
+          }
+         ],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "args": [
+         {
+          "node": "New",
+          "line": 15,
+          "col": 37,
+          "type": {
+           "kind": "class",
+           "name": "outer292.inner.P"
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<aggregate>",
+           "owner": "outer292.inner.P",
+           "params": []
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 15,
+            "col": 37,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           }
+          ],
+          "memory": "stack"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "ClassDecl",
+   "line": 15,
+   "col": 98,
+   "name": "Mode",
+   "qname": "outer292.Mode",
+   "kind": "enum",
+   "mods": [
+    "scoped"
+   ],
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 15,
+     "col": 105,
+     "sym": {
+      "kind": "field",
+      "name": "A",
+      "owner": "outer292.Mode",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "init": {
+      "node": "Lit",
+      "type": {
+       "kind": "i32"
+      },
+      "value": 0
+     },
+     "mods": [
+      "public",
+      "static",
+      "const"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 15,
+     "col": 108,
+     "sym": {
+      "kind": "field",
+      "name": "B",
+      "owner": "outer292.Mode",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "init": {
+      "node": "Lit",
+      "type": {
+       "kind": "i32"
+      },
+      "value": 4
+     },
+     "mods": [
+      "public",
+      "static",
+      "const"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 15,
+     "col": 115,
+     "sym": {
+      "kind": "field",
+      "name": "C",
+      "owner": "outer292.Mode",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "init": {
+      "node": "Lit",
+      "type": {
+       "kind": "i32"
+      },
+      "value": 5
+     },
+     "mods": [
+      "public",
+      "static",
+      "const"
+     ]
+    }
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 15,
+   "col": 133,
+   "sym": {
+    "kind": "global",
+    "name": "X",
+    "owner": "p29",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 0
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:Plain"
+   ]
+  },
+  {
+   "node": "FieldDecl",
+   "line": 15,
+   "col": 136,
+   "sym": {
+    "kind": "global",
+    "name": "Y",
+    "owner": "p29",
+    "static": true,
+    "type": {
+     "kind": "i32"
+    }
+   },
+   "type": {
+    "kind": "i32"
+   },
+   "init": {
+    "node": "Lit",
+    "type": {
+     "kind": "i32"
+    },
+    "value": 2
+   },
+   "mods": [
+    "static",
+    "const",
+    "enum:Plain"
+   ]
+  },
+  {
+   "node": "MethodDecl",
+   "line": 16,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "ns292",
+    "owner": "p29",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "ns292",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 16,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Local",
+      "line": 16,
+      "col": 34,
+      "sym": {
+       "kind": "local",
+       "name": "p",
+       "owner": "ns292",
+       "type": {
+        "kind": "class",
+        "name": "outer292.inner.P"
+       }
+      },
+      "type": {
+       "kind": "class",
+       "name": "outer292.inner.P"
+      },
+      "init": {
+       "node": "New",
+       "line": 16,
+       "col": 34,
+       "type": {
+        "kind": "class",
+        "name": "outer292.inner.P"
+       },
+       "sym": {
+        "kind": "ctor",
+        "name": "<aggregate>",
+        "owner": "outer292.inner.P",
+        "params": []
+       },
+       "args": [
+        {
+         "node": "Lit",
+         "line": 16,
+         "col": 34,
+         "type": {
+          "kind": "i32"
+         },
+         "value": 2
+        }
+       ],
+       "memory": "stack"
+      }
+     },
+     {
+      "node": "Local",
+      "line": 16,
+      "col": 60,
+      "sym": {
+       "kind": "local",
+       "name": "m",
+       "owner": "ns292",
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "init": {
+       "node": "Select",
+       "line": 16,
+       "col": 60,
+       "type": {
+        "kind": "i32"
+       },
+       "obj": {
+        "node": "TypeName",
+        "line": 16,
+        "col": 60,
+        "type": {
+         "kind": "class",
+         "name": "outer292.Mode"
+        }
+       },
+       "sym": {
+        "kind": "field",
+        "name": "B",
+        "owner": "outer292.Mode",
+        "static": true,
+        "type": {
+         "kind": "i32"
+        }
+       }
+      }
+     },
+     {
+      "node": "Return",
+      "line": 16,
+      "col": 5,
+      "expr": {
+       "node": "Binary",
+       "line": 16,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "op": "+",
+       "left": {
+        "node": "Binary",
+        "line": 16,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "op": "+",
+        "left": {
+         "node": "Binary",
+         "line": 16,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "op": "+",
+         "left": {
+          "node": "Binary",
+          "line": 16,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "+",
+          "left": {
+           "node": "Binary",
+           "line": 16,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "+",
+           "left": {
+            "node": "Call",
+            "line": 16,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "function",
+             "name": "f",
+             "owner": "p29",
+             "static": true,
+             "params": [
+              {
+               "kind": "class",
+               "name": "outer292.inner.P"
+              }
+             ],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": [
+             {
+              "node": "Name",
+              "line": 16,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "outer292.inner.P"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "p",
+               "owner": "ns292",
+               "type": {
+                "kind": "class",
+                "name": "outer292.inner.P"
+               }
+              }
+             }
+            ]
+           },
+           "right": {
+            "node": "Cast",
+            "line": 16,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "x": {
+             "node": "Name",
+             "line": 16,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "m",
+              "owner": "ns292",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           }
+          },
+          "right": {
+           "node": "Cast",
+           "line": 16,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Select",
+            "line": 16,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "obj": {
+             "node": "TypeName",
+             "line": 16,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "outer292.Mode"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "C",
+             "owner": "outer292.Mode",
+             "static": true,
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         },
+         "right": {
+          "node": "Cast",
+          "line": 16,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "x": {
+           "node": "Name",
+           "line": 16,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "global",
+            "name": "X",
+            "owner": "p29",
+            "static": true,
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "implicit": true
+         }
+        },
+        "right": {
+         "node": "Cast",
+         "line": 16,
+         "col": 5,
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "node": "Name",
+          "line": 16,
+          "col": 5,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "global",
+           "name": "Y",
+           "owner": "p29",
+           "static": true,
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "implicit": true
+        }
+       },
+       "right": {
+        "node": "Call",
+        "line": 16,
+        "col": 5,
+        "type": {
+         "kind": "i32"
+        },
+        "sym": {
+         "kind": "function",
+         "name": "useh",
+         "owner": "p29",
+         "static": true,
+         "params": [],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "args": []
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "node": "MethodDecl",
+   "line": 19,
+   "col": 5,
+   "sym": {
+    "kind": "function",
+    "name": "main",
+    "owner": "p29",
+    "static": true,
+    "params": [],
+    "ret": {
+     "kind": "i32"
+    }
+   },
+   "name": "main",
+   "kind": "function",
+   "params": [],
+   "ret": {
+    "kind": "i32"
+   },
+   "body": {
+    "node": "Block",
+    "line": 19,
+    "col": 5,
+    "stmts": [
+     {
+      "node": "Return",
+      "line": 19,
+      "col": 5,
+      "expr": {
+       "node": "Lit",
+       "line": 19,
+       "col": 5,
+       "type": {
+        "kind": "i32"
+       },
+       "value": 0
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "target": {
+  "triple": "x86_64-pc-windows-msvc",
+  "pointer": 8,
+  "long": 4,
+  "wchar": 2,
+  "char_signed": true,
+  "language": "c++",
+  "std": "c++14"
+ }
+}
