@@ -1,0 +1,108 @@
+// Translated by CodeBreaker from Shapes (csharp).
+using System;
+using System.Collections.Generic;
+
+namespace Corpus.Shapes
+{
+    public interface IShape
+    {
+        string Name { get; }
+
+        int Area();
+    }
+
+    public abstract class Shape : IShape
+    {
+        private static int made;
+
+        public int Id { get; private set; }
+
+        public abstract string Name { get; }
+
+        protected Shape()
+        {
+            made++;
+            Id = made;
+        }
+
+        public static int Made => made;
+
+        public abstract int Area();
+
+        public virtual string Describe() => $"{Name}#{Id} area={Area()}";
+    }
+
+    public class Rect : Shape
+    {
+        public int W { get; set; }
+
+        public int H { get; set; }
+
+        public Rect(int w, int h)
+        {
+            W = w;
+            H = h;
+        }
+
+        public override string Name => "rect";
+
+        public override int Area() => W * H;
+    }
+
+    public class Square : Rect
+    {
+        public Square(int side) : base(side, side)
+        {
+        }
+
+        public override string Name => "square";
+
+        public override string Describe() => $"[{base.Describe()}]";
+    }
+
+    public class Tri : Shape
+    {
+        private readonly int b;
+        private readonly int h;
+
+        public Tri(int b, int h)
+        {
+            this.b = b;
+            this.h = h;
+        }
+
+        public override string Name => "tri";
+
+        public override int Area() => this.b * this.h / 2;
+    }
+
+    public static class Program
+    {
+        public static int Total(List<IShape> shapes)
+        {
+            int t = 0;
+            foreach (IShape s in shapes)
+            {
+                t += s.Area();
+            }
+            return t;
+        }
+
+        public static void Main()
+        {
+            var shapes = new List<IShape>();
+            shapes.Add(new Rect(3, 4));
+            shapes.Add(new Square(5));
+            shapes.Add(new Tri(7, 3));
+            for (int i = 0; i < shapes.Count; i++)
+            {
+                Shape s = (Shape)shapes[i];
+                Console.WriteLine(s.Describe());
+            }
+            Rect r = (Rect)shapes[0];
+            r.W = 10;
+            Console.WriteLine($"after resize: {r.Describe()} total={Total(shapes)}");
+            Console.WriteLine($"made {Shape.Made} shapes");
+        }
+    }
+}
