@@ -1,0 +1,5 @@
+has_init_statics=false
+TwoPh.cpp|STUBBED|HIGH|emit|untranslated|19|untranslated constructor TwoPh(Gap* g): the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
+TwoPh.cpp|RULE|LOW|emit|two-phase-ctor|0|two-phase construction: constructors are j2xInit(...) so their virtual calls reach the override, as in Java
+TwoPh.cpp|RISK|MED|emit|rule-of-three-dtor|0|Rule-of-Three: synthesized destructor frees 1 heap-owning field(s): helper
+TwoPh.cpp|PORTED|LOW|emit|source|0|generated source for TwoPh

@@ -1,0 +1,3 @@
+has_init_statics=false
+Implicit.cpp|RISK|MED|emit|rule-of-three-dtor|0|Rule-of-Three: synthesized destructor frees 1 heap-owning field(s): b
+Implicit.cpp|PORTED|LOW|emit|source|0|generated source for Implicit

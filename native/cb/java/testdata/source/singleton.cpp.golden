@@ -1,0 +1,47 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from Single.java
+// Target: unknown / C++03
+
+#include "Single.h"
+#include "Foo.h"
+
+Single* Single::s_instance;
+Foo* Single::s_other;
+
+Single::Single()
+	: v(0)
+{
+	// inst Single
+}
+
+Single::~Single()
+{
+}
+
+Single* Single::getInstance()
+{
+	return s_instance;
+}
+
+Single* Single::getInstance2()
+{
+	return s_instance;
+}
+
+Single* Single::notPure()
+{
+	// body Single.notPure/0
+}
+
+int Single::get()
+{
+	// body Single.get/0
+}
+
+void Single::initStatics()
+{
+	Single::s_instance = INIT(new Single());
+	Single::s_other = INIT(new Foo());
+}

@@ -1,0 +1,63 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from TypedEn.java
+// Target: xbox360 / C++03
+
+#include "TypedEn.h"
+#include "Foo.h"
+
+TypedEn* TypedEn::A;
+TypedEn* TypedEn::B;
+TypedEn* TypedEn::NULL_;
+int TypedEn::COUNT;
+Foo* TypedEn::fx;
+JArray<TypedEn* > TypedEn::_j2x_values;
+
+TypedEn::TypedEn(int l, const JavaString& s)
+	: level(0)
+{
+	// inst TypedEn
+	// ctor2
+}
+
+TypedEn::~TypedEn()
+{
+}
+
+int TypedEn::getLevel()
+{
+	// body TypedEn.getLevel/0
+}
+
+Foo* TypedEn::make()
+{
+	// body TypedEn.make/0
+}
+
+int TypedEn::ordinal()
+{
+	return this->__ordinal;
+}
+
+JArray<TypedEn* >& TypedEn::values()
+{
+	return _j2x_values;
+}
+
+void TypedEn::initStatics()
+{
+	A = new TypedEn(1, "A");
+	A->__ordinal = 0;
+	B = new TypedEn(1, "B");
+	B->__ordinal = 1;
+	NULL_ = new TypedEn(4, "NULL");
+	NULL_->__ordinal = 2;
+	COUNT = INIT(0);
+	fx = INIT(new Foo());
+	// static block 0
+	_j2x_values = JArray<TypedEn* >(3);
+	_j2x_values[0] = A;
+	_j2x_values[1] = B;
+	_j2x_values[2] = NULL_;
+}

@@ -1,0 +1,2 @@
+has_init_statics=false
+Chain.cpp|PORTED|LOW|emit|source|0|generated source for Chain

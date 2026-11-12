@@ -1044,3 +1044,12 @@ New = Release /O2, one thread, `native/cb`; measured on the Windows 95 and 98 co
 |---|---|---|
 | describe16 of the 12 16-bit modules of the old harness (LZEXPAND ... USER.EXE, GDI.EXE) | the old typed port's harness case per module (describe16 plus every function-level reader, on top of the 16-bit facts it needs): 13.0 s in all (USER 5.8 s, GDI 4.3 s, MMSYSTEM 1.2 s, COMMDLG 1.0 s); the Python took ~5 minutes for USER and GDI alone | describe16 alone 2.7 s (USER 1.0 s, GDI 1.2 s); with the same function-level readers run on every segment (returns, popped_by_hand, args_read, register_arguments, register_helper, result_bytes, forwards, callers_say, callers_read_dx / ax, DxReturns.every_way, results with the caller-result rule) 6.7-7.5 s in all (USER 4.2 s, GDI 2.3 s). Every line of every description and 5,335 facts of the readers agree with the Python's |
 | compare/versions, the 50 comparisons of the old harness (18 pairs of Windows 95 / 98 modules, with and without listings) | the old typed port could not be run in isolation (its harness needs the whole old layer, `cycle.lib`): not timed | 0.52 s for all fifty; the big modules of the two products, one comparison each: USER32 0.07 s, GDI32 0.17 s, COMCTL32 0.80 s (1,102 -> 1,833 functions), SHELL32 1.03 s (1,897 -> 2,722), KERNEL32 0.43 s, USER.EXE 1.03 s, GDI.EXE 0.72 s; all 50 documents equal the Python's |
+## W3-B7, W3-B8 (java/transpile, java/runtime, java/emit/source)
+
+| What | Old | New |
+|---|---|---|
+| runtime `generate_files` (xbox360, C++11), 20 times | 521 ms (Python, 26 ms each) | 113 ms (5.7 ms each) |
+| prune `coalesce_forwarders` over a synthetic emitted tree (1,200 files, 3.4 MB) | 51 ms (Python) | 24 ms (the files read side by side) |
+| prune `prune_unreferenced`, the same tree (108 files cut) | 279 ms (Python) | 55 ms (read and scanned side by side) |
+| `convert` of 18 small classes with a stand-in translator, 9 conversions over 3 configurations | 1.9 s (Python, 210 ms each) | 2.0-2.1 s (225 ms each): the cost is the file system, about 200 runtime headers written and deleted per conversion (62 ms to write them; the same in both) |
+| source emitter, corpus passes, finalisers, init driver | not timed apart: they are microseconds on the conversions above | |

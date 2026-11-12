@@ -1,0 +1,37 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from ValueV.java
+// Target: unknown / C++03
+
+#include "ValueV.h"
+#include "Foo.h"
+
+ValueV::ValueV(double x, double y)
+	: x(0)
+	, y(0)
+	, link(NULL)
+{
+	// inst ValueV
+	// ctor2
+}
+
+ValueV::ValueV()
+	: x(0)
+	, y(0)
+	, link(NULL)
+{
+}
+
+ValueV::~ValueV()
+{
+}
+
+double ValueV::len()
+{
+	// body ValueV.len/0
+}
+
+void ValueV::initStatics()
+{
+}

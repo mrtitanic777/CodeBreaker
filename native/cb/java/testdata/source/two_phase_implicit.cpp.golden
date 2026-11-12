@@ -1,0 +1,29 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from TwoPhImplicit.java
+// Target: unknown / C++03
+
+#include "TwoPhImplicit.h"
+#include "TwoParent.h"
+
+TwoPhImplicit::TwoPhImplicit()
+	: n(0)
+{
+}
+
+TwoPhImplicit* TwoPhImplicit::j2xInit()
+{
+	TwoParent::j2xInit();
+	// inst TwoPhImplicit
+	// implicit ctorp
+	return this;
+}
+
+TwoPhImplicit::~TwoPhImplicit()
+{
+}
+
+void TwoPhImplicit::initStatics()
+{
+}

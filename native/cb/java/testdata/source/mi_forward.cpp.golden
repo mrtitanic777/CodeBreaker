@@ -1,0 +1,38 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from MiChild.java
+// Target: unknown / C++03
+
+#include "MiChild.h"
+#include "MiBase.h"
+#include "MiIface.h"
+
+MiChild::MiChild()
+	: own(0)
+{
+	// inst MiChild
+}
+
+MiChild::~MiChild()
+{
+}
+
+void MiChild::other()
+{
+	// body MiChild.other/0
+}
+
+void MiChild::onChanged()
+{
+	MiBase::onChanged();
+}
+
+int MiChild::count(int a)
+{
+	return MiBase::count(a);
+}
+
+void MiChild::initStatics()
+{
+}
