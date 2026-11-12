@@ -945,3 +945,15 @@ a heavily loaded machine (other builds running), Release:
 The old typed port (`native/typed/cpp/.../program.cpp`) links only into the translated executable, so it was not timed on its own; it
 does the same work over `py::str` and `py::dict`. Parsing is pyfront's (unchanged); `index` was the Python's ast walks and is now one
 walk per function over a flat child list.
+## translate/backends/csharp (W1-B27)
+
+The C# back end writing the files of the 31 questions of the old harness (the ten corpus programs and their units, the front
+end's own tools, the XNA runtime, the programs written for the back end: the whole program, then every unit alone; the units
+already lowered, so only the writing is timed; best of five):
+
+| Writing 31 questions of C# programs | Python csharp.py | C++ cb csharp::Program |
+|---|---|---|
+| all 31 | 40.6 ms | 7.4 ms |
+
+(The previous typed port, an imitation of the Python on `py::str`, was not timed: it ran only inside the exe.)
+The writer was not profiled beyond that: it allocates a string per line and per expression, which is the next cost if it is ever hot.

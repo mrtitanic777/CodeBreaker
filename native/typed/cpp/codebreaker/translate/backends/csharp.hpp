@@ -1,5 +1,11 @@
 // codebreaker/translate/backends/csharp.hpp -- typed C++ port of codebreaker.translate.backends.csharp.
 //
+// NOT YET A SHIM (W1-B27): the back end is now native/cb/translate/backends/csharp.{hpp,cpp} (typed IR, no py::). This port stays, unchanged,
+// for one reason: codebreaker/translate/backends/csharp_java.* (the Java library of this back end, the next unit to be refactored) is written
+// against this port's Writer and the OLD IR, and cannot compile against the new module until it becomes a cb::translate::backends::csharp::Library.
+// When csharp_java is refactored this port and csharp_java's become shims over the two new modules (old IR tree -> L2 through
+// cb/compat/old_l2_tree.hpp -> cb csharp::Program) and this note goes.
+//
 // csharp.py -- the translator's C# back end: whole programs from the IR, in C# as a person writes it.
 //
 // It reads any front end's units -- each says its source language (Unit.lang) -- and writes one .cs file

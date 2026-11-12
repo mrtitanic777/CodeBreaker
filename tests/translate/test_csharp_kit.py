@@ -137,8 +137,27 @@ def test_the_back_end_writes_csharp_idioms(work):
     assert 'g.Name.Shout()' in files['Inventory.cs']
 
 
+def test_units_of_one_file_stem_are_separate_files_and_big_constants_fold_exactly():
+    from codebreaker.translate.backends import csharp as bcs
+    t32 = ir.Type('i32')
+    t64 = ir.Type('i64')
+
+    def unit(path, name):
+        return ir.Unit(path=path, lang='csharp', types=[ir.ClassDecl(name=name, qname=name, kind='class', mods=['public'], members=[])])
+    files = bcs.Program([unit('a/Same.cs', 'A'), unit('b/Same.cs', 'B')]).files()
+    assert list(files) == ['Same.cs', 'Same_2.cs'] and 'class A' in files['Same.cs'] and 'class B' in files['Same_2.cs']
+
+    def lit(v, t):
+        return ir.Lit(value=v, type=t)
+    # 2**62 * 4 is a constant that leaves long; long.MaxValue / 1 is not (a quotient is not rounded through a double)
+    big = ir.Binary(op='*', left=lit(1 << 62, t64), right=lit(4, t64), type=t64)
+    quotient = ir.Binary(op='/', left=lit((1 << 63) - 1, t64), right=lit(1, t64), type=t64)
+    from codebreaker.translate.backends.csharp import _overflows
+    assert _overflows(big) and not _overflows(quotient)
+
+
 # ---------------------------------------------------------------------------------------------- Java -> C#
-JAVA = [('calc', 'CalcMain'), ('fixtures', 'sample.FixtureMain'), ('modern', 'Library')]
+JAVA =[('calc', 'CalcMain'), ('fixtures', 'sample.FixtureMain'), ('modern', 'Library')]
 
 
 @needs_dotnet
