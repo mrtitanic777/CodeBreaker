@@ -15,6 +15,9 @@
 #include "cb/core/log.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/inspect.hpp"
+#include "cb/formats/xbox/heavyiron.hpp"
+#include "cb/symbols/demangle.hpp"
+#include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
 #include "cb/symbols/prototypes.hpp"
 
@@ -22,7 +25,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 3> kNative{"info", "flat-thunk", "driver-build"};
+constexpr std::array<std::string_view, 6> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -102,6 +105,30 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     });
     dr.state = config.state();
     table.set(build::driver::command(dr));
+
+    // demangle <name> ...: each name readable, or said to be not readable
+    table.set("demangle", [](std::span<const std::string> args) -> int {
+        if (args.empty()) {
+            out("usage: codebreaker demangle <name> [<name> ...]\n");
+            return 2;
+        }
+        for (const std::string& name : args) {
+            if (symbols::demangle::parse(name) || !name.starts_with('?')) out("{}\n", symbols::demangle::readable(name));
+            else out("{}  (not readable)\n", name);
+        }
+        return 0;
+    });
+
+    // dos-interrupts [<interrupt> [<AH> [<AL>]]]: the checkout's own dos_interrupts.json
+    const std::filesystem::path interrupts = config.checkout_root() / "codebreaker" / "symbols" / "dos_interrupts.json";
+    table.set("dos-interrupts", [interrupts](std::span<const std::string> args) -> int {
+        return symbols::dos_interrupts::run(symbols::dos_interrupts::ServiceTable::load(interrupts), args);
+    });
+
+    // heavyiron <archive> ...: Heavy Iron Studios' .HO/.HIP archives
+    table.set("heavyiron", [](std::span<const std::string> args) -> int {
+        return formats::xbox::heavyiron::command(std::vector<std::string>(args.begin(), args.end()));
+    });
 }
 
 bool is_native_command(std::string_view name) {
