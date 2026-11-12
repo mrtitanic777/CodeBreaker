@@ -1098,3 +1098,18 @@ Old = the Python (the old typed port needs the whole old layer: not built in iso
 |---|---|---|
 | origin verdicts for every function (describe16 not counted): USER.EXE 2,316 functions | minutes (Python, per the earlier harness notes) | about 0.4 s (describe16 0.7 s beside it) |
 | GDI.EXE 1,654, KRNL386.EXE 1,166, MMSYSTEM.DLL 486, LZEXPAND.DLL 46 functions | not timed | 0.55 s, 0.2 s, 0.14 s, 0.01 s |
+
+## decompile/decompiler (W4, hub, live path)
+
+Old = the master codebreaker.exe (the typed port of decompiler.py); New = the exe built in this worktree with the new native/cb/decompile/decompiler* behind the shim. Same machine, back to back, both told the one checkout and each its own fresh state folder (cold) then the same folder again (warm), seconds for `codebreaker decompile <module> --out FILE`; the machine was shared with other builds, so differences under about 20% are noise. The C written is byte-identical for all six.
+
+| Module | Old cold | New cold | Old warm | New warm | Bytes |
+|---|---|---|---|---|---|
+| lz32.dll | 1.56 | 1.67 | 2.30 | 1.56 | 18,451 |
+| version.dll | 3.14 | 2.71 | 1.41 | 1.49 | 23,765 |
+| lzexpand.dll | 3.26 | 2.91 | 1.90 | 1.06 | 50,922 |
+| mmsystem.dll | 18.37 | 19.54 | 8.82 | 7.03 | 552,359 |
+| find.exe | 0.60 | 0.60 | 0.17 | 0.17 | 54,552 |
+| vmouse.vxd | 24.36 | 24.05 | 7.05 | 6.86 | 76,353 |
+
+A first pass gave the same bytes and times within the same noise (mmsystem cold 23.26 / 23.55, warm 9.85 / 10.22). Nearly all of a cold run is the native program and describe, unchanged and shared.
