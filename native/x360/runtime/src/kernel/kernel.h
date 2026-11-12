@@ -223,6 +223,9 @@ namespace kernel
     void RegisterDynamicExport(const char* library, uint16_t ordinal, PPCFunc* func);
     // Guest-callable address for an export the title does not import, or 0 if the runtime has no implementation.
     uint32_t BindDynamicExport(const std::string& library, uint16_t ordinal);
+    // An ordinal that xam.xex 17559's export table leaves empty (xam_nxe_dynamic.cpp): XexGetProcedureAddress answers
+    // that it is not there, as the console does, instead of stopping for a missing implementation.
+    bool IsAbsentXamExport(uint16_t ordinal);
 
     struct DynamicExportRegistrar
     {

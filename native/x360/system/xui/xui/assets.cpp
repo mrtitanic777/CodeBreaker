@@ -327,7 +327,8 @@ namespace xui
     const Package::Entry* Assets::FindEntry(std::string_view path, std::string_view basePackage) const
     {
         static const std::pair<std::string_view, std::string_view> kSchemes[] = {
-            { "sharedres://", "xam.shrdres" }, { "xam://", "xam.xam" }, { "controlpack://", "xam.controlp" } };
+            { "sharedres://", "xam.shrdres" }, { "xam://", "xam.xam" }, { "controlpack://", "xam.controlp" },
+            { "skin://", kSkinBase } }; // the current skin (a module's own Skin.xur names XAM's sounds so)
         std::string_view package = basePackage, name = path;
         bool themed = false;
         for (const auto& [scheme, target] : themeSchemes_)

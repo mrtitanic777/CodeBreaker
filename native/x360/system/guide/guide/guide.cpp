@@ -62,7 +62,8 @@ namespace
         enum class Mode { kMain, kBox, kAchievements, kSignIn, kCommunity, kCommunityBox, kKeyboard, kProfile,
                           kPartyOptions, kMessage, kCompose, kGames, kMessageType, kBio, kFriendsOf, kRecipients,
                           kDevice, kWait, kSaveProfile, kJoinLive, kRecent, kCompareGames, kCompareAchievements,
-                          kAchievementDetails, kFeedback, kPreferences, kFeedbackText, kVoiceMail, kBeacons }
+                          kAchievementDetails, kFeedback, kPreferences, kFeedbackText, kVoiceMail, kBeacons, kChat,
+                          kChatOptions }
             mode = Mode::kMain;
         // Create Profile: where B on its device selector goes (the sign-in pane, or the Guide's blades).
         std::function<void()> createBack;
@@ -130,6 +131,15 @@ namespace
             std::u16string comment;
             std::vector<std::function<void()>> actions;
         } beacons;
+        // Chat (Guide.ChatAndMessenger's QuickChat): what each row of its list is (the game's channel, the party's,
+        // or a private chat by id), and the chat Chat Options shows.
+        struct ChatRows
+        {
+            enum class Kind { kGame, kParty, kChat };
+            std::vector<std::pair<Kind, std::string>> rows;
+            std::string options;
+            uint64_t optionsPlayer = 0;
+        } chat;
         std::vector<std::function<void()>> rowActions, boxActions;
         std::vector<std::function<void()>> rowX; // the Community rows' X (accept a request, delete a message)
         std::vector<std::function<void()>> rowY; // the Players tab's Y (Add Friend: the focused player)
@@ -251,6 +261,13 @@ namespace
         return info;
     }
 
+    // Chat (below).
+    void GuideChat(const std::shared_ptr<GuideSession>& g, uint32_t focus = 0);
+    void GuideChatOptions(const std::shared_ptr<GuideSession>& g, const std::string& chat, uint32_t focus = 0);
+    void GuideChatOption(const std::shared_ptr<GuideSession>& g, uint32_t index);
+    void GuideSetChannel(const std::shared_ptr<GuideSession>& g, const std::string& channel);
+    std::vector<xui::ChatRow> ChatRowsFor(const std::shared_ptr<GuideSession>& g);
+
     // Beacons & Activity (below).
     void GuideBeacons(const std::shared_ptr<GuideSession>& g, int tab, uint32_t focus = 0, bool refetch = true);
     void GuideBeaconTitles(const std::shared_ptr<GuideSession>& g);
@@ -261,6 +278,10 @@ namespace
     std::u16string Wide(const std::string& utf8);
     std::u16string Gamertag(const std::string& tag);
     std::u16string BeaconsFormat(size_t index, const char16_t* fallback, std::initializer_list<std::u16string> args);
+    void GuideKeyboard(const std::shared_ptr<GuideSession>& g, const std::u16string& title,
+                       const std::u16string& description, size_t maxLength,
+                       std::function<void(const std::u16string&)> done, const std::u16string& text,
+                       bool afterUnloading, bool gamertag);
 
     void GuideBack(const std::shared_ptr<GuideSession>& g)
     {
@@ -549,6 +570,11 @@ namespace
         }
         if (id == "btnSignIn")
             return GuideSignIn(g);
+        if (id == "btnChatIM") // Chat (QuickChatNavButton: Guide.ChatAndMessenger.xex), on Xbox LIVE
+            return GuideLiveRequired(g, [g] {
+                xui::GuideKeepPosition();
+                GuideChat(g);
+            });
         if (id == "btnBeacons") // Beacons & Activity (BeaconsNavButton: Guide.Beacons.xex), on Xbox LIVE
             return GuideLiveRequired(g, [g] {
                 xui::GuideKeepPosition();
@@ -1003,6 +1029,46 @@ namespace
             }
             break;
         }
+        case Mode::kChat:
+        {
+            // The channels and chats: A a row (the game's or the party's channel becomes the active one; a chat
+            // opens its options), X End Chat / Y Join Chat on a chat (rootscene's LegendX / LegendY), B back.
+            if (pressed & (0x4000 | 0x8000))
+            {
+                const uint32_t row = xui::PaneFocus();
+                if (row < g->chat.rows.size() && g->chat.rows[row].first == GuideSession::ChatRows::Kind::kChat)
+                {
+                    g->chat.options = g->chat.rows[row].second;
+                    g->chat.optionsPlayer = 0;
+                    GuideChatOption(g, (pressed & 0x4000) ? 1 : 0);
+                }
+                break;
+            }
+            const xui::PaneAction action = xui::PanePress(pressed);
+            if (action.kind == xui::PaneAction::kCancelled)
+                GuideBack(g);
+            else if (action.kind == xui::PaneAction::kChosen && action.index < g->chat.rows.size())
+            {
+                const auto [kind, id] = g->chat.rows[action.index];
+                if (kind == GuideSession::ChatRows::Kind::kChat)
+                    GuideChatOptions(g, id);
+                else
+                {
+                    GuideSetChannel(g, kind == GuideSession::ChatRows::Kind::kGame ? "game" : "party");
+                    xui::UpdateChatList(ChatRowsFor(g));
+                }
+            }
+            break;
+        }
+        case Mode::kChatOptions:
+        {
+            const xui::PaneAction action = xui::PanePress(pressed);
+            if (action.kind == xui::PaneAction::kCancelled)
+                GuideChat(g);
+            else if (action.kind == xui::PaneAction::kChosen)
+                GuideChatOption(g, action.index);
+            break;
+        }
         case Mode::kBeacons:
         {
             auto& b = g->beacons;
@@ -1059,7 +1125,7 @@ namespace
                         GuideKeyboard(g, xui::BeaconsString(10, u"Beacons"),
                                       BeaconsFormat(18, u"Edit your comment.\nMaximum {1} characters.", { u"40" }), 40,
                                       [g, gm, edit](const std::u16string& text) { GuideSetBeacon(g, gm, edit, text, 0); },
-                                      b.comment);
+                                      b.comment, false, false);
                         g->back = [g, gm, edit, comment = b.comment] { GuideSetBeacon(g, gm, edit, comment, 0); };
                     }
                     else if (a.index >= 2 && a.index - 2 < b.actions.size())
@@ -1438,6 +1504,11 @@ namespace
         {
             row.slotText[1] = m.text.empty() ? xui::FriendsString(86, u"Wants to play with you") : Wide(m.text);
             row.slotImage[3] = "gameinvite.png";
+        }
+        else if (m.kind == "chat_invite")
+        {
+            row.slotText[1] = xui::ChatString(10, u"Wants to Chat");
+            row.slotImage[3] = "sharedres://ico_32x_Mail.png";
         }
         else if (m.kind == "party_invite")
         {
@@ -2081,7 +2152,16 @@ namespace
                         return GuideCommunityResult(g, u"Join Party", error, u"");
                     GuideCommunity(g, GuideSession::Tab::kParty);
                 });
-            add(u"Invite to Private Chat", nullptr);
+            // Invite to Private Chat: an online player (the server's private chats; the invitee gets "Wants to Chat"),
+            // then the Chat screen with the chat.
+            if (isFriend && f->online)
+                add(u"Invite to Private Chat", [g, user, xuid] {
+                    if (const auto error = live::InviteToChat(user, xuid))
+                        return GuideCommunityResult(g, u"Invite to Private Chat", error, u"");
+                    GuideChat(g);
+                });
+            else
+                add(u"Invite to Private Chat", nullptr);
             add(u"Send Message", [g, xuid, tag] { GuideSendMessage(g, xuid, tag); });
             add(u"Compare Games", [g, xuid] { GuideCompareGames(g, xuid, 0); });
             add(u"Submit Player Review", [g, xuid] { GuidePlayerReview(g, xuid, 0); });
@@ -2644,6 +2724,28 @@ namespace
             add(xui::FriendsString(214, u"Reply"), reply);
             add(xui::FriendsString(255, u"View Profile"), viewProfile);
         }
+        else if (m.kind == "chat_invite")
+        {
+            // A private chat invitation ("Wants to Chat"): Join Chat (that chat's channel becomes the active one),
+            // Decline (End Chat on the invitation), Reply, View Profile. INFER: the rows (not read from
+            // Guide.Friends' message table).
+            const std::string chat = m.text;
+            text = Gamertag(tag) + u" " + xui::ChatString(10, u"Wants to Chat");
+            title = xui::ChatString(10, u"Wants to Chat");
+            icon = "sharedres://ico_32x_Mail.png";
+            add(xui::ChatString(11, u"Join Chat"), [g, user, chat] {
+                if (const auto error = live::JoinChat(user, chat))
+                    return GuideCommunityResult(g, xui::ChatString(11, u"Join Chat"), error, u"");
+                GuideSetChannel(g, "chat:" + chat);
+                GuideChat(g);
+            });
+            add(u"Decline", [g, user, chat, remove] {
+                live::LeaveChat(user, chat);
+                remove();
+            });
+            add(xui::FriendsString(214, u"Reply"), reply);
+            add(xui::FriendsString(255, u"View Profile"), viewProfile);
+        }
         else if (m.kind == "game_invite" && m.sessionId)
         {
             // Accept: the title joins the inviter's session (XN_LIVE_INVITE_ACCEPTED) and the Guide closes; the
@@ -2996,6 +3098,166 @@ namespace
             GuideVoiceMailStart(g, false);
     }
 
+    // ---- Chat (Guide.ChatAndMessenger.xex: QuickChatRootScene / ChatSessionList / QuickChatOptionsScene; strings its
+    // Strings.xus) ----
+
+    uint64_t OwnOnlineXuid(uint32_t user)
+    {
+        const auto me = host::SignedIn(user);
+        return me ? me->onlineXuid : 0;
+    }
+
+    // The other players of a chat (members first, then the invited), the user left out.
+    std::vector<live::ChatMember> ChatOthers(const live::Chat& c, uint64_t me)
+    {
+        std::vector<live::ChatMember> out;
+        for (const auto* list : { &c.members, &c.invited })
+            for (const live::ChatMember& m : *list)
+                if (m.xuid != me)
+                    out.push_back(m);
+        return out;
+    }
+
+    // ChatSessionList's rows (0x90104760 text, 0x90104A80 / 0x90104B90 images): the title's game channel (its
+    // name; 19 "Game"), the party's (XamStrings 0x127 "Xbox Live Party"), then each private chat: the other player
+    // and its state (10 "Wants to Chat" for an invitation, 26 "Invite sent" while nobody else joined, 23 "Now
+    // chatting" on its channel, else 24 "Away from chat"). The active channel has the speaker. OURS: no Kinect rows,
+    // and the game row shows while a game (not the dashboard) runs.
+    std::vector<xui::ChatRow> ChatRowsFor(const std::shared_ptr<GuideSession>& g)
+    {
+        const uint32_t user = g->user;
+        const uint64_t me = OwnOnlineXuid(user);
+        const std::string channel = live::VoiceChannel(user);
+        const bool inParty = live::CurrentParty(user).has_value();
+        auto& rows = g->chat.rows;
+        rows.clear();
+        std::vector<xui::ChatRow> out;
+        constexpr const char* kSpeaker = "ico_32x_speaker_highlight.png";
+        if (!host::TitleIsDashboard())
+        {
+            xui::ChatRow r;
+            r.line1 = host::TitleName();
+            r.line2 = xui::ChatString(19, u"Game");
+            r.icon = "ico_64x_gameChannel.png";
+            if (channel == "game")
+                r.smallIcon = kSpeaker;
+            out.push_back(r);
+            rows.push_back({ GuideSession::ChatRows::Kind::kGame, "" });
+        }
+        {
+            xui::ChatRow r;
+            r.line1 = xui::CommonString(295, u"Xbox Live Party");
+            r.icon = "ico_64x_partyChannel.png";
+            if (channel == "party" && inParty)
+                r.smallIcon = kSpeaker;
+            out.push_back(r);
+            rows.push_back({ GuideSession::ChatRows::Kind::kParty, "" });
+        }
+        for (const live::Chat& c : live::Chats(user))
+        {
+            const auto others = ChatOthers(c, me);
+            const bool invited = std::any_of(c.invited.begin(), c.invited.end(), [me](const auto& m) { return m.xuid == me; });
+            const bool joined = std::any_of(c.members.begin(), c.members.end(), [me](const auto& m) { return m.xuid != me; });
+            xui::ChatRow r;
+            for (const live::ChatMember& m : others)
+                r.line1 += (r.line1.empty() ? u"" : u", ") + Gamertag(m.gamertag);
+            if (invited)
+            {
+                r.line2 = xui::ChatString(10, u"Wants to Chat");
+                r.icon = "ico_64x_voiceChatInvite.png";
+            }
+            else
+            {
+                r.line2 = !joined ? xui::ChatString(26, u"Invite sent")
+                          : channel == "chat:" + c.id ? xui::ChatString(23, u"Now chatting")
+                                                      : xui::ChatString(24, u"Away from chat");
+                r.icon = "ico_64x_quickchat.png";
+            }
+            if (channel == "chat:" + c.id)
+                r.smallIcon = kSpeaker;
+            if (!others.empty())
+                if (const auto profile = live::GetProfile(user, others.front().xuid))
+                    r.picture = profile->picture;
+            out.push_back(r);
+            rows.push_back({ GuideSession::ChatRows::Kind::kChat, c.id });
+        }
+        return out;
+    }
+
+    void GuideChat(const std::shared_ptr<GuideSession>& g, uint32_t focus)
+    {
+        g->mode = GuideSession::Mode::kChat;
+        xui::ShowChatList(ChatRowsFor(g), focus);
+    }
+
+    // The channel the user's voice goes to (and comes from): the party, a private chat, or the game's own chat
+    // (the server's voice off: the title's voice chat has the headset, Party Options' Game Chat).
+    void GuideSetChannel(const std::shared_ptr<GuideSession>& g, const std::string& channel)
+    {
+        if (const auto error = live::SetVoiceChannel(g->user, channel))
+            Log("System UI: Chat: voice channel {}: {}", channel, *error);
+        live::voice::SetGameChat(channel == "game");
+        Log("System UI: Chat: the voice channel is {}", channel);
+    }
+
+    // QuickChatOptionsScene: Join Chat (an invitation, or a chat whose channel is not the active one), End Chat
+    // (string 6; declines an invitation), Page Gamer (16: the invitation sent again to a player who has not joined),
+    // View Profile; the other player's gamercard.
+    void GuideChatOptions(const std::shared_ptr<GuideSession>& g, const std::string& id, uint32_t focus)
+    {
+        const uint32_t user = g->user;
+        const uint64_t me = OwnOnlineXuid(user);
+        const auto chats = live::Chats(user);
+        const auto c = std::find_if(chats.begin(), chats.end(), [&](const live::Chat& x) { return x.id == id; });
+        if (c == chats.end())
+            return GuideChat(g);
+        g->mode = GuideSession::Mode::kChatOptions;
+        g->chat.options = id;
+        const auto others = ChatOthers(*c, me);
+        g->chat.optionsPlayer = others.empty() ? 0 : others.front().xuid;
+        const bool invited = std::any_of(c->invited.begin(), c->invited.end(), [me](const auto& m) { return m.xuid == me; });
+        const bool pending = std::any_of(c->invited.begin(), c->invited.end(), [me](const auto& m) { return m.xuid != me; });
+        const bool enabled[4] = { invited || live::VoiceChannel(user) != "chat:" + id, true, !invited && pending,
+                                  g->chat.optionsPlayer != 0 };
+        xui::GamerCardInfo card = g->chat.optionsPlayer ? PlayerCard(user, g->chat.optionsPlayer,
+                                                                     others.front().gamertag)
+                                                        : xui::GamerCardInfo{};
+        xui::ShowChatOptions(card, enabled, focus);
+    }
+
+    void GuideChatOption(const std::shared_ptr<GuideSession>& g, uint32_t index)
+    {
+        const uint32_t user = g->user;
+        const std::string id = g->chat.options;
+        const uint64_t player = g->chat.optionsPlayer;
+        const uint64_t me = OwnOnlineXuid(user);
+        const auto chats = live::Chats(user);
+        const auto c = std::find_if(chats.begin(), chats.end(), [&](const live::Chat& x) { return x.id == id; });
+        const bool invited = c != chats.end() &&
+            std::any_of(c->invited.begin(), c->invited.end(), [me](const auto& m) { return m.xuid == me; });
+        switch (index)
+        {
+        case 0: // Join Chat
+            if (invited)
+                if (const auto error = live::JoinChat(user, id))
+                    return GuideCommunityResult(g, xui::ChatString(11, u"Join Chat"), error, u"");
+            GuideSetChannel(g, "chat:" + id);
+            return GuideChat(g);
+        case 1: // End Chat
+            if (const auto error = live::LeaveChat(user, id))
+                return GuideCommunityResult(g, xui::ChatString(6, u"End Chat"), error, u"");
+            live::voice::SetGameChat(live::VoiceChannel(user) == "game");
+            return GuideChat(g);
+        case 2: // Page Gamer
+            if (const auto error = live::InviteToChat(user, player, id))
+                return GuideCommunityResult(g, xui::ChatString(16, u"Page Gamer"), error, u"");
+            return GuideChat(g);
+        case 3: // View Profile
+            g->profileFromCommunity = false;
+            return GuideProfile(g, player, 0);
+        }
+    }
+
     // ---- Beacons & Activity (Guide.Beacons.xex: its Lua RootScene, MyBeacons, MyRecentGames, WhatsHot,
     // TitlePicker, GameDetails, SetBeacon; strings its Strings.xus) ----
 
@@ -3084,9 +3346,19 @@ namespace
                     gm.playing.push_back(f.xuid);
             }
         };
-        if (auto titles = live::Titles(user, myXuid))
         {
-            std::vector<live::TitlePlayed> list = *titles;
+            std::vector<live::TitlePlayed> list;
+            if (auto titles = live::Titles(user, myXuid))
+                list = *titles;
+            // The profile's own played titles (its GPD) the server has not heard of.
+            for (const host::PlayedTitle& t : host::PlayedTitles(user))
+                if (std::none_of(list.begin(), list.end(), [&](const auto& x) { return x.titleId == t.titleId; }))
+                    list.push_back({ t.titleId, Utf8(t.name), 0, 0, 0, 0, 0 });
+            // The game running now is one the user is playing (the console's profile has it as played from its
+            // launch; this runtime's server record may not have it yet).
+            if (const uint32_t running = RunningTitle(); running && (running >> 16) != 0xFFFE &&
+                std::none_of(list.begin(), list.end(), [running](const auto& t) { return t.titleId == running; }))
+                list.insert(list.begin(), { running, Utf8(host::TitleName()), 0, 0, 0, 0, int64_t(std::time(nullptr)) });
             std::erase_if(list, [](const live::TitlePlayed& t) { return (t.titleId >> 16) == 0xFFFE || !t.titleId; });
             std::stable_sort(list.begin(), list.end(),
                              [](const auto& a, const auto& b) { return a.lastPlayed > b.lastPlayed; });
@@ -3114,6 +3386,8 @@ namespace
         if (data.friendsGames.size() > 10)
             data.friendsGames.resize(10);
         data.loaded = true;
+        Log("System UI: Beacons: {} beacons, {} of the user's games, {} friends' games ({} friends)", data.mine.size(),
+            data.myGames.size(), data.friendsGames.size(), data.friends.size());
         std::lock_guard lock(g->mutex);
         data.scene = g->beacons.scene;
         data.tab = g->beacons.tab;
@@ -4478,6 +4752,8 @@ void guide::LiveChanged(uint32_t user)
             GuideRefresh(open);
         else if (open->mode == GuideSession::Mode::kCommunity)
             GuideCommunity(open, open->tab, xui::PaneFocus());
+        else if (open->mode == GuideSession::Mode::kChat)
+            xui::UpdateChatList(ChatRowsFor(open));
     }).detach();
 }
 

@@ -8,12 +8,30 @@
 #include "memory.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <optional>
 
 namespace
 {
     constexpr uint32_t kPartyNotInParty = 0x807D0003; // X_PARTY_E_NOT_IN_PARTY
+    constexpr uint32_t kInvalidArg = 0x80070057;      // E_INVALIDARG
+
+    // The XPARTY_CUSTOM_DATA (16 bytes, kept as the title wrote it) each signed-in user set with XamPartySetCustomData,
+    // by online XUID: XPARTY_USER_INFO.CustomData of the user's own entry in XamPartyGetUserList. Our LIVE server does
+    // not carry it to the other members, so theirs stay zero.
+    std::mutex g_customMutex;
+    std::map<uint64_t, std::array<uint8_t, 16>> g_customData;
+
+    std::optional<live::Party> PartyOfAny()
+    {
+        for (uint32_t user = 0; user < 4; user++)
+            if (auto party = live::CurrentParty(user))
+                return party;
+        return std::nullopt;
+    }
 }
 
 // HRESULT XamPartyGetUserList(DWORD Unknown, PXPARTY_USER_LIST UserList) (XPartyGetUserList): the console's party on our
@@ -37,6 +55,11 @@ GUEST_EXPORT("xam.xex", 2815, XamPartyGetUserList)
         party = live::CurrentParty(user);
     if (!party || list == 0)
     {
+        if (!party)
+        {
+            std::lock_guard lock(g_customMutex);
+            g_customData.clear(); // the custom data goes with the membership
+        }
         ctx.r3.u64 = kPartyNotInParty;
         return;
     }
@@ -63,9 +86,86 @@ GUEST_EXPORT("xam.xex", 2815, XamPartyGetUserList)
         mem.Write32(at + 0x24, flags);
         if (m.titleId == kernel::TitleId())
             mem.Write64(at + 0x28, m.sessionId);
+        {
+            std::lock_guard lock(g_customMutex);
+            if (const auto custom = g_customData.find(m.xuid); custom != g_customData.end())
+                std::memcpy(mem.Translate(at + 0x68), custom->second.data(), 16);
+        }
         count++;
     }
     mem.Write32(list, count);
+    ctx.r3.u64 = 0;
+}
+
+// HRESULT XamPartySetCustomData(DWORD Caller, DWORD UserIndex, const XPARTY_CUSTOM_DATA* Data) (ordinal 2827; XAM
+// 0x816AFD28: XMsgInProcessCall(0xF4, 0x500003, {a1, a2, a3}, 0); the party service's own handler answers and is not in
+// the references, so the argument order is Xenia's, read from titles' calls): sets the user's 16 bytes of custom data
+// that the party's members see in XamPartyGetUserList (XPARTY_CUSTOM_DATA, two big-endian 64-bit values). A title that
+// passes (user, data) without the first argument is told apart by its second argument being a pointer. Only a
+// user in a party has data to set: X_PARTY_E_NOT_IN_PARTY (0x807D0003, Xenia's xnet.h, the one party error the
+// references name) otherwise, also for a user who is not signed in; a user index from 4 or no data is E_INVALIDARG.
+// Kept here and shown in the user's own XamPartyGetUserList entry only. The three arguments are logged once, as the
+// first one's meaning is not documented.
+GUEST_EXPORT("xam.xex", 2827, XamPartySetCustomData)
+{
+    auto& mem = guest::g_memory;
+    static bool logged = false;
+    if (!logged)
+    {
+        logged = true;
+        Log("XamPartySetCustomData arguments = {:08X} {:08X} {:08X}", ctx.r3.u32, ctx.r4.u32, ctx.r5.u32);
+    }
+    uint32_t user = ctx.r4.u32, data = ctx.r5.u32;
+    if (user >= 0x1000 && ctx.r3.u32 < 4)
+    {
+        user = ctx.r3.u32;
+        data = ctx.r4.u32;
+    }
+    if (user > 3 || data == 0)
+    {
+        ctx.r3.u64 = kInvalidArg;
+        return;
+    }
+    const auto profile = kernel::users::SignedIn(user);
+    if (!profile || !live::CurrentParty(user))
+    {
+        if (profile)
+        {
+            std::lock_guard lock(g_customMutex);
+            g_customData.erase(profile->onlineXuid);
+        }
+        ctx.r3.u64 = kPartyNotInParty;
+        return;
+    }
+    std::array<uint8_t, 16> custom;
+    std::memcpy(custom.data(), mem.Translate(data), 16);
+    {
+        std::lock_guard lock(g_customMutex);
+        g_customData[profile->onlineXuid] = custom;
+    }
+    ctx.r3.u64 = 0;
+}
+
+// HRESULT XamPartyGetBandwidth(DWORD Type, ULONGLONG* Statistic) (ordinal 2832; XAM 0x816AFD68: XMsgInProcessCall(0xF4,
+// 0x500004, {a1, a2}, 0), answered by the party service; the signature is Xenia's): a statistic of the party's network
+// traffic. Without a party X_PARTY_E_NOT_IN_PARTY; no pointer E_INVALIDARG. In a party the statistic is 0: party chat
+// here is carried by our LIVE server, whose traffic the runtime does not count (XAM's own counters, 0x81AA07F0, are
+// the party service's). The type is only logged.
+GUEST_EXPORT("xam.xex", 2832, XamPartyGetBandwidth)
+{
+    const uint32_t type = ctx.r3.u32, statistic = ctx.r4.u32;
+    if (statistic == 0)
+    {
+        ctx.r3.u64 = kInvalidArg;
+        return;
+    }
+    if (!PartyOfAny())
+    {
+        ctx.r3.u64 = kPartyNotInParty;
+        return;
+    }
+    Log("XamPartyGetBandwidth(type {}): 0 (not counted)", type);
+    guest::g_memory.Write64(statistic, 0);
     ctx.r3.u64 = 0;
 }
 

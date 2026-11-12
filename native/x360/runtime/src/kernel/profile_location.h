@@ -10,6 +10,12 @@
 // A profile on a USB stick stays a profile, as on the console: it is listed, signed in and stored to there.
 namespace kernel::profile_location
 {
+    // Started by Native Dashboard (NATIVE_DASH_PROFILES: its profile folder, <XUID>/FFFE07D1/00010000/<XUID>/ as
+    // here): the console's profiles are the dashboard's, one store as on the console, so what a title writes (its
+    // GPD, achievements, the gamer picture) is there when the dashboard comes back. They count as the hard drive's.
+    // Empty when this title runs on its own.
+    std::filesystem::path HostProfiles();
+
     struct Location
     {
         uint32_t device = 0;           // 0: nowhere yet (a new profile goes to the hard drive)

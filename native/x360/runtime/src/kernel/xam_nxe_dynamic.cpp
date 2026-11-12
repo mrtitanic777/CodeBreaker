@@ -12,6 +12,15 @@ PPC_FUNC(__imp__XamGetOnlineCountryString);
 PPC_FUNC(__imp__XamAvatarShutdown);
 PPC_FUNC(__imp__XamAvatarManifestGetBodyType);
 
+// Ordinals 1492 and 1536 sit among the avatar ordinals but are not exports of XAM 17559: its export table leaves both
+// empty (the owner's decompilation of xam.xex, xam/reference/_exports.txt, gives them the image base) and none of the
+// dashboards checked (7258, 7357, 8495, 9199) imports or binds them: 7357's only "li r4,1492" and "li r4,1536" are
+// allocation sizes, its lookups are 1500-1521 and 1566. Xenia's tables do not name them either. A lookup is answered "not found", as for any empty slot (kernel::IsAbsentXamExport).
+bool kernel::IsAbsentXamExport(uint16_t ordinal)
+{
+    return ordinal == 1492 || ordinal == 1536;
+}
+
 namespace
 {
     kernel::DynamicExportRegistrar g_1413("xam.xex", 1413, __imp__XamGetOnlineCountryString);
@@ -19,23 +28,3 @@ namespace
     kernel::DynamicExportRegistrar g_1521("xam.xex", 1521, __imp__XamAvatarManifestGetBodyType);
 }
 
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1492, xam_Ordinal_1492)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1502, XamAvatarGetManifestLocalUser)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1503, XamAvatarGetManifestsByXuid)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1504, XamAvatarGetAssetsResultSize)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1505, XamAvatarGetAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1506, XamAvatarGenerateMipMaps)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1508, XamAvatarSetManifest) // 7258 binds it
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1509, xam_Ordinal_1509)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1510, xam_Ordinal_1510)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1511, XamAvatarLoadAnimation)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1512, XamAvatarBeginEnumAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1513, XamAvatarEndEnumAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1514, XamAvatarEnumAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1515, XamAvatarGetMetadataRandom)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1516, xam_Ordinal_1516)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1517, xam_Ordinal_1517)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1518, XamAvatarGetMetadataSignedOutProfileCount)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1519, XamAvatarGetMetadataSignedOutProfile)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1536, xam_Ordinal_1536)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1566, XamUserLockLogonPreviewMode)

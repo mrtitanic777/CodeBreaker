@@ -2243,3 +2243,14 @@ GUEST_IMPORT(XamContentMoveInternal)
 {
     ContentCopyMove(ctx, true);
 }
+
+// XAM exports both under ordinals 625 and 633 (the dash imports them; a title may look them up with
+// XexGetProcedureAddress): the same functions, the dynamic lookup binds the imports above.
+PPC_FUNC(__imp__XamContentCreateInternal);
+PPC_FUNC(__imp__XamContentAggregateCreateEnumerator);
+
+namespace
+{
+    kernel::DynamicExportRegistrar g_contentCreateInternal("xam.xex", 625, __imp__XamContentCreateInternal);
+    kernel::DynamicExportRegistrar g_contentAggregateCreateEnumerator("xam.xex", 633, __imp__XamContentAggregateCreateEnumerator);
+}

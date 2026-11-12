@@ -4,9 +4,14 @@
 // through the dynamic-export range. Each check logs one line; the process exits with the number of failures.
 
 #include "kernel/objects.h"
+#include "kernel/profile_store.h"
+#include "kernel/users.h"
+#include "kernel/xam_avatar.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <format>
 #include <string>
@@ -61,6 +66,23 @@ PPC_EXTERN_FUNC(__imp__XamGetLanguageLocaleString);
 PPC_EXTERN_FUNC(__imp__XamGetOnlineCountryFromLocale);
 PPC_EXTERN_FUNC(__imp__XamGetOnlineLanguageAndCountryString);
 PPC_EXTERN_FUNC(__imp__XamGetLocaleString);
+PPC_EXTERN_FUNC(__imp__XamAvatarGetManifestLocalUser);
+PPC_EXTERN_FUNC(__imp__XamAvatarGetManifestsByXuid);
+PPC_EXTERN_FUNC(__imp__XamAvatarGetAssetsResultSize);
+PPC_EXTERN_FUNC(__imp__XamAvatarGetAssets);
+PPC_EXTERN_FUNC(__imp__XamAvatarGenerateMipMaps);
+PPC_EXTERN_FUNC(__imp__XamAvatarSetManifest);
+PPC_EXTERN_FUNC(__imp__xam_Ordinal_1509);
+PPC_EXTERN_FUNC(__imp__xam_Ordinal_1510);
+PPC_EXTERN_FUNC(__imp__XamAvatarLoadAnimation);
+PPC_EXTERN_FUNC(__imp__XamAvatarBeginEnumAssets);
+PPC_EXTERN_FUNC(__imp__XamAvatarEndEnumAssets);
+PPC_EXTERN_FUNC(__imp__XamAvatarEnumAssets);
+PPC_EXTERN_FUNC(__imp__XamAvatarGetMetadataRandom);
+PPC_EXTERN_FUNC(__imp__xam_Ordinal_1516);
+PPC_EXTERN_FUNC(__imp__xam_Ordinal_1517);
+PPC_EXTERN_FUNC(__imp__XamAvatarGetMetadataSignedOutProfileCount);
+PPC_EXTERN_FUNC(__imp__XamAvatarGetMetadataSignedOutProfile);
 
 namespace
 {
@@ -150,6 +172,189 @@ namespace
         const uint32_t p = Alloc(8);
         guest::g_memory.Write64(p, uint64_t(-ms * 10000));
         return p;
+    }
+
+    // ---- The avatar calls without an avatar system (kernel/xam_avatar.cpp) ----
+    // Reads the console's profiles (kernel/users.h) and compares with them. With CB_KERNEL_TEST_WRITES=1 it also saves a
+    // manifest in the profile signed in to user 0 (the run's data folder gets that GPD change, so use a scratch one).
+    void AvatarTests(Runner& t)
+    {
+        auto& mem = guest::g_memory;
+        constexpr uint32_t kIoPending = 0x3E5, kFailed = 0x65B, kNotFound = 0x80070002, kInvalidArg = 0x80070057,
+            kNoSuchUser = 0x80070525, kNoAvatar = 0x80990001, kNoMore = 0x80070012, kNotImpl = 0x80004001;
+        const uint32_t ov = Alloc(0x1C), meta = Alloc(1000 * 4), results = Alloc(64), xuids = Alloc(128), out = Alloc(16);
+        auto fill = [&](uint32_t address, uint32_t size, uint8_t value) { std::memset(mem.Translate(address), value, size); };
+        auto allBytes = [&](uint32_t address, uint32_t size, uint8_t value) {
+            const uint8_t* p = mem.Translate(address);
+            return std::all_of(p, p + size, [&](uint8_t b) { return b == value; });
+        };
+        // An overlapped call: the call returned ERROR_IO_PENDING and the structure holds ERROR_FUNCTION_FAILED (or 0)
+        // and the HRESULT. The structure is cleared first so a stale completion cannot pass.
+        auto asynchronous = [&](uint32_t pending, uint32_t hr) {
+            return pending == kIoPending && mem.Read32(ov) == (int32_t(hr) < 0 ? kFailed : 0) && mem.Read32(ov + 0x18) == hr;
+        };
+        auto clear = [&] { fill(ov, 0x1C, 0); mem.Write32(ov, 0x55555555); mem.Write32(ov + 0x18, 0x55555555); };
+
+        // A title that looks the exports up at run time (XexGetProcedureAddress) gets each of them.
+        bool bound = true;
+        for (uint16_t ordinal : { 1502, 1503, 1504, 1505, 1506, 1508, 1509, 1510, 1511, 1512, 1513, 1514, 1515, 1516, 1517, 1518, 1519 })
+            bound = bound && kernel::BindDynamicExport("xam.xex", ordinal) != 0;
+        t.Check(bound, "xam.xex ordinals 1502 ... 1519 (but 1507) resolve by ordinal");
+
+        // The four placeholder ordinals (XAM's shared stub 0x818C18F8): E_NOTIMPL.
+        t.Check(t.Call(__imp__xam_Ordinal_1509, { 1, 2, 3, 4 }) == kNotImpl && t.Call(__imp__xam_Ordinal_1510, { 1, 2, 3, 4 }) == kNotImpl &&
+                    t.Call(__imp__xam_Ordinal_1516, { 1, 2, 3, 4 }) == kNotImpl && t.Call(__imp__xam_Ordinal_1517, { 1, 2, 3, 4 }) == kNotImpl,
+                "xam ordinals 1509, 1510, 1516, 1517: E_NOTIMPL");
+
+        // Assets: not found, synchronously and through the overlapped; the sizes come back 0.
+        fill(out, 8, 0xFF);
+        t.Check(t.Call(__imp__XamAvatarGetAssetsResultSize, { 0x1FFF, out, out + 4 }) == kNotFound &&
+                    mem.Read32(out) == 0 && mem.Read32(out + 4) == 0,
+                "XamAvatarGetAssetsResultSize: not found, both sizes 0");
+        t.Check(t.Call(__imp__XamAvatarGetAssets, { meta, 0x1FFF, 0, 0x1000, out, 0 }) == kNotFound,
+                "XamAvatarGetAssets (synchronous): not found");
+        clear();
+        t.Check(asynchronous(t.Call(__imp__XamAvatarGetAssets, { meta, 0x1FFF, 0, 0x1000, out, ov }), kNotFound),
+                "XamAvatarGetAssets (overlapped, the sixth argument): ERROR_IO_PENDING, completed 0x65B / not found");
+        t.Check(t.Call(__imp__XamAvatarGenerateMipMaps, { meta, 0, 0x1000, out, 0 }) == kNotFound &&
+                    (clear(), asynchronous(t.Call(__imp__XamAvatarGenerateMipMaps, { meta, 0, 0x1000, out, ov }), kNotFound)),
+                "XamAvatarGenerateMipMaps: not found, both ways");
+        t.Check(t.Call(__imp__XamAvatarLoadAnimation, { meta, 0, 0, 0 }) == kNotFound &&
+                    (clear(), asynchronous(t.Call(__imp__XamAvatarLoadAnimation, { meta, 0, 0, ov }), kNotFound)),
+                "XamAvatarLoadAnimation: not found, both ways");
+
+        // Enumerators: open, nothing in them, end.
+        mem.Write32(out, 0x32);
+        fill(meta, 1000, 0xAA);
+        t.Check(t.Call(__imp__XamAvatarBeginEnumAssets, { 0, 0x32, 0x1FFFFFF, 1, 1, 0 }) == 0 &&
+                    t.Call(__imp__XamAvatarEnumAssets, { meta, out, 0 }) == 0 && mem.Read32(out) == 0 && allBytes(meta, 1000, 0xAA) &&
+                    t.Call(__imp__XamAvatarEndEnumAssets, { 0 }) == 0,
+                "XamAvatarBeginEnumAssets / EnumAssets / EndEnumAssets: S_OK, *Count 0, buffer untouched");
+        mem.Write32(out, 0x32);
+        clear();
+        const bool begun = asynchronous(t.Call(__imp__XamAvatarBeginEnumAssets, { 0, 0x32, 0x1FFFFFF, 1, 1, ov }), 0);
+        clear();
+        const bool listed = asynchronous(t.Call(__imp__XamAvatarEnumAssets, { meta, out, ov }), 0) && mem.Read32(out) == 0;
+        clear();
+        t.Check(begun && listed && asynchronous(t.Call(__imp__XamAvatarEndEnumAssets, { ov }), 0),
+                "the enumerator through an overlapped: each call completed with 0");
+
+        // Random avatars: empty manifests, not found; an absurd count is refused.
+        fill(meta, 4000, 0xAA);
+        t.Check(t.Call(__imp__XamAvatarGetMetadataRandom, { 3, 3, meta, 0 }) == kNotFound && allBytes(meta, 3000, 0) &&
+                    allBytes(meta + 3000, 1000, 0xAA),
+                "XamAvatarGetMetadataRandom: 3 manifests zeroed (the next 1000 bytes left alone), not found");
+        clear();
+        t.Check(t.Call(__imp__XamAvatarGetMetadataRandom, { 3, 5000, meta, 0 }) == kInvalidArg &&
+                    asynchronous(t.Call(__imp__XamAvatarGetMetadataRandom, { 3, 1, meta, ov }), kNotFound),
+                "XamAvatarGetMetadataRandom: 5000 is E_INVALIDARG; one through an overlapped: not found");
+
+        // The local user: argument errors, nobody signed in at user 3 (when it is so), and the profile's manifest.
+        t.Check(t.Call(__imp__XamAvatarGetManifestLocalUser, { 4, meta, 0 }) == kInvalidArg &&
+                    t.Call(__imp__XamAvatarGetManifestLocalUser, { 0, 0, 0 }) == kInvalidArg,
+                "XamAvatarGetManifestLocalUser: user 4 or no buffer is E_INVALIDARG");
+        if (!kernel::users::SignedIn(3))
+        {
+            clear();
+            t.Check(t.Call(__imp__XamAvatarGetManifestLocalUser, { 3, meta, 0 }) == kNoSuchUser &&
+                        asynchronous(t.Call(__imp__XamAvatarGetManifestLocalUser, { 3, meta, ov }), kNoSuchUser),
+                    "XamAvatarGetManifestLocalUser: nobody signed in at user 3: ERROR_NO_SUCH_USER, both ways");
+        }
+        const char* writes = std::getenv("CB_KERNEL_TEST_WRITES");
+        const bool writable = writes && writes[0] == '1';
+        // A test that may change the data folder also signs the first profile in (the sign-ins are this process's only).
+        if (writable && !kernel::users::SignedIn(0) && !kernel::users::Profiles().empty())
+            kernel::users::SignIn(0, 0);
+        const auto user0 = kernel::users::SignedIn(0);
+        if (!user0)
+            Log("Kernel test: nobody is signed in to user 0: the local manifest checks are skipped");
+        else
+        {
+            const auto stored = kernel::profile::ReadSetting(user0->xuid, 0xFFFE07D1, 0x63E80044);
+            const bool has = stored && stored->extended.size() >= 1000;
+            fill(meta, 1000, 0xAA);
+            const uint32_t sync = t.Call(__imp__XamAvatarGetManifestLocalUser, { 0, meta, 0 });
+            t.Check(has ? sync == 0 && std::memcmp(mem.Translate(meta), stored->extended.data(), 1000) == 0
+                        : sync == kNoAvatar && allBytes(meta, 1000, 0),
+                    has ? "XamAvatarGetManifestLocalUser: the signed-in profile's stored manifest, S_OK"
+                        : "XamAvatarGetManifestLocalUser: a profile without an avatar: zeroed bytes and 0x80990001");
+            fill(meta, 1000, 0xAA);
+            clear();
+            t.Check(asynchronous(t.Call(__imp__XamAvatarGetManifestLocalUser, { 0, meta, ov }), has ? 0 : kNoAvatar),
+                    "XamAvatarGetManifestLocalUser through an overlapped: completes the same");
+
+            // ByXuid's core (the import itself needs the executable's privilege 0x1D, which a test run does not have):
+            // the signed-in profile, then strangers (a remote XUID, zero) come back empty with 0x80990001.
+            mem.Write64(xuids, user0->xuid);
+            mem.Write64(xuids + 8, 0x0009000012345678ull); // an Xbox LIVE XUID no local profile has
+            mem.Write64(xuids + 16, 0);
+            fill(meta, 3000, 0xAA);
+            fill(results, 12, 0xFF);
+            t.Check(kernel::avatar::ManifestsByXuid(3, xuids, results, meta) == 0 &&
+                        mem.Read32(results) == (has ? 0 : kNoAvatar) && mem.Read32(results + 4) == kNoAvatar &&
+                        mem.Read32(results + 8) == kNoAvatar && allBytes(meta + 1000, 2000, 0) &&
+                        (has ? std::memcmp(mem.Translate(meta), stored->extended.data(), 1000) == 0 : allBytes(meta, 1000, 0)),
+                    "XamAvatarGetManifestsByXuid: a local profile gives its manifest, other players come back empty and not found");
+            t.Check(kernel::avatar::ManifestsByXuid(0, xuids, results, meta) == kInvalidArg &&
+                        kernel::avatar::ManifestsByXuid(17, xuids, results, meta) == kInvalidArg &&
+                        kernel::avatar::ManifestsByXuid(1, 0, results, meta) == kInvalidArg,
+                    "XamAvatarGetManifestsByXuid: a count of 0 or 17 and a null array are E_INVALIDARG");
+            clear();
+            t.Check(t.Call(__imp__XamAvatarGetManifestsByXuid, { 0, 1, xuids, results, meta, ov }) == 0 && mem.Read32(ov) == 0x55555555,
+                    "XamAvatarGetManifestsByXuid without the privilege: nothing done, 0, the overlapped untouched (as XAM)");
+
+            if (writable)
+            {
+                // SetManifest, then the manifest reads back from the profile (and the profile's GPD holds it).
+                for (uint32_t i = 0; i < 1000; i++)
+                    mem.Write8(meta + i, uint8_t(i * 7 + 1));
+                t.Check(t.Call(__imp__XamAvatarSetManifest, { 0, meta, 0 }) == 0, "XamAvatarSetManifest: S_OK");
+                fill(meta + 1000, 1000, 0xAA);
+                t.Check(t.Call(__imp__XamAvatarGetManifestLocalUser, { 0, meta + 1000, 0 }) == 0 &&
+                            std::memcmp(mem.Translate(meta), mem.Translate(meta + 1000), 1000) == 0,
+                        "XamAvatarGetManifestLocalUser reads back what XamAvatarSetManifest stored");
+                clear();
+                t.Check(asynchronous(t.Call(__imp__XamAvatarSetManifest, { 0, meta, ov }), 0) &&
+                            t.Call(__imp__XamAvatarSetManifest, { 9, meta, 0 }) == kInvalidArg &&
+                            (kernel::users::SignedIn(3) || t.Call(__imp__XamAvatarSetManifest, { 3, meta, 0 }) == kNoSuchUser),
+                        "XamAvatarSetManifest: through an overlapped; user 9 E_INVALIDARG, nobody at user 3 ERROR_NO_SUCH_USER");
+                // ByXuid now finds the manifest too.
+                fill(meta + 1000, 1000, 0xAA);
+                mem.Write64(xuids, user0->xuid);
+                t.Check(kernel::avatar::ManifestsByXuid(1, xuids, results, meta + 1000) == 0 && mem.Read32(results) == 0 &&
+                            std::memcmp(mem.Translate(meta), mem.Translate(meta + 1000), 1000) == 0,
+                        "XamAvatarGetManifestsByXuid: the manifest just saved");
+            }
+        }
+
+        // Signed-out profiles: the count is the profiles nobody is signed in with; each index gives a manifest or the
+        // no-avatar result, an index past the end 0x80070012.
+        uint32_t expected = 0;
+        for (const auto& profile : kernel::users::Profiles())
+            expected += !kernel::users::UserOfXuid(profile.xuid);
+        mem.Write32(out, 0xFFFF);
+        t.Check(t.Call(__imp__XamAvatarGetMetadataSignedOutProfileCount, { out, 0 }) == 0 && mem.Read32(out) == expected,
+                std::format("XamAvatarGetMetadataSignedOutProfileCount: {} signed-out profiles", expected));
+        mem.Write32(out, 0xFFFF);
+        clear();
+        t.Check(asynchronous(t.Call(__imp__XamAvatarGetMetadataSignedOutProfileCount, { out, ov }), 0) && mem.Read32(out) == expected &&
+                    t.Call(__imp__XamAvatarGetMetadataSignedOutProfileCount, { 0, 0 }) == kInvalidArg,
+                "XamAvatarGetMetadataSignedOutProfileCount: through an overlapped; no pointer is E_INVALIDARG");
+        bool consistent = true;
+        for (uint32_t i = 0; i < expected; i++)
+        {
+            fill(meta, 1000, 0xAA);
+            const uint32_t hr = t.Call(__imp__XamAvatarGetMetadataSignedOutProfile, { i, meta, 0 });
+            consistent = consistent && (hr == 0 || (hr == kNoAvatar && allBytes(meta, 1000, 0)));
+        }
+        fill(meta, 1000, 0xAA);
+        const bool pastEnd = t.Call(__imp__XamAvatarGetMetadataSignedOutProfile, { expected, meta, 0 }) == kNoMore &&
+                allBytes(meta, 1000, 0xAA);
+        clear();
+        t.Check(consistent && pastEnd &&
+                    asynchronous(t.Call(__imp__XamAvatarGetMetadataSignedOutProfile, { expected, meta, ov }), kNoMore) &&
+                    t.Call(__imp__XamAvatarGetMetadataSignedOutProfile, { 0, 0, 0 }) == kInvalidArg,
+                "XamAvatarGetMetadataSignedOutProfile: each index S_OK or no-avatar (zeroed), past the count 0x80070012, no buffer E_INVALIDARG");
     }
 
     int Run(PPCContext& ctx, uint8_t* base)
@@ -383,6 +588,8 @@ namespace
                 "NtDeleteFile on the read-only flash: access denied");
         t.Check(t.Call(__imp__NtDeleteFile, { attributes("\\SystemRoot\\no_such_file.bin") }) == 0xC0000034,
                 "NtDeleteFile of a missing file: not found");
+
+        AvatarTests(t);
 
         // ---- XAM strings from xam.xex's tables ----
         auto wideAt = [&](uint32_t p) {

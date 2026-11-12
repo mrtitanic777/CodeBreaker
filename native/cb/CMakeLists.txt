@@ -130,7 +130,6 @@ cb_apply_flags(cb_worker_probe)
 target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 
 cb_area(verify)
-target_link_libraries(cb_verify PUBLIC cb_core)
 
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core)
@@ -270,6 +269,14 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/data.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"   # (the native_win16 shim)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"   # (the compare shim)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"   # (the compare and concolic shims)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/isolated16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
@@ -278,7 +285,9 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

@@ -10,11 +10,9 @@
 //       others   (op, bits, sub-expressions...)    -> args
 //   An Expr is shared and never changed; "is" (the identity the folding and the memos rely on) is pointer equality of
 //   the ExprP. A constant's value is an int64_t holding the bit pattern (a 64-bit constant of 2**63 or more is
-//   negative here). z3's main context (z3_of's ctx=None) is main_context().
+//   negative here). 
 //
-// COMPAT(py): z3_of below builds the old consumers' z3++ terms (their solver contexts are z3++ contexts of the old
-// build, which cb::z3's context cannot hand over); the same lowering is cb::emulate::symbolic::Z3Terms. Remove with
-// verify/concolic.
+// (The solver terms are cb::emulate::symbolic::Z3Terms; verify/concolic, their last old consumer, is refactored.)
 #pragma once
 
 #include <memory>
@@ -23,11 +21,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#if __has_include(<z3++.h>)
-#include <z3++.h>
-#define CB_SYMBOLIC_SHIM_Z3PP 1   // (the old build has z3++; a machine without it cannot build the old consumers anyway)
-#endif
 
 #include "cb/compat/py_bridge.hpp"
 #include "cb/emulate/symbolic.hpp"
@@ -216,89 +209,5 @@ inline py::set<py::str> inputs(const ExprP& e, InputsMemo& memo) {
     return out;
 }
 
-#ifdef CB_SYMBOLIC_SHIM_Z3PP
-// The memo of z3_of(): by identity, the expression and its term. One memo is for one context.
-using Z3Memo = std::unordered_map<const Expr*, std::pair<ExprP, z3::expr>>;
-// z3's main context (what the Python's ctx=None means)
-inline z3::context& main_context() {
-    static z3::context ctx;
-    return ctx;
-}
-// The z3 term of expression `e` (made once per node: `memo`, by identity), in z3 context `ctx`. Raises ValueError for
-// an op that is no expression.
-inline z3::expr z3_of(const ExprP& e, Z3Memo& memo, z3::context& ctx) {
-    auto got = memo.find(e.get());
-    if (got != memo.end()) return got->second.second;
-    namespace cbs = shim::cbs;
-    const auto op = cbs::op_from_text(e->op.utf8());
-    if (!op) throw py::ValueError(py::percent("no such expression: %r", e->op));
-    auto bv_val = [&](int64_t value, int64_t width) {
-        return ctx.bv_val(std::to_string(static_cast<uint64_t>(value)).c_str(), static_cast<unsigned>(width));
-    };
-    std::optional<z3::expr> t;
-    if (*op == cbs::Op::Var) {
-        t = ctx.bv_const(e->name->utf8().c_str(), static_cast<unsigned>(e->bits));
-    } else if (*op == cbs::Op::Const) {
-        t = bv_val(e->value, e->bits);
-    } else if (*op == cbs::Op::True) {
-        t = ctx.bool_val(true);
-    } else {
-        std::vector<z3::expr> args;
-        for (const ExprP& x : e->args) args.push_back(z3_of(x, memo, ctx));
-        // z3py's `a == b`, `a < b`, `a <= b` with a numeral on the right and a non-numeral on the left go to the
-        // numeral's own reflected method: the term is built as (= b a), (bvsgt b a), (bvsge b a). The same truth.
-        bool swapped = e->args.size() == 2 && e->args[1]->op == py::str("const") && e->args[0]->op != py::str("const");
-        switch (*op) {
-            case cbs::Op::Add: t = args[0] + args[1]; break;
-            case cbs::Op::Sub: t = args[0] - args[1]; break;
-            case cbs::Op::And: t = args[0] & args[1]; break;
-            case cbs::Op::Or: t = args[0] | args[1]; break;
-            case cbs::Op::Xor: t = args[0] ^ args[1]; break;
-            case cbs::Op::Mul: t = args[0] * args[1]; break;
-            case cbs::Op::UDiv: t = z3::udiv(args[0], args[1]); break;
-            case cbs::Op::URem: t = z3::urem(args[0], args[1]); break;
-            case cbs::Op::SDiv: t = args[0] / args[1]; break;   // (a / b on bit-vectors: signed division)
-            case cbs::Op::SRem: t = z3::srem(args[0], args[1]); break;
-            case cbs::Op::Shl: t = z3::shl(args[0], args[1]); break;
-            case cbs::Op::LShr: t = z3::lshr(args[0], args[1]); break;
-            case cbs::Op::AShr: t = z3::ashr(args[0], args[1]); break;
-            case cbs::Op::Neg: t = -args[0]; break;
-            case cbs::Op::Not: t = ~args[0]; break;
-            case cbs::Op::ZExt: t = z3::zext(args[0], static_cast<unsigned>(e->bits - e->args[0]->bits)); break;
-            case cbs::Op::SExt: t = z3::sext(args[0], static_cast<unsigned>(e->bits - e->args[0]->bits)); break;
-            case cbs::Op::Extract: t = args[0].extract(static_cast<unsigned>(e->lo + e->bits - 1), static_cast<unsigned>(e->lo)); break;
-            case cbs::Op::Concat: t = z3::concat(args[0], args[1]); break;
-            case cbs::Op::Ite: t = z3::ite(args[0], args[1], args[2]); break;
-            case cbs::Op::Bool: t = z3::ite(args[0], bv_val(1, 8), bv_val(0, 8)); break;
-            case cbs::Op::PopCount: {
-                z3::expr acc = bv_val(0, e->bits);
-                for (int64_t k = 0; k < e->args[0]->bits; ++k) {
-                    acc = acc + z3::zext(args[0].extract(static_cast<unsigned>(k), static_cast<unsigned>(k)), static_cast<unsigned>(e->bits - 1));
-                }
-                t = acc;
-                break;
-            }
-            case cbs::Op::Eq: t = swapped ? args[1] == args[0] : args[0] == args[1]; break;
-            case cbs::Op::ULt: t = z3::ult(args[0], args[1]); break;
-            case cbs::Op::ULe: t = z3::ule(args[0], args[1]); break;
-            case cbs::Op::SLt: t = swapped ? args[1] > args[0] : args[0] < args[1]; break;     // (< on bit-vectors: signed)
-            case cbs::Op::SLe: t = swapped ? args[1] >= args[0] : args[0] <= args[1]; break;
-            case cbs::Op::BNot: t = !args[0]; break;
-            case cbs::Op::BAnd: case cbs::Op::BOr: {
-                z3::expr_vector vec(ctx);
-                for (const z3::expr& x : args) vec.push_back(x);
-                t = *op == cbs::Op::BAnd ? z3::mk_and(vec) : z3::mk_or(vec);
-                break;
-            }
-            case cbs::Op::BXor: t = args[0] ^ args[1]; break;
-            case cbs::Op::Nz: t = args[0] != ctx.bv_val(0, static_cast<unsigned>(e->args[0]->bits)); break;
-            default: throw py::ValueError(py::percent("no such expression: %r", e->op));
-        }
-    }
-    memo.emplace(e.get(), std::make_pair(e, *t));   // (e kept: its address stays its own)
-    return *t;
-}
-inline z3::expr z3_of(const ExprP& e, Z3Memo& memo) { return z3_of(e, memo, main_context()); }
-#endif  // CB_SYMBOLIC_SHIM_Z3PP
 
 }  // namespace codebreaker::emulate::symbolic

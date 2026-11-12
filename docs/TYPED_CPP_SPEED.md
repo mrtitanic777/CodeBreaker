@@ -743,3 +743,45 @@ Old = the typed port on the py:: layer (exact/draft/shapes.cpp, py::re), new = c
 | the old harness: 853,952 pass runs (74 passes over 11,900 generated draft bodies of up to a few KB, results printed as JSON) | 30.2 s | 13.2 s (incl. JSON output and reading the 25 MB of cases) |
 
 The harness answers: 853,921 of the 853,952 results equal the Python module's (expected.txt: result, or its crc32 and length, and the tables the passes recorded); the other 31 are store_joins drafts on which the Python raised IndexError (fixed in the Python, which now answers as the C++ does).
+## formats/media and formats/pe_functions in native/cb/formats, 2026-11-11 (W1-B14)
+
+Old = the live implementation of the same algorithms (formats.dll: native/formats/media/media.cc and
+native/formats/win/pe_functions.cc, asked through native.call from Python; the typed ports ran this same code); new =
+cb::formats::media and cb::formats::pe_functions called directly. Each timing is the mean of 3-5 runs after a warm-up, on
+a machine running other builds. The old figures leave out opening the PE and the Python object work between calls, so the
+comparison favours the old side; the new figures include reading and parsing the file.
+
+| Work | old | new |
+|---|---|---|
+| kernel32.dll sweep + starts + extents (PeCarve) | 220 ms | 43 ms |
+| kernel32.dll function_spans | 77 ms | 33 ms |
+| gdi32.dll sweep (PeCarve / function_spans) | 67 / 30 ms | 14 / 13 ms |
+| user32.dll sweep (PeCarve / function_spans) | 8.5 / 5.2 ms | 3.2 / 2.2 ms |
+| kernel32.dll PeCarve + data_refs (every instruction decoded again) | 1,226 ms (Python) | 82 ms |
+| win95.iso volumes + file list (217 files) | 0.7 ms | 0.17 ms |
+| hd.img / floppy.img / parts.img volumes + list | 0.5 / 0.5 / 0.7 ms | 0.07 / 0.06 / 0.11 ms |
+| floppy.img, all 31 files read | 5.8 ms | 3.6 ms |
+| win95.iso, three files over 100 KB read | 3.3 ms | 1.3 ms |
+
+The sweep is faster because it steps through Capstone's iterator (one reused instruction record) instead of asking for an
+array of records per 64 KB window; the file readers keep the image open instead of opening it for every read.
+
+Answers: pe_functions -- funcs, call targets, starts, every decoded instruction with its operands (as Capstone gave them),
+resolved calls, calls_in, disasm_func, data_refs and function_spans on lz32, version, notepad, user32, kernel32 and gdi32
+equal the old harness's recorded values (60 checks), disasm_whole32 on its 11 blobs (noise included) at three bases (33
+checks), PeSeg of lz32 (rows, functions, names, relocation mask). media -- the volumes, boot facts, entries (with extents)
+and every file's bytes of 11 images (floppy, hard disk, partitioned disk, El Torito disc, raw 2352-byte discs, Windows 95
+Setup disc, a pre-DOS-2.0 floppy, two Windows 1.0 boot images), long and plain names, equal Python's line for line (966
+lines); put() on copies of three of them gives images byte for byte equal to Python's.
+
+## cb refactor W1-B2: verify/compare, verify/concolic, emulate/native_win16, analyze/globals, analyze/ppc_calls, analyze/image (2026-11-11)
+
+Old = the engine or typed port the new code replaces (same inputs, best of 3, shared machine, +-30%). These modules are small passes; the
+numbers that matter are that nothing got slower and that the recorder, the solver and the decoder (the real costs) are the same code.
+
+| What | Old | New |
+|---|---|---|
+| analyze/globals: cbanalyze.dll's globals.variables + globals.tables on one loaded module (lz32 / dpwsock / password.cpl / vswks / pa3dmxd.drv; the DLL's answer alone, JSON out, from Python) | 0.5 / 0.5 / 0.9 / 0.9 / 2.6 ms | not isolated: the golden test decodes, builds the call graph and the strings table and then runs the pass for all 15 modules in 1.5 s wall (0.19 s process start); the pass is the same loop over the same references without the JSON |
+| analyze/image: load_pe of 3 real PE modules, functions carved and discovered (formats::pe + Capstone) | not timed (the old loader needs the Python, formats.dll and the DLL) | 1.1 s for all three, decode included |
+| verify/concolic: the 17 explorer tests, each a real Z3 session (own context) | the z3++ binding over py:: lists | 1.8 s for 72 checks, 0.19 s of it process start |
+| emulate/native_win16: the recorder is the same tracer code (w16_rec.cpp); the 16 callback trampolines became one context callback (cbt_w16_set_context) | 16 fixed slots, each call through a closure | one indirect call per event |
