@@ -73,6 +73,7 @@ function(cb_area dir)
   set_property(GLOBAL APPEND PROPERTY CB_AREAS cb_${dir})
   get_property(all_tests GLOBAL PROPERTY CB_TEST_SOURCES)
   set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${all_tests} ${tests})
+  set_property(GLOBAL APPEND PROPERTY CB_AREA_TESTS_${dir} ${tests})   # for cb_tests_<area> (end of this file)
 endfunction()
 
 # CodeBreaker's one XEX reader (native/xex/reader.cmake: the parser, the basefile's decryption and decompression):
@@ -387,3 +388,26 @@ set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_S
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
+
+# cb_tests_<area>: one area's tests alone, built on request (tools\build_cb.cmd area <name>). A change to one area needs
+# only that area's library, what it links, and its own tests -- not every area's tests (40% of a full build) nor the
+# shim tests that compile the old py:: layer (24%). The merge check still builds and runs the whole cb_tests.
+get_property(CB_AREAS_FOR_AREA_TESTS GLOBAL PROPERTY CB_AREAS)
+foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
+  string(REGEX REPLACE "^cb_" "" area "${lib}")
+  get_property(area_tests GLOBAL PROPERTY CB_AREA_TESTS_${area})
+  list(FILTER area_tests EXCLUDE REGEX "shims")
+  if(NOT area_tests)
+    continue()
+  endif()
+  add_executable(cb_tests_${area} EXCLUDE_FROM_ALL core/testing_main.cpp ${area_tests} cb.manifest)
+  cb_apply_flags(cb_tests_${area})
+  target_compile_definitions(cb_tests_${area} PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
+  target_link_libraries(cb_tests_${area} PRIVATE ${lib} cb_core)
+  cb_copy_prebuilt_dlls(cb_tests_${area})
+  if(area STREQUAL "jobs")
+    add_dependencies(cb_tests_${area} cb_worker_probe)
+  elseif(area STREQUAL "verify")
+    add_dependencies(cb_tests_${area} cb_fake_qemu)
+  endif()
+endforeach()
