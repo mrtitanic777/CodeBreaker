@@ -279,7 +279,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_coverage.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3_staged.cpp"
@@ -348,7 +347,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b11.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
