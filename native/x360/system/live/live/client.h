@@ -303,6 +303,12 @@ namespace live
     bool Connect();
     // Keeps `user` offline (a runtime that could not even ask the server, e.g. no Xbox LIVE account made yet).
     void Hold(uint32_t user);
+    // The profile's online key (XAMACCOUNTINFO +0x68, 16 bytes), set before SignIn: our server's console accounts
+    // need a proof made with it at every sign-in (protocol "One account": console_proof). All zero: none sent.
+    void SetOnlineKey(uint32_t user, const std::array<uint8_t, 16>& key);
+    // console_proof (XboxLIVEServer docs/cpp_design.md "One account"): lower-case hex of
+    // HMAC-SHA256(HMAC-SHA256(onlineKey, "XLS-LINK-v1 key"), "XLS-LINK-v1 signin" 0x00 nonce XUID-as-16-upper-hex).
+    std::string ConsoleProof(const std::array<uint8_t, 16>& onlineKey, const std::array<uint8_t, 16>& nonce, uint64_t xuid);
     // Whether `user` is kept offline (see SignIn), and whether SignIn / Reconnect is signing them in now.
     bool Held(uint32_t user);
     bool SigningIn(uint32_t user);
