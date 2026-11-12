@@ -397,10 +397,10 @@ J int_lit(int64_t v, const str& jt) {
     uint64_t u = static_cast<uint64_t>(v) & mask;
     if (is(jt, "char")) {
         int64_t c = static_cast<int64_t>(u);
-        bool odd = c > 127 || c < 32;
+        // (127, DEL, is a cast too: repr() wrote it as a hex escape, which Java has no escape for)
+        bool odd = c > 126 || c < 32;
         bool quote = c == '\'' || c == '\\';
         if (odd || quote) return J(cat("(char) ", c), P_UNARY, S("char"));
-        if (c == 127) return J(S("'\\x7f'"), P_ATOM, S("char"));
         return J(cat("'", static_cast<char32_t>(c), "'"), P_ATOM, S("char"));
     }
     int64_t sv;
@@ -1780,6 +1780,27 @@ Lines FnWriter::init_place(const str& addr, const TypeP& t, const NodeP& init0, 
     return out;
 }
 
+// A C character literal as the source spelled it, when Java spells it the same (C's alert, vertical-tab, question-mark and hex
+// escapes are not Java escapes).
+static bool java_char_text(const str& text) {
+    std::string t = text.utf8();
+    if (t.size() < 3 || t.front() != '\'' || t.back() != '\'') return false;
+    std::string body = t.substr(1, t.size() - 2);
+    if (body[0] != '\\') {
+        if (body[0] == '\'' || body[0] == '\n') return false;
+        size_t chars = 0;
+        for (unsigned char c : body) chars += (c & 0xC0) != 0x80;
+        return chars == 1;
+    }
+    std::string esc = body.substr(1);
+    if (esc.size() == 1 && std::string("btnfr\"'\\").find(esc[0]) != std::string::npos) return true;
+    if (esc.empty() || esc.size() > 3) return false;
+    for (char c : esc) {
+        if (c < '0' || c > '7') return false;
+    }
+    return esc.size() < 3 || esc[0] <= '3';
+}
+
 std::optional<str> FnWriter::small_lit(const NodeP& x0, const TypeP& et) {
     // An integer literal element of an array initialiser, written as an int for Mem.setBytes & co.
     NodeP x = strip(x0);
@@ -1789,7 +1810,7 @@ std::optional<str> FnWriter::small_lit(const NodeP& x0, const TypeP& et) {
         int64_t v = std::get<int64_t>(l->value.v);
         str jtt = p->jt(et);
         if (is(jtt, "long")) return int_lit(v, S("long")).code;
-        if (truthy(l->text) && starts(*l->text, "'") && 0 <= v && v < 128) return !is(*l->text, "'\\0'") ? *l->text : S("0");
+        if (truthy(l->text) && starts(*l->text, "'") && 0 <= v && v < 128 && java_char_text(*l->text)) return !is(*l->text, "'\\0'") ? *l->text : S("0");
         if (is_unsigned(et) || (in(jtt, {"byte", "short"}) && v >= 0)) {
             int64_t b = !is(jtt, "char") ? _JBITS().at(jtt) : 16;
             v &= (int64_t(1) << b) - 1;
@@ -1949,8 +1970,6 @@ void FnWriter::expr_stmt(const NodeP& e0, Lines& out) {
     if (auto cd = as_a<ir::Cond>(e)) {
         if (statement_expr(cd->then) && statement_expr(cd->orelse)) {
             out.append(cat("if (", cond(cd->cond).code, ") {"));
-            Lines discard;
-            expr_stmt(cd->then, discard);
             Lines a, b;
             expr_stmt(cd->then, a);
             expr_stmt(cd->orelse, b);
@@ -2018,8 +2037,8 @@ Place FnWriter::place(const NodeP& e0) {
         return Place(v.java, v.mem, v.type);
     }
     if (auto u = as_a<ir::Unary>(e); u && opt_is(u->op, "*")) {
-        str c = value(u->x).code;
-        return Place(c, true, u->type, value(u->x).prec);
+        J x = value(u->x);
+        return Place(x.code, true, u->type, x.prec);
     }
     if (auto ix = as_a<ir::Index>(e)) {
         J base = value(ix->arr);                         // (an array decays to its address)
@@ -2166,7 +2185,7 @@ J FnWriter::x_Lit(const py::ref<ir::Lit>& e) {
         double d = std::holds_alternative<double>(v.v) ? std::get<double>(v.v) : static_cast<double>(py_int(v));
         return float_lit(d, in(jtt, {"float", "double"}) ? jtt : S("double"));
     }
-    if (truthy(e->text) && starts(*e->text, "'") && is(jtt, "int")) return J(*e->text, P_ATOM, S("char"));
+    if (truthy(e->text) && starts(*e->text, "'") && is(jtt, "int") && java_char_text(*e->text)) return J(*e->text, P_ATOM, S("char"));
     return int_lit(py_int(v), jtt);
 }
 

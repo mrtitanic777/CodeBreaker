@@ -196,8 +196,9 @@ def int_lit(v, jt):
     bits = _JBITS.get(jt, 32)
     v &= (1 << bits) - 1
     if jt == 'char':
-        return J('(char) %d' % v if v > 127 or v < 32 else repr(chr(v)) if chr(v) not in "'\\" else '(char) %d' % v,
-                 P_UNARY if v > 127 or v < 32 or chr(v) in "'\\" else P_ATOM, 'char')
+        # (127, DEL, is a cast too: repr() would write it as a hex escape, which Java has no escape for)
+        return J('(char) %d' % v if v > 126 or v < 32 else repr(chr(v)) if chr(v) not in "'\\" else '(char) %d' % v,
+                 P_UNARY if v > 126 or v < 32 or chr(v) in "'\\" else P_ATOM, 'char')
     if v >= 1 << (bits - 1):
         v -= 1 << bits
     if jt == 'long':
@@ -209,6 +210,15 @@ def int_lit(v, jt):
     if v < -(1 << 24) and v != -(1 << 31):
         return J('0x%X' % (v & 0xFFFFFFFF), P_ATOM, 'int')
     return J(str(v), P_ATOM if v >= 0 else P_UNARY, 'int')
+
+
+_JAVA_CHAR = re.compile(r"'(?:[^\\'\n]|\\[btnfr\"'\\]|\\(?:[0-3][0-7]{2}|[0-7]{1,2}))'")
+
+
+def java_char_text(text):
+    """A C character literal as the source spelled it, when Java spells it the same (C's alert, vertical-tab,
+    question-mark and hex escapes are not Java escapes)."""
+    return text is not None and _JAVA_CHAR.fullmatch(text) is not None
 
 
 def float_lit(v, jt):
@@ -1196,7 +1206,7 @@ class FnWriter(object):
             jt = self.p.jt(et)
             if jt == 'long':
                 return int_lit(v, 'long').code
-            if x.text and x.text.startswith("'") and 0 <= v < 128:
+            if x.text and x.text.startswith("'") and 0 <= v < 128 and java_char_text(x.text):
                 return x.text if x.text != "'\\0'" else '0'
             if is_unsigned(et) or (jt in ('byte', 'short') and v >= 0):
                 b = _JBITS[jt] if jt != 'char' else 16
@@ -1307,7 +1317,6 @@ class FnWriter(object):
         if isinstance(e, ir.Cond):
             if self.statement_expr(e.then) and self.statement_expr(e.orelse):
                 out.append('if (%s) {' % self.cond(e.cond).code)
-                self.expr_stmt(e.then, [x for x in []])
                 a, b = [], []
                 self.expr_stmt(e.then, a)
                 self.expr_stmt(e.orelse, b)
@@ -1372,7 +1381,8 @@ class FnWriter(object):
             v = self.var(e.sym)
             return Place(v.java, v.mem, v.type)
         if isinstance(e, ir.Unary) and e.op == '*':
-            return Place(self.value(e.x).code, True, e.type, prec=self.value(e.x).prec)
+            x = self.value(e.x)
+            return Place(x.code, True, e.type, prec=x.prec)
         if isinstance(e, ir.Index):
             base = self.value(e.arr)                       # (an array decays to its address)
             et = e.type
@@ -1492,7 +1502,7 @@ class FnWriter(object):
             return float_lit(float(v), jt if jt in ('float', 'double') else 'double')
         if e.text and e.text.startswith('sizeof(') and is_int(t):
             pass
-        if e.text and e.text.startswith("'") and jt == 'int':
+        if e.text and e.text.startswith("'") and jt == 'int' and java_char_text(e.text):
             return J(e.text, P_ATOM, 'char')
         return int_lit(int(v), jt)
 

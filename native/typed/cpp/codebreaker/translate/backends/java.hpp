@@ -1,5 +1,13 @@
 // codebreaker/translate/backends/java.hpp -- typed C++ port of codebreaker.translate.backends.java.
 //
+// NOT YET A SHIM (W1-B26): the back end is now native/cb/translate/backends/java.{hpp,cpp} and java_fn.cpp (typed IR, no py::). This
+// port stays, as it was, for one reason: codebreaker/translate/backends/java_objects.* (the idiomatic tier, the next unit) extends this
+// port's Faithful and FnWriter and java_libc.* (the library mapping) calls into them, over the OLD IR; they cannot compile against the
+// new module until they are refactored into a cb::translate::backends::java::TierWriter and LibraryCalls. When they are, this port
+// becomes a shim over the new module (old IR tree -> L2 through cb/compat/old_l2_tree.hpp -> java::program) and this note goes.
+// The Python's fixes of this unit are made here too (this port is what the exe runs): the DEL character constant, character
+// literals Java spells differently, and two lowerings that evaluated a sub-expression twice.
+//
 // java.py -- the translator's Java back end: a C or C++ program (L2 from the clang front end) as Java 17.
 //
 // docs/TRANSLATOR_DESIGN.md, phase 5. The output comes in the design's two tiers, chosen per program by a

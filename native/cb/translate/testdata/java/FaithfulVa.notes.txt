@@ -1,0 +1,1 @@
+faithful tier: a variadic function (total)

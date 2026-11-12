@@ -930,3 +930,13 @@ Old = the Python module (these four had no typed-port harness of their own that 
 | java/probe: the pure parts (inputs, harness text, what can be run) | microseconds in both; a probe's time is javac, the JVM, the C++ compiler and the linker (the end-to-end test on a one-class program: about 2 s, almost all in those four) | the same |
 
 The page ECC is a bit-serial sum (a word of the page per 32 steps, the spare's 102 bits at the end): the new code keeps the algorithm and runs it on `uint32_t` words with no big-integer arithmetic, which is the whole gain. `write_god` streams a subpart (204 blocks) at a time to the part file instead of collecting a part (166 MB) in memory and handing it to the DLL, and the reader takes the rest of a subpart in one read where the old one took a block at a time.
+
+## translate/backends/java and translate/rewrite (W1-B26)
+
+Old = `java.py` (the typed port runs the same loops over py:: values), new = `native/cb/translate/backends/java`, Release /O2, one thread, best of 5, the clang front end's L2 for `FaithfulArith.c` (about 400 small functions: every integer width and sign, conversions, compound assignment, comparisons) written as Java by the faithful tier, document already read into nodes.
+
+| Work | Old (Python) | New |
+|---|---|---|
+| java.program, FaithfulArith, 45 KB of Java | 112 ms | 2.2 ms |
+
+`rewrite` is a handful of tree walks (a method list, a statement-list scan, a bottom-up rebuild); no hot path, not timed.

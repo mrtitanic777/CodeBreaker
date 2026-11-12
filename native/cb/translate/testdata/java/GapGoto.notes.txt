@@ -1,0 +1,2 @@
+gap: tangle (goto mid both forward and backward in tangle)
+faithful tier: chosen
