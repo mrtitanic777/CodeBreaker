@@ -1075,3 +1075,24 @@ New = Release /O2, one thread, `native/cb`; measured on the Windows 95 and 98 co
 |---|---|---|
 | the console writers over real programs (Master System HelloWorld 128 KB, SMSAudio; Game Boy Color uCity 25 functions; Genesis 2048 38 functions): read, walk the flow, write the source, assemble it again with CodeBreaker's assembler and compare | Python (the live implementation; the typed port needs the whole old layer): 126 ms, 169 ms, 920 ms, 755 ms per run including the interpreter's start (about 60 ms) and imports | 10 ms, 12 ms, 38 ms, 36 ms; the source written is byte for byte the Python writer's on all of them, and on the five small programs of the tests |
 | nasm rounds, classes writer, module writer, java writer | nothing to time (they run NASM, a function store or a corpus) | not hot: the module writer is a pass over the store's rows |
+
+## W4-B1 (emulate/emulator, emulate/shadow) -- HOT paths
+
+Old = the old typed port (native/typed, built beside the new one against the same cb libraries); New = native/cb Release /O2. Real lz32.dll of the Windows 95 corpus, the judge's pattern: the first 25 recovered functions, stubbed imports, `fast`, caller memory, 4 argument dwords; 100 runs on a kept machine and 25 on fresh ones, old and new alternately on the same loaded machine.
+
+| What | Old | New |
+|---|---|---|
+| 100 runs, `reuse` | 26.8-40.6 ms/run | 20.4-33.9 ms/run |
+| 25 runs, fresh machine each | 16.0-29.5 ms/run | 14.3-24.7 ms/run |
+| what was recorded | 64,235 instructions, 72 of 100 returned | the same: 64,235 instructions, 72 of 100 |
+
+Nearly all of a run is the recorder's (unchanged, shared): the Tracer's own layout, frame and read-back is about 1.5% of a run (measured with phase timers). The new code lays a machine out with one frame write and without per-run set copies. The PowerPC shadow (emulate/shadow) is not on the x86 judge's path: it has one instruction's cost per interpreter step; not timed apart.
+
+## W4-B2 (analyze/origin)
+
+Old = the Python (the old typed port needs the whole old layer: not built in isolation); New = native/cb Release /O2, one thread, real Windows 95 NE modules.
+
+| What | Old | New |
+|---|---|---|
+| origin verdicts for every function (describe16 not counted): USER.EXE 2,316 functions | minutes (Python, per the earlier harness notes) | about 0.4 s (describe16 0.7 s beside it) |
+| GDI.EXE 1,654, KRNL386.EXE 1,166, MMSYSTEM.DLL 486, LZEXPAND.DLL 46 functions | not timed | 0.55 s, 0.2 s, 0.14 s, 0.01 s |

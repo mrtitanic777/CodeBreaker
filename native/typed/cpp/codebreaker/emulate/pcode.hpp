@@ -130,6 +130,9 @@ class Lifter {
         adopt();
     }
 
+    // The new lifter this one wraps (for the new code that takes a lifter).
+    cb::emulate::pcode::Lifter& impl() { return *impl_; }
+
     // pcodecheck's line for the instruction at the start of `code` at `offset`.
     py::str line(const py::bytes& code, int64_t offset) {
         return cb::compat::to_py(impl_->line(cb::compat::from_py(code), static_cast<uint64_t>(offset)));

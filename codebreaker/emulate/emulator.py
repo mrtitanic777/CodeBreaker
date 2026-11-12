@@ -298,7 +298,7 @@ def _machine(U, path, sha, va0, code, secbase, size, imports, overlay, stub_exte
                 mem_init.insert(0, laid)
                 statics += [(lo, hi, ocode[lo - ova0:hi - ova0], _INSN.setdefault((_op, _os, lo), {}))
                             for lo, hi in _CODE_RANGES.get(_op) or [(ova0, ova0 + len(ocode))]]
-                imports = dict(oimports, **imports)
+                imports = {**oimports, **imports}                    # (the overlay's imports too; the traced module's own win)
         except Exception:
             pass
     slots = {}                                               # page -> [(address, bytes)] of import slots
