@@ -144,7 +144,7 @@ target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbo
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
-target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
+target_link_libraries(cb_java PUBLIC cb_core cb_translate PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
@@ -152,7 +152,7 @@ file(GLOB_RECURSE CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*sh
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
-target_link_libraries(cb_decompile PUBLIC cb_core)
+target_link_libraries(cb_decompile PUBLIC cb_core cb_formats)
 
 cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core cb_formats cb_symbols)
@@ -163,7 +163,7 @@ target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OM
 cb_area(compare)
 target_link_libraries(cb_compare PUBLIC cb_core)
 cb_area(emulate)
-target_link_libraries(cb_emulate PUBLIC cb_core)
+target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile)
 
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
@@ -206,7 +206,7 @@ file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/inve
 set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(port)
-target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify)
+target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
 
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge cb_compare cb_platforms)
