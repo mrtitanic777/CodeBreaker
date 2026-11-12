@@ -1,25 +1,16 @@
-// codebreaker/invert/early_c_forward.hpp -- C++17 port of codebreaker.invert.early_c_forward.
+// codebreaker/invert/early_c_forward.hpp -- SHIM over cb/invert/early_c_forward.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last
+// py:: consumer (invert/run, which names the module as a tool).
 //
-// early_c_forward.py - deterministic forward model of the MC2/LC2 code generator:
-// quad records -> exact 8086 bytes, no compiler. First brick of the Compiler-Inverse
-// Engine. Operand/action model: const/global/param/deref(+field) x load/store/alu.
-// Covers integer arith + relationals + assignment + globals/pointers/struct-fields.
-//
-// Typing notes:
-//   * An operand is the Python's dict with a fixed set of possible keys ("k" always, then "val", "id",
-//     "ty", "off" depending on the kind): the record Operand, a key that the dict lacks being an empty
-//     optional (reading it as dict["id"] raises KeyError, as the Python does).
-//   * A resolve() item is the Python's tuple ('b',bytes) | ('L',name) | ('j',opcode,name): the record Item.
-//   * A quad record is quad_align's QuadRecord (opcode, payload bytes).
-//   * bs(*h) takes its hex strings as an initializer list: bs({"8b46", hx(3)}).
-//   * main() takes sys.argv (the program name first) and returns nothing.
+// The Python's helpers that only the model used (the hex-string byte builder `bs`, the operand dicts, the action emitters) are not
+// carried over: they are cb::invert::early_c_forward's internals. What the old callers reach is kept: the model, the FUNC-BEGIN
+// reader and the script.
 #pragma once
 
 #include <cstdint>
-#include <initializer_list>
-#include <optional>
-#include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/invert/early_c_forward.hpp"
 #include "codebreaker/invert/quad_align.hpp"
 #include "py.hpp"
 
@@ -27,60 +18,28 @@ namespace codebreaker::invert::early_c_forward {
 
 using QuadRecord = codebreaker::invert::quad_align::QuadRecord;
 
-// {"k": kind, ...}: kind is "const", "node", "deref" or "temp"
-struct Operand {
-    py::str k;
-    std::optional<int64_t> val;   // const
-    std::optional<int64_t> id;    // node, deref
-    std::optional<int64_t> ty;    // node
-    std::optional<int64_t> off;   // deref
-};
+inline int64_t parse_funcbegin(const py::bytes& pl) {
+    return cb::compat::guard([&] { return int64_t(cb::invert::early_c_forward::parse_funcbegin(cb::compat::from_py(pl))); });
+}
 
-// ('b', data) | ('L', name) | ('j', opcode, name)
-struct Item {
-    py::str kind;         // "b", "L" or "j"
-    py::bytes data;       // "b"
-    int64_t opcode = 0;   // "j"
-    py::str name;         // "L", "j"
-};
-
-extern const py::dict<int64_t, int64_t> ALU_MEM;   // ax, [mem]  (mod=01 rm=110 [bp+d8] -> +0x46)
-extern const py::dict<int64_t, int64_t> ALU_IMM;   // ax, imm16
-extern const py::dict<int64_t, int64_t> RELJCC;
-extern const py::set<int64_t> BINCLASS;
-extern const py::dict<int64_t, int64_t> INV_JCC;   // if(cond) -> skip if NOT cond
-
-py::bytes bs(std::initializer_list<py::str> h);
-py::bytes w16(int64_t v);
-
-// --- operand parsing / classification ------------------------------------
-py::list<Operand> parse_operands(const py::bytes& payload);
-
-struct Ctx {
-    int64_t fn;
-    int64_t fs;
-    int64_t psz;   // param stride (2 int, 4 long)
-    Ctx(int64_t fn_, int64_t fs_, int64_t psz_ = 2) : fn(fn_), fs(fs_), psz(psz_) {}
-    bool is_param(int64_t nid) const;
-    int64_t frame(int64_t nid) const;
-};
-
-py::bytes emit_binop_long(int64_t opcode, const py::list<Operand>& srcs, const Ctx& c);
-
-// --- action emitters ------------------------------------------------------
-py::bytes load_ax(const Operand& op, const Ctx& c);
-py::bytes store_ax(const Operand& op, const Ctx& c);
-py::bytes alu_ax(int64_t opcode, const Operand& op, const Ctx& c);   // ax <op>= operand
-py::bytes emit_binop(int64_t opcode, const py::list<Operand>& srcs, const Ctx& c);
-
-int64_t parse_funcbegin(const py::bytes& pl);
-
-// items: ('b',bytes) | ('L',name) | ('j',opcode,name) short rel8. Two-pass.
-py::bytes resolve(const py::list<Item>& items);
-
-py::bytes model(const py::list<QuadRecord>& func);
+// The function's bytes; raises (as the Python did) for a function the model cannot handle.
+inline py::bytes model(const py::list<QuadRecord>& func) {
+    return cb::compat::guard([&] {
+        cb::invert::quad_align::QuadFunction function;
+        for (const QuadRecord& r : func) function.push_back({static_cast<std::uint8_t>(std::get<0>(r)), cb::compat::from_py(std::get<1>(r))});
+        return cb::compat::to_py(cb::ByteView(cb::invert::early_c_forward::model(function).value()));
+    });
+}
 
 // The script: `python early_c_forward.py <quads> <obj>`; `argv` is sys.argv (the program name first).
-void main(const py::list<py::str>& argv);
+inline void main(const py::list<py::str>& argv) {
+    const py::str quads = argv[1], object = argv[2];   // (IndexError for a missing argument)
+    cb::compat::guard([&] {
+        std::string text = cb::invert::early_c_forward::format_checks(cb::invert::early_c_forward::check(
+            cb::fs::read_file(cb::fs::from_text(cb::compat::from_py(quads))), cb::fs::read_file(cb::fs::from_text(cb::compat::from_py(object)))));
+        text.pop_back();   // (print adds the last newline)
+        py::print(cb::compat::to_py(text));
+    });
+}
 
 }  // namespace codebreaker::invert::early_c_forward

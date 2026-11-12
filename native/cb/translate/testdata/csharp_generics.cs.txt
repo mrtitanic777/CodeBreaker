@@ -1,0 +1,137 @@
+// Translated by CodeBreaker from Generics (csharp).
+using System;
+using System.Collections.Generic;
+
+namespace Corpus.Generics
+{
+    public delegate int Combine(int a, int b);
+
+    public class Stack<T>
+    {
+        private T[] items = new T[2];
+        private int count;
+
+        public int Count => count;
+
+        public void Push(T x)
+        {
+            if (count == items.Length)
+            {
+                T[] bigger = new T[items.Length * 2];
+                for (int i = 0; i < count; i++)
+                {
+                    bigger[i] = items[i];
+                }
+                items = bigger;
+            }
+            items[count++] = x;
+        }
+
+        public T Pop()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException("empty");
+            }
+            return items[--count];
+        }
+
+        public T this[int i]
+        {
+            get => items[count - 1 - i];
+            set => items[count - 1 - i] = value;
+        }
+    }
+
+    public class Best<T>
+        where T : IComparable<T>
+    {
+        public T Value { get; private set; }
+
+        public bool Has { get; private set; }
+
+        public void Offer(T x)
+        {
+            if (!Has || x.CompareTo(Value) > 0)
+            {
+                Value = x;
+                Has = true;
+            }
+        }
+    }
+
+    public static class Program
+    {
+        static T Apply<T>(T x, Func<T, T> f, int times)
+        {
+            for (int i = 0; i < times; i++)
+            {
+                x = f(x);
+            }
+            return x;
+        }
+
+        static int Fold(int[] xs, int seed, Combine c)
+        {
+            int acc = seed;
+            foreach (int x in xs)
+            {
+                acc = c(acc, x);
+            }
+            return acc;
+        }
+
+        static int Mul(int a, int b) => a * b;
+
+        public static void Main()
+        {
+            var s = new Stack<string>();
+            s.Push("a");
+            s.Push("b");
+            s.Push("c");
+            s[0] = "C";
+            Console.WriteLine($"{s.Count} top={s[0]} pop={s.Pop()} then={s.Pop()}");
+            var best = new Best<int>();
+            foreach (int x in new int[] { 4, 9, 2, 7 })
+            {
+                best.Offer(x);
+            }
+            Console.WriteLine("best " + best.Value);
+            var words = new Best<string>();
+            words.Offer("pear");
+            words.Offer("apple");
+            words.Offer("zebra");
+            Console.WriteLine("last word " + words.Value);
+            int bonus = 3;
+            Func<int, int> addBonus = v => v + bonus;
+            bonus = 5;
+            Console.WriteLine("apply " + Apply(1, addBonus, 4));
+            Console.WriteLine("apply str " + Apply("x", t => t + "y", 3));
+            int[] xs = new int[] { 1, 2, 3, 4, 5 };
+            Console.WriteLine($"sum {Fold(xs, 0, (a, b) => a + b)} product {Fold(xs, 1, Program.Mul)}");
+            var counts = new Dictionary<string, int>();
+            foreach (string w in new string[] { "x", "y", "x", "z", "x", "y" })
+            {
+                int c;
+                if (counts.TryGetValue(w, out c))
+                {
+                    counts[w] = c + 1;
+                }
+                else
+                {
+                    counts[w] = 1;
+                }
+            }
+            Console.WriteLine($"x={counts["x"]} y={counts["y"]} z={counts["z"]} keys={counts.Count}");
+            var log = new List<string>();
+            Action<string> say = m =>
+{
+    log.Add($"[{m}]");
+    return;
+};
+            say("one");
+            say("two");
+            Console.WriteLine(string.Join(",", log));
+        }
+    }
+}

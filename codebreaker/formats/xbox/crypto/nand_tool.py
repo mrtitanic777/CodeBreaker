@@ -3,7 +3,7 @@
 from io import BytesIO
 from pathlib import Path
 from struct import pack, unpack_from
-from ctypes import BigEndianStructure, c_ubyte, c_uint16, c_uint32, c_uint64
+from ctypes import LittleEndianStructure, c_ubyte, c_uint16, c_uint32, c_uint64
 
 # constants
 SEEK_SET = 0
@@ -19,12 +19,12 @@ WORD  = c_uint16
 DWORD = c_uint32
 QWORD = c_uint64
 
-class SMALLBLOCK(BigEndianStructure):
+class SMALLBLOCK(LittleEndianStructure):
 	def __getattribute__(self, item):
 		if item == "block_id":
-			res = ((self.block_id_0 << 8) & 0xF) + (self.block_id_1 & 0xFF)
+			res = ((self.block_id_0 << 8) & 0xF00) + (self.block_id_1 & 0xFF)
 		elif item == "fs_size":
-			res = ((self.fs_size_0 << 8) & 0xFF) + (self.fs_size_1 & 0xFF)
+			res = ((self.fs_size_0 << 8) & 0xFF00) + (self.fs_size_1 & 0xFF)
 		else:
 			res = super(SMALLBLOCK, self).__getattribute__(item)
 		return res
@@ -51,12 +51,12 @@ class SMALLBLOCK(BigEndianStructure):
 	]
 
 
-class BIGONSMALL(BigEndianStructure):
+class BIGONSMALL(LittleEndianStructure):
 	def __getattribute__(self, item):
 		if item == "block_id":
-			res = ((self.block_id_0 << 8) & 0xF) + (self.block_id_1 & 0xFF)
+			res = ((self.block_id_0 << 8) & 0xF00) + (self.block_id_1 & 0xFF)
 		elif item == "fs_size":
-			res = ((self.fs_size_0 << 8) & 0xFF) + (self.fs_size_1 & 0xFF)
+			res = ((self.fs_size_0 << 8) & 0xFF00) + (self.fs_size_1 & 0xFF)
 		else:
 			res = super(BIGONSMALL, self).__getattribute__(item)
 		return res
@@ -83,12 +83,12 @@ class BIGONSMALL(BigEndianStructure):
 	]
 
 
-class BIGBLOCK(BigEndianStructure):
+class BIGBLOCK(LittleEndianStructure):
 	def __getattribute__(self, item):
 		if item == "block_id":
-			res = ((self.block_id_0 << 8) & 0xF) + (self.block_id_1 & 0xFF)
+			res = ((self.block_id_0 << 8) & 0xF00) + (self.block_id_1 & 0xFF)
 		elif item == "fs_size":
-			res = ((self.fs_size_0 << 8) & 0xFF) + (self.fs_size_1 & 0xFF)
+			res = ((self.fs_size_0 << 8) & 0xFF00) + (self.fs_size_1 & 0xFF)
 		else:
 			res = super(BIGBLOCK, self).__getattribute__(item)
 		return res
@@ -356,21 +356,16 @@ class NANDImage:
 		#print(f"\tStop Page:    {stop_page}")
 		#print(f"\tStop Offset:  {stop_offs}")
 
-		with BytesIO() as bio:
-			if strt_page == stop_page:  # only one page
-				bio.write(self.get_page(strt_page)[strt_offs:stop_offs])
-
-			for page_num in range(strt_page, stop_page):
-				tmp_page = self.get_page(page_num)
-				if page_num == strt_page:  # first page
-					bio.write(tmp_page[strt_offs:])
-				elif page_num == stop_page:  # last page
-					bio.write(tmp_page[:stop_offs])
-				else:  # between first and last
-					bio.write(tmp_page)
-			data = bio.getvalue()
+		# page by page, the first and last possibly partial
+		data = bytearray()
+		offset = self.flash_offset
+		while len(data) < num:
+			in_page = offset % 512
+			take = min(512 - in_page, num - len(data))
+			data += self.get_page(offset // 512 + 1)[in_page:in_page + take]
+			offset += take
 		# self.flash_offset = self.flash_tell()
-		return data
+		return bytes(data)
 
 	def flash_write(self, data: bytes | bytearray) -> int:
 		strt_page = self.flash_offset_to_page(self.flash_offset)
@@ -386,27 +381,17 @@ class NANDImage:
 		# print(f"\tStop Offset:  {stop_offs}")
 
 		nw = 0
-		with BytesIO(data) as bio:
-			if strt_page == stop_page:  # only one page
-				chunk_size = stop_offs - strt_offs
-				tmp_page = bytearray(self.get_page(strt_page))
-				# pack_into(f"{chunk_size}s", tmp_page, strt_offs, bio.read(chunk_size))
-				tmp_page[strt_offs:strt_offs + chunk_size] = bio.read(chunk_size)
-
-			for page_num in range(strt_page, stop_page):
-				tmp_page = bytearray(self.get_page(page_num))
-				if page_num == strt_page:  # first page
-					chunk_size = 512 - strt_offs
-					# pack_into(f"{chunk_size}s", tmp_page, strt_offs, bio.read(512 - strt_offs))
-					tmp_page[strt_offs:strt_offs + chunk_size] = bio.read(512 - strt_offs)
-				elif page_num == stop_page:  # last page
-					chunk_size = 512 - stop_offs
-					# pack_into(f"{chunk_size}s", tmp_page, 0, bio.read(chunk_size))
-					tmp_page[:chunk_size] = bio.read(chunk_size)
-				else:  # between first and last
-					# pack_into(f"512s", tmp_page, 0, bio.read(512))
-					tmp_page[:512] = bio.read(512)
-				nw += self.set_page(page_num, tmp_page)
+		# page by page (each page's ECC is recomputed by set_page), the first and last possibly partial
+		offset = self.flash_offset
+		done = 0
+		while done < len(data):
+			in_page = offset % 512
+			take = min(512 - in_page, len(data) - done)
+			tmp_page = bytearray(self.get_page(offset // 512 + 1))
+			tmp_page[in_page:in_page + take] = data[done:done + take]
+			nw += self.set_page(offset // 512 + 1, tmp_page)
+			offset += take
+			done += take
 		# self.flash_offset = self.flash_tell()
 		return nw
 
