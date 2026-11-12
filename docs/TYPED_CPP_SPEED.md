@@ -1087,3 +1087,12 @@ Old = the old typed port (native/typed, built beside the new one against the sam
 | what was recorded | 64,235 instructions, 72 of 100 returned | the same: 64,235 instructions, 72 of 100 |
 
 Nearly all of a run is the recorder's (unchanged, shared): the Tracer's own layout, frame and read-back is about 1.5% of a run (measured with phase timers). The new code lays a machine out with one frame write and without per-run set copies. The PowerPC shadow (emulate/shadow) is not on the x86 judge's path: it has one instruction's cost per interpreter step; not timed apart.
+
+## W4-B2 (analyze/origin)
+
+Old = the Python (the old typed port needs the whole old layer: not built in isolation); New = native/cb Release /O2, one thread, real Windows 95 NE modules.
+
+| What | Old | New |
+|---|---|---|
+| origin verdicts for every function (describe16 not counted): USER.EXE 2,316 functions | minutes (Python, per the earlier harness notes) | about 0.4 s (describe16 0.7 s beside it) |
+| GDI.EXE 1,654, KRNL386.EXE 1,166, MMSYSTEM.DLL 486, LZEXPAND.DLL 46 functions | not timed | 0.55 s, 0.2 s, 0.14 s, 0.01 s |
