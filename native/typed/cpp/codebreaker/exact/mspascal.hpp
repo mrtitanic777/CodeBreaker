@@ -1,91 +1,115 @@
-// codebreaker/exact/mspascal.hpp -- typed C++ port of codebreaker.exact.mspascal.
+// codebreaker/exact/mspascal.hpp -- COMPAT SHIM over cb/exact/mspascal.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// mspascal.py -- the Microsoft Pascal compiler (PAS1/PAS2; 1.10 of November 1981 to 3.11), as a toolchain.
+// The module is native/cb/exact/mspascal.{hpp,cpp}: the Microsoft Pascal compiler (PAS1/PAS2) as a toolchain run under the DOS emulator, its
+// procedures named in the object. This header keeps the old class over the old toolchain port, header-only: `MSPascal` is still a
+// toolchain::Toolchain (so that toolchain::load() hands it out as the plugin "codebreaker.exact.mspascal:MSPascal"), and its compile is the
+// new module's, the answer kept in the cache the old callers shared. The pre-release 1.10 kit's zips are extracted with the java area's reader.
 //
-// A profile names this module (toolchains/mspascal.json). The passes run under the DOS emulator:
-// `PAS1 T,T,T,T;` (source, object, listing, code listing), then `PAS2`. The object is OMF. Most of a
-// compiland's procedures are not public; the plug-in names them, so that the engine sees them as it
-// sees a C file's functions: from the code listing (T.COD: "Procedure/Function : NAME" and the first
-// address of its code) - or, for a compiler that writes none (3.04, 3.11), from where the code calls the
-// compiler's entry helper (or sets up a frame in line), in the order the source emits its procedures
-// (each at the end of its body: after those declared inside it). The names are published in the
-// object (a PUBDEF of the code segment): omf.read and the ledger see them like a C file's functions.
-//
-// Every compiland ends with the compiler's entry helper (a near call to it opens each procedure); it
-// is published as "(helper)".
-//
-// Variants: the kit's version ("version": a folder of the kit, or "1.10": the pre-release kit's zips).
-//
-// Typing notes:
-//   * The Python class MSPascal is a toolchain of its own (it does not subclass exact.toolchain.Toolchain); here it derives
-//     from the typed Toolchain only so that toolchain::load() can hand it out as a plugin ("codebreaker.exact.mspascal:MSPascal":
-//     register_plugin() below). The base is constructed with the profile's default variant, as load() would; its own compile()
-//     is not used. `name`, `variant` (the empty text for None) and `p` are the base's; `key` is this class' own.
-//   * The profile entries the typed Profile does not keep (kit110, helper_data, the variants' version and helper_data) are
-//     read from the profile's JSON text (Profile::keyed) as the Python reads its dict.
-//   * compile() with `headers=None` is the optional; `include` and `switches` are accepted and not used (as in the Python).
-//     The cached value is the tuple (object or None, console) under cache kind "exact".
-//   * The 1.10 kit's zip files are read with zlib (stored and deflated entries), in place of zipfile.
+// DIVERGES: not kept, internals of the module that only its own harness called: `_segnames`, `_compile` (compile() runs the passes), `HELPERS`
+// and `INLINE` as py::bytes (functions in the new module); the passes run `fast` (no block hook, which this module never reads); a heading that
+// never ends stops emit_order (the Python raised IndexError).
 #pragma once
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
 
+#include "cb/exact/mspascal.hpp"
+#include "cb/java/console/zip_archive.hpp"
+#include "codebreaker/exact/plugin_shim.hpp"
 #include "codebreaker/exact/toolchain.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::mspascal {
 
-extern const py::str CACHE_VERSION;                       // "pas1"
-extern const py::list<py::bytes> HELPERS;                 // the compiler's entry helper, by version
-extern const py::bytes INLINE;                            // (3.11: the frame set up in line)
+namespace nw = ::cb::exact::mspascal;
 
-// the procedures of a source in the order their code is written: each at the end of its body, after the
-// procedures declared inside it -> [name]
-py::list<py::str> emit_order(const py::str& text);
+inline const py::str CACHE_VERSION = py::str(std::string(nw::kCacheVersion));
 
-// the segment names of the SEGDEFs of an object, in order
-py::list<py::str> _segnames(const py::bytes& obj);
+// the procedures of a source in the order their code is written: each at the end of its body, after the procedures declared inside it -> [name]
+inline py::list<py::str> emit_order(const py::str& text) {
+    py::list<py::str> out;
+    for (const std::string& n : nw::emit_order(text.utf8())) out.append(::cb::compat::to_py(n));
+    return out;
+}
 
 // the object with a PUBDEF of the code segment naming procs {name: offset} (before its MODEND)
-py::bytes publish(const py::bytes& obj, const py::dict<py::str, int64_t>& procs, const py::str& code_seg);
+inline py::bytes publish(const py::bytes& obj, const py::dict<py::str, int64_t>& procs, const py::str& code_seg) {
+    ::cb::OrderedMap<std::string, std::uint32_t> p;
+    for (const auto& kv : procs.items()) p.insert_or_assign(std::get<0>(kv).utf8(), static_cast<std::uint32_t>(std::get<1>(kv)));
+    return ::cb::compat::to_py(::cb::ByteView(nw::publish(::cb::compat::from_py(obj), p, code_seg.utf8())));
+}
 
 class MSPascal : public toolchain::Toolchain {
   public:
-    MSPascal(const toolchain::Profile& profile, const std::optional<py::str>& variant = std::nullopt);
+    MSPascal(const toolchain::Profile& profile, const std::optional<py::str>& variant_in = std::nullopt)
+        : toolchain::Toolchain(profile, std::nullopt),
+          impl_(std::make_shared<nw::MsPascal>(plugin_shim::new_profile(profile), variant_in ? std::optional<std::string>(variant_in->utf8()) : std::nullopt,
+                                               plugin_shim::context(), hooks())) {
+        name = profile.name;
+        if (variant_in && !variant_in->empty()) variant = *variant_in;
+        else if (profile.default_variant && !profile.default_variant->empty()) variant = *profile.default_variant;
+        else variant = py::str("");
+        version = ::cb::compat::to_py(impl_->version());
+        helper_data = static_cast<int64_t>(impl_->helper_data());
+        key = ::cb::compat::to_py(impl_->plugin_key());
+    }
 
     py::str version;
     int64_t helper_data;
     py::str key;   // sha1(name + version + CACHE_VERSION)[:12]
 
     // the folder of the compiler's files (the 1.10 kit's zips are extracted to the state folder once)
-    py::str kit() const;
+    py::str kit() const { return ::cb::compat::to_py(::cb::fs::to_text(impl_->kit())); }
 
     // Toolchain::compile as the modules use it (headers given, cache on)
     std::tuple<std::optional<py::bytes>, py::str> compile(const py::bytes& src, const py::dict<py::str, py::bytes>& headers,
                                                           const py::list<py::str>& include,
-                                                          const std::optional<py::str>& switches) const override;
+                                                          const std::optional<py::str>& switches) const override {
+        (void)headers;
+        (void)include;
+        (void)switches;
+        return compile(src, std::nullopt, py::list<py::str>(), std::nullopt, true, py::str("T.PAS"));
+    }
 
     // compile(src, headers=None, include=(), switches=None, cache=True, name="T.PAS") -> (the object module or None, the console text)
-    std::tuple<std::optional<py::bytes>, py::str> compile(const py::bytes& src,
-                                                          const std::optional<py::dict<py::str, py::bytes>>& headers = std::nullopt,
+    std::tuple<std::optional<py::bytes>, py::str> compile(const py::bytes& src, const std::optional<py::dict<py::str, py::bytes>>& headers = std::nullopt,
                                                           const py::list<py::str>& include = py::list<py::str>(),
-                                                          const std::optional<py::str>& switches = std::nullopt, bool cache = true,
-                                                          const py::str& name = py::str("T.PAS")) const;
-
-    std::tuple<std::optional<py::bytes>, py::str> _compile(const py::bytes& src, const py::str& name) const;
-
-    // the object with its procedures' names published: from the code listing `cod`, else from the code
-    py::bytes _named(const py::bytes& obj, const py::str& cod, const py::str& text) const;
+                                                          const std::optional<py::str>& switches = std::nullopt, bool use_cache = true,
+                                                          const py::str& name_ = py::str("T.PAS")) const {
+        (void)headers;
+        (void)include;
+        (void)switches;   // (the headers, include folders and switches mean nothing to this compiler)
+        const ::cb::Bytes bytes = ::cb::compat::from_py(src);
+        const std::string file = name_.utf8();
+        return plugin_shim::kept(::cb::compat::to_py(impl_->cache_key(bytes, file)), use_cache, [&] {
+            const auto r = impl_->build(bytes, file);
+            return plugin_shim::result_of({r.object, r.console});
+        });
+    }
 
   private:
-    struct Raw;
-    std::shared_ptr<const Raw> raw_;
+    static nw::Hooks hooks() {
+        nw::Hooks h;
+        h.extract_zip = [](const std::filesystem::path& zip, const std::filesystem::path& dest) {
+            const auto archive = ::cb::java::console::ZipArchive::open(zip);
+            for (const auto& e : archive.entries()) {
+                if (e.is_directory()) continue;
+                ::cb::fs::write_file(dest / ::cb::fs::from_text(e.name), archive.read(e));
+            }
+        };
+        return h;
+    }
+
+    std::shared_ptr<nw::MsPascal> impl_;
 };
 
 // puts MSPascal where toolchain::load() finds it: the plugin "codebreaker.exact.mspascal:MSPascal"
-void register_plugin();
+inline void register_plugin() {
+    toolchain::register_plugin(py::str(std::string(nw::kPluginName)),
+                               [](const toolchain::Profile& p, const std::optional<py::str>& variant) -> std::shared_ptr<toolchain::Toolchain> {
+                                   return std::make_shared<MSPascal>(p, variant);
+                               });
+}
 
 }  // namespace codebreaker::exact::mspascal

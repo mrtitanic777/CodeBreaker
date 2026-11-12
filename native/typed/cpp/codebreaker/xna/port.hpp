@@ -1,59 +1,44 @@
-// codebreaker/xna/port.hpp -- typed C++ of codebreaker.xna.port.
+// codebreaker/xna/port.hpp -- COMPAT SHIM over cb/xna/port.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// port.py -- an XNA game's decompiled C# (Converted/<name>/src) built and run on a PC with MonoGame.
+// The module is native/cb/xna/port.{hpp,cpp}: the rewrites of the game's C# for the PC, the fixes of the compiler's errors, the content
+// conversions, prepare and build of the MonoGame project, run_for and check_content. This header keeps the entry points the old code calls
+// over the old py:: types, header-only: the tools (the runtime's and the stub generator's folders in the checkout, the state folder, the
+// settings the Python read) are put together here from the settings, and the formats not yet in the new tree (xsb, xnb) are the old
+// `Hooks` handed on.
 //
-//     codebreaker xna port <Converted project or name> [--overlay DIR] [--run SECONDS] [--check-content]
-//     result = port::build(project, hooks)        {"exe", "errors": {code: count}, "first": [error lines]}
-//
-// The project's src/ stays the decompiled source. The port is built from a copy in build/port/:
-//
-//   src/<assembly>/      each assembly's C#, rewritten for the PC where it must be (the Game class's constructor
-//                        first calls XnaPort.Runtime.Install(this); `new GraphicsDeviceManager(this)` is
-//                        XnaPort.Runtime.Graphics(this); XACT types alias XnaPort.Xact; the base-class cast calls
-//                        ILSpy writes are base.Update(...) ...);
-//   XnaPort/             CodeBreaker's XNA runtime (xna/runtime/*.cs);
-//   Stubs/               the rest of XNA's Xbox-side API, generated from the XNA 4.0 assemblies' metadata;
-//   <name>.Port.csproj   MonoGame DesktopGL 3.8.1 on .NET 8, the game's own files beside the program,
-//                        ContentConverted/ the converted content;
-//   overlay              a folder of the game's own hand work, copied over all of it last.
-//
-// The build runs until it compiles or stops changing: an error the compiler itself names the fix for is fixed and the
-// build run again; what is left is listed by error code in reports/port.json. `--run` starts the program for that many
-// seconds and keeps its log. `--check-content` has the built program load every .xnb under Content/ through the runtime.
-//
-// Typing notes:
-//   * formats/xnb.py (rename_readers) and formats/xbox/xsb.py (read) have no typed port: `Hooks` carries them.
-//     An xsb bank is a JSON object (what xsb.read returns, written to <file>.cues.json by convert_xact).
-//   * A compiler error is the Python's dict {file, line, col, code, text} (the regex's groupdict): `BuildError`.
-//   * Python's dicts with fixed keys are structs (BuildResult, RunResult, EffectsReport); the build report, whose keys
-//     depend on what happened (rewrites, content, overlay, rounds ...), is a Json object, kept in the Python's key order.
-//   * `own` of rewrite() (a frozenset of type names) is a py::set<py::str>.
-//   * subprocess.Popen(timeout=) / env= are done with the Windows API and detail::EnvGuard (run.hpp).
-//   * Paths the Python takes from __file__ (xna/runtime, xna/apistubs) are <checkout root>/codebreaker/xna/...
-//   * The overlay manifest (overlay.json) is read as JSON; a manifest of the wrong shape (a "replace" that is not a list
-//     of strings ...) is outside this port (the Python would fail with whichever error its operation gives).
+// DIVERGES: not kept, internals of the module that only its own harness called: `_args`, `_edit_lines`, `_effect_bytes`, `_csproj`,
+// `_overlay_dir`, `_copy_tree`, `_xna_assembly`, `_stub_tool`, `stubs`, `prepare`, `_build_once`, `compile_effects`, `convert_songs` and
+// `convert_xact` as separate functions (they run inside build). The XACT wave banks' decoder (formats.xbox.xma, no typed port) is not in
+// the old Hooks, so a game with wave banks is built from the Python until formats/xbox/xma is refactored (the shim's `build` throws
+// UnsupportedError for it); an error's `line` and `col` are still text; a failed build lists its errors by code in sorted order.
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
+#include <set>
 #include <tuple>
 
+#include "cb/compat/legacy_settings.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/xna/port.hpp"
 #include "codebreaker/base/converted.hpp"
+#include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/xna/run.hpp"
 #include "py.hpp"
+#include "py_json.hpp"
 #include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::xna::port {
 
+namespace nw = cb::xna::port;
+
 using Json = knowledge::sources::Json;
 
-extern const py::list<py::str> STUBBED;
-extern const py::list<py::str> HAND_WRITTEN;
-extern const py::str MONOGAME;
-extern const py::list<py::str> XACT_TYPES;
-extern const py::list<py::str> LIFECYCLE;
-extern const py::dict<py::str, py::str> RENAMED_PARAMETERS;
+inline const py::str MONOGAME = py::str(std::string(nw::kMonoGameVersion));
 
 // What port.py takes from modules without a typed port.
 struct Hooks {
@@ -68,84 +53,133 @@ struct BuildError {
     py::str file, line, col, code, text;
 };
 
-// codebreaker/xna (where runtime/ and apistubs/ are)
-py::str HERE();
-py::str RUNTIME();
-py::str APISTUBS();
+namespace detail_shim {
 
-// ---- the generated XNA API stubs --------------------------------------------------------------------------------
-std::optional<py::str> _xna_assembly(const py::str& name);
-py::str _stub_tool();
-// The XNA Xbox-side API stubs, generated once (state/xna/stubs) and copied to `out_dir`.
-void stubs(const py::str& out_dir);
+inline std::filesystem::path path_of(const py::str& s) { return cb::compat::legacy::path_of(s); }
 
-// ---- source rewrites --------------------------------------------------------------------------------------------
+inline nw::Tools tools() {
+    nw::Tools t;
+    const std::filesystem::path here = path_of(py::settings::checkout_root()) / "codebreaker" / "xna";
+    t.runtime_dir = here / "runtime";
+    t.apistubs_dir = here / "apistubs";
+    t.state = cb::compat::legacy::state_dir();
+    const py::str overlays = py::settings::get_str(py::str("xna_overlays"));
+    if (!overlays.empty()) t.overlays = path_of(overlays);
+    return t;
+}
+
+// json.dump(value, f, indent=1) of the old Json value
+inline void json_text(const Json& j, std::string& out) {
+    switch (j.kind) {
+        case Json::None: out += "null"; return;
+        case Json::Bool: out += j.b ? "true" : "false"; return;
+        case Json::Int: out += std::to_string(j.i); return;
+        case Json::Float: out += std::to_string(j.d); return;
+        case Json::Str: py::json::put(out, j.s); return;
+        case Json::List: {
+            out += "[";
+            for (size_t i = 0; i < j.list.size(); ++i) {
+                if (i) out += ", ";
+                json_text(j.list[i], out);
+            }
+            out += "]";
+            return;
+        }
+        case Json::Dict: {
+            out += "{";
+            bool first = true;
+            for (const auto& kv : j.dict.items()) {
+                if (!first) out += ", ";
+                first = false;
+                py::json::put(out, std::get<0>(kv));
+                out += ": ";
+                json_text(std::get<1>(kv), out);
+            }
+            out += "}";
+            return;
+        }
+    }
+}
+
+inline nw::Hooks hooks(const Hooks& old) {
+    nw::Hooks h;
+    if (old.xsb_read) {
+        h.sound_bank_cues = [old](const std::filesystem::path& bank) {
+            std::string out;
+            json_text(old.xsb_read(cb::compat::to_py(cb::fs::to_text(bank))), out);
+            return out;
+        };
+    }
+    if (old.xnb_rename_readers) {
+        h.rename_readers = [old](cb::ByteView xnb, const std::function<std::string(const std::string&)>& rename) -> std::optional<cb::Bytes> {
+            auto r = old.xnb_rename_readers(cb::compat::to_py(xnb), [&](const py::str& name) { return cb::compat::to_py(rename(name.utf8())); });
+            if (!r) return std::nullopt;
+            return cb::compat::from_py(*r);
+        };
+    }
+    return h;
+}
+
+inline std::vector<nw::BuildError> new_errors(const py::list<BuildError>& errors) {
+    std::vector<nw::BuildError> out;
+    for (const BuildError& e : errors)
+        out.push_back({e.file.utf8(), static_cast<int>(py::int_parse(e.line)), static_cast<int>(py::int_parse(e.col)), e.code.utf8(), e.text.utf8()});
+    return out;
+}
+
+}  // namespace detail_shim
+
 // Names of the types the game's C# under `folder` declares (classes, structs, enums, interfaces, delegates).
-py::set<py::str> declared_types(const py::str& folder);
+inline py::set<py::str> declared_types(const py::str& folder) {
+    py::set<py::str> out;
+    for (const std::string& n : nw::declared_types(detail_shim::path_of(folder))) out.add(cb::compat::to_py(n));
+    return out;
+}
 
 // The port's changes to one file of the game's C#: (text, [what changed]). `own`: type names the game declares itself.
-std::tuple<py::str, py::list<py::str>> rewrite(const py::str& text, const py::set<py::str>& own = py::set<py::str>());
+inline std::tuple<py::str, py::list<py::str>> rewrite(const py::str& text, const py::set<py::str>& own = py::set<py::str>()) {
+    std::set<std::string> names;
+    for (const py::str& n : own) names.insert(n.utf8());
+    const nw::Rewritten r = nw::rewrite(text.utf8(), names);
+    py::list<py::str> changes;
+    for (const std::string& c : r.changes) changes.append(cb::compat::to_py(c));
+    return {cb::compat::to_py(r.text), changes};
+}
 
-// `new Effect(device, bytes)`, and `: base(device, bytes)` in a class deriving from Effect, with the bytes passed through
-// XnaPort.Effects.ForPC. -> (text, wrapped)
-std::tuple<py::str, int64_t> _effect_bytes(const py::str& text);
-
-// CS0507 (an override changes the access it overrides): `protected internal` here. -> fixes.
-int64_t fix_access(const py::list<BuildError>& errors);
-
-// The top-level arguments of the call whose '(' is at open_paren: ([(start, end)], index after ')'); (None, -1) when
-// the parentheses never close.
-std::tuple<std::optional<py::list<std::tuple<int64_t, int64_t>>>, int64_t> _args(const py::str& text, int64_t open_paren);
-
-// Each error line of `code` whose text has `wanted`: edit(line) -> new line. -> fixes.
-int64_t _edit_lines(const py::list<BuildError>& errors, const py::str& code, const py::str& wanted,
-                    const std::function<py::str(const py::str&)>& edit);
-
-int64_t fix_color(const py::list<BuildError>& errors);
-int64_t fix_vertex_binding(const py::list<BuildError>& errors);
+inline int64_t fix_access(const py::list<BuildError>& errors) { return static_cast<int64_t>(nw::fix_access(detail_shim::new_errors(errors))); }
+inline int64_t fix_color(const py::list<BuildError>& errors) { return static_cast<int64_t>(nw::fix_color(detail_shim::new_errors(errors))); }
+inline int64_t fix_vertex_binding(const py::list<BuildError>& errors) { return static_cast<int64_t>(nw::fix_vertex_binding(detail_shim::new_errors(errors))); }
+inline int64_t fix_named_arguments(const py::list<BuildError>& errors) { return static_cast<int64_t>(nw::fix_named_arguments(detail_shim::new_errors(errors))); }
+inline int64_t fix_moved_members(const py::list<BuildError>& errors) { return static_cast<int64_t>(nw::fix_moved_members(detail_shim::new_errors(errors))); }
+inline int64_t fix_ref_out(const py::list<BuildError>& errors) { return static_cast<int64_t>(nw::fix_ref_out(detail_shim::new_errors(errors))); }
 
 // {method name: [(full class name, first parameter's type)]}: the game's own extension methods.
-py::dict<py::str, py::list<std::tuple<py::str, py::str>>> extension_methods(const py::str& folder);
-int64_t fix_shadowed_extensions(const py::list<BuildError>& errors, const py::dict<py::str, py::list<std::tuple<py::str, py::str>>>& extensions);
+inline py::dict<py::str, py::list<std::tuple<py::str, py::str>>> extension_methods(const py::str& folder) {
+    py::dict<py::str, py::list<std::tuple<py::str, py::str>>> out;
+    for (const auto& [name, where] : nw::extension_methods(detail_shim::path_of(folder))) {
+        py::list<std::tuple<py::str, py::str>> list;
+        for (const nw::Extension& e : where) list.append(std::make_tuple(cb::compat::to_py(e.cls), cb::compat::to_py(e.receiver_type)));
+        out.set(cb::compat::to_py(name), list);
+    }
+    return out;
+}
 
-int64_t fix_named_arguments(const py::list<BuildError>& errors);
-int64_t fix_moved_members(const py::list<BuildError>& errors);
-int64_t fix_ref_out(const py::list<BuildError>& errors);
+inline int64_t fix_shadowed_extensions(const py::list<BuildError>& errors, const py::dict<py::str, py::list<std::tuple<py::str, py::str>>>& extensions) {
+    std::map<std::string, std::vector<nw::Extension>> ext;
+    for (const auto& kv : extensions.items()) {
+        auto& list = ext[std::get<0>(kv).utf8()];
+        for (const auto& e : std::get<1>(kv)) list.push_back({std::get<0>(e).utf8(), std::get<1>(e).utf8()});
+    }
+    return static_cast<int64_t>(nw::fix_shadowed_extensions(detail_shim::new_errors(errors), ext));
+}
 
-// ---- content ----------------------------------------------------------------------------------------------------
-// Every .xwb as <bank file>/stream_NNN.wav (+ bank.txt) and every .xsb as <file>.cues.json, under `converted`.
-// -> {"wave banks": n, "sound banks": n}
-py::dict<py::str, int64_t> convert_xact(const py::str& game_dir, const py::str& converted, const Hooks& hooks);
-
-struct EffectsReport {
-    int64_t compiled = 0;
-    py::dict<py::str, py::str> failed;
-};
-// Every recovered effect (.fx under `converted`, first line "// sha1 <the Xbox effect's sha1>") compiled by MonoGame's
-// mgfxc to `shaders`/<sha1>.mgfxo.
-EffectsReport compile_effects(const py::str& converted, const py::str& shaders);
-
-// Every song's music (.wma, beside its .xnb) as Ogg Vorbis under `converted`. -> songs
-int64_t convert_songs(const py::str& game_dir, const py::str& converted);
-
-// ---- the project ------------------------------------------------------------------------------------------------
-py::str _csproj(const py::str& name, const py::str& exe_rel, const py::list<py::str>& assemblies, const py::list<py::str>& defines);
-std::optional<py::str> _overlay_dir(const base::converted::Project& project, const std::optional<py::str>& overlay);
-// src over dst; a file already there with the same size and time is left as it is.
-void _copy_tree(const py::str& src, const py::str& dst);
-
-extern const py::re::Pattern STUB_ASSEMBLIES;
-extern const py::str _REFLECTIVE;
 // A type reader's name in an .xnb as the port reads it.
-py::str port_reader_name(const py::str& name, const py::str& program);
+inline py::str port_reader_name(const py::str& name, const py::str& program) { return cb::compat::to_py(nw::port_reader_name(name.utf8(), program.utf8())); }
+
 // Each .xnb under game_dir rewritten to port_reader_name's names (once: a stamp records it). -> files rewritten
-int64_t port_reader_names(const py::str& game_dir, const py::str& program, const Hooks& hooks);
-
-// build/port/ written from the project. -> (port dir, project name, report: a JSON object)
-std::tuple<py::str, py::str, Json> prepare(const base::converted::Project& project, const std::optional<py::str>& overlay, const Hooks& hooks);
-
-// -> (built, the errors, the whole output)
-std::tuple<bool, py::list<BuildError>, py::str> _build_once(const py::str& port, const py::str& name);
+inline int64_t port_reader_names(const py::str& game_dir, const py::str& program, const Hooks& hooks) {
+    return static_cast<int64_t>(nw::port_reader_names(detail_shim::path_of(game_dir), program.utf8(), detail_shim::hooks(hooks)));
+}
 
 struct BuildResult {
     bool ok = false;
@@ -153,24 +187,58 @@ struct BuildResult {
     py::dict<py::str, int64_t> errors;     // error code -> count
     py::list<py::str> first;
     py::str build_output_tail;
-    Json report;                           // rewrites, content, [xnb reader names, overlay,] rounds: as the Python's dict
-    Json to_json() const;                  // the dict build() returns (and writes to reports/port.json)
+    int64_t rounds = 0;
 };
-BuildResult build(const base::converted::Project& project, const std::optional<py::str>& overlay, int64_t rounds, const Hooks& hooks);
+
+inline BuildResult build(const base::converted::Project& project, const std::optional<py::str>& overlay, int64_t rounds, const Hooks& hooks) {
+    std::optional<std::filesystem::path> ov;
+    if (overlay) ov = detail_shim::path_of(*overlay);
+    const nw::BuildResult r = nw::build(cb::base::converted::Project(detail_shim::path_of(project.root)), detail_shim::tools(), detail_shim::hooks(hooks), ov,
+                                        static_cast<std::size_t>(rounds));
+    BuildResult out;
+    out.ok = r.ok;
+    if (r.exe) out.exe = cb::compat::to_py(cb::fs::to_text(*r.exe));
+    for (const auto& [code, n] : r.errors) out.errors.set(cb::compat::to_py(code), static_cast<int64_t>(n));
+    for (const std::string& f : r.first) out.first.append(cb::compat::to_py(f));
+    out.build_output_tail = cb::compat::to_py(r.build_output_tail);
+    out.rounds = static_cast<int64_t>(r.rounds.size());
+    return out;
+}
 
 struct RunResult {
     std::optional<int64_t> exit;           // None: still running when the time was up
     py::str output;                        // the last 6000 characters
     py::str log;
 };
+
 // Start the built game for `seconds`; xnaport.log and what it printed.
-RunResult run_for(const py::str& exe, int64_t seconds, const std::vector<std::pair<std::string, std::string>>& env = {});
+inline RunResult run_for(const py::str& exe, int64_t seconds, const std::vector<std::pair<std::string, std::string>>& env = {}) {
+    const std::map<std::string, std::string> e(env.begin(), env.end());
+    const nw::RunResult r = nw::run_for(detail_shim::path_of(exe), std::chrono::seconds(seconds), e);
+    RunResult out;
+    if (r.exit) out.exit = *r.exit;
+    out.output = cb::compat::to_py(r.output);
+    out.log = cb::compat::to_py(r.log);
+    return out;
+}
 
-// Every .xnb under the built program's Content/ loaded by the program itself -> {asset: type or "error: why"}, or None
-// when it wrote nothing.
-std::optional<Json> check_content(const py::str& exe, int64_t seconds = 600);
+// Every .xnb under the built program's Content/ loaded by the program itself -> {asset: type or "error: why"}, or None when it wrote nothing.
+inline std::optional<py::dict<py::str, py::str>> check_content(const py::str& exe, int64_t seconds = 600) {
+    const auto r = nw::check_content(detail_shim::path_of(exe), std::chrono::seconds(seconds));
+    if (!r) return std::nullopt;
+    py::dict<py::str, py::str> out;
+    for (const auto& [k, v] : *r) out.set(cb::compat::to_py(k), cb::compat::to_py(v));
+    return out;
+}
 
-extern const py::str DOC;
-int64_t main(const py::list<py::str>& argv, const Hooks& hooks);
+inline const py::str DOC = py::str("xna port <Converted project or name> [--overlay DIR] [--run SECONDS] [--check-content]");
+
+inline int64_t main(const py::list<py::str>& argv, const Hooks& hooks) {
+    std::vector<std::string> args;
+    for (const py::str& a : argv) args.push_back(a.utf8());
+    const py::str converted = py::settings::get_str(py::str("converted"));
+    const std::filesystem::path store = converted.empty() ? detail_shim::path_of(py::settings::checkout_root()) / "Converted" : detail_shim::path_of(converted);
+    return nw::main(args, cb::base::converted::Store(store), detail_shim::tools(), detail_shim::hooks(hooks));
+}
 
 }  // namespace codebreaker::xna::port
