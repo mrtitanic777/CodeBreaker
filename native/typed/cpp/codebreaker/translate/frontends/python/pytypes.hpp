@@ -84,7 +84,7 @@ inline np::Kind kind_of(const py::str& word) {
     static const np::Kind all[] = {np::Kind::Bottom, np::Kind::Top,   np::Kind::None,   np::Kind::Bool,   np::Kind::Float,
                                    np::Kind::Str,    np::Kind::Int,   np::Kind::Bytes,  np::Kind::Bytearray, np::Kind::Tuple,
                                    np::Kind::Opt,    np::Kind::List,  np::Kind::Dict,   np::Kind::Set,    np::Kind::Inst,
-                                   np::Kind::Cls,    np::Kind::Fn,    np::Kind::Module, np::Kind::Extern};
+                                   np::Kind::Cls,    np::Kind::Fn,    np::Kind::Module, np::Kind::Extern, np::Kind::Iter};
     const std::string w = word.utf8();
     for (const np::Kind k : all) {
         if (np::kind_word(k) == w) return k;

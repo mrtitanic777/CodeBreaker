@@ -294,6 +294,10 @@ public:
     // What a module-level name refers to; nullopt for a name that is not defined there.
     std::optional<Ref> resolve_global(Module& module, const std::string& name);
     std::optional<Ref> resolve_expr_name(Module& module, const syntax::Expr* expr);
+    // What `import name` binds: a module of the program, a standard library module, or a library not mapped.
+    Ref module_ref(const std::string& name) const;
+    // The module a `from ... import` names (relative imports resolved against `module`).
+    std::string from_base(const Module& module, const syntax::ImportFrom& stmt) const;
 
     // ---- containers
     SiteId find(SiteId id);                           // the root of the site's class
@@ -364,8 +368,6 @@ private:
     };
 
     void index_stmt(Module& module, const syntax::Stmt& stmt);
-    Ref module_ref(const std::string& name) const;
-    std::string from_base(const Module& module, const syntax::ImportFrom& stmt) const;
     std::optional<Ref> resolve_global_(Module& module, const std::string& name, int depth);
     Type annotation_(Module& module, const syntax::Expr* annotation);
     Type& table_of(Table table, SiteId root);

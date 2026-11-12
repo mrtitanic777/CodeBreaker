@@ -63,6 +63,7 @@ std::string_view kind_word(Kind kind) {
         case Kind::Fn: return "fn";
         case Kind::Module: return "module";
         case Kind::Extern: return "extern";
+        case Kind::Iter: return "iter";
     }
     return "";
 }
@@ -109,7 +110,8 @@ std::string describe(const Type& t) {
         case Kind::Set:
             return std::format("{}#{}", kind_word(t.kind), t.site ? std::to_string(*t.site) : "None");
         case Kind::Tuple:
-        case Kind::Opt: {
+        case Kind::Opt:
+        case Kind::Iter: {
             std::vector<std::string> parts;
             for (const Type& a : t.args) parts.push_back(describe(a));
             return std::format("{}[{}]", kind_word(t.kind), text::join(parts, ", "));
@@ -165,6 +167,7 @@ Type optional_of(const Type& t) {
 
 Type tuple_of(std::vector<Type> elements) { return {.kind = Kind::Tuple, .args = std::move(elements)}; }
 
+Type iter_of(const Type& item, const Bound& passes) { return Type{.kind = Kind::Iter, .args = {item}, .lo = passes}; }
 Type strip_optional(const Type& t) { return t.kind == Kind::Opt ? t.args.front() : t; }
 
 // ---- intervals ----------------------------------------------------------------------------------------
