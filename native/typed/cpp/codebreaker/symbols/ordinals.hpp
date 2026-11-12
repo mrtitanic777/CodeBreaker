@@ -20,9 +20,14 @@
 #include <optional>
 #include <tuple>
 
+#include "cb/symbols/ordinals.hpp"
 #include "py.hpp"
 
 namespace codebreaker::symbols::ordinals {
+
+// The table of numbered exports the functions below answer from (one per process, over the old readers and the corpus): for the shims that call
+// the new modules which take an Ordinals (symbols/names).
+const ::cb::symbols::ordinals::Ordinals& shared_ordinals();
 
 // One module's entry in ordinal_names.json: where the names were read from, how many were checked against the
 // code (agreeing, disagreeing), and the names by decimal ordinal.

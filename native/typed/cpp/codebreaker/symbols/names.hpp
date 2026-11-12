@@ -1,21 +1,15 @@
-// codebreaker/symbols/names.hpp -- interface of codebreaker.symbols.names (typed C++; implementation pending).
-//
-// names.py -- the best name for every function and import of a module, and where it came from.
+// codebreaker/symbols/names.hpp -- SHIM over cb/symbols/names.hpp (docs/CPP_DESIGN.md 6.3): the best name for every function and import of a module,
+// and where it came from. The old types in (file names, py::dicts, the old function store), the new Namer called, the old types out. Its translation
+// unit (names.cpp) gives the Namer what it asks of the rest of the program: the corpus, the table of numbered exports, the old store's bodies, the old
+// PowerPC reader, the console's import names, the runtime-library identification and the compiler guess. Deleted with its last py:: consumer.
 //
 //     names::of_module(path)        {"functions": [(address, key, name, source)], "imports": [(module, ordinal, name, source)]}
 //     names::bodies(path)           {address: digest of the body}
 //     names::index(path)            record the module's bodies, and the names it gives them, in the store
 //     names::set_name(path, address, "Name")     name a body: it holds in every module with that body
 //
-// A function's name is taken from the first of: export, run-time types (PowerPC), debug symbols, ordinal table,
-// named body, runtime library, same body; else sub_<address>.
-//
-// Typing notes:
-//   * of_module()'s dict {"functions", "imports"} is the record `ModuleNames`; its tuples are records `FunctionName`
-//     and `ImportName` (`ordinal` is None for an import by name).
-//   * `fs` (the function store) defaults to store::functions::open(): nullptr here means "open it".
-//   * An address is int64_t (a 32-bit address, or describe::address(seg, off) for a 16-bit module).
-//   * own_names() answers {address: (name, source)}.
+// Differences from the old port that the shim cannot hide: the .SYM files of a name are tried in the order of their paths; a damaged symbol file gives
+// no names (as the caught exception did); the command prints no empty line for a module that is neither PE nor NE.
 #pragma once
 
 #include <cstdint>
@@ -74,8 +68,7 @@ Named powerpc_names(const py::str& module_path);
 // Record a module's bodies in the store, each with the name the module itself gives it. -> number of bodies
 int64_t index(const py::str& module_path, const FunctionStorePtr& fs = nullptr, const std::optional<Named>& own = std::nullopt);
 // Name the body of the function at `address`; -> the body's digest, or None.
-std::optional<py::str> set_name(const py::str& module_path, int64_t address, const py::str& name,
-                                const FunctionStorePtr& fs = nullptr);
+std::optional<py::str> set_name(const py::str& module_path, int64_t address, const py::str& name, const FunctionStorePtr& fs = nullptr);
 // Every function and import of a module with its best name and where the name is from.
 ModuleNames of_module(const py::str& module_path, const FunctionStorePtr& fs = nullptr);
 
