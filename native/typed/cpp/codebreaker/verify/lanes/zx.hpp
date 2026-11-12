@@ -1,35 +1,32 @@
-// codebreaker/verify/lanes/zx.hpp -- typed C++ port of codebreaker.verify.lanes.zx.
+// codebreaker/verify/lanes/zx.hpp -- COMPAT SHIM over cb/verify/lanes/zx.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// zx.py -- what is particular to reconstructing a ZX Spectrum program: its 16 KB ROM at $0000. Its
-// reader (formats/zx.py) and writer (source/zx_writer.py) are its platform's (platforms/zx.py). The
-// lane itself is verify/lanes/z80_flat.py's.
-//
-// Typing notes:
-//   * The module is `z80_flat.lane("zx", 2, (0x0000, 0x4000)).export(globals())`. lane() makes that
-//     Lane (verify/lanes/z80_flat.hpp); the platform's packager's writer and loader's open (the platforms
-//     package has no registry in C++) are the two functions given to it. export() is not ported (it fills a
-//     Python module's namespace); KIND, REV and SAME are the constants it fills.
+// The module is native/cb/verify/lanes/zx.hpp: the kind's name, the lane's version and where the ZX Spectrum's ROM is. The lane itself
+// is z80_flat's, still the old port: `lane()` hands it those three things and the platform's writer and open, as zx.py did.
 #pragma once
 
 #include <cstdint>
 #include <functional>
 #include <tuple>
 
-#include "py.hpp"
+#include "cb/verify/lanes/zx.hpp"
 #include "codebreaker/verify/lanes/z80_flat.hpp"
+#include "py.hpp"
 
 namespace codebreaker::verify::lanes::zx {
 
-extern const py::str KIND;   // "zx"
-inline constexpr int64_t REV = 2;
-// z80_flat.SAME (a function: z80_flat's constant lives in another translation unit, so a copy made at
-// static-initialization time could be taken before it exists)
-const py::str& SAME();
+namespace nz = cb::verify::lanes::zx;
+
+inline const py::str KIND{std::string(nz::kKind)};   // "zx"
+inline constexpr int64_t REV = nz::kRev;
+// z80_flat.SAME (a function: z80_flat's constant lives in another translation unit)
+inline const py::str& SAME() { return z80_flat::SAME; }
 
 // the addresses the machine's ROM occupies
-inline constexpr int64_t ROM_LO = 0x0000, ROM_HI = 0x4000;
+inline constexpr int64_t ROM_LO = nz::kRomLow, ROM_HI = nz::kRomHigh;
 
 // LANE: z80_flat.lane("zx", 2, (0x0000, 0x4000))
-z80_flat::Lane lane(const z80_flat::FlatWriter& writer, const std::function<z80_flat::Program(const py::str& path)>& open);
+inline z80_flat::Lane lane(const z80_flat::FlatWriter& writer, const std::function<z80_flat::Program(const py::str& path)>& open) {
+    return z80_flat::lane(KIND, REV, std::make_tuple(ROM_LO, ROM_HI), writer, open);
+}
 
 }  // namespace codebreaker::verify::lanes::zx

@@ -1,5 +1,13 @@
 // codebreaker/verify/authored/match16.hpp -- typed C++ of codebreaker.verify.authored.match16.
 //
+// NOT YET A SHIM (W2-B17): the driver and its selection (the source files from the calls, the compiler and switches chosen by
+// segment and by file, each function's ways of being said, the remembered choices, the report) are native/cb/verify/authored/
+// match16.{hpp,cpp}, over a `Toolchain` the caller gives. This port stays, as it was, for one reason: it is written against
+// verify/authored/match (ARCH, distance, the originals of a 16-bit module), verify/lanes/win16 (prepare) and build/msc6's old
+// shim, none of which the new match16 may call and none of which is refactored yet. When match and win16 are, this port becomes a
+// shim over the new module (a Toolchain over msc6 and match::distance, the text passes made into Variants) and this note goes.
+//
+//
 // match16.py -- does Microsoft C 6 turn a 16-bit module's reconstruction back into its bytes?
 //
 //     python -m codebreaker match <16-bit module> [--flags "/AM /Gcsw /Os"] [--first N]

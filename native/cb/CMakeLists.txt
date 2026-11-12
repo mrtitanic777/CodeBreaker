@@ -212,7 +212,7 @@ cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge cb_compare cb_platforms)
 
 cb_area(xna)
-target_link_libraries(cb_xna PUBLIC cb_core)
+target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats)   # (cb_base: the Converted project; cb_formats: PE and media images)
 
 # The translator's back ends, front ends and the whole-program judge; the terminal interface's helpers (the terminal
 # interface itself stays Python: docs/CPP_DESIGN.md section 9).
