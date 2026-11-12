@@ -1,55 +1,27 @@
-// codebreaker/symbols/debug_build.hpp -- typed C++ port of codebreaker.symbols.debug_build.
+// codebreaker/symbols/debug_build.hpp -- SHIM over cb/symbols/debug_build.hpp (docs/CPP_DESIGN.md 6.3): real internal function names for a shipped NE
+// module, matched function by function against a debug build of the same version whose linker .MAP names every function. The old types in (the old
+// Seg, file names, py::dicts), the new matcher called, the old types out. Deleted with its last py:: consumer (debug_build_estimate).
 //
-// Recover real internal function names for a shipped NE module by matching it, function by function, against a
-// *debug build of the same version* whose linker .MAP names every function (debug builds declare internals
-// PUBLIC).
+//     auto index = build_debug_index("KRNL386.EXE", "KRNL386.MAP", ordinals);
+//     auto [names, counts] = match_module(retail_exe, index, ordinals);
 //
-// The retail export table names only ~25% of a system module's functions; the rest carve as anonymous
-// ``sub_XXXX``. A debug build of the identical Windows version carries the true names, but at *different
-// offsets* (debug adds assertion / RIP code and shifts everything). So we can't align by address -- we align by
-// an offset-invariant byte signature:
-//
-//     norm_sig(): the objdump text per instruction with only the OFFSET-dependent operands masked --
-//     branch/call targets, absolute ``[0xNNNN]`` memory, and far ``seg:off`` pointers. IMMEDIATES stay, because
-//     they are part of a function's identity; masking them (an earlier attempt) let functions with the same
-//     instruction skeleton but different constants collide. A signature match is therefore byte-identity modulo
-//     relocation: the two functions are provably the same code, and the debug build's name for it is exact.
-//
-// Three guards keep the result at zero false positives:
-//
-//   1. ambiguity drop -- a signature that two *different* debug names share is discarded (can't tell which name
-//      is right).
-//   2. export validation -- the retail export table is a labelled test set: any signature a retail EXPORT
-//      already owns under a different name is discarded as collision-prone (this is what catches e.g. a
-//      2-instruction predicate matching the wrong short function). After this filter, every known export in the
-//      map agrees with its own signature -- the proof the method is sound.
-//   3. min length + uniqueness -- functions under MIN_LEN instructions are too skeleton-like to trust; and a
-//      real name claimed by >1 retail offset is dropped entirely (a symbol lives at one address, so a double
-//      match is an internal-internal collision, and duplicate labels would break emission).
-//
-// Only a module with BOTH a debug binary and its .MAP can be recovered this way. The output ``names.json``
-// ("seg:off" -> NAME) feeds trace.Seg(name_override=...) which renames the anonymous functions in the emitted
-// idiomatic source -- a pure label rename, so byte-exactness is untouched.
-//
-// Typing notes:
-//   * a signature is a tuple of str: Sig, a py::list<py::str> (hashable here: the hasher is specialized below).
-//   * Seg keeps a reference to its NEFile, so the NEFiles live as long as the Segs of a function.
-//   * json.load's json.JSONDecodeError (a ValueError) is JSONDecodeError here, thrown for the text the JSON reader refuses.
-//   * load_override's values must be JSON strings (a name); the Python would keep any JSON value there, and a
-//     number or null is a TypeError here.
-//   * not ported: the `__name__ == "__main__"` block (it recovers KRNL386 from the Windows 3.1 retail and the
-//     debug SDK build and writes state/idiomatic/krnl386/names.json): the caller does that with recover().
+// Differences from the old port that the shim cannot hide:
+//   * The signature of an instruction is made by the new masking code, which reads the branch mnemonics as whole words as the Python's alternation
+//     did (`jne` is not `je` plus junk); a name or text the Python's pattern read across a line end is not read so.
+//   * A names.json that is not one is a ParseError, which reaches old callers as the ValueError they caught, not as a JSONDecodeError.
+//   * `_BR`, the pattern, is not offered.
 #pragma once
 
 #include <cstdint>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/symbols/debug_build.hpp"
 #include "codebreaker/source/ne_asm/segment.hpp"
 #include "py.hpp"
 
 namespace py {
-// a signature (a tuple of str) as a dict key
 template <> struct hasher<py::list<py::str>> {
     size_t operator()(const py::list<py::str>& l) const {
         size_t h = 0x345678;
@@ -61,9 +33,9 @@ template <> struct hasher<py::list<py::str>> {
 
 namespace codebreaker::symbols::debug_build {
 
-inline constexpr int64_t MIN_LEN = 5;   // functions under 5 instructions share skeletons -> collision-prone
+namespace cbd = cb::symbols::debug_build;
 
-extern const py::str _BR;   // the branch mnemonics whose target is masked
+inline constexpr int64_t MIN_LEN = 5;   // functions under 5 instructions share skeletons -> collision-prone
 
 using Sig = py::list<py::str>;
 
@@ -73,27 +45,82 @@ struct JSONDecodeError : py::ValueError {
     const char* type() const override { return "JSONDecodeError"; }
 };
 
-// Offset-invariant signature of the function at `start`: one entry per instruction, OFFSET-dependent operands
-// masked, immediates kept.
-Sig norm_sig(const source::ne_asm::segment::Seg& sg, int64_t start);
+namespace shim_ {
 
-// {signature -> NAME} for every uniquely-signatured named function in a debug build (its .MAP names them;
-// ambiguous signatures are dropped).
-py::dict<Sig, py::str> build_debug_index(const py::str& debug_exe, const py::str& debug_map,
-                                         const py::dict<py::str, py::str>& ordinals);
+inline Sig sig_of(const cbd::Signature& s) { return cb::compat::to_py(s); }
+inline cbd::Signature new_sig(const Sig& s) { return cb::compat::from_py(s); }
 
-// ({"seg:off" -> NAME}: the exactly-matching real names for the anonymous internal functions of `retail_exe`,
-// with all three false-positive guards applied, (agree, disagree) over the known exports).
-std::tuple<py::dict<py::str, py::str>, std::tuple<int64_t, int64_t>> match_module(
-    const py::str& retail_exe, const py::dict<Sig, py::str>& sig2name, const py::dict<py::str, py::str>& ordinals,
-    int64_t min_len = MIN_LEN);
+inline cb::source::ne_asm::segment::SharedOrdinals ordinals_of(const py::dict<py::str, py::str>& d) {
+    auto out = std::make_shared<cb::source::ne_asm::segment::Ordinals>();
+    for (const auto& kv : d.items()) (*out)[cb::compat::from_py(std::get<0>(kv))] = cb::compat::from_py(std::get<1>(kv));
+    return out;
+}
+
+inline py::dict<py::str, py::str> old_names(const cbd::Names& names) {
+    py::dict<py::str, py::str> out;
+    for (const auto& [key, name] : names) out.set(cb::compat::to_py(key.text()), cb::compat::to_py(name));
+    return out;
+}
+
+}  // namespace shim_
+
+// Offset-invariant signature of the function at `start`: one entry per instruction, OFFSET-dependent operands masked, immediates kept.
+inline Sig norm_sig(const source::ne_asm::segment::Seg& sg, int64_t start) {
+    return cb::compat::guard([&] { return shim_::sig_of(cbd::signature(sg.inner(), cb::compat::int_from_py<uint32_t>(start))); });
+}
+
+// {signature -> NAME} for every uniquely-signatured named function in a debug build (its .MAP names them; ambiguous signatures are dropped).
+inline py::dict<Sig, py::str> build_debug_index(const py::str& debug_exe, const py::str& debug_map, const py::dict<py::str, py::str>& ordinals) {
+    return cb::compat::guard([&] {
+        const auto module = cb::source::ne_asm::fixups::open_module(cb::fs::from_text(cb::compat::from_py(debug_exe)));
+        const std::string map = cb::fs::read_text(cb::fs::from_text(cb::compat::from_py(debug_map)));
+        py::dict<Sig, py::str> out;
+        for (const auto& [sig, name] : cbd::build_index(module, map, shim_::ordinals_of(ordinals))) out.set(shim_::sig_of(sig), cb::compat::to_py(name));
+        return out;
+    });
+}
+
+// ({"seg:off" -> NAME}: the exactly-matching real names for the anonymous internal functions of `retail_exe`, with all three false-positive guards
+// applied, (agree, disagree) over the known exports).
+inline std::tuple<py::dict<py::str, py::str>, std::tuple<int64_t, int64_t>> match_module(const py::str& retail_exe, const py::dict<Sig, py::str>& sig2name,
+                                                                                          const py::dict<py::str, py::str>& ordinals, int64_t min_len = MIN_LEN) {
+    return cb::compat::guard([&] {
+        const auto module = cb::source::ne_asm::fixups::open_module(cb::fs::from_text(cb::compat::from_py(retail_exe)));
+        cbd::SignatureIndex index;
+        for (const auto& kv : sig2name.items()) index[shim_::new_sig(std::get<0>(kv))] = cb::compat::from_py(std::get<1>(kv));
+        const cbd::Match found = cbd::match_module(module, index, shim_::ordinals_of(ordinals), cb::compat::int_from_py<std::size_t>(min_len));
+        return std::make_tuple(shim_::old_names(found.names), std::make_tuple(static_cast<int64_t>(found.agree), static_cast<int64_t>(found.disagree)));
+    });
+}
 
 // names.json ("seg:off" -> NAME)  ->  {seg:int -> {off:int -> NAME}} for trace.Seg(name_override=...).
-py::dict<int64_t, py::dict<int64_t, py::str>> load_override(const py::str& names_json);
+inline py::dict<int64_t, py::dict<int64_t, py::str>> load_override(const py::str& names_json) {
+    return cb::compat::guard([&] {
+        py::dict<int64_t, py::dict<int64_t, py::str>> out;
+        for (const auto& [segment, offsets] : cbd::parse_overrides(cb::fs::read_text(cb::fs::from_text(cb::compat::from_py(names_json))))) {
+            py::dict<int64_t, py::str> inner;
+            for (const auto& [offset, name] : offsets) inner.set(int64_t{offset}, cb::compat::to_py(name));
+            out.set(static_cast<int64_t>(segment), inner);
+        }
+        return out;
+    });
+}
 
 // End-to-end: build the debug index, match, optionally write names.json.
-std::tuple<py::dict<py::str, py::str>, std::tuple<int64_t, int64_t>> recover(
-    const py::str& retail_exe, const py::str& debug_exe, const py::str& debug_map, const py::dict<py::str, py::str>& ordinals,
-    const std::optional<py::str>& out_json = std::nullopt);
+inline std::tuple<py::dict<py::str, py::str>, std::tuple<int64_t, int64_t>> recover(const py::str& retail_exe, const py::str& debug_exe, const py::str& debug_map,
+                                                                                    const py::dict<py::str, py::str>& ordinals,
+                                                                                    const std::optional<py::str>& out_json = std::nullopt) {
+    return cb::compat::guard([&] {
+        const auto retail = cb::source::ne_asm::fixups::open_module(cb::fs::from_text(cb::compat::from_py(retail_exe)));
+        const auto debug = cb::source::ne_asm::fixups::open_module(cb::fs::from_text(cb::compat::from_py(debug_exe)));
+        const cbd::Match found = cbd::recover(retail, debug, cb::fs::read_text(cb::fs::from_text(cb::compat::from_py(debug_map))), shim_::ordinals_of(ordinals));
+        if (out_json) {
+            const auto path = cb::fs::from_text(cb::compat::from_py(*out_json));
+            cb::fs::make_dirs(path.parent_path());
+            cb::fs::write_text(path, cbd::to_json(found.names));
+        }
+        return std::make_tuple(shim_::old_names(found.names), std::make_tuple(static_cast<int64_t>(found.agree), static_cast<int64_t>(found.disagree)));
+    });
+}
 
 }  // namespace codebreaker::symbols::debug_build
