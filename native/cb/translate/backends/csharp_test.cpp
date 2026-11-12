@@ -13,11 +13,15 @@
 // int64's maximum is written (the Python could not hold one); a for-each over a Java iterable, a lone getter, and the rest of
 // the output are as the Python wrote them.
 #include "cb/translate/backends/csharp.hpp"
+#include "cb/translate/l2.hpp"
 
 #include <algorithm>
 #include <limits>
 
+#include <nlohmann/json.hpp>
+
 #include "cb/core/fs.hpp"
+#include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
 
 namespace {
@@ -213,7 +217,8 @@ CB_TEST("translate.csharp.literals.integers", [] {
     CB_CHECK_EQ(render(b, b.i(7, ir::prim_type(ir::Prim::U32))), "7u");
     CB_CHECK_EQ(render(b, b.i(4294967295LL, ir::prim_type(ir::Prim::U32))), "uint.MaxValue");
     CB_CHECK_EQ(render(b, b.i(7, ir::prim_type(ir::Prim::U64))), "7UL");
-    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::uint64_t{18446744073709551615ULL}}, ir::prim_type(ir::Prim::U64))), "18446744073709551615UL");
+    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::uint64_t{18446744073709551615ULL}}, ir::prim_type(ir::Prim::U64))), "ulong.MaxValue");
+    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::uint64_t{18446744073709551614ULL}}, ir::prim_type(ir::Prim::U64))), "18446744073709551614UL");
     CB_CHECK_EQ(render(b, b.i(3, ir::prim_type(ir::Prim::U8))), "3");
 });
 
@@ -224,12 +229,21 @@ CB_TEST("translate.csharp.literals.floats_bools_null", [] {
     CB_CHECK_EQ(f64(100.0), "100.0");
     CB_CHECK_EQ(f64(-0.25), "-0.25");
     CB_CHECK_EQ(f64(1e22), "1E+22");
+    CB_CHECK_EQ(f64(2500000000.0), "2500000000.0");                                       // positional up to 1e16, as a person writes it
+    CB_CHECK_EQ(f64(123456789.125), "123456789.125");
+    CB_CHECK_EQ(f64(0.0001), "0.0001");
+    CB_CHECK_EQ(f64(1.5e-5), "1.5E-05");
+    CB_CHECK_EQ(f64(1e16), "1E+16");
+    CB_CHECK_EQ(f64(0.0), "0.0");
+    CB_CHECK_EQ(f64(1.7976931348623157e308), "1.7976931348623157E+308");
     CB_CHECK_EQ(f64(std::numeric_limits<double>::quiet_NaN()), "double.NaN");
     CB_CHECK_EQ(f64(std::numeric_limits<double>::infinity()), "double.PositiveInfinity");
     CB_CHECK_EQ(f64(-std::numeric_limits<double>::infinity()), "double.NegativeInfinity");
     const TypeP f32 = ir::prim_type(ir::Prim::F32);
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 0.1}, f32)), "0.1f");                       // the shortest text that is this float
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 3.0}, f32)), "3.0f");
+    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 1e10}, f32)), "10000000000.0f");
+    CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = 3.4028234663852886e38}, f32)), "3.4028235E+38f");
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::numeric_limits<double>::quiet_NaN()}, f32)), "float.NaN");
     CB_CHECK_EQ(render(b, b.n(ir::Lit{.value = std::int64_t{2}}, t_dbl())), "2.0");        // an integer in a double's place
     CB_CHECK_EQ(render(b, b.flag(true)), "true");
@@ -929,4 +943,126 @@ CB_TEST("translate.csharp.program.class_index_and_overrides", [] {
     CB_CHECK(p.overrides(d, *ir::get<ir::MethodDecl>(derived_f)));       // same name and parameter types
     CB_CHECK(!p.overrides(d, *ir::get<ir::MethodDecl>(derived_g)));      // a name Base does not have
     CB_CHECK(!p.overrides(d, *ir::get<ir::MethodDecl>(derived_h)));      // Base's is private
+});
+
+// ---- the real programs -----------------------------------------------------------------------------------------------------------
+
+namespace {
+
+// The C# corpus programs of tests/translate/corpus/csharp (written for the kit), as the Roslyn front end lowers them: their
+// units as L2 JSON, and the C# text the back end wrote for them. The text was read through for correctness -- it is the program
+// again, in C#'s own idioms -- and is what the Python back end wrote, but for the differences listed in DIVERGES above.
+void check_corpus_program(const std::string& name) {
+    const std::string stem = "translate/testdata/csharp_" + name;
+    const cb::Json docs = cb::json::load(cb::testing::data_path(stem + ".l2.json"));
+    const std::string expected = cb::fs::read_text(cb::testing::data_path(stem + ".cs.txt"));
+    cb::Arena arena;
+    std::vector<Node*> units;
+    for (const cb::Json& doc : docs) units.push_back(cb::translate::l2::from_json(arena, doc));
+    cs::Program p(units);
+    const auto& files = p.files();
+    CB_CHECK_EQ(files.size(), std::size_t{1});
+    if (files.empty()) return;
+    CB_CHECK_EQ(files[0].text, expected);
+    CB_CHECK(p.ledger().empty());
+}
+
+}  // namespace
+
+CB_TEST("translate.csharp.corpus.accounts", [] { check_corpus_program("accounts"); });
+CB_TEST("translate.csharp.corpus.bank", [] { check_corpus_program("bank"); });
+CB_TEST("translate.csharp.corpus.generics", [] { check_corpus_program("generics"); });
+CB_TEST("translate.csharp.corpus.inventory", [] { check_corpus_program("inventory"); });
+CB_TEST("translate.csharp.corpus.linq", [] { check_corpus_program("linq"); });
+CB_TEST("translate.csharp.corpus.numbers", [] { check_corpus_program("numbers"); });
+CB_TEST("translate.csharp.corpus.records", [] { check_corpus_program("records"); });
+CB_TEST("translate.csharp.corpus.shapes", [] { check_corpus_program("shapes"); });
+CB_TEST("translate.csharp.corpus.sieve", [] { check_corpus_program("sieve"); });
+CB_TEST("translate.csharp.corpus.text", [] { check_corpus_program("text"); });
+
+// ---- the old harness's programs -----------------------------------------------------------------------------------------------------
+
+namespace {
+
+std::string first_difference(const std::string& expected, const std::string& actual) {
+    std::size_t line = 1;
+    std::size_t at = 0;
+    while (at < expected.size() && at < actual.size()) {
+        const std::size_t e_end = expected.find('\n', at);
+        const std::size_t a_end = actual.find('\n', at);
+        if (e_end != a_end || expected.compare(at, e_end - at, actual, at, a_end - at) != 0) break;
+        at = e_end + 1;
+        ++line;
+    }
+    const auto row = [&](const std::string& t) { return t.substr(at, t.find('\n', at) - at); };
+    return std::format("line {}: expected [{}] actual [{}]", line, row(expected), row(actual));
+}
+
+}  // namespace
+
+// The programs of state/work/typed-port/translate.backends.csharp (the translator's C# corpus, the front end's own tools, the XNA
+// runtime, programs written for this back end) lowered to L2 by gen_h.py, with what the Python back end wrote for each: run
+// when CB_CSHARP_HARNESS names the folder holding them; a run without it has nothing to compare and passes.
+CB_TEST("translate.csharp.harness.old_programs_agree", [] {
+    const auto dir = cb::fs::get_env("CB_CSHARP_HARNESS");
+    if (!dir) return;
+    const std::string all = cb::fs::read_text(std::filesystem::path(*dir) / "expected.txt");
+    std::size_t compared = 0;
+    std::int64_t total_us = 0;   // the writing alone (not the reading of the L2)
+    std::size_t at = 0;
+    while (at < all.size()) {
+        const std::size_t end = all.find('\n', at);
+        const std::string row = all.substr(at, end - at);
+        at = end + 1;
+        const std::size_t tab = row.find('\t');
+        const std::string key = row.substr(0, tab);
+        const cb::Json want = cb::json::parse(row.substr(tab + 1));
+        const std::size_t bar = key.find('|');
+        const std::string prog = key.substr(0, bar);
+        const std::string rest = key.substr(bar + 1);
+        const cb::Json docs = cb::json::load(std::filesystem::path(*dir) / (prog + ".json"));
+        cb::Arena arena;
+        std::vector<Node*> units;
+        if (rest == "whole") {
+            for (const cb::Json& d : docs) units.push_back(cb::translate::l2::from_json(arena, d));
+        } else {
+            units.push_back(cb::translate::l2::from_json(arena, docs.at(static_cast<std::size_t>(std::stoi(rest.substr(rest.find('|') + 1))))));
+        }
+        std::int64_t best_us = std::numeric_limits<std::int64_t>::max();   // the best of five writes
+        for (int rep = 0; rep < 5; ++rep) {
+            const auto t0 = std::chrono::steady_clock::now();
+            cs::Program timed(units);
+            timed.files();
+            best_us = std::min(best_us, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+        }
+        total_us += best_us;
+        cs::Program p(units);
+        std::vector<std::vector<std::string>> got_gaps;
+        for (const cs::Gap& g : p.ledger()) got_gaps.push_back({g.where, g.kind, g.why});
+        ++compared;
+        if (!want.contains("files")) {
+            CB_CHECK(false);
+            std::fprintf(stderr, "%s: the Python answered %s\n", key.c_str(), want.dump().substr(0, 200).c_str());
+            continue;
+        }
+        const cb::Json& files = want.at("files");
+        CB_CHECK_EQ(p.files().size(), files.size());
+        for (std::size_t i = 0; i < files.size() && i < p.files().size(); ++i) {
+            const std::string name = files[i][0].get<std::string>();
+            const std::string text = files[i][3].get<std::string>();
+            CB_CHECK_EQ(p.files()[i].name, name);
+            if (p.files()[i].text != text) {
+                CB_CHECK(false);
+                std::fprintf(stderr, "%s %s: %s\n", key.c_str(), name.c_str(), first_difference(text, p.files()[i].text).c_str());
+            }
+        }
+        std::vector<std::vector<std::string>> want_gaps;
+        for (const cb::Json& g : want.at("ledger")) want_gaps.push_back({g[0].get<std::string>(), g[1].get<std::string>(), g[2].get<std::string>()});
+        if (want_gaps != got_gaps) {
+            CB_CHECK(false);
+            std::fprintf(stderr, "%s: ledger %zu entries, expected %zu\n", key.c_str(), got_gaps.size(), want_gaps.size());
+        }
+    }
+    std::fprintf(stderr, "csharp harness: %zu questions, writing took %lld us\n", compared, static_cast<long long>(total_us));
+    CB_CHECK(compared > 10);
 });

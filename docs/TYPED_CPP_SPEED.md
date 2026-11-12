@@ -930,3 +930,16 @@ Old = the Python module (these four had no typed-port harness of their own that 
 | java/probe: the pure parts (inputs, harness text, what can be run) | microseconds in both; a probe's time is javac, the JVM, the C++ compiler and the linker (the end-to-end test on a one-class program: about 2 s, almost all in those four) | the same |
 
 The page ECC is a bit-serial sum (a word of the page per 32 steps, the spare's 102 bits at the end): the new code keeps the algorithm and runs it on `uint32_t` words with no big-integer arithmetic, which is the whole gain. `write_god` streams a subpart (204 blocks) at a time to the part file instead of collecting a part (166 MB) in memory and handing it to the DLL, and the reader takes the rest of a subpart in one read where the old one took a block at a time.
+
+## translate/backends/csharp (W1-B27)
+
+The C# back end writing the files of the 31 questions of the old harness (the ten corpus programs and their units, the front
+end's own tools, the XNA runtime, the programs written for the back end: the whole program, then every unit alone; the units
+already lowered, so only the writing is timed; best of five):
+
+| Writing 31 questions of C# programs | Python csharp.py | C++ cb csharp::Program |
+|---|---|---|
+| all 31 | 40.6 ms | 7.4 ms |
+
+(The previous typed port, an imitation of the Python on `py::str`, was not timed: it ran only inside the exe.)
+The writer was not profiled beyond that: it allocates a string per line and per expression, which is the next cost if it is ever hot.

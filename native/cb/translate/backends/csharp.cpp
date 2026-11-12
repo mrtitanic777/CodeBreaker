@@ -118,18 +118,37 @@ std::string float_text(double v, const TypeP& t) {
     const bool single = p != nullptr && p->prim == ir::Prim::F32;
     if (std::isnan(v)) return single ? "float.NaN" : "double.NaN";
     if (std::isinf(v)) return std::string(single ? "float" : "double") + (v > 0 ? ".PositiveInfinity" : ".NegativeInfinity");
+    // the shortest digits that read back as this value (`d.ddde+XX`), laid out as a person writes a literal: positional for
+    // 1e-4 up to 1e16, else with an exponent
     char buf[64];
     std::to_chars_result r{};
     if (single) {
         const float f = static_cast<float>(v);
         if (std::isinf(f)) throw Decline("literal", "a float literal beyond the range of float");
-        r = std::to_chars(buf, buf + sizeof buf, f);   // the shortest text that is still this float
+        r = std::to_chars(buf, buf + sizeof buf, f, std::chars_format::scientific);
     } else {
-        r = std::to_chars(buf, buf + sizeof buf, v);
+        r = std::to_chars(buf, buf + sizeof buf, v, std::chars_format::scientific);
     }
-    std::string out(buf, r.ptr);
-    if (out.find('e') == std::string::npos && out.find('.') == std::string::npos) out += ".0";
-    std::replace(out.begin(), out.end(), 'e', 'E');
+    std::string sci(buf, r.ptr);
+    const bool negative = sci.starts_with("-");
+    if (negative) sci.erase(0, 1);
+    const std::size_t e_at = sci.find('e');
+    std::string digits = sci.substr(0, e_at);
+    digits.erase(std::remove(digits.begin(), digits.end(), '.'), digits.end());
+    const int exp10 = std::stoi(sci.substr(e_at + 1));
+    std::string out = negative ? "-" : "";
+    if (exp10 >= -4 && exp10 < 16) {
+        if (exp10 >= 0) {
+            const std::size_t whole = static_cast<std::size_t>(exp10) + 1;
+            if (digits.size() < whole) digits.append(whole - digits.size(), '0');
+            out += digits.substr(0, whole) + "." + (digits.size() > whole ? digits.substr(whole) : "0");
+        } else {
+            out += "0." + std::string(static_cast<std::size_t>(-exp10 - 1), '0') + digits;
+        }
+    } else {
+        out += digits.substr(0, 1) + (digits.size() > 1 ? "." + digits.substr(1) : "") + "E" + (exp10 < 0 ? "-" : "+") +
+               (std::abs(exp10) < 10 ? "0" : "") + std::to_string(std::abs(exp10));
+    }
     return single ? out + "f" : out;
 }
 
@@ -624,7 +643,7 @@ Library* Program::library_for(const std::string& lang) {
 // declares before an outer one declares it is given a number (`declare`).
 class Writer final : public Context {
 public:
-    Writer(Program& prog, Node* unit_node) : prog_(prog), unit_node_(unit_node), u_(*ir::get<ir::Unit>(unit_node)) {
+    Writer(Program& prog, Node* unit_node) : prog_(prog), u_(*ir::get<ir::Unit>(unit_node)) {
         lang_ = u_.lang && !u_.lang->empty() ? *u_.lang : "java";
         java_ = lang_ == "java";
         csharp_ = lang_ == "csharp";
@@ -713,7 +732,6 @@ private:
     std::string interpolate(const std::vector<Node*>& parts);
 
     Program& prog_;
-    Node* unit_node_;
     ir::Unit& u_;
     std::string lang_;
     bool java_ = false;
@@ -1899,6 +1917,13 @@ Ex Writer::literal(const ir::Lit& l, const TypeP& t) {
             if (ctype(t) == "ushort") return {std::to_string(static_cast<std::uint32_t>(cps[0])), kPrimary};
             return {cchar_cp(cps[0]), kPrimary};
         }
+        if (prim == ir::Prim::F32 || prim == ir::Prim::F64) {
+            // L2 keeps a float that is not finite as its name ("nan", "inf", "-inf")
+            if (const auto d = number_of(v)) {
+                std::string s = float_text(*d, t);
+                return {s, s.starts_with("-") ? kUnary : kPrimary};
+            }
+        }
         return {cstr(*sv), kPrimary};
     }
     if (std::holds_alternative<double>(v) || prim == ir::Prim::F32 || prim == ir::Prim::F64) {
@@ -1907,7 +1932,10 @@ Ex Writer::literal(const ir::Lit& l, const TypeP& t) {
         std::string s = float_text(*d, t);
         return {s, s.starts_with("-") ? kUnary : kPrimary};
     }
-    if (const auto* uv = std::get_if<std::uint64_t>(&v)) return {std::to_string(*uv) + "UL", kPrimary};
+    if (const auto* uv = std::get_if<std::uint64_t>(&v)) {
+        if (*uv == std::numeric_limits<std::uint64_t>::max() && prim == ir::Prim::U64) return {"ulong.MaxValue", kPrimary};
+        return {std::to_string(*uv) + "UL", kPrimary};
+    }
     if (const auto* iv = std::get_if<std::int64_t>(&v)) {
         const std::int64_t val = *iv;
         if (prim == ir::Prim::U16 && ctype(t) == "char") return {cchar_number(val), kPrimary};
