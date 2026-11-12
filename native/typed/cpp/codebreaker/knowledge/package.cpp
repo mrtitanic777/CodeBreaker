@@ -1,6 +1,9 @@
 // codebreaker/knowledge/package.cpp -- typed C++ port of codebreaker/knowledge/__init__.py (see package.hpp).
 #include "codebreaker/knowledge/package.hpp"
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/knowledge/package.hpp"
+
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/store.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
@@ -12,42 +15,22 @@ namespace codebreaker::knowledge {
 
 using py::str;
 
+// The platform vocabulary is cb/knowledge/package.hpp's; these forward to it (the rest of this file is the legacy base
+// over engine/native_engine's KnowledgeBase, which the new cb::knowledge::Store replaces when native_engine is
+// refactored: COMPAT(py): remove then).
 const py::dict<str, str>& PLATFORMS() {
     static const py::dict<str, str> p = [] {
         py::dict<str, str> d;
-        d.set(str("win16"), str("16-bit Windows"));
-        d.set(str("win32"), str("32-bit Windows"));
-        d.set(str("windows"), str("16- and 32-bit Windows"));
-        d.set(str("vxd"), str("ring-0 drivers"));
-        d.set(str("dos"), str("DOS"));
-        d.set(str("xbox360"), str("Xbox 360"));
+        for (const cb::knowledge::PlatformInfo& info : cb::knowledge::known_platforms())
+            d.set(cb::compat::to_py(info.name), cb::compat::to_py(info.title));
         return d;
     }();
     return p;
 }
 
-// _ALIASES: ne, pe, le, mz, powerpc, "16", "32" (and the ints 16, 32)
-str platform(const str& name) {
-    static const py::dict<str, str> aliases = [] {
-        py::dict<str, str> d;
-        d.set(str("ne"), str("win16"));
-        d.set(str("pe"), str("win32"));
-        d.set(str("le"), str("vxd"));
-        d.set(str("mz"), str("dos"));
-        d.set(str("powerpc"), str("xbox360"));
-        d.set(str("16"), str("win16"));
-        d.set(str("32"), str("win32"));
-        return d;
-    }();
-    auto it = aliases.get(name);
-    return it ? *it : name;
-}
+str platform(const str& name) { return cb::compat::to_py(cb::knowledge::platform(cb::compat::from_py(name))); }
 
-str platform(int64_t bits) {
-    if (bits == 16) return str("win16");
-    if (bits == 32) return str("win32");
-    return py::to_str(bits);
-}
+str platform(int64_t bits) { return cb::compat::to_py(cb::knowledge::platform(static_cast<int>(bits))); }
 
 std::shared_ptr<KnowledgeBase> open(const std::optional<str>& path) { return store::open(path); }
 
@@ -82,10 +65,7 @@ py::dict<str, Value> table(const str& platform_, const str& kind) {
 }
 
 // ---- prototypes ----
-str _bare(const str& name) {
-    auto m = py::re::fullmatch(str("\\w+[.!](\\w+)"), name);
-    return m ? m->group(1) : name;
-}
+str _bare(const str& name) { return cb::compat::to_py(cb::knowledge::bare_name(cb::compat::from_py(name))); }
 
 std::optional<symbols::prototypes::Prototype> prototype(const str& platform_, const str& name) {
     return symbols::prototypes::of(_bare(name), platform(platform_) == str("win16") ? 16 : 32);
