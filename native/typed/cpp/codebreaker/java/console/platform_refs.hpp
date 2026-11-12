@@ -1,89 +1,134 @@
-// codebreaker/java/console/platform_refs.hpp -- typed C++ port of codebreaker.java.console.platform_refs.
+// codebreaker/java/console/platform_refs.hpp -- SHIM over cb/java/console/platform_refs.hpp (docs/CPP_DESIGN.md 6.3);
+// deleted with its last py:: consumer (transpile).
 //
-// platform_refs.py -- emit the hand-written platform layer instead of no-op stubs.
-//
-// The converter normally emits SYMBOL-ONLY stubs for the platform subsystems (GL11, Audio, Input,
-// Socket, ...). When `--platform-refs` is on, this module emits the REAL, hand-written implementations
-// from `docs/platform/reference/*.reference.{h,cpp}` in their place -- the GL->D3D9 emulator, XACT audio,
-// XInput, XNet socket, etc.
-//
-// Notes on the port:
-//   * the Java IR objects are the real codebreaker::java::ir types (py::ref<JClass> and so on);
-//   * `emit_references.last_skipped` (a function attribute in Python) is the variable
-//     emit_references_last_skipped;
-//   * audit_references returns a record (a dict with two fixed keys in Python);
-//   * runnable_game is a null py::ref for Python's None.
+// The new module works on the new IR's JClass; the shim hands it each old class reduced to what the detection reads
+// (names, flags, interfaces, method signatures -- no bodies). `emit_references_last_skipped` is the old module's
+// "last call" state, kept here for the one caller that reads it.
 #pragma once
 
+#include <optional>
+#include <tuple>
+
+#include "cb/compat/py_bridge.hpp"
+#include "cb/java/console/platform_refs.hpp"
+#include "codebreaker/java/console/_shim.hpp"
+#include "codebreaker/java/ir.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
-#include "codebreaker/java/ir.hpp"
 
 namespace codebreaker::java::console::platform_refs {
 
-// A reference file often provides MORE than one header's worth of symbols. The game #includes the
-// per-type stub header (Mouse.h / Keyboard.h / SoundSystem.h), so emitting only `Input.h` / `Audio.h`
-// would leave the no-op stub shadowing the real impl. For each such reference we ALSO overwrite the
-// stubs it replaces with a thin `#include` shim.
-extern py::dict<py::str, py::list<py::str>> REFERENCE_REPLACES;
+namespace shim_ {
+namespace cbr = cb::java::console::platform_refs;
 
-// References that lack a Beta-specific method the converter's STUB already provides (and would otherwise
-// shadow it), or that need companion types not yet bundled. SKIP emitting them -> the converter's stub
-// stands.
-extern py::set<py::str> REFERENCE_SKIP;
+// An old class as the detection sees it: everything but the field list and the method bodies.
+inline cb::java::ir::JClass lite(const java::ir::JClass& c) {
+    cb::java::ir::JClass out;
+    out.name = cb::compat::from_py(c.name);
+    if (c.parent) out.parent = cb::compat::from_py(*c.parent);
+    out.interfaces = cb::compat::from_py(c.interfaces);
+    out.is_interface = c.is_interface;
+    out.is_abstract = c.is_abstract;
+    for (const py::ref<java::ir::Method>& m : c.methods) {
+        cb::java::ir::Method nm;
+        nm.name = cb::compat::from_py(m->name);
+        nm.is_static = m->is_static;
+        nm.is_ctor = m->is_ctor;
+        for (const py::ref<java::ir::Param>& p : m->params) {
+            cb::java::ir::Param np;
+            np.type = java::ir::to_new(*p->jtype);
+            nm.params.push_back(std::move(np));
+        }
+        out.methods.push_back(std::move(nm));
+    }
+    return out;
+}
 
-// Base names X that have an X.reference.h in reference_dir (e.g. {'GL11','Audio','Socket',...}).
-py::set<py::str> available_references(const py::str& reference_dir);
+inline std::vector<cb::java::ir::JClass> lite(const py::list<py::ref<java::ir::JClass>>& classes) {
+    std::vector<cb::java::ir::JClass> out;
+    for (const auto& c : classes) out.push_back(lite(*c));
+    return out;
+}
+}  // namespace shim_
 
-// The game's entry class: the one declaring `public static void main(String[])`. Returns its
-// name, or None.
-std::optional<py::str> detect_main_class(const py::list<py::ref<ir::JClass>>& classes);
+inline const py::dict<py::str, py::list<py::str>> REFERENCE_REPLACES = [] {
+    py::dict<py::str, py::list<py::str>> d;
+    for (const auto& [base, repl] : shim_::cbr::reference_replaces()) d.set(cb::compat::to_py(base), cb::compat::to_py(repl));
+    return d;
+}();
 
-py::str generate_entry_point(const py::str& main_class);
+inline const py::set<py::str> REFERENCE_SKIP = [] {
+    py::set<py::str> s;
+    for (const auto& name : shim_::cbr::reference_skip()) s.add(cb::compat::to_py(name));
+    return s;
+}();
 
-// Java primitive type names, for generating default entry-point constructor args.
-extern py::set<py::str> ENTRY_PRIMS_;
+inline py::set<py::str> available_references(const py::str& reference_dir) {
+    return cb::compat::to_py(shim_::cbr::available_references(console::shim::path_of(reference_dir)));
+}
 
-py::str generate_pc_entry_point(const py::str& main_class);
+inline std::optional<py::str> detect_main_class(const py::list<py::ref<java::ir::JClass>>& classes) {
+    const auto lite = shim_::lite(classes);
+    return cb::compat::to_py(shim_::cbr::detect_main_class(lite));
+}
 
-// The game's shell class when it has NO `static main` but IS a Runnable started on a thread
-// (Indev/Infdev). Returns the JClass, or null (None).
-py::ref<ir::JClass> detect_runnable_game_class(const py::list<py::ref<ir::JClass>>& classes);
+inline py::str generate_entry_point(const py::str& main_class) {
+    return cb::compat::to_py(shim_::cbr::generate_entry_point(cb::compat::from_py(main_class)));
+}
 
-py::str _runnable_ctor_args(const py::ref<ir::JClass>& cls);
-py::str generate_runnable_entry_point(const py::ref<ir::JClass>& cls);
+inline py::str generate_pc_entry_point(const py::str& main_class) {
+    return cb::compat::to_py(shim_::cbr::generate_pc_entry_point(cb::compat::from_py(main_class)));
+}
 
-// References that are legitimately .cpp-only (no stub .h to replace): Main is the standalone entry point.
-extern py::set<py::str> SPECIAL_CPP_ONLY_;
+// The old class, or nullptr when no class (or more than one) qualifies.
+inline py::ref<java::ir::JClass> detect_runnable_game_class(const py::list<py::ref<java::ir::JClass>>& classes) {
+    const auto lite = shim_::lite(classes);
+    const cb::java::ir::JClass* found = shim_::cbr::detect_runnable_game_class(lite);
+    if (found == nullptr) return nullptr;
+    return classes[static_cast<int64_t>(found - lite.data())];
+}
 
-// What audit_references returns (a dict with these two keys in Python).
+inline py::str _runnable_ctor_args(const py::ref<java::ir::JClass>& cls) {
+    return cb::compat::to_py(shim_::cbr::runnable_ctor_args(shim_::lite(*cls)));
+}
+
+inline py::str generate_runnable_entry_point(const py::ref<java::ir::JClass>& cls) {
+    return cb::compat::to_py(shim_::cbr::generate_runnable_entry_point(shim_::lite(*cls)));
+}
+
 struct AuditResult {
     py::set<py::str> complete;   // bases with a .reference.h
     py::list<py::str> orphans;   // sorted .cpp-only bases, excluding Main and *.ext
 };
-AuditResult audit_references(const py::str& reference_dir);
 
-// After emission, confirm each reference base's tree X.h actually carries the PLATFORM REFERENCE banner.
-// Returns the bases that did NOT integrate.
-py::list<py::str> verify_integrated(const py::str& out_dir, const py::set<py::str>& bases);
+inline AuditResult audit_references(const py::str& reference_dir) {
+    const auto a = shim_::cbr::audit_references(console::shim::path_of(reference_dir));
+    return AuditResult{cb::compat::to_py(a.complete), cb::compat::to_py(a.orphans)};
+}
 
-extern py::dict<py::str, std::tuple<py::str, py::str>> LAYER_;
+inline py::list<py::str> verify_integrated(const py::str& out_dir, const py::set<py::str>& bases) {
+    return cb::compat::to_py(shim_::cbr::verify_integrated(console::shim::path_of(out_dir), cb::compat::from_py(bases)));
+}
 
-py::str _banner(const py::str& base, const py::str& ext, const py::str& platform = py::str("xbox360"));
+// What the last emit_references call skipped (the game defines the name itself).
+inline py::list<py::str> emit_references_last_skipped;
 
-// emit_references.last_skipped
-extern py::list<py::str> emit_references_last_skipped;
-
-// Write each X.reference.{h,cpp} to out_dir/X.{h,cpp} (with a provenance banner), replacing the
-// emitted stub. Returns the set of base names emitted. Also writes PLATFORM_LAYER.md.
-py::set<py::str> emit_references(const py::str& out_dir, const py::str& reference_dir,
-                                 const py::set<py::str>& game_classes = py::set<py::str>(),
-                                 const std::optional<py::str>& main_class = std::nullopt,
-                                 const py::ref<ir::JClass>& runnable_game = nullptr,
-                                 const py::str& platform = py::str("xbox360"));
-
-py::str _companion_banner(const py::str& fn);
-void _write_platform_layer_md(const py::str& out_dir, const py::list<py::str>& emitted,
-                              const py::list<py::str>& files_written);
+inline py::set<py::str> emit_references(const py::str& out_dir, const py::str& reference_dir,
+                                        const py::set<py::str>& game_classes = py::set<py::str>(),
+                                        const std::optional<py::str>& main_class = std::nullopt,
+                                        const py::ref<java::ir::JClass>& runnable_game = nullptr,
+                                        const py::str& platform = py::str("xbox360")) {
+    return cb::compat::guard([&] {
+        shim_::cbr::EmitOptions options;
+        options.game_classes = cb::compat::from_py(game_classes);
+        if (main_class) options.main_class = cb::compat::from_py(*main_class);
+        const cb::java::ir::JClass runnable = runnable_game ? shim_::lite(*runnable_game) : cb::java::ir::JClass{};
+        if (runnable_game) options.runnable_game = &runnable;
+        options.platform = shim_::cbr::platform_of(cb::compat::from_py(platform));
+        const auto r = shim_::cbr::emit_references(console::shim::path_of(out_dir), console::shim::path_of(reference_dir), options);
+        emit_references_last_skipped = cb::compat::to_py(r.skipped_collisions);
+        return cb::compat::to_py(r.bases);
+    });
+}
 
 }  // namespace codebreaker::java::console::platform_refs

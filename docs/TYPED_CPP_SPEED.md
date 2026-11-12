@@ -834,6 +834,55 @@ repeated; times for the whole loop.
 scan (50 runs in 2 ms). The old port could not be timed beside it in the test executable (it reads its image through the old PowerPC
 PE reader, which the new tests cannot link).
 
+## cb refactor W1-B18: java/console platform_config + platform_refs, java/projects/minecraft fix passes, edition, platform_coverage, profiles (2026-11-11)
+
+Old = the live Python (the old typed port was not timed: it ran the same regexes through the py:: layer). Converted-looking C++ text made by repeating the test fixtures; best of one, shared machine.
+
+| What | Python (0.3 MB / 100 repeats) | New (3.2 MB / 1000 repeats) |
+|---|---|---|
+| applet_ping rewrite | 2 ms | 6 ms |
+| sound_fix rewrite (200 SFX sites: Python replaces the whole file once per site) | 6112 ms (quadratic; did not finish in 4 min at 1000 repeats) | 19 ms (a local routed once, then skipped) |
+| render_fix rewrite | 2 ms | 10 ms |
+| platform_coverage provided_symbols / used_holder_symbols | 31 / 8 ms | 5 / 0 ms |
+
+Per MB the applet and render passes run at about 2 and 3 ms; the Python's were 7 and 7 ms per MB, so nothing is slower. The platform_config, platform_refs and edition modules are a few file writes and string builds (microseconds); not timed.
+
+## cb refactor W1-B23: source/ne_asm (segment, fixups) and source/vxd (disassembly, coalesce) (2026-11-11)
+
+Old = the typed ports on the py:: layer, timed by their own harnesses (state/work/typed-port/source.vxd.disassembly and source.vxd.coalesce, rc_run.log); New = native/cb/source/{vxd/disassembly*.cpp, vxd/coalesce.cpp, ne_asm/*.cpp}, Release, one thread, the same machine. The new code was first compared on meaning with the Python module's own results over the same inputs, each with an environment variable that names the harness folder (the tests skip without it): `CB_VXD_DISASSEMBLY_HARNESS` -- 225 real Windows 95 drivers, instructions, code bytes, labels, jump tables, service table and device name all equal; `CB_VXD_COALESCE_HARNESS` -- 1,855 cases (coalesce, the three restores, finalize, over 54 sampled drivers and their split-record, padded-name, short-name and no-version variants), byte for byte (SHA-1) equal except 4 cases on 2 deliberately damaged copies, where the Python read past the end of a page; `CB_NE_SEGMENT_HARNESS` -- 172 segments of the Windows 3.x and Setup modules, the whole digest equal (rows, fix-ups, exports, function starts and spans, arguments, calls, window-procedure dispatch, handler calls, a checksum of the annotated rows, the call graph).
+
+| What | Old (typed port) | New |
+|---|---|---|
+| vxd/disassembly: the 273 `disasm` cases (open the module, recursive descent, summary hashes) | 19.4 s | 1.5 s for the recovery of the 225 drivers that have an answer (the whole test, with opening and comparing: about 2.2 s) |
+| vxd/disassembly: the listing of each driver (`emit`) | 14.6 s | 0.87 s (225 listings, 49 MB of text) |
+| vxd/coalesce: the five operations of the harness (coalesce 2.46 s, finalize 0.57, restore_entry_point 0.27, restore_metadata 0.25, restore_version_resource 0.20) | 3.75 s | 0.4 s for 1,855 cases, with reading each file, opening the oracle and the SHA-1 of every answer |
+| ne_asm/segment and fixups: 172 segments, the whole digest | not run here | 11 s, of which nearly all is starting objdump once or twice per segment (the module's own work is the text of its listing) |
+
+The gains of the disassembly are the per-byte states (an array of three bits per byte of an object, where the Python and the port kept a set of (object, offset) places for every byte of code, of data and of entry points), the places kept in ordered maps instead of dict handles, the decoder opened once per width (the port looked one up for every instruction), and the listing built by appends. coalesce reads each fix-up record once into a record and writes the grouped ones from a sorted index; its time is the copy of the file. The segment tools run objdump, an external program, and read its text: nothing in them is on a hot path.
+## W1-B24: symbols/runtime_library, api_arguments, cpp_classes, driver_services
+
+The old ports (py:: layer) cannot be linked into the test executable, and a full exe build is not allowed on this drive, so they
+are not timed here. The new code is timed against the ORIGINAL Python on real inputs, with the Python's answers as the oracle:
+every answer below was compared one for one and was the same (the oracle ran as a temporary test, not kept: it reads the Win95
+corpus and C:/Nexia360 and the Python's dumps). Release /O2, one thread, C++ times include building the module's inputs from the
+dump (hex-decoding the code of a DLL) and exclude finding the function starts (the formats reader's carve), which the Python's
+`identify` includes. The typed ports were measured at 3.5x (api_arguments, ordinals, runtime_library, names) and 4.7x
+(cpp_classes) over the Python above; the new code is faster than that in every row.
+
+| Work | Python | New C++ |
+|---|---|---|
+| api_arguments: the stack bytes of every export of 14 Win95 DLLs (kernel32, user32, gdi32, advapi32, comctl32, shell32, lz32, crtdll, mfc40, mnmcpi32, ole32, comdlg32, wsock32, winmm: 12,131 exports, all equal) | 26.2 s | 0.37 s |
+| cpp_classes: Minecraft.Client.xex (115 classes), 545107DE default.xex (1,274 classes, 3,418 virtual functions, 657 found by layout) | 0.13 s, 0.27 s | 0.0024 s, 0.021 s |
+| driver_services: read the 87 include files of the driver kit (108 devices, 37 service tables, 51 messages) | 0.036 s | 0.017 s |
+| runtime_library: identify crtdll.dll (578 functions) / mfc30.dll (1,759) / mfc40.dll / vbrun300.dll (72, 16-bit) / user.exe (16-bit) | 0.13 / 0.65 / 0.71 / 2.3 / 2.6 s | 0.014 / 0.35 / 0.073 / 0.042 / 0.029 s |
+| runtime_library: shell32.dll, user32.dll (the two modules where most of the time is the matching) | 0.67 / 0.064 s | 0.68 / 0.073 s |
+
+The shell32 and user32 rows are level with the Python, whose time there also includes the formats reader's function carve that the
+C++ row leaves out: what is left is the matching itself, one SHA-1 per candidate row of the table whose leading bytes fit (a start
+that begins `push ebp / mov ebp, esp` fits hundreds), which both do the same number of times; a table that grouped the rows of one
+size and mask so that each was digested once per start is the next step if this ever shows in a profile. The gains elsewhere are the
+table (a hash of leading bytes over byte strings, not a dict of `py::bytes` lists), the walk (a flat decoder record, no regular
+expression per instruction) and the search (sets over words, no `py::dict` of dicts).
 ## W1-B21: recompile/powerpc (and config, port/oldlayout)
 
 Old = the Python (the old typed port could not be linked into the test executable: it reads its image through the old PowerPC PE

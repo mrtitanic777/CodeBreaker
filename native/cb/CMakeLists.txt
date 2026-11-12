@@ -220,6 +220,9 @@ add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
 target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly)
+
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp"
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -234,13 +237,12 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/candidates.cpp"   # (uses the exact/draft/forms shim)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/candidates.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dpmi.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/authored/match16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/scoreboard16.cpp"
@@ -249,7 +251,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asm16.cpp"   # (listing_offsets: the old emulator wrapper)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asm16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
@@ -257,6 +259,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/decompile/xbox_effect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
@@ -272,15 +275,21 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"   # (the native_win16 shim)
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"   # (the compare shim)
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"   # (the compare and concolic shims)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/powerpc.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/config.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/isolated16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/runtime_library.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/api_arguments.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/cpp_classes.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/driver_services.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/sdk_structs.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
@@ -303,8 +312,13 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/create_key.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/sd_signer.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/se_patcher.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/volumes.cpp"   # (the callers of the XeCrypt and heavyiron shims)
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/volumes.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
