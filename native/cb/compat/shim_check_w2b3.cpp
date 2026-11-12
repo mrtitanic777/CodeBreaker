@@ -1,6 +1,7 @@
-// Compile-only check of the shims at the old header paths for analyze/facts and build/resources (W2-B3): the surface the old ports
+// Compile-only check of the shims at the old header paths for analyze/facts, analyze/conventions and build/resources (W2-B3): the surface the old ports
 // call, over native/cb. Nothing here runs; it is in cb_shim_check so the shims stay honest until their last consumer is
 // refactored.
+#include "codebreaker/analyze/conventions.hpp"
 #include "codebreaker/analyze/facts.hpp"
 #include "codebreaker/build/resources.hpp"
 
@@ -20,6 +21,14 @@ py::str w2b3_shims(const py::str& path, const py::list<formats::resources::Resou
         out += facts::key(py::str("ne"), 0x10000010);
         out += py::str(std::to_string(store->tally(py::str("m")).size()));
         store->close();
+    }
+    {
+        namespace conventions = analyze::conventions;
+        (void)&conventions::functions;
+        (void)&conventions::analyse;
+        (void)&conventions::duplicates;
+        (void)&conventions::thunk_layer;
+        (void)conventions::_THUNK_APIS;
     }
     {
         namespace resources = build::resources;

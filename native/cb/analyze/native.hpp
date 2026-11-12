@@ -151,6 +151,8 @@ public:
     // The start of the function whose bytes hold `va`.
     std::optional<Va> owner(Va va) const;
     bool is_import(Va va) const { return imports_.contains(va); }
+    // Every import by the address that stands for it, "MODULE!name" (looked up, or collected into a set: its order is not one).
+    const std::unordered_map<Va, std::string>& imports() const { return imports_; }
     const std::string& import_name(Va va) const;                        // "" if none
     const std::string& function_name(Va va) const;                      // "" if none
     void set_function_name(Va va, std::string name);
