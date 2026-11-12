@@ -1,0 +1,38 @@
+{
+  "controller": {
+    "binds": {
+      "attack": "RTRIGGER",
+      "chat": "DPAD_UP",
+      "drop": "B",
+      "gui_cursor": "LSTICK",
+      "hotbar_next": "RBUMPER",
+      "hotbar_prev": "LBUMPER",
+      "inventory": "Y",
+      "jump": "A",
+      "look": "RSTICK",
+      "move": "LSTICK",
+      "pause": "START",
+      "perspective": "DPAD_DOWN",
+      "sneak": "LSTICK_CLICK",
+      "sprint": "RSTICK_CLICK",
+      "use": "LTRIGGER"
+    },
+    "invert_y": false,
+    "layout": "default",
+    "look_sensitivity": 1.0,
+    "stick_deadzone": 0.24,
+    "trigger_threshold": 0.3
+  },
+  "keyboard": "xshowkeyboard",
+  "storage": "stfs",
+  "subsystems": {
+    "achievements": "online",
+    "audio": "xact3",
+    "debug": "on",
+    "memory": "real_budget",
+    "network": "sockets",
+    "user": "profile",
+    "video": "gl_emulator"
+  },
+  "title_id": ""
+}

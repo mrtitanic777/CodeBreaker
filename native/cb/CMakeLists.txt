@@ -287,7 +287,12 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
+  # the legacy IR forms (patch) of the Minecraft fix passes, over the old translate IR, and the project package that uses them
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

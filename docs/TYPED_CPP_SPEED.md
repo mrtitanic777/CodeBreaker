@@ -785,3 +785,16 @@ numbers that matter are that nothing got slower and that the recorder, the solve
 | analyze/image: load_pe of 3 real PE modules, functions carved and discovered (formats::pe + Capstone) | not timed (the old loader needs the Python, formats.dll and the DLL) | 1.1 s for all three, decode included |
 | verify/concolic: the 17 explorer tests, each a real Z3 session (own context) | the z3++ binding over py:: lists | 1.8 s for 72 checks, 0.19 s of it process start |
 | emulate/native_win16: the recorder is the same tracer code (w16_rec.cpp); the 16 callback trampolines became one context callback (cbt_w16_set_context) | 16 fixed slots, each call through a closure | one indirect call per event |
+
+## cb refactor W1-B18: java/console platform_config + platform_refs, java/projects/minecraft fix passes, edition, platform_coverage, profiles (2026-11-11)
+
+Old = the live Python (the old typed port was not timed: it ran the same regexes through the py:: layer). Converted-looking C++ text made by repeating the test fixtures; best of one, shared machine.
+
+| What | Python (0.3 MB / 100 repeats) | New (3.2 MB / 1000 repeats) |
+|---|---|---|
+| applet_ping rewrite | 2 ms | 6 ms |
+| sound_fix rewrite (200 SFX sites: Python replaces the whole file once per site) | 6112 ms (quadratic; did not finish in 4 min at 1000 repeats) | 19 ms (a local routed once, then skipped) |
+| render_fix rewrite | 2 ms | 10 ms |
+| platform_coverage provided_symbols / used_holder_symbols | 31 / 8 ms | 5 / 0 ms |
+
+Per MB the applet and render passes run at about 2 and 3 ms; the Python's were 7 and 7 ms per MB, so nothing is slower. The platform_config, platform_refs and edition modules are a few file writes and string builds (microseconds); not timed.
