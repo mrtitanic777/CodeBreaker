@@ -883,3 +883,15 @@ that begins `push ebp / mov ebp, esp` fits hundreds), which both do the same num
 size and mask so that each was digested once per start is the next step if this ever shows in a profile. The gains elsewhere are the
 table (a hash of leading bytes over byte strings, not a dict of `py::bytes` lists), the walk (a flat decoder record, no regular
 expression per instruction) and the search (sets over words, no `py::dict` of dicts).
+## W1-B21: recompile/powerpc (and config, port/oldlayout)
+
+Old = the Python (the old typed port could not be linked into the test executable: it reads its image through the old PowerPC PE
+reader), new = `native/cb/recompile/powerpc.cpp`, Release /O2, one thread, the whole 16 KB Minecraft slice (4,096 instructions) as one
+function with its jump-table recovery, per round.
+
+| Work | Old (Python) | New |
+|---|---|---|
+| powerpc.recompile_function, 4,096 instructions | 48.9 ms | 10.8 ms |
+
+What remains is mostly Capstone's decode. config (one `config.make` of a 2 KB program: 0.5 ms in the Python) and oldlayout (clang
+dominates) were not timed separately.

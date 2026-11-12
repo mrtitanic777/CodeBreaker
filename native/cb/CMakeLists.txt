@@ -257,7 +257,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/decompile/xbox_effect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
@@ -273,8 +272,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/powerpc.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/recompile/config.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lane_common.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"
@@ -316,7 +313,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

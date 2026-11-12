@@ -1,8 +1,9 @@
 // Compile-only check of the shims at the old header paths of port/*: the old API over cb::port. Nothing here runs; it is in
-// cb_shim_check, with the old ports that still use them (port/oldlayout, port/__main__), so the shims stay honest until their
-// last consumer is refactored.
+// cb_shim_check, with the old ports that still use them (port/__main__), so the shims stay honest until their last consumer is
+// refactored.
 #include "codebreaker/port/arith16.hpp"
 #include "codebreaker/port/asm16.hpp"
+#include "codebreaker/port/oldlayout.hpp"
 #include "codebreaker/port/verify.hpp"
 
 namespace shim_check_port {
@@ -12,11 +13,11 @@ inline void touch() {
     namespace a16 = codebreaker::port::arith16;
     namespace ver = codebreaker::port::verify;
     (void)&a16::run;
-    (void)&a16::pass_key;
-    (void)&a16::_headers_key;
-    (void)&a16::bare;
-    (void)&a16::mark_files;
-    (void)&a16::_files;
+    namespace oldl = codebreaker::port::oldlayout;
+    (void)&oldl::run;
+    (void)&oldl::declare;
+    (void)&oldl::null_reads;
+    (void)&oldl::PTR_PARAMS;
     (void)&ver::run_cases;
     (void)&ver::files_of;
     (void)&ver::show;

@@ -39,6 +39,17 @@ Kind kind_of(std::string_view s) {
         {"MemberExpr", Kind::MemberExpr},
         {"ArraySubscriptExpr", Kind::ArraySubscriptExpr},
         {"CallExpr", Kind::CallExpr},
+        {"RecordDecl", Kind::RecordDecl},
+        {"FieldDecl", Kind::FieldDecl},
+        {"CompoundStmt", Kind::CompoundStmt},
+        {"IfStmt", Kind::IfStmt},
+        {"WhileStmt", Kind::WhileStmt},
+        {"DoStmt", Kind::DoStmt},
+        {"ForStmt", Kind::ForStmt},
+        {"SwitchStmt", Kind::SwitchStmt},
+        {"CaseStmt", Kind::CaseStmt},
+        {"DefaultStmt", Kind::DefaultStmt},
+        {"LabelStmt", Kind::LabelStmt},
     };
     const auto it = kinds.find(s);
     return it == kinds.end() ? Kind::Other : it->second;
@@ -48,6 +59,8 @@ CastKind cast_kind_of(std::string_view s) {
     if (s == "LValueToRValue") return CastKind::LValueToRValue;
     if (s == "NoOp") return CastKind::NoOp;
     if (s == "IntegralCast") return CastKind::IntegralCast;
+    if (s == "PointerToIntegral") return CastKind::PointerToIntegral;
+    if (s == "IntegralToPointer") return CastKind::IntegralToPointer;
     return CastKind::Other;
 }
 
@@ -60,6 +73,8 @@ Op op_of(std::string_view s, Kind kind) {
         {"%", Op::Rem}, {"<", Op::Lt},   {">", Op::Gt},   {"<=", Op::Le}, {">=", Op::Ge},  {"==", Op::Eq},
         {"!=", Op::Ne}, {"&&", Op::LogAnd}, {"||", Op::LogOr}, {",", Op::Comma}, {"=", Op::Assign},
         {"!", Op::Not}, {"~", Op::BitNot}, {"++", Op::Inc}, {"--", Op::Dec},
+        {"+=", Op::AddAssign}, {"-=", Op::SubAssign}, {"*=", Op::MulAssign}, {"/=", Op::DivAssign}, {"%=", Op::RemAssign},
+        {"<<=", Op::ShlAssign}, {">>=", Op::ShrAssign}, {"&=", Op::AndAssign}, {"^=", Op::XorAssign}, {"|=", Op::OrAssign},
     };
     if (const auto it = both.find(s); it != both.end()) return it->second;
     if (s == "+") return unary ? Op::Plus : Op::Add;
@@ -104,6 +119,14 @@ const Node& empty_node() {
     return empty;
 }
 
+// A node's id, "0x55d5c8a0": the address clang printed it with (0 for what is not one).
+std::uint64_t address_of(std::string_view s) {
+    if (!s.starts_with("0x")) return 0;
+    std::uint64_t v = 0;
+    const auto r = std::from_chars(s.data() + 2, s.data() + s.size(), v, 16);
+    return r.ec == std::errc() ? v : 0;
+}
+
 // ---- reading the tree --------------------------------------------------------------------------------------------
 
 // Builds a Tree while the JSON is read, without making a document of it. The parts of a node it keeps are the ones
@@ -118,7 +141,12 @@ public:
     bool complete() const { return started_ && stack_.empty() && !failed_; }
 
     bool null() override { return true; }
-    bool boolean(bool) override { return true; }
+    bool boolean(bool v) override {
+        if (stack_.empty()) return fail();
+        const Frame& top = stack_.back();
+        if (top.ctx == Ctx::NodeObj && top.key == "completeDefinition") top.node->complete = v;
+        return true;
+    }
     bool number_float(number_float_t, const string_t&) override { return true; }
     bool binary(binary_t&) override { return true; }
     bool parse_error(std::size_t, const std::string&, const nlohmann::detail::exception&) override { return false; }
@@ -154,6 +182,10 @@ public:
                 }
                 if (top.key == "type") {
                     stack_.push_back({.ctx = Ctx::TypeObj, .node = top.node});
+                    return true;
+                }
+                if (top.key == "referencedDecl" && top.node->kind == Kind::DeclRefExpr) {
+                    stack_.push_back({.ctx = Ctx::RefDeclObj, .node = top.node});
                     return true;
                 }
                 return skip();
@@ -223,6 +255,14 @@ public:
                     n.op = op_of(s, n.kind);
                 } else if (top.key == "castKind") {
                     n.cast_kind = cast_kind_of(s);
+                } else if (top.key == "id") {
+                    n.id = address_of(s);
+                } else if (top.key == "referencedMemberDecl") {
+                    n.member_decl = address_of(s);
+                } else if (top.key == "name") {
+                    if (n.kind == Kind::RecordDecl || n.kind == Kind::FieldDecl) n.name = s;
+                } else if (top.key == "tagUsed") {
+                    n.is_union = s == "union";
                 } else if (top.key == "value" && n.kind == Kind::IntegerLiteral) {
                     // a number as text; one too big for 64 bits is only ever asked whether it is over 16 bits
                     std::int64_t v = 0;
@@ -231,6 +271,9 @@ public:
                 }
                 return true;
             }
+            case Ctx::RefDeclObj:
+                if (top.key == "name") top.node->name = s;
+                return true;
             case Ctx::TypeObj:
                 if (top.key == "qualType") {
                     top.node->qual_type = s;
@@ -252,7 +295,7 @@ public:
     }
 
 private:
-    enum class Ctx : std::uint8_t { NodeObj, InnerArr, RangeObj, LocObj, IncludedObj, TypeObj, Skip };
+    enum class Ctx : std::uint8_t { NodeObj, InnerArr, RangeObj, LocObj, IncludedObj, TypeObj, RefDeclObj, Skip };
 
     struct Frame {
         Ctx ctx = Ctx::Skip;
@@ -355,6 +398,47 @@ bool is_c_integer(std::string_view s) {
 }
 
 }  // namespace
+
+std::string_view op_text(Op op) {
+    switch (op) {
+        case Op::Add: case Op::Plus: return "+";
+        case Op::Sub: return "-";
+        case Op::Mul: case Op::Deref: return "*";
+        case Op::Div: return "/";
+        case Op::Rem: return "%";
+        case Op::Shl: return "<<";
+        case Op::Shr: return ">>";
+        case Op::And: case Op::AddrOf: return "&";
+        case Op::Or: return "|";
+        case Op::Xor: return "^";
+        case Op::Lt: return "<";
+        case Op::Gt: return ">";
+        case Op::Le: return "<=";
+        case Op::Ge: return ">=";
+        case Op::Eq: return "==";
+        case Op::Ne: return "!=";
+        case Op::LogAnd: return "&&";
+        case Op::LogOr: return "||";
+        case Op::Comma: return ",";
+        case Op::Assign: return "=";
+        case Op::Not: return "!";
+        case Op::BitNot: return "~";
+        case Op::Inc: return "++";
+        case Op::Dec: return "--";
+        case Op::AddAssign: return "+=";
+        case Op::SubAssign: return "-=";
+        case Op::MulAssign: return "*=";
+        case Op::DivAssign: return "/=";
+        case Op::RemAssign: return "%=";
+        case Op::ShlAssign: return "<<=";
+        case Op::ShrAssign: return ">>=";
+        case Op::AndAssign: return "&=";
+        case Op::XorAssign: return "^=";
+        case Op::OrAssign: return "|=";
+        case Op::Other: return "";
+    }
+    return "";
+}
 
 FileId Tree::find_file(std::string_view name) const {
     const std::string want = normal_name(name);
