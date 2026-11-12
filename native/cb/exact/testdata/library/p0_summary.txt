@@ -1,0 +1,6 @@
+   the kit's object SVARSTCK.OBJ at 03b61 (151 bytes)
+library part from 03bf8: 55 modules with code, 3 of data only, 1 stand-ins (2014 bytes)
+   needed, not in the program: __asegds (named by amalloc; defined by nmalloc) - another version there, or an object
+   needed, not in the program: _free (named by _freebuf; defined by nmalloc) - another version there, or an object
+   needed, not in the program: _malloc (named by _filbuf; defined by nmalloc) - another version there, or an object
+   the program's or the linker's (no library module defines them): __bufin, __bufout, _edata, _end, _main

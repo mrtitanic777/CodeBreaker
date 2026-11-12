@@ -1,47 +1,16 @@
-// codebreaker/exact/linkwhole.hpp -- typed C++ port of codebreaker.exact.linkwhole.
-//
-// linkwhole.py -- a program linked whole from its source files by a period linker, and compared with the original.
+// codebreaker/exact/linkwhole.hpp -- compat shim for cb/exact/linkwhole.hpp (docs/CPP_DESIGN.md 6.3). No logic:
+// conversion and forwarding. Deleted with its last old-layer consumer (exact/link, exact/project).
 //
 //     python -m codebreaker exact PROJECT link [--keep DIR] [-v]       (a project whose "link" names a "linker")
 //
-// For a program made of whole source files (each a module: PL/M, assembler, C compiled whole), each file of each
-// source set is compiled by its set's toolchain, the objects are put in the order of their places in the program
-// (the address in each file's name), and the linker the project names is run on them under the DOS emulator. The
-// file it writes is compared with the original byte for byte.
+//     link_config(json text) -> LinkConfig       wanted(prj)      listed(prj, lk) -> [(k, name, object, odd)]
+//     modules(prj) -> [(place, file name, object)] in link order      run(prj, objs, keep) -> (file or None, words, map)
+//     compare(prj, exe) -> (identical, [lines])       main(prj, argv, out) -> exit code
 //
-// project.json "link":
-//     "linker"     the LINK.EXE to run (a path from the project's folder, like "image")
-//     "switches"   its switches, e.g. "/STACK:3072"
-//     "output"     the run file's name (default NEW);  "map": false - no map (NUL), else one of that name
-//                  (the names change nothing the linker makes of the modules, but some linkers leave a trace of
-//                  their names' places in the header)
-//     "names"      the objects' names: "sequence:M" (default: MA, MB, .. - short, so the command line holds
-//                  them), "pairs:D" (DA .. DZ, EA ..), or "files"
-//     "placed"     the pattern of files of no code that have a place in the order all the same (group 1 the
-//                  address), compiled by the first set's toolchain - e.g. a module of shared declarations
-//     "last"       files of no code and no place: after all the others, in this order
-//     "find"       [{"file", "toolchain", "variant"}]: modules with no place in their name, each placed where
-//                  its own code is found in the program (the bytes the linker fills in passed over)
-//     "first"      objects before all - [NAME, file]: NAME.OBJ on the command line
-//     "libraries"  libraries after the objects
-//                  (a file is from the project's folder, or "KIT:path" in a kit)
-//     "class"      {CLASS: {"segments": [names], "files": [files]}}: those files' segments of those names are given
-//                  the class CLASS before the link (a class the compiler cannot give: the linker orders by class)
-//     "accept"     what may differ, each with "why": {"tail_zeros": N} (the original has N zero bytes more at
-//                  its end; "record": as many as fill its last 128-byte record), {"header": [FROM, TO]} (header bytes FROM..TO-1, and the checksum counting them)
-//     "psp"        the segment DOS loads the linker at (some linkers leave their own addresses in the header)
-//
-// Typing notes:
-//   * `prj` of the Python is a codebreaker.exact.project.Project (not yet ported). Here it is the abstract class Project
-//     below: what linkwhole reads of it (prj.dir, prj.cfg["link"], prj.sets(), the sources, headers, include and switches of
-//     each set, prj.image / prj.file / prj.exe, prj.symbols()). The set of sources `part` of the Python is a Project too
-//     (prj.sets() is [prj] + the "also" sets, as in project.py).
-//   * prj.cfg["link"] is the struct LinkConfig (a dict of known keys); link_config() reads it from the JSON text of that
-//     dict.  An absent or empty "link" is the default LinkConfig, which `wanted` is not.
-//   * A toolchain is the abstract modules::Toolchain (what compile() needs); toolchain::load() of the typed port hands one out.
-//   * SystemExit(message) is py::SystemExit; print() goes to the ostream given to main().
-//   * linkemu's functions are picked by name (`getattr(linkemu, lk["emulate"])`): only link24 is there, any other name is an
-//     AttributeError.
+// `Project` is the old layer's own interface (what linkwhole.py reads of exact.project.Project); the real one
+// implements it. A LinkConfig holds the new layer's typed entry. What main prints goes to stdout (cb::out), not to
+// `out`, as the other refactored commands' shims do. The functions the Python kept for its own use (_found, _own, _name,
+// _index, _file) are not shimmed: nothing outside the module called them.
 #pragma once
 
 #include <cstdint>
@@ -49,55 +18,29 @@
 #include <memory>
 #include <optional>
 #include <tuple>
-#include <variant>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/exact/linkwhole.hpp"
+#include "codebreaker/exact/emu/dos.hpp"
 #include "codebreaker/exact/linkemu.hpp"
 #include "codebreaker/exact/modules.hpp"
+#include "codebreaker/exact/standin.hpp"
+#include "codebreaker/exact/toolchain.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::linkwhole {
 
-using Num = std::variant<int64_t, py::str>;                  // an int, or a number written as text ("0x20")
+namespace nw = cb::exact::linkwhole;
 
-struct Find {                                                 // "find": [{"file", "toolchain", "variant"}]
-    py::str file;
-    py::str toolchain;
-    std::optional<py::str> variant;
-};
-
-struct ClassSpec {                                            // "class": {CLASS: {"segments": [...], "files": [...]}}
-    py::list<py::str> segments;
-    py::list<py::str> files;
-};
-
-struct Accept {                                               // "accept": [{"tail_zeros" | "header", "why"}]
-    std::optional<Num> tail_zeros;                            // N, or "record"
-    std::optional<std::tuple<Num, Num>> header;               // [FROM, TO]
-    py::str why;                                              // (default "")
-};
-
-struct LinkConfig {                                           // prj.cfg["link"]
-    bool has_linker = false;                                  // "linker" in the dict
-    std::optional<py::str> linker;
-    bool has_emulate = false;                                 // "emulate" in the dict
-    py::str emulate;                                          // lk.get("emulate"): "" when none
-    py::str order;                                            // lk.get("order"): "" when none
-    py::str switches;                                         // lk.get("switches", "")
-    py::str output = py::str("NEW");                          // lk.get("output", "NEW")
-    bool map = true;                                          // lk.get("map", True) as a truth value
-    std::optional<py::str> names;                             // lk.get("names")
-    std::optional<py::str> placed;                            // lk.get("placed")
-    py::list<py::str> last;
-    py::list<Find> find;
-    py::list<std::tuple<py::str, py::str>> first;             // [NAME, file]
-    py::list<py::str> libraries;
-    py::dict<py::str, ClassSpec> class_;                      // "class"
-    py::list<Accept> accept;
-    std::optional<Num> psp;                                   // an int or a number written as text
+struct LinkConfig {   // prj.cfg["link"]
+    nw::LinkConfig value;
 };
 
 // the dict prj.cfg["link"] (JSON text) as a LinkConfig
-LinkConfig link_config(const py::str& json_text);
+inline LinkConfig link_config(const py::str& json_text) {
+    return cb::compat::guard([&] { return LinkConfig{nw::parse_link_config(cb::compat::from_py(json_text))}; });
+}
 
 class Project {
   public:
@@ -117,40 +60,154 @@ class Project {
     virtual linkemu::Symbols symbols() const = 0;                                     // prj.symbols()
 };
 
-// the project says it is linked by a period linker
-bool wanted(const Project& prj);
+namespace detail {
 
-// the modules a file lists in the order they were linked: "name [odd]" a line, each a file of one of the
-// project's source sets, compiled by its toolchain -> [(k, name, object bytes, odd)]
-py::list<std::tuple<int64_t, py::str, py::bytes, bool>> listed(const Project& prj, const LinkConfig& lk);
+namespace nm = cb::exact::modules;
+
+inline std::filesystem::path path_of(const py::str& s) { return cb::fs::from_text(cb::compat::from_py(s)); }
+
+using OldProject = codebreaker::exact::linkwhole::Project;   // (inside NewView, `Project` is the new layer's base class)
+
+// The old project as the new layer's interface.
+class NewView final : public nw::Project {
+  public:
+    explicit NewView(std::shared_ptr<const OldProject> old) : old_(std::move(old)), config_(old_->link().value) {}
+    explicit NewView(const OldProject& old) : NewView(std::shared_ptr<const OldProject>(std::shared_ptr<void>(), &old)) {}
+
+    std::filesystem::path dir() const override { return path_of(old_->dir()); }
+    std::filesystem::path src() const override { return path_of(old_->src()); }
+    std::vector<std::pair<std::uint32_t, std::filesystem::path>> sources() const override {
+        std::vector<std::pair<std::uint32_t, std::filesystem::path>> out;
+        for (const auto& [at, path] : old_->sources()) out.emplace_back(cb::compat::int_from_py<std::uint32_t>(at), path_of(path));
+        return out;
+    }
+    std::shared_ptr<const nm::Toolchain> toolchain() const override { return std::make_shared<modules::detail::ToolchainAdapter>(old_->toolchain()); }
+    std::map<std::string, cb::Bytes> headers() const override {
+        std::map<std::string, cb::Bytes> out;
+        for (const auto& kv : old_->headers().items()) out[cb::compat::from_py(std::get<0>(kv))] = cb::compat::from_py(std::get<1>(kv));
+        return out;
+    }
+    std::vector<std::string> include() const override {
+        std::vector<std::string> out;
+        for (const py::str& i : old_->include()) out.push_back(cb::compat::from_py(i));
+        return out;
+    }
+    std::optional<std::string> switches() const override {
+        const auto s = old_->switches();
+        return s ? std::optional<std::string>(cb::compat::from_py(*s)) : std::nullopt;
+    }
+    std::vector<std::shared_ptr<const nw::Project>> sets() const override {
+        std::vector<std::shared_ptr<const nw::Project>> out;
+        for (const auto& s : old_->sets()) out.push_back(std::make_shared<NewView>(s));
+        return out;
+    }
+    const nw::LinkConfig& link() const override { return config_; }
+    cb::ByteView image() const override {
+        if (!image_) image_ = cb::compat::from_py(old_->image());
+        return *image_;
+    }
+    cb::ByteView file() const override {
+        if (!file_) file_ = cb::compat::from_py(old_->file());
+        return *file_;
+    }
+    std::string exe() const override { return cb::compat::from_py(old_->exe()); }
+    cb::exact::SymbolTable symbols() const override { return standin::detail::symbols_to_new(old_->symbols()); }
+    std::filesystem::path resolve(std::string_view spec) const override {
+        return path_of(toolchain::kit_path(std::nullopt, cb::compat::to_py(spec), old_->dir()));
+    }
+    std::shared_ptr<const nm::Toolchain> load_toolchain(std::string_view name, const std::optional<std::string>& variant) const override {
+        std::optional<py::str> v;
+        if (variant) v = cb::compat::to_py(*variant);
+        return std::make_shared<modules::detail::ToolchainAdapter>(toolchain::load(cb::compat::to_py(name), v));
+    }
+
+  private:
+    std::shared_ptr<const OldProject> old_;
+    nw::LinkConfig config_;
+    mutable std::optional<cb::Bytes> image_, file_;
+};
+
+// The old DOS emulator running the linker.
+class OldDos final : public nw::DosHost {
+  public:
+    std::string run(const std::filesystem::path& exe, const std::filesystem::path& workdir, std::string_view command_line,
+                    std::optional<std::uint32_t> psp) const override {
+        std::optional<int64_t> segment;
+        if (psp) segment = *psp;
+        const auto r = emu::dos::run(cb::compat::to_py(cb::fs::to_text(exe)), cb::compat::to_py(cb::fs::to_text(workdir)), cb::compat::to_py(command_line),
+                                     py::bytes(std::string()), emu::dos::DEFAULT_MAX_BLOCKS, false, py::bytes(std::string("PATH=\0", 6)), segment);
+        return r.console.raw();
+    }
+};
+
+}  // namespace detail
+
+// the project says it is linked by a period linker
+inline bool wanted(const Project& prj) { return cb::compat::guard([&] { return nw::wanted(prj.link().value); }); }
+
+// the modules a file lists in the order they were linked -> [(k, name, object bytes, odd)]
+inline py::list<std::tuple<int64_t, py::str, py::bytes, bool>> listed(const Project& prj, const LinkConfig& lk) {
+    return cb::compat::guard([&] {
+        py::list<std::tuple<int64_t, py::str, py::bytes, bool>> out;
+        for (const nw::ListedModule& m : nw::listed(detail::NewView(prj), lk.value))
+            out.append(std::make_tuple(int64_t(m.index), cb::compat::to_py(m.name), cb::compat::to_py(cb::ByteView(m.object)), m.odd));
+        return out;
+    });
+}
 
 // [(place, file name, object bytes)] in link order
-py::list<std::tuple<int64_t, py::str, py::bytes>> modules(const Project& prj);
+inline py::list<std::tuple<int64_t, py::str, py::bytes>> modules(const Project& prj) {
+    return cb::compat::guard([&] {
+        py::list<std::tuple<int64_t, py::str, py::bytes>> out;
+        for (const nw::PlacedObject& o : nw::placed_objects(detail::NewView(prj)))
+            out.append(std::make_tuple(int64_t(o.place), cb::compat::to_py(o.name), cb::compat::to_py(cb::ByteView(o.object))));
+        return out;
+    });
+}
 
-// the image address of the object's code: the one place its bytes (but those the linker fills in) are found
-std::optional<int64_t> _found(const Project& prj, const py::bytes& raw);
-
-// the object module up to its end record (an assembler's file may be padded to its disk sector)
-py::bytes _own(const py::bytes& b);
-
-py::str _file(const Project& prj, const py::str& spec);
-
-py::str _name(const std::optional<py::str>& scheme, int64_t k, const py::str& f);
-
-// an OMF index at q: (the index, where it ends)
-std::tuple<int64_t, int64_t> _index(const py::bytes& b, int64_t q);
-
-// the object with its segments of those names (a name, or one ending in _NAME) in the class cls
-py::bytes reclass(const py::bytes& obj, const py::str& cls, const py::list<py::str>& segments);
+// the object with its segments of those names in the class cls
+inline py::bytes reclass(const py::bytes& obj, const py::str& cls, const py::list<py::str>& segments) {
+    return cb::compat::guard([&] {
+        std::vector<std::string> names;
+        for (const py::str& s : segments) names.push_back(cb::compat::from_py(s));
+        const cb::Bytes raw = cb::compat::from_py(obj);
+        return cb::compat::to_py(cb::ByteView(nw::reclass(raw, cb::compat::from_py(cls), names)));
+    });
+}
 
 // -> (the file written or None, the linker's words, its map)
-std::tuple<std::optional<py::bytes>, py::str, py::str> run(const Project& prj, const py::list<std::tuple<int64_t, py::str, py::bytes>>& objs,
-                                                           const std::optional<py::str>& keep = std::nullopt);
+inline std::tuple<std::optional<py::bytes>, py::str, py::str> run(const Project& prj, const py::list<std::tuple<int64_t, py::str, py::bytes>>& objs,
+                                                                  const std::optional<py::str>& keep = std::nullopt) {
+    return cb::compat::guard([&] {
+        std::vector<nw::PlacedObject> placed;
+        for (const auto& [at, name, raw] : objs) placed.push_back({cb::compat::int_from_py<std::uint32_t>(at), cb::compat::from_py(name), cb::compat::from_py(raw)});
+        std::optional<std::filesystem::path> folder;
+        if (keep) folder = detail::path_of(*keep);
+        const nw::LinkOutput r = nw::link(detail::NewView(prj), placed, detail::OldDos(), folder);
+        std::optional<py::bytes> exe;
+        if (r.exe) exe = cb::compat::to_py(cb::ByteView(*r.exe));
+        return std::make_tuple(exe, cb::compat::to_py(r.console), cb::compat::to_py(r.map));
+    });
+}
 
 // -> (identical, [lines]): the file against the original, but for what the project accepts
-std::tuple<bool, py::list<py::str>> compare(const Project& prj, const py::bytes& exe);
+inline std::tuple<bool, py::list<py::str>> compare(const Project& prj, const py::bytes& exe) {
+    return cb::compat::guard([&] {
+        const cb::Bytes original = cb::compat::from_py(prj.file());
+        const nw::Comparison c = nw::compare(prj.link().value, original, cb::compat::from_py(exe));
+        py::list<py::str> lines;
+        for (const std::string& l : c.notes) lines.append(cb::compat::to_py(l));
+        return std::make_tuple(c.identical, lines);
+    });
+}
 
-// `python -m codebreaker exact PROJECT link ...`: what it prints goes to `out`; the exit code
-int64_t main(const Project& prj, const py::list<py::str>& argv, std::ostream& out);
+// `python -m codebreaker exact PROJECT link ...`: the exit code (what it prints goes to stdout)
+inline int64_t main(const Project& prj, const py::list<py::str>& argv, std::ostream&) {
+    return cb::compat::guard([&] {
+        std::vector<std::string> args;
+        for (const py::str& a : argv) args.push_back(cb::compat::from_py(a));
+        return int64_t(nw::run(detail::NewView(prj), args, detail::OldDos()));
+    });
+}
 
 }  // namespace codebreaker::exact::linkwhole

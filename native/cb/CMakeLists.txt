@@ -136,7 +136,7 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 cb_area(verify)
 
 cb_area(app)
-target_link_libraries(cb_app PUBLIC cb_core)
+target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats)
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
@@ -289,7 +289,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/ledger.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/data.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"

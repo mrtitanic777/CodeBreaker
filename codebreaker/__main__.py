@@ -179,7 +179,27 @@ COMMANDS = {
 }
 
 
+# Commands codebreaker.exe runs on native/cb (cb/app/native_commands.hpp), Python not involved: the whole command
+# line, --corpus included, goes to codebreaker_native's "cb". Under plain Python (no codebreaker_native) they run as
+# the modules COMMANDS names.
+NATIVE = ("info",)
+
+
+def _native_command(argv):
+    words = [w for i, w in enumerate(argv) if w != "--corpus" and (i == 0 or argv[i - 1] != "--corpus")]
+    if not words or words[0] not in NATIVE:
+        return None
+    try:
+        native = importlib.import_module("codebreaker_native")
+    except ImportError:
+        return None
+    return native.main(["cb"] + list(argv))
+
+
 def main(argv):
+    code = _native_command(argv)
+    if code is not None:
+        return code
     from codebreaker.base import corpus
     argv = corpus.take_option(argv)                          # --corpus NAME, for any command
     if not argv and sys.stdin.isatty() and sys.stdout.isatty() and importlib.util.find_spec("textual"):
