@@ -1,0 +1,35 @@
+// Translated by CodeBreaker from Linq (csharp).
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Corpus.Linq
+{
+    public class Person
+    {
+        public string Name { get; set; } = "";
+
+        public int Age { get; set; }
+
+        public string City { get; set; } = "";
+    }
+
+    public static class Program
+    {
+        public static void Main()
+        {
+            var people = new List<Person> { new Person { Name = "Ann", Age = 34, City = "Oslo" }, new Person { Name = "Bob", Age = 19, City = "Rome" }, new Person { Name = "Cid", Age = 52, City = "Oslo" }, new Person { Name = "Dee", Age = 27, City = "Lima" } };
+            List<string> adults = people.Where(p => p.Age >= 21).Select(p => p.Name).ToList();
+            Console.WriteLine("adults: " + string.Join(" ", adults));
+            int total = people.Sum(p => p.Age);
+            Console.WriteLine($"total age {total}, count in Oslo {people.Count(p => p.City == "Oslo")}");
+            IEnumerable<string> byAge = people.OrderBy(p => p.Age).Select(p => $"{p.Name}:{p.Age}");
+            Console.WriteLine(string.Join(", ", byAge));
+            IEnumerable<string> query = people.Where(p => p.Name.Length == 3 && p.Age < 40).OrderByDescending(p => p.Name).Select(p => p.Name.ToUpper());
+            Console.WriteLine("query: " + string.Join("|", query));
+            Console.WriteLine($"any over 50: {people.Any(p => p.Age > 50)}, first in Lima: {people.First(p => p.City == "Lima").Name}");
+            int[] squares = Enumerable.Range(1, 6).Select(i => i * i).Where(i => i % 2 == 0).ToArray();
+            Console.WriteLine("even squares: " + string.Join(",", squares));
+        }
+    }
+}
