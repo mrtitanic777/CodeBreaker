@@ -91,12 +91,14 @@ struct Member {
     std::uint32_t size = 0;
     std::string declarator;   // as the structure wrote it (`*next`, `buf[8]`); a nested structure's: its name
     bool pointer = false;     // the member is a pointer (a nested structure: all its own members are)
+    std::string type;         // its base type as written (`char`, `struct s`); a nested structure's: `struct` / `union`
     friend bool operator==(const Member&, const Member&) = default;
 };
 
 struct StructLayout {
     std::vector<Member> members;   // in declaration order
     std::uint32_t size = 0;
+    bool is_union = false;         // a union: its members all begin at 0
     const Member* find(std::string_view name) const {
         for (const Member& m : members)
             if (m.name == name) return &m;

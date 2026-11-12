@@ -1,0 +1,550 @@
+{
+ "strlen": {
+  "labels": [],
+  "lines": [
+   [
+    "_TEXT",
+    0,
+    0,
+    "_strlen PROC NEAR",
+    ""
+   ],
+   [
+    "_TEXT",
+    0,
+    1,
+    "PUSH BP",
+    "55"
+   ],
+   [
+    "_TEXT",
+    1,
+    2,
+    "MOV BP,SP",
+    "8bec"
+   ],
+   [
+    "_TEXT",
+    3,
+    1,
+    "PUSH DI",
+    "57"
+   ],
+   [
+    "_TEXT",
+    4,
+    1,
+    "PUSH SI",
+    "56"
+   ],
+   [
+    "_TEXT",
+    5,
+    1,
+    "PUSH ES",
+    "06"
+   ],
+   [
+    "_TEXT",
+    6,
+    1,
+    "PUSH DS",
+    "1e"
+   ],
+   [
+    "_TEXT",
+    7,
+    1,
+    "POP ES",
+    "07"
+   ],
+   [
+    "_TEXT",
+    8,
+    3,
+    "MOV DI,[BP+4]",
+    "8b7e04"
+   ],
+   [
+    "_TEXT",
+    11,
+    2,
+    "MOV SI,DI",
+    "8bf7"
+   ],
+   [
+    "_TEXT",
+    13,
+    2,
+    "XOR AX,AX",
+    "33c0"
+   ],
+   [
+    "_TEXT",
+    15,
+    2,
+    "MOV CX,AX",
+    "8bc8"
+   ],
+   [
+    "_TEXT",
+    17,
+    2,
+    "NOT CX",
+    "f7d1"
+   ],
+   [
+    "_TEXT",
+    19,
+    1,
+    "CLD",
+    "fc"
+   ],
+   [
+    "_TEXT",
+    20,
+    1,
+    "REPNE SCASB",
+    "f2"
+   ],
+   [
+    "_TEXT",
+    22,
+    2,
+    "SUB DI,SI",
+    "2bfe"
+   ],
+   [
+    "_TEXT",
+    24,
+    2,
+    "MOV AX,DI",
+    "8bc7"
+   ],
+   [
+    "_TEXT",
+    26,
+    1,
+    "DEC AX",
+    "48"
+   ],
+   [
+    "_TEXT",
+    27,
+    1,
+    "POP ES",
+    "07"
+   ],
+   [
+    "_TEXT",
+    28,
+    3,
+    "JMP cret",
+    "e90000"
+   ],
+   [
+    "_TEXT",
+    31,
+    0,
+    "_strlen ENDP",
+    ""
+   ],
+   [
+    "_TEXT",
+    31,
+    0,
+    "_TEXT ENDS",
+    ""
+   ]
+  ]
+ },
+ "string": {
+  "labels": [
+   [
+    "CPY1",
+    [
+     "_TEXT",
+     16
+    ]
+   ]
+  ],
+  "lines": [
+   [
+    "_TEXT",
+    0,
+    0,
+    "_strcpy PROC NEAR",
+    ""
+   ],
+   [
+    "_TEXT",
+    0,
+    1,
+    "PUSH BP",
+    "55"
+   ],
+   [
+    "_TEXT",
+    1,
+    2,
+    "MOV BP,SP",
+    "8bec"
+   ],
+   [
+    "_TEXT",
+    3,
+    1,
+    "PUSH DI",
+    "57"
+   ],
+   [
+    "_TEXT",
+    4,
+    1,
+    "PUSH SI",
+    "56"
+   ],
+   [
+    "_TEXT",
+    5,
+    3,
+    "MOV SI,[BP+6]",
+    "8b7606"
+   ],
+   [
+    "_TEXT",
+    8,
+    3,
+    "MOV DI,[BP+4]",
+    "8b7e04"
+   ],
+   [
+    "_TEXT",
+    11,
+    2,
+    "MOV DX,DI",
+    "8bd7"
+   ],
+   [
+    "_TEXT",
+    13,
+    1,
+    "CLD",
+    "fc"
+   ],
+   [
+    "_TEXT",
+    14,
+    2,
+    "XOR AX,AX",
+    "33c0"
+   ],
+   [
+    "_TEXT",
+    16,
+    2,
+    "CPY1: MOV AL,[SI]",
+    "8a04"
+   ],
+   [
+    "_TEXT",
+    18,
+    1,
+    "MOVSB",
+    "a4"
+   ],
+   [
+    "_TEXT",
+    19,
+    2,
+    "OR AX,AX",
+    "0bc0"
+   ],
+   [
+    "_TEXT",
+    21,
+    2,
+    "JNZ CPY1",
+    "75f9"
+   ],
+   [
+    "_TEXT",
+    23,
+    2,
+    "MOV AX,DX",
+    "8bc2"
+   ],
+   [
+    "_TEXT",
+    25,
+    3,
+    "JMP cret",
+    "e90000"
+   ],
+   [
+    "_TEXT",
+    28,
+    0,
+    "_strcpy ENDP",
+    ""
+   ],
+   [
+    "_TEXT",
+    28,
+    0,
+    "_strcat PROC NEAR",
+    ""
+   ],
+   [
+    "_TEXT",
+    28,
+    1,
+    "PUSH BP",
+    "55"
+   ],
+   [
+    "_TEXT",
+    29,
+    2,
+    "MOV BP,SP",
+    "8bec"
+   ],
+   [
+    "_TEXT",
+    31,
+    1,
+    "PUSH DI",
+    "57"
+   ],
+   [
+    "_TEXT",
+    32,
+    1,
+    "PUSH SI",
+    "56"
+   ],
+   [
+    "_TEXT",
+    33,
+    3,
+    "MOV DI,[BP+4]",
+    "8b7e04"
+   ],
+   [
+    "_TEXT",
+    36,
+    2,
+    "MOV DX,DI",
+    "8bd7"
+   ],
+   [
+    "_TEXT",
+    38,
+    1,
+    "PUSH DI",
+    "57"
+   ],
+   [
+    "_TEXT",
+    39,
+    3,
+    "CALL _strlen",
+    "e80000"
+   ],
+   [
+    "_TEXT",
+    42,
+    1,
+    "POP BX",
+    "5b"
+   ],
+   [
+    "_TEXT",
+    43,
+    2,
+    "ADD DI,AX ; the e",
+    "03f8"
+   ],
+   [
+    "_TEXT",
+    45,
+    3,
+    "PUSH [BP+6]",
+    "ff7606"
+   ],
+   [
+    "_TEXT",
+    48,
+    1,
+    "PUSH DI",
+    "57"
+   ],
+   [
+    "_TEXT",
+    49,
+    3,
+    "CALL _strcpy",
+    "e80000"
+   ],
+   [
+    "_TEXT",
+    52,
+    3,
+    "ADD SP,4",
+    "83c404"
+   ],
+   [
+    "_TEXT",
+    55,
+    2,
+    "MOV AX,DX",
+    "8bc2"
+   ],
+   [
+    "_TEXT",
+    57,
+    3,
+    "JMP cret",
+    "e90000"
+   ],
+   [
+    "_TEXT",
+    60,
+    0,
+    "_strcat ENDP",
+    ""
+   ],
+   [
+    "_TEXT",
+    60,
+    0,
+    "_TEXT ENDS",
+    ""
+   ]
+  ]
+ },
+ "movbytes": {
+  "labels": [],
+  "lines": [
+   [
+    "_TEXT",
+    0,
+    0,
+    "_movbyte PROC NEAR",
+    ""
+   ],
+   [
+    "_TEXT",
+    0,
+    1,
+    "PUSH BP",
+    "55"
+   ],
+   [
+    "_TEXT",
+    1,
+    2,
+    "MOV BP,SP",
+    "8bec"
+   ],
+   [
+    "_TEXT",
+    3,
+    1,
+    "PUSH DI",
+    "57"
+   ],
+   [
+    "_TEXT",
+    4,
+    1,
+    "PUSH SI",
+    "56"
+   ],
+   [
+    "_TEXT",
+    5,
+    1,
+    "PUSH ES",
+    "06"
+   ],
+   [
+    "_TEXT",
+    6,
+    3,
+    "MOV CX,[BP+4]",
+    "8b4e04"
+   ],
+   [
+    "_TEXT",
+    9,
+    3,
+    "MOV SI,[BP+6]",
+    "8b7606"
+   ],
+   [
+    "_TEXT",
+    12,
+    3,
+    "MOV DI,[BP+8]",
+    "8b7e08"
+   ],
+   [
+    "_TEXT",
+    15,
+    1,
+    "PUSH DS",
+    "1e"
+   ],
+   [
+    "_TEXT",
+    16,
+    1,
+    "POP ES",
+    "07"
+   ],
+   [
+    "_TEXT",
+    17,
+    1,
+    "CLD",
+    "fc"
+   ],
+   [
+    "_TEXT",
+    18,
+    1,
+    "REP MOVSB",
+    "f3"
+   ],
+   [
+    "_TEXT",
+    20,
+    1,
+    "POP ES",
+    "07"
+   ],
+   [
+    "_TEXT",
+    21,
+    3,
+    "JMP cret",
+    "e90000"
+   ],
+   [
+    "_TEXT",
+    24,
+    0,
+    "_movbyte ENDP",
+    ""
+   ],
+   [
+    "_TEXT",
+    24,
+    0,
+    "_TEXT ENDS",
+    ""
+   ]
+  ]
+ }
+}

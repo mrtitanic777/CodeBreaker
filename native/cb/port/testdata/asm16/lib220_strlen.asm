@@ -1,0 +1,29 @@
+; strlen(s): how many characters a string has before its 0
+
+_TEXT	SEGMENT	BYTE PUBLIC 'CODE'
+	ASSUME	CS:_TEXT
+	EXTRN	cret:NEAR
+	PUBLIC	_strlen
+_strlen	PROC	NEAR
+	PUSH	BP
+	MOV	BP,SP
+	PUSH	DI
+	PUSH	SI
+	PUSH	ES
+	PUSH	DS
+	POP	ES
+	MOV	DI,[BP+4]
+	MOV	SI,DI
+	XOR	AX,AX
+	MOV	CX,AX
+	NOT	CX
+	CLD
+	REPNE	SCASB
+	SUB	DI,SI
+	MOV	AX,DI
+	DEC	AX
+	POP	ES
+	JMP	cret
+_strlen	ENDP
+_TEXT	ENDS
+	END

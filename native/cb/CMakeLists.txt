@@ -248,6 +248,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asm16.cpp"   # (listing_offsets: the old emulator wrapper)
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
