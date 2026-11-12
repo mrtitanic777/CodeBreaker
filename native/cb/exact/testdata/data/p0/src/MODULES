@@ -1,0 +1,22 @@
+# P0.EXE's source files, in the order of the link: the name, the code address it begins at (to the next; - for a
+# file of data only), the data segment offset its data begins at, and its switches when not the program's
+# (tools/gather.py). The names and versions are the "@(#)name.c:1.N" strings in the data.
+debug.c       00002   0052
+error.c       0010e   013e
+getflags.c    0030c   019e
+hash.c        005c1   0210
+io.c          005e4   0222   -Oat -FPi
+keywords.c    00c74   02be
+ltoa.c        00ce3   0570
+main.c        00d74   0592
+memallo.c     00f89   06ec
+p0expand.c    011b3   076a
+p0expr.c      015fc   08d2
+p0human.c     01bc7   0994
+p0io.c        01c46   09b6
+p0prepro.c    01ff6   0aa8
+p0scanner.c   02acb   0d18
+strings.c     03b0d   0f88
+SVARSTCK.OBJ  03b61   0f9c   # (the diskettes' object: malloc and free, the stack's size settable)
+tokens.c      -       0fa8
+version.c     -       14ec   # (no what-string: the pass's version, as P1's version.c)

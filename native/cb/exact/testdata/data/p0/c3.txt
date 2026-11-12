@@ -1,0 +1,1 @@
+T63600.C(40) : warning : `=' : indirections to different types

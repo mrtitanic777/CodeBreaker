@@ -1,56 +1,16 @@
-// codebreaker/exact/library.hpp -- typed C++ port of codebreaker.exact.library.
-//
-// library.py -- the library modules a program was linked with, found in it; the rest of its library part as stand-ins.
+// codebreaker/exact/library.hpp -- compat shim for cb/exact/library.hpp (docs/CPP_DESIGN.md 6.3). No logic: conversion and
+// forwarding. Deleted with its last old-layer consumer (exact/link, exact/bss, exact/project, exact/run).
 //
 //     python -m codebreaker exact PROJECT library [--write] [-v]
 //
-// A linked program holds each library module it took byte for byte, but for the words the linker
-// filled in. Every module of the candidate libraries (the toolchain profile's for the project's
-// model, then the project's own "libraries") is looked for in the program: its code (each code
-// segment, the filled words left out) among the program's code, its data in the data segment.
+//     modules(prj) -> [Member]       locate(prj) -> Map (kept in prj._library)       lines(map, title) -> [text]
+//     main(prj, argv, out) -> exit code
 //
-//   - code found at one place places the module; where several modules have the same bytes there
-//     (one routine in several libraries, or entry points that share a body) the one whose public
-//     name the program's callers use (SYMBOLS) is taken, else the earliest library's; the others are
-//     noted ("also")
-//   - a module of data only is placed by its data, else by its names' places (SYMBOLS, or the words
-//     of the placed modules' code that name them)
-//   - the library part is the run of placed modules at the end of the code: it begins after the last
-//     gap longer than `gap` bytes (project "library_gap", default 4096) before them - a lone module
-//     among the program's own functions is not its start (project "library_start" says it outright)
-//   - inside the library part, code no module accounts for becomes a stand-in (RAW: the program's own
-//     bytes), with the public names the placed modules' calls into it show
-//
-// The linker takes modules in the order it comes to need them, which hangs on the order of names in
-// the objects that need them, not ours - so a rebuild links them as objects in the program's order:
-// src/CRTLIB, one line each:
-//
-//     [TAG:]NAME        # code 03bf8 (334 bytes)  data 1520  (also ...)
-//     RAW name code=LO-HI pub=NAME@OFF ...        # (no library module has these bytes)
-//
-//     library::find(project) -> Map (.modules [Placed], .start, .raws, .lines())
-//
-// Typing notes (how the Python's duck-typed values are typed here):
-//   * `prj` is the interface `Project` below: the members of exact.project.Project (and of the toolchain profile
-//     behind prj.toolchain().p) that library.py reads. It is a modules::Project (exact/modules.hpp: image, dgroup,
-//     symbols(), code_end, code_base(), path(), ...) because the Python calls exact.modules.starts(prj) with it, and
-//     adds what library.py reads of prj.cfg and of the profile: library_gap, library_start, model, the project's own
-//     "libraries", "first_objects", "data_sizes", "data_pads", the profile's "libraries" and "objects" of a model, its
-//     "kit", and prj.dir. `prj._library` (locate()'s cache on the project) is the member `_library`.
-//   * cfg's "data_sizes" and "data_pads" hold numbers (an int, or text for int()); the values are ints here (a
-//     number written as text is for the project's implementation to read), the pads' keys are hexadecimal text.
-//   * The Python's tuples are std::tuple: Member.code is [(segment, filled bytes, holes)], Member.data is
-//     (bytes, holes) or None, Member.pubs is {public name: (segment or None, offset)}; a raw stand-in is
-//     (start, end, [(offset, public name)]) and a raw data run (data from, to, {public: offset}, note).
-//   * The rows of Map.order are (address or None, kind, item): the item is a Placed, a DataRaw or a raw stand-in
-//     (the Python's tuple), a std::variant of those.
-//   * DataRaw.m is a kit Member, or a `_Named` (a kit module's stand-in under another name): the member (null for
-//     a _Named) and `name` (the Member's, or the _Named's) are kept; `raw` is _Named.raw (b"" for none).
-//   * Member.l2 is the module's L2 document (translate::l2::Dict); a public's place is read back from it, as the
-//     Python reads it.
-//   * `max(sorted(set(segs)), key=segs.count)` (the main code segment) breaks a tie by name: the first of the tied segments.
-//   * main() prints with `print`: the text goes to the function given (std::cout where none is).
-//   * Python ints are int64_t.
+// `Project` is the old layer's own interface (what library.py reads of exact.project.Project); the real one implements
+// it. The records (Member, Placed, DataRaw, Map ...) are the old layer's shapes, filled from the new layer's answer; a
+// Member keeps no L2 module (nothing read it). The Map keeps the new layer's answer (`native`) for `lines`. What main
+// prints goes to stdout (cb::out), as the other refactored commands' shims do. The functions the Python kept for its own
+// use (candidates, find, W, _refs, _order ...) are not shimmed: nothing outside the module called them.
 #pragma once
 
 #include <cstdint>
@@ -60,30 +20,23 @@
 #include <tuple>
 #include <variant>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/exact/library.hpp"
 #include "codebreaker/exact/modules.hpp"
 #include "codebreaker/exact/omf.hpp"
-#include "codebreaker/translate/l2.hpp"
+#include "codebreaker/exact/project_forward.hpp"
+#include "codebreaker/exact/toolchain.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::library {
 
 namespace omf = codebreaker::exact::omf;
-namespace l2 = codebreaker::translate::l2;
+namespace nl = cb::exact::library;
 
-// W = lambda b, k: struct.unpack_from("<H", b, k)[0]
-int64_t W(const py::bytes& b, int64_t k);
-
-// (segment, the bytes the object fills, the offsets the linker fills in)
 using CodeSeg = std::tuple<py::str, py::bytes, py::set<int64_t>>;
-// (the bytes of _DATA, the offsets the linker fills in)
 using DataSeg = std::tuple<py::bytes, py::set<int64_t>>;
 using Pub = std::tuple<std::optional<py::str>, int64_t>;   // (segment or None, offset)
 
-// One module of a library (an object module in a .LIB). What it holds is its L2 Module (the one
-// module model, l2.module): each public name a MachineFragment at its place (origin: the member,
-// its segment's number among the member's segments, the offset) -- code or data the program links
-// byte for byte. The bytes themselves, the places the linker fills in (holes) and the segments'
-// lengths are the object's facts, read from it (omf.read): .code, .data, .seglen.
 class Member {
   public:
     py::str tag;
@@ -94,15 +47,20 @@ class Member {
     py::list<CodeSeg> code;
     std::optional<DataSeg> data;
     py::list<std::optional<py::str>> segments;
-    l2::Dict l2;
-    py::dict<py::str, Pub> pubs;   // {public name: (its segment, its offset)}, read from the member's L2 Module
-
-    Member(const py::str& tag, const py::str& name, const py::bytes& raw, int64_t rank);
+    py::dict<py::str, Pub> pubs;   // {public name: (its segment, its offset)}
 
     // (tag + ":" if tag else "") + name
-    py::str label() const;
+    py::str label() const { return tag.empty() ? name : tag + py::str(":") + name; }
     // (length, alignment) of a segment: (0, 1) for none
-    std::tuple<int64_t, int64_t> seglen(const py::str& seg) const;
+    std::tuple<int64_t, int64_t> seglen(const py::str& seg) const {
+        for (const auto& sg : o.segs) {
+            if (std::get<0>(sg) == seg) {
+                const int64_t al = std::get<3>(sg);
+                return {std::get<2>(sg), al == 2 ? 2 : al == 3 ? 16 : al == 4 ? 256 : 1};
+            }
+        }
+        return {0, 1};
+    }
 };
 using MemberP = py::ref<Member>;
 
@@ -114,20 +72,19 @@ class Placed {
     py::str why;
     py::list<MemberP> also;
 
-    Placed(const MemberP& m, const std::optional<int64_t>& code = std::nullopt, const std::optional<int64_t>& data = std::nullopt,
-           const py::str& why = py::str(""));
-
     // where its code ends: code + the length of the module's first code segment; None without code
-    std::optional<int64_t> end() const;
+    std::optional<int64_t> end() const {
+        if (!code) return std::nullopt;
+        return *code + (m->code.empty() ? int64_t(0) : static_cast<int64_t>(std::get<1>(m->code[0]).size()));
+    }
 };
 using PlacedP = py::ref<Placed>;
 
-// a data-only module of another version than the kit's: its data as the program has it (a stand-in)
 class DataRaw {
   public:
-    MemberP m;               // the kit's module (null for a _Named: a stand-in under another name)
-    py::str name;            // m.name, or the _Named's name (= its label)
-    py::bytes raw;           // _Named.raw (b"" for none); the Member's raw otherwise
+    MemberP m;               // the kit's module (null for a stand-in under another name, and a pad)
+    py::str name;            // m.name, or the stand-in's
+    py::bytes raw;           // the kit module's bytes (b"" for a pad)
     int64_t data = 0;
     int64_t end = 0;
     py::dict<py::str, int64_t> pubs;
@@ -135,18 +92,13 @@ class DataRaw {
     py::list<MemberP> also;
     bool by_next = false;
 
-    DataRaw(const MemberP& m, int64_t lo, int64_t hi, const py::dict<py::str, int64_t>& pubs, const py::str& why);
-
     // (length, alignment) of a segment: (end - data, 2) for _DATA, else (0, 1)
-    std::tuple<int64_t, int64_t> seglen(const py::str& seg) const;
+    std::tuple<int64_t, int64_t> seglen(const py::str& seg) const { return seg == py::str("_DATA") ? std::tuple<int64_t, int64_t>{end - data, 2} : std::tuple<int64_t, int64_t>{0, 1}; }
 };
 using DataRawP = py::ref<DataRaw>;
 
-// (start, end, [(offset, public name)])
 using Raw = std::tuple<int64_t, int64_t, py::list<std::tuple<int64_t, py::str>>>;
-// (data from, data to, {public: offset}, note)
 using RawData = std::tuple<int64_t, int64_t, py::dict<py::str, int64_t>, py::str>;
-using Block = std::variant<PlacedP, DataRawP>;
 using Item = std::variant<PlacedP, DataRawP, Raw>;
 using Row = std::tuple<std::optional<int64_t>, py::str, Item>;
 using Refs = py::dict<py::str, std::tuple<py::str, int64_t>>;   // {external name: (C or D, address)}
@@ -162,16 +114,15 @@ class Map {
     py::list<DataRawP> dataraws;
     py::dict<int64_t, RawData> rawdata;
     py::list<Row> order;
+    std::shared_ptr<const nl::Map> native;   // the new layer's answer, which the records above were filled from
 };
 using MapP = py::ref<Map>;
 
-// a library of the profile or of the project: its "tag" ("" when it has none) and "path"
 struct LibRef {
     py::str tag;
     py::str path;
 };
 
-// exact.project.Project (and its toolchain profile), as library.py uses it
 class Project : public modules::Project {
   public:
     // prj.cfg.get("model", "S")
@@ -201,50 +152,207 @@ class Project : public modules::Project {
     mutable MapP _library;
 };
 
-// [(tag, path)] the libraries to look in, in the order of preference
-py::list<std::tuple<py::str, py::str>> candidates(const Project& prj);
+namespace detail {
 
-py::list<MemberP> modules(const Project& prj);
+namespace stdfs = std::filesystem;
 
-// every place in img[lo:hi] where d stands, the holes left out
-py::list<int64_t> find(const py::bytes& img, const py::bytes& d, const py::set<int64_t>& holes, int64_t lo, int64_t hi);
+inline stdfs::path path_of(const py::str& s) { return cb::fs::from_text(cb::compat::from_py(s)); }
 
-MapP locate(const Project& prj, bool verbose = false);
-MapP _locate(const Project& prj);
+using OldProject = codebreaker::exact::library::Project;   // (inside NewView, `Project` is the new layer's base class)
 
-py::list<DataRawP> _data_standins(const Project& prj, const py::list<MemberP>& mods, py::set<const Member*>& taken,
-                                  py::dict<py::str, std::tuple<py::str, py::list<py::str>>>& missing, const Refs& refs,
-                                  const py::list<PlacedP>& coded, const py::list<PlacedP>& donly);
+// The old project as the new layer's interface.
+class NewView final : public modules::detail::ForwardedProject<nl::Project> {
+  public:
+    explicit NewView(const OldProject& old) : ForwardedProject(old), old_(old) {}
 
-// [(code start, end, object)] the kit's loose objects (the profile's "objects" for the model: SVARSTCK.OBJ,
-// SSETARGV.OBJ ...) whose code stands in the program at one place
-py::list<std::tuple<int64_t, int64_t, py::str>> _objects(const Project& prj, const py::bytes& img, int64_t dg);
+    std::vector<LibraryFile> libraries() const override {
+        std::vector<LibraryFile> out;
+        for (const LibRef& x : old_.profile_libraries(old_.model())) out.push_back({cb::compat::from_py(x.tag), path_of(toolchain::kit_path(kit(), x.path))});
+        for (const LibRef& x : old_.project_libraries())
+            out.push_back({cb::compat::from_py(x.tag), path_of(toolchain::kit_path(std::nullopt, x.path, old_.dir()))});
+        return out;
+    }
+    std::vector<stdfs::path> kit_objects() const override { return kit_files(old_.profile_objects(old_.model())); }
+    std::vector<stdfs::path> first_objects() const override { return kit_files(old_.first_objects()); }
+    std::uint32_t library_gap() const override { return cb::compat::int_from_py<std::uint32_t>(old_.library_gap()); }
+    std::optional<std::uint32_t> library_start() const override {
+        const auto s = old_.library_start();
+        if (!s) return std::nullopt;
+        const int64_t v = std::holds_alternative<int64_t>(*s) ? std::get<int64_t>(*s) : py::int_parse(std::get<py::str>(*s), 0);
+        return cb::compat::int_from_py<std::uint32_t>(v);
+    }
+    std::map<std::string, std::uint32_t> data_sizes() const override {
+        std::map<std::string, std::uint32_t> out;
+        for (const auto& kv : old_.data_sizes().items()) out[cb::compat::from_py(std::get<0>(kv))] = cb::compat::int_from_py<std::uint32_t>(std::get<1>(kv));
+        return out;
+    }
+    std::vector<DataPad> data_pads() const override {
+        std::vector<DataPad> out;
+        for (const auto& kv : old_.data_pads().items())
+            out.push_back({cb::compat::int_from_py<std::uint32_t>(py::int_from_str(std::get<0>(kv), 16)), cb::compat::int_from_py<std::uint32_t>(std::get<1>(kv))});
+        return out;
+    }
 
-// the publics of the kit's objects the program links before the library (project "first_objects")
-py::set<py::str> _first_object_names(const Project& prj);
+  private:
+    py::str kit() const {
+        const auto k = old_.profile_kit();
+        if (!k) throw py::KeyError("kit");
+        return *k;
+    }
+    std::vector<stdfs::path> kit_files(const py::list<py::str>& names) const {
+        std::vector<stdfs::path> out;
+        for (const py::str& x : names) out.push_back(path_of(toolchain::kit_path(kit(), x)));
+        return out;
+    }
+    const OldProject& old_;
+};
 
-// {external name: (C or D, address)}: what the words of the placed modules that name externals show - in
-// their code, and in their data where its place is known (stdio's _iob names the buffers)
-Refs _refs(const Project& prj, const py::list<PlacedP>& placed);
+// One new-layer Member as the old layer's.
+inline MemberP member_to_old(const nl::Member& m) {
+    auto out = std::make_shared<Member>();
+    out->tag = cb::compat::to_py(m.tag);
+    out->name = cb::compat::to_py(m.name);
+    out->raw = cb::compat::to_py(cb::ByteView(m.raw));
+    out->rank = m.rank;
+    out->o = omf::read(out->raw);
+    const auto holes = [](const nl::Piece& p) {
+        py::set<int64_t> h;
+        for (std::size_t k = 0; k < p.hole.size(); ++k) {
+            if (p.hole[k]) h.add(static_cast<int64_t>(k));
+        }
+        return h;
+    };
+    for (const nl::Piece& p : m.code) out->code.append(CodeSeg(cb::compat::to_py(p.segment), cb::compat::to_py(cb::ByteView(p.bytes)), holes(p)));
+    if (m.data) out->data = DataSeg(cb::compat::to_py(cb::ByteView(m.data->bytes)), holes(*m.data));
+    for (const std::string& s : m.segments) out->segments.append(std::optional<py::str>(cb::compat::to_py(s)));
+    for (const auto& [n, place] : m.pubs) {
+        std::optional<py::str> seg;
+        if (place.segment) seg = cb::compat::to_py(*place.segment);
+        out->pubs.set(cb::compat::to_py(n), Pub(seg, place.offset));
+    }
+    return out;
+}
 
-// where the code ends: before the data segment, less the zeros that pad to its paragraph
-int64_t _code_end(const py::bytes& img, int64_t dg);
+// The new layer's Map as the old layer's records (one old Member for each new one).
+inline MapP to_old(std::shared_ptr<const nl::Map> native) {
+    const nl::Map& nm = *native;
+    std::map<const nl::Member*, MemberP> members;
+    const auto member = [&](const nl::Member* m) -> MemberP {
+        if (m == nullptr) return nullptr;
+        auto& slot = members[m];
+        if (!slot) slot = member_to_old(*m);
+        return slot;
+    };
+    std::map<const nl::Placed*, PlacedP> placed_map;
+    const auto placed = [&](const nl::Placed& p) {
+        auto out = std::make_shared<Placed>();
+        out->m = member(p.module);
+        out->code = p.code;
+        out->data = p.data;
+        out->why = cb::compat::to_py(p.why);
+        for (const nl::Member* a : p.also) out->also.append(member(a));
+        placed_map[&p] = out;
+        return out;
+    };
+    std::map<const nl::DataRaw*, DataRawP> raw_map;
+    const auto data_raw = [&](const nl::DataRaw& d) {
+        auto out = std::make_shared<DataRaw>();
+        out->m = member(d.member);
+        out->name = cb::compat::to_py(d.name);
+        if (d.source) out->raw = cb::compat::to_py(cb::ByteView(d.source->raw));
+        out->data = d.data;
+        out->end = d.end;
+        for (const auto& [n, o] : d.pubs) out->pubs.set(cb::compat::to_py(n), o);
+        out->why = cb::compat::to_py(d.why);
+        out->by_next = d.by_next;
+        raw_map[&d] = out;
+        return out;
+    };
+    const auto raw = [&](const nl::Raw& r) {
+        py::list<std::tuple<int64_t, py::str>> pubs;
+        for (const auto& [o, n] : r.pubs) pubs.append(std::make_tuple(o, cb::compat::to_py(n)));
+        return Raw(r.lo, r.hi, pubs);
+    };
+    const auto refs = [](const nl::Refs& r) {
+        Refs out;
+        for (const auto& [n, ref] : r) out.set(cb::compat::to_py(n), std::make_tuple(py::str(ref.kind == nl::RefKind::Code ? "C" : "D"), ref.address));
+        return out;
+    };
+    auto out = std::make_shared<Map>();
+    out->start = nm.start;
+    for (const nl::Placed& p : nm.coded) out->coded.append(placed(p));
+    for (const nl::Placed& p : nm.donly) out->donly.append(placed(p));
+    for (const nl::Placed& p : nm.first) out->first.append(placed(p));
+    for (const nl::Placed& p : nm.lone) out->lone.append(placed(p));
+    for (const nl::Raw& r : nm.raws) out->raws.append(raw(r));
+    out->refs = refs(nm.refs);
+    out->allrefs = refs(nm.all_refs);
+    for (const auto& [n, miss] : nm.missing) {
+        py::list<py::str> by;
+        for (const std::string& b : miss.defined_by) by.append(cb::compat::to_py(b));
+        out->missing.set(cb::compat::to_py(n), std::make_tuple(cb::compat::to_py(miss.named_by), by));
+    }
+    for (const auto& o : nm.objects) out->objects.append(std::make_tuple(o.start, o.end, cb::compat::to_py(o.label)));
+    for (const nl::DataRaw& d : nm.data_raws) out->dataraws.append(data_raw(d));
+    for (const auto& [lo, d] : nm.raw_data) {
+        py::dict<py::str, int64_t> pubs;
+        for (const auto& [n, o] : d.pubs) pubs.set(cb::compat::to_py(n), o);
+        out->rawdata.set(lo, RawData(d.from, d.to, pubs, cb::compat::to_py(d.note)));
+    }
+    for (const nl::OrderEntry& e : nm.order) {
+        const char* kind = e.item == nl::Item::First ? "first" : e.item == nl::Item::Module ? "mod" : e.item == nl::Item::Raw ? "raw" : "data";
+        std::optional<int64_t> at;
+        Item item;
+        if (const auto* p = std::get_if<const nl::Placed*>(&e.what)) {
+            item = placed_map.at(*p);
+            if (e.item == nl::Item::Module) at = (*p)->code;
+        } else if (const auto* d = std::get_if<const nl::DataRaw*>(&e.what)) {
+            item = raw_map.at(*d);
+        } else {
+            item = raw(*std::get<const nl::Raw*>(e.what));
+            at = std::get<0>(std::get<Raw>(item));
+        }
+        out->order.append(Row(at, py::str(kind), item));
+    }
+    out->native = std::move(native);
+    return out;
+}
 
-// {code stand-in's start: (data from, to, {public: offset}, note)} - a code stand-in is another version of the
-// kit's module that defines its publics; that module's data, as far as the program has it (placed by its first
-// run of bytes that are not zeros, as long as the bytes agree, its zeros at the end left out), is the stand-in's
-py::dict<int64_t, RawData> _raw_data(const Project& prj, const py::list<MemberP>& mods, const py::list<Raw>& raws, const py::bytes& ds);
+}  // namespace detail
 
-// the modules in the linker's order. By code; a module of data only where its data stands among the coded
-// modules' data: the library's data is laid out module after module (the lengths and alignments of their
-// SEGDEFs), a data-only module going in where the layout reaches its place; of the starts for the library's
-// data, the one that puts the most modules whose data's place is known at that place
-py::list<Row> _order(const py::list<PlacedP>& coded, const py::list<Block>& donly, const py::list<Raw>& raws,
-                     const py::dict<int64_t, RawData>& rawdata = py::dict<int64_t, RawData>());
+// the modules of the candidate libraries, in order
+inline py::list<MemberP> modules(const Project& prj) {
+    return cb::compat::guard([&] {
+        py::list<MemberP> out;
+        for (const auto& m : nl::read_modules(detail::NewView(prj))) out.append(detail::member_to_old(*m));
+        return out;
+    });
+}
 
-py::list<py::str> lines(const Map& mp, const py::str& title = py::str(""));
+// the library's modules found in the program (kept in prj._library)
+inline MapP locate(const Project& prj, bool = false) {
+    if (!prj._library) {
+        prj._library = cb::compat::guard([&] { return detail::to_old(std::make_shared<const nl::Map>(nl::locate(detail::NewView(prj)))); });
+    }
+    return prj._library;
+}
 
-// `print`ed text goes to `out` (std::cout when null)
-int64_t main(const Project& prj, const py::list<py::str>& argv, const std::function<void(const py::str&)>& out = nullptr);
+// the modules in the linker's order, as src/CRTLIB writes them
+inline py::list<py::str> lines(const Map& mp, const py::str& title = py::str("")) {
+    return cb::compat::guard([&] {
+        py::list<py::str> out;
+        for (const std::string& l : nl::lines(*mp.native, cb::compat::from_py(title))) out.append(cb::compat::to_py(l));
+        return out;
+    });
+}
+
+// `python -m codebreaker exact PROJECT library ...`: the exit code (what it prints goes to stdout)
+inline int64_t main(const Project& prj, const py::list<py::str>& argv, const std::function<void(const py::str&)>& = nullptr) {
+    return cb::compat::guard([&] {
+        std::vector<std::string> args;
+        for (const py::str& a : argv) args.push_back(cb::compat::from_py(a));
+        return int64_t(nl::run(detail::NewView(prj), args));
+    });
+}
 
 }  // namespace codebreaker::exact::library
