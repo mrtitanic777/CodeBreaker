@@ -5,6 +5,7 @@
 #include <array>
 #include <vector>
 
+#include "cb/analyze/dos_functions.hpp"
 #include "cb/base/config.hpp"
 #include "cb/base/corpus.hpp"
 #include "cb/build/driver.hpp"
@@ -13,8 +14,13 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
+#include "cb/formats/cab.hpp"
 #include "cb/formats/detect.hpp"
+#include "cb/formats/dos.hpp"
 #include "cb/formats/inspect.hpp"
+#include "cb/formats/xbox/heavyiron.hpp"
+#include "cb/symbols/demangle.hpp"
+#include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
 #include "cb/symbols/prototypes.hpp"
 
@@ -22,7 +28,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 3> kNative{"info", "flat-thunk", "driver-build"};
+constexpr std::array<std::string_view, 8> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -55,6 +61,110 @@ std::string_view command_of(std::span<const std::string> args) {
 
 build::watcom::OpenWatcom ft_openwatcom_of(const config::Config& config) {
     return build::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
+}
+
+std::string lower(std::string_view s) {
+    std::string r(s);
+    for (char& c : r)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    return r;
+}
+
+// The files a cabinet is made from: a file under its own name; a folder's files, folder by folder and name by name,
+// under their paths inside it (backslash-separated).
+struct GatheredFile {
+    std::string name;
+    Bytes data;
+};
+std::vector<GatheredFile> gather(std::span<const std::string> paths) {
+    std::vector<GatheredFile> files;
+    for (const std::string& given : paths) {
+        const std::filesystem::path root = fs::from_text(given);
+        if (!std::filesystem::is_directory(root)) {
+            files.push_back({fs::to_text(root.filename()), fs::read_file(root)});
+            continue;
+        }
+        std::vector<std::pair<std::string, std::filesystem::path>> found;   // (folder, file)
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+            if (entry.is_regular_file()) found.emplace_back(fs::to_text(entry.path().parent_path()), entry.path());
+        std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
+            return a.first != b.first ? a.first < b.first : fs::to_text(a.second.filename()) < fs::to_text(b.second.filename());
+        });
+        for (const auto& [folder, file] : found) {
+            std::string name = fs::to_text(std::filesystem::relative(file, root));
+            std::replace(name.begin(), name.end(), '/', '\\');
+            files.push_back({std::move(name), fs::read_file(file)});
+        }
+    }
+    return files;
+}
+
+constexpr std::string_view kCabUsage =
+    "usage: codebreaker cab list <file.cab>\n"
+    "       codebreaker cab extract <file.cab> <outdir> [names...]\n"
+    "       codebreaker cab create <out.cab> <file-or-folder>... [--store]\n";
+
+int cab_command(std::span<const std::string> argv) {
+    namespace cab = formats::cab;
+    const bool store = std::find(argv.begin(), argv.end(), "--store") != argv.end();
+    std::vector<std::string> args;
+    for (const std::string& a : argv)
+        if (a != "--store") args.push_back(a);
+    try {
+        if (args.size() == 2 && args[0] == "list") {
+            const cab::Cabinet c = cab::read(fs::from_text(args[1]));
+            std::string folders;
+            for (const cab::FolderEntry& f : c.folders) folders += (folders.empty() ? "" : ", ") + f.compression();
+            out("{}: set {}, cabinet {}, {} bytes, folders: {}\n", fs::to_text(fs::from_text(args[1]).filename()), c.set_id,
+                c.index, c.size, folders.empty() ? "none" : folders);
+            if (c.prev && !c.prev->cabinet.empty()) out("  prev cabinet: {}\n", c.prev->cabinet);
+            if (c.next && !c.next->cabinet.empty()) out("  next cabinet: {}\n", c.next->cabinet);
+            std::uint64_t total = 0;
+            for (const cab::FileEntry& e : c.files) {
+                std::string_view mark;
+                if (e.folder == cab::kFromPrev) mark = "  (from previous cabinet)";
+                else if (e.folder == cab::kToNext) mark = "  (into next cabinet)";
+                else if (e.folder == cab::kPrevAndNext) mark = "  (from previous, into next)";
+                out("{:>10}  {:04}-{:02}-{:02}  {:<8} {}{}\n", e.size, 1980 + (e.date >> 9), (e.date >> 5) & 15, e.date & 31,
+                    c.compression_of(e), e.name, mark);
+                total += e.size;
+            }
+            out("{} files, {} bytes\n", c.files.size(), total);
+            return 0;
+        }
+        if (args.size() >= 3 && args[0] == "extract") {
+            std::optional<std::vector<std::string>> names;
+            if (args.size() > 3) names = std::vector<std::string>(args.begin() + 3, args.end());
+            const std::vector<cab::Extracted> done = cab::extract(fs::from_text(args[1]), fs::from_text(args[2]), names);
+            std::vector<std::string> got;
+            for (const cab::Extracted& d : done) got.push_back(lower(d.name));
+            bool missing = false;
+            for (std::size_t i = 3; i < args.size(); ++i)
+                if (std::find(got.begin(), got.end(), lower(args[i])) == got.end()) {
+                    flush_out();
+                    err("not in the cabinet: {}\n", args[i]);
+                    missing = true;
+                }
+            out("extracted {} files to {}\n", done.size(), args[2]);
+            return missing ? 1 : 0;
+        }
+        if (args.size() >= 3 && args[0] == "create") {
+            const std::vector<GatheredFile> gathered = gather(std::span(args).subspan(2));
+            std::vector<cab::SourceFile> files;
+            for (const GatheredFile& g : gathered) files.push_back({g.name, ByteView(g.data)});
+            cab::WriteOptions options;
+            options.compression = store ? cab::Compression::None : cab::Compression::MsZip;
+            const std::uint64_t size = cab::write(files, fs::from_text(args[1]), options);
+            out("wrote {}: {} files, {} bytes\n", args[1], files.size(), size);
+            return 0;
+        }
+    } catch (const Error& problem) {
+        flush_out();
+        err("cab: {}\n", problem.what());
+        return 1;
+    }
+    err_text(kCabUsage);
+    return 2;
 }
 
 }  // namespace
@@ -102,6 +212,49 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     });
     dr.state = config.state();
     table.set(build::driver::command(dr));
+
+    // demangle <name> ...: each name readable, or said to be not readable
+    table.set("demangle", [](std::span<const std::string> args) -> int {
+        if (args.empty()) {
+            out("usage: codebreaker demangle <name> [<name> ...]\n");
+            return 2;
+        }
+        for (const std::string& name : args) {
+            if (symbols::demangle::parse(name) || !name.starts_with('?')) out("{}\n", symbols::demangle::readable(name));
+            else out("{}  (not readable)\n", name);
+        }
+        return 0;
+    });
+
+    // dos-interrupts [<interrupt> [<AH> [<AL>]]]: the checkout's own dos_interrupts.json
+    const std::filesystem::path interrupts = config.checkout_root() / "codebreaker" / "symbols" / "dos_interrupts.json";
+    table.set("dos-interrupts", [interrupts](std::span<const std::string> args) -> int {
+        return symbols::dos_interrupts::run(symbols::dos_interrupts::ServiceTable::load(interrupts), args);
+    });
+
+    // dos-functions <program> [--all]: the functions found in a real-mode program, and the interrupt services it calls
+    table.set("dos-functions", [corpus, interrupts](std::span<const std::string> args) -> int {
+        if (args.empty()) {
+            out("usage: codebreaker dos-functions <program> [--all]\n");
+            return 2;
+        }
+        const std::filesystem::path path = corpus->resolve(args[0]);
+        const std::string name = fs::to_text(path.filename());
+        const formats::dos::Program program = formats::dos::read_program(fs::read_file(path), name);
+        const analyze::dos_functions::Analysis analysis = analyze::dos_functions::discover(program);
+        const bool all = std::find(args.begin(), args.end(), "--all") != args.end();
+        const auto services = symbols::dos_interrupts::ServiceTable::load(interrupts);
+        for (const std::string& line : analyze::dos_functions::report(name, program, analysis, all, services)) out("{}\n", line);
+        return 0;
+    });
+
+    // cab list|extract|create: Microsoft cabinets, with no outside tool
+    table.set("cab", [](std::span<const std::string> argv) -> int { return cab_command(argv); });
+
+    // heavyiron <archive> ...: Heavy Iron Studios' .HO/.HIP archives
+    table.set("heavyiron", [](std::span<const std::string> args) -> int {
+        return formats::xbox::heavyiron::command(std::vector<std::string>(args.begin(), args.end()));
+    });
 }
 
 bool is_native_command(std::string_view name) {

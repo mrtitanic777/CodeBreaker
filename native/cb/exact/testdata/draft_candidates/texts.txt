@@ -1,0 +1,86 @@
+
+{
+int f()\n{\n    return 0;\n}
+f(a, b)\nint a, b;\n{\n    int v2;\n    char _p4[4];\n    register int r_si;\n    register char *r_di;\n    v2 = a;\n    return b;\n}
+    ax = 1;\n    return ax;
+int f(i)\nint i;\n{\n    int x;\n    x = g_0100[i].f0;\n    g_0102[i].f0 = x;\n    g_0104[i].f0 = g_0100[i].f0;\n    return x;\n}
+int f(i)\nint i;\n{\n    int x;\n    x = g_0100[i].f0;\n    g_0102[i].f0 = x;\n    return x;\n}
+int f(i)\nint i;\n{\n    int x;\n    x = g_0200[i].f0;\n    g_0202[i].f0 = g_0100[i].f0;\n    g_0102[i].f0 = x;\n    return x;\n}
+    if (ax == 0) {\n        bx = 1;\n    } else if (cx) {\n        bx = 2;\n    }\n    return bx;
+    ax = 1;\n    goto L_1;\n    ax = 2;\nL_1:\n    bx = ax;\n    return bx;
+    if ((x == 0)) {\n        ax = 1;\n    } else {\n        ax = 0;\n    }\n    return ax;
+
+
+{
+int f()\n{\n    return 0;\n}
+int f(x)\n{\n    ax = x;\n    return ax;\n}
+int f(x)\n{\n    if ((x == 0)) {\n        return 1;\n    }\n    ax = 2;\n    return ax;\n}
+int f(x)\n{\n    return ax;\n}
+int f()\n{\n    while (x) {\n        ax = x;\n        si = ax;\n    }\n    return si;\n}
+    if (x) {\n        a = 1;\n        b = 2;\n        c = 3;\n        d = 4;\n        x = y;\n        return ax;\n    } else {\n        return 0;\n    }
+    continue;\n}
+    continue;\n    }\n}
+int f(x)\n{\n\n    ax = 2;\n\n    return ax;\n}
+    for (;;) {\n        if ((x == 0)) break;\n        x = x - 1;\n    }
+\tax = 1;\n\treturn ax;
+    al = 1;\n    ah = 0;\n    x = ax;
+    ax = foo(1);\n    if ((ax == 0)) {\n        return 1;\n    }\n    return ax;
+int f(x)\nint x;\n{\n    f1234(bx);\n    switch (*p) {\n    case 0:\n        t1 = (di - 1);\n        si = a;\n        break;\n    case 1:\n        a = si;\n        si = a;\n        break;\n    }\n    return si;\n    for (;;) {\n        v1 = foo(y);\n        if (p->f2 > al) {\n            break;\n        } else {\n            continue;\n        }\n        continue;\n    }\n    a = foo(g_0004);\n    strlen(v1);\n}
+    di = a + 2;\n    i = x;
+    if (((ax + 1) != g_0010)) {\n        bx = q->f6;\n    } else {\n        bx = bx;\n    foo(ax);\n    g_0004 = bx;\n    }\n    si = bx = 0;\n    if (((x >= (ax + 1)))) {\n        dx = p->f2->f4;\n    } else {\n        *p = di;\n        foo(si);\n    }\n    return dx;\n    t3 = a[3];\n    t3 = a[3];\n    foo(1);\n    z = t3;
+    return si;\n    return -1;
+    for (;(!(((ax + 1) != 0)) || (v1 >= p->f2));) {\n        v1 = a[i];\n        bx = dx;\n    }\n    switch (*p) {\n    case 0:\n    case 10:\n        if ((!(ax + 1))) {\n            ax = ax;\n        } else {\n            ax = ax;\n        }\n        break;\n    case 1:\n    case 11:\n        ax = p->f2->f4;\n        break;\n    default:\n        ax = g_0004;\n        break;\n    }\n    return ax;\n    ax = a + 0;\n    if ((!(foo(ax)))) {\n    } else {\n    }\n    v6 = ax;\n    v4 = dx;\n    continue;
+int f(x)\nint x;\n{\n    L_1:\n}
+        dx = g_0004;\n        di = si;\n        switch (*p) {\n        case KEY:\n            return -1;\n        case KEY:\n            return;\n        }\n        v2 = di;\n        foo(a);
+        y = v2;\n        ah = 0;\n        al = p->f2;\n        ax = 5;\n        x = ax;\n        dx = 0;\n        *p = ax;
+int f(x)\nint x;\n{\n    ah = 0;\n    al = p->f2->f4;\n    y = ax;\n    return 0;\n    n = y;\n    n = n - 1;\n    n = n + 1;\n}
+int f(x)\nint x;\n{\n    *p = bx;\n    switch (*p) {\n    default:\n        L_2:\n        cx = *(char *)p;\n        strlen(v1);\n        return -1;\n    case 0:\n        break;\n    case 1:\n        goto L_2;\n    }\n        dx = a[i];\n    if ((a[3] != 0) && (v1 >= bx)) {\n        si = q->f0;\n        if ((!(x) && (((12 == foo(ax)))))) {\n            ax = 1;\n        } else {\n            ax = 0;\n    } else {\n        ax = 0;\n    }\n    cl = si;\n}
+    *(a ? q : b ? r : t) = z;\n    *(x ? p->f2 : &p) = foo(1);\n    y = foo(1);\n    y = y * (z + 1);\n    g_0010 = (n + r_1);
+int f(x)\nint x;\n{\n    n = -1;\n    if ((n && y)) {\n        x = y;\n    }\n    if ((!i || (ax > g_0010)) || ((ax + 1) != 0)) {\n        al = 1;\n    } else {\n        al = 1;\n    }\n    ah = 0;\n    if (((ax + 1) < x)) {\n        goto L_1;\n    }\n    x = 1;\n    goto L_1;\nL_1:\n    return ax;\n    goto L_1;\n    g_0010 = dx;\n}
+    f1234(ax);\n    bx = n;\n    n = y;\n    y = bx + bx;\n    L_1:\n    p->f4 = f1234(i);\n    y = p->f4;
+int f(x)\nint x;\n{\n    if ((g_0010 != 0)) {\n        goto L_2;\n    } else {\n        L_2:\n        si = v1;\n        dx = i + 3;\n        goto L_9;\n    }\n    dx = cx;\n    return cx;\n    if ((((g_0010 != 0)) && ((bx == 0) || (v1 == 0)))) {\n        return 0;\n    } else {\n        bx = ax = 0;\n        return bx;\n    }\n}
+int f(x)\nint x;\n{\n        *p = ax;\n        bx = p->f2;\n        bx = (bx << 1) + a;\n        *bx = y;\n}
+    L_7:\n    while (((((y.z < x) || (y.z > v1))))) {\n        v2 = (bx | n);\n            L_8:\n            *p = cx;\n            goto L_7;\n        }\n    }\n    dx = (x + 5);\n    while ((dx) != 0)) {\n        cx = bx = 0;\n    }
+    q->f0 = si;\n    if ((!n || (((12 == 0))))) goto L_1;\n    x = 1;\n    goto L_1;\nL_1:\n    return ax;\n    bar(bx, cx);
+int f(x)\nint x;\n{\n    ax = foo(y);\n    g_0010 = ax;\n    g_0012 = dx;\n    ax = (ax | dx);\n    if ((ax != 0)) {\n        x = 1;\n    }\n    return -1;\n    for (;;) {\n        v1 = foo(y);\n        if (v1 == 0) {\n            break;\n        }\n    }\n    *p = si;\n    ax = si;\n}
+    ax = ax + 4;\n    ax = foo(dx);\n    x = ax;\n    dx = (g_0004 * 2);\n    y = ax;\n    bx = x;\n    if ((bx != 4)) {\n        if ((bx == 8)) {\n            L_3:\n            x = ax;\n            break;\n        }\n    } else {\n        goto L_3;\n    }\n    dx = bx;\n    x = 1;\n    y = 2;\n    cx = ax;\n    q->f6 = dx;
+int f(x)\nint x;\n{\n    for (;(1 >= p->f2);) {\n        if ((al < (ax + 1))) {\n            bx = si = 0;\n            continue;\n        } else {\n            return ax;\n        }\n    }\n    x = 5;\n    x = x >> y;\n    bar(dx);\n    p->f2 = dx;\n}
+int f(x)\nint x;\n    dx = p->f2->f4;\n    dx = strlen(i);\n    i = bx;\n    foo(ax, ax);
+int f(x)\nint x;\n{\nstruct t {\n    int f0; int f2; int f4; int f6;\n};\nint f(x)\nstruct t *p;\n{\n    if ((p->f4 < 5)) {\n        x = 1;\n    }\n}\n    foo(si, ax);\n}
+int f(x)\nint x;\n{\n    ax = si;\n    ax = 0;\n    switch (*p) {\n    case 0:\n        if (!((a[3] == 0)) || (((g_0010 <= y.z)))) {\n            ax = dx;\n        } else {\n            ax = p->f2->f4;\n        }\n        break;\n    case 1:\n    case 11:\n        if ((x < r_1)) {\n            ax = r_1;\n        } else {\n            ax = 0;\n        }\n        break;\n    case 2:\n        return 1;\n    case 3:\n        return 0;\n    default:\n        ax = si;\n        break;\n    }\n\n    return ax;\n    al = x;\n    if ((al != 3)) {\n        if ((al == 8)) {\n            L_1:\n            ax = si;\n        }\n    } else {\n        goto L_1;\n    }\n    di = x + 1;\n    x = 1;\n    y = 2;\n    bar(si, bx);\n}
+int f(x)\nint x;\n{\n    if ((bx != bp[-2])) {\n        if ((((x)))) {\n            return 0;\n        }\n    }\n    return 0;\n    if (!((((12 == 0))))) {\n        bx = (ax | 255);\n    bx++;\n    } else {\n        p->f2 = di;\n        dx = p->f4;\n        bx = (ax | 255);\n        bx++;\n    }\n    a = di;\n}
+    *p = dx;\n    x = ((int *)((char *)d + 3))[n];\n    ((int *)((char *)d + 3))[n] = y;
+int f(x)\nint x;\n{\n        r_1 = bx;\n        cx++;\nstruct s { int f0; int f2; int f4; };\nint f(x)\nstruct s *q;\n{\n    if ((q->f4 < 5)) {\n        x = 1;\n    }\n}\n        cx = (a & a);\n}
+    i = di;\n    bx = *(int *)q;\n    ax = si;\n    n = di;
+    si = g_0010 + 5;\n    dx = y + 5;\n    for (;;) {\n        if (!(y.z) && (((i != 0)))) break;\n        bar(ax, dx);\n        *p = ax;\n        dx = di;\n    }\n    for (;;) {\n        v1 = bar(1);\n        if (12 != 0) continue;\n        if (p->f2 >= g_0010) && !foo(ax) {\n            return 1;\n        } else {\n            continue;\n        }\n    }\n    v1 = cx;
+int f(x)\nint x;\n{\n    si = si;\n    bx = *p;\n    if ((bx != 3)) {\n        if ((bx == 5)) {\n            L_2:\n            cx = cx = 0;\n            si = di = 0;\n        }\n    } else {\n        goto L_2;\n    }\n    x = 1;\n    y = 2;\n    cx = dx;\n    *p = cx;\n}
+int f(x)\nint x;\n{\n    t1 = (i & 2);\n    ax = g_0010 + 7;\n}
+    al = q->f6;\n    n = (a + b);\n    n = n ^ 2;\n    y = bx;\n    ax = bx;
+        y = al;\n        w = ((y + 1) & 0xff);\n        n = 5;\n        while ((y == 0)) {\n            x = y;\n        }\n        cx = dx = 0;\n        bx = si = 0;
+int f(x)\nint x;\n{\n    *(int *)b1 = x;\n    dx = si;\n}
+    foo(di, cx);\n    bx = n;\n    n = n + 1;\n    y = bx + n;\n    bx = 1;\n    i = y;
+int f(x)\nint x;\n{\n    di = dx;\n    *p = si;\n}
+    p->f4 = bx;\n    ax = -1;\n    if (((ax == 0))) {\n        x = y;\n    }\n    *(int *)p = 0;\n    *(int *)p = foo(y);\n    dx++;
+int f(x)\nint x;\n{\n    si = dx;\n    si = ax + 3;\n    foo(dx);\n    s = s - 1;\n    *q = *s;\n    if (((*t & 0xff) == 0)) break;\n    for (;;) {\n        switch (x) {\n        default:\n            si = bx;\n            p->f2 = cx;\n        case 7:\n            break;\n        }\n    }\n}
+int f(x)\nint x;\n{\n    t1 = a;\n    t1 = *(char *)p;\n}
+int f(x)\nint x;\n{\n    ax = bar(1);\n    v6 = ax;\n    v4 = dx;\n    ax = (ax | dx);\n    if ((ax != 0)) {\n        x = 1;\n    }\n    if (!((((1 != 0))))) {\n        if ((*p == 0)) {\n            if (((bp[-2]))) {\n                foo(cx, ax);\n                goto L_2;\n            } else {\n                dx = dx;\n            }\n        } else {\n            t1 = dx;\n        }\n    } else if ((ax && !p->f2)) {\n        if ((*p >= bp[-2])) {\n            if (((ax) || ((y.z != 0)))) {\n                return si;\n            }\n        } else {\n            si = di;\n        }\n    } else if ((((ax == 0) && (y.z <= 12)) && (ax < v1) || (*p == 0))) {\n        y = dx;\n        al = v1;\n        v1 = v1 - 1;\n        y = al;\n    } else {\n        bx = (x - 1);\n        if ((bx >= 1)) {\n            if ((bx <= 4)) {\n                dx = dx + 7;\n            } else {\n                dx = cx;\n                *p = cx;\n            }\n        } else {\n            dx = cx;\n            *p = cx;\n        }\n        if ((g_0010 <= a[3]) || ((i != 12))) {\n            if ((((1 < foo(ax)) && (v1 < foo(ax))) || ((g_0010 != i) || (1 == 0)))) {\n                bx = p->f4;\n                return si;\n            }\n            if ((a[3] >= foo(ax))) {\n                return -1;\n                return r_1;\n            }\n        } else if ((!bx && (((bp[-2] != 0))))) {\n            cx = g_0010 + 0;\n        } else {\n            bx = di;\n            break;\n        }\n    }\n    bar(dx);\n    if (!(!((p->f2 == 0)))) {\n        bx = g_0004 + 3;\n        if (((!((al < *p))))) {\n            al = 0;\n        } else {\n            al = -1;\n        }\n        ah = 0;\n    } else {\n        cx = foo(si);\n    }\n}
+    bl = y * 1;\n    di = di;\n    return bl;\n    if (((bar(ax)) != 0)) {\n        v2 = bx;\n        return 0;\n    }\n    bx = *(char *)p;\n    return ax;\n    v1 = p->f4;\n    cx = i + 1;
+int f(x)\nint x;\n{\n    for (;((bp[-2] == 0) || (p->f2 >= a[3])) || (g_0010 == bp[-2]);) {\n\n        ax = g_0004 + 3;\n    }\n    goto L_1;\n}
+    *p = di;\n    dx = si;\n    if ((((v1 != 0)))) {\n        si = 0;\n        cx = *p;\n    } else if (((r_1 > y.z) && (g_0010 >= x) && (a[3] == 0))) {\n        cx = g_0004;\n    } else {\n        cx = p->f4;\n        cx = a;\n    }\n    return cx;\n    if (((f1234(r_1)) != 0)) {\n        t1 = *(char *)p;\n        ax = v1 + 1;\n        return v1;\n    }\n    bx = bx + 8;\n    di = dx;  \n    return ax;\n    ax = bx;
+        y = bx;\n        bx = (p->f2 + 5);\n        while ((bx & 0xff) != 0)) {\n            r_1 = bx;
+    n = f1234(ax);\n    n = f1234(ax);\n    bar(bx, bx);
+int f(x)\nint x;\n{\n    int t1, t2;\n    t1 = y + 1;\n    v2 = foo(y);\n    ax = (g(t1) * v2);\n    bl = -1;\n    foo(dx, si);\n    al = x;\n    x = x - 1;\n    y = al + x;\n    si = v2 + a;\n    al = 1;\n}
+    cx = ax;\n    t1 = ax + r_1;
+int f(x)\nint x;\n{\n    i = *(int *)p;\n    si = di;\n}
+int f(x)\nint x;\n{\n    si = bx = 0;\n    ax = g_0010 * y;\n    ax = g_0010 * y;\n    if ((foo(ax) != bp[-2])) {\n        goto L_2;\n    }\n    goto L_2;\n    L_2:\n    return -1;\n    *(x ? p : b ? s : t) = 1;\n    *((a && b) ? p->f2 : &p) = foo(1);\n    a = di;\n    bar(n);\n    bar(n);\n}
+    int v1;\n    t1 = p->f2;\n    ax = (foo(t1) * v1);
+    bx = dx;\n    goto L_1;
+    if (((!((1 > x))))) {\n        cx = p->f2;\n    } else if ((a[3] == 0)) {\n        bl = 1;\n        cx = p->f2->f4;\n    } else if (((foo(ax) <= *p) || a[3])) {\n        cx = cx;\n    } else {\n        si = v2 + 5;\n        cx = v1;\n    }\n    return cx;\n    di = si;\n    break;
+int f(x)\n{\n    if (((12 != r_1) || ((1 > n) || !*p))) {\n    } else {\n    }\n    p->f2 = ax;\n    p->f4 = dx;\n}
+        bx = (y + 1);\n        if ((bx != 1)) {\n            if ((bx == 5)) {\n                L_3:\n                si = bx + 0;\n                di = bx;\n            }\n        } else {\n            goto L_3;\n        }\n        y = cx;\n        x = 1;\n        y = 2;\n        if ((y.z == 0)) {\n            dx = a;\n        } else {\n            *p = bx;\n            dx = v2;\n        }\n        return dx;\n        cx = (v2 + 255);\n        p->f2->f4 = di;
+int f(x)\nint x;\n{\n    si = y;\n    si = y + 3;\n    switch (x) {\n    case 0:\n        f1234(g_0004);\n    case 1:\n        if ((((1 > bp[-2]) && (bp[-2] != 0)) && (al == 0))) {\n            bx = ax;\n            break;\n        }\n        return 1;\n    case 2:\n        return 1;\n    default:\n        bx = x;\n        break;\n    }\n    return bx;\n    while (!(!((y.z == 0)))) {\n        if ((i <= n) && (v1 == 0)) {\n            cx++;\n            bar(dx, dx);\n        } else {\n            break;\n        }\n    }\n    y = strlen(g_0010);\n    si = cx;\n}
+        si = x;
+    *p = di;\n    cx = bx = 0;\n    if ((((v1 == 0) && (0 == 0)) || (foo(ax) == 0))) {\n        bx = x;\n        if ((bx != 3)) {\n            if ((bx == 6)) {\n                L_1:\n                dx = ax - r_1;\n                di = si = 0;\n                break;\n            }\n        } else {\n            goto L_1;\n        }\n        si = ax = 0;\n        x = 1;\n        y = 2;\n        for (;;) {\n            v1 = foo(y);\n            if ((a[3] == 0)) {\n                continue;\n            }\n            if !((1 >= g_0010)) || (ax != 0) continue;\n            if ((v1 <= x) && (0 <= 0)) {\n                return -1;\n            } else {\n                continue;\n            }\n        }\n    }\n    return x;
+int f(x)\nint x;\n{\n    f1234(v1);\n    si = di;\n    if ((strlen(bx) != 0)) {\n        i = dx;\n        si = dx = 0;\n        return bx;\n    } else {\n        x = 1;\n    }\n    bx = p->f2;\n    return ax;\n    if ((((y.z >= y.z) && (i < y.z)))) {\n        if ((!((bp[-2] != 0)) && !(((ax + 1) == 0)))) {\n            bx = n;\n            goto L_2;\n        }\n    } else {\n        bx = -1;\n        L_2:\n        x = bx;\n    }\n    ax = cx;\n}
+    ax = -1;\n    g_0004 = ax;\n    y = ax;\n    di = bx;
+int f(x)\nint x;\n{\n    si = p->f4;\n    p->f4 = si;\n}

@@ -140,7 +140,7 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 cb_area(verify)
 
 cb_area(app)
-target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols)
+target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze)
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
@@ -257,10 +257,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/candidates.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dpmi.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
@@ -290,8 +288,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dos.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/ledger.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
