@@ -1,0 +1,124 @@
+{
+ "pass_through": {
+  "files_changed": {},
+  "kept": [
+   "t.h",
+   "x.c",
+   "y.c"
+  ],
+  "fns": [
+   {
+    "name": "f",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "struct sym *s"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "x.c",
+    "body": ""
+   },
+   {
+    "name": "g",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "struct sym *s"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "y.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {},
+  "kept": [
+   "t.h",
+   "x.c",
+   "y.c"
+  ],
+  "fns": [
+   {
+    "name": "f",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "struct sym *s"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "x.c",
+    "body": "{\n\tstruct lab *p;\n\tp = (struct lab *)s->type;\n\treturn p->a + p->c;\n}"
+   },
+   {
+    "name": "g",
+    "ret": "",
+    "params": [
+     [
+      "s",
+      "struct sym *s"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "y.c",
+    "body": "{\n\treturn s->cls;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

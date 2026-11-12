@@ -1,0 +1,168 @@
+{
+ "pass_through": {
+  "files_changed": {
+   "a.c": "/* a */\nchar *mk(n)\nint n;\n{\n\treturn 0;\n}\nrun(fn, k)\nchar *(*fn)();\nint k;\n{\n\treturn (*fn)(k) != 0;\n}\nmain()\n{\n\trun(mk, 3);\n\treturn 0;\n}\n"
+  },
+  "kept": [
+   "a.c"
+  ],
+  "fns": [
+   {
+    "name": "mk",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   },
+   {
+    "name": "run",
+    "ret": "",
+    "params": [
+     [
+      "fn",
+      "char *(*fn)()"
+     ],
+     [
+      "k",
+      "int k"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   },
+   {
+    "name": "main",
+    "ret": "",
+    "params": [],
+    "static": false,
+    "line": 13,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": ""
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ },
+ "offset_views": {
+  "files_changed": {
+   "a.c": "/* a */\nchar *mk(n)\nint n;\n{\n\treturn 0;\n}\nrun(fn, k)\nchar *(*fn)();\nint k;\n{\n\treturn (*fn)(k) != 0;\n}\nmain()\n{\n\trun(mk, 3);\n\treturn 0;\n}\n"
+  },
+  "kept": [
+   "a.c"
+  ],
+  "fns": [
+   {
+    "name": "mk",
+    "ret": "char *",
+    "params": [
+     [
+      "n",
+      "int n"
+     ]
+    ],
+    "static": false,
+    "line": 2,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn 0;\n}"
+   },
+   {
+    "name": "run",
+    "ret": "",
+    "params": [
+     [
+      "fn",
+      "char *(*fn)()"
+     ],
+     [
+      "k",
+      "int k"
+     ]
+    ],
+    "static": false,
+    "line": 7,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\treturn (*fn)(k) != 0;\n}"
+   },
+   {
+    "name": "main",
+    "ret": "int",
+    "params": [],
+    "static": false,
+    "line": 13,
+    "void": false,
+    "loose": false,
+    "bare": 0,
+    "varargs": false,
+    "va_slots": false,
+    "ret_set": false,
+    "int_ret": false,
+    "keep_int": false,
+    "implicit": [],
+    "file": "a.c",
+    "body": "{\n\trun(mk, 3);\n\treturn 0;\n}"
+   }
+  ],
+  "view_vars": [],
+  "view_headers": [],
+  "param_types": [],
+  "bss": [],
+  "aliases": []
+ }
+}

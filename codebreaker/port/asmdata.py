@@ -279,6 +279,8 @@ def typed(text, ct):
         t = types[sym]
         s, o, end = extent(sym)
         size = osize(t)
+        if not size:                                        # (noted above: no size to lay a table out by)
+            continue
         count = max(1, (end - o) // size)
         name = cname(sym)
         v = ct.var(name) if sym in pubs else None

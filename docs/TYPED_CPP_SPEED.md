@@ -984,3 +984,14 @@ Old = the typed ports (`py::list`/`py::dict` registers and memory, a `std::funct
 | sm83: `ADD A,B` / `LD (HL),A` / `DEC B` / `JR NZ` loop, per instruction | 424 ns | 12.4 ns (34x) |
 
 The gain is the dispatch: a decoded instruction is prepared once (mnemonic to an enum, the condition and shift kind to enums, an SM83 pattern to a small program), registers are `std::array<uint32_t,8>` / bytes, and a step does one hash lookup, one `switch`, and no allocation. The sm83 step still re-reads the instruction's bytes through the bus on every step (a device sees each fetch, and code that changes is decoded again); the m68k step decodes an address once, as the Python did.
+## W2-B10: port/pre_ansi (part 1 and part 3) and port/asmdata
+
+Old = the Python (the old typed port cannot be built here without the whole exe); New = native/cb/port, Release, over the two MS C 3.00 trees (159 and 294 files).
+
+| What | Old | New |
+|---|---|---|
+| Port constructor, msc-3.00-p3 + msc-3.00-p0 | 3.71 s + 1.17 s (Python) | 3.6 s for the whole test (both constructors, reading the files, comparing every file to the golden) |
+| offset_views / bss_ends over every file, views built once | inside modernize: 10.9 s for p3 (Python) | 2.5 s including loading the state |
+| 7 text passes on every file | not timed separately | 2.4 s including loading |
+
+Not much faster than the Python: the time is the regex engine over about 700 KB of C. Not profiled further.

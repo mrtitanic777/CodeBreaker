@@ -1,0 +1,254 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c",
+   "t.h"
+  ],
+  "left_out": [],
+  "notes": [],
+  "union_notes": [],
+  "member_fixes": [],
+  "far_near": [],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    99,
+    2115759893
+   ],
+   "t.h": [
+    44,
+    1337772178
+   ]
+  },
+  "files": {
+   "a.c": [
+    99,
+    2115759893
+   ],
+   "t.h": [
+    44,
+    1337772178
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     99,
+     2115759893
+    ],
+    []
+   ],
+   "formats": [
+    [
+     99,
+     2115759893
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     99,
+     2115759893
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     99,
+     2115759893
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     99,
+     2115759893
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     99,
+     2115759893
+    ],
+    [],
+    []
+   ]
+  },
+  "t.h": {
+   "widths": [
+    [
+     52,
+     914854812
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "t.h:2",
+       "t.h:5"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     44,
+     1337772178
+    ],
+    []
+   ],
+   "header_data": [
+    [
+     44,
+     1337772178
+    ],
+    [],
+    []
+   ],
+   "old_declarations": [
+    [
+     44,
+     1337772178
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     44,
+     1337772178
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     44,
+     1337772178
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     44,
+     1337772178
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     134,
+     3047036937
+    ],
+    [
+     134,
+     3047036937
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     134,
+     3047036937
+    ],
+    [
+     134,
+     3047036937
+    ]
+   ],
+   [
+    "offset_views",
+    "t.h",
+    [
+     52,
+     914854812
+    ],
+    [
+     52,
+     914854812
+    ]
+   ],
+   [
+    "bss_ends",
+    "t.h",
+    [
+     52,
+     914854812
+    ],
+    [
+     52,
+     914854812
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [
+   [
+    "relay",
+    0,
+    "struct b *p"
+   ]
+  ],
+  "mended_new": [
+   [
+    "a pointer parameter only given on, its callers all giving another structure's: that one's (any pointer two bytes then)",
+    [
+     "relay (p: struct b)"
+    ]
+   ]
+  ],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     99,
+     2115759893
+    ],
+    [
+     99,
+     2115759893
+    ]
+   ],
+   "t.h": [
+    [
+     44,
+     1337772178
+    ],
+    [
+     44,
+     1337772178
+    ]
+   ]
+  }
+ }
+}

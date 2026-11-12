@@ -1,0 +1,388 @@
+{
+ "profile": "dos_msc3",
+ "members": {},
+ "ctor": {
+  "kept": [
+   "a.c",
+   "s.h",
+   "same.c"
+  ],
+  "left_out": [
+   [
+    "stdio.h",
+    "the old C library's header: the C library of today has its own"
+   ]
+  ],
+  "notes": [
+   [
+    "an empty stand-in of a function defined elsewhere (for the byte-exact build): declared instead",
+    [
+     "same.c"
+    ]
+   ]
+  ],
+  "union_notes": [
+   [
+    "a structure laid over a view of a union (by a cast): laid out as the view is",
+    [
+     "a.c (struct rfld, u.rfl)"
+    ]
+   ],
+   [
+    "a structure that is another's first bytes and then members of it: the bytes as many as the other's now",
+    [
+     "a.c (struct comsym over struct sym: 10)"
+    ]
+   ]
+  ],
+  "member_fixes": [],
+  "far_near": [
+   [
+    "a.c",
+    2
+   ]
+  ],
+  "aliases": [],
+  "view_vars": [],
+  "view_headers": [],
+  "renames": [
+   [
+    "longjmp",
+    "dos_longjmp"
+   ],
+   [
+    "setjmp",
+    "dos_setjmp"
+   ]
+  ],
+  "int16": true,
+  "originals": {
+   "a.c": [
+    342,
+    619186373
+   ],
+   "s.h": [
+    171,
+    903192539
+   ],
+   "same.c": [
+    44,
+    2400522609
+   ],
+   "stdio.h": [
+    7,
+    2606329501
+   ]
+  },
+  "files": {
+   "a.c": [
+    327,
+    2765093159
+   ],
+   "s.h": [
+    152,
+    2149907519
+   ],
+   "same.c": [
+    29,
+    89360980
+   ]
+  }
+ },
+ "text_passes": {
+  "a.c": {
+   "widths": [
+    [
+     343,
+     226348168
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "a.c:4",
+       "a.c:6",
+       "a.c:6"
+      ]
+     ],
+     [
+      "int -> int16_t (16 bits, as it was)",
+      [
+       "a.c:7"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     327,
+     2765093159
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     327,
+     2765093159
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     327,
+     2765093159
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     327,
+     2765093159
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     327,
+     2765093159
+    ],
+    [],
+    []
+   ]
+  },
+  "s.h": {
+   "widths": [
+    [
+     168,
+     3993445364
+    ],
+    [
+     [
+      "struct member int -> int16_t (the structure's bytes as they were)",
+      [
+       "s.h:3",
+       "s.h:7",
+       "s.h:9",
+       "s.h:9"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     152,
+     2149907519
+    ],
+    []
+   ],
+   "header_data": [
+    [
+     152,
+     2149907519
+    ],
+    [],
+    []
+   ],
+   "old_declarations": [
+    [
+     152,
+     2149907519
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     152,
+     2149907519
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     152,
+     2149907519
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     152,
+     2149907519
+    ],
+    [],
+    []
+   ]
+  },
+  "same.c": {
+   "widths": [
+    [
+     37,
+     4052836805
+    ],
+    [
+     [
+      "int -> int16_t (16 bits, as it was)",
+      [
+       "same.c:1",
+       "same.c:2"
+      ]
+     ]
+    ]
+   ],
+   "formats": [
+    [
+     29,
+     89360980
+    ],
+    []
+   ],
+   "old_declarations": [
+    [
+     29,
+     89360980
+    ],
+    []
+   ],
+   "mem_sizes": [
+    [
+     29,
+     89360980
+    ],
+    []
+   ],
+   "header_offsets": [
+    [
+     29,
+     89360980
+    ],
+    []
+   ],
+   "struct_sizes": [
+    [
+     29,
+     89360980
+    ],
+    [],
+    []
+   ]
+  }
+ },
+ "modernize": {
+  "calls": [
+   [
+    "offset_views",
+    "a.c",
+    [
+     360,
+     2282299089
+    ],
+    [
+     360,
+     2282299089
+    ]
+   ],
+   [
+    "bss_ends",
+    "a.c",
+    [
+     360,
+     2282299089
+    ],
+    [
+     360,
+     2282299089
+    ]
+   ],
+   [
+    "offset_views",
+    "s.h",
+    [
+     168,
+     3993445364
+    ],
+    [
+     168,
+     3993445364
+    ]
+   ],
+   [
+    "bss_ends",
+    "s.h",
+    [
+     168,
+     3993445364
+    ],
+    [
+     168,
+     3993445364
+    ]
+   ],
+   [
+    "offset_views",
+    "same.c",
+    [
+     55,
+     1527522066
+    ],
+    [
+     55,
+     1527522066
+    ]
+   ],
+   [
+    "bss_ends",
+    "same.c",
+    [
+     55,
+     1527522066
+    ],
+    [
+     55,
+     1527522066
+    ]
+   ]
+  ],
+  "views": [],
+  "views_weak": [],
+  "views_new": [],
+  "need_headers": [],
+  "view_wide": [],
+  "puns_refused": [],
+  "param_types_new": [],
+  "mended_new": [],
+  "copied": [],
+  "ptr2": [],
+  "post": {
+   "a.c": [
+    [
+     327,
+     2765093159
+    ],
+    [
+     327,
+     2765093159
+    ]
+   ],
+   "s.h": [
+    [
+     152,
+     2149907519
+    ],
+    [
+     152,
+     2149907519
+    ]
+   ],
+   "same.c": [
+    [
+     29,
+     89360980
+    ],
+    [
+     29,
+     89360980
+    ]
+   ]
+  }
+ }
+}
