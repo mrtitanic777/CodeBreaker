@@ -17,6 +17,7 @@
 #include <optional>
 #include <tuple>
 
+#include "cb/build/functions.hpp"
 #include "py.hpp"
 
 namespace codebreaker::build::functions {
@@ -173,5 +174,8 @@ BuiltPowerPC build_powerpc(const py::str& header, const py::dict<py::str, py::st
 // variables share them); the Python's `timeout=` is not kept (the runtime's subprocess has none).
 std::tuple<int64_t, py::str, py::str> run_process(const py::list<py::str>& args, const std::optional<py::str>& cwd,
                                                   const py::dict<py::str, py::str>& env);
+
+// The one process-wide builder the old callers share (build/module's shim compiles through it, so what the engine serves reaches it).
+::cb::build::functions::FunctionBuilder& shared_builder();
 
 }  // namespace codebreaker::build::functions
