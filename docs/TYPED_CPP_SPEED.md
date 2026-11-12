@@ -957,3 +957,11 @@ already lowered, so only the writing is timed; best of five):
 
 (The previous typed port, an imitation of the Python on `py::str`, was not timed: it ran only inside the exe.)
 The writer was not profiled beyond that: it allocates a string per line and per expression, which is the next cost if it is ever hot.
+
+## translate/frontends/csharp/lower (W1-B30)
+
+Lowering the four real corpus programs of testdata (Shapes, Numbers, Records, Linq: 370 KB of Roslyn dump, about 1,300 IR
+nodes) from the parsed dump to the typed IR, best of 7: Python 10.6 ms, native/cb 3.0 ms (3.5x). The dump's JSON parse is not
+this module's but is the larger cost of the path: nlohmann's ordered_json 18.9 ms for the four, Python's json.load 28.6 ms. (The
+Roslyn run that makes the dump takes seconds and dominates a real conversion.) The old typed port (py::ref nodes over the
+imitation layer) was not timed: it cannot be linked into cb_tests, and its shim now runs the new module through the L2 document.
