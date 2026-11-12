@@ -1,4 +1,7 @@
 // codebreaker/knowledge/store.hpp -- typed C++ port of codebreaker.knowledge.store.
+// LEGACY over engine/native_engine (docs/CPP_DESIGN.md 6.3): the refactored module is cb/knowledge/store.hpp (cb::knowledge::Store, over
+// cb::base::sqlite). This one keeps handing out the native_engine KnowledgeBase the old callers use; it goes with engine/native_engine
+// (COMPAT(py): remove then). The platform vocabulary of package.hpp forwards to cb/knowledge/package.hpp.
 //
 // store.py -- the knowledge base's database: one SQLite file, every platform's knowledge keyed by platform.
 //

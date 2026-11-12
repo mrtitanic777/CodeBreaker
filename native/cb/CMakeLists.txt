@@ -120,7 +120,7 @@ target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
 target_link_libraries(cb_build PUBLIC cb_decompile)   # (sm83_asm: the Game Boy instruction encoder)
 cb_area(knowledge)
-target_link_libraries(cb_knowledge PUBLIC cb_core)
+target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
 cb_area(engine)
 target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify)   # (cb_verify: the verdict and class vocabulary)
@@ -243,7 +243,7 @@ add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
 target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
 
-target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly)
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -335,7 +335,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/package.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b16.cpp"
@@ -348,7 +347,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b2.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
