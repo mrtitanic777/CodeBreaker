@@ -209,7 +209,7 @@ cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
 
 cb_area(symbols)
-target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge cb_compare cb_platforms)
+target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source)   # (cb_source: the NE disassembler of debug_build)
 
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core)
@@ -341,6 +341,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b9.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b11.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b12.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b13.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
