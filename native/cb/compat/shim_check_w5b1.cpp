@@ -1,10 +1,11 @@
-// Compile-only check of the shims at the old header paths of emulate/windows16 and emulate/driver: the old py:: surface (the 16-bit trace record
+// Compile-only check of the shims at the old header paths of emulate/windows16, emulate/driver and ui/mcp_server: the old py:: surface (the 16-bit trace record
 // and its options, the stand-ins, probe / record / recorded; the driver image, run record and runner) over cb/emulate/windows16 and
 // cb/emulate/driver. The shims call the old knowledge base, symbols and corpus, which cannot be linked into cb_tests, so nothing here runs; it is in
 // cb_shim_check so they stay honest until their last consumer is refactored. (Both shims are header-only: including them compiles every
 // definition in them.)
 #include "codebreaker/emulate/driver.hpp"
 #include "codebreaker/emulate/windows16.hpp"
+#include "codebreaker/ui/mcp_server.hpp"
 
 namespace shim_check_w5b1 {
 
@@ -36,6 +37,8 @@ inline void touch() {
     (void)&dr::answers_in;
     dr::Record rec;
     (void)rec;
+    (void)&codebreaker::ui::mcp_server::main;
+    (void)&codebreaker::ui::mcp_server::token;
 }
 
 }  // namespace shim_check_w5b1
