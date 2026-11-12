@@ -1098,3 +1098,16 @@ Old = the Python (the old typed port needs the whole old layer: not built in iso
 |---|---|---|
 | origin verdicts for every function (describe16 not counted): USER.EXE 2,316 functions | minutes (Python, per the earlier harness notes) | about 0.4 s (describe16 0.7 s beside it) |
 | GDI.EXE 1,654, KRNL386.EXE 1,166, MMSYSTEM.DLL 486, LZEXPAND.DLL 46 functions | not timed | 0.55 s, 0.2 s, 0.14 s, 0.01 s |
+
+## W4-B3 (build/module)
+
+Old = the Python (the old typed port needs the whole old layer -- decompiler, lanes, emulators, the gate -- and is not built in isolation); New = native/cb Release /O2.
+
+The module is a driver: nearly all of a build is the OpenWatcom compiler, assembler and linker, run by build/functions (compiles side by side, kept by content in the build cache) and the gate (the emulators). What the module itself does is bounded by the original's size:
+
+| What | Old | New |
+|---|---|---|
+| scans of the original's instructions (registers C cannot carry, near-pointer tables, VxD calls) | Python, per the earlier harness notes: seconds on USER.EXE | one decoder pass per segment (Capstone, shared with describe); not timed on USER.EXE |
+| the 18 unit tests of the area's `build.module` (packing, report, check, run, the gate's kept verdicts, the L2 documents) | not applicable | 0.1 s |
+
+A whole build compared with the Python's needs the module made compilable (the decompiler's services), which exist only in the old layer inside the exe; the commit message says what was and was not compared.
