@@ -100,7 +100,11 @@ def main(argv):
     if len(argv) < 2:
         print(__doc__.split("\n\n")[0] + "\n\n" + __doc__.split("\n\n")[1])
         return 2
-    n = extract(argv[0], argv[1], argv[2] if len(argv) > 2 else None)
+    try:
+        n = extract(argv[0], argv[1], argv[2] if len(argv) > 2 else None)
+    except (OSError, ValueError, RuntimeError, KeyError) as e:
+        print("system-ui: %s" % e, file=sys.stderr)
+        return 1
     print("%d files -> %s" % (n, argv[1]))
     return 0
 

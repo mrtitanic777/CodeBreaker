@@ -34,6 +34,7 @@ docs/NATIVE.md step 4).
 import fnmatch
 import os
 import struct
+import sys
 
 from codebreaker.formats import native
 
@@ -231,6 +232,14 @@ def main(argv):
         print(main.__doc__)
         return 2
     long_names = "--plain" not in flags
+    try:
+        return _run(args, flags, long_names)
+    except (ValueError, OSError) as e:
+        print("media: %s" % e, file=sys.stderr)
+        return 1
+
+
+def _run(args, flags, long_names):
     if args[0] == "extract":
         print("%d files written to %s" % (extract(args[1], args[2], args[3:], long_names), args[2]))
         return 0
