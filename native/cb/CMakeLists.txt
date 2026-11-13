@@ -428,6 +428,14 @@ cb_apply_flags(cb_cmdrun)
 target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_cmdrun)
 
+# codebreaker_cb: the plain C++ program (docs/PYTHON_RETIREMENT.md step 2): main is cb::app's command table, no Python; it hosts its own workers
+# (app/host_hook.cpp). Not built by default; codebreaker.exe (the translated Python plus native/cb) is still the shipped program.
+add_executable(cb_codebreaker EXCLUDE_FROM_ALL app/codebreaker_main.cpp cb.manifest)
+cb_apply_flags(cb_codebreaker)
+target_link_libraries(cb_codebreaker PRIVATE cb_app cb_core)
+set_target_properties(cb_codebreaker PROPERTIES OUTPUT_NAME codebreaker_cb)
+cb_copy_prebuilt_dlls(cb_codebreaker)
+
 # exe_gate: runs the real codebreaker.exe on the command cases of testdata/exe_gate and compares goldens (tools\gate.cmd).
 add_executable(cb_exe_gate EXCLUDE_FROM_ALL app/exe_gate_main.cpp)
 cb_apply_flags(cb_exe_gate)
