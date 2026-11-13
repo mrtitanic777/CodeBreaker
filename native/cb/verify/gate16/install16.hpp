@@ -55,6 +55,8 @@ struct Outcome {
 
 // Windows' desktop: a 640-wide screen with the default desktop's teal over most of it and the taskbar's grey along the bottom.
 bool is_desktop(const Picture& screen);
+// Windows' "The file ... could not be found ... Copy files from:" box, with its path selected.
+bool is_copy_from_box(const Picture& screen);
 // A 720-wide text screen with more than 150 pixels of the given text colour (DOS's bright green SUCCESS and bright yellow ERROR of
 // FIX95CPU's batch file): the colour is matched by sign, not by value (the DAC's rounding).
 enum class TextColour { BrightGreen, BrightYellow };
@@ -71,6 +73,7 @@ public:
     virtual std::optional<Picture> look() = 0;                  // the screen now (nothing when no picture came)
     virtual void key(std::string_view qemu_key) = 0;            // `sendkey`: "ret", "alt-y", "spc", "5", "shift-l"
     virtual void command(std::string_view monitor_command) = 0; // any other monitor command (`change floppy0 ...`)
+    virtual std::string ask(std::string_view monitor_command) = 0;   // a monitor command and what the monitor answered
     virtual void sleep(std::chrono::milliseconds time) = 0;
     virtual std::chrono::milliseconds clock() = 0;              // time since the run began (the console's own: a test's is made up)
     virtual void keep(std::string_view stage) = 0;              // the last screen kept as <tag>-<stage>.png
@@ -91,7 +94,8 @@ struct Timing {
     std::chrono::seconds windows_at_most{45 * 60};              // the restart to the desktop
     std::chrono::seconds windows_still{45};                     // a screen this long unchanged is a question waiting: Enter
     std::chrono::seconds text_at_most{4 * 60};                  // a text screen that stays this long, after the patch, is a fault
-    int enters_at_most = 15;
+    int enters_at_most = 25;
+    std::string cd_path = "d:\\win95";                          // where Windows has the Setup CD (Setup's DOS part had it as X:)
     std::chrono::seconds everything_at_most{150 * 60};
 };
 

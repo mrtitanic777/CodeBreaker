@@ -87,6 +87,8 @@ public:
     // Connect, hear what the monitor says first, send each command (a line) and wait after it. False when the monitor
     // cannot be reached or a command cannot be sent: QEMU is not listening yet, or is gone.
     bool send(std::span<const std::string> commands) const;
+    // One command and what the monitor answers to it (its echo of the line included); empty when the monitor cannot be reached.
+    std::string ask(std::string_view command) const;
     // The screen: `screendump` into a PPM beside `png`, read it, save it as `png`, remove the PPM. Nothing when no
     // usable picture came (the monitor did not answer, the file was not there or not all there yet).
     std::optional<Picture> shot(const std::filesystem::path& png) const;

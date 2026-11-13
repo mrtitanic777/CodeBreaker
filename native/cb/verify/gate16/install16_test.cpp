@@ -53,7 +53,7 @@ Picture welcome() {
 // A page of the wizard: the grey screen, a bar `n` wide (it changes with n).
 Picture page(unsigned n) {
     Picture p = solid(640, 480, kGrey);
-    paint(p, 100, 100, 100 + 8 * (n % 50), 300, Rgb{0, 0, 128});
+    paint(p, 100, 60, 100 + 8 * (n % 50), 200, Rgb{0, 0, 128});
     return p;
 }
 Picture text_screen(unsigned lines, std::optional<Rgb> colour) {
@@ -66,7 +66,7 @@ Picture text_screen(unsigned lines, std::optional<Rgb> colour) {
 // the long copy, the restart into FIX95CPU's disk and the Windows that comes up after.
 class FakeSetup final : public Console {
 public:
-    enum class Ends { Desktop, FixError, StaysDos, CopyNeverEnds, WindowsErrorBox };
+    enum class Ends { Desktop, FloppyBox, FixError, StaysDos, CopyNeverEnds, WindowsErrorBox };
     explicit FakeSetup(Ends ends) : ends_(ends) {}
 
     std::vector<std::string> keys;
@@ -86,14 +86,20 @@ public:
     void command(std::string_view c) override {
         commands.emplace_back(c);
         if (c.rfind("change floppy0", 0) == 0) fix_in_ = true;
+        if (c == "system_reset" && phase_ == Phase::Restart) go(Phase::Restart);   // (the clock of the boot begins again)
         if (c == "eject floppy0") fix_in_ = false;
+    }
+    std::string ask(std::string_view c) override {
+        commands.emplace_back(std::string("ask ") + std::string(c));
+        if (c == "info block") return fix_in_ ? "floppy0 (#block1): C:/x/fix95cpu.ima (raw)" : "floppy0: boot95_is.img";
+        return {};
     }
     void sleep(milliseconds t) override { advance(t); }
     milliseconds clock() override { return now_; }
     void keep(std::string_view stage) override { kept.emplace_back(stage); }
 
 private:
-    enum class Phase { SetupDos, Wizard, Copy, Finish, Restart, Fix, Windows } phase_ = Phase::SetupDos;
+    enum class Phase { SetupDos, Wizard, Copy, Finish, Box, Restart, Fix, Windows } phase_ = Phase::SetupDos;
     Ends ends_;
     milliseconds now_{0}, since_{0};   // the clock; when the phase began
     unsigned page_ = 0;                // the wizard's page; the FIX95CPU disk's screen
@@ -120,6 +126,9 @@ private:
             if (page_ == 12) go(Phase::Copy);                           // Welcome..Start Copying: twelve pages answered
             break;
         case Phase::Finish:
+            if (k == "ret") go(ends_ == Ends::FloppyBox ? Phase::Box : Phase::Restart);   // (Setup asks for the floppy disk out first)
+            break;
+        case Phase::Box:
             if (k == "ret") go(Phase::Restart);
             break;
         case Phase::Fix:
@@ -127,7 +136,7 @@ private:
             else if (page_ == 4 && k == "spc") go(Phase::Windows);       // "press any key to restart"
             break;
         case Phase::Windows:
-            if (k == "ret" && page_ == 1) enter_for_question_ = true;
+            if ((k == "ret" || k == "esc") && page_ == 1) enter_for_question_ = true;
             break;
         default: break;
         }
@@ -138,6 +147,7 @@ private:
         case Phase::Wizard: return page_ == 0 && in_phase() < std::chrono::seconds(60) ? welcome() : page(page_ * 7);
         case Phase::Copy: return page(looks_);   // the bar moves with every look
         case Phase::Finish: return page(3);
+        case Phase::Box: return page(9);
         case Phase::Restart: return in_phase() < std::chrono::seconds(8) ? solid(640, 480, kBlack) : text_screen(2, std::nullopt);
         case Phase::Fix:
             if (page_ < 3) return text_screen(4 + 2 * page_, Rgb{170, 0, 0});
@@ -214,13 +224,18 @@ CB_TEST("verify.gate16.install16.the_install_reaches_the_desktop", [] {
     // the wizard's keys, as the first full install pressed them; then Finish, FIX95CPU's three keys (any, N, any), the key that restarts
     // it, and the Enter of Windows' last question
     std::vector<std::string> expected = kWizardKeys;
-    for (const char* k : {"ret", "spc", "n", "spc", "spc", "ret"}) expected.emplace_back(k);
-    CB_CHECK(machine.keys == expected);
+    for (const char* k : {"ret", "spc", "n", "spc", "spc", "esc"}) expected.emplace_back(k);
+    const auto joined = [](const std::vector<std::string>& v) { std::string t; for (const std::string& k : v) t += k + " "; return t; };
+    CB_CHECK_EQ(joined(machine.keys), joined(expected));
     // FIX95CPU's disk goes in before Finish and comes out before the restart; the machine boots from the hard disk
-    CB_CHECK_EQ(machine.commands.size(), std::size_t{3});
+    CB_CHECK_EQ(machine.commands.size(), std::size_t{7});
     CB_CHECK(machine.commands[0].rfind("change floppy0 fix95cpu.ima", 0) == 0);
-    CB_CHECK_EQ(machine.commands[1], "eject floppy0");
-    CB_CHECK_EQ(machine.commands[2], "boot_set c");
+    CB_CHECK_EQ(machine.commands[1], "ask info block");   // (the disk is in when the machine says so)
+    CB_CHECK(machine.commands[2].rfind("change floppy0 fix95cpu.ima", 0) == 0);   // (and again when the machine is down, then reset)
+    CB_CHECK_EQ(machine.commands[3], "ask info block");
+    CB_CHECK_EQ(machine.commands[4], "system_reset");
+    CB_CHECK_EQ(machine.commands[5], "boot_set c");
+    CB_CHECK_EQ(machine.commands[6], "eject floppy0");
     // every stage is kept for whoever looks, the desktop last
     CB_CHECK(std::find(machine.kept.begin(), machine.kept.end(), "copy") != machine.kept.end());
     CB_CHECK(std::find(machine.kept.begin(), machine.kept.end(), "fix95cpu") != machine.kept.end());
@@ -257,4 +272,19 @@ CB_TEST("verify.gate16.install16.a_copy_that_never_ends_times_out", [] {
     CB_CHECK_EQ(std::string(word(o.verdict)), "FAIL(timeout)");
     CB_CHECK_EQ(o.stage, "copy");
     CB_CHECK(machine.commands.empty());   // (Finish was never reached: the floppy was not touched)
+});
+
+CB_TEST("verify.gate16.install16.the_floppy_disk_box_is_answered_ok", [] {
+    FakeSetup machine(FakeSetup::Ends::FloppyBox);
+    const Outcome o = drive(machine, "fix95cpu.ima");
+    CB_CHECK_EQ(std::string(word(o.verdict)), "PASS");
+    CB_CHECK(std::find(machine.kept.begin(), machine.kept.end(), "finish-box") != machine.kept.end());
+});
+
+CB_TEST("verify.gate16.install16.the_copy_from_box_has_its_path_selected", [] {
+    Picture box = solid(640, 480, Rgb{0, 0, 255});   // (the desktop pattern bright blue is not the selection)
+    CB_CHECK(!is_copy_from_box(box));
+    paint(box, 130, 258, 325, 272, Rgb{0, 0, 168});
+    CB_CHECK(is_copy_from_box(box));
+    CB_CHECK(!is_copy_from_box(page(3)));
 });

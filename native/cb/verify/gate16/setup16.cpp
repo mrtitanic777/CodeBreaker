@@ -210,6 +210,29 @@ bool Monitor::send(std::span<const std::string> commands) const {
     return true;
 }
 
+std::string Monitor::ask(std::string_view command) const {
+    Socket s;
+    if (!s.connect_local(port_, pacing_.connect_timeout))
+        return {};
+    s.set_receive_timeout(pacing_.banner_timeout);
+    char buffer[8192];
+    (void)::recv(s.get(), buffer, sizeof buffer, 0);   // (the banner)
+    if (!s.send_all(std::string(command) + "\n"))
+        return {};
+    std::this_thread::sleep_for(pacing_.after_command);
+    s.set_receive_timeout(std::chrono::milliseconds(1500));
+    std::string answer;
+    for (int i = 0; i < 20; ++i) {
+        const int n = ::recv(s.get(), buffer, sizeof buffer, 0);
+        if (n <= 0)
+            break;
+        answer.append(buffer, static_cast<std::size_t>(n));
+        if (answer.ends_with("(qemu) "))
+            break;
+    }
+    return answer;
+}
+
 std::optional<Picture> Monitor::shot(const stdfs::path& png) const {
     stdfs::path ppm = png;
     ppm.replace_extension(".ppm");

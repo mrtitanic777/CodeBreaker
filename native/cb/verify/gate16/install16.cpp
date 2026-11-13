@@ -142,6 +142,7 @@ private:
     bool welcome();
     void wizard(const Entries& entries);
     bool copy();
+    bool put_in_fix_disk();
     bool restart_into_dos();
     bool fix95cpu();
     void windows();
@@ -216,11 +217,7 @@ bool Driver::copy() {
         nap(seconds(10));
         const std::optional<Picture>& now = look();
         if (!now) continue;
-        if (setup16::is_error_box(*now) && before && still(*before, *now) &&
-            c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(seconds(30)))) {
-            fail(Verdict::FailErrorBox, "copy", "an error box during the copy");
-            return false;
-        }
+        // (no error-box test here: the copy's slides -- "Register now" -- are white where an error box is, and stay for half a minute)
         if (before && still(*before, *now)) {
             if (c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(t_.copy_still))) {
                 stage_ends("copy", std::format("the copy is done after {}s: Finish", std::chrono::duration_cast<seconds>(c_.clock() - start).count()));
@@ -235,12 +232,27 @@ bool Driver::copy() {
     return false;
 }
 
+// FIX95CPU's disk in the floppy drive: the machine says so when it is (a `change` made while the guest holds the drive can be refused).
+bool Driver::put_in_fix_disk() {
+    const std::string change = std::format("change floppy0 {} raw", text::replace_all(fs::to_text(fix_), "\\", "/"));
+    for (int tries = 0; tries < 6; ++tries) {
+        c_.command(change);
+        nap(seconds(2));
+        if (text::lower(c_.ask("info block")).find("fix95cpu") != std::string::npos) return true;
+        nap(seconds(5));
+    }
+    fail(Verdict::FailStuck, "finish", "FIX95CPU's disk could not be put in the floppy drive");
+    return false;
+}
+
 // FIX95CPU's disk in the drive (before Finish), Finish, and the machine goes down: the first text screen after Windows' is the BIOS's.
 bool Driver::restart_into_dos() {
-    c_.command(std::format("change floppy0 {} raw", text::replace_all(fs::to_text(fix_), "\\", "/")));
-    nap(seconds(2));
+    if (!put_in_fix_disk()) return false;
     press("ret");   // Finish
     const milliseconds start = c_.clock();
+    std::optional<Picture> before;
+    milliseconds since = c_.clock();
+    int oks = 0;
     while (c_.clock() - start < std::chrono::duration_cast<milliseconds>(scaled(t_.restart_at_most))) {
         nap(seconds(5));
         if (!c_.alive()) {
@@ -248,10 +260,30 @@ bool Driver::restart_into_dos() {
             return false;
         }
         const std::optional<Picture>& p = look();
-        if (p && p->width() == kTextWidth) {
-            stage_ends("finish", "Windows restarted into DOS");
+        if (!p) continue;
+        if (p->width() == kTextWidth) {
+            // Whatever the machine booted -- FIX95CPU's disk, or the floppy Setup started from (its DOS part again: an "X:\WIN95>" prompt that
+            // waits for nothing), which a restart can fall back to -- it is made to boot FIX95CPU's now: the disk in, the machine reset.
+            nap(seconds(15));
+            if (!put_in_fix_disk()) return false;
+            c_.command("system_reset");
+            nap(seconds(5));
+            stage_ends("finish", std::format("Windows restarted into DOS{}; the machine reset to boot FIX95CPU's disk", oks ? " (after OK to the floppy-disk box)" : ""));
             return true;
         }
+        // Setup sees the disk in the drive and asks for it out ("Setup detected a disk in your floppy disk drive... Click OK to restart"):
+        // the disk is the one meant to be there, OK restarts all the same. A screen that waits this long is that box.
+        if (before && still(*before, *p)) {
+            if (c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(seconds(20))) && oks < 3) {
+                c_.keep("finish-box");
+                press("ret");
+                ++oks;
+                since = c_.clock();
+            }
+        } else {
+            since = c_.clock();
+        }
+        before = p;
     }
     fail(Verdict::FailStuck, "finish", "Finish did not restart the machine");
     return false;
@@ -294,10 +326,13 @@ bool Driver::fix95cpu() {
         if (has_text_colour(*p, TextColour::BrightGreen)) {
             nap(seconds(5));
             stage_ends("fix95cpu", "patched");
-            c_.command("eject floppy0");   // (the machine boots the hard disk now: the disk is out before the key restarts it)
+            // The machine boots the hard disk from now on. The disk stays in until the machine has gone down: the batch file's last
+            // step, RESTART, is read from it ("General failure reading drive A" when it is out before the key).
             c_.command("boot_set c");
             nap(seconds(2));
             press("spc");                  // Press any key to restart
+            nap(seconds(1));
+            c_.command("eject floppy0");
             return true;
         }
     }
@@ -350,7 +385,15 @@ void Driver::windows() {
                 }
                 ++enters;
                 c_.keep(std::format("windows-{}", enters));
-                press("ret");
+                if (is_copy_from_box(*now)) {
+                    // "The file ... could not be found: copy files from X:\WIN95". X: was the CD in Setup's DOS part; Windows has it as D:
+                    type(t_.cd_path);
+                    press("ret");
+                } else {
+                    // A question that waits: Esc closes what can be closed (the time zone; the Add Printer Wizard, which would copy the
+                    // printer's driver from the CD -- an install does not need one), Enter answers what cannot (every other press).
+                    press(enters % 2 == 1 ? "esc" : "ret");
+                }
                 since = c_.clock();
             }
         } else {
@@ -404,6 +447,13 @@ bool is_desktop(const Picture& screen) {
     return grey >= 3;
 }
 
+bool is_copy_from_box(const Picture& screen) {
+    if (screen.width() != kGraphicsWidth) return false;
+    // the box's "Copy files from" field holds its text selected: dark blue (not the bright blue of the desktop's pattern) at three points
+    const auto navy = [](const std::optional<Rgb>& p) { return p && p->r < 48 && p->g < 48 && p->b >= 100 && p->b <= 200; };
+    return navy(screen.at(135, 265)) && navy(screen.at(250, 265)) && navy(screen.at(310, 265));
+}
+
 bool has_text_colour(const Picture& screen, TextColour colour) {
     if (screen.width() != kTextWidth) return false;
     const Bytes& px = screen.rgb();
@@ -455,6 +505,7 @@ public:
         const std::string text(c);
         (void)machine_.monitor().send(std::span<const std::string>(&text, 1));
     }
+    std::string ask(std::string_view c) override { return machine_.monitor().ask(c); }
     void sleep(milliseconds time) override { std::this_thread::sleep_for(time); }
     milliseconds clock() override { return std::chrono::duration_cast<milliseconds>(std::chrono::steady_clock::now() - start_); }
     void keep(std::string_view stage) override {
