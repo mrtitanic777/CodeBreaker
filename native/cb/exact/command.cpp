@@ -10,6 +10,8 @@
 #include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
 #include "cb/exact/carve.hpp"
+#include "cb/exact/draft/bind.hpp"
+#include "cb/exact/draft/early_c_model.hpp"
 #include "cb/exact/emu/native_dosexec.hpp"
 #include "cb/exact/habits/newcomp.hpp"
 #include "cb/exact/habits/oldcomp.hpp"
@@ -125,6 +127,9 @@ public:
         services_ = std::make_shared<project::Services>();
         services_->toolchains = toolchains_.get();
         services_->carve = carve::service();
+        // the draft stage: the inverse model the profile names, and the prover bound to each project (its compiles, judge, aim and rewrites)
+        services_->inverse_model = draft::inverse_model_named;
+        services_->prover_for = draft::bound_prover;
         // the comparers a project's "equivalent" names: the habits of another state of the compiler
         services_->equivalents["codebreaker.exact.habits.newcomp:equivalent"] = [](ByteView want, ByteView got, const std::set<std::uint32_t>& holes, std::uint32_t helper_data) {
             const habits::newcomp::Finding f = habits::newcomp::equivalent(want, got, holes, entry_options(helper_data));
@@ -156,8 +161,6 @@ public:
                 if (!n) throw UsageError("--limit expects a number, got '" + *(limit + 1) + "'");
                 options.limit = n;
             }
-            // The inverse models (invert/early_c as a draft::InverseModel) and the prover (draft/prove's Collaborators bound to the project: its compiles,
-            // judge, aim and rewrites) are not assembled in this tree yet: without them the stage says so, as the project's services do.
             return draft::run_command(*p.as_draft(), options);
         });
     }

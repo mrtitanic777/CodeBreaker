@@ -65,11 +65,14 @@ CB_TEST("exact.command.a_stage_through_the_command_is_the_stage", [] {
     test::check(cap.out() == want.at("main").at(0).get<std::string>(), "the carve stage through the command");
 });
 
-CB_TEST("exact.command.the_draft_stage_without_its_model_says_so", [] {
+CB_TEST("exact.command.a_program_whose_functions_all_have_sources_drafts_nothing", [] {
     test::Real real;
     if (test::skipped(real, "command draft")) return;
     Surrounding s;
-    CB_CHECK_THROWS_AS(UsageError, (void)command::run(std::vector<std::string>{fs::to_text(test::research_root() / "msc-3.0/recon/p0"), "draft"}, s.environment));
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(command::run(std::vector<std::string>{fs::to_text(test::research_root() / "msc-3.0/recon/p0"), "draft"}, s.environment), 0);
+    CB_CHECK_EQ(cap.out(), "0 functions drafted: 
+");
 });
 
 CB_TEST("exact.command.proof", [] {
@@ -77,8 +80,29 @@ CB_TEST("exact.command.proof", [] {
     if (!proof || proof->empty()) return;
     std::vector<std::string> args;
     for (const std::string_view piece : text::split(*proof, ';')) args.emplace_back(piece);
+    // CB_EXACT_PROOF_STATE: the state folder to run in (its compile cache and beam history are kept): a second run is warm, as the Python's is
+    const std::optional<std::string> kept = fs::get_env("CB_EXACT_PROOF_STATE");
     Surrounding s;
+    std::optional<fs::ScopedEnv> state_env;
+    if (kept && !kept->empty()) state_env.emplace("CB_STATE", *kept);
+    command::Environment environment{.config = config::Config::load(config::current().main_checkout())};
     const auto started = std::chrono::steady_clock::now();
-    const int code = command::run(args, s.environment);
+    const int code = command::run(args, kept && !kept->empty() ? environment : s.environment);
     std::cout << "exit " << code << ", " << std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << " s\n";
+});
+
+CB_TEST("exact.command.draft_proves_the_first_functions_of_a_real_program", [] {
+    test::Real real;
+    if (test::skipped(real, "command draft")) return;
+    Surrounding s;
+    fs::ScopedTempDir dir("exact-command-draft");
+    const std::filesystem::path folder = test::copy_project("msc-3.0/recon/p0", dir.path() / "p0");
+    for (const auto& entry : std::filesystem::directory_iterator(folder / "src"))   // (every function of the program is then still to draft)
+        if (entry.path().filename().string().starts_with("f") && entry.path().extension() == ".c") std::filesystem::remove(entry.path());
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(command::run(std::vector<std::string>{fs::to_text(folder), "draft", "--limit", "3", "-v"}, s.environment), 0);
+    // what the Python's draft stage said of the same three functions: the model reads each, the compiler proves each identical
+    CB_CHECK_EQ(cap.out(), "00002    36  identical\n00026    91  identical\n00081    69  identical\n3 functions drafted: 3 identical\n");
+    CB_CHECK(std::filesystem::is_regular_file(folder / "src" / "f00002.c"));
+    CB_CHECK(fs::read_text(folder / "src" / "f00002.c").starts_with("/* drafted by codebreaker exact draft (early_c), identical */\n"));
 });

@@ -259,8 +259,10 @@ public:
     }
     draft::ProveOutcome prove_texts(draft::InverseModel& model, const draft::ModelTexts& texts, std::uint32_t address, std::uint32_t length,
                                     const std::map<std::uint32_t, std::string>& names) override {
-        if (!p_->services().prove_texts) throw UsageError("exact project: no prover (Services::prove_texts) was given");
-        return p_->services().prove_texts(model, texts, address, length, names);
+        if (p_->services().prove_texts) return p_->services().prove_texts(model, texts, address, length, names);
+        if (!p_->services().prover_for) throw UsageError("exact project: no prover (Services::prove_texts or prover_for) was given");
+        if (!prover_) prover_ = p_->services().prover_for(p_);
+        return prover_(model, texts, address, length, names);
     }
 
 private:
@@ -280,6 +282,7 @@ private:
 
     ProjectPtr p_;
     SymbolTable symbols_;
+    project::ProveTexts prover_;   // (made from Services::prover_for at the first proof)
     mutable std::shared_ptr<const library::Project> library_;   // (what the map points into the project through)
     mutable std::optional<library::Map> map_;                   // (the library stage's answer, kept: finding the modules costs)
 };
