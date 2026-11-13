@@ -92,4 +92,20 @@ CB_TEST("base.sqlite.errors_are_io_errors_naming_the_file", [] {
     CB_CHECK_THROWS_AS(cb::IoError, Database::open(dir.path() / "junk.db").query("SELECT 1 FROM sqlite_master"));
 });
 
+CB_TEST("base.sqlite.open_readonly_reads_and_never_creates_or_writes", [] {
+    cb::fs::ScopedTempDir dir("cb-sqlite");
+    // no file: an error, and no file made
+    CB_CHECK_THROWS_AS(cb::IoError, Database::open_readonly(dir.path() / "none.db"));
+    CB_CHECK(!std::filesystem::exists(dir.path() / "none.db"));
+    {
+        Database db = Database::open(dir.path() / "t.db");
+        db.exec("CREATE TABLE t(i INTEGER)");
+        db.exec("INSERT INTO t VALUES(7)");
+    }
+    Database ro = Database::open_readonly(dir.path() / "t.db");
+    CB_CHECK_EQ(std::get<std::int64_t>(ro.query("SELECT i FROM t")[0][0]), 7);
+    CB_CHECK_THROWS_AS(cb::IoError, ro.exec("INSERT INTO t VALUES(8)"));
+    CB_CHECK_EQ(std::get<std::int64_t>(ro.query("SELECT count(*) FROM t")[0][0]), 1);
+});
+
 }  // namespace

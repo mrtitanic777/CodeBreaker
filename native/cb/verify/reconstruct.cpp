@@ -164,6 +164,19 @@ std::map<std::string, std::optional<std::string>> Reconstructor::digests() const
     return digests_;
 }
 
+std::map<std::string, lanes::Profile> Reconstructor::profiles() const {
+    std::map<std::string, lanes::Profile> out;
+    for (const std::string& name : services_.kinds.names()) {
+        // A lane whose tools are not set up here has no profile: not an error.
+        try {
+            out.emplace(name, services_.kinds.find(name)->profile({}));
+        } catch (const Error& e) {   // isolation boundary: one lane of the set
+            log::debug(std::format("reconstruct: no verifier profile for {} files: {}", name, e.what()));
+        }
+    }
+    return out;
+}
+
 Identity Reconstructor::identity(const std::filesystem::path& module_path) const {
     const lanes::Kind& kind = kind_of(module_path);
     return Identity{.sha = module_sha(kind.name(), module_path), .profile = kind.profile(module_path).digest};

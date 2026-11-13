@@ -332,6 +332,10 @@ CB_TEST("verify.reconstruct.identity_and_digests", [] {
     CB_CHECK_EQ(id.sha, "sha-of-the-module");
     CB_CHECK_EQ(id.profile, "d1");
     CB_CHECK(f.rec->digests() == (std::map<std::string, std::optional<std::string>>{{"fake", "d1"}}));
+    // the profiles in force: the digest and the settings it was made from
+    const std::map<std::string, lanes::Profile> profiles = f.rec->profiles();
+    CB_CHECK_EQ(profiles.size(), std::size_t{1});
+    CB_CHECK_EQ(profiles.at("fake").digest, "d1");
     CB_CHECK_THROWS_AS(UsageError, (void)f.rec->identity("x.txt"));
     CB_CHECK_THROWS_AS(UsageError, (void)f.rec->run("x.txt"));
     CB_CHECK(!f.rec->try_identity("x.txt"));
@@ -365,5 +369,6 @@ CB_TEST("verify.reconstruct.a_lane_whose_tools_are_missing_has_no_digest", [] {
     s.kind_of_file = [](const std::filesystem::path&) { return std::optional<std::string>("notools"); };
     Reconstructor rec(std::move(s));
     CB_CHECK(!rec.digests().at("notools").has_value());
+    CB_CHECK(rec.profiles().empty());
     CB_CHECK(!rec.try_identity("x").has_value());
 });

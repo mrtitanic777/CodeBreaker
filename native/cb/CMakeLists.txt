@@ -251,7 +251,7 @@ target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms c
 
 # Where the function store is, opening it, and what `codebreaker versions` asks of it (the Ledger over the corpus, the store and the bodies).
 cb_area(store)
-target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare)
+target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare cb_knowledge)
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
