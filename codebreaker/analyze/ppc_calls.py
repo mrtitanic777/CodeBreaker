@@ -235,7 +235,7 @@ def analyse(path):
 
 
 def write_tsv(r, out):
-    with open(out, "w", encoding="utf-8") as f:
+    with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write("kind\taddress or name\tvalue\n")
         for a, n in sorted(r.arity.items()):
             f.write("arity\t%08X\t%d\n" % (a, n))

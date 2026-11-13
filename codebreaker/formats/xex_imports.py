@@ -70,8 +70,13 @@ def main(argv):
     if not argv:
         print(__doc__.split("\n\n")[0] + "\n\n" + __doc__.split("\n\n")[1])
         return 2
+    try:
+        found = imports(argv[0])
+    except (OSError, ValueError, RuntimeError, struct.error) as e:
+        print("xex-imports: %s" % e, file=sys.stderr)
+        return 1
     print("library\tordinal\tname\tkind\tslot\tthunk")
-    for lib, ordinal, name, kind, slot, thunk in imports(argv[0]):
+    for lib, ordinal, name, kind, slot, thunk in found:
         print("%s\t%d\t%s\t%s\t%s\t%s" % (lib, ordinal, name, kind, "0x%08X" % slot if slot else "",
                                           "0x%08X" % thunk if thunk else ""))
     return 0
