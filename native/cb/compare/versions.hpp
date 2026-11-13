@@ -284,6 +284,8 @@ std::string product_json(const Product& p, std::optional<double> seconds = std::
 
 // `codebreaker versions ...`: the command line after the command name. Returns the exit code.
 int run(const cli::Args& args, base::Corpus& corpus, Ledger& ledger);
+// The command's declaration alone (name, parameters, help): no handler. For a caller that makes the corpus and the ledger when it runs.
+cli::Command declaration();
 // The command as the command table declares it (`codebreaker versions`).
 cli::Command command(base::Corpus& corpus, Ledger& ledger);
 // The usage text printed for a command line that names neither modules nor files.
