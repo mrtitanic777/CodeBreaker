@@ -3,6 +3,9 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/emulate/driver.hpp"
+#include "cb/formats/powerpc_image.hpp"
+#include "cb/verify/lane_common.hpp"
+#include "cb/verify/lanes/powerpc.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
 #include "cb/source/le_writer.hpp"
 #include "cb/symbols/driver_services.hpp"
@@ -87,6 +90,44 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::driver_lane() {
     return impl_->driver_ = std::move(lane);
 }
 
+// What the PowerPC lane reads of an image: its bytes at their addresses (copied: the image is not kept), where it is loaded, where its code lies, and the
+// writable data its globals live in (writable and not code).
+static verify::lanes::PowerPcLane::Image read_powerpc_image(const std::filesystem::path& path) {
+    const formats::powerpc_image::Image image = formats::powerpc_image::Image::read(path);
+    verify::lanes::PowerPcLane::Image out;
+    for (const formats::powerpc_image::Image::Region& r : image.regions()) out.regions.push_back({r.va, Bytes(r.bytes.begin(), r.bytes.end())});
+    out.base = image.base();
+    out.functions.assign(image.functions().begin(), image.functions().end());
+    out.code = {image.code_begin(), image.code_end()};
+    constexpr std::uint32_t kWritable = 0x80000000u, kCode = 0x20000000u;
+    for (const formats::powerpc_image::Section& s : image.sections())
+        if ((s.characteristics & kWritable) != 0 && (s.characteristics & kCode) == 0) out.writable.push_back({s.va, s.va + s.size});
+    return out;
+}
+
+std::shared_ptr<const verify::lanes::Kind> LaneKit::powerpc_lane() {
+    {
+        std::lock_guard hold(impl_->lock);
+        if (impl_->powerpc_) return impl_->powerpc_;
+    }
+    Impl& i = *impl_;
+    const std::optional<stdfs::path> folder = i.config.path("powerpc_tools"), lib = i.config.path("powerpc_lib");
+    if (!folder || !lib) return nullptr;
+    build::functions::PowerPcTools tools{*folder / "cl.exe", *folder / "link.exe", *lib};
+    std::error_code ec;
+    if (!stdfs::is_regular_file(tools.cl, ec) || !stdfs::is_regular_file(tools.link, ec) || !stdfs::is_regular_file(tools.lib, ec)) return nullptr;
+    decompile::decompiler::Decompiler& decompiler = i.decompiler();
+    build::functions::FunctionBuilder& builder = i.builder();
+    emulate::pcode::LifterSet* lifters = i.lifters();
+    base::cache::Cache& cache = i.cache();
+    base::Corpus& corpus = *i.corpus;
+    verify::lanes::PowerPcLane::Services services{decompiler, builder, std::move(tools), read_powerpc_image, lifters, verify::lane_common::store_of(cache), nullptr};
+    services.content_sha = [&corpus](const stdfs::path& p) { return corpus.sha(p); };
+    auto lane = std::make_shared<verify::lanes::PowerPcLane>(std::move(services));
+    std::lock_guard hold(impl_->lock);
+    return impl_->powerpc_ = std::move(lane);
+}
+
 std::shared_ptr<const verify::lanes::Kind> LaneKit::java_lane() { return nullptr; }
 
 std::string_view LaneKit::java_missing() {
@@ -97,6 +138,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::lane_named(std::string_view 
     if (name == "pe") return win32_lane();
     if (name == "ne") return win16_lane();
     if (name == "le") return driver_lane();
+    if (name == "powerpc") return powerpc_lane();
     return nullptr;
 }
 

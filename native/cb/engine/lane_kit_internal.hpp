@@ -127,7 +127,7 @@ struct LaneKit::Impl {
     std::unique_ptr<source::assembly::Prober> prober_;
     std::optional<jobs::WorkerLauncher> launcher;
     std::unique_ptr<emulate::pcode::LifterSet> lifters_;
-    std::shared_ptr<const verify::lanes::Kind> win32_, win16_, driver_, java_;
+    std::shared_ptr<const verify::lanes::Kind> win32_, win16_, driver_, java_, powerpc_;
     std::shared_ptr<const symbols::driver_services::Table> driver_tables_;   // what the driver lane's spec points at
 };
 

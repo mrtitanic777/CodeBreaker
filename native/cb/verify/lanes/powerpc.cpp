@@ -243,6 +243,9 @@ std::optional<Vector> PowerPcLane::derive(const Vector& v, const concolic::Value
             const std::size_t at = static_cast<std::size_t>(var.where);
             changed |= unsigned_of(args[at]) != value;
             args[at] = signed_of(value);
+        } else if (var.place == concolic::InputVar::Place::Ret) {   // what the calls outside the image return
+            changed |= unsigned_of(v.stub_ret.value_or(0)) != value;
+            out.stub_ret = signed_of(value);
         } else if (var.place == concolic::InputVar::Place::Mem) {
             const std::uint32_t address = static_cast<std::uint32_t>(var.where);
             const auto set = memory.find(address);
@@ -401,9 +404,11 @@ std::pair<std::vector<Vector>, std::shared_ptr<concolic::Stats>> PowerPcLane::ex
         for (const emulate::native_shadow::Step& s : made.trail) ob.trail.push_back({signed_of(s.site), s.taken});
         for (const emulate::native_shadow::PathEntry& e : made.path) ob.path.push_back(path_entry_of(e));
         for (const auto& [var_name, var] : made.vars) {
-            // (only the inputs the explorer may set: an argument, bytes of memory; what a call out returned is the environment's)
+            // (the inputs the explorer may set: an argument, what the calls outside return, bytes of memory)
             if (var.kind == emulate::native_shadow::VarKind::Arg && std::holds_alternative<std::uint64_t>(var.where)) {
                 ob.vars[var_name] = {concolic::InputVar::Place::Arg, signed_of(std::get<std::uint64_t>(var.where)), var.bits, signed_of(var.value)};
+            } else if (var.kind == emulate::native_shadow::VarKind::Ret) {
+                ob.vars[var_name] = {concolic::InputVar::Place::Ret, 0, var.bits, signed_of(var.value)};
             } else if (var.kind == emulate::native_shadow::VarKind::Mem && std::holds_alternative<std::uint64_t>(var.where)) {
                 ob.vars[var_name] = {concolic::InputVar::Place::Mem, signed_of(std::get<std::uint64_t>(var.where)), var.bits, signed_of(var.value)};
             }
@@ -569,9 +574,11 @@ std::unique_ptr<Prepared> PowerPcLane::prepare(const stdfs::path& module_path, c
     for (const auto& [va, name] : made.by_va()) {
         const std::string key = hex8(static_cast<std::uint32_t>(va));
         p->key[name] = key;
-        p->all_keys.push_back(key);
     }
+    // every function the image states, whether or not it was decompiled
+    for (const std::uint32_t va : services_.read_image(module_path).functions) p->all_keys.push_back(hex8(va));
     std::ranges::sort(p->all_keys);
+    p->all_keys.erase(std::ranges::unique(p->all_keys).begin(), p->all_keys.end());
     p->sig = crypto::to_hex(crypto::sha1(as_bytes(all)));
     return p;
 }

@@ -31,7 +31,9 @@
 #include "codebreaker/store/functions.hpp"
 #include "codebreaker/translate/l2.hpp"
 #include "codebreaker/verify/authored/match.hpp"
-#include "codebreaker/verify/lanes/powerpc.hpp"
+#include "codebreaker/formats/powerpc_image.hpp"
+#include "cb/compat/old_lane_kit.hpp"
+#include "cb/verify/lanes/powerpc.hpp"
 #include "codebreaker/verify/lanes/win32.hpp"
 #include "codebreaker/verify/reconstruct.hpp"
 #include "codebreaker/verify/verdicts.hpp"
@@ -357,28 +359,32 @@ inline Counts run_powerpc(const py::str& module_path, const std::optional<py::st
     const py::str cl = std::get<0>(*tools);
     const py::str sha = base::corpus::sha(module_path).value_or(py::str(""));
     auto fs = fs_in ? fs_in : store::functions::open();
-    reconstruct::Prepared prepared = lanes::powerpc::prepare(module_path, py::os::path::join(work, py::str("source")));
-    const auto m = std::static_pointer_cast<decompile::c_text::ModulePPC>(std::static_pointer_cast<translate::l2::Made>(prepared.lane));
+    // The module decompiled and made compilable by the PowerPC lane (the lane kit's), and the original's words of each function.
+    const std::shared_ptr<const cb::verify::lanes::Kind> lane = cb::compat::old_lane_kit().powerpc_lane();
+    if (!lane) throw py::SystemExit("no PowerPC compiler (settings.json: powerpc_tools, powerpc_lib)");
+    const std::unique_ptr<cb::verify::lanes::Prepared> made = cb::compat::guard([&] { return lane->prepare(detail_shim::path_of(module_path), detail_shim::path_of(py::os::path::join(work, py::str("source")))); });
+    const auto& prepared = dynamic_cast<const cb::verify::lanes::PowerPcLane::PreparedPowerPc&>(*made);
     py::dict<py::str, int64_t> address;
-    for (const auto& kv : m->by_va().items()) address.set(std::get<1>(kv), std::get<0>(kv));
+    for (const auto& [va, name] : prepared.module.made.by_va()) address.set(cb::compat::to_py(name), static_cast<int64_t>(va));
     std::vector<int64_t> vas;
     for (const int64_t v : address.values()) vas.push_back(v);
     std::sort(vas.begin(), vas.end());
     const auto& arch = match::ARCH().at(py::str("powerpc"));
-    const py::dict<int64_t, match::WordMasked> originals = std::get<match::OriginalsPPC>(arch.originals)(*m->image, py::list<int64_t>(vas));
+    const auto image = formats::powerpc_image::read(module_path);
+    const py::dict<int64_t, match::WordMasked> originals = std::get<match::OriginalsPPC>(arch.originals)(*image, py::list<int64_t>(vas));
     fs->add_module(sha, py::os::path::basename(module_path).lower(), module_path, py::str("powerpc"));
     {
         py::list<py::str> keys;
-        for (const py::str& n : address.keys()) keys.append(prepared.key.at(n));
+        for (const py::str& n : address.keys()) keys.append(cb::compat::to_py(prepared.key.at(n.utf8())));
         fs->add_functions(sha, keys);
     }
     nw::Module module;
     module.isa = nw::Isa::PowerPC;
-    module.header = prepared.header.utf8();
+    module.header = prepared.header;
     module.compiler_name = "xbox 360 cl";
-    for (const py::str& n : prepared.order)
-        if (originals.contains(address.at(n)))
-            module.targets.push_back({n.utf8(), prepared.key.at(n).utf8(), prepared.texts.at(n).utf8(), detail_shim::code_of(originals.at(address.at(n)))});
+    for (const std::string& n : prepared.order)
+        if (originals.contains(address.at(cb::compat::to_py(n))))
+            module.targets.push_back({n, prepared.key.at(n), prepared.texts.at(n), detail_shim::code_of(originals.at(address.at(cb::compat::to_py(n))))});
     nw::RunOptions options;
     if (flags) options.flags = flags->utf8();
     options.work = detail_shim::path_of(work);

@@ -19,8 +19,8 @@
 // kept here as the decompiler describes each module (Environment::described) and given to the lane's build through
 // `Win32Lane::Services::import_lines_for`.
 //
-// Not wired: the PowerPC lane (its image reader, formats/powerpc_image, is not in native/cb yet) and the Java lane (the transpiler's Services have
-// no production assembly yet): `add_lanes` leaves "powerpc" and "java" out and `powerpc_missing()` / `java_missing()` say why.
+// Not wired: the Java lane (the transpiler's Services have no production assembly yet): `add_lanes` leaves "java" out and `java_missing()` says why.
+// The PowerPC lane ("powerpc") is wired when the Xbox 360 compiler is set up (settings powerpc_tools, powerpc_lib).
 #pragma once
 
 #include <cstdint>
@@ -74,11 +74,10 @@ public:
     std::shared_ptr<const verify::lanes::Kind> win32_lane();       // "pe"
     std::shared_ptr<const verify::lanes::Kind> win16_lane();       // "ne"
     std::shared_ptr<const verify::lanes::Kind> driver_lane();      // "le"
+    std::shared_ptr<const verify::lanes::Kind> powerpc_lane();     // "powerpc": the Xbox 360 compiler (settings powerpc_tools, powerpc_lib) is set up
     std::shared_ptr<const verify::lanes::Kind> java_lane();        // "java"
     // Adds every lane that can be made, with the traits the reconstruction path is told of it.
     void add_lanes(verify::reconstruct::Kinds& kinds);
-    // Why the PowerPC lane is not added.
-    static std::string_view powerpc_missing();
     // Why the Java lane is not added.
     static std::string_view java_missing();
 
@@ -98,7 +97,7 @@ public:
     // top of main (jobs::run_as_worker) and gives the kit its launcher; without one everything runs in this process.
     static void register_worker_kinds(jobs::WorkerKinds& kinds);
     void set_worker_launcher(jobs::WorkerLauncher launcher);
-    // The lane filed under `name` ("pe", "ne", "le"); null when there is none or its tools are not set up.
+    // The lane filed under `name` ("pe", "ne", "le", "powerpc"); null when there is none or its tools are not set up.
     std::shared_ptr<const verify::lanes::Kind> lane_named(std::string_view name);
     // `Services::judge_batch` of reconstruct: nullopt (threads judge) without a launcher or for a share too small to be worth a process.
     std::optional<std::map<std::string, verify::Judgement>> judge_apart(const verify::reconstruct::Services::JudgeBatch& batch);
