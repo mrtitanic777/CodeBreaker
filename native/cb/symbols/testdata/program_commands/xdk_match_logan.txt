@@ -1,0 +1,11 @@
+LoganMinecraftTest.xex: 4760 library functions named (2,295,268 bytes)
+    2360  xgraphics.lib
+    1488  d3dx9.lib
+     594  d3d9.lib
+     228  libcMT.lib
+      83  xapilib.lib
+       3  nuispeech.lib
+       2  xav.lib
+       1  qnetxaudio2.lib
+       1  libcpMT.lib
+  -> logan_xdk.json
