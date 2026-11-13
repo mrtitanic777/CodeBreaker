@@ -24,6 +24,7 @@
 #include "cb/formats/inspect.hpp"
 #include "cb/formats/xbox/heavyiron.hpp"
 #include "cb/formats/xex.hpp"
+#include "cb/source/commands.hpp"
 #include "cb/source/dos_writer.hpp"
 #include "cb/source/le_writer.hpp"
 #include "cb/source/ne_writer.hpp"
@@ -39,7 +40,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 17> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach"};
+constexpr std::array<std::string_view, 23> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -323,6 +324,16 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // reach ...: how far CodeBreaker gets with every program of the corpora
     table.set(coverage::reach_command::command(coverage::reach_command::Environment{config, corpus}));
+
+    // vxd, ne-asm, driver-source, dos-source, dos-build, driver-judge: the source lanes' commands (source::commands::Production
+    // finds its tools when a command runs)
+    const auto production = std::make_shared<source::commands::Production>(config, corpus);
+    table.set("vxd", [production](std::span<const std::string> args) -> int { return production->vxd()(args); });
+    table.set("ne-asm", [production](std::span<const std::string> args) -> int { return production->ne_asm()(args); });
+    table.set("driver-source", [production](std::span<const std::string> args) -> int { return production->driver_source()(args); });
+    table.set("dos-source", [production](std::span<const std::string> args) -> int { return production->dos_source()(args); });
+    table.set(production->dos_build());
+    table.set(production->driver_judge());
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));
