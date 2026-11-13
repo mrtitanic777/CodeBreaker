@@ -1,0 +1,95 @@
+== plain
+wrote <w>/plain.iso: 122880 bytes
+exit=0
+== volume
+wrote <w>/vol.iso: 122880 bytes
+exit=0
+== boot_floppy
+wrote <w>/boot144.iso: 1601536 bytes (bootable)
+exit=0
+== boot_small
+wrote <w>/bootsm.iso: 133120 bytes (bootable)
+exit=0
+== clash
+disc: names that clash once cut to 8.3:
+  <w>/clash: longfilename1.txt, longfilename2.txt all become LONGFILE.TXT
+exit=1
+== deep
+disc: <w>/deep\d1\d2\d3\d4\d5\d6\d7\d8: folders nest deeper than the 8 levels ISO-9660 allows
+exit=1
+== not_a_folder
+disc: <w>/nothing is not a folder
+exit=1
+== list_plain
+iso9660 volume 'CODEBREAKER': 13 files, 7 folders, 46402 bytes
+    system               
+    label                CODEBREAKER
+    blocks               60
+    block size           2048
+    created              2026111304571300
+    long names           no
+    bootable             no
+    <folder>  2026-01-02 03:04  DOCS
+           6  2026-01-02 03:04  DOCS/HELLO_WO.TXT
+           2  2026-01-02 03:04  DOCS/NOEXT
+           2  2026-01-02 03:04  DOCS/TRAILING
+           7  2026-01-02 03:04  DOCS/WEIRD_NA.C
+           2  2026-01-02 03:04  DOCS/_.HID
+    <folder>  2026-01-02 03:04  EMPTY
+        6658  2026-01-02 03:04  LONGFILE.EXE
+          38  2026-01-02 03:04  README.TXT
+    <folder>  2026-01-02 03:04  SETUP
+    <folder>  2026-01-02 03:04  SETUP/DATA
+        5632  2026-01-02 03:04  SETUP/DATA/LZ32.DLL
+        9936  2026-01-02 03:04  SETUP/DATA/LZEXPAND.BAK
+        5175  2026-01-02 03:04  SETUP/INSTALL.COM
+    <folder>  2026-01-02 03:04  SUB
+       18939  2026-01-02 03:04  SUB/SETVER.EXE
+    <folder>  2026-01-02 03:04  SUB/SUB2
+    <folder>  2026-01-02 03:04  SUB/SUB2/SUB3
+           5  2026-01-02 03:04  SUB/SUB2/SUB3/DEEP.BIN
+           0  2026-01-02 03:04  ZERO.DAT
+exit=0
+== list_boot
+iso9660 volume 'CODEBREAKER': 13 files, 7 folders, 46402 bytes
+    system               
+    label                CODEBREAKER
+    blocks               65
+    block size           2048
+    created              2026111304571300
+    long names           no
+    bootable             yes
+    <folder>  2026-01-02 03:04  DOCS
+           6  2026-01-02 03:04  DOCS/HELLO_WO.TXT
+           2  2026-01-02 03:04  DOCS/NOEXT
+           2  2026-01-02 03:04  DOCS/TRAILING
+           7  2026-01-02 03:04  DOCS/WEIRD_NA.C
+           2  2026-01-02 03:04  DOCS/_.HID
+    <folder>  2026-01-02 03:04  EMPTY
+        6658  2026-01-02 03:04  LONGFILE.EXE
+          38  2026-01-02 03:04  README.TXT
+    <folder>  2026-01-02 03:04  SETUP
+    <folder>  2026-01-02 03:04  SETUP/DATA
+        5632  2026-01-02 03:04  SETUP/DATA/LZ32.DLL
+        9936  2026-01-02 03:04  SETUP/DATA/LZEXPAND.BAK
+        5175  2026-01-02 03:04  SETUP/INSTALL.COM
+    <folder>  2026-01-02 03:04  SUB
+       18939  2026-01-02 03:04  SUB/SETVER.EXE
+    <folder>  2026-01-02 03:04  SUB/SUB2
+    <folder>  2026-01-02 03:04  SUB/SUB2/SUB3
+           5  2026-01-02 03:04  SUB/SUB2/SUB3/DEEP.BIN
+           0  2026-01-02 03:04  ZERO.DAT
+exit=0
+== extract
+extracted 13 files to <w>/out
+exit=0
+== usage_one
+python -m codebreaker disc <folder> <out.iso> [--volume NAME] [--boot IMG]
+python -m codebreaker disc --list <image.iso>
+python -m codebreaker disc --extract <image.iso> <outdir>
+exit=2
+== usage_three
+python -m codebreaker disc <folder> <out.iso> [--volume NAME] [--boot IMG]
+python -m codebreaker disc --list <image.iso>
+python -m codebreaker disc --extract <image.iso> <outdir>
+exit=2
