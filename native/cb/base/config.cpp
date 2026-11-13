@@ -10,6 +10,7 @@
 #include <format>
 #include <fstream>
 #include <mutex>
+#include <set>
 #include <sstream>
 
 #include "cb/core/error.hpp"
@@ -193,6 +194,22 @@ bool Config::truthy(std::string_view key) const {
         return !(t.empty() || t == "0" || t == "false" || t == "no" || t == "off" || t == "none");
     }
     return false;
+}
+
+std::vector<std::string> Config::keys() const {
+    std::set<std::string> all;
+    for (const auto& [key, v] : file_) all.insert(key);
+    if (!file_corpora_.empty()) all.insert("corpora");
+    for (const Default& d : kDefaults) all.insert(std::string(d.key));
+    for (std::string_view key : kPathSettings)
+        if (key != "reference") all.insert(std::string(key));
+    return {all.begin(), all.end()};
+}
+
+std::string Config::corpora_text() const {
+    std::string out;
+    for (const auto& [name, folder] : file_corpora_) out += (out.empty() ? "" : ", ") + name + "=" + folder;
+    return out;
 }
 
 stdfs::path Config::state() const { return path("state").value_or(root_ / "state"); }
