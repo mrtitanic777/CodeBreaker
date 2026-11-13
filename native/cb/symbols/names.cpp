@@ -471,9 +471,8 @@ std::string joined(const Counts& counts) {
 
 }  // namespace
 
-int Namer::run(std::span<const std::string> args) {
-    Impl& self = *impl_;
-    const cli::Command command{
+cli::Command declare_command(std::function<int(const cli::Args&)> run) {
+    return cli::Command{
         "names",
         "the best name for every function and import of a module, and where it came from",
         {cli::Option{"--shared", "", "how many bodies the indexed modules share", cli::Arg::Flag},
@@ -482,60 +481,67 @@ int Namer::run(std::span<const std::string> args) {
          cli::Option{"--set", "", "name the body of the function at ADDRESS (hex, or segment:offset); the name is the second argument", cli::Arg::Value,
                      "ADDRESS"},
          cli::Positional{"arguments", "MODULE [NAME], or FILE... with --ordinals", false, true}},
-        [&](const cli::Args& a) -> int {
-            const std::vector<std::string> arguments = a.values("arguments");
-            if (a.flag("--ordinals")) {
-                if (!self.s.collect_ordinals) throw UsageError("remaking the ordinal table is not available here");
-                std::vector<std::filesystem::path> files;
-                for (const std::string& f : arguments) files.push_back(fs::from_text(f));
-                self.s.collect_ordinals(files);
-                return 0;
-            }
-            if (a.flag("--shared")) {
-                if (!self.s.bodies) throw UsageError("there is no body store to count bodies in");
-                const store::BodyCounts c = self.s.bodies->shared_bodies();
-                cb::out("{} bodies recorded, {} distinct; {} bodies are in two or more modules ({} functions are such copies)\n", c.recorded, c.distinct,
-                        c.in_several, c.copies);
-                return 0;
-            }
-            if (arguments.empty()) throw UsageError("names needs a module, --shared or --ordinals");
-            const auto found = self.s.corpus.retail(arguments[0]);
-            if (!found) throw NotFoundError(std::filesystem::path(arguments[0]), 0, "no module '" + arguments[0] + "' in the corpus");
-            const std::filesystem::path path = *found;
-            if (const auto address_text = a.value("--set")) {
-                if (arguments.size() < 2) throw UsageError("--set needs the address and then the name");
-                const auto address = parse_address(*address_text);
-                if (!address) throw UsageError("'" + *address_text + "' is not an address (hex, or segment:offset)");
-                const auto digest = set_name(path, *address, arguments[1]);
-                cb::out("{}\n", digest ? std::format("body {} is now {}", *digest, arguments[1]) : "that function has no body worth naming");
-                return digest ? 0 : 1;
-            }
-            const ModuleNames names = of_module(path);
-            Counts by_source;
-            for (const FunctionName& f : names.functions) {
-                const std::string shown = f.name.starts_with('?') ? demangle::readable(f.name) : f.name;
-                cb::out("{:<10} {:<48} {}\n", f.key, shown.substr(0, 48), f.source);
-                bump(by_source, std::string(first_part(first_part(f.source, " ("), ":")));
-            }
-            Counts by_kind;
-            for (const ImportName& i : names.imports) {
-                const std::string shown = i.name.starts_with('?') ? demangle::readable(i.name) : i.name;
-                cb::out("import {:<12} {:<6} {:<40} {}\n", i.module, i.ordinal ? std::to_string(*i.ordinal) : std::string(), shown.substr(0, 40), i.source);
-                bump(by_kind, !i.ordinal ? "by name" : i.source != "(none)" ? "by number, named" : "by number, no name");
-            }
-            std::stable_sort(by_source.begin(), by_source.end(), [](const auto& x, const auto& y) { return x.second > y.second; });
-            std::sort(by_kind.begin(), by_kind.end());
-            cb::out("{}: {} functions -- {}\n", text::lower(fs::to_text(path.filename())), names.functions.size(), joined(by_source));
-            cb::out("{} imports -- {}\n", names.imports.size(), joined(by_kind));
-            const auto l = self.lane(path);
-            if ((l == base::Lane::Pe || l == base::Lane::Ne) && self.s.compiler) {
-                const runtime_library::CompilerInfo info = self.s.compiler(path);
-                cb::out("built with: {} (linker {})\n", info.compiler, info.linker.empty() ? "?" : info.linker);
-            }
-            return 0;
-        },
-        {}, {}, {}};
-    const cli::Cli program("names", {command});
+        std::move(run), {}, {}, {}};
+}
+
+int Namer::execute(const cli::Args& a) {
+    Impl& self = *impl_;
+    const std::vector<std::string> arguments = a.values("arguments");
+    if (a.flag("--ordinals")) {
+        if (!self.s.collect_ordinals) throw UsageError("remaking the ordinal table is not available here");
+        std::vector<std::filesystem::path> files;
+        for (const std::string& f : arguments) files.push_back(fs::from_text(f));
+        self.s.collect_ordinals(files);
+        return 0;
+    }
+    if (a.flag("--shared")) {
+        if (!self.s.bodies) throw UsageError("there is no body store to count bodies in");
+        const store::BodyCounts c = self.s.bodies->shared_bodies();
+        cb::out("{} bodies recorded, {} distinct; {} bodies are in two or more modules ({} functions are such copies)\n", c.recorded, c.distinct,
+                c.in_several, c.copies);
+        return 0;
+    }
+    if (arguments.empty()) throw UsageError("names needs a module, --shared or --ordinals");
+    const auto found = self.s.corpus.retail(arguments[0]);
+    if (!found) throw NotFoundError(std::filesystem::path(arguments[0]), 0, "no module '" + arguments[0] + "' in the corpus");
+    const std::filesystem::path path = *found;
+    if (const auto address_text = a.value("--set")) {
+        if (arguments.size() < 2) throw UsageError("--set needs the address and then the name");
+        const auto address = parse_address(*address_text);
+        if (!address) throw UsageError("'" + *address_text + "' is not an address (hex, or segment:offset)");
+        const auto digest = set_name(path, *address, arguments[1]);
+        cb::out("{}\n", digest ? std::format("body {} is now {}", *digest, arguments[1]) : "that function has no body worth naming");
+        return digest ? 0 : 1;
+    }
+    const ModuleNames names = of_module(path);
+    Counts by_source;
+    for (const FunctionName& f : names.functions) {
+        const std::string shown = f.name.starts_with('?') ? demangle::readable(f.name) : f.name;
+        cb::out("{:<10} {:<48} {}\n", f.key, shown.substr(0, 48), f.source);
+        bump(by_source, std::string(first_part(first_part(f.source, " ("), ":")));
+    }
+    Counts by_kind;
+    for (const ImportName& i : names.imports) {
+        const std::string shown = i.name.starts_with('?') ? demangle::readable(i.name) : i.name;
+        cb::out("import {:<12} {:<6} {:<40} {}\n", i.module, i.ordinal ? std::to_string(*i.ordinal) : std::string(), shown.substr(0, 40), i.source);
+        bump(by_kind, !i.ordinal ? "by name" : i.source != "(none)" ? "by number, named" : "by number, no name");
+    }
+    std::stable_sort(by_source.begin(), by_source.end(), [](const auto& x, const auto& y) { return x.second > y.second; });
+    std::sort(by_kind.begin(), by_kind.end());
+    cb::out("{}: {} functions -- {}\n", text::lower(fs::to_text(path.filename())), names.functions.size(), joined(by_source));
+    cb::out("{} imports -- {}\n", names.imports.size(), joined(by_kind));
+    const auto l = self.lane(path);
+    if ((l == base::Lane::Pe || l == base::Lane::Ne) && self.s.compiler) {
+        const runtime_library::CompilerInfo info = self.s.compiler(path);
+        cb::out("built with: {} (linker {})\n", info.compiler, info.linker.empty() ? "?" : info.linker);
+    } else if (l != base::Lane::Pe && l != base::Lane::Ne) {
+        cb::out("\n");   // (a file of another kind has no "built with" line, and the report ends with an empty one)
+    }
+    return 0;
+}
+
+int Namer::run(std::span<const std::string> args) {
+    const cli::Cli program("names", {declare_command([this](const cli::Args& a) { return execute(a); })});
     std::vector<std::string> line = {"names"};
     line.insert(line.end(), args.begin(), args.end());
     return program.run(line);
