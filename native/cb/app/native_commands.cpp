@@ -10,23 +10,29 @@
 #include "cb/base/settings.hpp"
 #include "cb/base/corpus.hpp"
 #include "cb/base/converted.hpp"
+#include "cb/base/corpus_executables.hpp"
 #include "cb/build/driver.hpp"
 #include "cb/build/resources.hpp"
 #include "cb/coverage/reach_command.hpp"
 #include "cb/build/flat_thunk.hpp"
 #include "cb/build/watcom.hpp"
 #include "cb/core/error.hpp"
+#include "cb/engine/lane_kit.hpp"
 #include "cb/exact/command.hpp"
+#include "cb/jobs/workers.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
 #include "cb/formats/cab.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/dos.hpp"
 #include "cb/formats/inspect.hpp"
+#include "cb/formats/xbox/crypto/tools.hpp"
+#include "cb/formats/xbox/disc_command.hpp"
 #include "cb/formats/xbox/heavyiron.hpp"
 #include "cb/formats/xex.hpp"
 #include "cb/java/tools.hpp"
 #include "cb/recompile/command.hpp"
+#include "cb/recompile/xenon_tools.hpp"
 #include "cb/source/commands.hpp"
 #include "cb/source/dos_writer.hpp"
 #include "cb/source/pipeline.hpp"
@@ -47,7 +53,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 34> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna"};
+constexpr std::array<std::string_view, 43> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -346,12 +352,29 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set("exact", exact::command::runner(exact::command::Environment{config}));
 
     // analyze <module> ...: the analyses of a module and the facts they file
-    table.set(store::analyze_command::command(store::analyze_command::Environment{config, corpus}));
+    {   // observe's runs go out to worker processes when this program hosts them (cbexe/host.cc)
+        std::optional<jobs::WorkerLauncher> workers;
+        if (engine::hosting_workers()) workers = jobs::WorkerLauncher::for_this_program();
+        table.set(store::analyze_command::command(store::analyze_command::Environment{config, corpus, std::move(workers)}));
+    }
 
     // decompile, build, place: the pipeline commands that are native now (module, scoreboard, measure, teeth, sweep wait for the
     // lane kit's worker processes and its other lanes; match, repair, score16 for their native compile/compare path)
     for (cli::Command& c : source::pipeline::commands(source::pipeline::Environment{config, corpus}))
-        if (c.name == "decompile" || c.name == "place") table.set(std::move(c));
+        if (c.name == "decompile" || c.name == "place" || c.name == "build" || c.name == "score16") table.set(std::move(c));
+
+    // crypto <tool> ...: the Xbox 360 crypto and flash tools (keys from the xbox360_* settings)
+    {
+        formats::xbox::crypto::Environment crypto_env;
+        if (const auto keys = config.path("xbox360_keys")) crypto_env.keys = formats::xbox::crypto::keystore::KeyStore(*keys);
+        if (const auto bin = config.path("xbox360_crypto_bin")) crypto_env.bin_dir = *bin;
+        if (const auto sdk = config.path("xbox360_sdk")) crypto_env.sdk_bin_dir = *sdk / "bin" / "win32";
+        table.set(formats::xbox::crypto::command(crypto_env));
+    }
+    // xbox-disc, xex-basic, xenon-config, switch-tables, corpus-executables (were the codebreaker_native extension's)
+    table.set(formats::xbox::disc_command::command());
+    for (cli::Command& c : recompile::xenon_tools::commands(recompile::xenon_tools::Environment{config})) table.set(std::move(c));
+    table.set(base::corpus_executables::command(base::corpus_executables::Environment{corpus}));
 
     // recompile, recompile-project, xenon-recompile: Xbox 360 PowerPC code as C/C++ and the projects around it
     table.set("recompile", recompile::command::recompile_runner(recompile::command::Environment{config}));

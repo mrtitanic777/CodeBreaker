@@ -18,6 +18,7 @@ struct DynOptions {
     std::vector<std::string> modules;    // dotted names (a package: its __init__.py)
     std::string out;
     std::string main_module;             // the module main.cpp runs as __main__
+    std::string main_hook;               // an extern "C" int(int, char**) main.cpp calls first; >= 0: its exit code (the program's own work)
     bool closure = false;                // follow imports of the root's own modules (at any depth)
     std::vector<std::string> exclude;    // dotted prefixes never followed
     bool top_only = false;               // closure: module-level imports only ...

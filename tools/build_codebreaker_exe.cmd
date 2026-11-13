@@ -17,7 +17,7 @@ set OUT=%2
 if "%OUT%"=="" set OUT=%ROOT%\state\cxx\codebreaker
 for /f "delims=" %%P in ('python -c "import sysconfig;print(sysconfig.get_path('stdlib'))"') do set PYLIB=%%P
 for /f "delims=" %%P in ('python -c "import site;print(site.getusersitepackages())"') do set PYSITE=%%P
-"%ROOT%\native\pyengine\build\bin\pyengine.exe" --dynamic --root "%ROOT%" --dyn-out "%OUT%" --dyn-main codebreaker --dyn-exe codebreaker ^
+"%ROOT%\native\pyengine\build\bin\pyengine.exe" --dynamic --root "%ROOT%" --dyn-out "%OUT%" --dyn-main codebreaker --dyn-main-hook cb_host_main_hook --dyn-exe codebreaker ^
     --dyn-stdlib "%PYLIB%" --dyn-site "%PYSITE%" --dyn-tree codebreaker --dyn-files tests --dyn-files tools ^
     --dyn-files native\nasm\test\masm --dyn-native "%ROOT%\native\cbexe" --dyn-native-typed "%ROOT%\native\typed" 2>&1 | findstr /V /C:"refused: async"
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul

@@ -67,6 +67,7 @@ int main(int argc, char** argv) {
             if (a == "--root" && i + 1 < argc) d.root = argv[++i];
             else if (a == "--dyn-out" && i + 1 < argc) d.out = argv[++i];
             else if (a == "--dyn-main" && i + 1 < argc) d.main_module = argv[++i];
+            else if (a == "--dyn-main-hook" && i + 1 < argc) d.main_hook = argv[++i];
             else if (a == "--dyn-exe" && i + 1 < argc) d.exe = argv[++i];
             else if (a == "--dyn-stdlib" && i + 1 < argc) d.stdlib_dir = argv[++i];
             else if (a == "--dyn-site" && i + 1 < argc) d.site_dir = argv[++i];

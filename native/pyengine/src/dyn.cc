@@ -2566,8 +2566,15 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         for (auto& f : own) cmake_srcs += "  " + f + "\n";
     }
     if (!o.main_module.empty()) {
-        std::string main = "// the program: python -m " + o.main_module + ", translated (pyengine --dynamic)\n#include \"py_object.hpp\"\n\n"
-                           "int main(int argc, char** argv) { return py::run_main(" + cstr(o.main_module) + ", argc, argv); }\n";
+        std::string main = "// the program: python -m " + o.main_module + ", translated (pyengine --dynamic)\n#include \"py_object.hpp\"\n\n";
+        if (o.main_hook.empty()) {
+            main += "int main(int argc, char** argv) { return py::run_main(" + cstr(o.main_module) + ", argc, argv); }\n";
+        } else {   // --dyn-main-hook: the program's own native code runs first (a worker process, say), then the translated program
+            main += "extern \"C\" int " + o.main_hook + "(int argc, char** argv);\n\n"
+                    "int main(int argc, char** argv) {\n"
+                    "    if (const int rc = " + o.main_hook + "(argc, argv); rc >= 0) return rc;\n"
+                    "    return py::run_main(" + cstr(o.main_module) + ", argc, argv);\n}\n";
+        }
         write_if_changed(fs::path(o.out) / "main.cpp", main);
         cmake_srcs += "  main.cpp\n";
     }
