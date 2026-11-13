@@ -98,6 +98,9 @@ std::vector<std::string> bisect(std::span<const std::string> units,
                                 const std::function<std::string(std::span<const std::string>, const std::string&)>& trial,
                                 const std::string& tag, const Log& log);
 
+// The command's help text.
+std::string_view usage();
+
 // `[--drivers NAME,...] [--vmm32] [--retail] [--bisect] [--disk IMAGE] [--wait SECONDS] [--tag NAME]`. Returns 0 for a pass, 1 for a fail or no
 // disk, 2 for no arguments.
 int main(const Environment& env, std::span<const std::string> args);

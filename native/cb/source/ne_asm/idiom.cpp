@@ -74,10 +74,17 @@ recon::Assemble nasm_assembler(stdfs::path nasm, stdfs::path include_folder) {
     return [nasm = std::move(nasm), include_folder = std::move(include_folder)](std::string_view source) {
         fs::make_dirs(include_folder);
         // nasm redirects `include cmacros.inc' to the shim that stands in for it
-        const stdfs::path shim = nasm.parent_path() / "test" / "masm" / "cmacros_shim.inc", copy = include_folder / "cmacros_shim.inc";
+        // (the shim is in the nasm source tree's test/masm: beside the program, or above it where the program is in a build folder)
+        const stdfs::path copy = include_folder / "cmacros_shim.inc";
         std::error_code ec;
-        if (stdfs::exists(shim, ec) && (!stdfs::exists(copy, ec) || stdfs::last_write_time(shim, ec) > stdfs::last_write_time(copy, ec)))
-            stdfs::copy_file(shim, copy, stdfs::copy_options::overwrite_existing, ec);
+        stdfs::path folder = nasm.parent_path();
+        for (int level = 0; level < 4 && !folder.empty(); ++level, folder = folder.parent_path()) {
+            const stdfs::path shim = folder / "test" / "masm" / "cmacros_shim.inc";
+            if (!stdfs::exists(shim, ec)) continue;
+            if (!stdfs::exists(copy, ec) || stdfs::last_write_time(shim, ec) > stdfs::last_write_time(copy, ec))
+                stdfs::copy_file(shim, copy, stdfs::copy_options::overwrite_existing, ec);
+            break;
+        }
         fs::ScopedTempDir work("ne_nasm");
         const stdfs::path src = work.path() / "m.asm", object = work.path() / "m.obj", listing = work.path() / "m.lst";
         fs::write_file(src, as_bytes(source));

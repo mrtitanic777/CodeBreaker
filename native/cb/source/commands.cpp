@@ -18,6 +18,8 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
+#include "cb/exact/emu/dos.hpp"
+#include "cb/exact/emu/native_dosexec.hpp"
 #include "cb/engine/lane_kit.hpp"
 #include "cb/source/dos_build.hpp"
 #include "cb/source/dos_writer.hpp"
@@ -54,19 +56,59 @@ namespace stdfs = std::filesystem;
 
 namespace {
 
-// There is no DOS executive of CodeBreaker's own in native/cb yet (exact/emu/dos has no adaptor to build/native_dos): DOS programs run under
-// DOSBox-X, which the assemblers and compilers fall back to when the executive says it is not there.
-class CommandsNoDos final : public build::native_dos::DosExecutive {
+// CodeBreaker's own DOS executive (native/dosexec, on Unicorn) behind the interface the assemblers and compilers take. When its DLLs are not there (or it is
+// switched off, CB_NATIVE_DOSEXEC=0) it says it is not available, and those programs run under DOSBox-X instead.
+class CommandsNativeDos final : public build::native_dos::DosExecutive {
 public:
-    bool available() const override { return false; }
-    build::native_dos::Exit run(const stdfs::path&, const stdfs::path&, std::string_view) const override {
-        throw EmulationError("no native DOS executive is wired in this program");
-    }
-    build::native_dos::MemoryResult run_dpmi(const build::native_dos::MemoryRun&) const override {
-        throw EmulationError("no native DOS executive is wired in this program");
-    }
-};
+    explicit CommandsNativeDos(const config::Config& config)
+        : opened_(exact::emu::native_dosexec::open(exact::emu::native_dosexec::locate(config), exact::emu::native_dosexec::limits_from_environment())),
+          work_(config.state() / "native-dos-mem") {}
 
+    bool available() const override { return opened_.usable(); }
+
+    build::native_dos::Exit run(const stdfs::path& exe, const stdfs::path& work, std::string_view cmdline) const override {
+        exact::emu::dos::RunSpec spec;
+        spec.exe = exe;
+        spec.workdir = work;
+        spec.command_tail = std::string(cmdline);
+        spec.environment = {'P', 'A', 'T', 'H', '=', 0};
+        spec.fast = true;
+        const exact::emu::dos::Result r = executive().run(spec);
+        build::native_dos::Exit out;
+        if (r.exit) out.code = static_cast<std::int32_t>(*r.exit);
+        out.console = r.console;
+        return out;
+    }
+
+    build::native_dos::MemoryResult run_dpmi(const build::native_dos::MemoryRun& run) const override {
+        exact::emu::dos::MemFS files;   // a name only: nothing is written there
+        for (const auto& [name, data] : run.files) files.put(work_ / name, data);
+        exact::emu::dos::RunSpec spec;
+        spec.exe = work_ / run.exe;
+        spec.workdir = work_;
+        spec.command_tail = run.cmdline;
+        spec.environment = run.env;
+        spec.fast = true;
+        spec.dpmi = true;
+        spec.files = &files;
+        const exact::emu::dos::Result r = executive().run(spec);
+        build::native_dos::MemoryResult out;
+        for (const std::string& name : run.artifacts) {
+            const stdfs::path at = work_ / text::upper(name);
+            if (files.is_file(at) && files.files().contains(exact::emu::dos::MemFS::key(at))) out.made[name] = files.read(at);
+        }
+        out.console = r.console;
+        return out;
+    }
+
+private:
+    const exact::emu::dos::Executive& executive() const {
+        if (!opened_.usable()) throw EmulationError("the DOS executive is not available here");
+        return *opened_.executive;
+    }
+    exact::emu::native_dosexec::Opened opened_;
+    stdfs::path work_;
+};
 bool commands_is_dir(const stdfs::path& p) {
     std::error_code ec;
     return !p.empty() && stdfs::is_directory(p, ec);
@@ -170,8 +212,8 @@ struct Production::Impl {
     // ---- DOS ----
     struct Dos {
         build::dos_tools::DosboxRunner runner;
-        CommandsNoDos executive;
-        explicit Dos(const config::Config& config) : runner(build::dos_tools::Emulator::from_config(config)) {}
+        CommandsNativeDos executive;
+        explicit Dos(const config::Config& config) : runner(build::dos_tools::Emulator::from_config(config)), executive(config) {}
     };
     std::unique_ptr<Dos> dos_;
     Dos& dos() {

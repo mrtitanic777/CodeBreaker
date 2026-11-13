@@ -807,7 +807,8 @@ std::filesystem::path rebuild_program(const std::filesystem::path& folder, const
     const std::filesystem::path product = desc.at("product").get<std::string>();
     const std::filesystem::path out = folder / product;
     std::vector<std::string> lines;
-    for (const std::string_view line : text::lines(fs::read_text(folder / (fs::to_text(product.stem()) + ".lnk")))) {
+    const std::string link_script = fs::read_text(folder / (fs::to_text(product.stem()) + ".lnk"));   // (named: the lines are views into it)
+    for (const std::string_view line : text::lines(link_script)) {
         const std::string_view t = text::trim(line);
         if (!t.empty() && !text::istarts_with(line, "name ")) lines.emplace_back(line);
     }
