@@ -304,6 +304,28 @@ CB_TEST("verify.win32.functions_of_a_module", [] {
     CB_CHECK_THROWS_AS(cb::FormatError, (void)Win32Lane::functions(data("inputs.json")));   // not a PE image
 });
 
+// A run asks for the argument count of each import it meets, thousands of times a module: the knowledge behind it is asked once per import (a
+// judge of version.dll took 3 s instead of 10 s for it).
+CB_TEST("verify.win32.an_imports_argument_count_is_asked_once", [] {
+    NoDecompiler decompiler;
+    cb::build::functions::FunctionBuilder builder;
+    Win32Lane::Services services{decompiler, builder, {}, {}, nullptr, nullptr, nullptr, {}, nullptr};
+    int asked = 0;
+    services.import_argc = [&asked](std::string_view dll, std::string_view name) -> std::optional<std::int64_t> {
+        ++asked;
+        if (name == "CloseHandle") return 1;
+        (void)dll;
+        return std::nullopt;   // (an unknown count is an answer too)
+    };
+    const Win32Lane::Context context(services, "lz32.dll");
+    for (int i = 0; i < 5; ++i) {
+        CB_CHECK(context.import_argc("KERNEL32", "CloseHandle") == std::optional<std::int64_t>(1));
+        CB_CHECK(!context.import_argc("KERNEL32", "NoSuchCall").has_value());
+    }
+    CB_CHECK_EQ(asked, 2);
+    CB_CHECK(!context.import_argc("USER32", "CloseHandle").has_value() || asked == 3);   // (the module is part of the question)
+});
+
 // What the registry is told, and the profile every verdict's signature carries.
 CB_TEST("verify.win32.the_kind", [] {
     NoDecompiler decompiler;

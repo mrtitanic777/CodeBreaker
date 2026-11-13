@@ -102,12 +102,13 @@ ImageSpec pe_spec(const formats::pe::Image& pe) {
     std::set<Va> starts;
     std::set<Va> roots;
     for (const formats::pe::ExportSymbol& e : pe.export_table().symbols) {
-        if (e.forward || e.rva == 0) continue;
+        if (e.rva == 0) continue;
         const Va va = base + e.rva;
+        roots.insert(va);   // (every export is an entry as the analyses count them, a data export or a forwarder's string too: the live loader did)
+        if (e.forward) continue;
         const Span* s = span_at(spec, va);
         if (s == nullptr || !s->executable) continue;
         starts.insert(va);
-        roots.insert(va);
         // (an export by its ordinal only is called Ord<n>, as the compilers' import libraries spell it)
         const std::string name = e.name && !e.name->empty() ? *e.name : std::format("Ord{}", e.ordinal);
         if (is_symbol_name(name)) spec.function_names[va] = name;
@@ -122,7 +123,8 @@ ImageSpec pe_spec(const formats::pe::Image& pe) {
         for (std::size_t i = 0; i + 3 <= d.size(); ++i) {
             if (d[i] == 0x55 && d[i + 1] == 0x8B && d[i + 2] == 0xEC) {
                 const bool hot_patch = i >= 2 && d[i - 2] == 0x8B && d[i - 1] == 0xFF;      // mov edi,edi first
-                starts.insert(s.va + static_cast<Va>(hot_patch ? i - 2 : i));
+                starts.insert(s.va + static_cast<Va>(i));                             // (both the push and the mov before it are starts, as the
+                if (hot_patch) starts.insert(s.va + static_cast<Va>(i - 2));          //  live carve has them)
             }
         }
     }
@@ -150,6 +152,7 @@ Image load_pe(const formats::pe::Image& pe) {
     std::set<Va> starts;
     for (const auto& [start, limit] : spec.functions) starts.insert(start);
     std::set<Va> found;
+    std::set<Va> decoded, called;   // the addresses the sweep read an instruction at, and the ones its calls go to
     {
         ImageSpec copy = spec;
         Image sweep(std::move(copy));
@@ -163,16 +166,58 @@ Image load_pe(const formats::pe::Image& pe) {
                     continue;
                 }
                 for (const Instruction& ins : run.insns) {
-                    if (ins.flow == Flow::Call && ins.target && !starts.contains(*ins.target)) {
+                    decoded.insert(ins.addr);
+                    if (ins.flow == Flow::Call && ins.target) {
                         const Span* t = sweep.span(*ins.target);
-                        if (t != nullptr && t->executable) found.insert(*ins.target);
+                        if (t != nullptr && t->executable) {
+                            called.insert(*ins.target);
+                            if (!starts.contains(*ins.target)) found.insert(*ins.target);
+                        }
                     }
                 }
                 va = run.insns.back().addr + run.insns.back().size;
             }
         }
+        // What the entries read that the sweep, going through other instructions, did not: an export, the entry point or a call's target is
+        // read from its own address until the code already read (a call into the middle of what the sweep took for one long instruction).
+        const std::set<Va> entered_here(spec.roots.begin(), spec.roots.end());
+        std::set<Va> candidates(starts);
+        candidates.insert(called.begin(), called.end());
+        std::vector<Va> pending;
+        for (Va va : candidates)
+            if (!decoded.contains(va) && sweep.span(va) != nullptr && sweep.span(va)->executable) pending.push_back(va);
+        for (Va entry : pending) {
+            if (!entered_here.contains(entry) && !called.contains(entry)) continue;
+            for (Va va = entry;;) {
+                const Function run = sweep.linear(va, 256);
+                if (run.insns.empty()) break;
+                bool stopped = false;
+                for (const Instruction& ins : run.insns) {
+                    if (decoded.contains(ins.addr) && ins.addr != entry) {
+                        stopped = true;
+                        break;
+                    }
+                    decoded.insert(ins.addr);
+                }
+                if (stopped) break;
+                va = run.insns.back().addr + run.insns.back().size;
+            }
+        }
     }
-    if (!found.empty()) {
+    // A standard prologue the sweep did not read as an instruction start is bytes inside another instruction, a table or padding: not a
+    // function (an export, the entry point and a call's target are entered, so they are).
+    const std::set<Va> entered(spec.roots.begin(), spec.roots.end());
+    bool dropped = false;
+    for (auto it = starts.begin(); it != starts.end();) {
+        if (!entered.contains(*it) && !called.contains(*it) && !decoded.contains(*it)) {
+            spec.function_names.erase(*it);
+            it = starts.erase(it);
+            dropped = true;
+        } else {
+            ++it;
+        }
+    }
+    if (dropped || !found.empty()) {
         for (Va va : found) {
             starts.insert(va);
             spec.function_names.try_emplace(va, auto_name(ImageKind::Pe, base, va));
