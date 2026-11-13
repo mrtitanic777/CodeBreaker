@@ -159,7 +159,7 @@ cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
 
 cb_area(exact)
-target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats)   # (omf_object: an OMF module as the lanes' object record)
+target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats cb_java)   # (omf_object: an OMF module as the lanes' object record; cb_java: the zip reader of the pre-release Pascal kit, command.cpp -- static libraries may be cyclic)
 
 cb_area(compare)
 target_link_libraries(cb_compare PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_decompile cb_jobs)   # (the readers and the corpus, the decoder, the function starts of each kind, the pool of the product comparison)
