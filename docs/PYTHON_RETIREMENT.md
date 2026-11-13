@@ -248,7 +248,7 @@ is `cb_pyfront`, the translator's Python front end: **keep** (it is not the Pyth
 three move to `native/third_party/` before their parents are deleted), `native/pyengine/src/big.cc` (dies with
 the shim tests).
 
-### 4.4 The data native reads out of `codebreaker/` (the blocker)
+### 4.4 The data native reads out of `codebreaker/` (the blocker; done in step 3, this is the survey that was)
 
 `base/config.cpp:83` recognises a checkout by `codebreaker/__main__.py` + `native/`. These native sites read files
 under `codebreaker/` (checked in as non-`.py` files, ~200 of them: 87 `.h`, 43 `.json`, 42 `.cpp`, 12 `.cs`,
@@ -368,9 +368,13 @@ the pyengine exe in parallel for this one step only, as the comparison reference
 the plain exe; `codebreaker.exe` with no argument in a terminal reaches the `ui` launcher; `mcp` and `serve` work
 from `.mcp.json`; exe size and start time recorded (no CPython-world start-up: should be faster).
 
-**Step 3 - Move the data out of `codebreaker/`.**
-`git mv` the ~200 non-Python files to `data/` (4.4), add `config::data_root()`, update the ~20 sites, change the
-checkout marker. Check: `grep -rn '"codebreaker" /' native/cb --include=*.cpp` (outside tests) is empty;
+**Step 3 - Move the data out of `codebreaker/`. DONE (2026-11-13).**
+190 non-Python files moved with `git mv` semantics to `data/` (same layout under it: `data/symbols`, `data/java`,
+`data/exact/toolchains`, `data/knowledge/models`, `data/translate`, `data/xna`, `data/port`, `data/source`,
+`data/build`); `config::data_root()` added; every native read site and every Python reader points at `data/` (no
+copies, no links); the checkout marker is `data/` + `native/`. Not moved because nothing native reads them:
+`formats/xbox/{empty_live.bin,THIRD_PARTY.txt,crypto/*}`, `ui/terminal.tcss`, `translate/frontends/clang/corpus/*`,
+`translate/frontends/csharp/CsTreeDump.cs` (move them with the code that starts reading them). Original check: `grep -rn '"codebreaker" /' native/cb --include=*.cpp` (outside tests) is empty;
 `cb_tests` and `cb_exe_gate` green with the folder `codebreaker/` temporarily renamed (proves nothing reads it).
 
 **Step 4 - Cut the terminal UI.**
