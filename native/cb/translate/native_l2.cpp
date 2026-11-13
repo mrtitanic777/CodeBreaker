@@ -141,6 +141,23 @@ ModuleText Library::module(const Json& doc, std::span<const std::string> moved) 
     return out;
 }
 
+Cpp17Unit Library::cpp17_unit(const Json& unit, std::string_view api_maps) const {
+    const Json r = call("cpp17_unit", Json::array({unit, std::string(api_maps)}));
+    Cpp17Unit out;
+    out.header = text_of(items(r).at(0));
+    out.source = text_of(items(r).at(1));
+    for (const auto& [name, span] : items(r).at(2).items()) {
+        out.spans.insert_or_assign(name, std::make_pair(int_of(items(span).at(0)), int_of(items(span).at(1))));
+    }
+    return out;
+}
+
+std::string Library::cpp17_program(std::span<const Json> units, const std::optional<std::string>& main) const {
+    Json docs = Json::array();
+    for (const Json& u : units) docs.push_back(u);
+    return text_of(call("cpp17_program", Json::array({docs, main ? Json(*main) : Json(nullptr)})));
+}
+
 std::string Library::fragment(const Json& node) const { return text_of(call("fragment", Json::array({node}))); }
 
 std::string Library::type_text(const Json& type, std::string_view name, bool far) const {

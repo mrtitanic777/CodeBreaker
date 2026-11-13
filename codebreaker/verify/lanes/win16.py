@@ -436,8 +436,11 @@ _JUMPS = {}
 def _jumps(module_path, seg):
     """{offset: target offset} of the conditional jumps at each offset of a code segment, as found
     (decoded the first time an offset is asked about; None: not a conditional jump)."""
-    key = (module_path, seg)
+    st = os.stat(module_path)
+    key = (module_path, seg, st.st_size, st.st_mtime_ns)        # a file rewritten at the same path is a new table
     if key not in _JUMPS:
+        if len(_JUMPS) > 64:                                     # a sweep over many modules does not keep them all
+            _JUMPS.clear()
         from codebreaker.formats.ne import NEFile
         nef = NEFile(module_path)
         s = nef.segments()[seg - 1]

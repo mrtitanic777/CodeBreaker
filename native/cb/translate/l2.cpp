@@ -609,6 +609,11 @@ public:
     void nodes(const char* key, const std::vector<Node*>& v) {
         if (!v.empty()) children(key, v);
     }
+    // A list slot whose absence means something other than "empty" (a NewArray's initialiser: `new int[8]` has none, `new int[]{}`
+    // has an empty one): written when it has some, or when `empty_means_present`.
+    void children_unless_absent(const char* key, const std::vector<Node*>& v, bool empty_means_present) {
+        if (!v.empty() || empty_means_present) children(key, v);
+    }
     void suite(const char* key, const ir::Suite& v) {
         if (const auto* one = std::get_if<Node*>(&v)) {
             child(key, *one);
@@ -683,6 +688,7 @@ public:
         if (const Json* j = member(in_, key)) v = list(*j);
     }
     void nodes(const char* key, std::vector<Node*>& v) { children(key, v); }
+    void children_unless_absent(const char* key, std::vector<Node*>& v, bool) { children(key, v); }
     void suite(const char* key, ir::Suite& v) {
         const Json* j = member(in_, key);
         if (j == nullptr) return;
@@ -838,7 +844,7 @@ template <class V> void describe(ir::This& k, V& v) { v.type("qualifier", k.qual
 template <class V> void describe(ir::Super& k, V& v) { v.type("qualifier", k.qualifier); }
 template <class V> void describe(ir::Call& k, V& v) { v.child("target", k.target); v.sym("sym", k.sym); v.children("args", k.args); v.typeargs("typeargs", k.typeargs); }
 template <class V> void describe(ir::New& k, V& v) { v.sym("sym", k.sym); v.children("args", k.args); v.child("body", k.body); v.child("outer", k.outer); v.memory("memory", k.memory); }
-template <class V> void describe(ir::NewArray& k, V& v) { v.type("elem", k.elem); v.children("dims", k.dims); v.children("init", k.init); }
+template <class V> void describe(ir::NewArray& k, V& v) { v.type("elem", k.elem); v.children("dims", k.dims); v.children_unless_absent("init", k.init, k.dims.empty()); }
 template <class V> void describe(ir::Index& k, V& v) { v.child("arr", k.arr); v.suite("index", k.index); v.sym("sym", k.sym); }
 template <class V> void describe(ir::Length& k, V& v) { v.child("arr", k.arr); }
 template <class V> void describe(ir::Concat& k, V& v) { v.children("parts", k.parts); }

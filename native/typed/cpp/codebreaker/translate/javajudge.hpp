@@ -130,7 +130,7 @@ inline std::tuple<std::optional<py::str>, py::str> build(const py::list<ir::Node
         const std::string compiler = cxx.utf8();
         std::vector<std::string> argv = {compiler};
         for (const py::str& f : cpp17::FLAGS) argv.push_back(f.utf8());
-        for (const std::string& a : {std::string("-I"), cpp17::RUNTIME.utf8(), src.utf8(), std::string("-o"), exe.utf8()}) argv.push_back(a);
+        for (const std::string& a : {std::string("-I"), cpp17::RUNTIME().utf8(), src.utf8(), std::string("-o"), exe.utf8()}) argv.push_back(a);
         cb::process::ProcessSpec spec;
         spec.argv = argv;
         spec.timeout = std::chrono::seconds(600);

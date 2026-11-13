@@ -83,9 +83,13 @@ struct PathEntry {
 };
 
 // An input the shadow follows: an argument (`where` is its index) or bytes of memory (`where` is the address), its
-// width, and the value it had in the run.
+// width, and the value it had in the run. A lane whose entry points take more has them too: a register or flag it is
+// entered with (`where` is the lane's own number for it), what an unmodelled call answered in the result register,
+// and the carry flag such a call leaves (no `where`).
 struct InputVar {
-    enum class Place { Arg, Mem };
+    // Reg: ECX (where 1) or EDX (where 2), a member function's argument held in a register (16-bit: the register named);
+    // Ret: what the imports the emulator answers return (the 32-bit lane's `stub_ret`); Carry: the carry flag on entry.
+    enum class Place { Arg, Mem, Reg, Ret, Carry };
     Place place = Place::Arg;
     std::int64_t where = 0;
     std::uint32_t bits = 0;

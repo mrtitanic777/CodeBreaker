@@ -259,6 +259,9 @@ target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_covera
 
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
 
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_pe.cpp")
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -314,7 +317,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/isolated16.cpp"
@@ -373,7 +375,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/module.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_pe.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b4.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
