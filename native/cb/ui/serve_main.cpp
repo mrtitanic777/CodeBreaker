@@ -14,8 +14,7 @@ int main(int argc, char** argv) {
         const cli::Cli cli("cb_serve", {ui::serve::command({.config = config::current()})});
         return cli.run(argc, argv);
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "cb_serve: %s
-", e.what());
+        std::fprintf(stderr, "cb_serve: %s\n", e.what());
         return 1;
     }
 }
