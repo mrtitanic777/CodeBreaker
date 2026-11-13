@@ -194,3 +194,34 @@ CB_TEST("analyze.origin.verdicts_on_a_real_module", [] {
     CB_CHECK_EQ(module16(module, dir.path(), knowledge, &more).functions.at(first).name, r.functions.at(first).name);
     CB_CHECK(report("lzexpand.dll", r, false).starts_with(std::format("lzexpand.dll: {} functions -- {} C, {} assembly\n", r.functions.size(), s.c, s.assembly)));
 });
+
+// tests/test_port_fixes.py::test_origin_notes_calls_to_compiler_helpers -- near and far calls to the C compiler's own helpers (named)
+// are noted in the function's compiler notes; a call to any other function is not.
+CB_TEST("analyze.origin.a_call_to_a_compiler_helper_is_noted_near_or_far", [] {
+    const std::int64_t base = dsc::address(1, 0);
+    Bytes code = {0x55, 0x8B, 0xEC};                                                   // push bp ; mov bp,sp
+    auto le16 = [&](std::int64_t v) {
+        code.push_back(static_cast<std::uint8_t>(v & 0xFF));
+        code.push_back(static_cast<std::uint8_t>((v >> 8) & 0xFF));
+    };
+    code.push_back(0xE8);                                                              // call near 0x20
+    le16(0x20 - static_cast<std::int64_t>(code.size() + 2));
+    for (const std::int64_t target : {0x30, 0x40}) {                                   // call far selector:0x30 / :0x40 (not a helper)
+        code.push_back(0x9A);
+        le16(target);
+        le16(base >> 16);
+    }
+    code.push_back(0x5D);
+    code.push_back(0xCB);                                                              // pop bp ; retf
+    code.resize(0x20, 0);
+    code.push_back(0xCB);
+    code.resize(code.size() + 0x0F, 0);
+    code.push_back(0xCB);
+    code.resize(code.size() + 0x20, 0);
+    const std::map<std::int64_t, std::string> names = {{base, "caller"}, {base + 0x20, "__aNlmul"}, {base + 0x30, "__aFuldiv"}, {base + 0x40, "other"}};
+    const dsc::Code16 segment(code);
+    Origin o;
+    o.name = "caller";
+    judge(o, segment, 0, 0x20, {0, 0x20, 0x30, 0x40}, false, names, base);
+    CB_CHECK((o.compiler == std::vector<std::string>{"calls __aNlmul", "calls __aFuldiv"}));
+});
