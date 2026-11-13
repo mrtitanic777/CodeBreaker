@@ -1055,7 +1055,7 @@ Json Server::Impl::run_command(const Json& a) {
             break;
         }
     }
-    return service::to_json(service.jobs().launch(command, args, lowered(label), "", link.owner()));
+    return service::to_json(service.jobs().launch(command, args, lowered(label), "", service::AnsweringFor::current().empty() ? link.owner() : service::AnsweringFor::current()));
 }
 
 Json Server::Impl::jobs(const Json&) {

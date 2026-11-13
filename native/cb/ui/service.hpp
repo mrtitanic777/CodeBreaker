@@ -193,6 +193,19 @@ struct Environment {
 // A call's answer: the owner is the client it is answered for.
 using Call = std::function<Json(const Json& args, std::string_view owner)>;
 
+// While a call is answered for a client of the wire (a /call with an owner), the thread's owner: what a tool that starts a job puts on it,
+// so the client that asked can stop its own jobs (the in-process link's owner is the service's own).
+class AnsweringFor {
+public:
+    explicit AnsweringFor(std::string_view owner);
+    ~AnsweringFor();
+    AnsweringFor(const AnsweringFor&) = delete;
+    AnsweringFor& operator=(const AnsweringFor&) = delete;
+    static const std::string& current();   // empty outside a call that had an owner
+private:
+    std::string before_;
+};
+
 class Service {
 public:
     explicit Service(Environment environment);

@@ -17,6 +17,14 @@
 
 namespace cb::ui::service {
 
+namespace {
+thread_local std::string t_answering_for;
+}  // namespace
+
+AnsweringFor::AnsweringFor(std::string_view owner) : before_(std::move(t_answering_for)) { t_answering_for = std::string(owner); }
+AnsweringFor::~AnsweringFor() { t_answering_for = std::move(before_); }
+const std::string& AnsweringFor::current() { return t_answering_for; }
+
 using verify::Class;
 
 namespace {

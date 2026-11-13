@@ -386,7 +386,8 @@ Server::Server(service::Service& service, service::ServiceLink& link, Services s
     Impl* impl = impl_.get();
     for (const ToolSpec& spec : table()) {
         const std::string function(spec.function);
-        service.add_call("mcp." + function, [impl, function, &spec](const Json& args, std::string_view) -> Json {
+        service.add_call("mcp." + function, [impl, function, &spec](const Json& args, std::string_view owner) -> Json {
+            const service::AnsweringFor answering(owner);
             // (a client of the wire sends only the arguments it was given, as the Python's does: the rest are the tool's defaults)
             const ToolResult r = impl->call(function, bind_arguments(spec, args));
             if (r.image) throw UsageError("a picture does not go through JSON");
