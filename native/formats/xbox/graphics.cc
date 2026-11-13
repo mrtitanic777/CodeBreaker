@@ -445,7 +445,7 @@ void gfx_placements(Call &c) {
             bool mat = (flags & 0x04) != 0;
             if (mat) {
                 Bits br(d, p);
-                if (br.read(1)) { int64_t n = int64_t(br.read(5)); sx = double(br.read(n)) / 65536.0; sy = double(br.read(n)) / 65536.0; }
+                if (br.read(1)) { int64_t n = int64_t(br.read(5)); sx = double(br.reads(n)) / 65536.0; sy = double(br.reads(n)) / 65536.0; }
                 if (br.read(1)) { int64_t n = int64_t(br.read(5)); br.read(n); br.read(n); }
                 int64_t n = int64_t(br.read(5));
                 tx = double(br.reads(n)) / 20.0;
