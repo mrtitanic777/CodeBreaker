@@ -69,6 +69,14 @@ public:
 
 // ---- what the entry points answer -----------------------------------------------------------------------------------
 
+// A module written by the C++17 back end: its header and source, and where each function's body is in the source: {function
+// name: (first line, last line)}, so a compiler's error can be pinned on it.
+struct Cpp17Unit {
+    std::string header;
+    std::string source;
+    OrderedMap<std::string, std::pair<std::int64_t, std::int64_t>> spans;
+};
+
 // A module's C text, and the assembly of what stayed assembly: {function name: its assembly}.
 struct ModuleText {
     std::string text;
@@ -151,6 +159,14 @@ public:
     std::set<std::string> flags(const Json& doc, const Json& facts) const;
     // `int2 __cdecl16far sub_1_0000(void)`
     std::string signature(const Json& doc) const;
+
+    // ---- the C++17 back end (backends/cpp17) ----
+
+    // A Unit document of the Python front end as a C++17 module; `api_maps` is the folder of the Java API maps. Cpp17Declined for
+    // what it does not write.
+    Cpp17Unit cpp17_unit(const Json& unit, std::string_view api_maps) const;
+    // A whole Java program (its Unit documents) as C++17 text; `main` names the main class. Cpp17Declined for what it does not write.
+    std::string cpp17_program(std::span<const Json> units, const std::optional<std::string>& main) const;
     // The arguments a 32-bit definition with this heading takes; nullopt for a __cdecl one.
     std::optional<std::int64_t> takes32(std::string_view heading) const;
     ModuleNames module_names32(const Json& doc) const;

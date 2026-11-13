@@ -150,6 +150,24 @@ CB_TEST("translate.l2.a_small_tree", [] {
     CB_CHECK_EQ(l2::to_json(*root).dump(), doc.dump());
 });
 
+// A NewArray's initialiser is absent for `new int[8]` and present, empty, for `new int[]{}`: a consumer (the C++17 back end's library)
+// reads the difference, so the document keeps it.
+CB_TEST("translate.l2.new_array_initialiser", [] {
+    Arena arena;
+    const Json sized = parse(R"({"node":"NewArray","type":{"kind":"array","elem":{"kind":"i32"}},"elem":{"kind":"i32"},)"
+                             R"("dims":[{"node":"Lit","type":{"kind":"i32"},"value":8,"text":"8"}]})");
+    const Json written_sized = l2::to_json(*l2::from_json(arena, sized));
+    CB_CHECK(!written_sized.contains("init"));
+    CB_CHECK_EQ(written_sized["dims"].size(), std::size_t(1));
+    const Json empty = parse(R"({"node":"NewArray","type":{"kind":"array","elem":{"kind":"i32"}},"elem":{"kind":"i32"},"init":[]})");
+    const Json written_empty = l2::to_json(*l2::from_json(arena, empty));
+    CB_CHECK(written_empty.contains("init"));
+    CB_CHECK(written_empty["init"].is_array() && written_empty["init"].empty());
+    const Json filled = parse(R"({"node":"NewArray","type":{"kind":"array","elem":{"kind":"i32"}},"elem":{"kind":"i32"},)"
+                              R"("init":[{"node":"Lit","type":{"kind":"i32"},"value":1,"text":"1"}]})");
+    CB_CHECK_EQ(l2::to_json(*l2::from_json(arena, filled))["init"].size(), std::size_t(1));
+});
+
 CB_TEST("translate.l2.literal_values", [] {
     Arena arena;
     const auto lit = [&](const char* value) {

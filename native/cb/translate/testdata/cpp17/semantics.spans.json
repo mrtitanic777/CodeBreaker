@@ -1,0 +1,110 @@
+{
+ "snip.Shape.__init__": [
+  7,
+  9
+ ],
+ "snip.Shape.area": [
+  11,
+  13
+ ],
+ "snip.Shape.describe": [
+  15,
+  17
+ ],
+ "snip.Shape.name": [
+  19,
+  21
+ ],
+ "snip.Rect.__init__": [
+  23,
+  25
+ ],
+ "snip.Rect.area": [
+  27,
+  29
+ ],
+ "snip.Rect.name": [
+  31,
+  33
+ ],
+ "snip.divs": [
+  35,
+  37
+ ],
+ "snip.run_divs": [
+  39,
+  41
+ ],
+ "snip.shifts": [
+  43,
+  45
+ ],
+ "snip.run_shifts": [
+  47,
+  49
+ ],
+ "snip.run_index": [
+  51,
+  55
+ ],
+ "snip.run_index_error": [
+  57,
+  60
+ ],
+ "snip.run_dict": [
+  62,
+  75
+ ],
+ "snip.run_struct": [
+  77,
+  83
+ ],
+ "snip.run_from_bytes": [
+  85,
+  88
+ ],
+ "snip.run_alias": [
+  90,
+  97
+ ],
+ "snip.segment": [
+  99,
+  101
+ ],
+ "snip.run_records": [
+  103,
+  115
+ ],
+ "snip.run_classes": [
+  117,
+  124
+ ],
+ "snip.run_sort": [
+  126,
+  130
+ ],
+ "snip.probe": [
+  132,
+  134
+ ],
+ "snip.run_any_all": [
+  136,
+  160
+ ],
+ "snip.check": [
+  162,
+  167
+ ],
+ "snip.run_raise": [
+  169,
+  179
+ ],
+ "snip.run_format": [
+  181,
+  185
+ ],
+ "snip.run_counter": [
+  187,
+  195
+ ]
+}

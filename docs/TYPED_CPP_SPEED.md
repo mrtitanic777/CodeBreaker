@@ -1131,3 +1131,7 @@ A whole build compared with the Python's needs the module made compilable (the d
 | work | Python | C++ (native/cb) |
 |---|---|---|
 | the C text of the 8 corpus programs (bank, calc, generics, sample, shapes, t03, t17, textstats), units read from L2 | 0.087 s per pass (L2 reading and writing the C) | the whole `cb_tests_translate --filter c_java.corpus` process, startup and file reads included: 0.055 s |
+
+## translate/backends/cpp17 (W5-B4)
+
+The back end is the L2 core library (native/l2, cbl2.dll); the module only hands it the documents and gives the text back, so there is nothing of its own to time. The 9 corpus programs, 3 programs of the module's own and the Python-front-end unit are written through the same library in `cb_tests_translate --filter cpp17` in 0.04 s, library load included (the Python path adds the ctypes crossing and the tagged-value conversion the typed client does not have).
