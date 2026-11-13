@@ -9,6 +9,7 @@
 #include <variant>
 
 #include "cb/analyze/call_graph.hpp"
+#include "cb/analyze/classes.hpp"
 #include "cb/analyze/conventions.hpp"
 #include "cb/analyze/dispatch.hpp"
 #include "cb/analyze/globals.hpp"
@@ -24,10 +25,12 @@ namespace cb::analyze::report::detail {
 struct Loaded {
     ImageKind kind = ImageKind::Pe;
     std::shared_ptr<Image> image;
+    std::optional<dispatch::DeviceBlock> device;   // a driver's device descriptor block
 };
 
-// The module's file as an Image. UnsupportedError for a driver, a DOS program or a file that is none of the modules the analyses read.
-Loaded load_module(const std::filesystem::path& path, const Environment& environment);
+// The module's file as an Image. `member` names one driver of a bundle (VMM32.VXD's "vmm"); empty: the file's own (the first). UsageError for a
+// member the file does not hold; UnsupportedError for a DOS program or a file that is none of the modules the analyses read.
+Loaded load_module(const std::filesystem::path& path, const Environment& environment, std::string_view member = {});
 
 // The counts of each analysis under the names the report prints them by (report_facts.cpp).
 Counts call_graph_counts(const call_graph::Counts& c);
@@ -44,6 +47,7 @@ void call_graph_rows(Section& s, const call_graph::Report& r, ImageKind kind);
 void strings_rows(Section& s, const strings::Report& r, ImageKind kind);
 void globals_rows(Section& s, const globals::Report& r, ImageKind kind);
 void structures_rows(Section& s, const structures::Report& r, ImageKind kind);
+void classes_rows(Section& s, const classes::Analysis& r, ImageKind kind);
 void dispatch_rows(Section& s, const dispatch::Report& r, ImageKind kind);
 void resources_rows(Section& s, const resources::Report& r, ImageKind kind);
 

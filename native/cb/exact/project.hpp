@@ -196,6 +196,9 @@ struct Services {
     // The inverse model a toolchain profile names ("inverse"), for the draft stage.
     std::function<std::shared_ptr<draft::InverseModel>(std::string_view name)> inverse_model;
     ProveTexts prove_texts;
+    // The prover made for one project (draft/bind): used when `prove_texts` is not given. It holds what a project's proofs keep
+    // between functions (the compiler's options, the candidates' caches, the beam's history).
+    std::function<ProveTexts(const std::shared_ptr<Project>&)> prover_for;
     // The equivalence comparers a Pascal project's "equivalent" names (habits).
     std::map<std::string, pascal_join::Equivalent> equivalents;
 };

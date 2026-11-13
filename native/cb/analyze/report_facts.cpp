@@ -3,6 +3,7 @@
 #include <format>
 
 #include "cb/analyze/call_graph.hpp"
+#include "cb/analyze/classes.hpp"
 #include "cb/analyze/conventions.hpp"
 #include "cb/analyze/dispatch.hpp"
 #include "cb/analyze/globals.hpp"
@@ -86,12 +87,12 @@ void call_graph_rows(Section& s, const call_graph::Report& r, ImageKind kind) {
 
 void strings_rows(Section& s, const strings::Report& r, ImageKind kind) {
     for (const strings::StringFact& f : r.strings)
-        push_row(s, kind, f.at, "string", {{"text", Value(f.text)}, {"wide", Value(f.wide)}, {"referenced", Value(f.referenced)}});
+        push_row(s, kind, std::nullopt, "string", {{"at", address_value(f.at)}, {"text", Value(f.text)}, {"wide", Value(f.wide)}, {"referenced", Value(f.referenced)}});
     for (const strings::StringUsesFact& f : r.string_uses) push_row(s, kind, f.function, "string_uses", {{"strings", text_list(f.strings)}});
     for (const strings::StackString& f : r.stack_strings)
         push_row(s, kind, f.function, "stack_string", {{"where", Value(f.where)}, {"text", Value(f.text)}, {"wide", Value(f.wide)}});
     for (const strings::FormatFact& f : r.formats) {
-        Value::Map m{{"site", address_value(f.site)}, {"api", Value(f.api)}, {"imported", Value(f.imported)}, {"format", Value(f.format)}};
+        Value::Map m{{"site", address_value(f.site)}, {"function", Value(f.api)}, {"format", Value(f.format)}};   // (the routine that takes the format, as the Python's row names it)
         m.insert_or_assign("arguments", f.arguments ? text_list(*f.arguments) : Value());
         push_row(s, kind, f.function, "format", std::move(m));
     }
@@ -103,26 +104,32 @@ void globals_rows(Section& s, const globals::Report& r, ImageKind kind) {
     for (const globals::GlobalFact& f : r.globals) {
         Value::List values;
         for (const std::int64_t v : f.values) values.emplace_back(v);
-        push_row(s, kind, f.at, "global",
-                 {{"size", Value(f.size)}, {"readers", Value(f.readers)}, {"writers", Value(f.writers)}, {"taken", Value(f.taken)},
+        Value initial;
+        switch (f.initial.kind) {
+        case globals::Initial::Kind::Uninitialised: initial = Value(std::string("uninitialised")); break;
+        case globals::Initial::Kind::Value: initial = Value(static_cast<std::int64_t>(f.initial.value)); break;
+        case globals::Initial::Kind::Address: initial = Value(f.initial.label); break;
+        }
+        push_row(s, kind, std::nullopt, "global",
+                 {{"at", address_value(f.at)}, {"size", Value(f.size)}, {"readers", Value(f.readers)}, {"writers", Value(f.writers)}, {"taken", Value(f.taken)},
                   {"notes", text_list(f.notes)}, {"values", Value(std::move(values))}, {"writable", Value(f.writable)}, {"extent", Value(f.extent)},
-                  {"type", Value(f.type)}});
+                  {"initial", std::move(initial)}, {"type", Value(f.type)}});
     }
     for (const globals::TableFact& f : r.tables) {
         Value::Map holds;
         for (const auto& [k, n] : f.holds) holds.insert_or_assign(k, Value(n));
-        push_row(s, kind, f.at, "pointer_table",
-                 {{"count", Value(f.count)}, {"stride", Value(f.stride)}, {"shape", Value(std::string(globals::name_of(f.shape)))},
+        push_row(s, kind, std::nullopt, "pointer_table",
+                 {{"at", address_value(f.at)}, {"count", Value(f.count)}, {"stride", Value(f.stride)}, {"shape", Value(std::string(globals::name_of(f.shape)))},
                   {"holds", Value(std::move(holds))}, {"first", text_list(f.first)}});
     }
 }
 
 void structures_rows(Section& s, const structures::Report& r, ImageKind kind) {
     for (const structures::StructureFact& f : r.facts) {
-        Value::List fields;
+        Value::Map fields;   // "+offset" (hex) -> the field, in the order of the offsets
         for (const structures::FieldFact& x : f.fields)
-            fields.emplace_back(Value::Map{{"offset", address_value(x.offset)}, {"size", address_value(x.size)}, {"type", Value(x.type)},
-                                           {"reads", Value(x.reads)}, {"writes", Value(x.writes)}, {"notes", text_list(x.notes)}});
+            fields.insert_or_assign(std::format("+{:x}", x.offset), Value(Value::Map{{"size", address_value(x.size)}, {"type", Value(x.type)}, {"reads", Value(x.reads)},
+                                                                                       {"writes", Value(x.writes)}, {"notes", text_list(x.notes)}}));
         push_row(s, kind, std::nullopt, "structure",
                  {{"name", Value(f.name)}, {"size", address_value(f.size)}, {"exact_size", Value(f.exact_size)}, {"fields", Value(std::move(fields))},
                   {"seen_as", text_list(f.seen_as)}, {"pointers_unified", Value(f.pointers_unified)}, {"functions", text_list(f.functions)},
@@ -132,32 +139,80 @@ void structures_rows(Section& s, const structures::Report& r, ImageKind kind) {
 
 
 void dispatch_rows(Section& s, const dispatch::Report& r, ImageKind kind) {
-    const auto pairs = [](const std::vector<std::pair<Va, Va>>& items) {
-        Value::List list;
-        for (const auto& [a, b] : items) list.emplace_back(Value::List{address_value(a), address_value(b)});
-        return Value(std::move(list));
+    const auto keyed = [](const std::vector<std::pair<Va, Va>>& items, const char* format) {   // value -> target, the value written as the Python did
+        Value::Map map;
+        for (const auto& [value, target] : items)
+            map.insert_or_assign(std::string(format) == "hex" ? std::format("{:#x}", value) : std::to_string(value), address_value(target));
+        return Value(std::move(map));
     };
-    const auto messages = [](const std::vector<dispatch::HandledMessage>& items) {
-        Value::List list;
-        for (const dispatch::HandledMessage& m : items)
-            list.emplace_back(Value::Map{{"value", address_value(m.value)}, {"name", Value(m.name)}, {"handler", address_value(m.handler)}});
-        return Value(std::move(list));
+    const auto messages = [](const std::vector<dispatch::HandledMessage>& items) {   // message name -> handler
+        Value::Map map;
+        for (const dispatch::HandledMessage& m : items) map.insert_or_assign(m.name, address_value(m.handler));
+        return Value(std::move(map));
     };
     for (const dispatch::Fact& fact : r.facts) {
         if (const auto* sw = std::get_if<dispatch::SwitchFact>(&fact)) {
             push_row(s, kind, sw->function, "switch",
                      {{"on", Value(sw->on)}, {"site", sw->site ? address_value(*sw->site) : Value()}, {"table", sw->table ? address_value(*sw->table) : Value()},
-                      {"default", sw->default_target ? address_value(*sw->default_target) : Value()}, {"cases", pairs(sw->cases)}});
+                      {"default", sw->default_target ? address_value(*sw->default_target) : Value()}, {"cases", keyed(sw->cases, "hex")}});
         } else if (const auto* mf = std::get_if<dispatch::MessageFact>(&fact)) {
             push_row(s, kind, mf->function, "message_dispatch",
                      {{"procedure", mf->procedure ? Value(*mf->procedure) : Value()}, {"why", Value(mf->why)}, {"messages", messages(mf->messages)},
-                      {"commands", pairs(mf->commands)}});
+                      {"commands", keyed(mf->commands, "decimal")}});
         } else if (const auto* sv = std::get_if<dispatch::ServicesFact>(&fact)) {
             push_row(s, kind, sv->function, "system_services", {{"services", text_list(sv->services)}});
         } else if (const auto* dc = std::get_if<dispatch::DriverControlFact>(&fact)) {
             push_row(s, kind, dc->procedure, "driver_control", {{"device", dc->device ? Value(*dc->device) : Value()}, {"handles", messages(dc->handles)}});
+        } else if (const auto* kf = std::get_if<dispatch::KeywordFunctionFact>(&fact)) {   // (a function that compares its argument with words)
+            push_row(s, kind, kf->keyword.function, "keyword_dispatch",
+                     {{"function", address_value(kf->keyword.function)}, {"compares_with", Value(kf->keyword.compares_with)}, {"keywords", text_list(kf->keyword.keywords)}});
+        } else if (const auto* kt = std::get_if<dispatch::KeywordTableFact>(&fact)) {      // (a table in the data pairing words with handlers)
+            Value::List handlers;
+            for (const Va h : kt->keyword.handlers) handlers.push_back(address_value(h));
+            push_row(s, kind, std::nullopt, "keyword_dispatch",
+                     {{"function", Value()}, {"table", address_value(kt->keyword.table)}, {"keywords", text_list(kt->keyword.keywords)}, {"handlers", Value(std::move(handlers))}});
         }
-        // (the keyword dispatchers' facts are not turned into rows yet)
+    }
+}
+
+void classes_rows(Section& s, const classes::Analysis& r, ImageKind kind) {
+    const auto optional_address = [](const std::optional<Va>& va) { return va ? address_value(*va) : Value(); };
+    for (const classes::Fact& fact : r.facts) {
+        if (const auto* c = std::get_if<classes::ClassFact>(&fact)) {
+            Value::Map m{{"name", Value(c->name)}, {"vtable", address_value(c->vtable)}, {"virtual_functions", Value(c->virtual_functions)},
+                         {"methods", text_list(c->methods)}, {"bases", text_list(c->bases)}, {"evidence", text_list(c->evidence)},
+                         {"size", optional_address(c->size)}, {"constructors_or_destructors", text_list(c->constructors_or_destructors)},
+                         {"com_interface", Value(c->com_interface)}};
+            if (c->layout) m.insert_or_assign("layout", Value(*c->layout));
+            if (c->fields) m.insert_or_assign("fields", Value(*c->fields));
+            if (c->message_map) m.insert_or_assign("message_map", address_value(*c->message_map));
+            if (c->size_exact) m.insert_or_assign("size_exact", Value(*c->size_exact));
+            push_row(s, kind, std::nullopt, "class", std::move(m));
+        } else if (const auto* mfc = std::get_if<classes::MfcClassFact>(&fact)) {
+            const classes::RuntimeClass& rc = mfc->record;
+            push_row(s, kind, std::nullopt, "mfc_class",
+                     {{"at", address_value(rc.at)}, {"name", Value(rc.name)}, {"size", Value(rc.size)}, {"schema", rc.schema ? Value(*rc.schema) : Value()},
+                      {"creatable", Value(rc.creatable)}, {"base", rc.base ? Value(*rc.base) : Value()}});
+        } else if (const auto* map = std::get_if<classes::MessageMapFact>(&fact)) {
+            push_row(s, kind, std::nullopt, "message_map",
+                     {{"at", address_value(map->at)}, {"class", map->class_name ? Value(*map->class_name) : Value()}, {"entries", text_list(map->entries)},
+                      {"base_map", optional_address(map->base_map)}});
+        } else if (const auto* t = std::get_if<classes::CxxTableFact>(&fact)) {
+            Value::List blocks;
+            for (const classes::TryBlockFact& b : t->try_blocks) blocks.emplace_back(Value::Map{{"states", Value(b.states)}, {"catches", text_list(b.catches)}});
+            push_row(s, kind, t->function, "cxx_exception_table",
+                     {{"at", address_value(t->at)}, {"states", Value(t->states)}, {"cleanups", Value(t->cleanups)}, {"try_blocks", Value(std::move(blocks))}});
+        } else if (const auto* f = std::get_if<classes::ExceptionFrameFact>(&fact)) {
+            Value::Map m{{"handler", Value(f->handler)}};
+            if (f->scopes && !f->scopes->empty()) {
+                Value::List scopes;
+                for (const classes::ScopeFact& sc : *f->scopes)
+                    scopes.emplace_back(Value::Map{{"enclosing", optional_address(sc.enclosing)}, {"kind", Value(sc.kind)}, {"filter", optional_address(sc.filter)},
+                                                   {"handler", address_value(sc.handler)}});
+                m.insert_or_assign("scopes", Value(std::move(scopes)));
+            }
+            push_row(s, kind, f->function, "exception_frame", std::move(m));
+        }
     }
 }
 

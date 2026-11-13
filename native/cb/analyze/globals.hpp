@@ -35,6 +35,7 @@
 #include "cb/analyze/call_graph.hpp"
 #include "cb/analyze/native.hpp"
 #include "cb/analyze/strings.hpp"
+#include "cb/core/ordered_map.hpp"
 
 namespace cb::analyze::globals {
 
@@ -121,7 +122,7 @@ struct TableFact {
     std::int64_t count = 0;
     std::int64_t stride = 0;
     PointerTable::Shape shape = PointerTable::Shape::Run;
-    std::map<std::string, std::int64_t> holds;     // slot kind -> how many
+    OrderedMap<std::string, std::int64_t> holds;   // slot kind -> how many, in the order the slots first show them
     std::vector<std::string> first;                // labels of the first eight targets
 };
 

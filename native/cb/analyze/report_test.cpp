@@ -32,6 +32,7 @@ struct Surrounding {
         environment.facts_file = dir.path() / "functions.sqlite";
         environment.retail = [](std::string_view name) -> std::optional<stdfs::path> {
             if (name == "tracert.exe" || name == "thinkjet.drv") return module(std::string(name).c_str());
+            if (name == "vmouse.vxd") return testing::data_path("analyze/testdata/le/vmouse.vxd");
             return std::nullopt;
         };
         environment.add_module = [this](std::string_view sha, std::string_view name, const stdfs::path&, std::string_view kind) {
@@ -104,14 +105,29 @@ CB_TEST("analyze.report.a_16_bit_module", [] {
     for (const std::string& line : r.starts) CB_CHECK(line.starts_with("F\t"));
 });
 
-CB_TEST("analyze.report.an_analysis_that_cannot_run_is_a_finding", [] {
+CB_TEST("analyze.report.observe_runs_the_modules_functions", [] {
     Surrounding s;
-    const rp::Result r = rp::run("tracert.exe", {.what = {rp::Analysis::Observe, rp::Analysis::CallGraph}, .store = false}, s.environment);
+    const rp::Result r = rp::run("tracert.exe", {.what = {rp::Analysis::Observe, rp::Analysis::CallGraph}, .store = false, .observed = 3}, s.environment);
     CB_CHECK_EQ(r.sections.size(), std::size_t{2});
     CB_CHECK(r.sections[0].analysis == rp::Analysis::CallGraph);   // (in the order of the list)
     CB_CHECK(!r.sections[0].failed);
-    CB_CHECK(r.sections[1].failed.has_value());
-    CB_CHECK(rp::text(r, false).find("failed") != std::string::npos);
+    CB_CHECK(r.sections[1].analysis == rp::Analysis::Observe);
+    CB_CHECK(!r.sections[1].failed);
+    std::int64_t run = 0;
+    for (const auto& [k, v] : r.sections[1].counts)
+        if (k == "functions_run") run = v;
+    CB_CHECK(run > 0 && run <= 3);   // (the first three, the informative ones)
+    CB_CHECK(r.sections[1].stores_facts);
+});
+
+CB_TEST("analyze.report.a_driver_is_read", [] {
+    Surrounding s;
+    const rp::Result r = rp::run("vmouse.vxd", {.what = {rp::Analysis::CallGraph, rp::Analysis::Dispatch}, .store = false}, s.environment);
+    CB_CHECK(r.kind == cb::analyze::ImageKind::Le);
+    CB_CHECK_EQ(r.bits, 32);
+    CB_CHECK(r.functions > 5);
+    for (const rp::Section& section : r.sections) CB_CHECK(!section.failed);
+    CB_CHECK(rp::text(r, false).find("virtual device driver") != std::string::npos);
 });
 
 CB_TEST("analyze.report.what_is_not_a_module", [] {
