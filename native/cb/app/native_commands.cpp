@@ -53,7 +53,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 43> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables"};
+constexpr std::array<std::string_view, 48> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -361,7 +361,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // decompile, build, place: the pipeline commands that are native now (module, scoreboard, measure, teeth, sweep wait for the
     // lane kit's worker processes and its other lanes; match, repair, score16 for their native compile/compare path)
     for (cli::Command& c : source::pipeline::commands(source::pipeline::Environment{config, corpus}))
-        if (c.name == "decompile" || c.name == "place" || c.name == "build" || c.name == "score16") table.set(std::move(c));
+        if (c.name != "match" && c.name != "repair") table.set(std::move(c));   // (match, repair: their Xbox 360 path is not native yet)
 
     // crypto <tool> ...: the Xbox 360 crypto and flash tools (keys from the xbox360_* settings)
     {
