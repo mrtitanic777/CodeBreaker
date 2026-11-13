@@ -1,0 +1,96 @@
+{
+ "cpp03": {
+  "AxisAlignedBB": {
+   "verdict": "equivalent",
+   "gaps": 0,
+   "reason": ""
+  },
+  "Block": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "Entity": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "EntityMob": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "EnumOS1": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "ICamera": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "IInventory": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "MathHelper": {
+   "verdict": "equivalent",
+   "gaps": 0,
+   "reason": ""
+  },
+  "Vec3D": {
+   "verdict": "equivalent",
+   "gaps": 0,
+   "reason": ""
+  }
+ },
+ "cpp17": {
+  "AxisAlignedBB": {
+   "verdict": "equivalent",
+   "gaps": 0,
+   "reason": ""
+  },
+  "Block": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "Entity": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "EntityMob": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "EnumOS1": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "ICamera": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "IInventory": {
+   "verdict": "not-run",
+   "gaps": 0,
+   "reason": "not-run"
+  },
+  "MathHelper": {
+   "verdict": "equivalent",
+   "gaps": 0,
+   "reason": ""
+  },
+  "Vec3D": {
+   "verdict": "equivalent",
+   "gaps": 0,
+   "reason": ""
+  }
+ }
+}

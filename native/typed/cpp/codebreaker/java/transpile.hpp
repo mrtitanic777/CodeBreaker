@@ -58,9 +58,7 @@
 #endif
 
 
-namespace codebreaker::verify::lanes::java {
-std::tuple<py::str, py::str> jdk();   // (javac, java) -- defined with the Java lane
-}
+#include "codebreaker/verify/lanes/java.hpp"   // jdk(): (javac, java)
 
 namespace codebreaker::java::transpile {
 

@@ -516,6 +516,7 @@ def library(cxx, cpp_dir, work, prefix=None, jobs=None):
     link against it and the linker takes what each needs. -> the archive path ('' if it cannot be made).
     A unit that does not compile is left out of it (its class is DOES NOT COMPILE anyway)."""
     from codebreaker.jobs import pool
+    work = os.path.abspath(work)                           # ar runs in the objects' folder: a relative path would not reach
     folder = os.path.join(work, 'probe', '_objects')
     lib = os.path.join(work, 'probe', 'libj2x.a')
     if os.path.isfile(lib):

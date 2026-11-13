@@ -1,126 +1,70 @@
-// codebreaker/verify/lanes/java.hpp -- typed C++ port of codebreaker.verify.lanes.java.
+// codebreaker/verify/lanes/java.hpp -- COMPAT SHIM over cb/verify/lanes/java.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// java.py -- what is particular to reconstructing a Java program as C++03.
-//
-// One of the kinds reconstruct.py works with (see there for what a kind provides). The module is a folder of
-// Java source (a decompiled game's src/, say); its "functions" are its classes. The source is transpiled by
-// codebreaker/java (transpile.convert, for no particular platform) and each class's C++ is compiled on its own
-// with the host compiler (settings.json `host_cxx`, else g++ on PATH).
-//
-// A class that does not compile is DOES NOT COMPILE, with the compiler's first complaint. One that compiles
-// is then run beside the original where it can be (codebreaker/java/probe.py): its methods with primitive
-// parameters and results (static ones directly, instance ones on an object made with a constructor that takes
-// primitives) are called on the same inputs in the JVM -- the Java source compiled by javac (settings.json
-// `java`; javac beside it, else on PATH) -- and natively, and the results compared exactly. All alike:
-// VERIFIED, or VERIFIED (weak) "methods-partial" when only some of the class's methods could be run. Any
-// different: UNVERIFIED, with the method, the input and both results. Nothing it could run (no such method,
-// no JDK): NOT JUDGED, saying why. A jar is not a module of this kind: decompile it first (`codebreaker java
-// decompile`).
-//
-// Notes on the port:
-//   * the kind's four functions are profile / prepare / build / judge; prepare's object (`Prepared` in the
-//     Python: a bare class holding attributes) is the Prepared record, build's context a Context record and an
-//     item an Item record (name, unit, java source or '').
-//   * `prefix` (the precompiled header) is std::optional<str>; the Python's "" for "no JDK" is "".
-//   * PLATFORM is None: std::optional<str>.
-//   * a jar given to prepare raises py::SystemExit with the Python's message.
+// The module is native/cb/verify/lanes/java.{hpp,cpp}: the Java kind (JavaLane), given the tools and the transpiler it works with.
+// This header keeps what not-yet-refactored ports still ask of the old module by its old names: the kind's constants, the
+// module's questions (is_module, source_dir, sha) and where the host's tools are (jdk, compiler -- read from the settings, which is
+// the old layer's). The old prepare/build/judge are not kept: their one caller, translate/javajudge, is JavaLane's now.
 #pragma once
 
-#include <cstdint>
+#include <filesystem>
 #include <optional>
+#include <string>
 #include <tuple>
 
-#include "codebreaker/java/probe.hpp"
-#include "codebreaker/java/transpile.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/verify/lanes/java.hpp"
+#include "codebreaker/decompile/jar.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
+#include "py_settings.hpp"
+#include "py_subprocess.hpp"
 
 namespace codebreaker::verify::lanes::java {
 
-extern const py::str KIND;                 // "java"
-inline constexpr int64_t REV = 3;          // bump when what a verdict means changes (flags, the judge, the transpile call)
-extern const py::str SOURCE_REV;           // who made the candidates: the transpiler, not the native decompiler
-inline constexpr bool LIBRARY = false;     // no runtime-library functions to identify
-inline constexpr bool PER_FUNCTION = true; // a class's verdict depends on its text, the support headers and the classes it names
-extern const py::str STD;                  // "c++03"
-extern const py::str CPP_STD;              // "C++03": the back end transpile.convert's cpp_std (C++17: backends/cpp17.Bodies)
-extern const std::optional<py::str> PLATFORM;   // no platform: the generic stdafx.h, nothing a host compiler lacks
-extern const py::list<py::str> FLAGS;
-extern const py::str COMPILES;             // "compiles (%s %s); not run: %s"
+namespace newlane = cb::verify::lanes;
 
-// A folder holding .java files (at any depth), or a single .java file's folder.
-bool is_module(const py::str& path);
-py::str source_dir(const py::str& path);
+inline const py::str KIND = py::str("java");
+inline constexpr int64_t REV = newlane::JavaLane::kRev;      // bump when what a verdict means changes
+inline const py::str SOURCE_REV = py::str("java-3");         // who made the candidates: the transpiler, not the native decompiler
+inline constexpr bool LIBRARY = false;
+inline constexpr bool PER_FUNCTION = true;
+inline const py::str STD = py::str("c++03");                 // the dialect the lane judges in when none is asked for
+inline const py::str CPP_STD = py::str("C++03");
+inline const std::optional<py::str> PLATFORM = std::nullopt;   // no platform: the generic stdafx.h, nothing a host compiler lacks
+inline const py::list<py::str> FLAGS = {py::str("-std=c++03"), py::str("-fsyntax-only"), py::str("-w")};
 
+// A folder holding .java files (at any depth), or a single .java file.
+inline bool is_module(const py::str& path) { return newlane::JavaLane::is_module(cb::fs::from_text(path.utf8())); }
+// The folder the source is in.
+inline py::str source_dir(const py::str& path) { return cb::compat::to_py(cb::fs::to_text(newlane::JavaLane::source_dir(cb::fs::from_text(path.utf8())))); }
 // What results are filed under: the .java files' names and contents, in a fixed order.
-py::str sha(const py::str& path);
+inline py::str sha(const py::str& path) { return cb::compat::to_py(newlane::JavaLane::module_sha(cb::fs::from_text(path.utf8()))); }
 
 // (javac, java) -- the JDK the behavioural judge runs the original with -- or ("", "").
-std::tuple<py::str, py::str> jdk();
-
-// The host C++ compiler, or "" when there is none.
-py::str compiler();
-
-// Compile one translation unit for syntax and types. -> (ok, [error lines]). `prefix` is a header precompiled
-// by `precompile` -- the support headers every unit starts with -- included first.
-std::tuple<bool, py::list<py::str>> check(const py::str& cxx, const py::str& include_dir, const py::str& unit,
-                                          const std::optional<py::str>& prefix = std::nullopt);
-
-// (a digest of the settings a verdict depends on, the text it is made from). RuntimeError: no C++ compiler.
-std::tuple<py::str, py::str> profile(const std::optional<py::str>& module_path = std::nullopt);
-
-// stdafx.h and the Java runtime (JavaRT.h and what it includes) precompiled once for the module: every class
-// unit starts with them, and parsing them was four fifths of each class's compile. -> the header to pass as
-// `prefix`, or None (a compiler that is not GCC's, or the header did not precompile).
-std::optional<py::str> precompile(const py::str& cxx, const py::str& include_dir, const py::str& work);
-
-struct Prepared {
-    py::str out;
-    codebreaker::java::transpile::Summary summary;
-    py::str src;
-    py::dict<py::str, py::str> java;            // class name -> its .java path
-    py::dict<py::str, py::str> texts;
-    py::str header;
-    py::list<py::str> order;
-    py::dict<py::str, py::str> key;
-    py::list<py::str> all_keys;
-    py::str sig;
-};
-
-// Transpile the module into work/cpp. Classes are named by their .java file.
-Prepared prepare(const py::str& module_path, const py::str& work);
-
-// (name, unit, java source or '')
-struct Item {
-    py::str name;
-    py::str unit;
-    py::str source;
-};
-
-// what judge() is given for the whole program
-struct Context {
-    py::str cxx;
-    py::str include_dir;
-    std::optional<py::str> prefix;
-    py::str staged;
+inline std::tuple<py::str, py::str> jdk() {
+    std::optional<py::str> found = codebreaker::decompile::jar::find_java();
+    py::str java = found ? *found : py::str();
     py::str javac;
-    py::str java;
-    py::str work;
-    codebreaker::java::probe::Compiled compiled;
-};
+    if (!java.empty()) {
+        py::str sibling = py::os::path::join(py::os::path::dirname(java), py::str("javac") + py::str(".exe"));
+        if (py::os::path::isfile(sibling)) {
+            javac = sibling;
+        } else {
+            std::optional<py::str> w = py::shutil::which(py::str("javac"));
+            javac = w ? *w : py::str();
+        }
+    }
+    if (!javac.empty()) return {javac, java};
+    return {py::str(), py::str()};
+}
 
-struct Built {
-    Context context;
-    py::dict<py::str, Item> items;
-    py::dict<py::str, py::str> missing;   // {name: why it is not in the build}
-};
-
-// One translation unit per class: its .cpp, or for a header-only class a unit that includes it.
-Built build(const Prepared& m, const py::str& module_path, const py::str& work);
-
-// (verdict, what differs, [limits], text)
-using Verdict = std::tuple<py::str, py::str, py::list<py::str>, py::str>;
-
-Verdict judge(const Context& context, const Item& item);
+// The host C++ compiler (settings.json: host_cxx, else g++ on PATH), or "" when there is none.
+inline py::str compiler() {
+    py::str cxx = py::settings::get_str(py::str("host_cxx"));
+    if (!cxx.empty() && py::os::path::isfile(cxx)) return cxx;
+    std::optional<py::str> w = py::shutil::which(py::str("g++"));
+    return w ? *w : py::str();
+}
 
 }  // namespace codebreaker::verify::lanes::java
