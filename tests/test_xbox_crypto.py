@@ -117,6 +117,8 @@ def test_exp_signer_hxpc_takes_a_cpu_key():
     try:
         xc.XECRYPT_RSAPRV_2048().e
     except AttributeError:   # the translated runtime's ctypes structures lack their anonymous members' fields
+        if SCRIPT:           # (run as a script: nothing to check here)
+            return
         pytest.skip("needs CPython's ctypes; `crypto exp_signer` is native (native/cb/formats/xbox/crypto tool tests)")
     key = xc.XeCryptCpuKeyGen()
     with tempfile.TemporaryDirectory() as work:
@@ -134,7 +136,12 @@ def test_exp_signer_hxpc_takes_a_cpu_key():
         assert data[:4] == b"HXPC" and len(data) == 0x170 + 48
 
 
+SCRIPT = False   # run as a script (main), not under pytest
+
+
 def main():
+    global SCRIPT
+    SCRIPT = True
     for fn in (test_hashes, test_ciphers, test_cpu_key_and_keyvault, test_stream_io, test_command,
                test_xcp_dumper_wrong_key_leaves_the_file_alone, test_exp_signer_hxpc_takes_a_cpu_key):
         check(fn)
