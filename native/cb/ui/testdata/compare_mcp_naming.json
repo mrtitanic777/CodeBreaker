@@ -1,0 +1,12 @@
+[
+ ["names", {"module": "lz32.dll", "limit": 3}],
+ ["name_function", {"module": "lz32.dll", "addr": "bfea1000", "name": "McpProofName"}],
+ ["name_function", {"module": "lz32.dll", "addr": "bfea1057", "name": "McpProofName2"}],
+ ["name_function", {"module": "lzexpand.dll", "addr": "2:0000", "name": "McpProofNameNe"}],
+ ["name_function", {"module": "lz32.dll", "addr": "bfea1075", "name": "TinyThunk"}],
+ ["name_function", {"module": "lz32.dll", "addr": "bfea1000", "name": "bad name"}],
+ ["names", {"module": "lz32.dll", "limit": 3}],
+ ["names", {"module": "lz32.dll", "find": "McpProof"}],
+ ["disasm", {"module": "lz32.dll", "addr": "McpProofName", "count": 3}],
+ ["xrefs", {"module": "lz32.dll", "addr": "McpProofName2"}]
+]

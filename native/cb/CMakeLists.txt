@@ -255,8 +255,7 @@ target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_com
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
-target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage cb_symbols ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client; cb_symbols: the demangler of the MCP server)
-
+target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage cb_symbols cb_analyze cb_decompile cb_compare cb_store cb_knowledge cb_app cb_platforms cb_source cb_java cb_formats ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client; cb_symbols: the demangler and the names of the MCP server; cb_analyze: its disassembly; cb_decompile, cb_engine: its decompiler; cb_compare, cb_store: the version comparison; cb_app: the command table; cb_platforms, cb_java: what a file is; cb_source: the source tree -- static libraries may be cyclic)
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
@@ -418,6 +417,11 @@ add_executable(cb_lane_worker EXCLUDE_FROM_ALL engine/lane_worker_main.cpp)
 cb_apply_flags(cb_lane_worker)
 target_link_libraries(cb_lane_worker PRIVATE cb_engine cb_core)
 cb_copy_prebuilt_dlls(cb_lane_worker)
+# The MCP server as a program of its own over the standard services (the proof harness of the tools; `codebreaker mcp` serves the same).
+add_executable(cb_mcp_stdio EXCLUDE_FROM_ALL ui/mcp_stdio_main.cpp)
+cb_apply_flags(cb_mcp_stdio)
+target_link_libraries(cb_mcp_stdio PRIVATE cb_ui cb_core)
+cb_copy_prebuilt_dlls(cb_mcp_stdio)
 add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 

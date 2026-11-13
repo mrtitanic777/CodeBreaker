@@ -1,0 +1,10 @@
+[
+ ["run_command", {"command": "dos-interrupts", "args": ["21", "30"]}],
+ ["@sleep", {"seconds": 4}],
+ ["jobs", {}],
+ ["job", {"job_id": "$LAST_ID"}],
+ ["job_file", {"job_id": "$LAST_ID"}],
+ ["stop_job", {"job_id": "$LAST_ID"}],
+ ["run_command", {"command": "ui"}],
+ ["run_command", {"command": "nosuchcommand"}]
+]

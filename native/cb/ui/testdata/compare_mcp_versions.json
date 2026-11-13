@@ -1,0 +1,16 @@
+[
+ ["compare_versions", {"module_a": "lz32.dll", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/lz32.dll", "limit": 6}],
+ ["compare_versions", {"module_a": "lz32.dll", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/lz32.dll", "status": "changed"}],
+ ["diff_function", {"module_a": "lz32.dll", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/lz32.dll", "addr": "bfea11dd"}],
+ ["diff_function", {"module_a": "lz32.dll", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/lz32.dll", "addr": "LZClose"}],
+ ["diff_function", {"module_a": "lz32.dll", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/lz32.dll", "addr": "bfe61093"}],
+ ["compare_versions", {"module_a": "lzexpand.dll", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/lzexpand.dll", "limit": 6}],
+ ["diff_function", {"module_a": "lzexpand.dll", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/lzexpand.dll", "addr": "LZINIT"}],
+ ["compare_versions", {"module_a": "find.exe", "module_b": "C:/Users/mrtit/Documents/GitHub/win98/files/find.exe", "limit": 6}],
+ ["name_function", {"module": "lz32.dll", "addr": "bfea1000", "name": "McpProofName"}],
+ ["name_function", {"module": "lz32.dll", "addr": "bfea1057", "name": "McpProofName2"}],
+ ["name_function", {"module": "lzexpand.dll", "addr": "2:0000", "name": "McpProofNameNe"}],
+ ["names", {"module": "lz32.dll", "limit": 3}],
+ ["names", {"module": "lzexpand.dll", "limit": 5}],
+ ["name_function", {"module": "lz32.dll", "addr": "bfea1075", "name": "TinyThunk"}]
+]
