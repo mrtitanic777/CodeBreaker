@@ -1,0 +1,36 @@
+{
+ "xex": "C:\\Users\\mrtit\\Documents\\GitHub\\Dashboard\\Xbox 360 Dashboard\\SystemUpdate\\converted\\natalsu.xex",
+ "name": "natalsu.dll",
+ "base": 2550136832,
+ "entry": 2550146728,
+ "imports": [
+  "xam.xex",
+  "xboxkrnl.exe"
+ ],
+ "libraries": [
+  [
+   "XBOXKRNL",
+   "2.0.17559.0"
+  ],
+  [
+   "LIBCMT",
+   "2.0.20805.0"
+  ],
+  [
+   "NUIDEV",
+   "2.0.17559.0"
+  ],
+  [
+   "LINK",
+   "10.0.11886.0"
+  ],
+  [
+   "C2",
+   "16.0.11886.0"
+  ],
+  [
+   "C1",
+   "16.0.11886.0"
+  ]
+ ]
+}
