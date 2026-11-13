@@ -174,3 +174,16 @@ CB_TEST("core.cli.help_text", [] {
     const std::string v = cli.help(*cli.find({"hex"}), "hex");
     CB_CHECK(v.find("<file> [<extra>...]") != std::string::npos);
 });
+
+CB_TEST("core.cli.passthrough_gives_the_rest_to_the_variadic_positional_untouched", [] {
+    std::vector<std::string> seen;
+    Command c{"edit", "an editor with its own arguments", {Positional{"op", "the operation"}, Positional{"rest", "its arguments", false, true}},
+              [&seen](const Args& a) { seen = a.values("rest"); return 0; }, {}, "Edit"};
+    c.passthrough = true;
+    const Cli cli("codebreaker", {c});
+    CB_CHECK_EQ(cli.run(argv_of({"edit", "privileges", "in.xex", "-pal50", "+3", "--help", "-10", "out.xex"})), 0);
+    CB_CHECK(seen == (std::vector<std::string>{"in.xex", "-pal50", "+3", "--help", "-10", "out.xex"}));
+    // before the operation, options are still the command's own
+    CB_CHECK_EQ(cli.run(argv_of({"edit", "--help"})), 0);
+    CB_CHECK_EQ(cli.run(argv_of({"edit", "--bogus"})), 2);
+});

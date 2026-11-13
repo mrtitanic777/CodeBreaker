@@ -4,13 +4,19 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "cb/core/cli.hpp"
 #include "cb/core/crypto.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/formats/xex.hpp"
+#include "cb/formats/xex_imports.hpp"
 
 namespace cb::testing {
 
@@ -36,6 +42,40 @@ inline std::string tree_manifest(const std::filesystem::path& folder) {
     std::string out;
     for (const std::string& line : lines) out += line;
     return out;
+}
+
+// A real Xbox 360 title the tests may read when it is on this machine (Minecraft under C:/Nexia360/Games), else nullopt.
+inline std::optional<std::filesystem::path> game_file(const char* relative) {
+    const std::filesystem::path path = std::filesystem::path("C:/Nexia360/Games") / relative;
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;
+    return path;
+}
+
+// The xex program, for the tests that read a real .xex: the folder in CB_XEX_BIN, else the one built in the source tree. nullopt when
+// there is none (the test is then skipped). Unpacked images go under `unpacked`.
+inline std::optional<formats::xex::Tools> real_xex_tools(const std::filesystem::path& unpacked) {
+    std::vector<std::filesystem::path> folders;
+    if (const auto env = fs::get_env("CB_XEX_BIN")) folders.push_back(fs::from_text(*env));
+    folders.push_back(data_path("../xex/build/bin"));
+    for (const auto& folder : folders) {
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(folder / "xex.exe", ec)) return formats::xex::Tools{folder / "xex.exe", unpacked};
+    }
+    return std::nullopt;
+}
+
+// The console ordinals the knowledge base keeps (codebreaker/symbols/console_ordinals.json): {library: {ordinal: name}}, as the function
+// the xex commands' environments take.
+inline formats::xex_imports::OrdinalNames console_ordinal_names() {
+    auto table = std::make_shared<Json>(json::load(data_path("../../codebreaker/symbols/console_ordinals.json")));
+    return [table](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
+        const auto lib = table->find(std::string(library));
+        if (lib == table->end() || !lib->is_object()) return std::nullopt;
+        const auto name = lib->find(std::to_string(ordinal));
+        if (name == lib->end() || !name->is_string()) return std::nullopt;
+        return name->get<std::string>();
+    };
 }
 
 }  // namespace cb::testing
