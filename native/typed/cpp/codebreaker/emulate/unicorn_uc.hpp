@@ -63,6 +63,8 @@ decltype(auto) uc_guard(F&& f) {
 class OldUc final : public core16::Uc {
   public:
     explicit OldUc(std::unique_ptr<::cb::core16::Uc> impl) : impl_(std::move(impl)) {}
+    // over an engine somebody else owns (a stand-in is handed the run's own): it must outlive this
+    explicit OldUc(::cb::core16::Uc& borrowed) : impl_(std::shared_ptr<::cb::core16::Uc>(std::shared_ptr<void>(), &borrowed)) {}
 
     void* handle() const override { return impl_->handle(); }
     void mem_map(int64_t address, int64_t size) override { call([&] { impl_->mem_map(static_cast<uint64_t>(address), static_cast<uint64_t>(size)); }); }
@@ -126,7 +128,7 @@ class OldUc final : public core16::Uc {
             throw_uc_error(fault.code());
         }
     }
-    std::unique_ptr<::cb::core16::Uc> impl_;
+    std::shared_ptr<::cb::core16::Uc> impl_;
 };
 
 }  // namespace shim_detail
