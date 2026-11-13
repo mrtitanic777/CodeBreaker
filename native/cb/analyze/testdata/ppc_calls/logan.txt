@@ -1,0 +1,3 @@
+5459 functions: arity for 1208, import arity for 27, 36 variadic, 2066 keep a volatile register, 2163 keep a volatile FP register
+written: <out>/c.tsv
+exit=0

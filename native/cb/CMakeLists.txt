@@ -156,7 +156,7 @@ cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_build cb_translate cb_symbols cb_knowledge)   # (cb_symbols, cb_knowledge, cb_base: environment.cpp reads the argument sizes, ordinal and driver tables the base keeps; cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment; cb_translate: the L2 library client and the module model c_text writes)
 
 cb_area(analyze)
-target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
+target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate cb_recompile)   # (cb_recompile: function discovery and the disassembler of the ppc-calls command; cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
 
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats)   # (omf_object: an OMF module as the lanes' object record)
