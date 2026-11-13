@@ -159,6 +159,9 @@ public:
     // {kind: digest of the verifier settings in force now}: nullopt for a kind whose tools are not set up on this machine.
     // Asked once, and again when a lane is added.
     std::map<std::string, std::optional<std::string>> digests() const;
+    // {kind: the verifier profile (digest and the settings it was made from) in force now}: a kind whose tools are not set up here is left out.
+    // What `codebreaker migrate-state` matches a state folder's older profiles against.
+    std::map<std::string, lanes::Profile> profiles() const;
     // (content hash, profile digest) of a module; UsageError for a file nothing reconstructs.
     Identity identity(const std::filesystem::path& module_path) const;
     // The same for a caller that treats "nothing reconstructs it" (and "that lane's tools are not set up") as no identity.

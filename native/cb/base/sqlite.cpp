@@ -151,6 +151,15 @@ Database Database::open(const std::filesystem::path& file, std::chrono::millisec
     return Database(std::move(impl));
 }
 
+Database Database::open_readonly(const std::filesystem::path& file, std::chrono::milliseconds busy_timeout) {
+    auto impl = std::make_unique<Impl>();
+    impl->file = file;
+    const int rc = sqlite3_open_v2(fs::to_text(file).c_str(), &impl->db, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr);
+    if (rc != SQLITE_OK) fail(file, impl->db, rc, "open (read-only)");
+    sqlite3_busy_timeout(impl->db, static_cast<int>(busy_timeout.count()));
+    return Database(std::move(impl));
+}
+
 const std::filesystem::path& Database::path() const { return impl_->file; }
 
 void Database::exec(std::string_view sql, const std::vector<Value>& params) {
