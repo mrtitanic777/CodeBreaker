@@ -1,0 +1,314 @@
+{
+ "functions": {
+  "bfeb1000": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "sub_001000",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1044": {
+   "detail": "removes 4 bytes on return vs 12  [input 0,0,0,0]",
+   "limits": "",
+   "name": "GetFileVersionInfoSizeW",
+   "reason": "stack-differs",
+   "verdict": "divergent"
+  },
+  "bfeb104d": {
+   "detail": "removes 4 bytes on return vs 16  [input 0,0,0,0]",
+   "limits": "",
+   "name": "VerLanguageNameW",
+   "reason": "stack-differs",
+   "verdict": "divergent"
+  },
+  "bfeb1056": {
+   "detail": "removes 4 bytes on return vs 20  [input 0,0,0,0]",
+   "limits": "",
+   "name": "GetFileVersionInfoW",
+   "reason": "stack-differs",
+   "verdict": "divergent"
+  },
+  "bfeb105f": {
+   "detail": "removes 4 bytes on return vs 36  [input 0,0,0,0]",
+   "limits": "",
+   "name": "VerFindFileW",
+   "reason": "stack-differs",
+   "verdict": "divergent"
+  },
+  "bfeb1068": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001068",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1095": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001095",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb1097": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001097",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb10c5": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010C5",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb10c7": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010C7",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb10f5": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010F5",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb10f7": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010F7",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb1190": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001190",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb1192": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001192",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb1216": {
+   "detail": "",
+   "limits": "",
+   "name": "VerLanguageNameA",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb1218": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001218",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb123f": {
+   "detail": "",
+   "limits": "",
+   "name": "VerQueryValueA",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb1241": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001241",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfeb12e1": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0012E1",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb13b3": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "sub_0013B3",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb13fb": {
+   "detail": "",
+   "limits": "coverage=97,paths=2,paths-all",
+   "name": "sub_0013FB",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb146c": {
+   "detail": "",
+   "limits": "coverage=100,paths=8,paths-all",
+   "name": "GetFileVersionInfoSizeA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1507": {
+   "detail": "",
+   "limits": "coverage=100,paths=4,paths-all",
+   "name": "GetFileVersionInfoA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1598": {
+   "detail": "",
+   "limits": "coverage=100,paths=3,paths-all",
+   "name": "VerFindFileA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb15ee": {
+   "detail": "",
+   "limits": "coverage=72,paths=3,paths-all",
+   "name": "VerInstallFileA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16aa": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016AA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16b6": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016B6",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16bc": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016BC",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16c2": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016C2",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16c8": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016C8",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16ce": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016CE",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16d4": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016D4",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16da": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016DA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16e0": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016E0",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16e6": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016E6",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16f2": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016F2",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16f8": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016F8",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb16fe": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0016FE",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1704": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001704",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb170a": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_00170A",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1710": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001710",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1716": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001716",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb171c": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_00171C",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfeb1722": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001722",
+   "reason": "",
+   "verdict": "equivalent"
+  }
+ },
+ "module": "version.dll",
+ "seconds": 10.401695966720581
+}

@@ -8,7 +8,11 @@
 // What stays in the old world until its own module is refactored, installed through `hooks()` by the code that owns it (engine/lanes_wiring.cpp):
 // which platform a file is (engine::lanes' registry) and the engine's way of making the same results (`engine_run`). And judging in worker
 // processes (jobs/workers) for the lanes that say how their judge's inputs travel (`encode_context`): the new run takes it as its `judge_batch`.
-// COMPAT(py): remove with engine/lanes and jobs/workers.
+// COMPAT(py): remove with the last old lane that is still an old Kind (the console lanes) and jobs/workers.
+//
+// The lanes of 32-bit and 16-bit Windows and of drivers ("pe", "ne", "le") are the lane kit's (engine/lane_kit): this header asks it which of them takes a file
+// (`kind_name`), what their results are filed under (`identity`, `digests`) and has it reconstruct and judge a module (`run`), judging in worker processes
+// when the program has them. The old `Kind` registry holds the lanes that are not refactored yet.
 #pragma once
 
 #include <cstdint>
@@ -22,6 +26,7 @@
 #include <vector>
 
 #include "cb/compat/legacy_settings.hpp"
+#include "cb/compat/old_lane_kit.hpp"
 #include "cb/compat/py_bridge.hpp"
 #include "cb/verify/reconstruct.hpp"
 #include "codebreaker/base/corpus.hpp"
@@ -282,6 +287,23 @@ inline cb::verify::reconstruct::KindTraits traits_of(const std::shared_ptr<codeb
     return t;
 }
 
+// The lane kit's lanes as the reconstruction path's Kinds: "pe", "ne" and "le", for the files of those classes.
+inline cb::verify::reconstruct::Kinds& kit_kinds() {
+    static cb::verify::reconstruct::Kinds kinds = [] {
+        cb::verify::reconstruct::Kinds made;
+        cb::compat::old_lane_kit().add_lanes(made);
+        return made;
+    }();
+    return kinds;
+}
+// Which of them takes the file (by its class), or nullopt.
+inline std::optional<std::string> kit_kind(const py::str& module_path) {
+    const std::optional<py::str> lane = base::corpus::lane(module_path);
+    if (!lane) return std::nullopt;
+    const std::string name = lane->utf8();
+    return (name == "pe" || name == "ne" || name == "le") && kit_kinds().find(name) != nullptr ? std::optional<std::string>(name) : std::nullopt;
+}
+
 }  // namespace detail
 
 // the lanes of every platform
@@ -311,7 +333,9 @@ inline std::shared_ptr<Kind> kind_named(const py::str& name) {
 
 // Which kind a file is: 'pe', 'ne', 'powerpc', 'le', 'dos', 'java' -- or None when nothing reconstructs it.
 inline std::optional<py::str> kind_name(const py::str& module_path) {
-    return hooks().kind_name ? hooks().kind_name(module_path) : std::nullopt;
+    if (hooks().kind_name) return hooks().kind_name(module_path);
+    const std::optional<std::string> kit = detail::kit_kind(module_path);
+    return kit ? std::optional<py::str>(py::str(*kit)) : std::nullopt;
 }
 
 inline std::shared_ptr<Kind> kind_of(const py::str& module_path) {
@@ -351,9 +375,10 @@ inline cb::verify::reconstruct::Services services_over(cb::engine::FunctionStore
     };
     s.decompiler_rev = std::to_string(codebreaker::decompile::decompiler::REV);
     s.judge_threads = py::os::environ_::get(py::str("CB_JUDGE_THREADS")) ? static_cast<int>(codebreaker::jobs::pool::default_jobs()) : 1;
-    s.judge_batch = [](const cb::verify::lanes::Kind& lane, const cb::verify::lanes::Built&, const std::vector<std::string>& names)
-        -> std::optional<std::map<std::string, nv::Judgement>> {
+    s.judge_batch = [](const cb::verify::reconstruct::Services::JudgeBatch& batch) -> std::optional<std::map<std::string, nv::Judgement>> {
         namespace W = codebreaker::jobs::workers;
+        const cb::verify::lanes::Kind& lane = batch.kind;
+        const std::vector<std::string>& names = batch.names;
         const auto& adapter = static_cast<const Adapter&>(lane);
         const auto built = adapter.last_built();
         const std::optional<std::string> context_text = built && W::enabled() ? adapter.old_kind()->encode_context(built->context) : std::nullopt;
@@ -367,6 +392,11 @@ inline cb::verify::reconstruct::Services services_over(cb::engine::FunctionStore
 
 // (content hash, profile digest) -- what results for this module are filed under.
 inline std::tuple<py::str, py::str> identity(const py::str& module_path) {
+    if (const std::optional<std::string> kit = detail::kit_kind(module_path)) {
+        const cb::verify::lanes::Kind& lane = *detail::kit_kinds().find(*kit);
+        const std::optional<py::str> sha = base::corpus::sha(module_path);
+        return {sha ? *sha : py::str(""), py::str(cb::compat::guard([&] { return lane.profile(cb::compat::legacy::path_of(module_path)); }).digest)};
+    }
     std::shared_ptr<Kind> kind = kind_of(module_path);
     return {module_sha(*kind, module_path), std::get<0>(kind->profile(module_path))};
 }
@@ -377,6 +407,13 @@ inline py::dict<py::str, std::optional<py::str>> digests() {
     static size_t known = 0;
     if (cache.empty() || known != detail::registry().size()) {
         cache = py::dict<py::str, std::optional<py::str>>();
+        for (const std::string& name : detail::kit_kinds().names()) {
+            try {
+                cache.set(py::str(name), std::optional<py::str>(py::str(detail::kit_kinds().find(name)->profile({}).digest)));
+            } catch (const std::exception&) {   // (a lane whose tools are not set up has no digest)
+                cache.set(py::str(name), std::optional<py::str>());
+            }
+        }
         for (const auto& e : detail::registry()) {
             try {
                 cache.set(e.first, std::optional<py::str>(std::get<0>(e.second->profile(py::str("")))));
@@ -423,6 +460,18 @@ inline py::dict<py::str, py::str> signatures(const Prepared& m, const std::optio
 inline std::tuple<py::str, py::str> run(const py::str& module_path, const std::shared_ptr<engine::native_engine::FunctionStore>& fs_in = nullptr,
                                         const std::function<void(const py::str&)>& log_in = nullptr) {
     const std::function<void(const py::str&)> log = log_in ? log_in : [](const py::str& s) { py::print(s); };
+    if (detail::kit_kind(module_path)) {   // a lane of the kit's: the new reconstructor over its services, writing to the store `fs` is
+        std::shared_ptr<engine::native_engine::FunctionStore> store_in = fs_in;
+        if (!store_in) store_in = std::make_shared<engine::native_engine::FunctionStore>(store::functions::default_path());
+        return cb::compat::guard([&] {
+            cb::engine::FunctionStore store(cb::compat::legacy::path_of(store_in->path), cb::compat::legacy::path_of(store_in->folder));
+            cb::verify::reconstruct::Services services = cb::compat::old_lane_kit().reconstruct_services(detail::kit_kinds(), store);
+            services.log = [log](std::string_view line) { log(cb::compat::to_py(line)); };
+            const cb::verify::reconstruct::Reconstructor rec(std::move(services));
+            const cb::verify::reconstruct::Outcome o = rec.run(cb::compat::legacy::path_of(module_path));
+            return std::tuple<py::str, py::str>{py::str(o.sha), py::str(o.profile)};
+        });
+    }
     std::shared_ptr<Kind> kind = kind_of(module_path);
     std::shared_ptr<engine::native_engine::FunctionStore> fs = fs_in;
     if (!fs) fs = std::make_shared<engine::native_engine::FunctionStore>(store::functions::default_path());
@@ -473,5 +522,11 @@ inline int judge_worker(const std::vector<std::string>& args) {
     W::write_file(args[3], out);
     return 0;
 }
+
+// The old lanes' judge shares: registered with the program's worker kinds (jobs/workers) once this header is in the program.
+inline const bool judge_worker_registered = [] {
+    codebreaker::jobs::workers::kinds().add("judge", [](const cb::jobs::Args& args) { return judge_worker(args); });
+    return true;
+}();
 
 }  // namespace codebreaker::verify::reconstruct

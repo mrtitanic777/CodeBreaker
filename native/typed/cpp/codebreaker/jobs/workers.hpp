@@ -1,71 +1,109 @@
-// codebreaker/jobs/workers.hpp -- worker PROCESSES of the program itself, for work that runs an emulator.
+// codebreaker/jobs/workers.hpp -- SHIM (docs/CPP_DESIGN.md 6.3) over cb/jobs/workers.hpp for the ports that still use the old API. No logic: forwarding.
 //
-// The Python ran the gate's shares, the judge's items and each module of build_many in worker processes. Unicorn and the tracer DLL keep
-// state per process (the TCG code buffer, the callback slots), so on threads they corrupt each other (found by the core16 integration):
-// the emulator-bound work is handed to child processes of this same program, started in a worker mode:
+// Old API: enable, enabled, dispatch, run, count, hex, unhex, Enc, Dec, read_file, write_file, scratch_folder.
 //
-//     core16 --cb-worker <gate|judge|build> <files...>
-//
-// A host program (the `codebreaker` exe, a harness) opts in with two lines at the top of its main():
-//
-//     int rc = 0;
-//     if (codebreaker::jobs::workers::dispatch(argc, argv, rc)) return rc;     // this process is a worker: it did its share
-//     codebreaker::jobs::workers::enable(argv[0]);                             // ... and may start workers of its own
-//
-// Without enable() (a program that never calls dispatch), nothing is started and the work runs in the caller's process, one share at a time.
-// What a share needs travels in files (the parent writes them, the worker reads them and writes its answer to one): text, hex for anything that
-// is not plain, so no encoding can change a result.
+// What the program's workers can do is registered in `kinds()`: the lane kit's ("lane-judge", "lane-build": judging a share of a module's functions and
+// building a module, engine/lane_kit) and, by the code that owns it, the old reconstruct's "judge" for the lanes that are still the old Kind (the
+// header of verify/reconstruct registers it). A host program calls `dispatch` at the top of its main() as it always did.
 #pragma once
 
+#include <algorithm>
+#include <atomic>
 #include <cstdint>
-#include <functional>
+#include <filesystem>
 #include <string>
 #include <vector>
 
+#include "cb/base/config.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/core/parallel.hpp"
+#include "cb/engine/lane_kit.hpp"
+#include "cb/jobs/workers.hpp"
+
 namespace codebreaker::jobs::workers {
 
-// This program's own path is `exe`: from now on workers may be started.
-void enable(const std::string& exe);
-bool enabled();
+// The process's launcher and kinds (the old API had a global for each).
+inline cb::jobs::WorkerLauncher& launcher() {
+    static cb::jobs::WorkerLauncher l{std::filesystem::path()};
+    return l;
+}
+inline cb::jobs::WorkerKinds& kinds() {
+    static cb::jobs::WorkerKinds k = [] {
+        cb::jobs::WorkerKinds made;
+        cb::engine::LaneKit::register_worker_kinds(made);
+        return made;
+    }();
+    return k;
+}
+
+// This program's own path is `exe`: from now on workers may be started. (The old one asked the OS for the path too.)
+inline void enable(const std::string&) { launcher() = cb::jobs::WorkerLauncher::for_this_program(); }
+inline bool enabled() { return launcher().enabled(); }
 
 // Is this process a worker (argv[1] == "--cb-worker")? Then it ran its share: `rc` is its exit code.
-bool dispatch(int argc, char** argv, int& rc);
+inline bool dispatch(int argc, char** argv, int& rc) {
+    const std::vector<std::string> args(argv, argv + argc);
+    const std::optional<int> done = cb::jobs::run_as_worker(kinds(), args);
+    if (!done) return false;
+    rc = *done;
+    return true;
+}
 
 // Run the program as a worker with these arguments (after "--cb-worker"); its exit code. Blocks.
-int64_t run(const std::vector<std::string>& args);
+inline int64_t run(const std::vector<std::string>& args) {
+    if (args.empty()) return cb::jobs::kWorkerUnknownKind;
+    return launcher()
+        .run(args.front(), cb::jobs::Args(args.begin() + 1, args.end()))
+        .exit_code;
+}
 
-// How many at once (base/parallel workers()).
-int64_t count();
+// How many at once: the machine's budget for the settings of the checkout this program runs from.
+inline int64_t count() {
+    return std::max<int64_t>(1, cb::parallel::workers(cb::config::current().worker_policy()));
+}
 
-// ---- the files' text ------------------------------------------------------------------------------------------------------------
-std::string hex(const std::string& raw);
-std::string unhex(const std::string& text);
+// ---- the files' text ----
+inline std::string hex(const std::string& raw) {
+    cb::jobs::TokenWriter w;
+    w.text(raw);
+    return w.str();
+}
+inline std::string unhex(const std::string& text) { return cb::jobs::TokenReader(text).text(); }
 
-// Tokens separated by spaces: integers as they are, text and bytes as hex ("-" for empty).
 class Enc {
   public:
-    Enc& i(int64_t v);
-    Enc& s(const std::string& v);
-    const std::string& text() const { return out_; }
+    Enc& i(int64_t v) {
+        w_.integer(v);
+        return *this;
+    }
+    Enc& s(const std::string& v) {
+        w_.text(v);
+        return *this;
+    }
+    const std::string& text() const { return w_.str(); }
 
   private:
-    std::string out_;
+    cb::jobs::TokenWriter w_;
 };
+
 class Dec {
   public:
-    explicit Dec(const std::string& text);
-    int64_t i();
-    std::string s();
+    explicit Dec(const std::string& text) : r_(text) {}
+    int64_t i() { return r_.integer(); }
+    std::string s() { return r_.text(); }
 
   private:
-    std::vector<std::string> tokens_;
-    size_t at_ = 0;
+    cb::jobs::TokenReader r_;
 };
 
-std::string read_file(const std::string& path);
-void write_file(const std::string& path, const std::string& text);
+inline std::string read_file(const std::string& path) { return cb::fs::read_text(cb::fs::from_text(path)); }
+inline void write_file(const std::string& path, const std::string& text) { cb::fs::write_text(cb::fs::from_text(path), text); }
 
 // A folder for one hand-over (removed by the caller).
-std::string scratch_folder();
+inline std::string scratch_folder() {
+    const std::filesystem::path base = std::filesystem::temp_directory_path() / "codebreaker_workers";
+    cb::fs::make_dirs(base);
+    return cb::fs::ScopedTempDir("w", base).release().string();   // (released: the caller removes it, as it always did)
+}
 
 }  // namespace codebreaker::jobs::workers

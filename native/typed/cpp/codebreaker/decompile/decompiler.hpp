@@ -49,10 +49,8 @@ namespace codebreaker::decompile::describe {
 class Description;   // codebreaker/decompile/describe.hpp
 }
 
-// verify/lanes/win32.hpp, declared here for its one function: that header brings in the symbolic engine (z3), which a decompiler has no use for
-namespace codebreaker::verify::lanes::win32 {
-py::list<int64_t> functions(const py::str& lane, const py::str& path);   // sorted(pe_functions.carve(path).funcs)
-}
+// the one function of the 32-bit lane this header asks for (verify/lanes/win32.hpp is the lane's shim: it takes in the decompiler)
+#include "codebreaker/verify/lanes/win32_functions.hpp"
 
 namespace codebreaker::decompile::decompiler {
 

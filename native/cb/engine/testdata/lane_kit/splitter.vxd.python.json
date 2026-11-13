@@ -1,0 +1,48 @@
+{
+ "functions": {
+  "1:13b": {
+   "detail": "3 instructions of the original ran",
+   "limits": "paths=1,paths-all",
+   "name": "service_0",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "1:142": {
+   "detail": "92 instructions of the original ran",
+   "limits": "calls-capped,truncated,paths=7",
+   "name": "service_1",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "1:1ee": {
+   "detail": "76 instructions of the original ran",
+   "limits": "calls-capped,truncated,paths=7",
+   "name": "service_2",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "1:258": {
+   "detail": "14 instructions of the original ran",
+   "limits": "paths=3,paths-all",
+   "name": "service_3",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "1:29f": {
+   "detail": "28 instructions of the original ran",
+   "limits": "paths=1,paths-all",
+   "name": "service_4",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "1:99": {
+   "detail": "18 instructions of the original ran",
+   "limits": "paths=7,paths-all",
+   "name": "control",
+   "reason": "",
+   "verdict": "equivalent"
+  }
+ },
+ "module": "splitter.vxd",
+ "seconds": 1.5427403450012207
+}

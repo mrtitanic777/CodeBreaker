@@ -140,8 +140,6 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 
 cb_area(verify)
 
-# The host the lane kit's worker tests start: the kit's worker kinds (judging and building in processes), as codebreaker.exe registers them
-# (engine/lane_worker_main.cpp). Linked after the engine area, which holds the kit.
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source)
 
@@ -316,9 +314,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/isolated16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
@@ -369,8 +364,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b11.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/engine/lanes_wiring.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b15.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_lane_kit.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/module.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp"

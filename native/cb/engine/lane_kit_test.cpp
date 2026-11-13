@@ -60,6 +60,31 @@ CB_TEST("engine.lane_kit.the_kit_is_made_of_the_settings_and_says_which_lanes_it
     CB_CHECK(&kit.decompiler() == &kit.decompiler());
 });
 
+CB_TEST("engine.lane_kit.the_worker_kinds_are_registered_and_no_launcher_means_this_process_judges", [] {
+    jobs::WorkerKinds kinds;
+    LaneKit::register_worker_kinds(kinds);
+    CB_CHECK(kinds.find("lane-judge") != nullptr);
+    CB_CHECK(kinds.find("lane-build") != nullptr);
+    CB_CHECK(kinds.find("nonesuch") == nullptr);
+    const std::optional<config::Config> config = kit_main_config();
+    if (!config) return;
+    fs::ScopedTempDir state("cb-lane-kit");
+    const fs::ScopedEnv scoped("CB_STATE", fs::to_text(state.path()));
+    LaneKit kit(config::Config::load(config->checkout_root()));
+    const std::vector<std::string> names{"a", "b", "c", "d", "e", "f", "g", "h"};
+    const stdfs::path module = "m.dll", work = "w";
+    if (!kit.win32_lane()) return;   // (no tools for the lane: nothing to ask of it)
+    const verify::lanes::Built built;
+    // no launcher: the threads of the caller judge, which is what nullopt says; a program with workers disabled is the same
+    CB_CHECK(!kit.judge_apart({*kit.win32_lane(), built, names, module, work}));
+    kit.set_worker_launcher(jobs::WorkerLauncher(stdfs::path()));
+    CB_CHECK(!kit.judge_apart({*kit.win32_lane(), built, names, module, work}));
+    CB_CHECK(!kit.build_apart("lz32.dll", std::nullopt, true));
+    // a lane is found by the name results are filed under
+    CB_CHECK(kit.lane_named("nonesuch") == nullptr);
+    CB_CHECK(kit.lane_named("pe") == kit.win32_lane());
+});
+
 CB_TEST("engine.lane_kit.proof", [] {
     const std::optional<std::string> out = fs::get_env("CB_LANE_KIT_PROOF");
     const std::optional<std::string> modules = fs::get_env("CB_LANE_KIT_MODULES");
@@ -98,5 +123,50 @@ CB_TEST("engine.lane_kit.proof", [] {
         doc["functions"] = std::move(functions);
         fs::write_text(fs::from_text(*out) / (fs::to_text(path.filename()) + ".json"), doc.dump(1));
         std::cout << done.line() << "\n";
+        // against what the Python made of the same module (testdata/lane_kit/<module>.python.json, run_py.py): the same verdict, reason and limits of every function.
+        // Not compared: the coverage figure (the two draw their guessed inputs differently), and for a driver the number of paths (the Python writes the driver back
+        // with another writer, so it explores other instructions: DIVERGES, see the bugs list).
+        const stdfs::path golden = testing::data_path("engine/testdata/lane_kit/" + fs::to_text(path.filename()) + ".python.json");
+        if (!stdfs::exists(golden)) continue;
+        const nlohmann::ordered_json want = json::load(golden);
+        const bool driver = path.extension() == ".vxd";
+        const auto normal = [&](std::string limits) {
+            std::vector<std::string> kept;
+            for (const std::string_view limit : text::split(limits, ',')) {
+                if (limit.starts_with("coverage=") || limit.empty() || (driver && limit.starts_with("paths="))) continue;
+                kept.emplace_back(limit);
+            }
+            std::ranges::sort(kept);
+            return text::join(kept, ",");
+        };
+        std::size_t same = 0;
+        for (const auto& [addr, row] : want.at("functions").items()) {
+            const auto got = doc.at("functions").find(addr);
+            const bool alike = got != doc.at("functions").end() && (*got)["verdict"] == row["verdict"] && (*got)["reason"].get<std::string>() == row["reason"].get<std::string>() &&
+                               normal((*got)["limits"].get<std::string>()) == normal(row["limits"].is_null() ? std::string() : row["limits"].get<std::string>());
+            if (alike) ++same;
+            else std::cout << "  differs from the Python: " << addr << " " << row["name"].get<std::string>() << "\n";
+        }
+        std::cout << "  " << same << " of " << want.at("functions").size() << " functions as the Python judged them\n";
+        CB_CHECK_EQ(same, want.at("functions").size());
+    }
+});
+
+// The module builder over the kit's services: `engine.lane_kit.module_build` with CB_LANE_KIT_BUILD naming the modules (';' separated) builds each whole
+// and prints its report -- the product check of the builder's wiring (slow, so off unless asked for; CB_STATE should name a folder of its own).
+CB_TEST("engine.lane_kit.module_build", [] {
+    const std::optional<std::string> modules = fs::get_env("CB_LANE_KIT_BUILD");
+    if (!modules || modules->empty()) return;
+    const config::Config config = config::Config::load(config::current().main_checkout());
+    LaneKit kit(config);
+    const build::module::ModuleBuilder builder(kit.module_services());
+    for (const std::string_view name : text::split(*modules, ';')) {
+        if (name.empty()) continue;
+        build::module::BuildOptions options;
+        options.outdir = config.state("lane_kit_build") / std::string(name);
+        const auto started = std::chrono::steady_clock::now();
+        const build::module::Built b = builder.build(name, options);
+        std::cout << b.report() << "\n(" << std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << "s)\n";
+        CB_CHECK(b.linked());
     }
 });

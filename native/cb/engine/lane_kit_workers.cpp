@@ -86,8 +86,8 @@ int kit_build_share(const jobs::Args& args) {
 }  // namespace
 
 void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
-    kinds.add("judge", kit_judge_share);
-    kinds.add("build", kit_build_share);
+    kinds.add("lane-judge", kit_judge_share);
+    kinds.add("lane-build", kit_build_share);
 }
 
 void LaneKit::set_worker_launcher(jobs::WorkerLauncher launcher) { impl_->launcher = std::move(launcher); }
@@ -114,7 +114,7 @@ std::optional<std::map<std::string, verify::Judgement>> LaneKit::judge_apart(con
         made[s].hand->write("in.txt", in.str());
         running.emplace_back([&, s] {
             try {
-                const jobs::WorkerResult r = impl_->launcher->run("judge", {fs::to_text(made[s].hand->file("in.txt")), fs::to_text(made[s].hand->file("out.txt"))});
+                const jobs::WorkerResult r = impl_->launcher->run("lane-judge", {fs::to_text(made[s].hand->file("in.txt")), fs::to_text(made[s].hand->file("out.txt"))});
                 made[s].ok = r.ok();
             } catch (const Error& e) {
                 log::warn(std::format("reconstruct: a judging worker did not start: {}", e.what()));
@@ -151,7 +151,7 @@ std::optional<build::module::Built> LaneKit::build_apart(const std::string& modu
     jobs::TokenWriter in;
     in.text(fs::to_text(impl_->config.checkout_root())).text(module).text(outdir ? fs::to_text(*outdir) : std::string()).integer(call ? 1 : 0);
     hand.write("in.txt", in.str());
-    const jobs::WorkerResult r = impl_->launcher->run("build", {fs::to_text(hand.file("in.txt")), fs::to_text(hand.file("out.txt"))});
+    const jobs::WorkerResult r = impl_->launcher->run("lane-build", {fs::to_text(hand.file("in.txt")), fs::to_text(hand.file("out.txt"))});
     std::string answer;
     try {
         answer = hand.read("out.txt");

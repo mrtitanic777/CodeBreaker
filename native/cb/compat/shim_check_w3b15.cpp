@@ -1,6 +1,5 @@
 // Compile-only check of the shims at the old header paths for verify/reconstruct and verify/sweep (the old lane interface over py:: records, the registry
-// functions, run and the sweep's three functions) and of engine/lanes_wiring.cpp, which installs the hooks those shims ask the old world for. Nothing here
-// runs; it is in cb_shim_check so the shims stay honest until their last consumers are refactored.
+// functions, run -- which hands the 32-bit, 16-bit and driver lanes to the lane kit -- and the sweep's three functions). Nothing here runs; it is in cb_shim_check so the shims stay honest until their last consumers are refactored.
 #include "codebreaker/verify/reconstruct.hpp"
 #include "codebreaker/translate/frontends/python/methods.hpp"
 #include "codebreaker/translate/frontends/python/package.hpp"

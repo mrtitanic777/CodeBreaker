@@ -336,6 +336,7 @@ struct KitEnvironment::Impl {
     std::unique_ptr<KitKnowledge> describing;
     std::mutex lock;
     std::optional<translate::native_l2::Library> library;
+    std::optional<symbols::runtime_library::SignatureTable> signatures;   // the runtime library's functions by their leading bytes, from the knowledge base
     std::map<stdfs::path, std::unordered_map<std::string, build::watcom::NumberedImport>> numbered;   // by module: what the description said
 };
 
@@ -431,6 +432,29 @@ std::function<std::vector<std::string>(ByteView)> KitEnvironment::import_lines(c
     };
 }
 
-std::map<std::string, std::pair<std::string, std::string>> KitEnvironment::identify(const stdfs::path&) { return {}; }
+// {function key: {name, library}} of the functions of a 32-bit module that belong to a runtime library: by signature, the thunk compiler's stubs, and for a
+// module that is itself a runtime library its exports. (A 16-bit module's are not identified here: its describer's keys are the 16-bit lane's.)
+std::map<std::string, std::pair<std::string, std::string>> KitEnvironment::identify(const stdfs::path& module) {
+    std::map<std::string, std::pair<std::string, std::string>> out;
+    const std::optional<base::Lane> lane = impl_->corpus.lane(module);
+    if (!lane || *lane != base::Lane::Pe) return out;
+    try {
+        const formats::pe_functions::PeCarve carve = formats::pe_functions::PeCarve::open(module);
+        symbols::runtime_library::Pe32Module m;
+        m.stem = aa::stem(fs::to_text(module.filename()));
+        m.image_base = static_cast<std::uint64_t>(carve.image_base());
+        for (const formats::pe_functions::CodeSection& s : carve.sections()) m.code.push_back({static_cast<std::uint64_t>(s.va), s.data});
+        for (const auto& [va, function] : carve.functions()) m.function_starts.push_back(static_cast<std::uint64_t>(va));
+        for (const formats::pe::ExportSymbol& e : carve.image().export_table().symbols) m.exports.push_back({static_cast<std::uint32_t>(e.ordinal), e.name, e.rva});
+        m.flat_thunk = build::flat_thunk::classify(module).subtype == build::flat_thunk::Subtype::FlatThunk;
+        std::lock_guard hold(impl_->lock);
+        if (!impl_->signatures) impl_->signatures = symbols::runtime_library::SignatureTable::from_rows(impl_->kb.signatures("win32"));
+        platforms::DecoderSet decoders;
+        for (const auto& [va, found] : symbols::runtime_library::identify_pe(*impl_->signatures, m, decoders)) out[std::format("{:x}", va)] = {found.name, found.library};
+    } catch (const Error&) {   // (a module that does not read as a PE has nothing identified)
+        out.clear();
+    }
+    return out;
+}
 
 }  // namespace cb::engine::kit_detail
