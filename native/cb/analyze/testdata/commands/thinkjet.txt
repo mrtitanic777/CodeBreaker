@@ -1,0 +1,3 @@
+thinkjet.drv: 33 functions -- 32 C, 1 assembly
+     1  keeps DS for its caller round a call
+exit=0

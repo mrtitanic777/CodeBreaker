@@ -18,7 +18,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -26,6 +28,7 @@
 #include <vector>
 
 #include "cb/core/bytes.hpp"
+#include "cb/core/cli.hpp"
 #include "cb/decompile/describe.hpp"
 
 namespace cb::formats::ne {
@@ -76,5 +79,18 @@ void judge(Origin& o, const decompile::describe::Code16& code, std::int64_t star
 // The text `codebreaker origin <module>` prints: "<name>: N functions -- C C, A assembly", the twelve commonest reasons, and with `list` a
 // line for each function.
 std::string report(std::string_view module_name, const Result& result, bool list);
+
+// What the command needs of the rest of the program.
+struct Environment {
+    // A corpus name -> the binary (corpus.retail); nullopt when there is none. A path that is a file is taken as it is.
+    std::function<std::optional<std::filesystem::path>(std::string_view)> retail;
+    // Where describe16 writes its files: <scratch>/origin/<module name>.
+    std::filesystem::path scratch;
+    // What the names of describe16 are asked of; none given, it knows nothing (a module's own tables name the functions).
+    decompile::describe::Knowledge* knowledge = nullptr;
+};
+
+// `origin <module> [--list]`: prints `report` of the module (exit 0); a module that is not found says so (exit 2).
+cli::Command command(const Environment& environment);
 
 }  // namespace cb::analyze::origin

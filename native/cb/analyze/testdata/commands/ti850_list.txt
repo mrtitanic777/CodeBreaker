@@ -1,0 +1,36 @@
+ti850.drv: 33 functions -- 32 C, 1 assembly
+     1  keeps DS for its caller round a call
+  sub_1_0000                   assembly  keeps DS for its caller round a call (0004 push ds .. 001d pop ds)
+  CONTROL                      c         
+  DEVBITBLT                    c         
+  DEVSTRETCHBLT                c         
+  PIXEL                        c         
+  OUTPUT                       c         
+  STRBLT                       c         
+  SCANLR                       c         
+  ENUMOBJ                      c         
+  COLORINFO                    c         
+  DEVICEMODE                   c         
+  REALIZEOBJECT                c         
+  ENUMDFONTS                   c         
+  ENABLE                       c         
+  DISABLE                      c         
+  DEVEXTTEXTOUT                c         
+  DEVGETCHARWIDTH              c         
+  DEVICEBITMAP                 c         
+  FASTBORDER                   c         
+  SETATTRIBUTE                 c         
+  EXTDEVICEMODE                c         
+  EXTDEVICEMODEPROPSHEET       c         
+  DEVICECAPABILITIES           c         
+  ADVANCEDSETUPDIALOG          c         
+  DIBBLT                       c         
+  CREATEDIBITMAP               c         
+  SETDIBITSTODEVICE            c         
+  STRETCHDIB                   c         
+  DEVINSTALL                   c         
+  BITMAPBITS                   c         
+  DEVICESELECTBITMAP           c         
+  WEP                          c         
+  sub_1_05E2                   c         
+exit=0

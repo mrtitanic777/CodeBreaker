@@ -13,6 +13,9 @@
 #include <unordered_set>
 
 #include "cb/core/capstone_api.hpp"
+#include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
 #include "cb/formats/ne.hpp"
 
@@ -563,6 +566,35 @@ std::string report(std::string_view module_name, const Result& result, bool list
         }
     }
     return out;
+}
+
+cli::Command command(const Environment& environment) {
+    cli::Command c;
+    c.name = "origin";
+    c.summary = "which functions of a 16-bit module were written in assembly";
+    c.params = {
+        cli::Positional{"module", "a corpus name or a file"},
+        cli::Option{"--list", "", "a line for each function: its language and why", cli::Arg::Flag},
+    };
+    c.handler = [environment](const cli::Args& a) {
+        const std::string module = a.required("module");
+        std::error_code ec;
+        std::optional<std::filesystem::path> path;
+        if (std::filesystem::is_regular_file(fs::from_text(module), ec)) path = fs::from_text(module);
+        else if (environment.retail) path = environment.retail(module);
+        if (!path || path->empty()) {
+            out("no module '{}'\n", module);
+            return kExitUsage;
+        }
+        const std::string name = fs::to_text(path->filename());
+        dsc::NoKnowledge none;
+        const std::filesystem::path work = environment.scratch / "origin" / text::lower(name);
+        fs::make_dirs(work);
+        const Result r = module16(formats::ne::Module::open_file(*path), work, environment.knowledge != nullptr ? *environment.knowledge : none);
+        out_text(report(name, r, a.flag("list")));
+        return kExitOk;
+    };
+    return c;
 }
 
 }  // namespace cb::analyze::origin

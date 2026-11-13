@@ -475,6 +475,9 @@ def main(argv):
         print(main.__doc__)
         return 2
     path = argv[0] if os.path.isfile(argv[0]) else corpus.retail(argv[0])
+    if not path:
+        print("no module %r" % argv[0])
+        return 2
     r = module16(path)
     n, why = r.summary()
     print("%s: %d functions -- %d C, %d assembly" % (os.path.basename(path), len(r.functions), n["c"], n["assembly"]))
