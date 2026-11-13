@@ -245,7 +245,7 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
     else:
         sha, digest = reconstruct.identity(path)
     kind = reconstruct.kind_name(path)
-    if kind in ("le", "dos"):
+    if kind in ("le", "dos", "nes", "sms", "gb", "genesis", "zx", "msx"):   # (assembly: a driver, a real-mode program, a cartridge, a snapshot or a tape)
         return write_assembly(path, fs, sha, digest, out_dir, log)
     best = fs.best(sha, digest)
     judged = V.Index(sha, best)           # each function's verdict, by its L2 provenance (module + address)
