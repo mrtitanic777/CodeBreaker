@@ -16,6 +16,7 @@ import json
 import os
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_MANIFESTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_HERE))), 'data', 'java', 'projects')   # each project's manifest.json
 
 
 class Project(object):
@@ -55,8 +56,8 @@ _LOADED = {}
 def manifests():
     """[manifest dict] of every project package, by name."""
     out = []
-    for d in sorted(os.listdir(_HERE)):
-        p = os.path.join(_HERE, d, 'manifest.json')
+    for d in sorted(os.listdir(_MANIFESTS)):
+        p = os.path.join(_MANIFESTS, d, 'manifest.json')
         if os.path.isfile(p):
             with open(p, encoding='utf-8') as fh:
                 m = json.load(fh)
