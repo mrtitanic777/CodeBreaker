@@ -36,6 +36,9 @@
 //              with entry), and
 //              PRAGMA user_version = kFormatVersion. An entry whose envelope is wrong, whose schema is not the
 //              reader's, or whose checksum fails is simply a miss; a file of another format version is replaced.
+//              The Python implementation's files (<kind>/<generation>.sqlite, entry(k, v, used)) are understood too -- listed,
+//              counted, held under the cap, pruned (the newest generation stays), cleared -- and never read or rewritten
+//              as results: a switch from one implementation to the other costs only the results.
 //              A kind whose results are files a tool writes itself (path()) has a folder,
 //              <root>/<kind>/<generation>/<first two key characters>/<key>, instead. Nothing older than this format
 //              is read: a cache the Python wrote is a cache that is rebuilt. Deleting the folder costs time and
@@ -147,6 +150,9 @@ struct KindStats {
     std::uint64_t results = 0;
     std::vector<std::string> generations;       // on disk
     std::optional<std::string> current;         // the generation of now, if the kind is declared
+    // Parallel to `generations`: is it kept by prune (the generation of now)? For a declared kind that is `current`; for a kind
+    // nobody declared, and for the Python's files, the one written to most recently.
+    std::vector<bool> of_now;
 };
 
 struct Dropped {

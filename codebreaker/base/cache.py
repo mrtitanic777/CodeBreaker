@@ -209,7 +209,7 @@ def _drop_others(path, gen):
     except OSError:
         return
     for n in names:
-        if n.split(".")[0] == gen:
+        if n.split(".")[0] == gen or _native(n):
             continue
         aside = os.path.join(root(), DROPPED, uuid.uuid4().hex)
         try:
@@ -218,6 +218,12 @@ def _drop_others(path, gen):
         except OSError:
             continue                             # (in use by a process of other code: next time)
         _remove(aside)
+
+
+def _native(name):
+    """Is this file the native implementation's (state/cache/<kind>/<generation>.cbc, native/cb/base/cache)?
+    Its generations are named by that code, not this: not ours to drop, and the cap holds it."""
+    return name.split("-")[0].endswith(".cbc")
 
 
 def _remove(path):
@@ -356,7 +362,7 @@ def _stores(base=None):
     for kind in sorted(os.listdir(base)):
         if kind == DROPPED or not os.path.isdir(os.path.join(base, kind)):
             continue
-        out[kind] = [(os.path.join(base, kind, n), n.endswith(".sqlite"))
+        out[kind] = [(os.path.join(base, kind, n), n.endswith((".sqlite", ".cbc")))
                      for n in sorted(os.listdir(os.path.join(base, kind)))
                      if not n.endswith(("-wal", "-shm", "-journal"))]
     return out
@@ -502,7 +508,7 @@ def prune():
         gen = generation(kind)
         if gen is None:
             continue
-        old = [p for p, _db in where if os.path.basename(p).split(".")[0] != gen]
+        old = [p for p, _db in where if os.path.basename(p).split(".")[0] != gen and not _native(os.path.basename(p))]
         if old:
             _close(kind)
             _drop_others(os.path.join(root(), kind), gen)
