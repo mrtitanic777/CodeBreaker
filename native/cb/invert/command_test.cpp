@@ -1,4 +1,4 @@
-// Tests of `codebreaker invert` (invert/command): the tool table -- what is native answers as the Python's tool did on the same files, what is not says so.
+// Tests of `codebreaker invert` (invert/command): the tool table -- each tool answers as the Python's did on the same files, and says so where its compiler is not set up.
 //
 // The inputs are the folder's testdata (a quad file and its object, two objects) and three functions of the oracle harness's seed set written to a file
 // (an add, a max, a loop: the Python's answers for them are in early_c.golden.json).
@@ -193,16 +193,52 @@ CB_TEST("invert.command.the_small_readers_of_microsoft_c_6_are_native", [] {
     }
 });
 
-CB_TEST("invert.command.what_is_not_native_says_so", [] {
+CB_TEST("invert.command.the_tools_that_need_a_compiler_say_so_without_one", [] {
     testing::CapturedStd cap;
-    CB_CHECK_EQ(run_words({"--tool", "msc6"}), 2);
-    CB_CHECK(cap.err().find("not native yet") != std::string::npos);
+    for (const char* tool : {"msc6", "msvc2", "msvc2-forward", "early-c-round-trip", "early-c-frame-probe", "early-c-order-probe"}) CB_CHECK_EQ(run_words({"--tool", tool}), 2);
+    CB_CHECK(cap.err().find("is not set up") != std::string::npos);
+    CB_CHECK_EQ(run_words({"--tool", "msc6-idioms"}), 1);   // (the Python's: "oracle not configured")
+    CB_CHECK(cap.out().find("oracle not configured") != std::string::npos);
+    CB_CHECK_EQ(run_words({"--tool", "early-c-check", data("PROBE.OBJ"), "0", "8"}), 2);
     CB_CHECK_EQ(run_words({"--check"}), 2);
     CB_CHECK(cap.out().find("== msvc2") != std::string::npos);
     CB_CHECK_THROWS_AS(UsageError, (void)run_words({"--tool", "no-such-model"}));
     CB_CHECK_EQ(run_words({}), 2);   // no module: the usage
     CB_CHECK_THROWS_AS(NotFoundError, (void)run_words({"no-such-module.dll"}));
-    CB_CHECK_EQ(run_words({data("HELLO.OBJ")}), 2);   // a module: the module pass is not native yet
+});
+
+CB_TEST("invert.command.the_tools_that_need_a_compiler_put_their_text_to_it", [] {
+    int asked = 0;
+    inv::Environment environment;
+    environment.compile_msc6 = [&](std::string_view, std::string_view) -> std::optional<Bytes> {
+        ++asked;
+        return std::nullopt;   // a compiler that refuses every text
+    };
+    environment.compile_msvc2 = [&](std::string_view, std::string_view) -> inv::Environment::Msvc2Object {
+        ++asked;
+        return {std::nullopt, "refused"};
+    };
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(inv::run(std::vector<std::string>{"--tool", "msc6"}, environment), 1);
+    CB_CHECK(asked >= 1);
+    CB_CHECK_EQ(inv::run(std::vector<std::string>{"--tool", "msvc2-forward"}, environment), 1);
+    CB_CHECK(cap.out().find("ORACLE-FAIL") != std::string::npos);
+    CB_CHECK(cap.out().find("0/69 byte-exact") != std::string::npos);
+    CB_CHECK_EQ(inv::run(std::vector<std::string>{"--tool", "msc6-idioms"}, environment), 0);
+    CB_CHECK(cap.out().find("ERR under") != std::string::npos);
+});
+
+CB_TEST("invert.command.the_module_pass_reads_a_real_module", [] {
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(run_words({data("LZEXPAND.DLL")}), 0);
+    const std::string said = cap.out();
+    CB_CHECK(said.find("LZEXPAND.DLL: ") != std::string::npos);
+    CB_CHECK(said.find("functions: ") != std::string::npos);
+    CB_CHECK(said.find("is not set up") != std::string::npos);   // no compiler: the readings stay recognised
+    CB_CHECK_EQ(run_words({data("LZEXPAND.DLL"), "--first", "3"}), 0);
+    CB_CHECK_EQ(run_words({data("LZEXPAND.DLL"), "--show", "no_such_function"}), 0);
+    CB_CHECK(cap.out().find("no function 'no_such_function'") != std::string::npos);
+    CB_CHECK_THROWS_AS(FormatError, (void)run_words({data("HELLO.OBJ")}));   // an object file is not a module
 });
 
 CB_TEST("invert.command.proof", [] {

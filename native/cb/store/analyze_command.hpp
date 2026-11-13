@@ -8,18 +8,27 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include "cb/base/config.hpp"
 #include "cb/base/corpus.hpp"
 #include "cb/core/cli.hpp"
+#include "cb/jobs/workers.hpp"
 
 namespace cb::store::analyze_command {
 
 struct Environment {
     config::Config config;
     std::shared_ptr<base::Corpus> corpus;   // the products' files; the configuration's own when null
+    // Worker processes of the host program to run observe's functions in (the program's own launcher: jobs::WorkerLauncher::for_this_program()); the
+    // emulator never uses more than about one core on threads, so the functions are shared out over processes. The host's main must have called
+    // `register_worker_kinds`. None: threads.
+    std::optional<jobs::WorkerLauncher> workers;
 };
 
 cli::Command command(const Environment& environment);
+
+// Registers the worker kind observe's processes run as ("observe"), with the surroundings a worker makes for itself from the same configuration.
+void register_worker_kinds(jobs::WorkerKinds& kinds, const Environment& environment);
 
 }  // namespace cb::store::analyze_command

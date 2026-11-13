@@ -4,8 +4,10 @@
 #include <format>
 #include <functional>
 #include <set>
+#include <thread>
 
 #include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/jobs/pool.hpp"
 #include "cb/knowledge/value.hpp"
 
@@ -434,9 +436,215 @@ std::vector<Candidate> candidates(Image& image, const conventions::Facts& facts,
     return items;
 }
 
+// ---- worker processes ------------------------------------------------------------------------------------------------------------
+
+namespace {
+
+void write_cells(jobs::TokenWriter& out, const Cells& cells) {
+    out.integer(static_cast<std::int64_t>(cells.size()));
+    for (const auto& [offset, cell] : cells) out.integer(static_cast<std::int64_t>(offset)).integer(cell.size).integer(cell.reads).integer(cell.writes);
+}
+
+Cells read_cells(jobs::TokenReader& in) {
+    Cells cells;
+    for (std::int64_t n = in.integer(); n > 0; --n) {
+        const Va offset = static_cast<Va>(in.integer());
+        Cell c;
+        c.size = in.integer();
+        c.reads = in.integer();
+        c.writes = in.integer();
+        cells[offset] = c;
+    }
+    return cells;
+}
+
+void write_optional(jobs::TokenWriter& out, const std::optional<std::int64_t>& v) { out.integer(v ? 1 : 0).integer(v.value_or(0)); }
+
+std::optional<std::int64_t> read_optional(jobs::TokenReader& in) {
+    const bool present = in.integer() != 0;
+    const std::int64_t v = in.integer();
+    return present ? std::optional<std::int64_t>(v) : std::nullopt;
+}
+
+}  // namespace
+
+void write_observation(jobs::TokenWriter& out, const Observation& o) {
+    out.integer(static_cast<std::int64_t>(o.fields.size()));
+    for (const auto& [k, cells] : o.fields) {
+        out.integer(k);
+        write_cells(out, cells);
+    }
+    out.integer(static_cast<std::int64_t>(o.nested.size()));
+    for (const auto& [key, cells] : o.nested) {
+        out.integer(key.first).integer(static_cast<std::int64_t>(key.second));
+        write_cells(out, cells);
+    }
+    out.integer(static_cast<std::int64_t>(o.indirect.size()));
+    for (const Indirect& i : o.indirect) out.integer(static_cast<std::int64_t>(i.site)).integer(static_cast<std::int64_t>(i.target));
+    out.integer(static_cast<std::int64_t>(o.passes.size()));
+    for (const Pass& p : o.passes)
+        out.text(p.import).integer(p.parameter).integer(p.argument).integer(static_cast<std::int64_t>(p.offset)).integer(p.how == Pass::How::Value ? 1 : 0);
+    write_optional(out, o.exit ? std::optional<std::int64_t>(static_cast<std::int64_t>(*o.exit)) : std::nullopt);
+    write_optional(out, o.removed);
+    out.integer(o.returns ? 1 : 0);
+    if (o.returns) {
+        out.integer(o.returns->kind == Returns::Kind::Field ? 1 : 0).integer(o.returns->k);
+        write_optional(out, o.returns->offset ? std::optional<std::int64_t>(static_cast<std::int64_t>(*o.returns->offset)) : std::nullopt);
+    }
+    write_optional(out, o.idiom ? std::optional<std::int64_t>(static_cast<std::int64_t>(*o.idiom)) : std::nullopt);
+}
+
+Observation read_observation(jobs::TokenReader& in) {
+    Observation o;
+    for (std::int64_t n = in.integer(); n > 0; --n) {
+        const int k = static_cast<int>(in.integer());
+        o.fields[k] = read_cells(in);
+    }
+    for (std::int64_t n = in.integer(); n > 0; --n) {
+        const int k = static_cast<int>(in.integer());
+        const Va at = static_cast<Va>(in.integer());
+        o.nested[{k, at}] = read_cells(in);
+    }
+    for (std::int64_t n = in.integer(); n > 0; --n) {
+        Indirect i;
+        i.site = static_cast<Va>(in.integer());
+        i.target = static_cast<Va>(in.integer());
+        o.indirect.push_back(i);
+    }
+    for (std::int64_t n = in.integer(); n > 0; --n) {
+        Pass p;
+        p.import = in.text();
+        p.parameter = static_cast<int>(in.integer());
+        p.argument = static_cast<int>(in.integer());
+        p.offset = static_cast<Va>(in.integer());
+        p.how = in.integer() != 0 ? Pass::How::Value : Pass::How::Address;
+        o.passes.push_back(std::move(p));
+    }
+    if (const auto exit = read_optional(in)) o.exit = static_cast<Exit>(*exit);
+    o.removed = read_optional(in);
+    if (in.integer() != 0) {
+        Returns r;
+        r.kind = in.integer() != 0 ? Returns::Kind::Field : Returns::Kind::Argument;
+        r.k = static_cast<int>(in.integer());
+        if (const auto off = read_optional(in)) r.offset = static_cast<Va>(*off);
+        o.returns = r;
+    }
+    if (const auto idiom = read_optional(in)) o.idiom = static_cast<Idiom>(*idiom);
+    return o;
+}
+
+namespace {
+
+// The worker's share: the module and the functions to run (address, argument count, pointers, battery); the answer is each one's observation.
+int observe_share(const jobs::Args& args, const PrepareSetting& prepare) {
+    jobs::TokenReader in(fs::read_text(fs::from_text(args.at(0))));
+    Setting setting;
+    setting.module = fs::from_text(in.text());
+    if (prepare) prepare(setting);
+    std::vector<Candidate> items;
+    for (std::int64_t n = in.integer(); n > 0; --n) {
+        Candidate c;
+        c.function = static_cast<Va>(in.integer());
+        c.args = read_optional(in);
+        for (std::int64_t k = in.integer(); k > 0; --k) c.pointers.push_back(static_cast<int>(in.integer()));
+        c.battery = in.integer() != 0;
+        items.push_back(std::move(c));
+    }
+    const Observer observer(setting);
+    jobs::TokenWriter out;
+    out.integer(static_cast<std::int64_t>(items.size()));
+    for (const Candidate& c : items) {
+        out.integer(static_cast<std::int64_t>(c.function));
+        write_observation(out, observer.observe(c));
+    }
+    fs::write_text(fs::from_text(args.at(1)), out.str());
+    return 0;
+}
+
+// The candidates run in worker processes, `shares` of them at a time; the functions a share lost (it crashed, or timed out) are run again one to a
+// process, and one that crashes again is lost alone. nullopt where the launcher is not there or the list is too short to share out.
+std::optional<Seen> run_apart(const std::vector<Candidate>& items, const Setting& setting) {
+    if (!setting.launcher || !setting.launcher->enabled()) return std::nullopt;
+    const std::size_t workers = static_cast<std::size_t>(std::max(1, setting.jobs));
+    const std::size_t shares = std::min(workers, items.size() / std::max<std::size_t>(1, setting.per_process));
+    if (shares < 2) return std::nullopt;
+    const auto start = [&](const std::vector<Candidate>& part, Seen& into) {
+        jobs::Handover hand("observe");
+        jobs::TokenWriter in;
+        in.text(fs::to_text(setting.module)).integer(static_cast<std::int64_t>(part.size()));
+        for (const Candidate& c : part) {
+            in.integer(static_cast<std::int64_t>(c.function));
+            write_optional(in, c.args);
+            in.integer(static_cast<std::int64_t>(c.pointers.size()));
+            for (const int k : c.pointers) in.integer(k);
+            in.integer(c.battery ? 1 : 0);
+        }
+        hand.write("in.txt", in.str());
+        jobs::LaunchOptions options;
+        options.timeout = std::chrono::minutes(30);
+        const jobs::WorkerResult r = setting.launcher->run("observe", {fs::to_text(hand.file("in.txt")), fs::to_text(hand.file("out.txt"))}, options);
+        if (!r.ok()) return false;
+        try {
+            jobs::TokenReader answer(hand.read("out.txt"));
+            for (std::int64_t n = answer.integer(); n > 0; --n) {
+                const Va f = static_cast<Va>(answer.integer());
+                into.emplace(f, read_observation(answer));
+            }
+        } catch (const Error&) {
+            return false;
+        }
+        return true;
+    };
+    std::vector<std::vector<Candidate>> parts(shares);
+    for (std::size_t i = 0; i < items.size(); ++i) parts[i % shares].push_back(items[i]);   // (round robin: the heavy ones spread)
+    std::vector<Seen> done(shares);
+    std::vector<char> ok(shares, 0);
+    {
+        std::vector<std::thread> running;
+        for (std::size_t s = 0; s < shares; ++s)
+            running.emplace_back([&, s] {
+                try {
+                    ok[s] = start(parts[s], done[s]) ? 1 : 0;
+                } catch (const Error&) {   // (a worker that would not start: its functions are run again below)
+                }
+            });
+        for (std::thread& t : running) t.join();
+    }
+    Seen out;
+    std::vector<Candidate> again;
+    for (std::size_t s = 0; s < shares; ++s) {
+        if (ok[s]) {
+            for (auto& [f, o] : done[s]) out.emplace(f, std::move(o));
+        } else {
+            again.insert(again.end(), parts[s].begin(), parts[s].end());
+        }
+    }
+    for (const Candidate& c : again) {
+        Seen one;
+        bool good = false;
+        try {
+            good = start(std::vector<Candidate>{c}, one);
+        } catch (const Error&) {
+        }
+        if (good) {
+            for (auto& [f, o] : one) out.emplace(f, std::move(o));
+        } else {
+            out.emplace(c.function, std::nullopt);   // lost alone
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+void register_worker_kinds(jobs::WorkerKinds& kinds, PrepareSetting prepare) {
+    kinds.add("observe", [prepare = std::move(prepare)](const jobs::Args& args) { return observe_share(args, prepare); });
+}
+
 Seen run(Image& image, const conventions::Facts& facts, const std::vector<structures::Structure>& found, const Setting& setting) {
     if (!image.flat()) return {};
     const std::vector<Candidate> items = candidates(image, facts, found, setting.limit);
+    if (std::optional<Seen> apart = run_apart(items, setting)) return std::move(*apart);
     const Observer observer(setting);
     jobs::RunOptions<Candidate, std::optional<Observation>> options;
     options.jobs = setting.jobs;

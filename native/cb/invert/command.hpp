@@ -5,13 +5,14 @@
 //     codebreaker invert --check [MODEL]                each model against its own compiler
 //     codebreaker invert <16-bit module> [--first N] [--flags "..."] [--show NAME]
 //
-// The tools that are native: early-c (the bytes of MS C 2.03 / 3.00 back to C), early-c-forward (the forward model against a quad file and its
-// object), quads, quad-align, omf, known-differences, early-c-frame (the frame model against the compiler's own frames), and the small readers of
-// Microsoft C 6.0a (msc6-templates, msc6-walk, msc6-function, msc6-registers: cb/invert/msc6_small). The rest of the Python's table -- the larger
-// models of Microsoft C 6 and C/C++ 8 (msc6, msc6-idioms, msvc2, msvc2-forward) and the checks that put a model's text to the period compiler
-// (early-c-check, early-c-round-trip, the frame and order probes) -- and the module pass that runs them over a 16-bit module are not in native/cb yet: a command that names one says so and exits 2.
-// (Those models are the C++ of native/invert, on the Python-imitation layer, reached through cbinvert.dll; they move into native/cb as typed
-// modules first.)
+// Every tool is native: early-c (the bytes of MS C 2.03 / 3.00 back to C), early-c-check / early-c-round-trip / the frame and order probes (the early model put
+// to the compiler of its time), early-c-forward (the forward model against a quad file and its object), quads, quad-align, omf, known-differences,
+// early-c-frame (the frame model against the compiler's own frames), the small readers of Microsoft C 6.0a (msc6-templates, msc6-walk, msc6-function,
+// msc6-registers: cb/invert/msc6_small), the larger one (msc6, msc6-idioms: cb/invert/msc6) and the Microsoft C/C++ 2.0 model (msvc2, msvc2-forward:
+// cb/invert/msvc2). The module pass (`invert <16-bit module>`) runs the models over a module's functions and puts each reading to the compiler
+// (cb/invert/module_pass).
+//
+// What a tool puts a model's text to is a compiler, and a compiler is the environment's: where one is not set up the tool says so and goes without.
 //
 // A raw runner, not a declared cli::Command: every tool reads its own words.
 #pragma once
@@ -25,6 +26,7 @@
 #include <vector>
 
 #include "cb/core/bytes.hpp"
+#include "cb/invert/module_pass.hpp"
 
 namespace cb::invert::command {
 
@@ -34,12 +36,24 @@ struct Environment {
     // The code bytes Microsoft C 6.0a gives for one source text under these switches (build/msc6); none: the compiler refused the text. Absent
     // where the compiler is not set up: a tool that puts a model's text to it says so and goes without.
     std::function<std::optional<Bytes>(std::string_view text, std::string_view flags)> compile_msc6;
+    // The same for Microsoft C/C++ 8 (Visual C++ 1.52c), which built some of the 16-bit modules.
+    std::function<std::optional<Bytes>(std::string_view text, std::string_view flags)> compile_msvc152;
+    // The object file (OMF) Microsoft C 2.03 gives for one source text (MC1 then MC2); none: it refused the text. `stem` names the work files.
+    std::function<std::optional<Bytes>(std::string_view text, std::string_view stem)> compile_mc203;
+    // The 32-bit compiler of 1994: an object file, or what it said.
+    struct Msvc2Object {
+        std::optional<Bytes> object;
+        std::string error;
+    };
+    std::function<Msvc2Object(std::string_view text, std::string_view flags)> compile_msvc2;
+    // The functions of a 16-bit module as its describer finds them (names, places, bytes, relocations, SDK signatures, how they are called); absent: the
+    // module's framed functions are found by their frames (module_pass::framed_functions).
+    std::function<std::vector<module_pass::Function>(const std::filesystem::path&)> functions;
 };
 
 // The tools of the table, by name, with one line each, native or not.
 struct Tool {
     std::string_view name, summary;
-    bool native;
 };
 std::span<const Tool> tools();
 

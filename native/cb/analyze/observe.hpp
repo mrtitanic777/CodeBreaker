@@ -32,6 +32,11 @@
 // 32-bit modules only: the 16-bit emulator is entered with far pointers and a data segment, and nothing here drives it
 // yet. The runs go through the job pool (one function lost to a native fault is one function lost, not the analysis), at
 // most `jobs` at a time, each worker on a Tracer of its own.
+//
+// Unicorn keeps state per process and cb::emulate serialises every call into it, so threads never use more than about one
+// core. Given a worker launcher (Setting::launcher) the functions are shared out over `jobs` worker PROCESSES of the host
+// program instead (cb/jobs/workers.hpp): each loads the module, runs its share and hands the observations back as a line
+// of tokens. The host registers the kind with `register_worker_kinds` at the top of its main.
 #pragma once
 
 #include <cstdint>
@@ -50,6 +55,7 @@
 #include "cb/analyze/structures.hpp"
 #include "cb/core/bytes.hpp"
 #include "cb/emulate/emulator.hpp"
+#include "cb/jobs/workers.hpp"
 
 namespace cb::analyze::observe {
 
@@ -140,6 +146,10 @@ struct Setting {
     emulate::emulator::ImportArgc argc;
     std::optional<std::size_t> limit = 400;   // the functions run (the most informative first); none: all of them
     int jobs = 4;                             // at most this many at a time
+    // Worker processes of the host program to run the functions in (see above); none: threads of this process.
+    std::optional<jobs::WorkerLauncher> launcher;
+    // The fewest functions per worker process worth starting one for (a process costs the module's load); fewer than two such shares: threads.
+    std::size_t per_process = 6;
 };
 
 // One function to run: its address, how many arguments it takes (none: not known), which of them the static analysis took
@@ -179,6 +189,17 @@ private:
     mutable std::mutex mutex_;
     mutable std::vector<std::unique_ptr<emulate::emulator::Tracer>> idle_;
 };
+
+// What a worker process needs of the Setting that cannot cross the process boundary -- the environment's functions and the imports' argument counts:
+// the host says how it makes them (the same as it gives the parent's Setting).
+using PrepareSetting = std::function<void(Setting&)>;
+
+// Registers the worker kind that runs a share of the functions (kind "observe") with the host's way of preparing a Setting.
+void register_worker_kinds(jobs::WorkerKinds& kinds, PrepareSetting prepare);
+
+// One Observation as tokens, and back (what travels between a worker and its parent).
+void write_observation(jobs::TokenWriter& out, const Observation& observation);
+Observation read_observation(jobs::TokenReader& in);
 
 // {function: observation} for the candidates; none where the pool lost the function. Empty for an image that is not a flat
 // 32-bit module.

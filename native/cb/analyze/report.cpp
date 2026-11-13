@@ -176,6 +176,7 @@ void run_analysis(Analysis which, Pipeline& p, ImageKind kind, const stdfs::path
             };
         setting.argc = environment.import_argc;
         setting.limit = options.observed;
+        setting.launcher = environment.workers;
         const observe::Seen seen = observe::run(p.image(), p.conventions().facts, p.structures(), setting);
         const observe::Report r = observe::analyse(p.image(), p.conventions().facts, p.structures(), seen);
         s.counts = detail::observe_counts(r.counts);

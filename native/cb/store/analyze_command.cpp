@@ -4,6 +4,7 @@
 #include <optional>
 
 #include "cb/analyze/facts.hpp"
+#include "cb/analyze/observe.hpp"
 #include "cb/analyze/report.hpp"
 #include "cb/decompile/decompiler.hpp"
 #include "cb/decompile/environment.hpp"
@@ -40,7 +41,7 @@ class Surroundings {
 public:
     explicit Surroundings(const Environment& environment)
         : config_(environment.config), kit_(environment.config, environment.corpus), modules_(kit_.corpus()),
-          store_(config_.state("functions.sqlite"), config_.state("db")), sizes_(kit_.corpus(), kit_.knowledge()) {}
+          store_(config_.state("functions.sqlite"), config_.state("db")), sizes_(kit_.corpus(), kit_.knowledge()), workers_(environment.workers) {}
 
     analyze::report::Environment report_environment() {
         analyze::report::Environment e;
@@ -64,10 +65,12 @@ public:
         // Python's runs did not use them, and reading the SDK's headers costs more than the runs)
         e.emulator.resolve = [&corpus](std::string_view name) { return corpus.resolve(name); };
         e.import_argc = [this](const emulate::native_trace::ImportName& import) { return sizes_.argc(import.dll, import.name); };
+        e.workers = workers_;
         return e;
     }
 
 private:
+    std::optional<jobs::WorkerLauncher> workers_;
     config::Config config_;
     engine::LaneKit kit_;
     decompile::environment::CorpusModules modules_;
@@ -77,6 +80,16 @@ private:
 };
 
 }  // namespace
+
+void register_worker_kinds(jobs::WorkerKinds& kinds, const Environment& environment) {
+    // A worker makes the surroundings once and keeps them for the life of its process: observe's Setting holds functions of them.
+    analyze::observe::register_worker_kinds(kinds, [environment](analyze::observe::Setting& setting) {
+        static const std::unique_ptr<Surroundings> world = std::make_unique<Surroundings>(environment);
+        analyze::report::Environment e = world->report_environment();
+        setting.environment = e.emulator;
+        setting.argc = e.import_argc;
+    });
+}
 
 cli::Command command(const Environment& environment) {
     cli::Command declared = analyze::report::command(analyze::report::Environment{});

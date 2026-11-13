@@ -17,6 +17,7 @@
 #include "cb/analyze/observe.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <format>
 #include <map>
@@ -30,6 +31,7 @@
 #include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/formats/pe.hpp"
+#include "cb/jobs/workers.hpp"
 
 namespace {
 
@@ -580,4 +582,89 @@ CB_TEST("analyze.observe.the_report_is_made_of_hand_made_observations", [] {
     const ob::Report none = ob::analyse(image, {}, {}, {});
     CB_CHECK(none.observed.empty() && none.structures.empty() && none.text.empty());
     CB_CHECK_EQ(none.counts.functions_run, 0);
+});
+
+// ---- worker processes ---------------------------------------------------------------------------------------------------------------
+
+namespace {
+
+// A Seen as the tokens a worker would write: the same text for the same observations.
+std::string seen_text(const ob::Seen& seen) {
+    cb::jobs::TokenWriter out;
+    for (const auto& [f, maybe] : seen) {
+        out.integer(static_cast<std::int64_t>(f)).integer(maybe ? 1 : 0);
+        if (maybe) ob::write_observation(out, *maybe);
+    }
+    return out.str();
+}
+
+}  // namespace
+
+CB_TEST("analyze.observe.an_observation_goes_through_tokens_and_back", [] {
+    ob::Observation o;
+    o.exit = ob::Exit::Cut;
+    o.fields[0][4] = {4, 2, 1};
+    o.fields[2][0x10] = {1, 0, 3};
+    o.nested[{1, 8}][0] = {2, 1, 0};
+    o.indirect.push_back({0x401000, 0x402000});
+    o.passes.push_back({"KERNEL32!CloseHandle", 0, 1, 8, ob::Pass::How::Value});
+    o.passes.push_back({"USER32!SetWindowTextA", 1, 0, 0x20, ob::Pass::How::Address});
+    o.removed = 12;
+    o.returns = ob::Returns{ob::Returns::Kind::Field, 1, 8};
+    o.idiom = ob::Idiom::Strncmp;
+    cb::jobs::TokenWriter out;
+    ob::write_observation(out, o);
+    cb::jobs::TokenReader in(out.str());
+    const ob::Observation back = ob::read_observation(in);
+    CB_CHECK_EQ(in.remaining(), std::size_t{0});
+    cb::jobs::TokenWriter again;
+    ob::write_observation(again, back);
+    CB_CHECK_EQ(again.str(), out.str());
+    CB_CHECK(back.fields == o.fields && back.nested == o.nested && back.indirect.size() == 1 && back.passes == o.passes);
+    CB_CHECK(back.exit == o.exit && back.removed == o.removed && back.returns == o.returns && back.idiom == o.idiom);
+    // nothing at all
+    cb::jobs::TokenWriter empty;
+    ob::write_observation(empty, ob::Observation{});
+    cb::jobs::TokenReader nothing(empty.str());
+    const ob::Observation none = ob::read_observation(nothing);
+    CB_CHECK(none.fields.empty() && !none.exit && !none.removed && !none.returns && !none.idiom);
+    cb::jobs::TokenReader short_read("1 0 0");
+    CB_CHECK_THROWS_AS(cb::FormatError, (void)ob::read_observation(short_read));
+});
+
+CB_TEST("analyze.observe.worker_processes_see_what_threads_see", [] {
+    const auto host = cb::jobs::WorkerLauncher::for_this_program().exe().parent_path() / "cb_observe_worker.exe";
+    if (!std::filesystem::exists(host)) return;   // (the host is built with the tests: a test run from elsewhere has none)
+    const bool bench = !cb::fs::get_env("CB_OBSERVE_BENCH").value_or("").empty();
+    for (const char* name : {"crtdll.dll", "lz32.dll"}) {
+        Module m(name);
+        ob::Setting threads = m.setting(Json::object(), 120);
+        threads.argc = {};
+        ob::Setting apart = threads;
+        apart.launcher = cb::jobs::WorkerLauncher(host);
+        apart.per_process = 4;
+        const auto t0 = std::chrono::steady_clock::now();
+        const ob::Seen by_threads = ob::run(m.image, m.facts, m.found, threads);
+        const auto t1 = std::chrono::steady_clock::now();
+        const ob::Seen by_processes = ob::run(m.image, m.facts, m.found, apart);
+        const auto t2 = std::chrono::steady_clock::now();
+        CB_CHECK(!by_threads.empty());
+        CB_CHECK_EQ(by_processes.size(), by_threads.size());
+        CB_CHECK_EQ(seen_text(by_processes), seen_text(by_threads));
+        if (bench)
+            std::printf("observe %-10s %zu functions: threads %.2f s, worker processes %.2f s\n", name, by_threads.size(),
+                        std::chrono::duration<double>(t1 - t0).count(), std::chrono::duration<double>(t2 - t1).count());
+    }
+});
+
+CB_TEST("analyze.observe.a_lost_worker_loses_its_functions_alone", [] {
+    // a launcher whose program does not exist: every share fails, and every function is lost alone -- not run in this process
+    Module m("lz32.dll");
+    ob::Setting s = m.setting(Json::object(), 40);
+    s.argc = {};
+    s.launcher = cb::jobs::WorkerLauncher(std::filesystem::path("this-program-does-not-exist.exe"));
+    s.per_process = 2;
+    const ob::Seen seen = ob::run(m.image, m.facts, m.found, s);
+    CB_CHECK(!seen.empty());
+    for (const auto& [f, maybe] : seen) CB_CHECK(!maybe.has_value());
 });
