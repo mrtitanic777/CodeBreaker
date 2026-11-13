@@ -503,7 +503,7 @@ int Namer::execute(const cli::Args& a) {
     }
     if (arguments.empty()) throw UsageError("names needs a module, --shared or --ordinals");
     const auto found = self.s.corpus.retail(arguments[0]);
-    if (!found) throw NotFoundError(std::filesystem::path(arguments[0]), 0, "no module '" + arguments[0] + "' in the corpus");
+    if (!found) throw NotFoundError(std::filesystem::path(arguments[0]), 0, "no such module in the corpus");
     const std::filesystem::path path = *found;
     if (const auto address_text = a.value("--set")) {
         if (arguments.size() < 2) throw UsageError("--set needs the address and then the name");

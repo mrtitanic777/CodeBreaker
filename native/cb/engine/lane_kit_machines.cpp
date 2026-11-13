@@ -9,6 +9,7 @@
 #include <cstring>
 #include <format>
 
+#include "cb/build/driver.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/emulate/m6502.hpp"
@@ -311,7 +312,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::dos_lane() {
     }
     Impl& i = *impl_;
     const build::watcom::OpenWatcom ow = i.openwatcom();
-    if (ow.tool("wasm").empty() || ow.tool("wlink").empty()) return nullptr;
+    if (build::driver::tool(ow, "wasm").empty() || build::driver::tool(ow, "wlink").empty()) return nullptr;
     LaneKit* kit = this;
     source::dos_writer::Options options = source::dos_writer::options_for(ow, i.config.state() / "assembly_probes.json");
     options.build_windows = [kit](const stdfs::path& program, const stdfs::path& outdir) {   // a DOS+Windows file: its Windows module built whole
@@ -351,8 +352,8 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::dos_lane() {
     };
     lanes::DosLane::Tools tools = [ow] {
         std::map<std::string, stdfs::path> out;
-        out["wasm"] = ow.tool("wasm");
-        out["wlink"] = ow.tool("wlink");
+        out["wasm"] = build::driver::tool(ow, "wasm");
+        out["wlink"] = build::driver::tool(ow, "wlink");
         return out;
     };
     auto lane = std::make_shared<lanes::DosLane>(std::move(writer), std::move(tools));

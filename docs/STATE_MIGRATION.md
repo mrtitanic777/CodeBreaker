@@ -126,7 +126,15 @@ On a copy of `functions.sqlite`, `db/*.sqlite` (1,268 databases, 1.3 GB as a SQL
 
 * `--dry` writes nothing of what it reports, but building the verifier settings in force makes the lane kit extract the driver kit
   into `state/driver_kit` and refresh `knowledge.v2.sqlite`'s authored rows: both are made again from their sources.
-* DOS verdicts are not carried: the Python's DOS lane judges with `binnt` wasm/wlink (`build/driver.tool`), the native DOS lane
-  with `binnt64`, so the settings differ by tool size and the migration (rightly) leaves them; the native judge makes them again.
-* Bodies indexed independently by both sides agree digest for digest (PE and Win16 modules); only `lzexpand.dll` (a Win16 module
-  with 9 more bodies found natively) differs in 5 of 30.
+* DOS verdicts are carried. The Python's DOS lane judges with the `binnt` wasm/wlink (`build/driver.tool`: the OpenWatcom
+  builds this project patched for the driver kit's macros; still OpenWatcom wasm + wlink) and the native DOS lane used to take
+  `binnt64` (`OpenWatcom::tool`), so the settings differed by tool size and every DOS verdict was left. Both now use
+  `build::driver::tool` (the writer `source/dos_writer.cpp` and the lane `engine/lane_kit_machines.cpp`); the dos_writer tests
+  (byte-for-byte rebuilds of DOS programs) pass with those tools. On a copy holding the 127 DOS modules, `migrate-state` files
+  17,058 DOS verdicts of the Python's two current DOS digests under the native one, a second run files none, and `coverage`
+  shows DOS 127/127 measured (it was 0/127).
+* Bodies indexed independently by both sides agree digest for digest (PE and Win16 modules, `lzexpand.dll` included: today's Python and
+  the native index both find 39 bodies, and all 39 digests are equal). The 30 the Python's `knowledge.sqlite` holds for `lzexpand.dll`
+  were indexed by an older `describe.functions` that found 9 fewer function starts; the five digests that differ are functions whose end
+  moved when a start was found inside them. They are stale, not a difference between the two programs; the Python indexes a module
+  once and never again, so `names` needs the module's `body` rows removed to index it afresh.

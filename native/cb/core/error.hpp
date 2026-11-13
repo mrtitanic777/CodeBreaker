@@ -50,11 +50,12 @@ public:
 // A path as UTF-8 text with '/' separators (what messages show).
 std::string path_text(const std::filesystem::path& p);
 
-// An operating-system level failure on a file or device: path + OS error code.
+// An operating-system level failure on a file or device: path + OS error code (0: the operating system gave none --
+// the failure is CodeBreaker's own finding, "no such module" -- and the message has no code suffix).
 class IoError : public Error {
 public:
     IoError(const std::filesystem::path& path, int os_code, const std::string& what)
-        : Error(path_text(path) + ": " + what + " (os error " + std::to_string(os_code) + ")"),
+        : Error(path_text(path) + ": " + what + (os_code == 0 ? std::string() : " (os error " + std::to_string(os_code) + ")")),
           path_(path), os_code_(os_code) {}
     const std::filesystem::path& path() const { return path_; }
     int os_code() const { return os_code_; }

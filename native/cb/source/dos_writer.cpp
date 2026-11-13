@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "cb/build/driver.hpp"
 #include "cb/build/exepack.hpp"
 #include "cb/build/mzfile.hpp"
 #include "cb/build/pklite.hpp"
@@ -856,8 +857,8 @@ as the original's, packed again), .COM files, device drivers, IO.SYS, and a DOS 
 
 Options options_for(const build::watcom::OpenWatcom& open_watcom, const std::filesystem::path& probes) {
     Options o;
-    o.tools.wasm = open_watcom.tool("wasm");
-    o.tools.wlink = open_watcom.tool("wlink");
+    o.tools.wasm = build::driver::tool(open_watcom, "wasm");   // the same assembler and linker as the Python writer (build/driver.tool): the verifier profile names them
+    o.tools.wlink = build::driver::tool(open_watcom, "wlink");
     o.tools.env = open_watcom.environment(build::watcom::Target::Win32);
     o.probes = probes;
     return o;
