@@ -14,7 +14,7 @@
 
 #include "cb/knowledge/package.hpp"
 #include "cb/knowledge/store.hpp"
-#include "cb/symbols/body_store.hpp"
+#include "cb/store/knowledge_bodies.hpp"
 #include "cb/symbols/environment.hpp"
 #include "cb/symbols/identify.hpp"
 #include "cb/symbols/names.hpp"

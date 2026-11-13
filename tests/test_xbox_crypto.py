@@ -84,8 +84,54 @@ def test_command():
     assert xc.XeCryptCpuKeyValid(key)
 
 
+TESTDATA = os.path.join(ROOT, "native", "cb", "formats", "xbox", "crypto", "testdata")
+
+
+def test_xcp_dumper_wrong_key_leaves_the_file_alone():
+    """A wrong key stops before anything is written: the encrypted package is byte for byte what it was."""
+    import shutil
+    import tempfile
+    from codebreaker.formats.xbox.crypto import xcp_dumper
+    with tempfile.TemporaryDirectory() as work:
+        path = os.path.join(work, "sample.xcp")
+        shutil.copyfile(os.path.join(TESTDATA, "sample_encrypted.xcp"), path)
+        before = open(path, "rb").read()
+        argv = sys.argv
+        try:
+            sys.argv = ["xcp_dumper", path, "-k", "FF112233445566778899AABBCCDDEEFF", "--ignore", "--no-backup"]
+            try:
+                xcp_dumper.main()
+                raise AssertionError("a wrong key was accepted")
+            except ValueError:
+                pass
+        finally:
+            sys.argv = argv
+        assert open(path, "rb").read() == before
+        assert os.listdir(work) == ["sample.xcp"]
+
+
+def test_exp_signer_hxpc_takes_a_cpu_key():
+    import tempfile
+    from codebreaker.formats.xbox.crypto import exp_signer
+    key = xc.XeCryptCpuKeyGen()
+    with tempfile.TemporaryDirectory() as work:
+        payload = os.path.join(work, "p.bin")
+        open(payload, "wb").write(bytes(range(48)))
+        prv = os.path.join(TESTDATA, "test_rsa_prv.bin")
+        out = os.path.join(work, "o.bin")
+        try:
+            exp_signer.sign_exp(payload, out, prv, exp_signer.ExpansionMagic.HXPC)
+            raise AssertionError("signed without a CPU key")
+        except AssertionError as e:
+            assert "CPU" in str(e)
+        exp_signer.sign_exp(payload, out, prv, exp_signer.ExpansionMagic.HXPC, cpu_key=key)
+        data = open(out, "rb").read()
+        assert data[:4] == b"HXPC" and len(data) == 0x170 + 48
+
+
 def main():
-    for fn in (test_hashes, test_ciphers, test_cpu_key_and_keyvault, test_stream_io, test_command):
+    for fn in (test_hashes, test_ciphers, test_cpu_key_and_keyvault, test_stream_io, test_command,
+               test_xcp_dumper_wrong_key_leaves_the_file_alone, test_exp_signer_hxpc_takes_a_cpu_key):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

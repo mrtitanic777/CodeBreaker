@@ -102,6 +102,15 @@ def stream_decrypt_with_struct(xcp: StreamIO, key: Union[bytes, bytearray], stru
 
 	return dec_data
 
+def key_opens_header(xcp: StreamIO, key: Union[bytes, bytearray]) -> bool:
+	"""Whether `key` decrypts the package's cabinet header into a cabinet. Reads only; nothing is written."""
+	xcp.offset = 0x60
+	rc4_sha_struct = xcp.read_struct(RC4_SHA_HEADER)
+	cipher = XeCryptRc4.new(XeCryptHmacSha(key, bytes(rc4_sha_struct.cksm)))
+	cipher.decrypt(bytes(rc4_sha_struct.confounder))
+	magic = unpack_from("<I", cipher.decrypt(xcp.read_bytes_at(0, 4)))[0]
+	return magic in (0x4D534346, 0x4643534D)
+
 class XCPFile:
 	SVOD_INDEX_SIZE = 0xB000
 	SVOD_BLOCK_SIZE = 0x1000
@@ -315,6 +324,9 @@ def main() -> int:
 					raise Exception("Decryption key not specified and the file is encrypted!")
 
 			if encrypted:
+				# check the key before anything is written: a wrong key must leave the file as it was
+				if not key_opens_header(xcp, args.key):
+					raise ValueError("Invalid key specified")
 				print("Decrypting CAB header...")
 				cab_hdr_data = stream_decrypt_with_struct(xcp, args.key, 0x60, 0, 0x60)
 				cab_hdr_struct = CAB_HEADER.from_buffer_copy(cab_hdr_data)

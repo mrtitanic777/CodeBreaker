@@ -11,6 +11,7 @@
 
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/java/production.hpp"
 #include "cb/source/pipeline_world.hpp"
 #include "cb/verify/gate16/scoreboard16.hpp"
 
@@ -211,6 +212,57 @@ CB_TEST("source.pipeline.match_lzexpand_as_the_python_did", [] {
     CB_CHECK(out.find("lzexpand.dll: 8 functions compiled with Microsoft C (msvc152 /AM /G2s /Ox; msvc152 /AM /G2sw /Ox): different 8\n") != std::string::npos);
     CB_CHECK(out.find("  sub_1_00B2                   different  55 of 112 bytes differ\n") != std::string::npos);
     CB_CHECK(out.find("  LZREAD                       different  1190 of 1304 bytes differ\n") != std::string::npos);
+});
+
+// repair --truth names the period compilers a machine has; the 32-bit compiler of 1994 and Microsoft C have no units of their own (the Python's profile
+// gives none), so nothing is tried and the line says so; a compiler that is not set up is refused with the list of those that are.
+CB_TEST("source.pipeline.repair_truth_of_a_compiler_with_no_units", [] {
+    Surroundings w;
+    const std::string period = w.config.text("period_compiler");
+    std::error_code ec;
+    if (period.empty() || !stdfs::is_regular_file(fs::from_text(period) / "CL.EXE", ec)) return;
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(w.cli.run({"repair", "--truth", "msvc2"}), 0);
+        CB_CHECK_EQ(cap.out(), "msvc2: 0 sources, 0 identical as they stand; 0 knocked away from the original, 0 brought back\n");
+    }
+    CB_CHECK_THROWS_AS(UsageError, w.cli.run({"repair", "--truth", "no-such-compiler"}));
+});
+
+// What the Python answers on natalsu.exe, the PowerPC image of the formats tests (`python -m codebreaker match natalsu.exe`, the Xbox 360 compiler set up,
+// 2026-11-13; about a minute, so only when asked for): 87 functions, 8 identical, 8 same size, 67 different, 4 that do not compile.
+CB_TEST("source.pipeline.match_of_a_powerpc_image_as_the_python_did", [] {
+    if (!fs::get_env("CB_PIPELINE_SLOW")) return;
+    Surroundings w;
+    const std::optional<stdfs::path> tools = w.config.path("powerpc_tools");
+    std::error_code ec;
+    if (!w.has_corpus() || !tools || !stdfs::is_regular_file(*tools / "cl.exe", ec)) return;
+    const stdfs::path image = testing::data_path("formats/testdata/natalsu.exe");
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(w.cli.run({"match", fs::to_text(image)}), 0);
+    const std::string out = cap.out();
+    CB_CHECK(out.find("natalsu.exe: 87 functions\n") != std::string::npos);
+    CB_CHECK(out.find("  identical            8\n  same size            8\n  different            67\n  does not compile     4\n") != std::string::npos);
+});
+
+// What the Python writes for tests/java/fixtures/java (`python -m codebreaker module tests/java/fixtures/java --out DIR`, g++ and a JDK set up, 2026-11-13, 18 s;
+// the files are the same bytes, line ends aside): nine classes, one verified by running it beside the JVM, two weakly, six compiled and not run.
+CB_TEST("source.pipeline.module_of_a_java_program_as_the_python_did", [] {
+    if (!fs::get_env("CB_PIPELINE_SLOW")) return;
+    Surroundings w;
+    const stdfs::path folder = testing::data_path("../../tests/java/fixtures/java");
+    std::error_code ec;
+    if (!stdfs::is_directory(folder, ec) || !java::production::find_java(w.config)) return;
+    fs::ScopedTempDir out("pipeline-java");
+    testing::CapturedStd cap;
+    try {
+        CB_CHECK_EQ(w.cli.run({"module", fs::to_text(folder), "--out", fs::to_text(out.path())}), 0);
+    } catch (const Error&) {   // no host C++ compiler: the Java lane is not set up
+        return;
+    }
+    CB_CHECK(cap.out().find("java: 9 classes -> ") != std::string::npos);
+    CB_CHECK(cap.out().find("(VERIFIED 1, VERIFIED (weak) 2, NOT JUDGED 6)") != std::string::npos);
+    CB_CHECK(fs::read_text(out.path() / "STATUS.md").starts_with("# java -- C++03 transpiled from Java\n\n9 classes: "));
 });
 
 CB_TEST("source.pipeline.proof", [] {

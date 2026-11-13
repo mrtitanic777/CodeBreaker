@@ -101,7 +101,7 @@ public:
     // top of main (jobs::run_as_worker) and gives the kit its launcher; without one everything runs in this process.
     static void register_worker_kinds(jobs::WorkerKinds& kinds);
     void set_worker_launcher(jobs::WorkerLauncher launcher);
-    // The lane filed under `name` ("pe", "ne", "le", "powerpc"); null when there is none or its tools are not set up.
+    // The lane filed under `name` ("pe", "ne", "le", "powerpc", "dos", "java", the machines); null when there is none or its tools are not set up.
     std::shared_ptr<const verify::lanes::Kind> lane_named(std::string_view name);
     // `Services::judge_batch` of reconstruct: nullopt (threads judge) without a launcher or for a share too small to be worth a process.
     std::optional<std::map<std::string, verify::Judgement>> judge_apart(const verify::reconstruct::Services::JudgeBatch& batch);

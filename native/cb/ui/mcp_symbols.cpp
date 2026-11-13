@@ -22,89 +22,19 @@
 #include "cb/core/text.hpp"
 #include "cb/coverage/ledger.hpp"
 #include "cb/coverage/reach.hpp"
+#include "cb/coverage/reach_command.hpp"
 #include "cb/engine/function_store.hpp"
-#include "cb/formats/detect.hpp"
-#include "cb/formats/gb.hpp"
-#include "cb/formats/genesis.hpp"
-#include "cb/formats/msx.hpp"
-#include "cb/formats/nes.hpp"
-#include "cb/formats/pe.hpp"
-#include "cb/formats/sms.hpp"
-#include "cb/formats/xex.hpp"
-#include "cb/formats/zx.hpp"
 #include "cb/java/corpus.hpp"
-#include "cb/platforms/dos.hpp"
-#include "cb/platforms/gb.hpp"
-#include "cb/platforms/genesis.hpp"
-#include "cb/platforms/java.hpp"
-#include "cb/platforms/msx.hpp"
-#include "cb/platforms/nes.hpp"
 #include "cb/platforms/package.hpp"
-#include "cb/platforms/sms.hpp"
-#include "cb/platforms/vxd.hpp"
-#include "cb/platforms/win16.hpp"
 #include "cb/source/placement.hpp"
 #include "cb/store/functions.hpp"
 #include "cb/ui/mcp_wiring.hpp"
 #include "cb/ui/progress.hpp"
-#include "cb/verify/lanes/java.hpp"
 
 namespace cb::ui::mcp::wiring {
 namespace {
 
 namespace sym = cb::symbols;
-
-// ---- what a file is ---------------------------------------------------------------------------------------------------------
-
-std::optional<platforms::ExeKind> sy_exe_kind(std::optional<formats::detect::Lane> lane) {
-    if (!lane) return std::nullopt;
-    switch (*lane) {
-    case formats::detect::Lane::Pe: return platforms::ExeKind::Pe;
-    case formats::detect::Lane::Ne: return platforms::ExeKind::Ne;
-    case formats::detect::Lane::Le: return platforms::ExeKind::Le;
-    case formats::detect::Lane::Dos: return platforms::ExeKind::Dos;
-    }
-    return std::nullopt;
-}
-
-std::unique_ptr<platforms::Registry> sy_registry() {
-    platforms::Probes probes;
-    probes.executable_class = [](const std::filesystem::path& p) { return sy_exe_kind(formats::detect::lane(p)); };
-    probes.kind = [](const std::filesystem::path& p) { return sy_exe_kind(formats::detect::kind(p)); };
-    probes.pe_machine = [](const std::filesystem::path& p) -> std::optional<std::uint16_t> {
-        try {
-            return static_cast<std::uint16_t>(formats::pe::Image::open(p).header().machine);
-        } catch (const Error&) {
-            return std::nullopt;
-        }
-    };
-    probes.holds_drivers = [](const std::filesystem::path& p) { return formats::detect::holds_drivers(p); };
-    probes.is_xex = [](const std::filesystem::path& p) { return formats::xex::probe(p); };
-    probes.is_nes = [](const std::filesystem::path& p) { return formats::nes::probe(p); };
-    probes.is_sms = [](const std::filesystem::path& p) { return formats::sms::probe(p); };
-    probes.is_gb = [](const std::filesystem::path& p) { return formats::gb::probe(p); };
-    probes.is_genesis = [](const std::filesystem::path& p) { return formats::genesis::probe(p); };
-    probes.is_msx = [](const std::filesystem::path& p) { return formats::msx::probe(p); };
-    probes.is_zx = [](const std::filesystem::path& p) { return formats::zx::probe(p); };
-    probes.is_java_module = [](const std::filesystem::path& p) { return verify::lanes::JavaLane::is_module(p); };
-    probes.xex_basefile = [](const std::filesystem::path& p) { return p; };
-    probes.xbe_to_pe = [](const std::filesystem::path& p) { return p; };
-    auto registry = std::make_unique<platforms::Registry>(std::move(probes));
-    registry->add(platforms::dos());
-    registry->add(platforms::vxd());
-    registry->add(platforms::win16());
-    registry->add(platforms::win32());
-    registry->add(platforms::msx());
-    registry->add(platforms::zx());
-    registry->add(platforms::genesis());
-    registry->add(platforms::gb());
-    registry->add(platforms::sms());
-    registry->add(platforms::nes());
-    registry->add(platforms::xbe());
-    registry->add(platforms::xbox360());
-    registry->add(platforms::java());
-    return registry;
-}
 
 // ---- the store and the ledger -------------------------------------------------------------------------------------------------
 
@@ -267,7 +197,7 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
         return {d.folder, std::string(source::placement::how_name(d.how))};
     };
     // what a file is
-    auto registry = std::shared_ptr<platforms::Registry>(sy_registry());
+    auto registry = std::shared_ptr<platforms::Registry>(coverage::reach_command::standard_registry());
     services.reach_describe = [registry](const std::filesystem::path& p) -> Json {
         coverage::reach::Services reach;
         reach.identify_platform = coverage::reach::identify_with(*registry);

@@ -207,6 +207,16 @@ CB_TEST("ui.mcp.the_service_answers_the_tools_by_name", [] {
     CB_CHECK_THROWS_AS(UsageError, (void)f.server.call_tool("job", Json{{"job_id", "nothing"}, {"offset", 0}, {"tail", 0}}));
 });
 
+CB_TEST("ui.mcp.a_wire_client_sends_only_the_arguments_it_was_given", [] {
+    Fixture f;   // (the terminal interface's client binds what it passes, not the tool's defaults: those are filled in here)
+    const Json none = f.service.answer_call(Json{{"name", "mcp.jobs"}, {"args", Json::object()}, {"owner", "x"}});
+    CB_CHECK(none.contains("value"));
+    const Json bad = f.service.answer_call(Json{{"name", "mcp.job"}, {"args", Json{{"job_id", "nothing"}}}, {"owner", "x"}});
+    CB_CHECK_EQ(bad.at("kind").get<std::string>(), "ValueError");   // (the job is not there: not "key 'offset' not found")
+    const Json missing = f.service.answer_call(Json{{"name", "mcp.job"}, {"args", Json::object()}, {"owner", "x"}});
+    CB_CHECK(missing.contains("error"));   // (job_id has no default)
+});
+
 CB_TEST("ui.mcp.helpers_page_cut_and_measure_as_the_python_did", [] {
     // paging: total, the window, where to go on
     Json rows = Json::array();

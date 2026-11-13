@@ -1,4 +1,4 @@
-// cb/engine/lane_kit_other.cpp -- the driver lane, the Java lane and the worker kinds, wired (see lane_kit.hpp).
+// cb/engine/lane_kit_other.cpp -- the driver lane, the PowerPC lane and the worker kinds (the Java lane: lane_kit_java.cpp), wired (see lane_kit.hpp).
 #include "cb/build/driver.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -128,17 +128,12 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::powerpc_lane() {
     return impl_->powerpc_ = std::move(lane);
 }
 
-std::shared_ptr<const verify::lanes::Kind> LaneKit::java_lane() { return nullptr; }
-
-std::string_view LaneKit::java_missing() {
-    return "the Java lane needs the transpiler's Services (data, runtime, target profiles, projects), which have no production assembly in native/cb yet";
-}
-
 std::shared_ptr<const verify::lanes::Kind> LaneKit::lane_named(std::string_view name) {
     if (name == "pe") return win32_lane();
     if (name == "ne") return win16_lane();
     if (name == "le") return driver_lane();
     if (name == "powerpc") return powerpc_lane();
+    if (name == "java") return java_lane();
     if (name == "dos") return dos_lane();
     if (auto machine = machine_lane(name)) return machine;
     return nullptr;

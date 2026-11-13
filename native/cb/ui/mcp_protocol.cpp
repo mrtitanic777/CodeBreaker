@@ -386,8 +386,9 @@ Server::Server(service::Service& service, service::ServiceLink& link, Services s
     Impl* impl = impl_.get();
     for (const ToolSpec& spec : table()) {
         const std::string function(spec.function);
-        service.add_call("mcp." + function, [impl, function](const Json& args, std::string_view) -> Json {
-            const ToolResult r = impl->call(function, args);
+        service.add_call("mcp." + function, [impl, function, &spec](const Json& args, std::string_view) -> Json {
+            // (a client of the wire sends only the arguments it was given, as the Python's does: the rest are the tool's defaults)
+            const ToolResult r = impl->call(function, bind_arguments(spec, args));
             if (r.image) throw UsageError("a picture does not go through JSON");
             return *r.document;
         });
@@ -595,18 +596,26 @@ int Server::serve_stdio() {
         } catch (const std::exception&) {   // a line that is not JSON is dropped: the library logs it and answers nothing
             continue;
         }
-        workers.emplace_back([this, shared, proto, message = std::move(message)] {
+        const auto answer_one = [this, shared, proto](const Json& one) {
             bool flag = shared->initialized.load();
-            const Json answer = handle(message, &flag);
+            const Json answer = handle(one, &flag);
             if (flag) shared->initialized.store(true);
             if (answer.is_null()) return;
             const std::string text = answer.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n";
             const std::lock_guard<std::mutex> hold(shared->write);
             _write(proto, text.data(), static_cast<unsigned>(text.size()));
-        });
+        };
+        // The handshake is answered here, before anything after it is read: a request that follows `initialize` on the same pipe
+        // must find the session initialized (on a thread of its own it could be handled first and refused).
+        const std::string method = message.contains("method") && message["method"].is_string() ? message["method"].get<std::string>() : "";
+        if (method == "initialize" || method == "notifications/initialized") {
+            answer_one(message);
+            continue;
+        }
+        workers.emplace_back([answer_one, message = std::move(message)] { answer_one(message); });
     }
-    // (a worker may still be running a slow tool: give each that has finished its thread back, leave the rest to the end of the process)
-    for (std::thread& w : workers) w.detach();
+    // Every request read is answered before the server goes (as the Python's does): a worker uses this server, so none may outlive it.
+    for (std::thread& w : workers) w.join();
     impl_->link.stop_mine();   // only the jobs this server started
     return 0;
 }

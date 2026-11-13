@@ -470,7 +470,8 @@ def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
                 if b:
                     v = match.distance(b, originals[address[n]], "powerpc")[0]
                     got += 3 if v == V.IDENTICAL else 1 if v == V.SAME_SIZE else 0
-            best = max(best, (got, f))
+            if got > best[0]:                                # (the first of the sets that fit equally well)
+                best = (got, f)
         flags = best[1]
         if log:
             log("  compiler switches that fit best: %s" % flags)

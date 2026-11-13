@@ -217,6 +217,8 @@ verify::reconstruct::Services LaneKit::reconstruct_services(const verify::recons
     s.kind_of_file = [&corpus](const stdfs::path& p) -> std::optional<std::string> {
         const std::optional<base::Lane> lane = corpus.lane(p);
         if (!lane) {
+            // a folder of Java source, a .java file or a jar (the lane says a jar is to be decompiled first)
+            if (verify::lanes::JavaLane::is_module(p) || text::iends_with(fs::to_text(p), ".jar")) return "java";
             std::string machine = machine_of_file(p);   // (a cartridge, a snapshot, a tape)
             if (machine.empty()) return std::nullopt;
             return machine;

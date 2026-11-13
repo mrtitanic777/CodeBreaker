@@ -119,7 +119,7 @@ def _powerpc_objects(obj):
         ignore = [0] * ((sec["size"] + 3) // 4)
         for at, _sym, kind in o.relocations(sec):
             if at // 4 < len(ignore):
-                ignore[at // 4] |= _FIELD.get(kind, 0)
+                ignore[at // 4] |= _FIELD.get(kind & 0xFF, 0)       # (the type is the low byte; the rest are hints to the linker)
         for k, (value, name) in enumerate(lst):
             end = lst[k + 1][0] if k + 1 < len(lst) else sec["size"]
             out[name] = (obj[sec["ptr"] + value:sec["ptr"] + end], ignore[value // 4:(end + 3) // 4])
