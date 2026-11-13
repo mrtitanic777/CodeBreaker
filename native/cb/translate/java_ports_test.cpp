@@ -931,11 +931,20 @@ std::optional<jprobe::Toolchain> jpb_tools(bool with_libraries) {
     tools.cxx = "g++";
     tools.java = jpo_front().tools.java;
     tools.javac = jpo_front().tools.javac;
+    jpo_front().tools.classpath.clear();
     if (with_libraries) {
         try {
             const config::Config settings = config::Config::load(testing::data_path("../.."));
             const std::string libs = settings.text("java_libs");
             if (!libs.empty()) tools.libraries = jprobe::list_libraries(fs::from_text(libs));
+            // The program is attributed against the libraries (and the stand-ins' folder) as production does: a call on a library class
+            // (Keyboard.getKeyName) is a method of it, not a call javac could not resolve.
+            if (!tools.libraries.empty()) {
+                jprobe::Toolchain with_shims = tools;
+                with_shims.shim_sources = java::JavaData(testing::data_path("../../codebreaker/java")).path({"probe_shims"});
+                if (const auto shims = jprobe::compile_shims(jpo_front().state->path(), with_shims)) jpo_front().tools.classpath.push_back(*shims);
+                for (const stdfs::path& jar : tools.libraries) jpo_front().tools.classpath.push_back(jar);
+            }
         } catch (const std::exception&) {
         }
     }
