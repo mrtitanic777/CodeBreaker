@@ -102,12 +102,13 @@ ImageSpec pe_spec(const formats::pe::Image& pe) {
     std::set<Va> starts;
     std::set<Va> roots;
     for (const formats::pe::ExportSymbol& e : pe.export_table().symbols) {
-        if (e.forward || e.rva == 0) continue;
+        if (e.rva == 0) continue;
         const Va va = base + e.rva;
+        roots.insert(va);   // (every export is an entry as the analyses count them, a data export or a forwarder's string too: the live loader did)
+        if (e.forward) continue;
         const Span* s = span_at(spec, va);
         if (s == nullptr || !s->executable) continue;
         starts.insert(va);
-        roots.insert(va);
         // (an export by its ordinal only is called Ord<n>, as the compilers' import libraries spell it)
         const std::string name = e.name && !e.name->empty() ? *e.name : std::format("Ord{}", e.ordinal);
         if (is_symbol_name(name)) spec.function_names[va] = name;

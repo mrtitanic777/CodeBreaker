@@ -435,6 +435,11 @@ add_executable(cb_pipeline EXCLUDE_FROM_ALL source/pipeline_main.cpp)
 cb_apply_flags(cb_pipeline)
 target_link_libraries(cb_pipeline PRIVATE cb_source cb_engine cb_core)
 cb_copy_prebuilt_dlls(cb_pipeline)
+# analyze_run: `analyze` of store/analyze_command on a command line, to compare its report with the Python's (store/analyze_main.cpp). Not built by default.
+add_executable(cb_analyze_run EXCLUDE_FROM_ALL store/analyze_main.cpp)
+cb_apply_flags(cb_analyze_run)
+target_link_libraries(cb_analyze_run PRIVATE cb_store cb_engine cb_analyze cb_core)
+cb_copy_prebuilt_dlls(cb_analyze_run)
 # cb_cmds: the proof harness of the program-reading and recompiling commands (symbols/cmds_main.cpp): classes, xdk-match, recompile,
 # recompile-project, xenon-recompile, java and xna with the Environment the command table will give them. Not built by default.
 add_executable(cb_cmds EXCLUDE_FROM_ALL symbols/cmds_main.cpp)
