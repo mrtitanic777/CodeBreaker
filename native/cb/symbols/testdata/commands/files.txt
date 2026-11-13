@@ -1,0 +1,7 @@
+38 service tables, 1147 services named, 134 device numbers named
+bios.vxd           85 service calls,   68 named  VMM_Service_0193 x1  VMM_Service_0196 x1  BIOS_EXT_Service_0000 x1  BIOS_EXT_Service_0001 x1  BIOS_EXT_Service_0002 x12  CONFIGMG_Service_005B x1
+splitter.vxd       40 service calls,   40 named
+srammtd.vxd         5 service calls,    5 named
+vmouse.vxd        240 service calls,  240 named
+nosuch.vxd: not found
+exit=0
