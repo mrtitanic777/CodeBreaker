@@ -1223,6 +1223,7 @@ CB_TEST("java.beside_the_jvm.keyboard_names_and_a_missing_resource", [] {
     for (const char* wanted : {"binding", "index", "splash"}) CB_CHECK(jpb_has_method(run.result, wanted));
     CB_CHECK_EQ(run.result.judged, std::size_t{3});
     CB_CHECK(run.result.differs.empty());
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
 });
 
 // test_probe_libraries.py: the stand-in for Minecraft's own build of the sound codec lets CodecMus compile against the sound-system jar.
