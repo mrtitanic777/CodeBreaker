@@ -1126,6 +1126,16 @@ The module is a driver: nearly all of a build is the OpenWatcom compiler, assemb
 
 A whole build compared with the Python's needs the module made compilable (the decompiler's services), which exist only in the old layer inside the exe; the commit message says what was and was not compared.
 
+## W5-B1 (emulate/windows16, emulate/driver) -- HOT paths: the 16-bit judge's emulator
+
+Old = the old typed port of windows16 (git master's native/typed/cpp/codebreaker/emulate/windows16.{hpp,cpp}, built beside the new one against the same cb libraries, its knowledge lookups stubbed); New = native/cb Release /O2. Real Windows 95 modules: LZEXPAND.DLL ordinals 1-12 and VER.DLL ordinals 1-8 under `probe` (zero arguments, an unmodelled stand-in for every import), 30 rounds of the 20 runs = 600 runs per pass, old and new alternately on the same loaded machine, passes 1 and 2 shown (pass 0 loads the modules).
+
+| What | Old | New |
+|---|---|---|
+| 600 probe runs | 2.13-2.24 ms/run (pass 1), 2.83-2.89 (pass 2) | 2.09-2.11 ms/run (pass 1), 2.43-2.47 (pass 2) |
+| what was recorded | 44,100 instructions | the same: 44,100 instructions |
+
+A run is about 2 ms for about 74 instructions: nearly all of it is a fresh Unicorn engine (open, twelve 64K segment windows, stack, sentinel and scratch windows, the GDT) -- shared with the old code. The new loader keeps the module fixed up in memory (one buffer per segment) instead of reading it back from a machine, and a run lays out from those buffers; the recorder is the shared C++ one. The branch log decodes each instruction once per run (a thread's Capstone engine) instead of through a process-wide memo. emulate/driver has no loop of its own worth timing (a run is the recorder's); the 22 corpus VxD runs of its test take 0.2 s together.
 ## translate/backends/c_java (W5-B4)
 
 | work | Python | C++ (native/cb) |

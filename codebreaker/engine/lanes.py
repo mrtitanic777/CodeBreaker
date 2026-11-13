@@ -271,7 +271,7 @@ def _patched(ctx, L):
     keys = ctx.need(L + "keys")["keys"]
     given = {}
     for k, f in ctx.need_many(L + "function", keys).items():
-        if f is not None and m.texts.get(f[0]) != f[1]:
+        if f is not None and f[1] is not None and m.texts.get(f[0]) != f[1]:   # [name, None]: no C given
             given[f[0]] = f[1]
     if not given:
         return m

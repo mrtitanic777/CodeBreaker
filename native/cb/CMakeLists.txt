@@ -123,7 +123,7 @@ cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
 cb_area(engine)
-target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify)   # (cb_verify: the verdict and class vocabulary)
+target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs)   # (cb_verify: the verdict and class vocabulary)
 cb_area(jobs)
 target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
@@ -156,7 +156,7 @@ cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core cb_formats cb_platforms cb_analyze cb_build cb_translate)   # (cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment; cb_translate: the L2 library client and the module model c_text writes)
 
 cb_area(analyze)
-target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
+target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
 
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats)   # (omf_object: an OMF module as the lanes' object record)
@@ -255,7 +255,7 @@ target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_com
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
-target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client)
+target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage cb_symbols ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client; cb_symbols: the demangler of the MCP server)
 
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
 
@@ -280,6 +280,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/authored/match16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b4.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b2.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b3.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xna.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
@@ -304,7 +306,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/gb.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b1.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b2.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b1.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dos.cpp"
@@ -312,7 +314,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/windows16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/driver.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"

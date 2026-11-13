@@ -65,7 +65,9 @@ def known(prj, starts=None):
 def functions(prj):
     try:
         fs = [(a, n) for a, n, w in carve.functions(prj)]
-    except Exception:
+    except Exception as problem:   # a toolchain that cannot be carved names only the places given; say why
+        import logging
+        logging.getLogger(__name__).debug("names: no functions carved: %s", problem)
         fs = []
     if not fs:                                              # (no carver for the toolchain: the places named)
         code, _ = known(prj, starts=set())

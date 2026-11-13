@@ -1,0 +1,1221 @@
+{
+ "call 0 demangle": {
+  "id": 100,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"?Foo@@YAXH@Z\": {\n    \"readable\": \"void __cdecl Foo(int)\",\n    \"declaration\": \"void __cdecl Foo(int)\",\n    \"stack_bytes\": null\n  },\n  \"_Bar@8\": {\n    \"readable\": \"Bar\",\n    \"declaration\": null,\n    \"stack_bytes\": 8\n  },\n  \"plain\": {\n    \"readable\": \"plain\",\n    \"declaration\": null,\n    \"stack_bytes\": null\n  }\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 1 hex_dump": {
+  "id": 101,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"offset\": 16,\n  \"length\": 40,\n  \"size\": 9936,\n  \"text\": \"00000010  B8 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00  ........@.......\\n00000020  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................\\n00000030  00 00 00 00 00 00 00 00                          ........\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 10 stop_job": {
+  "id": 110,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool stop_job: no job 'nothing'",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 11 read_file": {
+  "id": 111,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool read_file: C:/Windows/notepad.exe is outside the folders this reads: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\Converted, C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\state, C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker, C:\\Users\\mrtit\\Documents\\GitHub\\Windows95",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 12 demangle": {
+  "id": 112,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool demangle: 1 validation error for demangleArguments\ndecorated\n  Input should be a valid list [type=list_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 13 name_function": {
+  "id": 113,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool name_function: a name is letters, digits, _ and ::",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 14 job": {
+  "id": 114,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool job: no job 'nothing' (this server's jobs: `jobs`)",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 15 jobs": {
+  "id": 115,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"jobs\": []\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 16 nosuchtool": {
+  "id": 116,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Unknown tool: nosuchtool",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 2 strings": {
+  "id": 102,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"total\": 12,\n  \"offset\": 0,\n  \"count\": 5,\n  \"rows\": [\n    {\n      \"offset\": 313,\n      \"address\": null,\n      \"kind\": \"ascii\",\n      \"category\": \"other\",\n      \"text\": \"LZEXPAND\"\n    },\n    {\n      \"offset\": 582,\n      \"address\": null,\n      \"kind\": \"ascii\",\n      \"category\": \"other\",\n      \"text\": \"LZREAD\"\n    },\n    {\n      \"offset\": 591,\n      \"address\": null,\n      \"kind\": \"ascii\",\n      \"category\": \"other\",\n      \"text\": \"LZCOPY\"\n    },\n    {\n      \"offset\": 600,\n      \"address\": null,\n      \"kind\": \"ascii\",\n      \"category\": \"other\",\n      \"text\": \"LZCLOSE\"\n    },\n    {\n      \"offset\": 610,\n      \"address\": null,\n      \"kind\": \"ascii\",\n      \"category\": \"other\",\n      \"text\": \"LZINIT\"\n    }\n  ],\n  \"next\": 5\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 3 command_help": {
+  "id": 103,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool command_help: no command 'nosuchcommand'; `commands` lists them",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 4 hex_dump": {
+  "id": 104,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool hex_dump: no module 'no-such-module.dll': not a file, not in the corpus (C:\\Users\\mrtit\\Documents\\GitHub\\Windows95\\design\\corpus\\files), not in the store",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 5 describe": {
+  "id": 105,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool describe: 1 validation error for describeArguments\npath\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/missing",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 6 strings": {
+  "id": 106,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool strings: 2 validation errors for stringsArguments\nmin_len\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/int_parsing\nlimit\n  Input should be a valid integer, got a number with a fractional part [type=int_from_float, input_value=2.5, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.12/v/int_from_float",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 7 hex_dump": {
+  "id": 107,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"offset\": 1,\n  \"length\": 20,\n  \"size\": 9936,\n  \"text\": \"00000001  5A 9B 00 02 00 00 00 04 00 05 00 FF FF 00 00 B8  Z...............\\n00000011  00 00 00 00                                      ....\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 8 jobs": {
+  "id": 108,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"jobs\": []\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 9 job_file": {
+  "id": 109,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool job_file: job 'nothing' wrote no file",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "initialize": {
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+   "capabilities": {
+    "prompts": {
+     "listChanged": false
+    },
+    "resources": {
+     "listChanged": false,
+     "subscribe": false
+    },
+    "tools": {
+     "listChanged": false
+    }
+   },
+   "instructions": "CodeBreaker reconstructs readable source from binaries (Windows 16/32-bit, DOS, VxD\ndrivers, Xbox, Xbox 360, 8/16-bit consoles, XNA, Java) and checks that the source behaves like the\noriginal by running both in an emulator. Start with `triage` on a module (everything below at a\nglance), `describe` on a file or `modules` for the corpus; `inspect` for headers/imports/exports;\n`functions` and `function` for what the store holds (each function's reconstructed C and its verdict:\nverified, weak, unverified, not-judged, no-compile, no-source); `decompile_function` for one function's\nC now; `disasm` for its instructions, `xrefs` for who calls it and what it calls, `hex_dump` by address.\nWhat was made lives in `projects`/`project` (Converted/), `source_tree` (the product's source tree)\nand `reach_results`; `read_file` reads any of it. `compare_versions` matches two builds function by\nfunction, `diff_function` shows one pair side by side. Anything long (decompile, measure, reach\n--judge, pe-source, recompile-project) goes through `run_command`, then `job` to follow it.\nA module is a corpus name (lz32.dll) or a path; an address is hex, or a function's name.",
+   "protocolVersion": "2025-06-18",
+   "serverInfo": {
+    "name": "codebreaker",
+    "title": "CodeBreaker",
+    "version": "2.0.0"
+   }
+  }
+ },
+ "nosuch": {
+  "error": {
+   "code": -32601,
+   "data": "nosuch/method",
+   "message": "Method not found"
+  },
+  "id": 8,
+  "jsonrpc": "2.0"
+ },
+ "ping": {
+  "id": 7,
+  "jsonrpc": "2.0",
+  "result": {}
+ },
+ "prompts/get": {
+  "id": 4,
+  "jsonrpc": "2.0",
+  "result": {
+   "description": "Take a binary apart: what it is, what is in it, where its reconstruction stands",
+   "messages": [
+    {
+     "content": {
+      "text": "Triage lz32.dll with the CodeBreaker tools: start with the `triage` tool (what it is, its imports and exports, the store's counts and each unverified function with its verdict); if nothing is stored, offer to `run_command` measure on it and follow the job; then for each function to look at, `disasm` and `xrefs` it and say what most likely went wrong and what the original code was for.",
+      "type": "text"
+     },
+     "role": "user"
+    }
+   ]
+  }
+ },
+ "prompts/list": {
+  "id": 3,
+  "jsonrpc": "2.0",
+  "result": {
+   "prompts": [
+    {
+     "arguments": [
+      {
+       "name": "path",
+       "required": true
+      }
+     ],
+     "description": "Take a binary apart: what it is, what is in it, where its reconstruction stands",
+     "name": "triage"
+    }
+   ]
+  }
+ },
+ "resources/list": {
+  "id": 5,
+  "jsonrpc": "2.0",
+  "result": {
+   "resources": []
+  }
+ },
+ "resources/templates/list": {
+  "id": 6,
+  "jsonrpc": "2.0",
+  "result": {
+   "resourceTemplates": [
+    {
+     "description": "One function's reconstructed source, as the store holds it",
+     "mimeType": "text/x-c",
+     "name": "function_source",
+     "uriTemplate": "codebreaker://function/{module}/{addr}"
+    }
+   ]
+  }
+ },
+ "tools/list": {
+  "id": 2,
+  "jsonrpc": "2.0",
+  "result": {
+   "tools": [
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "What a file is, the platform it belongs to, and the lane CodeBreaker reconstructs it with\n(None when there is none yet). A corpus name is accepted too.",
+     "inputSchema": {
+      "properties": {
+       "path": {
+        "title": "Path",
+        "type": "string"
+       }
+      },
+      "required": [
+       "path"
+      ],
+      "title": "describeArguments",
+      "type": "object"
+     },
+     "name": "describe"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The inspector: headers, sections, imports, exports, resources, version. Without `section`\nthe whole description (long parts are listed instead when it is too big); with it, one part:\nsummary, dos, headers, sections, exports, imports, resources, directories, relocations, ...\nAddresses are hex text; file offsets and sizes are numbers (as hex_dump and resource take\nthem). Imports by number carry the name when one is known, and where it came from.",
+     "inputSchema": {
+      "properties": {
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "section": {
+        "default": "",
+        "title": "Section",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "inspect_moduleArguments",
+      "type": "object"
+     },
+     "name": "inspect"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Text found in a file (ASCII and UTF-16), with file offsets; `find` keeps those containing it.",
+     "inputSchema": {
+      "properties": {
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       },
+       "limit": {
+        "default": 300,
+        "title": "Limit",
+        "type": "integer"
+       },
+       "min_len": {
+        "default": 4,
+        "title": "Min Len",
+        "type": "integer"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "stringsArguments",
+      "type": "object"
+     },
+     "name": "strings"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "A hex dump of a file's bytes from file `offset`, or from the place a 32-bit module's\naddress (or function name) `addr` is stored (at most 16 KB).",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "default": "",
+        "title": "Addr",
+        "type": "string"
+       },
+       "length": {
+        "default": 512,
+        "title": "Length",
+        "type": "integer"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "hex_dumpArguments",
+      "type": "object"
+     },
+     "name": "hex_dump"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "One resource, by the file offset and size `inspect` gives for it: a picture (icon,\nbitmap, cursor) as an image, anything else as text.",
+     "inputSchema": {
+      "properties": {
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "offset": {
+        "title": "Offset",
+        "type": "integer"
+       },
+       "size": {
+        "title": "Size",
+        "type": "integer"
+       },
+       "type_id": {
+        "default": -1,
+        "title": "Type Id",
+        "type": "integer"
+       },
+       "wide": {
+        "default": true,
+        "title": "Wide",
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "module",
+       "offset",
+       "size"
+      ],
+      "title": "resourceArguments",
+      "type": "object"
+     },
+     "name": "resource"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The corpus modules with their ledger numbers (functions, verified, weak, unverified, ...).\n`kind`: pe, ne, le, dos, powerpc, ...; `find`: part of a name.",
+     "inputSchema": {
+      "properties": {
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       },
+       "kind": {
+        "default": "",
+        "title": "Kind",
+        "type": "string"
+       },
+       "limit": {
+        "default": 200,
+        "title": "Limit",
+        "type": "integer"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       },
+       "only_in_store": {
+        "default": false,
+        "title": "Only In Store",
+        "type": "boolean"
+       },
+       "refresh": {
+        "default": false,
+        "title": "Refresh",
+        "type": "boolean"
+       }
+      },
+      "title": "modulesArguments",
+      "type": "object"
+     },
+     "name": "modules"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "How the corpus stands: totals and one row per kind of module.",
+     "inputSchema": {
+      "properties": {
+       "refresh": {
+        "default": false,
+        "title": "Refresh",
+        "type": "boolean"
+       }
+      },
+      "title": "coverageArguments",
+      "type": "object"
+     },
+     "name": "coverage"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "What a running sweep is doing: results per minute, recent modules, busy workers, a rough ETA.",
+     "inputSchema": {
+      "properties": {},
+      "title": "progressArguments",
+      "type": "object"
+     },
+     "name": "progress"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Every function the store holds for a module, with its class (verified, weak, unverified,\nnot-judged, no-compile, no-source), name and why; plus counts and the commonest reasons. A\nfunction a runtime library or a tool (the thunk compiler) made carries `library`, and is\ncounted under `identified`. `cls` keeps one class (or \"identified\"); `find` matches a name or\nan address.",
+     "inputSchema": {
+      "properties": {
+       "cls": {
+        "default": "",
+        "title": "Cls",
+        "type": "string"
+       },
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       },
+       "limit": {
+        "default": 300,
+        "title": "Limit",
+        "type": "integer"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "functionsArguments",
+      "type": "object"
+     },
+     "name": "functions"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "One function: its reconstructed source, the verdict and the verdict's detail. `addr` is\nits address (hex, with or without 0x) or its name.",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "title": "Addr",
+        "type": "string"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module",
+       "addr"
+      ],
+      "title": "functionArguments",
+      "type": "object"
+     },
+     "name": "function"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Every function and import of a module with its best name and where the name came from\n(exports, debug symbols, runtime libraries, bodies named in other modules).",
+     "inputSchema": {
+      "properties": {
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       },
+       "limit": {
+        "default": 300,
+        "title": "Limit",
+        "type": "integer"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "namesArguments",
+      "type": "object"
+     },
+     "name": "names"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Functions of a module that belong to a runtime library (by signature), and what built it.",
+     "inputSchema": {
+      "properties": {
+       "module": {
+        "title": "Module",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "identifyArguments",
+      "type": "object"
+     },
+     "name": "identify"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Decorated linker names (Microsoft C++ ?Foo@@..., _Bar@8) as readable declarations.",
+     "inputSchema": {
+      "properties": {
+       "decorated": {
+        "items": {
+         "type": "string"
+        },
+        "title": "Decorated",
+        "type": "array"
+       }
+      },
+      "required": [
+       "decorated"
+      ],
+      "title": "demangleArguments",
+      "type": "object"
+     },
+     "name": "demangle"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Every command of `python -m codebreaker` with its one-line usage (any of them can be run as\na job through run_command, except the interfaces and servers).",
+     "inputSchema": {
+      "properties": {},
+      "title": "commandsArguments",
+      "type": "object"
+     },
+     "name": "commands"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The full description of one command: its module's text (arguments, options, what it writes).",
+     "inputSchema": {
+      "properties": {
+       "command": {
+        "title": "Command",
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ],
+      "title": "command_helpArguments",
+      "type": "object"
+     },
+     "name": "command_help"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The jobs started, newest first: with the service running, those of every interface (the\nterminal's, each MCP server's), each with its owner; else this server's.",
+     "inputSchema": {
+      "properties": {},
+      "title": "jobsArguments",
+      "type": "object"
+     },
+     "name": "jobs"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "A job's state and its output from byte `offset` (up to 256 KB; `next` is where to go on).\n`tail`: just the last that many characters of the output instead.",
+     "inputSchema": {
+      "properties": {
+       "job_id": {
+        "title": "Job Id",
+        "type": "string"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       },
+       "tail": {
+        "default": 0,
+        "title": "Tail",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "job_id"
+      ],
+      "title": "jobArguments",
+      "type": "object"
+     },
+     "name": "job"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The file a job wrote (a decompile's C), from character `offset`.",
+     "inputSchema": {
+      "properties": {
+       "job_id": {
+        "title": "Job Id",
+        "type": "string"
+       },
+       "length": {
+        "default": 60000,
+        "title": "Length",
+        "type": "integer"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "job_id"
+      ],
+      "title": "job_fileArguments",
+      "type": "object"
+     },
+     "name": "job_file"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The results `reach` kept (state/reach/<run>.json). Without `run`, the runs there are. With\nit, the programs found: what each is, its platform and lane, and for those judged the tally;\n`platform` and `find` (part of a path) narrow it, plus a count per platform.",
+     "inputSchema": {
+      "properties": {
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       },
+       "judged_only": {
+        "default": false,
+        "title": "Judged Only",
+        "type": "boolean"
+       },
+       "limit": {
+        "default": 100,
+        "title": "Limit",
+        "type": "integer"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       },
+       "platform": {
+        "default": "",
+        "title": "Platform",
+        "type": "string"
+       },
+       "run": {
+        "default": "",
+        "title": "Run",
+        "type": "string"
+       }
+      },
+      "title": "reach_resultsArguments",
+      "type": "object"
+     },
+     "name": "reach_results"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The project folders under Converted/ (one per binary CodeBreaker has taken apart): name,\nthe original's file name, its kind and the commands run on it.",
+     "inputSchema": {
+      "properties": {
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       }
+      },
+      "title": "projectsArguments",
+      "type": "object"
+     },
+     "name": "projects"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "One project folder: its project.json (what was done, each output) and its files.",
+     "inputSchema": {
+      "properties": {
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       }
+      },
+      "required": [
+       "name"
+      ],
+      "title": "projectArguments",
+      "type": "object"
+     },
+     "name": "project"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Where a module's source lives in the product's source tree (and why there), and its files,\neach marked source, notes (.md, .txt) or built (a build's output or working folder); counts\nof each, source first.",
+     "inputSchema": {
+      "properties": {
+       "find": {
+        "default": "",
+        "title": "Find",
+        "type": "string"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "source_treeArguments",
+      "type": "object"
+     },
+     "name": "source_tree"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "A text file from a project folder, the source tree, state/ or this checkout, from character\n`offset` (a binary file: use hex_dump).",
+     "inputSchema": {
+      "properties": {
+       "length": {
+        "default": 40000,
+        "title": "Length",
+        "type": "integer"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       },
+       "path": {
+        "title": "Path",
+        "type": "string"
+       }
+      },
+      "required": [
+       "path"
+      ],
+      "title": "read_fileArguments",
+      "type": "object"
+     },
+     "name": "read_file"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "One function decompiled now, without starting a job: a 32-bit x86 function by itself (cached\nby its inputs); any other kind decompiles its whole module once (kept) and the function is cut\nout of it. `addr` is an address (hex) or a name. Not built or judged, and not necessarily the\ntext the store holds (that was made by the measure that judged it: `function`). Says so when it\ntakes longer than `wait` seconds: call again.",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "title": "Addr",
+        "type": "string"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "wait": {
+        "default": 60,
+        "title": "Wait",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "module",
+       "addr"
+      ],
+      "title": "decompile_functionArguments",
+      "type": "object"
+     },
+     "name": "decompile_function"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "Two builds of a module function by function (compare/versions.py): identical, changed (with\na likeness score), added, removed, and the names the old build gives functions the new one\nleaves unnamed. Changed pairs come first. `status` keeps identical or changed pairs only.",
+     "inputSchema": {
+      "properties": {
+       "limit": {
+        "default": 200,
+        "title": "Limit",
+        "type": "integer"
+       },
+       "module_a": {
+        "title": "Module A",
+        "type": "string"
+       },
+       "module_b": {
+        "title": "Module B",
+        "type": "string"
+       },
+       "offset": {
+        "default": 0,
+        "title": "Offset",
+        "type": "integer"
+       },
+       "status": {
+        "default": "",
+        "title": "Status",
+        "type": "string"
+       },
+       "wait": {
+        "default": 60,
+        "title": "Wait",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "module_a",
+       "module_b"
+      ],
+      "title": "compare_versionsArguments",
+      "type": "object"
+     },
+     "name": "compare_versions"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "One function in two builds, instruction by instruction: `addr` is its address (or name) in\nthe first build, or in the second. The listings are lined up by the kinds of instruction and\noperand, each line marked ' ' the same (addresses aside), '~' the same instruction with other\nregisters or constants, '-' only in the first, '+' only in the second.",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "title": "Addr",
+        "type": "string"
+       },
+       "module_a": {
+        "title": "Module A",
+        "type": "string"
+       },
+       "module_b": {
+        "title": "Module B",
+        "type": "string"
+       },
+       "wait": {
+        "default": 60,
+        "title": "Wait",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "module_a",
+       "module_b",
+       "addr"
+      ],
+      "title": "diff_functionArguments",
+      "type": "object"
+     },
+     "name": "diff_function"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "The instructions at an address or function name. At a function's start (count 0): the whole\nfunction as the analyses decode it, following its branches. Anywhere else, or with `count`: that\nmany instructions read straight on from there (64 when count is 0). Each line: address, file\noffset (32-bit modules), bytes, instruction, and what it refers to (a function, an import by its\nname, a string).",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "title": "Addr",
+        "type": "string"
+       },
+       "count": {
+        "default": 0,
+        "title": "Count",
+        "type": "integer"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module",
+       "addr"
+      ],
+      "title": "disasmArguments",
+      "type": "object"
+     },
+     "name": "disasm"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "What refers to an address or function, and what a function calls: the call and jump sites\nthat go there, the code that reads, writes or takes the address, the data that holds it, and,\nfor a function, each call it makes. `addr` may also be an import, as MODULE!name, its name\nalone, or MODULE!#ordinal: then the code that calls it, directly or through a thunk.",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "title": "Addr",
+        "type": "string"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module",
+       "addr"
+      ],
+      "title": "xrefsArguments",
+      "type": "object"
+     },
+     "name": "xrefs"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
+     "description": "A module at a glance: what it is, its exports and imports, what made it, where the function\nstore stands (counts, and each unverified function with its verdict's detail), the functions\na tool or runtime library made, and where its authored source lives. What to look at next.",
+     "inputSchema": {
+      "properties": {
+       "module": {
+        "title": "Module",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "triageArguments",
+      "type": "object"
+     },
+     "name": "triage"
+    },
+    {
+     "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+     },
+     "description": "Start `python -m codebreaker <command> <args...>` as a background job; returns at once with\na job id (follow it with `job`). For anything that takes more than a few seconds: decompile,\nmeasure, reach --judge, pe-source, recompile-project, xna, java, ... At most two jobs run at a\ntime and only one measure.",
+     "inputSchema": {
+      "properties": {
+       "args": {
+        "anyOf": [
+         {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Args"
+       },
+       "command": {
+        "title": "Command",
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ],
+      "title": "run_commandArguments",
+      "type": "object"
+     },
+     "name": "run_command"
+    },
+    {
+     "annotations": {
+      "destructiveHint": true,
+      "readOnlyHint": false
+     },
+     "description": "Stop a job this server started (only that process is stopped).",
+     "inputSchema": {
+      "properties": {
+       "job_id": {
+        "title": "Job Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "job_id"
+      ],
+      "title": "stop_jobArguments",
+      "type": "object"
+     },
+     "name": "stop_job"
+    },
+    {
+     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": false
+     },
+     "description": "Give the function at `addr` a name in the function store. The name goes on its body, so\nevery module holding the same code gets it too (the next module write uses it).",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "title": "Addr",
+        "type": "string"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module",
+       "addr",
+       "name"
+      ],
+      "title": "name_functionArguments",
+      "type": "object"
+     },
+     "name": "name_function"
+    }
+   ]
+  }
+ }
+}

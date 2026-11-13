@@ -1,37 +1,29 @@
-// codebreaker/exact/bss.hpp -- typed C++ of codebreaker.exact.bss
+// codebreaker/exact/bss.hpp -- COMPAT SHIM over cb/exact/bss.hpp (docs/CPP_DESIGN.md 6.3), for the old layer's callers (exact/link). Deleted with its last py::
+// consumer. Conversion and forwarding only: the proposal is native/cb/exact/bss.hpp, over the cb project the old Project holds (`impl_`).
 //
 // bss.py -- the program's variables that begin without a value, each at its place (src/BSS).
 //
 //     python -m codebreaker exact PROJECT bss [--write]
 //
-// They lie from the end of the file's data (the load image ends there) to the stack's segment. In the
-// sources they were plain definitions the compiler hands the linker as communal names, which the linker
-// places in the order of its own table (a hash of the names) - ours are not the original names, so each
-// is given its place outright (exact/link.py makes an object of them). What is there:
-//
-//   - the program's own: the data places SYMBOLS learnt from the identical functions, in the range; and
-//     the sources' names for data SYMBOLS has no place for (a variable only functions not yet identical
-//     use): the engine names data g_XXXX after its place, DS:XXXX
-//   - the library's: its modules' own _BSS segments (a "hole" the linker fills with them, found by the
-//     words of their code that point into it), and its communal names (stdio's buffers) by the words of
-//     the library's code that name them
+// They lie from the end of the file's data to the stack's segment: the program's own (the data places SYMBOLS learnt, and the sources' names for data it has no
+// place for: g_XXXX after its place) and the library's (its modules' own _BSS segments, a "hole" the linker fills with them; its communal names).
 //
 //     src/BSS:  range LO HI / hole ADDR LEN / name ADDR      (hex)
 //
-// Typing notes:
-//   * propose() answers (edata, stack, names, holes): the struct Proposal; a hole is (place, length, [the modules' names]).
-//   * `prj` is the real project::Project; the library stage is asked through its library adapter.
-//   * main() prints to `out` (std::cout by default); the Python's print(txt) is the text and one more line end.
+// What differs from the port it replaces: main() prints to stdout (its `out` is not used).
 #pragma once
 
 #include <cstdint>
 #include <iostream>
 #include <tuple>
 
+#include "cb/exact/bss.hpp"
 #include "codebreaker/exact/project.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::bss {
+
+namespace nb = ::cb::exact::bss;
 
 using Hole = std::tuple<int64_t, int64_t, py::list<py::str>>;
 
@@ -42,10 +34,45 @@ struct Proposal {
     py::list<Hole> holes;                    // a library module's own _BSS between them
 };
 
-Proposal propose(project::Project& prj);
+namespace shim_detail {
+inline nb::Proposal to_new(int64_t edata, int64_t stack, const py::dict<py::str, int64_t>& names, const py::list<Hole>& holes) {
+    nb::Proposal p;
+    p.edata = edata;
+    p.stack = stack;
+    for (const auto& [n, a] : names.items()) p.names[n.utf8()] = a;
+    for (const Hole& h : holes) {
+        nb::Hole out{std::get<0>(h), std::get<1>(h), {}};
+        for (const py::str& m : std::get<2>(h)) out.modules.push_back(m.utf8());
+        p.holes.push_back(std::move(out));
+    }
+    return p;
+}
+}  // namespace shim_detail
 
-py::list<py::str> lines(project::Project& prj, int64_t edata, int64_t stack, const py::dict<py::str, int64_t>& names, const py::list<Hole>& holes);
+inline Proposal propose(project::Project& prj) {
+    const nb::Proposal p = nb::propose(*prj.impl_);
+    Proposal out;
+    out.edata = p.edata;
+    out.stack = p.stack;
+    for (const auto& [n, a] : p.names) out.names.set(py::str(n), a);
+    for (const nb::Hole& h : p.holes) {
+        py::list<py::str> modules;
+        for (const std::string& m : h.modules) modules.append(py::str(m));
+        out.holes.append(std::make_tuple(h.address, h.length, modules));
+    }
+    return out;
+}
 
-int64_t main(project::Project& prj, const py::list<py::str>& argv, std::ostream& out = std::cout);
+inline py::list<py::str> lines(project::Project& prj, int64_t edata, int64_t stack, const py::dict<py::str, int64_t>& names, const py::list<Hole>& holes) {
+    py::list<py::str> out;
+    for (const std::string& l : nb::lines(prj.impl_->profile_parts()->communal, shim_detail::to_new(edata, stack, names, holes))) out.append(py::str(l));
+    return out;
+}
+
+inline int64_t main(project::Project& prj, const py::list<py::str>& argv, std::ostream& = std::cout) {
+    std::vector<std::string> args;
+    for (const py::str& a : argv) args.push_back(a.utf8());
+    return nb::run(*prj.impl_, args);
+}
 
 }  // namespace codebreaker::exact::bss
