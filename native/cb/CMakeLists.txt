@@ -346,7 +346,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/create_key.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/sd_signer.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/se_patcher.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/volumes.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"

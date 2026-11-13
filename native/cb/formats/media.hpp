@@ -60,8 +60,12 @@ private:
     std::uint64_t file_size_ = 0;
 };
 
-enum class VolumeKind { Fat12, Fat16, Fat32, Iso9660, Bundle };
-// "fat12" | "fat16" | "fat32" | "iso9660" | "bundle"
+enum class VolumeKind {
+    Fat12, Fat16, Fat32, Iso9660, Bundle,
+    // the Xbox containers (formats/xbox/volumes.hpp)
+    Stfs, Xdvdfs, God, Fatx, Nand, HeavyIron, Zar, Xzp, Pck, Parts,
+};
+// "fat12" | "fat16" | "fat32" | "iso9660" | "bundle" | "stfs" | "xdvdfs" | "god" | "fatx" | "nand" | "heavyiron" | "zar" | "xzp" | "pck" | "parts"
 std::string_view kind_name(VolumeKind kind);
 
 // One extent of a file on an ISO 9660 disc: where it starts (a block) and how long it is.

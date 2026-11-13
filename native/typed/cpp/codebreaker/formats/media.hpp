@@ -3,10 +3,7 @@
 // The module itself is native/cb/formats/media.{hpp,cpp}: FAT12/16/32 volumes, ISO 9660 discs (plain and raw sectors, Joliet
 // names, El Torito), partition tables, module bundles, put() and extract(). This header keeps the old py:: surface for the
 // ports that have not been refactored yet (formats/xbox/volumes, coverage/reach, recompile/title, formats/xbox/package ...)
-// and is deleted with the last of them. Conversion and forwarding only, except what must see the old Xbox volumes:
-//   COMPAT(py): volumes / put / extract / main  -- media.cpp: they put formats::xbox::volumes first (an Xbox 360 disc also
-//       carries an ISO 9660 video part) and xbox/volumes.hpp includes this header; remove when formats.xbox.volumes is
-//       refactored
+// and is deleted with the last of them. Conversion and forwarding only, except:
 //   COMPAT(py): BundleVolume  -- built from the old formats::ne shim; remove when its last consumer is refactored
 //
 // A volume's duck type (kind, label, where, boot, files(), read(entry)) is the abstract class Volume; volumes() hands out
@@ -95,6 +92,31 @@ class Volume {
     // Every file and folder (FAT: folders before what is in them).
     virtual py::list<Entry> files() = 0;
     virtual py::bytes read(const Entry& entry) = 0;
+};
+
+// A volume of the new module (the Xbox containers' kinds: stfs, xdvdfs, god, fatx ...) as the old code reads one: its kind name,
+// label, where, boot fields and entries converted, its reads forwarded (by the entry's path).
+class NewVolume : public Volume {
+  public:
+    explicit NewVolume(std::shared_ptr<cm::Volume> v) : v_(std::move(v)) {
+        kind = cb::compat::to_py(cm::kind_name(v_->kind()));
+        label = cb::compat::to_py(v_->label());
+        where = cb::compat::to_py(v_->where());
+        boot = detail::boot_of(v_->boot());
+    }
+    py::list<Entry> files() override {
+        return cb::compat::guard([&] {
+            py::list<Entry> out;
+            for (const cm::Entry& e : v_->files()) out.append(detail::entry_of(e));
+            return out;
+        });
+    }
+    py::bytes read(const Entry& entry) override {
+        return cb::compat::guard([&] { return cb::compat::to_py(cb::ByteView(v_->read(detail::entry_to(entry)))); });
+    }
+
+  private:
+    std::shared_ptr<cm::Volume> v_;
 };
 
 // Bytes of an image file from an offset on, read as asked for.

@@ -359,8 +359,12 @@ class ZarReader:
         """Yield (path, entry_index, is_file) depth-first in stored order."""
         tree = self._tree
         stack = [("", 0)]
+        entered = set()      # a tree that leads back into a folder would be walked for ever
         while stack:
             prefix, idx = stack.pop()
+            if idx in entered:
+                raise ZarNativeError("the file tree leads back into folder %d" % idx)
+            entered.add(idx)
             entry = tree[idx]
             start = entry[1]
             count = entry[2]

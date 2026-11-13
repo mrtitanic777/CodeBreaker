@@ -1,6 +1,6 @@
 // codebreaker/recompile/title.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/recompile/title.{hpp,cpp}; this
-// header keeps the old py:: surface (Title, locate) for recompile/project and the dynamic exe. Conversion and forwarding only, except
-//   COMPAT(py): locate  -- hands the new module the old formats::xbox::volumes (the container readers); remove when it is refactored.
+// header keeps the old py:: surface (Title, locate) for recompile/project and the dynamic exe. Conversion and forwarding only: the
+// containers are read by native/cb/formats/xbox/volumes.
 //
 // Not carried over: the internals the module's own port exposed (_STFS, _DISCS, _MARKER, _FORMAT, _size, _default_xex, _from_volumes,
 // _container, Title::_xex_entry).
@@ -9,11 +9,9 @@
 #include <memory>
 #include <optional>
 
-#include "cb/compat/old_volume.hpp"
 #include "cb/compat/py_bridge.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/recompile/title.hpp"
-#include "codebreaker/formats/xbox/volumes.hpp"
 #include "py.hpp"
 
 namespace codebreaker::recompile::title {
@@ -43,19 +41,7 @@ class Title {
 // The title in `path` (a package, disc image, GoD folder, folder of files, or a folder holding any of those), or None.
 inline std::optional<Title> locate(const py::str& path) {
     return cb::compat::guard([&]() -> std::optional<Title> {
-        const cb::recompile::title::FindVolumes find = [](const std::filesystem::path& p) -> std::optional<cb::recompile::title::Volumes> {
-            std::optional<formats::xbox::volumes::VolumeList> found;
-            try {
-                found = formats::xbox::volumes::volumes(cb::compat::to_py(cb::fs::to_text(p)));
-            } catch (const py::Exception& e) {
-                throw cb::FormatError("volumes", 0, e.what());
-            }
-            if (!found) return std::nullopt;
-            cb::recompile::title::Volumes out;
-            for (const auto& v : *found) out.push_back(std::make_unique<cb::compat::OldVolume>(v));
-            return out;
-        };
-        std::optional<cb::recompile::title::Title> made = cb::recompile::title::locate(cb::fs::from_text(cb::compat::from_py(path)), find);
+        std::optional<cb::recompile::title::Title> made = cb::recompile::title::locate(cb::fs::from_text(cb::compat::from_py(path)));
         if (!made) return std::nullopt;
         return Title(std::move(*made));
     });
