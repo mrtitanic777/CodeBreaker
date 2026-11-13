@@ -25,7 +25,7 @@ struct Workbench::Parts {
     std::shared_ptr<decompile::environment::CorpusModules> modules;
     std::unique_ptr<ordinals::Ordinals> ordinals;
     std::unique_ptr<identify::Identifier> identifier;
-    std::unique_ptr<KnowledgeBodies> bodies;
+    std::unique_ptr<store::KnowledgeBodies> bodies;
     std::unique_ptr<names::Namer> namer;
 };
 
@@ -73,7 +73,7 @@ identify::Identifier& Workbench::identifier() {
 }
 
 store::BodyStore& Workbench::bodies() {
-    if (!parts_->bodies) parts_->bodies = std::make_unique<KnowledgeBodies>(store());
+    if (!parts_->bodies) parts_->bodies = std::make_unique<store::KnowledgeBodies>(store());
     return *parts_->bodies;
 }
 
