@@ -46,6 +46,8 @@
 #include "cb/store/versions_command.hpp"
 #include "cb/symbols/identify.hpp"
 #include "cb/symbols/program_commands.hpp"
+#include "cb/ui/mcp_command.hpp"
+#include "cb/ui/serve.hpp"
 #include "cb/xna/command.hpp"
 #include "cb/symbols/prototypes.hpp"
 
@@ -53,7 +55,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 50> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair"};
+constexpr std::array<std::string_view, 52> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "mcp", "serve"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -388,6 +390,10 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // java <tool> ..., xna ...: the Java and XNA lanes' tools
     table.set("java", java::tools::runner(java::tools::Environment{config}));
     table.set("xna", xna::command::runner(xna::command::Environment{config}));
+
+    // mcp, serve: the MCP server and the local service the terminal UI talks to (the Python's wire protocol)
+    table.set(ui::mcp_command::command(ui::mcp_command::Environment{config, corpus, {}}));
+    table.set(ui::serve::command(ui::serve::Environment{config, corpus, {}}));
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));
