@@ -410,4 +410,6 @@ std::tuple<int64_t, py::str, py::str> run_process(const py::list<py::str>& args,
             compat::to_py(::cb::text::sanitize_utf8(::cb::as_text(r.err)))};
 }
 
+::cb::build::functions::FunctionBuilder& shared_builder() { return builder(); }
+
 }  // namespace codebreaker::build::functions
