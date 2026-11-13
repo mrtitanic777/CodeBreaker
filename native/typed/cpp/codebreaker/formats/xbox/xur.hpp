@@ -82,6 +82,9 @@ inline py::bytes set_strings(const py::bytes& data, const py::list<py::str>& new
 // Replace a single string (by index) and re-emit the XUR.
 inline py::bytes set_string(const py::bytes& data, int64_t index, const py::str& text) {
     if (index < 0) throw py::IndexError("string index out of range");
+    // the old module's IndexError for an index past the table (the new one reports it as a usage error, which the guard maps to ValueError)
+    const std::size_t count = cb::compat::guard([&] { return cb::formats::xbox::xur::Scene::parse(cb::compat::from_py(data)).strings().size(); });
+    if (static_cast<std::size_t>(index) >= count) throw py::IndexError("string index " + std::to_string(index) + " out of range (the scene has " + std::to_string(count) + ")");
     return shim_::bytes_(cb::compat::guard(
         [&] { return cb::formats::xbox::xur::set_string(cb::compat::from_py(data), static_cast<std::size_t>(index), cb::compat::from_py(text)); }));
 }
