@@ -1,0 +1,21 @@
+coure.fon: 3 font(s)
+  [0] Courier        10pt 13px  fixed        chars 32..255  version 2.00
+  [1] Courier        12pt 16px  fixed        chars 32..255  version 2.00
+  [2] Courier        15pt 20px  fixed        chars 32..255  version 2.00
+                                                    
+                                                    
+                                                    
+    ###                 ##   #                #  #  
+      #                #  #  #                #  #  
+     # #               #   ##                 #  #  
+     # #       ## ##                        ####### 
+    #   #    ##  ##                          #  #   
+    #   #    #    #                          #  #   
+    #####    #    #                        #######  
+   #     #   #    #                         #  #    
+   #     #   ##  ##                         #  #    
+  ###   ###    ## #                         #  #    
+                  #                                 
+                  #                                 
+                ####                                
+exit=0

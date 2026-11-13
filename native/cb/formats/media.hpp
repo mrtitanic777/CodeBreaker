@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "cb/core/bytes.hpp"
+#include "cb/core/cli.hpp"
 #include "cb/core/random_file.hpp"
 #include "cb/formats/ne.hpp"
 
@@ -262,5 +263,12 @@ bool wildcard_match(std::string_view pattern, std::string_view name);
 // The text `media list` prints for a volume: a summary line, with `boot_fields` the boot-sector facts, then one line per
 // file and folder (`long_names` chooses the long path or the 8.3 one).
 std::string listing_text(Volume& volume, bool long_names = true, bool boot_fields = false);
+
+// What the `media` command needs of the rest of the program: nothing, the images name everything.
+struct Environment {};
+
+// `media list <image> [--boot] [--plain]` prints each volume's `listing_text`; `media extract <image> <folder> [name ...]
+// [--plain]` writes the files out and prints how many.
+cli::Command command(const Environment& environment = {});
 
 }  // namespace cb::formats::media

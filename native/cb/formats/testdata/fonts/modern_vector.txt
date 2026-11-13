@@ -1,0 +1,4 @@
+modern.fon: 1 font(s)
+  [0] Modern         36pt 32px  vector       chars 32..255  version 1.00
+  a vector font has no bitmaps to draw
+exit=0

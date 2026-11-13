@@ -1,0 +1,17 @@
+iso9660 volume 'BUILT_DISC': 5 files, 3 folders, 21454 bytes
+    system               
+    label                BUILT_DISC
+    blocks               37
+    block size           2048
+    created              2026111109414500
+    long names           no
+    bootable             no
+    <folder>  2026-11-11 09:41  EMPTY
+           4  2026-11-11 09:41  LONG_FIL.TXT
+         450  2026-11-11 09:41  README.TXT
+    <folder>  2026-11-11 09:41  SETUP
+    <folder>  2026-11-11 09:41  SETUP/DATA
+       16000  2026-11-11 09:41  SETUP/DATA/FILE1.DAT
+           0  2026-11-11 09:41  SETUP/DATA/FILE2.DAT
+        5000  2026-11-11 09:41  SETUP/INSTALL.EXE
+exit=0
