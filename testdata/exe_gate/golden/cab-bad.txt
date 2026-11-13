@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+bad_data.cab: set 0, cabinet 0, 15261 bytes, folders: MSZIP
+    328890  2026-11-11  MSZIP    big.txt
+1 files, 328890 bytes
+--- files
+--- stderr (not compared)

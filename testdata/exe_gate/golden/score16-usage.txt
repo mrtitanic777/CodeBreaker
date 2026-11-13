@@ -1,0 +1,6 @@
+exit: 2
+--- stdout
+codebreaker score16 <16-bit module> [--segment N] [--json FILE]
+codebreaker score16 --show FUNCTION --json FILE   (one function from a saved board)
+--- files
+--- stderr (not compared)

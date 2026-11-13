@@ -1,0 +1,18 @@
+exit: 0
+--- stdout
+0000000000000001  $86EF2978 StaticGeometry     layer 0         100 bytes (slot 128) at $2900
+0000000000000002  $BDE21A8D RawBlob            layer 0          64 bytes (slot 64) at $2980
+0000000000000003  $11111111                    layer 0           1 bytes (slot 128) at $29C0
+00000000A0000001  $2952081F TextureDescriptor  layer 0          72 bytes (slot 128) at $2A40
+00001000A0000001  $BDE21A8D RawBlob            layer 0        4096 bytes (slot 4096) at $2AC0
+00000000A0000002  $2952081F TextureDescriptor  layer 0          72 bytes (slot 128) at $3AC0
+00001000A0000002  $BDE21A8D RawBlob            layer 0        8192 bytes (slot 8192) at $3B40
+0000000000000001  $86EF2978 StaticGeometry     layer 2         200 bytes (slot 256) at $6900
+00000000A0000003  $2952081F TextureDescriptor  layer 2          72 bytes (slot 128) at $6A00
+00001000A0000003  $BDE21A8D RawBlob            layer 2         512 bytes (slot 512) at $6A80
+00000000A0000004  $2952081F TextureDescriptor  layer 2          72 bytes (slot 128) at $6C80
+00000000A0000005  $2952081F TextureDescriptor  layer 2          72 bytes (slot 128) at $6D00
+00001000A0000005  $BDE21A8D RawBlob            layer 2         100 bytes (slot 128) at $6D80
+FFFFFFFFFFFFFFF0  $BDE21A8D RawBlob            layer 2          30 bytes (slot 64) at $6E00
+--- files
+--- stderr (not compared)

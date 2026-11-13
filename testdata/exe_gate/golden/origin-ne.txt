@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+lzexpand.dll: 46 functions -- 33 C, 13 assembly
+     4  reads its code segment
+     3  jumps into the middle of other code
+     2  argument in SI
+     1  argument in AL
+     1  takes back a pushed word as a value
+     1  JCXZ
+     1  LODSW without REP
+--- files
+--- stderr (not compared)

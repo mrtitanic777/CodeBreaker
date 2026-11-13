@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+lz32.dll: 39 of 39 functions -> <work>/out/lz32.c
+--- files
+lz32.c 18451 3028be1f2548453e5e981d89e3108a4fddea89934b4965978f04e3178528b57b
+--- stderr (not compared)

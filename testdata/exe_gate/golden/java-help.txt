@@ -1,0 +1,40 @@
+exit: 0
+--- stdout
+usage: codebreaker java <command> [arguments]
+
+Transpile:
+  convert     convert a Java source tree to C++
+  decompile   decompile a Minecraft version to Java source (bundled RetroMCP/Fernflower)
+  scaffold    one structural skeleton file per Java class in C, C# or Rust (not a translation)
+  signatures  generate signatures.md, the codebase map (class -> fields and methods, Java -> C++ types)
+
+Judge and report:
+  report         the conversion report (crash-class findings) of an emitted tree
+  worklist       compile every .cpp of an emitted tree with the host compiler and write the failure worklist, worst last
+  bugfix-ledger  catalog every FIXED BUG / J2X-BUGFIX marker of the converter's sources into BUGFIX_LEDGER.md
+  apimap         query the API-mapping registry: languages, subsystems, list, resolve, coverage
+
+Console port:
+  sdk              detect the platform SDK the converter would gate on
+  platform-config  select the controller mapping and kernel calls (keyboard, storage) and emit them
+  assets           extract the textures and resources of the game jar into Content/
+  xact             XACT3 audio banks: dump, build, coverage, match
+  achievements     map the program's achievements to the console system (XLAST and the unlock seam)
+  project-layout   give a converted tree the Visual Studio solution layout (<root>/<Name>.sln + <root>/<Name>/)
+  vcxproj          regenerate the project's file list and filters
+  build            build a Visual Studio solution with MSBuild (settings.json: msbuild)
+  debug            emit the one switchable debug file (Debug.h, Debug.cpp, DEBUG.md)
+
+Rewrites of an emitted tree:
+  reflect-factories  turn Java reflection registries (newInstance) into generated C++ factories
+  sound-fix          route sound effects to the XACT bridge by dropping the empty-OGG-pool null guard in SoundManager
+  controller-nav     inject console menu navigation (D-pad) into GuiScreen
+  render-fix         the two console render fixes: a chunk-rebuild budget per frame and the hurt-camera NaN guard
+  applet-ping        neutralise the applet host ping in setLevel so the world is set unconditionally on console
+  ui-mark            tag every UI function with a greppable J2X-UI marker and an index
+  keybind-mark       tag every hardcoded keyboard key press with a greppable J2X-KEYBIND marker and KEYBIND_INDEX.md
+  scan-project       from one folder of a decompiled game, find its jar, sound resources, Java source and language file
+
+Run 'codebreaker java <command> --help' for a command's arguments and options.
+--- files
+--- stderr (not compared)

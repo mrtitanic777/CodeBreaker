@@ -1,0 +1,59 @@
+exit: 0
+--- stdout
+<repo>/native/cb/formats/testdata/lzexpand.dll  (NE, 9936 bytes)
+
+summary:
+  format          NE
+  type            DLL
+  machine         i286/i386 (16-bit)
+  module          LZEXPAND
+  description     Windows file expansion library
+  subsystem       Windows
+  linker          5.20
+  linked          
+  image_base      0x0
+  entry           0:0000
+  code_bytes      7340
+  sections        12
+  exports         30
+  import_modules  2
+  imports         22
+  resources       1
+
+headers:
+  linker_version          5.20
+  flags                   SINGLE_DATA LIBRARY
+  flags_value             0x8301
+  automatic_data_segment  12
+  heap                    1024
+  stack                   0
+  entry_segment           0
+  entry_offset            0x0
+  stack_segment           0
+  stack_pointer           0
+  segments                12
+  module_references       2
+  movable_entries         30
+  alignment_shift         4
+  target_system           Windows
+  expected_windows        3.0
+  checksum                0x80377b2a
+
+sections:
+  name    address  size  file_offset  file_size  flags                                  code
+  seg 1   1:0000   456   0x300        456        MOVABLE PRELOAD RELOCINFO DISCARDABLE  yes
+  seg 2   2:0000   1882  0x7e0        1882       MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 3   3:0000   24    0xfd0        24         MOVABLE DISCARDABLE                    yes
+  seg 4   4:0000   504   0xff0        504        MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 5   5:0000   402   0x1220       402        MOVABLE DISCARDABLE                    yes
+  seg 6   6:0000   268   0x13c0       268        MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 7   7:0000   752   0x14e0       752        MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 8   8:0000   584   0x1840       584        MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 9   9:0000   826   0x1ab0       826        MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 10  10:0000  760   0x1e10       760        MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 11  11:0000  882   0x2140       882        MOVABLE RELOCINFO DISCARDABLE          yes
+  seg 12  12:0000  644   0x520        644        DATA MOVABLE SHAREABLE PRELOAD         no
+
+30 exports, 22 imports from 2 modules, 1 resources  (--section exports | imports | resources | all)
+--- files
+--- stderr (not compared)

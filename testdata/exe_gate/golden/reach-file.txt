@@ -1,0 +1,16 @@
+exit: 0
+--- stdout
+1 files found
+# Reach
+
+What CodeBreaker made of every program it was given (`codebreaker reach`).
+Functions and percentages are those of the judged programs that finished; a program stopped at
+its time limit is counted under Stopped only.
+
+| Platform | Programs | Lane | Judged | Functions | Verified | Weak | Unverified | Stopped |
+|---|---|---|---|---|---|---|---|---|
+| 32-bit Windows | 1 | pe | 0 | - | - | - | - |  |
+
+Not programs, or not recognised: 0 files ().
+--- files
+--- stderr (not compared)

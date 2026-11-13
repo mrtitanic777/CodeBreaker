@@ -1,0 +1,17 @@
+exit: 0
+--- stdout
+asm86        Intel ASM86 for ISIS-II (V2.0, V2.1)  variants: 2.0, 2.1
+masm100      Microsoft Macro Assembler 1.00 (M.EXE, February 1982)  variants: release
+masm510      Microsoft Macro Assembler 5.10 (MASM.EXE, February 1988)  variants: release
+msc103       Microsoft C 1.03 beta (Lattice C 1.02; LC1.EXE and LC2.EXE), 1983  variants: older, release
+msc104       Microsoft C 1.04 (Lattice C; MC1.EXE and MC2.EXE), 1983  variants: older, own, release
+msc203       Microsoft C 2.03 (Lattice C lineage; MC1.EXE and MC2.EXE, four memory models), 1984  variants: release
+msc300       Microsoft C 3.00 (MSC.EXE and its passes P0-P3), 1985  variants: masm400, own, release
+msc30016     Microsoft C 3.00.16 (CC.EXE and its passes P1-P3), the C update of the Windows 1.01 SDK, August 1985  variants: -
+msc400       Microsoft C 4.00 (MSC.EXE and its passes C1-C3), 1986  variants: masm400, release
+msc500       Microsoft C 5.0 (CL.EXE and its passes C1-C3), 1987  variants: release
+mspascal     Microsoft Pascal (PAS1/PAS2): the 1.10 pre-release kit of November 1981, and 2.00 to 3.11  variants: 1.10, 2.00, 2.05, 3.04, 3.11
+plm86        Intel PL/M-86 for ISIS-II (V1.1, V1.2, V2.1), 1979-82  variants: link108, link200, v1.2
+xenixc       the C compiler of XENIX for the 8086 (cpp, c0, c1, c2, as), Altos ACS 8600 XENIX 2.3, 1983  variants: altos, microsoft
+--- files
+--- stderr (not compared)

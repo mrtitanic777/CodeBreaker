@@ -1,0 +1,9 @@
+exit: 0
+--- stdout
+4 files written to <work>/out
+--- files
+Docs/Hello.txt 14 19d7973f1cc42fe7c0822085a5994646aaf2b4f48526499eace63f08ec8a99ee
+Win95/Mini.cab 2321 e869df3850d472c09c0519751b74dd23909b5938404e8c39f736af264367aa6d
+Win95/Readme 14 68e68d7711a5fb1dc175b117632914ad7997ae55860736750cc72131a4215b1c
+Win95/Setup.exe 420 63acac37b4a950ccde0052d6c8661904dd4a71d8c4f39e99bbd9e88a8dec4c17
+--- stderr (not compared)

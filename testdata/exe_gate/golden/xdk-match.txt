@@ -1,0 +1,15 @@
+exit: 0
+--- stdout
+RubyDung.xex: 4767 library functions named (2,295,652 bytes)
+    2360  xgraphics.lib
+    1490  d3dx9.lib
+     593  d3d9.lib
+     228  libcMT.lib
+      83  xapilib.lib
+       4  xtms.lib
+       3  libcpMT.lib
+       3  nuispeech.lib
+       2  xav.lib
+       1  qnetxaudio2.lib
+--- files
+--- stderr (not compared)

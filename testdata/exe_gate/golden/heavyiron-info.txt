@@ -1,0 +1,9 @@
+exit: 0
+--- stdout
+a1.ho: 28672 bytes, 3 layers, 14 assets
+  $BDE21A8D RawBlob                 6 assets        12994 bytes
+  $2952081F TextureDescriptor       5 assets          360 bytes
+  $86EF2978 StaticGeometry          2 assets          300 bytes
+  $11111111                         1 assets            1 bytes
+--- files
+--- stderr (not compared)

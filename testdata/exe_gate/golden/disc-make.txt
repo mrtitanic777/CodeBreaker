@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+wrote <work>/out/made.iso: 120832 bytes
+--- files
+made.iso  (content not compared)
+--- stderr (not compared)

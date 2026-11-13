@@ -1,0 +1,17 @@
+exit: 0
+--- stdout
+there is no function store yet (<work>/state/functions.sqlite): nothing has been reconstructed; the corpus is listed alone
+lz32.dll  (32-bit, untouched)  <corpus>/WINDOWS/SYSTEM/lz32.dll
+                  functions   share
+functions                 0       -
+decompiled                0       -
+compiled                  0       -
+VERIFIED                  0       -
+VERIFIED (weak)           0       -
+UNVERIFIED                0       -
+NOT JUDGED                0       -
+DOES NOT COMPILE          0       -
+NO SOURCE                 0       -
+code bytes 1536; in known functions 0 (0.0%); in VERIFIED 0 (0.0%); in VERIFIED (weak) 0 (0.0%)
+--- files
+--- stderr (not compared)

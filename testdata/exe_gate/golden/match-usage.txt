@@ -1,0 +1,25 @@
+exit: 0
+--- stdout
+usage: codebreaker match [options] <module>
+
+would a period compiler give a module's functions back as the original's bytes?
+
+A second, optional signal: where a function's C, compiled with a compiler of the original's time, comes out as the original's bytes, the C is as near what was written as a binary can show. identical: every byte outside the places the linker fills in is the same; same size: some bytes differ; different: another length. A 16-bit module is compiled by Microsoft C (in an emulator or on Windows itself), segment by segment with the switches that fit it best (--flags names them).
+
+arguments:
+  module  a 32-bit module of the corpus, or a path
+
+options:
+      --flags SWITCHES  the compiler's switches (default: /O2 /Gz)
+      --try             go through several sets of switches and report the best for each function
+      --json FILE       write each function's result there
+      --compiler NAME   a 16-bit module: the only compiler to try (msc6 or msvc152)
+      --first N         a 16-bit module: only its first N functions
+      --choose          a 16-bit module: find the switches again though an earlier run remembered them
+      --sdk             a 16-bit module: also say the Windows calls through the SDK's prototypes
+      --no-fold         a 16-bit module: do not fold the decompiler's temporaries back
+      --search ROUNDS   a 16-bit module: ROUNDS of rewrites of the last bytes of the near misses
+      --wine            a 16-bit module: also type the imports as Wine's .spec files do
+  -h, --help            show this help
+--- files
+--- stderr (not compared)

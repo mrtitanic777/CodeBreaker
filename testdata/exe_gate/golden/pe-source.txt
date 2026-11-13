@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+round 1: 2 instructions come back different
+round 2: 0 instructions come back different
+lz32.dll: 378 instructions, 2 (0%) written as bytes; 2 rounds; builds back THE SAME
+  source: <work>/out/lz32.dll.asm
+--- files
+lz32.dll 5632 31680afbd8006a6edd0e18611f53fbea10776bc9937171fee017495d940f39af
+lz32.dll.asm 41555 758b054e073cfa7855e8540937fb7fff34bcabbfd7c0db167f9fa1dce2b621bb
+lz32.dll.map 4970 4d0a98d2168af4740470bdfceee5e8a02a8fc0ed11d313d6fb9256cc12b969c9
+--- stderr (not compared)

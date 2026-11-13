@@ -1,0 +1,5 @@
+exit: 1
+--- stdout
+xna: <work>/no_such_folder: cannot open for reading: The system cannot find the file specified. (os error 2)
+--- files
+--- stderr (not compared)

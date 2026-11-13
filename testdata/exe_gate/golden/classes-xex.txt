@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+RubyDung.xex: 0 classes, 0 virtual function tables, 0 virtual functions named by class, 0 functions found by layout
+--- files
+--- stderr (not compared)

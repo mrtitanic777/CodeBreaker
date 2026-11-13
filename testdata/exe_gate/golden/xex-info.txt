@@ -1,0 +1,39 @@
+exit: 0
+--- stdout
+Xex Info
+  Devkit
+  Not-Compressed
+  Encrypted
+  Title Module
+  No Game Region
+
+Basefile Info
+  Original PE Name:   RubyDung.exe
+  Load Address:       82000000
+  Entry Point:        82067048
+  Image Size:           2D0000
+  Page Size:             10000
+  Checksum:           002D2A46
+  Export Table:       00000000
+  Filetime:           69120356 - Mon Nov 10 07:23:02 2025
+
+Regions
+  All Regions
+
+Allowed Media
+  Hard Disk
+  DVD / CD
+  Network
+  Direct From Memory
+  Xbox Live Signed Package
+
+Media Id 
+  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+
+Encryption Key 
+  86 8D 73 D7 30 B8 50 79 6F D3 D2 CF 39 26 F4 C5 
+
+LAN Key 
+  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+--- files
+--- stderr (not compared)

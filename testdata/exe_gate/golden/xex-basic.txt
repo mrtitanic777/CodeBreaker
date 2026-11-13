@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+--- files
+d.xex 2695168 9fe1ae6e5e224f5cf0501e12927283195f3e57790e9dcceb0b48e3eb7916d046
+--- stderr (not compared)

@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+sub_82067048: 16/16 instructions translated, 0 not, 0 labels, 3 calls
+--- files
+--- stderr (not compared)

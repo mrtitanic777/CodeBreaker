@@ -1,0 +1,8 @@
+exit: 2
+--- stdout
+codebreaker place <module> ... | --all [--list]
+
+Say where each module's source goes in the source tree, and how that was decided. Nothing
+is written.
+--- files
+--- stderr (not compared)

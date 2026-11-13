@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+  all 0.0 KB (cap 4096.0 MB: setting db_max_gb)
+--- files
+--- stderr (not compared)

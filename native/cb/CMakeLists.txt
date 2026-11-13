@@ -428,6 +428,11 @@ cb_apply_flags(cb_cmdrun)
 target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_cmdrun)
 
+# exe_gate: runs the real codebreaker.exe on the command cases of testdata/exe_gate and compares goldens (tools\gate.cmd).
+add_executable(cb_exe_gate EXCLUDE_FROM_ALL app/exe_gate_main.cpp)
+cb_apply_flags(cb_exe_gate)
+target_link_libraries(cb_exe_gate PRIVATE cb_core)
+
 # toolrun: the `crypto` tools and the commands the switch-over moves off the old extension (xbox-disc, xex-basic, xenon-config, switch-tables,
 # corpus-executables), with the settings and the corpus the application gives them, to compare each with the Python and time it (app/toolrun_main.cpp).
 add_executable(cb_toolrun EXCLUDE_FROM_ALL app/toolrun_main.cpp)
@@ -441,6 +446,12 @@ add_executable(cb_pipeline EXCLUDE_FROM_ALL source/pipeline_main.cpp)
 cb_apply_flags(cb_pipeline)
 target_link_libraries(cb_pipeline PRIVATE cb_source cb_engine cb_core)
 cb_copy_prebuilt_dlls(cb_pipeline)
+# regress: the milestone regression (all-15 Setup boot, the Setup chain, the slow cases) as a program of its own, the proof harness of verify/regress.hpp
+# (the application registers the same command). Not built by default.
+add_executable(cb_regress EXCLUDE_FROM_ALL verify/regress_main.cpp)
+cb_apply_flags(cb_regress)
+target_link_libraries(cb_regress PRIVATE cb_verify cb_engine cb_core)
+cb_copy_prebuilt_dlls(cb_regress)
 # analyze_run: `analyze` of store/analyze_command on a command line, to compare its report with the Python's (store/analyze_main.cpp). Not built by default.
 add_executable(cb_analyze_run EXCLUDE_FROM_ALL store/analyze_main.cpp)
 cb_apply_flags(cb_analyze_run)

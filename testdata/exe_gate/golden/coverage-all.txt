@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+there is no function store yet (<work>/state/functions.sqlite): nothing has been reconstructed; the corpus is listed alone
+Coverage of <corpus>
+verifier settings in force: 32-bit 342fa094a98c, 16-bit ebc9dda4d0fe
+--- files
+--- stderr (not compared)

@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+Video(service number not a constant here)   [not exact]
+--- files
+--- stderr (not compared)

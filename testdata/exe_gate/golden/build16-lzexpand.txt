@@ -1,0 +1,19 @@
+exit: 0
+--- stdout
+built: <work>/tmp/<~>/lzexpand.dll
+built: 11 segments, 8800 bytes   original: 12 segments, 9936 bytes
+  segment 1  built 454   original 456   different length
+  segment 2  built 268   original 1882  different length
+  segment 3  built 584   original 24    different length
+  segment 4  built 828   original 504   different length
+  segment 5  built 482   original 402   different length
+  segment 6  built 874   original 268   different length
+  segment 7  built 402   original 752   different length
+  segment 8  built 504   original 584   different length
+  segment 9  built 1912  original 826   different length
+  segment 10 built 52    original 760   different length
+  segment 11 built 264   original 882   different length
+  segment 12 built -     original 644   different length
+0 of 12 segments identical
+--- files
+--- stderr (not compared)

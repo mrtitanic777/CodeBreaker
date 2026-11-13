@@ -1,0 +1,5 @@
+exit: 2
+--- stdout
+no file or corpus module '<work>/no_such_file.dll'
+--- files
+--- stderr (not compared)

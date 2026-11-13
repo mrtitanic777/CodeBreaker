@@ -1,0 +1,8 @@
+exit: 0
+--- stdout
+setver.exe: mz, 16427 bytes loaded
+100 functions: 86 called, 3 entry, 4 follows, 5 prologue, 1 variable, 1 vector; 9 of them rest on a guess
+bytes: code 7770, guessed code 162, jump tables 0, not classified 8495, total 16427
+44 interrupt calls, 38 with the service named
+--- files
+--- stderr (not compared)

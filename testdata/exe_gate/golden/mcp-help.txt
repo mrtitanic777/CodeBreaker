@@ -1,0 +1,16 @@
+exit: 0
+--- stdout
+usage: codebreaker mcp [options]
+
+CodeBreaker as an MCP server: what the terminal interface shows, for an assistant to use
+
+Stdout is the protocol. The token for HTTP is CB_MCP_TOKEN, else <state>/mcp/http_token.txt.
+
+options:
+      http PORT        serve streamable HTTP at http://HOST:PORT/mcp behind a bearer token (default: stdio)
+      host H           the address HTTP listens on (default 127.0.0.1)
+      allow-host NAME  a Host name besides 127.0.0.1 and localhost to answer to, such as a tunnel's (repeatable)
+      public           the reading tools only, and the token also accepted as the URL's first segment (/<token>/mcp)
+  -h, --help           show this help
+--- files
+--- stderr (not compared)

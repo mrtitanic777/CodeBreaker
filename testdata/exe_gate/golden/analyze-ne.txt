@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+lzexpand.dll: 46 functions, call_graph <~>, conventions <~>, globals <~>, strings <~>, structures <~>, classes <~>, dispatch <~>, resources <~>; report in <work>/state/analyze/lzexpand.dll.txt
+--- files
+--- stderr (not compared)

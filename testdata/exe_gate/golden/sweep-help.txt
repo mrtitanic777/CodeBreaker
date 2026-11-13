@@ -1,0 +1,19 @@
+exit: 0
+--- stdout
+usage: codebreaker sweep [options]
+
+reconstruct and judge every module of the corpus, smallest first, resumably
+
+A module counts as measured when every one of its functions has a result under the current verifier settings.
+
+options:
+      --only NAMES  these modules: a comma-separated list, or @file with one name per line
+      --16          the 16-bit modules
+      --drivers     the drivers
+      --dos         real-mode programs
+      --all         every kind of module
+      --status      what has been measured; no work
+      --again       measure modules again even if already done
+  -h, --help        show this help
+--- files
+--- stderr (not compared)

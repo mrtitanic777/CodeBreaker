@@ -1,0 +1,63 @@
+exit: 0
+--- stdout
+bfea1000   sub_bfea1000                                     (none)
+bfea1057   sub_bfea1057                                     (none)
+bfea1075   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1077   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10a5   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10a7   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10bd   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10bf   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10e2   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10e4   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1109   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea110b   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1123   LZStart                                          export
+bfea1125   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1135   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1139   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea113b   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea115b   LZDone                                           export
+bfea115d   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea116c   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea116e   thunk stub                                       runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1198   GetExpandedNameW                                 export
+bfea11a1   LZOpenFileW                                      export
+bfea11aa   LZCopy                                           export
+bfea11dd   LZClose                                          export
+bfea1201   LZInit                                           export
+bfea1238   LZOpenFileA                                      export
+bfea12d8   GetExpandedNameA                                 export
+bfea1330   CopyLZFile                                       export
+bfea1363   LZRead                                           export
+bfea13d4   LZSeek                                           export
+bfea13fa   sub_bfea13fa                                     (none)
+bfea1400   sub_bfea1400                                     (none)
+bfea140c   sub_bfea140c                                     (none)
+bfea1412   sub_bfea1412                                     (none)
+bfea1424   sub_bfea1424                                     (none)
+bfea1430   sub_bfea1430                                     (none)
+bfea1436   sub_bfea1436                                     (none)
+bfea143c   sub_bfea143c                                     (none)
+import KERNEL32     17     KERNEL32.17                              (none)
+import KERNEL32     20     KERNEL32.20                              (none)
+import KERNEL32     21     KERNEL32.21                              (none)
+import KERNEL32     22     KERNEL32.22                              (none)
+import KERNEL32     41     KERNEL32.41                              (none)
+import KERNEL32     89     KERNEL32.89                              (none)
+import KERNEL32     90     KERNEL32.90                              (none)
+import KERNEL32            DisableThreadLibraryCalls                imported by name
+import KERNEL32            GetShortPathNameA                        imported by name
+import KERNEL32            GlobalAlloc                              imported by name
+import KERNEL32            GlobalFree                               imported by name
+import KERNEL32            OpenFile                                 imported by name
+import KERNEL32            SMapLS_IP_EBP_12                         imported by name
+import KERNEL32            SMapLS_IP_EBP_8                          imported by name
+import KERNEL32            SUnMapLS_IP_EBP_12                       imported by name
+import KERNEL32            SUnMapLS_IP_EBP_8                        imported by name
+import KERNEL32            SetLastError                             imported by name
+lz32.dll: 39 functions -- runtime library 17, export 12, (none) 10
+17 imports -- by name 10, by number, no name 7
+built with: Microsoft Visual C++ 2.x (linker 2.50)
+--- files
+--- stderr (not compared)

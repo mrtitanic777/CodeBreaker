@@ -1,0 +1,9 @@
+exit: 0
+--- stdout
+w_text.cab: set 0, cabinet 0, 187 bytes, folders: MSZIP
+      1800  2026-11-11  MSZIP    a.txt
+         3  2026-11-11  MSZIP    b/c.txt
+         0  2026-11-11  MSZIP    empty
+3 files, 1803 bytes
+--- files
+--- stderr (not compared)

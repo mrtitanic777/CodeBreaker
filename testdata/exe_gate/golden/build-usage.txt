@@ -1,0 +1,17 @@
+exit: 0
+--- stdout
+usage: codebreaker build [options] <module>...
+
+build a whole module from its recovered source and check what came out
+
+arguments:
+  module...  a corpus name or a file
+
+options:
+      --out DIR    where the build goes (default: the module's project folder, build)
+      --no-run     do not call the built module's exports in the emulator
+      --engine     accepted, as the old command line had it; the direct path is the one taken
+      --no-engine  accepted, as the old command line had it; the direct path is the one taken
+  -h, --help       show this help
+--- files
+--- stderr (not compared)

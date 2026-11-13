@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+nop at 82067048 -> <work>/out/nop.xex
+--- files
+nop.xex 2695168 d0794cbb522ec873d040509a2c4d906edcd019549c7dea886d3c53e442585da9
+--- stderr (not compared)

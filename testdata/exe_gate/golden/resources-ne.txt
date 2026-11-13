@@ -1,0 +1,10 @@
+exit: 0
+--- stdout
+lzexpand.dll: 1 resources: 1 identical, 0 equivalent, 0 different, 0 missing  (written as text 0, as image files 0, opaque payload 0, fallback payload 1)
+    <work>/out/lzexpand.rc
+--- files
+lzexpand.rc 140 9c8222d3341403e18a308111fe7217564b3e40167fe52d81ed724363f42c2771
+lzexpand.res 492 4bff7d697d532144f1938cd085c4e2472a238491de80b5d0c51e190fd55ee116
+lzexpand_link.res 531 d3f9736067cd8b20e5adfb1a1b84635d843c315972e492341b1a8d67b56bafb8
+res/version_1.bin 480 955859328bec7a83ca68262833a7229539c0229f46f0a2b98149d8da897532ce
+--- stderr (not compared)
