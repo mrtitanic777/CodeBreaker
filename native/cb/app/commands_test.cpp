@@ -76,6 +76,7 @@ CB_TEST("app.commands.catalog_lists_every_command", [] {
                               "facts",
                               "knowledge",
                               "tidy-state",
+                              "regress",
                               "recompile",
                               "recompile-project",
                               "xenon-recompile",

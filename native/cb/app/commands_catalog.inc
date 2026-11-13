@@ -70,6 +70,7 @@
     {"facts", "facts <binary> [kind [key]]", "what a binary's database holds (the engine's facts) and what each was made from; --make to make one current, --databases for all"},
     {"knowledge", "knowledge [platform [kind [key]]]", "the knowledge base: every platform's names, prototypes, signatures, structures and stand-ins, and where each came from"},
     {"tidy-state", "tidy-state [--dry] [--stray]", "state/'s size by part, and what is stale in it removed (killed runs' disk copies, old caches, idle build objects)"},
+    {"regress", "regress <all15|setup|slow> [--runs N] [--vms N]", "the milestone regression: the 15 MINI.CAB modules rebuilt and booted to Setup's License page, the Setup chain, the slow cases"},
     {"java", "java <tool> ...", "the Java transpiler: a Java program as C++03 (convert, decompile, worklist, ...; `java --help` lists them)"},
     {"score16", "score16 [options]", "the 16-bit gate's scoreboard: each 16-bit module's C beside its own assembly"},
     {"exact", "exact <module> ...", "exact recovery: a module's functions rebuilt to the original's bytes"},
