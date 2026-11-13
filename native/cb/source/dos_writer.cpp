@@ -698,7 +698,7 @@ Result driver_and_vxd(Context& cx, const std::filesystem::path& path, const Byte
     fs::make_dirs(outdir);
     Subject s;
     s.program = dos::read_driver_part(original);
-    s.name = text::lower(file_name);
+    s.name = "the real-mode driver of " + text::lower(file_name);
     s.stem = stem;
     s.original = original;
     s.file_name = upper_name(path);

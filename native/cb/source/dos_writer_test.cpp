@@ -238,6 +238,68 @@ CB_TEST("source.dos_writer.a_windows_program_with_a_real_dos_stub_has_it_written
     const Bytes whole = fs::read_file(*regedit);
     CB_CHECK(built == Bytes(whole.begin(), whole.begin() + 38209));
 });
+CB_TEST("source.dos_writer.a_driver_with_a_vxd_is_put_together_as_the_original_is", [] {
+    const auto options_found = dw_options();
+    if (!options_found) return;
+    Options options = *options_found;
+    // DRVSPACE.BIN: a real-mode driver and a VxD in one file. The VxD is the driver lane's (here the one the Python driver writer built for it,
+    // testdata/writers/dsvxd.vxd); the driver is written and built here
+    std::filesystem::path asked;
+    options.write_vxd = [&](const std::filesystem::path& program, const std::filesystem::path& outdir, const Log&) {
+        asked = outdir;
+        CB_CHECK_EQ(program.filename().string(), "drvspace.bin");
+        fs::make_dirs(outdir);
+        const std::filesystem::path made = outdir / "dsvxd.vxd";
+        std::filesystem::copy_file(testing::data_path("source/testdata/writers/dsvxd.vxd"), made, std::filesystem::copy_options::overwrite_existing);
+        VxdPart part;
+        part.source = outdir / "dsvxd.asm";
+        part.image = made;
+        part.linked = true;
+        part.same = true;
+        part.rounds = 1;
+        part.instructions = 241;
+        part.raw = 2;
+        part.data = 100;
+        return part;
+    };
+    fs::ScopedTempDir dir("cb_dos_writer");
+    const Result r = reconstruct(testing::data_path("source/testdata/writers/drvspace.bin"), dir.path(), options);
+    CB_CHECK_EQ(r.kind, "driver+vxd");
+    CB_CHECK(asked == dir.path() / "vxd");
+    CB_CHECK_EQ(r.instructions, 7136u);
+    CB_CHECK_EQ(r.raw, 132u);
+    CB_CHECK_EQ(r.data, 38379u);
+    CB_CHECK_EQ(r.parts.size(), 2u);
+    CB_CHECK(r.parts[0].name == "drvspace" && r.parts[0].same && r.parts[1].name == "vxd");
+    CB_CHECK_EQ(r.sources.size(), 2u);
+    // the driver comes back byte for byte; the file is laid out as LINK lays a VxD out, which the original's tables differ from
+    CB_CHECK(!r.same && r.equivalent);
+    CB_CHECK_EQ(r.notes.size(), 2u);
+    CB_CHECK_EQ(r.notes[0], "the file differs from the original at 0x4 (65783 bytes, original 65271)");
+    CB_CHECK(r.notes[1].starts_with("the driver is the original's byte for byte and the VxD the same module"));
+    CB_CHECK(r.file.has_value() && *r.file == dir.path() / "file" / "DRVSPACE.BIN");
+    const Bytes made = fs::read_file(*r.file);
+    CB_CHECK_EQ(made.size(), 65783u);
+    // the header's new-header field says where the VxD is: behind the header and the driver
+    const Bytes head = fs::read_file(dir.path() / "drvspace.hdr"), driver = fs::read_file(*r.parts[0].image);
+    const std::uint32_t at = static_cast<std::uint32_t>(head.size() + driver.size());
+    CB_CHECK_EQ(made[0x3C] | (made[0x3D] << 8) | (made[0x3E] << 16), static_cast<int>(at));
+    CB_CHECK(std::filesystem::is_regular_file(dir.path() / "drvspace.tail") && std::filesystem::is_regular_file(dir.path() / "vxd" / "dsvxd.ver"));
+    CB_CHECK(dw_lf(r.sources.front()).starts_with("; the real-mode driver of drvspace.bin -- reconstructed from the program image by CodeBreaker.\n"));
+    // a driver writer that was not given is a usage error, and one whose VxD did not build leaves the file unmade
+    Options none = options;
+    none.write_vxd = nullptr;
+    CB_CHECK_THROWS_AS(UsageError, reconstruct(testing::data_path("source/testdata/writers/drvspace.bin"), dir.path() / "o2", none));
+    options.write_vxd = [&](const std::filesystem::path&, const std::filesystem::path&, const Log&) {
+        VxdPart part;
+        part.notes = {"the driver kit is not here"};
+        return part;
+    };
+    const Result failed = reconstruct(testing::data_path("source/testdata/writers/drvspace.bin"), dir.path() / "o3", options);
+    CB_CHECK(!failed.linked && !failed.same && !failed.file.has_value());
+    CB_CHECK_EQ(failed.notes.size(), 1u);
+    CB_CHECK_EQ(failed.notes[0], "vxd: the driver kit is not here");
+});
 CB_TEST("source.dos_writer.the_stub_finder_answers_only_for_a_stub_that_is_a_program_of_its_own", [] {
     fs::ScopedTempDir dir("cb_dos_writer");
     Options options;
