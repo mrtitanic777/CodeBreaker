@@ -104,6 +104,90 @@ CB_TEST("invert.command.the_readers_of_a_compilers_files", [] {
     }
 });
 
+CB_TEST("invert.command.the_small_readers_of_microsoft_c_6_are_native", [] {
+    // msc6-templates: the Python's answers for the same bytes (a leaf, a far call, a body that is none of the templates)
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(run_words({"--tool", "msc6-templates", "1e589045558bec1e8ed8b807004d4d8be51f5d4dca0400"}), 0);
+        CB_CHECK_EQ(cap.out(), "int far pascal F(int a0, int a1)\n{\n    return 7;\n}\n");
+    }
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(run_words({"--tool", "msc6-templates", "1e589045558bec1e8ed86a059a000000004d4d8be51f5d4dca0400"}), 0);
+        CB_CHECK_EQ(cap.out(), "extern void far pascal G(int);\nvoid far pascal F(int a0, int a1)\n{\n    G(5);\n}\n");
+    }
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(run_words({"--tool", "msc6-templates", "1e589045558bec1e8ed8909090904d4d8be51f5d4dca0400"}), 1);
+        CB_CHECK_EQ(cap.out(), "DECLINED: body not a modeled leaf template (4 bytes: 90909090)\n");
+    }
+    CB_CHECK_THROWS_AS(UsageError, (void)run_words({"--tool", "msc6-templates"}));
+    CB_CHECK_THROWS_AS(UsageError, (void)run_words({"--tool", "msc6-templates", "1e5"}));
+
+    // --verify: with no compiler said so; with one, the bytes it gives decide
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(run_words({"--tool", "msc6-templates", "1e589045558bec1e8ed8b807004d4d8be51f5d4dca0400", "--verify"}), 2);
+        CB_CHECK(cap.err().find("Microsoft C 6 is not set up") != std::string::npos);
+    }
+    const Bytes leaf = crypto::from_hex("1e589045558bec1e8ed8b807004d4d8be51f5d4dca0400");
+    int asked = 0;
+    inv::Environment compiler;
+    compiler.compile_msc6 = [&](std::string_view text, std::string_view flags) -> std::optional<Bytes> {
+        ++asked;
+        CB_CHECK(text.find("return 7;") != std::string_view::npos);
+        return flags == "/AM /G2 /Gsw /Os" ? std::optional<Bytes>(leaf) : std::optional<Bytes>(Bytes{0x90});   // (it agrees under the second switch set only)
+    };
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(inv::run(std::vector<std::string>{"--tool", "msc6-templates", "1e589045558bec1e8ed8b807004d4d8be51f5d4dca0400", "--verify"}, compiler), 0);
+        CB_CHECK(cap.out().ends_with("// VERIFIED byte-exact (/AM /G2 /Gsw /Os): recompiles to the identical 23 bytes\n"));
+        CB_CHECK_EQ(asked, 2);
+    }
+
+    // the self-tests: the free idiom and the register tracker read the Python's functions; with no compiler they say what they read and that
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(run_words({"--tool", "msc6-function"}), 2);
+        CB_CHECK(cap.out().starts_with("=== recovered C ===\ntypedef unsigned int WORD;\n"));
+        CB_CHECK(cap.out().find("void far Cleanup(void)") != std::string::npos);
+        CB_CHECK(cap.err().find("not set up") != std::string::npos);
+    }
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(run_words({"--tool", "msc6-walk"}), 2);
+        CB_CHECK(cap.out().find("void far F(void)") != std::string::npos);
+    }
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(run_words({"--tool", "msc6-registers"}), 2);
+        CB_CHECK(cap.out().find("    register int b;\n    b = G(a);\n    H(b);\n    return b;\n") != std::string::npos);
+    }
+    // a compiler that gives the original's own bytes back verifies each
+    inv::Environment same;
+    same.compile_msc6 = [&](std::string_view text, std::string_view) -> std::optional<Bytes> {
+        if (text.find("void far Cleanup") != std::string_view::npos || text.find("void far F(void)") != std::string_view::npos)
+            return crypto::from_hex("1e589045558bec1e8ed883ec02a146000b0644007411ff3646009ae70000002bc0a34600a34400a14a000b0648007411ff364a009a010100002bc0a34a00a34800a156000b0654007411ff3656"
+                                    "009affff00002bc0a35600a354004d4d8be51f5d4dcb90");
+        return crypto::from_hex("1e589045558bec1e8ed883ec02568b7606569a00000000508bf09a000000008bc65e4d4d8be51f5d4dca0200");
+    };
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(inv::run(std::vector<std::string>{"--tool", "msc6-function"}, same), 0);
+        CB_CHECK(cap.out().find("*** WHOLE-FUNCTION VERIFIED byte-exact (relocs masked) ***") != std::string::npos);
+    }
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(inv::run(std::vector<std::string>{"--tool", "msc6-walk"}, same), 0);
+        CB_CHECK(cap.out().find("// generalized walker: masked-equal = True (12 stmts)") != std::string::npos);
+    }
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(inv::run(std::vector<std::string>{"--tool", "msc6-registers"}, same), 0);
+        CB_CHECK(cap.out().find("// register-var tracker: masked-equal = True (") != std::string::npos);
+    }
+});
+
 CB_TEST("invert.command.what_is_not_native_says_so", [] {
     testing::CapturedStd cap;
     CB_CHECK_EQ(run_words({"--tool", "msc6"}), 2);

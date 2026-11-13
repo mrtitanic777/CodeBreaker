@@ -11,6 +11,7 @@
 #include "cb/formats/omf.hpp"
 #include "cb/invert/early_c.hpp"
 #include "cb/invert/early_c_forward.hpp"
+#include "cb/invert/msc6_small.hpp"
 #include "cb/invert/known_differences.hpp"
 #include "cb/invert/quad_align.hpp"
 #include "cb/invert/quad_dump.hpp"
@@ -33,10 +34,10 @@ constexpr std::array<Tool, 19> kTools{{
     {"quad-align", "a quad file beside its object, per function", true},
     {"omf", "list an object file or library", true},
     {"msc6", "the Microsoft C 6.0a model", false},
-    {"msc6-templates", "the statement templates", false},
-    {"msc6-function", "one function through the model", false},
-    {"msc6-registers", "register-value tracking", false},
-    {"msc6-walk", "the control-flow walk", false},
+    {"msc6-templates", "the statement templates", true},
+    {"msc6-function", "one function through the model", true},
+    {"msc6-registers", "register-value tracking", true},
+    {"msc6-walk", "the control-flow walk", true},
     {"msc6-idioms", "what each compiler switch changes", false},
     {"known-differences", "the divergence knowledge base", true},
     {"msvc2", "the Microsoft C/C++ 2.0 (32-bit) model", false},
@@ -97,8 +98,127 @@ int known_differences_tool() {
     return 0;
 }
 
-int run_tool(const Tool& tool, std::span<const std::string> rest) {
+// ---- the small readers of Microsoft C 6.0a ----------------------------------------------------------------------------------------------
+
+// The functions the Python's self-tests read: LZEXPAND's Cleanup (the long-global free idiom, with its three globals), and a function that keeps a
+// call's result in SI.
+constexpr std::string_view kCleanupCode =
+    "1e589045558bec1e8ed883ec02a146000b0644007411ff3646009ae70000002bc0a34600a34400a14a000b0648007411ff364a009a010100002bc0a34a00a34800a156000b0654007411ff3656"
+    "009affff00002bc0a35600a354004d4d8be51f5d4dcb90";
+constexpr std::string_view kRegisterCode = "1e589045558bec1e8ed883ec02568b7606569a00000000508bf09a000000008bc65e4d4d8be51f5d4dca0200";
+constexpr std::string_view kLeafFlags[] = {"/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw /Os"};
+
+Bytes bytes_from_hex(std::string_view hex) {
+    if (hex.size() % 2 != 0) throw UsageError("the bytes are hexadecimal digits, two to a byte");
+    Bytes out;
+    for (std::size_t i = 0; i < hex.size(); i += 2) {
+        const auto b = text::parse_int<std::uint32_t>(hex.substr(i, 2), 16);
+        if (!b || hex[i] == '-' || hex[i] == '+') throw UsageError("the bytes are hexadecimal digits, two to a byte");
+        out.push_back(static_cast<std::uint8_t>(*b));
+    }
+    return out;
+}
+
+std::string hex_text(ByteView b) {
+    std::string out;
+    for (const std::uint8_t x : b) out += std::format("{:02x}", x);
+    return out;
+}
+
+// The text through the compiler. Nothing when it is not set up (said, and the tool goes without); an empty answer when it refuses the text.
+std::optional<std::optional<Bytes>> through_msc6(const Environment& environment, std::string_view text, std::string_view flags) {
+    if (!environment.compile_msc6) {
+        err("Microsoft C 6 is not set up (settings.json: dosbox_x, msc6): the text was not put to the compiler\n");
+        return std::nullopt;
+    }
+    std::optional<Bytes> built = environment.compile_msc6(text, flags);
+    if (!built) err("Microsoft C 6 gave no object (flags={})\n", flags);
+    return built;
+}
+
+// msc6-templates HEX [--verify]: the leaf template the bytes are, as C; --verify puts it to the compiler under each switch set.
+int msc6_templates_tool(std::span<const std::string> args, const Environment& environment) {
+    const auto word = std::ranges::find_if(args, [](const std::string& a) { return !a.starts_with("--"); });
+    if (word == args.end()) throw UsageError("msc6-templates HEXBYTES [--verify]   the leaf templates of Microsoft C 6.00a (medium model, optimized)");
+    const Bytes code = bytes_from_hex(*word);
+    const Result<msc6_small::Leaf> read = msc6_small::leaf(code);
+    if (!read.ok()) {
+        out("DECLINED: {}\n", read.error().what());
+        return 1;
+    }
+    out("{}\n", read.value().text);
+    if (std::ranges::find(args, "--verify") == args.end()) return 0;
+    for (const std::string_view flags : kLeafFlags) {
+        const auto built = through_msc6(environment, read.value().text, flags);
+        if (!built) return 2;
+        if (!*built) return 1;
+        if (**built == code) {
+            out("// VERIFIED byte-exact ({}): recompiles to the identical {} bytes\n", flags, code.size());
+            return 0;
+        }
+    }
+    out("// NOT byte-exact under the tried flags -- template incomplete for this function\n");
+    return 0;
+}
+
+// What a recompiled function and the original are compared under: the same length, and the same bytes outside the places a linker fills in.
+bool masked_equal(ByteView built, ByteView original) { return built.size() == original.size() && msc6_small::mask(built) == msc6_small::mask(original); }
+
+// msc6-function: LZEXPAND's Cleanup through the free-idiom reader and the compiler.
+int msc6_function_tool(const Environment& environment) {
+    const Bytes code = bytes_from_hex(kCleanupCode);
+    const Result<std::string> read = msc6_small::cleanup(code, {{0x44, "gpA"}, {0x48, "gpB"}, {0x54, "gpC"}});
+    if (!read.ok()) {
+        out("DECLINED: {}\n", read.error().what());
+        return 1;
+    }
+    out("=== recovered C ===\n{}\n\n", read.value());
+    const auto built = through_msc6(environment, read.value(), kLeafFlags[0]);
+    if (!built || !*built) return built ? 1 : 2;
+    const bool same = masked_equal(**built, code);
+    out("recompiled {} bytes vs shipped {}; masked-equal: {}\n", (*built)->size(), code.size(), same ? "True" : "False");
+    if (same) out("*** WHOLE-FUNCTION VERIFIED byte-exact (relocs masked) ***\n");
+    else out("*** mismatch:\n  shipped {}\n  ours    {}\n", hex_text(msc6_small::mask(code)), hex_text(msc6_small::mask(**built)));
+    return 0;
+}
+
+// msc6-walk: the same function through the statement walker.
+int msc6_walk_tool(const Environment& environment) {
+    const Bytes code = bytes_from_hex(kCleanupCode);
+    const msc6_small::Globals globals{{0x44, {"gpA", msc6_small::Width::Long}}, {0x48, {"gpB", msc6_small::Width::Long}}, {0x54, {"gpC", msc6_small::Width::Long}}};
+    const Result<msc6_small::Walked> read = msc6_small::walk(code, globals, "GlobalFree");
+    if (!read.ok()) {
+        out("DECLINED: {}\n", read.error().what());
+        return 1;
+    }
+    out("{}\n", read.value().text);
+    const auto built = through_msc6(environment, text::replace_all(read.value().text, "void far F", "void far Cleanup"), kLeafFlags[0]);
+    if (!built || !*built) return built ? 1 : 2;
+    out("\n// generalized walker: masked-equal = {} ({} stmts)\n", masked_equal(**built, code) ? "True" : "False", read.value().statements);
+    return 0;
+}
+
+// msc6-registers: a function that keeps a call's result in a register variable, through the register tracker.
+int msc6_registers_tool(const Environment& environment) {
+    const Bytes code = bytes_from_hex(kRegisterCode);
+    const Result<msc6_small::Registers> read = msc6_small::registers(code, {{0, "G"}, {1, "H"}});
+    if (!read.ok()) {
+        out("DECLINED: {}\n", read.error().what());
+        return 0;
+    }
+    out("{}\n", read.value().text);
+    const auto built = through_msc6(environment, read.value().text, kLeafFlags[0]);
+    if (!built || !*built) return built ? 1 : 2;
+    out("\n// register-var tracker: masked-equal = {} ({} vs {} B)\n", masked_equal(**built, code) ? "True" : "False", (*built)->size(), code.size());
+    return 0;
+}
+
+int run_tool(const Tool& tool, std::span<const std::string> rest, const Environment& environment) {
     if (!tool.native) return not_native(tool);
+    if (tool.name == "msc6-templates") return msc6_templates_tool(rest, environment);
+    if (tool.name == "msc6-function") return msc6_function_tool(environment);
+    if (tool.name == "msc6-walk") return msc6_walk_tool(environment);
+    if (tool.name == "msc6-registers") return msc6_registers_tool(environment);
     if (tool.name == "early-c") return early_c_tool(rest);
     if (tool.name == "early-c-forward") return early_c_forward::command(rest);
     if (tool.name == "quads") return quads_tool(rest);
@@ -127,9 +247,9 @@ int run(std::span<const std::string> args, const Environment& environment) {
         const std::string name = tool + 1 != args.end() ? *(tool + 1) : std::string();
         const Tool* found = find_tool(name);
         if (found == nullptr) throw UsageError(std::format("no model '{}' (have: {})", name, usage().substr(usage().rfind(": ") + 2, std::string::npos)));
-        return run_tool(*found, std::span<const std::string>(tool + (tool + 1 != args.end() ? 2 : 1), args.end()));
+        return run_tool(*found, std::span<const std::string>(tool + (tool + 1 != args.end() ? 2 : 1), args.end()), environment);
     }
-    if (const auto early = at("--early"); early != args.end()) return run_tool(*find_tool("early-c"), std::span<const std::string>(early + 1, args.end()));
+    if (const auto early = at("--early"); early != args.end()) return run_tool(*find_tool("early-c"), std::span<const std::string>(early + 1, args.end()), environment);
     if (at("--check") != args.end()) {
         std::vector<std::string_view> named;
         for (const std::string& a : args)
@@ -140,7 +260,7 @@ int run(std::span<const std::string> args, const Environment& environment) {
             out("== {}\n", name);
             const Tool* found = find_tool(name);
             if (found == nullptr) throw UsageError(std::format("no model '{}'", name));
-            worst = std::max(worst, run_tool(*found, {}));
+            worst = std::max(worst, run_tool(*found, {}, environment));
         }
         return worst;
     }
