@@ -244,8 +244,10 @@ def test_terminal_interface():
     addresses, the store's overview it opens on, and every screen shown headless -- home, a module,
     its tabs, help, jobs -- then the service gone: ServiceDown says so and `r` brings it back.
     Needs the native program (CB_EXE or the build in state/cxx) and a corpus."""
-    import asyncio
     import importlib.util
+    if not hasattr(sys, "meta_path"):
+        raise Skip("run under python: the exe's translated runtime has no asyncio/Textual (async def needs Python's compiler)")
+    import asyncio
     if not importlib.util.find_spec("textual"):
         raise Skip("textual is not installed")
     from codebreaker.ui import client
