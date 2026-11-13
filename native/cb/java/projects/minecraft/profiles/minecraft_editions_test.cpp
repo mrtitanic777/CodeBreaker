@@ -1,7 +1,11 @@
 // The six edition profiles (rubydung, indev, infdev, alpha, beta, release). The counts and first keys below were
 // read off the Python registry (codebreaker.java.profiles.get) and checked by hand against the module sources.
+#include <optional>
+#include <set>
 #include <string>
+#include <vector>
 
+#include "cb/core/regex.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/java/projects/minecraft/profiles/minecraft_alpha.hpp"
 #include "cb/java/projects/minecraft/profiles/minecraft_base.hpp"
@@ -50,6 +54,38 @@ CB_TEST("java.minecraft.editions.shapes", [] {
     check_shape(mcp::minecraft_alpha::profile(), "minecraft_alpha", {10, 17, 55, 2, 18, 11, 10, 4});
     check_shape(mcp::minecraft_beta::profile(), "minecraft_beta", {10, 17, 55, 2, 18, 11, 10, 4});
     check_shape(mcp::minecraft_release::profile(), "minecraft_release", {10, 19, 55, 2, 18, 11, 10, 4});
+});
+
+// tests/java/test_profile_invariants.py and test_profiles_selection.py: what every registered edition profile must satisfy.
+CB_TEST("java.minecraft.editions.every_profile_satisfies_the_structural_invariants", [] {
+    const std::vector<Profile> all = {mcp::minecraft_rubydung::profile(), mcp::minecraft_indev::profile(), mcp::minecraft_infdev::profile(),
+                                      mcp::minecraft_alpha::profile(), mcp::minecraft_beta::profile(), mcp::minecraft_release::profile(),
+                                      mcp::minecraft_xbox360::profile()};
+    for (const Profile& p : all) {
+        // the filters are well formed: some exist, each a compilable pattern to a non-empty folder
+        CB_CHECK(!p.vcxproj_filters.empty());
+        for (const auto& rule : p.vcxproj_filters) {
+            CB_CHECK(cb::Regex::compile(rule.pattern).ok());
+            CB_CHECK(!rule.folder.empty());
+        }
+        // every getter with a declared return type is also a nullable getter (else the type would never be consulted)
+        for (const auto& [getter, type] : p.type.nullable_getter_return_type) CB_CHECK(p.type.nullable_getters.contains(getter));
+        // the static-init order names a class once
+        const std::set<std::string> once(p.static_init_order.begin(), p.static_init_order.end());
+        CB_CHECK_EQ(once.size(), p.static_init_order.size());
+        // first match wins: a Rendering rule is tried before the generic Entity fallback, or RenderX/ModelX would be filed as an entity
+        std::optional<std::size_t> render, entity;
+        for (std::size_t i = 0; i < p.vcxproj_filters.size(); ++i) {
+            const std::string& folder = p.vcxproj_filters[i].folder;
+            if (!render && folder.starts_with("Rendering")) render = i;
+            if (!entity && folder == "Entities\\Types") entity = i;
+        }
+        if (render && entity) CB_CHECK(*render < *entity);
+    }
+    // all six editions are there, each under its own name
+    std::set<std::string> names;
+    for (const Profile& p : all) names.insert(p.name);
+    for (const char* era : {"rubydung", "indev", "infdev", "alpha", "beta", "release"}) CB_CHECK(names.contains(std::string("minecraft_") + era));
 });
 
 CB_TEST("java.minecraft.editions.package_role_order", [] {

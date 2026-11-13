@@ -86,7 +86,10 @@ std::function<int(std::string_view, std::span<const std::string>)> serve_runner(
         spec.env["CB_SERVICE"] = "0";
         const process::ProcessResult result = process::run(spec);
         if (!result.err.empty()) std::fputs(std::string(as_text(result.err)).c_str(), stderr);
-        out_text(as_text(result.out));
+        // (what the command printed as a person reads it: lines end in \n -- a client writes it to its own stdout, which makes them its platform's)
+        std::string printed(as_text(result.out));
+        for (std::size_t at = printed.find("\r\n"); at != std::string::npos; at = printed.find("\r\n", at)) printed.erase(at, 1);
+        out_text(printed);
         return static_cast<int>(result.exit_code);
     };
 }

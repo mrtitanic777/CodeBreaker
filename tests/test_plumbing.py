@@ -298,6 +298,32 @@ def test_cache_drops_older_generations():
         _TEST_REV = 1
 
 
+def test_cache_leaves_the_native_implementations_files_alone():
+    """state/cache/<kind>/<generation>.cbc is native/cb/base/cache's: listed and counted, never dropped as another generation."""
+    import sqlite3
+    from codebreaker.base import cache
+    with _State():
+        cache.put("test-both", "a", b"ours")
+        kind = os.path.join(cache.root(), "test-both")
+        native = os.path.join(kind, "gnativegen.cbc")
+        db = sqlite3.connect(native)
+        db.execute("CREATE TABLE entry(k TEXT PRIMARY KEY, v BLOB)")
+        db.execute("INSERT INTO entry VALUES('x', x'00')")
+        db.commit()
+        db.close()
+        cache._close()
+        cache.GENERATIONS["test-both"] = (__name__, "_TEST_REV")
+        try:
+            assert cache.get("test-both", "a") is None            # (another generation of ours: gone) ...
+            assert os.path.exists(native)                         # ... but not the native file
+            assert all("gnativegen.cbc" not in names for _k, names in cache.prune())
+            assert os.path.exists(native)
+            rows = {k: r for k, _s, r, _g, _n in cache.stats()}
+            assert rows["test-both"] == 1, rows                   # its result counted
+        finally:
+            del cache.GENERATIONS["test-both"]
+
+
 def test_cache_holds_its_cap_least_recently_used_first():
     import time
     from codebreaker.base import cache

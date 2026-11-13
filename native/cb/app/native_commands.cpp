@@ -10,7 +10,9 @@
 #include "cb/base/settings.hpp"
 #include "cb/base/corpus.hpp"
 #include "cb/base/converted.hpp"
+#include "cb/base/cache_command.hpp"
 #include "cb/base/corpus_executables.hpp"
+#include "cb/base/tidy_state_command.hpp"
 #include "cb/build/driver.hpp"
 #include "cb/build/resources.hpp"
 #include "cb/coverage/reach_command.hpp"
@@ -56,7 +58,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 52> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "mcp", "invert"};
+constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state"});   // (counted by the compiler)
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -399,10 +401,14 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // mcp, serve: the MCP server and the local service the terminal UI talks to (the Python's wire protocol)
     table.set(ui::mcp_command::command(ui::mcp_command::Environment{config, corpus, {}}));
-    // (serve: the Python's until tests/test_service.py passes against the native one)
+    table.set(ui::serve::command(ui::serve::Environment{config, corpus, {}}));
 
     // invert ...: the inverse models (Microsoft C 6, MSVC 2, early C) and the module pass, with the period compilers
     lazy_runner(table, "invert", [&config, corpus] { return invert::command::runner(invert::command::production(config, corpus)); });
+
+    // cache, tidy-state: the result cache (native and the Python's files) and state/'s clean-up
+    table.set(base::cache::command(base::cache::CommandEnvironment{base::cache::settings_of(config), {}}));
+    table.set(base::tidy_state::command(base::tidy_state::environment_of(config)));
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));

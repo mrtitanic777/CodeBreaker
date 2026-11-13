@@ -278,6 +278,53 @@ CB_TEST("java.probe.clock_reads_reach_callers", [] {
     CB_CHECK(s.constructors);   // a field initialiser reading the clock reaches every constructor
 });
 
+// tests/java/test_probe_clock.py: FIXED BUG probe-clock-noise -- a method whose result depends on the clock is not compared, the constructor that reads it
+// counts, and only the static pure method of such a class is probed.
+CB_TEST("java.probe.a_class_that_reads_the_clock_in_its_constructor_and_a_method", [] {
+    constexpr std::string_view clocky = R"(public class Clocky {
+	private long start;
+	public int ticks;
+
+	public Clocky() {
+		this.start = System.currentTimeMillis();
+	}
+
+	private long now() {
+		return System.nanoTime() / 1000000L;
+	}
+
+	public int elapsed() {
+		return (int)(this.now() - this.start);
+	}
+
+	public static int pure(int var0) {
+		return var0 * 2;
+	}
+}
+)";
+    const ir::JClass c = cb::java::parse::parse_source(clocky);
+    const probe::ClockReads reads = probe::reads_clock(c);
+    CB_CHECK((reads.methods == std::vector<std::string>{"elapsed", "now"}));
+    CB_CHECK(reads.constructors);
+
+    fs::ScopedTempDir dir("probe_clock");
+    fs::write_text(dir.path() / "staged" / "Clocky.java", clocky);
+    const probe::SourceTree tree(dir.path() / "staged");
+    const ir::JClass* parsed = tree.lookup("Clocky");
+    PROBE_REQUIRE(parsed != nullptr);
+    const auto found = probe::probeable(tree, *parsed, "class Clocky { public: Clocky(); virtual int elapsed(); static int pure(int var0); };", dir.path() / "cpp");
+    CB_CHECK_EQ(found.size(), std::size_t{1});
+    if (!found.empty()) CB_CHECK_EQ(found[0].name, "pure");
+
+    // a class without the clock
+    const probe::ClockReads plain = probe::reads_clock(cb::java::parse::parse_source("public class Plain { public int v; public Plain(int var1) { this.v = var1; } public int get() { return this.v; } }"));
+    CB_CHECK(plain.methods.empty() && !plain.constructors);
+    // the clipboard is the machine, not the code (FIXED BUG probe-clipboard-noise)
+    const probe::ClockReads clip = probe::reads_clock(cb::java::parse::parse_source(
+        "public class Clip { public static String text() { try { return (String)java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null).getTransferData(null); } catch (Exception var0) { return null; } } }"));
+    CB_CHECK((clip.methods == std::vector<std::string>{"text"}) && !clip.constructors);
+});
+
 CB_TEST("java.probe.harness_text", [] {
     Fixture f;
     const probe::SourceTree tree(f.staged);

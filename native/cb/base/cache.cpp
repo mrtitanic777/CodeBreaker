@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstring>
 #include <format>
+#include <set>
 #include <tuple>
 
 #include <intrin.h>
@@ -33,6 +34,9 @@ constexpr std::uint64_t kCheckEvery = std::uint64_t{32} << 20;     // bytes a pr
 constexpr std::int64_t kTouchSeconds = 3600;                       // a result's time of use is renewed at most this often
 constexpr const char* kDropped = "_dropped";                       // where what is going waits for its deletion
 constexpr const char* kDbExtension = ".cbc";
+// The files of the Python implementation: state/cache/<kind>/<generation>.sqlite, one table entry(k, v, used). Their
+// generation names are the Python code's (a digest of its own revision values), which only that code can compute.
+constexpr const char* kLegacyExtension = ".sqlite";
 constexpr std::size_t kOldestPerFile = 4000;
 constexpr int kHoldRounds = 16;
 
@@ -60,6 +64,19 @@ bool is_sidecar(const std::string& name) {
 
 // "g123abc.cbc" -> "g123abc": a generation's name is what comes before the first dot.
 std::string generation_stem(const std::string& name) { return name.substr(0, name.find('.')); }
+
+// "g1.sqlite-wal" -> "g1.sqlite": a database's own name, without its sidecars.
+std::string without_sidecar(const std::string& name) {
+    for (const char* suffix : {"-wal", "-shm", "-journal"})
+        if (name.ends_with(suffix)) return name.substr(0, name.size() - std::string_view(suffix).size());
+    return name;
+}
+
+bool is_legacy_name(const std::string& name) { return without_sidecar(name).ends_with(kLegacyExtension); }
+
+// One generation of a kind as it is kept: the Python's (.sqlite) or ours (.cbc file or folder), and its name.
+using Group = std::pair<bool, std::string>;   // the Python's?, generation name
+Group group_of(const std::string& name) { return {is_legacy_name(name), generation_stem(name)}; }
 
 std::string format_size(std::uint64_t n) {
     if (n >= kGiB) return std::format("{:.2f} GB", static_cast<double>(n) / static_cast<double>(kGiB));
@@ -100,15 +117,16 @@ void remove_quietly(const stdfs::path& p) {
     }
 }
 
-// Every generation of a kind's folder but `generation`: moved aside at once (another process opening the kind finds
-// them gone), then deleted.
-void drop_other_generations(const stdfs::path& state_dir, const stdfs::path& kind_dir, const std::string& generation) {
+// What is in a kind's folder that `keep` does not say to keep: moved aside at once (another process opening the kind finds
+// them gone), then deleted. A database's sidecars go with it.
+template <class Keep>
+void move_aside_unless(const stdfs::path& state_dir, const stdfs::path& kind_dir, Keep&& keep) {
     static std::atomic<std::uint64_t> counter{0};
     std::error_code ec;
     std::vector<stdfs::path> entries;
     for (const auto& e : stdfs::directory_iterator(kind_dir, ec)) entries.push_back(e.path());
     for (const stdfs::path& entry : entries) {
-        if (generation_stem(fs::to_text(entry.filename())) == generation) continue;
+        if (keep(fs::to_text(entry.filename()))) continue;
         const stdfs::path aside =
             state_dir / kDropped / std::format("{}-{}-{}", _getpid(), now_seconds(), counter.fetch_add(1));
         std::error_code e2;
@@ -117,6 +135,14 @@ void drop_other_generations(const stdfs::path& state_dir, const stdfs::path& kin
         if (e2) continue;   // in use by a process of other code: next time
         remove_quietly(aside);
     }
+}
+
+// Every generation of ours in a kind's folder but `generation`. The Python's files are not ours to drop here: its
+// generation names are not ours to compute (prune keeps the newest of them, the cap evicts the rest).
+void drop_other_generations(const stdfs::path& state_dir, const stdfs::path& kind_dir, const std::string& generation) {
+    move_aside_unless(state_dir, kind_dir, [&](const std::string& name) {
+        return is_legacy_name(name) || generation_stem(name) == generation;
+    });
 }
 
 }  // namespace
@@ -472,6 +498,7 @@ namespace {
 struct Stored {
     stdfs::path path;
     bool is_db = false;
+    bool legacy = false;   // the Python's file: its table has the time of use in the entry itself
 };
 
 // Everything kept on disk under `base`, any generation: kind -> its files and folders.
@@ -491,7 +518,8 @@ std::map<std::string, std::vector<Stored>> stored_under(const stdfs::path& base)
         for (const stdfs::path& p : entries) {
             const std::string name = fs::to_text(p.filename());
             if (is_sidecar(name)) continue;
-            out[kind].push_back({p, name.ends_with(kDbExtension)});
+            const bool legacy = name.ends_with(kLegacyExtension);
+            out[kind].push_back({p, legacy || name.ends_with(kDbExtension), legacy});
         }
         out[kind];   // a kind with nothing in it still shows
     }
@@ -505,6 +533,49 @@ std::uint64_t total_size(const stdfs::path& base) {
     std::error_code ec;
     if (stdfs::is_directory(base / kDropped, ec)) total += size_of(base / kDropped);
     return total;
+}
+
+// When a generation was last written to: the newest of its file, its log, or (a folder) itself and what is directly in it.
+std::int64_t last_written(const Stored& s) {
+    std::error_code ec;
+    std::int64_t newest = mtime_seconds(s.path, ec);
+    if (s.is_db) {
+        stdfs::path log = s.path;
+        log += "-wal";
+        std::error_code e2;
+        // (a log with nothing in it is only what opening the file made: not a write)
+        if (stdfs::file_size(log, e2) > 0 && !e2) newest = std::max(newest, mtime_seconds(log, e2));
+    } else {
+        for (const auto& e : stdfs::directory_iterator(s.path, ec)) {
+            std::error_code e2;
+            newest = std::max(newest, mtime_seconds(e.path(), e2));
+        }
+    }
+    return newest;
+}
+
+// Which generations of a kind the cache of now keeps. Ours, when the kind's owner is known (`native_generation`): the one
+// it names. Otherwise (no owner, or the Python's files, whose generation only the Python code can name) the one written to
+// most recently, of each format: what the code of now writes is what was written last.
+std::set<Group> kept_generations(const std::vector<Stored>& entries, const std::optional<std::string>& native_generation) {
+    std::set<Group> kept;
+    std::map<Group, std::int64_t> written;
+    for (const Stored& s : entries) {
+        const Group g = group_of(fs::to_text(s.path.filename()));
+        if (!g.first && native_generation) {
+            if (g.second == *native_generation) kept.insert(g);
+            continue;
+        }
+        std::int64_t& t = written[g];
+        t = std::max(t, last_written(s));
+    }
+    std::map<bool, std::pair<std::int64_t, std::string>> newest;   // per format: when, which
+    for (const auto& [g, t] : written) {
+        auto& n = newest[g.first];
+        if (n.second.empty() || t >= n.first) n = {t, g.second};
+    }
+    for (const auto& [legacy, n] : newest) kept.insert({legacy, n.second});
+    return kept;
 }
 
 struct OldEntry {
@@ -561,9 +632,11 @@ std::uint64_t Cache::hold(std::optional<std::uint64_t> state_cap) {
                     if (s.is_db) {
                         try {
                             with_db(s.path, [&](Database& db) {
-                                for (const Row& r : db.query("SELECT e.rowid, u.used, length(e.k) + length(e.v) FROM usage u "
-                                                             "JOIN entry e ON e.k = u.k ORDER BY u.used LIMIT ?",
-                                                             {Value(static_cast<std::int64_t>(kOldestPerFile))}))
+                                const char* oldest =
+                                    s.legacy ? "SELECT rowid, used, length(k) + length(v) FROM entry ORDER BY used LIMIT ?"
+                                             : "SELECT e.rowid, u.used, length(e.k) + length(e.v) FROM usage u "
+                                               "JOIN entry e ON e.k = u.k ORDER BY u.used LIMIT ?";
+                                for (const Row& r : db.query(oldest, {Value(static_cast<std::int64_t>(kOldestPerFile))}))
                                     olds.push_back({as_int(r[1]), static_cast<std::uint64_t>(as_int(r[2])), s.path, as_int(r[0]), {}});
                                 return 0;
                             });
@@ -628,7 +701,7 @@ std::map<std::string, HitCount> Cache::counts() const {
 std::vector<KindStats> Cache::stats() {
     std::lock_guard lock(impl_->mutex);
     std::vector<KindStats> out;
-    auto count_rows = [&](const stdfs::path& file) -> std::uint64_t {
+    auto count_rows = [&](const stdfs::path& file, bool read_only) -> std::uint64_t {
         for (auto& [name, kind] : impl_->kinds)
             if (kind.db && fs::same_path(kind.db->path(), file)) {
                 try {
@@ -638,7 +711,7 @@ std::vector<KindStats> Cache::stats() {
                 }
             }
         try {
-            Database db = Database::open(file);
+            Database db = read_only ? Database::open_readonly(file) : Database::open(file);   // (the build cache is shared with live processes: only looked at)
             return static_cast<std::uint64_t>(as_int(db.query("SELECT count(*) FROM entry")[0][0]));
         } catch (const IoError&) {
             return 0;
@@ -649,16 +722,22 @@ std::vector<KindStats> Cache::stats() {
         if (base.empty()) continue;
         for (const auto& [kind, entries] : stored_under(base)) {
             auto declared = impl_->kinds.find(kind);
-            const bool mine = declared != impl_->kinds.end() ? declared->second.spec.scope == scope : scope == Scope::State;
-            if (!mine) continue;
+            // The state folder lists everything in it (the Python's cache kept the build cache's kinds there too, and they
+            // weigh the same); the build cache lists the kinds declared to belong in it.
+            const bool owned = declared != impl_->kinds.end() && declared->second.spec.scope == scope;
+            if (scope == Scope::Shared && !owned) continue;
+            const std::optional<std::string> generation =
+                owned ? std::optional<std::string>(generation_name(declared->second.spec.generation)) : std::nullopt;
+            const std::set<Group> now = kept_generations(entries, generation);
             KindStats s;
             s.kind = kind;
             s.scope = scope;
             for (const Stored& e : entries) {
-                s.bytes += size_of(e.path);
-                s.generations.push_back(generation_stem(fs::to_text(e.path.filename())));
+                const std::string name = fs::to_text(e.path.filename());
+                s.generations.push_back(generation_stem(name));
+                s.of_now.push_back(now.contains(group_of(name)));
                 if (e.is_db) {
-                    s.results += count_rows(e.path);
+                    s.results += count_rows(e.path, scope == Scope::Shared);   // (counted before sized: closing the file folds its log in, and the listing says what is left)
                 } else {
                     std::error_code ec;
                     for (stdfs::recursive_directory_iterator it(e.path, ec), end; !ec && it != end; it.increment(ec)) {
@@ -666,8 +745,9 @@ std::vector<KindStats> Cache::stats() {
                         if (it->is_regular_file(e2)) s.results += 1;
                     }
                 }
+                s.bytes += size_of(e.path);
             }
-            if (declared != impl_->kinds.end()) s.current = generation_name(declared->second.spec.generation);
+            if (owned) s.current = generation;
             out.push_back(std::move(s));
         }
     }
@@ -680,21 +760,25 @@ std::vector<Dropped> Cache::prune() {
         std::lock_guard lock(impl_->mutex);
         for (const auto& [kind, entries] : stored_under(config_.state_dir)) {
             auto declared = impl_->kinds.find(kind);
-            if (declared == impl_->kinds.end() || declared->second.spec.scope != Scope::State) continue;   // owner unknown
-            const std::string generation = generation_name(declared->second.spec.generation);
+            const bool owned = declared != impl_->kinds.end() && declared->second.spec.scope == Scope::State;
+            const std::set<Group> kept = kept_generations(
+                entries, owned ? std::optional<std::string>(generation_name(declared->second.spec.generation)) : std::nullopt);
             Dropped d{kind, {}};
             for (const Stored& s : entries) {
                 const std::string name = fs::to_text(s.path.filename());
-                if (generation_stem(name) != generation) d.generations.push_back(name);
+                if (!kept.contains(group_of(name))) d.generations.push_back(name);
             }
             if (d.generations.empty()) continue;
-            Kind& k = declared->second;
-            if (k.opened && k.db) {   // close before its files move
-                k.db.reset();
-                k.opened = false;
+            if (declared != impl_->kinds.end()) {
+                Kind& k = declared->second;
+                if (k.opened && k.db) {   // close before its files move
+                    k.db.reset();
+                    k.opened = false;
+                }
+                k.folder_ready = false;
             }
-            k.folder_ready = false;
-            drop_other_generations(config_.state_dir, config_.state_dir / kind, generation);
+            move_aside_unless(config_.state_dir, config_.state_dir / kind,
+                              [&](const std::string& name) { return kept.contains(group_of(name)); });
             dropped.push_back(std::move(d));
         }
         remove_quietly(config_.state_dir / kDropped);
@@ -732,10 +816,10 @@ std::string describe(const std::vector<KindStats>& stats, std::uint64_t cap) {
         if (s.scope != Scope::State) continue;
         total += s.bytes;
         std::string gens;
-        for (const std::string& g : s.generations) {
+        for (std::size_t i = 0; i < s.generations.size(); ++i) {
             if (!gens.empty()) gens += ' ';
-            gens += g;
-            if (s.current && g == *s.current) gens += '*';
+            gens += s.generations[i];
+            if (i < s.of_now.size() ? s.of_now[i] : (s.current && s.generations[i] == *s.current)) gens += '*';
         }
         out += std::format("{:<16} {:>10} {:>10}  {}\n", s.kind, format_size(s.bytes), s.results, gens);
     }

@@ -484,6 +484,11 @@ int run_main_(const var& argv) {
                 }
             }
         }
+        // (the module's cells are in name order: plain test functions run in the order their defs ran, the file's)
+        if (std::all_of(items.begin(), items.end(), [](const Item& i) { return i.cls.is_none() && i.fn.ref()->type == T_function; }))
+            std::stable_sort(items.begin(), items.end(), [](const Item& x, const Item& y) {
+                return static_cast<FuncObj*>(x.fn.ref())->seq < static_cast<FuncObj*>(y.fn.ref())->seq;
+            });
         var last_cls = None;
         for (auto& base_item : items) {
             if (stop) break;

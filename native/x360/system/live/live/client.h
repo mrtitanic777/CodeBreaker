@@ -222,6 +222,8 @@ namespace live
         uint32_t titleId = 0, flags = 0, publicSlots = 0, privateSlots = 0;
         std::vector<uint64_t> members;
         bool playing = false;
+        bool remote = false;      // a session of a linked server (federation): `host` and `members` are FED0... XUIDs
+        std::string server;       // when remote: that server's name; JoinGameSession sends it by itself
         std::vector<uint8_t> qos; // the host's XNetQosListen data
         std::map<uint32_t, std::vector<uint8_t>> attributes; // matchmaking attributes (SetGameSessionAttributes)
     };

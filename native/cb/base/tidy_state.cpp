@@ -133,7 +133,7 @@ std::uint64_t size_of(const stdfs::path& p) {
 
 std::vector<stdfs::path> build_folders(const Layout& layout) {
     std::vector<stdfs::path> out;
-    for (const stdfs::path& program : children(layout.converted)) {
+    for (const stdfs::path& program : glob_children(layout.converted, "")) {
         const stdfs::path build = program / "build";
         std::error_code ec;
         if (stdfs::is_directory(build, ec)) out.push_back(build);
@@ -152,12 +152,12 @@ std::vector<Stale> stale(const Layout& layout, Clock::time_point now) {
             if (stdfs::exists(p, ec)) add(p, Rule::OldCaches);
         }
     for (std::string_view tool : kRunTools)
-        for (const stdfs::path& p : children(layout.state / std::string(tool) / "runs"))
+        for (const stdfs::path& p : glob_children(layout.state / std::string(tool) / "runs", ""))
             if (older_than(p, now, std::chrono::duration_cast<std::chrono::hours>(runs::kKilledRunAge))) add(p, Rule::Runs);
     for (const OldRunPattern& pattern : kOldRunPatterns)
         for (const stdfs::path& p : glob_children(layout.state / std::string(pattern.folder), pattern.prefix, pattern.suffix))
             if (older_than(p, now, kDay)) add(p, Rule::Runs);
-    for (const stdfs::path& walk : children(layout.state / "record16" / "walk")) {
+    for (const stdfs::path& walk : glob_children(layout.state / "record16" / "walk", "")) {
         const stdfs::path disk = walk / "hd.img";
         if (stdfs::exists(disk, ec) && older_than(disk, now, kKeptDiskAge)) add(disk, Rule::KeptDisks);
     }
@@ -202,7 +202,11 @@ int run(const Layout& layout, const Options& options, const CacheHooks& cache) {
     const std::vector<Part> before = parts(layout);
     std::uint64_t total = 0;
     for (const Part& p : before) total += p.bytes;
-    cb::out("state/ ({}): {}\n", fs::to_text(layout.state), gb_text(total));
+    std::string state_text = fs::to_text(layout.state);   // (as the platform writes a path: the Python printed backslashes on Windows)
+#ifdef _WIN32
+    std::replace(state_text.begin(), state_text.end(), '/', '\\');
+#endif
+    cb::out("state/ ({}): {}\n", state_text, gb_text(total));
     for (std::size_t i = 0; i < before.size() && i < kPartsShown; ++i)
         cb::out("  {:<28} {:>10}\n", before[i].path.filename().string(), gb_text(before[i].bytes));
     const std::vector<stdfs::path> builds = build_folders(layout);

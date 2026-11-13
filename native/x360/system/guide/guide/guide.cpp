@@ -3485,6 +3485,8 @@ namespace
     {
         if (now)
             return xui::BeaconsString(40, u"Playing now");
+        if (when <= 0)
+            return u""; // the server has no time for it (not "Played 692 months ago")
         const int64_t s = std::max<int64_t>(0, int64_t(std::time(nullptr)) - when);
         const auto n = [](int64_t v) { return Wide(std::to_string(v)); };
         if (s >= 60LL * 86400)

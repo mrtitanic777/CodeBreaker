@@ -1,0 +1,89 @@
+{
+ "cases": [
+  {
+   "args": [
+    "c",
+    1
+   ],
+   "kwargs": {},
+   "result": "int1"
+  },
+  {
+   "args": [
+    "i",
+    2
+   ],
+   "kwargs": {},
+   "result": "int2"
+  },
+  {
+   "args": [
+    "i",
+    4
+   ],
+   "kwargs": {},
+   "result": "int4"
+  },
+  {
+   "args": [
+    "u",
+    2
+   ],
+   "kwargs": {},
+   "result": "uint2"
+  },
+  {
+   "args": [
+    "u",
+    4
+   ],
+   "kwargs": {},
+   "result": "uint4"
+  },
+  {
+   "args": [
+    "x",
+    2
+   ],
+   "kwargs": {},
+   "result": "uint2"
+  },
+  {
+   "args": [
+    "x",
+    4
+   ],
+   "kwargs": {},
+   "result": "uint4"
+  },
+  {
+   "args": [
+    "pi",
+    2
+   ],
+   "kwargs": {},
+   "result": "int2 *"
+  },
+  {
+   "args": [
+    "px",
+    2
+   ],
+   "kwargs": {},
+   "result": "xunknown2 *"
+  }
+ ],
+ "modules": [
+  "lzexpand.dll",
+  "keyboard.drv",
+  "comm.drv",
+  "system.drv",
+  "ver.dll",
+  "commdlg.dll",
+  "mmsystem.dll",
+  "shell.dll",
+  "lz32.dll",
+  "notepad.exe"
+ ],
+ "pass": "_global_type"
+}

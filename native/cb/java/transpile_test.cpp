@@ -189,4 +189,63 @@ CB_TEST("java.transpile.parse_failures_are_ledgered_not_fatal", [] {
 }
 );
 
+// ---- tests/java/test_edition_convert_integration.py and test_review_fixes.py (the profile of a conversion). The Python switched a process-wide active
+// profile for the run and restored it after; here the profile of a conversion is handed down, so "restored" is "the shared profile set was never
+// switched" (checked on the active name). The cases that pick a Minecraft edition need the Minecraft project, which this world does not have: they
+// are in translate/java_ports_test.cpp, on the application's own assembly.
+
+namespace {
+
+struct TrEditionRun {
+    std::vector<std::string> logs;
+    trn::Summary summary;
+};
+
+TrEditionRun tr_convert_files(TrWorld& world, const std::map<std::string, std::string>& files, const std::string& edition, const std::string& version) {
+    cb::fs::ScopedTempDir tmp("cbedition");
+    for (const auto& [name, text] : files) cb::fs::write_text(tmp.path() / "java" / name, text);
+    trn::Options options;
+    options.overlays_root = tmp.path();
+    options.write_report = false;
+    options.emit_debug = false;
+    options.edition = edition;
+    options.mc_version = version;
+    TrEditionRun run;
+    options.progress = [&run](std::string_view line) { run.logs.emplace_back(line); };
+    run.summary = trn::convert(tmp.path() / "java", tmp.path() / "out", options, world.services);
+    return run;
+}
+
+bool tr_logged(const TrEditionRun& run, std::string_view part) {
+    return std::ranges::any_of(run.logs, [&](const std::string& m) { return m.find(part) != std::string::npos; });
+}
+
+}  // namespace
+
+CB_TEST("java.transpile.an_inconclusive_corpus_keeps_the_default_profile", [] {
+    TrWorld world;
+    const std::string before = world.profiles.active_name();
+    const TrEditionRun run = tr_convert_files(world, {{"Foo.java", "public class Foo { public int x; }"}}, "", "");
+    CB_CHECK(!tr_logged(run, "active target profile"));   // nothing conclusive: no switch
+    CB_CHECK_EQ(world.profiles.active_name(), before);
+});
+
+// A conversion that fails midway leaves the shared profile set as it found it.
+CB_TEST("java.transpile.a_conversion_that_fails_midway_leaves_the_profiles_alone", [] {
+    struct Failing : trn::BodyTranslator {
+        trn::TranslatedBodies translate(const trn::TranslateRequest&) override { throw cb::UsageError("midway failure"); }
+    };
+    TrWorld world;
+    Failing failing;
+    trn::Services services{world.data, world.runtime, world.profiles, world.projects, failing};
+    const std::string before = world.profiles.active_name();
+    cb::fs::ScopedTempDir tmp("cbfail");
+    cb::fs::write_text(tmp.path() / "java" / "Level.java", "public class Level { public int x; }");
+    trn::Options options;
+    options.overlays_root = tmp.path();
+    options.write_report = false;
+    CB_CHECK_THROWS_AS(cb::UsageError, (void)trn::convert(tmp.path() / "java", tmp.path() / "out", options, services));
+    CB_CHECK_EQ(world.profiles.active_name(), before);
+});
+
 }  // namespace

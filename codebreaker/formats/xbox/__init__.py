@@ -90,7 +90,7 @@ def _xur(path):
     from codebreaker.formats.xbox import xur
     x = xur.XUR(open(path, "rb").read())
     return {"version": x.version, "tool version": getattr(x, "tool_version", ""), "sections": x.section_count,
-            "section tags": " ".join(m.decode("latin-1") if isinstance(m, bytes) else str(m) for m, _o, _l in x.sections)}
+            "section tags": " ".join(xur._tag(m) for m, _o, _l in x.sections)}
 
 
 def _bink(path):

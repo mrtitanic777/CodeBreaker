@@ -218,6 +218,31 @@ CB_TEST("java.minecraft.achievements.resolve_icon_atlas_same_symbol", [] {
     CB_CHECK(icons.at("Block::s_sign").atlas == Atlas::Terrain && icons.at("Block::s_sign").col == 4);
 });
 
+// tests/java/test_achievements.py test_block_texture_resolver: a subclass constructor's literal, a subclass call's second int argument, and the base
+// Block(id, tex, mat).
+CB_TEST("java.minecraft.achievements.block_textures_come_from_a_subclass_literal_a_second_argument_or_the_base", [] {
+    fs::ScopedTempDir tmp("cbach");
+    fs::write_text(tmp.path() / "Block.cpp",
+                   "void Block::initStatics() {\n"
+                   "    Block::s_wood = (new BlockLog(17))->setBlockName(\"log\");\n"
+                   "    Block::s_rail = (new BlockRail(66, 128, false))->setBlockName(\"rail\");\n"
+                   "    Block::s_stone = (new Block(1, 1, Material::s_rock))->setBlockName(\"stone\");\n"
+                   "}\n");
+    fs::write_text(tmp.path() / "BlockLog.cpp", "BlockLog::BlockLog(int var1)\n : Block(var1, Material::s_wood)\n{\n    this->blockIndexInTexture = 20;\n}\n");
+    const auto icons = resolve_icon_atlas(tmp.path());
+    auto check = [&](const char* symbol, std::uint32_t col, std::uint32_t row) {
+        const auto it = icons.find(symbol);
+        CB_CHECK(it != icons.end());
+        if (it == icons.end()) return;
+        CB_CHECK(it->second.atlas == Atlas::Terrain);
+        CB_CHECK_EQ(it->second.col, col);
+        CB_CHECK_EQ(it->second.row, row);
+    };
+    check("Block::s_wood", 20 % 16, 20 / 16);     // the subclass constructor's literal
+    check("Block::s_rail", 128 % 16, 128 / 16);   // the second constructor int
+    check("Block::s_stone", 1, 0);                // the base Block(id, tex, mat)
+});
+
 CB_TEST("java.minecraft.achievements.map_to_platform", [] {
     const auto all = scan_achievements(fixture("code"), fixture("lang/en_US.lang"));
     const Mapping m = map_to_platform(all);
