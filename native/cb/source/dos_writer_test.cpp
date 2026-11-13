@@ -13,6 +13,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
+#include "cb/source/pe_writer.hpp"
 
 namespace cb::source::dos_writer {
 namespace {
@@ -210,6 +211,33 @@ CB_TEST("source.dos_writer.a_dos_program_with_a_windows_module_hands_the_module_
     CB_CHECK(r.file.has_value());   // (the DOS program as a file laid out as the stub is)
 });
 
+CB_TEST("source.dos_writer.a_windows_program_with_a_real_dos_stub_has_it_written_from_its_own_source", [] {
+    const auto options = dw_options();
+    const auto regedit = dw_corpus_file("WINDOWS/regedit.exe");   // (a 32-bit program whose DOS stub is a 38 KB registry editor)
+    if (!options || !regedit) return;
+    std::optional<std::filesystem::path> nasm;
+    try {
+        const config::Config main = config::Config::load(config::current().main_checkout());
+        nasm = main.path("nasm");
+    } catch (const Error&) {
+    }
+    if (!nasm || !std::filesystem::is_regular_file(*nasm)) return;
+    fs::ScopedTempDir dir("cb_dos_writer");
+    std::vector<std::string> said;
+    source::pe_writer::Options pe;
+    pe.nasm = *nasm;
+    pe.find_stub = stub_finder(*options);
+    pe.say = [&](std::string_view line) { said.emplace_back(line); };
+    const source::pe_writer::Result r = source::pe_writer::reconstruct(*regedit, dir.path(), pe);
+    CB_CHECK(r.same);
+    CB_CHECK_EQ(r.instructions, 10499u);
+    CB_CHECK(!said.empty() && said.front().starts_with("the stub: 38209 bytes, from its own source ("));
+    CB_CHECK(fs::read_text(r.source).find("incbin \"") != std::string::npos);
+    // the stub's own folder is what the writer of programs made of it: its file is the original's first 38209 bytes
+    const Bytes built = fs::read_file(dir.path() / "stub" / "file" / "STUB.EXE");
+    const Bytes whole = fs::read_file(*regedit);
+    CB_CHECK(built == Bytes(whole.begin(), whole.begin() + 38209));
+});
 CB_TEST("source.dos_writer.the_stub_finder_answers_only_for_a_stub_that_is_a_program_of_its_own", [] {
     fs::ScopedTempDir dir("cb_dos_writer");
     Options options;
