@@ -99,6 +99,23 @@ CB_TEST("source.dos_image.a_com_file_becomes_labels_and_mnemonics", [] {
     CB_CHECK(named);
 });
 
+CB_TEST("source.dos_image.an_instruction_with_prefixes_after_a_66_is_read_to_its_end", [] {
+    // 66 66 90 C3: the constructor once stepped over the first prefix only, and looped for ever on the second (found on IO.SYS)
+    Bytes image(0x108, 0);
+    const Bytes code = {0x66, 0x66, 0x90, 0xC3};
+    std::copy(code.begin(), code.end(), image.begin() + 0x100);
+    dos::Program p;
+    p.kind = dos::Kind::Com;
+    p.base = kImageBase;
+    p.spans.push_back({kImageBase, static_cast<std::uint32_t>(image.size()), "image"});
+    p.entries.push_back({kImageBase + 0x100, "start", dos::Entry::Call::Near});
+    p.image = std::move(image);
+    const DosImage w(p, "PREFIX.COM", dos_image_services(), dos_image_decoder());
+    CB_CHECK(w.instructions().contains(0x100));
+    CB_CHECK(!w.instructions().at(0x100).target.has_value());
+    CB_CHECK(w.instructions().contains(0x103));
+});
+
 CB_TEST("source.dos_image.only_the_instructions_said_to_be_good_are_mnemonics", [] {
     const dos::Program p = com_program();
     const DosImage w(p, "HELLO.COM", dos_image_services(), dos_image_decoder());

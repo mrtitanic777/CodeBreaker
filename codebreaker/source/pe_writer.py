@@ -81,9 +81,9 @@ class Writer(object):
         for mod in pe.import_table():
             for s in mod["symbols"]:
                 nm = s["name"] or "%s_%d" % (re.sub(r"\W", "_", mod["module"]), s["ordinal"])
-                self.imports[B + s["slot"]] = "__imp_" + re.sub(r"[^\w@?$]", "_", nm)
+                self.imports[B + s["slot"]] = "__imp_" + re.sub(r"[^\w@?$]", "_", nm, flags=re.ASCII)   # (NASM takes ASCII identifiers)
         self.rva_fields = self._import_rvas()                # file offset of an RVA field -> the RVA
-        self.tail = len(d) - max(s["rawptr"] + s["rawsize"] for s in pe.sections)
+        self.tail = max(0, len(d) - max(s["rawptr"] + s["rawsize"] for s in pe.sections))   # (a section running past the file: no tail)
         self._decode()
 
     @staticmethod
@@ -125,7 +125,7 @@ class Writer(object):
             for table in (lookup, iat):
                 t = pe.file_offset(table) if table else None
                 j = 0
-                while t is not None:
+                while t is not None and t + 4 * j + 4 <= len(d):   # (a table that runs past the file ends there)
                     v = struct.unpack_from("<I", d, t + 4 * j)[0]
                     if not v:
                         break

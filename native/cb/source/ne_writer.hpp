@@ -35,10 +35,17 @@
 #include "cb/formats/ne.hpp"
 #include "cb/platforms/decoder.hpp"
 #include "cb/source/flat_rounds.hpp"
+#include "cb/source/stub.hpp"
 #include "cb/source/x86_flat.hpp"
 #include "cb/translate/l2.hpp"
 
 namespace cb::source::ne_writer {
+
+// The stub's types are the whole-file writers' common ones (source/stub.hpp).
+using ::cb::source::FindStub;
+using ::cb::source::KeepStub;
+using ::cb::source::SearchStub;
+using ::cb::source::Stub;
 
 // A place in the program: segment (1-based) and offset.
 struct Place {
@@ -46,15 +53,6 @@ struct Place {
     std::uint32_t offset = 0;
     friend auto operator<=>(const Place&, const Place&) = default;
 };
-
-// What the program's DOS stub is written as.
-struct SearchStub {};   // from its own source when there is one that builds back (Options::find_stub)
-struct KeepStub {};     // as the original's bytes
-using Stub = std::variant<SearchStub, KeepStub, std::filesystem::path>;   // or the path of the source's assembled stub
-
-// The assembled stub of a file whose new header is at `new_header`, or nothing when its bytes are to be kept; `say` takes progress lines.
-using FindStub = std::function<std::optional<std::filesystem::path>(ByteView file, std::uint64_t new_header, const std::filesystem::path& out,
-                                                                     const std::function<void(std::string_view)>& say)>;
 
 struct Options {
     std::filesystem::path nasm;                         // the assembler (settings: nasm); NotFoundError when it is not there

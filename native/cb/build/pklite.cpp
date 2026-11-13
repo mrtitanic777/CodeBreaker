@@ -491,7 +491,7 @@ Packed pack(ByteView image, std::span<const Relocated> relocs, Registers regs, B
     out.header.ss = u16_field(module.size() / 16 + 9, "the stack segment");
     out.header.sp = 0x200;
     out.header.min_alloc = u16_field(static_cast<std::uint64_t>(top) + 0x10 - module.size() / 16, "the minimum allocation");
-    out.header.relocs.push_back({7, 0});
+    out.header.relocs.push_back({.segment = 0, .offset = 7});   // (the word at 0000:0007, the one its entry code adds the memory to)
     out.module = std::move(module);
     return out;
 }

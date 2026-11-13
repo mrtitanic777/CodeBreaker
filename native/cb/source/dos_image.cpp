@@ -26,7 +26,9 @@ bool is_prefix_byte(std::uint8_t b) {
 std::size_t displacement_width(ByteView code) {
     std::size_t k = 0;
     bool wide = false;
-    while (k < code.size() && is_prefix_byte(code[k])) wide = wide || code[k++] == 0x66;
+    for (; k < code.size() && is_prefix_byte(code[k]); ++k) {
+        if (code[k] == 0x66) wide = true;   // (every prefix is stepped over, whether or not one before it was a 66)
+    }
     if (k >= code.size()) return 0;
     const std::uint8_t op = code[k];
     if (op == 0xE8 || op == 0xE9) return wide ? 4 : 2;

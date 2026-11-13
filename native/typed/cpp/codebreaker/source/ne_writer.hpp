@@ -1,7 +1,6 @@
 // codebreaker/source/ne_writer.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/source/ne_writer.{hpp,cpp}; this
-// header keeps the old py:: surface (reconstruct, main, DOC) for the dynamic exe. Conversion and forwarding only, except
-//   COMPAT(py): the stub finder -- hands the new module pe_writer::_stub (which reaches the DOS writer); remove when source/pe_writer and
-//       source/dos_writer are refactored and the finder is theirs.
+// header keeps the old py:: surface (reconstruct, main, DOC) for the dynamic exe. Conversion and forwarding only: the stub finder is the new
+// DOS writer's (source/dos_writer's stub_finder), reached through the pe_writer shim.
 //
 // Not carried over: the internals the module's own port exposed (Writer, Seg, Site, Place, _STOP, _SEGS, _WIDTH, _PRELUDE, _differing).
 #pragma once
@@ -43,17 +42,8 @@ struct Result {
 };
 
 namespace shim_ {
-// The DOS stub's source, found by the old pe_writer.
-inline cb::source::ne_writer::FindStub find_stub() {
-    return [](cb::ByteView file, std::uint64_t new_header, const std::filesystem::path& out,
-              const std::function<void(std::string_view)>& say) -> std::optional<std::filesystem::path> {
-        const std::optional<py::str> found = pe_writer::_stub(cb::compat::to_py(file), static_cast<int64_t>(new_header),
-                                                              cb::compat::to_py(cb::fs::to_text(out)),
-                                                              [&](const py::str& line) { say(cb::compat::from_py(line)); });
-        if (!found || found->empty()) return std::nullopt;
-        return cb::fs::from_text(cb::compat::from_py(*found));
-    };
-}
+// The DOS stub's source, found by the new DOS writer.
+inline cb::source::FindStub find_stub() { return pe_writer::shim_::find_stub(); }
 }  // namespace shim_
 
 inline Result reconstruct(const py::str& path, const py::str& outdir, const pe_writer::StubArg& stub = std::monostate(),

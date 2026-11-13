@@ -1,5 +1,10 @@
 // codebreaker/verify/gate16/isolated16.hpp -- interface of codebreaker.verify.gate16.isolated16 (typed C++; implementation pending).
 //
+// STAYS, NOT A SHIM (2026-11-12): the gate is native/cb/verify/gate16/isolated16.{hpp,cpp} now (Isolated16, over the cb 16-bit lane, tested against the
+// Python on a real module). This old port is kept as it was because its callers -- engine/win16, build/module and jobs/workers (the `gate` worker process) --
+// are not refactored and hand it the old py:: records, Vector and Tables; nothing of that can be forwarded to the new gate without logic of its own. Delete
+// it with those callers.
+//
 // isolated16.py -- each function of a rebuilt 16-bit module run beside the original's, on its own.
 //
 //     for (auto& r : isolated16::check(original_path, build_folder, names)) { r.name, r.verdict, r.why }
