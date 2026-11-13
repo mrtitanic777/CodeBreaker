@@ -1,0 +1,37 @@
+== files_iso
+2560	a.bin
+5	B.TXT
+5004	default.xex
+4050	Zed.txt
+exit=0
+== files_package
+2560	a.bin
+5	B.TXT
+5004	default.xex
+4050	Zed.txt
+exit=0
+== read_iso
+exit=0
+file x.xex 5004 d75c82566ae7818af77e4ded3a9a78fd3de8dbca
+== read_missing
+exit=3
+== unpack_iso
+PROGRESS 2560 11619
+PROGRESS 7569 11619
+PROGRESS 11619 11619
+PROGRESS 11619 11619
+exit=0
+B.TXT 5 aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d
+Zed.txt 4050 5985af7bee6133b2ddd377433d3831147a66f835
+a.bin 2560 f48a95799d144d5ad254355f1849533120dbec12
+default.xex 5004 d75c82566ae7818af77e4ded3a9a78fd3de8dbca
+== unpack_package
+PROGRESS 2560 11619
+PROGRESS 7569 11619
+PROGRESS 11619 11619
+PROGRESS 11619 11619
+exit=0
+B.TXT 5 aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d
+Zed.txt 4050 5985af7bee6133b2ddd377433d3831147a66f835
+a.bin 2560 f48a95799d144d5ad254355f1849533120dbec12
+default.xex 5004 d75c82566ae7818af77e4ded3a9a78fd3de8dbca

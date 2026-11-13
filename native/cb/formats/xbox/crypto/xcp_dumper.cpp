@@ -89,8 +89,12 @@ bool decrypt_in_place(StreamIO& stream, const std::optional<Bytes>& key) {
     CabHead head = parse_head(stream.read_at(0, kCabHeaderSize));
     if (encrypted) {
         cb::out("Decrypting CAB header...\n");
-        head = parse_head(decrypt_piece(stream, key_view, kHeaderRecordAt, 0, kCabHeaderBytes));
+        // the header is decrypted in memory first: a key that does not give a cabinet leaves the file as it was
+        xecrypt::Rc4 header_cipher = cipher_from_record(stream, key_view, kHeaderRecordAt);
+        const Bytes header = header_cipher.decrypt(stream.read_at(0, kCabHeaderBytes));
+        head = parse_head(header);
         if (!is_cabinet(head.magic)) throw FormatError("xcp", 0, "invalid key: the decrypted header is not a cabinet");
+        stream.write_at(0, header);
         cb::out("Key appears to be OK!\n");
 
         cb::out("Decrypting folder data...\n");
@@ -183,10 +187,12 @@ stdfs::path unpack(const stdfs::path& xcp, const std::optional<Bytes>& key, cons
     cb::out("Extracting XCP file...\n");
     {
         StreamIO stream = StreamIO::open(xcp);
+        cb::out("Checking CAB header...\n");
         cb::out("XCP file is {}\n", is_encrypted(stream.read_at(0, 4)) ? "encrypted" : "not encrypted");
         decrypt_in_place(stream, key);
     }
 
+    cb::out("Creating output directory...\n");
     cb::out("Renaming XCP file...\n");
     const stdfs::path cabinet = work.path() / "tmp.cab";
     move_file(xcp, cabinet);

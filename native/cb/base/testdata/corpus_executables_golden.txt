@@ -1,0 +1,4 @@
+count 1342
+sha1 8bc9fd29298d8c54dd5d9ae2c58f78406e40cd7f
+first NE	C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files\WINDOWS\FONTS\8514fix.fon
+last LE	C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files\WINDOWS\SYSTEM\xga.vxd

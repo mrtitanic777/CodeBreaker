@@ -1,0 +1,13 @@
+== xex_basic
+exit=0
+file basic/default.xex 2891776 5db6833ff9cf1abf93ab0023b88e1c4f10eba9f4
+== xenon_config
+exit=0
+file cfg.toml 60416 c782f7745b9dac0e78f108cfaa8ab2051c24ebf2
+== switch_tables
+exit=0
+file basic/switch_tables.toml 73536 bb9d8a4d16753f031b7cd0142832619ff2e05767
+file basic/switch_tables.analysed.toml 125 be32a9115133c686ad92880a86e4917c1066f868
+== xenon_config_with_tables
+exit=0
+file cfg2.toml 59692 585055442a1f59af24b49292f7fef1de2f5f637b
