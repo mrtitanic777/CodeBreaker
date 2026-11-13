@@ -5,6 +5,8 @@
 // source is then not compiled, and the file is the LE writer's, which is what ships either way.
 #include "cb/source/vxd/from_source.hpp"
 
+#include "cb/base/config.hpp"
+#include "cb/base/corpus.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
@@ -182,4 +184,36 @@ CB_TEST("source.vxd.from_source.the_command_writes_the_file_and_says_what_it_mad
     const le::Module written = le::Module::open(dir.path() / "splitter.built.vxd");   // (a file that opens as a driver, of the original's size)
     CB_CHECK_EQ(written.data().size(), std::size_t{2596});
     CB_CHECK_EQ(written.objects().size(), std::size_t{1});
+});
+
+CB_TEST("source.vxd.from_source.splitter_compiles_and_links_with_the_period_tools", [] {
+    // only where the DDK (its includes, MASM 6.11d, LINK 2.60) and its names are set up (the settings, CB_CHECKOUT_ROOT): then the readable source is
+    // assembled and linked (the Python module's result on the corpus's splitter.vxd), and the file written is the LE writer's: the original's size and objects
+    const cb::config::Config& config = cb::config::current();
+    const std::filesystem::path tools_root = std::filesystem::is_directory(config.checkout_root() / "toolchains") ? config.checkout_root() : config.main_checkout();
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(tools_root / "toolchains" / "period" / "sdks" / "nt351-ddk" / "DDK" / "BIN" / "I386" / "FREE" / "ML.EXE", ec)) return;
+    cb::base::Corpus corpus(config.products());
+    std::optional<std::filesystem::path> design;
+    try {
+        design = corpus.design_dir();
+    } catch (const cb::Error&) {
+    }
+    const vx::DdkFolders ddk = vx::DdkFolders::standard(corpus, config.main_checkout().parent_path());
+    const auto inc = vx::DdkFolders::first_existing(ddk.inc);
+    if (!inc || !std::filesystem::is_regular_file(*inc / "VMM.INC", ec)) return;
+    const std::filesystem::path ddk_root = inc->parent_path();
+    if (!std::filesystem::is_regular_file(ddk_root / "MSVC20" / "LINK.EXE", ec)) return;
+    const vx::DdkNames names = vx::DdkNames::standard(ddk, design);
+    const vx::masm::Toolchain tools = vx::masm::Toolchain::standard(ddk, tools_root, std::nullopt);
+    cb::fs::ScopedTempDir stage("fromsrcstage");
+    const fsrc::Environment env{names, tools, vx::link::link_260(ddk_root / "MSVC20", stage.path() / "link260", 0x1000)};
+    const le::Module splitter = le::Module::open(fsrc_path("splitter.vxd"));
+    const fsrc::Built built = fsrc::build(env, splitter);
+    CB_CHECK(built.compile_ok.value_or(false));
+    CB_CHECK(built.link_ok.value_or(false));
+    const le::Module made = le::Module::from_buffer(cb::Bytes(built.vxd));
+    CB_CHECK_EQ(built.vxd.size(), built.oracle_length);
+    CB_CHECK(made.object_data(made.objects().front()) == splitter.object_data(splitter.objects().front()));
+    CB_CHECK_EQ(built.object1_diffs, std::size_t{0});
 });
