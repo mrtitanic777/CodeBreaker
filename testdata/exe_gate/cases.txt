@@ -117,7 +117,7 @@ vxd-masm: vxd masm {fmt}/splitter.vxd
 vxd-usage: vxd
 ne-asm-idiom: ne-asm idiom lzexpand.dll 1 0 whole @needs=corpus
 ne-asm-usage: ne-asm
-build16-lzexpand: build16 {repo}/tests/fixtures/lzexpand @timeout=300 @mask="build16_\w+"
+build16-lzexpand: build16 {repo}/tests/fixtures/lzexpand @timeout=300 @mask="build16[-_][\w-]+"
 build16-usage: build16
 flat-thunk-classify: flat-thunk {fmt}/lz32.dll
 flat-thunk-recover: flat-thunk {fmt}/lz32.dll --recover {out}

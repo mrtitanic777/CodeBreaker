@@ -2,6 +2,6 @@ exit: 0
 --- stdout
 <repo>/native/cb/formats/testdata/lz32.dll  (<work>/state/db/31680afbd8006a6edd0e18611f53fbea10776bc9937171fee017495d940f39af.sqlite)
   kind                    facts       size  made by
-  binary                      1     0.2 KB  given
+  binary                      1     0.1 KB  given
 --- files
 --- stderr (not compared)

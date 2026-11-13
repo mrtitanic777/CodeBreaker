@@ -1,6 +1,6 @@
 exit: 0
 --- stdout
-settings: <root>/settings.json
+settings: <repo>/settings.json
 <~>
 <~>
 <~>
@@ -40,7 +40,7 @@ settings: <root>/settings.json
 <~>
      w95_key          34698-OEM-0039682-72135
 <~>
-     win95_setup_iso  <root>/state/win95/win95setup.iso
+     win95_setup_iso  <repo>/state/win95/win95setup.iso
      workers          4
 <~>
 <~>
