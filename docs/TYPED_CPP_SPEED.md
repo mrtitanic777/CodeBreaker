@@ -1171,3 +1171,16 @@ Old = the Python (`python -m codebreaker pe-source` / `dos-source`, process star
 | dos-source IO.SYS (47,882 instructions, 82 rounds) | 34 s and 38 s (two runs) | 29 s and 47 s (two runs; the machine was busy in the second) |
 
 Where the C++ has no advantage the time is the assembler and linker (a process per round and per probe batch), the same in both.
+
+## source/driver_writer (2026-11-12)
+
+Old = the Python `Writer` + `reconstruct` (inside the process, import not counted; `state/` fresh for cold, a second run for warm); New = native/cb Release /O2 in the area test process (a fresh probe file for cold, a kept one for warm). wasm and wlink run as children in both; every output (the assembly, the built image, the .def, the L2 tree) is the same.
+
+| Driver (instructions) | Python cold / warm | C++ cold / warm |
+|---|---|---|
+| bios.vxd (4,943) | 0.23 s / 0.18 s | 0.16 s / 0.12 s |
+| vkd.vxd (3,103) | 0.21 s / 0.23 s | 0.16 s / 0.11 s |
+| vmouse.vxd (5,169) | 0.26 s / 0.23 s | 0.21 s / 0.12 s |
+| DSVXD behind drvspace.bin (241) | 0.08 s / 0.06 s | 0.10 s / 0.07 s |
+
+The small driver is the three tool runs (probe, assemble, link) in both; the C++ is within the noise of the process starts there and faster where there is code to decode and write.

@@ -1,9 +1,9 @@
 // codebreaker/source/dos_writer.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/source/dos_writer.{hpp,cpp} (the
 // program and its file) over dos_image and dos_program; this header keeps the old py:: surface (reconstruct, rebuild, main, MAIN_DOC and the
 // result records) for the dynamic exe. Conversion and forwarding only, except
-//   COMPAT(py): the two other writers a combined file needs are the old ports': the VxD of a driver+vxd file (source/driver_writer) and the
-//       Windows module of a DOS+Windows file (build/module). They are handed to the new module as functions (Options::write_vxd,
-//       Options::build_windows); remove each when its module is refactored (the new module then takes it itself).
+//   COMPAT(py): the Windows module of a DOS+Windows file is built by the old port of build/module. It is handed to the new module as a
+//       function (Options::build_windows); remove it when build/module is refactored (the new module then takes it itself).
+//   The VxD of a driver+vxd file is the new driver writer's (source/driver_writer, Options::write_vxd).
 //
 // Not carried over: the internals the module's own port exposed (Writer, Ins, _program, _kernel, _as_file, _facts, _compose, ...). What
 // Python reads of a result is the record `Result` below, as before.
@@ -108,23 +108,8 @@ inline nw::Options options(const Log& log, py::list<build::definitions::Import>*
     o.log = [log](const std::string& line) {
         if (log) log(cb::compat::to_py(line));
     };
-    // COMPAT(py): the VxD of a driver+vxd file, by the old driver writer
-    o.write_vxd = [log](const std::filesystem::path& program, const std::filesystem::path& outdir, const nw::Log&) {
-        static const bool named = (driver_writer::set_capstone_dll(base::capstone_dll::find()), true);
-        (void)named;
-        const driver_writer::Reconstruction v = driver_writer::reconstruct(path_text(program), path_text(outdir), 0, log);
-        nw::VxdPart part;
-        part.source = cb::fs::from_text(cb::compat::from_py(v.source));
-        if (v.image) part.image = cb::fs::from_text(cb::compat::from_py(*v.image));
-        part.linked = v.linked;
-        part.same = v.same.has_value() && *v.same != 0.0;
-        part.rounds = static_cast<std::size_t>(v.rounds);
-        part.instructions = static_cast<std::size_t>(v.instructions);
-        part.raw = static_cast<std::size_t>(v.raw);
-        part.data = static_cast<std::size_t>(v.data);
-        for (const py::str& n : v.notes) part.notes.push_back(cb::compat::from_py(n));
-        return part;
-    };
+    // the VxD of a driver+vxd file: the new driver writer's hook (source/driver_writer)
+    o.write_vxd = cb::source::driver_writer::vxd_writer(driver_writer::native_options(log));
     // COMPAT(py): the Windows module of a DOS+Windows file, by the old module builder
     o.build_windows = [extra_imports](const std::filesystem::path& program, const std::filesystem::path& outdir) {
         const build::module::Built b = build::module::build(path_text(program), path_text(outdir), true, [](const py::str&) {});

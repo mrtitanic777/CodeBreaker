@@ -445,6 +445,12 @@ def _dos_and_windows(module_path, outdir, log=None):
     return result
 
 
+def _module_came_back(part):
+    """Did a driver the driver writer built come back as the original module (all five of its checks)?
+    Its `same` is the share of bytes equal outside the patched places, not a flag."""
+    return bool(part.get("checks")) and all(part["checks"].values())
+
+
 def _driver_and_vxd(module_path, outdir, log=None):
     """A real-mode driver and a VxD in one file (DRVSPACE.BIN): the driver written and built
     here, the VxD by the driver lane (source/driver_writer.py), and the file put together as the
@@ -469,7 +475,7 @@ def _driver_and_vxd(module_path, outdir, log=None):
         for k in ("instructions", "raw", "data"):
             result[k] += part.get(k, 0)
         result["rounds"] = max(result["rounds"], part["rounds"])
-        ok = part.get("same")
+        ok = _module_came_back(part) if name == "vxd" else part.get("same")
         if log:
             log("  %s: %d instructions, %d as bytes; %s" % (name, part.get("instructions", 0), part.get("raw", 0),
                 "builds back the same" if ok else "; ".join(part.get("notes") or []) or "differs"))
@@ -501,7 +507,7 @@ def _driver_and_vxd(module_path, outdir, log=None):
         first = first_difference(body, original)
         result["notes"].append("the file differs from the original at %#x (%d bytes, original %d)" % (
             first, len(body), len(original)))
-        result["equivalent"] = bool(r["same"] and v.get("same"))
+        result["equivalent"] = bool(r["same"] and _module_came_back(v))
         if result["equivalent"]:
             result["notes"].append("the driver is the original's byte for byte and the VxD the same module (objects, "
                                    "descriptor, services, exports); laid out by OpenWatcom's linker, its tables differ")
