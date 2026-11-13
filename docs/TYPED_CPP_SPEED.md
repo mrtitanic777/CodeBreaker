@@ -1196,3 +1196,17 @@ Old = the Python `Writer` + `reconstruct` (inside the process, import not counte
 | DSVXD behind drvspace.bin (241) | 0.08 s / 0.06 s | 0.10 s / 0.07 s |
 
 The small driver is the three tool runs (probe, assemble, link) in both; the C++ is within the noise of the process starts there and faster where there is code to decode and write.
+
+## formats/xbox assets: xdbf, xur, xbe, xpr, bink, chd (2026-11-13)
+
+Old = the Python modules in one process (`codebreaker/formats/xbox/*.py`, import not counted; their readers are formats.dll's through pickle streams); New = native/cb Release /O2 in the area test process (`CB_XBOX_BENCH_DIR=<folder> cb_tests_formats --filter formats.xbox.assets.timing`; the Python side is `native/cb/formats/xbox/testdata/assets/bench_assets.py`). Real files: the Minecraft title's SPA (244 KB, 51 entries) and 12 XUR scenes (the title's XUI package); fixtures: the 12 KB XBE, an XPR0.
+
+| Operation | Python | C++ |
+|---|---|---|
+| XDBF SPA: parse, achievements, counts, build | 0.815 ms | 0.233 ms |
+| 12 XUR scenes: parse, strings | 0.318 ms | 0.046 ms |
+| XBE: parse, sections, PE image | 0.018 ms | 0.003 ms |
+| XPR0: parse, DDS | 0.010 ms | 0.001 ms |
+| Bink and CHD headers from files | 0.079 ms | 0.063 ms |
+
+The Python pays the pickle round trip to the DLL on every call; the header reads are dominated by the file open in both.

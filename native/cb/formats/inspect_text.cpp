@@ -14,6 +14,7 @@
 #include "cb/formats/dos.hpp"
 #include "cb/formats/inspect.hpp"
 #include "cb/formats/resources.hpp"
+#include "cb/formats/xbox/summary.hpp"
 
 namespace cb::formats::inspect {
 
@@ -747,6 +748,7 @@ struct InfoRun {
 }  // namespace
 
 cli::Command info_command(InfoEnvironment env) {
+    if (!env.hooks.xbox_summary) env.hooks.xbox_summary = xbox::summary;   // an Xbox file is described by its own reader unless the caller brings another
     cli::Command c;
     c.name = "info";
     c.summary = "show what a file is and holds";

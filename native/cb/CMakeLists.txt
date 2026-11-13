@@ -320,6 +320,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/sd_signer.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/se_patcher.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xbox_assets.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"

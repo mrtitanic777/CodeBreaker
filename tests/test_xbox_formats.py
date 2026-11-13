@@ -211,6 +211,30 @@ def test_gpd_unlock():
     assert a[1]["name"] == "First Blood" and a[2]["score"] == 25
 
 
+def test_gpd_strings_split_on_unit_boundaries():
+    # U+3000 then 'A' has two zero bytes in a row (30 00 00 41) that are not a terminator
+    def rec(ach_id, name, a, b):
+        strs = b"".join(s.encode("utf-16-be") + b"\x00\x00" for s in (name, a, b))
+        body = struct.pack(">IIIIIQ", 0, ach_id, 5, 10, 0, 0) + strs
+        return struct.pack(">I", len(body)) + body[4:]
+    p = rec(1, "\u3000A", "d", "l")
+    table = struct.pack(">HQII", 1, 1, 0, len(p))
+    gpd = b"XDBF" + struct.pack(">IIIII", 0x10000, 1, 1, 1, 1) + table + struct.pack(">II", len(p), 0) + p
+    a = xdbf.XDBF(gpd).achievements()[0]
+    assert (a["name"], a["unlocked_desc"], a["locked_desc"]) == ("\u3000A", "d", "l"), a
+
+
+def test_xur_offsets_are_from_the_start_of_the_file():
+    strn = xur.build_strn(["a", "bc"])
+    blob = (struct.pack(">III", xur.MAGIC, 5, 0) + struct.pack(">HIH", 0x0C, 44 + len(strn) + 4, 2) +
+            struct.pack(">III", xur.STRN, 44, len(strn)) + struct.pack(">III", 0x44415441, 44 + len(strn), 4) + strn + b"TAIL")
+    x = xur.XUR(blob)
+    assert x.strings() == ["a", "bc"] and x.section_data(0x44415441) == b"TAIL"
+    y = xur.XUR(xur.set_string(blob, 0, "longer"))
+    assert y.strings() == ["longer", "bc"] and y.section_data(0x44415441) == b"TAIL"
+    assert xur.XUR(xur.set_strings(blob, ["\U0001F600"])).strings() == ["\U0001F600"]      # a unit count, not code points
+
+
 def test_texture_untile():
     for fmt in ("dxt1", "dxt5"):
         bb = texture.FORMATS[fmt][0]
@@ -259,7 +283,7 @@ def test_xur():
     strs = ["XuiCanvas", "file://game:/skin.png", "Press A to continue", ""]
     strn = xur.build_strn(strs)
     blob = (struct.pack(">III", xur.MAGIC, 5, 0) + struct.pack(">HIH", 0x0C, 32 + len(strn), 1) +
-            struct.pack(">III", xur.STRN, 0, len(strn)) + strn)
+            struct.pack(">III", xur.STRN, 32, len(strn)) + strn)       # offsets are from the start of the file
     x = xur.XUR(blob)
     assert x.version == 5 and x.section_count == 1 and x.strings() == strs
     assert xur.set_strings(blob, strs) == blob
@@ -444,7 +468,8 @@ def test_nand_flash():
 
 def main():
     for fn in (test_texture_offsets_and_gfx_bits, test_real_heavyiron_and_gfx, test_nand_flash, test_stfs_pack_round_trip, test_stfs_resign_signs_and_verifies, test_god_round_trip,
-               test_nxe_install_to_god, test_fatx_read_and_recover, test_fatx_write, test_gpd_unlock,
+               test_nxe_install_to_god, test_fatx_read_and_recover, test_fatx_write, test_gpd_unlock, test_gpd_strings_split_on_unit_boundaries,
+               test_xur_offsets_are_from_the_start_of_the_file,
                test_texture_untile, test_xpr, test_xwb, test_xur, test_xbe, test_xma_and_bink,
                test_xzp_round_trip, test_identify, test_folder_map, test_real_stfs_theme, test_real_xzp,
                test_real_pck):

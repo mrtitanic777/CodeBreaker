@@ -36,6 +36,9 @@ class XDBF:
         self.data_start = 0x18 + self.entry_table_len * 0x12 + self.free_table_len * 8
 
     def payload(self, ns, eid):
+        edited = getattr(self, "_ov", {}).get((ns, eid))       # an edit made so far (set_payload, unlock) is the payload
+        if edited is not None:
+            return edited
         for n, i, off, length in self.entries:
             if n == ns and i == eid:
                 start = self.data_start + off

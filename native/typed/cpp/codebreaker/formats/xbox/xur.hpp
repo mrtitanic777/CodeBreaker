@@ -1,38 +1,29 @@
-// codebreaker/formats/xbox/xur.hpp -- typed C++ from codebreaker.formats.xbox.xur.
+// codebreaker/formats/xbox/xur.hpp -- compat shim over cb/formats/xbox/xur.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// XUR (compiled XUI) reader -- Xbox 360 dashboard / game UI scenes.
-//
-// XUR is the binary form of an XUI scene (the dashboard/game UI markup). This
-// parses the XUR5 container -- the big-endian header and section table -- and pulls
-// the human-readable content out of the string-table (STRN) section: element
-// names, texture paths, and on-screen text a scene references.
-//
-// Layout (clean-room from the documented format / XUIHelper by SGCSam):
-//   header (20 bytes, BE):  magic 'XUIB', version(=5), flags, toolVersion(u16),
-//                           fileSize, sectionCount(u16)
-//   section table:          sectionCount x { magic(u32), offset(u32), length(u32) }
-//   section data:           based at 20 + sectionCount*12
-//   STRN section:           repeated { u16 length, UTF-16BE chars[length] }
-//
-// This reads the container and its strings; it does not (yet) rebuild the full
-// object tree back into XUI XML -- that needs the per-control property schema.
-//
-// Commands:
-//     xur info    <file.xur>      header + section table (magics, offsets, sizes)
-//     xur strings <file.xur>      the STRN string table (names / paths / text)
+// The module itself is native/cb/formats/xbox/xur.{hpp,cpp}; this header keeps the old py:: surface for the ports that have not been
+// refactored yet (formats/xbox/package) and is deleted with the last of them. Conversion and forwarding only; `main` is the old
+// command-line wrapper over the new command. A section's offset is from the start of the file (the old port read it from the end of the
+// section table, which made every real scene read as garbage).
 #pragma once
 
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <tuple>
+#include <vector>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/cli.hpp"
+#include "cb/formats/xbox/xur.hpp"
 
 namespace codebreaker::formats::xbox::xur {
 
 inline constexpr int64_t MAGIC = 0x58554942;   // 'XUIB'
 inline constexpr int64_t STRN = 0x5354524E;    // 'STRN'
 
-py::str _tag(int64_t v);
+inline const py::str DESCRIPTION = py::str("read/edit Xbox 360 XUR (compiled XUI) scenes: info/strings + set (repack)");
+
+inline py::str _tag(int64_t v) { return cb::compat::to_py(cb::formats::xbox::xur::tag_text(cb::compat::int_from_py<std::uint32_t>(v))); }
 
 class XUR {
   public:
@@ -43,29 +34,64 @@ class XUR {
     int64_t file_size = 0;
     int64_t section_count = 0;
     py::list<std::tuple<int64_t, int64_t, int64_t>> sections;   // (magic, offset, length)
-    int64_t data_base = 0;
+    int64_t data_base = 0;                                        // where the section table ends
 
-    explicit XUR(const py::bytes& data);
-    std::optional<py::bytes> section_data(int64_t magic) const;
-    py::list<py::str> strings() const;
+    explicit XUR(const py::bytes& data) : d(data) {
+        namespace nx = cb::formats::xbox::xur;
+        const nx::Scene scene = cb::compat::guard([&] { return nx::Scene::parse(cb::compat::from_py(data)); });
+        version = scene.version;
+        flags = scene.flags;
+        tool_version = scene.tool_version;
+        file_size = scene.file_size;
+        section_count = static_cast<int64_t>(scene.sections.size());
+        for (const nx::Section& s : scene.sections) sections.append(std::make_tuple(int64_t{s.tag}, int64_t{s.offset}, int64_t{s.length}));
+        data_base = static_cast<int64_t>(scene.table_end());
+    }
+
+    std::optional<py::bytes> section_data(int64_t magic) const {
+        namespace nx = cb::formats::xbox::xur;
+        const nx::Scene scene = cb::compat::guard([&] { return nx::Scene::parse(cb::compat::from_py(d)); });
+        const auto data = cb::compat::guard([&] { return scene.section_data(cb::compat::int_from_py<std::uint32_t>(magic)); });
+        if (!data) return std::nullopt;
+        return cb::compat::to_py(*data);
+    }
+
+    py::list<py::str> strings() const {
+        namespace nx = cb::formats::xbox::xur;
+        return cb::compat::to_py(cb::compat::guard([&] { return nx::Scene::parse(cb::compat::from_py(d)).strings(); }));
+    }
 };
 
-// Serialise a STRN section body (for tests / round-trips).
-py::bytes build_strn(const py::list<py::str>& strings);
+namespace shim_ {
+// (a vector of bytes would convert as a list of integers: say it is bytes)
+inline py::bytes bytes_(const cb::Bytes& b) { return cb::compat::to_py(cb::ByteView(b)); }
+}  // namespace shim_
 
-// Re-emit an XUR with its STRN string table replaced. Rebuilds only the
-// STRN body and shifts every later section by the size delta (preserving the
-// original layout of all other sections), fixing the section table offsets/
-// lengths and the header file size. Byte-identical to the input when the
-// strings are unchanged.
-py::bytes set_strings(const py::bytes& data, const py::list<py::str>& new_strings);
+// Serialise a STRN section body (for tests / round-trips).
+inline py::bytes build_strn(const py::list<py::str>& strings) {
+    const std::vector<std::string> all = cb::compat::from_py(strings);
+    return shim_::bytes_(cb::compat::guard([&] { return cb::formats::xbox::xur::build_strn(all); }));
+}
+
+// Re-emit an XUR with its STRN string table replaced; byte-identical to the input when the strings are unchanged.
+inline py::bytes set_strings(const py::bytes& data, const py::list<py::str>& new_strings) {
+    const std::vector<std::string> all = cb::compat::from_py(new_strings);
+    return shim_::bytes_(cb::compat::guard([&] { return cb::formats::xbox::xur::set_strings(cb::compat::from_py(data), all); }));
+}
 
 // Replace a single string (by index) and re-emit the XUR.
-py::bytes set_string(const py::bytes& data, int64_t index, const py::str& text);
+inline py::bytes set_string(const py::bytes& data, int64_t index, const py::str& text) {
+    if (index < 0) throw py::IndexError("string index out of range");
+    return shim_::bytes_(cb::compat::guard(
+        [&] { return cb::formats::xbox::xur::set_string(cb::compat::from_py(data), static_cast<std::size_t>(index), cb::compat::from_py(text)); }));
+}
 
-extern const py::str DESCRIPTION;
-
-// main(): the command line without the program name (sys.argv[1:]); prints to stdout.
-void main(const py::list<py::str>& argv);
+// main(): the command line without the program name (sys.argv[1:]); a bare path is `info`.
+inline void main(const py::list<py::str>& argv) {
+    std::vector<std::string> args = {"xur"};
+    for (const std::string& a : cb::compat::from_py(argv)) args.push_back(a);
+    if (args.size() > 1 && args[1] != "info" && args[1] != "strings" && args[1] != "set" && args[1] != "-h" && args[1] != "--help") args.insert(args.begin() + 1, "info");
+    cb::compat::guard([&] { return cb::cli::Cli("xur", {cb::formats::xbox::xur::command()}).run(args); });
+}
 
 }  // namespace codebreaker::formats::xbox::xur
