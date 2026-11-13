@@ -472,6 +472,13 @@ cb_apply_flags(cb_cmds)
 target_link_libraries(cb_cmds PRIVATE cb_symbols cb_recompile cb_java cb_xna cb_core)
 cb_copy_prebuilt_dlls(cb_cmds)
 
+# cb_state_cmds: the proof harness of the commands that read and write the state folder (names, knowledge, coverage, progress, facts, origin,
+# driver-services, migrate-state) with the Environment the command table will give them (app/state_cmds_main.cpp). Not built by default.
+add_executable(cb_state_cmds EXCLUDE_FROM_ALL app/state_cmds_main.cpp)
+cb_apply_flags(cb_state_cmds)
+target_link_libraries(cb_state_cmds PRIVATE cb_ui cb_symbols cb_knowledge cb_engine cb_analyze cb_coverage cb_store cb_verify cb_core)
+cb_copy_prebuilt_dlls(cb_state_cmds)
+
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
 

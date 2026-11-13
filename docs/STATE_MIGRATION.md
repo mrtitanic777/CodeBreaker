@@ -113,3 +113,28 @@ Of the 29 older profiles that hold results, one stood for the settings in force 
 revisions 19 to 47 against 48, and kinds with no verifier set up in that proof).
 Knowledge base: 19,373 bodies of 25 modules and 2,915 learned rows (`win32 argument_bytes.code`) carried; 1,316 learned
 win16 rows, 16,896 authored and 25,206 derived rows reported as left. A second run found nothing to carry.
+
+## Proof on a copy of the whole stateful part (2026-11-13)
+
+`cb_state_cmds` (`native/cb/app/state_cmds_main.cpp`, target `cb_state_cmds`, not built by default) runs `names`, `knowledge`,
+`coverage`, `progress`, `facts`, `origin`, `driver-services` and `migrate-state` with the surroundings the command table will give
+them, so each can be compared with the Python on the same state folder (`CB_STATE=<copy>`).
+
+On a copy of `functions.sqlite`, `db/*.sqlite` (1,268 databases, 1.3 GB as a SQLite backup) and the top-level JSON files:
+`migrate-state` takes 0.7 s, a second run finds nothing to do, and the Python commands print the same afterwards as before
+(`names`, `knowledge`, `coverage`, `facts`, `origin`, `driver-services`). Worth knowing:
+
+* `--dry` writes nothing of what it reports, but building the verifier settings in force makes the lane kit extract the driver kit
+  into `state/driver_kit` and refresh `knowledge.v2.sqlite`'s authored rows: both are made again from their sources.
+* DOS verdicts are carried. The Python's DOS lane judges with the `binnt` wasm/wlink (`build/driver.tool`: the OpenWatcom
+  builds this project patched for the driver kit's macros; still OpenWatcom wasm + wlink) and the native DOS lane used to take
+  `binnt64` (`OpenWatcom::tool`), so the settings differed by tool size and every DOS verdict was left. Both now use
+  `build::driver::tool` (the writer `source/dos_writer.cpp` and the lane `engine/lane_kit_machines.cpp`); the dos_writer tests
+  (byte-for-byte rebuilds of DOS programs) pass with those tools. On a copy holding the 127 DOS modules, `migrate-state` files
+  17,058 DOS verdicts of the Python's two current DOS digests under the native one, a second run files none, and `coverage`
+  shows DOS 127/127 measured (it was 0/127).
+* Bodies indexed independently by both sides agree digest for digest (PE and Win16 modules, `lzexpand.dll` included: today's Python and
+  the native index both find 39 bodies, and all 39 digests are equal). The 30 the Python's `knowledge.sqlite` holds for `lzexpand.dll`
+  were indexed by an older `describe.functions` that found 9 fewer function starts; the five digests that differ are functions whose end
+  moved when a start was found inside them. They are stale, not a difference between the two programs; the Python indexes a module
+  once and never again, so `names` needs the module's `body` rows removed to index it afresh.

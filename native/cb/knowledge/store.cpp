@@ -470,11 +470,13 @@ std::vector<std::string> Store::first_keys(std::string_view platform_name, std::
                                            std::size_t& total) {
     const Rows rows = authored_table({std::string(platform_name), std::string(kind)});
     total = rows.size();
+    // The first `limit` keys in key order: what a person asks for is the same list every time, whatever order the rows were filed in.
     std::vector<std::string> keys;
-    for (const auto& [key, value] : rows) {
-        if (keys.size() >= limit) break;
-        keys.push_back(key);
-    }
+    keys.reserve(rows.size());
+    for (const auto& [key, value] : rows) keys.push_back(key);
+    const std::size_t shown = std::min(limit, keys.size());
+    std::partial_sort(keys.begin(), keys.begin() + static_cast<std::ptrdiff_t>(shown), keys.end());
+    keys.resize(shown);
     return keys;
 }
 

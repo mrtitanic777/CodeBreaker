@@ -30,6 +30,11 @@ CB_TEST("core.error.messages_carry_fields", [] {
     CB_CHECK_EQ(tool.output(), "boom");
     IoError io("dir/file.txt", 5, "denied");
     CB_CHECK(std::string(io.what()).find("dir/file.txt") != std::string::npos);
+    CB_CHECK_EQ(std::string(io.what()), "dir/file.txt: denied (os error 5)");
+    // code 0: the operating system gave none (CodeBreaker's own "no such module"): no suffix, still not-found
+    const NotFoundError none("nosuchmodule", 0, "no module of that name");
+    CB_CHECK_EQ(std::string(none.what()), "nosuchmodule: no module of that name");
+    CB_CHECK_EQ(none.exit_code(), kExitNotFound);
 });
 
 CB_TEST("core.error.exit_codes", [] {

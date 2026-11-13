@@ -37,6 +37,7 @@ import hashlib
 import os
 import re
 import struct
+import sys
 
 from codebreaker.base import corpus
 from codebreaker.decompile import describe
@@ -517,7 +518,8 @@ def main(argv):
         return 0
     path = corpus.retail(argv[0])
     if not path:
-        raise SystemExit("no module %r in the corpus" % argv[0])
+        print("%s: no such module in the corpus" % argv[0], file=sys.stderr)
+        return 3                                                  # the exit code of "a requested thing does not exist"
     lane = corpus.lane(path)
     if "--set" in argv:
         text, name = argv[argv.index("--set") + 1:][:2]           # the address as the listing prints it
