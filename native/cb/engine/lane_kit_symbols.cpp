@@ -341,6 +341,7 @@ struct KitEnvironment::Impl {
     std::mutex lock;
     std::optional<translate::native_l2::Library> library;
     std::optional<symbols::runtime_library::SignatureTable> signatures;   // the runtime library's functions by their leading bytes, from the knowledge base
+    std::optional<symbols::runtime_library::SignatureTable> signatures16;   // the same of a 16-bit module's
     std::map<stdfs::path, std::unordered_map<std::string, build::watcom::NumberedImport>> numbered;   // by module: what the description said
 
     // PowerPC images read (the last few: the facts, the functions and the names are asked in turn for one), and what names their functions.
@@ -487,10 +488,40 @@ std::function<std::vector<std::string>(ByteView)> KitEnvironment::import_lines(c
 }
 
 // {function key: {name, library}} of the functions of a 32-bit module that belong to a runtime library: by signature, the thunk compiler's stubs, and for a
-// module that is itself a runtime library its exports. (A 16-bit module's are not identified here: its describer's keys are the 16-bit lane's.)
+// module that is itself a runtime library its exports. A 16-bit module's are found among the functions its describer finds, keyed as the 16-bit lane keys them.
 std::map<std::string, std::pair<std::string, std::string>> KitEnvironment::identify(const stdfs::path& module) {
     std::map<std::string, std::pair<std::string, std::string>> out;
     const std::optional<base::Lane> lane = impl_->corpus.lane(module);
+    if (lane && *lane == base::Lane::Ne) {   // a 16-bit module: the functions the describer finds, by their leading bytes (keys "seg:off", the 16-bit lane's)
+        try {
+            const formats::ne::Module ne = formats::ne::Module::open_file(module);
+            const Bytes file(ne.data().begin(), ne.data().end());
+            symbols::runtime_library::Ne16Module m;
+            m.module_name = ne.module_name();
+            for (const formats::ne::Segment& s : ne.segments()) {
+                symbols::runtime_library::Ne16Segment seg;
+                seg.index = s.index;
+                seg.code = !s.is_data();
+                if (s.file_offset != 0 && s.file_offset <= file.size()) seg.bytes = ByteView(file).subspan(s.file_offset, std::min<std::uint64_t>(s.length, file.size() - s.file_offset));
+                m.segments.push_back(seg);
+            }
+            for (const auto& [at, distance] : decompile::describe::find_functions(ne)) {
+                (void)distance;
+                m.function_starts.push_back({static_cast<std::uint16_t>(at.seg), static_cast<std::uint16_t>(at.off)});
+            }
+            std::ranges::sort(m.function_starts);
+            for (const formats::ne::Entry& e : ne.entries()) {
+                if (e.kind == formats::ne::Entry::Kind::Unused) continue;
+                m.entries.push_back({static_cast<std::uint16_t>(e.ordinal), e.segment, e.offset});
+            }
+            std::lock_guard hold(impl_->lock);
+            if (!impl_->signatures16) impl_->signatures16 = symbols::runtime_library::SignatureTable::from_rows(impl_->kb.signatures("win16"));
+            for (const auto& [at, found] : symbols::runtime_library::identify_ne(*impl_->signatures16, m)) out[std::format("{}:{:04x}", at.segment, at.offset)] = {found.name, found.library};
+        } catch (const Error&) {   // (a module that does not read as an NE has nothing identified)
+            out.clear();
+        }
+        return out;
+    }
     if (!lane || *lane != base::Lane::Pe) return out;
     try {
         const formats::pe_functions::PeCarve carve = formats::pe_functions::PeCarve::open(module);

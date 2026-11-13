@@ -219,6 +219,10 @@ public:
     // What prepare() carries to build(): the module made compilable, and the keys of its functions ("seg:off").
     struct PreparedWin16 final : Prepared {
         std::shared_ptr<decompile::c_text::Module16> module;
+        void set_text(const std::string& name, std::string text) override {
+            module->made.set_text(name, text);        // (the build reads the module's)
+            texts[name] = std::move(text);
+        }
     };
     std::unique_ptr<Prepared> prepare(const std::filesystem::path& module_path, const std::filesystem::path& work) const override;
     Built build(const Prepared& prepared, const std::filesystem::path& module_path, const std::filesystem::path& work) const override;

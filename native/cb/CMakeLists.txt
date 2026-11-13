@@ -431,6 +431,13 @@ cb_apply_flags(cb_cmdrun)
 target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_cmdrun)
 
+# pipeline: the reconstruction commands (decompile, module, build, measure, teeth, sweep, match, score16, repair, place) with the surroundings the application
+# will give them, to compare each with the Python on real inputs (source/pipeline_main.cpp). Not built by default.
+add_executable(cb_pipeline EXCLUDE_FROM_ALL source/pipeline_main.cpp)
+cb_apply_flags(cb_pipeline)
+target_link_libraries(cb_pipeline PRIVATE cb_source cb_engine cb_core)
+cb_copy_prebuilt_dlls(cb_pipeline)
+
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
 
