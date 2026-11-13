@@ -162,7 +162,9 @@ Built Win32Lane::build(const Prepared& prepared, const stdfs::path& module_path,
     std::vector<std::string> cflags;
     for (const std::string_view flag : decompile::c_text::cflags()) cflags.emplace_back(flag);
     const build::functions::Build32Input input{.header = m.preamble, .texts = texts, .order = placed, .outdir = work, .cflags = cflags, .originals = originals};
-    const build::functions::Built32 b = services_.builder.build32(services_.tools, input);
+    build::functions::Tools32 tools = services_.tools;
+    if (services_.import_lines_for) tools.import_lines = services_.import_lines_for(module_path, m.imports);
+    const build::functions::Built32 b = services_.builder.build32(tools, input);
 
     Built built;
     std::map<std::string, Item> items;

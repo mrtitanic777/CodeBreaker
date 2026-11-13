@@ -123,7 +123,7 @@ cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
 cb_area(engine)
-target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs)   # (cb_verify: the verdict and class vocabulary)
+target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs cb_decompile cb_build cb_emulate cb_symbols cb_analyze cb_formats cb_platforms cb_translate cb_source cb_java)   # (the lane kit builds every lane's surroundings from these -- static libraries may be cyclic)   # (cb_verify: the verdict and class vocabulary)
 cb_area(jobs)
 target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
