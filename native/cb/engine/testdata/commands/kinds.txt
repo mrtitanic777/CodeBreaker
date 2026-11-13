@@ -1,0 +1,8 @@
+<BIN>/tracert.exe  (<STATE>/db/332f4933a1813622f345ab7d88cf02cac67f95f0d1f855047ce8ddfe4d50d3ca.sqlite)
+  kind                    facts       size  made by
+  binary                      1     0.2 KB  given
+  blob                        1     0.3 KB  given
+  note                        2     0.2 KB  given
+  num                         1     0.0 KB  given
+  table                       2     0.1 KB  given
+exit=0
