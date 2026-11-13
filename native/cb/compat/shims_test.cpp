@@ -1,6 +1,6 @@
 // Tests of the staged shims under compat/shims/: the old API over the new modules. Built at /W3 (the old layer is
 // not warning-clean), like py_bridge_test.cpp.
-#include "shims/codebreaker/jobs/workers.hpp"
+#include "codebreaker/jobs/workers.hpp"
 #include "shims/codebreaker/knowledge/reads.hpp"
 #include "shims/codebreaker/platforms/decoder.hpp"
 

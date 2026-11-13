@@ -9,7 +9,6 @@ inline void touch_build_module() {
     namespace om = codebreaker::build::module;
     (void)&om::build;
     (void)&om::build_many;
-    (void)&om::build_worker;
     (void)&om::main;
     (void)&om::check;
     (void)&om::run;

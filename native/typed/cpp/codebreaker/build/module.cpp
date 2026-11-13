@@ -17,6 +17,7 @@
 
 #include "cb/build/module.hpp"
 #include "cb/compat/legacy_settings.hpp"
+#include "cb/compat/old_lane_kit.hpp"
 #include "cb/compat/py_bridge.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/json.hpp"
@@ -35,17 +36,11 @@
 #include "codebreaker/emulate/emulator.hpp"
 #include "codebreaker/emulate/pcode.hpp"
 #include "codebreaker/emulate/windows16.hpp"
-#include "codebreaker/engine/lanes_wiring.hpp"
 #include "codebreaker/formats/pe.hpp"
 #include "codebreaker/jobs/workers.hpp"
 #include "codebreaker/platforms/win16.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
-#include "codebreaker/verify/gate16/contract16.hpp"
-#include "codebreaker/verify/gate16/isolated16.hpp"
 #include "codebreaker/verify/lane_common.hpp"
-#include "codebreaker/verify/lanes/win16.hpp"
-#include "codebreaker/verify/lanes/win32.hpp"
-#include "codebreaker/verify/reconstruct.hpp"
 #include "codebreaker/verify/verdicts.hpp"
 #include "py_json.hpp"
 
@@ -70,19 +65,6 @@ using Cs = std::vector<base::cache::Part>;
 
 std::string str(const py::str& s) { return compat::from_py(s); }
 py::str pys(const std::string& s) { return compat::to_py(s); }
-
-// ---- the old cache, as the builder's -----------------------------------------------------------------------------------------
-
-class OldCache : public ::cb::build::functions::BuildCache {
-  public:
-    std::optional<::cb::Bytes> get(std::string_view kind, std::string_view key) override {
-        const std::optional<py::bytes> had = base::cache::get(compat::to_py(kind), compat::to_py(key));
-        return had ? std::optional<::cb::Bytes>(compat::from_py(*had)) : std::nullopt;
-    }
-    void put(std::string_view kind, std::string_view key, ::cb::ByteView value) override {
-        base::cache::put(compat::to_py(kind), compat::to_py(key), compat::to_py(value));
-    }
-};
 
 // ---- an old L2 document as a new node ---------------------------------------------------------------------------------------
 
@@ -468,229 +450,10 @@ void built_from_new(const nm::Built& n, Built& b) {
 
 // ---- the services ------------------------------------------------------------------------------------------------------------
 
-::cb::build::functions::FunctionBuilder& shared_builder() { return functions::shared_builder(); }
-
-// The keys the gate's verdicts depend on besides the module and the function: the compiler and its options, what each Windows call removes
-// (the checker answers calls by it), the branch-guided inputs the checker runs -- the explorers, their limits, whether they are on, the
-// path explorer's lifter too -- and the emulators.
-std::string gate_stamp() {
-    const py::bytes sizes = symbols::api_arguments::sizes16();
-    const bool ready = verify::lanes::win16::concolic_ready();
-    Cs parts{base::cache::tool(build::watcom::ow_tool(py::str("wcc"))), build::functions::CFLAGS16, sizes, verify::lane_common::guided_on(),
-             verify::lane_common::GUIDED_BUDGET, verify::lane_common::MAX_GUIDED, ready, verify::lane_common::PATH_BUDGET, verify::lane_common::MAX_PATHS};
-    if (ready) {
-        const auto stamp = emulate::pcode::stamp();
-        parts.push_back(std::get<0>(stamp));
-        parts.push_back(std::get<1>(stamp));
-    } else {
-        parts.push_back(py::str(""));
-    }
-    parts.push_back(py::str("gate16 checker, emulators, explorers typed port 1"));
-    return str(base::cache::key(parts));
-}
-
-// [(address, bytes)] for everything of a 32-bit image that is not code: the emulator maps a module's code itself, and reads anything else as
-// zeros unless it is given.
-py::list<std::tuple<int64_t, py::bytes>> sections_of(const py::str& path) {
-    formats::pe::PEFile pe(path);
-    py::list<std::tuple<int64_t, py::bytes>> out;
-    for (const formats::pe::Section& s : pe.sections) {
-        if (s.rawsize && !(s.chars & 0x20000020LL)) out.append({static_cast<int64_t>(pe.image_base) + s.vaddr, pe.data.slice(s.rawptr, s.rawptr + s.rawsize)});
-    }
-    return out;
-}
-
-// Load a module in the emulator and call one exported function with zero arguments: the platform's emulator does it.
-nm::CallOutcome call_export(const stdfs::path& file, std::string_view kind, const nd::Export& e) {
-    const py::str path = legacy::native(file);
-    if (kind == "pe") {
-        emulate::emulator::TraceOptions o;
-        o.args = py::list<int64_t>{0, 0, 0, 0};
-        o.mem_init = sections_of(path);
-        o.stub_externals = true;
-        o.sig_resolver = [](const py::str& dll, const py::str& name) { return verify::lanes::win32::_argc(dll, name); };
-        try {
-            const emulate::run::Run r = emulate::emulator::recorded(path, emulate::emulator::FuncSelector(static_cast<int64_t>(std::get<std::uint64_t>(e.address))), o);
-            std::optional<int64_t> eax;
-            if (r.results.contains(py::str("EAX")) && std::holds_alternative<int64_t>(r.results.at(py::str("EAX")))) eax = std::get<int64_t>(r.results.at(py::str("EAX")));
-            return {str(r.ended()), eax};
-        } catch (const py::ImportError&) {
-            throw;
-        } catch (const py::Exception& ex) {   // the emulator giving up is a result too
-            return {"error: " + str(py::str(ex.type())), std::nullopt};
-        }
-    }
-    if (kind == "ne") {
-        const auto got = platforms::win16::call(path, e.ordinal, [](const py::str& p, int64_t ordinal, const py::list<int64_t>& args) {
-            emulate::windows16::ProbeOptions o;
-            o.ordinal = ordinal;
-            o.args = args;
-            const emulate::run::Run r = emulate::windows16::record(emulate::windows16::probe(p, o));
-            platforms::win16::RunRecord rec;
-            rec.ended = r.ended();
-            for (const auto& kv : r.results.items()) {
-                if (std::holds_alternative<int64_t>(std::get<1>(kv))) rec.results.set(std::get<0>(kv), std::get<int64_t>(std::get<1>(kv)));
-            }
-            return rec;
-        });
-        return {str(std::get<0>(got)), std::get<1>(got)};
-    }
-    throw ::cb::UnsupportedError("build/module", 0, "a module of kind " + std::string(kind) + " is not called here");
-}
-
-std::vector<nm::GateResult> gate_check(const stdfs::path& file, const stdfs::path& folder, const std::vector<std::string>& names) {
-    py::list<py::str> run;
-    for (const std::string& n : names) run.append(pys(n));
-    std::vector<nm::GateResult> out;
-    for (const auto& c : verify::gate16::isolated16::check(legacy::native(file), legacy::native(folder), run)) {
-        nm::GateResult r;
-        r.name = str(c.name);
-        r.verdict = c.verdict == py::str(verify::verdicts::INCONCLUSIVE) ? nm::GateResult::Verdict::Inconclusive
-                    : c.verdict == py::str(verify::verdicts::DIVERGENT)  ? nm::GateResult::Verdict::Divergent
-                                                                          : nm::GateResult::Verdict::Same;
-        r.why = str(c.why);
-        out.push_back(std::move(r));
-    }
-    return out;
-}
-
-// An old build worker's answer, for a Built made in a process of its own.
-std::optional<nm::Built> build_apart(const std::string& module, const std::optional<stdfs::path>& outdir, bool call) {
-    namespace W = jobs::workers;
-    if (!W::enabled()) return std::nullopt;
-    const std::string dir = W::scratch_folder();
-    const int64_t rc = W::run({"build", W::hex(module), outdir ? W::hex(::cb::fs::to_text(*outdir)) : std::string("-"), call ? "1" : "0", dir + "\\answer.txt"});
-    const std::string answer = W::read_file(dir + "\\answer.txt");
-    std::error_code ec;
-    stdfs::remove_all(dir, ec);
-    if (answer.empty()) throw py::RuntimeError(py::percent("%s: the build stopped (exit %d)", pys(module), rc).utf8());
-    const auto found = base::corpus::retail(pys(module));
-    nm::Built b(found ? legacy::path_of(*found) : stdfs::path(module), found ? base::corpus::lane(*found) ? std::optional<std::string>(str(*base::corpus::lane(*found))) : std::nullopt : std::nullopt);
-    std::size_t at = 0;
-    while (at < answer.size()) {
-        std::size_t nl = answer.find('\n', at);
-        if (nl == std::string::npos) nl = answer.size();
-        if (nl > at) {
-            const std::string line = answer.substr(at, nl - at);
-            W::Dec d(line.substr(2));
-            switch (line[0]) {
-                case 'R': b.carried_report = d.s(); break;
-                case 'I': { const std::string v = d.s(); if (!v.empty()) b.image = ::cb::fs::from_text(v); break; }
-                case 'F': { const std::string v = d.s(); if (!v.empty()) b.folder = ::cb::fs::from_text(v); break; }
-                case 'G': { const std::string k = d.s(); b.gated.insert_or_assign(k, d.s()); break; }
-                case 'P': b.placed_c.insert(d.s()); break;
-                case 'M': b.moved_c.insert(d.s()); break;
-                case 'J': { const std::string k = d.s(); b.rejected.insert_or_assign(k, d.s()); break; }
-                default: break;
-            }
-        }
-        at = nl + 1;
-    }
-    return b;
-}
-
-// The one builder the old callers share, over the one function builder they share.
+// The one builder the old callers share: the module builder over the services of the lane kit (engine/lane_kit), which makes the one decompiler, function
+// builder, emulators and gate. COMPAT(py): the wiring this file held (the old cache, corpus, settings, lanes and gate ports) is the kit's now.
 const nm::ModuleBuilder& builder() {
-    static OldCache cache;
-    static ::cb::source::assembly::Prober prober = [] {
-        ::cb::source::assembly::Tools t;
-        const ::cb::build::watcom::OpenWatcom ow = ::cb::build::watcom::OpenWatcom::from_settings(str(build::watcom::openwatcom_root()));
-        t.wasm = ow.tool("wasm");
-        t.wlink = ow.tool("wlink");
-        t.env = ow.environment(::cb::build::watcom::Target::Win32);
-        return ::cb::source::assembly::Prober(t, legacy::state_dir() / "assembly_probes.json");
-    }();
-    static const nm::ModuleBuilder b = [] {
-        nm::Services s;
-        s.builder = &shared_builder();
-        s.cache = &cache;
-        s.open_watcom = ::cb::build::watcom::OpenWatcom::from_settings(str(build::watcom::openwatcom_root()));
-        s.prober = &prober;
-        s.retail = [](std::string_view name) -> std::optional<stdfs::path> {
-            const auto found = base::corpus::retail(compat::to_py(name));
-            return found && !found->empty() ? std::optional<stdfs::path>(legacy::path_of(*found)) : std::nullopt;
-        };
-        s.kind_of = [](const stdfs::path& p) -> std::optional<std::string> {
-            const auto lane = base::corpus::lane(legacy::native(p));
-            return lane ? std::optional<std::string>(str(*lane)) : std::nullopt;
-        };
-        s.build_folder = [](std::string_view name) {
-            const py::str path = py::os::path::join(py::settings::get_str(py::str("state")), py::str("build"), compat::to_py(name));
-            py::os::makedirs(py::os::path::dirname(path), 0777, true);
-            return legacy::path_of(path);
-        };
-        s.kept_as_asm_file = legacy::path_of(KEPT_AS_ASM);
-        s.prepare = [](const stdfs::path& file, const stdfs::path& work) {
-            const py::str path = legacy::native(file);
-            const std::shared_ptr<verify::reconstruct::Kind> kind = verify::reconstruct::kind_of(path);
-            const verify::reconstruct::Prepared prepared = kind->prepare(path, legacy::native(work));
-            nm::Prepared out;
-            out.functions = static_cast<std::size_t>(py::len(prepared.all_keys));
-            const std::optional<py::str> lane = base::corpus::lane(path);
-            if (lane && *lane == py::str("ne")) out.win16 = to_new(*std::static_pointer_cast<decompile::c_text::Module16>(prepared.lane));
-            else if (lane && *lane == py::str("pe")) out.win32 = to_new(*std::static_pointer_cast<decompile::c_text::Module32>(prepared.lane));
-            return out;
-        };
-        s.interface_of = interface_of;
-        s.origins16 = [](const stdfs::path& file, const std::map<std::int64_t, std::string>& by_va) {
-            py::dict<int64_t, py::str> names;
-            for (const auto& [va, name] : by_va) names.set(va, pys(name));
-            std::map<std::int64_t, ::cb::analyze::origin::Origin> out;
-            for (const auto& kv : analyze::origin::module16(legacy::native(file), names).functions.items()) {
-                const analyze::origin::Origin& o = std::get<1>(kv);
-                ::cb::analyze::origin::Origin n;
-                n.va = o.va;
-                n.name = str(o.name);
-                n.language = o.language == py::str("assembly") ? ::cb::analyze::origin::Language::Assembly : ::cb::analyze::origin::Language::C;
-                n.evidence = compat::from_py(o.evidence);
-                n.compiler = compat::from_py(o.compiler);
-                out[std::get<0>(kv)] = n;
-            }
-            return out;
-        };
-        s.functions32 = [](const stdfs::path& file) {
-            std::vector<std::uint64_t> out;
-            for (int64_t a : verify::lanes::win32::LANES.at(py::str("pe")).functions(legacy::native(file))) out.push_back(static_cast<std::uint64_t>(a));
-            return out;
-        };
-        s.import_lines32 = [](::cb::ByteView object, const stdfs::path& file, const std::set<std::string>& used) {
-            const py::str path = legacy::native(file);
-            py::set<py::str> names;
-            for (const std::string& n : used) names.add(pys(n));
-            const auto& by_number = decompile::describe::BY_NUMBER;
-            std::optional<build::watcom::Numbered> numbered;
-            if (by_number.contains(path) && !by_number.at(path).empty()) numbered = by_number.at(path);
-            else if (const py::str ap = py::os::path::abspath(path); by_number.contains(ap) && !by_number.at(ap).empty()) numbered = by_number.at(ap);
-            const py::str text = build::watcom::_import_lines(compat::to_py(object), names, build::watcom::import_map(path), numbered.value_or(build::watcom::Numbered()));
-            std::vector<std::string> lines;
-            for (const py::str& line : py::split(text.strip(), py::str("\n"))) lines.push_back(str(line));
-            return lines;
-        };
-        s.call_export = call_export;
-        s.gate_check = gate_check;
-        s.gate_contract = [](const stdfs::path& file, const stdfs::path& folder, const stdfs::path& image, const std::vector<std::string>& names) {
-            py::list<py::str> c;
-            for (const std::string& n : names) c.append(pys(n));
-            std::map<std::string, std::string> out;
-            try {
-                for (const auto& kv : verify::gate16::contract16::mismatches(legacy::native(file), legacy::native(folder), legacy::native(image), c).items())
-                    out[str(std::get<0>(kv))] = str(std::get<1>(kv));
-            } catch (const py::Exception& e) {   // (a check that fails says so: never "all agree")
-                throw ::cb::UnsupportedError("build/module", 0, str(py::str(e.type())) + ": " + e.what());
-            }
-            return out;
-        };
-        s.gate_stamp = gate_stamp;
-        s.build_apart = build_apart;
-        s.project_build_folder = [](const stdfs::path& file) { return legacy::path_of(base::converted::project(legacy::native(file)).build); };
-        s.record_build = [](const stdfs::path& file, const std::string& note) {
-            const base::converted::Project proj = base::converted::project(legacy::native(file));
-            proj.record(py::str("build"), py::list<py::str>{proj.build}, pys(note));
-        };
-        s.workers = [] { return static_cast<int>(base::parallel::workers()); };
-        s.log = [](std::string_view line) { py::print(compat::to_py(line)); };
-        return nm::ModuleBuilder(std::move(s));
-    }();
+    static const nm::ModuleBuilder b(::cb::compat::old_lane_kit().module_services());
     return b;
 }
 
@@ -787,11 +550,6 @@ Built build(const py::str& module, const std::optional<py::str>& outdir, bool ca
             bool gate) {
     const std::optional<py::str> path = base::corpus::retail(module);
     if (!path || path->empty()) throw py::SystemExit(py::percent("no module %s in the corpus", py::repr(module)));
-    // (the engine is the default: the same build made of facts, only what changed made again -- engine/win16, engine/lanes; CB_ENGINE=0 takes the path below)
-    if (!gated) {
-        auto delegated = engine::lanes_wiring::delegate_build(module, *path, outdir, call, log);
-        if (delegated) return *delegated;
-    }
     return as_old([&] {
         const nm::Built n = builder().build(module.utf8(), options_of(outdir, call, log, gated, gate));
         Built b(*path);
@@ -828,23 +586,6 @@ py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std:
         }
     }
     return out;
-}
-
-int64_t build_worker(const std::vector<std::string>& args) {
-    namespace W = jobs::workers;
-    if (args.size() < 4) return 2;
-    const py::str module(W::unhex(args[0]));
-    const std::string od = W::unhex(args[1]);
-    const Built b = build(module, od.empty() ? std::optional<py::str>() : std::optional<py::str>(py::str(od)), args[2] == "1", [](const py::str&) {});
-    std::string out = "R " + W::Enc().s(b.report().utf8()).text() + "\n";
-    out += "I " + W::Enc().s(b.image ? b.image->utf8() : "").text() + "\n";
-    out += "F " + W::Enc().s(b.folder ? b.folder->utf8() : "").text() + "\n";
-    for (const auto& kv : b.gated.items()) out += "G " + W::Enc().s(std::get<0>(kv).utf8()).s(std::get<1>(kv).utf8()).text() + "\n";
-    for (const py::str& n : b.placed_c) out += "P " + W::Enc().s(n.utf8()).text() + "\n";
-    for (const py::str& n : b.moved_c) out += "M " + W::Enc().s(n.utf8()).text() + "\n";
-    for (const auto& kv : b.rejected.items()) out += "J " + W::Enc().s(std::get<0>(kv).utf8()).s(std::get<1>(kv).utf8()).text() + "\n";
-    W::write_file(args[3], out);
-    return 0;
 }
 
 // python -m codebreaker build <module> [--out DIR] [--no-run] [--engine] [--no-engine]

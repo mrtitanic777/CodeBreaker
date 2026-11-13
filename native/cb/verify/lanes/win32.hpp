@@ -150,6 +150,11 @@ public:
         emulate::pcode::LifterSet* lifters = nullptr;                // none: inputs are guessed, not found path by path
         lane_common::FingerprintStore fingerprints;                  // unset: nothing is kept
         std::function<std::optional<std::string>(const std::filesystem::path&)> content_sha;   // the corpus's SHA-256
+        // The link lines (import statements) an object file of THIS module needs for the imports its code calls: what the module imports
+        // by name and by number is the module's own, so the function is asked per build (`used`: the imports the module's C calls).
+        // Unset: `tools.import_lines` serves every module.
+        std::function<std::function<std::vector<std::string>(ByteView object)>(const std::filesystem::path& module, const std::vector<std::string>& used)>
+            import_lines_for;
     };
 
     // What judging a function needs of the whole build: shared by every function of it, and safe to use from several threads.

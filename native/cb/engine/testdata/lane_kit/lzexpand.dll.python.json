@@ -1,0 +1,328 @@
+{
+ "functions": {
+  "10:0000": {
+   "detail": "",
+   "limits": "coverage=97,paths=4",
+   "name": "sub_10_0000",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "10:004e": {
+   "detail": "ret 0 vs 48c  [input 400,400,400,400,400,400,400,400]",
+   "limits": "",
+   "name": "sub_10_004E",
+   "reason": "ret-differs",
+   "verdict": "divergent"
+  },
+  "10:00a2": {
+   "detail": "call #0 rebuilt calls extra: (nothing) vs KERNEL.@90(a0,a0)  [input 400,400,400,400,400,400,400,400]",
+   "limits": "",
+   "name": "sub_10_00A2",
+   "reason": "deps-differ",
+   "verdict": "divergent"
+  },
+  "10:0124": {
+   "detail": "call #0 different call: KERNEL.@89(76,DS,a0,a0) vs KERNEL.@90(48c,0)  [input 400,400,400,400,400,400,400,400]",
+   "limits": "",
+   "name": "sub_10_0124",
+   "reason": "deps-differ",
+   "verdict": "divergent"
+  },
+  "10:01b6": {
+   "detail": "call #0 rebuilt calls extra: (nothing) vs KERNEL.@90(48c,0)  [input 400,400,400,400,400,400,400,400]",
+   "limits": "",
+   "name": "sub_10_01B6",
+   "reason": "deps-differ",
+   "verdict": "divergent"
+  },
+  "10:02a8": {
+   "detail": "",
+   "limits": "coverage=83,paths=1,paths-all",
+   "name": "sub_10_02A8",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:0010": {
+   "detail": "writes 1 vs none  [input 80,80,80,80,80,80,80,80]",
+   "limits": "",
+   "name": "sub_11_0010",
+   "reason": "writes-differ",
+   "verdict": "divergent"
+  },
+  "11:0042": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_11_0042",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:00ab": {
+   "detail": "",
+   "limits": "coverage=38,low-coverage,paths=1,paths-all",
+   "name": "sub_11_00AB",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:00d8": {
+   "detail": "writes 4 vs 2  [input 0,0,0,0,0,0,0,0]",
+   "limits": "",
+   "name": "sub_11_00D8",
+   "reason": "writes-differ",
+   "verdict": "divergent"
+  },
+  "11:01b7": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_11_01B7",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:01c5": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_11_01C5",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:01d4": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_11_01D4",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:01e5": {
+   "detail": "",
+   "limits": "coverage=65,paths=2,paths-all",
+   "name": "sub_11_01E5",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:0253": {
+   "detail": "",
+   "limits": "coverage=84,paths=3,paths-all",
+   "name": "sub_11_0253",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:02a0": {
+   "detail": "ret 7e57 vs 0  [input 0,0,0,0,0,0,0,0]",
+   "limits": "",
+   "name": "sub_11_02A0",
+   "reason": "ret-differs",
+   "verdict": "divergent"
+  },
+  "11:02e2": {
+   "detail": "",
+   "limits": "coverage=100,paths=28",
+   "name": "sub_11_02E2",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:0319": {
+   "detail": "",
+   "limits": "coverage=100,paths=3",
+   "name": "sub_11_0319",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "11:034e": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_11_034E",
+   "reason": "E1037: Type cast must be a scalar type -- if (___EXPORTEDSTUB == (code)0xb8) {",
+   "verdict": "no-compile"
+  },
+  "11:035e": {
+   "detail": "",
+   "limits": "",
+   "name": "___EXPORTEDSTUB",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "1:0000": {
+   "detail": "",
+   "limits": "coverage=87,paths=2,paths-all",
+   "name": "sub_1_0000",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "1:00b2": {
+   "detail": "",
+   "limits": "coverage=97,paths=8",
+   "name": "sub_1_00B2",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "1:0116": {
+   "detail": "",
+   "limits": "coverage=87,paths=4",
+   "name": "sub_1_0116",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "2:0000": {
+   "detail": "",
+   "limits": "coverage=37,low-coverage,paths=3",
+   "name": "LZINIT",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "2:01bc": {
+   "detail": "",
+   "limits": "coverage=79,paths=2",
+   "name": "GETEXPANDEDNAME",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "2:0262": {
+   "detail": "",
+   "limits": "coverage=80,paths=4",
+   "name": "LZOPENFILE",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "2:02ee": {
+   "detail": "",
+   "limits": "coverage=51,paths=4",
+   "name": "LZSEEK",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "2:03d6": {
+   "detail": "",
+   "limits": "coverage=17,low-coverage,paths=5",
+   "name": "LZREAD",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "2:06f0": {
+   "detail": "",
+   "limits": "coverage=82,paths=4",
+   "name": "LZCLOSE",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "3:0000": {
+   "detail": "",
+   "limits": "coverage=94,paths=1,paths-all",
+   "name": "WEP",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "4:0000": {
+   "detail": "",
+   "limits": "coverage=93,paths=3,paths-all",
+   "name": "LZSTART",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "4:00a6": {
+   "detail": "",
+   "limits": "coverage=98,paths=3",
+   "name": "LZDONE",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "4:013a": {
+   "detail": "",
+   "limits": "coverage=95,paths=1",
+   "name": "COPYLZFILE",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "4:015c": {
+   "detail": "writes 19 vs 20  [input 0,0,0,0,0,0,0,0 ret=2]",
+   "limits": "",
+   "name": "LZCOPY",
+   "reason": "writes-differ",
+   "verdict": "divergent"
+  },
+  "5:0000": {
+   "detail": "",
+   "limits": "coverage=97,paths=1,paths-all",
+   "name": "sub_5_0000",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "5:0052": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_5_0052",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "5:00d0": {
+   "detail": "ret 9a vs 92  [input 1,40,640,2,80,640,3,100]",
+   "limits": "",
+   "name": "sub_5_00D0",
+   "reason": "ret-differs",
+   "verdict": "divergent"
+  },
+  "6:0000": {
+   "detail": "writes 1 vs 2  [input 0,0,0,0,0,0,0,0]",
+   "limits": "",
+   "name": "sub_6_0000",
+   "reason": "writes-differ",
+   "verdict": "divergent"
+  },
+  "6:00a4": {
+   "detail": "writes 1 vs 2  [input fffe,fffe,fffe,fffe,fffe,fffe,fffe,fffe]",
+   "limits": "",
+   "name": "sub_6_00A4",
+   "reason": "writes-differ",
+   "verdict": "divergent"
+  },
+  "7:0000": {
+   "detail": "",
+   "limits": "coverage=94,paths=6",
+   "name": "sub_7_0000",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "7:00f4": {
+   "detail": "writes 3 vs 5  [input 0,0,0,0,0,0,0,0 ret=2]",
+   "limits": "",
+   "name": "sub_7_00F4",
+   "reason": "writes-differ",
+   "verdict": "divergent"
+  },
+  "7:01e0": {
+   "detail": "call #0 same call, argument 1+2 differs: KERNEL.@85(0,6,5) vs KERNEL.@85(0,5,4)  [input 1,2,3,4,5,6,7,8]",
+   "limits": "",
+   "name": "sub_7_01E0",
+   "reason": "deps-differ",
+   "verdict": "divergent"
+  },
+  "8:00aa": {
+   "detail": "",
+   "limits": "coverage=51,paths=2",
+   "name": "sub_8_00AA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "8:01a2": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "sub_8_01A2",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "8:01ec": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "sub_8_01EC",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "9:0000": {
+   "detail": "call #2 different call: KERNEL.@86(0,0,0,0) vs KERNEL.@82(0,1,0,0)  [input 0,0,0,0,0,0,0,0]",
+   "limits": "",
+   "name": "sub_9_0000",
+   "reason": "deps-differ",
+   "verdict": "divergent"
+  }
+ },
+ "module": "lzexpand.dll",
+ "seconds": 23.009357929229736
+}

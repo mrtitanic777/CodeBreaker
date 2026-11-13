@@ -123,7 +123,7 @@ cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
 # The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
 cb_area(engine)
-target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs)   # (cb_verify: the verdict and class vocabulary)
+target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs cb_decompile cb_build cb_emulate cb_symbols cb_analyze cb_formats cb_platforms cb_translate cb_source cb_java)   # (the lane kit builds every lane's surroundings from these -- static libraries may be cyclic)   # (cb_verify: the verdict and class vocabulary)
 cb_area(jobs)
 target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
@@ -314,9 +314,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win16.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/win32.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/gate16/isolated16.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
@@ -364,8 +361,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b11.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/engine/lanes_wiring.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b15.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_lane_kit.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/module.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp"
@@ -416,7 +413,12 @@ target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
 # the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
 target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
-add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler)
+# the kit's worker host (see above): the libraries every area links, and the DLLs next to it
+add_executable(cb_lane_worker EXCLUDE_FROM_ALL engine/lane_worker_main.cpp)
+cb_apply_flags(cb_lane_worker)
+target_link_libraries(cb_lane_worker PRIVATE cb_engine cb_core)
+cb_copy_prebuilt_dlls(cb_lane_worker)
+add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 enable_testing()
@@ -440,6 +442,8 @@ foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
   cb_copy_prebuilt_dlls(cb_tests_${area})
   if(area STREQUAL "jobs")
     add_dependencies(cb_tests_${area} cb_worker_probe)
+  elseif(area STREQUAL "engine")
+    add_dependencies(cb_tests_${area} cb_lane_worker)
   elseif(area STREQUAL "verify")
     add_dependencies(cb_tests_${area} cb_fake_qemu)
   elseif(area STREQUAL "decompile")

@@ -264,8 +264,8 @@ CB_TEST("verify.reconstruct.judging_on_threads_and_through_a_batch", [] {
         Fixture f(m);
         Services s = f.rec->services();
         std::vector<std::string> asked;
-        s.judge_batch = [&](const lanes::Kind&, const lanes::Built&, const std::vector<std::string>& names) {
-            asked = names;
+        s.judge_batch = [&](const Services::JudgeBatch& batch) {
+            asked = batch.names;
             std::optional<std::map<std::string, Judgement>> out = std::map<std::string, Judgement>{};
             Judgement j;
             j.verdict = Verdict::Divergent;
@@ -284,7 +284,7 @@ CB_TEST("verify.reconstruct.judging_on_threads_and_through_a_batch", [] {
     {
         Fixture f(m);   // a batch that declines: the threads judge
         Services s = f.rec->services();
-        s.judge_batch = [](const lanes::Kind&, const lanes::Built&, const std::vector<std::string>&) { return std::nullopt; };
+        s.judge_batch = [](const Services::JudgeBatch&) { return std::nullopt; };
         Reconstructor declined(std::move(s));
         (void)declined.run("m.fk");
         CB_CHECK_EQ(f.counters.judged.load(), 3);

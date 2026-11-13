@@ -1,0 +1,279 @@
+{
+ "functions": {
+  "bfea1000": {
+   "detail": "exit ret vs wild-call  [input 206000,1,206080,2060c0 ret=1]",
+   "limits": "",
+   "name": "sub_001000",
+   "reason": "exit-differs",
+   "verdict": "divergent"
+  },
+  "bfea1057": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001057",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1075": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001075",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea1077": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001077",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea10a5": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010A5",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea10a7": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010A7",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea10bd": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010BD",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea10bf": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010BF",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea10e2": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010E2",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea10e4": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_0010E4",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea1109": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001109",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea110b": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_00110B",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea1123": {
+   "detail": "",
+   "limits": "",
+   "name": "LZStart",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea1125": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001125",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea1135": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001135",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea1139": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_001139",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea113b": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_00113B",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea115b": {
+   "detail": "",
+   "limits": "",
+   "name": "LZDone",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea115d": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_00115D",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea116c": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_00116C",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea116e": {
+   "detail": "",
+   "limits": "",
+   "name": "sub_00116E",
+   "reason": "not in the build",
+   "verdict": "no-compile"
+  },
+  "bfea1198": {
+   "detail": "removes 4 bytes on return vs 12  [input 0,0,0,0]",
+   "limits": "",
+   "name": "GetExpandedNameW",
+   "reason": "stack-differs",
+   "verdict": "divergent"
+  },
+  "bfea11a1": {
+   "detail": "removes 4 bytes on return vs 16  [input 0,0,0,0]",
+   "limits": "",
+   "name": "LZOpenFileW",
+   "reason": "stack-differs",
+   "verdict": "divergent"
+  },
+  "bfea11aa": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "LZCopy",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea11dd": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "LZClose",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1201": {
+   "detail": "",
+   "limits": "coverage=100,paths=3,paths-all",
+   "name": "LZInit",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1238": {
+   "detail": "",
+   "limits": "coverage=100,paths=6,paths-all",
+   "name": "LZOpenFileA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea12d8": {
+   "detail": "",
+   "limits": "coverage=100,paths=3,paths-all",
+   "name": "GetExpandedNameA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1330": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "CopyLZFile",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1363": {
+   "detail": "",
+   "limits": "coverage=100,paths=28",
+   "name": "LZRead",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea13d4": {
+   "detail": "",
+   "limits": "coverage=100,paths=2,paths-all",
+   "name": "LZSeek",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea13fa": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_0013FA",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1400": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001400",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea140c": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_00140C",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1412": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001412",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1424": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001424",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1430": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001430",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea1436": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_001436",
+   "reason": "",
+   "verdict": "equivalent"
+  },
+  "bfea143c": {
+   "detail": "",
+   "limits": "coverage=100,paths=1,paths-all",
+   "name": "sub_00143C",
+   "reason": "",
+   "verdict": "equivalent"
+  }
+ },
+ "module": "lz32.dll",
+ "seconds": 6.763908386230469
+}

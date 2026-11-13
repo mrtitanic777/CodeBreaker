@@ -134,9 +134,6 @@ py::dict<py::str, Built> build_many(const py::list<py::str>& modules,
                                     const std::function<std::optional<py::str>(const py::str&)>& outdir_of = nullptr, bool call = true,
                                     const Log& log = nullptr, const std::optional<int64_t>& jobs = std::nullopt);
 
-// A build worker process's job (jobs/workers): args = module, outdir or "-", call ("1"/"0"), answer file. Writes what a Built is read by.
-int64_t build_worker(const std::vector<std::string>& args);
-
 // python -m codebreaker build <module> [--out DIR] [--no-run] [--engine] [--no-engine]; -> exit status
 int64_t main(const py::list<py::str>& argv);
 

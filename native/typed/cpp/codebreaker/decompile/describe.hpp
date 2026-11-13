@@ -36,11 +36,8 @@
 #include "codebreaker/symbols/ordinals.hpp"
 #include "py.hpp"
 
-// verify/lanes/win32.hpp is declared here by the one function this header calls (LANES["pe"].functions(path)): the header
-// itself reaches the whole decompiler.
-namespace codebreaker::verify::lanes::win32 {
-py::list<int64_t> functions(const py::str& lane, const py::str& path);
-}
+// the one function of the 32-bit lane this header calls (LANES["pe"].functions(path)); verify/lanes/win32.hpp itself reaches the whole decompiler
+#include "codebreaker/verify/lanes/win32_functions.hpp"
 
 namespace codebreaker::decompile::describe {
 
