@@ -53,18 +53,18 @@ std::string tools_sha_line(const std::filesystem::path& file, const std::string&
 
 }  // namespace
 
-CB_TEST("formats.xbox.crypto.tools.the_package_lists_its_tools_and_says_which_are_native", [] {
+CB_TEST("formats.xbox.crypto.tools.the_package_lists_its_tools_and_every_one_is_native", [] {
     CB_CHECK_EQ(xcrypto::tool_names().size(), std::size_t{35});
-    CB_CHECK(xcrypto::tool_is_native("harness"));
-    CB_CHECK(xcrypto::tool_is_native("sd_signer"));
-    CB_CHECK(xcrypto::tool_is_native("shadowboot"));
-    CB_CHECK(xcrypto::tool_is_native("nand_tool"));
-    CB_CHECK(!xcrypto::tool_is_native("keyvault"));
     const cli::Command command = xcrypto::command(xcrypto::Environment{});
     CB_CHECK_EQ(command.subcommands.size(), xcrypto::tool_names().size());
-    // a tool that is not in the layer yet says so and exits 1
-    CB_CHECK_EQ(testing::run_command(command, {"keyvault", "--anything", "x"}), "exit=1\n");
+    for (std::size_t i = 0; i < xcrypto::tool_names().size(); ++i) {
+        CB_CHECK(xcrypto::tool_is_native(xcrypto::tool_names()[i]));
+        CB_CHECK_EQ(command.subcommands[i].name, std::string(xcrypto::tool_names()[i]));
+    }
+    CB_CHECK(!xcrypto::tool_is_native("no_such_tool"));
     CB_CHECK_EQ(testing::run_command(command, {"no_such_tool"}), "exit=2\n");
+    // a tool with the wrong arguments is a usage error, not "not in the layer yet"
+    CB_CHECK_EQ(testing::run_command(command, {"keyvault"}), "exit=2\n");
 });
 
 CB_TEST("formats.xbox.crypto.tools.nand_tool_works_on_images_like_the_python", [] {

@@ -8,10 +8,13 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 
 #include "cb/core/bytes.hpp"
+#include "cb/core/cli.hpp"
 #include "cb/formats/xbox/crypto/build_lib.hpp"
+#include "cb/formats/xbox/crypto/keystore.hpp"
 #include "cb/formats/xbox/crypto/xecrypt.hpp"
 
 namespace cb::formats::xbox::crypto::se_patcher {
@@ -29,5 +32,12 @@ struct SdSe {
 // FormatError when the SD is shorter than the hash's place plus 20, or the patch table is malformed.
 SdSe patch_rehash_sign_se(const xecrypt::RsaKey& key, build_lib::LzxCodec& codec, ByteView sd, ByteView se_body,
                           std::optional<ByteView> patch_table = std::nullopt);
+
+// `crypto se_patcher [--console Jasper] [--extracted DIR] [--patch FILE] [--output-dir DIR]`: the SD, hypervisor and kernel of an extracted console
+// build (DIR/SD.bin, hypervisor.bin, kernel.exe; Output/Extracted/<console>/ by default) are patched with the table FILE (Output/Zero/VRGL.bin),
+// the SE and SD written with their nonces zeroed (sd_17489.bin and se_17559.bin in the output folder; xeBuild_1.21/Builds/17559 - RGL/bootloaders/
+// rgl/<console>bl by default) and XeBuild's checksum lines printed: `[<console>bl]` and a line `<path>,<crc32>` per file. The SB private key is the
+// key store's; the LZX codec compresses the SE.
+cli::Command command(const keystore::KeyStore& store, std::shared_ptr<build_lib::LzxCodec> codec);
 
 }  // namespace cb::formats::xbox::crypto::se_patcher

@@ -146,7 +146,10 @@ def main() -> None:
 		index = 0
 		while True:
 			recovery_exe.seek(pe_size)
-			cab_header = CabHeader.from_buffer_copy(recovery_exe.read(sizeof(CabHeader)))
+			head = recovery_exe.read(sizeof(CabHeader))
+			if len(head) < sizeof(CabHeader):  # the cabinets run to the end of the file
+				break
+			cab_header = CabHeader.from_buffer_copy(head)
 			if not bytes(cab_header.Magic) == CABMagic:
 				break
 			recovery_exe.seek(pe_size)

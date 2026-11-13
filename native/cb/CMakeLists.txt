@@ -422,6 +422,13 @@ cb_apply_flags(cb_cmdrun)
 target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_cmdrun)
 
+# toolrun: the `crypto` tools and the commands the switch-over moves off the old extension (xbox-disc, xex-basic, xenon-config, switch-tables,
+# corpus-executables), with the settings and the corpus the application gives them, to compare each with the Python and time it (app/toolrun_main.cpp).
+add_executable(cb_toolrun EXCLUDE_FROM_ALL app/toolrun_main.cpp)
+cb_apply_flags(cb_toolrun)
+target_link_libraries(cb_toolrun PRIVATE cb_formats cb_recompile cb_base cb_core)
+cb_copy_prebuilt_dlls(cb_toolrun)
+
 # pipeline: the reconstruction commands (decompile, module, build, measure, teeth, sweep, match, score16, repair, place) with the surroundings the application
 # will give them, to compare each with the Python on real inputs (source/pipeline_main.cpp). Not built by default.
 add_executable(cb_pipeline EXCLUDE_FROM_ALL source/pipeline_main.cpp)

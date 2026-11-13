@@ -1,0 +1,635 @@
+== bin2lang_python
+Data = bytearray([
+	0x11, 0x94, 0x17, 0x9A, 0x1D, 0xA0, 0x23, 0xA6,
+	0x29, 0xAC, 0x2F, 0xB2, 0x35, 0xB8, 0x3B, 0xBE,
+	0x41, 0xC4, 0x47, 0xCA, 0x4D, 0xD0, 0x53, 0xD6,
+	0x59, 0xDC, 0x5F, 0xE2, 0x65, 0xE8, 0x6B, 0xEE,
+	0x71, 0xF4, 0x77, 0xFA, 0x7D
+])
+
+exit=0
+file out.txt 248 1531b1d0f32ba4d41bb3bdf2b9d214ff34f1d38c
+== bin2lang_c
+#ifndef BYTE
+typedef unsigned char BYTE;
+#endif
+
+#ifndef __Buf__
+#define __Buf__
+BYTE Buf[] = {
+	0x11, 0x94, 0x17, 0x9A, 0x1D, 0xA0, 0x23, 0xA6,
+	0x29, 0xAC, 0x2F, 0xB2, 0x35, 0xB8, 0x3B, 0xBE,
+	0x41, 0xC4, 0x47, 0xCA, 0x4D, 0xD0, 0x53, 0xD6,
+	0x59, 0xDC, 0x5F, 0xE2, 0x65, 0xE8, 0x6B, 0xEE,
+	0x71, 0xF4, 0x77, 0xFA, 0x7D
+};
+#endif
+
+exit=0
+file out.txt 332 f8dd145a92e0210ec716fe89f4df1869b441ede7
+== bin2lang_cpp
+#ifndef BYTE
+typedef unsigned char BYTE;
+#endif
+
+#ifndef __ExpPubKey__
+#define __ExpPubKey__
+BYTE ExpPubKey[] = {
+	0x11, 0x94, 0x17, 0x9A, 0x1D, 0xA0, 0x23, 0xA6,
+	0x29, 0xAC, 0x2F, 0xB2, 0x35, 0xB8, 0x3B, 0xBE,
+	0x41, 0xC4, 0x47, 0xCA, 0x4D, 0xD0, 0x53, 0xD6,
+	0x59, 0xDC, 0x5F, 0xE2, 0x65, 0xE8, 0x6B, 0xEE,
+	0x71, 0xF4, 0x77, 0xFA, 0x7D
+};
+#endif
+
+exit=0
+file out.txt 350 ca5ba4e2955e235343cf2b9801cf245aa0e09ba4
+== bin2lang_csharp
+#region Blob
+byte[] Blob = {
+	0x11, 0x94, 0x17, 0x9A, 0x1D, 0xA0, 0x23, 0xA6,
+	0x29, 0xAC, 0x2F, 0xB2, 0x35, 0xB8, 0x3B, 0xBE,
+	0x41, 0xC4, 0x47, 0xCA, 0x4D, 0xD0, 0x53, 0xD6,
+	0x59, 0xDC, 0x5F, 0xE2, 0x65, 0xE8, 0x6B, 0xEE,
+	0x71, 0xF4, 0x77, 0xFA, 0x7D
+};
+#endregion
+
+exit=0
+file out.txt 269 31dfb15ea1dd33a988f06f74c7519f94e4d0317d
+== bin2lang_php
+$payload = [
+	0x11, 0x94, 0x17, 0x9A, 0x1D, 0xA0, 0x23, 0xA6,
+	0x29, 0xAC, 0x2F, 0xB2, 0x35, 0xB8, 0x3B, 0xBE,
+	0x41, 0xC4, 0x47, 0xCA, 0x4D, 0xD0, 0x53, 0xD6,
+	0x59, 0xDC, 0x5F, 0xE2, 0x65, 0xE8, 0x6B, 0xEE,
+	0x71, 0xF4, 0x77, 0xFA, 0x7D
+];
+
+exit=0
+file out.txt 242 df466cbd72a7a01cc2126404928d5c30b7f9aaa5
+== bin2lang_php_old
+$payload = array(
+	0x11, 0x94, 0x17, 0x9A, 0x1D, 0xA0, 0x23, 0xA6,
+	0x29, 0xAC, 0x2F, 0xB2, 0x35, 0xB8, 0x3B, 0xBE,
+	0x41, 0xC4, 0x47, 0xCA, 0x4D, 0xD0, 0x53, 0xD6,
+	0x59, 0xDC, 0x5F, 0xE2, 0x65, 0xE8, 0x6B, 0xEE,
+	0x71, 0xF4, 0x77, 0xFA, 0x7D
+);
+
+exit=0
+file out.txt 247 788d0e5b591fcf8fd119d566b0b49ae91f47539d
+== bin2lang_py
+x = bytearray([
+	0x11, 0x94, 0x17, 0x9A, 0x1D, 0xA0, 0x23, 0xA6,
+	0x29, 0xAC, 0x2F, 0xB2, 0x35, 0xB8, 0x3B, 0xBE,
+	0x41, 0xC4, 0x47, 0xCA, 0x4D, 0xD0, 0x53, 0xD6,
+	0x59, 0xDC, 0x5F, 0xE2, 0x65, 0xE8, 0x6B, 0xEE,
+	0x71, 0xF4, 0x77, 0xFA, 0x7D
+])
+
+exit=0
+file out.txt 245 c70d94e79a8cf7ffd4d68f055a8462aeb40ac33c
+== bin2lang_defaults
+output = bytearray([
+	0x22, 0xA5, 0x28, 0xAB, 0x2E, 0xB1, 0x34, 0xB7, 0x3A, 0xBD, 0x40, 0xC3, 0x46, 0xC9, 0x4C, 0xCF,
+	0x52, 0xD5, 0x58, 0xDB, 0x5E, 0xE1, 0x64, 0xE7, 0x6A, 0xED, 0x70, 0xF3, 0x76, 0xF9, 0x7C, 0xFF,
+	0x82, 0x05, 0x88, 0x0B, 0x8E, 0x11, 0x94, 0x17
+])
+
+exit=0
+file out.txt 266 9bdbd63374930d56b4b2aef91c6197ea934ca62f
+== bootchain_full
+NAND Bootchain Analysis (659,456 bytes)
+
+  CB/2BL       v7529   @ 0x008000  size=0x002000  entry=0x03000000  [DEVKIT, MFG, CB_A]
+    Key:         33B639BC3FC245C84BCE51D457DA5DE0
+  CB_B/2BL_B   v7530   @ 0x00A000  size=0x001000  entry=0x03000010
+  CD/4BL       v7531   @ 0x00B000  size=0x001000  entry=0x03000020
+    Key:         44C74ACD50D356D95CDF62E568EB6EF1
+  CE/5BL       v10847  @ 0x070000  size=0x003000  entry=0x80000030  [MFG]
+    Key:         55D85BDE61E467EA6DF073F679FC7F02
+  CF/6BL       v10848  @ 0x090010  size=0x001000  entry=0x03000040
+    Key:         66E96CEF72F578FB7E0184078A0D9013
+  CG/7BL       v10848  @ 0x091000  size=0x001000  entry=0x03000050
+    Key:         77FA7D008306890C8F1295189B1EA124
+  HV           v4096   @ 0x0A0000  size=0x040000  entry=0x00000000
+exit=0
+== bootchain_empty
+NAND Bootchain Analysis (4,096 bytes)
+
+  No bootloader stages found.
+exit=0
+== bootchain_short
+NAND Bootchain Analysis (32 bytes)
+
+  No bootloader stages found.
+exit=0
+== cpukey_ecd_zero_key
+  valid              False
+  length_ok          True
+  non_zero           False
+  hamming_ok         False
+  hamming_weight     0
+  ecd_ok             False
+  errors             ['Key is all zeros']
+exit=0
+== cpukey_ecd_not_hex
+  valid              False
+  length_ok          True
+  non_zero           False
+  hamming_ok         False
+  hamming_weight     0
+  ecd_ok             False
+  errors             ['Invalid hex characters']
+exit=0
+== cpukey_ecd_short
+  valid              False
+  length_ok          False
+  non_zero           False
+  hamming_ok         False
+  hamming_weight     0
+  ecd_ok             False
+  errors             ['Length 4 != 32 hex chars']
+exit=0
+== cpukey_ecd_spaced
+  valid              False
+  length_ok          True
+  non_zero           False
+  hamming_ok         False
+  hamming_weight     0
+  ecd_ok             False
+  errors             ['Key is all zeros']
+exit=0
+== cpukey_ecd_valid_1
+  valid              True
+  length_ok          True
+  non_zero           True
+  hamming_ok         True
+  hamming_weight     53
+  ecd_ok             True
+  errors             []
+exit=0
+== cpukey_ecd_valid_2
+  valid              True
+  length_ok          True
+  non_zero           True
+  hamming_ok         True
+  hamming_weight     53
+  ecd_ok             True
+  errors             []
+exit=0
+== cpukey_ecd_valid_3
+  valid              True
+  length_ok          True
+  non_zero           True
+  hamming_ok         True
+  hamming_weight     53
+  ecd_ok             True
+  errors             []
+exit=0
+== cpukey_ecd_bad_ecd
+  valid              False
+  length_ok          True
+  non_zero           True
+  hamming_ok         True
+  hamming_weight     53
+  ecd_ok             False
+  errors             ['ECD bits invalid']
+exit=0
+== cpukey_ecd_bad_weight
+  valid              False
+  length_ok          True
+  non_zero           True
+  hamming_ok         False
+  hamming_weight     52
+  ecd_ok             False
+  errors             ['Hamming weight 52 != 53 (0x35)', 'ECD bits invalid']
+exit=0
+== fuses_pattern
+  fuseline_00          22A528AB2EB134B7
+  fuseline_01          3ABD40C346C94CCF
+  fuseline_02          52D558DB5EE164E7
+  cpu_key              6AED70F376F97CFF8205880B8E119417
+  fuseline_05          9A1DA023A629AC2F
+  fuseline_06          B235B83BBE41C447
+  fuseline_07          CA4DD053D659DC5F
+  fuseline_08          E265E86BEE71F477
+  fuseline_09          FA7D008306890C8F
+  fuseline_10          1295189B1EA124A7
+  fuseline_11          2AAD30B336B93CBF
+  ldv                  67
+  cpu_key              6AED70F376F97CFF8205880B8E119417
+exit=0
+== fuses_clean
+  fuseline_00          0000000000000000
+  fuseline_01          0000000000000000
+  fuseline_02          0000000000000000
+  cpu_key              00000000000000000000000000000000
+  fuseline_05          0000000000000000
+  fuseline_06          0000000000000000
+  fuseline_07          0000000000000000
+  fuseline_08          0000000000000000
+  fuseline_09          0000000000000000
+  fuseline_10          0000000000000000
+  fuseline_11          0000000000000000
+  ldv                  0
+  cpu_key              00000000000000000000000000000000
+exit=0
+== fuses_longer
+  fuseline_00          33B639BC3FC245C8
+  fuseline_01          4BCE51D457DA5DE0
+  fuseline_02          63E669EC6FF275F8
+  cpu_key              7BFE8104870A8D109316991C9F22A528
+  fuseline_05          AB2EB134B73ABD40
+  fuseline_06          C346C94CCF52D558
+  fuseline_07          DB5EE164E76AED70
+  fuseline_08          F376F97CFF820588
+  fuseline_09          0B8E1194179A1DA0
+  fuseline_10          23A629AC2FB235B8
+  fuseline_11          3BBE41C447CA4DD0
+  ldv                  68
+  cpu_key              7BFE8104870A8D109316991C9F22A528
+exit=0
+== keyvault_retail
+  Console Serial         123456789012
+  Motherboard Serial     BF42C548CB4ED154
+  Console ID             58DB5EE164
+  Console Type           Retail
+  Game Region            NTSC-U/NTSC-J
+  Manufacturing Mode     1
+  ODD Features           0x00A5
+  ODD Auth Type          0x0102
+  Console Obf Key        EF72F578FB7E0184078A0D901396199C
+  Key Obf Key            1FA225A82BAE31B437BA3DC043C649CC
+  Roamable Obf Key       4FD255D85BDE61E467EA6DF073F679FC
+  ODD Key                7F0285088B0E9114971A9D20A326A92C
+  RSA Pub Exponent       0x10001
+  RSA Pub Modulus        D659DC5FE265E86BEE71F4770184078A...
+  Manufacture Date       B235B83BBE41C447
+exit=0
+== keyvault_devkit
+  Console Serial         123456789012
+  Motherboard Serial     BF42C548CB4ED154
+  Console ID             58DB5EE164
+  Console Type           Devkit
+  Game Region            PAL
+  Manufacturing Mode     1
+  ODD Features           0x00A5
+  ODD Auth Type          0x0102
+  Console Obf Key        EF72F578FB7E0184078A0D901396199C
+  Key Obf Key            1FA225A82BAE31B437BA3DC043C649CC
+  Roamable Obf Key       4FD255D85BDE61E467EA6DF073F679FC
+  ODD Key                7F0285088B0E9114971A9D20A326A92C
+  RSA Pub Exponent       0x10001
+  RSA Pub Modulus        D659DC5FE265E86BEE71F4770184078A...
+  Manufacture Date       B235B83BBE41C447
+exit=0
+== keyvault_recovery
+  Console Serial         123456789012
+  Motherboard Serial     BF42C548CB4ED154
+  Console ID             58DB5EE164
+  Console Type           Test Kit (XDK recovery)
+  Game Region            0x0000
+  Manufacturing Mode     1
+  ODD Features           0x00A5
+  ODD Auth Type          0x0102
+  Console Obf Key        EF72F578FB7E0184078A0D901396199C
+  Key Obf Key            1FA225A82BAE31B437BA3DC043C649CC
+  Roamable Obf Key       4FD255D85BDE61E467EA6DF073F679FC
+  ODD Key                7F0285088B0E9114971A9D20A326A92C
+  RSA Pub Exponent       0x10001
+  RSA Pub Modulus        D659DC5FE265E86BEE71F4770184078A...
+  Manufacture Date       B235B83BBE41C447
+exit=0
+== keyvault_unknown
+  Console Serial         123456789012
+  Motherboard Serial     BF42C548CB4ED154
+  Console ID             58DB5EE164
+  Console Type           Unknown (0x00000077)
+  Game Region            NTSC-U
+  Manufacturing Mode     1
+  ODD Features           0x00A5
+  ODD Auth Type          0x0102
+  Console Obf Key        EF72F578FB7E0184078A0D901396199C
+  Key Obf Key            1FA225A82BAE31B437BA3DC043C649CC
+  Roamable Obf Key       4FD255D85BDE61E467EA6DF073F679FC
+  ODD Key                7F0285088B0E9114971A9D20A326A92C
+  RSA Pub Exponent       0x10001
+  RSA Pub Modulus        D659DC5FE265E86BEE71F4770184078A...
+  Manufacture Date       B235B83BBE41C447
+exit=0
+== keyvault_test_retail
+  Console Serial         123456789012
+  Motherboard Serial     BF42C548CB4ED154
+  Console ID             58DB5EE164
+  Console Type           Retail (XDK recovery)
+  Game Region            NTSC-U/PAL/NTSC-J
+  Manufacturing Mode     1
+  ODD Features           0x00A5
+  ODD Auth Type          0x0102
+  Console Obf Key        EF72F578FB7E0184078A0D901396199C
+  Key Obf Key            1FA225A82BAE31B437BA3DC043C649CC
+  Roamable Obf Key       4FD255D85BDE61E467EA6DF073F679FC
+  ODD Key                7F0285088B0E9114971A9D20A326A92C
+  RSA Pub Exponent       0x10001
+  RSA Pub Modulus        D659DC5FE265E86BEE71F4770184078A...
+  Manufacture Date       B235B83BBE41C447
+exit=0
+== flashplan_plan
+console model     : Corona 4G
+motherboard       : corona
+console class      : FreeBoot
+hack               : RGH 3
+xeBuild image type : glitch3
+secure-boot block  : KSB
+
+build the image with xeBuild/J-Runner (image type 'glitch3', KSB override).
+exit=0
+== flashplan_plan_jasper
+console model     : Jasper 256MB
+motherboard       : jasper
+console class      : FreeBoot
+hack               : RGH 1.2
+xeBuild image type : glitch2
+secure-boot block  : PSB
+
+build the image with xeBuild/J-Runner (image type 'glitch2', PSB override).
+exit=0
+== flashplan_plan_retail
+console model     : Falcon
+motherboard       : falcon
+console class      : Retail
+hack               : None
+xeBuild image type : retail
+secure-boot block  : XSB
+
+build the image with xeBuild/J-Runner (image type 'retail', XSB override).
+exit=0
+== flashplan_plan_devkit
+console model     : Trinity
+motherboard       : trinity
+console class      : Devkit
+hack               : DevRGL
+xeBuild image type : devrgl
+secure-boot block  : PSB
+
+build the image with xeBuild/J-Runner (image type 'devrgl', PSB override).
+exit=0
+== flashplan_plan_nandmu
+console model     : Corona
+motherboard       : corona
+console class      : FreeBoot
+hack               : S-RGH
+xeBuild image type : glitch2
+secure-boot block  : KSB
+
+build the image with xeBuild/J-Runner (image type 'glitch2', KSB override).
+exit=0
+== flashplan_plan_unknown
+console model     : Mystery Box
+motherboard       : unknown
+console class      : JTAG
+hack               : Argon Data
+xeBuild image type : jtag
+secure-boot block  : XSB
+
+build the image with xeBuild/J-Runner (image type 'jtag', XSB override).
+exit=0
+== flashplan_image_type
+glitch
+exit=0
+== flashplan_image_type_devgl
+devgl
+exit=0
+== flashplan_secure_boot
+KSB
+exit=0
+== flashplan_secure_boot_trinity
+PSB
+exit=0
+== flashplan_secure_boot_xenon
+XSB
+exit=0
+== flashplan_cpld
+IDCODE 0x06E5E093 -> XC2C64A (CoolRunner-II)
+exit=0
+== flashplan_cpld_other
+IDCODE 0x12345678 -> Unknown JTAG device
+exit=0
+== flashplan_motherboards
+  Xenon  Zephyr  Falcon  Opus  Jasper  Trinity  Corona  Winchester
+exit=0
+== flashplan_hacks
+  glitch   RGH 1
+  glitch2  RGH 1.2, RGH 2, S-RGH, RGH2
+  glitch3  RGH 3, RGH 1.3, EXT_CLK.3, RGH3
+  jtag     Argon Data, AUD_CLAMP, R-JTAG, JTAG
+  devgl    DevGL
+  devrgl   DevRGL
+  retail   Retail
+exit=0
+== smc_decrypt
+decrypted 6144 bytes -> <w>/dec.bin
+exit=0
+file dec.bin 6144 c83af7393309d10c171c8f7e4aa7d63726eea605
+== smc_encrypt
+encrypted 6144 bytes -> <w>/enc.bin
+exit=0
+file enc.bin 6144 3ae8e00718f7184e824dbf8d2757ac8ad2e1b2b4
+== smc_info
+size        : 6144 bytes
+checksum(dec): 0x000DD044
+version     : 2.3.17.4  (motherboard: Jasper)
+exit=0
+== smc_info_no_version
+size        : 1280 bytes
+checksum(dec): 0x0002767C
+version     : (not located)
+exit=0
+== smc_extract
+SMC @0x2000 len 0x1800 -> <w>/smc.bin
+exit=0
+file smc.bin 6144 3ae8e00718f7184e824dbf8d2757ac8ad2e1b2b4
+== smc_config_nand
+SMC config (672 bytes)  checksum=0x4DD053D6
+  fan override  cpu=101 gpu=232
+  temp targets  cpu=125 gpu=0 ram=131
+exit=0
+== smc_config_raw
+SMC config (672 bytes)  checksum=0xFF820588
+  fan override  cpu=23 gpu=154
+  temp targets  cpu=47 gpu=178 ram=53
+exit=0
+== smc_config_short
+SMC config (10 bytes)  checksum=0x10931699
+  fan override  cpu=40 gpu=171
+  temp targets  cpu=None gpu=None ram=None
+exit=0
+== nand_info_small
+  path                 <w>/dump.bin
+  size                 512
+  type                 Unknown (512 bytes)
+  header               {'magic': '21A4', 'build': 10154, 'qfe': 11696, 'flags': 13238, 'entry_point': 968638402, 'size': 1170754510}
+exit=0
+== nand_info_tiny
+  path                 <w>/dump.bin
+  size                 64
+  type                 Unknown (64 bytes)
+  header               {}
+exit=0
+== nand_extract_hv
+extracted HV (262144 bytes) -> <w>/hv.bin
+exit=0
+file hv.bin 262144 de1620f14dacc32effa3fdbda1fdeda08c24f8bd
+== nand_hv_alias
+extracted HV (262144 bytes) -> <w>/hv.bin
+exit=0
+file hv.bin 262144 27ab5cffbeb855fd87fd57269f2f5a67dad82089
+== hypervisor_info
+  size                 262144
+  build                27630
+  qfe                  29172
+  white_key            55555555555555555555555555555555
+  aes_key              55555555555555555555555555555555
+  hash_key             55555555555555555555555555555555
+  keys_are_55          True
+  security_hash_100f0  35B83BBE41C447CA4DD053D659DC5FE2
+  hash_table_entries   [(92801934, 294918042), (497034150, 699150258), (901266366, 1103382474), (1305498582, 1507614690), (1709730798, 1911846906), (2097185542, 2299301650)]
+exit=0
+== hypervisor_clean
+cleaned HV (262144 bytes) -> <w>/clean.bin
+exit=0
+file clean.bin 262144 36ae5ff90cf15753aab38d525bb11bd3e4d02407
+== hypervisor_clean_short_base
+cleaned HV (262144 bytes) -> <w>/clean.bin
+exit=0
+file clean.bin 262144 902c482fd41ad94128f3b189388a7eb23148e709
+== xval_clean
+Secdata is Clean
+exit=0
+== xval_invalid
+Secdata is invalid
+exit=0
+== xval_some_flags
+AuthEx Challenge Failure (Deprecated)
+Invalid DVD Geometry
+CRL Certificate Revoked
+Unauthorized Install
+exit=0
+== xval_all_known_flags
+AuthEx Challenge Failure (Deprecated)
+AuthEx Table missing (Deprecated)
+AuthEx Reserved Flag
+Invalid DVD Geometry
+Invalid DVD DMI
+DVD Keyvault Pair Mismatch (Deprecated)
+Invalid CRL Data (Deprecated)
+CRL Certificate Revoked
+Unauthorized Install
+Keyvault Policy Violation
+Console Banned (Deprecated)
+ODD Violation
+Content Intergrity Verification Hash Failure
+AuthEx Table missing
+Invalid CRL Data
+Enforce ODD Throughput Low
+Enforce ODD Throughput High
+exit=0
+== xval_unknown_bits
+Enforce ODD Throughput Low
+Unknown Violation(s)
+exit=0
+== xval_high_word_only
+exit=0
+== xval_both_words
+Secdata decryption error
+exit=0
+== xval_dashes
+AuthEx Challenge Failure (Deprecated)
+CRL Certificate Revoked
+exit=0
+== xval_other_serial
+Unauthorized Install
+Content Intergrity Verification Hash Failure
+exit=0
+== patch_checker_default
+Patch Conflict!
+Patch A: 0x00001000 - 0x00001010
+Patch B: 0x00001008 - 0x00001018
+Patch Conflict!
+Patch A: 0x00001008 - 0x00001018
+Patch B: 0x00001000 - 0x00001010
+Patch Conflict!
+Patch A: 0x00001000 - 0x00001010
+Patch B: 0x00001008 - 0x00001018
+Patch Conflict!
+Patch A: 0x00001008 - 0x00001018
+Patch B: 0x00001000 - 0x00001010
+exit=0
+== exp_signer_plain
+Done!
+exit=0
+file out.bin 480 df12369559ef4664d0d232285e24b25c8e058d29
+== exp_signer_xbonline
+Done!
+exit=0
+file out.bin 4464 b04478be76d561ec3d9abb2824f9302e8748ac59
+== exp_signer_in_place
+Done!
+exit=0
+file payload.bin 416 a0c0209791128ea8dcc354d159fbdb2713e0667d
+== format_key
+#ifndef BYTE
+typedef unsigned char BYTE;
+#endif
+
+#ifndef __ExpPubKey__
+#define __ExpPubKey__
+BYTE ExpPubKey[] = {
+	0x00, 0x00, 0x00, 0x20, 0x00, 0x01, 0x00, 0x01, 0x0C, 0x83, 0xDD, 0x93, 0x9E, 0xF4, 0x05, 0xBA,
+	0x3D, 0xB8, 0xBF, 0xD7, 0x22, 0x5F, 0x99, 0xCD, 0x11, 0x9A, 0x45, 0x22, 0xD8, 0x34, 0xAA, 0xB8,
+	0xE4, 0xC9, 0xF2, 0x68, 0x37, 0x40, 0x04, 0x63, 0xF3, 0x80, 0xE5, 0xA6, 0xC5, 0x71, 0x73, 0x4B,
+	0xB9, 0x3F, 0x58, 0x20, 0x94, 0xA8, 0x09, 0x4A, 0x91, 0x45, 0xAA, 0xF1, 0x60, 0x94, 0xC1, 0x21,
+	0xE7, 0xA0, 0xF0, 0x94, 0xE4, 0xDA, 0x02, 0x53, 0xDB, 0xA6, 0x07, 0x0C, 0xD3, 0x8C, 0xD3, 0x28,
+	0x87, 0x03, 0x80, 0xE0, 0x02, 0xF7, 0xC9, 0xC7, 0x62, 0x4E, 0x41, 0x5E, 0x0A, 0xA5, 0x31, 0xCC,
+	0x9F, 0xB4, 0x90, 0xA5, 0xB9, 0x6A, 0xF7, 0x4A, 0x93, 0x85, 0x47, 0x3E, 0xAF, 0x2D, 0x10, 0x35,
+	0x8A, 0x32, 0x5F, 0x4D, 0x1F, 0x49, 0xCF, 0xCE, 0x1F, 0x5E, 0xDB, 0x8F, 0xC1, 0x19, 0x04, 0xEF,
+	0x54, 0xB4, 0x7C, 0x9B, 0x90, 0x2F, 0xC1, 0x04, 0x54, 0x73, 0x89, 0xD5, 0x54, 0xD4, 0xF0, 0x0F,
+	0x49, 0x52, 0x0C, 0x40, 0xA7, 0xAD, 0x58, 0xCB, 0x2B, 0x17, 0x03, 0x72, 0x06, 0x47, 0x91, 0xC7,
+	0x11, 0x9C, 0xEE, 0x9B, 0x80, 0x05, 0x3E, 0xAC, 0xC8, 0x18, 0x25, 0xBB, 0xB8, 0xD2, 0x75, 0x19,
+	0x85, 0x4B, 0x7D, 0xED, 0x6C, 0xCE, 0xA9, 0x9F, 0xC6, 0x67, 0xE0, 0xDE, 0x65, 0x66, 0x04, 0x8C,
+	0xB6, 0x0E, 0x06, 0xF2, 0x22, 0x68, 0x60, 0x25, 0x0A, 0xE5, 0x86, 0x9F, 0xCF, 0x8D, 0x5E, 0x6D,
+	0x33, 0x85, 0xAD, 0x6E, 0xF7, 0xDB, 0x6F, 0xAB, 0x59, 0xA4, 0x80, 0xAB, 0x5B, 0x2C, 0x59, 0x46,
+	0xA3, 0xA7, 0x39, 0x20, 0x31, 0x9C, 0xD3, 0x04, 0x9C, 0xC9, 0xE6, 0x9C, 0x0B, 0x28, 0x56, 0x2D,
+	0x0B, 0x6F, 0xE4, 0xF0, 0x60, 0xF8, 0x76, 0xF4, 0x93, 0x43, 0xD8, 0xD4, 0x2E, 0x36, 0xB8, 0x48,
+	0x4E, 0x47, 0x02, 0x25, 0x47, 0x47, 0xAA, 0xFC, 0xD7, 0x8D, 0x87, 0xE7, 0x05, 0xE4, 0xB8, 0x46
+};
+#endif
+
+exit=0
+file Output/Zero/ExpPubKey.h 1772 ba649d83304f1039503ba1bc686abd4a23f9a70c
+== xell_unpack
+exit=0
+file XeLL/xell-1f-stage-1.bin 16384 44dd098624ea9bac63ff56d3affe3b2416903947
+file XeLL/xell-1f-stage-2-compressed.elf 245726 96e2890217e425d8a5c3de03303ee8d19255ac7d
+file XeLL/xell-1f-stage-2-decompressed.elf 3000 f188e86ae11f0c2673fb8cee366344164bb71b2d
+file XeLL/xell-2f-stage-1.bin 16384 3a356f3a565ab031899c9803bea4185621e6d6e5
+file XeLL/xell-2f-stage-2-compressed.elf 245726 029f6016f523e7490410f0e4af9010345b759981
+file XeLL/xell-2f-stage-2-decompressed.elf 70000 953c24d9131f21f3848ca752d624daec99aab479
+file XeLL/xell-gggggg-stage-1.bin 16384 920a0f5d3c1159d8c42bed36f0f36514534ed9a8
+file XeLL/xell-gggggg-stage-2-compressed.elf 245726 d18acf4284b72ebc73bce0afcb71cc1c6086b28e
+file XeLL/xell-gggggg-stage-2-decompressed.elf 10 4a36f392a57f645df0eab316f3303ef31b76dbcb
+== xdk_extract
+Start of data: 0x0500
+Extracting "xdk_0.cab"...
+Extracting "xdk_1.cab"...
+Extracting "xdk_2.cab"...
+exit=1
+file cabs/xdk_0.cab 300 1fc2a4420bd188b1ec8874cdbed4aeebaee91734
+file cabs/xdk_1.cab 5000 a57d25e12c0cf158db77804e7445cd401f279c7d
+file cabs/xdk_2.cab 64 ae8b03f519a7f297363179c3cfd33212adc1cc53
+== xdk_extract_no_cabs
+Start of data: 0x0500
+exit=1

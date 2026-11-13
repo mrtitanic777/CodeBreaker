@@ -82,7 +82,7 @@ def display_results(xval: (bytes, bytearray)) -> None:
 		if xval_l & FLAG_SSB_ODD_VIOLATION:
 			print("ODD Violation")
 		if xval_l & FLAG_SSB_CIV_HASH_FAILURE:  # AP25 related
-			print("Content Intergrity Verification Hash Failure")
+			print("Content Integrity Verification Hash Failure")
 		if xval_l & FLAG_SSB_AUTH_EX_NO_TABLE:	# AP25 related
 			print("AuthEx Table missing")
 		if xval_l & FLAG_SSB_CRL_DATA_INVALID:
