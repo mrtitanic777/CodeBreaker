@@ -110,6 +110,9 @@ def body(answer):
     if r is None:
         return {"protocol_error": answer.get("error")}
     texts = [c.get("text", "") for c in r.get("content", []) if c.get("type") == "text"]
+    images = [{"mimeType": c.get("mimeType"), "data": c.get("data")} for c in r.get("content", []) if c.get("type") == "image"]
+    if images:   # a picture: its type and bytes
+        return {"isError": bool(r.get("isError")), "value": {"images": images, "text": "\n".join(texts)}}
     text = "\n".join(texts)
     try:
         value = json.loads(text)
