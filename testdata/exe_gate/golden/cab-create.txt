@@ -2,5 +2,5 @@ exit: 0
 --- stdout
 wrote <work>/out/made.cab: 1 files, 2829 bytes
 --- files
-made.cab 2829 (size only)
+made.cab  (content not compared)
 --- stderr (not compared)

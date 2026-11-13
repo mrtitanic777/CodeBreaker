@@ -22,7 +22,7 @@
 //     @needs=corpus|games  skip when the corpus / the Xbox 360 games folder (CB_GAMES, C:/Nexia360/Games) is absent
 //              @timeout=SECONDS   (default 120)
 //     @stdin=FILE        feed this file (a {repo} path) to stdin  @mask=REGEX       replace matches by <~> before comparing
-//     @sizeonly=.obj,.map  output files with these extensions are compared by name and size (a build time is inside them)
+//     @sizeonly=.obj,.map  output files with these extensions are compared by name only (a build time and the source path are inside them)
 //     @sort              compare stdout as sorted lines     @head=N   compare only its first N lines
 //     @stderr            compare stderr too (otherwise it is kept in the golden for reading, not compared)
 //     @cwd=work          run in {work} (default: the repo)
@@ -295,7 +295,7 @@ Outcome run_case(const Env& env, const Vars& vars, const Case& c, const stdfs::p
         }
         const std::string ext = text::lower(fs::to_text(f.extension()));
         const bool by_size = std::find(c.size_only.begin(), c.size_only.end(), ext) != c.size_only.end();
-        s += rel + " " + std::to_string(data.size()) + " " + (by_size ? std::string("(size only)") : crypto::to_hex(crypto::sha256(data))) + "\n";
+        s += rel + " " + (by_size ? std::string() : std::to_string(data.size())) + " " + (by_size ? std::string("(content not compared)") : crypto::to_hex(crypto::sha256(data))) + "\n";
     }
     o.compared = s;
     if (c.compare_stderr) {
@@ -447,6 +447,10 @@ int main(int argc, char** argv) {
                     spec.argv = {fs::to_text(*unit), "--shard", std::to_string(t) + "/" + std::to_string(nunit)};
                     spec.cwd = env.repo;
                     spec.env["CB_JOBS"] = "2";
+                    const stdfs::path shard_tmp = env.scratch / ("unit-" + std::to_string(t));   // shards side by side must not share a temp folder
+                    fs::make_dirs(shard_tmp);
+                    spec.env["TEMP"] = fs::to_text(shard_tmp);
+                    spec.env["TMP"] = fs::to_text(shard_tmp);
                     spec.timeout = std::chrono::minutes(30);
                     const process::ProcessResult r = process::run(spec);
                     ur.seconds = std::chrono::duration<double>(r.elapsed).count();

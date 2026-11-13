@@ -14,5 +14,5 @@ lz32.dll: linked, 6144 bytes (the original is 5632: 109%)
 lz32.dll: decompiling
 lz32.dll: compiling 39 functions, data and resources
 --- files
-lz32.dll 6144 (size only)
+lz32.dll  (content not compared)
 --- stderr (not compared)

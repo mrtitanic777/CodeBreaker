@@ -6,11 +6,11 @@ splitter.vxd: 499 instructions, 0 (0%) written as bytes; 97 bytes of data; 1 rou
 --- files
 module.l2.json 20687 e3a292baad69dd03fd32ce265e3b9767a81c38cc894babb0d436894cc771c22e
 probe.asm 9864 a1cf506a80f5401f12798dc328ada442d877777df412fcb67eb60c6b05270dc4
-probe.obj 2212 (size only)
+probe.obj  (content not compared)
 splitter.asm 17492 49959274f4b51f24e83e661a86be487cbab2bba1f4c1cd427b8526caeea1416d
 splitter.def 176 232339629f7b001c4288ab96ae88eef282c002146ee694e2c9c08fb70f09f3a7
 splitter.lnk 237 807da2d7581ebbb6cda05192906b6d874c47e54954271a8d924d3ca5efbcde40
-splitter.map 1647 (size only)
-splitter.obj 2640 (size only)
+splitter.map  (content not compared)
+splitter.obj  (content not compared)
 splitter.vxd 2192 f40ae79b48584da32d4e910bd17e482b24cc52f03d7272651f47c0b9a9d55862
 --- stderr (not compared)
