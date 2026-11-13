@@ -1,43 +1,12 @@
-// codebreaker/source/dos_writer.hpp -- typed C++ of codebreaker.source.dos_writer
+// codebreaker/source/dos_writer.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/source/dos_writer.{hpp,cpp} (the
+// program and its file) over dos_image and dos_program; this header keeps the old py:: surface (reconstruct, rebuild, main, MAIN_DOC and the
+// result records) for the dynamic exe. Conversion and forwarding only, except
+//   COMPAT(py): the two other writers a combined file needs are the old ports': the VxD of a driver+vxd file (source/driver_writer) and the
+//       Windows module of a DOS+Windows file (build/module). They are handed to the new module as functions (Options::write_vxd,
+//       Options::build_windows); remove each when its module is refactored (the new module then takes it itself).
 //
-// dos_writer.py -- a real-mode program as assembly source that builds back into it.
-//
-//     python -m codebreaker dos-source <program> [--out DIR]
-//
-//     Result r = dos_writer::reconstruct(path, outdir);
-//     r.source, r.image, r.same, r.notes, r.instructions, r.raw, r.rounds
-//
-// The real-mode base of the system was written in assembly, so assembly is what its source is.
-// The file has one segment for every segment the program itself names (each word its relocation
-// table marks holds one, and so do the entry point and the stack), and every such word is
-// written as the segment it names (`dw seg S0605`), so the program can be assembled and linked
-// at any address. Code is what analyze/dos_functions.py found by following the program; the rest
-// is written as data, text as text. Interrupt calls carry the name of the service.
-//
-// What is NOT recovered, because a real-mode image does not state it: which data an offset
-// inside a segment refers to. `mov ax, ds:[1234h]` stays a number, so data cannot be moved within
-// its segment without changing those by hand.
-//
-// An instruction is written as its mnemonic only when the assembler turns that text back into the
-// original's bytes (source/assembly.py checks each one); the file is then assembled and linked
-// and the result compared with the original: every byte of the load module, the relocation
-// table, the entry point and the stack. Kinds of file: MZ programs (unpacked first when the file
-// stores them packed -- the rebuilt program is the unpacked one), .COM files, and device drivers
-// that are plain images.
-//
-// Typing notes (how the Python's dynamic parts are typed here):
-//   * The dict every reconstruct path answers is the record `Result`. A key the Python sets only on some paths
-//     is a std::optional (file, file_same, facts, equivalent, windows) or an empty list (remarks, notes); the
-//     counts the Python reads back with .get(key, 0) start at 0. "source" is one path, or (for IO.SYS and the
-//     driver+vxd file) a list of them: a std::variant. "parts" keeps what the Python reads of each part (`Part`),
-//     which is a dos_writer result for a real-mode program and a driver_writer one for the VxD.
-//   * An instruction (`Ins`) is the Python's 5-tuple (bytes, mnemonic, operands, target, relocated word at).
-//   * `facts` (what laying the file out takes from the original, kept in <stem>.build.json) is the record `Facts`;
-//     its "order" is the relocation offsets EXEPACK stored (a list of ints) or the table's (offset, segment)
-//     pairs of any other file: a std::variant. The build.json is written and read by hand, as json.dump(indent=1)
-//     writes it (py::json_parse reads it back).
-//   * The capstone instruction (`pe_writer::Insn`) carries the groups and the first operand dos_writer reads.
-//   * `log` (None or a callable) is a std::function, null for None.
+// Not carried over: the internals the module's own port exposed (Writer, Ins, _program, _kernel, _as_file, _facts, _compose, ...). What
+// Python reads of a result is the record `Result` below, as before.
 #pragma once
 
 #include <cstdint>
@@ -49,87 +18,23 @@
 #include <variant>
 #include <vector>
 
+#include "cb/build/watcom.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/source/dos_writer.hpp"
 #include "codebreaker/analyze/dos_functions.hpp"
+#include "codebreaker/base/capstone_dll.hpp"
+#include "codebreaker/base/corpus.hpp"
 #include "codebreaker/build/definitions.hpp"
-#include "codebreaker/build/exepack.hpp"
-#include "codebreaker/formats/dos.hpp"
-#include "codebreaker/source/assembly.hpp"
-#include "codebreaker/translate/l2.hpp"
+#include "codebreaker/build/module.hpp"
+#include "codebreaker/source/driver_writer.hpp"
 #include "py.hpp"
+#include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::source::dos_writer {
 
-namespace dos = codebreaker::formats::dos;
 namespace dos_functions = codebreaker::analyze::dos_functions;
-
-extern const int64_t _MARK;           // stands in for a relocated segment word while decoding
-extern const int64_t _MAX_ROUNDS;
-
-// One instruction as the writer keeps it: (bytes, mnemonic, operands, target, relocated word at).
-struct Ins {
-    py::bytes data;
-    py::str mnemonic;
-    py::str ops;
-    std::optional<int64_t> target;
-    std::optional<int64_t> where;
-};
-
-class Writer {
-  public:
-    dos::Program p;
-    py::bytes img;
-    int64_t origin = 0;                       // a .COM file sits behind its program prefix
-    py::set<int64_t> rel;
-    bool flat = false;                        // no header of its own: the bytes as they load
-    std::optional<int64_t> stack_in;          // the stack's segment, when it is in the load module
-    int64_t top = 0;
-    py::list<int64_t> segments;
-    dos_functions::Analysis analysis;
-    py::dict<int64_t, py::str> names;
-    std::optional<int64_t> entry;
-    py::set<int64_t> labels;
-    py::dict<int64_t, Ins> ins;               // offset in the image -> the instruction
-    py::dict<int64_t, py::str> calls;         // offset of an `int` -> its name
-    py::set<int64_t> crossing;                // jumps across a place the program was divided at: written as bytes
-    translate::l2::Dict l2;
-
-    explicit Writer(const dos::Program& program);
-
-    // A stretch of the program no relocated word divides can be longer than a segment may be (COMMAND.COM's
-    // code is one such stretch of 75K): the original's segments were set up by the program itself, at run
-    // time. For the assembler it is divided where it can be -- at a paragraph no jump or call reaches across
-    // and no instruction lies over -- which changes no byte: everything inside refers to its own half by
-    // label or by number.
-    void _divide();
-    int64_t segment_of(int64_t at) const;
-    py::str label(int64_t at) const;
-    void _decode();
-
-    // text
-    // A relocated word's value (relative to where the program is loaded) as an expression.
-    py::str seg_name(int64_t value) const;
-    py::str _seg_at(int64_t at) const;
-    std::optional<py::str> mnemonic(int64_t at) const;
-    py::list<py::str> _raw(int64_t at) const;
-
-    struct Counts {
-        int64_t instructions = 0, raw = 0, data = 0;
-    };
-    // -> (the file's text, counts)
-    std::tuple<py::str, Counts> source(const std::optional<py::set<int64_t>>& good = std::nullopt);
-
-    // The image as the pieces the source is made of, for assembly.culprits: each instruction written as its
-    // mnemonic, each word that holds a segment (whatever it holds once built), and the runs of bytes between.
-    py::list<assembly::Piece<int64_t>> pieces(const py::set<int64_t>& good) const;
-    // {offset: (text, bytes outside the relocated word, mask)} of what can be probed.
-    py::dict<int64_t, assembly::Candidate> candidates() const;
-    py::list<py::str> link_lines(const py::str& obj) const;
-};
-
-// (bytes as loaded, relocation offsets, (cs, ip, ss, sp)) of a built file. `kind` is truthy for a header program:
-// read plainly, as stored.
-std::tuple<py::bytes, py::set<int64_t>, std::optional<std::tuple<int64_t, int64_t, int64_t, int64_t>>> _load_module(const py::str& path,
-                                                                                                                  bool kind);
 
 // What laying the file out takes from the original (kept in <stem>.build.json).
 struct Facts {
@@ -141,7 +46,7 @@ struct Facts {
     std::optional<int64_t> words;
     // EXEPACK: the relocation offsets as it stored them; any other: (offset, segment) pairs
     std::variant<py::list<int64_t>, py::list<std::tuple<int64_t, int64_t>>> order = py::list<std::tuple<int64_t, int64_t>>();
-    bool pklite_order = false;   // (PKLITE's facts name the keys in another order: its order comes before min_alloc)
+    bool pklite_order = false;
 };
 
 // What the Windows module of a DOS+Windows file came to.
@@ -154,7 +59,7 @@ struct Windows {
     int64_t ran = 0, ran_same = 0;
 };
 
-// What one part of a combined file (IO.SYS's programs, a driver and its VxD) came to: what the Python reads of its result.
+// What one part of a combined file came to.
 struct Part {
     py::str source;
     std::optional<py::str> image;
@@ -183,71 +88,187 @@ struct Result {
     std::optional<Windows> windows;
     std::optional<py::str> file;
     std::optional<bool> file_same;
-
-    // "%s" % r["source"]
-    py::str source_text() const;
 };
 
-// Write a program's source, build it, and make it come back as the original (see the top).
-Result reconstruct(const py::str& module_path, const py::str& outdir, const std::function<void(const py::str&)>& log = nullptr);
+using Log = std::function<void(const py::str&)>;
 
-// A DOS program and a Windows module in one file (REGEDIT.EXE, XCOPY32.EXE, UNINSTAL.EXE): the DOS program written and
-// built here (as a file laid out as the original's stub), the Windows module built whole by build/module.py (its own
-// reconstruction, folder windows/), and the module put behind the program as the original has it (build/stubjoin.py).
-Result _dos_and_windows(const py::str& module_path, const py::str& outdir, const std::function<void(const py::str&)>& log = nullptr);
+inline const py::str MAIN_DOC(cb::compat::to_py(cb::source::dos_writer::usage()));
 
-// A real-mode driver and a VxD in one file (DRVSPACE.BIN): the driver written and built here, the VxD by the driver
-// lane (source/driver_writer.py), and the file put together as the original is -- its MZ header (<stem>.hdr), the
-// driver, the VxD laid out as Microsoft's LINK lays one out (build/vxdfile.py; its description and exports from
-// <vxd>.def), its version resource (<vxd>.ver) and what the original carries behind that (<stem>.tail).
-Result _driver_and_vxd(const py::str& module_path, const py::str& outdir, const std::function<void(const py::str&)>& log = nullptr);
+namespace shim_ {
 
-py::str _fills_text(const build::exepack::Layout& layout);
-py::list<build::exepack::Fill> _read_fills(const py::str& path);
+namespace nw = cb::source::dos_writer;
 
-// IO.SYS: each of its programs written, built and compared as any other (one source file each); SYSINIT then packed as
-// LINK /EXEPACK stored it (build/exepack.py, the fills listed in sysinit.pack), and loader + kernel + packed SYSINIT
-// joined into the file.
-Result _kernel(const py::str& module_path, const py::str& outdir, const std::function<void(const py::str&)>& log = nullptr);
+inline py::str path_text(const std::filesystem::path& p) { return cb::compat::to_py(cb::fs::to_text(p)); }
 
-// A file kept beside the source: written from `make()` the first time, read after that (so an edited one is what is
-// built). -> its bytes
-py::bytes _beside(const py::str& path, const std::function<py::bytes()>& make);
+// The tools, as the old settings name them: OpenWatcom's tree, and the file what has been probed is kept in.
+inline nw::Options options(const Log& log, py::list<build::definitions::Import>* extra_imports) {
+    const py::str root = py::settings::get_str(py::str("openwatcom"));
+    nw::Options o = nw::options_for(cb::build::watcom::OpenWatcom::from_settings(cb::compat::from_py(root)),
+                                    cb::fs::from_text(cb::compat::from_py(py::settings::get_str(py::str("state")))) / "assembly_probes.json");
+    o.log = [log](const std::string& line) {
+        if (log) log(cb::compat::to_py(line));
+    };
+    // COMPAT(py): the VxD of a driver+vxd file, by the old driver writer
+    o.write_vxd = [log](const std::filesystem::path& program, const std::filesystem::path& outdir, const nw::Log&) {
+        static const bool named = (driver_writer::set_capstone_dll(base::capstone_dll::find()), true);
+        (void)named;
+        const driver_writer::Reconstruction v = driver_writer::reconstruct(path_text(program), path_text(outdir), 0, log);
+        nw::VxdPart part;
+        part.source = cb::fs::from_text(cb::compat::from_py(v.source));
+        if (v.image) part.image = cb::fs::from_text(cb::compat::from_py(*v.image));
+        part.linked = v.linked;
+        part.same = v.same.has_value() && *v.same != 0.0;
+        part.rounds = static_cast<std::size_t>(v.rounds);
+        part.instructions = static_cast<std::size_t>(v.instructions);
+        part.raw = static_cast<std::size_t>(v.raw);
+        part.data = static_cast<std::size_t>(v.data);
+        for (const py::str& n : v.notes) part.notes.push_back(cb::compat::from_py(n));
+        return part;
+    };
+    // COMPAT(py): the Windows module of a DOS+Windows file, by the old module builder
+    o.build_windows = [extra_imports](const std::filesystem::path& program, const std::filesystem::path& outdir) {
+        const build::module::Built b = build::module::build(path_text(program), path_text(outdir), true, [](const py::str&) {});
+        py::set<py::str> stand = py::set<py::str>::from(b.rejected.keys());
+        stand.update(b.absent);
+        nw::WindowsBuild w;
+        w.linked = b.linked();
+        w.functions = static_cast<std::size_t>(b.functions);
+        for (const py::str& s : py::sorted(stand)) w.stand_ins.push_back(cb::compat::from_py(s));
+        for (const py::str& s : b.undefined) w.undefined.push_back(cb::compat::from_py(s));
+        w.ran = static_cast<std::size_t>(py::len(b.ran));
+        for (const auto& r : b.ran) {
+            if (std::get<3>(r)) ++w.ran_same;
+        }
+        if (py::truthy(b.error)) w.error = cb::compat::from_py(b.error);
+        if (extra_imports != nullptr) *extra_imports = b.imports_extra;
+        return w;
+    };
+    return o;
+}
 
-// The built program as a file laid out as the original is (build/mzfile.py): its header's own data (<stem>.hdr), the load
-// module -- packed as LINK /EXEPACK stored it when the original is (build/exepack.py: the fills in <stem>.pack, the
-// unpacker from exepack.asm) -- and the bytes behind the load module (<stem>.ovl). result.file, result.file_same.
-void _as_file(const dos::Program& p, const py::str& outdir, const py::str& stem, const py::str& linked, Result& result,
-              const std::function<void(const py::str&)>& log = nullptr);
+inline py::list<py::str> texts(const std::vector<std::string>& v) {
+    py::list<py::str> out;
+    for (const std::string& s : v) out.append(cb::compat::to_py(s));
+    return out;
+}
 
-// What laying the file out takes from the original: written to the side files (<stem>.hdr, .ovl, .pack, the unpacker's own
-// folder) and returned for <stem>.build.json.
-Facts _facts(const dos::Program& p, const py::bytes& data, const py::str& outdir, const py::str& stem,
-             const std::function<void(const py::str&)>& log = nullptr);
+inline Facts facts(const nw::Facts& f) {
+    Facts out;
+    out.file = cb::compat::to_py(f.file);
+    if (f.packer) out.packer = cb::compat::to_py(*f.packer);
+    out.overlay = f.overlay;
+    if (f.min_alloc) out.min_alloc = *f.min_alloc;
+    out.full_last = f.full_last;
+    if (f.words) out.words = *f.words;
+    if (f.packer && *f.packer == "EXEPACK") {
+        py::list<int64_t> order;
+        for (const std::uint32_t o : f.offsets) order.append(o);
+        out.order = order;
+    } else {
+        py::list<std::tuple<int64_t, int64_t>> order;
+        for (const auto& [a, b] : f.pairs) order.append(std::make_tuple<int64_t, int64_t>(a, b));
+        out.order = order;
+    }
+    out.pklite_order = f.packer && *f.packer == "PKLITE";
+    return out;
+}
 
-// The file, from what was linked (exe) and the folder: header data, packing, overlay.
-py::bytes _compose(const py::str& outdir, const py::str& stem, const py::bytes& exe, const Facts& facts, Result& result);
+inline Result result(const nw::Result& r, const py::list<build::definitions::Import>& extra_imports) {
+    Result out;
+    if (r.parts.empty()) {
+        out.source = r.sources.empty() ? py::str("") : path_text(r.sources.front());
+    } else {
+        py::list<py::str> sources;
+        for (const std::filesystem::path& s : r.sources) sources.append(path_text(s));
+        out.source = sources;
+    }
+    if (r.image) out.image = path_text(*r.image);
+    out.linked = r.linked;
+    out.same = r.same;
+    out.rounds = static_cast<int64_t>(r.rounds);
+    out.notes = texts(r.notes);
+    out.remarks = texts(r.remarks);
+    out.kind = cb::compat::to_py(r.kind);
+    out.instructions = static_cast<int64_t>(r.instructions);
+    out.raw = static_cast<int64_t>(r.raw);
+    out.data = static_cast<int64_t>(r.data);
+    namespace ns = ::cb::analyze::dos_functions;
+    for (const auto& [at, f] : r.functions) {
+        auto old = std::make_shared<dos_functions::Function>(static_cast<int64_t>(f.address), cb::compat::to_py(f.name), cb::compat::to_py(ns::name_of(f.distance)),
+                                                             cb::compat::to_py(ns::name_of(f.evidence)), static_cast<int64_t>(f.cs), f.sure);
+        old->removes = f.removes;
+        old->interrupt = f.interrupt;
+        old->size = f.size;
+        out.functions.set(static_cast<int64_t>(at), old);
+    }
+    for (const nw::Part& p : r.parts) {
+        Part part;
+        part.source = path_text(p.source);
+        if (p.image) part.image = path_text(*p.image);
+        part.linked = p.linked;
+        part.same = p.same;
+        part.rounds = static_cast<int64_t>(p.rounds);
+        part.instructions = static_cast<int64_t>(p.instructions);
+        part.raw = static_cast<int64_t>(p.raw);
+        part.data = static_cast<int64_t>(p.data);
+        part.notes = texts(p.notes);
+        out.parts.emplace_back(cb::compat::to_py(p.name), part);
+    }
+    if (r.facts) out.facts = facts(*r.facts);
+    if (r.equivalent || ((r.kind == "kernel" || r.kind == "driver+vxd") && !r.same)) out.equivalent = r.equivalent;
+    if (r.windows) {
+        Windows w;
+        w.linked = r.windows->linked;
+        w.functions = static_cast<int64_t>(r.windows->functions);
+        w.stand_ins = texts(r.windows->stand_ins);
+        w.undefined = texts(r.windows->undefined);
+        w.imports_extra = extra_imports;
+        w.ran = static_cast<int64_t>(r.windows->ran);
+        w.ran_same = static_cast<int64_t>(r.windows->ran_same);
+        out.windows = w;
+    }
+    if (r.file) out.file = path_text(*r.file);
+    out.file_same = r.file_same;
+    return out;
+}
 
-void _as_pklite_file(const dos::Program& p, const py::bytes& data, const dos::Mz& oh, const py::bytes& exe, const dos::Mz& h,
-                     const py::bytes& module, const py::str& outdir, const py::str& stem, const py::str& out, Result& result,
-                     const std::function<void(const py::str&)>& log = nullptr);
-py::bytes _compose_pklite(const py::str& outdir, const py::str& stem, const py::bytes& exe, const Facts& facts, Result& result);
+}  // namespace shim_
 
-// One real-mode program: its source written, assembled, linked and compared, round after round, until it builds back as
-// the original (see the top).
-Result _program(const dos::Program& p, const py::str& outdir, const py::str& stem, const std::function<void(const py::str&)>& log = nullptr);
+inline Result reconstruct(const py::str& module_path, const py::str& outdir, const Log& log = nullptr) {
+    return cb::compat::guard([&] {
+        py::list<build::definitions::Import> extra_imports;
+        const cb::source::dos_writer::Options o = shim_::options(log, &extra_imports);
+        return shim_::result(cb::source::dos_writer::reconstruct(cb::fs::from_text(cb::compat::from_py(module_path)),
+                                                                 cb::fs::from_text(cb::compat::from_py(outdir)), o),
+                             extra_imports);
+    });
+}
 
-// IO.SYS from its folder: its four programs built, SYSINIT packed, the three joined.
-py::str _rebuild_kernel(const py::str& srcdir, const std::function<void(const py::str&)>& log = nullptr);
-
-// Make the program from its folder alone (what dos-source wrote: <stem>.asm, .lnk, .build.json and the side files):
-// assemble, link, set the header's entry and stack where the source cannot say them, lay the file out. -> the path of
-// the file made. `desc`: the name of the .build.json to read (default: the first the folder has).
-py::str rebuild(const py::str& srcdir, const std::function<void(const py::str&)>& log = nullptr,
-                const std::optional<py::str>& desc = std::nullopt);
+// Make the program from its folder alone (what dos-source wrote). -> the path of the file made.
+inline py::str rebuild(const py::str& srcdir, const Log& log = nullptr, const std::optional<py::str>& desc = std::nullopt) {
+    return cb::compat::guard([&] {
+        const cb::source::dos_writer::Options o = shim_::options(log, nullptr);
+        std::optional<std::string> description;
+        if (desc) description = cb::compat::from_py(*desc);
+        return shim_::path_text(cb::source::dos_writer::rebuild(cb::fs::from_text(cb::compat::from_py(srcdir)), o, description));
+    });
+}
 
 // python -m codebreaker dos-source <program> [--out DIR]
-extern const py::str MAIN_DOC;
-int64_t main(const py::list<py::str>& argv);
+inline int64_t main(const py::list<py::str>& argv) {
+    return cb::compat::guard([&] {
+        std::vector<std::string> args;
+        for (const py::str& a : argv) args.push_back(cb::compat::from_py(a));
+        cb::source::dos_writer::Environment env;
+        env.options = shim_::options(nullptr, nullptr);
+        env.state = cb::fs::from_text(cb::compat::from_py(py::settings::get_str(py::str("state"))));
+        env.retail = [](std::string_view name) -> std::optional<std::filesystem::path> {
+            const std::optional<py::str> found = base::corpus::retail(cb::compat::to_py(name));
+            if (!found || found->empty()) return std::nullopt;
+            return cb::fs::from_text(cb::compat::from_py(*found));
+        };
+        return static_cast<int64_t>(cb::source::dos_writer::command(args, env, [](std::string_view line) { py::print(cb::compat::to_py(line)); }));
+    });
+}
 
 }  // namespace codebreaker::source::dos_writer

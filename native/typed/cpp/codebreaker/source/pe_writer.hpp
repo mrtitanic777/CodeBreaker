@@ -1,10 +1,7 @@
 // codebreaker/source/pe_writer.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/source/pe_writer.{hpp,cpp}; this
-// header keeps the old py:: surface (reconstruct, main, DOC) for the dynamic exe. Conversion and forwarding only, except
-//   COMPAT(py): `Insn`, `decode`, `is_branch`, `branch_target` -- the capstone instruction codebreaker/source/dos_writer.cpp reads, kept in the
-//       trimmed old pe_writer.cpp; and `_stub`, the DOS stub finder that reaches the old dos_writer. Remove all of it when source/dos_writer is
-//       refactored (the new module then finds the stub itself).
+// header keeps the old py:: surface (reconstruct, main, DOC) for the dynamic exe. Conversion and forwarding only: the stub finder is the new DOS writer's.
 //
-// Not carried over: the internals the module's own port exposed (Writer, Sec, _STOP, _SEGS, _ARITH, _RR, _PRELUDE, _differing).
+// Not carried over: the internals the module's own port exposed (Writer, Sec, Insn, decode, _STOP, _SEGS, _ARITH, _RR, _PRELUDE, _differing, _stub).
 #pragma once
 
 #include <cstdint>
@@ -15,6 +12,7 @@
 #include "cb/compat/py_bridge.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/source/pe_writer.hpp"
+#include "codebreaker/source/dos_writer.hpp"
 #include "codebreaker/source/image_writer.hpp"
 #include "py.hpp"
 #include "py_settings.hpp"
@@ -22,30 +20,6 @@
 namespace codebreaker::source::pe_writer {
 
 inline const py::str DOC(cb::compat::to_py(cb::source::pe_writer::usage()));
-
-// One instruction as capstone decodes it (with detail): the fields the old dos_writer port reads.
-struct Insn {
-    int64_t address = 0;
-    int64_t size = 0;
-    py::str mnemonic;
-    py::str op_str;
-    py::bytes bytes;
-    int64_t imm_size = 0, imm_offset = 0, disp_size = 0, disp_offset = 0;
-    py::list<int64_t> prefix;                // the four prefix bytes
-    py::list<int64_t> groups;                // capstone's instruction groups (X86_GRP_*)
-    int64_t op_count = 0;
-    int64_t op0_type = 0;                    // operands[0].type and .imm, when there is one
-    int64_t op0_imm = 0;
-};
-
-// next(md.disasm(code, address, 1), None): the first instruction of `code` as the x86 decoder of `bits` reads it.
-std::optional<Insn> decode(int64_t bits, const py::bytes& code, int64_t address);
-bool is_branch(const py::str& mnemonic);
-std::optional<int64_t> branch_target(const Insn& i);
-
-// The DOS program in front of the headers, from its own source (dos-source) when that comes back as the original's bytes; None (its bytes
-// kept) when it does not. `d` is the file, `e_lfanew` where its new header is.
-std::optional<py::str> _stub(const py::bytes& d, int64_t e_lfanew, const py::str& outdir, const std::function<void(const py::str&)>& say);
 
 struct Result {
     py::str source;
@@ -71,16 +45,8 @@ struct Result {
 using StubArg = std::variant<std::monostate, bool, py::str>;   // None, False, or the stub's source
 
 namespace shim_ {
-// The DOS stub's source, found by the old DOS writer.
-inline cb::source::FindStub find_stub() {
-    return [](cb::ByteView file, std::uint64_t new_header, const std::filesystem::path& out,
-              const std::function<void(std::string_view)>& say) -> std::optional<std::filesystem::path> {
-        const std::optional<py::str> found = _stub(cb::compat::to_py(file), static_cast<int64_t>(new_header), cb::compat::to_py(cb::fs::to_text(out)),
-                                                   [&](const py::str& line) { say(cb::compat::from_py(line)); });
-        if (!found || found->empty()) return std::nullopt;
-        return cb::fs::from_text(cb::compat::from_py(*found));
-    };
-}
+// The DOS stub's source, found by the new DOS writer (its tools as the old settings name them).
+inline cb::source::FindStub find_stub() { return cb::source::dos_writer::stub_finder(dos_writer::shim_::options(nullptr, nullptr)); }
 }  // namespace shim_
 
 inline Result reconstruct(const py::str& path, const py::str& outdir, const StubArg& stub = std::monostate(),

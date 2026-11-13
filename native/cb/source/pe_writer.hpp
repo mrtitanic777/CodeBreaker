@@ -39,6 +39,12 @@
 
 namespace cb::source::pe_writer {
 
+// The stub's types are the whole-file writers' common ones (source/stub.hpp).
+using ::cb::source::FindStub;
+using ::cb::source::KeepStub;
+using ::cb::source::SearchStub;
+using ::cb::source::Stub;
+
 // An address in the program. It is wider than the processor's 32 bits only so that the sum of the image base and a 32-bit field (an
 // import table's RVA) is never wrapped into another address.
 using Va = std::uint64_t;

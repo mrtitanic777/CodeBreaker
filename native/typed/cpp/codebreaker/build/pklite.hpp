@@ -195,7 +195,7 @@ inline std::tuple<py::bytes, Header> pack(const py::bytes& image, const py::list
     h.ss = p.header.ss;
     h.sp = p.header.sp;
     h.min_alloc = p.header.min_alloc;
-    for (const newp::Relocated& rel : p.header.relocs) h.relocs.append(std::make_tuple<int64_t, int64_t>(rel.segment, rel.offset));
+    for (const newp::Relocated& rel : p.header.relocs) h.relocs.append(std::make_tuple<int64_t, int64_t>(rel.offset, rel.segment));   // (the Python's (offset, segment))
     return {::cb::compat::to_py(::cb::ByteView(p.module)), h};
 }
 
