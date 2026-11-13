@@ -723,6 +723,8 @@ std::uint64_t Cache::clear() {
     return total;
 }
 
+std::string size_text(std::uint64_t bytes) { return format_size(bytes); }
+
 std::string describe(const std::vector<KindStats>& stats, std::uint64_t cap) {
     std::string out = std::format("{:<16} {:>10} {:>10}  {}\n", "kind", "size", "results", "generations (* = of now)");
     std::uint64_t total = 0;
@@ -737,7 +739,7 @@ std::string describe(const std::vector<KindStats>& stats, std::uint64_t cap) {
         }
         out += std::format("{:<16} {:>10} {:>10}  {}\n", s.kind, format_size(s.bytes), s.results, gens);
     }
-    out += std::format("{:<16} {:>10}   (cap {})\n", "all", format_size(total), format_size(cap));
+    out += std::format("{:<16} {:>10}   (cap {}: setting cache_max_gb)\n", "all", format_size(total), format_size(cap));
     return out;
 }
 

@@ -156,6 +156,8 @@ struct Dropped {
 
 // The text of `codebreaker cache --stats`: one row per kind and a total against the cap.
 std::string describe(const std::vector<KindStats>& stats, std::uint64_t cap);
+// A size as the listings write it: "12.3 MB", from a gigabyte "1.50 GB".
+std::string size_text(std::uint64_t bytes);
 
 // ---- the cache -----------------------------------------------------------------------------------------------
 
