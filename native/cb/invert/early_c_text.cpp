@@ -437,7 +437,7 @@ Lines dead_regs(Lines lines) {
       if (sr("(BYTE|HIBYTE|LONG|LO|HI)\\(" + reg + "\\)", nxt) || Rx("\\s*" + reg + "\\b").match(nxt)) continue;
       if (reg[0] == 't') {
         if (has(e, "LONG(") || has(e, "(long")) continue;
-        Rx wb("\\b" + reg + "\\b");
+        const Rx &wb = RX("\\b" + reg + "\\b");
         long long tot = 0;
         for (auto &x : lines) tot += (long long)wb.find_all(x).size();
         if (tot != 2) continue;
@@ -606,18 +606,21 @@ Lines fold_longs(const Lines &lines) {
   size_t i = 0;
   while (i < lines.size()) {
     string a = lines[i], b = i + 1 < lines.size() ? lines[i + 1] : "", c = i + 2 < lines.size() ? lines[i + 2] : "";
-    auto m1 = fm("(\\s*)(.+?) = LO\\((.*)\\);", a), m2 = fm("(\\s*)(.+?) = HI\\((.*)\\);", b);
+    // (a line is tried against a pattern only if it holds the pattern's fixed text: the lazy `.+?` would otherwise try every length)
+    const auto when = [](const string &line, const char *needle, auto &&match) { return line.find(needle) != string::npos ? match() : Hit(); };
+    auto m1 = when(a, " = LO(", [&] { return fm("(\\s*)(.+?) = LO\\((.*)\\);", a); });
+    auto m2 = when(b, " = HI(", [&] { return fm("(\\s*)(.+?) = HI\\((.*)\\);", b); });
     bool hasE = false;
     string E, ind, lo;
     size_t n = 0;
     if (m1 && m2 && group_of(m1, 1) == group_of(m2, 1) && group_of(m1, 3) == group_of(m2, 3) && adjacent(group_of(m1, 2), group_of(m2, 2))) {
       E = group_of(m1, 3), n = 2, ind = group_of(m1, 1), lo = group_of(m1, 2), hasE = true;
     } else {
-      auto m0 = fm("(\\s*)(t\\d+) = (.*LONG\\(.*);", a);
-      m1 = fm("(\\s*)(.+?) = LO\\((t\\d+)\\);", b);
-      m2 = fm("(\\s*)(.+?) = HI\\((t\\d+)\\);", c);
+      auto m0 = when(a, "LONG(", [&] { return fm("(\\s*)(t\\d+) = (.*LONG\\(.*);", a); });
+      m1 = when(b, " = LO(", [&] { return fm("(\\s*)(.+?) = LO\\((t\\d+)\\);", b); });
+      m2 = when(c, " = HI(", [&] { return fm("(\\s*)(.+?) = HI\\((t\\d+)\\);", c); });
       if (m0 && m1 && m2 && group_of(m1, 3) == group_of(m2, 3) && group_of(m2, 3) == group_of(m0, 2) && adjacent(group_of(m1, 2), group_of(m2, 2))) {
-        Rx wb("\\b" + group_of(m0, 2) + "\\b");
+        const Rx &wb = RX("\\b" + group_of(m0, 2) + "\\b");
         bool later = false;
         for (size_t q = i + 3; q < lines.size(); q++)
           if (wb.search(lines[q])) later = true;
@@ -824,7 +827,7 @@ Lines fold_goto_or(Lines lines) {
   auto par = [&](const string &c) { return top_or(c) ? "(" + c + ")" : c; };
   auto others = [&](const string &L, long long skip) {
     long long n = 0;
-    Rx rx("\\bgoto " + L + ";");
+    const Rx &rx = RX("\\bgoto " + L + ";");
     for (long long q = 0; q < (long long)lines.size(); q++)
       if (q != skip && rx.search(lines[q])) n++;
     return n;
@@ -946,7 +949,7 @@ Lines fold_shortcircuit(Lines lines) {
 
 Lines dead_store_recover(const Lines &stmts, const std::vector<bool> &rc) {
   auto is_used = [&](const string &V) {
-    Rx rx("\\b" + escape(V) + "\\b");
+    const Rx &rx = RX("\\b" + escape(V) + "\\b");
     for (auto &t : stmts)
       if (has(t, " = ") && rx.search(split_at_most(t, " = ", 1)[1])) return true;
     return false;

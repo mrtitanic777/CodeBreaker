@@ -642,7 +642,7 @@ public:
 
   // ------------------------------------------------------------------------------ liveness
   bool live(const string &reg, int i0) {
-    Rx rx("\\b(" + string(HALF(reg)) + ")\\b");
+    const Rx &rx = RX("\\b(" + string(HALF(reg)) + ")\\b");
     std::set<int> seen;
     std::vector<int> work = {i0 + 1};
     while (!work.empty()) {
@@ -725,7 +725,7 @@ public:
     auto w = wregs(ii.mnemonic, ii.op_str);
     if (w.empty() || !out) return;
     for (auto &W : w) {
-      Rx rx("(?<![\\w>.])(" + string(HALF(W)) + ")(?![\\w(])");
+      const Rx &rx = RX("(?<![\\w>.])(" + string(HALF(W)) + ")(?![\\w(])");
       for (int O = 0; O < 6; O++) {
         if (W == WRN[O]) continue;
         Value v = rg[O];
@@ -836,7 +836,7 @@ public:
   }
 
   bool wlive(const string &reg, int i0) {
-    Rx rx("\\b" + reg + "\\b");
+    const Rx &rx = RX("\\b" + reg + "\\b");
     std::set<int> seen;
     std::vector<int> work = {i0 + 1};
     while (!work.empty()) {
@@ -882,7 +882,7 @@ public:
   void materialize(const List &o, const string &reg, long long rank = LLONG_MIN) {
     Value v = getr(reg);
     if (v.empty() || v.s() == reg) return;
-    Rx rx("(?<![\\w>.])(" + string(HALF(reg)) + ")(?![\\w(])");
+    const Rx &rx = RX("(?<![\\w>.])(" + string(HALF(reg)) + ")(?![\\w(])");
     string sv = v.s();
     for (size_t k2 = 0; k2 < args.size(); k2++) {
       string a2 = text_of(args[k2]);

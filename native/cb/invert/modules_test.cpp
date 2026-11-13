@@ -433,6 +433,10 @@ CB_TEST("invert.module_pass.every_function_is_read_as_the_python_pass_read_it", 
                 CB_CHECK(row.at("syms").contains(key));
                 if (row.at("syms").contains(key)) CB_CHECK_EQ(g.name, row.at("syms").at(key).at(0).get<std::string>());
             }
+            // the bytes with the places the linker fills in zeroed
+            std::string masked;
+            for (const std::uint8_t b : cb::invert::msc6_small::mask(f.code)) masked += std::format("{:02x}", b);
+            CB_CHECK_EQ(masked, row.at("mask").get<std::string>());
             testing::count_check();
         }
     }
