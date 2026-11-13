@@ -141,7 +141,7 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 cb_area(verify)
 
 cb_area(app)
-target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source cb_store cb_coverage cb_exact cb_recompile cb_java cb_xna cb_engine cb_jobs cb_ui)
+target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source cb_store cb_coverage cb_exact cb_recompile cb_java cb_xna cb_engine cb_jobs cb_ui cb_invert)
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
@@ -180,7 +180,7 @@ cb_area(source)
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats)
 
 cb_area(invert)
-target_link_libraries(cb_invert PUBLIC cb_core cb_formats cb_platforms)   # (cb_platforms: the 16-bit decoder the models decode with)
+target_link_libraries(cb_invert PUBLIC cb_core cb_base cb_formats cb_platforms cb_build cb_decompile cb_symbols cb_exact)   # (cb_platforms: the 16-bit decoder the models decode with)
 # The shims at the old header paths (invert/*.hpp under native/typed/cpp) are tested too; their test includes the old layer, so
 # it builds at /W3 without /WX like the java and compat shim tests.
 file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/invert/shims_test.cpp")

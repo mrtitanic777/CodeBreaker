@@ -112,7 +112,12 @@ def test_xcp_dumper_wrong_key_leaves_the_file_alone():
 
 def test_exp_signer_hxpc_takes_a_cpu_key():
     import tempfile
+    import pytest
     from codebreaker.formats.xbox.crypto import exp_signer
+    try:
+        xc.XECRYPT_RSAPRV_2048().e
+    except AttributeError:   # the translated runtime's ctypes structures lack their anonymous members' fields
+        pytest.skip("needs CPython's ctypes; `crypto exp_signer` is native (native/cb/formats/xbox/crypto tool tests)")
     key = xc.XeCryptCpuKeyGen()
     with tempfile.TemporaryDirectory() as work:
         payload = os.path.join(work, "p.bin")

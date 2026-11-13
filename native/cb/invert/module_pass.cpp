@@ -22,7 +22,13 @@ bool starts_with(ByteView code, std::initializer_list<std::uint8_t> pattern) {
 }
 
 // The bytes equal outside the places the linker fills in (the module's relocations, and the operands `msc6_small::mask` zeroes), and as long.
-bool same_code(ByteView built, ByteView original, const std::set<std::size_t>& fixups) {
+bool same_code(ByteView built_whole, ByteView original, const std::set<std::size_t>& fixups) {
+    // (a compiler's own padding after the function -- int 3, nop, zero after a near return or more padding -- is not part of what is compared)
+    std::size_t n = built_whole.size();
+    while (n > 1 && (built_whole[n - 1] == 0xCC || built_whole[n - 1] == 0x90 || built_whole[n - 1] == 0x00) &&
+           (built_whole[n - 2] == 0xC3 || built_whole[n - 2] == 0xCC || built_whole[n - 2] == 0x90 || built_whole[n - 2] == 0x00))
+        --n;
+    const ByteView built = built_whole.first(n);
     if (built.size() != original.size()) return false;
     const Bytes a = msc6_small::mask(built), b = msc6_small::mask(original);
     for (std::size_t i = 0; i < original.size(); ++i)
@@ -131,17 +137,15 @@ std::vector<Function> framed_functions(const std::filesystem::path& module) {
             for (msc6_segment::Signature& sig : msc6_segment::infer_signatures(segment)) called[sig.offset] = std::move(sig.params);
         } catch (const Error&) {   // a segment whose calls cannot be followed: its functions are read without them
         }
-        std::map<std::size_t, std::size_t> fixups;   // where in the segment each relocation lands, and how many bytes it covers
-        for (const formats::ne::Relocation& r : ne.relocations(s)) fixups[r.offset] = r.source == 3 ? 4 : (r.source == 2 || r.source == 5) ? 2 : 1;
+        const std::set<std::size_t> places = relocated_places(ne, s, segment);
         for (const auto& [start, end] : msc6_segment::framed_functions(segment)) {
             Function f;
             f.name = std::format("sub_{}_{:x}", s.index, start);
             f.segment = s.index;
             f.offset = start;
             f.code.assign(segment.begin() + start, segment.begin() + end);
-            for (const auto& [at, width] : fixups)
-                for (std::size_t k = 0; k < width; ++k)
-                    if (at + k >= start && at + k < end) f.fixups.insert(at + k - start);
+            for (const std::size_t at : places)
+                if (at >= start && at < end) f.fixups.insert(at - start);
             if (const auto it = called.find(start); it != called.end()) f.called = it->second;
             out.push_back(std::move(f));
         }
@@ -149,8 +153,49 @@ std::vector<Function> framed_functions(const std::filesystem::path& module) {
     return out;
 }
 
+namespace {
+
+// The batch compiler as the one-text `Compile` gives it.
+CompileMany batched(const Compile& one) {
+    if (!one) return {};
+    return [one](std::span<const std::string> texts, std::string_view flags) {
+        std::vector<std::optional<Bytes>> out;
+        out.reserve(texts.size());
+        for (const std::string& t : texts) out.push_back(one(t, flags));
+        return out;
+    };
+}
+
+}  // namespace
+
+std::set<std::size_t> relocated_places(const formats::ne::Module& module, const formats::ne::Segment& segment, ByteView code) {
+    std::set<std::size_t> out;
+    for (const formats::ne::Relocation& r : module.relocations(segment)) {
+        std::size_t width = 2;
+        switch (r.source) {
+            case 0: width = 1; break;
+            case 3: case 13: width = 4; break;
+            case 11: width = 6; break;
+            default: break;
+        }
+        std::size_t at = r.offset;
+        for (int seen = 0; at < code.size() && seen < 0x4000; ++seen) {   // the places are chained through the code
+            const std::uint32_t next = at + 2 <= code.size() ? u16(code, at) : 0xFFFFu;
+            for (std::size_t k = 0; k < width && at + k < code.size(); ++k) out.insert(at + k);
+            if (r.additive() || next == 0xFFFF) break;
+            at = next;
+        }
+    }
+    return out;
+}
+
 std::map<std::string, Reading> run(const std::vector<Function>& functions, const Compile& msc6, const Compile& msvc152, std::string_view flags,
                                    const std::function<void(const std::string&)>& log) {
+    return run_batched(functions, batched(msc6), batched(msvc152), flags, log);
+}
+
+std::map<std::string, Reading> run_batched(const std::vector<Function>& functions, const CompileMany& msc6, const CompileMany& msvc152, std::string_view flags,
+                                           const std::function<void(const std::string&)>& log) {
     std::map<std::string, Reading> out;
     std::map<Compiler, std::vector<const Function*>> by_compiler;
     for (const Function& f : functions) {
@@ -160,7 +205,7 @@ std::map<std::string, Reading> run(const std::vector<Function>& functions, const
         out[f.name] = std::move(r);
     }
     for (auto& [which, group] : by_compiler) {
-        const Compile& compile = which == Compiler::Msvc152 ? msvc152 : msc6;
+        const CompileMany& compile = which == Compiler::Msvc152 ? msvc152 : msc6;
         const char* name = which == Compiler::Msvc152 ? "msvc152" : "msc6";
         if (!compile) {
             if (log) log(std::format("  {} functions are {}'s; it is not set up (settings.json: {})", group.size(), name, name));
@@ -172,18 +217,23 @@ std::map<std::string, Reading> run(const std::vector<Function>& functions, const
         else sets.assign(std::begin(kFlagsMsc6), std::end(kFlagsMsc6));
         std::vector<const Function*> left = group;
         for (const std::string_view fl : sets) {
+            std::vector<std::string> texts;   // every reading of every function still left, one list
+            for (const Function* f : left)
+                for (const std::string& t : out[f->name].tries) texts.push_back(t);
+            const std::vector<std::optional<Bytes>> built = compile(texts, fl);
             std::vector<const Function*> still;
+            std::size_t next = 0;
             for (const Function* f : left) {
                 Reading& r = out[f->name];
                 bool found = false;
                 for (const std::string& text : r.tries) {
-                    const std::optional<Bytes> built = compile(text, fl);
-                    if (built && same_code(*built, f->code, f->fixups)) {
+                    const std::optional<Bytes>& got = next < built.size() ? built[next] : std::optional<Bytes>();
+                    ++next;
+                    if (!found && got && same_code(*got, f->code, f->fixups)) {
                         r.verdict = Verdict::Identical;
                         r.text = text;
                         r.flags = std::string(fl);
                         found = true;
-                        break;
                     }
                 }
                 if (!found) still.push_back(f);
