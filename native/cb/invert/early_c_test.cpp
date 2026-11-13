@@ -1,5 +1,5 @@
-// Tests of cb/invert/early_c.hpp. The compiler model itself is native/invert's; these pin the typed API over it: the
-// settings and hooks reaching the model, the findings and results coming back, the text helpers, and the errors.
+// Tests of cb/invert/early_c.hpp. The compiler model itself is early_c_tracker / early_c_walk / early_c_text over flow16; these pin the typed API over
+// it: the settings and hooks reaching the model, the findings and results coming back, the text helpers, and the errors.
 //
 // testdata/early_c.golden.json holds 397 calls of recover / recover_cfg with the answers the Python module gave: the
 // default-settings call for each input (the ten seed functions of the oracle harness -- an add, calls, a max, a loop, a

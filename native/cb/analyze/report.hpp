@@ -39,6 +39,7 @@
 #include "cb/core/cli.hpp"
 #include "cb/decompile/describe.hpp"
 #include "cb/emulate/emulator.hpp"
+#include "cb/jobs/workers.hpp"
 
 namespace cb::analyze::report {
 
@@ -96,6 +97,9 @@ struct Environment {
     // function pops (`import_argc`: none given, the emulator's default). Its modules are found by `retail`.
     emulate::emulator::Environment emulator;
     emulate::emulator::ImportArgc import_argc;
+    // Worker processes of the host program to run observe's functions in (observe::register_worker_kinds in its main): threads never use more than
+    // about one core of the emulator, processes use as many as there are shares. none: threads. The host must be one that registered the kind.
+    std::optional<jobs::WorkerLauncher> workers;
 };
 
 struct Options {

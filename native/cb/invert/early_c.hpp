@@ -3,8 +3,8 @@
 // from a recursive block walker (`recover`) or from the structured control-flow graph (`recover_cfg`). Validated by
 // round trip: the recovered C compiles back to the same bytes.
 //
-// The model itself (the register-value tracker and the text passes over what it emits) is the C++ of native/invert; this
-// module is its typed API. Everything the Python kept as module settings and hooks is an `Options` value the caller
+// The model itself (the register-value tracker in early_c_tracker / early_c_walk, the text passes over what it emits in
+// early_c_text, the control flow in flow16) reads Capstone's operand text; this module is its typed API. Everything the Python kept as module settings and hooks is an `Options` value the caller
 // passes to each call, so two recoveries with different settings can run side by side.
 //
 //     early_c::Options options;
