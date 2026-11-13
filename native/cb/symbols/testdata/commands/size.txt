@@ -1,0 +1,2 @@
+38 service tables, 1147 services named, 134 device numbers named
+exit=0

@@ -1,0 +1,5 @@
+<BIN>/tracert.exe  (<STATE>/db/332f4933a1813622f345ab7d88cf02cac67f95f0d1f855047ce8ddfe4d50d3ca.sqlite)
+  t1             e4b97d3c32f4      0.1 KB  2026-11-12 07:27:18 PM    0.00s  given
+  t2             b84fef7bd952      0.0 KB  2026-11-12 07:27:18 PM    0.00s  given
+  2 facts of table
+exit=0

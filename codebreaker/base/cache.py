@@ -530,7 +530,7 @@ def clear():
     """Everything kept, gone. -> bytes freed"""
     _close()
     total = sum(sizes().values())
-    for kind in os.listdir(root()):
+    for kind in (os.listdir(root()) if os.path.isdir(root()) else ()):      # (no cache folder yet: nothing to clear)
         _remove(os.path.join(root(), kind))
     return total
 
@@ -569,7 +569,7 @@ def main(argv):
         for kind, names in prune():
             print("  %-16s dropped old generation(s) %s" % (kind, ", ".join(names)))
     elif argv and argv[0] not in ("--stats",):
-        print(__doc__.split("\n\n")[1])
+        print(main.__doc__)
         return 2
     total = 0
     print("%-16s %10s %10s  %s" % ("kind", "size", "results", "generations (* = of now)"))

@@ -1,0 +1,14 @@
+there is no function store yet (<STATE>/functions.sqlite): nothing has been reconstructed; the corpus is listed alone
+thinkjet.drv  (16-bit, untouched)  <CORPUS>/thinkjet.drv
+                  functions   share
+functions                 0       -
+decompiled                0       -
+compiled                  0       -
+VERIFIED                  0       -
+VERIFIED (weak)           0       -
+UNVERIFIED                0       -
+NOT JUDGED                0       -
+DOES NOT COMPILE          0       -
+NO SOURCE                 0       -
+code bytes 1534; in known functions 0 (0.0%); in VERIFIED 0 (0.0%); in VERIFIED (weak) 0 (0.0%)
+exit=0

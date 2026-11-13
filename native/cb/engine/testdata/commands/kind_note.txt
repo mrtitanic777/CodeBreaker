@@ -1,0 +1,5 @@
+<BIN>/tracert.exe  (<STATE>/db/332f4933a1813622f345ab7d88cf02cac67f95f0d1f855047ce8ddfe4d50d3ca.sqlite)
+  ""             4319b9021ab8      0.0 KB  2026-11-12 07:27:18 PM    0.00s  given
+  a              c18491ff65f8      0.2 KB  2026-11-12 07:27:18 PM    0.00s  given
+  2 facts of note
+exit=0

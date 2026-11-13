@@ -458,8 +458,11 @@ show::SharedBodies Store::shared_bodies() {
         out.distinct = cell_int(all[0][1]);
     }
     const auto several = db_->database.query(
-        "SELECT COUNT(*) FROM (SELECT hash FROM body GROUP BY hash HAVING COUNT(DISTINCT module) > 1)");
-    if (!several.empty()) out.in_several_modules = cell_int(several[0][0]);
+        "SELECT COUNT(*), COALESCE(SUM(n), 0) FROM (SELECT COUNT(*) n FROM body GROUP BY hash HAVING COUNT(DISTINCT module) > 1)");
+    if (!several.empty()) {
+        out.in_several_modules = cell_int(several[0][0]);
+        out.copies = cell_int(several[0][1]);
+    }
     return out;
 }
 
@@ -494,5 +497,19 @@ std::optional<show::Provenance> Store::about(std::string_view platform_name, std
 namespace cb::knowledge {
 
 std::string Store::platform(std::string_view name) const { return knowledge::platform(name); }
+
+show::Environment environment(const std::filesystem::path& state_dir, DataFolders folders) {
+    // opened by the first command that runs (a table of commands is made far more often than one is run)
+    struct Opened {
+        std::filesystem::path state;
+        DataFolders folders;
+        std::unique_ptr<Store> store;
+    };
+    auto opened = std::make_shared<Opened>(Opened{state_dir, std::move(folders), nullptr});
+    return show::Environment{.base = [opened]() -> show::Base& {
+        if (!opened->store) opened->store = std::make_unique<Store>(Store::default_path(opened->state), opened->folders);
+        return *opened->store;
+    }};
+}
 
 }  // namespace cb::knowledge

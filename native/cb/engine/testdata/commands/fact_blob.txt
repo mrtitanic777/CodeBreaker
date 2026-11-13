@@ -1,0 +1,7 @@
+<BIN>/tracert.exe  (<STATE>/db/332f4933a1813622f345ab7d88cf02cac67f95f0d1f855047ce8ddfe4d50d3ca.sqlite)
+  blob   hash ba06432b700dfac237be98782a61bb4cf718c0d5, 0.3 KB
+  made by    given, version 
+  made       2026-11-12 07:27:18 PM, in 0.00s
+  from       0 facts
+  value      300 bytes
+exit=0

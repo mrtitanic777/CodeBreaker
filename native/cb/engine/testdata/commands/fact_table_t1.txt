@@ -1,0 +1,7 @@
+<BIN>/tracert.exe  (<STATE>/db/332f4933a1813622f345ab7d88cf02cac67f95f0d1f855047ce8ddfe4d50d3ca.sqlite)
+  table t1  hash e4b97d3c32f46ece05ad690b46c9f454a2f93bb8, 0.1 KB
+  made by    given, version 
+  made       2026-11-12 07:27:18 PM, in 0.00s
+  from       0 facts
+  value      {name: 1 lines, none: None, ok: True, ratio: 0.5, size: 3584, tags: [2] 1 lines, 1 lines}
+exit=0

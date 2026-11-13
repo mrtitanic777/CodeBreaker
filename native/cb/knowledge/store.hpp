@@ -159,6 +159,9 @@ private:
     std::recursive_mutex mutex_;
 };
 
+// The `knowledge` command's environment over the knowledge store of a state folder: the store is opened when the command runs.
+show::Environment environment(const std::filesystem::path& state_dir, DataFolders folders = DataFolders::from_environment());
+
 // The base asked as the engine's `ReadDigests` asks.
 inline ReadDigests::DigestOf digests_of(Store& store) {
     return [&store](const Read& read) { return store.digest(read); };

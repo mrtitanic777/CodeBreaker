@@ -453,7 +453,7 @@ CB_TEST("base.cache.prune_stats_and_clear", [] {
     const std::string report = cache::describe(c.stats(), config.max_bytes);
     CB_CHECK(report.find("kind") != std::string::npos);
     CB_CHECK(report.find("other") != std::string::npos);
-    CB_CHECK(report.find("(cap 2.00 GB)") != std::string::npos);
+    CB_CHECK(report.find("(cap 2.00 GB: setting cache_max_gb)") != std::string::npos);
     CB_CHECK(c.clear() > 0);
     CB_CHECK(c.stats().empty());
     CB_CHECK(!c.get("other", "x").has_value());   // and it works again afterwards

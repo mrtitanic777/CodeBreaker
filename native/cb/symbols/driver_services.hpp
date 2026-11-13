@@ -27,6 +27,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <span>
@@ -34,7 +35,9 @@
 #include <string_view>
 #include <vector>
 
+#include "cb/core/cli.hpp"
 #include "cb/knowledge/sources.hpp"
+#include "cb/knowledge/store.hpp"
 
 namespace cb::symbols::driver_services {
 
@@ -121,5 +124,30 @@ std::map<std::uint32_t, std::string> read_messages(const std::filesystem::path& 
 // the kit already names are left out), and the messages.
 std::string format_table(const KitTables& kit, const std::map<std::uint32_t, std::string>& corpus_drivers,
                          const std::map<std::uint32_t, std::string>& messages);
+
+// ---- the command ----------------------------------------------------------------------------------------------------
+
+// What `driver-services` needs of the rest of the program.
+struct Environment {
+    // The table as the knowledge base holds it now (asked again after --generate has written the file: the base loads a changed file again).
+    std::function<Table()> table;
+    // A corpus name or a file -> the driver (corpus.retail); nullopt when there is none.
+    std::function<std::optional<std::filesystem::path>(std::string_view)> retail;
+    // Every driver file of the corpus: what --generate takes the drivers' own device numbers and names from.
+    std::function<std::vector<std::filesystem::path>()> corpus_drivers;
+    // driver_services.json, which --generate writes.
+    std::filesystem::path table_file;
+    // CB_DRIVER_KIT (may be empty) and the reference folder beside the corpus: where the kit's include files are looked for.
+    std::string kit_folder;
+    std::filesystem::path reference_folder;
+};
+
+// The table out of the knowledge base's authored kinds (platform vxd: device, service_table, driver, message).
+Table table_of(knowledge::Store& store);
+
+// `driver-services [--generate [INCLUDE_DIR]] [FILE ...]`: without --generate the size of the table and, for each file, how many of its
+// service calls the table names; with it the table is made again from the kit's include files. A file that is not found is said so
+// (exit 0, as the Python did); no include files: exit 1.
+cli::Command command(const Environment& environment);
 
 }  // namespace cb::symbols::driver_services

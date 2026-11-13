@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 #include "cb/base/corpus.hpp"
 #include "cb/base/parallel.hpp"
@@ -64,6 +65,15 @@ public:
 
     // Whether `key` names a path setting.
     static bool is_path_setting(std::string_view key);
+
+    // settings.json of the checkout (whether or not it is there).
+    std::filesystem::path settings_file() const { return root_ / "settings.json"; }
+    // Every setting there is to show, sorted: those settings.json holds, the ones with a default and the path settings
+    // ("reference", which only the corpus reads, is shown when settings.json sets it).
+    std::vector<std::string> keys() const;
+    // settings.json's "corpora" as "name=folder, name=folder" (the folders as written); "" when it has none.
+    std::string corpora_text() const;
+    bool has_corpora() const { return !file_corpora_.empty(); }
 
 private:
     Value value(std::string_view key) const;   // the environment, else settings.json, else the default

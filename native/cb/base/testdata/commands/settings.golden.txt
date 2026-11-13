@@ -1,0 +1,45 @@
+settings: <ROOT>/settings.json
+  !! analyze_bin      <ROOT>/native/analyze/build/bin
+  -- build_cache      (not set)
+     cache_max_gb     3
+  !! converted        <ROOT>/Converted
+     corpora          win95=corp95, win98=corp98
+  !! corpus           <ROOT>/corp95
+  !! decompiler_bin   <ROOT>/native/decompiler/build/bin
+  -- dosbox_x         (not set)
+  !! dosexec_bin      <ROOT>/native/dosexec/build/bin
+  !! engine_bin       <ROOT>/native/engine/build/bin
+  !! formats_bin      <ROOT>/native/formats/build/bin
+  -- host_cxx         (not set)
+  -- ilspycmd         (not set)
+  !! invert_bin       <ROOT>/native/invert/build/bin
+  -- java             (not set)
+  -- java_libs        (not set)
+  -- java_overlays    (not set)
+  -- masm             (not set)
+  -- msbuild          (not set)
+  !! msc6             <ROOT>/missing-dir
+  -- msvc152          (not set)
+  !! nasm             <ROOT>/native/nasm/build/bin/nasm.exe
+  ok openwatcom       <ROOT>/wc
+  -- period_compiler  (not set)
+  -- powerpc_lib      (not set)
+  -- powerpc_tools    (not set)
+  !! ppc_binutils     <ROOT>/toolchains/binutils-ppc
+  !! retromcp         <ROOT>/native/retromcp/build/libs/retromcp.jar
+     service_idle_minutes 5
+  ok state            <ROOT>/state
+     struct_recovery  all
+  !! symbols_bin      <ROOT>/native/symbols/build/bin
+     target           win98
+     threads          4
+  !! tracer_bin       <ROOT>/state/cxx/cb/bin
+  -- visual_studio    (not set)
+  -- win95_installed_hd (not set)
+  -- xbox360_crypto_bin (not set)
+  -- xbox360_keys     (not set)
+  -- xbox360_sdk      (not set)
+  -- xenix_c          (not set)
+  ok xex_bin          <ROOT>/tools/xex
+  -- xna_overlays     (not set)
+ok = found, !! = set but not there, -- = not set (optional unless a command asks for it)

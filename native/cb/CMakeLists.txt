@@ -131,7 +131,7 @@ target_link_libraries(cb_platforms PUBLIC cb_core cb_formats)
 # What CodeBreaker made of every program it was given (reach); the platform registry, the media readers and the
 # function store's tally reach it through Services.
 cb_area(coverage)
-target_link_libraries(cb_coverage PUBLIC cb_core cb_formats cb_platforms cb_base cb_engine cb_verify)   # (ledger: the corpus, the function store, the verdict vocabulary)
+target_link_libraries(cb_coverage PUBLIC cb_core cb_formats cb_platforms cb_base cb_engine cb_verify cb_store)   # (ledger: the corpus, the function store, the verdict vocabulary; cb_store: where the store of a state folder is -- static libraries may be cyclic)
 
 # The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
 add_executable(cb_worker_probe jobs/worker_probe_main.cpp)

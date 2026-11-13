@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <span>
@@ -21,6 +22,7 @@
 #include <vector>
 
 #include "cb/core/bytes.hpp"
+#include "cb/core/cli.hpp"
 #include "cb/knowledge/value.hpp"
 
 namespace cb::knowledge::show {
@@ -44,6 +46,7 @@ struct SharedBodies {
     std::int64_t recorded = 0;
     std::int64_t distinct = 0;
     std::int64_t in_several_modules = 0;
+    std::int64_t copies = 0;             // the functions that are copies of such a body
 };
 
 // Where a piece came from.
@@ -93,5 +96,14 @@ std::string dump(const Stored& value);
 
 // `2026-11-12 03:04 AM`: the local time of seconds since the epoch.
 std::string local_time_text(double epoch_seconds);
+
+// What the declared command is given: the knowledge base it shows, opened when the command runs (store.hpp's `environment` makes one over
+// the knowledge store of a state folder).
+struct Environment {
+    std::function<Base&()> base;
+};
+
+// `knowledge [--load] [platform [kind [key]]]`: writes `run`'s text to stdout and returns its exit status.
+cli::Command command(const Environment& environment);
 
 }  // namespace cb::knowledge::show

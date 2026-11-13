@@ -1,0 +1,2 @@
+nothing known: vxd device zzzz
+exit=1
