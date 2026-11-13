@@ -51,7 +51,10 @@ CB_TEST("engine.lane_kit.the_kit_is_made_of_the_settings_and_says_which_lanes_it
     kit.add_lanes(kinds);
     const std::vector<std::string> names = kinds.names();
     // the lanes that can be wired are filed under the corpus's names for them; the Java lane is not wired, and says why
-    for (const std::string& name : names) CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc");
+    for (const std::string& name : names)
+        CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc" || name == "dos" || name == "nes" || name == "sms" || name == "gb" ||
+                 name == "genesis" || name == "zx" || name == "msx");
+    CB_CHECK(std::find(names.begin(), names.end(), "gb") != names.end());   // (the machines need no tools but CodeBreaker's own)
     CB_CHECK(!LaneKit::java_missing().empty());
     // a lane made again is the same lane: one decompiler, one builder, one knowledge base
     CB_CHECK(kit.win32_lane() == kit.win32_lane());
@@ -169,4 +172,15 @@ CB_TEST("engine.lane_kit.module_build", [] {
         std::cout << b.report() << "\n(" << std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << "s)\n";
         CB_CHECK(b.linked());
     }
+});
+
+CB_TEST("engine.lane_kit.the_host_hook_lets_a_program_be_the_host_of_the_workers", [] {
+    // a program not started as a worker goes on (-1) and is a host from then on; one started as a worker answers with its own exit code (an unknown kind: 2)
+    char program[] = "codebreaker", flag[] = "--cb-worker", kind[] = "no-such-kind";
+    char* plain[] = {program};
+    CB_CHECK(!hosting_workers());
+    CB_CHECK_EQ(host_main_hook(1, plain), -1);
+    CB_CHECK(hosting_workers());
+    char* worker[] = {program, flag, kind};
+    CB_CHECK_EQ(host_main_hook(3, worker), jobs::kWorkerUnknownKind);
 });

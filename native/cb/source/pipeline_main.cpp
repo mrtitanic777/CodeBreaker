@@ -13,12 +13,10 @@
 
 int main(int argc, char** argv) {
     using namespace cb;
-    jobs::WorkerKinds worker_kinds;
-    engine::LaneKit::register_worker_kinds(worker_kinds);
-    if (const std::optional<int> code = jobs::run_as_worker(worker_kinds, argc, argv)) return *code;
+    if (const int worker = engine::host_main_hook(argc, argv); worker >= 0) return worker;   // (what codebreaker.exe's main does first)
 
     const config::Config config = config::Config::load(config::current().main_checkout());
-    cli::Cli program("cb_pipeline", source::pipeline::commands({.config = config, .corpus = nullptr, .workers = true}));
+    cli::Cli program("cb_pipeline", source::pipeline::commands({.config = config, .corpus = nullptr, .workers = false}));
     const std::vector<std::string> args(argv + 1, argv + argc);
     try {
         return program.run(args);

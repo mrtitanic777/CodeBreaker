@@ -292,8 +292,8 @@ struct Services {
 
 // Options of one build.
 struct BuildOptions {
-    std::optional<std::filesystem::path> outdir;
-    bool call = true;                                    // run the built module's exports beside the original's
+    std::optional<std::filesystem::path> outdir;         // where the built image is put, alone (the working files are under Services::build_folder)
+    bool call = true;                                   // run the built module's exports beside the original's
     std::function<void(std::string_view)> log;           // default: Services::log
     // The functions already known to differ from the original ({function: how}); with them given the gate does not run
     // unless `gate` says so (it is how a build is repeated).

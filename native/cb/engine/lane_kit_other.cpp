@@ -139,6 +139,8 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::lane_named(std::string_view 
     if (name == "ne") return win16_lane();
     if (name == "le") return driver_lane();
     if (name == "powerpc") return powerpc_lane();
+    if (name == "dos") return dos_lane();
+    if (auto machine = machine_lane(name)) return machine;
     return nullptr;
 }
 
