@@ -61,11 +61,11 @@ JpoFront& jpo_front() {
         f.state = std::make_unique<fs::ScopedTempDir>("cb-java-ports");
         f.tools.java = *java;
         f.tools.javac = javac;
-        f.tools.treedump_source = testing::data_path("../../codebreaker/translate/frontends/java/TreeDump.java");
+        f.tools.treedump_source = testing::data_path("../../data/translate/frontends/java/TreeDump.java");
         f.tools.state = f.state->path();
         JpoFront* self = &f;
         f.assembly = std::make_unique<java::assembly::Assembly>(
-            java::JavaData(testing::data_path("../../codebreaker/java")),
+            java::JavaData(testing::data_path("../../data/java")),
             [self](Arena& arena, const stdfs::path& dir) { return java::frontend::lower_program(arena, dir, self->tools); });
         f.ready = true;
         return f;
@@ -529,8 +529,8 @@ CB_TEST("java.ownership.a_promoted_collection_is_a_reference_in_the_signature", 
 // test_review_fixes.py: the platform layer's C++ (the sources the transpiler copies out), read and compiled.
 namespace {
 
-stdfs::path jpo_canonical() { return testing::data_path("../../codebreaker/java/platform/canonical"); }
-stdfs::path jpo_reference() { return testing::data_path("../../codebreaker/java/platform/reference"); }
+stdfs::path jpo_canonical() { return testing::data_path("../../data/java/platform/canonical"); }
+stdfs::path jpo_reference() { return testing::data_path("../../data/java/platform/reference"); }
 
 // The `{...}` body of the function whose definition starts with `signature`.
 std::string jpo_func_body(const std::string& text, const std::string& signature) {
@@ -1235,7 +1235,7 @@ CB_TEST("java.beside_the_jvm.codec_mus_compiles_against_the_stand_in", [] {
         return;
     }
     jprobe::Toolchain with_shims = *tools;
-    with_shims.shim_sources = java::JavaData(testing::data_path("../../codebreaker/java")).path({"probe_shims"});
+    with_shims.shim_sources = java::JavaData(testing::data_path("../../data/java")).path({"probe_shims"});
     fs::ScopedTempDir work("cb-java-shims");
     const auto shims = jprobe::compile_shims(work.path(), with_shims);
     CB_CHECK(shims.has_value());

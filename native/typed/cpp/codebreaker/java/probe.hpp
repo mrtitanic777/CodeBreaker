@@ -55,7 +55,7 @@ inline cbp::Toolchain toolchain(const py::str& cxx, const py::str& javac, const 
     t.cxx_std = cb::compat::from_py(CXX_STD);
     if (prefix && !prefix->empty()) t.prefix = path_of(*prefix);
     t.libraries = library_jars();
-    t.shim_sources = path_of(py::settings::checkout_root()) / "codebreaker" / "java" / "probe_shims";
+    t.shim_sources = path_of(py::settings::checkout_root()) / "data" / "java" / "probe_shims";
     return t;
 }
 

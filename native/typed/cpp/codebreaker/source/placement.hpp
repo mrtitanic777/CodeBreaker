@@ -35,7 +35,7 @@ inline const cb::source::placement::Placement& current() {
     const std::string product = corpus.current();
     auto& slot = held[cb::fs::to_text(tree) + "|" + product];
     if (!slot) {
-        const std::filesystem::path file = cb::fs::from_text(cb::compat::from_py(py::settings::checkout_root())) / "codebreaker" / "source" / "placement.json";
+        const std::filesystem::path file = cb::fs::from_text(cb::compat::from_py(py::settings::checkout_root())) / "data" / "source" / "placement.json";
         slot = std::make_unique<cb::source::placement::Placement>(tree, cb::source::placement::load_table(file, product));
     }
     return *slot;
