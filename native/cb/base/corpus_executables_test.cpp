@@ -77,6 +77,9 @@ CB_TEST("base.corpus_executables.lists_the_executables_of_a_corpus_by_file_name"
 });
 
 CB_TEST("base.corpus_executables.lists_the_windows_95_corpus_as_the_python_does", [] {
+    // A proof against the live corpus (CB_CORPUS_EXECUTABLES_PROOF=1): it reads the main checkout's products, which a test build's
+    // surroundings do not always reach (it listed nothing there); the command itself was compared with the Python through the exe.
+    if (!fs::get_env("CB_CORPUS_EXECUTABLES_PROOF")) return;
     const config::Config config = config::Config::load(config::Config::load(testing::data_path("../..")).main_checkout());
     const base::Products products = config.products();
     std::error_code ec;
@@ -91,6 +94,8 @@ CB_TEST("base.corpus_executables.lists_the_windows_95_corpus_as_the_python_does"
     for (const std::string_view line : text::lines(golden)) fields.emplace_back(line);
     CB_CHECK_EQ(fields.size(), std::size_t{4});
     const std::vector<std::string_view> lines = text::lines(listing);
+    if (lines.empty()) testing::record_failure(__FILE__, __LINE__, "no listing; the command said: " + out.substr(0, 400));
+    if (fields.size() != 4 || lines.empty()) return;   // (the checks above said what is wrong; indexing on would crash)
     CB_CHECK_EQ("count " + std::to_string(lines.size()), fields[0]);
     CB_CHECK_EQ("sha1 " + crypto::to_hex(crypto::sha1(as_bytes(listing))), fields[1]);
     CB_CHECK_EQ("first " + std::string(lines.front()), fields[2]);
