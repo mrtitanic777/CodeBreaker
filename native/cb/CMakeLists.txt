@@ -281,6 +281,7 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b16.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b4.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b2.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b3.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xna.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"

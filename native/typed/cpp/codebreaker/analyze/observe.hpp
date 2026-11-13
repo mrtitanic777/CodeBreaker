@@ -85,7 +85,7 @@ inline Returns returns_to_old(const ob::Returns& r) {
 inline Observation observation_to_old(const ob::Observation& o) {
     Observation out;
     for (const auto& [k, cells] : o.fields) out.fields.set(k, cells_to_old(cells));
-    for (const auto& [key, cells] : o.nested) out.nested.set(std::make_tuple<int64_t, int64_t>(key.first, key.second), cells_to_old(cells));
+    for (const auto& [key, cells] : o.nested) out.nested.set(std::make_tuple(int64_t(key.first), int64_t(key.second)), cells_to_old(cells));
     for (const ob::Indirect& i : o.indirect) out.indirect.append(std::make_tuple(int64_t(i.site), int64_t(i.target)));
     for (const ob::Pass& p : o.passes)
         out.passes.append(std::make_tuple(py::str(p.import), int64_t(p.parameter), int64_t(p.argument), int64_t(p.offset),

@@ -1,3 +1,5 @@
+// NOTE (W5-B3): refactored as native/cb/exact/link.hpp. This old port stays: it has no header-only shim because it drives the old stage ports (their py:: types and out
+// streams) and its callers are the old command table and seed, which are refactored later; it goes with them. (carve, bss and names, which it calls, are shims now.)
 // codebreaker/exact/link.hpp -- typed C++ of codebreaker.exact.link
 //
 // link.py -- the program linked from its sources by the period linker, and compared with the original file.
