@@ -5,6 +5,7 @@
 #include "kernel/kernel.h"
 #include "kernel/profile_import.h"
 #include "kernel/profile_store.h"
+#include "kernel/spa.h"
 #include "kernel/profile_location.h"
 #include "live/client.h"
 #include "settings.h"
@@ -180,11 +181,18 @@ namespace kernel::users
         return std::getenv("NATIVE_DASH_SIGNED_IN") != nullptr;
     }
 
+    void HostLiveChanged()
+    {
+        std::lock_guard lock(g_mutex);
+        TellHost();
+    }
+
     void SaveSignIns()
     {
         std::string text;
         {
             std::lock_guard lock(g_mutex);
+            TellHost(); // the LIVE state as it is now (a sign-in's " offline" can have changed since)
             // " offline": a LIVE profile not on our Xbox LIVE now stays offline when it is signed in again.
             for (uint32_t user = 0; user < kMaxUsers; user++)
                 if (g_signedIn[user] != kNoProfile)
@@ -353,6 +361,31 @@ namespace kernel::users
         return mask;
     }
 
+    namespace
+    {
+        // XAM 17559 FUN_81911f28 (a user signs in to the running title, and each signed-in user when a title loads):
+        // the title joins the profile's titles played (kernel/profile_store.h RecordTitlePlayed). Not for the system's
+        // own titles (FFFExxxx) or a title without an SPA (FUN_81920608: no title record to take).
+        void RecordPlayed(uint64_t xuid)
+        {
+            const uint32_t titleId = kernel::TitleId();
+            if (!xuid || !titleId || (titleId >> 16) == 0xFFFE || kernel::spa::FindString(0x8000) == std::nullopt)
+                return;
+            kernel::profile::TitlePlayed t;
+            t.titleId = titleId;
+            t.name = kernel::spa::TitleName();
+            for (const kernel::spa::Achievement& a : kernel::spa::Achievements())
+            {
+                t.achievements++;
+                t.gamerscore += a.gamerscore;
+            }
+            const auto tile = kernel::spa::Image(kernel::spa::kTitleImageId);
+            t.tile.assign(tile.begin(), tile.end());
+            kernel::profile::RecordTitlePlayed(xuid, t);
+            Log("Users: {:08X} recorded as played by {:016X}", titleId, xuid);
+        }
+    }
+
     void SignIn(uint32_t user, size_t profile)
     {
         if (user >= kMaxUsers || profile >= Profiles().size())
@@ -380,6 +413,7 @@ namespace kernel::users
         }
         for (const uint32_t other : signedOut)
             LiveSignOut(other);
+        RecordPlayed(Profiles()[profile].xuid);
         // Our Xbox LIVE in the background: a console's local sign-in (XamUserLogonEx) is immediate and its LIVE logon
         // comes later (XamShowSigninUIp, which waits for this one: LiveSignIn is serialized per user). Signing in here
         // synchronously held XamUserLogonEx for the server's round trips; over the Internet the dash's main thread

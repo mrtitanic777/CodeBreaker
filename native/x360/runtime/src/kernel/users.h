@@ -42,6 +42,9 @@ namespace kernel::users
     // LIVE) to signed_in.txt in the data folder; RestoreSignIns signs them in again, the offline ones kept off our
     // Xbox LIVE (live::Hold), and deletes the file. Returns how many were restored.
     void SaveSignIns();
+    // A user's Xbox LIVE state changed (signed in to LIVE, or kept offline): the host dashboard's sign-in file again,
+    // whose " offline" flag follows it.
+    void HostLiveChanged();
     size_t RestoreSignIns();
     // Started by Native Dashboard: NATIVE_DASH_SIGNED_IN ("<user>:<offline XUID>[ offline],...") are the dashboard's
     // sign-ins, kept through the launch as XAM keeps them (Initialize signs them in instead of the first profile;

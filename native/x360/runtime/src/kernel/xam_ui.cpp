@@ -990,12 +990,13 @@ GUEST_IMPORT(XamShowCreateProfileUI)
 // replaces); when sign-in completes with a pick, XN_SYS_SIGNINCHANGED is sent with a bit per user index signed in
 // by this sign-in, also when the profile picked was already signed in there (sent before XN_SYS_UI 0, as Xenia orders
 // them); cancelling changes nothing and sends none.
-// Every profile here is a local offline one (kernel/users.h): XSSUI_FLAGS_SHOWONLYONLINEENABLED lists none, and
-// without a LIVE-enabled sponsor there is no guest option (XSSUI_FLAGS_ENABLE_GUEST). XSSUI_FLAGS_ADDUSER leaves out
+// XSSUI_FLAGS_SHOWONLYONLINEENABLED lists only the LIVE-enabled profiles (an Account with reserved flag 0x20000000,
+// kernel/users.h). There is no guest option (XSSUI_FLAGS_ENABLE_GUEST). XSSUI_FLAGS_ADDUSER leaves out
 // profiles already signed in. The pane is driven by any controller: A on a profile signs it in to that controller's
 // user index (the native dialog's mouse answer: the controller that pressed a button last), B cancels.
 // TU46 (0x82757AB8) asks for 1 pane with LOCALSIGNINONLY [| ADDUSER] [| DISALLOW_GUEST] for players joining, and
-// for 2/4 panes only together with SHOWONLYONLINEENABLED; the cases it never uses stop with a message.
+// for 2/4 panes only together with SHOWONLYONLINEENABLED (world creation for an online game); in-place sign-out and
+// converting to a guest, which it never asks for, stop with a message.
 // Drawn as XAM's one-pane sign-in (signin1.xur): the eligible profiles, then "Create Profile" (closes the pane and
 // starts XamShowCreateProfileUI's flow for that controller) and "Download Profile", which copies the new profiles of the `profiles` folder (kernel/profile_import.h; the console
 // would recover one from Xbox LIVE) and lists them; a 2/4-pane request shows the same pane (deviation: the console
@@ -1022,10 +1023,11 @@ GUEST_IMPORT(XamShowSigninUI)
     auto list = [flags, eligible](Dialog& dialog) {
         const auto& profiles = kernel::users::Profiles();
         eligible->clear();
-        if (!(flags & kShowOnlyOnlineEnabled))
-            for (size_t i = 0; i < profiles.size(); i++)
-                if (!(flags & kAddUser) || !kernel::users::UserOfXuid(profiles[i].xuid))
-                    eligible->push_back(i);
+        // XSSUI_FLAGS_SHOWONLYONLINEENABLED: only the profiles that can sign in to Xbox LIVE (it used to list none).
+        for (size_t i = 0; i < profiles.size(); i++)
+            if ((!(flags & kShowOnlyOnlineEnabled) || profiles[i].liveEnabled) &&
+                (!(flags & kAddUser) || !kernel::users::UserOfXuid(profiles[i].xuid)))
+                eligible->push_back(i);
         dialog.signIn.clear();
         dialog.buttons.clear();
         if (eligible->empty())

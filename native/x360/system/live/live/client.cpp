@@ -2231,6 +2231,50 @@ namespace live
         return Simple({ { "op", "gamertag_change" }, { "user", user }, { "gamertag", gamertag } });
     }
 
+    namespace
+    {
+        // Sessions of linked servers that a federated search returned: session id -> the result as the search showed
+        // it. Its `server` is what session_join needs; the rest answers XSessionSearchByIds while our server has no
+        // copy of the session yet (it has one once the session is joined). Bounded.
+        struct RemoteSessions
+        {
+            std::mutex mutex;
+            std::map<uint64_t, GameSessionInfo> sessions;
+        };
+
+        RemoteSessions& Remote()
+        {
+            static RemoteSessions remote;
+            return remote;
+        }
+
+        void RememberRemote(const GameSessionInfo& info)
+        {
+            if (!info.remote || info.server.empty() || !info.id)
+                return;
+            RemoteSessions& r = Remote();
+            std::lock_guard lock(r.mutex);
+            if (r.sessions.size() >= 512 && !r.sessions.contains(info.id))
+                r.sessions.clear();
+            r.sessions[info.id] = info;
+        }
+
+        void ForgetRemote(uint64_t sessionId)
+        {
+            RemoteSessions& r = Remote();
+            std::lock_guard lock(r.mutex);
+            r.sessions.erase(sessionId);
+        }
+
+        std::string RemoteServerOf(uint64_t sessionId)
+        {
+            RemoteSessions& r = Remote();
+            std::lock_guard lock(r.mutex);
+            const auto it = r.sessions.find(sessionId);
+            return it == r.sessions.end() ? std::string() : it->second.server;
+        }
+    }
+
     std::optional<std::string> CreateGameSession(uint32_t user, uint64_t sessionId, uint32_t flags, uint32_t publicSlots,
                                                  uint32_t privateSlots)
     {
@@ -2240,7 +2284,10 @@ namespace live
 
     std::optional<std::string> DeleteGameSession(uint32_t user, uint64_t sessionId)
     {
-        return Simple({ { "op", "session_delete" }, { "user", user }, { "session_id", Hex64(sessionId) } });
+        auto error = Simple({ { "op", "session_delete" }, { "user", user }, { "session_id", Hex64(sessionId) } });
+        if (!error)
+            ForgetRemote(sessionId);
+        return error;
     }
 
     namespace
@@ -2256,8 +2303,13 @@ namespace live
 
     std::optional<std::string> JoinGameSession(uint32_t user, uint64_t sessionId, const std::vector<uint64_t>& xuids)
     {
-        return Simple({ { "op", "session_join" }, { "user", user }, { "session_id", Hex64(sessionId) },
-                        { "xuids", XuidList(xuids) } });
+        json request = { { "op", "session_join" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                         { "xuids", XuidList(xuids) } };
+        // A session found on a linked server is joined through ours, which asks that server ("server" is the name the
+        // search result carried); a local session is joined as before.
+        if (const std::string server = RemoteServerOf(sessionId); !server.empty())
+            request["server"] = server;
+        return Simple(std::move(request));
     }
 
     std::optional<std::string> LeaveGameSession(uint32_t user, uint64_t sessionId, const std::vector<uint64_t>& xuids)
@@ -2294,6 +2346,9 @@ namespace live
                 for (const json& m : members)
                     info.members.push_back(ParseHex64(Get(m, "xuid")));
             info.playing = Str(j, "state") == "playing";
+            info.remote = Bool(j, "remote");
+            if (info.remote)
+                info.server = Str(j, "server");
             info.qos = FromBase64(Str(j, "qos"));
             if (const json& attributes = Get(j, "attributes"); attributes.is_object())
                 for (const auto& [id, value] : attributes.items())
@@ -2315,12 +2370,20 @@ namespace live
     std::optional<GameSessionInfo> GameSession(uint32_t user, uint64_t sessionId)
     {
         const auto reply = Request({ { "op", "session" }, { "user", user }, { "session_id", Hex64(sessionId) } });
-        if (!reply || !Bool(*reply, "ok"))
+        if (!reply || !Bool(*reply, "ok") || !Get(*reply, "session").is_object())
+        {
+            // A result of a federated search that was not joined: our server has no copy of it, so it is answered as
+            // the search showed it.
+            if (reply)
+            {
+                RemoteSessions& r = Remote();
+                std::lock_guard lock(r.mutex);
+                if (const auto it = r.sessions.find(sessionId); it != r.sessions.end())
+                    return it->second;
+            }
             return std::nullopt;
-        const json& j = Get(*reply, "session");
-        if (!j.is_object())
-            return std::nullopt;
-        return ParseGameSession(j);
+        }
+        return ParseGameSession(Get(*reply, "session"));
     }
 
     std::optional<std::string> SetGameSessionAttributes(uint32_t user, uint64_t sessionId,
@@ -2378,7 +2441,8 @@ namespace live
         const SessionQuery& query, std::string* error)
     {
         json request = { { "op", "session_search" }, { "user", user }, { "filters", FilterObject(filters, query) },
-                         { "players", players }, { "max_results", maxResults } };
+                         { "players", players }, { "max_results", maxResults },
+                         { "federated", true } }; // the linked servers' sessions too (an older server ignores it)
         AddRank(request, query);
         const auto reply = Request(std::move(request));
         if (!reply || !Bool(*reply, "ok"))
@@ -2391,7 +2455,10 @@ namespace live
         if (const json& list = Get(*reply, "sessions"); list.is_array())
             for (const json& j : list)
                 if (j.is_object())
+                {
                     out.push_back(ParseGameSession(j));
+                    RememberRemote(out.back());
+                }
         return out;
     }
 

@@ -488,6 +488,7 @@ void kernel::users::LiveSignIn(uint32_t user, const Profile& signedIn)
     live::SetOnlineKey(user, onlineKey);
     if (const auto error = live::SignIn(user, profile.onlineXuid, profile.gamertag, card))
         Log("Live: {} could not sign in ({}): offline until Connect to Xbox LIVE", profile.gamertag, *error);
+    kernel::users::HostLiveChanged();
     kernel::RefreshPresence(user); // (signing in starts with the title alone)
 }
 

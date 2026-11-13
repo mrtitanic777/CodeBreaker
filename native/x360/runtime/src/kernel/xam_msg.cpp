@@ -340,6 +340,7 @@ namespace
             record.description = kernel::spa::String(it->descriptionId);
             record.unachieved = kernel::spa::String(it->unachievedId);
             kernel::profile::WriteAchievement(xuid, kernel::TitleId(), record);
+            kernel::profile::RecountTitleEarned(xuid, kernel::TitleId());
             Log("XGI: user {} earned achievement {} ({} gamerscore)", user, id, it->gamerscore);
             earnedBy[user].push_back(&*it);
         }

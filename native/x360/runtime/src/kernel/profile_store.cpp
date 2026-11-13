@@ -489,3 +489,158 @@ namespace kernel::profile
 {
     const uint8_t* AccountKey(uint32_t index) { return kAccountKeys[index]; }
 }
+
+
+namespace kernel::profile
+{
+    namespace
+    {
+        constexpr uint16_t kSectionImage = 2, kSectionTitle = 4;
+        constexpr uint32_t kDashboard = 0xFFFE07D1;
+        constexpr uint64_t kSyncList = 0x100000000ull, kSyncData = 0x200000000ull;
+        constexpr uint32_t kTitlesPlayedSetting = 0x10040012;
+
+        uint64_t Be64(const uint8_t* p) { return uint64_t(Be32(p)) << 32 | Be32(p + 4); }
+        void Set32(std::vector<uint8_t>& d, size_t at, uint32_t x)
+        {
+            for (int i = 0; i < 4; i++)
+                d[at + size_t(i)] = uint8_t(x >> (24 - 8 * i));
+        }
+        void Set64(std::vector<uint8_t>& d, size_t at, uint64_t x)
+        {
+            Set32(d, at, uint32_t(x >> 32));
+            Set32(d, at + 4, uint32_t(x));
+        }
+
+        // The title GPD's earned achievements: count and gamerscore (FUN_81920238).
+        std::pair<uint32_t, uint32_t> Earned(const Entries& title)
+        {
+            constexpr uint32_t kAchieved = 0x20000;
+            uint32_t count = 0, gamerscore = 0;
+            for (const auto& [key, d] : title)
+                if (key.first == kSectionAchievement && key.second < kSyncList && d.size() >= kAchievementHeaderSize &&
+                    (Be32(&d[0x10]) & kAchieved))
+                {
+                    count++;
+                    gamerscore += Be32(&d[0xC]);
+                }
+            return { count, gamerscore };
+        }
+    }
+
+    void RecordTitlePlayed(uint64_t xuid, const TitlePlayed& title)
+    {
+        std::lock_guard lock(g_mutex);
+        Entries& dash = Get(xuid, kDashboard);
+        // The record as stored, or a new one (0xB0 zero bytes).
+        std::vector<uint8_t> record(0xB0, 0);
+        bool changed = false;
+        if (const auto it = dash.find({ kSectionTitle, title.titleId }); it != dash.end() && it->second.size() <= 0xA8)
+            std::copy(it->second.begin(), it->second.end(), record.begin());
+        else
+            changed = true;
+        auto put = [&](size_t at, uint32_t value) {
+            if (Be32(&record[at]) != value)
+            {
+                Set32(record, at, value);
+                changed = true;
+            }
+        };
+        put(0, title.titleId);
+        {
+            Entries& own = Get(xuid, title.titleId);
+            // Possible: the title's (its SPA). INFER: never fewer than the title GPD holds: a console keeps every
+            // achievement of the title's latest SPA there (title updates add some), and ours can be an older one.
+            uint32_t stored = 0, storedScore = 0;
+            for (const auto& [key, d] : own)
+                if (key.first == kSectionAchievement && key.second < kSyncList && d.size() >= kAchievementHeaderSize)
+                {
+                    stored++;
+                    storedScore += Be32(&d[0xC]);
+                }
+            put(4, std::max(title.achievements, stored));
+            put(0xC, std::max(title.gamerscore, storedScore));
+            const auto [count, gamerscore] = Earned(own);
+            put(8, count);
+            put(0x10, gamerscore);
+            if (!title.tile.empty())
+            {
+                std::vector<uint8_t>& image = own[{ kSectionImage, 0x8000 }];
+                if (image != title.tile)
+                {
+                    image = title.tile;
+                    Save(xuid, title.titleId, own);
+                }
+            }
+        }
+        // Last played: now (FUN_81920ac0 takes the system time when XMsg 0xFC/0x58003 answers or for an original Xbox
+        // title; INFER: ours always does).
+        FILETIME now;
+        GetSystemTimeAsFileTime(&now);
+        const uint64_t played = uint64_t(now.dwHighDateTime) << 32 | now.dwLowDateTime;
+        if (Be64(&record[0x20]) != played)
+        {
+            Set64(record, 0x20, played);
+            changed = true;
+        }
+        // FUN_8191fd50: the name at +0x28 (at most 0x40 characters with its terminator).
+        const std::u16string name = title.name.substr(0, 0x3F);
+        for (size_t i = 0; i < 0x40; i++)
+        {
+            const char16_t c = i < name.size() ? name[i] : 0;
+            record[0x28 + 2 * i] = uint8_t(c >> 8);
+            record[0x29 + 2 * i] = uint8_t(c);
+        }
+        record.resize((name.size() + 1 + 0x14) * 2);
+
+        // The sync list: {be64 record id, be64 sync id}, the last played last.
+        std::vector<uint8_t>& list = dash[{ kSectionTitle, kSyncList }];
+        const size_t before = list.size() / 16;
+        const bool last = before > 0 && Be64(&list[(before - 1) * 16]) == title.titleId;
+        if (!last || changed)
+        {
+            std::vector<uint8_t>& data = dash[{ kSectionTitle, kSyncData }];
+            if (data.size() < 0x18)
+            {
+                data.assign(0x18, 0);
+                Set64(data, 0, 1); // INFER: a GPD without the counter starts it at 1
+            }
+            const uint64_t sync = Be64(&data[0]);
+            Set64(data, 0, sync + 1);
+            for (size_t i = 0; i < list.size() / 16; i++)
+                if (Be64(&list[i * 16]) == title.titleId)
+                {
+                    list.erase(list.begin() + ptrdiff_t(i * 16), list.begin() + ptrdiff_t(i * 16 + 16));
+                    break;
+                }
+            const size_t at = list.size();
+            list.resize(at + 16);
+            Set64(list, at, title.titleId);
+            Set64(list, at + 8, sync);
+        }
+        const uint32_t count = uint32_t(list.size() / 16);
+        dash[{ kSectionTitle, title.titleId }] = std::move(record);
+        // GamercardTitlesPlayed: the list's length (an int32 setting: type 1, the value's first word).
+        std::vector<uint8_t> setting(kSettingHeaderSize, 0);
+        Set32(setting, 0, kTitlesPlayedSetting);
+        setting[8] = 1;
+        Set32(setting, 0x10, count);
+        dash[{ kSectionSetting, kTitlesPlayedSetting }] = std::move(setting);
+        Save(xuid, kDashboard, dash);
+    }
+
+    void RecountTitleEarned(uint64_t xuid, uint32_t titleId)
+    {
+        std::lock_guard lock(g_mutex);
+        Entries& dash = Get(xuid, kDashboard);
+        const auto it = dash.find({ kSectionTitle, titleId });
+        if (it == dash.end() || it->second.size() < 0x28)
+            return;
+        const auto [count, gamerscore] = Earned(Get(xuid, titleId));
+        if (Be32(&it->second[8]) == count && Be32(&it->second[0x10]) == gamerscore)
+            return;
+        Set32(it->second, 8, count);
+        Set32(it->second, 0x10, gamerscore);
+        Save(xuid, kDashboard, dash);
+    }
+}

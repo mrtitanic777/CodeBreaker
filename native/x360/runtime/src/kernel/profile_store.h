@@ -79,4 +79,24 @@ namespace kernel::profile
     std::vector<AchievementRecord> ReadAchievements(uint64_t xuid, uint32_t titleId);
     void WriteAchievement(uint64_t xuid, uint32_t titleId, const AchievementRecord& record);
     void WriteSetting(uint64_t xuid, uint32_t titleId, uint32_t settingId, const Setting& setting);
+
+    // A title the profile plays, in the dashboard GPD's titles played (section 4; XAM 17559 FUN_81920ac0, called for
+    // each signed-in user when a title loads and when a user signs in to the running title, FUN_81911f28): the
+    // record id = title ID {+0 title ID, +4 achievements possible, +8 earned, +0xC gamerscore possible, +0x10
+    // earned, +0x17 / +0x19 / +0x1B avatar awards, +0x1C flags, +0x20 last played FILETIME, +0x28 the name (string
+    // 0x8000, at most 0x40 characters), size (characters + 0x14) * 2}; the title moves to the end of the section's
+    // sync list (0x100000000) with a new sync id (0x200000000's counter, FUN_819286b8) when it was not the last one
+    // played or its record changed, and setting 0x10040012 (GamercardTitlesPlayed) is the list's length. Earned
+    // counts are the title GPD's earned achievements (FUN_81921220's sync). The title's tile (image 0x8000 of the
+    // title's SPA) goes to its own GPD's section 2, where the titles-played readers find it.
+    struct TitlePlayed
+    {
+        uint32_t titleId = 0;
+        std::u16string name;
+        uint32_t achievements = 0, gamerscore = 0; // possible (the SPA's)
+        std::vector<uint8_t> tile;                 // PNG; empty: none written
+    };
+    void RecordTitlePlayed(uint64_t xuid, const TitlePlayed& title);
+    // The title's record's earned achievements and gamerscore again from its GPD (after an achievement is written).
+    void RecountTitleEarned(uint64_t xuid, uint32_t titleId);
 }
