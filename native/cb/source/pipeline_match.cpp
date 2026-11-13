@@ -14,7 +14,7 @@
 //
 // `--try` compiles under several sets of switches and reports, per function, the best; which set matches most functions says how the module was built.
 // A 16-bit module goes to Microsoft C (pipeline_match16.cpp: verify/authored/match16, under its own options); an Xbox 360 image (its compiler's objects,
-// read by bits) is not made here.
+// read by bits) to the Xbox 360 compiler (pipeline_ppc.cpp).
 #include <algorithm>
 #include <map>
 #include <mutex>
@@ -35,6 +35,7 @@
 #include "cb/formats/pe_functions.hpp"
 #include "cb/platforms/decoder.hpp"
 #include "cb/source/pipeline_match16.hpp"
+#include "cb/source/pipeline_ppc.hpp"
 #include "cb/source/pipeline_world.hpp"
 #include "cb/symbols/libraries/coff.hpp"
 #include "cb/verify/lanes/win32.hpp"
@@ -258,8 +259,7 @@ int match_command(World& world, const cli::Args& args) {
     const std::optional<stdfs::path> path = world.find(given);
     if (!path) throw UsageError("a 32-bit or 16-bit Windows module is needed: '" + given + "'");
     const std::optional<base::Lane> lane = world.corpus().lane(*path);
-    if (text::iends_with(given, ".xex") || (lane == base::Lane::Pe && world.reconstructor().kind_name(*path) == "powerpc"))
-        throw UsageError("match: an Xbox 360 image is not made native yet (its compiler's objects are read by bits)");
+    if (is_powerpc_module(world, *path, given)) return match_powerpc_command(world, *path, given, args);   // the Xbox 360 compiler (pipeline_ppc.cpp)
     if (lane == base::Lane::Ne) return match16_command(world, *path, args);   // Microsoft C (pipeline_match16.cpp)
     if (lane != base::Lane::Pe) throw UsageError(given + ": a 32-bit or 16-bit Windows module is needed");
 
@@ -547,12 +547,11 @@ int repair_command(World& world, const cli::Args& args) {
         cb::out("{}\n", rp::kUsage);
         return kExitUsage;
     }
-    if (parsed->truth) throw UsageError("repair --truth: the period compilers' own units are not made native yet");
+    if (parsed->truth) return repair_truth_command(world, parsed->truth_args);   // (pipeline_ppc.cpp)
     const std::optional<stdfs::path> path = world.find(parsed->module);
     if (!path) throw UsageError(parsed->module + ": a 32-bit Windows module or a PowerPC image is needed");
     const std::optional<base::Lane> lane = world.corpus().lane(*path);
-    if (text::iends_with(parsed->module, ".xex") || (lane == base::Lane::Pe && world.reconstructor().kind_name(*path) == "powerpc"))
-        throw UsageError("repair: an Xbox 360 image is not made native yet (its compiler's objects are read by bits)");
+    if (is_powerpc_module(world, *path, parsed->module)) return repair_powerpc_command(world, *path, *parsed);
     if (lane != base::Lane::Pe) throw UsageError(parsed->module + ": a 32-bit Windows module or a PowerPC image is needed");
     const std::string period = world.config().text("period_compiler");
     const stdfs::path cl = fs::from_text(period) / "CL.EXE";

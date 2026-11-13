@@ -18,6 +18,9 @@
 #include "cb/formats/ne.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/formats/powerpc_image.hpp"
+#include "cb/java/production.hpp"
+#include "cb/source/java_writer.hpp"
+#include "cb/verify/lanes/java.hpp"
 #include "cb/formats/xex.hpp"
 #include "cb/source/classes_writer.hpp"
 #include "cb/source/module_writer.hpp"
@@ -323,8 +326,31 @@ void write_one(World& world, const std::string& module, bool verify, std::option
     const std::optional<stdfs::path> path = world.find(module);
     if (!path) throw UsageError("no module '" + module + "' in the corpus");
     std::error_code ec;
-    if (stdfs::is_directory(*path, ec) || text::iends_with(fs::to_text(*path), ".java") || text::iends_with(fs::to_text(*path), ".jar"))
-        throw UsageError("a Java program is written by the Java lane, which the lane kit does not make yet");
+    if (stdfs::is_directory(*path, ec) || text::iends_with(fs::to_text(*path), ".java") || text::iends_with(fs::to_text(*path), ".jar")) {
+        // a Java program: the C++ it transpiles to, class by class, each with what the judge found (source/java_writer)
+        const verify::reconstruct::Reconstructor& rec = world.reconstructor();
+        std::string sha, profile;
+        if (verify) {
+            const verify::reconstruct::Outcome done = rec.run(*path);
+            sha = done.sha;
+            profile = done.profile;
+        } else {
+            const verify::reconstruct::Identity id = rec.identity(*path);
+            sha = id.sha;
+            profile = id.profile;
+        }
+        stdfs::path folder = *path;
+        while (!folder.empty() && !folder.has_filename()) folder = folder.parent_path();
+        const std::string name = fs::to_text(folder.filename());
+        const stdfs::path state_folder = world.config().state(stdfs::path("source") / name);
+        const stdfs::path out = out_dir.value_or(state_folder);
+        const java::JavaData data(world.config().checkout_root() / "codebreaker" / "java");
+        const std::unique_ptr<java::assembly::Assembly> assembly = java::production::make_assembly(world.config(), data);
+        const stdfs::path java_dir = verify::lanes::JavaLane::source_dir(*path);
+        const source::java_writer::Conversion convert = [&](const stdfs::path& into) { (void)assembly->converter(std::string(verify::lanes::JavaLane::kCppStandard))(java_dir, into); };
+        (void)source::java_writer::write_java(name, world.store(), sha, profile, out, state_folder, convert, log);
+        return;
+    }
 
     const std::string name = text::lower(fs::to_text(path->filename()));
     const std::string stem = text::lower(fs::to_text(path->stem()));

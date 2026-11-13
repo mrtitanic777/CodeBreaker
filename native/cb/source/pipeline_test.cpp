@@ -213,6 +213,37 @@ CB_TEST("source.pipeline.match_lzexpand_as_the_python_did", [] {
     CB_CHECK(out.find("  LZREAD                       different  1190 of 1304 bytes differ\n") != std::string::npos);
 });
 
+// repair --truth names the period compilers a machine has; the 32-bit compiler of 1994 and Microsoft C have no units of their own (the Python's profile
+// gives none), so nothing is tried and the line says so; a compiler that is not set up is refused with the list of those that are.
+CB_TEST("source.pipeline.repair_truth_of_a_compiler_with_no_units", [] {
+    Surroundings w;
+    const std::string period = w.config.text("period_compiler");
+    std::error_code ec;
+    if (period.empty() || !stdfs::is_regular_file(fs::from_text(period) / "CL.EXE", ec)) return;
+    {
+        testing::CapturedStd cap;
+        CB_CHECK_EQ(w.cli.run({"repair", "--truth", "msvc2"}), 0);
+        CB_CHECK_EQ(cap.out(), "msvc2: 0 sources, 0 identical as they stand; 0 knocked away from the original, 0 brought back\n");
+    }
+    CB_CHECK_THROWS_AS(UsageError, w.cli.run({"repair", "--truth", "no-such-compiler"}));
+});
+
+// What the Python answers on natalsu.exe, the PowerPC image of the formats tests (`python -m codebreaker match natalsu.exe`, the Xbox 360 compiler set up,
+// 2026-11-13; about a minute, so only when asked for): 87 functions, 8 identical, 8 same size, 67 different, 4 that do not compile.
+CB_TEST("source.pipeline.match_of_a_powerpc_image_as_the_python_did", [] {
+    if (!fs::get_env("CB_PIPELINE_SLOW")) return;
+    Surroundings w;
+    const std::optional<stdfs::path> tools = w.config.path("powerpc_tools");
+    std::error_code ec;
+    if (!w.has_corpus() || !tools || !stdfs::is_regular_file(*tools / "cl.exe", ec)) return;
+    const stdfs::path image = testing::data_path("formats/testdata/natalsu.exe");
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(w.cli.run({"match", fs::to_text(image)}), 0);
+    const std::string out = cap.out();
+    CB_CHECK(out.find("natalsu.exe: 87 functions\n") != std::string::npos);
+    CB_CHECK(out.find("  identical            8\n  same size            8\n  different            67\n  does not compile     4\n") != std::string::npos);
+});
+
 CB_TEST("source.pipeline.proof", [] {
     const std::optional<std::string> proof = fs::get_env("CB_PIPELINE_PROOF");
     if (!proof || proof->empty()) return;
