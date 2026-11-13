@@ -6,14 +6,17 @@
 The corpus at a glance (every module, its verdicts as a bar), a module's functions with the
 reconstructed C, the assembly, who calls what and the judge's verdict beside each, and the long
 work (measure, decompile) started as jobs and followed live. It shows what the function store
-holds through the same calls the MCP server answers (ui/mcp_server.py), so the two never disagree --
-answered by the CodeBreaker service (ui/serve.py, started on demand) when it can be, else here.
+holds through the CodeBreaker service (`codebreaker serve`, started on demand by ui/client.py): the
+same calls the MCP server answers, so the two never disagree. It is a thin client: it imports nothing
+of CodeBreaker but this folder, and when the service cannot be had it says so and offers to retry.
 
 Built on Textual (pip install textual). Every call that can take a while runs in a worker
 thread; the screens say "working" and fill in when it is done.
 """
+import functools
 import importlib.util
 import os
+import threading
 
 from rich.syntax import Syntax
 from rich.table import Table
@@ -29,17 +32,23 @@ from textual.theme import Theme
 from textual.widgets import (DataTable, Footer, Header, Input, Label, LoadingIndicator, RichLog, Static,
                              TabbedContent, TabPane)
 
-from codebreaker.verify import verdicts as V
+from codebreaker.ui import client
+from codebreaker.ui.client import Unavailable
 
 # ---------------------------------------------------------------------------------------------- look
-# One colour per verdict, the same everywhere: the bars, the tables, the detail panes. The classes
-# and how each is said are the one vocabulary's (verify/verdicts.py: LABEL, the short form).
-VERDICTS = V.ORDER + (V.IDENTIFIED,)
-COLOR = {V.VERIFIED: "#4ec9a0", V.WEAK: "#e5b454", V.UNVERIFIED: "#e06c75", V.NOT_JUDGED: "#7f8796",
-         V.NO_COMPILE: "#c678dd", V.NO_SOURCE: "#4b5263", V.IDENTIFIED: "#61afef"}
-TITLE = V.LABEL
-MARK = {V.VERIFIED: "●", V.WEAK: "◐", V.UNVERIFIED: "✕", V.NOT_JUDGED: "○", V.NO_COMPILE: "▲",
-        V.NO_SOURCE: "·", V.IDENTIFIED: "◆"}
+# One colour per verdict class, the same everywhere: the bars, the tables, the detail panes. The
+# classes are the service's words (verify/verdicts.hpp: best first, identified standing apart at the
+# end) and TITLE is how each is said in a narrow column (its LABEL); tests/test_verdicts.py holds
+# these tables to the vocabulary. What a verdict amounts to is always the service's to say.
+VERIFIED, WEAK, UNVERIFIED, NOT_JUDGED = "verified", "weak", "unverified", "not-judged"
+NO_COMPILE, NO_SOURCE, IDENTIFIED = "no-compile", "no-source", "identified"
+VERDICTS = (VERIFIED, WEAK, UNVERIFIED, NOT_JUDGED, NO_COMPILE, NO_SOURCE, IDENTIFIED)
+COLOR = {VERIFIED: "#4ec9a0", WEAK: "#e5b454", UNVERIFIED: "#e06c75", NOT_JUDGED: "#7f8796",
+         NO_COMPILE: "#c678dd", NO_SOURCE: "#4b5263", IDENTIFIED: "#61afef"}
+TITLE = {VERIFIED: "verified", WEAK: "weak", UNVERIFIED: "unverified", NOT_JUDGED: "not judged",
+         NO_COMPILE: "does not compile", NO_SOURCE: "no source", IDENTIFIED: "runtime library"}
+MARK = {VERIFIED: "●", WEAK: "◐", UNVERIFIED: "✕", NOT_JUDGED: "○", NO_COMPILE: "▲",
+        NO_SOURCE: "·", IDENTIFIED: "◆"}
 
 THEME = Theme(
     name="codebreaker",
@@ -112,38 +121,74 @@ def flat_address(addr):
 
 # ---------------------------------------------------------------------------------------------- the store
 class Store(object):
-    """The calls the screens make, as the MCP server answers them (ui/mcp_server.py) -- by the
-    CodeBreaker service when it runs (ui/service.call: the same process and the same answers as
-    every MCP server), else here. Imported on first use: the server module sets up the corpus
-    and the store."""
+    """The calls the screens make, each one call of the service (ui/client.py), by name and with
+    its arguments named. A failure of the service itself (it cannot be reached or started) is
+    reported to the app, which says so and offers to retry (ServiceDown), and raised as Unavailable."""
 
     def __init__(self):
-        self._m = None
+        self.down = None                                 # set by the app: what to do when the service is gone
 
-    @property
-    def m(self):
-        if self._m is None:
-            from codebreaker.ui import mcp_server
-            self._m = mcp_server
-        return self._m
-
-    def __getattr__(self, name):
-        from codebreaker.ui import service
-        fn = getattr(self.m, name)
-        if fn in self.m.TOOLS:
-            return lambda *a, **kw: service.call("mcp." + name, *a, **kw)
-        return fn
+    def ask(self, what, /, **args):                      # (`what` is positional only: a tool has an argument called `name`)
+        try:
+            return client.call(what, **args)
+        except Unavailable as e:
+            if self.down:
+                self.down(str(e))
+            raise
 
     def overview(self):
-        from codebreaker.ui import service
-        return service.call("store.overview")
+        return self.ask("store.overview")
 
     def latest(self, sha):
-        from codebreaker.ui import service
-        return service.call("store.latest", sha)
+        return self.ask("store.latest", module_sha=sha)
+
+    def triage(self, module):
+        return self.ask("mcp.triage", module=module)
+
+    def jobs(self):
+        return self.ask("mcp.jobs")
+
+    def job(self, job_id, offset=0, tail=0):
+        return self.ask("mcp.job", job_id=job_id, offset=offset, tail=tail)
+
+    def stop_job(self, job_id):
+        return self.ask("mcp.stop_job", job_id=job_id)
+
+    def functions(self, module, limit=300):
+        return self.ask("mcp.functions", module=module, limit=limit)
+
+    def function(self, module, addr):
+        return self.ask("mcp.function", module=module, addr=addr)
+
+    def xrefs(self, module, addr):
+        return self.ask("mcp.xrefs", module=module, addr=addr)
+
+    def disasm(self, module, addr):
+        return self.ask("mcp.disasm", module=module, addr=addr)
+
+    def run_command(self, command, args=None):
+        return self.ask("mcp.run_command", command=command, args=list(args or []))
+
+    def decompile_function(self, module, addr, wait=60):
+        return self.ask("mcp.decompile_function", module=module, addr=addr, wait=wait)
+
+    def name_function(self, module, addr, name):
+        return self.ask("mcp.name_function", module=module, addr=addr, name=name)
 
 
 STORE = Store()
+
+
+def quiet(method):
+    """A screen's method that asks the service on the interface's own thread: when the service is
+    gone the app has been told (STORE.down) and shows ServiceDown; the method simply does nothing."""
+    @functools.wraps(method)
+    def guarded(*a, **kw):
+        try:
+            return method(*a, **kw)
+        except Unavailable:
+            return None
+    return guarded
 
 
 def ready(answer):
@@ -272,6 +317,7 @@ class Jobs(Screen):
         self.refresh_jobs()
         self.set_interval(1.0, self.refresh_jobs)
 
+    @quiet
     def refresh_jobs(self):
         t = self.query_one("#jobs", DataTable)
         rows = STORE.jobs()["jobs"]
@@ -288,6 +334,7 @@ class Jobs(Screen):
         else:
             self.query_one("#jobs-log-title", Label).update("[dim]nothing started yet: m on a module measures it[/]")
 
+    @quiet
     def follow(self, jid):
         log = self.query_one("#jobs-log", RichLog)
         if jid != self.shown:
@@ -305,6 +352,7 @@ class Jobs(Screen):
         if event.row_key and event.row_key.value != self.shown:
             self.follow(event.row_key.value)
 
+    @quiet
     def action_stop(self):
         if self.shown:
             STORE.stop_job(self.shown)
@@ -509,14 +557,14 @@ class Module(Screen):
         if cls and cls != "no-source":
             g.add_row("verdict", Text("%s %s" % (MARK.get(cls, ""), TITLE.get(cls, cls)), style="bold " + COLOR.get(cls, "")))
         elif earlier:
-            last = V.classify(earlier[0][1]["verdict"], earlier[0][1].get("limits"))[0]
+            last = earlier[0][1].get("class") or NO_SOURCE      # (what the earlier verdict amounts to: the service's word)
             g.add_row("last verdict", Text.assemble(("%s %s" % (MARK.get(last, ""), TITLE.get(last, last)),
                                                      "bold " + COLOR.get(last, "")),
                                                     ("   by an earlier judge", "#7f8796")))
             if earlier[0][1].get("reason"):
                 g.add_row("why", Text(earlier[0][1]["reason"]))
         else:
-            g.add_row("verdict", Text("%s %s" % (MARK["no-source"], TITLE["no-source"]), style="#7f8796"))
+            g.add_row("verdict", Text("%s %s" % (MARK[NO_SOURCE], TITLE["no-source"]), style="#7f8796"))
         for k in ("reason", "why", "detail", "limits", "engine", "name"):
             if fn.get(k):
                 g.add_row(k, Text(str(fn[k])))
@@ -553,6 +601,7 @@ class Module(Screen):
     def action_info(self):
         self.app.push_screen(Info(self.module))
 
+    @quiet
     def action_measure(self):
         try:
             j = STORE.run_command("measure", [self.module])
@@ -563,6 +612,7 @@ class Module(Screen):
         self.notify("measuring %s: job %s (j shows it)" % (self.module, j["id"]), title="Started")
         self.set_interval(3.0, self.watch_measure)
 
+    @quiet
     def watch_measure(self):
         if not self.measuring:
             return
@@ -607,6 +657,7 @@ class Module(Screen):
         addr = self.picked_addr
         now = next((r["name"] for r in self.rows if r["addr"] == addr), "") or ""
 
+        @quiet
         def named(name):
             if not name:
                 return
@@ -693,6 +744,7 @@ class Home(Screen):
         g.add_row("", Text("\neach function by the last verdict\nit had, under any judge", style="#7f8796"))
         self.query_one("#totals", Static).update(g)
 
+    @quiet
     def sweep_now(self):
         """The jobs running, under the totals. (Not the server's sweep progress: reading it works
         out the whole corpus's ledger, minutes of work that would starve the screen.)"""
@@ -791,6 +843,57 @@ class Modules(Provider):
                     yield Hit(score, matcher.highlight(words), act)
 
 
+# ---------------------------------------------------------------------------------------------- the service is gone
+class ServiceDown(ModalScreen):
+    """Shown when the CodeBreaker service cannot be reached or started: what is wrong, and a key that
+    tries again (looking for the service, starting it when it is not running). There is no other way
+    to the answers, so nothing else is tried."""
+    BINDINGS = [Binding("r,enter", "retry", "Retry / start the service"), Binding("q,escape", "leave", "Quit")]
+
+    def __init__(self, message):
+        super().__init__()
+        self.message, self.trying = message, False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="down"):
+            yield Label("[b #e06c75]The CodeBreaker service is not available[/]")
+            yield Static(Text(self.message), id="down-why")
+            yield Label("", id="down-state")
+            yield Label("[dim]r: retry, starting the service if it is not running  ·  q: quit[/]")
+
+    def say(self, message):
+        self.message = message
+        self.query_one("#down-why", Static).update(Text(message))
+
+    def action_retry(self):
+        if self.trying:
+            return
+        self.trying = True
+        self.query_one("#down-state", Label).update("[#e5b454]trying ...[/]")
+        self.attempt()
+
+    @work(thread=True)
+    def attempt(self):
+        try:
+            client.connect(force=True)
+        except Unavailable as e:
+            self.app.call_from_thread(self.failed, str(e))
+            return
+        self.app.call_from_thread(self.recovered)
+
+    def failed(self, message):
+        self.trying = False
+        self.say(message)
+        self.query_one("#down-state", Label).update("[#e06c75]still not available[/]")
+
+    def recovered(self):
+        self.dismiss(True)
+        self.app.reload()
+
+    def action_leave(self):
+        self.app.exit()
+
+
 # ---------------------------------------------------------------------------------------------- the app
 class CodeBreaker(App):
     CSS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "terminal.tcss")   # (wherever the app is run or subclassed from)
@@ -806,9 +909,39 @@ class CodeBreaker(App):
     def on_mount(self):
         self.register_theme(THEME)
         self.theme = "codebreaker"
+        STORE.down = self.service_down
         self.push_screen(Home())
         if self.first:
             self.push_screen(Module(self.first))
+        self.start_service()
+
+    def on_unmount(self):
+        STORE.down = None
+
+    @work(thread=True, exclusive=True, group="service")
+    def start_service(self):
+        """The service, found or started, without holding up the first screen."""
+        try:
+            client.connect()
+        except Unavailable as e:
+            self.service_down(str(e))
+
+    def service_down(self, message):
+        """The service cannot be had (any thread): ServiceDown says so, once."""
+        if threading.get_ident() != self._thread_id:
+            self.call_from_thread(self.service_down, message)
+            return
+        top = self.screen
+        if isinstance(top, ServiceDown):
+            top.say(message)
+        else:
+            self.push_screen(ServiceDown(message))
+
+    def reload(self):
+        """The service is back: what was asked while it was gone, asked again."""
+        for screen in self.screen_stack:
+            if isinstance(screen, (Home, Module)):
+                screen.load()
 
     def action_jobs(self):
         if not isinstance(self.screen, Jobs):
@@ -819,14 +952,18 @@ class CodeBreaker(App):
 
     async def action_quit(self):
         """Quit; a job still running is said first (a second q stops it with the interface)."""
-        from codebreaker.ui import service
-        running = [j for j in STORE.jobs()["jobs"] if j["status"] == "running" and j.get("owner") == service.OWNER]
+        running = []
+        if client.connected():                                   # (a service that is gone has no jobs to stop)
+            try:
+                running = [j for j in client.call("mcp.jobs")["jobs"] if j["status"] == "running" and j.get("owner") == client.OWNER]
+            except (Unavailable, RuntimeError, OSError, ValueError):
+                running = []
         if running and not getattr(self, "warned", False):
             self.warned = True
             self.notify("%s still running: q again stops it and quits" % ", ".join(
                 "%s %s" % (j["action"], j["module"]) for j in running), severity="warning", timeout=6)
             return
-        service.stop_mine()                                      # (only the jobs started from here)
+        client.stop_mine()                                       # (only the jobs started from here)
         self.exit()
 
 
@@ -835,10 +972,6 @@ def main(argv):
     if not importlib.util.find_spec("textual"):
         print("The terminal interface needs Textual:  pip install textual")
         return 2
-    import threading
-    from codebreaker.ui import service
-    service.START = True                                     # the service, started on demand
-    threading.Thread(target=service.client, daemon=True).start()
     CodeBreaker(argv[0] if argv else None).run()
     return 0
 

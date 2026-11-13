@@ -427,8 +427,9 @@ def function(module: str, addr: str) -> dict:
     if not one.get("source"):                     # not judged under these settings: what was made of it
         with closing(F.open()) as fs:
             made = [{"engine": c["engine"], "rev": c["rev"], "name": c["name"], "source": c["source"],
-                     "problem": c["problem"], "older_verdicts": [{k: v[k] for k in ("profile", "verdict", "reason", "limits")}
-                                                                 for v in c["verdicts"][:5]]}
+                     "problem": c["problem"], "older_verdicts": [dict({k: v[k] for k in ("profile", "verdict", "reason", "limits")},
+                                                         **{"class": V.classify(v["verdict"], v["limits"])[0]})
+                                                    for v in c["verdicts"][:5]]}
                     for c in fs.stored(found["sha"], hit["addr"])]
         if made:
             one["candidates"] = made

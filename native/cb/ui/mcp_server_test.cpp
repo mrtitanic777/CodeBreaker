@@ -417,6 +417,19 @@ CB_TEST("ui.mcp.the_store_and_the_code_come_through_the_services", [] {
     CB_CHECK_EQ(one["name"].get<std::string>(), "n");
     CB_CHECK(tool("function", Json{{"module", lz}, {"addr", "999"}}).get<std::string>().find("no function '999' in lzexpand.dll (3 functions; `functions` lists them)") != std::string::npos);
     CB_CHECK_EQ(tool("function", Json{{"module", lz}, {"addr", "lzseek"}})["name"].get<std::string>(), "n");   // by name
+    // a function with no verdict under the settings in force: the stored reconstructions, each earlier verdict with what it amounts to
+    f.services.stored_candidates = [](std::string_view, std::string_view) {
+        const auto verdict = [](Json word, const char* limits) { return Json{{"profile", "p0"}, {"verdict", std::move(word)}, {"reason", "r"}, {"limits", limits}, {"carried", false}}; };
+        return Json::array({Json{{"engine", "e"}, {"rev", nullptr}, {"name", nullptr}, {"source", "int f(void){return 0;}"}, {"problem", ""},
+                                 {"verdicts", Json::array({verdict("equivalent", ""), verdict("equivalent", "truncated"), verdict("same", ""), verdict("differs", ""),
+                                                           verdict("inconclusive", ""), verdict(nullptr, ""), verdict("no-such-word", "")})}}});
+    };
+    Server with_candidates(f.service, f.link, f.services);
+    const Json made = Json::parse(with_candidates.handle(Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+        {"params", Json{{"name", "function"}, {"arguments", Json{{"module", lz}, {"addr", "0x100"}}}}}})["result"]["content"][0]["text"].get<std::string>());
+    std::vector<std::string> classes;
+    for (const Json& v : made["candidates"][0]["older_verdicts"]) classes.push_back(v["class"].get<std::string>());
+    CB_CHECK(classes == (std::vector<std::string>{"verified", "weak", "verified", "unverified", "not-judged"}));   // (the first five)
     // ... and the pieces that are not given say so
     CB_CHECK(tool("disasm", Json{{"module", lz}, {"addr", "100"}}).get<std::string>().find("the disassembler is not available in this server") != std::string::npos);
     CB_CHECK(tool("decompile_function", Json{{"module", lz}, {"addr", "100"}}).get<std::string>().find("the decompiler is not available") != std::string::npos);

@@ -373,7 +373,12 @@ from `.mcp.json`; exe size and start time recorded (no CPython-world start-up: s
 checkout marker. Check: `grep -rn '"codebreaker" /' native/cb --include=*.cpp` (outside tests) is empty;
 `cb_tests` and `cb_exe_gate` green with the folder `codebreaker/` temporarily renamed (proves nothing reads it).
 
-**Step 4 - Cut the terminal UI.**
+**Step 4 - Cut the terminal UI. DONE 2026-11-13** (`ui/client.py`: stdlib only, finds/starts `<exe> serve` with
+CB_EXE, `exe` in settings.json, state/cxx/codebreaker/build, or PATH; `Store` has the eleven calls by name;
+`ServiceDown`; `tests/test_ui_thin.py` runs it with only `codebreaker/__init__.py` and four `ui/` files present;
+`codebreaker/__init__.py` tolerates a missing `codebreaker.base`). Left from the plan: `ui/settings_lite` is inside
+`client.py`; `ui/progress.py` and the Python server half (`ui/service.py`, `serve.py`, `mcp_server.py`) stay until
+the Python goes. The original text:
 Create `ui/client.py` (client half of `service.py`, launching `codebreaker.exe serve`), explicit tool names in
 `Store`, verdicts without `native_engine`, drop the in-process fallback. Check: the `python -I` module-set check
 (2.3) prints the keep set; the adapted `tests/test_ui.py` passes against the native `serve`; the UI on a real
@@ -436,12 +441,15 @@ in git history under tag `python-last`.
 ## 7. Risks and open questions for Logan
 
 - **The terminal cut changes behaviour** (no in-process fallback): when `codebreaker.exe serve` cannot start the UI
-  shows a message instead of answering locally. Acceptable?
+  shows a message instead of answering locally. DONE (2026-11-13): `ServiceDown` says why (no program found and
+  where it looked, the program stopped again with the tail of `<state>/service/serve.log`, no answer in 60 s) and `r`
+  retries, starting the service when it is not running; the screens ask again once it is back.
 - **Where the UI's Python lives**: keeping `codebreaker/ui/` keeps the import path stable and the `ui` launcher
   trivial; a top-level `terminal/` folder would stop a stray `codebreaker/` Python package from existing at all.
   The plan keeps `codebreaker/ui/` as the request words it ("`codebreaker/ui/terminal*` and what it needs").
-- **Verdict vocabulary** lives in `cb/verify` (C++) and in `verify/verdicts.py`; the UI needs it for colours. Either
-  generate the small Python table from C++ or have the service return classes. Pick before step 4.
+- **Verdict vocabulary** lives in `cb/verify` (C++) and in `verify/verdicts.py`; the UI needs it for colours. DONE:
+  the service returns classes (the `function` tool's `older_verdicts` carry `class`), and the UI keeps only its own
+  colour/mark/label tables, held to the vocabulary by `tests/test_verdicts.py`.
 - **Python tests that test Python-only behaviour** (service, store, mcp Python side, the Python front end) are
   retired, not ported: their native equivalents (`cb/ui/*_test`, `cb/translate`) already exist; confirm with the
   fate table.

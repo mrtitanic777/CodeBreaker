@@ -13,6 +13,11 @@ like the original.
     targets/     what is specific to one thing being reconstructed (win95)
     ui/          the progress window
 """
-from codebreaker.base import settings as _settings
-
-_settings.export_for_carried_over_code()
+try:
+    from codebreaker.base import settings as _settings
+except ModuleNotFoundError as _missing:
+    if _missing.name != "codebreaker.base":
+        raise
+    # only codebreaker/ui is here: the terminal interface, a thin client of the native service (ui/client.py)
+else:
+    _settings.export_for_carried_over_code()
