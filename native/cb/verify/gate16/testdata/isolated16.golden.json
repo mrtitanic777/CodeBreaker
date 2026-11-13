@@ -1,0 +1,329 @@
+{
+ "names": [
+  "f0",
+  "f1",
+  "f2",
+  "f3",
+  "f4",
+  "f5",
+  "f6",
+  "f7",
+  "f8",
+  "f9"
+ ],
+ "places": [
+  [
+   4,
+   348
+  ],
+  [
+   2,
+   610
+  ],
+  [
+   2,
+   0
+  ],
+  [
+   2,
+   750
+  ],
+  [
+   2,
+   982
+  ],
+  [
+   2,
+   1776
+  ],
+  [
+   4,
+   0
+  ],
+  [
+   4,
+   314
+  ],
+  [
+   4,
+   166
+  ],
+  [
+   2,
+   444
+  ]
+ ],
+ "funcs": {
+  "f0": [
+   4,
+   true
+  ],
+  "f1": [
+   10,
+   true
+  ],
+  "f2": [
+   2,
+   true
+  ],
+  "f3": [
+   8,
+   true
+  ],
+  "f4": [
+   8,
+   true
+  ],
+  "f5": [
+   2,
+   true
+  ],
+  "f6": [
+   0,
+   true
+  ],
+  "f7": [
+   4,
+   true
+  ],
+  "f8": [
+   0,
+   true
+  ],
+  "f9": [
+   8,
+   true
+  ]
+ },
+ "swapped_places": [
+  [
+   2,
+   610
+  ],
+  [
+   2,
+   0
+  ],
+  [
+   2,
+   750
+  ],
+  [
+   2,
+   982
+  ],
+  [
+   2,
+   1776
+  ],
+  [
+   4,
+   0
+  ],
+  [
+   4,
+   314
+  ],
+  [
+   4,
+   166
+  ],
+  [
+   2,
+   444
+  ],
+  [
+   4,
+   348
+  ]
+ ],
+ "cases": {
+  "own": [
+   [
+    "f0",
+    "equivalent",
+    ""
+   ],
+   [
+    "f1",
+    "equivalent",
+    ""
+   ],
+   [
+    "f2",
+    "equivalent",
+    ""
+   ],
+   [
+    "f3",
+    "equivalent",
+    ""
+   ],
+   [
+    "f4",
+    "equivalent",
+    ""
+   ],
+   [
+    "f5",
+    "equivalent",
+    ""
+   ],
+   [
+    "f6",
+    "equivalent",
+    ""
+   ],
+   [
+    "f7",
+    "equivalent",
+    ""
+   ],
+   [
+    "f8",
+    "equivalent",
+    ""
+   ],
+   [
+    "f9",
+    "equivalent",
+    ""
+   ]
+  ],
+  "swapped": [
+   [
+    "f0",
+    "divergent",
+    "args 0 0 0 0: calls: original ['f6()'], ours ['f1(0,0,0,0,1e0)', 'api KERNEL.@88']"
+   ],
+   [
+    "f1",
+    "divergent",
+    "args 0 0 0 0: calls: original ['f2(0)', 'api KERNEL.@88'], ours ['api KERNEL.@84(2,0,0,0)', 'api KERNEL.@84(0,0,0,0)']"
+   ],
+   [
+    "f2",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@84(2,0,0,0)', 'api KERNEL.@84(0,0,0,0)'], ours ['api KERNEL.@84(0,0,0,0)']"
+   ],
+   [
+    "f3",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@84(0,0,0,0)'], ours ['api KERNEL.@82(0,0,0,0)']"
+   ],
+   [
+    "f4",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@82(0,0,0,0)'], ours ['api KERNEL.@81(0)']"
+   ],
+   [
+    "f5",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@81(0)'], ours ['api KERNEL.@15(1080,0,2040)', 'api KERNEL.@15(8001,0,2040)']"
+   ],
+   [
+    "f6",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@15(1080,0,2040)', 'api KERNEL.@15(8001,0,2040)'], ours ['f9(0,0,0,DS)']"
+   ],
+   [
+    "f7",
+    "divergent",
+    "args 0 0 0 0: calls: original ['f0(0,0)'], ours []"
+   ],
+   [
+    "f8",
+    "divergent",
+    "args 0 0 0 0: calls: original [], ours ['api KERNEL.@74', 'api KERNEL.@84(2,0,0,0)']"
+   ],
+   [
+    "f9",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@74', 'api KERNEL.@84(2,0,0,0)'], ours ['f5(0)']"
+   ]
+  ],
+  "own_chain": [
+   [
+    "f0",
+    "equivalent",
+    ""
+   ],
+   [
+    "f1",
+    "equivalent",
+    ""
+   ],
+   [
+    "f2",
+    "equivalent",
+    ""
+   ],
+   [
+    "f3",
+    "equivalent",
+    ""
+   ]
+  ],
+  "swapped_chain": [
+   [
+    "f0",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@15(1080,0,2040)', 'api KERNEL.@15(8001,0,2040)'], ours ['api KERNEL.@88', 'api KERNEL.@74']"
+   ],
+   [
+    "f1",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@88', 'api KERNEL.@74'], ours ['api KERNEL.@84(2,0,0,0)', 'api KERNEL.@84(0,0,0,0)']"
+   ],
+   [
+    "f2",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@84(2,0,0,0)', 'api KERNEL.@84(0,0,0,0)'], ours ['api KERNEL.@84(0,0,0,0)']"
+   ],
+   [
+    "f3",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@84(0,0,0,0)'], ours ['api KERNEL.@82(0,0,0,0)']"
+   ]
+  ],
+  "swapped_given": [
+   [
+    "f0",
+    "divergent",
+    "args 0 0 0 0: calls: original ['f6()'], ours ['f1(0,0,0,0,1e0)', 'api KERNEL.@88']"
+   ],
+   [
+    "f1",
+    "divergent",
+    "args 0 0 0 0: calls: original ['f2(0)', 'api KERNEL.@88'], ours ['api KERNEL.@84(2,0,0,0)', 'api KERNEL.@84(0,0,0,0)']"
+   ],
+   [
+    "f2",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@84(2,0,0,0)', 'api KERNEL.@84(0,0,0,0)'], ours ['api KERNEL.@84(0,0,0,0)']"
+   ],
+   [
+    "f3",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@84(0,0,0,0)'], ours ['api KERNEL.@82(0,0,0,0)']"
+   ],
+   [
+    "f4",
+    "divergent",
+    "args 0 0 0 0: calls: original ['api KERNEL.@82(0,0,0,0)'], ours ['api KERNEL.@81(0)']"
+   ]
+  ],
+  "unknown": [
+   [
+    "nope",
+    "inconclusive",
+    "not found on both sides"
+   ],
+   [
+    "f0",
+    "equivalent",
+    ""
+   ]
+  ]
+ }
+}
