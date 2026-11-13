@@ -243,7 +243,7 @@ cli::Command command(const Services& services) {
         if (std::filesystem::exists(services.store_index, ec)) {
             store = std::make_unique<engine::FunctionStore>(services.store_index, services.store_folder, /*readonly*/ true);
         } else {
-            out("there is no function store yet ({}): nothing has been reconstructed; the corpus is listed alone",
+            out("there is no function store yet ({}): nothing has been reconstructed; the corpus is listed alone\n",
                 fs::to_text(services.store_index));
         }
         Ledger ledger(services, store.get());
@@ -251,17 +251,17 @@ cli::Command command(const Services& services) {
         const std::optional<std::string> csv = a.value("csv");
         const Report report = ledger.measure(module, a.flag("refresh"));
         if (module && report.modules.empty()) {
-            out("no module '{}' in the corpus or the store", *module);
+            out("no module '{}' in the corpus or the store\n", *module);
             return 2;
         }
-        if (csv) out("wrote {} modules to {}", write_csv(report, fs::from_text(*csv)), *csv);
+        if (csv) out("wrote {} modules to {}\n", write_csv(report, fs::from_text(*csv)), *csv);
         if (a.flag("json")) {
-            out("{}", json::dump(to_json(report), json::Style::Pretty));
+            out("{}\n", json::dump(to_json(report), json::Style::Pretty));
         } else if (module) {
             for (const Row& r : report.modules)
-                for (const std::string& line : describe_row(r, report, ledger)) out("{}", line);
+                for (const std::string& line : describe_row(r, report, ledger)) out("{}\n", line);
         } else if (!csv) {
-            for (const std::string& line : render(report, a.flag("all"))) out("{}", line);
+            for (const std::string& line : render(report, a.flag("all"))) out("{}\n", line);
         }
         return 0;
     };

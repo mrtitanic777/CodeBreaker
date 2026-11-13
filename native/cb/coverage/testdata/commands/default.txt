@@ -1,0 +1,25 @@
+there is no function store yet (<STATE>/functions.sqlite): nothing has been reconstructed; the corpus is listed alone
+Coverage of <CORPUS>
+verifier settings in force: 32-bit 1d3e92132994, 16-bit 856575d18ee9
+
+Functions, by kind of module
+kind    modules  in store  measured  functions  decompiled  compiled  VERIFIED  VERIFIED (weak)  UNVERIFIED  NOT JUDGED  DOES NOT COMPILE  NO SOURCE  verified %
+32-bit        1         0         0          0           0         0         0                0           0           0                 0          0           -
+16-bit        2         0         0          0           0         0         0                0           0           0                 0          0           -
+driver        0         0         0          0           0         0         0                0           0           0                 0          0           -
+DOS           0         0         0          0           0         0         0                0           0           0                 0          0           -
+Java          0         0         0          0           0         0         0                0           0           0                 0          0           -
+all           3         0         0          0           0         0         0                0           0           0                 0          0           -
+
+Bytes of code, by kind of module
+kind    code bytes  in known functions          in VERIFIED          in VERIFIED (weak)
+32-bit        3584                   0    0.0%            0    0.0%                   0    0.0%
+16-bit        3068                   0    0.0%            0    0.0%                   0    0.0%
+driver           0                   0       -            0       -                   0       -
+DOS              0                   0       -            0       -                   0       -
+Java             0                   0       -            0       -                   0       -
+all           6652                   0    0.0%            0    0.0%                   0    0.0%
+
+Modules the store holds (--all lists the rest)
+(none)
+exit=0

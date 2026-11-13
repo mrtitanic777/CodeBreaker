@@ -173,4 +173,10 @@ std::vector<std::string> describe_row(const Row& row, const Report& report, cons
 // `coverage [--module NAME] [--all] [--csv FILE] [--json] [--refresh]`.
 cli::Command command(const Services& services);
 
+// The services over the corpus and the function store of a state folder (store/functions.hpp: its index file, CB_FUNCTIONS_DB, and the folder
+// of its modules' databases). `verifier_profiles`: the verifier settings in force now per kind of module (what verify's Reconstructor::digests
+// says); without it none are known and the settings the store used last stand in. The corpus must outlive the services.
+Services services_over(const base::Corpus& corpus, const std::filesystem::path& state_dir,
+                       std::function<std::map<std::string, std::optional<std::string>>()> verifier_profiles = {});
+
 }  // namespace cb::coverage::ledger
