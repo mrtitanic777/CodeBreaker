@@ -10,6 +10,7 @@
 #include "cb/core/json.hpp"
 #include "cb/core/random_file.hpp"
 #include "cb/core/text.hpp"
+#include "cb/formats/xbox/volumes.hpp"
 
 namespace cb::recompile::title {
 namespace {
@@ -249,6 +250,10 @@ std::optional<Title> locate(const stdfs::path& given, const FindVolumes& find_vo
     } catch (const Error&) {   // (not a container: look inside)
     }
     return search(path, find_volumes, folder_title);
+}
+
+std::optional<Title> locate(const stdfs::path& path) {
+    return locate(path, [](const stdfs::path& p) { return formats::xbox::volumes::open(p); });
 }
 
 }  // namespace cb::recompile::title

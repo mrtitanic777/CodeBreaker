@@ -1,10 +1,7 @@
-// codebreaker/formats/media.cpp -- what the shim of media.hpp cannot be header-only for (COMPAT(py): remove when
-// formats.xbox.volumes is refactored): volumes() puts the old Xbox volumes first, and xbox/volumes.hpp includes media.hpp.
-// The reading, writing and matching is native/cb/formats/media.{hpp,cpp}.
+// codebreaker/formats/media.cpp -- what the shim of media.hpp cannot be header-only for: the old volume classes are built over the
+// new ones (the Xbox containers' kinds come out as NewVolume). The reading, writing and matching is native/cb/formats/media.{hpp,cpp}.
 
 #include "codebreaker/formats/media.hpp"
-
-#include "codebreaker/formats/xbox/volumes.hpp"
 
 namespace codebreaker::formats::media {
 
@@ -29,9 +26,6 @@ decltype(auto) value_errors(F&& f) {
 }  // namespace
 
 py::list<std::shared_ptr<Volume>> volumes(const py::str& path, bool long_names) {
-    // (first: an Xbox 360 disc also carries an ISO-9660 video part)
-    std::optional<xbox::volumes::VolumeList> found = xbox::volumes::volumes(path, long_names);
-    if (found && !found->empty()) return *found;
     py::list<std::shared_ptr<Volume>> out;
     const std::filesystem::path file = cb::compat::from_py(path);
     cb::compat::guard([&] {
@@ -50,6 +44,7 @@ py::list<std::shared_ptr<Volume>> volumes(const py::str& path, bool long_names) 
                 break;
             }
             case cm::VolumeKind::Bundle: out.append(std::make_shared<BundleVolume>(path)); break;
+            default: out.append(std::make_shared<NewVolume>(std::shared_ptr<cm::Volume>(v.release()))); break;   // the Xbox containers
             }
         }
     });

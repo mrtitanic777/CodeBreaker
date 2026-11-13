@@ -1,5 +1,5 @@
 // Tests of the title finder over folders on disk and over volumes made up in the test (the container readers are formats/xbox/volumes',
-// which hands its volumes in through `FindVolumes`): what is a title, what it is called, and what an unpack writes and when it does not.
+// which hands its volumes in through `FindVolumes`) and over the real readers of formats/xbox/volumes: what is a title, what it is called, and what an unpack writes and when it does not.
 
 #include "cb/recompile/title.hpp"
 
@@ -7,7 +7,10 @@
 
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/core/crypto.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/formats/xbox/ciso.hpp"
+#include "cb/formats/xbox/gdf.hpp"
 
 namespace cb::recompile::title {
 namespace {
@@ -229,6 +232,62 @@ CB_TEST("recompile.title.reading_default_xex_of_a_title_whose_file_went_is_an_er
     stdfs::remove(dir.path() / "T" / "default.xex");
     CB_CHECK_THROWS_AS(NotFoundError, t->read_xex());
 });
+
+// ---- through the real container readers (formats/xbox/volumes) -------------------------------------------------------------------------
+
+CB_TEST("recompile.title.a_disc_image_plain_or_compressed_is_a_title_through_the_xbox_readers", [] {
+    fs::ScopedTempDir dir("cb_title");
+    const std::vector<formats::xbox::gdf::SourceFile> files = {{"default.xex", xex("an xex body")}, {"readme.txt", Bytes{'h', 'i'}}};
+    put(dir.path() / "Game One.iso", formats::xbox::gdf::build(files));
+    const auto iso = locate(dir.path() / "Game One.iso");
+    CB_CHECK(iso && iso->name() == "Game One");   // the image's own name, its extension gone
+    CB_CHECK(iso->read_xex() == xex("an xex body"));
+
+    (void)formats::xbox::ciso::write_cso(dir.path() / "Game One.iso", dir.path() / "Game Two.cso");
+    const auto cso = locate(dir.path() / "Game Two.cso");
+    CB_CHECK(cso && cso->name() == "Game Two");
+    CB_CHECK(cso->read_xex() == xex("an xex body"));
+
+    // an image without a default.xex is not a title
+    const std::vector<formats::xbox::gdf::SourceFile> no_xex = {{"readme.txt", Bytes{'h', 'i'}}};
+    put(dir.path() / "Data.iso", formats::xbox::gdf::build(no_xex));
+    CB_CHECK(!locate(dir.path() / "Data.iso"));
+
+    // a folder of images: the first that holds a title (files in name order)
+    stdfs::create_directories(dir.path() / "library");
+    stdfs::copy_file(dir.path() / "Data.iso", dir.path() / "library" / "A Data.iso");
+    stdfs::copy_file(dir.path() / "Game One.iso", dir.path() / "library" / "B Game.iso");
+    const auto found = locate(dir.path() / "library");
+    CB_CHECK(found && found->name() == "B Game");
+
+    // the unpack writes the title's files
+    const auto unpacked = dir.path() / "out";
+    CB_CHECK_EQ(iso->unpack(unpacked), 2u);
+    CB_CHECK(fs::read_file(unpacked / "default.xex") == xex("an xex body"));
+});
+
+CB_TEST("recompile.title.minecraft_from_the_nexia_library", [] {
+    // The real titles (silent where they are not): a LIVE package of Minecraft: Story Mode inside a console's content folders, and
+    // Minecraft Xbox 360 Edition as a folder of files. The Python's title.locate gives the same names and the same default.xex.
+    const stdfs::path games = "C:/Nexia360/Games";
+    std::error_code ec;
+    if (stdfs::exists(games / "Minecraft Story Mode", ec)) {
+        const auto t = locate(games / "Minecraft Story Mode");
+        CB_CHECK(t.has_value());
+        CB_CHECK_EQ(t->name(), "Minecraft: Story Mode");
+        CB_CHECK(t->source().filename() == "E0836555A46901ACC670DA05E0AD637543C8CA1358");
+        const Bytes xex_bytes = t->read_xex();
+        CB_CHECK_EQ(xex_bytes.size(), 4026368u);
+        CB_CHECK_EQ(crypto::to_hex(crypto::sha1(xex_bytes)), "ffa8d8178e9b62b05cf0561c91ee5f5986f243b8");
+    }
+    if (stdfs::exists(games / "Minecraft Xbox 360 Edition" / "default.xex", ec)) {
+        const auto t = locate(games / "Minecraft Xbox 360 Edition");
+        CB_CHECK(t.has_value());
+        CB_CHECK_EQ(t->name(), "Minecraft Xbox 360 Edition");
+        CB_CHECK_EQ(crypto::to_hex(crypto::sha1(t->read_xex())), "6349a9e55198b2224de4e3f86d1ff3fc873b907c");
+    }
+});
+
 
 }  // namespace
 }  // namespace cb::recompile::title

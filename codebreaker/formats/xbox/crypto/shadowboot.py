@@ -508,8 +508,11 @@ class ShadowbootImage:
 
 	def parse_patches(self) -> None:
 		bldr_end = bytes.fromhex("4BFFFFB0000000000000000000000000")
-		end_loc = self.sd_data.find(bldr_end) + len(bldr_end)
-		if end_loc == -1 or end_loc == len(self.sd_data):  # no patches
+		found = self.sd_data.find(bldr_end)
+		if found < 0:  # no patch loader (find() is -1; adding the loader's length to it went on to read garbage as records)
+			return
+		end_loc = found + len(bldr_end)
+		if end_loc == len(self.sd_data):  # no patches
 			return
 		#bldr_end = bytes.fromhex("386000004E8000200000000000000000")
 		#end_loc = self.sd_data.find(bldr_end) + len(bldr_end)
@@ -532,7 +535,7 @@ class ShadowbootImage:
 				size_bytes = size_int32 * 4
 				patch_code = sio.read_ubytes(size_bytes)
 				whole_patch = pack(">2I", address, size_int32) + patch_code
-				self.patches.append({"offset": offset, "address": address, "size_int32": size_int32, "size_bytes": (size_bytes * 4), "patch_code": patch_code, "whole_patch": whole_patch})
+				self.patches.append({"offset": offset, "address": address, "size_int32": size_int32, "size_bytes": size_bytes, "patch_code": patch_code, "whole_patch": whole_patch})
 
 	def parse_metadata(self) -> None:
 		# SB
@@ -553,7 +556,7 @@ class ShadowbootImage:
 		# SMC and kernel
 		if self.smc_data is not None and self.smc_data != b"":
 			num = self.smc_data[256]
-			self.console_type = [
+			self.console_type = ([
 				"Error",
 				"Xenon",
 				"Zephyr",
@@ -564,7 +567,7 @@ class ShadowbootImage:
 				"Winchester",
 				"unknown",
 				"unknown"
-			][num >> 4 & 15]
+			] + ["unknown"] * 6)[num >> 4 & 15]
 			self.smc_version = f"{num >> 4 & 15}.{num & 15} ({self.smc_data[257]}.{self.smc_data[258]})"
 		# (self.kernel_version,) = unpack_from(">H", self.kernel_data, 0x40C)
 		self.sb_build = self.img_map["SB"]["header"]["build"]
@@ -701,6 +704,8 @@ def main() -> int:
 			# sd_code_file = bd / build_manifest["files"]["SD_code"]
 			hvk_patches_file = bd / build_manifest["files"]["HVK_patches"]
 		elif args.build_dir is not None:  # using a build directory vs a manifest
+			build_manifest = {"build": {"version": BUILD_VER},
+			                  "options": {"base_image_checks_disabled": False, "use_smc": True, "use_kv": False, "test_kit": False}}
 			smc_bin_file = args.build_dir / "SMC_dec.bin"
 			# smc_cfg_file = args.build_dir / "SMC_config.bin"
 			kv_file = args.build_dir / "KV_dec.bin"
@@ -741,12 +746,12 @@ def main() -> int:
 			raise Exception("No HV/kernel pair, SE, or fallback image was provided!")
 
 		data = ShadowbootImage.create(
-			try_read_sources(sb_file, base_img.sb_data),
-			try_read_sources(sc_file, base_img.sc_data),
-			try_read_sources(sd_file, base_img.sd_data),
+			try_read_sources(sb_file, base_img.sb_data if base_img else None),
+			try_read_sources(sc_file, base_img.sc_data if base_img else None),
+			try_read_sources(sd_file, base_img.sd_data if base_img else None),
 			se_data,
-			try_read_sources(smc_bin_file, base_img.smc_data) if build_manifest["options"]["use_smc"] else None,
-			(bytes(0x10), try_read_sources(kv_file, base_img.kv_data)) if build_manifest["options"]["use_kv"] else None,
+			try_read_sources(smc_bin_file, base_img.smc_data if base_img else None) if build_manifest["options"]["use_smc"] else None,
+			(bytes(0x10), try_read_sources(kv_file, base_img.kv_data if base_img else None)) if build_manifest["options"]["use_kv"] else None,
 			try_read_sources(hvk_patches_file),
 			build_manifest["options"]["test_kit"],
 			build_manifest["build"]["version"]

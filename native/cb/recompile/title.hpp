@@ -8,8 +8,8 @@
 // its files, or a folder holding any of those (a console's content folders: <title id>/000D0000/<package>). The title is the volume
 // whose top folder holds default.xex; packages beside it without one (title updates, DLC) are left alone.
 //
-// Reading the Xbox containers (STFS, XDVDFS, GoD) as volumes is formats/xbox/volumes' job, which is not in this tree yet; a caller hands
-// the function that opens them in (`FindVolumes`), so this module is finished when that one arrives.
+// The Xbox containers (STFS, XDVDFS, GoD, CSO / CCI) are read as volumes by formats/xbox/volumes: `locate(path)` uses it. A caller that
+// has its own way to open containers (a test with a fake one) hands it in as `FindVolumes`.
 #pragma once
 
 #include <cstddef>
@@ -77,5 +77,7 @@ std::optional<Title> from_volumes(const std::filesystem::path& path, std::option
 // The title in `path` (a package, disc image, GoD folder, folder of files, or a folder holding any of those), or nothing. Folders are
 // searched depth first in name order, a folder's own files before its subfolders.
 std::optional<Title> locate(const std::filesystem::path& path, const FindVolumes& find_volumes);
+// The same, the containers read by formats/xbox/volumes.
+std::optional<Title> locate(const std::filesystem::path& path);
 
 }  // namespace cb::recompile::title
