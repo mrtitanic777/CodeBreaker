@@ -182,7 +182,7 @@ COMMANDS = {
 # Commands codebreaker.exe runs on native/cb (cb/app/native_commands.hpp), Python not involved: the whole command
 # line, --corpus included, goes to codebreaker_native's "cb". Under plain Python (no codebreaker_native) they run as
 # the modules COMMANDS names.
-NATIVE = ("info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source")
+NATIVE = ("info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source")
 
 
 def _native_command(argv):

@@ -20,7 +20,10 @@
 #include "cb/formats/inspect.hpp"
 #include "cb/formats/xbox/heavyiron.hpp"
 #include "cb/formats/xex.hpp"
+#include "cb/source/dos_writer.hpp"
 #include "cb/source/le_writer.hpp"
+#include "cb/source/ne_writer.hpp"
+#include "cb/source/pe_writer.hpp"
 #include "cb/symbols/demangle.hpp"
 #include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
@@ -30,7 +33,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 10> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source"};
+constexpr std::array<std::string_view, 12> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -277,6 +280,21 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     le_env.state = config.state();
     table.set("le-source", [le_env](std::span<const std::string> args) -> int {
         return source::le_writer::command(args, le_env, [](std::string_view line) { out("{}\n", line); });
+    });
+
+    // pe-source / ne-source <program> [--out DIR] [--keep-stub]: a Windows module as NASM source that reassembles to it; its DOS
+    // stub written by the DOS writer (OpenWatcom's wasm/wlink, the probes kept in state/assembly_probes.json)
+    const auto stub_finder = [&config] {
+        return source::dos_writer::stub_finder(
+            source::dos_writer::options_for(ft_openwatcom_of(config), config.state() / "assembly_probes.json"));
+    };
+    table.set("pe-source", [le_env, stub_finder](std::span<const std::string> args) -> int {
+        source::pe_writer::Environment env{le_env.nasm, le_env.state, stub_finder()};
+        return source::pe_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
+    });
+    table.set("ne-source", [le_env, stub_finder](std::span<const std::string> args) -> int {
+        source::ne_writer::Environment env{le_env.nasm, le_env.state, stub_finder()};
+        return source::ne_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
     });
 
     // xex <command> <file.xex> [args]: the xex program, with this process's stdout and stderr
