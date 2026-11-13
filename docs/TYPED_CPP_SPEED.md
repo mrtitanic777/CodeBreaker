@@ -1136,3 +1136,23 @@ Old = the old typed port of windows16 (git master's native/typed/cpp/codebreaker
 | what was recorded | 44,100 instructions | the same: 44,100 instructions |
 
 A run is about 2 ms for about 74 instructions: nearly all of it is a fresh Unicorn engine (open, twelve 64K segment windows, stack, sentinel and scratch windows, the GDT) -- shared with the old code. The new loader keeps the module fixed up in memory (one buffer per segment) instead of reading it back from a machine, and a run lays out from those buffers; the recorder is the shared C++ one. The branch log decodes each instruction once per run (a thread's Capstone engine) instead of through a process-wide memo. emulate/driver has no loop of its own worth timing (a run is the recorder's); the 22 corpus VxD runs of its test take 0.2 s together.
+## translate/backends/c_java (W5-B4)
+
+| work | Python | C++ (native/cb) |
+|---|---|---|
+| the C text of the 8 corpus programs (bank, calc, generics, sample, shapes, t03, t17, textstats), units read from L2 | 0.087 s per pass (L2 reading and writing the C) | the whole `cb_tests_translate --filter c_java.corpus` process, startup and file reads included: 0.055 s |
+
+## translate/backends/cpp17 (W5-B4)
+
+The back end is the L2 core library (native/l2, cbl2.dll); the module only hands it the documents and gives the text back, so there is nothing of its own to time. The 9 corpus programs, 3 programs of the module's own and the Python-front-end unit are written through the same library in `cb_tests_translate --filter cpp17` in 0.04 s, library load included (the Python path adds the ctypes crossing and the tagged-value conversion the typed client does not have).
+
+## verify/lanes/win32 (W5-B5)
+
+The judge of every function the Python lane built, on the same original and the same rebuilt DLL, fingerprint cache off on both sides (CB_NO_FP_CACHE; the C++ has none wired): lz32.dll (20 functions) and the Windows 95 version.dll (32). The Python column is its `win32.judge` over the functions, module prepared and built beforehand; the C++ column is the whole `cb_tests_verify --filter win32.judge_<module>` process (startup, the lifter's start and the golden's reading included).
+
+| module | Python | C++ |
+|---|---|---|
+| lz32.dll, 20 functions | 4.5 s | 2.9 s |
+| version.dll, 32 functions | 6.3 s | 3.9 s |
+
+Verdict, reason, limits (coverage, paths=N / paths-all, argc-unknown) and the one line saying what differed are the same on all 52.

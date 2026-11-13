@@ -111,6 +111,7 @@ TraceRun::TraceRun(uc_struct* engine, Options options) : impl_(std::make_unique<
     r.stub = o.stub;
     r.unique = o.unique;
     r.branches = o.branches;
+    r.shadow = o.shadow;   // the path explorer's symbolic shadow: stepped before each instruction
     r.pads = o.pads.has_value();
     r.saving = o.saved.has_value();
     r.sha_id = r.cache->intern_sha(o.module_hash);

@@ -1,0 +1,4766 @@
+[
+ {
+  "node": "Unit",
+  "line": 1,
+  "col": 1,
+  "path": "Zoo",
+  "package": "",
+  "imports": [
+   "java.util.*"
+  ],
+  "types": [
+   {
+    "node": "ClassDecl",
+    "line": 3,
+    "col": 1,
+    "name": "Zoo",
+    "qname": "Zoo",
+    "kind": "class",
+    "mods": [
+     "public"
+    ],
+    "members": [
+     {
+      "node": "MethodDecl",
+      "line": 3,
+      "col": 8,
+      "sym": {
+       "kind": "ctor",
+       "name": "<init>",
+       "owner": "Zoo",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "name": "<init>",
+      "kind": "ctor",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 3,
+       "col": 8,
+       "stmts": [
+        {
+         "node": "CtorCall",
+         "line": 3,
+         "col": 8,
+         "kind": "super:implicit",
+         "sym": {
+          "kind": "ctor",
+          "name": "<init>",
+          "owner": "java.lang.Object",
+          "params": [],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "args": []
+        }
+       ]
+      },
+      "mods": [
+       "public"
+      ]
+     },
+     {
+      "node": "ClassDecl",
+      "line": 4,
+      "col": 5,
+      "name": "Animal",
+      "qname": "Zoo.Animal",
+      "kind": "interface",
+      "members": [
+       {
+        "node": "MethodDecl",
+        "line": 4,
+        "col": 24,
+        "sym": {
+         "kind": "method",
+         "name": "sound",
+         "owner": "Zoo.Animal",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "sound",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 4,
+        "col": 40,
+        "sym": {
+         "kind": "method",
+         "name": "greet",
+         "owner": "Zoo.Animal",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "greet",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "body": {
+         "node": "Block",
+         "line": 4,
+         "col": 63,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 4,
+           "col": 65,
+           "expr": {
+            "node": "Concat",
+            "line": 4,
+            "col": 72,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Call",
+              "line": 4,
+              "col": 72,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "sym": {
+               "kind": "method",
+               "name": "name",
+               "owner": "Zoo.Animal",
+               "params": [],
+               "ret": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              },
+              "args": []
+             },
+             {
+              "node": "Lit",
+              "line": 4,
+              "col": 81,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " says "
+             },
+             {
+              "node": "Call",
+              "line": 4,
+              "col": 92,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "sym": {
+               "kind": "method",
+               "name": "sound",
+               "owner": "Zoo.Animal",
+               "params": [],
+               "ret": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              },
+              "args": []
+             }
+            ]
+           }
+          }
+         ]
+        },
+        "mods": [
+         "default"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 4,
+        "col": 103,
+        "sym": {
+         "kind": "method",
+         "name": "name",
+         "owner": "Zoo.Animal",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "name",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        }
+       }
+      ],
+      "outer": "Zoo"
+     },
+     {
+      "node": "ClassDecl",
+      "line": 6,
+      "col": 5,
+      "name": "Base",
+      "qname": "Zoo.Base",
+      "kind": "class",
+      "mods": [
+       "abstract",
+       "static"
+      ],
+      "implements": [
+       {
+        "kind": "class",
+        "name": "Zoo.Animal"
+       }
+      ],
+      "members": [
+       {
+        "node": "FieldDecl",
+        "line": 7,
+        "col": 9,
+        "sym": {
+         "kind": "field",
+         "name": "name",
+         "owner": "Zoo.Base",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "mods": [
+         "protected",
+         "final"
+        ]
+       },
+       {
+        "node": "FieldDecl",
+        "line": 8,
+        "col": 9,
+        "sym": {
+         "kind": "field",
+         "name": "made",
+         "owner": "Zoo.Base",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        },
+        "mods": [
+         "static"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 9,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Zoo.Base",
+         "params": [
+          {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 9,
+          "col": 14,
+          "sym": {
+           "kind": "param",
+           "name": "n",
+           "owner": "Zoo.Base.<init>",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 9,
+         "col": 24,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 9,
+           "col": 24,
+           "kind": "super:implicit",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.Object",
+            "params": [],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": []
+          },
+          {
+           "node": "ExprStmt",
+           "line": 9,
+           "col": 26,
+           "expr": {
+            "node": "Assign",
+            "line": 9,
+            "col": 26,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "target": {
+             "node": "Select",
+             "line": 9,
+             "col": 26,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "obj": {
+              "node": "This",
+              "line": 9,
+              "col": 26,
+              "type": {
+               "kind": "class",
+               "name": "Zoo.Base"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "name",
+              "owner": "Zoo.Base",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            },
+            "value": {
+             "node": "Name",
+             "line": 9,
+             "col": 33,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "n",
+              "owner": "Zoo.Base.<init>",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            }
+           }
+          },
+          {
+           "node": "ExprStmt",
+           "line": 9,
+           "col": 36,
+           "expr": {
+            "node": "Unary",
+            "line": 9,
+            "col": 36,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "++",
+            "x": {
+             "node": "Select",
+             "line": 9,
+             "col": 36,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "TypeName",
+              "line": 9,
+              "col": 36,
+              "type": {
+               "kind": "class",
+               "name": "Zoo.Base"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "made",
+              "owner": "Zoo.Base",
+              "static": true,
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "postfix": true
+           }
+          },
+          {
+           "node": "ExprStmt",
+           "line": 9,
+           "col": 44,
+           "expr": {
+            "node": "Call",
+            "line": 9,
+            "col": 44,
+            "type": {
+             "kind": "void"
+            },
+            "sym": {
+             "kind": "method",
+             "name": "describe",
+             "owner": "Zoo.Base",
+             "params": [],
+             "ret": {
+              "kind": "void"
+             }
+            },
+            "args": []
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 10,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "name",
+         "owner": "Zoo.Base",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "name",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "body": {
+         "node": "Block",
+         "line": 10,
+         "col": 30,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 10,
+           "col": 32,
+           "expr": {
+            "node": "Select",
+            "line": 10,
+            "col": 39,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "obj": {
+             "node": "This",
+             "line": 10,
+             "col": 39,
+             "type": {
+              "kind": "class",
+              "name": "Zoo.Base"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "name",
+             "owner": "Zoo.Base",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            }
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 11,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "describe",
+         "owner": "Zoo.Base",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "describe",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 11,
+         "col": 25,
+         "stmts": []
+        }
+       }
+      ],
+      "outer": "Zoo"
+     },
+     {
+      "node": "ClassDecl",
+      "line": 14,
+      "col": 5,
+      "name": "Dog",
+      "qname": "Zoo.Dog",
+      "kind": "class",
+      "mods": [
+       "static"
+      ],
+      "extends": {
+       "kind": "class",
+       "name": "Zoo.Base"
+      },
+      "members": [
+       {
+        "node": "FieldDecl",
+        "line": 15,
+        "col": 9,
+        "sym": {
+         "kind": "field",
+         "name": "barks",
+         "owner": "Zoo.Dog",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 16,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Zoo.Dog",
+         "params": [
+          {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 16,
+          "col": 13,
+          "sym": {
+           "kind": "param",
+           "name": "n",
+           "owner": "Zoo.Dog.<init>",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 16,
+         "col": 23,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 16,
+           "col": 25,
+           "kind": "super",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "Zoo.Base",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Name",
+             "line": 16,
+             "col": 31,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "n",
+              "owner": "Zoo.Dog.<init>",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 17,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "sound",
+         "owner": "Zoo.Dog",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "sound",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "body": {
+         "node": "Block",
+         "line": 17,
+         "col": 31,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 17,
+           "col": 33,
+           "expr": {
+            "node": "Lit",
+            "line": 17,
+            "col": 40,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "value": "woof"
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 18,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "describe",
+         "owner": "Zoo.Dog",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "describe",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 18,
+         "col": 25,
+         "stmts": [
+          {
+           "node": "ExprStmt",
+           "line": 18,
+           "col": 27,
+           "expr": {
+            "node": "Assign",
+            "line": 18,
+            "col": 27,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Select",
+             "line": 18,
+             "col": 27,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "This",
+              "line": 18,
+              "col": 27,
+              "type": {
+               "kind": "class",
+               "name": "Zoo.Dog"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "barks",
+              "owner": "Zoo.Dog",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Lit",
+             "line": 18,
+             "col": 35,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 1
+            }
+           }
+          }
+         ]
+        }
+       }
+      ],
+      "outer": "Zoo"
+     },
+     {
+      "node": "ClassDecl",
+      "line": 21,
+      "col": 5,
+      "name": "Cat",
+      "qname": "Zoo.Cat",
+      "kind": "class",
+      "mods": [
+       "static"
+      ],
+      "extends": {
+       "kind": "class",
+       "name": "Zoo.Base"
+      },
+      "members": [
+       {
+        "node": "MethodDecl",
+        "line": 22,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Zoo.Cat",
+         "params": [
+          {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 22,
+          "col": 13,
+          "sym": {
+           "kind": "param",
+           "name": "n",
+           "owner": "Zoo.Cat.<init>",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 22,
+         "col": 23,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 22,
+           "col": 25,
+           "kind": "super",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "Zoo.Base",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Name",
+             "line": 22,
+             "col": 31,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "n",
+              "owner": "Zoo.Cat.<init>",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 23,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "sound",
+         "owner": "Zoo.Cat",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "sound",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "body": {
+         "node": "Block",
+         "line": 23,
+         "col": 31,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 23,
+           "col": 33,
+           "expr": {
+            "node": "Lit",
+            "line": 23,
+            "col": 40,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "value": "meow"
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public"
+        ]
+       }
+      ],
+      "outer": "Zoo"
+     },
+     {
+      "node": "ClassDecl",
+      "line": 26,
+      "col": 5,
+      "name": "Pair",
+      "qname": "Zoo.Pair",
+      "kind": "record",
+      "members": [
+       {
+        "node": "MethodDecl",
+        "line": 26,
+        "col": 5,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Zoo.Pair",
+         "params": [
+          {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 26,
+          "col": 17,
+          "sym": {
+           "kind": "param",
+           "name": "a",
+           "owner": "Zoo.Pair.<init>",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         },
+         {
+          "node": "Param",
+          "line": 26,
+          "col": 27,
+          "sym": {
+           "kind": "param",
+           "name": "b",
+           "owner": "Zoo.Pair.<init>",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 26,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 26,
+           "col": 5,
+           "kind": "super:implicit",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.Record",
+            "params": [],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": []
+          },
+          {
+           "node": "ExprStmt",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Assign",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "target": {
+             "node": "Select",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "obj": {
+              "node": "This",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "Zoo.Pair"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "a",
+              "owner": "Zoo.Pair",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            },
+            "value": {
+             "node": "Name",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "a",
+              "owner": "Zoo.Pair.<init>",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            }
+           }
+          },
+          {
+           "node": "ExprStmt",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Assign",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Select",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "This",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "Zoo.Pair"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "b",
+              "owner": "Zoo.Pair",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Name",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "b",
+              "owner": "Zoo.Pair.<init>",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           }
+          }
+         ]
+        },
+        "mods": [
+         "IMPLICIT"
+        ]
+       },
+       {
+        "node": "FieldDecl",
+        "line": 26,
+        "col": 17,
+        "sym": {
+         "kind": "field",
+         "name": "a",
+         "owner": "Zoo.Pair",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "mods": [
+         "private",
+         "final"
+        ]
+       },
+       {
+        "node": "FieldDecl",
+        "line": 26,
+        "col": 27,
+        "sym": {
+         "kind": "field",
+         "name": "b",
+         "owner": "Zoo.Pair",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        },
+        "mods": [
+         "private",
+         "final"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 26,
+        "col": 5,
+        "sym": {
+         "kind": "method",
+         "name": "a",
+         "owner": "Zoo.Pair",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "a",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "body": {
+         "node": "Block",
+         "line": 26,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Select",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "obj": {
+             "node": "This",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "Zoo.Pair"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "a",
+             "owner": "Zoo.Pair",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            }
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public",
+         "GENERATED"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 26,
+        "col": 5,
+        "sym": {
+         "kind": "method",
+         "name": "b",
+         "owner": "Zoo.Pair",
+         "params": [],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "name": "b",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "i32"
+        },
+        "body": {
+         "node": "Block",
+         "line": 26,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Select",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "obj": {
+             "node": "This",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "Zoo.Pair"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "b",
+             "owner": "Zoo.Pair",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public",
+         "GENERATED"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 26,
+        "col": 5,
+        "sym": {
+         "kind": "method",
+         "name": "toString",
+         "owner": "Zoo.Pair",
+         "params": [],
+         "ret": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "name": "toString",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "body": {
+         "node": "Block",
+         "line": 26,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Concat",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Lit",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "Pair["
+             },
+             {
+              "node": "Lit",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "a="
+             },
+             {
+              "node": "Select",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "obj": {
+               "node": "This",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "Zoo.Pair"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "a",
+               "owner": "Zoo.Pair",
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": ", b="
+             },
+             {
+              "node": "Select",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "This",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "Zoo.Pair"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "b",
+               "owner": "Zoo.Pair",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "]"
+             }
+            ]
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public",
+         "GENERATED"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 26,
+        "col": 5,
+        "sym": {
+         "kind": "method",
+         "name": "hashCode",
+         "owner": "Zoo.Pair",
+         "params": [],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "name": "hashCode",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "i32"
+        },
+        "body": {
+         "node": "Block",
+         "line": 26,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "Local",
+           "line": 26,
+           "col": 5,
+           "sym": {
+            "kind": "local",
+            "name": "h",
+            "owner": "Zoo.Pair.hashCode",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           },
+           "init": {
+            "node": "Lit",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 0
+           }
+          },
+          {
+           "node": "ExprStmt",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Assign",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "h",
+              "owner": "Zoo.Pair.hashCode",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Binary",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "+",
+             "left": {
+              "node": "Binary",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "op": "*",
+              "left": {
+               "node": "Lit",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "i32"
+               },
+               "value": 31
+              },
+              "right": {
+               "node": "Name",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "h",
+                "owner": "Zoo.Pair.hashCode",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              }
+             },
+             "right": {
+              "node": "Call",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "java.util.Objects"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "hashCode",
+               "owner": "java.util.Objects",
+               "static": true,
+               "params": [
+                {
+                 "kind": "class",
+                 "name": "java.lang.Object"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Select",
+                "line": 26,
+                "col": 5,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                "obj": {
+                 "node": "This",
+                 "line": 26,
+                 "col": 5,
+                 "type": {
+                  "kind": "class",
+                  "name": "Zoo.Pair"
+                 }
+                },
+                "sym": {
+                 "kind": "field",
+                 "name": "a",
+                 "owner": "Zoo.Pair",
+                 "type": {
+                  "kind": "class",
+                  "name": "java.lang.String"
+                 }
+                }
+               }
+              ]
+             }
+            }
+           }
+          },
+          {
+           "node": "ExprStmt",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Assign",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "h",
+              "owner": "Zoo.Pair.hashCode",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Binary",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "+",
+             "left": {
+              "node": "Binary",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "op": "*",
+              "left": {
+               "node": "Lit",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "i32"
+               },
+               "value": 31
+              },
+              "right": {
+               "node": "Name",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "h",
+                "owner": "Zoo.Pair.hashCode",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              }
+             },
+             "right": {
+              "node": "Call",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Integer"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "hashCode",
+               "owner": "java.lang.Integer",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Select",
+                "line": 26,
+                "col": 5,
+                "type": {
+                 "kind": "i32"
+                },
+                "obj": {
+                 "node": "This",
+                 "line": 26,
+                 "col": 5,
+                 "type": {
+                  "kind": "class",
+                  "name": "Zoo.Pair"
+                 }
+                },
+                "sym": {
+                 "kind": "field",
+                 "name": "b",
+                 "owner": "Zoo.Pair",
+                 "type": {
+                  "kind": "i32"
+                 }
+                }
+               }
+              ]
+             }
+            }
+           }
+          },
+          {
+           "node": "Return",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Name",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "h",
+             "owner": "Zoo.Pair.hashCode",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public",
+         "GENERATED"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 26,
+        "col": 5,
+        "sym": {
+         "kind": "method",
+         "name": "equals",
+         "owner": "Zoo.Pair",
+         "params": [
+          {
+           "kind": "class",
+           "name": "java.lang.Object"
+          }
+         ],
+         "ret": {
+          "kind": "bool"
+         }
+        },
+        "name": "equals",
+        "kind": "method",
+        "params": [
+         {
+          "node": "Param",
+          "line": 26,
+          "col": 5,
+          "sym": {
+           "kind": "param",
+           "name": "o",
+           "owner": "Zoo.Pair.equals",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Object"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "java.lang.Object"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "bool"
+        },
+        "body": {
+         "node": "Block",
+         "line": 26,
+         "col": 5,
+         "stmts": [
+          {
+           "node": "If",
+           "line": 26,
+           "col": 5,
+           "cond": {
+            "node": "Unary",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "bool"
+            },
+            "op": "!",
+            "x": {
+             "node": "Paren",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "x": {
+              "node": "InstanceOf",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "bool"
+              },
+              "x": {
+               "node": "Name",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Object"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "o",
+                "owner": "Zoo.Pair.equals",
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.Object"
+                }
+               }
+              },
+              "test": {
+               "kind": "class",
+               "name": "Zoo.Pair"
+              }
+             }
+            },
+            "postfix": false
+           },
+           "then": {
+            "node": "Return",
+            "line": 26,
+            "col": 5,
+            "expr": {
+             "node": "Lit",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "value": false
+            }
+           }
+          },
+          {
+           "node": "Local",
+           "line": 26,
+           "col": 5,
+           "sym": {
+            "kind": "local",
+            "name": "that",
+            "owner": "Zoo.Pair.equals",
+            "type": {
+             "kind": "class",
+             "name": "Zoo.Pair"
+            }
+           },
+           "type": {
+            "kind": "class",
+            "name": "Zoo.Pair"
+           },
+           "init": {
+            "node": "Cast",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "Zoo.Pair"
+            },
+            "x": {
+             "node": "Name",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.Object"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "o",
+              "owner": "Zoo.Pair.equals",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.Object"
+              }
+             }
+            }
+           }
+          },
+          {
+           "node": "Return",
+           "line": 26,
+           "col": 5,
+           "expr": {
+            "node": "Binary",
+            "line": 26,
+            "col": 5,
+            "type": {
+             "kind": "bool"
+            },
+            "op": "&&",
+            "left": {
+             "node": "Call",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "target": {
+              "node": "TypeName",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.util.Objects"
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "equals",
+              "owner": "java.util.Objects",
+              "static": true,
+              "params": [
+               {
+                "kind": "class",
+                "name": "java.lang.Object"
+               },
+               {
+                "kind": "class",
+                "name": "java.lang.Object"
+               }
+              ],
+              "ret": {
+               "kind": "bool"
+              }
+             },
+             "args": [
+              {
+               "node": "Select",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "obj": {
+                "node": "This",
+                "line": 26,
+                "col": 5,
+                "type": {
+                 "kind": "class",
+                 "name": "Zoo.Pair"
+                }
+               },
+               "sym": {
+                "kind": "field",
+                "name": "a",
+                "owner": "Zoo.Pair",
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                }
+               }
+              },
+              {
+               "node": "Select",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "obj": {
+                "node": "Name",
+                "line": 26,
+                "col": 5,
+                "type": {
+                 "kind": "class",
+                 "name": "Zoo.Pair"
+                },
+                "sym": {
+                 "kind": "local",
+                 "name": "that",
+                 "owner": "Zoo.Pair.equals",
+                 "type": {
+                  "kind": "class",
+                  "name": "Zoo.Pair"
+                 }
+                }
+               },
+               "sym": {
+                "kind": "field",
+                "name": "a",
+                "owner": "Zoo.Pair",
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                }
+               }
+              }
+             ]
+            },
+            "right": {
+             "node": "Binary",
+             "line": 26,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "op": "==",
+             "left": {
+              "node": "Select",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "This",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "Zoo.Pair"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "b",
+               "owner": "Zoo.Pair",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "right": {
+              "node": "Select",
+              "line": 26,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "Name",
+               "line": 26,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "Zoo.Pair"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "that",
+                "owner": "Zoo.Pair.equals",
+                "type": {
+                 "kind": "class",
+                 "name": "Zoo.Pair"
+                }
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "b",
+               "owner": "Zoo.Pair",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            }
+           }
+          }
+         ]
+        },
+        "mods": [
+         "public",
+         "GENERATED"
+        ]
+       }
+      ],
+      "outer": "Zoo"
+     },
+     {
+      "node": "ClassDecl",
+      "line": 28,
+      "col": 5,
+      "name": "Empty",
+      "qname": "Zoo.Empty",
+      "kind": "class",
+      "mods": [
+       "static"
+      ],
+      "extends": {
+       "kind": "class",
+       "name": "java.lang.RuntimeException"
+      },
+      "members": [
+       {
+        "node": "MethodDecl",
+        "line": 29,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Zoo.Empty",
+         "params": [
+          {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 29,
+          "col": 15,
+          "sym": {
+           "kind": "param",
+           "name": "m",
+           "owner": "Zoo.Empty.<init>",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 29,
+         "col": 25,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 29,
+           "col": 27,
+           "kind": "super",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.RuntimeException",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Name",
+             "line": 29,
+             "col": 33,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "m",
+              "owner": "Zoo.Empty.<init>",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       }
+      ],
+      "outer": "Zoo"
+     },
+     {
+      "node": "MethodDecl",
+      "line": 32,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "pick",
+       "owner": "Zoo",
+       "static": true,
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "i32"
+       }
+      },
+      "name": "pick",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 32,
+        "col": 21,
+        "sym": {
+         "kind": "param",
+         "name": "k",
+         "owner": "Zoo.pick",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      },
+      "body": {
+       "node": "Block",
+       "line": 32,
+       "col": 28,
+       "stmts": [
+        {
+         "node": "If",
+         "line": 33,
+         "col": 9,
+         "cond": {
+          "node": "Paren",
+          "line": 33,
+          "col": 12,
+          "type": {
+           "kind": "bool"
+          },
+          "x": {
+           "node": "Binary",
+           "line": 33,
+           "col": 13,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "<",
+           "left": {
+            "node": "Name",
+            "line": 33,
+            "col": 13,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "k",
+             "owner": "Zoo.pick",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 33,
+            "col": 17,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 0
+           }
+          }
+         },
+         "then": {
+          "node": "Throw",
+          "line": 33,
+          "col": 20,
+          "expr": {
+           "node": "New",
+           "line": 33,
+           "col": 26,
+           "type": {
+            "kind": "class",
+            "name": "Zoo.Empty"
+           },
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "Zoo.Empty",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Concat",
+             "line": 33,
+             "col": 36,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "parts": [
+              {
+               "node": "Lit",
+               "line": 33,
+               "col": 36,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "value": "negative "
+              },
+              {
+               "node": "Name",
+               "line": 33,
+               "col": 50,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "k",
+                "owner": "Zoo.pick",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "Return",
+         "line": 34,
+         "col": 9,
+         "expr": {
+          "node": "Binary",
+          "line": 34,
+          "col": 16,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "*",
+          "left": {
+           "node": "Name",
+           "line": 34,
+           "col": 16,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "k",
+            "owner": "Zoo.pick",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "right": {
+           "node": "Lit",
+           "line": 34,
+           "col": 20,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 3
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 37,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "sumTo",
+       "owner": "Zoo",
+       "static": true,
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "i32"
+       }
+      },
+      "name": "sumTo",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 37,
+        "col": 22,
+        "sym": {
+         "kind": "param",
+         "name": "n",
+         "owner": "Zoo.sumTo",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      },
+      "body": {
+       "node": "Block",
+       "line": 37,
+       "col": 29,
+       "stmts": [
+        {
+         "node": "Local",
+         "line": 38,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "s",
+          "owner": "Zoo.sumTo",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 38,
+          "col": 17,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 0
+         }
+        },
+        {
+         "node": "ForEach",
+         "line": 39,
+         "col": 9,
+         "var": {
+          "node": "Local",
+          "line": 39,
+          "col": 14,
+          "sym": {
+           "kind": "local",
+           "name": "i",
+           "owner": "Zoo.sumTo",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "iterable": {
+          "node": "NewArray",
+          "line": 39,
+          "col": 22,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "i32"
+           }
+          },
+          "elem": {
+           "kind": "i32"
+          },
+          "dims": [],
+          "init": [
+           {
+            "node": "Lit",
+            "line": 39,
+            "col": 33,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           },
+           {
+            "node": "Lit",
+            "line": 39,
+            "col": 36,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           },
+           {
+            "node": "Lit",
+            "line": 39,
+            "col": 39,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 3
+           },
+           {
+            "node": "Name",
+            "line": 39,
+            "col": 42,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "n",
+             "owner": "Zoo.sumTo",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          ]
+         },
+         "body": {
+          "node": "ExprStmt",
+          "line": 39,
+          "col": 46,
+          "expr": {
+           "node": "Assign",
+           "line": 39,
+           "col": 46,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "+",
+           "target": {
+            "node": "Name",
+            "line": 39,
+            "col": 46,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "s",
+             "owner": "Zoo.sumTo",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "value": {
+            "node": "Name",
+            "line": 39,
+            "col": 51,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "i",
+             "owner": "Zoo.sumTo",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "Return",
+         "line": 40,
+         "col": 9,
+         "expr": {
+          "node": "Name",
+          "line": 40,
+          "col": 16,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "s",
+           "owner": "Zoo.sumTo",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 43,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "main",
+       "owner": "Zoo",
+       "static": true,
+       "params": [
+        {
+         "kind": "array",
+         "elem": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "name": "main",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 43,
+        "col": 29,
+        "sym": {
+         "kind": "param",
+         "name": "args",
+         "owner": "Zoo.main",
+         "type": {
+          "kind": "array",
+          "elem": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        },
+        "type": {
+         "kind": "array",
+         "elem": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 43,
+       "col": 44,
+       "stmts": [
+        {
+         "node": "Local",
+         "line": 44,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "zoo",
+          "owner": "Zoo.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.List",
+           "args": [
+            {
+             "kind": "class",
+             "name": "Zoo.Animal"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.List",
+          "args": [
+           {
+            "kind": "class",
+            "name": "Zoo.Animal"
+           }
+          ]
+         },
+         "init": {
+          "node": "New",
+          "line": 44,
+          "col": 28,
+          "type": {
+           "kind": "class",
+           "name": "java.util.ArrayList",
+           "args": [
+            {
+             "kind": "class",
+             "name": "Zoo.Animal"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.util.ArrayList",
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 45,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 45,
+          "col": 9,
+          "type": {
+           "kind": "bool"
+          },
+          "target": {
+           "node": "Name",
+           "line": 45,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.util.List",
+            "args": [
+             {
+              "kind": "class",
+              "name": "Zoo.Animal"
+             }
+            ]
+           },
+           "sym": {
+            "kind": "local",
+            "name": "zoo",
+            "owner": "Zoo.main",
+            "type": {
+             "kind": "class",
+             "name": "java.util.List",
+             "args": [
+              {
+               "kind": "class",
+               "name": "Zoo.Animal"
+              }
+             ]
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "add",
+           "owner": "java.util.List",
+           "params": [
+            {
+             "kind": "typevar",
+             "name": "E"
+            }
+           ],
+           "ret": {
+            "kind": "bool"
+           }
+          },
+          "args": [
+           {
+            "node": "New",
+            "line": 45,
+            "col": 17,
+            "type": {
+             "kind": "class",
+             "name": "Zoo.Dog"
+            },
+            "sym": {
+             "kind": "ctor",
+             "name": "<init>",
+             "owner": "Zoo.Dog",
+             "params": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             ],
+             "ret": {
+              "kind": "void"
+             }
+            },
+            "args": [
+             {
+              "node": "Lit",
+              "line": 45,
+              "col": 25,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "rex"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 46,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 46,
+          "col": 9,
+          "type": {
+           "kind": "bool"
+          },
+          "target": {
+           "node": "Name",
+           "line": 46,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.util.List",
+            "args": [
+             {
+              "kind": "class",
+              "name": "Zoo.Animal"
+             }
+            ]
+           },
+           "sym": {
+            "kind": "local",
+            "name": "zoo",
+            "owner": "Zoo.main",
+            "type": {
+             "kind": "class",
+             "name": "java.util.List",
+             "args": [
+              {
+               "kind": "class",
+               "name": "Zoo.Animal"
+              }
+             ]
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "add",
+           "owner": "java.util.List",
+           "params": [
+            {
+             "kind": "typevar",
+             "name": "E"
+            }
+           ],
+           "ret": {
+            "kind": "bool"
+           }
+          },
+          "args": [
+           {
+            "node": "New",
+            "line": 46,
+            "col": 17,
+            "type": {
+             "kind": "class",
+             "name": "Zoo.Cat"
+            },
+            "sym": {
+             "kind": "ctor",
+             "name": "<init>",
+             "owner": "Zoo.Cat",
+             "params": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             ],
+             "ret": {
+              "kind": "void"
+             }
+            },
+            "args": [
+             {
+              "node": "Lit",
+              "line": 46,
+              "col": 25,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "tom"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "ForEach",
+         "line": 47,
+         "col": 9,
+         "var": {
+          "node": "Local",
+          "line": 47,
+          "col": 14,
+          "sym": {
+           "kind": "local",
+           "name": "a",
+           "owner": "Zoo.main",
+           "type": {
+            "kind": "class",
+            "name": "Zoo.Animal"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "Zoo.Animal"
+          }
+         },
+         "iterable": {
+          "node": "Name",
+          "line": 47,
+          "col": 25,
+          "type": {
+           "kind": "class",
+           "name": "java.util.List",
+           "args": [
+            {
+             "kind": "class",
+             "name": "Zoo.Animal"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "local",
+           "name": "zoo",
+           "owner": "Zoo.main",
+           "type": {
+            "kind": "class",
+            "name": "java.util.List",
+            "args": [
+             {
+              "kind": "class",
+              "name": "Zoo.Animal"
+             }
+            ]
+           }
+          }
+         },
+         "body": {
+          "node": "ExprStmt",
+          "line": 47,
+          "col": 30,
+          "expr": {
+           "node": "Call",
+           "line": 47,
+           "col": 30,
+           "type": {
+            "kind": "void"
+           },
+           "target": {
+            "node": "Select",
+            "line": 47,
+            "col": 30,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            },
+            "obj": {
+             "node": "TypeName",
+             "line": 47,
+             "col": 30,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.System"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "out",
+             "owner": "java.lang.System",
+             "static": true,
+             "type": {
+              "kind": "class",
+              "name": "java.io.PrintStream"
+             }
+            }
+           },
+           "sym": {
+            "kind": "method",
+            "name": "println",
+            "owner": "java.io.PrintStream",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Call",
+             "line": 47,
+             "col": 49,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "target": {
+              "node": "Name",
+              "line": 47,
+              "col": 49,
+              "type": {
+               "kind": "class",
+               "name": "Zoo.Animal"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "a",
+               "owner": "Zoo.main",
+               "type": {
+                "kind": "class",
+                "name": "Zoo.Animal"
+               }
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "greet",
+              "owner": "Zoo.Animal",
+              "params": [],
+              "ret": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             },
+             "args": []
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 48,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 48,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 48,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 48,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 48,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Select",
+              "line": 48,
+              "col": 28,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "TypeName",
+               "line": 48,
+               "col": 28,
+               "type": {
+                "kind": "class",
+                "name": "Zoo.Base"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "made",
+               "owner": "Zoo.Base",
+               "static": true,
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 48,
+              "col": 40,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Select",
+              "line": 48,
+              "col": 46,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "Paren",
+               "line": 48,
+               "col": 46,
+               "type": {
+                "kind": "class",
+                "name": "Zoo.Dog"
+               },
+               "x": {
+                "node": "Cast",
+                "line": 48,
+                "col": 47,
+                "type": {
+                 "kind": "class",
+                 "name": "Zoo.Dog"
+                },
+                "x": {
+                 "node": "Call",
+                 "line": 48,
+                 "col": 53,
+                 "type": {
+                  "kind": "class",
+                  "name": "Zoo.Animal"
+                 },
+                 "target": {
+                  "node": "Name",
+                  "line": 48,
+                  "col": 53,
+                  "type": {
+                   "kind": "class",
+                   "name": "java.util.List",
+                   "args": [
+                    {
+                     "kind": "class",
+                     "name": "Zoo.Animal"
+                    }
+                   ]
+                  },
+                  "sym": {
+                   "kind": "local",
+                   "name": "zoo",
+                   "owner": "Zoo.main",
+                   "type": {
+                    "kind": "class",
+                    "name": "java.util.List",
+                    "args": [
+                     {
+                      "kind": "class",
+                      "name": "Zoo.Animal"
+                     }
+                    ]
+                   }
+                  }
+                 },
+                 "sym": {
+                  "kind": "method",
+                  "name": "get",
+                  "owner": "java.util.List",
+                  "params": [
+                   {
+                    "kind": "i32"
+                   }
+                  ],
+                  "ret": {
+                   "kind": "typevar",
+                   "name": "E"
+                  }
+                 },
+                 "args": [
+                  {
+                   "node": "Lit",
+                   "line": 48,
+                   "col": 61,
+                   "type": {
+                    "kind": "i32"
+                   },
+                   "value": 0
+                  }
+                 ]
+                }
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "barks",
+               "owner": "Zoo.Dog",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 48,
+              "col": 73,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "New",
+              "line": 48,
+              "col": 79,
+              "type": {
+               "kind": "class",
+               "name": "Zoo.Pair"
+              },
+              "sym": {
+               "kind": "ctor",
+               "name": "<init>",
+               "owner": "Zoo.Pair",
+               "params": [
+                {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "void"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 48,
+                "col": 88,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                "value": "x"
+               },
+               {
+                "node": "Lit",
+                "line": 48,
+                "col": 93,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 2
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 48,
+              "col": 98,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 48,
+              "col": 104,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 48,
+               "col": 104,
+               "type": {
+                "kind": "class",
+                "name": "Zoo"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "sumTo",
+               "owner": "Zoo",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 48,
+                "col": 110,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 4
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "Try",
+         "line": 49,
+         "col": 9,
+         "resources": [],
+         "body": {
+          "node": "Block",
+          "line": 49,
+          "col": 13,
+          "stmts": [
+           {
+            "node": "ExprStmt",
+            "line": 50,
+            "col": 13,
+            "expr": {
+             "node": "Call",
+             "line": 50,
+             "col": 13,
+             "type": {
+              "kind": "i32"
+             },
+             "target": {
+              "node": "TypeName",
+              "line": 50,
+              "col": 13,
+              "type": {
+               "kind": "class",
+               "name": "Zoo"
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "pick",
+              "owner": "Zoo",
+              "static": true,
+              "params": [
+               {
+                "kind": "i32"
+               }
+              ],
+              "ret": {
+               "kind": "i32"
+              }
+             },
+             "args": [
+              {
+               "node": "Lit",
+               "line": 50,
+               "col": 18,
+               "type": {
+                "kind": "i32"
+               },
+               "value": -2
+              }
+             ]
+            }
+           }
+          ]
+         },
+         "catches": [
+          {
+           "node": "Catch",
+           "line": 51,
+           "col": 11,
+           "sym": {
+            "kind": "local",
+            "name": "e",
+            "owner": "Zoo.main",
+            "type": {
+             "kind": "class",
+             "name": "Zoo.Empty"
+            }
+           },
+           "types": [
+            {
+             "kind": "class",
+             "name": "Zoo.Empty"
+            }
+           ],
+           "body": {
+            "node": "Block",
+            "line": 51,
+            "col": 27,
+            "stmts": [
+             {
+              "node": "ExprStmt",
+              "line": 52,
+              "col": 13,
+              "expr": {
+               "node": "Call",
+               "line": 52,
+               "col": 13,
+               "type": {
+                "kind": "void"
+               },
+               "target": {
+                "node": "Select",
+                "line": 52,
+                "col": 13,
+                "type": {
+                 "kind": "class",
+                 "name": "java.io.PrintStream"
+                },
+                "obj": {
+                 "node": "TypeName",
+                 "line": 52,
+                 "col": 13,
+                 "type": {
+                  "kind": "class",
+                  "name": "java.lang.System"
+                 }
+                },
+                "sym": {
+                 "kind": "field",
+                 "name": "out",
+                 "owner": "java.lang.System",
+                 "static": true,
+                 "type": {
+                  "kind": "class",
+                  "name": "java.io.PrintStream"
+                 }
+                }
+               },
+               "sym": {
+                "kind": "method",
+                "name": "println",
+                "owner": "java.io.PrintStream",
+                "params": [
+                 {
+                  "kind": "class",
+                  "name": "java.lang.String"
+                 }
+                ],
+                "ret": {
+                 "kind": "void"
+                }
+               },
+               "args": [
+                {
+                 "node": "Concat",
+                 "line": 52,
+                 "col": 32,
+                 "type": {
+                  "kind": "class",
+                  "name": "java.lang.String"
+                 },
+                 "parts": [
+                  {
+                   "node": "Lit",
+                   "line": 52,
+                   "col": 32,
+                   "type": {
+                    "kind": "class",
+                    "name": "java.lang.String"
+                   },
+                   "value": "caught "
+                  },
+                  {
+                   "node": "Call",
+                   "line": 52,
+                   "col": 44,
+                   "type": {
+                    "kind": "class",
+                    "name": "java.lang.String"
+                   },
+                   "target": {
+                    "node": "Name",
+                    "line": 52,
+                    "col": 44,
+                    "type": {
+                     "kind": "class",
+                     "name": "Zoo.Empty"
+                    },
+                    "sym": {
+                     "kind": "local",
+                     "name": "e",
+                     "owner": "Zoo.main",
+                     "type": {
+                      "kind": "class",
+                      "name": "Zoo.Empty"
+                     }
+                    }
+                   },
+                   "sym": {
+                    "kind": "method",
+                    "name": "getMessage",
+                    "owner": "java.lang.Throwable",
+                    "params": [],
+                    "ret": {
+                     "kind": "class",
+                     "name": "java.lang.String"
+                    }
+                   },
+                   "args": []
+                  }
+                 ]
+                }
+               ]
+              }
+             }
+            ]
+           }
+          }
+         ],
+         "final": {
+          "node": "Block",
+          "line": 53,
+          "col": 19,
+          "stmts": [
+           {
+            "node": "ExprStmt",
+            "line": 54,
+            "col": 13,
+            "expr": {
+             "node": "Call",
+             "line": 54,
+             "col": 13,
+             "type": {
+              "kind": "void"
+             },
+             "target": {
+              "node": "Select",
+              "line": 54,
+              "col": 13,
+              "type": {
+               "kind": "class",
+               "name": "java.io.PrintStream"
+              },
+              "obj": {
+               "node": "TypeName",
+               "line": 54,
+               "col": 13,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.System"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "out",
+               "owner": "java.lang.System",
+               "static": true,
+               "type": {
+                "kind": "class",
+                "name": "java.io.PrintStream"
+               }
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "println",
+              "owner": "java.io.PrintStream",
+              "params": [
+               {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              ],
+              "ret": {
+               "kind": "void"
+              }
+             },
+             "args": [
+              {
+               "node": "Lit",
+               "line": 54,
+               "col": 32,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "value": "finally"
+              }
+             ]
+            }
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 56,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "m",
+          "owner": "Zoo.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.Map",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.Map",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         },
+         "init": {
+          "node": "New",
+          "line": 56,
+          "col": 34,
+          "type": {
+           "kind": "class",
+           "name": "java.util.LinkedHashMap",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.util.LinkedHashMap",
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 57,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 57,
+          "col": 9,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.Integer"
+          },
+          "target": {
+           "node": "Name",
+           "line": 57,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.util.Map",
+            "args": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             {
+              "kind": "class",
+              "name": "java.lang.Integer"
+             }
+            ]
+           },
+           "sym": {
+            "kind": "local",
+            "name": "m",
+            "owner": "Zoo.main",
+            "type": {
+             "kind": "class",
+             "name": "java.util.Map",
+             "args": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              }
+             ]
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "put",
+           "owner": "java.util.Map",
+           "params": [
+            {
+             "kind": "typevar",
+             "name": "K"
+            },
+            {
+             "kind": "typevar",
+             "name": "V"
+            }
+           ],
+           "ret": {
+            "kind": "typevar",
+            "name": "V"
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 57,
+            "col": 15,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "value": "one"
+           },
+           {
+            "node": "Lit",
+            "line": 57,
+            "col": 22,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           }
+          ]
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 58,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 58,
+          "col": 9,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.Integer"
+          },
+          "target": {
+           "node": "Name",
+           "line": 58,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.util.Map",
+            "args": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             {
+              "kind": "class",
+              "name": "java.lang.Integer"
+             }
+            ]
+           },
+           "sym": {
+            "kind": "local",
+            "name": "m",
+            "owner": "Zoo.main",
+            "type": {
+             "kind": "class",
+             "name": "java.util.Map",
+             "args": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              }
+             ]
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "put",
+           "owner": "java.util.Map",
+           "params": [
+            {
+             "kind": "typevar",
+             "name": "K"
+            },
+            {
+             "kind": "typevar",
+             "name": "V"
+            }
+           ],
+           "ret": {
+            "kind": "typevar",
+            "name": "V"
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 58,
+            "col": 15,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "value": "two"
+           },
+           {
+            "node": "Lit",
+            "line": 58,
+            "col": 22,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          ]
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 59,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 59,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 59,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 59,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 59,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Name",
+              "line": 59,
+              "col": 28,
+              "type": {
+               "kind": "class",
+               "name": "java.util.Map",
+               "args": [
+                {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                {
+                 "kind": "class",
+                 "name": "java.lang.Integer"
+                }
+               ]
+              },
+              "sym": {
+               "kind": "local",
+               "name": "m",
+               "owner": "Zoo.main",
+               "type": {
+                "kind": "class",
+                "name": "java.util.Map",
+                "args": [
+                 {
+                  "kind": "class",
+                  "name": "java.lang.String"
+                 },
+                 {
+                  "kind": "class",
+                  "name": "java.lang.Integer"
+                 }
+                ]
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 59,
+              "col": 32,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 59,
+              "col": 38,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 59,
+               "col": 38,
+               "type": {
+                "kind": "class",
+                "name": "Zoo"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "pick",
+               "owner": "Zoo",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 59,
+                "col": 43,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 5
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 59,
+              "col": 48,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 59,
+              "col": 54,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 59,
+               "col": 54,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "format",
+               "owner": "java.lang.String",
+               "static": true,
+               "params": [
+                {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                {
+                 "kind": "array",
+                 "elem": {
+                  "kind": "class",
+                  "name": "java.lang.Object"
+                 }
+                }
+               ],
+               "ret": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "varargs": true
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 59,
+                "col": 68,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                "value": "%5.2f|%d"
+               },
+               {
+                "node": "Lit",
+                "line": 59,
+                "col": 80,
+                "type": {
+                 "kind": "f64"
+                },
+                "value": 3.14159
+               },
+               {
+                "node": "Lit",
+                "line": 59,
+                "col": 89,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 42
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 60,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "byLen",
+          "owner": "Zoo.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.Comparator",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.Comparator",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          ]
+         },
+         "init": {
+          "node": "Lambda",
+          "line": 60,
+          "col": 36,
+          "type": {
+           "kind": "class",
+           "name": "java.util.Comparator",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          },
+          "params": [
+           {
+            "node": "Param",
+            "line": 60,
+            "col": 37,
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "Zoo.main",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            },
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           },
+           {
+            "node": "Param",
+            "line": 60,
+            "col": 40,
+            "sym": {
+             "kind": "param",
+             "name": "y",
+             "owner": "Zoo.main",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            },
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           }
+          ],
+          "body": {
+           "node": "Binary",
+           "line": 60,
+           "col": 46,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "-",
+           "left": {
+            "node": "Call",
+            "line": 60,
+            "col": 46,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 60,
+             "col": 46,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "x",
+              "owner": "Zoo.main",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "length",
+             "owner": "java.lang.String",
+             "params": [],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": []
+           },
+           "right": {
+            "node": "Call",
+            "line": 60,
+            "col": 59,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 60,
+             "col": 59,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "y",
+              "owner": "Zoo.main",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "length",
+             "owner": "java.lang.String",
+             "params": [],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": []
+           }
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 61,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "ws",
+          "owner": "Zoo.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.List",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.List",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          ]
+         },
+         "init": {
+          "node": "New",
+          "line": 61,
+          "col": 27,
+          "type": {
+           "kind": "class",
+           "name": "java.util.ArrayList",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.util.ArrayList",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.util.Collection",
+             "args": [
+              {
+               "kind": "wildcard",
+               "bound": "extends",
+               "type": {
+                "kind": "typevar",
+                "name": "E"
+               }
+              }
+             ]
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Call",
+            "line": 61,
+            "col": 43,
+            "type": {
+             "kind": "class",
+             "name": "java.util.List",
+             "args": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             ]
+            },
+            "target": {
+             "node": "TypeName",
+             "line": 61,
+             "col": 43,
+             "type": {
+              "kind": "class",
+              "name": "java.util.List"
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "of",
+             "owner": "java.util.List",
+             "static": true,
+             "params": [
+              {
+               "kind": "typevar",
+               "name": "E"
+              },
+              {
+               "kind": "typevar",
+               "name": "E"
+              },
+              {
+               "kind": "typevar",
+               "name": "E"
+              }
+             ],
+             "ret": {
+              "kind": "class",
+              "name": "java.util.List",
+              "args": [
+               {
+                "kind": "typevar",
+                "name": "E"
+               }
+              ]
+             }
+            },
+            "args": [
+             {
+              "node": "Lit",
+              "line": 61,
+              "col": 51,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "ccc"
+             },
+             {
+              "node": "Lit",
+              "line": 61,
+              "col": 58,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "a"
+             },
+             {
+              "node": "Lit",
+              "line": 61,
+              "col": 63,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "bb"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 62,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 62,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Name",
+           "line": 62,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.util.List",
+            "args": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ]
+           },
+           "sym": {
+            "kind": "local",
+            "name": "ws",
+            "owner": "Zoo.main",
+            "type": {
+             "kind": "class",
+             "name": "java.util.List",
+             "args": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             ]
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "sort",
+           "owner": "java.util.List",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.util.Comparator",
+             "args": [
+              {
+               "kind": "wildcard",
+               "bound": "super",
+               "type": {
+                "kind": "typevar",
+                "name": "E"
+               }
+              }
+             ]
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Name",
+            "line": 62,
+            "col": 17,
+            "type": {
+             "kind": "class",
+             "name": "java.util.Comparator",
+             "args": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             ]
+            },
+            "sym": {
+             "kind": "local",
+             "name": "byLen",
+             "owner": "Zoo.main",
+             "type": {
+              "kind": "class",
+              "name": "java.util.Comparator",
+              "args": [
+               {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              ]
+             }
+            }
+           }
+          ]
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 63,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 63,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 63,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 63,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.Object"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Name",
+            "line": 63,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.util.List",
+             "args": [
+              {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             ]
+            },
+            "sym": {
+             "kind": "local",
+             "name": "ws",
+             "owner": "Zoo.main",
+             "type": {
+              "kind": "class",
+              "name": "java.util.List",
+              "args": [
+               {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              ]
+             }
+            }
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "mods": [
+       "public",
+       "static"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

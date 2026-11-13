@@ -1,0 +1,725 @@
+{
+ "module": "version.dll",
+ "items": {
+  "sub_001000": {
+   "key": "bfeb1000",
+   "va": 3219853312,
+   "entry": 1845497856,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "exit-differs",
+   "limits": [],
+   "detail": "exit ret vs wild-call  [input 0,0,0,0]"
+  },
+  "GetFileVersionInfoSizeW": {
+   "key": "bfeb1044",
+   "va": 3219853380,
+   "entry": 1845497944,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4 bytes on return vs 12  [input 0,0,0,0]"
+  },
+  "VerLanguageNameW": {
+   "key": "bfeb104d",
+   "va": 3219853389,
+   "entry": 1845497952,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4 bytes on return vs 16  [input 0,0,0,0]"
+  },
+  "GetFileVersionInfoW": {
+   "key": "bfeb1056",
+   "va": 3219853398,
+   "entry": 1845497960,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4 bytes on return vs 20  [input 0,0,0,0]"
+  },
+  "VerFindFileW": {
+   "key": "bfeb105f",
+   "va": 3219853407,
+   "entry": 1845497968,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4 bytes on return vs 36  [input 0,0,0,0]"
+  },
+  "sub_001068": {
+   "key": "bfeb1068",
+   "va": 3219853416,
+   "entry": 1845497976,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4294967292 bytes on return vs 4  [input 0,0,0,0]"
+  },
+  "sub_0012E1": {
+   "key": "bfeb12e1",
+   "va": 3219854049,
+   "entry": 1845497987,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4294967292 bytes on return vs 4  [input 0,0,0,0]"
+  },
+  "sub_0013B3": {
+   "key": "bfeb13b3",
+   "va": 3219854259,
+   "entry": 1845497998,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=2",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0013FB": {
+   "key": "bfeb13fb",
+   "va": 3219854331,
+   "entry": 1845498073,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=97",
+    "paths=2",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "GetFileVersionInfoSizeA": {
+   "key": "bfeb146c",
+   "va": 3219854444,
+   "entry": 1845498190,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=8",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "GetFileVersionInfoA": {
+   "key": "bfeb1507",
+   "va": 3219854599,
+   "entry": 1845498359,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=4",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "VerFindFileA": {
+   "key": "bfeb1598",
+   "va": 3219854744,
+   "entry": 1845498521,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=3",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "VerInstallFileA": {
+   "key": "bfeb15ee",
+   "va": 3219854830,
+   "entry": 1845498645,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=72",
+    "paths=3",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016AA": {
+   "key": "bfeb16aa",
+   "va": 3219855018,
+   "entry": 1845498870,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016B6": {
+   "key": "bfeb16b6",
+   "va": 3219855030,
+   "entry": 1845498883,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016BC": {
+   "key": "bfeb16bc",
+   "va": 3219855036,
+   "entry": 1845498888,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016C2": {
+   "key": "bfeb16c2",
+   "va": 3219855042,
+   "entry": 1845498893,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016C8": {
+   "key": "bfeb16c8",
+   "va": 3219855048,
+   "entry": 1845498898,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016CE": {
+   "key": "bfeb16ce",
+   "va": 3219855054,
+   "entry": 1845498903,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016D4": {
+   "key": "bfeb16d4",
+   "va": 3219855060,
+   "entry": 1845498908,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016DA": {
+   "key": "bfeb16da",
+   "va": 3219855066,
+   "entry": 1845498913,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016E0": {
+   "key": "bfeb16e0",
+   "va": 3219855072,
+   "entry": 1845498918,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016E6": {
+   "key": "bfeb16e6",
+   "va": 3219855078,
+   "entry": 1845498923,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016F2": {
+   "key": "bfeb16f2",
+   "va": 3219855090,
+   "entry": 1845498928,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016F8": {
+   "key": "bfeb16f8",
+   "va": 3219855096,
+   "entry": 1845498933,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0016FE": {
+   "key": "bfeb16fe",
+   "va": 3219855102,
+   "entry": 1845498938,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001704": {
+   "key": "bfeb1704",
+   "va": 3219855108,
+   "entry": 1845498943,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_00170A": {
+   "key": "bfeb170a",
+   "va": 3219855114,
+   "entry": 1845498948,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001710": {
+   "key": "bfeb1710",
+   "va": 3219855120,
+   "entry": 1845498953,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001716": {
+   "key": "bfeb1716",
+   "va": 3219855126,
+   "entry": 1845498958,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_00171C": {
+   "key": "bfeb171c",
+   "va": 3219855132,
+   "entry": 1845498963,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001722": {
+   "key": "bfeb1722",
+   "va": 3219855138,
+   "entry": 1845498968,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  }
+ },
+ "dropped": {},
+ "order": [
+  "sub_001000",
+  "GetFileVersionInfoSizeW",
+  "VerLanguageNameW",
+  "GetFileVersionInfoW",
+  "VerFindFileW",
+  "sub_001068",
+  "sub_001095",
+  "sub_001097",
+  "sub_0010C5",
+  "sub_0010C7",
+  "sub_0010F5",
+  "sub_0010F7",
+  "sub_001190",
+  "sub_001192",
+  "VerLanguageNameA",
+  "sub_001218",
+  "VerQueryValueA",
+  "sub_001241",
+  "sub_0012E1",
+  "sub_0013B3",
+  "sub_0013FB",
+  "GetFileVersionInfoSizeA",
+  "GetFileVersionInfoA",
+  "VerFindFileA",
+  "VerInstallFileA",
+  "sub_0016AA",
+  "sub_0016B6",
+  "sub_0016BC",
+  "sub_0016C2",
+  "sub_0016C8",
+  "sub_0016CE",
+  "sub_0016D4",
+  "sub_0016DA",
+  "sub_0016E0",
+  "sub_0016E6",
+  "sub_0016F2",
+  "sub_0016F8",
+  "sub_0016FE",
+  "sub_001704",
+  "sub_00170A",
+  "sub_001710",
+  "sub_001716",
+  "sub_00171C",
+  "sub_001722"
+ ],
+ "environment": {
+  "argc": {
+   "KERNEL32.dll|DisableThreadLibraryCalls": 1,
+   "KERNEL32.dll|ThunkConnect32": null,
+   "KERNEL32|DisableThreadLibraryCalls": 1,
+   "KERNEL32|ThunkConnect32": null,
+   "KERNEL32.dll|#17": null,
+   "KERNEL32|#17": null,
+   "KERNEL32.dll|LoadLibraryExA": 3,
+   "KERNEL32|LoadLibraryExA": 3,
+   "KERNEL32.dll|FindResourceA": 3,
+   "KERNEL32.dll|SizeofResource": 2,
+   "KERNEL32.dll|FreeLibrary": 1,
+   "KERNEL32|FindResourceA": 3,
+   "KERNEL32|SizeofResource": 2,
+   "KERNEL32|FreeLibrary": 1,
+   "KERNEL32.dll|LoadResource": 2,
+   "KERNEL32.dll|RtlMoveMemory": null,
+   "KERNEL32|LoadResource": 2,
+   "KERNEL32|RtlMoveMemory": null,
+   "KERNEL32.dll|LocalAlloc": 2,
+   "KERNEL32.dll|GetShortPathNameA": 3,
+   "KERNEL32|LocalAlloc": 2,
+   "KERNEL32|GetShortPathNameA": 3,
+   "KERNEL32.dll|SearchPathA": 6,
+   "KERNEL32.dll|LocalFree": 1,
+   "KERNEL32|SearchPathA": 6,
+   "KERNEL32|LocalFree": 1,
+   "KERNEL32.dll|SMapLS_IP_EBP_12": null,
+   "KERNEL32|SMapLS_IP_EBP_12": null,
+   "KERNEL32.dll|SMapLS_IP_EBP_20": null,
+   "KERNEL32|SMapLS_IP_EBP_20": null,
+   "KERNEL32.dll|SMapLS_IP_EBP_16": null,
+   "KERNEL32|SMapLS_IP_EBP_16": null,
+   "KERNEL32.dll|SMapLS_IP_EBP_24": null,
+   "KERNEL32|SMapLS_IP_EBP_24": null,
+   "KERNEL32.dll|SMapLS_IP_EBP_32": null,
+   "KERNEL32|SMapLS_IP_EBP_32": null,
+   "KERNEL32.dll|SMapLS_IP_EBP_28": null,
+   "KERNEL32|SMapLS_IP_EBP_28": null,
+   "KERNEL32.dll|UnMapLS": null,
+   "KERNEL32|UnMapLS": null,
+   "KERNEL32.dll|SMapLS_IP_EBP_8": null,
+   "KERNEL32|SMapLS_IP_EBP_8": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_12": null,
+   "KERNEL32|SUnMapLS_IP_EBP_12": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_20": null,
+   "KERNEL32|SUnMapLS_IP_EBP_20": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_16": null,
+   "KERNEL32|SUnMapLS_IP_EBP_16": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_24": null,
+   "KERNEL32|SUnMapLS_IP_EBP_24": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_32": null,
+   "KERNEL32|SUnMapLS_IP_EBP_32": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_28": null,
+   "KERNEL32|SUnMapLS_IP_EBP_28": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_8": null,
+   "KERNEL32|SUnMapLS_IP_EBP_8": null,
+   "KERNEL32.dll|MapLS": null,
+   "KERNEL32|MapLS": null,
+   "KERNEL32.dll|UnMapSLFixArray": null,
+   "KERNEL32|UnMapSLFixArray": null,
+   "KERNEL32.dll|MapSLFix": null,
+   "KERNEL32|MapSLFix": null
+  },
+  "prototypes": {
+   "DisableThreadLibraryCalls": [
+    [
+     "HMODULE",
+     ""
+    ]
+   ],
+   "LoadLibraryExA": [
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "HANDLE",
+     ""
+    ],
+    [
+     "DWORD",
+     ""
+    ]
+   ],
+   "FindResourceA": [
+    [
+     "HMODULE",
+     ""
+    ],
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "LPCSTR",
+     ""
+    ]
+   ],
+   "SizeofResource": [
+    [
+     "HMODULE",
+     ""
+    ],
+    [
+     "HRSRC",
+     ""
+    ]
+   ],
+   "FreeLibrary": [
+    [
+     "HMODULE",
+     ""
+    ]
+   ],
+   "LoadResource": [
+    [
+     "HMODULE",
+     ""
+    ],
+    [
+     "HRSRC",
+     ""
+    ]
+   ],
+   "LocalAlloc": [
+    [
+     "UINT",
+     ""
+    ],
+    [
+     "SIZE_T",
+     ""
+    ]
+   ],
+   "GetShortPathNameA": [
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "LPSTR",
+     ""
+    ],
+    [
+     "DWORD",
+     ""
+    ]
+   ],
+   "SearchPathA": [
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "DWORD",
+     ""
+    ],
+    [
+     "LPSTR",
+     ""
+    ],
+    [
+     "LPSTR *",
+     ""
+    ]
+   ],
+   "stub_bfeb1095": [],
+   "LocalFree": [
+    [
+     "HLOCAL",
+     ""
+    ]
+   ],
+   "stub_bfeb10c5": [],
+   "stub_bfeb10f5": [],
+   "stub_bfeb1190": []
+  }
+ },
+ "stubs": {
+  "bfeb1095": "stub_bfeb1095",
+  "bfeb1097": "stub_bfeb1097",
+  "bfeb10c5": "stub_bfeb10c5",
+  "bfeb10c7": "stub_bfeb10c7",
+  "bfeb10f5": "stub_bfeb10f5",
+  "bfeb10f7": "stub_bfeb10f7",
+  "bfeb1190": "stub_bfeb1190",
+  "bfeb1192": "stub_bfeb1192",
+  "bfeb1216": "stub_bfeb1216",
+  "bfeb1218": "stub_bfeb1218",
+  "bfeb123f": "stub_bfeb123f",
+  "bfeb1241": "stub_bfeb1241"
+ },
+ "stub_argc": {
+  "stub_bfeb1095": 2,
+  "stub_bfeb1097": 2,
+  "stub_bfeb10c5": 4,
+  "stub_bfeb10c7": 4,
+  "stub_bfeb10f5": 8,
+  "stub_bfeb10f7": 8,
+  "stub_bfeb1190": 8,
+  "stub_bfeb1192": 8,
+  "stub_bfeb1216": 3,
+  "stub_bfeb1218": 3,
+  "stub_bfeb123f": 4,
+  "stub_bfeb1241": 4
+ }
+}

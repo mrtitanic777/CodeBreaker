@@ -87,6 +87,8 @@ struct PathEntry {
 // entered with (`where` is the lane's own number for it), what an unmodelled call answered in the result register,
 // and the carry flag such a call leaves (no `where`).
 struct InputVar {
+    // Reg: ECX (where 1) or EDX (where 2), a member function's argument held in a register (16-bit: the register named);
+    // Ret: what the imports the emulator answers return (the 32-bit lane's `stub_ret`); Carry: the carry flag on entry.
     enum class Place { Arg, Mem, Reg, Ret, Carry };
     Place place = Place::Arg;
     std::int64_t where = 0;
