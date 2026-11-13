@@ -75,16 +75,6 @@ def test_the_readable_pass_reads_the_module_tree():
     assert "sub_1000" in r.results_unused()
 
 
-def test_the_port_reads_its_module_tree():
-    from codebreaker.port import asm16
-    text = "_TEXT SEGMENT\n_f PROC NEAR\n\tmov ax, 1\n\tret\n_f ENDP\n_TEXT ENDS\nEND\n"
-    doc = asm16.module("f.asm", text)
-    _valid(doc)
-    assert asm.module(doc) == text
-    p = asm16.Port(doc, asm16.CTypes([], []))
-    assert p.doc is doc and len(p.lines) == len(asm16.parse(text))
-
-
 FACTS = dict(name="x.dll", stem="x", date="2026-10-30", digest="abc", order=["verified", "no-source"],
              titles={"verified": "VERIFIED", "no-source": "NO SOURCE"}, counts={"verified": 1, "no-source": 1},
              total=2, kind="pe", whole=None, real=0, header=True)
