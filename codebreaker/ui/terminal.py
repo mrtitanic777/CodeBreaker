@@ -905,10 +905,12 @@ class CodeBreaker(App):
     def __init__(self, module=None):
         super().__init__()
         self.first = module
+        self.ui_thread = None
 
     def on_mount(self):
         self.register_theme(THEME)
         self.theme = "codebreaker"
+        self.ui_thread = threading.get_ident()                  # (the interface's own thread: service_down may be called from any)
         STORE.down = self.service_down
         self.push_screen(Home())
         if self.first:
@@ -928,7 +930,7 @@ class CodeBreaker(App):
 
     def service_down(self, message):
         """The service cannot be had (any thread): ServiceDown says so, once."""
-        if threading.get_ident() != self._thread_id:
+        if threading.get_ident() != self.ui_thread:
             self.call_from_thread(self.service_down, message)
             return
         top = self.screen

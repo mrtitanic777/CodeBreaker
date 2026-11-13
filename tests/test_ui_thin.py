@@ -44,7 +44,13 @@ def _only_ui(into):
         shutil.copy2(os.path.join(ROOT, rel), os.path.join(into, rel))
 
 
+def _need_python():
+    if not hasattr(sys, "meta_path"):
+        raise Skip("run under python: the exe's translated runtime has no import system or Textual, and sys.executable is the exe")
+
+
 def test_imports_only_the_ui():
+    _need_python()
     if not importlib.util.find_spec("textual"):
         raise Skip("textual is not installed")
     tree = tempfile.mkdtemp(prefix="cbthin")
@@ -126,6 +132,7 @@ if c:
 
 
 def test_every_screen_works_with_only_the_ui_present():
+    _need_python()
     if not importlib.util.find_spec("textual"):
         raise Skip("textual is not installed")
     sys.path.insert(0, ROOT)
