@@ -7,6 +7,7 @@
 
 #include "cb/analyze/dos_functions.hpp"
 #include "cb/base/config.hpp"
+#include "cb/base/settings.hpp"
 #include "cb/base/corpus.hpp"
 #include "cb/base/converted.hpp"
 #include "cb/build/driver.hpp"
@@ -29,13 +30,14 @@
 #include "cb/symbols/demangle.hpp"
 #include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
+#include "cb/symbols/identify.hpp"
 #include "cb/symbols/prototypes.hpp"
 
 namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 13> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources"};
+constexpr std::array<std::string_view, 15> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -309,6 +311,13 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         env.project = [converted](const std::filesystem::path& binary) { return base::converted::Store(converted).project(binary); };
         return build::resources::command(env);
     });
+
+    // identify <module> | --learn WHAT=FILE...: a module's runtime-library functions and its compiler (it opens the knowledge base and
+    // the corpus's modules when it runs)
+    table.set(symbols::identify::command(symbols::Environment{corpus.get(), &config}));
+
+    // settings: the effective settings, where each comes from
+    table.set(base::settings::command(base::settings::Environment{&config}));
 
     // xex <command> <file.xex> [args]: the xex program, with this process's stdout and stderr
     formats::xex::Tools xex_tools;

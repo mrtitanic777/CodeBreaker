@@ -48,6 +48,7 @@ constexpr std::array kDefaults{
     Default{"nasm", "native/nasm/build/bin/nasm.exe"},
     Default{"retromcp", "native/retromcp/build/libs/retromcp.jar"},
     Default{"state", "state"},
+    Default{"threads", ""},
     Default{"target", "win95"},
     Default{"struct_recovery", "all"},
 };
@@ -137,7 +138,13 @@ Config Config::load(const stdfs::path& checkout_root) {
         else if (v.is_boolean()) c.file_[it.key()] = v.get<bool>();
         else if (v.is_number_integer()) c.file_[it.key()] = v.get<std::int64_t>();
         else if (v.is_number_float()) c.file_[it.key()] = v.get<double>();
-        // (null, lists and other objects are not scalar settings: left unset)
+        else if (v.is_object()) {   // shown by `settings`; read by whoever owns it (kits: exact/toolchain)
+            std::string text;
+            for (auto ot = v.begin(); ot != v.end(); ++ot)
+                text += (text.empty() ? "" : ", ") + ot.key() + "=" + (ot.value().is_string() ? ot.value().get<std::string>() : ot.value().dump());
+            c.file_objects_[it.key()] = text;
+        }
+        // (null and lists are not settings this reads: left unset)
     }
     return c;
 }
@@ -200,10 +207,16 @@ std::vector<std::string> Config::keys() const {
     std::set<std::string> all;
     for (const auto& [key, v] : file_) all.insert(key);
     if (!file_corpora_.empty()) all.insert("corpora");
+    for (const auto& [key, v] : file_objects_) all.insert(key);
     for (const Default& d : kDefaults) all.insert(std::string(d.key));
     for (std::string_view key : kPathSettings)
         if (key != "reference") all.insert(std::string(key));
     return {all.begin(), all.end()};
+}
+
+std::optional<std::string> Config::object_text(std::string_view key) const {
+    const auto it = file_objects_.find(key);
+    return it == file_objects_.end() ? std::nullopt : std::optional<std::string>(it->second);
 }
 
 std::string Config::corpora_text() const {

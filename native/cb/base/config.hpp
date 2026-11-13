@@ -74,12 +74,16 @@ public:
     // settings.json's "corpora" as "name=folder, name=folder" (the folders as written); "" when it has none.
     std::string corpora_text() const;
     bool has_corpora() const { return !file_corpora_.empty(); }
+    // A setting whose value in settings.json is an object other than "corpora" (e.g. "kits"), as "name=value, ..." in the
+    // file's order; nullopt for any other setting.
+    std::optional<std::string> object_text(std::string_view key) const;
 
 private:
     Value value(std::string_view key) const;   // the environment, else settings.json, else the default
     std::filesystem::path root_;
     std::map<std::string, Value, std::less<>> file_;                  // settings.json's scalar settings
     std::map<std::string, std::string, std::less<>> file_corpora_;    // settings.json's "corpora", as written
+    std::map<std::string, std::string, std::less<>> file_objects_;    // the other object settings, as object_text shows them
 };
 
 // The checkout this program belongs to: CB_CHECKOUT_ROOT when set; else the first folder at or above the running

@@ -20,6 +20,8 @@ std::string describe(const config::Config& config) {
         std::string shown;
         if (key == "corpora" && config.has_corpora()) {
             shown = config.corpora_text();
+        } else if (const auto object = config.object_text(key)) {
+            shown = *object;
         } else if (config::Config::is_path_setting(key)) {
             const std::optional<std::filesystem::path> path = config.path(key);
             if (!path) {
