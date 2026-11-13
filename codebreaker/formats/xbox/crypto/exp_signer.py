@@ -18,8 +18,8 @@ class ExpansionMagic(IntEnum):
 	SIGM = 0x5349474D
 	SIGC = 0x53494743
 
-def sign_exp(in_file: str, out_file: str = None, key_file: str = "Keys/HVX_prv.bin", exp_magic: ExpansionMagic = ExpansionMagic.HXPR, exp_id: int = 0x48565050, encrypt: bool = True) -> None:
-	cpu_key = b""
+def sign_exp(in_file: str, out_file: str = None, key_file: str = "Keys/HVX_prv.bin", exp_magic: ExpansionMagic = ExpansionMagic.HXPR, exp_id: int = 0x48565050, encrypt: bool = True, cpu_key: bytes = b"") -> None:
+	"""HXPC and SIGC are signed with the console's CPU key: pass it as `cpu_key` (16 bytes)."""
 
 	# prv_key = read_file(key_file)
 	prv_key = XeCryptRsaKey(read_file(key_file))
@@ -98,13 +98,15 @@ def main() -> int:
 	parser.add_argument("-o", "--ofile", type=str, help="The signed payload file")
 	parser.add_argument("-i", "--expansion-id", type=str, default="0x48565050", help="The expansion ID to use")
 	parser.add_argument("-k", "--keyfile", type=str, default="Keys/HVX_prv.bin", help="The private key to sign with")
+	parser.add_argument("--magic", type=str, default="HXPR", choices=[m.name for m in ExpansionMagic], help="The expansion type")
+	parser.add_argument("--cpu-key", type=str, default="", help="The console's CPU key (32 hex digits); HXPC and SIGC need it")
 	parser.add_argument("--encrypt", action="store_true", help="Encrypt the expansion")
 	args = parser.parse_args()
 
 	assert isfile(args.input), "The specified input file doesn't exist"
 	args.expansion_id = int(args.expansion_id, 16)
 
-	sign_exp(args.input, args.ofile, args.keyfile, exp_id=args.expansion_id, encrypt=args.encrypt)
+	sign_exp(args.input, args.ofile, args.keyfile, exp_magic=ExpansionMagic[args.magic], exp_id=args.expansion_id, encrypt=args.encrypt, cpu_key=bytes.fromhex(args.cpu_key))
 
 	print("Done!")
 
