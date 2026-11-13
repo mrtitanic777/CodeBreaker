@@ -3,7 +3,7 @@
 // module made compilable, its facts), and the functions that make one. Conversion and forwarding only.
 //
 // What the module asks of the decompiler (running the native program, writing a function's C from its L2 document) is the new decompiler,
-// native/cb/decompile/decompiler*, and of the symbol tables the old ports (COMPAT(py): `OldEnvironment` in decompiler.hpp): the functions
+// native/cb/decompile/decompiler*, and of the symbol tables cb/decompile/environment (`SharedEnvironment` in decompiler.hpp): the functions
 // that need them are in c_text_impl.hpp, which this header ends by including through decompiler.hpp (the decompiler's own header ends by
 // including it, so the functions that call it are defined after both).
 //

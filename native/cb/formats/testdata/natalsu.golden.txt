@@ -1,0 +1,256 @@
+base 98000000
+memory 1
+code 98002000 98006454
+entry 980026a8
+span 98000000 0 9000
+section .rdata 98000400 891 40000040
+section .pdata 98000e00 230 40000040
+section .text 98002000 4454 60000020
+section .data 98007000 e8 c0000040
+section .edata 98008000 3e 40000040
+section .idata 98009000 ec c0000040
+section .XBLD 9800a000 60 42000040
+section .reloc 9800a200 378 42000040
+function 98002000
+function 98002008
+function 98002070
+function 980020d8
+function 980021d0
+function 98002248
+function 980022c0
+function 98002350
+function 980023f0
+function 98002460
+function 98002560
+function 98002630
+function 980026a8
+function 98002840
+function 980028e0
+function 980029e0
+function 98002a80
+function 98002d30
+function 98002d80
+function 98002e48
+function 98002eb8
+function 98002fb8
+function 980030c8
+function 98003190
+function 980032c0
+function 980032d8
+function 980032e0
+function 98003328
+function 98003330
+function 98003340
+function 980033b0
+function 98003498
+function 98003550
+function 98003640
+function 980036f8
+function 98003730
+function 98003758
+function 980037a0
+function 980037e8
+function 98003898
+function 98003948
+function 980039e0
+function 98003a68
+function 98003cf0
+function 98003de0
+function 98003e78
+function 98003f10
+function 98004030
+function 98004040
+function 98004050
+function 98004080
+function 980040e8
+function 98004190
+function 980042f0
+function 980043d8
+function 98004450
+function 980045f8
+function 980046a0
+function 98004700
+function 98004758
+function 98004828
+function 98004878
+function 98004908
+function 98004a28
+function 98004a70
+function 98004be0
+function 98004c48
+function 98004da0
+function 98004e70
+function 98004f10
+function 98004fe0
+function 98005028
+function 980051a8
+function 980052d0
+function 98005350
+function 98005428
+function 980054e8
+function 98005640
+function 98005680
+function 980057b8
+function 98005a68
+function 98005ab0
+function 98005b08
+function 98005b18
+function 98005cc0
+function 98005ce0
+function 98006168
+import 98006264 import0_ord_492
+import 98006274 import0_ord_1045
+import 98006284 import0_ord_433
+import 98006294 import0_ord_450
+import 980062a4 import0_ord_679
+import 980062b4 import0_ord_490
+import 980062c4 import1_ord_883
+import 980062d4 import1_ord_207
+import 980062e4 import1_ord_157
+import 980062f4 import1_ord_176
+import 98006304 import1_ord_783
+import 98006314 import1_ord_247
+import 98006324 import1_ord_240
+import 98006334 import1_ord_314
+import 98006344 import0_ord_1078
+import 98006354 import0_ord_2183
+import 98006364 import0_ord_602
+import 98006374 import0_ord_2182
+import 98006384 import0_ord_431
+import 98006394 import1_ord_782
+import 980063a4 import1_ord_781
+import 980063b4 import1_ord_3
+import 980063c4 import1_ord_232
+import 980063d4 import1_ord_223
+import 980063e4 import1_ord_300
+import 980063f4 import0_ord_2159
+import 98006404 import0_ord_617
+import 98006414 import0_ord_1600
+inline 98002790 __savegprlr_14
+inline 98002794 __savegprlr_15
+inline 98002798 __savegprlr_16
+inline 9800279c __savegprlr_17
+inline 980027a0 __savegprlr_18
+inline 980027a4 __savegprlr_19
+inline 980027a8 __savegprlr_20
+inline 980027ac __savegprlr_21
+inline 980027b0 __savegprlr_22
+inline 980027b4 __savegprlr_23
+inline 980027b8 __savegprlr_24
+inline 980027bc __savegprlr_25
+inline 980027c0 __savegprlr_26
+inline 980027c4 __savegprlr_27
+inline 980027c8 __savegprlr_28
+inline 980027cc __savegprlr_29
+inline 980027d0 __savegprlr_30
+inline 980027d4 __savegprlr_31
+run 98002790 __savegprlr_14
+run 98002794 __savegprlr_15
+run 98002798 __savegprlr_16
+run 9800279c __savegprlr_17
+run 980027a0 __savegprlr_18
+run 980027a4 __savegprlr_19
+run 980027a8 __savegprlr_20
+run 980027ac __savegprlr_21
+run 980027b0 __savegprlr_22
+run 980027b4 __savegprlr_23
+run 980027b8 __savegprlr_24
+run 980027bc __savegprlr_25
+run 980027c0 __savegprlr_26
+run 980027c4 __savegprlr_27
+run 980027c8 __savegprlr_28
+run 980027cc __savegprlr_29
+run 980027d0 __savegprlr_30
+run 980027d4 __savegprlr_31
+run 980027e0 __restgprlr_14
+run 980027e4 __restgprlr_15
+run 980027e8 __restgprlr_16
+run 980027ec __restgprlr_17
+run 980027f0 __restgprlr_18
+run 980027f4 __restgprlr_19
+run 980027f8 __restgprlr_20
+run 980027fc __restgprlr_21
+run 98002800 __restgprlr_22
+run 98002804 __restgprlr_23
+run 98002808 __restgprlr_24
+run 9800280c __restgprlr_25
+run 98002810 __restgprlr_26
+run 98002814 __restgprlr_27
+run 98002818 __restgprlr_28
+run 9800281c __restgprlr_29
+run 98002820 __restgprlr_30
+run 98002824 __restgprlr_31
+extent 98002008 64 14 0
+extent 98002070 68 10 0
+extent 980020d8 f8 c 0
+extent 980021d0 74 14 0
+extent 98002248 54 10 0
+extent 980022c0 90 14 0
+extent 98002350 9c 4 0
+extent 980023f0 70 14 0
+extent 98002460 fc 14 0
+extent 98002560 cc 14 0
+extent 98002630 74 c 0
+extent 980026a8 dc c 0
+extent 98002790 50 50 0
+extent 980027e0 54 54 1
+extent 980028e0 100 14 0
+extent 980029e0 a0 10 0
+extent 98002a80 2ac c 0
+extent 98002d30 4c c 0
+extent 98002d80 c8 14 0
+extent 98002e48 6c 10 0
+extent 98002eb8 fc 10 0
+extent 98002fb8 10c c 0
+extent 980030c8 c4 14 0
+extent 98003190 130 c 0
+extent 980032e0 44 10 0
+extent 98003340 6c 14 0
+extent 980033b0 e8 c 0
+extent 98003498 b8 c 0
+extent 98003550 f0 c 0
+extent 98003640 b4 10 0
+extent 98003758 44 10 0
+extent 980037a0 44 10 0
+extent 980037e8 b0 14 0
+extent 98003898 b0 14 0
+extent 98003948 94 c 0
+extent 980039e0 84 c 0
+extent 98003a68 284 c 0
+extent 98003cf0 f0 c 0
+extent 98003de0 98 c 0
+extent 98003e78 98 c 0
+extent 98003f10 11c c 0
+extent 98004050 30 c 0
+extent 98004080 68 10 0
+extent 980040e8 a8 14 0
+extent 98004190 15c c 0
+extent 980042f0 e8 c 0
+extent 980043d8 60 10 0
+extent 98004450 1a8 c 0
+extent 980045f8 a8 c 0
+extent 98004758 cc c 0
+extent 98004828 4c c 0
+extent 98004878 8c 10 0
+extent 98004a70 16c c 0
+extent 98004be0 68 c 0
+extent 98004c48 154 c 0
+extent 98004da0 ac c 0
+extent 98004e70 a0 c 0
+extent 98004f10 cc 10 0
+extent 98004fe0 44 c 0
+extent 98005028 180 14 0
+extent 980051a8 124 c 0
+extent 980052d0 7c 14 0
+extent 98005350 d4 c 0
+extent 98005428 c0 10 0
+extent 980054e8 158 c 0
+extent 98005680 134 c 0
+extent 980057b8 2b0 c 0
+extent 98005a68 48 c 0
+extent 98005ab0 54 c 0
+extent 98005b18 1a8 8 0
+word 98002000 38600001
+word 98002004 4e800020
+word 98002008 7d8802a6
+word 00001000 none

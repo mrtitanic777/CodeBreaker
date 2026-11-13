@@ -3,7 +3,7 @@
 // py containers, the old Description and the L2 documents as the old layer's Dict). Conversion and forwarding only.
 //
 // What the new decompiler asks of the rest of CodeBreaker (the symbol tables, the structure recovery, the PowerPC reader, the L2 library)
-// is answered by forwarding to the old ports: `OldEnvironment` below (COMPAT(py): remove with those modules). c_text's functions are in
+// is answered by cb/decompile/environment (no old port): `SharedEnvironment` below gives it the old layer's corpus and L2 library. c_text's functions are in
 // c_text_impl.hpp, which this header ends by including: they run on the new decompiler through the same `Handle`.
 //
 // Not carried over: `timeout=` of the old runs (the runtime's subprocess had none); the L2 documents the decompiler makes are nodes of
@@ -24,6 +24,8 @@
 #include "cb/compat/py_bridge.hpp"
 #include "cb/core/json.hpp"
 #include "cb/decompile/decompiler.hpp"
+#include "cb/decompile/environment.hpp"
+#include "cb/knowledge/store.hpp"
 #include "cb/translate/l2.hpp"
 #include "cb/translate/native_l2.hpp"
 #include "codebreaker/analyze/image.hpp"
@@ -72,68 +74,54 @@ namespace nir = ::cb::translate::ir;
 namespace nl2 = ::cb::translate::l2;
 namespace native_l2_old = codebreaker::translate::native_l2;
 
-// What the new decompiler asks of the rest, answered by the old ports (COMPAT(py): remove with them).
-class OldEnvironment final : public newd::Environment {
+// What the decompiler asks of the rest of CodeBreaker is answered by cb/decompile/environment (the symbol tables, the structure
+// recovery, the PowerPC reader, over the corpus of the settings and a knowledge base of the process's own); this gives it the old
+// layer's corpus, its L2 library and settings, and passes on what the description of a module said (the registries the builders read).
+class SharedEnvironment {
 public:
-    ::cb::decompile::describe::Knowledge& knowledge() override { return knowledge_; }
-    const ::cb::translate::native_l2::Library& library() override { return codebreaker::translate::l2::shim_detail::library(); }
-    std::map<std::string, std::string> import_dlls(const std::filesystem::path& module) override {
-        std::map<std::string, std::string> out;
-        for (const auto& [name, dll] : build::watcom::import_map(py::str(module.string())).items()) out[name.utf8()] = dll.utf8();
-        return out;
+    ::cb::decompile::environment::CorpusEnvironment& get() { return *environment_; }
+
+    // The one environment of the process, made again when the settings it was made from change.
+    static std::shared_ptr<SharedEnvironment> current() {
+        static std::mutex lock;
+        static std::shared_ptr<SharedEnvironment> kept;
+        const ::cb::base::Corpus& corpus = base::corpus::detail::instance();
+        const std::filesystem::path state = ::cb::compat::legacy::state_dir();
+        const std::filesystem::path openwatcom = ::cb::compat::legacy::path_of(build::watcom::openwatcom_root());
+        std::lock_guard<std::mutex> hold(lock);
+        if (!kept || kept->corpus_ != &corpus || kept->state_ != state || kept->openwatcom_ != openwatcom) kept = std::make_shared<SharedEnvironment>(corpus, state, openwatcom);
+        return kept;
     }
-    std::optional<std::uint32_t> argument_bytes(std::string_view dll, std::string_view name) override {
-        const std::optional<int64_t> bytes = symbols::api_arguments::stack_bytes(py::str(std::string(dll)), py::str(std::string(name)));
-        return bytes ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(*bytes)) : std::nullopt;
-    }
-    std::optional<std::vector<::cb::decompile::struct_text::Structure>> recover_structures(const std::filesystem::path& module) override {
-        namespace st = ::cb::decompile::struct_text;
-        try {   // (the old analysis may throw: the plan is then empty)
-            std::shared_ptr<py::list<analyze::structures::Structure>> found = analyze::structures::_recover(*analyze::image::load(py::str(module.string())));
-            std::vector<st::Structure> out;
-            for (const analyze::structures::Structure& s : found->vec()) {
-                st::Structure t;
-                t.name = s.name.utf8();
-                for (const analyze::structures::Root& r : s.roots.vec()) {
-                    if (r.kind == "arg") t.roots.push_back({st::RootKind::Arg, static_cast<std::uint64_t>(r.addr), r.index});
-                    else if (r.kind == "this") t.roots.push_back({st::RootKind::This, static_cast<std::uint64_t>(r.addr), std::nullopt});
-                }
-                out.push_back(std::move(t));
-            }
-            return out;
-        } catch (const std::exception&) {
-            return std::nullopt;
+
+    SharedEnvironment(const ::cb::base::Corpus& corpus, std::filesystem::path state, std::filesystem::path openwatcom)
+        : corpus_(&corpus), state_(std::move(state)), openwatcom_(std::move(openwatcom)) {
+        const std::filesystem::path checkout = ::cb::compat::legacy::path_of(py::settings::checkout_root());
+        std::filesystem::path reference;
+        try {
+            reference = corpus.reference();
+        } catch (const ::cb::Error&) {   // (no reference folder: the headers of the compilers alone)
         }
-    }
-    ::cb::decompile::describe::PowerPcFacts powerpc_facts(const std::filesystem::path& module) override {
-        auto img = formats::powerpc_image::read(py::str(module.string()));
-        ::cb::decompile::describe::PowerPcFacts out;
-        for (const auto& span : img->spans.vec())
-            out.spans.push_back({std::get<0>(span), static_cast<std::uint64_t>(std::get<1>(span)), static_cast<std::uint64_t>(std::get<2>(span))});
-        for (const auto& [address, name] : img->imports.items()) out.imports[address] = name.utf8();
-        for (const auto& [address, name] : img->inline_.items()) out.inlined[address] = name.utf8();
-        const symbols::names::Named own = symbols::names::powerpc_names(py::str(module.string()));
-        for (const auto& [address, named] : own.items()) out.names[address] = std::get<0>(named).utf8();   // (what run-time type information names)
-        return out;
-    }
-    // what the builders ask of a module that was decompiled: the imports it has by number, the functions that take an argument in ECX
-    void described(const std::filesystem::path& module, const ::cb::decompile::describe::PeDescription& d) override {
-        const py::str key(::cb::fs::to_text(module));
-        py::set<py::str> ecx;
-        for (const std::string& n : d.in_ecx) ecx.add(py::str(n));
-        describe::IN_ECX.set(key, ecx);
-        py::dict<py::str, std::tuple<py::str, int64_t, std::optional<int64_t>>> numbered;
-        for (const auto& [name, imp] : d.by_number) numbered.set(py::str(name), std::make_tuple(py::str(imp.module), imp.number, imp.pop));
-        describe::BY_NUMBER.set(key, numbered);
-    }
-    std::vector<newd::Va> powerpc_functions(const std::filesystem::path& module) override {
-        std::vector<newd::Va> out;
-        for (const int64_t va : formats::powerpc_image::read(py::str(module.string()))->functions.vec()) out.push_back(va);
-        return out;
+        store_ = std::make_unique<::cb::knowledge::Store>(::cb::knowledge::Store::default_path(state_), ::cb::knowledge::DataFolders::under(checkout));
+        knowledge_ = std::make_unique<::cb::knowledge::Knowledge>(*store_, ::cb::symbols::prototypes::HeaderFolders::standard(openwatcom_, reference));
+        environment_ = ::cb::decompile::environment::CorpusEnvironment::over_knowledge(corpus, codebreaker::translate::l2::shim_detail::library(), *knowledge_);
+        // what the builders ask of a module that was decompiled: the imports it has by number, the functions that take an argument in ECX
+        environment_->on_described = [](const std::filesystem::path& module, const ::cb::decompile::describe::PeDescription& d) {
+            const py::str key(::cb::fs::to_text(module));
+            py::set<py::str> ecx;
+            for (const std::string& n : d.in_ecx) ecx.add(py::str(n));
+            describe::IN_ECX.set(key, ecx);
+            py::dict<py::str, std::tuple<py::str, int64_t, std::optional<int64_t>>> numbered;
+            for (const auto& [name, imp] : d.by_number) numbered.set(py::str(name), std::make_tuple(py::str(imp.module), imp.number, imp.pop));
+            describe::BY_NUMBER.set(key, numbered);
+        };
     }
 
 private:
-    describe::shim_detail::OldKnowledge knowledge_;
+    const ::cb::base::Corpus* corpus_;
+    std::filesystem::path state_, openwatcom_;
+    std::unique_ptr<::cb::knowledge::Store> store_;
+    std::unique_ptr<::cb::knowledge::Knowledge> knowledge_;
+    std::unique_ptr<::cb::decompile::environment::CorpusEnvironment> environment_;
 };
 
 // The settings as the old layer reads them: the native program, its languages, struct_recovery, threads.
@@ -165,7 +153,7 @@ public:
     Handle() : decompiler(make_context()) {}
     Handle(const Handle&) = delete;
     Handle& operator=(const Handle&) = delete;
-    OldEnvironment environment;
+    std::shared_ptr<SharedEnvironment> environment = SharedEnvironment::current();
     newd::Decompiler decompiler;
 
 private:
@@ -178,7 +166,7 @@ private:
             std::lock_guard<std::mutex> hold(state.mutex);
             c.cache = &base::cache::shim::any_cache();
         }
-        c.environment = &environment;
+        c.environment = &environment->get();
         c.limits = ::cb::compat::legacy::budget_limits();
         return c;
     }
@@ -461,10 +449,9 @@ inline std::optional<std::tuple<int64_t, py::list<py::str>>> _own_arguments(cons
                                                                             const std::optional<FunctionNotes>& facts = std::nullopt) {
     return ::cb::compat::guard([&]() -> std::optional<std::tuple<int64_t, py::list<py::str>>> {
         shim_detail::Bridge bridge;
-        shim_detail::OldEnvironment environment;
         ::cb::core16::FunctionNotes notes;
         if (facts) notes = bridge.new_notes(*facts);
-        const std::optional<newd::ArgumentSizes> own = newd::own_arguments(environment.library(), text.utf8(), name.utf8(), facts ? notes.l2 : nullptr,
+        const std::optional<newd::ArgumentSizes> own = newd::own_arguments(codebreaker::translate::l2::shim_detail::library(), text.utf8(), name.utf8(), facts ? notes.l2 : nullptr,
                                                                            facts ? &notes.pointers : nullptr);
         if (!own) return std::nullopt;
         return std::make_tuple(static_cast<int64_t>(own->sizes.size()), ::cb::compat::to_py(own->sizes));
