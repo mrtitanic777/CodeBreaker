@@ -1,3 +1,5 @@
+// NOTE (W5-B2): refactored as native/cb/engine/lanes.hpp (the steps over the typed Kind, documents for facts). This old port stays: it has no header-only shim
+// because its callers (the old build/module and verify/reconstruct) hand it their py:: Built and Kind objects; it goes when they are refactored.
 // codebreaker/engine/lanes.hpp -- interface of codebreaker.engine.lanes (typed C++; implementation pending).
 //
 // lanes.py -- every lane's reconstruct-and-judge as steps of the engine, and the 32-bit module build.

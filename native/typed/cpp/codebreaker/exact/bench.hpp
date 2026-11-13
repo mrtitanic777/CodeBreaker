@@ -1,3 +1,5 @@
+// NOTE (W5-B3): refactored as native/cb/exact/bench.hpp. This old port stays: it has no header-only shim because it drives the old stage ports (their py:: types and out
+// streams) and its callers are the old command table and seed, which are refactored later; it goes with them. (carve, bss and names, which it calls, are shims now.)
 // codebreaker/exact/bench.hpp -- typed C++ of codebreaker.exact.bench
 //
 // bench.py -- the inverse model held to a project whose sources are known: what it drafts from no source, beside

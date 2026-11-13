@@ -1,3 +1,5 @@
+// NOTE (W5-B2): refactored as native/cb/engine/win16.hpp (the steps over the typed Kind, documents for facts). This old port stays: it has no header-only shim
+// because its callers (the old build/module and verify/reconstruct) hand it their py:: Built and Kind objects; it goes when they are refactored.
 // codebreaker/engine/win16.hpp -- typed C++ port of codebreaker.engine.win16: the 16-bit module build as steps of the engine.
 //
 //     auto b = engine::win16::build("USER.EXE");          // -> build::module::Built, b->image the linked file
