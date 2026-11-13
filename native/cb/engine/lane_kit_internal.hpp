@@ -19,7 +19,9 @@
 #include "cb/decompile/decompiler.hpp"
 #include "cb/engine/lane_kit.hpp"
 #include "cb/formats/pe.hpp"
+#include "cb/emulate/windows16.hpp"
 #include "cb/knowledge/package.hpp"
+#include "cb/source/assembly.hpp"
 #include "cb/symbols/api_arguments.hpp"
 #include "cb/symbols/driver_services.hpp"
 #include "cb/translate/native_l2.hpp"
@@ -63,6 +65,9 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// The 16-bit runner's surroundings (lane_kit_win16.cpp).
+emulate::windows16::Environment win16_environment_of(knowledge::Knowledge& kb, KitSizes& sizes, emulate::native_trace::Governor& governor);
 
 // What the decompiler asks of the rest of CodeBreaker, answered from the symbol tables, the analyses and the readers.
 class KitEnvironment final : public decompile::decompiler::Environment {
@@ -119,6 +124,8 @@ struct LaneKit::Impl {
     std::unique_ptr<build::functions::FunctionBuilder> builder_;
     std::unique_ptr<kit_detail::KitEnvironment> environment_;
     std::unique_ptr<decompile::decompiler::Decompiler> decompiler_;
+    std::unique_ptr<source::assembly::Prober> prober_;
+    std::optional<jobs::WorkerLauncher> launcher;
     std::unique_ptr<emulate::pcode::LifterSet> lifters_;
     std::shared_ptr<const verify::lanes::Kind> win32_, win16_, driver_, java_;
     std::shared_ptr<const symbols::driver_services::Table> driver_tables_;   // what the driver lane's spec points at

@@ -66,6 +66,9 @@ CB_TEST("engine.lane_kit.proof", [] {
     if (!out || out->empty() || !modules || modules->empty()) return;   // (slow: asked for by name)
     const config::Config config = config::Config::load(config::current().main_checkout());
     LaneKit kit(config);
+    // CB_LANE_KIT_WORKERS: the functions are judged in worker processes (cb_lane_worker.exe, beside the tests)
+    if (const auto workers = fs::get_env("CB_LANE_KIT_WORKERS"); workers && !workers->empty() && *workers != "0")
+        kit.set_worker_launcher(jobs::WorkerLauncher(jobs::WorkerLauncher::for_this_program().exe().parent_path() / "cb_lane_worker.exe"));
     verify::reconstruct::Kinds kinds;
     kit.add_lanes(kinds);
     engine::FunctionStore store(config.state("functions.sqlite"), config.state("db"));

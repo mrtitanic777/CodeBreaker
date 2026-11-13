@@ -89,10 +89,21 @@ public:
     build::module::Services module_services();
     // The 16-bit gate's spec (verify/gate16/isolated16).
     verify::gate16::Isolated16Spec isolated16_spec();
+    // What the gate needs of a 16-bit module's decompiled form: how each function is called, which return four bytes, where each is.
+    verify::gate16::IsolatedTables gate_tables(const std::filesystem::path& original);
 
     // ---- worker processes -----------------------------------------------------------------------------------------------
-    // The kinds of share this application's worker processes take (jobs/workers): "judge" and "gate".
-    void register_worker_kinds(jobs::WorkerKinds& kinds);
+    // Unicorn is one lock per process, so judging many functions on threads uses about one core: with a launcher the names to judge are shared out over
+    // worker processes of the host program (and a module's build can be made in one). The host registers the kinds with `register_worker_kinds` at the
+    // top of main (jobs::run_as_worker) and gives the kit its launcher; without one everything runs in this process.
+    static void register_worker_kinds(jobs::WorkerKinds& kinds);
+    void set_worker_launcher(jobs::WorkerLauncher launcher);
+    // The lane filed under `name` ("pe", "ne", "le"); null when there is none or its tools are not set up.
+    std::shared_ptr<const verify::lanes::Kind> lane_named(std::string_view name);
+    // `Services::judge_batch` of reconstruct: nullopt (threads judge) without a launcher or for a share too small to be worth a process.
+    std::optional<std::map<std::string, verify::Judgement>> judge_apart(const verify::reconstruct::Services::JudgeBatch& batch);
+    // `Services::build_apart` of the module builder.
+    std::optional<build::module::Built> build_apart(const std::string& module, const std::optional<std::filesystem::path>& outdir, bool call);
 
 private:
     struct Impl;

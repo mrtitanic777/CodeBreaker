@@ -140,6 +140,8 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 
 cb_area(verify)
 
+# The host the lane kit's worker tests start: the kit's worker kinds (judging and building in processes), as codebreaker.exe registers them
+# (engine/lane_worker_main.cpp). Linked after the engine area, which holds the kit.
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source)
 
@@ -419,7 +421,12 @@ target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
 # the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
 target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
-add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler)
+# the kit's worker host (see above): the libraries every area links, and the DLLs next to it
+add_executable(cb_lane_worker EXCLUDE_FROM_ALL engine/lane_worker_main.cpp)
+cb_apply_flags(cb_lane_worker)
+target_link_libraries(cb_lane_worker PRIVATE cb_engine cb_core)
+cb_copy_prebuilt_dlls(cb_lane_worker)
+add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 enable_testing()
@@ -443,6 +450,8 @@ foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
   cb_copy_prebuilt_dlls(cb_tests_${area})
   if(area STREQUAL "jobs")
     add_dependencies(cb_tests_${area} cb_worker_probe)
+  elseif(area STREQUAL "engine")
+    add_dependencies(cb_tests_${area} cb_lane_worker)
   elseif(area STREQUAL "verify")
     add_dependencies(cb_tests_${area} cb_fake_qemu)
   elseif(area STREQUAL "decompile")

@@ -111,9 +111,16 @@ struct Services {
     // How many functions are judged at once: 1 judges one at a time in the calling thread.
     int judge_threads = 1;
     // Judges the named functions of a build. Unset, or answering nullopt: `judge_threads` threads call built.judge. A caller
-    // that keeps emulators in worker processes (cb/jobs/workers.hpp) does it here; a function it gives no answer for is not run.
-    std::function<std::optional<std::map<std::string, Judgement>>(const lanes::Kind&, const lanes::Built&, const std::vector<std::string>&)>
-        judge_batch = {};
+    // that keeps emulators in worker processes (cb/jobs/workers.hpp) does it here -- `module` and `work` are what a worker prepares and
+    // builds the module again from -- and a function it gives no answer for is not run.
+    struct JudgeBatch {
+        const lanes::Kind& kind;
+        const lanes::Built& built;
+        const std::vector<std::string>& names;
+        const std::filesystem::path& module;
+        const std::filesystem::path& work;
+    };
+    std::function<std::optional<std::map<std::string, Judgement>>(const JudgeBatch&)> judge_batch = {};
     // Where the one line about a run goes (nullopt: nowhere).
     std::function<void(std::string_view)> log = {};
 };

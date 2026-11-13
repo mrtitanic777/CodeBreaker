@@ -13,10 +13,10 @@ namespace cb::engine {
 namespace stdfs = std::filesystem;
 using namespace kit_detail;
 
-namespace {
+namespace kit_detail {
 
 // The runner's surroundings: the models of Windows' functions and how many bytes of arguments each removes. The governor is the caller's.
-emulate::windows16::Environment win16_environment(knowledge::Knowledge& kb, KitSizes& sizes, emulate::native_trace::Governor& governor) {
+emulate::windows16::Environment win16_environment_of(knowledge::Knowledge& kb, KitSizes& sizes, emulate::native_trace::Governor& governor) {
     emulate::windows16::Environment env;
     env.governor = &governor;
     env.models = emulate::windows16::models_of(kb);
@@ -24,7 +24,7 @@ emulate::windows16::Environment win16_environment(knowledge::Knowledge& kb, KitS
     return env;
 }
 
-}  // namespace
+}  // namespace kit_detail
 
 std::shared_ptr<const verify::lanes::Kind> LaneKit::win16_lane() {
     {
@@ -79,7 +79,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::win16_lane() {
     std::string options;
     for (const std::string& flag : build::functions::cflags16()) options += (options.empty() ? "" : " ") + flag;
     spec.compiler_options = options;
-    spec.environment = [&kb, &sizes](emulate::native_trace::Governor& governor) { return win16_environment(kb, sizes, governor); };
+    spec.environment = [&kb, &sizes](emulate::native_trace::Governor& governor) { return win16_environment_of(kb, sizes, governor); };
     spec.lifters = lifters;
     auto lane = std::make_shared<verify::lanes::Win16Lane>(std::move(spec));
     std::lock_guard hold(impl_->lock);
@@ -91,8 +91,9 @@ verify::gate16::Isolated16Spec LaneKit::isolated16_spec() {
     knowledge::Knowledge& kb = i.knowledge();
     KitSizes& sizes = i.environment().sizes();
     verify::gate16::Isolated16Spec spec;
-    spec.environment = [&kb, &sizes](emulate::native_trace::Governor& governor) { return win16_environment(kb, sizes, governor); };
+    spec.environment = [&kb, &sizes](emulate::native_trace::Governor& governor) { return win16_environment_of(kb, sizes, governor); };
     spec.lifters = i.lifters();
+    spec.tables = [this](const stdfs::path& original) { return gate_tables(original); };
     return spec;
 }
 

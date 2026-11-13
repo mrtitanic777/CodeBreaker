@@ -216,7 +216,10 @@ verify::reconstruct::Services LaneKit::reconstruct_services(const verify::recons
     s.decompiler_rev = std::to_string(decompile::decompiler::kRevision);
     KitEnvironment& env = i.environment();
     s.identify = [&env](const stdfs::path& module) { return env.identify(module); };
-    s.judge_threads = std::max(1, static_cast<int>(i.config.worker_policy().workers ? i.config.worker_policy().workers : 4));
+    s.judge_batch = [this](const verify::reconstruct::Services::JudgeBatch& batch) { return judge_apart(batch); };
+    // functions judged at once: the setting `judge_threads`, else the budget of the machine
+    const std::int64_t threads = i.config.integer("judge_threads").value_or(i.config.worker_policy().workers ? i.config.worker_policy().workers : 4);
+    s.judge_threads = static_cast<int>(std::clamp<std::int64_t>(threads, 1, 64));
     return s;
 }
 

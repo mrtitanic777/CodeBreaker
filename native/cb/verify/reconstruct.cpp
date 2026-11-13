@@ -538,7 +538,7 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
         std::map<std::string, Judgement> judged;
         std::optional<std::map<std::string, Judgement>> batch;
         if (services_.judge_batch)
-            batch = services_.judge_batch(kind, built, to_judge);
+            batch = services_.judge_batch({kind, built, to_judge, module_path, work});
         if (batch) {
             judged = std::move(*batch);
         } else {

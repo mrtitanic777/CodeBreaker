@@ -93,6 +93,11 @@ std::string_view LaneKit::java_missing() {
     return "the Java lane needs the transpiler's Services (data, runtime, target profiles, projects), which have no production assembly in native/cb yet";
 }
 
-void LaneKit::register_worker_kinds(jobs::WorkerKinds&) {}
+std::shared_ptr<const verify::lanes::Kind> LaneKit::lane_named(std::string_view name) {
+    if (name == "pe") return win32_lane();
+    if (name == "ne") return win16_lane();
+    if (name == "le") return driver_lane();
+    return nullptr;
+}
 
 }  // namespace cb::engine
