@@ -20,6 +20,7 @@
 #include "cb/formats/inspect.hpp"
 #include "cb/formats/xbox/heavyiron.hpp"
 #include "cb/formats/xex.hpp"
+#include "cb/source/le_writer.hpp"
 #include "cb/symbols/demangle.hpp"
 #include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
@@ -29,7 +30,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 9> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex"};
+constexpr std::array<std::string_view, 10> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -168,6 +169,18 @@ int cab_command(std::span<const std::string> argv) {
     return 2;
 }
 
+// A command whose surroundings (tools, corpus scans) are found only when it runs: `make` builds it then, and it runs as
+// its own table would run it.
+void lazy_command(CommandTable& table, std::string name, std::function<cli::Command()> make) {
+    table.set(name, [name, make = std::move(make)](std::span<const std::string> args) -> int {
+        CommandTable one{Environment{}};
+        one.set(make());
+        std::vector<std::string> line{name};
+        line.insert(line.end(), args.begin(), args.end());
+        return one.run(line);
+    });
+}
+
 }  // namespace
 
 void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus> corpus) {
@@ -175,44 +188,50 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     env.resolve = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
     table.set(formats::inspect::info_command(std::move(env)));
 
-    // flat-thunk: the period tools from the settings, the SDK prototypes read from the headers when first asked
     const config::Config& config = config::current();
-    build::flat_thunk::Services ft;
-    std::filesystem::path reference;
-    try {
-        reference = corpus->reference();
-    } catch (const Error&) {   // no reference folder: flat-thunk says so when it needs one; other commands do not care
-    }
-    if (!reference.empty()) ft.locations.reference_roots.push_back(reference);
-    ft.locations.period_compiler = config.path("period_compiler").value_or(std::filesystem::path{});
-    ft.locations.openwatcom = build::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
-    ft.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
-    const std::filesystem::path ow_root = ft.locations.openwatcom.root();
-    ft.sdk = [ow_root, reference] {
-        const auto folders = symbols::prototypes::HeaderFolders::standard(ow_root, reference);
-        return build::flat_thunk::sdk_prototypes(symbols::prototypes::PrototypeTable(symbols::prototypes::read_headers(folders)));
-    };
-    table.set(build::flat_thunk::command(std::move(ft)));
+
+    // flat-thunk: the period tools from the settings, the SDK prototypes read from the headers when first asked.
+    // (Each command's surroundings are found when that command runs, not for every command: no start-up cost for the others.)
+    lazy_command(table, "flat-thunk", [corpus, &config] {
+        build::flat_thunk::Services ft;
+        std::filesystem::path reference;
+        try {
+            reference = corpus->reference();
+        } catch (const Error&) {   // no reference folder: flat-thunk says so when it needs one
+        }
+        if (!reference.empty()) ft.locations.reference_roots.push_back(reference);
+        ft.locations.period_compiler = config.path("period_compiler").value_or(std::filesystem::path{});
+        ft.locations.openwatcom = build::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
+        ft.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
+        const std::filesystem::path ow_root = ft.locations.openwatcom.root();
+        ft.sdk = [ow_root, reference] {
+            const auto folders = symbols::prototypes::HeaderFolders::standard(ow_root, reference);
+            return build::flat_thunk::sdk_prototypes(symbols::prototypes::PrototypeTable(symbols::prototypes::read_headers(folders)));
+        };
+        return build::flat_thunk::command(std::move(ft));
+    });
 
     // driver-build: OpenWatcom's wasm/wlink against the Windows 95 DDK's 32-bit includes; originals from the corpus
-    build::driver::Environment dr;
-    std::filesystem::path design_reference;
-    try {
-        design_reference = corpus->design_dir() / "reference";
-    } catch (const Error&) {
-    }
-    const std::filesystem::path kit = symbols::driver_services::find_include_dir(config.text("driver_kit"), design_reference);
-    dr.tools = build::driver::find_tools(ft_openwatcom_of(config), kit, config.state());
-    dr.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
-    for (const auto& [name, copies] : *corpus->index())
-        if (!copies.empty() && formats::detect::holds_drivers(copies.front())) dr.corpus_drivers.push_back(copies.front());
-    std::sort(dr.corpus_drivers.begin(), dr.corpus_drivers.end(), [](const auto& a, const auto& b) {
-        std::error_code ea, eb;
-        const auto sa = std::filesystem::file_size(a, ea), sb = std::filesystem::file_size(b, eb);
-        return sa != sb ? sa < sb : fs::to_text(a) < fs::to_text(b);
+    lazy_command(table, "driver-build", [corpus, &config] {
+        build::driver::Environment dr;
+        std::filesystem::path design_reference;
+        try {
+            design_reference = corpus->design_dir() / "reference";
+        } catch (const Error&) {
+        }
+        const std::filesystem::path kit = symbols::driver_services::find_include_dir(config.text("driver_kit"), design_reference);
+        dr.tools = build::driver::find_tools(ft_openwatcom_of(config), kit, config.state());
+        dr.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
+        for (const auto& [name, copies] : *corpus->index())
+            if (!copies.empty() && formats::detect::holds_drivers(copies.front())) dr.corpus_drivers.push_back(copies.front());
+        std::sort(dr.corpus_drivers.begin(), dr.corpus_drivers.end(), [](const auto& a, const auto& b) {
+            std::error_code ea, eb;
+            const auto sa = std::filesystem::file_size(a, ea), sb = std::filesystem::file_size(b, eb);
+            return sa != sb ? sa < sb : fs::to_text(a) < fs::to_text(b);
+        });
+        dr.state = config.state();
+        return build::driver::command(dr);
     });
-    dr.state = config.state();
-    table.set(build::driver::command(dr));
 
     // demangle <name> ...: each name readable, or said to be not readable
     table.set("demangle", [](std::span<const std::string> args) -> int {
@@ -251,6 +270,14 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // cab list|extract|create: Microsoft cabinets, with no outside tool
     table.set("cab", [](std::span<const std::string> argv) -> int { return cab_command(argv); });
+
+    // le-source <driver> [--out DIR]: a VxD as NASM source that reassembles to it (the nasm setting; out under state/le_source)
+    source::le_writer::Environment le_env;
+    if (const auto nasm = config.path("nasm"); nasm && std::filesystem::is_regular_file(*nasm)) le_env.nasm = *nasm;
+    le_env.state = config.state();
+    table.set("le-source", [le_env](std::span<const std::string> args) -> int {
+        return source::le_writer::command(args, le_env, [](std::string_view line) { out("{}\n", line); });
+    });
 
     // xex <command> <file.xex> [args]: the xex program, with this process's stdout and stderr
     formats::xex::Tools xex_tools;

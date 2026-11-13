@@ -121,7 +121,7 @@ FlatResult<Key> flat(ByteView original, FlatImage<Key>& image, const std::filesy
                 if (n < 2) continue;
                 if (const auto hit = src.instruction_at_line.find(n - 1); hit != src.instruction_at_line.end()) bad.insert(hit->second);
             }
-            say(std::to_string(rounds) + ": " + std::to_string(bad.size()) + " instructions the assembler rejects");
+            say("round " + std::to_string(rounds) + ": " + std::to_string(bad.size()) + " instructions the assembler rejects");
             std::set<Key> fresh;
             for (const Key& k : bad) {
                 if (!raw.contains(k)) fresh.insert(k);
@@ -132,7 +132,7 @@ FlatResult<Key> flat(ByteView original, FlatImage<Key>& image, const std::filesy
         }
         const Bytes data = read_all(*built.file);
         const std::set<Key> bad = image.differing(data, read_map(built.map), raw);
-        say(std::to_string(rounds) + ": " + std::to_string(bad.size()) + " instructions come back different");
+        say("round " + std::to_string(rounds) + ": " + std::to_string(bad.size()) + " instructions come back different");
         if (bad.empty()) break;
         raw.insert(bad.begin(), bad.end());
     }
