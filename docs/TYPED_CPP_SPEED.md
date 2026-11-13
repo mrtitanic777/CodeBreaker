@@ -1135,3 +1135,14 @@ A whole build compared with the Python's needs the module made compilable (the d
 ## translate/backends/cpp17 (W5-B4)
 
 The back end is the L2 core library (native/l2, cbl2.dll); the module only hands it the documents and gives the text back, so there is nothing of its own to time. The 9 corpus programs, 3 programs of the module's own and the Python-front-end unit are written through the same library in `cb_tests_translate --filter cpp17` in 0.04 s, library load included (the Python path adds the ctypes crossing and the tagged-value conversion the typed client does not have).
+
+## verify/lanes/win32 (W5-B5)
+
+The judge of every function the Python lane built, on the same original and the same rebuilt DLL, fingerprint cache off on both sides (CB_NO_FP_CACHE; the C++ has none wired): lz32.dll (20 functions) and the Windows 95 version.dll (32). The Python column is its `win32.judge` over the functions, module prepared and built beforehand; the C++ column is the whole `cb_tests_verify --filter win32.judge_<module>` process (startup, the lifter's start and the golden's reading included).
+
+| module | Python | C++ |
+|---|---|---|
+| lz32.dll, 20 functions | 4.5 s | 2.9 s |
+| version.dll, 32 functions | 6.3 s | 3.9 s |
+
+Verdict, reason, limits (coverage, paths=N / paths-all, argc-unknown) and the one line saying what differed are the same on all 52.

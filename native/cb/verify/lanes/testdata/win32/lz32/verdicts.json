@@ -1,0 +1,461 @@
+{
+ "module": "lz32.dll",
+ "items": {
+  "sub_001000": {
+   "key": "bfea1000",
+   "va": 3219787776,
+   "entry": 1845497856,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "exit-differs",
+   "limits": [],
+   "detail": "exit ret vs wild-call  [input 206000,1,206080,2060c0 ret=1]"
+  },
+  "sub_001057": {
+   "key": "bfea1057",
+   "va": 3219787863,
+   "entry": 1845497931,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4294967288 bytes on return vs 4  [input 0,0,0,0]"
+  },
+  "GetExpandedNameW": {
+   "key": "bfea1198",
+   "va": 3219788184,
+   "entry": 1845497947,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4 bytes on return vs 12  [input 0,0,0,0]"
+  },
+  "LZOpenFileW": {
+   "key": "bfea11a1",
+   "va": 3219788193,
+   "entry": 1845497955,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "stack-differs",
+   "limits": [],
+   "detail": "removes 4 bytes on return vs 16  [input 0,0,0,0]"
+  },
+  "LZCopy": {
+   "key": "bfea11aa",
+   "va": 3219788202,
+   "entry": 1845497963,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "exit-differs",
+   "limits": [],
+   "detail": "exit truncated vs fault  [input 206000,206040,206080,2060c0]"
+  },
+  "LZClose": {
+   "key": "bfea11dd",
+   "va": 3219788253,
+   "entry": 1845498029,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "exit-differs",
+   "limits": [],
+   "detail": "exit truncated vs fault  [input 206000,206040,206080,2060c0]"
+  },
+  "LZInit": {
+   "key": "bfea1201",
+   "va": 3219788289,
+   "entry": 1845498074,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=3",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "LZOpenFileA": {
+   "key": "bfea1238",
+   "va": 3219788344,
+   "entry": 1845498138,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=6",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "GetExpandedNameA": {
+   "key": "bfea12d8",
+   "va": 3219788504,
+   "entry": 1845498302,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=3",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "CopyLZFile": {
+   "key": "bfea1330",
+   "va": 3219788592,
+   "entry": 1845498391,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "exit-differs",
+   "limits": [],
+   "detail": "exit truncated vs fault  [input 206000,206040,206080,2060c0]"
+  },
+  "LZRead": {
+   "key": "bfea1363",
+   "va": 3219788643,
+   "entry": 1845498457,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "divergent",
+   "reason": "writes-differ",
+   "limits": [],
+   "detail": "writes 15 vs 14  [input 206000,206040,206080,2060c0,0,0,7001 ret=7000]"
+  },
+  "LZSeek": {
+   "key": "bfea13d4",
+   "va": 3219788756,
+   "entry": 1845498563,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=2",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_0013FA": {
+   "key": "bfea13fa",
+   "va": 3219788794,
+   "entry": 1845498612,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001400": {
+   "key": "bfea1400",
+   "va": 3219788800,
+   "entry": 1845498625,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_00140C": {
+   "key": "bfea140c",
+   "va": 3219788812,
+   "entry": 1845498630,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001412": {
+   "key": "bfea1412",
+   "va": 3219788818,
+   "entry": 1845498635,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001424": {
+   "key": "bfea1424",
+   "va": 3219788836,
+   "entry": 1845498640,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001430": {
+   "key": "bfea1430",
+   "va": 3219788848,
+   "entry": 1845498645,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_001436": {
+   "key": "bfea1436",
+   "va": 3219788854,
+   "entry": 1845498650,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  },
+  "sub_00143C": {
+   "key": "bfea143c",
+   "va": 3219788860,
+   "entry": 1845498655,
+   "regs": 0,
+   "dll": "m.dll",
+   "verdict": "equivalent",
+   "reason": "",
+   "limits": [
+    "argc-unknown",
+    "coverage=100",
+    "paths=1",
+    "paths-all"
+   ],
+   "detail": ""
+  }
+ },
+ "dropped": {},
+ "order": [
+  "sub_001000",
+  "sub_001057",
+  "sub_001075",
+  "sub_001077",
+  "sub_0010A5",
+  "sub_0010A7",
+  "sub_0010BD",
+  "sub_0010BF",
+  "sub_0010E2",
+  "sub_0010E4",
+  "sub_001109",
+  "sub_00110B",
+  "LZStart",
+  "sub_001125",
+  "sub_001135",
+  "sub_001139",
+  "sub_00113B",
+  "LZDone",
+  "sub_00115D",
+  "sub_00116C",
+  "sub_00116E",
+  "GetExpandedNameW",
+  "LZOpenFileW",
+  "LZCopy",
+  "LZClose",
+  "LZInit",
+  "LZOpenFileA",
+  "GetExpandedNameA",
+  "CopyLZFile",
+  "LZRead",
+  "LZSeek",
+  "sub_0013FA",
+  "sub_001400",
+  "sub_00140C",
+  "sub_001412",
+  "sub_001424",
+  "sub_001430",
+  "sub_001436",
+  "sub_00143C"
+ ],
+ "environment": {
+  "argc": {
+   "KERNEL32.dll|DisableThreadLibraryCalls": 1,
+   "KERNEL32.dll|#41": null,
+   "KERNEL32|DisableThreadLibraryCalls": 1,
+   "KERNEL32|#41": null,
+   "KERNEL32.dll|#17": null,
+   "KERNEL32|#17": null,
+   "KERNEL32.dll|#21": null,
+   "KERNEL32|#21": null,
+   "KERNEL32.dll|#20": null,
+   "KERNEL32|#20": null,
+   "KERNEL32.dll|GlobalAlloc": 2,
+   "KERNEL32.dll|SetLastError": 1,
+   "KERNEL32|GlobalAlloc": 2,
+   "KERNEL32|SetLastError": 1,
+   "KERNEL32.dll|GetShortPathNameA": 3,
+   "KERNEL32.dll|GlobalFree": 1,
+   "KERNEL32|GetShortPathNameA": 3,
+   "KERNEL32|GlobalFree": 1,
+   "KERNEL32.dll|OpenFile": 3,
+   "KERNEL32|OpenFile": 3,
+   "KERNEL32.dll|SMapLS_IP_EBP_12": null,
+   "KERNEL32|SMapLS_IP_EBP_12": null,
+   "KERNEL32.dll|SMapLS_IP_EBP_8": null,
+   "KERNEL32|SMapLS_IP_EBP_8": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_12": null,
+   "KERNEL32|SUnMapLS_IP_EBP_12": null,
+   "KERNEL32.dll|SUnMapLS_IP_EBP_8": null,
+   "KERNEL32|SUnMapLS_IP_EBP_8": null,
+   "KERNEL32.dll|#22": null,
+   "KERNEL32|#22": null
+  },
+  "prototypes": {
+   "DisableThreadLibraryCalls": [
+    [
+     "HMODULE",
+     ""
+    ]
+   ],
+   "stub_bfea10a5": [],
+   "stub_bfea1075": [],
+   "stub_bfea1109": [],
+   "GlobalAlloc": [
+    [
+     "UINT",
+     ""
+    ],
+    [
+     "SIZE_T",
+     ""
+    ]
+   ],
+   "SetLastError": [
+    [
+     "DWORD",
+     ""
+    ]
+   ],
+   "GetShortPathNameA": [
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "LPSTR",
+     ""
+    ],
+    [
+     "DWORD",
+     ""
+    ]
+   ],
+   "GlobalFree": [
+    [
+     "HGLOBAL",
+     ""
+    ]
+   ],
+   "OpenFile": [
+    [
+     "LPCSTR",
+     ""
+    ],
+    [
+     "LPOFSTRUCT",
+     ""
+    ],
+    [
+     "UINT",
+     ""
+    ]
+   ],
+   "stub_bfea116c": [],
+   "stub_bfea10e2": [],
+   "stub_bfea10bd": []
+  }
+ },
+ "stubs": {
+  "bfea1075": "stub_bfea1075",
+  "bfea1077": "stub_bfea1077",
+  "bfea10a5": "stub_bfea10a5",
+  "bfea10a7": "stub_bfea10a7",
+  "bfea10bd": "stub_bfea10bd",
+  "bfea10bf": "stub_bfea10bf",
+  "bfea10e2": "stub_bfea10e2",
+  "bfea10e4": "stub_bfea10e4",
+  "bfea1109": "stub_bfea1109",
+  "bfea110b": "stub_bfea110b",
+  "bfea1123": "stub_bfea1123",
+  "bfea1125": "stub_bfea1125",
+  "bfea1135": "stub_bfea1135",
+  "bfea1139": "stub_bfea1139",
+  "bfea113b": "stub_bfea113b",
+  "bfea115b": "stub_bfea115b",
+  "bfea115d": "stub_bfea115d",
+  "bfea116c": "stub_bfea116c",
+  "bfea116e": "stub_bfea116e"
+ },
+ "stub_argc": {
+  "stub_bfea1075": 3,
+  "stub_bfea1077": 3,
+  "stub_bfea10a5": 1,
+  "stub_bfea10a7": 1,
+  "stub_bfea10bd": 3,
+  "stub_bfea10bf": 3,
+  "stub_bfea10e2": 3,
+  "stub_bfea10e4": 3,
+  "stub_bfea1109": 1,
+  "stub_bfea110b": 1,
+  "stub_bfea1123": 0,
+  "stub_bfea1125": 0,
+  "stub_bfea1135": 2,
+  "stub_bfea1139": 2,
+  "stub_bfea113b": 2,
+  "stub_bfea115b": 0,
+  "stub_bfea115d": 0,
+  "stub_bfea116c": 2,
+  "stub_bfea116e": 2
+ }
+}
