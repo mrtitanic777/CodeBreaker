@@ -27,6 +27,7 @@
 #include "cb/java/ledger.hpp"
 #include "cb/java/paths.hpp"
 #include "cb/java/probe.hpp"
+#include "cb/java/production.hpp"
 #include "cb/java/projects/minecraft/achievements.hpp"
 #include "cb/java/projects/minecraft/applet_ping.hpp"
 #include "cb/java/projects/minecraft/content.hpp"
@@ -75,9 +76,7 @@ public:
     // The transpiler. Its front end finds the JDK and the libraries when it runs.
     assembly::Assembly& assembly() {
         if (!assembly_) {
-            assembly_ = std::make_unique<assembly::Assembly>(data_, [this](Arena& arena, const stdfs::path& java_dir) {
-                return frontend::lower_program(arena, java_dir, dump_tools());
-            });
+            assembly_ = production::make_assembly(config(), data_);
         }
         return *assembly_;
     }
@@ -103,32 +102,8 @@ public:
         return hints;
     }
 
-    // The JDK: the java the decompiler finds, and javac beside it (else on PATH).
-    frontend::DumpTools dump_tools() {
-        frontend::DumpTools tools;
-        const std::optional<stdfs::path> java = decompile::jar::find_java(jar_settings());
-        if (java) {
-            tools.java = *java;
-            const stdfs::path sibling = java->parent_path() / "javac.exe";
-            std::error_code ec;
-            tools.javac = stdfs::is_regular_file(sibling, ec) ? sibling : stdfs::path("javac");
-        }
-        tools.treedump_source = config().checkout_root() / "codebreaker" / "translate" / "frontends" / "java" / "TreeDump.java";
-        tools.state = config().state();
-        // the libraries the game is attributed against (setting java_libs: LWJGL, the sound system), and the stand-ins for the classes no
-        // library download has, ahead of them
-        probe::Toolchain toolchain;
-        toolchain.javac = tools.javac;
-        toolchain.java = tools.java;
-        const std::string libs = config().text("java_libs");
-        if (!libs.empty()) toolchain.libraries = probe::list_libraries(fs::from_text(libs));
-        toolchain.shim_sources = data_.path({"probe_shims"});
-        if (!toolchain.libraries.empty()) {
-            if (const auto shims = probe::compile_shims(config().state() / "translate", toolchain)) tools.classpath.push_back(*shims);
-        }
-        for (const stdfs::path& jar : toolchain.libraries) tools.classpath.push_back(jar);
-        return tools;
-    }
+    // The JDK: the java the decompiler finds, and javac beside it (else on PATH); the libraries the game is attributed against.
+    frontend::DumpTools dump_tools() { return production::dump_tools(config(), data_); }
 
 private:
     Environment env_;

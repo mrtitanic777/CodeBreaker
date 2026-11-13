@@ -141,7 +141,7 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 cb_area(verify)
 
 cb_area(app)
-target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source cb_store cb_coverage cb_exact cb_recompile cb_java cb_xna cb_engine cb_jobs)
+target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source cb_store cb_coverage cb_exact cb_recompile cb_java cb_xna cb_engine cb_jobs cb_ui)
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
@@ -190,7 +190,7 @@ cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
 
 cb_area(symbols)
-target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source)   # (cb_source: the NE disassembler of debug_build)
+target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source cb_store)   # (cb_source: the NE disassembler of debug_build)
 
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decompile)   # (cb_base: the Converted project; cb_formats: PE and media images; cb_java: the PNG codec of the content converters; cb_decompile: the Xbox effect as HLSL -- static libraries may be cyclic)
@@ -406,6 +406,11 @@ add_executable(cb_mcp_stdio EXCLUDE_FROM_ALL ui/mcp_stdio_main.cpp)
 cb_apply_flags(cb_mcp_stdio)
 target_link_libraries(cb_mcp_stdio PRIVATE cb_ui cb_core)
 cb_copy_prebuilt_dlls(cb_mcp_stdio)
+# The service as a program of its own (`codebreaker serve` is the same command): the proof harness of ui/serve.
+add_executable(cb_serve EXCLUDE_FROM_ALL ui/serve_main.cpp)
+cb_apply_flags(cb_serve)
+target_link_libraries(cb_serve PRIVATE cb_ui cb_core)
+cb_copy_prebuilt_dlls(cb_serve)
 # The source writers' commands (vxd, ne-asm, driver-source, dos-source, dos-build, driver-judge) as a program of their own: the proof harness of
 # source/commands.hpp (the application registers the same commands).
 add_executable(cb_source_commands EXCLUDE_FROM_ALL source/commands_main.cpp)

@@ -33,7 +33,7 @@
 // console's import names, which functions are a runtime library's, the compiler, remaking the ordinal table). Where one is not given the
 // module goes without: no PowerPC names, no console imports, no runtime-library names, no "built with" line.
 //
-// The program fills them in workbench.hpp: the knowledge base's body store (body_store.hpp), the PowerPC reader (formats/powerpc_image), the
+// The program fills them in workbench.hpp: the knowledge base's body store (store/knowledge_bodies.hpp), the PowerPC reader (formats/powerpc_image), the
 // console's ordinals (the knowledge base's), identify.hpp for the runtime library and the compiler, ordinal_collect.hpp for the table. The
 // command the program registers is `command(Environment)` below: what it works over is made when it runs.
 #pragma once
