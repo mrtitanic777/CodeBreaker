@@ -1,5 +1,10 @@
 // codebreaker/verify/lanes/win16.hpp -- interface of codebreaker.verify.lanes.win16 (typed C++; implementation pending).
 //
+// STAYS, NOT A SHIM (2026-11-12): the lane is native/cb/verify/lanes/win16.{hpp,cpp} now (Win16Lane, a cb Kind, tested against the Python on a real
+// module). This old port is kept as it was because its callers -- engine/win16, build/module and engine/lanes_wiring -- are not refactored and use
+// the old reconstruct::Kind registry, its worker-process encoding of a judge's context and item, and the old c_text::Module16: nothing of that can be
+// forwarded to the new lane without logic of its own. Delete it with those callers.
+//
 // win16.py -- what is particular to reconstructing a 16-bit Windows module.
 //
 // One of the kinds reconstruct.py works with (see reconstruct.hpp for what a kind provides). Here: the module is
