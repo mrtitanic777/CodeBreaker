@@ -1,0 +1,2 @@
+controller menu nav: GuiScreen.h=False GuiScreen.cpp=False call-site=False
+WARNING: anchor(s) not found -> menus may be un-navigable: GuiScreen.h (field+decl: file absent); GuiScreen.cpp (ctor+body: file absent); Minecraft.cpp (per-frame call: file absent); menu-nav glue NOT applied to any file (all-or-nothing: GuiScreen.h/GuiScreen.cpp/Minecraft.cpp must all match); Minecraft.cpp (grab/cursor mode: file absent); MouseHelper.cpp (console-safe grab/ungrab: file absent)

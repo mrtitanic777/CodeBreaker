@@ -1,0 +1,52 @@
+{
+ "assemblies": [
+  {
+   "assembly": "584E07D1\\Arcadecraft.exe",
+   "project": "Arcadecraft",
+   "deobfuscated": null,
+   "ref casts": 0,
+   "constructors": 0,
+   "left": []
+  },
+  {
+   "assembly": "584E07D1\\AvatarCustomAnimation.dll",
+   "project": "AvatarCustomAnimation",
+   "deobfuscated": null,
+   "ref casts": 0,
+   "constructors": 0,
+   "left": []
+  },
+  {
+   "assembly": "584E07D1\\DPSFXbox360.dll",
+   "project": "DPSFXbox360",
+   "deobfuscated": null,
+   "ref casts": 0,
+   "constructors": 0,
+   "left": []
+  },
+  {
+   "assembly": "584E07D1\\EasyStorage.dll",
+   "project": "EasyStorage",
+   "deobfuscated": null,
+   "ref casts": 0,
+   "constructors": 0,
+   "left": []
+  },
+  {
+   "assembly": "584E07D1\\FirebaseEncryptionLib.dll",
+   "project": "FirebaseEncryptionLib",
+   "deobfuscated": null,
+   "ref casts": 0,
+   "constructors": 0,
+   "left": []
+  },
+  {
+   "assembly": "584E07D1\\SynapseGaming-SunBurn-Pro.dll",
+   "project": "SynapseGaming-SunBurn-Pro",
+   "deobfuscated": "Spices.Net",
+   "ref casts": 0,
+   "constructors": 0,
+   "left": []
+  }
+ ]
+}

@@ -1,0 +1,201 @@
+{
+ "node": "Unit",
+ "line": 1,
+ "col": 1,
+ "path": "sample/EnumOS1",
+ "package": "sample",
+ "types": [
+  {
+   "node": "ClassDecl",
+   "line": 4,
+   "col": 1,
+   "name": "EnumOS1",
+   "qname": "sample.EnumOS1",
+   "kind": "enum",
+   "mods": [
+    "public"
+   ],
+   "members": [
+    {
+     "node": "MethodDecl",
+     "line": 4,
+     "col": 8,
+     "sym": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.EnumOS1",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     },
+     "name": "<init>",
+     "kind": "ctor",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "body": {
+      "node": "Block",
+      "line": 4,
+      "col": 8,
+      "stmts": [
+       {
+        "node": "CtorCall",
+        "line": 4,
+        "col": 8,
+        "kind": "super:implicit",
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "java.lang.Enum",
+         "params": [
+          {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "args": []
+       }
+      ]
+     },
+     "mods": [
+      "private"
+     ]
+    },
+    {
+     "node": "EnumConst",
+     "line": 5,
+     "col": 9,
+     "sym": {
+      "kind": "enumconst",
+      "name": "linux",
+      "owner": "sample.EnumOS1",
+      "static": true,
+      "type": {
+       "kind": "class",
+       "name": "sample.EnumOS1"
+      }
+     },
+     "args": [],
+     "ctor": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.EnumOS1",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "node": "EnumConst",
+     "line": 5,
+     "col": 16,
+     "sym": {
+      "kind": "enumconst",
+      "name": "solaris",
+      "owner": "sample.EnumOS1",
+      "static": true,
+      "type": {
+       "kind": "class",
+       "name": "sample.EnumOS1"
+      }
+     },
+     "args": [],
+     "ctor": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.EnumOS1",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "node": "EnumConst",
+     "line": 5,
+     "col": 25,
+     "sym": {
+      "kind": "enumconst",
+      "name": "windows",
+      "owner": "sample.EnumOS1",
+      "static": true,
+      "type": {
+       "kind": "class",
+       "name": "sample.EnumOS1"
+      }
+     },
+     "args": [],
+     "ctor": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.EnumOS1",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "node": "EnumConst",
+     "line": 5,
+     "col": 34,
+     "sym": {
+      "kind": "enumconst",
+      "name": "macos",
+      "owner": "sample.EnumOS1",
+      "static": true,
+      "type": {
+       "kind": "class",
+       "name": "sample.EnumOS1"
+      }
+     },
+     "args": [],
+     "ctor": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.EnumOS1",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "node": "EnumConst",
+     "line": 5,
+     "col": 41,
+     "sym": {
+      "kind": "enumconst",
+      "name": "unknown",
+      "owner": "sample.EnumOS1",
+      "static": true,
+      "type": {
+       "kind": "class",
+       "name": "sample.EnumOS1"
+      }
+     },
+     "args": [],
+     "ctor": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.EnumOS1",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

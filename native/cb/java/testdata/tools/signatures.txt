@@ -1,0 +1,4 @@
+Wrote <out>/signatures.md
+Classes mapped: 9 across 1 packages.
+  - sample (9 classes)
+Parse failures: 0

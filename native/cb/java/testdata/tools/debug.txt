@@ -1,0 +1,2 @@
+Emitted Debug.h, Debug.cpp, DEBUG.md (master toggle DEBUG_ENABLED=1; J2X-DEBUG markers).
+  J2X-DEBUG marker tags present: 20 (assert, crash-hard, crash-impl, crash-soft, dbg, every, leak-free, leak-free-impl, leak-impl, leak-n)

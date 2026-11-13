@@ -10,6 +10,7 @@
 #include "cb/core/text.hpp"
 #include "cb/java/apimap.hpp"
 #include "cb/java/bugfix_ledger.hpp"
+#include "cb/java/console/platform_equivalents.hpp"
 #include "cb/java/debug.hpp"
 #include "cb/java/paths.hpp"
 #include "cb/java/reflection_factory.hpp"
@@ -228,7 +229,18 @@ int apimap_tool(const cli::Args& a) {
     const auto arg = a.value("a");
     const auto from = a.value("from"), to = a.value("to"), dialect_text = a.value("dialect");
     const std::optional<std::string_view> dialect = dialect_text ? std::optional<std::string_view>(*dialect_text) : std::nullopt;
-    const auto registry = apimap::Registry::load(JavaData::locate().path({"api_maps"}));
+    // the maps shipped in the lane's api_maps folder, with the legacy per-class Java -> Xbox 360 intent table bridged in
+    auto registry = apimap::Registry::load(JavaData::locate().path({"api_maps"}));
+    {
+        std::vector<apimap::LegacyEquivalent> rows;
+        for (const auto& subsystem : console::platform_equivalents::subsystems()) {
+            for (const auto& e : subsystem.entries) {
+                rows.push_back({std::string(subsystem.name), std::string(e.basename), std::string(console::platform_equivalents::status_name(e.status)),
+                                std::string(e.note), std::string(e.xdk), std::string(e.lib)});
+            }
+        }
+        registry.add_legacy_equivalents(rows);
+    }
 
     if (action == "languages") {
         for (const auto& [id, info] : registry.languages()) {

@@ -1,0 +1,2 @@
+Emitted debug files with DEBUG_ENABLED=0 (opt-in off): Debug.h, Debug.cpp, DEBUG.md
+  J2X-DEBUG marker tags present: 20 (assert, crash-hard, crash-impl, crash-soft, dbg, every, leak-free, leak-free-impl, leak-impl, leak-n)

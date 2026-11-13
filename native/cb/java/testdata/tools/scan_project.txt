@@ -1,0 +1,5 @@
+  base       <fixtures>
+  jar        (not found)
+  java_src   <fixtures>
+  lang       (not found)
+  resources  (not found)

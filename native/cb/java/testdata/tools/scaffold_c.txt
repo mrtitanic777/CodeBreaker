@@ -1,0 +1,1 @@
+scaffold: 9 C skeleton file(s) for 9 class(es) -> <out>/scaffold_c

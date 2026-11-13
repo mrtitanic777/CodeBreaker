@@ -1,0 +1,6378 @@
+{
+ "node": "Unit",
+ "line": 1,
+ "col": 1,
+ "path": "sample/features/Features",
+ "package": "sample.features",
+ "imports": [
+  "java.util.ArrayList",
+  "java.util.List",
+  "java.util.Map",
+  "java.util.HashMap"
+ ],
+ "types": [
+  {
+   "node": "ClassDecl",
+   "line": 9,
+   "col": 1,
+   "name": "Features",
+   "qname": "sample.features.Features",
+   "kind": "class",
+   "mods": [
+    "public"
+   ],
+   "typeparams": [
+    "T"
+   ],
+   "implements": [
+    {
+     "kind": "class",
+     "name": "java.lang.Runnable"
+    }
+   ],
+   "members": [
+    {
+     "node": "FieldDecl",
+     "line": 10,
+     "col": 5,
+     "sym": {
+      "kind": "field",
+      "name": "LIMIT",
+      "owner": "sample.features.Features",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     },
+     "init": {
+      "node": "Lit",
+      "line": 10,
+      "col": 30,
+      "type": {
+       "kind": "i32"
+      },
+      "value": 16
+     },
+     "mods": [
+      "static",
+      "final"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 11,
+     "col": 5,
+     "sym": {
+      "kind": "field",
+      "name": "items",
+      "owner": "sample.features.Features",
+      "type": {
+       "kind": "class",
+       "name": "java.util.List",
+       "args": [
+        {
+         "kind": "typevar",
+         "name": "T"
+        }
+       ]
+      }
+     },
+     "type": {
+      "kind": "class",
+      "name": "java.util.List",
+      "args": [
+       {
+        "kind": "typevar",
+        "name": "T"
+       }
+      ]
+     },
+     "init": {
+      "node": "New",
+      "line": 11,
+      "col": 35,
+      "type": {
+       "kind": "class",
+       "name": "java.util.ArrayList",
+       "args": [
+        {
+         "kind": "typevar",
+         "name": "T"
+        }
+       ]
+      },
+      "sym": {
+       "kind": "ctor",
+       "name": "<init>",
+       "owner": "java.util.ArrayList",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "args": []
+     },
+     "mods": [
+      "private",
+      "final"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 12,
+     "col": 5,
+     "sym": {
+      "kind": "field",
+      "name": "grid",
+      "owner": "sample.features.Features",
+      "type": {
+       "kind": "array",
+       "elem": {
+        "kind": "array",
+        "elem": {
+         "kind": "i32"
+        }
+       }
+      }
+     },
+     "type": {
+      "kind": "array",
+      "elem": {
+       "kind": "array",
+       "elem": {
+        "kind": "i32"
+       }
+      }
+     },
+     "init": {
+      "node": "NewArray",
+      "line": 12,
+      "col": 28,
+      "type": {
+       "kind": "array",
+       "elem": {
+        "kind": "array",
+        "elem": {
+         "kind": "i32"
+        }
+       }
+      },
+      "elem": {
+       "kind": "i32"
+      },
+      "dims": [
+       {
+        "node": "Lit",
+        "line": 12,
+        "col": 36,
+        "type": {
+         "kind": "i32"
+        },
+        "value": 3
+       },
+       {
+        "node": "Lit",
+        "line": 12,
+        "col": 39,
+        "type": {
+         "kind": "i32"
+        },
+        "value": 4
+       }
+      ]
+     },
+     "mods": [
+      "private"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 13,
+     "col": 5,
+     "sym": {
+      "kind": "field",
+      "name": "counter",
+      "owner": "sample.features.Features",
+      "type": {
+       "kind": "i64"
+      }
+     },
+     "type": {
+      "kind": "i64"
+     },
+     "mods": [
+      "protected"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 14,
+     "col": 5,
+     "sym": {
+      "kind": "field",
+      "name": "label",
+      "owner": "sample.features.Features",
+      "type": {
+       "kind": "class",
+       "name": "java.lang.String"
+      }
+     },
+     "type": {
+      "kind": "class",
+      "name": "java.lang.String"
+     },
+     "init": {
+      "node": "Concat",
+      "line": 14,
+      "col": 27,
+      "type": {
+       "kind": "class",
+       "name": "java.lang.String"
+      },
+      "parts": [
+       {
+        "node": "Lit",
+        "line": 14,
+        "col": 27,
+        "type": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "value": "a"
+       },
+       {
+        "node": "Select",
+        "line": 14,
+        "col": 33,
+        "type": {
+         "kind": "i32"
+        },
+        "obj": {
+         "node": "TypeName",
+         "line": 14,
+         "col": 33,
+         "type": {
+          "kind": "class",
+          "name": "sample.features.Features"
+         }
+        },
+        "sym": {
+         "kind": "field",
+         "name": "LIMIT",
+         "owner": "sample.features.Features",
+         "static": true,
+         "type": {
+          "kind": "i32"
+         }
+        }
+       },
+       {
+        "node": "Lit",
+        "line": 14,
+        "col": 41,
+        "type": {
+         "kind": "u16"
+        },
+        "value": "c"
+       },
+       {
+        "node": "Lit",
+        "line": 14,
+        "col": 47,
+        "type": {
+         "kind": "f32"
+        },
+        "value": 1.5
+       },
+       {
+        "node": "Lit",
+        "line": 14,
+        "col": 54,
+        "type": {
+         "kind": "f64"
+        },
+        "value": 2.5
+       },
+       {
+        "node": "Lit",
+        "line": 14,
+        "col": 60,
+        "type": {
+         "kind": "bool"
+        },
+        "value": true
+       }
+      ]
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "ClassDecl",
+     "line": 16,
+     "col": 5,
+     "name": "Color",
+     "qname": "sample.features.Features.Color",
+     "kind": "enum",
+     "members": [
+      {
+       "node": "EnumConst",
+       "line": 16,
+       "col": 18,
+       "sym": {
+        "kind": "enumconst",
+        "name": "RED",
+        "owner": "sample.features.Features.Color",
+        "static": true,
+        "type": {
+         "kind": "class",
+         "name": "sample.features.Features.Color"
+        }
+       },
+       "args": [],
+       "ctor": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Color",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        }
+       }
+      },
+      {
+       "node": "EnumConst",
+       "line": 16,
+       "col": 23,
+       "sym": {
+        "kind": "enumconst",
+        "name": "GREEN",
+        "owner": "sample.features.Features.Color",
+        "static": true,
+        "type": {
+         "kind": "class",
+         "name": "sample.features.Features.Color"
+        }
+       },
+       "args": [
+        {
+         "node": "Lit",
+         "line": 16,
+         "col": 29,
+         "type": {
+          "kind": "i32"
+         },
+         "value": 2
+        }
+       ],
+       "body": {
+        "node": "ClassDecl",
+        "line": 16,
+        "col": 23,
+        "name": "",
+        "qname": "",
+        "kind": "enum",
+        "extends": {
+         "kind": "class",
+         "name": "sample.features.Features.Color"
+        },
+        "members": [
+         {
+          "node": "MethodDecl",
+          "line": 16,
+          "col": 23,
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "",
+           "params": [
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "name": "<init>",
+          "kind": "ctor",
+          "params": [
+           {
+            "node": "Param",
+            "line": 16,
+            "col": 23,
+            "sym": {
+             "kind": "param",
+             "name": "w",
+             "owner": ".<init>",
+             "type": {
+              "kind": "i32"
+             }
+            },
+            "type": {
+             "kind": "i32"
+            }
+           }
+          ],
+          "ret": {
+           "kind": "void"
+          },
+          "body": {
+           "node": "Block",
+           "line": 16,
+           "col": 23,
+           "stmts": [
+            {
+             "node": "CtorCall",
+             "line": 16,
+             "col": 23,
+             "kind": "super:implicit",
+             "sym": {
+              "kind": "ctor",
+              "name": "<init>",
+              "owner": "sample.features.Features.Color",
+              "params": [
+               {
+                "kind": "i32"
+               }
+              ],
+              "ret": {
+               "kind": "void"
+              }
+             },
+             "args": [
+              {
+               "node": "Name",
+               "line": 16,
+               "col": 23,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "w",
+                "owner": ".<init>",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              }
+             ]
+            }
+           ]
+          },
+          "mods": [
+           "IMPLICIT"
+          ]
+         },
+         {
+          "node": "MethodDecl",
+          "line": 16,
+          "col": 34,
+          "sym": {
+           "kind": "method",
+           "name": "weight",
+           "owner": "",
+           "params": [],
+           "ret": {
+            "kind": "i32"
+           }
+          },
+          "name": "weight",
+          "kind": "method",
+          "params": [],
+          "ret": {
+           "kind": "i32"
+          },
+          "body": {
+           "node": "Block",
+           "line": 16,
+           "col": 47,
+           "stmts": [
+            {
+             "node": "Return",
+             "line": 16,
+             "col": 49,
+             "expr": {
+              "node": "Lit",
+              "line": 16,
+              "col": 56,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 9
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "outer": "sample.features.Features.Color"
+       },
+       "ctor": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "",
+        "params": [
+         {
+          "kind": "i32"
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        }
+       }
+      },
+      {
+       "node": "EnumConst",
+       "line": 16,
+       "col": 64,
+       "sym": {
+        "kind": "enumconst",
+        "name": "BLUE",
+        "owner": "sample.features.Features.Color",
+        "static": true,
+        "type": {
+         "kind": "class",
+         "name": "sample.features.Features.Color"
+        }
+       },
+       "args": [],
+       "ctor": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Color",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        }
+       }
+      },
+      {
+       "node": "MethodDecl",
+       "line": 16,
+       "col": 70,
+       "sym": {
+        "kind": "method",
+        "name": "weight",
+        "owner": "sample.features.Features.Color",
+        "params": [],
+        "ret": {
+         "kind": "i32"
+        }
+       },
+       "name": "weight",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "i32"
+       },
+       "body": {
+        "node": "Block",
+        "line": 16,
+        "col": 83,
+        "stmts": [
+         {
+          "node": "Return",
+          "line": 16,
+          "col": 85,
+          "expr": {
+           "node": "Lit",
+           "line": 16,
+           "col": 92,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 1
+          }
+         }
+        ]
+       }
+      },
+      {
+       "node": "MethodDecl",
+       "line": 16,
+       "col": 97,
+       "sym": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Color",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "<init>",
+       "kind": "ctor",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 16,
+        "col": 105,
+        "stmts": [
+         {
+          "node": "CtorCall",
+          "line": 16,
+          "col": 105,
+          "kind": "super:implicit",
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.lang.Enum",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         }
+        ]
+       }
+      },
+      {
+       "node": "MethodDecl",
+       "line": 16,
+       "col": 109,
+       "sym": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Color",
+        "params": [
+         {
+          "kind": "i32"
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "<init>",
+       "kind": "ctor",
+       "params": [
+        {
+         "node": "Param",
+         "line": 16,
+         "col": 115,
+         "sym": {
+          "kind": "param",
+          "name": "w",
+          "owner": "sample.features.Features.Color.<init>",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         }
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 16,
+        "col": 122,
+        "stmts": [
+         {
+          "node": "CtorCall",
+          "line": 16,
+          "col": 122,
+          "kind": "super:implicit",
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.lang.Enum",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         }
+        ]
+       }
+      }
+     ],
+     "outer": "sample.features.Features"
+    },
+    {
+     "node": "ClassDecl",
+     "line": 18,
+     "col": 5,
+     "name": "Point",
+     "qname": "sample.features.Features.Point",
+     "kind": "record",
+     "members": [
+      {
+       "node": "MethodDecl",
+       "line": 18,
+       "col": 5,
+       "sym": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Point",
+        "params": [
+         {
+          "kind": "i32"
+         },
+         {
+          "kind": "f64"
+         },
+         {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "<init>",
+       "kind": "ctor",
+       "params": [
+        {
+         "node": "Param",
+         "line": 18,
+         "col": 18,
+         "sym": {
+          "kind": "param",
+          "name": "x",
+          "owner": "sample.features.Features.Point.<init>",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         }
+        },
+        {
+         "node": "Param",
+         "line": 18,
+         "col": 25,
+         "sym": {
+          "kind": "param",
+          "name": "y",
+          "owner": "sample.features.Features.Point.<init>",
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         }
+        },
+        {
+         "node": "Param",
+         "line": 18,
+         "col": 35,
+         "sym": {
+          "kind": "param",
+          "name": "name",
+          "owner": "sample.features.Features.Point.<init>",
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 18,
+        "col": 5,
+        "stmts": [
+         {
+          "node": "CtorCall",
+          "line": 18,
+          "col": 5,
+          "kind": "super:implicit",
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.lang.Record",
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         },
+         {
+          "node": "ExprStmt",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Assign",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "target": {
+            "node": "Select",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "obj": {
+             "node": "This",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "sample.features.Features.Point"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "x",
+             "owner": "sample.features.Features.Point",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "value": {
+            "node": "Name",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "sample.features.Features.Point.<init>",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         },
+         {
+          "node": "ExprStmt",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Assign",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "f64"
+           },
+           "target": {
+            "node": "Select",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "f64"
+            },
+            "obj": {
+             "node": "This",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "sample.features.Features.Point"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "y",
+             "owner": "sample.features.Features.Point",
+             "type": {
+              "kind": "f64"
+             }
+            }
+           },
+           "value": {
+            "node": "Name",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "f64"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "y",
+             "owner": "sample.features.Features.Point.<init>",
+             "type": {
+              "kind": "f64"
+             }
+            }
+           }
+          }
+         },
+         {
+          "node": "ExprStmt",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Assign",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "target": {
+            "node": "Select",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "obj": {
+             "node": "This",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "sample.features.Features.Point"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "name",
+             "owner": "sample.features.Features.Point",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            }
+           },
+           "value": {
+            "node": "Name",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "name",
+             "owner": "sample.features.Features.Point.<init>",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            }
+           }
+          }
+         }
+        ]
+       },
+       "mods": [
+        "IMPLICIT"
+       ]
+      },
+      {
+       "node": "FieldDecl",
+       "line": 18,
+       "col": 18,
+       "sym": {
+        "kind": "field",
+        "name": "x",
+        "owner": "sample.features.Features.Point",
+        "type": {
+         "kind": "i32"
+        }
+       },
+       "type": {
+        "kind": "i32"
+       },
+       "mods": [
+        "private",
+        "final"
+       ]
+      },
+      {
+       "node": "FieldDecl",
+       "line": 18,
+       "col": 25,
+       "sym": {
+        "kind": "field",
+        "name": "y",
+        "owner": "sample.features.Features.Point",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       },
+       "mods": [
+        "private",
+        "final"
+       ]
+      },
+      {
+       "node": "FieldDecl",
+       "line": 18,
+       "col": 35,
+       "sym": {
+        "kind": "field",
+        "name": "name",
+        "owner": "sample.features.Features.Point",
+        "type": {
+         "kind": "class",
+         "name": "java.lang.String"
+        }
+       },
+       "type": {
+        "kind": "class",
+        "name": "java.lang.String"
+       },
+       "mods": [
+        "private",
+        "final"
+       ]
+      },
+      {
+       "node": "MethodDecl",
+       "line": 18,
+       "col": 5,
+       "sym": {
+        "kind": "method",
+        "name": "x",
+        "owner": "sample.features.Features.Point",
+        "params": [],
+        "ret": {
+         "kind": "i32"
+        }
+       },
+       "name": "x",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "i32"
+       },
+       "body": {
+        "node": "Block",
+        "line": 18,
+        "col": 5,
+        "stmts": [
+         {
+          "node": "Return",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Select",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "obj": {
+            "node": "This",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "sample.features.Features.Point"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "x",
+            "owner": "sample.features.Features.Point",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          }
+         }
+        ]
+       },
+       "mods": [
+        "public",
+        "GENERATED"
+       ]
+      },
+      {
+       "node": "MethodDecl",
+       "line": 18,
+       "col": 5,
+       "sym": {
+        "kind": "method",
+        "name": "y",
+        "owner": "sample.features.Features.Point",
+        "params": [],
+        "ret": {
+         "kind": "f64"
+        }
+       },
+       "name": "y",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "f64"
+       },
+       "body": {
+        "node": "Block",
+        "line": 18,
+        "col": 5,
+        "stmts": [
+         {
+          "node": "Return",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Select",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "f64"
+           },
+           "obj": {
+            "node": "This",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "sample.features.Features.Point"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "y",
+            "owner": "sample.features.Features.Point",
+            "type": {
+             "kind": "f64"
+            }
+           }
+          }
+         }
+        ]
+       },
+       "mods": [
+        "public",
+        "GENERATED"
+       ]
+      },
+      {
+       "node": "MethodDecl",
+       "line": 18,
+       "col": 5,
+       "sym": {
+        "kind": "method",
+        "name": "name",
+        "owner": "sample.features.Features.Point",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        }
+       },
+       "name": "name",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "class",
+        "name": "java.lang.String"
+       },
+       "body": {
+        "node": "Block",
+        "line": 18,
+        "col": 5,
+        "stmts": [
+         {
+          "node": "Return",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Select",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "obj": {
+            "node": "This",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "sample.features.Features.Point"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "name",
+            "owner": "sample.features.Features.Point",
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           }
+          }
+         }
+        ]
+       },
+       "mods": [
+        "public",
+        "GENERATED"
+       ]
+      },
+      {
+       "node": "MethodDecl",
+       "line": 18,
+       "col": 5,
+       "sym": {
+        "kind": "method",
+        "name": "toString",
+        "owner": "sample.features.Features.Point",
+        "params": [],
+        "ret": {
+         "kind": "class",
+         "name": "java.lang.String"
+        }
+       },
+       "name": "toString",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "class",
+        "name": "java.lang.String"
+       },
+       "body": {
+        "node": "Block",
+        "line": 18,
+        "col": 5,
+        "stmts": [
+         {
+          "node": "Return",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Concat",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "parts": [
+            {
+             "node": "Lit",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "Point["
+            },
+            {
+             "node": "Lit",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "x="
+            },
+            {
+             "node": "Select",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "This",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "sample.features.Features.Point"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "x",
+              "owner": "sample.features.Features.Point",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            {
+             "node": "Lit",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": ", y="
+            },
+            {
+             "node": "Select",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "f64"
+             },
+             "obj": {
+              "node": "This",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "sample.features.Features.Point"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "y",
+              "owner": "sample.features.Features.Point",
+              "type": {
+               "kind": "f64"
+              }
+             }
+            },
+            {
+             "node": "Lit",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": ", name="
+            },
+            {
+             "node": "Select",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "obj": {
+              "node": "This",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "sample.features.Features.Point"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "name",
+              "owner": "sample.features.Features.Point",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            },
+            {
+             "node": "Lit",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "]"
+            }
+           ]
+          }
+         }
+        ]
+       },
+       "mods": [
+        "public",
+        "GENERATED"
+       ]
+      },
+      {
+       "node": "MethodDecl",
+       "line": 18,
+       "col": 5,
+       "sym": {
+        "kind": "method",
+        "name": "hashCode",
+        "owner": "sample.features.Features.Point",
+        "params": [],
+        "ret": {
+         "kind": "i32"
+        }
+       },
+       "name": "hashCode",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "i32"
+       },
+       "body": {
+        "node": "Block",
+        "line": 18,
+        "col": 5,
+        "stmts": [
+         {
+          "node": "Local",
+          "line": 18,
+          "col": 5,
+          "sym": {
+           "kind": "local",
+           "name": "h",
+           "owner": "sample.features.Features.Point.hashCode",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          },
+          "init": {
+           "node": "Lit",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         },
+         {
+          "node": "ExprStmt",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Assign",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "target": {
+            "node": "Name",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "h",
+             "owner": "sample.features.Features.Point.hashCode",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "value": {
+            "node": "Binary",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "+",
+            "left": {
+             "node": "Binary",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "*",
+             "left": {
+              "node": "Lit",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 31
+             },
+             "right": {
+              "node": "Name",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "h",
+               "owner": "sample.features.Features.Point.hashCode",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            },
+            "right": {
+             "node": "Call",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "target": {
+              "node": "TypeName",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "hashCode",
+              "owner": "java.lang.Integer",
+              "static": true,
+              "params": [
+               {
+                "kind": "i32"
+               }
+              ],
+              "ret": {
+               "kind": "i32"
+              }
+             },
+             "args": [
+              {
+               "node": "Select",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "i32"
+               },
+               "obj": {
+                "node": "This",
+                "line": 18,
+                "col": 5,
+                "type": {
+                 "kind": "class",
+                 "name": "sample.features.Features.Point"
+                }
+               },
+               "sym": {
+                "kind": "field",
+                "name": "x",
+                "owner": "sample.features.Features.Point",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              }
+             ]
+            }
+           }
+          }
+         },
+         {
+          "node": "ExprStmt",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Assign",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "target": {
+            "node": "Name",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "h",
+             "owner": "sample.features.Features.Point.hashCode",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "value": {
+            "node": "Binary",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "+",
+            "left": {
+             "node": "Binary",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "*",
+             "left": {
+              "node": "Lit",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 31
+             },
+             "right": {
+              "node": "Name",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "h",
+               "owner": "sample.features.Features.Point.hashCode",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            },
+            "right": {
+             "node": "Call",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "target": {
+              "node": "TypeName",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.Double"
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "hashCode",
+              "owner": "java.lang.Double",
+              "static": true,
+              "params": [
+               {
+                "kind": "f64"
+               }
+              ],
+              "ret": {
+               "kind": "i32"
+              }
+             },
+             "args": [
+              {
+               "node": "Select",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "f64"
+               },
+               "obj": {
+                "node": "This",
+                "line": 18,
+                "col": 5,
+                "type": {
+                 "kind": "class",
+                 "name": "sample.features.Features.Point"
+                }
+               },
+               "sym": {
+                "kind": "field",
+                "name": "y",
+                "owner": "sample.features.Features.Point",
+                "type": {
+                 "kind": "f64"
+                }
+               }
+              }
+             ]
+            }
+           }
+          }
+         },
+         {
+          "node": "ExprStmt",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Assign",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "target": {
+            "node": "Name",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "h",
+             "owner": "sample.features.Features.Point.hashCode",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "value": {
+            "node": "Binary",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "+",
+            "left": {
+             "node": "Binary",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "*",
+             "left": {
+              "node": "Lit",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 31
+             },
+             "right": {
+              "node": "Name",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "h",
+               "owner": "sample.features.Features.Point.hashCode",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            },
+            "right": {
+             "node": "Call",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "i32"
+             },
+             "target": {
+              "node": "TypeName",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.util.Objects"
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "hashCode",
+              "owner": "java.util.Objects",
+              "static": true,
+              "params": [
+               {
+                "kind": "class",
+                "name": "java.lang.Object"
+               }
+              ],
+              "ret": {
+               "kind": "i32"
+              }
+             },
+             "args": [
+              {
+               "node": "Select",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "obj": {
+                "node": "This",
+                "line": 18,
+                "col": 5,
+                "type": {
+                 "kind": "class",
+                 "name": "sample.features.Features.Point"
+                }
+               },
+               "sym": {
+                "kind": "field",
+                "name": "name",
+                "owner": "sample.features.Features.Point",
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                }
+               }
+              }
+             ]
+            }
+           }
+          }
+         },
+         {
+          "node": "Return",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Name",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "h",
+            "owner": "sample.features.Features.Point.hashCode",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          }
+         }
+        ]
+       },
+       "mods": [
+        "public",
+        "GENERATED"
+       ]
+      },
+      {
+       "node": "MethodDecl",
+       "line": 18,
+       "col": 5,
+       "sym": {
+        "kind": "method",
+        "name": "equals",
+        "owner": "sample.features.Features.Point",
+        "params": [
+         {
+          "kind": "class",
+          "name": "java.lang.Object"
+         }
+        ],
+        "ret": {
+         "kind": "bool"
+        }
+       },
+       "name": "equals",
+       "kind": "method",
+       "params": [
+        {
+         "node": "Param",
+         "line": 18,
+         "col": 5,
+         "sym": {
+          "kind": "param",
+          "name": "o",
+          "owner": "sample.features.Features.Point.equals",
+          "type": {
+           "kind": "class",
+           "name": "java.lang.Object"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Object"
+         }
+        }
+       ],
+       "ret": {
+        "kind": "bool"
+       },
+       "body": {
+        "node": "Block",
+        "line": 18,
+        "col": 5,
+        "stmts": [
+         {
+          "node": "If",
+          "line": 18,
+          "col": 5,
+          "cond": {
+           "node": "Unary",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "!",
+           "x": {
+            "node": "Paren",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "bool"
+            },
+            "x": {
+             "node": "InstanceOf",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "x": {
+              "node": "Name",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.Object"
+              },
+              "sym": {
+               "kind": "param",
+               "name": "o",
+               "owner": "sample.features.Features.Point.equals",
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Object"
+               }
+              }
+             },
+             "test": {
+              "kind": "class",
+              "name": "sample.features.Features.Point"
+             }
+            }
+           },
+           "postfix": false
+          },
+          "then": {
+           "node": "Return",
+           "line": 18,
+           "col": 5,
+           "expr": {
+            "node": "Lit",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "bool"
+            },
+            "value": false
+           }
+          }
+         },
+         {
+          "node": "Local",
+          "line": 18,
+          "col": 5,
+          "sym": {
+           "kind": "local",
+           "name": "that",
+           "owner": "sample.features.Features.Point.equals",
+           "type": {
+            "kind": "class",
+            "name": "sample.features.Features.Point"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "sample.features.Features.Point"
+          },
+          "init": {
+           "node": "Cast",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "class",
+            "name": "sample.features.Features.Point"
+           },
+           "x": {
+            "node": "Name",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.Object"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "o",
+             "owner": "sample.features.Features.Point.equals",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.Object"
+             }
+            }
+           }
+          }
+         },
+         {
+          "node": "Return",
+          "line": 18,
+          "col": 5,
+          "expr": {
+           "node": "Binary",
+           "line": 18,
+           "col": 5,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "&&",
+           "left": {
+            "node": "Binary",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "bool"
+            },
+            "op": "&&",
+            "left": {
+             "node": "Binary",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "op": "==",
+             "left": {
+              "node": "Select",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "This",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "sample.features.Features.Point"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "x",
+               "owner": "sample.features.Features.Point",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "right": {
+              "node": "Select",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "Name",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "sample.features.Features.Point"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "that",
+                "owner": "sample.features.Features.Point.equals",
+                "type": {
+                 "kind": "class",
+                 "name": "sample.features.Features.Point"
+                }
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "x",
+               "owner": "sample.features.Features.Point",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            },
+            "right": {
+             "node": "Binary",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "bool"
+             },
+             "op": "==",
+             "left": {
+              "node": "Call",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Double"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "compare",
+               "owner": "java.lang.Double",
+               "static": true,
+               "params": [
+                {
+                 "kind": "f64"
+                },
+                {
+                 "kind": "f64"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Select",
+                "line": 18,
+                "col": 5,
+                "type": {
+                 "kind": "f64"
+                },
+                "obj": {
+                 "node": "This",
+                 "line": 18,
+                 "col": 5,
+                 "type": {
+                  "kind": "class",
+                  "name": "sample.features.Features.Point"
+                 }
+                },
+                "sym": {
+                 "kind": "field",
+                 "name": "y",
+                 "owner": "sample.features.Features.Point",
+                 "type": {
+                  "kind": "f64"
+                 }
+                }
+               },
+               {
+                "node": "Select",
+                "line": 18,
+                "col": 5,
+                "type": {
+                 "kind": "f64"
+                },
+                "obj": {
+                 "node": "Name",
+                 "line": 18,
+                 "col": 5,
+                 "type": {
+                  "kind": "class",
+                  "name": "sample.features.Features.Point"
+                 },
+                 "sym": {
+                  "kind": "local",
+                  "name": "that",
+                  "owner": "sample.features.Features.Point.equals",
+                  "type": {
+                   "kind": "class",
+                   "name": "sample.features.Features.Point"
+                  }
+                 }
+                },
+                "sym": {
+                 "kind": "field",
+                 "name": "y",
+                 "owner": "sample.features.Features.Point",
+                 "type": {
+                  "kind": "f64"
+                 }
+                }
+               }
+              ]
+             },
+             "right": {
+              "node": "Lit",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 0
+             }
+            }
+           },
+           "right": {
+            "node": "Call",
+            "line": 18,
+            "col": 5,
+            "type": {
+             "kind": "bool"
+            },
+            "target": {
+             "node": "TypeName",
+             "line": 18,
+             "col": 5,
+             "type": {
+              "kind": "class",
+              "name": "java.util.Objects"
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "equals",
+             "owner": "java.util.Objects",
+             "static": true,
+             "params": [
+              {
+               "kind": "class",
+               "name": "java.lang.Object"
+              },
+              {
+               "kind": "class",
+               "name": "java.lang.Object"
+              }
+             ],
+             "ret": {
+              "kind": "bool"
+             }
+            },
+            "args": [
+             {
+              "node": "Select",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "obj": {
+               "node": "This",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "sample.features.Features.Point"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "name",
+               "owner": "sample.features.Features.Point",
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              }
+             },
+             {
+              "node": "Select",
+              "line": 18,
+              "col": 5,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "obj": {
+               "node": "Name",
+               "line": 18,
+               "col": 5,
+               "type": {
+                "kind": "class",
+                "name": "sample.features.Features.Point"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "that",
+                "owner": "sample.features.Features.Point.equals",
+                "type": {
+                 "kind": "class",
+                 "name": "sample.features.Features.Point"
+                }
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "name",
+               "owner": "sample.features.Features.Point",
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              }
+             }
+            ]
+           }
+          }
+         }
+        ]
+       },
+       "mods": [
+        "public",
+        "GENERATED"
+       ]
+      }
+     ],
+     "outer": "sample.features.Features"
+    },
+    {
+     "node": "ClassDecl",
+     "line": 20,
+     "col": 5,
+     "name": "Shape",
+     "qname": "sample.features.Features.Shape",
+     "kind": "interface",
+     "members": [
+      {
+       "node": "MethodDecl",
+       "line": 20,
+       "col": 23,
+       "sym": {
+        "kind": "method",
+        "name": "area",
+        "owner": "sample.features.Features.Shape",
+        "params": [],
+        "ret": {
+         "kind": "f64"
+        }
+       },
+       "name": "area",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "f64"
+       }
+      }
+     ],
+     "outer": "sample.features.Features"
+    },
+    {
+     "node": "ClassDecl",
+     "line": 22,
+     "col": 5,
+     "name": "Base",
+     "qname": "sample.features.Features.Base",
+     "kind": "class",
+     "mods": [
+      "static"
+     ],
+     "members": [
+      {
+       "node": "MethodDecl",
+       "line": 23,
+       "col": 9,
+       "sym": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Base",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "<init>",
+       "kind": "ctor",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 23,
+        "col": 16,
+        "stmts": [
+         {
+          "node": "CtorCall",
+          "line": 23,
+          "col": 18,
+          "kind": "this",
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "sample.features.Features.Base",
+           "params": [
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 23,
+            "col": 23,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           }
+          ]
+         }
+        ]
+       }
+      },
+      {
+       "node": "MethodDecl",
+       "line": 24,
+       "col": 9,
+       "sym": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Base",
+        "params": [
+         {
+          "kind": "i32"
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "<init>",
+       "kind": "ctor",
+       "params": [
+        {
+         "node": "Param",
+         "line": 24,
+         "col": 14,
+         "sym": {
+          "kind": "param",
+          "name": "n",
+          "owner": "sample.features.Features.Base.<init>",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         }
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 24,
+        "col": 21,
+        "stmts": [
+         {
+          "node": "CtorCall",
+          "line": 24,
+          "col": 21,
+          "kind": "super:implicit",
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.lang.Object",
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         }
+        ]
+       }
+      },
+      {
+       "node": "MethodDecl",
+       "line": 25,
+       "col": 9,
+       "sym": {
+        "kind": "method",
+        "name": "greet",
+        "owner": "sample.features.Features.Base",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "greet",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 25,
+        "col": 22,
+        "stmts": []
+       }
+      }
+     ],
+     "outer": "sample.features.Features"
+    },
+    {
+     "node": "ClassDecl",
+     "line": 28,
+     "col": 5,
+     "name": "Derived",
+     "qname": "sample.features.Features.Derived",
+     "kind": "class",
+     "mods": [
+      "static"
+     ],
+     "extends": {
+      "kind": "class",
+      "name": "sample.features.Features.Base"
+     },
+     "members": [
+      {
+       "node": "MethodDecl",
+       "line": 29,
+       "col": 9,
+       "sym": {
+        "kind": "ctor",
+        "name": "<init>",
+        "owner": "sample.features.Features.Derived",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "<init>",
+       "kind": "ctor",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 29,
+        "col": 19,
+        "stmts": [
+         {
+          "node": "CtorCall",
+          "line": 29,
+          "col": 21,
+          "kind": "super",
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "sample.features.Features.Base",
+           "params": [
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 29,
+            "col": 27,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          ]
+         }
+        ]
+       }
+      },
+      {
+       "node": "MethodDecl",
+       "line": 30,
+       "col": 9,
+       "sym": {
+        "kind": "method",
+        "name": "greet",
+        "owner": "sample.features.Features.Derived",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        }
+       },
+       "name": "greet",
+       "kind": "method",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       },
+       "body": {
+        "node": "Block",
+        "line": 30,
+        "col": 32,
+        "stmts": [
+         {
+          "node": "ExprStmt",
+          "line": 30,
+          "col": 34,
+          "expr": {
+           "node": "Call",
+           "line": 30,
+           "col": 34,
+           "type": {
+            "kind": "void"
+           },
+           "target": {
+            "node": "Super",
+            "line": 30,
+            "col": 34,
+            "type": {
+             "kind": "class",
+             "name": "sample.features.Features.Base"
+            }
+           },
+           "sym": {
+            "kind": "method",
+            "name": "greet",
+            "owner": "sample.features.Features.Base",
+            "params": [],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": []
+          }
+         }
+        ]
+       }
+      }
+     ],
+     "outer": "sample.features.Features"
+    },
+    {
+     "node": "MethodDecl",
+     "line": 33,
+     "col": 5,
+     "sym": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.features.Features",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     },
+     "name": "<init>",
+     "kind": "ctor",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "body": {
+      "node": "Block",
+      "line": 33,
+      "col": 23,
+      "stmts": [
+       {
+        "node": "CtorCall",
+        "line": 33,
+        "col": 23,
+        "kind": "super:implicit",
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "java.lang.Object",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "args": []
+       }
+      ]
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "MethodDecl",
+     "line": 35,
+     "col": 5,
+     "sym": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.features.Features",
+      "params": [
+       {
+        "kind": "i32"
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      }
+     },
+     "name": "<init>",
+     "kind": "ctor",
+     "params": [
+      {
+       "node": "Param",
+       "line": 35,
+       "col": 21,
+       "sym": {
+        "kind": "param",
+        "name": "start",
+        "owner": "sample.features.Features.<init>",
+        "type": {
+         "kind": "i32"
+        }
+       },
+       "type": {
+        "kind": "i32"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "void"
+     },
+     "body": {
+      "node": "Block",
+      "line": 35,
+      "col": 32,
+      "stmts": [
+       {
+        "node": "CtorCall",
+        "line": 35,
+        "col": 34,
+        "kind": "this",
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "sample.features.Features",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "args": []
+       },
+       {
+        "node": "ExprStmt",
+        "line": 35,
+        "col": 42,
+        "expr": {
+         "node": "Assign",
+         "line": 35,
+         "col": 42,
+         "type": {
+          "kind": "i64"
+         },
+         "target": {
+          "node": "Select",
+          "line": 35,
+          "col": 42,
+          "type": {
+           "kind": "i64"
+          },
+          "obj": {
+           "node": "This",
+           "line": 35,
+           "col": 42,
+           "type": {
+            "kind": "class",
+            "name": "sample.features.Features"
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "counter",
+           "owner": "sample.features.Features",
+           "type": {
+            "kind": "i64"
+           }
+          }
+         },
+         "value": {
+          "node": "Name",
+          "line": 35,
+          "col": 52,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "param",
+           "name": "start",
+           "owner": "sample.features.Features.<init>",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        }
+       }
+      ]
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "MethodDecl",
+     "line": 37,
+     "col": 5,
+     "sym": {
+      "kind": "method",
+      "name": "run",
+      "owner": "sample.features.Features",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     },
+     "name": "run",
+     "kind": "method",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "body": {
+      "node": "Block",
+      "line": 37,
+      "col": 23,
+      "stmts": [
+       {
+        "node": "Local",
+        "line": 38,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "i",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        },
+        "init": {
+         "node": "Lit",
+         "line": 38,
+         "col": 17,
+         "type": {
+          "kind": "i32"
+         },
+         "value": 0
+        }
+       },
+       {
+        "node": "ExprStmt",
+        "line": 39,
+        "col": 9,
+        "expr": {
+         "node": "Assign",
+         "line": 39,
+         "col": 9,
+         "type": {
+          "kind": "i32"
+         },
+         "op": "+",
+         "target": {
+          "node": "Name",
+          "line": 39,
+          "col": 9,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "i",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "value": {
+          "node": "Lit",
+          "line": 39,
+          "col": 14,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 3
+         }
+        }
+       },
+       {
+        "node": "ExprStmt",
+        "line": 40,
+        "col": 9,
+        "expr": {
+         "node": "Unary",
+         "line": 40,
+         "col": 9,
+         "type": {
+          "kind": "i32"
+         },
+         "op": "++",
+         "x": {
+          "node": "Name",
+          "line": 40,
+          "col": 9,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "i",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "postfix": true
+        }
+       },
+       {
+        "node": "ExprStmt",
+        "line": 41,
+        "col": 9,
+        "expr": {
+         "node": "Unary",
+         "line": 41,
+         "col": 9,
+         "type": {
+          "kind": "i32"
+         },
+         "op": "--",
+         "x": {
+          "node": "Name",
+          "line": 41,
+          "col": 11,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "i",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "postfix": false
+        }
+       },
+       {
+        "node": "Local",
+        "line": 42,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "big",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "i64"
+         }
+        },
+        "type": {
+         "kind": "i64"
+        },
+        "init": {
+         "node": "Lit",
+         "line": 42,
+         "col": 20,
+         "type": {
+          "kind": "i64"
+         },
+         "value": 123456789012
+        }
+       },
+       {
+        "node": "Local",
+        "line": 43,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "c",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "u16"
+         }
+        },
+        "type": {
+         "kind": "u16"
+        },
+        "init": {
+         "node": "Lit",
+         "line": 43,
+         "col": 18,
+         "type": {
+          "kind": "u16"
+         },
+         "value": "x"
+        }
+       },
+       {
+        "node": "Local",
+        "line": 44,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "d",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "f64"
+         }
+        },
+        "type": {
+         "kind": "f64"
+        },
+        "init": {
+         "node": "Binary",
+         "line": 44,
+         "col": 20,
+         "type": {
+          "kind": "f64"
+         },
+         "op": "/",
+         "left": {
+          "node": "Cast",
+          "line": 44,
+          "col": 20,
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "node": "Name",
+           "line": 44,
+           "col": 29,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "i",
+            "owner": "sample.features.Features.run",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          }
+         },
+         "right": {
+          "node": "Lit",
+          "line": 44,
+          "col": 33,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 3
+         }
+        }
+       },
+       {
+        "node": "Local",
+        "line": 45,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "flag",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "bool"
+         }
+        },
+        "type": {
+         "kind": "bool"
+        },
+        "init": {
+         "node": "Binary",
+         "line": 45,
+         "col": 24,
+         "type": {
+          "kind": "bool"
+         },
+         "op": "||",
+         "left": {
+          "node": "Binary",
+          "line": 45,
+          "col": 24,
+          "type": {
+           "kind": "bool"
+          },
+          "op": "&&",
+          "left": {
+           "node": "Binary",
+           "line": 45,
+           "col": 24,
+           "type": {
+            "kind": "bool"
+           },
+           "op": ">",
+           "left": {
+            "node": "Name",
+            "line": 45,
+            "col": 24,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "i",
+             "owner": "sample.features.Features.run",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 45,
+            "col": 28,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          },
+          "right": {
+           "node": "Binary",
+           "line": 45,
+           "col": 33,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "<",
+           "left": {
+            "node": "Name",
+            "line": 45,
+            "col": 33,
+            "type": {
+             "kind": "f64"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "d",
+             "owner": "sample.features.Features.run",
+             "type": {
+              "kind": "f64"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 45,
+            "col": 37,
+            "type": {
+             "kind": "f64"
+            },
+            "value": 4.0
+           }
+          }
+         },
+         "right": {
+          "node": "Unary",
+          "line": 45,
+          "col": 44,
+          "type": {
+           "kind": "bool"
+          },
+          "op": "!",
+          "x": {
+           "node": "Paren",
+           "line": 45,
+           "col": 45,
+           "type": {
+            "kind": "bool"
+           },
+           "x": {
+            "node": "Binary",
+            "line": 45,
+            "col": 46,
+            "type": {
+             "kind": "bool"
+            },
+            "op": "==",
+            "left": {
+             "node": "Name",
+             "line": 45,
+             "col": 46,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "i",
+              "owner": "sample.features.Features.run",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "right": {
+             "node": "Lit",
+             "line": 45,
+             "col": 51,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 0
+            }
+           }
+          },
+          "postfix": false
+         }
+        }
+       },
+       {
+        "node": "Local",
+        "line": 46,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "s",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "init": {
+         "node": "Cond",
+         "line": 46,
+         "col": 20,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         },
+         "cond": {
+          "node": "Name",
+          "line": 46,
+          "col": 20,
+          "type": {
+           "kind": "bool"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "flag",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "bool"
+           }
+          }
+         },
+         "then": {
+          "node": "Lit",
+          "line": 46,
+          "col": 27,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          "value": "yes"
+         },
+         "orelse": {
+          "node": "Lit",
+          "line": 46,
+          "col": 35,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          "value": "no"
+         }
+        }
+       },
+       {
+        "node": "For",
+        "line": 47,
+        "col": 9,
+        "init": [
+         {
+          "node": "Local",
+          "line": 47,
+          "col": 14,
+          "sym": {
+           "kind": "local",
+           "name": "k",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          },
+          "init": {
+           "node": "Lit",
+           "line": 47,
+           "col": 22,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         },
+         {
+          "node": "Local",
+          "line": 47,
+          "col": 14,
+          "sym": {
+           "kind": "local",
+           "name": "m",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          },
+          "init": {
+           "node": "Lit",
+           "line": 47,
+           "col": 29,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 10
+          }
+         }
+        ],
+        "cond": {
+         "node": "Binary",
+         "line": 47,
+         "col": 33,
+         "type": {
+          "kind": "bool"
+         },
+         "op": "<",
+         "left": {
+          "node": "Name",
+          "line": 47,
+          "col": 33,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "k",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "right": {
+          "node": "Name",
+          "line": 47,
+          "col": 37,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "m",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        },
+        "update": [
+         {
+          "node": "Unary",
+          "line": 47,
+          "col": 40,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "++",
+          "x": {
+           "node": "Name",
+           "line": 47,
+           "col": 40,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "k",
+            "owner": "sample.features.Features.run",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "postfix": true
+         },
+         {
+          "node": "Unary",
+          "line": 47,
+          "col": 45,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "--",
+          "x": {
+           "node": "Name",
+           "line": 47,
+           "col": 45,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "m",
+            "owner": "sample.features.Features.run",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "postfix": true
+         }
+        ],
+        "body": {
+         "node": "Block",
+         "line": 47,
+         "col": 50,
+         "stmts": [
+          {
+           "node": "If",
+           "line": 48,
+           "col": 13,
+           "cond": {
+            "node": "Paren",
+            "line": 48,
+            "col": 16,
+            "type": {
+             "kind": "bool"
+            },
+            "x": {
+             "node": "Binary",
+             "line": 48,
+             "col": 17,
+             "type": {
+              "kind": "bool"
+             },
+             "op": "==",
+             "left": {
+              "node": "Name",
+              "line": 48,
+              "col": 17,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "k",
+               "owner": "sample.features.Features.run",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "right": {
+              "node": "Lit",
+              "line": 48,
+              "col": 22,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 5
+             }
+            }
+           },
+           "then": {
+            "node": "Continue",
+            "line": 48,
+            "col": 25
+           }
+          },
+          {
+           "node": "If",
+           "line": 49,
+           "col": 13,
+           "cond": {
+            "node": "Paren",
+            "line": 49,
+            "col": 16,
+            "type": {
+             "kind": "bool"
+            },
+            "x": {
+             "node": "Binary",
+             "line": 49,
+             "col": 17,
+             "type": {
+              "kind": "bool"
+             },
+             "op": "==",
+             "left": {
+              "node": "Name",
+              "line": 49,
+              "col": 17,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "k",
+               "owner": "sample.features.Features.run",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "right": {
+              "node": "Lit",
+              "line": 49,
+              "col": 22,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 8
+             }
+            }
+           },
+           "then": {
+            "node": "Break",
+            "line": 49,
+            "col": 25
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "ForEach",
+        "line": 51,
+        "col": 9,
+        "var": {
+         "node": "Local",
+         "line": 51,
+         "col": 14,
+         "sym": {
+          "kind": "local",
+          "name": "item",
+          "owner": "sample.features.Features.run",
+          "type": {
+           "kind": "typevar",
+           "name": "T"
+          }
+         },
+         "type": {
+          "kind": "typevar",
+          "name": "T"
+         }
+        },
+        "iterable": {
+         "node": "Select",
+         "line": 51,
+         "col": 23,
+         "type": {
+          "kind": "class",
+          "name": "java.util.List",
+          "args": [
+           {
+            "kind": "typevar",
+            "name": "T"
+           }
+          ]
+         },
+         "obj": {
+          "node": "This",
+          "line": 51,
+          "col": 23,
+          "type": {
+           "kind": "class",
+           "name": "sample.features.Features"
+          }
+         },
+         "sym": {
+          "kind": "field",
+          "name": "items",
+          "owner": "sample.features.Features",
+          "type": {
+           "kind": "class",
+           "name": "java.util.List",
+           "args": [
+            {
+             "kind": "typevar",
+             "name": "T"
+            }
+           ]
+          }
+         }
+        },
+        "body": {
+         "node": "Block",
+         "line": 51,
+         "col": 30,
+         "stmts": [
+          {
+           "node": "ExprStmt",
+           "line": 52,
+           "col": 13,
+           "expr": {
+            "node": "Call",
+            "line": 52,
+            "col": 13,
+            "type": {
+             "kind": "void"
+            },
+            "target": {
+             "node": "Select",
+             "line": 52,
+             "col": 13,
+             "type": {
+              "kind": "class",
+              "name": "java.io.PrintStream"
+             },
+             "obj": {
+              "node": "TypeName",
+              "line": 52,
+              "col": 13,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.System"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "out",
+              "owner": "java.lang.System",
+              "static": true,
+              "type": {
+               "kind": "class",
+               "name": "java.io.PrintStream"
+              }
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "println",
+             "owner": "java.io.PrintStream",
+             "params": [
+              {
+               "kind": "class",
+               "name": "java.lang.Object"
+              }
+             ],
+             "ret": {
+              "kind": "void"
+             }
+            },
+            "args": [
+             {
+              "node": "Name",
+              "line": 52,
+              "col": 32,
+              "type": {
+               "kind": "typevar",
+               "name": "T"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "item",
+               "owner": "sample.features.Features.run",
+               "type": {
+                "kind": "typevar",
+                "name": "T"
+               }
+              }
+             }
+            ]
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "Labeled",
+        "line": 54,
+        "col": 9,
+        "label": "outer",
+        "body": {
+         "node": "While",
+         "line": 55,
+         "col": 9,
+         "cond": {
+          "node": "Paren",
+          "line": 55,
+          "col": 15,
+          "type": {
+           "kind": "bool"
+          },
+          "x": {
+           "node": "Binary",
+           "line": 55,
+           "col": 16,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "<",
+           "left": {
+            "node": "Name",
+            "line": 55,
+            "col": 16,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "i",
+             "owner": "sample.features.Features.run",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 55,
+            "col": 20,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 100
+           }
+          }
+         },
+         "body": {
+          "node": "Block",
+          "line": 55,
+          "col": 25,
+          "stmts": [
+           {
+            "node": "DoWhile",
+            "line": 56,
+            "col": 13,
+            "body": {
+             "node": "Block",
+             "line": 56,
+             "col": 16,
+             "stmts": [
+              {
+               "node": "ExprStmt",
+               "line": 57,
+               "col": 17,
+               "expr": {
+                "node": "Assign",
+                "line": 57,
+                "col": 17,
+                "type": {
+                 "kind": "i32"
+                },
+                "op": "+",
+                "target": {
+                 "node": "Name",
+                 "line": 57,
+                 "col": 17,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "sym": {
+                  "kind": "local",
+                  "name": "i",
+                  "owner": "sample.features.Features.run",
+                  "type": {
+                   "kind": "i32"
+                  }
+                 }
+                },
+                "value": {
+                 "node": "Lit",
+                 "line": 57,
+                 "col": 22,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "value": 7
+                }
+               }
+              },
+              {
+               "node": "If",
+               "line": 58,
+               "col": 17,
+               "cond": {
+                "node": "Paren",
+                "line": 58,
+                "col": 20,
+                "type": {
+                 "kind": "bool"
+                },
+                "x": {
+                 "node": "Binary",
+                 "line": 58,
+                 "col": 21,
+                 "type": {
+                  "kind": "bool"
+                 },
+                 "op": ">",
+                 "left": {
+                  "node": "Name",
+                  "line": 58,
+                  "col": 21,
+                  "type": {
+                   "kind": "i32"
+                  },
+                  "sym": {
+                   "kind": "local",
+                   "name": "i",
+                   "owner": "sample.features.Features.run",
+                   "type": {
+                    "kind": "i32"
+                   }
+                  }
+                 },
+                 "right": {
+                  "node": "Lit",
+                  "line": 58,
+                  "col": 25,
+                  "type": {
+                   "kind": "i32"
+                  },
+                  "value": 50
+                 }
+                }
+               },
+               "then": {
+                "node": "Break",
+                "line": 58,
+                "col": 29,
+                "label": "outer"
+               }
+              }
+             ]
+            },
+            "cond": {
+             "node": "Paren",
+             "line": 59,
+             "col": 21,
+             "type": {
+              "kind": "bool"
+             },
+             "x": {
+              "node": "Binary",
+              "line": 59,
+              "col": 22,
+              "type": {
+               "kind": "bool"
+              },
+              "op": "!=",
+              "left": {
+               "node": "Binary",
+               "line": 59,
+               "col": 22,
+               "type": {
+                "kind": "i32"
+               },
+               "op": "%",
+               "left": {
+                "node": "Name",
+                "line": 59,
+                "col": 22,
+                "type": {
+                 "kind": "i32"
+                },
+                "sym": {
+                 "kind": "local",
+                 "name": "i",
+                 "owner": "sample.features.Features.run",
+                 "type": {
+                  "kind": "i32"
+                 }
+                }
+               },
+               "right": {
+                "node": "Lit",
+                "line": 59,
+                "col": 26,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 2
+               }
+              },
+              "right": {
+               "node": "Lit",
+               "line": 59,
+               "col": 31,
+               "type": {
+                "kind": "i32"
+               },
+               "value": 0
+              }
+             }
+            }
+           }
+          ]
+         }
+        }
+       },
+       {
+        "node": "Switch",
+        "line": 61,
+        "col": 9,
+        "expr": {
+         "node": "Paren",
+         "line": 61,
+         "col": 16,
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "node": "Name",
+          "line": 61,
+          "col": 17,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "i",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        },
+        "cases": [
+         {
+          "node": "Case",
+          "line": 62,
+          "col": 13,
+          "labels": [
+           {
+            "node": "Lit",
+            "line": 62,
+            "col": 18,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           }
+          ],
+          "default": false,
+          "body": []
+         },
+         {
+          "node": "Case",
+          "line": 63,
+          "col": 13,
+          "labels": [
+           {
+            "node": "Lit",
+            "line": 63,
+            "col": 18,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          ],
+          "default": false,
+          "body": [
+           {
+            "node": "ExprStmt",
+            "line": 64,
+            "col": 17,
+            "expr": {
+             "node": "Assign",
+             "line": 64,
+             "col": 17,
+             "type": {
+              "kind": "i32"
+             },
+             "target": {
+              "node": "Name",
+              "line": 64,
+              "col": 17,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "i",
+               "owner": "sample.features.Features.run",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "value": {
+              "node": "Lit",
+              "line": 64,
+              "col": 21,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 3
+             }
+            }
+           },
+           {
+            "node": "Break",
+            "line": 65,
+            "col": 17
+           }
+          ]
+         },
+         {
+          "node": "Case",
+          "line": 66,
+          "col": 13,
+          "labels": [],
+          "default": true,
+          "body": [
+           {
+            "node": "ExprStmt",
+            "line": 67,
+            "col": 17,
+            "expr": {
+             "node": "Assign",
+             "line": 67,
+             "col": 17,
+             "type": {
+              "kind": "i32"
+             },
+             "target": {
+              "node": "Name",
+              "line": 67,
+              "col": 17,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "i",
+               "owner": "sample.features.Features.run",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "value": {
+              "node": "Lit",
+              "line": 67,
+              "col": 21,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 0
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "node": "Local",
+        "line": 69,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "word",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.String"
+        },
+        "init": {
+         "node": "SwitchExpr",
+         "line": 69,
+         "col": 23,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         },
+         "expr": {
+          "node": "Paren",
+          "line": 69,
+          "col": 30,
+          "type": {
+           "kind": "u16"
+          },
+          "x": {
+           "node": "Name",
+           "line": 69,
+           "col": 31,
+           "type": {
+            "kind": "u16"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "c",
+            "owner": "sample.features.Features.run",
+            "type": {
+             "kind": "u16"
+            }
+           }
+          }
+         },
+         "cases": [
+          {
+           "node": "Case",
+           "line": 70,
+           "col": 13,
+           "labels": [
+            {
+             "node": "Lit",
+             "line": 70,
+             "col": 18,
+             "type": {
+              "kind": "u16"
+             },
+             "value": "x"
+            }
+           ],
+           "default": false,
+           "body": [
+            {
+             "node": "Yield",
+             "line": 70,
+             "col": 25,
+             "expr": {
+              "node": "Lit",
+              "line": 70,
+              "col": 25,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "ex"
+             }
+            }
+           ]
+          },
+          {
+           "node": "Case",
+           "line": 71,
+           "col": 13,
+           "labels": [
+            {
+             "node": "Lit",
+             "line": 71,
+             "col": 18,
+             "type": {
+              "kind": "u16"
+             },
+             "value": "y"
+            },
+            {
+             "node": "Lit",
+             "line": 71,
+             "col": 23,
+             "type": {
+              "kind": "u16"
+             },
+             "value": "z"
+            }
+           ],
+           "default": false,
+           "body": [
+            {
+             "node": "Block",
+             "line": 71,
+             "col": 30,
+             "stmts": [
+              {
+               "node": "Yield",
+               "line": 71,
+               "col": 32,
+               "expr": {
+                "node": "Lit",
+                "line": 71,
+                "col": 38,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                "value": "why"
+               }
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "node": "Case",
+           "line": 72,
+           "col": 13,
+           "labels": [],
+           "default": true,
+           "body": [
+            {
+             "node": "Yield",
+             "line": 72,
+             "col": 24,
+             "expr": {
+              "node": "Lit",
+              "line": 72,
+              "col": 24,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "other"
+             }
+            }
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "node": "Try",
+        "line": 74,
+        "col": 9,
+        "resources": [
+         {
+          "node": "Local",
+          "line": 74,
+          "col": 14,
+          "sym": {
+           "kind": "local",
+           "name": "r",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "class",
+            "name": "java.io.StringReader"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "java.io.StringReader"
+          },
+          "init": {
+           "node": "New",
+           "line": 74,
+           "col": 39,
+           "type": {
+            "kind": "class",
+            "name": "java.io.StringReader"
+           },
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.io.StringReader",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Lit",
+             "line": 74,
+             "col": 64,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "x"
+            }
+           ]
+          }
+         }
+        ],
+        "body": {
+         "node": "Block",
+         "line": 74,
+         "col": 70,
+         "stmts": [
+          {
+           "node": "ExprStmt",
+           "line": 75,
+           "col": 13,
+           "expr": {
+            "node": "Call",
+            "line": 75,
+            "col": 13,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 75,
+             "col": 13,
+             "type": {
+              "kind": "class",
+              "name": "java.io.StringReader"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "r",
+              "owner": "sample.features.Features.run",
+              "type": {
+               "kind": "class",
+               "name": "java.io.StringReader"
+              }
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "read",
+             "owner": "java.io.StringReader",
+             "params": [],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": []
+           }
+          }
+         ]
+        },
+        "catches": [
+         {
+          "node": "Catch",
+          "line": 76,
+          "col": 11,
+          "sym": {
+           "kind": "local",
+           "name": "e",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Exception"
+           }
+          },
+          "types": [
+           {
+            "kind": "class",
+            "name": "java.io.IOException"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.RuntimeException"
+           }
+          ],
+          "body": {
+           "node": "Block",
+           "line": 76,
+           "col": 60,
+           "stmts": [
+            {
+             "node": "Throw",
+             "line": 77,
+             "col": 13,
+             "expr": {
+              "node": "New",
+              "line": 77,
+              "col": 19,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.IllegalStateException"
+              },
+              "sym": {
+               "kind": "ctor",
+               "name": "<init>",
+               "owner": "java.lang.IllegalStateException",
+               "params": [
+                {
+                 "kind": "class",
+                 "name": "java.lang.Throwable"
+                }
+               ],
+               "ret": {
+                "kind": "void"
+               }
+              },
+              "args": [
+               {
+                "node": "Name",
+                "line": 77,
+                "col": 45,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.Exception"
+                },
+                "sym": {
+                 "kind": "local",
+                 "name": "e",
+                 "owner": "sample.features.Features.run",
+                 "type": {
+                  "kind": "class",
+                  "name": "java.lang.Exception"
+                 }
+                }
+               }
+              ]
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "final": {
+         "node": "Block",
+         "line": 78,
+         "col": 19,
+         "stmts": [
+          {
+           "node": "ExprStmt",
+           "line": 79,
+           "col": 13,
+           "expr": {
+            "node": "Assign",
+            "line": 79,
+            "col": 13,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 79,
+             "col": 13,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "i",
+              "owner": "sample.features.Features.run",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Unary",
+             "line": 79,
+             "col": 17,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "-",
+             "x": {
+              "node": "Name",
+              "line": 79,
+              "col": 18,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "i",
+               "owner": "sample.features.Features.run",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "postfix": false
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "Sync",
+        "line": 81,
+        "col": 9,
+        "lock": {
+         "node": "Paren",
+         "line": 81,
+         "col": 22,
+         "type": {
+          "kind": "class",
+          "name": "sample.features.Features",
+          "args": [
+           {
+            "kind": "typevar",
+            "name": "T"
+           }
+          ]
+         },
+         "x": {
+          "node": "This",
+          "line": 81,
+          "col": 23,
+          "type": {
+           "kind": "class",
+           "name": "sample.features.Features",
+           "args": [
+            {
+             "kind": "typevar",
+             "name": "T"
+            }
+           ]
+          }
+         }
+        },
+        "body": {
+         "node": "Block",
+         "line": 81,
+         "col": 29,
+         "stmts": [
+          {
+           "node": "ExprStmt",
+           "line": 82,
+           "col": 13,
+           "expr": {
+            "node": "Assign",
+            "line": 82,
+            "col": 13,
+            "type": {
+             "kind": "i64"
+            },
+            "op": "<<",
+            "target": {
+             "node": "Select",
+             "line": 82,
+             "col": 13,
+             "type": {
+              "kind": "i64"
+             },
+             "obj": {
+              "node": "This",
+              "line": 82,
+              "col": 13,
+              "type": {
+               "kind": "class",
+               "name": "sample.features.Features"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "counter",
+              "owner": "sample.features.Features",
+              "type": {
+               "kind": "i64"
+              }
+             }
+            },
+            "value": {
+             "node": "Lit",
+             "line": 82,
+             "col": 25,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 2
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "Local",
+        "line": 84,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "o",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Object"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.Object"
+        },
+        "init": {
+         "node": "Name",
+         "line": 84,
+         "col": 20,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         },
+         "sym": {
+          "kind": "local",
+          "name": "s",
+          "owner": "sample.features.Features.run",
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        }
+       },
+       {
+        "node": "If",
+        "line": 85,
+        "col": 9,
+        "cond": {
+         "node": "Paren",
+         "line": 85,
+         "col": 12,
+         "type": {
+          "kind": "bool"
+         },
+         "x": {
+          "node": "Binary",
+          "line": 85,
+          "col": 13,
+          "type": {
+           "kind": "bool"
+          },
+          "op": "&&",
+          "left": {
+           "node": "InstanceOf",
+           "line": 85,
+           "col": 13,
+           "type": {
+            "kind": "bool"
+           },
+           "x": {
+            "node": "Name",
+            "line": 85,
+            "col": 13,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.Object"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "o",
+             "owner": "sample.features.Features.run",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.Object"
+             }
+            }
+           },
+           "test": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "binding": {
+            "node": "Local",
+            "line": 85,
+            "col": 26,
+            "sym": {
+             "kind": "local",
+             "name": "str",
+             "owner": "sample.features.Features.run",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            },
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           }
+          },
+          "right": {
+           "node": "Binary",
+           "line": 85,
+           "col": 40,
+           "type": {
+            "kind": "bool"
+           },
+           "op": ">",
+           "left": {
+            "node": "Call",
+            "line": 85,
+            "col": 40,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 85,
+             "col": 40,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "str",
+              "owner": "sample.features.Features.run",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "length",
+             "owner": "java.lang.String",
+             "params": [],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": []
+           },
+           "right": {
+            "node": "Lit",
+            "line": 85,
+            "col": 55,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           }
+          }
+         }
+        },
+        "then": {
+         "node": "Block",
+         "line": 85,
+         "col": 58,
+         "stmts": [
+          {
+           "node": "ExprStmt",
+           "line": 86,
+           "col": 13,
+           "expr": {
+            "node": "Assign",
+            "line": 86,
+            "col": 13,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Name",
+             "line": 86,
+             "col": 13,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "i",
+              "owner": "sample.features.Features.run",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Call",
+             "line": 86,
+             "col": 17,
+             "type": {
+              "kind": "i32"
+             },
+             "target": {
+              "node": "Name",
+              "line": 86,
+              "col": 17,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "str",
+               "owner": "sample.features.Features.run",
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              }
+             },
+             "sym": {
+              "kind": "method",
+              "name": "length",
+              "owner": "java.lang.String",
+              "params": [],
+              "ret": {
+               "kind": "i32"
+              }
+             },
+             "args": []
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "Local",
+        "line": 88,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "task",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Runnable"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.Runnable"
+        },
+        "init": {
+         "node": "Lambda",
+         "line": 88,
+         "col": 25,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Runnable"
+         },
+         "params": [],
+         "body": {
+          "node": "Call",
+          "line": 88,
+          "col": 31,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 88,
+           "col": 31,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 88,
+            "col": 31,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 88,
+            "col": 50,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "value": "run"
+           }
+          ]
+         }
+        }
+       },
+       {
+        "node": "Local",
+        "line": 89,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "twice",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.Function",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.util.function.Function",
+         "args": [
+          {
+           "kind": "class",
+           "name": "java.lang.Integer"
+          },
+          {
+           "kind": "class",
+           "name": "java.lang.Integer"
+          }
+         ]
+        },
+        "init": {
+         "node": "Lambda",
+         "line": 89,
+         "col": 63,
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.Function",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         },
+         "params": [
+          {
+           "node": "Param",
+           "line": 89,
+           "col": 63,
+           "sym": {
+            "kind": "param",
+            "name": "x",
+            "owner": "sample.features.Features.run",
+            "type": {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           },
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          }
+         ],
+         "body": {
+          "node": "Binary",
+          "line": 89,
+          "col": 68,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "*",
+          "left": {
+           "node": "Name",
+           "line": 89,
+           "col": 68,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "x",
+            "owner": "sample.features.Features.run",
+            "type": {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           }
+          },
+          "right": {
+           "node": "Lit",
+           "line": 89,
+           "col": 72,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 2
+          }
+         }
+        }
+       },
+       {
+        "node": "Local",
+        "line": 90,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "make",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.Supplier",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.util.List",
+            "args": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ]
+           }
+          ]
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.util.function.Supplier",
+         "args": [
+          {
+           "kind": "class",
+           "name": "java.util.List",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          }
+         ]
+        },
+        "init": {
+         "node": "MethodRef",
+         "line": 90,
+         "col": 58,
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.Supplier",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.util.List",
+            "args": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ]
+           }
+          ]
+         },
+         "target": {
+          "node": "TypeName",
+          "line": 90,
+          "col": 58,
+          "type": {
+           "kind": "class",
+           "name": "java.util.ArrayList"
+          }
+         },
+         "sym": {
+          "kind": "ctor",
+          "name": "<init>",
+          "owner": "java.util.ArrayList",
+          "params": [],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "mode": "new"
+        }
+       },
+       {
+        "node": "Local",
+        "line": 91,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "unit",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "sample.features.Features.Shape"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "sample.features.Features.Shape"
+        },
+        "init": {
+         "node": "New",
+         "line": 91,
+         "col": 22,
+         "type": {
+          "kind": "class",
+          "name": "",
+          "args": [
+           {
+            "kind": "class",
+            "name": "anonymous sample.features.Features.Shape"
+           }
+          ]
+         },
+         "sym": {
+          "kind": "ctor",
+          "name": "<init>",
+          "owner": "",
+          "params": [],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "args": [],
+         "body": {
+          "node": "ClassDecl",
+          "line": 91,
+          "col": 34,
+          "name": "",
+          "qname": "",
+          "kind": "class",
+          "extends": {
+           "kind": "class",
+           "name": "sample.features.Features.Shape"
+          },
+          "implements": [
+           {
+            "kind": "class",
+            "name": "sample.features.Features.Shape"
+           }
+          ],
+          "members": [
+           {
+            "node": "MethodDecl",
+            "line": 91,
+            "col": 34,
+            "sym": {
+             "kind": "ctor",
+             "name": "<init>",
+             "owner": "",
+             "params": [],
+             "ret": {
+              "kind": "void"
+             }
+            },
+            "name": "<init>",
+            "kind": "ctor",
+            "params": [],
+            "ret": {
+             "kind": "void"
+            },
+            "body": {
+             "node": "Block",
+             "line": 91,
+             "col": 34,
+             "stmts": [
+              {
+               "node": "CtorCall",
+               "line": 91,
+               "col": 34,
+               "kind": "super:implicit",
+               "sym": {
+                "kind": "ctor",
+                "name": "<init>",
+                "owner": "java.lang.Object",
+                "params": [],
+                "ret": {
+                 "kind": "void"
+                }
+               },
+               "args": []
+              }
+             ]
+            },
+            "mods": [
+             "IMPLICIT"
+            ]
+           },
+           {
+            "node": "MethodDecl",
+            "line": 92,
+            "col": 13,
+            "sym": {
+             "kind": "method",
+             "name": "area",
+             "owner": "",
+             "params": [],
+             "ret": {
+              "kind": "f64"
+             }
+            },
+            "name": "area",
+            "kind": "method",
+            "params": [],
+            "ret": {
+             "kind": "f64"
+            },
+            "body": {
+             "node": "Block",
+             "line": 92,
+             "col": 34,
+             "stmts": [
+              {
+               "node": "Return",
+               "line": 92,
+               "col": 36,
+               "expr": {
+                "node": "Lit",
+                "line": 92,
+                "col": 43,
+                "type": {
+                 "kind": "f64"
+                },
+                "value": 1.0
+               }
+              }
+             ]
+            },
+            "mods": [
+             "public"
+            ]
+           }
+          ]
+         }
+        }
+       },
+       {
+        "node": "Local",
+        "line": 94,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "counts",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.util.Map",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.util.Map",
+         "args": [
+          {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          {
+           "kind": "class",
+           "name": "java.lang.Integer"
+          }
+         ]
+        },
+        "init": {
+         "node": "New",
+         "line": 94,
+         "col": 39,
+         "type": {
+          "kind": "class",
+          "name": "java.util.HashMap",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         },
+         "sym": {
+          "kind": "ctor",
+          "name": "<init>",
+          "owner": "java.util.HashMap",
+          "params": [],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "args": []
+        }
+       },
+       {
+        "node": "ExprStmt",
+        "line": 95,
+        "col": 9,
+        "expr": {
+         "node": "Call",
+         "line": 95,
+         "col": 9,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Integer"
+         },
+         "target": {
+          "node": "Name",
+          "line": 95,
+          "col": 9,
+          "type": {
+           "kind": "class",
+           "name": "java.util.Map",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "local",
+           "name": "counts",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "class",
+            "name": "java.util.Map",
+            "args": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             {
+              "kind": "class",
+              "name": "java.lang.Integer"
+             }
+            ]
+           }
+          }
+         },
+         "sym": {
+          "kind": "method",
+          "name": "put",
+          "owner": "java.util.Map",
+          "params": [
+           {
+            "kind": "typevar",
+            "name": "K"
+           },
+           {
+            "kind": "typevar",
+            "name": "V"
+           }
+          ],
+          "ret": {
+           "kind": "typevar",
+           "name": "V"
+          }
+         },
+         "args": [
+          {
+           "node": "Lit",
+           "line": 95,
+           "col": 20,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "value": "a"
+          },
+          {
+           "node": "Call",
+           "line": 95,
+           "col": 25,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           },
+           "target": {
+            "node": "Name",
+            "line": 95,
+            "col": 25,
+            "type": {
+             "kind": "class",
+             "name": "java.util.function.Function",
+             "args": [
+              {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              },
+              {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              }
+             ]
+            },
+            "sym": {
+             "kind": "local",
+             "name": "twice",
+             "owner": "sample.features.Features.run",
+             "type": {
+              "kind": "class",
+              "name": "java.util.function.Function",
+              "args": [
+               {
+                "kind": "class",
+                "name": "java.lang.Integer"
+               },
+               {
+                "kind": "class",
+                "name": "java.lang.Integer"
+               }
+              ]
+             }
+            }
+           },
+           "sym": {
+            "kind": "method",
+            "name": "apply",
+            "owner": "java.util.function.Function",
+            "params": [
+             {
+              "kind": "typevar",
+              "name": "T"
+             }
+            ],
+            "ret": {
+             "kind": "typevar",
+             "name": "R"
+            }
+           },
+           "args": [
+            {
+             "node": "Name",
+             "line": 95,
+             "col": 37,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "i",
+              "owner": "sample.features.Features.run",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "node": "Local",
+        "line": 96,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "numbers",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "array",
+          "elem": {
+           "kind": "i32"
+          }
+         }
+        },
+        "type": {
+         "kind": "array",
+         "elem": {
+          "kind": "i32"
+         }
+        },
+        "init": {
+         "node": "NewArray",
+         "line": 96,
+         "col": 25,
+         "type": {
+          "kind": "array",
+          "elem": {
+           "kind": "i32"
+          }
+         },
+         "elem": {
+          "kind": "i32"
+         },
+         "dims": [],
+         "init": [
+          {
+           "node": "Lit",
+           "line": 96,
+           "col": 26,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 1
+          },
+          {
+           "node": "Lit",
+           "line": 96,
+           "col": 29,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 2
+          },
+          {
+           "node": "Lit",
+           "line": 96,
+           "col": 32,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 3
+          }
+         ]
+        }
+       },
+       {
+        "node": "Local",
+        "line": 97,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "total",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        },
+        "init": {
+         "node": "Binary",
+         "line": 97,
+         "col": 21,
+         "type": {
+          "kind": "i32"
+         },
+         "op": "+",
+         "left": {
+          "node": "Length",
+          "line": 97,
+          "col": 21,
+          "type": {
+           "kind": "i32"
+          },
+          "arr": {
+           "node": "Name",
+           "line": 97,
+           "col": 21,
+           "type": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           },
+           "sym": {
+            "kind": "local",
+            "name": "numbers",
+            "owner": "sample.features.Features.run",
+            "type": {
+             "kind": "array",
+             "elem": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         },
+         "right": {
+          "node": "Index",
+          "line": 97,
+          "col": 38,
+          "type": {
+           "kind": "i32"
+          },
+          "arr": {
+           "node": "Index",
+           "line": 97,
+           "col": 38,
+           "type": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           },
+           "arr": {
+            "node": "Select",
+            "line": 97,
+            "col": 38,
+            "type": {
+             "kind": "array",
+             "elem": {
+              "kind": "array",
+              "elem": {
+               "kind": "i32"
+              }
+             }
+            },
+            "obj": {
+             "node": "This",
+             "line": 97,
+             "col": 38,
+             "type": {
+              "kind": "class",
+              "name": "sample.features.Features"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "grid",
+             "owner": "sample.features.Features",
+             "type": {
+              "kind": "array",
+              "elem": {
+               "kind": "array",
+               "elem": {
+                "kind": "i32"
+               }
+              }
+             }
+            }
+           },
+           "index": {
+            "node": "Lit",
+            "line": 97,
+            "col": 43,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           }
+          },
+          "index": {
+           "node": "Lit",
+           "line": 97,
+           "col": 46,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 2
+          }
+         }
+        }
+       },
+       {
+        "node": "Local",
+        "line": 98,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "p",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "sample.features.Features.Point"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "sample.features.Features.Point"
+        },
+        "init": {
+         "node": "New",
+         "line": 98,
+         "col": 19,
+         "type": {
+          "kind": "class",
+          "name": "sample.features.Features.Point"
+         },
+         "sym": {
+          "kind": "ctor",
+          "name": "<init>",
+          "owner": "sample.features.Features.Point",
+          "params": [
+           {
+            "kind": "i32"
+           },
+           {
+            "kind": "f64"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          ],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "args": [
+          {
+           "node": "Lit",
+           "line": 98,
+           "col": 29,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 1
+          },
+          {
+           "node": "Lit",
+           "line": 98,
+           "col": 32,
+           "type": {
+            "kind": "f64"
+           },
+           "value": 2.0
+          },
+          {
+           "node": "Lit",
+           "line": 98,
+           "col": 37,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "value": "p"
+          }
+         ]
+        }
+       },
+       {
+        "node": "Assert",
+        "line": 99,
+        "col": 9,
+        "cond": {
+         "node": "Binary",
+         "line": 99,
+         "col": 16,
+         "type": {
+          "kind": "bool"
+         },
+         "op": ">=",
+         "left": {
+          "node": "Name",
+          "line": 99,
+          "col": 16,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "total",
+           "owner": "sample.features.Features.run",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "right": {
+          "node": "Lit",
+          "line": 99,
+          "col": 25,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 0
+         }
+        },
+        "detail": {
+         "node": "Lit",
+         "line": 99,
+         "col": 29,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         },
+         "value": "negative"
+        }
+       },
+       {
+        "node": "Local",
+        "line": 100,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "k",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Class",
+          "args": [
+           {
+            "kind": "wildcard"
+           }
+          ]
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.Class",
+         "args": [
+          {
+           "kind": "wildcard"
+          }
+         ]
+        },
+        "init": {
+         "node": "ClassLit",
+         "line": 100,
+         "col": 22,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Class",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          ]
+         },
+         "of": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       },
+       {
+        "node": "ExprStmt",
+        "line": 101,
+        "col": 9,
+        "expr": {
+         "node": "Assign",
+         "line": 101,
+         "col": 9,
+         "type": {
+          "kind": "i32"
+         },
+         "target": {
+          "node": "Index",
+          "line": 101,
+          "col": 9,
+          "type": {
+           "kind": "i32"
+          },
+          "arr": {
+           "node": "Index",
+           "line": 101,
+           "col": 9,
+           "type": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           },
+           "arr": {
+            "node": "Select",
+            "line": 101,
+            "col": 9,
+            "type": {
+             "kind": "array",
+             "elem": {
+              "kind": "array",
+              "elem": {
+               "kind": "i32"
+              }
+             }
+            },
+            "obj": {
+             "node": "This",
+             "line": 101,
+             "col": 9,
+             "type": {
+              "kind": "class",
+              "name": "sample.features.Features"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "grid",
+             "owner": "sample.features.Features",
+             "type": {
+              "kind": "array",
+              "elem": {
+               "kind": "array",
+               "elem": {
+                "kind": "i32"
+               }
+              }
+             }
+            }
+           },
+           "index": {
+            "node": "Lit",
+            "line": 101,
+            "col": 14,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 0
+           }
+          },
+          "index": {
+           "node": "Lit",
+           "line": 101,
+           "col": 17,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         },
+         "value": {
+          "node": "Binary",
+          "line": 101,
+          "col": 22,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "^",
+          "left": {
+           "node": "Unary",
+           "line": 101,
+           "col": 22,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "~",
+           "x": {
+            "node": "Name",
+            "line": 101,
+            "col": 23,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "total",
+             "owner": "sample.features.Features.run",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "postfix": false
+          },
+          "right": {
+           "node": "Paren",
+           "line": 101,
+           "col": 31,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Binary",
+            "line": 101,
+            "col": 32,
+            "type": {
+             "kind": "i32"
+            },
+            "op": ">>>",
+            "left": {
+             "node": "Name",
+             "line": 101,
+             "col": 32,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "total",
+              "owner": "sample.features.Features.run",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "right": {
+             "node": "Lit",
+             "line": 101,
+             "col": 42,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 2
+            }
+           }
+          }
+         }
+        }
+       },
+       {
+        "node": "Local",
+        "line": 102,
+        "col": 9,
+        "sym": {
+         "kind": "local",
+         "name": "color",
+         "owner": "sample.features.Features.run",
+         "type": {
+          "kind": "class",
+          "name": "sample.features.Features.Color"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "sample.features.Features.Color"
+        },
+        "init": {
+         "node": "Select",
+         "line": 102,
+         "col": 23,
+         "type": {
+          "kind": "class",
+          "name": "sample.features.Features.Color"
+         },
+         "obj": {
+          "node": "TypeName",
+          "line": 102,
+          "col": 23,
+          "type": {
+           "kind": "class",
+           "name": "sample.features.Features.Color"
+          }
+         },
+         "sym": {
+          "kind": "enumconst",
+          "name": "GREEN",
+          "owner": "sample.features.Features.Color",
+          "static": true,
+          "type": {
+           "kind": "class",
+           "name": "sample.features.Features.Color"
+          }
+         }
+        }
+       },
+       {
+        "node": "ExprStmt",
+        "line": 103,
+        "col": 9,
+        "expr": {
+         "node": "Assign",
+         "line": 103,
+         "col": 9,
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         },
+         "target": {
+          "node": "Select",
+          "line": 103,
+          "col": 9,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          "obj": {
+           "node": "This",
+           "line": 103,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "sample.features.Features"
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "label",
+           "owner": "sample.features.Features",
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          }
+         },
+         "value": {
+          "node": "Concat",
+          "line": 103,
+          "col": 17,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          "parts": [
+           {
+            "node": "Select",
+            "line": 103,
+            "col": 17,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "obj": {
+             "node": "This",
+             "line": 103,
+             "col": 17,
+             "type": {
+              "kind": "class",
+              "name": "sample.features.Features",
+              "args": [
+               {
+                "kind": "typevar",
+                "name": "T"
+               }
+              ]
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "label",
+             "owner": "sample.features.Features",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            }
+           },
+           {
+            "node": "Call",
+            "line": 103,
+            "col": 30,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "target": {
+             "node": "Super",
+             "line": 103,
+             "col": 30,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.Object"
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "toString",
+             "owner": "java.lang.Object",
+             "params": [],
+             "ret": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            },
+            "args": []
+           }
+          ]
+         }
+        }
+       }
+      ]
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "MethodDecl",
+     "line": 106,
+     "col": 5,
+     "sym": {
+      "kind": "method",
+      "name": "first",
+      "owner": "sample.features.Features",
+      "params": [
+       {
+        "kind": "class",
+        "name": "java.util.List",
+        "args": [
+         {
+          "kind": "typevar",
+          "name": "U"
+         }
+        ]
+       }
+      ],
+      "ret": {
+       "kind": "typevar",
+       "name": "U"
+      }
+     },
+     "name": "first",
+     "kind": "method",
+     "params": [
+      {
+       "node": "Param",
+       "line": 106,
+       "col": 17,
+       "sym": {
+        "kind": "param",
+        "name": "list",
+        "owner": "sample.features.Features.first",
+        "type": {
+         "kind": "class",
+         "name": "java.util.List",
+         "args": [
+          {
+           "kind": "typevar",
+           "name": "U"
+          }
+         ]
+        }
+       },
+       "type": {
+        "kind": "class",
+        "name": "java.util.List",
+        "args": [
+         {
+          "kind": "typevar",
+          "name": "U"
+         }
+        ]
+       }
+      }
+     ],
+     "ret": {
+      "kind": "typevar",
+      "name": "U"
+     },
+     "body": {
+      "node": "Block",
+      "line": 106,
+      "col": 31,
+      "stmts": [
+       {
+        "node": "Return",
+        "line": 106,
+        "col": 33,
+        "expr": {
+         "node": "Call",
+         "line": 106,
+         "col": 40,
+         "type": {
+          "kind": "typevar",
+          "name": "U"
+         },
+         "target": {
+          "node": "Name",
+          "line": 106,
+          "col": 40,
+          "type": {
+           "kind": "class",
+           "name": "java.util.List",
+           "args": [
+            {
+             "kind": "typevar",
+             "name": "U"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "param",
+           "name": "list",
+           "owner": "sample.features.Features.first",
+           "type": {
+            "kind": "class",
+            "name": "java.util.List",
+            "args": [
+             {
+              "kind": "typevar",
+              "name": "U"
+             }
+            ]
+           }
+          }
+         },
+         "sym": {
+          "kind": "method",
+          "name": "get",
+          "owner": "java.util.List",
+          "params": [
+           {
+            "kind": "i32"
+           }
+          ],
+          "ret": {
+           "kind": "typevar",
+           "name": "E"
+          }
+         },
+         "args": [
+          {
+           "node": "Lit",
+           "line": 106,
+           "col": 49,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         ]
+        }
+       }
+      ]
+     },
+     "typeparams": [
+      "U"
+     ]
+    }
+   ]
+  }
+ ]
+}

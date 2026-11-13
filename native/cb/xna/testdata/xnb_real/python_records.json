@@ -1,0 +1,69 @@
+{
+ "FadeToBlack.xnb": {
+  "record": {
+   "file": "FadeToBlack.xnb",
+   "platform": "x",
+   "readers": [
+    "Texture2D"
+   ],
+   "kind": "texture",
+   "format": "Dxt1",
+   "width": 64,
+   "height": 64,
+   "levels": 1,
+   "folder": "584E07D1/Content/Textures"
+  },
+  "compressed": true
+ },
+ "GridSelectorRed_CM.xnb": {
+  "record": {
+   "file": "GridSelectorRed_CM.xnb",
+   "platform": "x",
+   "readers": [
+    "Texture2D"
+   ],
+   "kind": "texture",
+   "format": "Dxt1",
+   "width": 64,
+   "height": 64,
+   "levels": 1,
+   "folder": "584E07D1/Content/Models"
+  },
+  "compressed": true
+ },
+ "font_12.xnb": {
+  "record": {
+   "file": "font_12.xnb",
+   "platform": "x",
+   "readers": [
+    "SpriteFont",
+    "Texture2D",
+    "Rectangle",
+    "Rectangle",
+    "Char",
+    "Char",
+    "Vector3",
+    "Vector3"
+   ],
+   "kind": "font",
+   "width": 128,
+   "height": 116,
+   "glyphs": 95,
+   "folder": "584E07D1/Content/Fonts"
+  },
+  "compressed": true
+ },
+ "MotionBlurBlend.xnb": {
+  "record": {
+   "file": "MotionBlurBlend.xnb",
+   "platform": "x",
+   "readers": [
+    "Effect"
+   ],
+   "kind": "effect",
+   "sha1": "c4dfa6a607b6014aefbfca5e554c47ed72f247b0",
+   "folder": "584E07D1/Content/Effects"
+  },
+  "compressed": true
+ }
+}

@@ -1,0 +1,10 @@
+default.xex: 911 classes, 1292 virtual function tables, 1428 virtual functions named by class, 456 functions found by layout
+  PigZombie                                bases: Zombie, Monster, PathfinderMob, Mob, Entity, BaseObject, std::tr1::enable_shared_from_this<class Ent
+  std::basic_stringstream<wchar_t,struct s bases: std::basic_iostream<wchar_t,struct std::char_traits<wchar_t>>, std::basic_istream<wchar_t,struct std
+  Creeper                                  bases: Monster, PathfinderMob, Mob, Entity, BaseObject, std::tr1::enable_shared_from_this<class Entity>, En
+  Giant                                    bases: Monster, PathfinderMob, Mob, Entity, BaseObject, std::tr1::enable_shared_from_this<class Entity>, En
+  Zombie                                   bases: Monster, PathfinderMob, Mob, Entity, BaseObject, std::tr1::enable_shared_from_this<class Entity>, En
+  Skeleton                                 bases: Monster, PathfinderMob, Mob, Entity, BaseObject, std::tr1::enable_shared_from_this<class Entity>, En
+  Spider                                   bases: Monster, PathfinderMob, Mob, Entity, BaseObject, std::tr1::enable_shared_from_this<class Entity>, En
+  PigZombie::Class                         bases: Zombie::Class, Monster::Class, PathfinderMob::Class, Mob::Class, Entity::Class, BaseObject::Class, E
+  -> classes.json
