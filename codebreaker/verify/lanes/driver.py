@@ -232,7 +232,8 @@ def explain(a, b):
                                                                          (b.get("memory") or ("?",))[0])
         ra, rb = a.get("result") or (), b.get("result") or ()
         if ra[:1] != rb[:1]:
-            return "flags handed back differ: carry/zero %02x vs %02x" % (ra[0], rb[0])
+            flags = lambda r: "%02x" % r[0] if r else "--"      # (a run that did not return hands back none)
+            return "flags handed back differ: carry/zero %s vs %s" % (flags(ra), flags(rb))
         bad = [RESULT_REGISTERS[i] for i in range(len(RESULT_REGISTERS)) if ra[1 + i:2 + i] != rb[1 + i:2 + i]]
         return "registers handed back differ: %s" % ", ".join(
             "%s %s vs %s" % (n, ra[1 + RESULT_REGISTERS.index(n)], rb[1 + RESULT_REGISTERS.index(n)]) for n in bad)
