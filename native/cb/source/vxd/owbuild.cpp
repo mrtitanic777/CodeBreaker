@@ -117,6 +117,7 @@ Result build_vxd(const Environment& env, const le::Module& driver, std::string_v
 }
 
 std::vector<Component> w3_components(ByteView data) {
+    if (data.size() < 0x40) return {};   // no DOS header to point at a bundle
     io::ByteReader reader(data);
     reader.seek(0x3C);
     const std::uint32_t lfa = reader.u32();

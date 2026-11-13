@@ -119,7 +119,10 @@ std::vector<stdfs::path> driver_files(const stdfs::path& folder) {
 
 std::set<std::string> redo_set(const std::string& text) {
     std::set<std::string> names;
-    for (const std::string_view name : text::split(text, ',')) names.insert(std::string(name));
+    for (const std::string_view name : text::split(text, ',')) {
+        const std::string_view trimmed = text::trim(name);
+        if (!trimmed.empty()) names.insert(std::string(trimmed));
+    }
     return names;
 }
 
