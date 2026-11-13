@@ -29,9 +29,13 @@
 // module; a name given to a body is kept once and read back for every module that has it.
 //
 // What this module reads of the rest of the program comes in through `Services`: the corpus (which kind of file a path is, its hash, the
-// reference folder), the table of numbered exports, the body store, and four things the verifier's and the formats' modules own that are not in
-// this tree yet (PowerPC images, the console's import names, which functions are a runtime library's, the compiler). Where one is not given
-// the module goes without: no PowerPC names, no console imports, no runtime-library names, no "built with" line.
+// reference folder), the table of numbered exports, the body store, and what the readers of each kind of file know (PowerPC images, the
+// console's import names, which functions are a runtime library's, the compiler, remaking the ordinal table). Where one is not given the
+// module goes without: no PowerPC names, no console imports, no runtime-library names, no "built with" line.
+//
+// The program fills them in workbench.hpp: the knowledge base's body store (body_store.hpp), the PowerPC reader (formats/powerpc_image), the
+// console's ordinals (the knowledge base's), identify.hpp for the runtime library and the compiler, ordinal_collect.hpp for the table. The
+// command the program registers is `command(Environment)` below: what it works over is made when it runs.
 #pragma once
 
 #include <cstdint>
@@ -47,15 +51,19 @@
 
 #include "cb/base/corpus.hpp"
 #include "cb/core/bytes.hpp"
+#include "cb/core/cli.hpp"
 #include "cb/core16_types.hpp"
 #include "cb/formats/ne.hpp"
 #include "cb/formats/pe_functions.hpp"
 #include "cb/platforms/decoder.hpp"
 #include "cb/store/bodies.hpp"
+#include "cb/symbols/environment.hpp"
 #include "cb/symbols/ordinals.hpp"
 #include "cb/symbols/runtime_library.hpp"
 
 namespace cb::symbols::names {
+
+using symbols::Environment;
 
 // A function's address: a 32-bit one as it is, a 16-bit module's as decompile::describe::address lays it out ((selector << 16) + offset).
 using Address = std::uint64_t;
@@ -180,10 +188,19 @@ public:
 
     // `codebreaker names ...`: the command line after the command name. Returns the exit code.
     int run(std::span<const std::string> args);
+    // What the command does with the arguments it was given (the parser's work is done): the exit code.
+    int execute(const cli::Args& args);
 
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// The declaration of the `names` command (its arguments and help); `run` is what it does with them.
+cli::Command declare_command(std::function<int(const cli::Args&)> run);
+
+// The command as the program registers it: the objects it works over (the knowledge base, the corpus's modules) are made when it runs.
+// Defined in names_command.cpp.
+cli::Command command(const Environment& environment);
 
 }  // namespace cb::symbols::names

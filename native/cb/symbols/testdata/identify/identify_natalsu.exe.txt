@@ -1,0 +1,4 @@
+natalsu.exe: 0 of 87 functions are a runtime library's
+built with: not established (linker 10.00)
+    linker version 10.00 in the header
+    tool block before the header: 158.11886 x4, 170.11886 x8, 156.11886 x3, 1.0 x40, 123.2909 x2, 109.2909 x1

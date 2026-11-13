@@ -1,0 +1,23 @@
+bfea1075  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1077  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10a5  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10a7  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10bd  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10bf  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10e2  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea10e4  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1109  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea110b  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1123  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1125  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1135  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea1139  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea113b  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea115b  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea115d  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea116c  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+bfea116e  thunk stub                               Microsoft thunk compiler: a 32-to-16-bit flat thunk
+lz32.dll: 19 of 39 functions are a runtime library's
+built with: Microsoft Visual C++ 2.x (linker 2.50)
+    linker version 2.50 in the header
+    19 functions from Microsoft thunk compiler: a 32-to-16-bit flat thunk

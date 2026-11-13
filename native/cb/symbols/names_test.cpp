@@ -5,8 +5,7 @@
 //
 // DIVERGES from the Python module, by design: addresses are unsigned 64-bit and records are structs; the caches the Python kept in module
 // variables (the .SYM index, the debug names of each module) belong to the Namer; the .SYM files of a name are tried in the order of their paths, not
-// of the directory walk; a damaged .SYM or CodeView block gives no names where the Python raised and was caught, with the same result; the command
-// prints no empty line for a module that is neither PE nor NE.
+// of the directory walk; a damaged .SYM or CodeView block gives no names where the Python raised and was caught, with the same result.
 #include "cb/symbols/names.hpp"
 
 #include <algorithm>
