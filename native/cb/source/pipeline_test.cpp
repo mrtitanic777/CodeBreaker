@@ -11,6 +11,7 @@
 
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/java/production.hpp"
 #include "cb/source/pipeline_world.hpp"
 #include "cb/verify/gate16/scoreboard16.hpp"
 
@@ -242,6 +243,26 @@ CB_TEST("source.pipeline.match_of_a_powerpc_image_as_the_python_did", [] {
     const std::string out = cap.out();
     CB_CHECK(out.find("natalsu.exe: 87 functions\n") != std::string::npos);
     CB_CHECK(out.find("  identical            8\n  same size            8\n  different            67\n  does not compile     4\n") != std::string::npos);
+});
+
+// What the Python writes for tests/java/fixtures/java (`python -m codebreaker module tests/java/fixtures/java --out DIR`, g++ and a JDK set up, 2026-11-13, 18 s;
+// the files are the same bytes, line ends aside): nine classes, one verified by running it beside the JVM, two weakly, six compiled and not run.
+CB_TEST("source.pipeline.module_of_a_java_program_as_the_python_did", [] {
+    if (!fs::get_env("CB_PIPELINE_SLOW")) return;
+    Surroundings w;
+    const stdfs::path folder = testing::data_path("../../tests/java/fixtures/java");
+    std::error_code ec;
+    if (!stdfs::is_directory(folder, ec) || !java::production::find_java(w.config)) return;
+    fs::ScopedTempDir out("pipeline-java");
+    testing::CapturedStd cap;
+    try {
+        CB_CHECK_EQ(w.cli.run({"module", fs::to_text(folder), "--out", fs::to_text(out.path())}), 0);
+    } catch (const Error&) {   // no host C++ compiler: the Java lane is not set up
+        return;
+    }
+    CB_CHECK(cap.out().find("java: 9 classes -> ") != std::string::npos);
+    CB_CHECK(cap.out().find("(VERIFIED 1, VERIFIED (weak) 2, NOT JUDGED 6)") != std::string::npos);
+    CB_CHECK(fs::read_text(out.path() / "STATUS.md").starts_with("# java -- C++03 transpiled from Java\n\n9 classes: "));
 });
 
 CB_TEST("source.pipeline.proof", [] {
