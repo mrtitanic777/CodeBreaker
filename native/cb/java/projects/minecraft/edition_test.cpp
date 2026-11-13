@@ -137,4 +137,17 @@ CB_TEST("java.minecraft.edition.resolve_unknown_explicit", [] {
     }
 });
 
+// tests/java/test_edition_autodetect.py, the three cases the table above spelled with other classes: the same corpora.
+CB_TEST("java.minecraft.edition.a_beta_world_with_biome_and_region_markers", [] {
+    CB_CHECK_EQ(detected(make_corpus({{"World", "net.minecraft.src"}, {"BiomeGenBase", nullptr}, {"RegionFile", nullptr}})), "beta");
+});
+
+CB_TEST("java.minecraft.edition.the_server_package_makes_a_release", [] {
+    CB_CHECK_EQ(detected(make_corpus({{"MinecraftServer", "net.minecraft.server"}, {"World", nullptr}})), "release");
+});
+
+CB_TEST("java.minecraft.edition.one_unknown_class_is_ambiguous", [] {
+    CB_CHECK_EQ(detected(make_corpus({{"Foo", nullptr}})), "-");
+});
+
 }  // namespace

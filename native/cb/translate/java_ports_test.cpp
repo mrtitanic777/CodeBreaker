@@ -15,7 +15,9 @@
 #include <iostream>
 #include <map>
 #include <regex>
+#include <set>
 
+#include "cb/base/config.hpp"
 #include "cb/core/arena.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/process.hpp"
@@ -28,6 +30,7 @@
 #include "cb/java/frontend.hpp"
 #include "cb/java/init_driver.hpp"
 #include "cb/java/parse.hpp"
+#include "cb/java/probe.hpp"
 #include "cb/java/projects/minecraft/profiles/minecraft_xbox360.hpp"
 #include "cb/verify/lanes/java.hpp"
 
@@ -80,12 +83,14 @@ bool jpo_ready(const char* test) {
 struct JpoConverted {
     std::map<std::string, std::string> cpp;
     std::unique_ptr<fs::ScopedTempDir> out;
+    std::unique_ptr<fs::ScopedTempDir> src;   // the Java files, kept for a run beside the JVM
 };
 
 JpoConverted jpo_convert(const std::map<std::string, std::string>& files, const std::string& edition = "", const std::string& platform = "") {
-    fs::ScopedTempDir src("cb-java-src");
-    for (const auto& [name, text] : files) fs::write_text(src.path() / name, text);
     JpoConverted done;
+    done.src = std::make_unique<fs::ScopedTempDir>("cb-java-src");
+    const fs::ScopedTempDir& src = *done.src;
+    for (const auto& [name, text] : files) fs::write_text(src.path() / name, text);
     done.out = std::make_unique<fs::ScopedTempDir>("cb-java-out");
     java::transpile::Options options;
     options.write_report = false;
@@ -793,4 +798,457 @@ public class Noise {
     std::int32_t peak = 0;
     for (std::size_t i = 44; i + 1 < mix.size(); i += 2) peak = std::max<std::int32_t>(peak, std::abs(static_cast<std::int16_t>(mix[i] | (mix[i + 1] << 8))));
     CB_CHECK(peak > 1000);
+});
+
+// ================================================================================================================================================
+// test_pipeline.py (TestMethodRenameCollision, TestPipeline.test_files_written / test_translation_applied) and test_two_phase.py
+// (test_constructors_become_j2xinit), with the real front end: the Java in, the files out.
+
+// Java allows a field `isRunning` and a method `isRunning(...)`; C++ does not: the method is renamed.
+CB_TEST("java.pipeline.a_method_named_like_a_field_is_renamed_in_the_header", [] {
+    if (!jpo_ready("pipeline")) return;
+    const JpoConverted done = jpo_convert({{"NetworkManager.java",
+                                            "public class NetworkManager {\n public boolean isRunning;\n"
+                                            " public static boolean isRunning(NetworkManager var0) { return var0.isRunning; }\n}\n"}});
+    const std::string h = fs::read_text(done.out->path() / "NetworkManager.h");
+    CB_CHECK(jpo_has(h, "bool isRunning;"));                                          // the field is unchanged
+    CB_CHECK(jpo_has(h, "static bool isRunning_(NetworkManager* var0);"));            // the method is renamed
+});
+
+CB_TEST("java.pipeline.a_class_gives_header_and_source_and_an_interface_only_a_header", [] {
+    if (!jpo_ready("pipeline")) return;
+    const JpoConverted done = jpo_convert({{"Foo.java", "package a;\npublic class Foo {\n    public int x;\n    public Foo(int var1) { this.x = var1; }\n    public int getX() { return this.x; }\n}\n"},
+                                           {"IBar.java", "package a;\npublic interface IBar {\n    void doIt();\n}\n"}});
+    const stdfs::path out = done.out->path();
+    CB_CHECK(stdfs::is_regular_file(out / "Foo.h"));
+    CB_CHECK(stdfs::is_regular_file(out / "Foo.cpp"));
+    CB_CHECK(stdfs::is_regular_file(out / "IBar.h"));
+    CB_CHECK(!stdfs::is_regular_file(out / "IBar.cpp"));
+    // the translation is applied
+    const std::string& cpp = done.cpp.at("Foo");
+    CB_CHECK(jpo_has(cpp, "this->x = var1;"));
+    CB_CHECK(jpo_has(cpp, "int Foo::getX()"));
+});
+
+// test_edition_convert_integration.py: a conversion picks its edition's profile (an explicit one, the corpus's own marks, a version hint) for that
+// conversion only, and says so; nothing conclusive keeps the default. (The Python restored a process-wide active profile afterwards; here the
+// profile is handed down, so there is nothing to restore.)
+namespace {
+
+struct JpoEditionRun {
+    std::vector<std::string> logs;
+    java::transpile::Summary summary;
+    bool logged(std::string_view part) const {
+        return std::ranges::any_of(logs, [&](const std::string& m) { return m.find(part) != std::string::npos; });
+    }
+};
+
+JpoEditionRun jpo_edition(const std::map<std::string, std::string>& files, const std::string& edition, const std::string& version) {
+    fs::ScopedTempDir src("cb-edition-src"), out("cb-edition-out");
+    for (const auto& [name, text] : files) fs::write_text(src.path() / name, text);
+    JpoEditionRun run;
+    java::transpile::Options options;
+    options.write_report = false;
+    options.emit_debug = false;
+    options.edition = edition;
+    options.mc_version = version;
+    options.progress = [&run](std::string_view line) { run.logs.emplace_back(line); };
+    run.summary = jpo_front().assembly->convert(src.path(), out.path(), options);
+    return run;
+}
+
+}  // namespace
+
+CB_TEST("java.edition_convert.an_explicit_edition_is_that_conversions_profile", [] {
+    if (!jpo_ready("edition")) return;
+    const JpoEditionRun run = jpo_edition({{"Level.java", "public class Level { public int x; }"}}, "rubydung", "");
+    CB_CHECK_EQ(run.summary.parsed, std::size_t{1});
+    CB_CHECK_EQ(run.summary.profile, "minecraft_rubydung");
+});
+
+CB_TEST("java.edition_convert.a_beta_corpus_is_detected", [] {
+    if (!jpo_ready("edition")) return;
+    const JpoEditionRun run = jpo_edition({{"World.java", "package net.minecraft.src;\npublic class World { public int x; }"},
+                                           {"BiomeGenBase.java", "package net.minecraft.src;\npublic class BiomeGenBase { public int id; }"}}, "", "");
+    CB_CHECK(run.logged("active target profile: minecraft_beta"));
+    CB_CHECK_EQ(run.summary.profile, "minecraft_beta");
+});
+
+CB_TEST("java.edition_convert.nothing_conclusive_keeps_the_default", [] {
+    if (!jpo_ready("edition")) return;
+    const JpoEditionRun run = jpo_edition({{"Foo.java", "public class Foo { public int x; }"}}, "", "");
+    CB_CHECK(!run.logged("active target profile"));
+});
+
+CB_TEST("java.edition_convert.a_version_hint_selects_the_edition", [] {
+    if (!jpo_ready("edition")) return;
+    const JpoEditionRun run = jpo_edition({{"Foo.java", "public class Foo { public int x; }"}}, "", "a1.2.6");
+    CB_CHECK(run.logged("active target profile: minecraft_alpha"));
+    CB_CHECK_EQ(run.summary.profile, "minecraft_alpha");
+});
+
+// A class whose constructor calls an overridable method is built in two phases: a field-zeroing C() and a j2xInit(...) per Java constructor.
+CB_TEST("java.twophase.the_constructors_become_j2xinit", [] {
+    if (!jpo_ready("two-phase")) return;
+    const JpoConverted done = jpo_convert({
+        {"Block.java",
+         "public class Block {\n\tpublic static final boolean[] opaque = new boolean[16];\n\tpublic final int blockID;\n\tpublic int light = 3;\n\n"
+         "\tprotected Block(int var1) {\n\t\tthis.blockID = var1;\n\t\topaque[var1] = this.isOpaqueCube();\n\t\tthis.light = this.lightValue() + this.light;\n\t}\n\n"
+         "\tprotected Block(int var1, int var2) {\n\t\tthis(var1);\n\t\tthis.light += var2;\n\t}\n\n"
+         "\tpublic boolean isOpaqueCube() {\n\t\treturn true;\n\t}\n\n\tpublic int lightValue() {\n\t\treturn 0;\n\t}\n\n"
+         "\tpublic static boolean opaqueAt(int var0) {\n\t\treturn opaque[var0 & 15];\n\t}\n\n"
+         "\tpublic static int glassLight(int var0) {\n\t\treturn new BlockGlass(var0 & 15).light;\n\t}\n\n"
+         "\tpublic static boolean glassOpaque(int var0) {\n\t\tnew BlockGlass(var0 & 15);\n\t\treturn opaque[var0 & 15];\n\t}\n}\n"},
+        {"BlockGlass.java",
+         "public class BlockGlass extends Block {\n\tpublic int extra = 5;\n\n\tpublic BlockGlass(int var1) {\n\t\tsuper(var1, 2);\n\t\tthis.extra += var1;\n\t}\n\n"
+         "\tpublic boolean isOpaqueCube() {\n\t\treturn false;\n\t}\n\n\tpublic int lightValue() {\n\t\treturn this.extra + 10;\n\t}\n}\n"},
+        {"Plain.java", "public class Plain {\n\tpublic int v;\n\n\tpublic Plain(int var1) {\n\t\tthis.v = var1;\n\t}\n\n\tpublic int get() {\n\t\treturn this.v;\n\t}\n}\n"},
+    });
+    const std::string h = fs::read_text(done.out->path() / "BlockGlass.h");
+    CB_CHECK(jpo_has(h, "BlockGlass();") && jpo_has(h, "BlockGlass* j2xInit(int var1);"));
+    const std::string& cpp = done.cpp.at("BlockGlass");
+    CB_CHECK(jpo_has(cpp, "Block::j2xInit(var1, 2);") && jpo_has(cpp, "return this;"));
+    const std::string& block = done.cpp.at("Block");
+    CB_CHECK(jpo_has(block, "Block::j2xInit(var1);"));              // this(var1)
+    CB_CHECK(jpo_has(block, "(new BlockGlass())->j2xInit("));
+    CB_CHECK(jpo_has(done.cpp.at("Plain"), "Plain::Plain(int var1)"));   // a class without the virtual call keeps its constructors
+});
+
+// ================================================================================================================================================
+// The "beside the JVM" tests of tests/java (test_bytes, test_finally, test_java_semantics, test_null_model, test_strings_regex, test_probe,
+// test_probe_objects, test_two_phase, test_probe_sequence, test_input_io, test_probe_libraries): the Java program is converted by the
+// application's assembly (real front end), then every method of a class runs in the JVM and in the converted C++ on the same inputs and the
+// results are compared -- the same programs, the same classes and methods wanted, the same "no difference" expectation. They need javac, a JVM and
+// g++, and say so and pass without them (as the Python skipped).
+
+namespace jprobe = cb::java::probe;
+
+namespace {
+
+std::optional<jprobe::Toolchain> jpb_tools(bool with_libraries) {
+    if (!jpo_front().ready || !jpo_tool_runs("g++", "--version")) return std::nullopt;
+    jprobe::Toolchain tools;
+    tools.cxx = "g++";
+    tools.java = jpo_front().tools.java;
+    tools.javac = jpo_front().tools.javac;
+    if (with_libraries) {
+        try {
+            const config::Config settings = config::Config::load(testing::data_path("../.."));
+            const std::string libs = settings.text("java_libs");
+            if (!libs.empty()) tools.libraries = jprobe::list_libraries(fs::from_text(libs));
+        } catch (const std::exception&) {
+        }
+    }
+    return tools;
+}
+
+struct JpbRun {
+    JpoConverted converted;
+    std::unique_ptr<fs::ScopedTempDir> work;
+    jprobe::RunResult result;
+    std::string what_differs() const {
+        std::string text;
+        for (std::size_t i = 0; i < result.differs.size() && i < 4; ++i)
+            text += result.differs[i].method + "(" + text::join(result.differs[i].inputs, ",") + "): java " + result.differs[i].java + " / native " + result.differs[i].native + "; ";
+        return text;
+    }
+};
+
+// Convert `files`, then run the class `cls` beside the JVM.
+JpbRun jpb_run(const jprobe::Toolchain& tools, const std::map<std::string, std::string>& files, const std::string& cls) {
+    JpbRun run;
+    run.converted = jpo_convert(files);
+    run.work = std::make_unique<fs::ScopedTempDir>("cb-java-probe");
+    const stdfs::path staged = jprobe::stage_sources(run.converted.src->path(), run.work->path() / "javasrc");
+    const jprobe::SourceTree tree(staged);
+    const jir::JClass* parsed = tree.lookup(cls);
+    CB_CHECK(parsed != nullptr);
+    if (parsed == nullptr) return run;
+    run.result = jprobe::run(tree, run.converted.out->path(), *parsed, run.work->path() / "work", tools);
+    return run;
+}
+
+bool jpb_has_method(const jprobe::RunResult& r, std::string_view name) { return std::ranges::find(r.methods, name) != r.methods.end(); }
+
+constexpr const char* kJpbPacket =
+    "public class Packet {\n\tpublic int entityId;\n\tpublic byte type;\n\tpublic byte yaw;\n\n\tpublic Packet() {\n\t}\n\n"
+    "\tpublic String describe() {\n\t\treturn \"type \" + this.type + \", yaw \" + this.yaw;\n\t}\n\n"
+    "\tpublic static String show(int var0) {\n\t\tbyte var1 = (byte)var0;\n\t\treturn \"\" + var1;\n\t}\n}\n";
+
+}  // namespace
+
+// test_bytes.py: every constructor zeroes byte fields as Java does (they were garbage on a fresh packet).
+CB_TEST("java.beside_the_jvm.a_constructor_zeroes_the_byte_fields", [] {
+    if (!jpo_ready("beside-the-jvm")) return;
+    const JpoConverted done = jpo_convert({{"Packet.java", kJpbPacket}});
+    const std::string& cpp = done.cpp.at("Packet");
+    const std::size_t at = cpp.find("Packet::Packet()");
+    CB_CHECK(at != std::string::npos);
+    const std::string ctor = cpp.substr(at, cpp.find('{', at) - at);
+    CB_CHECK(jpo_has(ctor, "type(0)") && jpo_has(ctor, "yaw(0)") && jpo_has(ctor, "entityId(0)"));
+});
+
+CB_TEST("java.beside_the_jvm.bytes", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    const JpbRun run = jpb_run(*tools, {{"Packet.java", kJpbPacket}}, "Packet");
+    CB_CHECK(jpb_has_method(run.result, "describe") && jpb_has_method(run.result, "show"));
+    CB_CHECK(run.result.differs.empty());
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
+});
+
+// test_finally.py: a `finally` body runs before every return that leaves its try.
+CB_TEST("java.beside_the_jvm.the_finally_counter_comes_back_down", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    const JpbRun run = jpb_run(*tools, {{"Lighting.java",
+        "public class Lighting {\n\tstatic int depth;\n\n\tstatic boolean step(int var0) {\n\t\t++depth;\n\t\ttry {\n\t\t\tif(var0 > 0) {\n\t\t\t\treturn true;\n\t\t\t}\n"
+        "\t\t\treturn false;\n\t\t} finally {\n\t\t\t--depth;\n\t\t}\n\t}\n\n\tpublic static int run(int var0) {\n\t\tfor(int var1 = 0; var1 < var0; ++var1) {\n"
+        "\t\t\tstep(var1);\n\t\t}\n\t\treturn depth;\n\t}\n}\n"}}, "Lighting");
+    CB_CHECK(jpb_has_method(run.result, "run") && run.result.cases > 0);
+    CB_CHECK(run.result.differs.empty());   // depth is 0 after any number of calls
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
+});
+
+// test_java_semantics.py: an empty array is not null, a null dereference in a try reaches its handler, Java's char is unsigned.
+namespace {
+
+const std::map<std::string, std::string> kJpbSemantics = {
+    {"Nibbles.java", "public class Nibbles {\n\tprivate byte[] data;\n\n\tpublic Nibbles(int var1) {\n\t\tthis.data = new byte[var1 >> 1];\n\t}\n\n"
+                     "\tpublic boolean isValid() {\n\t\treturn this.data != null;\n\t}\n\n\tpublic int size() {\n\t\treturn this.data.length;\n\t}\n}\n"},
+    {"Loader.java", "public class Loader {\n\tstatic int[] buffer = new int[4];\n\tstatic int failures;\n\tLoader next;\n\n\tstatic Loader find(int var0) {\n\t\treturn null;\n\t}\n\n"
+                    "\tpublic static int load(int var0) {\n\t\ttry {\n\t\t\tLoader var1 = find(var0);\n\t\t\tvar1.touch();\n\t\t\treturn 1;\n\t\t} catch (Exception var2) {\n"
+                    "\t\t\t++failures;\n\t\t\treturn -1;\n\t\t}\n\t}\n\n\tpublic static int guarded(int var0) {\n\t\ttry {\n\t\t\tLoader var1 = find(var0);\n"
+                    "\t\t\tif(var1 != null && var1.next != null) {\n\t\t\t\treturn 2;\n\t\t\t}\n\t\t\treturn 3;\n\t\t} catch (Exception var2) {\n\t\t\treturn -1;\n\t\t}\n\t}\n\n\tvoid touch() {\n\t}\n}\n"},
+    {"Chars.java", "public class Chars {\n\tpublic static int code(int var0) {\n\t\tchar var1 = (char)var0;\n\t\treturn var1 + 0;\n\t}\n\n"
+                   "\tpublic static boolean high(int var0) {\n\t\tchar var1 = (char)var0;\n\t\treturn var1 > 127;\n\t}\n}\n"},
+};
+
+}  // namespace
+
+CB_TEST("java.beside_the_jvm.char_is_unsigned_in_the_emitted_code", [] {
+    if (!jpo_ready("beside-the-jvm")) return;
+    const JpoConverted done = jpo_convert(kJpbSemantics);
+    CB_CHECK(jpo_has(done.cpp.at("Chars"), "unsigned char var1 = (unsigned char)var0;"));
+});
+
+CB_TEST("java.beside_the_jvm.empty_arrays_null_handlers_and_unsigned_chars", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    struct Row {
+        const char* name;
+        std::vector<std::string> methods;
+    };
+    for (const Row& row : {Row{"Nibbles", {"isValid", "size"}}, Row{"Loader", {"guarded", "load"}}, Row{"Chars", {"code", "high"}}}) {
+        const JpbRun run = jpb_run(*tools, kJpbSemantics, row.name);
+        std::vector<std::string> methods = run.result.methods;
+        std::ranges::sort(methods);
+        CB_CHECK(methods == row.methods);
+        CB_CHECK_EQ(run.result.judged, row.methods.size());
+        if (std::string_view(row.name) == "Chars") {
+            // unsigned 8-bit: every char of 0-255 agrees with Java; one past that cannot be held (strings are 8-bit)
+            CB_CHECK(!run.result.differs.empty());
+            for (const jprobe::Difference& d : run.result.differs) {
+                const long value = d.inputs.empty() ? 0 : std::stol(d.inputs[0]);
+                CB_CHECK(!(0 <= value && value <= 255));
+            }
+        } else {
+            CB_CHECK(run.result.differs.empty());
+            if (!run.result.differs.empty()) std::cerr << row.name << ": " << run.what_differs() << "\n";
+        }
+    }
+});
+
+// test_null_model.py: a String, List, Map or Set carries a null state of its own.
+CB_TEST("java.beside_the_jvm.null_strings_lists_maps_and_sets", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    const JpbRun run = jpb_run(*tools, {{"Nulls.java",
+        "import java.util.ArrayList;\nimport java.util.HashMap;\nimport java.util.HashSet;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Set;\n\n"
+        "public class Nulls {\n\tpublic String value;\n\tprivate Map byName = new HashMap();\n\n\tpublic Nulls() {\n\t}\n\n"
+        "\tpublic Nulls(String var1) {\n\t\tthis.value = var1;\n\t\tif(var1 == null) {\n\t\t\tthrow new IllegalArgumentException(\"Empty string not allowed\");\n\t\t}\n\t}\n\n"
+        "\tpublic String toString() {\n\t\treturn \"\" + this.value;\n\t}\n\n"
+        "\tpublic static boolean emptyIsNotNull(int var0) {\n\t\tString var1 = var0 > 0 ? \"\" : null;\n\t\treturn var1 == null;\n\t}\n\n"
+        "\tpublic static int emptySaved(int var0) {\n\t\tString[] var1 = new String[]{\"\", \"\", \"\", \"\"};\n\t\treturn new Nulls(var1[var0 & 3]).toString().length();\n\t}\n\n"
+        "\tpublic static String unset(int var0) {\n\t\tNulls var1 = new Nulls();\n\t\treturn var1.toString() + var0;\n\t}\n\n"
+        "\tpublic static boolean slotIsNull(int var0) {\n\t\tString[] var1 = new String[4];\n\t\treturn var1[var0 & 3] == null;\n\t}\n\n"
+        "\tpublic int lookup(int var1) {\n\t\tif(var1 > 0) {\n\t\t\tthis.byName.put(\"a\", new ArrayList());\n\t\t}\n\t\tList var2 = (List)this.byName.get(\"a\");\n\t\treturn var2 == null ? -1 : var2.size();\n\t}\n\n"
+        "\tpublic static boolean nullMap(int var0) {\n\t\tMap var1 = var0 > 0 ? new HashMap() : null;\n\t\treturn var1 == null;\n\t}\n\n"
+        "\tpublic static boolean nullSet(int var0) {\n\t\tSet var1 = var0 > 0 ? new HashSet() : null;\n\t\treturn var1 == null;\n\t}\n\n"
+        "\tpublic int nested(int var1) {\n\t\tif(var1 > 0) {\n\t\t\tthis.byName.put(\"m\", new HashMap());\n\t\t}\n\t\tMap var2 = (Map)this.byName.get(\"m\");\n\t\treturn var2 == null ? -1 : var2.size();\n\t}\n\n"
+        "\tpublic static boolean nullList(int var0) {\n\t\tList var1 = var0 > 0 ? new ArrayList() : null;\n\t\treturn var1 == null;\n\t}\n}\n"}}, "Nulls");
+    for (const char* wanted : {"emptyIsNotNull", "emptySaved", "unset", "slotIsNull", "lookup", "nullList", "nullMap", "nullSet", "nested"}) CB_CHECK(jpb_has_method(run.result, wanted));
+    CB_CHECK(run.result.differs.empty());
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
+});
+
+// test_strings_regex.py: the string and regex runtime (Pattern/Matcher, replaceAll, split, compareTo, hashCode, MD5).
+CB_TEST("java.beside_the_jvm.strings_and_regular_expressions", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    const JpbRun run = jpb_run(*tools, {{"Texts.java",
+        "import java.math.BigInteger;\nimport java.security.MessageDigest;\nimport java.util.regex.Matcher;\nimport java.util.regex.Pattern;\n\n"
+        "public class Texts {\n"
+        "\tprivate static final Pattern NUMBER = Pattern.compile(\"(-?)(0|([1-9]([0-9]*)))(\\\\.[0-9]+)?((e|E)(\\\\+|-)?[0-9]+)?\");\n"
+        "\tprivate static final Pattern CHUNK = Pattern.compile(\"c\\\\.(-?[0-9a-z]+)\\\\.(-?[0-9a-z]+)\\\\.dat\");\n\n"
+        "\tpublic static boolean isNumber(String var0) {\n\t\treturn NUMBER.matcher(var0).matches();\n\t}\n\n"
+        "\tpublic static String chunk(String var0) {\n\t\tMatcher var1 = CHUNK.matcher(\"c.\" + var0 + \".dat\");\n\t\treturn var1.matches() ? var1.group(1) + \"|\" + var1.group(2) : \"none\";\n\t}\n\n"
+        "\tpublic static String dots(String var0) {\n\t\treturn var0.replaceAll(\"/\", \".\") + var0.replaceAll(\"[aeiou]+\", \"<$0>\");\n\t}\n\n"
+        "\tpublic static int pieces(String var0) {\n\t\treturn var0.split(\":\").length * 100 + var0.split(\" \").length;\n\t}\n\n"
+        "\tpublic static int compare(String var0, String var1) {\n\t\treturn var0.compareTo(var1);\n\t}\n\n"
+        "\tpublic static int hash(String var0) {\n\t\treturn (\"\\u00a7c\" + var0).hashCode();\n\t}\n\n"
+        "\tpublic static String md5(int var0) throws Exception {\n\t\tString var2 = \"MD5String\" + var0;\n\t\tMessageDigest var1 = MessageDigest.getInstance(\"MD5\");\n"
+        "\t\tvar1.update(var2.getBytes(), 0, var2.length());\n\t\treturn (new BigInteger(1, var1.digest())).toString(16);\n\t}\n}\n"}}, "Texts");
+    for (const char* wanted : {"isNumber", "chunk", "dots", "pieces", "compare", "hash", "md5"}) CB_CHECK(jpb_has_method(run.result, wanted));
+    CB_CHECK_EQ(run.result.judged, run.result.methods.size());
+    CB_CHECK(run.result.differs.empty());
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
+});
+
+// test_probe.py: primitives in and out (a static table built with Math.PI), and a result Java does not repeat is left out.
+CB_TEST("java.beside_the_jvm.methods_with_primitives_and_a_char_that_cannot_be_held", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    const JpbRun run = jpb_run(*tools, {{"Calc.java",
+        "package demo;\n\npublic class Calc {\n\tprivate static float[] TABLE = new float[256];\n\n"
+        "\tpublic static int clamp(int var0, int var1) {\n\t\treturn var0 < 0 ? 0 : (var0 > var1 ? var1 : var0);\n\t}\n\n"
+        "\tpublic static float wave(float var0) {\n\t\treturn TABLE[(int)(var0 * 40.743664F) & 255];\n\t}\n\n"
+        "\tstatic double half(double var0) {\n\t\treturn var0 / 2.0D;\n\t}\n\n"
+        "\tpublic static long mix(long var0, int var2) {\n\t\treturn var0 * 31L + (long)var2;\n\t}\n\n"
+        "\tpublic static int widen(int var0) {\n\t\treturn (char)var0;\n\t}\n\n"
+        "\tpublic int notStatic(int var1) {\n\t\treturn var1;\n\t}\n\n"
+        "\tstatic {\n\t\tfor(int var0 = 0; var0 < 256; ++var0) {\n\t\t\tTABLE[var0] = (float)Math.sin((double)var0 * Math.PI * 2.0D / 256.0D);\n\t\t}\n\t}\n}\n"}}, "Calc");
+    std::vector<std::string> methods = run.result.methods;
+    std::ranges::sort(methods);
+    CB_CHECK(methods == (std::vector<std::string>{"clamp", "half", "mix", "notStatic", "wave", "widen"}));
+    CB_CHECK(run.result.judged == 6 && run.result.total == 6 && run.result.cases > 50);
+    std::set<std::string> differing;
+    std::vector<std::string> widen_inputs;
+    for (const jprobe::Difference& d : run.result.differs) {
+        differing.insert(d.method);
+        if (d.method == "widen" && !d.inputs.empty()) widen_inputs.push_back(d.inputs[0]);
+    }
+    for (const char* agrees : {"wave", "clamp", "mix", "half"}) CB_CHECK(!differing.contains(agrees));   // wave is equal because PI is the double Java uses
+    // Java's char is 16 bits and unsigned; here it is unsigned char: (char)255 agrees, (char)65535 cannot
+    CB_CHECK(std::ranges::find(widen_inputs, "255") == widen_inputs.end());
+    CB_CHECK(std::ranges::find(widen_inputs, "65535") != widen_inputs.end());
+});
+
+CB_TEST("java.beside_the_jvm.a_result_java_does_not_repeat_is_left_out", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    // an unseeded Random (seeded from the time and a counter): not the clock itself, which is left out before this check
+    const JpbRun run = jpb_run(*tools, {{"Dice.java",
+        "import java.util.Random;\n\npublic class Dice {\n\tpublic static int roll(int var0) {\n\t\treturn (new Random()).nextInt(1000000) + var0 * 0;\n\t}\n\n"
+        "\tpublic static int twice(int var0) {\n\t\treturn var0 * 2;\n\t}\n}\n"}}, "Dice");
+    CB_CHECK(run.result.unsteady > 0 && run.result.differs.empty());   // roll is left out, twice agrees
+    CB_CHECK_EQ(run.result.judged, std::size_t{1});
+});
+
+// test_probe_objects.py: Strings in and out, objects made as arguments (by a static factory) and compared by their fields, a void method by its object
+// afterwards, a double printed as Java prints it.
+CB_TEST("java.beside_the_jvm.strings_objects_and_number_text", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    const JpbRun run = jpb_run(*tools, {{"Point.java",
+        "package geo;\n\npublic class Point {\n\tpublic double x;\n\tpublic double y;\n\tString label = \"p\";\n\n"
+        "\tprivate Point(double var1, double var3) {\n\t\tthis.x = var1;\n\t\tthis.y = var3;\n\t}\n\n"
+        "\tpublic static Point of(double var0, double var2) {\n\t\treturn new Point(var0, var2);\n\t}\n\n"
+        "\tpublic Point add(Point var1) {\n\t\treturn new Point(this.x + var1.x, this.y + var1.y);\n\t}\n\n"
+        "\tpublic void scale(double var1) {\n\t\tthis.x *= var1;\n\t\tthis.y *= var1;\n\t}\n\n"
+        "\tpublic String toString() {\n\t\treturn \"(\" + this.x + \", \" + this.y + \")\";\n\t}\n\n"
+        "\tpublic String named(String var1) {\n\t\treturn var1.toUpperCase() + \":\" + this.x;\n\t}\n\n"
+        "\tpublic static int length(String var0) {\n\t\treturn var0.length();\n\t}\n}\n"}}, "Point");
+    for (const char* wanted : {"add", "scale", "toString", "named", "length"}) CB_CHECK(jpb_has_method(run.result, wanted));
+    CB_CHECK(run.result.differs.empty());   // toString prints doubles: "(0.0, 1000000.0)" in Java, once "(0, 1e+06)" here
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
+    CB_CHECK(run.result.judged >= 6);
+});
+
+// test_two_phase.py test_block_opacity_beside_the_jvm and test_probe_sequence.py: a transparent block is not opaque; a case left out leaves no state.
+CB_TEST("java.beside_the_jvm.a_glass_block_is_not_opaque", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    const std::map<std::string, std::string> files = {
+        {"Block.java",
+         "public class Block {\n\tpublic static final boolean[] opaque = new boolean[16];\n\tpublic final int blockID;\n\tpublic int light = 3;\n\n"
+         "\tprotected Block(int var1) {\n\t\tthis.blockID = var1;\n\t\topaque[var1] = this.isOpaqueCube();\n\t\tthis.light = this.lightValue() + this.light;\n\t}\n\n"
+         "\tprotected Block(int var1, int var2) {\n\t\tthis(var1);\n\t\tthis.light += var2;\n\t}\n\n"
+         "\tpublic boolean isOpaqueCube() {\n\t\treturn true;\n\t}\n\n\tpublic int lightValue() {\n\t\treturn 0;\n\t}\n\n"
+         "\tpublic static boolean opaqueAt(int var0) {\n\t\treturn opaque[var0 & 15];\n\t}\n\n"
+         "\tpublic static int glassLight(int var0) {\n\t\treturn new BlockGlass(var0 & 15).light;\n\t}\n\n"
+         "\tpublic static boolean glassOpaque(int var0) {\n\t\tnew BlockGlass(var0 & 15);\n\t\treturn opaque[var0 & 15];\n\t}\n}\n"},
+        {"BlockGlass.java",
+         "public class BlockGlass extends Block {\n\tpublic int extra = 5;\n\n\tpublic BlockGlass(int var1) {\n\t\tsuper(var1, 2);\n\t\tthis.extra += var1;\n\t}\n\n"
+         "\tpublic boolean isOpaqueCube() {\n\t\treturn false;\n\t}\n\n\tpublic int lightValue() {\n\t\treturn this.extra + 10;\n\t}\n}\n"},
+        {"Plain.java", "public class Plain {\n\tpublic int v;\n\n\tpublic Plain(int var1) {\n\t\tthis.v = var1;\n\t}\n\n\tpublic int get() {\n\t\treturn this.v;\n\t}\n}\n"},
+    };
+    const JpbRun run = jpb_run(*tools, files, "Block");
+    CB_CHECK(jpb_has_method(run.result, "glassLight") && jpb_has_method(run.result, "glassOpaque"));
+    CB_CHECK(run.result.differs.empty());
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
+});
+
+CB_TEST("java.beside_the_jvm.cases_left_out_leave_no_state_behind", [] {
+    const auto tools = jpb_tools(false);
+    if (!tools) return;
+    // a case that threw in Java was left out of the C++ run but had already changed static state; and `new Reg(x);` once became `delete new Reg(x);`
+    const JpbRun run = jpb_run(*tools, {{"Reg.java",
+        "public class Reg {\n\tpublic static Reg[] list = new Reg[8];\n\tpublic int id;\n\n\tpublic Reg(int var1) {\n\t\tlist[var1 & 7] = this;\n\t\tthis.id = var1;\n"
+        "\t\tif(var1 < 0) {\n\t\t\tthrow new IllegalArgumentException(\"negative\");\n\t\t}\n\t}\n\n"
+        "\tpublic static int make(int var0) {\n\t\tnew Reg(var0);\n\t\treturn var0;\n\t}\n\n"
+        "\tpublic static int peek(int var0) {\n\t\treturn list[var0 & 7].id;\n\t}\n}\n"}}, "Reg");
+    CB_CHECK(jpb_has_method(run.result, "make") && jpb_has_method(run.result, "peek"));
+    CB_CHECK_EQ(run.result.judged, std::size_t{2});
+    CB_CHECK(run.result.differs.empty());
+    if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
+});
+
+// test_input_io.py: needs LWJGL in the settings' java_libs (as the Python did).
+CB_TEST("java.beside_the_jvm.keyboard_names_and_a_missing_resource", [] {
+    const auto tools = jpb_tools(true);
+    if (!tools) return;
+    const bool lwjgl = std::ranges::any_of(tools->libraries, [](const stdfs::path& jar) { return fs::to_text(jar.filename()).find("lwjgl-") != std::string::npos; });
+    if (!lwjgl) {
+        std::cerr << "beside-the-jvm: no LWJGL in java_libs; skipped\n";
+        return;
+    }
+    const JpbRun run = jpb_run(*tools, {{"Inputs.java",
+        "import java.io.BufferedReader;\nimport java.io.InputStreamReader;\nimport org.lwjgl.input.Keyboard;\n\npublic class Inputs {\n"
+        "\tpublic static String binding(int var0) {\n\t\treturn \"Forward: \" + Keyboard.getKeyName(var0 & 255);\n\t}\n\n"
+        "\tpublic static int index(int var0) {\n\t\tString var1 = Keyboard.getKeyName(var0 & 255);\n\t\treturn var1 == null ? -1 : Keyboard.getKeyIndex(var1);\n\t}\n\n"
+        "\tpublic static String splash(int var0) {\n\t\tString var1 = \"missingno\";\n\t\ttry {\n"
+        "\t\t\tBufferedReader var2 = new BufferedReader(new InputStreamReader(Inputs.class.getResourceAsStream(\"/title/none\" + var0 + \".txt\")));\n"
+        "\t\t\tvar1 = var2.readLine();\n\t\t} catch (Exception var3) {\n\t\t}\n\t\treturn var1;\n\t}\n}\n"}}, "Inputs");
+    for (const char* wanted : {"binding", "index", "splash"}) CB_CHECK(jpb_has_method(run.result, wanted));
+    CB_CHECK_EQ(run.result.judged, std::size_t{3});
+    CB_CHECK(run.result.differs.empty());
+});
+
+// test_probe_libraries.py: the stand-in for Minecraft's own build of the sound codec lets CodecMus compile against the sound-system jar.
+CB_TEST("java.beside_the_jvm.codec_mus_compiles_against_the_stand_in", [] {
+    const auto tools = jpb_tools(true);
+    if (!tools) return;
+    const bool sound = std::ranges::any_of(tools->libraries, [](const stdfs::path& jar) { return fs::to_text(jar.filename()).find("soundsystem") != std::string::npos; });
+    if (!sound) {
+        std::cerr << "beside-the-jvm: no sound system in java_libs; skipped\n";
+        return;
+    }
+    jprobe::Toolchain with_shims = *tools;
+    with_shims.shim_sources = java::JavaData(testing::data_path("../../codebreaker/java")).path({"probe_shims"});
+    fs::ScopedTempDir work("cb-java-shims");
+    const auto shims = jprobe::compile_shims(work.path(), with_shims);
+    CB_CHECK(shims.has_value());
+    if (!shims) return;
+    CB_CHECK(stdfs::is_regular_file(*shims / "paulscode" / "sound" / "codecs" / "CodecJOrbis.class"));
+    const stdfs::path src = work.path() / "src" / "net" / "minecraft" / "src";
+    fs::write_text(src / "CodecMus.java",
+                   "package net.minecraft.src;\n\nimport java.io.IOException;\nimport java.io.InputStream;\nimport paulscode.sound.codecs.CodecJOrbis;\n\n"
+                   "public class CodecMus extends CodecJOrbis {\n\tprotected InputStream openInputStream() throws IOException {\n\t\treturn this.urlConnection.getInputStream();\n\t}\n}\n");
+    std::string classpath = fs::to_text(*shims);
+    for (const stdfs::path& jar : tools->libraries) classpath += ";" + fs::to_text(jar);
+    process::ProcessSpec spec;
+    spec.argv = {fs::to_text(tools->javac), "-cp", classpath, "-d", fs::to_text(work.path() / "out"), fs::to_text(src / "CodecMus.java")};
+    const process::ProcessResult r = process::run(spec);
+    CB_CHECK(r.ok());
 });
