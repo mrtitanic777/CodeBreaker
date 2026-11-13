@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+public: int __thiscall Widget::Run(char const *,int)
+--- files
+--- stderr (not compared)

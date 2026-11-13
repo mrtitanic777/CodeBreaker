@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+setver.exe: 0 of 0 functions are a runtime library's
+built with: Microsoft C (linker ?)
+    the text 'MS Run-Time Library'
+--- files
+--- stderr (not compared)

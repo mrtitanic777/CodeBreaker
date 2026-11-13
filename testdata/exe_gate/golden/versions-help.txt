@@ -1,0 +1,32 @@
+exit: 0
+--- stdout
+usage: codebreaker versions [options] [<files>...]
+
+match the functions of two builds: identical, changed, added, removed
+
+codebreaker versions <module> --from CORPUS --to CORPUS [--json FILE] [--carry]
+codebreaker versions <fileA> <fileB> [--json FILE] [--carry]
+codebreaker versions --all --from CORPUS --to CORPUS [--sample N] [--jobs N] [--json FILE]
+codebreaker versions --shared <program> <program> ... [--level text|shape|bytes] [--json FILE]
+
+Match the functions of two builds of a module and say which are identical, changed, added
+and removed; with --all, do it for every module of a product and total it; with --shared,
+list the functions several different programs have in common.
+
+arguments:
+  files...  a module name (with --from and --to), two files, or the programs of --shared
+
+options:
+      --from CORPUS  the product of the old build
+      --to CORPUS    the product of the new build
+      --json FILE    write the document here
+      --least N      how alike two functions must be to be paired (default: 0.6)
+      --sample N     with --all: this many modules, evenly spread
+      --jobs N       with --all: modules compared at once
+      --level LEVEL  with --shared: bytes, text or shape (default: text)
+      --all          every module of the product
+      --shared       the functions the programs share
+      --carry        file the carried reconstructions and names in the store
+  -h, --help         show this help
+--- files
+--- stderr (not compared)

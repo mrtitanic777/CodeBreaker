@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+SegoeXbox-Light.xtt                          5323
+xenonclatin.xtt                              5272
+xenonjklatin.xtt                             5289
+3 files -> <work>/out
+--- files
+SegoeXbox-Light.xtt 5323 50a7ce65f02067c0586f52ec08107f1816b682b17ef14002724acda86baecbaf
+xenonclatin.xtt 5272 8aca883a99850da290c04fdd7dc7fb6edd094c2d00f1f6a744d5d3f24c69577d
+xenonjklatin.xtt 5289 44ba6b6209dd77c383864761541033ff12b16ddd83ed619c6c9a17cc744217c8
+--- stderr (not compared)

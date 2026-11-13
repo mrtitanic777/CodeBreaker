@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+control      equivalent     [paths=7,paths-all]  18 instructions of the original ran
+service_0    equivalent     [paths=1,paths-all]  3 instructions of the original ran
+service_1    equivalent     [calls-capped,truncated,paths=7]  92 instructions of the original ran
+service_2    equivalent     [calls-capped,truncated,paths=5]  76 instructions of the original ran
+service_3    equivalent     [paths=3,paths-all]  14 instructions of the original ran
+service_4    equivalent     [paths=1,paths-all]  28 instructions of the original ran
+splitter.vxd vs splitter.vxd: equivalent 6
+--- files
+--- stderr (not compared)

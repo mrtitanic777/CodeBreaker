@@ -1,0 +1,13 @@
+exit: 0
+--- stdout
+choice.com: 1062 instructions, 10 (0%) written as bytes; 2809 bytes of data; 1 round; builds back THE SAME
+  source: <work>/out/choice.asm
+--- files
+choice.asm 45263 b12f73e475d4cdbdfa20f9a152e2a538ad7e0a87de8e8bd8526ed53a81653842
+choice.build.json 93 a70b104f212ec92f24bdbc09e5685fc0a42937868966ef7c06b41836f5f2f737
+choice.com 5175 90905c80ad0ebb995ed42ec0b19672ec25a319f0fb400d697e87215f7002aec2
+choice.lnk 86 384e915f0b9b0a903ad867dfc0c283441db48e4f185085d93e50ecc81353483c
+choice.obj 5788 (size only)
+probe.asm 17386 8e2fe9e08343d31d2fe2ebac200e802c505a754c81c86146338a1fd4ec2c9da7
+probe.obj 4096 (size only)
+--- stderr (not compared)

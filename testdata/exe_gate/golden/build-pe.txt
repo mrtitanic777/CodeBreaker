@@ -1,0 +1,18 @@
+exit: 0
+--- stdout
+lz32.dll: linked, 6144 bytes (the original is 5632: 109%)
+  functions   39 in the module, 39 with reconstructed C, 39 compiled, 0 rejected by the compiler (stand-ins)
+              2 called but not reconstructed (stand-ins), 0 left unresolved
+  data        512 bytes as C, 0 pointers written as pointers, 2 left as numbers, 2 addresses used by the code not placed
+  entry       sub_001000, the function at the original's entry point
+  format      same as the original
+  exports     12 of 12 with the original's ordinal and name (0 of them point at stand-ins)
+  imports     15 (the original has 17); all are the original's
+  resources   1 of 1 the same in the image (0 identical, 1 equivalent); written as text 1, image files 0, opaque payload 0, fallback payload 0
+  runs        12 exported functions called with zero arguments: 12 returned, 11 did what the original does (same end, same result)
+  image      <work>/out/lz32.dll
+lz32.dll: decompiling
+lz32.dll: compiling 39 functions, data and resources
+--- files
+lz32.dll 6144 (size only)
+--- stderr (not compared)

@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+lz32.dll: 41 functions, conventions <~>, strings <~>; report in <work>/state/analyze/lz32.dll.txt
+--- files
+--- stderr (not compared)

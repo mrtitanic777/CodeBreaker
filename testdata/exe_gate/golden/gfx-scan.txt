@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+GFX at $21  menu_main                    3 images, 2 fonts
+CFX at $239  engine_id                    1 images, 0 fonts
+GFX at $281  CFX                          1 images, 1 fonts
+--- files
+--- stderr (not compared)

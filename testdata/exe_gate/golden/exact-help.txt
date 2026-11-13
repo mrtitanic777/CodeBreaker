@@ -1,0 +1,22 @@
+exit: 2
+--- stdout
+exact: a compiled program rebuilt byte for byte from its source (docs/EXACT.md).
+
+    codebreaker exact PROJECT STAGE [options]
+    codebreaker exact --toolchains             the toolchain profiles there are
+    codebreaker exact --compile PROFILE[:VARIANT] FILE.c [switches]
+                                               one file compiled, its functions listed
+
+PROJECT is a folder with a project.json. Stages:
+
+    ledger      every one-function source compiled and put against the program
+    carve       where the program's own functions begin and end
+    modules     each source file put together, compiled whole, its functions and data checked
+    draft       functions written by the compiler's inverse model, kept when the compiler proves them
+    data        a module's initialized data: where it stands, definitions drafted
+    bss         the variables without a value at their places: src/BSS
+    link        the program linked from its sources by the period linker, compared, diagnosed
+    library     the library modules found in the program, in the linker's order; stand-ins
+
+--- files
+--- stderr (not compared)

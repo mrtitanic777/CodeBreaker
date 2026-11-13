@@ -1,0 +1,9 @@
+exit: 2
+--- stdout
+codebreaker repair <module> [--flags "/O2 /Gz"] [--first N]
+codebreaker repair --truth <compiler> [target]
+
+Move each function's reconstruction toward the authored bytes with behaviour-preserving
+rewrites, compiled with a period compiler. Records the variants in the store.
+--- files
+--- stderr (not compared)

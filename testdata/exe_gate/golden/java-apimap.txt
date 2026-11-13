@@ -1,0 +1,17 @@
+exit: 0
+--- stdout
+  asm.x86      [language] x86-64 assembly (target for lowered hot paths).
+  c            [language] C (ISO).  dialects: c89, c99, c11, c17, c23
+  cpp          [language] C++ (ISO), the converter's primary target.  dialects: c++98, c++03, c++11, c++14, c++17, c++20, c++23
+  csharp       [language] C# / .NET.  dialects: cs7, cs8, cs9, cs10, cs11, cs12
+  direct3d9    [api] Direct3D 9 + D3DX (the Xbox 360 realization of OpenGL).
+  glu          [api] OpenGL Utility library (GLU).
+  java         [language] Java SE (source language of the Minecraft corpus).  dialects: java5, java6, java7, java8, java11, java17, java21
+  javax.swing  [api] Java AWT/Swing desktop UI (mostly dead on console).
+  lwjgl        [api] LWJGL input/display (Keyboard/Mouse/Display).
+  opengl       [api] OpenGL 1.x fixed-function pipeline (as exposed by LWJGL).
+  python       [language] CPython.  dialects: py2, py3.6, py3.9, py3.11, py3.12
+  rust         [language] Rust.  dialects: rust2015, rust2018, rust2021
+  xbox360      [api] Xbox 360 XDK families (xboxkrnl/xam/xnet/d3d9/xact3/xinput2).
+--- files
+--- stderr (not compared)

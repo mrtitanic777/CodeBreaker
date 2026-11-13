@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+menu_main                DefineFont3 id 5 'Segoe-Bold'         4 glyphs bold layout
+menu_main                DefineFont3 id 6 'Plain'              2 glyphs layout
+CFX                      DefineFont3 id 9 'Big Test_Font'      117 glyphs layout
+--- files
+--- stderr (not compared)

@@ -1,0 +1,20 @@
+exit: 0
+--- stdout
+usage: codebreaker module [options] <module>...
+
+reconstruct, judge and write a module's source file, every function labelled with what is known
+
+Each function carries one status line: VERIFIED, VERIFIED (weak), UNVERIFIED, NOT JUDGED, DOES NOT COMPILE, NO SOURCE, or IDENTIFIED (runtime library). Imports by number are written with their real names where the exporting module gives one; a C++ export is shown with the declaration its decorated name stands for. A driver or a real-mode program is written as its assembly file. Nothing is counted as progress except what these labels say.
+
+arguments:
+  module...  a corpus name, or a path
+
+options:
+      --out DIR     write there instead of the source tree
+      --split N     at most this many functions to a file
+      --no-verify   write from what the store already holds
+      --build       also build the whole module and report it
+      --scoreboard  also rewrite the scoreboard
+  -h, --help        show this help
+--- files
+--- stderr (not compared)

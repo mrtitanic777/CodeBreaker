@@ -1,0 +1,7 @@
+exit: 2
+--- stdout
+--- files
+--- stderr (not compared)
+python -m codebreaker disc <folder> <out.iso> [--volume NAME] [--boot IMG]
+python -m codebreaker disc --list <image.iso>
+python -m codebreaker disc --extract <image.iso> <outdir>

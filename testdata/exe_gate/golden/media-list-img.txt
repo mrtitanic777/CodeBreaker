@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+fat12 volume '': 1 files, 0 folders, 600 bytes
+         600  <time>  OLD.TXT
+--- files
+--- stderr (not compared)

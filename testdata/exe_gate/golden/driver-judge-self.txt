@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+splitter.vxd against itself: equivalent 6
+one instruction broken: 18 copies, 17 reported divergent
+    not caught: service_3 with `or eax, eax` changed -> equivalent
+--- files
+--- stderr (not compared)

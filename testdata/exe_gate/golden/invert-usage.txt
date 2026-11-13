@@ -1,0 +1,8 @@
+exit: 2
+--- stdout
+codebreaker invert <16-bit module> [--first N] [--flags "/AM /G2 /Gsw /Ox"] [--show NAME]
+codebreaker invert --early FILE OFFSET LENGTH     one function of a program built with the C compiler of 1983-84 (offset in hex)
+codebreaker invert --check [MODEL]                each model against its own compiler
+codebreaker invert --tool NAME [arguments]        a model's own command line: early-c, early-c-check, early-c-frame, early-c-round-trip, early-c-frame-probe, early-c-order-probe, early-c-forward, quads, quad-align, omf, msc6, msc6-templates, msc6-function, msc6-registers, msc6-walk, msc6-idioms, known-differences, msvc2, msvc2-forward
+--- files
+--- stderr (not compared)

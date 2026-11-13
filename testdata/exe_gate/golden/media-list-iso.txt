@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+iso9660 volume 'MINI_SETUP': 4 files, 2 folders, 2770 bytes
+    <folder>  <time>  Docs
+          14  <time>  Docs/Hello.txt
+    <folder>  <time>  Win95
+        2321  <time>  Win95/Mini.cab
+          15  <time>  Win95/Readme
+         420  <time>  Win95/Setup.exe
+--- files
+--- stderr (not compared)

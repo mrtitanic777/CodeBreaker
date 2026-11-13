@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+<work>/state/db/knowledge.sqlite
+  (bodies) 0 recorded, 0 distinct, 0 in two or more modules
+--- files
+--- stderr (not compared)

@@ -1,0 +1,6 @@
+exit: 2
+--- stdout
+--- files
+--- stderr (not compared)
+codebreaker: error: unknown command 'no_such_tool'
+usage: codebreaker crypto <command> [options]

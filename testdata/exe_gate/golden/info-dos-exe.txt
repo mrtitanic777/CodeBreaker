@@ -1,0 +1,47 @@
+exit: 0
+--- stdout
+<repo>/native/cb/formats/testdata/setver.exe  (MZ, 18939 bytes)
+
+summary:
+  format          MZ
+  type            DOS program
+  machine         8086 (16-bit)
+  module          setver.exe
+  description     
+  subsystem       DOS
+  linker          
+  linked          
+  image_base      0x0
+  entry           0089:1478
+  code_bytes      16427
+  sections        1
+  exports         0
+  import_modules  0
+  imports         0
+  resources       0
+
+headers:
+  bytes_in_last_page  507
+  pages               37
+  relocations         6
+  header_paragraphs   157
+  header_size         2512
+  min_alloc           142
+  max_alloc           65535
+  ss                  1040
+  sp                  2048
+  checksum            0x0
+  ip                  5240
+  cs                  137
+  relocation_table    30
+  overlay             0
+  new_header          0
+  load_size           16427
+
+sections:
+  name     address    size   file_offset  file_size  flags  code
+  program  0000:0000  18699  0x9d0        16427             yes
+
+0 exports, 0 imports from 0 modules, 0 resources  (--section exports | imports | resources | all)
+--- files
+--- stderr (not compared)

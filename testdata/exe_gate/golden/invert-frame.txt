@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+framemodel self-test: 25/25 byte-exact frame layouts
+--- files
+--- stderr (not compared)

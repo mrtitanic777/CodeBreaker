@@ -1,0 +1,9 @@
+exit: 0
+--- stdout
+=== classify lzexpand.dll ===
+  format       NE
+  subtype      win16-c
+  recipe       msc6-dosbox
+  why          16-bit NE; 12 segments
+--- files
+--- stderr (not compared)

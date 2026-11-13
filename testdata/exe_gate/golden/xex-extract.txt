@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+wrote basefile (290000 bytes) -> <work>/out/base.bin
+--- files
+base.bin 2686976 6925cf883c5cda4af431ea035c2effa9ad53af980124c850dcc9a6e8c5d5b0c6
+--- stderr (not compared)

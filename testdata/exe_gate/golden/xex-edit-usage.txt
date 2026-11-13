@@ -1,0 +1,26 @@
+exit: 2
+--- stdout
+xex_edit.py -- change an Xbox 360 executable: its privilege flags, or its code at an address.
+
+    codebreaker xex-edit privileges <in.xex>                         the privilege bits that are set
+    codebreaker xex-edit privileges <in.xex> <+bit|-bit ...> <out>   set (+) or clear (-) bits; `pal50`
+                                                                     names bit 10, PAL-50 incompatible
+    codebreaker xex-edit nop   <in.xex> <address> [count] <out>      count instructions become nop
+    codebreaker xex-edit bytes <in.xex> <address> <hex> <out>        raw bytes over the code
+    codebreaker xex-edit asm   <in.xex> <address> "<asm>" <out>      PowerPC assembled there
+    codebreaker xex-edit hook  <in.xex> <address> <cave> "<asm>" <out>
+                                                                     `b cave` at address; at the cave
+                                                                     the asm, the displaced instruction,
+                                                                     and `b address+4`
+    codebreaker xex-edit asm-only "<asm>" [address]                  the bytes, nothing written
+
+Privileges live in the header's privilege entries (key 0x30000: bits 0-31; 0x30100: bits 32-63),
+changed where they stand. A code edit writes the module as an unencrypted XEX holding the whole
+image in one block (xex.basic) and changes the image there; that is what the recompiler, the Xbox
+360 runtime and emulators read. Several asm lines are separated by `;` or newlines. The header's
+hashes and signature are not redone: `codebreaker xex compress` / `machine` re-pack and re-sign.
+Only bit 10 is named here: the meaning of the other bits is not settled from a source this
+project trusts, so they are given by number.
+
+--- files
+--- stderr (not compared)

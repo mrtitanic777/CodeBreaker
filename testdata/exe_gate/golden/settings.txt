@@ -1,0 +1,53 @@
+exit: 0
+--- stdout
+settings: <root>/settings.json
+<~>
+<~>
+<~>
+     corpora          win1.0=../win1.0/files/WF, win3.1=../win3.1/files, win98=../win98/files
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+     kits             msc300=../Microsoft-Assemblers-Compilers/MicrosoftC3.0/corpus, msc400=../Microsoft-Assemblers-Compilers/binaries/msc-4.00/files, win101sdk=../Microsoft-Assemblers-Compilers/binaries/win101-sdk/files, msc500=../Microsoft-Assemblers-Compilers/binaries/msc-5.00/files, xenix86=../Microsoft-Assemblers-Compilers/binaries/altos-8600-xenix/files/c23, intelplm86=../Microsoft-Assemblers-Compilers/binaries/intel-plm86, msc104=../Microsoft-Assemblers-Compilers/binaries/Microsoft C Compiler 1.04 (1983) (5.25-160k)/Files, msc103=../Microsoft-Assemblers-Compilers/binaries/Microsoft C Compiler 1.03 Beta (1983) (5.25-160k)/Files, masm100=../Microsoft-Assemblers-Compilers/binaries/Microsoft Macro Assembler 1.00/Microsoft Macro Assembler 1.00/Files, masm510=../Microsoft-Assemblers-Compilers/binaries/masm510, mspascal=../Microsoft-Assemblers-Compilers/binaries/mspascal-scp, mspascal110=../Microsoft-Assemblers-Compilers/research/masm-1.00/Microsoft Pascal Compiler 1.10 [SCP OEM] (8 inch SSSD)/Files
+<~>
+     min_free_gb      6
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+     qemu             C:/Program Files/qemu/qemu-system-i386.exe
+<~>
+<~>
+     struct_recovery  all
+<~>
+     target           win95
+     threads          
+<~>
+<~>
+     w95_key          34698-OEM-0039682-72135
+<~>
+     win95_setup_iso  <root>/state/win95/win95setup.iso
+     workers          4
+<~>
+<~>
+<~>
+<~>
+<~>
+<~>
+ok = found, !! = set but not there, -- = not set (optional unless a command asks for it)
+--- files
+--- stderr (not compared)

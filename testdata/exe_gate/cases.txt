@@ -1,0 +1,181 @@
+# The command cases of cb_exe_gate (native/cb/app/exe_gate_main.cpp, run by tools\gate.cmd): codebreaker.exe is run on each line and
+# its exit code, stdout and the files it leaves in {out} are compared with testdata/exe_gate/golden/<name>.txt. Every command of the
+# table in codebreaker/__main__.py has two to four cases here (usage, a real run, an error); `ui` and `boot-floppy` are the exceptions:
+# `ui` is the interactive terminal (its smoke is a terminal test, not a command line), and `boot-floppy` rebuilds the whole Setup floppy
+# (80 s). Goldens were recorded from the exe that ran the translated Python for the commands not yet native (2026-11-13), then each
+# command's output was read: where a native command differs from the Python only in wording, the golden is re-recorded after review
+# (`tools\gate.cmd --update --filter NAME`), and that diff is what a reviewer reads.
+#
+# Inputs are small real files kept in the repository (native/cb/*/testdata, tests/fixtures, testdata/exe_gate/in) and, for what only
+# exists on the owner's machine, the Win95 corpus (@needs=corpus) and the Xbox 360 games folder (@needs=games: skipped when absent).
+fmt = {repo}/native/cb/formats/testdata
+td = {repo}/testdata/exe_gate/in
+
+# --- what a file is: info, names, identify, decompile, analyze -------------------------------------------------------------------
+info-pe: info {fmt}/lz32.dll
+info-ne: info {fmt}/lzexpand.dll
+info-le: info {fmt}/bios.vxd
+info-dos-exe: info {fmt}/setver.exe
+info-dos-com: info {fmt}/choice.com
+info-obj: info {fmt}/fastadd.obj
+info-xex: info {games}/RubyDung/RubyDung.xex @needs=games
+info-missing: info {work}/no_such_file.dll
+info-corpus-name: info lz32.dll @needs=corpus
+names-pe: names {fmt}/lz32.dll
+names-ne: names {fmt}/lzexpand.dll
+names-usage: names
+identify-pe: identify {fmt}/lz32.dll
+identify-ne: identify {fmt}/lzexpand.dll
+identify-dos: identify {fmt}/setver.exe
+demangle-function: demangle "?foo@@YAXH@Z"
+demangle-method: demangle "?Run@Widget@@QAEHPBDH@Z"
+demangle-plain: demangle plain_name
+decompile-pe: decompile {fmt}/lz32.dll --out {out}/lz32.c
+decompile-ne: decompile {fmt}/lzexpand.dll --out {out}/lzexpand.c
+decompile-missing: decompile {work}/no_such_file.dll
+analyze-pe: analyze {fmt}/lz32.dll @mask="\d+\.\d+s"
+analyze-strings: analyze {fmt}/lz32.dll --what strings,conventions @mask="\d+\.\d+s"
+analyze-ne: analyze {fmt}/lzexpand.dll @mask="\d+\.\d+s"
+origin-ne: origin {fmt}/lzexpand.dll
+origin-list: origin {fmt}/lzexpand.dll --list
+dos-functions-com: dos-functions {fmt}/choice.com
+dos-functions-exe: dos-functions {fmt}/setver.exe
+dos-interrupts-service: dos-interrupts 21 3d
+dos-interrupts-int: dos-interrupts 10
+dos-interrupts-unknown: dos-interrupts 99
+driver-services-vxd: driver-services {fmt}/bios.vxd
+driver-services-small: driver-services {fmt}/splitter.vxd {fmt}/srammtd.vxd
+classes-xex: classes {games}/RubyDung/RubyDung.xex @needs=games
+resources-ne: resources {fmt}/lzexpand.dll --out {out}
+resources-pe: resources {fmt}/charmap.exe --out {out}
+coverage-all: coverage @head=3
+coverage-module: coverage --module lz32.dll @needs=corpus
+reach-file: reach {fmt}/lz32.dll
+reach-folder: reach {fmt}/cab
+corpus-executables: corpus-executables @needs=corpus @head=40
+
+# --- formats: cab, media, disc, fonts, gfx, heavyiron ----------------------------------------------------------------------------
+cab-list: cab list {fmt}/cab/w_text.cab
+cab-extract: cab extract {fmt}/cab/w_text.cab {out}
+cab-create: cab create {out}/made.cab {fmt}/xex_cmd/imports_indev.txt @sizeonly=.cab
+cab-bad: cab list {fmt}/cab/bad_data.cab
+media-list-iso: media list {fmt}/iso9660/mini_setup.iso
+media-list-img: media list {fmt}/media/old.img
+media-extract: media extract {fmt}/iso9660/mini_setup.iso {out}
+disc-list: disc --list {fmt}/iso9660/mini_setup.iso
+disc-extract: disc --extract {fmt}/iso9660/mini_setup.iso {out}
+disc-make: disc {repo}/native/cb/build/testdata/disc/tree {out}/made.iso @sizeonly=.iso
+disc-usage: disc
+fonts-list: fonts {fmt}/fonts/vgafix.fon
+fonts-show: fonts {fmt}/fonts/vgafix.fon --show Hello
+fonts-vector: fonts {fmt}/fonts/modern.fon
+gfx-scan: gfx scan {fmt}/gfx/menu.bin
+gfx-images: gfx images {fmt}/gfx/menu.bin
+gfx-fonts: gfx fonts {fmt}/gfx/menu.bin
+gfx-placements: gfx placements {fmt}/gfx/menu.bin
+heavyiron-info: heavyiron info {fmt}/heavyiron/a1.ho
+heavyiron-list: heavyiron list {fmt}/heavyiron/a1.ho
+heavyiron-layers: heavyiron layers {fmt}/heavyiron/a2.ho
+heavyiron-extract: heavyiron extract {fmt}/heavyiron/a1.ho {out}
+system-ui: system-ui {fmt}/system_ui/su_full.bin {out}
+xex-info: xex info {games}/RubyDung/RubyDung.xex @needs=games
+xex-list: xex list {games}/RubyDung/RubyDung.xex @needs=games
+xex-extract: xex extract {games}/Dolphin/Dolphin.xex {out}/base.bin @needs=games
+xex-imports: xex-imports {games}/RubyDung/RubyDung.xex @needs=games
+xex-imports-other: xex-imports {games}/Dolphin/Dolphin.xex @needs=games
+xex-edit-privileges: xex-edit privileges {games}/Dolphin/Dolphin.xex @needs=games
+xex-edit-nop: xex-edit nop {games}/Dolphin/Dolphin.xex 0x82067048 1 {out}/nop.xex @needs=games
+xex-edit-usage: xex-edit
+xex-basic: xex-basic {games}/Dolphin/Dolphin.xex {out}/d.xex @needs=games
+xex-basic-missing: xex-basic {work}/no_such.xex {out}/d.xex
+xenon-config: xenon-config {games}/Dolphin/Dolphin.xex {out}/d.toml @needs=games
+switch-tables: switch-tables {games}/Dolphin/Dolphin.xex {out}/s.toml @needs=games
+xbox-disc-files: xbox-disc files {fmt}/media/built.iso
+xbox-disc-usage: xbox-disc
+ppc-calls: ppc-calls {games}/Dolphin/Dolphin.xex @needs=games
+xdk-match: xdk-match {games}/RubyDung/RubyDung.xex @needs=games
+recompile-function: recompile {games}/RubyDung/RubyDung.xex --at 0x82067048 --size 0x40 @needs=games
+recompile-missing: recompile {work}/no_such.xex --all
+recompile-project-usage: recompile-project
+xenon-recompile-missing: xenon-recompile {work}/no_such.toml
+crypto-help: crypto --help
+crypto-bin2lang: crypto bin2lang {fmt}/fastadd.obj {out}/obj.c
+crypto-unknown: crypto no_such_tool
+
+# --- sources: the assembly the program writes and builds back -------------------------------------------------------------------
+pe-source: pe-source {fmt}/lz32.dll --out {out}
+ne-source: ne-source {fmt}/lzexpand.dll --out {out}
+le-source: le-source {fmt}/splitter.vxd --out {out}
+dos-source: dos-source {fmt}/choice.com --out {out} @sizeonly=.obj
+dos-build: dos-build {td}/choice_src --against {fmt}/choice.com
+driver-source: driver-source {fmt}/splitter.vxd --out {out} @sizeonly=.obj,.map
+driver-build: driver-build {td}/splitter --original {fmt}/splitter.vxd --out {out}
+driver-judge-self: driver-judge --self-check {fmt}/splitter.vxd
+driver-judge-pair: driver-judge {fmt}/splitter.vxd {fmt}/splitter.vxd
+vxd-idiom: vxd idiom {fmt}/splitter.vxd
+vxd-masm: vxd masm {fmt}/splitter.vxd
+vxd-usage: vxd
+ne-asm-idiom: ne-asm idiom lzexpand.dll 1 0 whole @needs=corpus
+ne-asm-usage: ne-asm
+build16-lzexpand: build16 {repo}/tests/fixtures/lzexpand @timeout=300 @mask="build16_\w+"
+build16-usage: build16
+flat-thunk-classify: flat-thunk {fmt}/lz32.dll
+flat-thunk-recover: flat-thunk {fmt}/lz32.dll --recover {out}
+flat-thunk-ne: flat-thunk {fmt}/lzexpand.dll
+build-pe: build {fmt}/lz32.dll --out {out} @sizeonly=.dll
+build-usage: build --help
+exact-toolchains: exact --toolchains
+exact-help: exact
+invert-frame: invert --tool early-c-frame
+invert-usage: invert
+place-list: place lz32.dll --list @needs=corpus
+place-file: place {fmt}/lz32.dll --list
+place-usage: place
+
+# --- the verdicts: module, measure, match, repair, teeth, score16, versions, sweep -----------------------------------------------
+module-pe: module {fmt}/lz32.dll --out {out} @timeout=300 @mask="\(\d+s: [^)]*\)"
+module-usage: module --help
+scoreboard: scoreboard --out {out}
+measure-pe: measure {fmt}/lz32.dll @timeout=300 @mask="\(\d+s: [^)]*\)"
+measure-usage: measure --help
+match-pe: match {fmt}/lz32.dll
+match-usage: match --help
+repair-pe: repair {fmt}/lz32.dll --first 3 @timeout=300
+repair-usage: repair
+teeth-pe: teeth {fmt}/lz32.dll --rounds 1 --json {out}/t.json @timeout=300
+teeth-usage: teeth --help
+score16-ne: score16 {fmt}/lzexpand.dll --segment 1 @timeout=300
+score16-usage: score16
+versions-same: versions {fmt}/lz32.dll {fmt}/lz32.dll @mask="\(\d+\.\d+s\)"
+versions-help: versions --help
+sweep-help: sweep --help @timeout=30
+
+# --- the store and the service: cache, facts, knowledge, tidy-state, progress, settings, serve, mcp -------------------------------
+cache-stats: cache --stats
+cache-prune: cache --prune
+cache-clear: cache --clear
+facts-binary: facts {fmt}/lz32.dll
+facts-make: facts {fmt}/lz32.dll --make @mask="[0-9a-f]{64}"
+facts-databases: facts --databases
+knowledge-all: knowledge
+knowledge-platform: knowledge win95
+tidy-dry: tidy-state --dry
+tidy-stray: tidy-state --dry --stray
+progress-once: progress --once @mask="\[\d\d:\d\d:\d\d\]"
+settings: settings @mask="(?m)^ +(ok|--|!!) .*$"
+serve-status: serve --status
+serve-stop: serve --stop
+serve-help: serve --help
+mcp-session: mcp @stdin={td}/mcp_session.txt @sort
+mcp-help: mcp --help
+
+# --- the Java transpiler and XNA ------------------------------------------------------------------------------------------------
+java-help: java --help
+java-apimap: java apimap languages
+java-unknown: java no_such_tool
+xna-help: xna --help
+xna-missing: xna {work}/no_such_folder
+
+# --- the command line itself --------------------------------------------------------------------------------------------------
+cli-help: --help
+cli-unknown: no_such_command

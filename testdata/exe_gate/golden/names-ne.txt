@@ -1,0 +1,75 @@
+exit: 0
+--- stdout
+1:0000     sub_1_0000                                       (none)
+1:00b2     sub_1_00b2                                       (none)
+1:0116     sub_1_0116                                       (none)
+2:0000     LZINIT                                           export
+2:01bc     GETEXPANDEDNAME                                  export
+2:0262     LZOPENFILE                                       export
+2:02ee     LZSEEK                                           export
+2:03d6     LZREAD                                           export
+2:06f0     LZCLOSE                                          export
+3:0000     WEP                                              export
+4:0000     LZSTART                                          export
+4:00a6     LZDONE                                           export
+4:013a     COPYLZFILE                                       export
+4:015c     LZCOPY                                           export
+5:0000     sub_5_0000                                       (none)
+5:0052     sub_5_0052                                       (none)
+5:00d0     sub_5_00d0                                       (none)
+6:0000     sub_6_0000                                       (none)
+6:00a4     sub_6_00a4                                       (none)
+7:0000     sub_7_0000                                       (none)
+7:00f4     sub_7_00f4                                       (none)
+7:01e0     sub_7_01e0                                       (none)
+8:00aa     sub_8_00aa                                       (none)
+8:01a2     sub_8_01a2                                       (none)
+8:01ec     sub_8_01ec                                       (none)
+9:0000     sub_9_0000                                       (none)
+10:0000    sub_10_0000                                      (none)
+10:004e    sub_10_004e                                      (none)
+10:00a2    sub_10_00a2                                      (none)
+10:0124    sub_10_0124                                      (none)
+10:01b6    sub_10_01b6                                      (none)
+10:02a8    sub_10_02a8                                      (none)
+11:0010    _dos_getftime                                    runtime library: Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+11:0042    _dos_setftime                                    runtime library: Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+11:00ab    sub_11_00ab                                      (none)
+11:00d8    sub_11_00d8                                      (none)
+11:01b7    sub_11_01b7                                      (none)
+11:01c5    sub_11_01c5                                      (none)
+11:01d4    sub_11_01d4                                      (none)
+11:01e5    sub_11_01e5                                      (none)
+11:0253    sub_11_0253                                      (none)
+11:02a0    sub_11_02a0                                      (none)
+11:02e2    _NMSG_TEXT                                       runtime library: Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+11:0319    sub_11_0319                                      (none)
+11:034e    _GetDGROUP                                       runtime library: Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+11:035e    ___EXPORTEDSTUB                                  export
+import KERNEL       1      FatalExit                                KERNEL's exports (krnl386.exe)
+import KERNEL       15     GlobalAlloc                              KERNEL's exports (krnl386.exe)
+import KERNEL       17     GlobalFree                               KERNEL's exports (krnl386.exe)
+import KERNEL       18     GlobalLock                               KERNEL's exports (krnl386.exe)
+import KERNEL       19     GlobalUnlock                             KERNEL's exports (krnl386.exe)
+import KERNEL       74     OpenFile                                 KERNEL's exports (krnl386.exe)
+import KERNEL       81     _lclose                                  KERNEL's exports (krnl386.exe)
+import KERNEL       82     _lread                                   KERNEL's exports (krnl386.exe)
+import KERNEL       83     _lcreat                                  KERNEL's exports (krnl386.exe)
+import KERNEL       84     _llseek                                  KERNEL's exports (krnl386.exe)
+import KERNEL       85     _lopen                                   KERNEL's exports (krnl386.exe)
+import KERNEL       86     _lwrite                                  KERNEL's exports (krnl386.exe)
+import KERNEL       88     lstrcpy                                  KERNEL's exports (krnl386.exe)
+import KERNEL       89     lstrcat                                  KERNEL's exports (krnl386.exe)
+import KERNEL       90     lstrlen                                  KERNEL's exports (krnl386.exe)
+import KERNEL       102    DOS3CALL                                 KERNEL's exports (krnl386.exe)
+import KERNEL       115    OutputDebugString                        KERNEL's exports (krnl386.exe)
+import KERNEL       137    FatalAppExit                             KERNEL's exports (krnl386.exe)
+import KERNEL       178    __WINFLAGS                               KERNEL's exports (krnl386.exe)
+import USER         430    lstrcmp                                  USER's exports (user.exe)
+import USER         435    IsCharUpper                              USER's exports (user.exe)
+import USER         436    IsCharLower                              USER's exports (user.exe)
+lzexpand.dll: 46 functions -- (none) 30, export 12, runtime library 4
+22 imports -- by number, named 22
+built with: Microsoft Visual C++ 1.5 (16-bit) (linker 5.20)
+--- files
+--- stderr (not compared)

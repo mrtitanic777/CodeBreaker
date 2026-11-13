@@ -1,0 +1,101 @@
+exit: 0
+--- stdout
+Xex Info
+  Devkit
+  Not-Compressed
+  Encrypted
+  Title Module
+  No Game Region
+
+Basefile Info
+  Original PE Name:   RubyDung.exe
+  Load Address:       82000000
+  Entry Point:        82067048
+  Image Size:           2D0000
+  Page Size:             10000
+  Checksum:           002D2A46
+  Export Table:       00000000
+  Filetime:           69120356 - Mon Nov 10 07:23:02 2025
+
+Regions
+  All Regions
+
+Allowed Media
+  Hard Disk
+  DVD / CD
+  Network
+  Direct From Memory
+  Xbox Live Signed Package
+
+Media Id 
+  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+
+Encryption Key 
+  86 8D 73 D7 30 B8 50 79 6F D3 D2 CF 39 26 F4 C5 
+
+LAN Key 
+  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+
+Static Libraries
+    0) XAPILIB        v2.0.21256.0
+    1) D3D9           v2.0.21256.0
+    2) D3DX9          v2.0.21256.0
+    3) XGRAPHC        v2.0.21256.0
+    4) XBOXKRNL       v2.0.21256.0
+    5) LIBCPMT        v2.0.11886.0
+    6) LINK           v10.0.11886.0
+    7) C2             v16.0.11886.0
+    8) C1             v16.0.11886.0
+
+Import Libraries
+    0) xam.xex        v2.0.21256.0  (min v2.0.1861.0)
+    1) xboxkrnl.exe   v2.0.21256.0  (min v2.0.1861.0)
+
+Sections
+    0) 82000000 - 82010000 : Header/Resource
+    1) 82010000 - 82020000 : Header/Resource
+    2) 82020000 - 82030000 : Header/Resource
+    3) 82030000 - 82040000 : Header/Resource
+    4) 82040000 - 82050000 : Header/Resource
+    5) 82050000 - 82060000 : Header/Resource
+    6) 82060000 - 82070000 : Code
+    7) 82070000 - 82080000 : Code
+    8) 82080000 - 82090000 : Code
+    9) 82090000 - 820A0000 : Code
+   10) 820A0000 - 820B0000 : Code
+   11) 820B0000 - 820C0000 : Code
+   12) 820C0000 - 820D0000 : Code
+   13) 820D0000 - 820E0000 : Code
+   14) 820E0000 - 820F0000 : Code
+   15) 820F0000 - 82100000 : Code
+   16) 82100000 - 82110000 : Code
+   17) 82110000 - 82120000 : Code
+   18) 82120000 - 82130000 : Code
+   19) 82130000 - 82140000 : Code
+   20) 82140000 - 82150000 : Code
+   21) 82150000 - 82160000 : Code
+   22) 82160000 - 82170000 : Code
+   23) 82170000 - 82180000 : Code
+   24) 82180000 - 82190000 : Code
+   25) 82190000 - 821A0000 : Code
+   26) 821A0000 - 821B0000 : Code
+   27) 821B0000 - 821C0000 : Code
+   28) 821C0000 - 821D0000 : Code
+   29) 821D0000 - 821E0000 : Code
+   30) 821E0000 - 821F0000 : Code
+   31) 821F0000 - 82200000 : Code
+   32) 82200000 - 82210000 : Code
+   33) 82210000 - 82220000 : Code
+   34) 82220000 - 82230000 : Code
+   35) 82230000 - 82240000 : Code
+   36) 82240000 - 82250000 : Code
+   37) 82250000 - 82260000 : Code
+   38) 82260000 - 82270000 : Code
+   39) 82270000 - 82280000 : Code
+   40) 82280000 - 82290000 : Code
+   41) 82290000 - 822A0000 : Code
+   42) 822A0000 - 822B0000 : Code
+   43) 822B0000 - 822C0000 : Data
+   44) 822C0000 - 822D0000 : Data
+--- files
+--- stderr (not compared)

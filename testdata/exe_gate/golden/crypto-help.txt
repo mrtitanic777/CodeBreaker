@@ -1,0 +1,50 @@
+exit: 0
+--- stdout
+usage: codebreaker crypto <command> [options]
+
+Xbox 360 console crypto: XeCrypt, keyvaults, the boot chain, NAND images, shadowboots
+
+Console crypto: XeCrypt, keyvaults, the boot chain, NAND images, shadowboots. Most of these tools are Xbox-360-Crypto by GoobyCorp (BSD
+3-Clause; see LICENSE and ATTRIBUTION.md), kept as its authors wrote it. Each runs as `crypto <tool> [arguments]` and takes its own --help.
+What the tools read that is not part of the package comes from settings: `xbox360_keys` (the key store folder: 1BL_pub.bin,
+SB_prv.bin, ...; default Keys/ in the current folder), `xbox360_crypto_bin` (upstream's bin/ folder: the LZX libraries, the Free60
+xenon-as and xenon-objcopy, hypervisor images) and `xbox360_sdk` (dumpbin). None of them is in the repository.
+
+commands:
+  MemCrypto         the Xbox 360 memory-encryption crypto: calculate the challenge responses, or decrypt a hypervisor
+  bin2lang          a binary as an array in Python, C, C++, C# or PHP source
+  bootchain         the boot chain (CB/CD/CE/CF/CG stages) of an Xbox 360 NAND dump
+  cpu_key           make a console CPU key and show its unique-id and ECC bits
+  cpukey_ecd        validate or generate an Xbox 360 CPU key (ECD and Hamming weight)
+  create_key        make a 2048-bit RSA key pair: custom_pub.bin and custom_prv.bin in the key store
+  exp_build_task    assemble HVPP and Spoofy and sign them as expansions, with their C++ arrays
+  exp_signer        sign an HvxExpansionInstall payload
+  export_keys       print the custom key pair, a block of test data and its signature as C++ arrays
+  flashplan         RGH/JTAG flash planner: the image type and secure-boot block (no image is written)
+  format_key        write the custom public key as the C++ array ExpPubKey (Output/Zero/ExpPubKey.h)
+  fuses             parse an Xbox 360 eFuse dump (fuse lines, CPU key, lock-down value)
+  harness           run the known-answer tests of the Xbox 360 crypto (RSA, RC4, AES, DES, MD5, SHA-1, HMAC, CPU keys)
+  hypervisor        analyse an Xbox 360 hypervisor image: info, and clean patches out against an original
+  keyvault          parse an Xbox 360 keyvault (KV_dec.bin): console id, certificate, keys
+  kv_tool           make fuses.bin and kv_enc.bin from a keyvault: CPU key, DVD key and console type
+  lzx               the LZX library's self-test: compress a file, decompress it and compare
+  nand              inspect an Xbox 360 NAND dump: its type and header, the hypervisor in it
+  nand_tool         NAND images: info, verify, unecc, ecc, fix
+  patch_build_task  compile the patches, then check them for overlaps
+  patch_checker     look for patches of a patch table that overlap
+  patch_compile     assemble the RGLoader and SC0 patches (Patches/ -> Output/)
+  patch_dumper      write a patch table (xeBuild's patches_*.bin) as assembly
+  sd_signer         sign a retail CD or devkit SD bootloader for the Xbox 360 and print its XeBuild checksum
+  se_patcher        patch an extracted console build's SE, compress it and sign the SD that vouches for it
+  shadowboot        extract and build Xbox 360 shadowboots
+  smc               the Xbox 360 SMC: decrypt, encrypt, info, extract, config
+  xcp_dumper        decrypt an XCP package and convert it to a LIVE package (the input file is consumed)
+  xdk_extract       extract the cabinets of an XDK installer (XDKRecovery.../XDKSetup...exe)
+  xebuild_config    reserved: upstream's generator of XeBuild configurations (it writes nothing yet)
+  xekeys_signer     sign a payload for XeKeysExecute with the HVX private key
+  xell_unpack       split XeLL images into their stages and inflate the second
+  xkelib_exports    make a .def file from an Xbox 360 library's exports, with the SDK's dumpbin
+  xsm3              run the XSM3 controller exchange on the sample packets, with the static keys of a keyvault
+  xval              decrypt the "X:" value of the Xbox 360 dashboard: has the console been flagged
+--- files
+--- stderr (not compared)

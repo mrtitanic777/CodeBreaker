@@ -1,0 +1,4 @@
+format dos com
+option quiet, nodefaultlibs
+file choice.obj
+name C:/Users/mrtit/Documents/GitHub/CodeBreaker/.claude/worktrees/agent-a8a4eee46c84e9ab5/testdata/exe_gate/in/choice_src/choice.com

@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+lz32.dll         base/lz32                        already there
+1 modules: already there 1
+--- files
+--- stderr (not compared)

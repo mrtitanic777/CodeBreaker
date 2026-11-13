@@ -1,0 +1,5 @@
+exit: 3
+--- stdout
+--- files
+--- stderr (not compared)
+codebreaker: <work>/no_such.xex: cannot open for reading: The system cannot find the file specified. (os error 2)
