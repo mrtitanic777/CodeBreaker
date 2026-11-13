@@ -23,6 +23,7 @@
 #include "cb/formats/fonts.hpp"
 #include "cb/formats/gfx.hpp"
 #include "cb/formats/media.hpp"
+#include "cb/formats/xbox/system_ui.hpp"
 #include "cb/formats/xex_imports.hpp"
 #include "cb/source/dos_writer.hpp"
 
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
     formats::xex_imports::Environment imports_env{tools, names};
     build::xex_edit::Environment edit_env{tools};
     analyze::ppc_calls::Environment calls_env{tools, names};
+    formats::xbox::system_ui::Environment system_ui_env{tools};
     build::floppy::Environment floppy_env;
     floppy_env.corpus_root = corpus;
     floppy_env.design_dir = design;
@@ -91,7 +93,7 @@ int main(int argc, char** argv) {
         floppy_env.writer = source::dos_writer::options_for(watcom, state / "assembly_probes.json");
     }
 
-    cli::Cli program("cmdrun", {formats::fonts::command(fonts_env), formats::gfx::command(), formats::media::command(), formats::xex_imports::command(imports_env),
+    cli::Cli program("cmdrun", {formats::fonts::command(fonts_env), formats::gfx::command(), formats::xbox::system_ui::command(system_ui_env), formats::media::command(), formats::xex_imports::command(imports_env),
                                 build::xex_edit::command(edit_env), analyze::ppc_calls::command(calls_env), build::disc_image::command(),
                                 build::floppy::command(floppy_env)});
     std::vector<std::string> args(argv + at, argv + argc);
