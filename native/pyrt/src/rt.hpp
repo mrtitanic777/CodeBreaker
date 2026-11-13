@@ -164,7 +164,9 @@ struct FuncObj : Obj {
     var doc, annotations, wrapped, dict_extra;
     int firstlineno = 0;                  // a lambda's line in its file (co_firstlineno; inspect.getsource finds it by it)
     std::vector<Obj*> closure;            // the cells fn's lambda captured (fn holds their references)
-    FuncObj() { gc_track(this); }
+    uint64_t seq = 0;                     // the order functions were made in: a module's defs, in file order (pytest runs tests in it)
+    FuncObj() { gc_track(this); seq = ++next_seq(); }
+    static uint64_t& next_seq() { static uint64_t n = 0; return n; }
     void gc_traverse(gc_visit visit, void* arg) override;
     void gc_clear() override;
 };

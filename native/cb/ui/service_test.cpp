@@ -19,7 +19,8 @@
 // DIVERGES from ui/service.py:
 //   * errors are cb::Error types (UsageError for the Python's ValueError, IoError for OSError, NoSuchCall for LookupError); the
 //     wire still says ValueError / OSError / LookupError, as the Python's server does;
-//   * a call's owner is an argument of the call, not a thread-local the server sets;
+//   * a call's owner is an argument of the call; only a tool that starts a job asks whom the call is answered for (AnsweringFor, set by the
+//     server around one tool's call), as the Python's answering_for does;
 //   * the client's state (the service found last, when it was looked for) is a ServiceLink's, not module globals;
 //   * jobs run in a Job Object of their own, so stopping one stops what it started and ending this program ends the jobs.
 
@@ -212,6 +213,20 @@ CB_TEST("ui.service.a_functions_answer_is_the_page_document", [] {
     CB_CHECK_EQ(one.at("function").at("weak").at(0).at("code").get<std::string>(), "stub-callee");
     CB_CHECK_EQ(one.at("function").at("reason").get<std::string>(), "");   // `x or ""`
     CB_CHECK(one.at("functions").empty());
+});
+
+CB_TEST("ui.service.answering_for_names_the_client_inside_a_call_only", [] {
+    CB_CHECK(AnsweringFor::current().empty());
+    {
+        const AnsweringFor outer("pid-5");
+        CB_CHECK_EQ(AnsweringFor::current(), "pid-5");
+        {
+            const AnsweringFor inner("pid-6");
+            CB_CHECK_EQ(AnsweringFor::current(), "pid-6");
+        }
+        CB_CHECK_EQ(AnsweringFor::current(), "pid-5");
+    }
+    CB_CHECK(AnsweringFor::current().empty());
 });
 
 CB_TEST("ui.service.a_call_by_name_is_answered_and_its_failures_are_said", [] {

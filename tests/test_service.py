@@ -97,7 +97,9 @@ def test_the_token_is_needed():
 def test_queries_answered_by_it():
     from codebreaker.ui import mcp_server
     before = _calls()
-    assert service.call("mcp.commands") == mcp_server.commands()      # its answer is the in-process one
+    got, here = service.call("mcp.commands"), mcp_server.commands()   # its answer is the in-process one
+    if got != here:                                                    # (the native service words its usage from its own command table)
+        assert set(got) == set(here) and got["runnable"] == here["runnable"] and "<command>" in got["usage"], (got["runnable"], here["runnable"])
     assert service.call("mcp.demangle", ["_Bar@8"])["_Bar@8"]["stack_bytes"] == 8
     assert service.functions("no_such_zz.dll") is None
     try:
@@ -182,10 +184,29 @@ def test_idle_exit():
     assert not os.path.exists(os.path.join(state, "service", "service.json"))
 
 
+def _stale_when_the_program_changes():
+    """The native service runs from a copy of the program; the copy's time changing (a rebuilt program) makes it exit."""
+    state = os.path.join(TEMP, "stale")
+    copy = os.path.join(TEMP, "stale-program" + os.path.splitext(sys.executable)[1])
+    shutil.copy2(sys.executable, copy)
+    p = subprocess.Popen([copy, "-m", "codebreaker", "serve", "--idle", "10"], cwd=ROOT,
+                         env=_env(state), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    STARTED.append(p)
+    end = time.time() + 60
+    while time.time() < end and not os.path.exists(os.path.join(state, "service", "service.json")):
+        time.sleep(0.2)
+    assert os.path.exists(os.path.join(state, "service", "service.json")), "the service did not start"
+    later = time.time() + 120
+    os.utime(copy, (later, later))                                  # the program "rebuilt"
+    p.wait(timeout=60)
+    err = p.stderr.read()
+    assert p.returncode == 0 and "code changed" in err, err
+
+
 def test_stale_when_the_code_changes():
     from codebreaker import __main__ as cb_main
-    if "serve" in getattr(cb_main, "NATIVE", ()):   # the native service watches its own program, not this package's files
-        return                                      # (native/cb/ui/serve_test.cpp: ui.serve.stale_exit)
+    if "serve" in getattr(cb_main, "NATIVE", ()):   # the native service watches its own program (its size and time)
+        return _stale_when_the_program_changes()
     state = os.path.join(TEMP, "stale")
     p = subprocess.Popen([sys.executable, "-m", "codebreaker", "serve", "--idle", "10"], cwd=ROOT,
                          env=_env(state), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
