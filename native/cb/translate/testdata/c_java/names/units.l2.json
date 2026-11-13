@@ -1,0 +1,874 @@
+[
+ {
+  "node": "Unit",
+  "line": 1,
+  "col": 1,
+  "path": "Names",
+  "package": "",
+  "imports": [
+   "java.util.function.*"
+  ],
+  "types": [
+   {
+    "node": "ClassDecl",
+    "line": 3,
+    "col": 1,
+    "name": "Names",
+    "qname": "Names",
+    "kind": "class",
+    "mods": [
+     "public"
+    ],
+    "members": [
+     {
+      "node": "MethodDecl",
+      "line": 3,
+      "col": 8,
+      "sym": {
+       "kind": "ctor",
+       "name": "<init>",
+       "owner": "Names",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "name": "<init>",
+      "kind": "ctor",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 3,
+       "col": 8,
+       "stmts": [
+        {
+         "node": "CtorCall",
+         "line": 3,
+         "col": 8,
+         "kind": "super:implicit",
+         "sym": {
+          "kind": "ctor",
+          "name": "<init>",
+          "owner": "java.lang.Object",
+          "params": [],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "args": []
+        }
+       ]
+      },
+      "mods": [
+       "public"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 4,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "sizeof",
+       "owner": "Names",
+       "static": true,
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "i32"
+       }
+      },
+      "name": "sizeof",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 4,
+        "col": 23,
+        "sym": {
+         "kind": "param",
+         "name": "auto",
+         "owner": "Names.sizeof",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      },
+      "body": {
+       "node": "Block",
+       "line": 4,
+       "col": 33,
+       "stmts": [
+        {
+         "node": "Return",
+         "line": 4,
+         "col": 35,
+         "expr": {
+          "node": "Binary",
+          "line": 4,
+          "col": 42,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "*",
+          "left": {
+           "node": "Name",
+           "line": 4,
+           "col": 42,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "auto",
+            "owner": "Names.sizeof",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "right": {
+           "node": "Lit",
+           "line": 4,
+           "col": 49,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 2
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 6,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "main",
+       "owner": "Names",
+       "static": true,
+       "params": [
+        {
+         "kind": "array",
+         "elem": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "name": "main",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 6,
+        "col": 29,
+        "sym": {
+         "kind": "param",
+         "name": "args",
+         "owner": "Names.main",
+         "type": {
+          "kind": "array",
+          "elem": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        },
+        "type": {
+         "kind": "array",
+         "elem": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 6,
+       "col": 44,
+       "stmts": [
+        {
+         "node": "Local",
+         "line": 7,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "register",
+          "owner": "Names.main",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 7,
+          "col": 24,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 7
+         }
+        },
+        {
+         "node": "Local",
+         "line": 8,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "self",
+          "owner": "Names.main",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 8,
+          "col": 20,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 3
+         }
+        },
+        {
+         "node": "Local",
+         "line": 9,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "a$b",
+          "owner": "Names.main",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 9,
+          "col": 19,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 5
+         }
+        },
+        {
+         "node": "Local",
+         "line": 10,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "sr",
+          "owner": "Names.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.Supplier",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.Supplier",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         },
+         "init": {
+          "node": "Lambda",
+          "line": 10,
+          "col": 32,
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.Supplier",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          },
+          "params": [],
+          "body": {
+           "node": "Binary",
+           "line": 10,
+           "col": 38,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "+",
+           "left": {
+            "node": "Binary",
+            "line": 10,
+            "col": 38,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "+",
+            "left": {
+             "node": "Name",
+             "line": 10,
+             "col": 38,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "register",
+              "owner": "Names.main",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "right": {
+             "node": "Name",
+             "line": 10,
+             "col": 49,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "self",
+              "owner": "Names.main",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           },
+           "right": {
+            "node": "Name",
+            "line": 10,
+            "col": 56,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "a$b",
+             "owner": "Names.main",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 11,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "twice",
+          "owner": "Names.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.IntUnaryOperator"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.IntUnaryOperator"
+         },
+         "init": {
+          "node": "Lambda",
+          "line": 11,
+          "col": 34,
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.IntUnaryOperator"
+          },
+          "params": [
+           {
+            "node": "Param",
+            "line": 11,
+            "col": 34,
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "Names.main",
+             "type": {
+              "kind": "i32"
+             }
+            },
+            "type": {
+             "kind": "i32"
+            }
+           }
+          ],
+          "body": {
+           "node": "Binary",
+           "line": 11,
+           "col": 39,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "+",
+           "left": {
+            "node": "Name",
+            "line": 11,
+            "col": 39,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "Names.main",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Name",
+            "line": 11,
+            "col": 43,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "register",
+             "owner": "Names.main",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 12,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "s",
+          "owner": "Names.main",
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 12,
+          "col": 20,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          "value": "\u00e9\ud83d\ude00x\t1"
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 13,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 13,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 13,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 13,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 13,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Call",
+              "line": 13,
+              "col": 28,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              },
+              "target": {
+               "node": "Name",
+               "line": 13,
+               "col": 28,
+               "type": {
+                "kind": "class",
+                "name": "java.util.function.Supplier",
+                "args": [
+                 {
+                  "kind": "class",
+                  "name": "java.lang.Integer"
+                 }
+                ]
+               },
+               "sym": {
+                "kind": "local",
+                "name": "sr",
+                "owner": "Names.main",
+                "type": {
+                 "kind": "class",
+                 "name": "java.util.function.Supplier",
+                 "args": [
+                  {
+                   "kind": "class",
+                   "name": "java.lang.Integer"
+                  }
+                 ]
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "get",
+               "owner": "java.util.function.Supplier",
+               "params": [],
+               "ret": {
+                "kind": "typevar",
+                "name": "T"
+               }
+              },
+              "args": []
+             },
+             {
+              "node": "Lit",
+              "line": 13,
+              "col": 39,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 13,
+              "col": 45,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "Name",
+               "line": 13,
+               "col": 45,
+               "type": {
+                "kind": "class",
+                "name": "java.util.function.IntUnaryOperator"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "twice",
+                "owner": "Names.main",
+                "type": {
+                 "kind": "class",
+                 "name": "java.util.function.IntUnaryOperator"
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "applyAsInt",
+               "owner": "java.util.function.IntUnaryOperator",
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 13,
+                "col": 62,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 1
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 13,
+              "col": 67,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 13,
+              "col": 73,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 13,
+               "col": 73,
+               "type": {
+                "kind": "class",
+                "name": "Names"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "sizeof",
+               "owner": "Names",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 13,
+                "col": 80,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 4
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 13,
+              "col": 85,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 13,
+              "col": 91,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "Name",
+               "line": 13,
+               "col": 91,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "s",
+                "owner": "Names.main",
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "length",
+               "owner": "java.lang.String",
+               "params": [],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": []
+             },
+             {
+              "node": "Lit",
+              "line": 13,
+              "col": 104,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Cast",
+              "line": 13,
+              "col": 110,
+              "type": {
+               "kind": "i32"
+              },
+              "x": {
+               "node": "Call",
+               "line": 13,
+               "col": 116,
+               "type": {
+                "kind": "u16"
+               },
+               "target": {
+                "node": "Name",
+                "line": 13,
+                "col": 116,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                "sym": {
+                 "kind": "local",
+                 "name": "s",
+                 "owner": "Names.main",
+                 "type": {
+                  "kind": "class",
+                  "name": "java.lang.String"
+                 }
+                }
+               },
+               "sym": {
+                "kind": "method",
+                "name": "charAt",
+                "owner": "java.lang.String",
+                "params": [
+                 {
+                  "kind": "i32"
+                 }
+                ],
+                "ret": {
+                 "kind": "u16"
+                }
+               },
+               "args": [
+                {
+                 "node": "Lit",
+                 "line": 13,
+                 "col": 125,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "value": 1
+                }
+               ]
+              }
+             }
+            ]
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "mods": [
+       "public",
+       "static"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

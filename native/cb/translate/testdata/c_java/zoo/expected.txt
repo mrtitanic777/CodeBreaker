@@ -1,0 +1,7 @@
+rex says woof
+tom says meow
+2 1 Pair[a=x, b=2] 10
+caught negative -2
+finally
+{one=1, two=2} 15  3.14|42
+[a, bb, ccc]

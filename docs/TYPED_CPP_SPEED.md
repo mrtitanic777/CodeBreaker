@@ -1125,3 +1125,9 @@ The module is a driver: nearly all of a build is the OpenWatcom compiler, assemb
 | the 18 unit tests of the area's `build.module` (packing, report, check, run, the gate's kept verdicts, the L2 documents) | not applicable | 0.1 s |
 
 A whole build compared with the Python's needs the module made compilable (the decompiler's services), which exist only in the old layer inside the exe; the commit message says what was and was not compared.
+
+## translate/backends/c_java (W5-B4)
+
+| work | Python | C++ (native/cb) |
+|---|---|---|
+| the C text of the 8 corpus programs (bank, calc, generics, sample, shapes, t03, t17, textstats), units read from L2 | 0.087 s per pass (L2 reading and writing the C) | the whole `cb_tests_translate --filter c_java.corpus` process, startup and file reads included: 0.055 s |
