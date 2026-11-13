@@ -421,6 +421,13 @@ cb_copy_prebuilt_dlls(cb_lane_worker)
 add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
+# cmdrun: runs the command layers of formats, build and analyze with the surroundings the application will give them, to compare each with the
+# Python on real inputs (app/cmdrun_main.cpp). Not built by default.
+add_executable(cb_cmdrun EXCLUDE_FROM_ALL app/cmdrun_main.cpp)
+cb_apply_flags(cb_cmdrun)
+target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
+cb_copy_prebuilt_dlls(cb_cmdrun)
+
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
 
