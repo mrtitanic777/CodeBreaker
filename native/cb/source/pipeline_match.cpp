@@ -16,15 +16,19 @@
 // A 16-bit module (Microsoft C in an emulator: verify/authored/match16) and an Xbox 360 image (its compiler's objects, read by bits) are not made here.
 #include <algorithm>
 #include <map>
+#include <mutex>
 #include <set>
+#include <unordered_map>
 
 #include <nlohmann/json.hpp>
 #include "cb/compare/mask.hpp"
+#include "cb/verify/authored/repair.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/json.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/parallel.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/regex.hpp"
 #include "cb/core/text.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/formats/pe_functions.hpp"
@@ -319,6 +323,297 @@ int match_command(World& world, const cli::Args& args) {
 }
 
 }  // namespace
+
+// ---- repair <32-bit module> [--flags SWITCHES] [--first N] | --truth ... ----------------------------------------------------------------------------
+//
+// The search of verify/authored/repair is given the period compiler (CL.EXE) and the module's functions as a period compiler is given them: the
+// reconstruction names the original's storage by its address and calls imports as plain functions, which is what lets it run beside the original;
+// the original was not written that way, and a compiler shows the difference in every instruction that touches a global or calls Windows. So here
+// the same source is given the declarations its author had (an import is `__declspec(dllimport)`, a global is a variable and an address taken as a
+// number is the address of a variable, a function whose every `return` hands back "whatever was in EAX" returns nothing), which change no meaning.
+
+namespace {
+
+namespace rp = verify::authored::repair;
+
+// The addresses the module's own relocations point at: every place in it that a word of code or data names by address.
+std::set<std::uint64_t> repair_relocation_targets(const formats::pe::Image& pe) {
+    std::set<std::uint64_t> out;
+    for (const std::uint64_t rva : pe.base_relocs()) {
+        const std::optional<std::uint64_t> at = pe.file_offset(rva);
+        if (!at || *at + 4 > pe.data().size()) continue;
+        const std::uint8_t* p = pe.data().data() + *at;
+        out.insert(static_cast<std::uint64_t>(p[0]) | static_cast<std::uint64_t>(p[1]) << 8 | static_cast<std::uint64_t>(p[2]) << 16 | static_cast<std::uint64_t>(p[3]) << 24);
+    }
+    return out;
+}
+
+std::string repair_rstrip(std::string_view s) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.remove_suffix(1);
+    return std::string(s);
+}
+
+struct RepairSource {
+    std::string header;
+    std::map<std::string, std::string> texts;
+};
+
+RepairSource repair_period_source(const std::string& header, const std::vector<std::string>& order, const std::unordered_map<std::string, std::string>& texts,
+                                  const std::set<std::string>& imports, const std::set<std::uint64_t>& targets) {
+    static const Regex bound_line(R"(^#define (\w+) \(\*\(([^()]*?) ?\*\)0x([0-9a-fA-F]+)\)[ \t]*$)", RegexFlags::Multiline);
+    static const Regex constant_re(R"((-\s*)?\b0x([0-9a-fA-F]{5,8})\b)");
+    static const Regex nothing_line(R"(^[ \t]*return in_EAX;[ \t]*\n)", RegexFlags::Multiline);
+    static const Regex in_eax_decl(R"(^[ \t]*\w+ in_EAX;[ \t]*\n)", RegexFlags::Multiline);
+    static const Regex return_re(R"(\breturn\b[^;]*;)");
+    static const Regex leading_type(R"(^\s*\w+\b)");
+    static const Regex function_line(R"(^(\w+)((?: __\w+)?) (\w+)\((.*)\);[ \t]*$)");
+
+    std::map<std::string, std::string> bound;
+    bound_line.for_each_match(header, [&](const RegexMatch& m) {
+        if (const auto a = text::parse_int<std::uint64_t>(m.group(3), 16); a && targets.contains(*a)) bound[std::string(m.group(1))] = std::string(m.group(2));
+        return true;
+    });
+    std::map<std::uint64_t, std::string> names;
+    const auto at = [&](std::uint64_t address) {
+        return names[address] = std::format("codebreaker_at_{:08x}", address);
+    };
+    std::vector<std::string> body_parts;   // (what follows the first brace of each text, joined by line breaks)
+    for (const std::string& name : order) {
+        const std::string& t = texts.at(name);
+        const std::size_t brace = t.find('{');
+        body_parts.push_back(brace == std::string::npos ? std::string() : t.substr(brace + 1));
+    }
+    const std::string bodies = text::join(body_parts, "\n");
+    const auto used = [&](const std::string& name) {
+        const Regex call("\\b" + name + "\\s*\\(");   // (names are identifiers)
+        bool found = false;
+        call.for_each_match(bodies, [&](const RegexMatch& m) {
+            const std::string before = repair_rstrip(std::string_view(bodies).substr(0, m.start()));
+            const bool statement = before.empty() || std::string_view(";{})").find(before.back()) != std::string_view::npos || before.ends_with("else");
+            if (!statement) {
+                found = true;
+                return false;
+            }
+            return true;
+        });
+        return found;
+    };
+    RepairSource out;
+    std::set<std::string> nothing;
+    for (const std::string& name : order) {
+        std::string text = texts.at(name);
+        const std::string original = text;
+        text = constant_re.replace_all(original, [&](const RegexMatch& m) -> std::string {
+            std::uint64_t value = text::parse_int<std::uint64_t>(m.group(2), 16).value_or(0);
+            const bool minus = m.has(1);
+            if (minus) value = (0 - value) & 0xFFFFFFFFull;
+            if (!targets.contains(value)) return std::string(m.whole());
+            const std::string before = repair_rstrip(std::string_view(original).substr(0, m.start()));
+            const bool joined = minus && (before.empty() || std::isalnum(static_cast<unsigned char>(before.back())) || before.back() == '_' || before.back() == ')' || before.back() == ']');
+            return std::string(joined ? "+ " : "") + "(int4)&" + at(value);
+        });
+        std::vector<std::string> returns = return_re.find_all(text);
+        const bool all_nothing = !returns.empty() && std::all_of(returns.begin(), returns.end(), [](const std::string& r) {
+            return text::replace_all(r, " ", "") == "returnin_EAX;";
+        });
+        if (all_nothing && !used(name)) {
+            const std::size_t brace = text.find('{');
+            std::string head = brace == std::string::npos ? text : text.substr(0, brace);
+            std::string body = brace == std::string::npos ? std::string() : text.substr(brace + 1);
+            body = nothing_line.replace_all(in_eax_decl.replace_all(body, ""), "");
+            if (body.find("in_EAX") == std::string::npos) {   // (given a value somewhere: it is a result)
+                head = leading_type.replace_first(head, "void");
+                text = head + (brace == std::string::npos ? "" : "{") + body;
+                nothing.insert(name);
+            }
+        }
+        out.texts[name] = std::move(text);
+    }
+    std::vector<std::string> lines;
+    for (const std::string_view line : text::split(header, '\n')) {
+        std::string made(line);
+        if (const auto m = bound_line.match(line); m && bound.contains(std::string(m->group(1)))) {
+            made = std::format("extern {} {};", bound.at(std::string(m->group(1))), m->group(1));
+        } else if (const auto f = function_line.match(line)) {
+            if (imports.contains(std::string(f->group(3))) && f->group(4).empty()) made = "__declspec(dllimport) " + std::string(line);
+            else if (nothing.contains(std::string(f->group(3)))) made = std::format("void{} {}({});", f->group(2), f->group(3), f->group(4));
+        }
+        lines.push_back(std::move(made));
+    }
+    for (const auto& [address, name] : names) lines.push_back("extern char " + name + ";");
+    out.header = text::join(lines, "\n");
+    return out;
+}
+
+// The header with only the declarations `text` uses (types and macros are all kept): what this compiler makes of a function depends on what was
+// declared before it -- a variable the function never mentions, declared a thousand lines earlier, can turn `cmp eax, ecx` into `cmp ecx, eax`.
+std::string repair_needed_header(const std::string& header, std::string_view text) {
+    static const Regex word_re(R"([A-Za-z_]\w*)");
+    static const Regex declares(R"(^(?:__declspec\(dllimport\) )?(?:extern )?[\w ]*?[ *](\w+)(?:\(.*\)|\[\d*\])?;[ \t]*$|^#define (\w+) \(\*)");
+    std::set<std::string> words;
+    for (const std::string& w : word_re.find_all(text)) words.insert(w);
+    std::vector<std::string> keep;
+    bool inside = false, wanted = false;
+    for (const std::string_view line : text::split(header, '\n')) {
+        if (inside || line.starts_with("typedef struct")) {
+            if (line.starts_with("typedef struct")) {
+                inside = true;
+                const std::vector<std::string_view> parts = text::split_ws(line);
+                wanted = parts.size() > 2 && words.contains(std::string(parts[2]));
+            }
+            if (wanted) keep.emplace_back(line);
+            inside = !line.starts_with("}");
+            continue;
+        }
+        if (const auto m = declares.match(line)) {
+            const std::string name = std::string(m->has(1) ? m->group(1) : m->group(2));
+            if (!words.contains(name) && !line.starts_with("typedef")) continue;
+        }
+        keep.emplace_back(line);
+    }
+    return text::join(keep, "\n");
+}
+
+// The period compiler as the search is given it: CL.EXE, in the environment it was made for. A text compiled once is kept for the run (a search tries
+// the same text again and again).
+class RepairCl final : public rp::Compiler {
+public:
+    explicit RepairCl(stdfs::path cl) : cl_(std::move(cl)) {
+        const std::string path_now = fs::get_env("PATH").value_or("");
+        env_ = {{"PATH", fs::to_text(cl_.parent_path()) + ";" + path_now}, {"INCLUDE", fs::to_text(cl_.parent_path().parent_path() / "INCLUDE")}};
+    }
+
+    std::optional<rp::Code> compile(std::string_view header, std::string_view source, std::string_view name, std::string_view flags,
+                                    const stdfs::path& work) const override {
+        const std::string key = std::string(flags) + '\0' + std::string(header) + '\0' + std::string(source) + '\0' + std::string(name);
+        {
+            std::lock_guard hold(lock_);
+            if (const auto it = kept_.find(key); it != kept_.end()) return it->second;
+        }
+        const std::optional<rp::Code> built = compile_now(header, source, name, flags, work);
+        std::lock_guard hold(lock_);
+        kept_.emplace(key, built);
+        return built;
+    }
+
+    verify::authored::search16::ByteVerdict distance(const rp::Code& built, const rp::Code& original) const override {
+        MatchCode b{built.bytes, built.mask};
+        b = match_trimmed(std::move(b));
+        const compare::mask::DistanceResult d = compare::mask::distance(b.bytes, original.bytes, b.mask, original.mask);
+        verify::authored::search16::ByteVerdict v;
+        v.match = d.verdict == compare::mask::Match::Identical ? verify::ByteMatch::Identical : d.verdict == compare::mask::Match::SameSize ? verify::ByteMatch::SameSize : verify::ByteMatch::Different;
+        v.differing = d.differing;
+        v.total = d.compared;
+        return v;
+    }
+
+    std::vector<std::string> flag_sets() const override { return match_flag_sets(); }
+    std::string needed_header(std::string_view header, std::string_view source) const override { return repair_needed_header(std::string(header), source); }
+
+private:
+    std::optional<rp::Code> compile_now(std::string_view header, std::string_view source, std::string_view name, std::string_view flags, const stdfs::path& work) const {
+        fs::make_dirs(work);
+        fs::write_text(work / "m.h", text::replace_all(text::replace_all(std::string(header), "unsigned long long", "unsigned __int64"), "long long", "__int64"));
+        std::error_code ec;
+        stdfs::remove(work / "one.obj", ec);
+        stdfs::remove(work / "one.c", ec);
+        fs::write_text(work / "one.c", "#include \"m.h\"\n\n" + std::string(source) + "\n");
+        process::ProcessSpec spec;
+        spec.argv = {fs::to_text(cl_), "/nologo", "/c", "/W0"};
+        for (const std::string_view flag : text::split_ws(flags)) spec.argv.emplace_back(flag);
+        spec.argv.push_back("one.c");
+        spec.cwd = work;
+        spec.env = env_;
+        spec.timeout = std::chrono::seconds(300);
+        const process::ProcessResult r = process::run(spec);
+        if (r.exit_code != 0 || r.timed_out || !stdfs::is_regular_file(work / "one.obj", ec)) return std::nullopt;
+        const std::optional<MatchCode> mine = match_object_function(fs::read_file(work / "one.obj"), name);
+        if (!mine) return std::nullopt;
+        return rp::Code{mine->bytes, mine->mask, {}};
+    }
+
+    stdfs::path cl_;
+    std::map<std::string, std::string> env_;
+    mutable std::mutex lock_;
+    mutable std::map<std::string, std::optional<rp::Code>> kept_;
+};
+
+int repair_command(World& world, const cli::Args& args) {
+    const std::vector<std::string> words = args.values("args");
+    const std::optional<rp::Arguments> parsed = rp::parse_arguments(words);
+    if (!parsed) {
+        cb::out("{}\n", rp::kUsage);
+        return kExitUsage;
+    }
+    if (parsed->truth) throw UsageError("repair --truth: the period compilers' own units are not made native yet");
+    const std::optional<stdfs::path> path = world.find(parsed->module);
+    if (!path) throw UsageError(parsed->module + ": a 32-bit Windows module or a PowerPC image is needed");
+    const std::optional<base::Lane> lane = world.corpus().lane(*path);
+    if (text::iends_with(parsed->module, ".xex") || (lane == base::Lane::Pe && world.reconstructor().kind_name(*path) == "powerpc"))
+        throw UsageError("repair: an Xbox 360 image is not made native yet (its compiler's objects are read by bits)");
+    if (lane != base::Lane::Pe) throw UsageError(parsed->module + ": a 32-bit Windows module or a PowerPC image is needed");
+    const std::string period = world.config().text("period_compiler");
+    const stdfs::path cl = fs::from_text(period) / "CL.EXE";
+    std::error_code ec;
+    if (period.empty() || !stdfs::is_regular_file(cl, ec)) throw UsageError("no period compiler (settings.json: period_compiler)");
+
+    const std::string file_name = text::lower(fs::to_text(path->filename()));
+    const stdfs::path work = world.config().state(stdfs::path("repair") / file_name);
+    const std::shared_ptr<const verify::lanes::Kind> kind = world.kit().win32_lane();
+    if (!kind) throw UsageError("the 32-bit lane is not set up here (OpenWatcom and the native decompiler)");
+    const std::unique_ptr<verify::lanes::Prepared> prepared = kind->prepare(*path, work / "source");
+    const auto& m = static_cast<const verify::lanes::Win32Lane::PreparedModule&>(*prepared);
+    const formats::pe::Image pe = formats::pe::Image::open(*path);
+    std::vector<std::uint64_t> addresses;
+    for (const auto& [name, va] : m.va) addresses.push_back(static_cast<std::uint64_t>(va));
+    std::sort(addresses.begin(), addresses.end());
+    const std::map<std::uint64_t, MatchCode> originals = match_originals(pe, addresses);
+    const std::set<std::string> imports(m.module.imports.begin(), m.module.imports.end());
+    const RepairSource period_source = repair_period_source(m.header, m.order, m.texts, imports, repair_relocation_targets(pe));
+
+    const verify::reconstruct::Identity id = world.reconstructor().identity(*path);
+    engine::FunctionStore& store = world.store();
+    std::map<std::string, std::string> behaves;   // what the judge said of each function (by its key)
+    for (const engine::Candidate& c : store.candidates(id.sha, id.profile))
+        if (c.verdict) behaves[c.addr] = *c.verdict;
+    store.add_module(id.sha, file_name, fs::to_text(*path), "pe");
+    store.add_functions(id.sha, m.all_keys);
+
+    rp::Module module;
+    module.isa = rp::Isa::X86_32;
+    module.header = period_source.header;
+    module.compiler_name = text::lower(fs::to_text(cl.filename()));
+    for (const std::string& name : m.order) {
+        const auto va = m.va.find(name);
+        const auto original = va == m.va.end() ? originals.end() : originals.find(static_cast<std::uint64_t>(va->second));
+        if (original == originals.end()) continue;
+        module.targets.push_back({name, m.key.at(name), period_source.texts.at(name), rp::Code{original->second.bytes, original->second.mask, {}}});
+    }
+    const RepairCl compiler(cl);
+    rp::RunOptions options;
+    options.flags = parsed->flags;
+    options.work = work;
+    options.limit = parsed->first;
+    options.log = [](std::string_view line) { cb::out("{}\n", line); };
+    options.record = [&](const rp::Target& target, const rp::Repaired& r, const std::string& setting) {
+        const auto b = behaves.find(target.key);
+        store.record_variant(id.sha, target.key, setting, r.source, static_cast<std::int64_t>(r.verdict.differing), static_cast<std::int64_t>(r.verdict.total),
+                             verify::word(r.verdict.match), r.knobs, std::nullopt, b == behaves.end() ? std::string_view() : std::string_view(b->second));
+    };
+    const rp::Counts counts = rp::run(module, compiler, options);
+    cb::out("{}\n", rp::summary_line(fs::to_text(path->filename()), counts));
+    return 0;
+}
+
+}  // namespace
+
+cli::Command repair(const Environment& environment) {
+    cli::Command declared{"repair", "search for source that compiles to the original's bytes",
+                          {cli::Positional{"args", "<module> [--flags SWITCHES] [--first N] | --truth <compiler> [target]", false, true}}, {}, {}, "Reconstruct",
+                          std::string(rp::kUsage)};
+    declared.passthrough = true;
+    return in_world(std::move(declared), environment, [](World& world, const cli::Args& args) { return repair_command(world, args); });
+}
 
 cli::Command match(const Environment& environment) {
     cli::Command declared{"match",

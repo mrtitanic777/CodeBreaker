@@ -15,6 +15,5 @@ cli::Command not_made(std::string name, std::string summary) {
 }  // namespace
 
 cli::Command score16(const Environment&) { return not_made("score16", "where each 16-bit function differs from the original"); }
-cli::Command repair(const Environment&) { return not_made("repair", "search for source that compiles to the original's bytes"); }
 
 }  // namespace cb::source::pipeline
