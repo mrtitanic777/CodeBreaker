@@ -87,7 +87,10 @@ def functions(prj, verbose=False):
     ends = sorted(set(st[1:]) | {hi} | {x for x, y in skip if x > lo})
     out = []
     for a in st:
-        e = min(x for x in ends if x > a)
+        later = [x for x in ends if x > a]
+        if not later:
+            raise ValueError("exact carve: a function starts past where the program's own code ends (%#x)" % a)
+        e = min(later)
         z = e
         while z > a + 1 and img[z - 1] == 0:
             z -= 1
