@@ -202,7 +202,11 @@ int run(const Layout& layout, const Options& options, const CacheHooks& cache) {
     const std::vector<Part> before = parts(layout);
     std::uint64_t total = 0;
     for (const Part& p : before) total += p.bytes;
-    cb::out("state/ ({}): {}\n", fs::to_text(layout.state), gb_text(total));
+    std::string state_text = fs::to_text(layout.state);   // (as the platform writes a path: the Python printed backslashes on Windows)
+#ifdef _WIN32
+    std::replace(state_text.begin(), state_text.end(), '/', '\\');
+#endif
+    cb::out("state/ ({}): {}\n", state_text, gb_text(total));
     for (std::size_t i = 0; i < before.size() && i < kPartsShown; ++i)
         cb::out("  {:<28} {:>10}\n", before[i].path.filename().string(), gb_text(before[i].bytes));
     const std::vector<stdfs::path> builds = build_folders(layout);

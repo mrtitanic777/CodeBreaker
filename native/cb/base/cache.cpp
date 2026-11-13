@@ -543,7 +543,8 @@ std::int64_t last_written(const Stored& s) {
         stdfs::path log = s.path;
         log += "-wal";
         std::error_code e2;
-        newest = std::max(newest, mtime_seconds(log, e2));
+        // (a log with nothing in it is only what opening the file made: not a write)
+        if (stdfs::file_size(log, e2) > 0 && !e2) newest = std::max(newest, mtime_seconds(log, e2));
     } else {
         for (const auto& e : stdfs::directory_iterator(s.path, ec)) {
             std::error_code e2;
@@ -700,7 +701,7 @@ std::map<std::string, HitCount> Cache::counts() const {
 std::vector<KindStats> Cache::stats() {
     std::lock_guard lock(impl_->mutex);
     std::vector<KindStats> out;
-    auto count_rows = [&](const stdfs::path& file) -> std::uint64_t {
+    auto count_rows = [&](const stdfs::path& file, bool read_only) -> std::uint64_t {
         for (auto& [name, kind] : impl_->kinds)
             if (kind.db && fs::same_path(kind.db->path(), file)) {
                 try {
@@ -710,7 +711,7 @@ std::vector<KindStats> Cache::stats() {
                 }
             }
         try {
-            Database db = Database::open(file);
+            Database db = read_only ? Database::open_readonly(file) : Database::open(file);   // (the build cache is shared with live processes: only looked at)
             return static_cast<std::uint64_t>(as_int(db.query("SELECT count(*) FROM entry")[0][0]));
         } catch (const IoError&) {
             return 0;
@@ -732,12 +733,11 @@ std::vector<KindStats> Cache::stats() {
             s.kind = kind;
             s.scope = scope;
             for (const Stored& e : entries) {
-                s.bytes += size_of(e.path);
                 const std::string name = fs::to_text(e.path.filename());
                 s.generations.push_back(generation_stem(name));
                 s.of_now.push_back(now.contains(group_of(name)));
                 if (e.is_db) {
-                    s.results += count_rows(e.path);
+                    s.results += count_rows(e.path, scope == Scope::Shared);   // (counted before sized: closing the file folds its log in, and the listing says what is left)
                 } else {
                     std::error_code ec;
                     for (stdfs::recursive_directory_iterator it(e.path, ec), end; !ec && it != end; it.increment(ec)) {
@@ -745,6 +745,7 @@ std::vector<KindStats> Cache::stats() {
                         if (it->is_regular_file(e2)) s.results += 1;
                     }
                 }
+                s.bytes += size_of(e.path);
             }
             if (owned) s.current = generation;
             out.push_back(std::move(s));
