@@ -62,4 +62,7 @@ cli::Command in_world(cli::Command declared, const Environment& environment, Run
     return declared;
 }
 
+// The ratio difflib's SequenceMatcher gives two runs of bytes (autojunk off): twice the bytes in the matching blocks over the bytes of both.
+double sequence_ratio(ByteView a, ByteView b);
+
 }  // namespace cb::source::pipeline

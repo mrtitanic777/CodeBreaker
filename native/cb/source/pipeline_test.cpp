@@ -11,6 +11,7 @@
 
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/source/pipeline_world.hpp"
 
 namespace stdfs = std::filesystem;
 using namespace cb;
@@ -107,6 +108,22 @@ CB_TEST("source.pipeline.module_writes_what_the_python_wrote_for_a_16_bit_module
     Surroundings w;
     if (!w.has_corpus()) return;
     (void)module_matches_golden(w, "lzexpand.dll", {"lzexpand.h"});
+});
+
+// The ratio of two byte runs as Python's difflib gives it (the values are difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()).
+CB_TEST("source.pipeline.sequence_ratio_is_difflibs", [] {
+    const auto bytes = [](std::initializer_list<int> v) {
+        Bytes out;
+        for (const int b : v) out.push_back(static_cast<std::uint8_t>(b));
+        return out;
+    };
+    const auto ratio = [](const Bytes& a, const Bytes& b) { return source::pipeline::sequence_ratio(a, b); };
+    CB_CHECK_EQ(ratio(bytes({'a', 'b', 'c', 'd', 'e'}), bytes({'a', 'b', 'X', 'd', 'e'})), 0.8);
+    CB_CHECK_EQ(ratio(bytes({0x55, 0x8b, 0xec, 0x83, 0xec, 0x10, 0x53, 0x56, 0x57, 0xc3}), bytes({0x55, 0x8b, 0xec, 0x53, 0x56, 0x57, 0xc3})), 0.8235294117647058);
+    CB_CHECK_EQ(ratio(bytes({'a', 'a', 'a', 'a'}), bytes({'a', 'a'})), 0.6666666666666666);
+    CB_CHECK_EQ(ratio(bytes({'a', 'b', 'c', 'a', 'b', 'c', 'a', 'b', 'c'}), bytes({'c', 'a', 'b', 'c', 'a', 'b'})), 0.8);
+    CB_CHECK_EQ(ratio(bytes({}), bytes({})), 1.0);
+    CB_CHECK_EQ(ratio(bytes({'x', 'y', 'z'}), bytes({})), 0.0);
 });
 CB_TEST("source.pipeline.proof", [] {
     const std::optional<std::string> proof = fs::get_env("CB_PIPELINE_PROOF");
