@@ -229,7 +229,11 @@ def main(argv):
         worst = 0
         for name in (named or CHECKS):
             print("== %s" % name)
-            worst = max(worst, tool(name, []))
+            try:
+                worst = max(worst, tool(name, []) or 0)
+            except (Exception, SystemExit) as e:     # a tool that cannot run (a compiler not set up) must not stop the ones after it
+                print("%s: %s" % (type(e).__name__, e))
+                worst = max(worst, 2)
         return worst
     args = [a for a in argv if not a.startswith("--") and a not in (flags, str(limit), show)]
     if not args:

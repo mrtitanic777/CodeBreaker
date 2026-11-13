@@ -20,11 +20,13 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "cb/core/bytes.hpp"
+#include "cb/formats/ne.hpp"
 #include "cb/invert/msc6.hpp"
 
 namespace cb::invert::module_pass {
@@ -68,6 +70,10 @@ struct Reading {
 // What the compilers give: the code bytes of one text under a switch set, none when the compiler refuses it or is not set up.
 using Compile = std::function<std::optional<Bytes>(std::string_view text, std::string_view flags)>;
 
+// The same for many texts at once (one answer per text, in order): the compilers are DOS programs and starting them costs more than compiling a function,
+// so a pass that has the texts of every function asks for them in one call per switch set.
+using CompileMany = std::function<std::vector<std::optional<Bytes>>(std::span<const std::string> texts, std::string_view flags)>;
+
 // One function through the models, before the compilers: a thunk is assembly, else the one-shape candidates, then the Microsoft C 6.0a model with the
 // SDK's signature and then without it (the signature the segment's calls give stands in where there is no SDK's).
 Reading read_function(const Function& f);
@@ -84,5 +90,13 @@ std::vector<Function> framed_functions(const std::filesystem::path& module);
 // those functions stay recognised), under `flags` alone or the compiler's switch sets in order. `log` hears one line per compiler and switch set.
 std::map<std::string, Reading> run(const std::vector<Function>& functions, const Compile& msc6, const Compile& msvc152, std::string_view flags = {},
                                    const std::function<void(const std::string&)>& log = {});
+
+// As `run`, the compilers asked for all the texts of a switch set together (what a compiler that is a DOS program wants).
+std::map<std::string, Reading> run_batched(const std::vector<Function>& functions, const CompileMany& msc6, const CompileMany& msvc152,
+                                           std::string_view flags = {}, const std::function<void(const std::string&)>& log = {});
+
+// The bytes of a segment's code that a relocation record puts a loader's address in: each record names the head of a chain of places linked through the
+// code itself (each holds the offset of the next, 0xFFFF the end; an additive record is one place), and every place is as wide as its kind.
+std::set<std::size_t> relocated_places(const formats::ne::Module& module, const formats::ne::Segment& segment, ByteView code);
 
 }  // namespace cb::invert::module_pass

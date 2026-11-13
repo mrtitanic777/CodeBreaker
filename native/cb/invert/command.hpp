@@ -38,6 +38,9 @@ struct Environment {
     std::function<std::optional<Bytes>(std::string_view text, std::string_view flags)> compile_msc6;
     // The same for Microsoft C/C++ 8 (Visual C++ 1.52c), which built some of the 16-bit modules.
     std::function<std::optional<Bytes>(std::string_view text, std::string_view flags)> compile_msvc152;
+    // The same for many texts at once, one answer per text: each compile is a DOS program, and starting it is most of its cost, so the module pass
+    // gives a compiler every text of a switch set in one call where this is set (else it asks one text at a time).
+    module_pass::CompileMany compile_msc6_many, compile_msvc152_many;
     // The object file (OMF) Microsoft C 2.03 gives for one source text (MC1 then MC2); none: it refused the text. `stem` names the work files.
     std::function<std::optional<Bytes>(std::string_view text, std::string_view stem)> compile_mc203;
     // The 32-bit compiler of 1994: an object file, or what it said.
