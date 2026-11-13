@@ -30,7 +30,12 @@ namespace {
 
 stdfs::path idn_testdata(std::string_view name) { return cb::testing::data_path("symbols/testdata/identify/" + std::string(name)); }
 stdfs::path idn_format_data(std::string_view name) { return cb::testing::data_path("formats/testdata/" + std::string(name)); }
-std::string idn_golden(std::string_view name) { return cb::fs::read_text(idn_testdata(name)); }
+// (a checkout may have turned the golden's line ends into carriage return and line feed: the commands write line feeds)
+std::string idn_golden(std::string_view name) {
+    std::string text = cb::fs::read_text(idn_testdata(name));
+    text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+    return text;
+}
 
 // A corpus holding the files of formats/testdata that these tests ask about, the configuration of the checkout, and an Environment over them.
 struct IdnWorld {
