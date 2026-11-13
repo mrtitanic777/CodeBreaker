@@ -1,59 +1,29 @@
-// codebreaker/source/pe_writer.hpp -- typed C++ of codebreaker.source.pe_writer
+// codebreaker/source/pe_writer.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in native/cb/source/pe_writer.{hpp,cpp}; this
+// header keeps the old py:: surface (reconstruct, main, DOC) for the dynamic exe. Conversion and forwarding only, except
+//   COMPAT(py): `Insn`, `decode`, `is_branch`, `branch_target` -- the capstone instruction codebreaker/source/dos_writer.cpp reads, kept in the
+//       trimmed old pe_writer.cpp; and `_stub`, the DOS stub finder that reaches the old dos_writer. Remove all of it when source/dos_writer is
+//       refactored (the new module then finds the stub itself).
 //
-// pe_writer.py -- a 32-bit Windows program as assembly source that builds back into it, byte for byte.
-//
-//     python -m codebreaker pe-source <program> [--out DIR] [--stub SOURCE.ASM]
-//
-//     Result r = pe_writer::reconstruct(path, outdir);
-//     r.source, r.image, r.same, r.instructions, r.raw, r.rounds
-//
-// The whole file is one NASM source assembled flat (-f bin): one section for the headers and one
-// for every section of the image, each placed at its file offset (start=) and at its address
-// (vstart=), so a label's value is the address the program sees. Nothing the loader patches is a
-// number: every place the base-relocation table names is written as the label it points at, the
-// import table's addresses are written as `label - IMAGE`, and the entry point as the label of the
-// entry. Calls and jumps go to labels.
-//
-// Code is what is reached from the entry point, from the starts of functions, and from every
-// relocated pointer into code (function pointers, the tables of a switch), each path stopping at
-// an instruction that would cut through a relocated place; what is not reached is data.
-//
-// An instruction is written as its mnemonic only where the assembler turns that text back into the
-// original's bytes: every round assembles the whole file, reads where each instruction went (the
-// assembler's map of labels) and compares its bytes; one that differs, or that the assembler
-// rejects, is written as its bytes (with its mnemonic beside it) in the next round, until nothing
-// differs. The DOS program in front of the headers (a stub) is either kept as the original's bytes
-// or, given --stub, assembled from its own source (dos-source) and included.
-//
-// Typing notes (how the Python's dynamic parts are typed here):
-//   * An instruction is a capstone CsInsn with detail: `Insn` below holds what the three whole-file writers (and
-//     dos_writer) read of it. `decode` is `next(md.disasm(code, address, 1), None)` on platforms.decoder(bits,
-//     detail=True): the very capstone.dll the Python package carries, loaded by emulate/capstone_x86.
-//   * The sections are `Sec` records (the PE's section dict with the writer's own keys added); the Python's
-//     dicts keyed by an address are py::dict<int64_t, ...>.
-//   * `reconstruct`'s `stub` argument is None (look for the program's DOS stub's source), False (keep its bytes) or a
-//     path: a std::variant<std::monostate, bool, py::str>. The Python's `_stub(w, outdir, say)` took the writer;
-//     ne_writer passed a stand-in object with only `.d` and `.pe.e_lfanew`, so here it takes those two.
-//   * The result of reconstruct is the Python's dict as a record (`Result`).
+// Not carried over: the internals the module's own port exposed (Writer, Sec, _STOP, _SEGS, _ARITH, _RR, _PRELUDE, _differing).
 #pragma once
 
 #include <cstdint>
 #include <functional>
 #include <optional>
-#include <tuple>
 #include <variant>
-#include <vector>
 
-#include "codebreaker/formats/pe.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/source/pe_writer.hpp"
 #include "codebreaker/source/image_writer.hpp"
-#include "codebreaker/translate/l2.hpp"
 #include "py.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::source::pe_writer {
 
-namespace pe = codebreaker::formats::pe;
+inline const py::str DOC(cb::compat::to_py(cb::source::pe_writer::usage()));
 
-// One instruction as capstone decodes it (with detail): the fields the writers read.
+// One instruction as capstone decodes it (with detail): the fields the old dos_writer port reads.
 struct Insn {
     int64_t address = 0;
     int64_t size = 0;
@@ -70,121 +40,89 @@ struct Insn {
 
 // next(md.disasm(code, address, 1), None): the first instruction of `code` as the x86 decoder of `bits` reads it.
 std::optional<Insn> decode(int64_t bits, const py::bytes& code, int64_t address);
-
-// A branch, call or loop (the Python's _BRANCH pattern, `^(j\w+|call|loop\w*|jecxz|jcxz)$`).
 bool is_branch(const py::str& mnemonic);
-
-// The target a relative branch names as its operand (None for any other instruction).
 std::optional<int64_t> branch_target(const Insn& i);
 
-extern const py::set<py::str> _STOP;
-extern const py::set<int64_t> _SEGS;
-extern const py::set<py::str> _ARITH;
-extern const py::dict<py::str, int64_t> _RR;
-// _RR as a construct-on-first-use value: another file's static initialisation (the NE and LE writers' _PRELUDE) may run
-// before this file's globals exist.
-const py::dict<py::str, int64_t>& RR();
-extern const py::list<py::str> _PRELUDE;
-
-// A section of the image: the PE's own fields, and the writer's.
-struct Sec {
-    py::str name;
-    int64_t vsize = 0, vaddr = 0, rawsize = 0, rawptr = 0, chars = 0;
-    int64_t va = 0;           // where it is in memory (image base + vaddr)
-    bool file = false;        // stored in the file
-    int64_t extent = 0;       // how far it reaches in memory (to the next section)
-    bool code = false;
-    py::str nasm;             // its name in the source
-};
-
-class Writer {
-  public:
-    py::str path;
-    pe::PEFile pe;
-    py::bytes d;
-    int64_t B = 0;
-    int64_t headers = 0;
-    std::vector<Sec> secs;
-    py::dict<int64_t, int64_t> sites;               // VA of a relocated dword -> the address it holds
-    py::dict<int64_t, py::str> imports;             // IAT slot VA -> label
-    py::dict<int64_t, int64_t> rva_fields;          // file offset of an RVA field -> the RVA
-    int64_t tail = 0;
-    py::dict<int64_t, Insn> insns;                  // VA -> instruction
-    py::dict<int64_t, int64_t> covered;             // VA of every byte of an instruction -> its start
-    py::set<int64_t> starts;
-    py::dict<int64_t, py::str> placed;
-    translate::l2::Dict l2;
-
-    explicit Writer(const py::str& path);
-
-    static py::str _secname(const py::str& name, int64_t i);
-
-    // what is where
-    const Sec* section_of(int64_t va) const;
-    // File offset of an address in a section's file part, or None.
-    std::optional<int64_t> offset(int64_t va) const;
-    // The RVA fields of the import directory (descriptors, lookup and address tables).
-    py::dict<int64_t, int64_t> _import_rvas() const;
-
-    // code
-    void _decode();
-    // Every relocated place inside the instruction is its whole 4-byte displacement or immediate.
-    bool _fits(const Insn& i) const;
-    static std::optional<int64_t> _target(const Insn& i);
-
-    // names
-    // The addresses that need a label: what relocated places, import fields and branches name.
-    py::set<int64_t> wanted() const;
-    py::str name(int64_t va) const;
-    // How the source spells an address: its label, a label plus a distance, or IMAGE plus one.
-    py::str ref(int64_t va) const;
-
-    // source
-    // An instruction's lines: its mnemonic in NASM's spelling, or its bytes with the relocated places and
-    // branch distances as expressions (raw).
-    py::list<py::str> text(const Insn& i, bool raw) const;
-    std::optional<py::str> _nasm(const Insn& i, const std::optional<int64_t>& tgt, const py::list<int64_t>& sites) const;
-    // The file's text. -> (text, {line number: instruction VA})
-    std::tuple<py::str, py::dict<int64_t, int64_t>> source(const py::set<int64_t>& raw = py::set<int64_t>(), bool mark_all = true,
-                                                           const std::optional<py::str>& stub = std::nullopt);
-    void _bss(image_writer::Assembly& L, const Sec& s) const;
-    // Bytes from a to end: labels where they stand, relocated places and RVA fields as expressions, the rest as db lines.
-    void _data(image_writer::Assembly& L, int64_t a, int64_t end, bool header = false) const;
-    std::optional<int64_t> _va_of_offset(int64_t o) const;
-};
-
-// The instructions the assembler did not give back: compared where each one went, its length (to the next
-// instruction's label) and its bytes, outside the places whose value depends on where things are (relocated
-// addresses, branch distances).
-py::set<int64_t> _differing(const Writer& w, const py::bytes& data, const py::dict<py::str, std::tuple<int64_t, int64_t>>& labels,
-                            const py::set<int64_t>& raw);
-
-// The DOS program in front of the headers, from its own source (dos-source) when that comes back as the
-// original's bytes; None (its bytes kept) when it does not, or when it is only the 128-byte "cannot be run
-// in DOS mode" kind too small to be worth it. `d` is the file, `e_lfanew` where its new header is.
+// The DOS program in front of the headers, from its own source (dos-source) when that comes back as the original's bytes; None (its bytes
+// kept) when it does not. `d` is the file, `e_lfanew` where its new header is.
 std::optional<py::str> _stub(const py::bytes& d, int64_t e_lfanew, const py::str& outdir, const std::function<void(const py::str&)>& say);
 
-// What reconstruct gives (the Python's dict: source, image, same, rounds, raw, log, instructions).
 struct Result {
     py::str source;
     std::optional<py::str> image;
     bool same = false;
     int64_t rounds = 0;
-    int64_t raw = 0;             // how many instructions are written as bytes
+    int64_t raw = 0;
     py::str log;
     int64_t instructions = 0;
 
-    image_writer::FlatReport report() const;
+    image_writer::FlatReport report() const {
+        image_writer::FlatReport r;
+        r.instructions = instructions;
+        r.raw = raw;
+        r.rounds = rounds;
+        r.same = same;
+        r.image = image;
+        r.source = source;
+        return r;
+    }
 };
 
 using StubArg = std::variant<std::monostate, bool, py::str>;   // None, False, or the stub's source
 
-Result reconstruct(const py::str& path, const py::str& outdir, const StubArg& stub = std::monostate(),
-                   const std::function<void(const py::str&)>& log = nullptr);
+namespace shim_ {
+// The DOS stub's source, found by the old DOS writer.
+inline cb::source::FindStub find_stub() {
+    return [](cb::ByteView file, std::uint64_t new_header, const std::filesystem::path& out,
+              const std::function<void(std::string_view)>& say) -> std::optional<std::filesystem::path> {
+        const std::optional<py::str> found = _stub(cb::compat::to_py(file), static_cast<int64_t>(new_header), cb::compat::to_py(cb::fs::to_text(out)),
+                                                   [&](const py::str& line) { say(cb::compat::from_py(line)); });
+        if (!found || found->empty()) return std::nullopt;
+        return cb::fs::from_text(cb::compat::from_py(*found));
+    };
+}
+}  // namespace shim_
 
-// python -m codebreaker pe-source <program> [--out DIR] [--stub FILE]
-int64_t main(const py::list<py::str>& argv);
+inline Result reconstruct(const py::str& path, const py::str& outdir, const StubArg& stub = std::monostate(),
+                          const std::function<void(const py::str&)>& log = nullptr) {
+    return cb::compat::guard([&] {
+        namespace n = cb::source::pe_writer;
+        n::Options options;
+        options.nasm = cb::fs::from_text(cb::compat::from_py(image_writer::nasm()));
+        options.say = [&](std::string_view line) {
+            if (log) log(cb::compat::to_py(line));
+        };
+        if (std::holds_alternative<std::monostate>(stub)) {
+            options.stub = cb::source::SearchStub{};
+            options.find_stub = shim_::find_stub();
+        } else if (const auto* given = std::get_if<py::str>(&stub)) {
+            options.stub = cb::fs::from_text(cb::compat::from_py(*given));
+        } else {
+            options.stub = cb::source::KeepStub{};
+        }
+        const n::Result r = n::reconstruct(cb::fs::from_text(cb::compat::from_py(path)), cb::fs::from_text(cb::compat::from_py(outdir)), options);
+        Result out;
+        out.source = cb::compat::to_py(cb::fs::to_text(r.source));
+        if (r.image) out.image = cb::compat::to_py(cb::fs::to_text(*r.image));
+        out.same = r.same;
+        out.rounds = static_cast<int64_t>(r.rounds);
+        out.raw = static_cast<int64_t>(r.raw);
+        out.log = cb::compat::to_py(r.log);
+        out.instructions = static_cast<int64_t>(r.instructions);
+        return out;
+    });
+}
 
-extern const py::str DOC;
+// python -m codebreaker pe-source <program> [--out DIR] [--stub FILE] [--keep-stub]
+inline int64_t main(const py::list<py::str>& argv) {
+    return cb::compat::guard([&] {
+        std::vector<std::string> args;
+        for (const py::str& a : argv) args.push_back(cb::compat::from_py(a));
+        cb::source::pe_writer::Environment env{.nasm = cb::fs::from_text(cb::compat::from_py(image_writer::nasm())),
+                                               .state = cb::fs::from_text(cb::compat::from_py(py::settings::get_str(py::str("state")))),
+                                               .find_stub = shim_::find_stub()};
+        return static_cast<int64_t>(cb::source::pe_writer::command(args, env, [](std::string_view line) { py::print(cb::compat::to_py(line)); }));
+    });
+}
 
 }  // namespace codebreaker::source::pe_writer
