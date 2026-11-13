@@ -388,6 +388,13 @@ std::vector<std::pair<std::string, std::string>> whole_function_candidates(const
 
 }  // namespace
 
+std::vector<std::pair<std::uint32_t, std::uint32_t>> framed_functions(ByteView segment) {
+  const Bytes segb(segment.begin(), segment.end());
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> out;
+  for (const auto &[start, end] : func_bounds(segb)) out.emplace_back(static_cast<std::uint32_t>(start), static_cast<std::uint32_t>(end));
+  return out;
+}
+
 std::vector<Signature> infer_signatures(ByteView segment) {
   const Bytes segb(segment.begin(), segment.end());
   const auto bounds = func_bounds(segb);

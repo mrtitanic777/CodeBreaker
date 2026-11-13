@@ -25,6 +25,9 @@ struct Signature {
     std::vector<msc6::Param> params;
 };
 
+// The framed functions of `segment` (the loadds prologue to the far return): (start, end) in code order.
+std::vector<std::pair<std::uint32_t, std::uint32_t>> framed_functions(ByteView segment);
+
 // The functions of `segment` that have parameters, in code order.
 std::vector<Signature> infer_signatures(ByteView segment);
 

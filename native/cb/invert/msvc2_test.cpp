@@ -9,6 +9,7 @@
 // DIVERGES from the Python: a construct with a part missing or of the wrong kind is FormatError here, a KeyError / TypeError there; frame_layout
 // returns its offsets in layout order.
 #include "cb/invert/msvc2.hpp"
+#include "cb/invert/msvc2_battery.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -147,6 +148,25 @@ CB_TEST("invert.msvc2.real_functions_are_declined_as_the_python_declined_them", 
         testing::count_check();
     }
     CB_CHECK(rows > 100);
+});
+
+CB_TEST("invert.msvc2.the_batteries_are_the_pythons", [] {
+    const auto cases = m2::battery();
+    const auto declined = m2::declined_battery();
+    const Json& golden_cases = golden().at("cases");
+    CB_CHECK_EQ(cases.size() + declined.size(), golden_cases.size());
+    for (std::size_t i = 0; i < golden_cases.size(); ++i) {
+        const m2::Case& c = i < cases.size() ? cases[i] : declined[i - cases.size()];
+        CB_CHECK_EQ(c.name, golden_cases.at(i).at("name").get<std::string>());
+        CB_CHECK(c.node == term_of(golden_cases.at(i).at("node")));
+    }
+    const auto frames = m2::frame_battery();
+    CB_CHECK_EQ(frames.size(), golden().at("frames").size());
+    for (std::size_t i = 0; i < frames.size() && i < golden().at("frames").size(); ++i) {
+        CB_CHECK_EQ(frames[i].name, golden().at("frames").at(i).at("name").get<std::string>());
+        CB_CHECK_EQ(frames[i].source, golden().at("frames").at(i).at("source").get<std::string>());
+        CB_CHECK_EQ(frames[i].locals.size(), golden().at("frames").at(i).at("locals").size());
+    }
 });
 
 CB_TEST("invert.msvc2.frame_layout", [] {

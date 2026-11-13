@@ -1304,7 +1304,10 @@ struct Dec {
 
 }  // namespace
 
-Result<Reading> invert(ByteView code, const Context &context) {
+namespace {
+
+// The reading, or a Declined; an error of the model's own reading (bytes it cannot follow) escapes for `invert` to turn into a decline.
+Result<Reading> read(ByteView code, const Context &context) {
   const Bytes b(code.begin(), code.end());
   std::map<long long, std::string> imports;
   for (const auto &[k, v] : context.imports) imports.emplace(k, v);
@@ -1517,6 +1520,16 @@ Result<Reading> invert(ByteView code, const Context &context) {
   r.notes.has_near_call = d.has_nearcall;
   r.notes.near_calls = d.nears_used.keys;
   return r;
+}
+
+}  // namespace
+
+Result<Reading> invert(ByteView code, const Context &context) {
+  try {
+    return read(code, context);
+  } catch (const Error &e) {
+    return Declined(std::string("the model failed: ") + e.what());   // a function the model cannot follow is declined, with the reason
+  }
 }
 
 }  // namespace cb::invert::msc6

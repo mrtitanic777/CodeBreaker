@@ -15,6 +15,7 @@
 #include "cb/invert/early_c_frame.hpp"
 #include "cb/invert/msc6_small.hpp"
 #include "cb/invert/known_differences.hpp"
+#include "cb/invert/model_tools.hpp"
 #include "cb/invert/quad_align.hpp"
 #include "cb/invert/quad_dump.hpp"
 
@@ -25,25 +26,25 @@ namespace {
 namespace stdfs = std::filesystem;
 
 constexpr std::array<Tool, 19> kTools{{
-    {"early-c", "FILE OFFSET LENGTH -> C", true},
-    {"early-c-check", "... and put the text to Microsoft C 2.03", false},
-    {"early-c-frame", "the stack-frame model against its table", true},
-    {"early-c-round-trip", "compile -> read -> compile, for locals", false},
-    {"early-c-frame-probe", "how the compiler places locals", false},
-    {"early-c-order-probe", "how it orders loads and stores", false},
-    {"early-c-forward", "the forward model against a quad file and its object", true},
-    {"quads", "list a quad file", true},
-    {"quad-align", "a quad file beside its object, per function", true},
-    {"omf", "list an object file or library", true},
-    {"msc6", "the Microsoft C 6.0a model", false},
-    {"msc6-templates", "the statement templates", true},
-    {"msc6-function", "one function through the model", true},
-    {"msc6-registers", "register-value tracking", true},
-    {"msc6-walk", "the control-flow walk", true},
-    {"msc6-idioms", "what each compiler switch changes", false},
-    {"known-differences", "the divergence knowledge base", true},
-    {"msvc2", "the Microsoft C/C++ 2.0 (32-bit) model", false},
-    {"msvc2-forward", "the forward model against its compiler", false},
+    {"early-c", "FILE OFFSET LENGTH -> C"},
+    {"early-c-check", "... and put the text to Microsoft C 2.03"},
+    {"early-c-frame", "the stack-frame model against its table"},
+    {"early-c-round-trip", "compile -> read -> compile, for locals"},
+    {"early-c-frame-probe", "how the compiler places locals"},
+    {"early-c-order-probe", "how it orders loads and stores"},
+    {"early-c-forward", "the forward model against a quad file and its object"},
+    {"quads", "list a quad file"},
+    {"quad-align", "a quad file beside its object, per function"},
+    {"omf", "list an object file or library"},
+    {"msc6", "the Microsoft C 6.0a model"},
+    {"msc6-templates", "the statement templates"},
+    {"msc6-function", "one function through the model"},
+    {"msc6-registers", "register-value tracking"},
+    {"msc6-walk", "the control-flow walk"},
+    {"msc6-idioms", "what each compiler switch changes"},
+    {"known-differences", "the divergence knowledge base"},
+    {"msvc2", "the Microsoft C/C++ 2.0 (32-bit) model"},
+    {"msvc2-forward", "the forward model against its compiler"},
 }};
 
 // The models the Python's --check runs, in its order.
@@ -54,11 +55,6 @@ const Tool* find_tool(std::string_view name) {
     for (const Tool& t : kTools)
         if (t.name == name) return &t;
     return nullptr;
-}
-
-int not_native(const Tool& tool) {
-    err("invert --tool {}: not native yet ({}). Its model is the C++ of native/invert, not yet a typed module of native/cb.\n", tool.name, tool.summary);
-    return 2;
 }
 
 // early-c FILE OFFSET LENGTH: the function at OFFSET (hex) of FILE, LENGTH bytes, as C.
@@ -296,19 +292,27 @@ int msc6_registers_tool(const Environment& environment) {
 }
 
 int run_tool(const Tool& tool, std::span<const std::string> rest, const Environment& environment) {
-    if (!tool.native) return not_native(tool);
-    if (tool.name == "early-c-frame") return early_c_frame_tool();
-    if (tool.name == "msc6-templates") return msc6_templates_tool(rest, environment);
-    if (tool.name == "msc6-function") return msc6_function_tool(environment);
-    if (tool.name == "msc6-walk") return msc6_walk_tool(environment);
-    if (tool.name == "msc6-registers") return msc6_registers_tool(environment);
-    if (tool.name == "early-c") return early_c_tool(rest);
-    if (tool.name == "early-c-forward") return early_c_forward::command(rest);
-    if (tool.name == "quads") return quads_tool(rest);
-    if (tool.name == "quad-align") return quad_align_tool(rest);
-    if (tool.name == "omf") return omf_tool(rest);
-    if (tool.name == "known-differences") return known_differences_tool();
-    return not_native(tool);
+    const std::string_view name = tool.name;
+    if (name == "early-c-frame") return early_c_frame_tool();
+    if (name == "msc6-templates") return msc6_templates_tool(rest, environment);
+    if (name == "msc6-function") return msc6_function_tool(environment);
+    if (name == "msc6-walk") return msc6_walk_tool(environment);
+    if (name == "msc6-registers") return msc6_registers_tool(environment);
+    if (name == "msc6") return tools::msc6(environment);
+    if (name == "msc6-idioms") return tools::msc6_idioms(environment);
+    if (name == "msvc2") return tools::msvc2(environment, rest);
+    if (name == "msvc2-forward") return tools::msvc2_forward(environment, rest);
+    if (name == "early-c-check") return tools::early_c_check(environment, rest);
+    if (name == "early-c-round-trip") return tools::early_c_round_trip(environment);
+    if (name == "early-c-frame-probe") return tools::early_c_frame_probe(environment);
+    if (name == "early-c-order-probe") return tools::early_c_order_probe(environment);
+    if (name == "early-c") return early_c_tool(rest);
+    if (name == "early-c-forward") return early_c_forward::command(rest);
+    if (name == "quads") return quads_tool(rest);
+    if (name == "quad-align") return quad_align_tool(rest);
+    if (name == "omf") return omf_tool(rest);
+    if (name == "known-differences") return known_differences_tool();
+    throw InternalError(std::format("invert: the tool '{}' is in the table and has no code", name));
 }
 
 }  // namespace
@@ -359,12 +363,7 @@ int run(std::span<const std::string> args, const Environment& environment) {
         out("{}", usage());
         return 2;
     }
-    // the module pass: the 16-bit module's functions read by the models, each text put to the real compiler
-    const std::optional<stdfs::path> file = stdfs::is_regular_file(fs::from_text(positional[0])) ? std::optional<stdfs::path>(fs::from_text(positional[0]))
-                                                                                                 : (environment.retail ? environment.retail(positional[0]) : std::nullopt);
-    if (!file) throw NotFoundError(fs::from_text(positional[0]), 0, "no module of that name or path");
-    err("invert {}: the module pass is not native yet: it runs the msc6 / msvc2 models, which are not in native/cb.\n", fs::to_text(file->filename()));
-    return 2;
+    return tools::module(environment, args);
 }
 
 std::function<int(std::span<const std::string>)> runner(const Environment& environment) {

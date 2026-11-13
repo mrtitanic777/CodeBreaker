@@ -23,6 +23,7 @@
 #include "cb/invert/early_c.hpp"
 #include "cb/invert/flow16.hpp"
 #include "cb/invert/msc6.hpp"
+#include "cb/invert/module_pass.hpp"
 #include "cb/invert/msc6_segment.hpp"
 #include "cb/platforms/decoder.hpp"
 
@@ -394,6 +395,76 @@ CB_TEST("invert.msc6_segment.signatures_thunks_and_shapes_as_the_python_read_the
             testing::count_check();
         }
     }
+});
+
+// ---- the module pass ---------------------------------------------------------------------------------------------------------------------
+
+CB_TEST("invert.module_pass.every_function_is_read_as_the_python_pass_read_it", [] {
+    namespace mp = cb::invert::module_pass;
+    std::size_t recognised = 0, declined = 0, assembly = 0;
+    for (const char* module : {"lzexpand", "olecli"}) {
+        for (const Json& row : golden().at(module).at("rows")) {
+            mp::Function f;
+            f.name = row.contains("name") ? row.at("name").get<std::string>() : "sub_" + std::to_string(row.at("seg").get<int>()) + "_" + std::format("{:x}", row.at("off").get<std::uint32_t>());
+            f.segment = row.at("seg").get<std::uint32_t>();
+            f.offset = row.at("off").get<std::uint32_t>();
+            f.code = from_hex(row.at("code").get<std::string>());
+            if (row.contains("sdk") && !row.at("sdk").is_null()) f.sdk = mp::Signature{row.at("sdk").at(0).get<std::string>(), params_of(row.at("sdk").at(1))};
+            if (!row.at("sig").is_null()) f.called = params_of(row.at("sig"));
+            const std::string where = label(module, row);
+            const Json& want = row.at("module");
+            const mp::Reading got = mp::read_function(f);
+            const std::string kind = want.at(0).get<std::string>();
+            if (std::string(mp::to_text(got.verdict)) != kind) {
+                fail(where + ": " + std::string(mp::to_text(got.verdict)) + ", the Python said " + kind);
+            } else if (got.text != want.at(1).get<std::string>()) {
+                fail(where + ": text differs:\n" + got.text + "\n--- the Python:\n" + want.at(1).get<std::string>());
+            } else if (kind != "assembly" && got.tries.size() != want.at(2).get<std::size_t>()) {
+                fail(where + ": " + std::to_string(got.tries.size()) + " texts to try, the Python had " + std::to_string(want.at(2).get<std::size_t>()));
+            }
+            recognised += got.verdict == mp::Verdict::Recognised;
+            declined += got.verdict == mp::Verdict::Declined;
+            assembly += got.verdict == mp::Verdict::Assembly;
+            // the variables it names by address
+            const auto globals = mp::globals_of(f.code);
+            CB_CHECK_EQ(globals.size(), row.at("syms").size());
+            for (const auto& [off, g] : globals) {
+                const std::string key = std::to_string(off);
+                CB_CHECK(row.at("syms").contains(key));
+                if (row.at("syms").contains(key)) CB_CHECK_EQ(g.name, row.at("syms").at(key).at(0).get<std::string>());
+            }
+            testing::count_check();
+        }
+    }
+    CB_CHECK(recognised > 60);
+    CB_CHECK(declined > 100);
+});
+
+CB_TEST("invert.module_pass.compilers_decide_identical", [] {
+    namespace mp = cb::invert::module_pass;
+    // a function whose text the stand-in compiler turns back into its own bytes is identical, under the first switch set that does
+    mp::Function f;
+    f.name = "F";
+    f.code = from_hex("1e589045558bec1e8ed8b80700" "4d4d8be51f5d4dcb");
+    std::vector<std::string> asked;
+    const mp::Compile compile = [&](std::string_view, std::string_view flags) -> std::optional<Bytes> {
+        asked.emplace_back(flags);
+        if (flags == "/AM /G2 /Gsw /Os") return f.code;
+        return std::nullopt;
+    };
+    std::vector<std::string> log;
+    const auto results = mp::run({f}, compile, {}, {}, [&](const std::string& line) { log.push_back(line); });
+    CB_CHECK_EQ(std::string(mp::to_text(results.at("F").verdict)), std::string("identical"));
+    CB_CHECK_EQ(results.at("F").flags, std::string("/AM /G2 /Gsw /Os"));
+    CB_CHECK_EQ(asked.size(), std::size_t{2});
+    CB_CHECK_EQ(log.size(), std::size_t{2});
+    // without a compiler the function stays recognised and the log says so
+    std::vector<std::string> log2;
+    const auto none = mp::run({f}, {}, {}, {}, [&](const std::string& line) { log2.push_back(line); });
+    CB_CHECK_EQ(std::string(mp::to_text(none.at("F").verdict)), std::string("recognised"));
+    CB_CHECK_EQ(log2.size(), std::size_t{1});
+    CB_CHECK(mp::compiler_of(from_hex("8cd89045558bec1e8ed8")) == mp::Compiler::Msvc152);
+    CB_CHECK(mp::compiler_of(from_hex("1e589045558bec1e8ed8")) == mp::Compiler::Msc6);
 });
 
 // CB_INVERT_BENCH=<passes> times the models over the golden's functions (for the old-against-new timing of the report).
