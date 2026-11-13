@@ -93,7 +93,10 @@ CB_TEST("formats.powerpc_image.a_base_that_is_given_wins", [] {
     const Image image = Image::parse(fs::read_file(testing::data_path("formats/testdata/natalsu.exe")), 0x82000000u);
     CB_CHECK_EQ(image.base(), 0x82000000u);
     CB_CHECK_EQ(image.entry(), 0x820026a8u);
-    CB_CHECK_EQ(image.spans()[0].va, 0x82000000u);       // (the exception table's own addresses are the file's: only where the bytes sit moves)
+    // (the exception table's own addresses are the file's, so with another base none of them lands in the file: it is read as a packed one,
+    // its first section at the new base + .rdata's address)
+    CB_CHECK(!image.memory_layout());
+    CB_CHECK_EQ(image.spans()[0].va, 0x82000400u);
     CB_CHECK_EQ(image.sections()[0].va, 0x82000400u);
 });
 
