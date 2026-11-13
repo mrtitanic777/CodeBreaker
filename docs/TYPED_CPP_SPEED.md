@@ -1183,3 +1183,16 @@ Release build, the same input on both sides (the Python through formats.dll wher
 | volumes open and list the Minecraft: Story Mode LIVE package (855 MB, 58 files) | 0.181 s | 0.175 s |
 
 The Python's MemoryCrypto is pure Python over `cryptography`'s AES and big ints; the C++ computes each tweak with 64-bit words and runs the AES once per call.
+
+## source/driver_writer (2026-11-12)
+
+Old = the Python `Writer` + `reconstruct` (inside the process, import not counted; `state/` fresh for cold, a second run for warm); New = native/cb Release /O2 in the area test process (a fresh probe file for cold, a kept one for warm). wasm and wlink run as children in both; every output (the assembly, the built image, the .def, the L2 tree) is the same.
+
+| Driver (instructions) | Python cold / warm | C++ cold / warm |
+|---|---|---|
+| bios.vxd (4,943) | 0.23 s / 0.18 s | 0.16 s / 0.12 s |
+| vkd.vxd (3,103) | 0.21 s / 0.23 s | 0.16 s / 0.11 s |
+| vmouse.vxd (5,169) | 0.26 s / 0.23 s | 0.21 s / 0.12 s |
+| DSVXD behind drvspace.bin (241) | 0.08 s / 0.06 s | 0.10 s / 0.07 s |
+
+The small driver is the three tool runs (probe, assemble, link) in both; the C++ is within the noise of the process starts there and faster where there is code to decode and write.

@@ -205,7 +205,7 @@ class Writer(object):
             # patched fields read as a marker, so the operand they belong to can be recognised
             window = bytearray(data[a:a + 16])
             for x in range(a, min(a + 13, ob.size)):
-                if x in ob.fix:
+                if x in ob.fix and x - a + 4 <= len(window):     # (a field that runs past the end of the object does not fit)
                     struct.pack_into("<I", window, x - a, _MARK + (x & 0xFFFFF))
             ins = next(md.disasm(bytes(window), a), None)
             if ins is not None and a + ins.size <= ob.size:
