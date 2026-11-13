@@ -334,7 +334,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/build_lib.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/harness.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/shadowboot.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xcp_dumper.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xsm3.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/kv_tool.cpp"
