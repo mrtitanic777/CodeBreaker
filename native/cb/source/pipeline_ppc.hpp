@@ -7,10 +7,14 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "cb/core/cli.hpp"
+#include "cb/formats/powerpc_image.hpp"
 #include "cb/source/pipeline_world.hpp"
 #include "cb/verify/authored/repair.hpp"
 
@@ -27,5 +31,21 @@ int repair_powerpc_command(World& world, const std::filesystem::path& path, cons
 
 // repair --truth <compiler> [target]: the search tried on a period compiler's own units.
 int repair_truth_command(World& world, const std::vector<std::string>& words);
+
+// ---- the parts the tests reach ----
+
+// The bits a linker fills in, as the masks of a function's words say them.
+inline constexpr std::uint32_t kPpcMaskLi = 0x03FFFFFC;     // the 24-bit distance of b / bl
+inline constexpr std::uint32_t kPpcMaskHalf = 0x0000FFFF;   // a 16-bit half of an address
+
+// One function compiled by the Xbox 360 compiler `cl` (cl.exe) under `flags`, read from its object; nullopt when it does not compile.
+std::optional<verify::authored::repair::Code> ppc_compile_function(const std::filesystem::path& cl, std::string_view header, std::string_view source,
+                                                                   std::string_view name, std::string_view flags, const std::filesystem::path& work);
+
+// The original's code of each function address, with the bits that depend on where things are (the words of one function end before its padding).
+std::map<std::uint64_t, verify::authored::repair::Code> ppc_original_code(const formats::powerpc_image::Image& image, const std::vector<std::uint64_t>& addresses);
+
+// How far a compiled function is from the original's, in words, outside the masked bits.
+verify::authored::search16::ByteVerdict ppc_compare(const verify::authored::repair::Code& built, const verify::authored::repair::Code& original);
 
 }  // namespace cb::source::pipeline

@@ -301,6 +301,17 @@ bool is_powerpc_module(World& world, const stdfs::path& path, const std::string&
     return world.corpus().lane(path) == base::Lane::Pe && world.reconstructor().kind_name(path) == "powerpc";
 }
 
+std::optional<rp::Code> ppc_compile_function(const stdfs::path& cl, std::string_view header, std::string_view source, std::string_view name, std::string_view flags,
+                                             const stdfs::path& work) {
+    return PpcCl(cl).compile(header, source, name, flags, work);
+}
+
+std::map<std::uint64_t, rp::Code> ppc_original_code(const formats::powerpc_image::Image& image, const std::vector<std::uint64_t>& addresses) {
+    return ppc_originals(image, addresses);
+}
+
+verify::authored::search16::ByteVerdict ppc_compare(const rp::Code& built, const rp::Code& original) { return ppc_distance(built, original); }
+
 int match_powerpc_command(World& world, const stdfs::path& path, const std::string& given, const cli::Args& args) {
     const PpcCl cl(ppc_compiler(world));
     const stdfs::path image = ppc_image_path(world, path);
