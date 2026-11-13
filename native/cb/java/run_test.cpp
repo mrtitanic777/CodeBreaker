@@ -172,7 +172,8 @@ CB_TEST("java.run.apimap_tool", [] {
 
     const Ran subsystems = jrun({"apimap", "subsystems"});
     CB_CHECK(subsystems.out.starts_with("  csharp.bcl               (csharp)  C# / .NET base class library -> C++ and Java. The 'cpp' rows are demon\n"));
-    CB_CHECK_EQ(std::count(subsystems.out.begin(), subsystems.out.end(), '\n'), 11);   // (the Python's twelfth is java.platform)
+    CB_CHECK_EQ(std::count(subsystems.out.begin(), subsystems.out.end(), '\n'), 12);   // (the twelfth is java.platform: the legacy class map, bridged in as the Python does)
+    CB_CHECK(subsystems.out.find("  java.platform            (java)  Legacy per-class Java-platform -> Xbox 360 XDK intent map (bridged fro") != std::string::npos);
 
     const Ran list = jrun({"apimap", "list", "java.lang"});
     CB_CHECK_EQ(list.code, 0);

@@ -360,7 +360,7 @@ void refs_write_layer_md(const stdfs::path& out_dir, const std::set<std::string>
         "nothing needs to be copied from the Alpha tree.\n\n"
         "## What is still missing\n\n"
         "See `PLATFORM_COVERAGE.md` -> the **MISSING** rows: symbols the game uses that neither the\n"
-        "reference nor the stub provides. Those are the only per-version hand-fills left.\n";
+        "reference nor the stub provides. Those are the only per-version hand-fills left.\n\n";
     refs_write(out_dir, "PLATFORM_LAYER.md", md);
 }
 

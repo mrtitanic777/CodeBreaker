@@ -1,0 +1,5 @@
+Found 0 achievement(s) -> retail profile, 0 gamerscore (limit 99)
+  icons: 0 auto-wired, 0 need manual art
+  title id: 0x00000000
+  report: <out>/ach/ACHIEVEMENTS.md
+  xlast:  <out>/ach/achievements.xlast   code: Achievements.h, Achievements.cpp

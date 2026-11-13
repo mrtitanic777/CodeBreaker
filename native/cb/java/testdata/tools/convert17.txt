@@ -1,0 +1,6 @@
+Converted <fixtures> -> <out>/out17
+  target: none / C++17 / profile generic
+  parsed=9  headers=9  sources=6
+  verify (crash-class rule findings on output): 2
+  ledger events=18  (HIGH=1)
+  report: <out>/out17/report/index.md

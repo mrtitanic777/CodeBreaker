@@ -1,0 +1,12 @@
+  csharp.bcl               (csharp)  C# / .NET base class library -> C++ and Java. The 'cpp' rows are demon
+  glu                      (glu)  OpenGL Utility (GLU) -> Direct3D 9 for Xbox 360. Matrix builders map t
+  java.csharp              (java)  Java's library -> C# / .NET, as the C# back end writes it (codebreaker
+  java.lang                (java)  java.lang core: math, strings, boxing, System. Targets are C++; a few 
+  java.nio                 (java)  Java NIO buffers. On Xbox 360 these resolve to the hand-written NIOBuf
+  java.platform            (java)  Legacy per-class Java-platform -> Xbox 360 XDK intent map (bridged fro
+  java.util                (java)  java.util collections -> the converter's J-container runtime (JList/JM
+  javax.swing              (javax.swing)  AWT/Swing desktop UI. Almost entirely dead on console; the few reachab
+  libc                     (c)  C's standard library -> Java: what the Java back end (codebreaker/tran
+  lwjgl.input              (lwjgl)  LWJGL Keyboard/Mouse/Display. On Xbox 360 the controller adapter synth
+  opengl                   (opengl)  The OpenGL 1.x (LWJGL GL11) -> Direct3D 9 for Xbox 360 CONVERSION TABL
+  python.builtins          (python)  CPython builtins / stdlib -> C++ and C. The cpp targets (C++17 forms) 

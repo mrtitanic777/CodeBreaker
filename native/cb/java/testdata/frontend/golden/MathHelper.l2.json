@@ -1,0 +1,772 @@
+{
+ "node": "Unit",
+ "line": 1,
+ "col": 1,
+ "path": "sample/MathHelper",
+ "package": "sample",
+ "types": [
+  {
+   "node": "ClassDecl",
+   "line": 4,
+   "col": 1,
+   "name": "MathHelper",
+   "qname": "sample.MathHelper",
+   "kind": "class",
+   "mods": [
+    "public"
+   ],
+   "members": [
+    {
+     "node": "MethodDecl",
+     "line": 4,
+     "col": 8,
+     "sym": {
+      "kind": "ctor",
+      "name": "<init>",
+      "owner": "sample.MathHelper",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     },
+     "name": "<init>",
+     "kind": "ctor",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "body": {
+      "node": "Block",
+      "line": 4,
+      "col": 8,
+      "stmts": [
+       {
+        "node": "CtorCall",
+        "line": 4,
+        "col": 8,
+        "kind": "super:implicit",
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "java.lang.Object",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "args": []
+       }
+      ]
+     },
+     "mods": [
+      "public"
+     ]
+    },
+    {
+     "node": "FieldDecl",
+     "line": 5,
+     "col": 9,
+     "sym": {
+      "kind": "field",
+      "name": "SIN_TABLE",
+      "owner": "sample.MathHelper",
+      "static": true,
+      "type": {
+       "kind": "array",
+       "elem": {
+        "kind": "f32"
+       }
+      }
+     },
+     "type": {
+      "kind": "array",
+      "elem": {
+       "kind": "f32"
+      }
+     },
+     "init": {
+      "node": "NewArray",
+      "line": 5,
+      "col": 44,
+      "type": {
+       "kind": "array",
+       "elem": {
+        "kind": "f32"
+       }
+      },
+      "elem": {
+       "kind": "f32"
+      },
+      "dims": [
+       {
+        "node": "Lit",
+        "line": 5,
+        "col": 54,
+        "type": {
+         "kind": "i32"
+        },
+        "value": 65536
+       }
+      ]
+     },
+     "mods": [
+      "private",
+      "static"
+     ]
+    },
+    {
+     "node": "MethodDecl",
+     "line": 7,
+     "col": 9,
+     "sym": {
+      "kind": "method",
+      "name": "sqrt_float",
+      "owner": "sample.MathHelper",
+      "static": true,
+      "params": [
+       {
+        "kind": "f32"
+       }
+      ],
+      "ret": {
+       "kind": "f32"
+      }
+     },
+     "name": "sqrt_float",
+     "kind": "method",
+     "params": [
+      {
+       "node": "Param",
+       "line": 7,
+       "col": 40,
+       "sym": {
+        "kind": "param",
+        "name": "var0",
+        "owner": "sample.MathHelper.sqrt_float",
+        "type": {
+         "kind": "f32"
+        }
+       },
+       "type": {
+        "kind": "f32"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "f32"
+     },
+     "body": {
+      "node": "Block",
+      "line": 7,
+      "col": 52,
+      "stmts": [
+       {
+        "node": "Return",
+        "line": 8,
+        "col": 17,
+        "expr": {
+         "node": "Cast",
+         "line": 8,
+         "col": 24,
+         "type": {
+          "kind": "f32"
+         },
+         "x": {
+          "node": "Call",
+          "line": 8,
+          "col": 31,
+          "type": {
+           "kind": "f64"
+          },
+          "target": {
+           "node": "TypeName",
+           "line": 8,
+           "col": 31,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Math"
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "sqrt",
+           "owner": "java.lang.Math",
+           "static": true,
+           "params": [
+            {
+             "kind": "f64"
+            }
+           ],
+           "ret": {
+            "kind": "f64"
+           }
+          },
+          "args": [
+           {
+            "node": "Cast",
+            "line": 8,
+            "col": 41,
+            "type": {
+             "kind": "f64"
+            },
+            "x": {
+             "node": "Name",
+             "line": 8,
+             "col": 49,
+             "type": {
+              "kind": "f32"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "var0",
+              "owner": "sample.MathHelper.sqrt_float",
+              "type": {
+               "kind": "f32"
+              }
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      ]
+     },
+     "mods": [
+      "public",
+      "static"
+     ]
+    },
+    {
+     "node": "MethodDecl",
+     "line": 11,
+     "col": 9,
+     "sym": {
+      "kind": "method",
+      "name": "floor_double",
+      "owner": "sample.MathHelper",
+      "static": true,
+      "params": [
+       {
+        "kind": "f64"
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      }
+     },
+     "name": "floor_double",
+     "kind": "method",
+     "params": [
+      {
+       "node": "Param",
+       "line": 11,
+       "col": 40,
+       "sym": {
+        "kind": "param",
+        "name": "var0",
+        "owner": "sample.MathHelper.floor_double",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "i32"
+     },
+     "body": {
+      "node": "Block",
+      "line": 11,
+      "col": 53,
+      "stmts": [
+       {
+        "node": "Local",
+        "line": 12,
+        "col": 17,
+        "sym": {
+         "kind": "local",
+         "name": "var2",
+         "owner": "sample.MathHelper.floor_double",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        },
+        "init": {
+         "node": "Cast",
+         "line": 12,
+         "col": 28,
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "node": "Name",
+          "line": 12,
+          "col": 33,
+          "type": {
+           "kind": "f64"
+          },
+          "sym": {
+           "kind": "param",
+           "name": "var0",
+           "owner": "sample.MathHelper.floor_double",
+           "type": {
+            "kind": "f64"
+           }
+          }
+         }
+        }
+       },
+       {
+        "node": "Return",
+        "line": 13,
+        "col": 17,
+        "expr": {
+         "node": "Cond",
+         "line": 13,
+         "col": 24,
+         "type": {
+          "kind": "i32"
+         },
+         "cond": {
+          "node": "Binary",
+          "line": 13,
+          "col": 24,
+          "type": {
+           "kind": "bool"
+          },
+          "op": "<",
+          "left": {
+           "node": "Name",
+           "line": 13,
+           "col": 24,
+           "type": {
+            "kind": "f64"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "var0",
+            "owner": "sample.MathHelper.floor_double",
+            "type": {
+             "kind": "f64"
+            }
+           }
+          },
+          "right": {
+           "node": "Cast",
+           "line": 13,
+           "col": 31,
+           "type": {
+            "kind": "f64"
+           },
+           "x": {
+            "node": "Name",
+            "line": 13,
+            "col": 39,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "var2",
+             "owner": "sample.MathHelper.floor_double",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         },
+         "then": {
+          "node": "Binary",
+          "line": 13,
+          "col": 46,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "-",
+          "left": {
+           "node": "Name",
+           "line": 13,
+           "col": 46,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "var2",
+            "owner": "sample.MathHelper.floor_double",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "right": {
+           "node": "Lit",
+           "line": 13,
+           "col": 53,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 1
+          }
+         },
+         "orelse": {
+          "node": "Name",
+          "line": 13,
+          "col": 57,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "var2",
+           "owner": "sample.MathHelper.floor_double",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        }
+       }
+      ]
+     },
+     "mods": [
+      "public",
+      "static"
+     ]
+    },
+    {
+     "node": "MethodDecl",
+     "line": 16,
+     "col": 9,
+     "name": "<clinit>",
+     "kind": "static_init",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "body": {
+      "node": "Block",
+      "line": 16,
+      "col": 9,
+      "stmts": [
+       {
+        "node": "For",
+        "line": 17,
+        "col": 17,
+        "init": [
+         {
+          "node": "Local",
+          "line": 17,
+          "col": 22,
+          "sym": {
+           "kind": "local",
+           "name": "var0",
+           "owner": "sample.MathHelper.",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          },
+          "init": {
+           "node": "Lit",
+           "line": 17,
+           "col": 33,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        ],
+        "cond": {
+         "node": "Binary",
+         "line": 17,
+         "col": 36,
+         "type": {
+          "kind": "bool"
+         },
+         "op": "<",
+         "left": {
+          "node": "Name",
+          "line": 17,
+          "col": 36,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "local",
+           "name": "var0",
+           "owner": "sample.MathHelper.",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         },
+         "right": {
+          "node": "Lit",
+          "line": 17,
+          "col": 43,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 65536
+         }
+        },
+        "update": [
+         {
+          "node": "Unary",
+          "line": 17,
+          "col": 50,
+          "type": {
+           "kind": "i32"
+          },
+          "op": "++",
+          "x": {
+           "node": "Name",
+           "line": 17,
+           "col": 52,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "var0",
+            "owner": "sample.MathHelper.",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "postfix": false
+         }
+        ],
+        "body": {
+         "node": "Block",
+         "line": 17,
+         "col": 58,
+         "stmts": [
+          {
+           "node": "ExprStmt",
+           "line": 18,
+           "col": 25,
+           "expr": {
+            "node": "Assign",
+            "line": 18,
+            "col": 25,
+            "type": {
+             "kind": "f32"
+            },
+            "target": {
+             "node": "Index",
+             "line": 18,
+             "col": 25,
+             "type": {
+              "kind": "f32"
+             },
+             "arr": {
+              "node": "Select",
+              "line": 18,
+              "col": 25,
+              "type": {
+               "kind": "array",
+               "elem": {
+                "kind": "f32"
+               }
+              },
+              "obj": {
+               "node": "TypeName",
+               "line": 18,
+               "col": 25,
+               "type": {
+                "kind": "class",
+                "name": "sample.MathHelper"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "SIN_TABLE",
+               "owner": "sample.MathHelper",
+               "static": true,
+               "type": {
+                "kind": "array",
+                "elem": {
+                 "kind": "f32"
+                }
+               }
+              }
+             },
+             "index": {
+              "node": "Name",
+              "line": 18,
+              "col": 35,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "var0",
+               "owner": "sample.MathHelper.",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            },
+            "value": {
+             "node": "Cast",
+             "line": 18,
+             "col": 43,
+             "type": {
+              "kind": "f32"
+             },
+             "x": {
+              "node": "Call",
+              "line": 18,
+              "col": 50,
+              "type": {
+               "kind": "f64"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 18,
+               "col": 50,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Math"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "sin",
+               "owner": "java.lang.Math",
+               "static": true,
+               "params": [
+                {
+                 "kind": "f64"
+                }
+               ],
+               "ret": {
+                "kind": "f64"
+               }
+              },
+              "args": [
+               {
+                "node": "Binary",
+                "line": 18,
+                "col": 59,
+                "type": {
+                 "kind": "f64"
+                },
+                "op": "/",
+                "left": {
+                 "node": "Binary",
+                 "line": 18,
+                 "col": 59,
+                 "type": {
+                  "kind": "f64"
+                 },
+                 "op": "*",
+                 "left": {
+                  "node": "Binary",
+                  "line": 18,
+                  "col": 59,
+                  "type": {
+                   "kind": "f64"
+                  },
+                  "op": "*",
+                  "left": {
+                   "node": "Cast",
+                   "line": 18,
+                   "col": 59,
+                   "type": {
+                    "kind": "f64"
+                   },
+                   "x": {
+                    "node": "Name",
+                    "line": 18,
+                    "col": 67,
+                    "type": {
+                     "kind": "i32"
+                    },
+                    "sym": {
+                     "kind": "local",
+                     "name": "var0",
+                     "owner": "sample.MathHelper.",
+                     "type": {
+                      "kind": "i32"
+                     }
+                    }
+                   }
+                  },
+                  "right": {
+                   "node": "Select",
+                   "line": 18,
+                   "col": 74,
+                   "type": {
+                    "kind": "f64"
+                   },
+                   "obj": {
+                    "node": "TypeName",
+                    "line": 18,
+                    "col": 74,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.lang.Math"
+                    }
+                   },
+                   "sym": {
+                    "kind": "field",
+                    "name": "PI",
+                    "owner": "java.lang.Math",
+                    "static": true,
+                    "type": {
+                     "kind": "f64"
+                    }
+                   }
+                  }
+                 },
+                 "right": {
+                  "node": "Lit",
+                  "line": 18,
+                  "col": 84,
+                  "type": {
+                   "kind": "f64"
+                  },
+                  "value": 2.0
+                 }
+                },
+                "right": {
+                 "node": "Lit",
+                 "line": 18,
+                 "col": 91,
+                 "type": {
+                  "kind": "f64"
+                 },
+                 "value": 65536.0
+                }
+               }
+              ]
+             }
+            }
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

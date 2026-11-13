@@ -1,0 +1,145 @@
+{
+ "node": "Unit",
+ "line": 1,
+ "col": 1,
+ "path": "sample/ICamera",
+ "package": "sample",
+ "types": [
+  {
+   "node": "ClassDecl",
+   "line": 5,
+   "col": 1,
+   "name": "ICamera",
+   "qname": "sample.ICamera",
+   "kind": "interface",
+   "mods": [
+    "public"
+   ],
+   "members": [
+    {
+     "node": "MethodDecl",
+     "line": 6,
+     "col": 9,
+     "sym": {
+      "kind": "method",
+      "name": "isBoundingBoxInFrustum",
+      "owner": "sample.ICamera",
+      "params": [
+       {
+        "kind": "class",
+        "name": "sample.AxisAlignedBB"
+       }
+      ],
+      "ret": {
+       "kind": "bool"
+      }
+     },
+     "name": "isBoundingBoxInFrustum",
+     "kind": "method",
+     "params": [
+      {
+       "node": "Param",
+       "line": 6,
+       "col": 40,
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "sample.ICamera.isBoundingBoxInFrustum",
+        "type": {
+         "kind": "class",
+         "name": "sample.AxisAlignedBB"
+        }
+       },
+       "type": {
+        "kind": "class",
+        "name": "sample.AxisAlignedBB"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "bool"
+     }
+    },
+    {
+     "node": "MethodDecl",
+     "line": 8,
+     "col": 9,
+     "sym": {
+      "kind": "method",
+      "name": "setPosition",
+      "owner": "sample.ICamera",
+      "params": [
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      }
+     },
+     "name": "setPosition",
+     "kind": "method",
+     "params": [
+      {
+       "node": "Param",
+       "line": 8,
+       "col": 26,
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "sample.ICamera.setPosition",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "node": "Param",
+       "line": 8,
+       "col": 39,
+       "sym": {
+        "kind": "param",
+        "name": "var3",
+        "owner": "sample.ICamera.setPosition",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "node": "Param",
+       "line": 8,
+       "col": 52,
+       "sym": {
+        "kind": "param",
+        "name": "var5",
+        "owner": "sample.ICamera.setPosition",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "void"
+     }
+    }
+   ]
+  }
+ ]
+}
