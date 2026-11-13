@@ -72,10 +72,19 @@ def _ident(n):
 
 
 def _u16(v):
-    """(C char16_t literal text, length) of a Java string."""
-    out, prev_hex = [], False
+    """(C char16_t literal text, length) of a Java string. A Java string is UTF-16: a character above U+FFFF is two units
+    (a surrogate pair), and the length counts units."""
+    units = []
     for ch in v:
         o = ord(ch)
+        if o > 0xFFFF:
+            o -= 0x10000
+            units += [0xD800 + (o >> 10), 0xDC00 + (o & 0x3FF)]
+        else:
+            units.append(o)
+    out, prev_hex = [], False
+    for o in units:
+        ch = chr(o)
         if ch in '\\"':
             out.append('\\' + ch)
             prev_hex = False
@@ -88,7 +97,7 @@ def _u16(v):
         else:
             out.append('\\x%04x' % o)
             prev_hex = True
-    return 'u"%s"' % ''.join(out), len(v)
+    return 'u"%s"' % ''.join(out), len(units)
 
 
 def _code(t):
@@ -1157,8 +1166,8 @@ class Method(object):
         n = _ident(e.sym.name)
         if n in self.vars:
             return n, self.vars[n]
-        if self.lam is not None and e.sym.name in self.lam:
-            return self.lam[e.sym.name]
+        if self.lam is not None and n in self.lam:
+            return self.lam[n]
         if e.sym.name in self.captures:
             return self.captures[e.sym.name], self.p.ct(e.type)
         raise Decline('unknown local %s' % n)

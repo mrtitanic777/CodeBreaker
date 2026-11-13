@@ -85,7 +85,9 @@ struct PathEntry {
 // An input the shadow follows: an argument (`where` is its index) or bytes of memory (`where` is the address), its
 // width, and the value it had in the run.
 struct InputVar {
-    enum class Place { Arg, Mem };
+    // Reg: ECX (where 1) or EDX (where 2), a member function's argument held in a register; Ret: what the imports the emulator
+    // answers return (the 32-bit lane's `stub_ret`).
+    enum class Place { Arg, Mem, Reg, Ret };
     Place place = Place::Arg;
     std::int64_t where = 0;
     std::uint32_t bits = 0;

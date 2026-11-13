@@ -1,0 +1,627 @@
+/* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from
+   the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */
+#include "jrt.h"
+
+typedef struct Generics Generics;
+typedef struct Generics_Box Generics_Box;
+typedef struct Generics_Pair Generics_Pair;
+typedef struct Generics_Stack Generics_Stack;
+typedef struct Generics_Stack_anon1 Generics_Stack_anon1;
+typedef struct Generics_Counter Generics_Counter;
+typedef struct Generics_anon2 Generics_anon2;
+extern const jclass Generics_class;
+extern const jclass Generics_Box_class;
+extern const jclass Generics_Pair_class;
+extern const jclass Generics_Visitor_class;
+extern const jclass Generics_Stack_class;
+extern const jclass Generics_Stack_anon1_class;
+extern const jclass Generics_Counter_class;
+extern const jclass Generics_anon2_class;
+
+struct Generics {
+	jobject hdr_;
+	int32_t total;
+};
+struct Generics_vt {
+	jobject_vt o_;
+	int32_t (*hits)(jobject*, int32_t);
+};
+
+struct Generics_Box {
+	jobject hdr_;
+	jobject* value;
+};
+struct Generics_Box_vt {
+	jobject_vt o_;
+	jobject* (*get)(jobject*);
+	void (*set)(jobject*, jobject*);
+	Generics_Box* (*map)(jobject*, jobject*);
+};
+
+struct Generics_Pair {
+	jobject hdr_;
+	jobject* first;
+	jobject* second;
+};
+struct Generics_Pair_vt {
+	jobject_vt o_;
+	Generics_Pair* (*swap)(jobject*);
+	jobject* (*first)(jobject*);
+	jobject* (*second)(jobject*);
+};
+
+struct Generics_Visitor_vt {
+	jobject_vt o_;
+	jobject* (*visitNumber)(jobject*, int32_t);
+	jobject* (*visitText)(jobject*, jstring*);
+};
+
+struct Generics_Stack {
+	jobject hdr_;
+	jobject* items;
+};
+struct Generics_Stack_vt {
+	jobject_vt o_;
+	void (*push)(jobject*, jobject*);
+	jobject* (*pop)(jobject*);
+	bool (*isEmpty)(jobject*);
+	jobject* (*iterator)(jobject*);
+};
+
+struct Generics_Stack_anon1 {
+	jobject hdr_;
+	Generics_Stack* outer_;
+	int32_t i;
+};
+struct Generics_Stack_anon1_vt {
+	jobject_vt o_;
+	bool (*hasNext)(jobject*);
+	jobject* (*next)(jobject*);
+};
+
+struct Generics_Counter {
+	jobject hdr_;
+	Generics* outer_;
+	int32_t count;
+};
+struct Generics_Counter_vt {
+	jobject_vt o_;
+	void (*hit)(jobject*);
+};
+
+struct Generics_anon2 {
+	jobject hdr_;
+};
+struct Generics_anon2_vt {
+	jobject_vt o_;
+	jobject* (*visitNumber)(jobject*, int32_t);
+	jobject* (*visitText)(jobject*, jstring*);
+};
+
+static jstring* lit_1;
+static jstring* lit_2;
+static jstring* lit_3;
+static jstring* lit_4;
+static jstring* lit_5;
+static jstring* lit_6;
+static jstring* lit_7;
+static jstring* lit_8;
+static jstring* lit_9;
+static jstring* lit_10;
+static jstring* lit_11;
+static jstring* lit_12;
+static jstring* lit_13;
+static jstring* lit_14;
+static jstring* lit_15;
+static jstring* lit_16;
+static jstring* lit_17;
+static jstring* lit_18;
+static jstring* lit_19;
+static jstring* lit_20;
+static jstring* lit_21;
+static jstring* lit_22;
+static jstring* lit_23;
+static jstring* lit_24;
+
+static void Generics_init(Generics* self);
+static Generics* Generics_new(void);
+static jobject* Generics_max(jobject*);
+static int32_t Generics_countMatching(jobject*, jobject*);
+static int32_t Generics_boxed(int32_t);
+static jstring* Generics_pairText(int32_t, jstring*);
+static int32_t Generics_maxOf(int32_t, int32_t);
+static jstring* Generics_maxWord(jstring*, jstring*);
+static int32_t Generics_stackSum(int32_t);
+static jstring* Generics_visit(int32_t);
+static int32_t Generics_hits(jobject*, int32_t);
+static int32_t Generics_innerHits(int32_t);
+static void Generics_main(jarray*);
+static void Generics_finit(Generics* self);
+static void Generics_Box_init(Generics_Box* self, jobject* value);
+static Generics_Box* Generics_Box_new(jobject* value);
+static jobject* Generics_Box_get(jobject*);
+static void Generics_Box_set(jobject*, jobject*);
+static Generics_Box* Generics_Box_map(jobject*, jobject*);
+static void Generics_Box_finit(Generics_Box* self);
+static void Generics_Pair_init(Generics_Pair* self, jobject* first, jobject* second);
+static Generics_Pair* Generics_Pair_new(jobject* first, jobject* second);
+static Generics_Pair* Generics_Pair_swap(jobject*);
+static jobject* Generics_Pair_first(jobject*);
+static jobject* Generics_Pair_second(jobject*);
+static jstring* Generics_Pair_toString(jobject*);
+static int32_t Generics_Pair_hashCode(jobject*);
+static bool Generics_Pair_equals(jobject*, jobject*);
+static void Generics_Pair_finit(Generics_Pair* self);
+static void Generics_Stack_init(Generics_Stack* self);
+static Generics_Stack* Generics_Stack_new(void);
+static void Generics_Stack_push(jobject*, jobject*);
+static jobject* Generics_Stack_pop(jobject*);
+static bool Generics_Stack_isEmpty(jobject*);
+static jobject* Generics_Stack_iterator(jobject*);
+static void Generics_Stack_finit(Generics_Stack* self);
+static void Generics_Stack_anon1_init(Generics_Stack_anon1* self);
+static Generics_Stack_anon1* Generics_Stack_anon1_new(Generics_Stack* outer_in);
+static bool Generics_Stack_anon1_hasNext(jobject*);
+static jobject* Generics_Stack_anon1_next(jobject*);
+static void Generics_Stack_anon1_finit(Generics_Stack_anon1* self);
+static void Generics_Counter_init(Generics_Counter* self);
+static Generics_Counter* Generics_Counter_new(Generics* outer_in);
+static void Generics_Counter_hit(jobject*);
+static void Generics_Counter_finit(Generics_Counter* self);
+static void Generics_anon2_init(Generics_anon2* self);
+static Generics_anon2* Generics_anon2_new(void);
+static jobject* Generics_anon2_visitNumber(jobject*, int32_t);
+static jobject* Generics_anon2_visitText(jobject*, jstring*);
+static void Generics_anon2_finit(Generics_anon2* self);
+static inline int32_t Generics_hits_v(jobject* o, int32_t a0) { return ((const struct Generics_vt*)jrt_vt(o))->hits(o, a0); }
+static inline jobject* Generics_Box_get_v(jobject* o) { return ((const struct Generics_Box_vt*)jrt_vt(o))->get(o); }
+static inline void Generics_Box_set_v(jobject* o, jobject* a0) { return ((const struct Generics_Box_vt*)jrt_vt(o))->set(o, a0); }
+static inline Generics_Box* Generics_Box_map_v(jobject* o, jobject* a0) { return ((const struct Generics_Box_vt*)jrt_vt(o))->map(o, a0); }
+static inline Generics_Pair* Generics_Pair_swap_v(jobject* o) { return ((const struct Generics_Pair_vt*)jrt_vt(o))->swap(o); }
+static inline jobject* Generics_Pair_first_v(jobject* o) { return ((const struct Generics_Pair_vt*)jrt_vt(o))->first(o); }
+static inline jobject* Generics_Pair_second_v(jobject* o) { return ((const struct Generics_Pair_vt*)jrt_vt(o))->second(o); }
+static inline jobject* Generics_Visitor_visitNumber_i(jobject* o, int32_t a0) { return ((const struct Generics_Visitor_vt*)jrt_ivt(o, &Generics_Visitor_class))->visitNumber(o, a0); }
+static inline jobject* Generics_Visitor_visitText_i(jobject* o, jstring* a0) { return ((const struct Generics_Visitor_vt*)jrt_ivt(o, &Generics_Visitor_class))->visitText(o, a0); }
+static inline void Generics_Stack_push_v(jobject* o, jobject* a0) { return ((const struct Generics_Stack_vt*)jrt_vt(o))->push(o, a0); }
+static inline jobject* Generics_Stack_pop_v(jobject* o) { return ((const struct Generics_Stack_vt*)jrt_vt(o))->pop(o); }
+static inline bool Generics_Stack_isEmpty_v(jobject* o) { return ((const struct Generics_Stack_vt*)jrt_vt(o))->isEmpty(o); }
+static inline jobject* Generics_Stack_iterator_v(jobject* o) { return ((const struct Generics_Stack_vt*)jrt_vt(o))->iterator(o); }
+static inline bool Generics_Stack_anon1_hasNext_v(jobject* o) { return ((const struct Generics_Stack_anon1_vt*)jrt_vt(o))->hasNext(o); }
+static inline jobject* Generics_Stack_anon1_next_v(jobject* o) { return ((const struct Generics_Stack_anon1_vt*)jrt_vt(o))->next(o); }
+static inline void Generics_Counter_hit_v(jobject* o) { return ((const struct Generics_Counter_vt*)jrt_vt(o))->hit(o); }
+static inline jobject* Generics_anon2_visitNumber_v(jobject* o, int32_t a0) { return ((const struct Generics_anon2_vt*)jrt_vt(o))->visitNumber(o, a0); }
+static inline jobject* Generics_anon2_visitText_v(jobject* o, jstring* a0) { return ((const struct Generics_anon2_vt*)jrt_vt(o))->visitText(o, a0); }
+struct Lambda1 {
+	jobject hdr_;
+};
+static jobject* Lambda1_fn(jobject* self_, jobject* x) {
+	struct Lambda1* self = (struct Lambda1*)self_;
+	(void)self;
+	return (jobject*)jrt_concat(2, jrt_lit(&lit_1, u"n", 1), jrt_str_O((jobject*)x));
+}
+static const jrt_Function_vt Lambda1_vt = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, Lambda1_fn};
+static const jitab Lambda1_itabs[] = {{&jrt_Function_class, &Lambda1_vt}};
+static const jclass Lambda1_class = {"Generics$$Lambda", &jrt_Object_class, sizeof(struct Lambda1), &jrt_Object_vt, JRT_ITABS(Lambda1_itabs), 0};
+static jobject* Lambda1_new(void) {
+	struct Lambda1* o = (struct Lambda1*)jrt_alloc(&Lambda1_class);
+	return (jobject*)o;
+}
+
+struct Lambda2 {
+	jobject hdr_;
+};
+static bool Lambda2_fn(jobject* self_, jobject* w_in) {
+	struct Lambda2* self = (struct Lambda2*)self_;
+	(void)self;
+	jstring* w = (jstring*)jrt_cast((jobject*)w_in, &jrt_String_class);
+	return jrt_String_length_(w) > 4;
+}
+static const jrt_Predicate_vt Lambda2_vt = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, Lambda2_fn};
+static const jitab Lambda2_itabs[] = {{&jrt_Predicate_class, &Lambda2_vt}};
+static const jclass Lambda2_class = {"Generics$$Lambda", &jrt_Object_class, sizeof(struct Lambda2), &jrt_Object_vt, JRT_ITABS(Lambda2_itabs), 0};
+static jobject* Lambda2_new(void) {
+	struct Lambda2* o = (struct Lambda2*)jrt_alloc(&Lambda2_class);
+	return (jobject*)o;
+}
+
+struct Lambda3 {
+	jobject hdr_;
+};
+static bool Lambda3_fn(jobject* self_, jobject* w_in) {
+	struct Lambda3* self = (struct Lambda3*)self_;
+	(void)self;
+	jstring* w = (jstring*)jrt_cast((jobject*)w_in, &jrt_String_class);
+	return jrt_String_contains_O(w, (jobject*)jrt_lit(&lit_17, u"l", 1));
+}
+static const jrt_Predicate_vt Lambda3_vt = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, Lambda3_fn};
+static const jitab Lambda3_itabs[] = {{&jrt_Predicate_class, &Lambda3_vt}};
+static const jclass Lambda3_class = {"Generics$$Lambda", &jrt_Object_class, sizeof(struct Lambda3), &jrt_Object_vt, JRT_ITABS(Lambda3_itabs), 0};
+static jobject* Lambda3_new(void) {
+	struct Lambda3* o = (struct Lambda3*)jrt_alloc(&Lambda3_class);
+	return (jobject*)o;
+}
+
+static void Generics_init(Generics* self) {
+	Generics_finit(self);
+}
+
+static Generics* Generics_new(void) {
+	Generics* o = (Generics*)jrt_alloc(&Generics_class);
+	Generics_init(o);
+	return o;
+}
+
+static jobject* Generics_max(jobject* xs) {
+	jobject* best = jrt_List_get_I(xs, 0);
+	{
+		jobject* j2x_it1 = jrt_List_iterator_(xs);
+		for (; jrt_Iterator_hasNext_(j2x_it1); ) {
+			jobject* x = jrt_Iterator_next_(j2x_it1);
+			if (jrt_natural((jobject*)x, best) > 0) {
+				best = x;
+			}
+		}
+	}
+	return best;
+}
+
+static int32_t Generics_countMatching(jobject* xs, jobject* p) {
+	int32_t n = 0;
+	{
+		jobject* j2x_it2 = jrt_List_iterator_(xs);
+		for (; jrt_Iterator_hasNext_(j2x_it2); ) {
+			jobject* x = jrt_Iterator_next_(j2x_it2);
+			if (jrt_Predicate_test_O(p, x)) {
+				n++;
+			}
+		}
+	}
+	return n;
+}
+
+static int32_t Generics_boxed(int32_t v) {
+	Generics_Box* b = Generics_Box_new(jrt_box_I(v));
+	Generics_Box_set_v((jobject*)b, jrt_box_I(jrt_unbox_I((jobject*)Generics_Box_get_v((jobject*)b)) + 1));
+	Generics_Box* s = Generics_Box_map_v((jobject*)b, Lambda1_new());
+	int32_t o1 = 0;
+	jobject* o2 = NULL;
+	return (o1 = jrt_String_length_((jstring*)jrt_cast((jobject*)Generics_Box_get_v((jobject*)s), &jrt_String_class)), o2 = Generics_Box_get_v((jobject*)b), o1 + jrt_unbox_I((jobject*)o2));
+}
+
+static jstring* Generics_pairText(int32_t a, jstring* b) {
+	Generics_Pair* p = Generics_Pair_new(jrt_box_I(a), (jobject*)b);
+	jstring* o1 = NULL;
+	jobject* o2 = NULL;
+	return (o1 = jrt_toString((jobject*)Generics_Pair_swap_v((jobject*)p)), o2 = Generics_Pair_first_v((jobject*)p), jrt_concat(2, jrt_str_O((jobject*)o1), jrt_str_O((jobject*)o2)));
+}
+
+static int32_t Generics_maxOf(int32_t a, int32_t b) {
+	jobject* xs = jrt_ArrayList_new_();
+	jrt_List_add_O(xs, jrt_box_I(a));
+	jrt_List_add_O(xs, jrt_box_I(b));
+	jrt_List_add_O(xs, jrt_box_I(a ^ b));
+	return jrt_unbox_I((jobject*)Generics_max(xs));
+}
+
+static jstring* Generics_maxWord(jstring* a, jstring* b) {
+	jobject* xs = jrt_List_of(3, (jobject*)a, (jobject*)b, (jobject*)jrt_lit(&lit_2, u"m", 1));
+	return (jstring*)jrt_cast((jobject*)Generics_max(xs), &jrt_String_class);
+}
+
+static int32_t Generics_stackSum(int32_t n) {
+	Generics_Stack* st = Generics_Stack_new();
+	{
+		int32_t i = 0;
+		for (; i < n % 40; i++) {
+			Generics_Stack_push_v((jobject*)st, jrt_box_I(i * i));
+		}
+	}
+	int32_t sum = 0;
+	{
+		jobject* j2x_it3 = Generics_Stack_iterator_v((jobject*)st);
+		for (; jrt_Iterator_hasNext_(j2x_it3); ) {
+			int32_t v = jrt_unbox_I((jobject*)jrt_Iterator_next_(j2x_it3));
+			sum = sum * 3 + v;
+		}
+	}
+	return sum;
+}
+
+static jstring* Generics_visit(int32_t n) {
+	jobject* v = (jobject*)Generics_anon2_new();
+	return (n % 2 == 0 ? (jstring*)jrt_cast((jobject*)Generics_Visitor_visitNumber_i((jobject*)v, n), &jrt_String_class) : (jstring*)jrt_cast((jobject*)Generics_Visitor_visitText_i((jobject*)v, jrt_concat(2, jrt_lit(&lit_3, u"t", 1), jrt_str_I(n))), &jrt_String_class));
+}
+
+static int32_t Generics_hits(jobject* self_, int32_t n) {
+	Generics* self = (Generics*)self_;
+	Generics_Counter* a = Generics_Counter_new(self);
+	Generics_Counter* b = Generics_Counter_new(self);
+	{
+		int32_t i = 0;
+		for (; i < n % 30; i++) {
+			Generics_Counter_hit_v((jobject*)a);
+			if (i % 3 == 0) {
+				Generics_Counter_hit_v((jobject*)b);
+			}
+		}
+	}
+	return ((Generics_Counter*)jrt_nn(a))->count * 100 + ((Generics_Counter*)jrt_nn(b))->count + self->total * 10000;
+}
+
+static int32_t Generics_innerHits(int32_t n) {
+	return Generics_hits_v((jobject*)Generics_new(), n);
+}
+
+static void Generics_main(jarray* args) {
+	volatile int32_t o1 = 0;
+	jstring* volatile o2 = NULL;
+	volatile int32_t o3 = 0;
+	jstring* volatile o4 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (o1 = Generics_boxed(41), o2 = Generics_pairText(7, jrt_lit(&lit_4, u"seven", 5)), o3 = Generics_maxOf(12, 5), o4 = Generics_maxWord(jrt_lit(&lit_5, u"pear", 4), jrt_lit(&lit_6, u"apple", 5)), jrt_concat(7, jrt_str_I(o1), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o2), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o3), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o4))));
+	Generics_Stack* volatile st = Generics_Stack_new();
+	Generics_Stack_push_v((jobject*)st, (jobject*)jrt_lit(&lit_8, u"a", 1));
+	Generics_Stack_push_v((jobject*)st, (jobject*)jrt_lit(&lit_9, u"b", 1));
+	Generics_Stack_push_v((jobject*)st, (jobject*)jrt_lit(&lit_10, u"c", 1));
+	{
+		jobject* volatile j2x_it4 = Generics_Stack_iterator_v((jobject*)st);
+		for (; jrt_Iterator_hasNext_(j2x_it4); ) {
+			jstring* volatile s = (jstring*)jrt_cast((jobject*)jrt_Iterator_next_(j2x_it4), &jrt_String_class);
+			jrt_PrintStream_print_Str(jrt_System_out, s);
+		}
+	}
+	jstring* volatile o5 = NULL;
+	jstring* volatile o6 = NULL;
+	volatile bool o7 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (o5 = (jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class), o6 = (jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class), o7 = Generics_Stack_isEmpty_v((jobject*)st), jrt_concat(5, jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o5), jrt_str_O((jobject*)o6), jrt_lit(&lit_7, u" ", 1), jrt_str_Z(o7))));
+	{
+		jrt_try t8;
+		jrt_push(&t8);
+		if (setjmp(t8.jb) == 0) {
+			(jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class);
+			(jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class);
+			jrt_pop(&t8);
+		} else {
+			jrt_pop(&t8);
+			if (jrt_instanceof(t8.ex, &jrt_NoSuchElementException_class)) {
+				jrt_Throwable* e = (jrt_Throwable*)t8.ex;
+				jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(2, jrt_lit(&lit_11, u"caught: ", 8), jrt_str_O((jobject*)jrt_Throwable_getMessage_((jobject*)e))));
+			} else {
+				jrt_throw(t8.ex);
+			}
+		}
+	}
+	volatile int32_t o9 = 0;
+	jstring* volatile o10 = NULL;
+	jstring* volatile o11 = NULL;
+	volatile int32_t o12 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (o9 = Generics_stackSum(10), o10 = Generics_visit(4), o11 = Generics_visit(5), o12 = Generics_innerHits(10), jrt_concat(7, jrt_str_I(o9), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o10), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o11), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o12))));
+	jobject* volatile words = jrt_List_of(5, (jobject*)jrt_lit(&lit_12, u"alpha", 5), (jobject*)jrt_lit(&lit_13, u"beta", 4), (jobject*)jrt_lit(&lit_14, u"gamma", 5), (jobject*)jrt_lit(&lit_15, u"delta", 5), (jobject*)jrt_lit(&lit_16, u"epsilon", 7));
+	volatile int32_t o13 = 0;
+	volatile int32_t o14 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (o13 = Generics_countMatching(words, Lambda2_new()), o14 = Generics_countMatching(words, Lambda3_new()), jrt_concat(3, jrt_str_I(o13), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o14))));
+}
+
+static void Generics_finit(Generics* self) {
+}
+
+static void Generics_Box_init(Generics_Box* self, jobject* value) {
+	Generics_Box_finit(self);
+	self->value = value;
+}
+
+static Generics_Box* Generics_Box_new(jobject* value) {
+	Generics_Box* o = (Generics_Box*)jrt_alloc(&Generics_Box_class);
+	Generics_Box_init(o, value);
+	return o;
+}
+
+static jobject* Generics_Box_get(jobject* self_) {
+	Generics_Box* self = (Generics_Box*)self_;
+	return self->value;
+}
+
+static void Generics_Box_set(jobject* self_, jobject* v) {
+	Generics_Box* self = (Generics_Box*)self_;
+	self->value = v;
+}
+
+static Generics_Box* Generics_Box_map(jobject* self_, jobject* f) {
+	Generics_Box* self = (Generics_Box*)self_;
+	return Generics_Box_new(jrt_Function_apply_O(f, self->value));
+}
+
+static void Generics_Box_finit(Generics_Box* self) {
+}
+
+static void Generics_Pair_init(Generics_Pair* self, jobject* first, jobject* second) {
+	Generics_Pair_finit(self);
+	self->first = first;
+	self->second = second;
+}
+
+static Generics_Pair* Generics_Pair_new(jobject* first, jobject* second) {
+	Generics_Pair* o = (Generics_Pair*)jrt_alloc(&Generics_Pair_class);
+	Generics_Pair_init(o, first, second);
+	return o;
+}
+
+static Generics_Pair* Generics_Pair_swap(jobject* self_) {
+	Generics_Pair* self = (Generics_Pair*)self_;
+	return Generics_Pair_new(self->second, self->first);
+}
+
+static jobject* Generics_Pair_first(jobject* self_) {
+	Generics_Pair* self = (Generics_Pair*)self_;
+	return self->first;
+}
+
+static jobject* Generics_Pair_second(jobject* self_) {
+	Generics_Pair* self = (Generics_Pair*)self_;
+	return self->second;
+}
+
+static jstring* Generics_Pair_toString(jobject* self_) {
+	Generics_Pair* self = (Generics_Pair*)self_;
+	return jrt_concat(6, jrt_lit(&lit_18, u"Pair[", 5), jrt_lit(&lit_19, u"first=", 6), jrt_str_O((jobject*)self->first), jrt_lit(&lit_20, u", second=", 9), jrt_str_O((jobject*)self->second), jrt_lit(&lit_21, u"]", 1));
+}
+
+static int32_t Generics_Pair_hashCode(jobject* self_) {
+	Generics_Pair* self = (Generics_Pair*)self_;
+	int32_t h = 0;
+	h = 31 * h + jrt_Objects_hashCode_O(self->first);
+	h = 31 * h + jrt_Objects_hashCode_O(self->second);
+	return h;
+}
+
+static bool Generics_Pair_equals(jobject* self_, jobject* o) {
+	Generics_Pair* self = (Generics_Pair*)self_;
+	if (!(jrt_instanceof((jobject*)o, &Generics_Pair_class))) {
+		return false;
+	}
+	Generics_Pair* that = (Generics_Pair*)jrt_cast((jobject*)o, &Generics_Pair_class);
+	return jrt_Objects_equals_OO(self->first, ((Generics_Pair*)jrt_nn(that))->first) && jrt_Objects_equals_OO(self->second, ((Generics_Pair*)jrt_nn(that))->second);
+}
+
+static void Generics_Pair_finit(Generics_Pair* self) {
+}
+
+static void Generics_Stack_init(Generics_Stack* self) {
+	Generics_Stack_finit(self);
+}
+
+static Generics_Stack* Generics_Stack_new(void) {
+	Generics_Stack* o = (Generics_Stack*)jrt_alloc(&Generics_Stack_class);
+	Generics_Stack_init(o);
+	return o;
+}
+
+static void Generics_Stack_push(jobject* self_, jobject* t) {
+	Generics_Stack* self = (Generics_Stack*)self_;
+	jrt_List_add_O(self->items, t);
+}
+
+static jobject* Generics_Stack_pop(jobject* self_) {
+	Generics_Stack* self = (Generics_Stack*)self_;
+	if (jrt_List_isEmpty_(self->items)) {
+		jrt_throw((jobject*)jrt_new_throwable(&jrt_NoSuchElementException_class, jrt_lit(&lit_22, u"empty stack", 11), NULL));
+	}
+	return jrt_List_remove_I(self->items, jrt_List_size_(self->items) - 1);
+}
+
+static bool Generics_Stack_isEmpty(jobject* self_) {
+	Generics_Stack* self = (Generics_Stack*)self_;
+	return jrt_List_isEmpty_(self->items);
+}
+
+static jobject* Generics_Stack_iterator(jobject* self_) {
+	Generics_Stack* self = (Generics_Stack*)self_;
+	return (jobject*)Generics_Stack_anon1_new(self);
+}
+
+static void Generics_Stack_finit(Generics_Stack* self) {
+	self->items = jrt_ArrayList_new_();
+}
+
+static void Generics_Stack_anon1_init(Generics_Stack_anon1* self) {
+	Generics_Stack_anon1_finit(self);
+}
+
+static Generics_Stack_anon1* Generics_Stack_anon1_new(Generics_Stack* outer_in) {
+	Generics_Stack_anon1* o = (Generics_Stack_anon1*)jrt_alloc(&Generics_Stack_anon1_class);
+	o->outer_ = outer_in;
+	Generics_Stack_anon1_init(o);
+	return o;
+}
+
+static bool Generics_Stack_anon1_hasNext(jobject* self_) {
+	Generics_Stack_anon1* self = (Generics_Stack_anon1*)self_;
+	return self->i >= 0;
+}
+
+static jobject* Generics_Stack_anon1_next(jobject* self_) {
+	Generics_Stack_anon1* self = (Generics_Stack_anon1*)self_;
+	return jrt_List_get_I(self->outer_->items, self->i--);
+}
+
+static void Generics_Stack_anon1_finit(Generics_Stack_anon1* self) {
+	self->i = jrt_List_size_(self->outer_->items) - 1;
+}
+
+static void Generics_Counter_init(Generics_Counter* self) {
+	Generics_Counter_finit(self);
+}
+
+static Generics_Counter* Generics_Counter_new(Generics* outer_in) {
+	Generics_Counter* o = (Generics_Counter*)jrt_alloc(&Generics_Counter_class);
+	o->outer_ = outer_in;
+	Generics_Counter_init(o);
+	return o;
+}
+
+static void Generics_Counter_hit(jobject* self_) {
+	Generics_Counter* self = (Generics_Counter*)self_;
+	self->count++;
+	self->outer_->total++;
+}
+
+static void Generics_Counter_finit(Generics_Counter* self) {
+}
+
+static void Generics_anon2_init(Generics_anon2* self) {
+	Generics_anon2_finit(self);
+}
+
+static Generics_anon2* Generics_anon2_new(void) {
+	Generics_anon2* o = (Generics_anon2*)jrt_alloc(&Generics_anon2_class);
+	Generics_anon2_init(o);
+	return o;
+}
+
+static jobject* Generics_anon2_visitNumber(jobject* self_, int32_t k) {
+	Generics_anon2* self = (Generics_anon2*)self_;
+	return (jobject*)jrt_concat(2, jrt_lit(&lit_23, u"#", 1), jrt_str_I(k));
+}
+
+static jobject* Generics_anon2_visitText(jobject* self_, jstring* s) {
+	Generics_anon2* self = (Generics_anon2*)self_;
+	return (jobject*)jrt_concat(3, jrt_lit(&lit_24, u"'", 1), jrt_str_O((jobject*)s), jrt_lit(&lit_24, u"'", 1));
+}
+
+static void Generics_anon2_finit(Generics_anon2* self) {
+}
+
+static const struct Generics_vt Generics_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (int32_t (*)(jobject*, int32_t))Generics_hits};
+const jclass Generics_class = {"Generics", &jrt_Object_class, sizeof(Generics), &Generics_vt_, 0, 0, 0};
+
+static const struct Generics_Box_vt Generics_Box_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*))Generics_Box_get, (void (*)(jobject*, jobject*))Generics_Box_set, (Generics_Box* (*)(jobject*, jobject*))Generics_Box_map};
+const jclass Generics_Box_class = {"Generics.Box", &jrt_Object_class, sizeof(Generics_Box), &Generics_Box_vt_, 0, 0, 0};
+
+static const struct Generics_Pair_vt Generics_Pair_vt_ = {{Generics_Pair_toString, Generics_Pair_equals, Generics_Pair_hashCode}, (Generics_Pair* (*)(jobject*))Generics_Pair_swap, (jobject* (*)(jobject*))Generics_Pair_first, (jobject* (*)(jobject*))Generics_Pair_second};
+const jclass Generics_Pair_class = {"Generics.Pair", &jrt_Object_class, sizeof(Generics_Pair), &Generics_Pair_vt_, 0, 0, 0};
+
+const jclass Generics_Visitor_class = {"Generics.Visitor", 0, 0, 0, 0, 0, 1};
+
+static const struct Generics_Stack_vt Generics_Stack_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (void (*)(jobject*, jobject*))Generics_Stack_push, (jobject* (*)(jobject*))Generics_Stack_pop, (bool (*)(jobject*))Generics_Stack_isEmpty, (jobject* (*)(jobject*))Generics_Stack_iterator};
+static const jrt_Iterable_vt Generics_Stack_as_Iterable = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*))Generics_Stack_iterator};
+static const jitab Generics_Stack_itabs[] = {{&jrt_Iterable_class, &Generics_Stack_as_Iterable}};
+const jclass Generics_Stack_class = {"Generics.Stack", &jrt_Object_class, sizeof(Generics_Stack), &Generics_Stack_vt_, JRT_ITABS(Generics_Stack_itabs), 0};
+
+static const struct Generics_Stack_anon1_vt Generics_Stack_anon1_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (bool (*)(jobject*))Generics_Stack_anon1_hasNext, (jobject* (*)(jobject*))Generics_Stack_anon1_next};
+static const jrt_Iterator_vt Generics_Stack_anon1_as_Iterator = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (bool (*)(jobject*))Generics_Stack_anon1_hasNext, (jobject* (*)(jobject*))Generics_Stack_anon1_next};
+static const jitab Generics_Stack_anon1_itabs[] = {{&jrt_Iterator_class, &Generics_Stack_anon1_as_Iterator}};
+const jclass Generics_Stack_anon1_class = {"Generics_Stack_anon1", &jrt_Object_class, sizeof(Generics_Stack_anon1), &Generics_Stack_anon1_vt_, JRT_ITABS(Generics_Stack_anon1_itabs), 0};
+
+static const struct Generics_Counter_vt Generics_Counter_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (void (*)(jobject*))Generics_Counter_hit};
+const jclass Generics_Counter_class = {"Generics.Counter", &jrt_Object_class, sizeof(Generics_Counter), &Generics_Counter_vt_, 0, 0, 0};
+
+static const struct Generics_anon2_vt Generics_anon2_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*, int32_t))Generics_anon2_visitNumber, (jobject* (*)(jobject*, jstring*))Generics_anon2_visitText};
+static const struct Generics_Visitor_vt Generics_anon2_as_Visitor = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*, int32_t))Generics_anon2_visitNumber, (jobject* (*)(jobject*, jstring*))Generics_anon2_visitText};
+static const jitab Generics_anon2_itabs[] = {{&Generics_Visitor_class, &Generics_anon2_as_Visitor}};
+const jclass Generics_anon2_class = {"Generics_anon2", &jrt_Object_class, sizeof(Generics_anon2), &Generics_anon2_vt_, JRT_ITABS(Generics_anon2_itabs), 0};
+
+
+int main(int argc, char** argv) {
+	const char* which = getenv("JRT_MAIN");
+	if (which && strcmp(which, "Generics") == 0) return jrt_run_main(Generics_main, argc, argv);
+	return jrt_run_main(Generics_main, argc, argv);
+}

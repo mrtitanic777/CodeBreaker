@@ -1,0 +1,7741 @@
+[
+ {
+  "node": "Unit",
+  "line": 1,
+  "col": 1,
+  "path": "Mix",
+  "package": "",
+  "imports": [
+   "java.util.*",
+   "java.util.function.*"
+  ],
+  "types": [
+   {
+    "node": "ClassDecl",
+    "line": 4,
+    "col": 1,
+    "name": "Mix",
+    "qname": "Mix",
+    "kind": "class",
+    "mods": [
+     "public"
+    ],
+    "members": [
+     {
+      "node": "MethodDecl",
+      "line": 4,
+      "col": 8,
+      "sym": {
+       "kind": "ctor",
+       "name": "<init>",
+       "owner": "Mix",
+       "params": [],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "name": "<init>",
+      "kind": "ctor",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 4,
+       "col": 8,
+       "stmts": [
+        {
+         "node": "CtorCall",
+         "line": 4,
+         "col": 8,
+         "kind": "super:implicit",
+         "sym": {
+          "kind": "ctor",
+          "name": "<init>",
+          "owner": "java.lang.Object",
+          "params": [],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "args": []
+        }
+       ]
+      },
+      "mods": [
+       "public"
+      ]
+     },
+     {
+      "node": "ClassDecl",
+      "line": 5,
+      "col": 5,
+      "name": "Color",
+      "qname": "Mix.Color",
+      "kind": "enum",
+      "members": [
+       {
+        "node": "EnumConst",
+        "line": 5,
+        "col": 18,
+        "sym": {
+         "kind": "enumconst",
+         "name": "RED",
+         "owner": "Mix.Color",
+         "static": true,
+         "type": {
+          "kind": "class",
+          "name": "Mix.Color"
+         }
+        },
+        "args": [],
+        "ctor": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Mix.Color",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        }
+       },
+       {
+        "node": "EnumConst",
+        "line": 5,
+        "col": 23,
+        "sym": {
+         "kind": "enumconst",
+         "name": "GREEN",
+         "owner": "Mix.Color",
+         "static": true,
+         "type": {
+          "kind": "class",
+          "name": "Mix.Color"
+         }
+        },
+        "args": [
+         {
+          "node": "Lit",
+          "line": 5,
+          "col": 29,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 5
+         }
+        ],
+        "ctor": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Mix.Color",
+         "params": [
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        }
+       },
+       {
+        "node": "EnumConst",
+        "line": 5,
+        "col": 33,
+        "sym": {
+         "kind": "enumconst",
+         "name": "BLUE",
+         "owner": "Mix.Color",
+         "static": true,
+         "type": {
+          "kind": "class",
+          "name": "Mix.Color"
+         }
+        },
+        "args": [],
+        "ctor": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Mix.Color",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        }
+       },
+       {
+        "node": "FieldDecl",
+        "line": 6,
+        "col": 9,
+        "sym": {
+         "kind": "field",
+         "name": "w",
+         "owner": "Mix.Color",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        },
+        "mods": [
+         "private",
+         "final"
+        ]
+       },
+       {
+        "node": "MethodDecl",
+        "line": 7,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Mix.Color",
+         "params": [],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 7,
+         "col": 17,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 7,
+           "col": 19,
+           "kind": "this",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "Mix.Color",
+            "params": [
+             {
+              "kind": "i32"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Lit",
+             "line": 7,
+             "col": 24,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 1
+            }
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 8,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Mix.Color",
+         "params": [
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 8,
+          "col": 15,
+          "sym": {
+           "kind": "param",
+           "name": "w",
+           "owner": "Mix.Color.<init>",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 8,
+         "col": 22,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 8,
+           "col": 22,
+           "kind": "super:implicit",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.Enum",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             {
+              "kind": "i32"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": []
+          },
+          {
+           "node": "ExprStmt",
+           "line": 8,
+           "col": 24,
+           "expr": {
+            "node": "Assign",
+            "line": 8,
+            "col": 24,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Select",
+             "line": 8,
+             "col": 24,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "This",
+              "line": 8,
+              "col": 24,
+              "type": {
+               "kind": "class",
+               "name": "Mix.Color"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "w",
+              "owner": "Mix.Color",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Name",
+             "line": 8,
+             "col": 33,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "w",
+              "owner": "Mix.Color.<init>",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 9,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "weight",
+         "owner": "Mix.Color",
+         "params": [],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "name": "weight",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "i32"
+        },
+        "body": {
+         "node": "Block",
+         "line": 9,
+         "col": 22,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 9,
+           "col": 24,
+           "expr": {
+            "node": "Select",
+            "line": 9,
+            "col": 31,
+            "type": {
+             "kind": "i32"
+            },
+            "obj": {
+             "node": "This",
+             "line": 9,
+             "col": 31,
+             "type": {
+              "kind": "class",
+              "name": "Mix.Color"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "w",
+             "owner": "Mix.Color",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         ]
+        }
+       }
+      ],
+      "outer": "Mix"
+     },
+     {
+      "node": "ClassDecl",
+      "line": 12,
+      "col": 5,
+      "name": "Shape",
+      "qname": "Mix.Shape",
+      "kind": "interface",
+      "members": [
+       {
+        "node": "MethodDecl",
+        "line": 12,
+        "col": 23,
+        "sym": {
+         "kind": "method",
+         "name": "area",
+         "owner": "Mix.Shape",
+         "params": [],
+         "ret": {
+          "kind": "f64"
+         }
+        },
+        "name": "area",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "f64"
+        }
+       }
+      ],
+      "outer": "Mix"
+     },
+     {
+      "node": "FieldDecl",
+      "line": 14,
+      "col": 5,
+      "sym": {
+       "kind": "field",
+       "name": "LIMIT",
+       "owner": "Mix",
+       "static": true,
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "init": {
+       "node": "Lit",
+       "line": 14,
+       "col": 30,
+       "type": {
+        "kind": "i32"
+       },
+       "value": 10
+      },
+      "mods": [
+       "static",
+       "final"
+      ]
+     },
+     {
+      "node": "FieldDecl",
+      "line": 15,
+      "col": 5,
+      "sym": {
+       "kind": "field",
+       "name": "counter",
+       "owner": "Mix",
+       "static": true,
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "FieldDecl",
+      "line": 16,
+      "col": 5,
+      "sym": {
+       "kind": "field",
+       "name": "total",
+       "owner": "Mix",
+       "static": true,
+       "type": {
+        "kind": "i64"
+       }
+      },
+      "type": {
+       "kind": "i64"
+      },
+      "init": {
+       "node": "Lit",
+       "line": 16,
+       "col": 25,
+       "type": {
+        "kind": "i64"
+       },
+       "value": 5
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "FieldDecl",
+      "line": 17,
+      "col": 5,
+      "sym": {
+       "kind": "field",
+       "name": "label",
+       "owner": "Mix",
+       "static": true,
+       "type": {
+        "kind": "class",
+        "name": "java.lang.String"
+       }
+      },
+      "type": {
+       "kind": "class",
+       "name": "java.lang.String"
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 18,
+      "col": 5,
+      "name": "<clinit>",
+      "kind": "static_init",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 18,
+       "col": 5,
+       "stmts": [
+        {
+         "node": "ExprStmt",
+         "line": 18,
+         "col": 14,
+         "expr": {
+          "node": "Assign",
+          "line": 18,
+          "col": 14,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          "target": {
+           "node": "Select",
+           "line": 18,
+           "col": 14,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 18,
+            "col": 14,
+            "type": {
+             "kind": "class",
+             "name": "Mix"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "label",
+            "owner": "Mix",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           }
+          },
+          "value": {
+           "node": "Lit",
+           "line": 18,
+           "col": 22,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "value": "mix"
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 18,
+         "col": 29,
+         "expr": {
+          "node": "Assign",
+          "line": 18,
+          "col": 29,
+          "type": {
+           "kind": "i32"
+          },
+          "target": {
+           "node": "Select",
+           "line": 18,
+           "col": 29,
+           "type": {
+            "kind": "i32"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 18,
+            "col": 29,
+            "type": {
+             "kind": "class",
+             "name": "Mix"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "counter",
+            "owner": "Mix",
+            "static": true,
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "value": {
+           "node": "Lit",
+           "line": 18,
+           "col": 39,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 3
+          }
+         }
+        }
+       ]
+      }
+     },
+     {
+      "node": "ClassDecl",
+      "line": 20,
+      "col": 5,
+      "name": "Inner",
+      "qname": "Mix.Inner",
+      "kind": "class",
+      "members": [
+       {
+        "node": "FieldDecl",
+        "line": 21,
+        "col": 9,
+        "sym": {
+         "kind": "field",
+         "name": "v",
+         "owner": "Mix.Inner",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 22,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Mix.Inner",
+         "params": [
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 22,
+          "col": 15,
+          "sym": {
+           "kind": "param",
+           "name": "v",
+           "owner": "Mix.Inner.<init>",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 22,
+         "col": 22,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 22,
+           "col": 22,
+           "kind": "super:implicit",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.Object",
+            "params": [],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": []
+          },
+          {
+           "node": "ExprStmt",
+           "line": 22,
+           "col": 24,
+           "expr": {
+            "node": "Assign",
+            "line": 22,
+            "col": 24,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Select",
+             "line": 22,
+             "col": 24,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "This",
+              "line": 22,
+              "col": 24,
+              "type": {
+               "kind": "class",
+               "name": "Mix.Inner"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "v",
+              "owner": "Mix.Inner",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Binary",
+             "line": 22,
+             "col": 33,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "+",
+             "left": {
+              "node": "Name",
+              "line": 22,
+              "col": 33,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "param",
+               "name": "v",
+               "owner": "Mix.Inner.<init>",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "right": {
+              "node": "Select",
+              "line": 22,
+              "col": 37,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "This",
+               "line": 22,
+               "col": 37,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "base",
+               "owner": "Mix",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 23,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "get",
+         "owner": "Mix.Inner",
+         "params": [],
+         "ret": {
+          "kind": "i32"
+         }
+        },
+        "name": "get",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "i32"
+        },
+        "body": {
+         "node": "Block",
+         "line": 23,
+         "col": 19,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 23,
+           "col": 21,
+           "expr": {
+            "node": "Binary",
+            "line": 23,
+            "col": 28,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "*",
+            "left": {
+             "node": "Select",
+             "line": 23,
+             "col": 28,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "This",
+              "line": 23,
+              "col": 28,
+              "type": {
+               "kind": "class",
+               "name": "Mix.Inner"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "v",
+              "owner": "Mix.Inner",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "right": {
+             "node": "Lit",
+             "line": 23,
+             "col": 32,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 2
+            }
+           }
+          }
+         ]
+        }
+       }
+      ],
+      "outer": "Mix"
+     },
+     {
+      "node": "FieldDecl",
+      "line": 26,
+      "col": 5,
+      "sym": {
+       "kind": "field",
+       "name": "base",
+       "owner": "Mix",
+       "type": {
+        "kind": "i32"
+       }
+      },
+      "type": {
+       "kind": "i32"
+      },
+      "init": {
+       "node": "Lit",
+       "line": 26,
+       "col": 16,
+       "type": {
+        "kind": "i32"
+       },
+       "value": 4
+      }
+     },
+     {
+      "node": "ClassDecl",
+      "line": 28,
+      "col": 5,
+      "name": "Box",
+      "qname": "Mix.Box",
+      "kind": "class",
+      "mods": [
+       "static"
+      ],
+      "typeparams": [
+       "T"
+      ],
+      "members": [
+       {
+        "node": "FieldDecl",
+        "line": 29,
+        "col": 9,
+        "sym": {
+         "kind": "field",
+         "name": "item",
+         "owner": "Mix.Box",
+         "type": {
+          "kind": "typevar",
+          "name": "T"
+         }
+        },
+        "type": {
+         "kind": "typevar",
+         "name": "T"
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 30,
+        "col": 9,
+        "sym": {
+         "kind": "ctor",
+         "name": "<init>",
+         "owner": "Mix.Box",
+         "params": [
+          {
+           "kind": "typevar",
+           "name": "T"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        },
+        "name": "<init>",
+        "kind": "ctor",
+        "params": [
+         {
+          "node": "Param",
+          "line": 30,
+          "col": 13,
+          "sym": {
+           "kind": "param",
+           "name": "item",
+           "owner": "Mix.Box.<init>",
+           "type": {
+            "kind": "typevar",
+            "name": "T"
+           }
+          },
+          "type": {
+           "kind": "typevar",
+           "name": "T"
+          }
+         }
+        ],
+        "ret": {
+         "kind": "void"
+        },
+        "body": {
+         "node": "Block",
+         "line": 30,
+         "col": 21,
+         "stmts": [
+          {
+           "node": "CtorCall",
+           "line": 30,
+           "col": 21,
+           "kind": "super:implicit",
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.Object",
+            "params": [],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": []
+          },
+          {
+           "node": "ExprStmt",
+           "line": 30,
+           "col": 23,
+           "expr": {
+            "node": "Assign",
+            "line": 30,
+            "col": 23,
+            "type": {
+             "kind": "typevar",
+             "name": "T"
+            },
+            "target": {
+             "node": "Select",
+             "line": 30,
+             "col": 23,
+             "type": {
+              "kind": "typevar",
+              "name": "T"
+             },
+             "obj": {
+              "node": "This",
+              "line": 30,
+              "col": 23,
+              "type": {
+               "kind": "class",
+               "name": "Mix.Box",
+               "args": [
+                {
+                 "kind": "typevar",
+                 "name": "T"
+                }
+               ]
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "item",
+              "owner": "Mix.Box",
+              "type": {
+               "kind": "typevar",
+               "name": "T"
+              }
+             }
+            },
+            "value": {
+             "node": "Name",
+             "line": 30,
+             "col": 35,
+             "type": {
+              "kind": "typevar",
+              "name": "T"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "item",
+              "owner": "Mix.Box.<init>",
+              "type": {
+               "kind": "typevar",
+               "name": "T"
+              }
+             }
+            }
+           }
+          }
+         ]
+        }
+       },
+       {
+        "node": "MethodDecl",
+        "line": 31,
+        "col": 9,
+        "sym": {
+         "kind": "method",
+         "name": "get",
+         "owner": "Mix.Box",
+         "params": [],
+         "ret": {
+          "kind": "typevar",
+          "name": "T"
+         }
+        },
+        "name": "get",
+        "kind": "method",
+        "params": [],
+        "ret": {
+         "kind": "typevar",
+         "name": "T"
+        },
+        "body": {
+         "node": "Block",
+         "line": 31,
+         "col": 17,
+         "stmts": [
+          {
+           "node": "Return",
+           "line": 31,
+           "col": 19,
+           "expr": {
+            "node": "Select",
+            "line": 31,
+            "col": 26,
+            "type": {
+             "kind": "typevar",
+             "name": "T"
+            },
+            "obj": {
+             "node": "This",
+             "line": 31,
+             "col": 26,
+             "type": {
+              "kind": "class",
+              "name": "Mix.Box"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "item",
+             "owner": "Mix.Box",
+             "type": {
+              "kind": "typevar",
+              "name": "T"
+             }
+            }
+           }
+          }
+         ]
+        }
+       }
+      ],
+      "outer": "Mix"
+     },
+     {
+      "node": "MethodDecl",
+      "line": 34,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "fib",
+       "owner": "Mix",
+       "static": true,
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "i32"
+       }
+      },
+      "name": "fib",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 34,
+        "col": 20,
+        "sym": {
+         "kind": "param",
+         "name": "n",
+         "owner": "Mix.fib",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      },
+      "body": {
+       "node": "Block",
+       "line": 34,
+       "col": 27,
+       "stmts": [
+        {
+         "node": "Return",
+         "line": 34,
+         "col": 29,
+         "expr": {
+          "node": "Cond",
+          "line": 34,
+          "col": 36,
+          "type": {
+           "kind": "i32"
+          },
+          "cond": {
+           "node": "Binary",
+           "line": 34,
+           "col": 36,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "<",
+           "left": {
+            "node": "Name",
+            "line": 34,
+            "col": 36,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "n",
+             "owner": "Mix.fib",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 34,
+            "col": 40,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          },
+          "then": {
+           "node": "Name",
+           "line": 34,
+           "col": 44,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "n",
+            "owner": "Mix.fib",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "orelse": {
+           "node": "Binary",
+           "line": 34,
+           "col": 48,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "+",
+           "left": {
+            "node": "Call",
+            "line": 34,
+            "col": 48,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "TypeName",
+             "line": 34,
+             "col": 48,
+             "type": {
+              "kind": "class",
+              "name": "Mix"
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "fib",
+             "owner": "Mix",
+             "static": true,
+             "params": [
+              {
+               "kind": "i32"
+              }
+             ],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": [
+             {
+              "node": "Binary",
+              "line": 34,
+              "col": 52,
+              "type": {
+               "kind": "i32"
+              },
+              "op": "-",
+              "left": {
+               "node": "Name",
+               "line": 34,
+               "col": 52,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "n",
+                "owner": "Mix.fib",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              },
+              "right": {
+               "node": "Lit",
+               "line": 34,
+               "col": 56,
+               "type": {
+                "kind": "i32"
+               },
+               "value": 1
+              }
+             }
+            ]
+           },
+           "right": {
+            "node": "Call",
+            "line": 34,
+            "col": 61,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "TypeName",
+             "line": 34,
+             "col": 61,
+             "type": {
+              "kind": "class",
+              "name": "Mix"
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "fib",
+             "owner": "Mix",
+             "static": true,
+             "params": [
+              {
+               "kind": "i32"
+              }
+             ],
+             "ret": {
+              "kind": "i32"
+             }
+            },
+            "args": [
+             {
+              "node": "Binary",
+              "line": 34,
+              "col": 65,
+              "type": {
+               "kind": "i32"
+              },
+              "op": "-",
+              "left": {
+               "node": "Name",
+               "line": 34,
+               "col": 65,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "n",
+                "owner": "Mix.fib",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              },
+              "right": {
+               "node": "Lit",
+               "line": 34,
+               "col": 69,
+               "type": {
+                "kind": "i32"
+               },
+               "value": 2
+              }
+             }
+            ]
+           }
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 36,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "sw",
+       "owner": "Mix",
+       "static": true,
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "i32"
+       }
+      },
+      "name": "sw",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 36,
+        "col": 19,
+        "sym": {
+         "kind": "param",
+         "name": "k",
+         "owner": "Mix.sw",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      },
+      "body": {
+       "node": "Block",
+       "line": 36,
+       "col": 26,
+       "stmts": [
+        {
+         "node": "Switch",
+         "line": 37,
+         "col": 9,
+         "expr": {
+          "node": "Paren",
+          "line": 37,
+          "col": 16,
+          "type": {
+           "kind": "i32"
+          },
+          "x": {
+           "node": "Name",
+           "line": 37,
+           "col": 17,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "k",
+            "owner": "Mix.sw",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          }
+         },
+         "cases": [
+          {
+           "node": "Case",
+           "line": 38,
+           "col": 13,
+           "labels": [
+            {
+             "node": "Lit",
+             "line": 38,
+             "col": 18,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 1
+            }
+           ],
+           "default": false,
+           "body": [
+            {
+             "node": "Return",
+             "line": 38,
+             "col": 21,
+             "expr": {
+              "node": "Lit",
+              "line": 38,
+              "col": 28,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 10
+             }
+            }
+           ]
+          },
+          {
+           "node": "Case",
+           "line": 39,
+           "col": 13,
+           "labels": [
+            {
+             "node": "Lit",
+             "line": 39,
+             "col": 18,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 2
+            }
+           ],
+           "default": false,
+           "body": []
+          },
+          {
+           "node": "Case",
+           "line": 40,
+           "col": 13,
+           "labels": [
+            {
+             "node": "Lit",
+             "line": 40,
+             "col": 18,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 3
+            }
+           ],
+           "default": false,
+           "body": [
+            {
+             "node": "ExprStmt",
+             "line": 40,
+             "col": 21,
+             "expr": {
+              "node": "Assign",
+              "line": 40,
+              "col": 21,
+              "type": {
+               "kind": "i32"
+              },
+              "op": "+",
+              "target": {
+               "node": "Name",
+               "line": 40,
+               "col": 21,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "k",
+                "owner": "Mix.sw",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              },
+              "value": {
+               "node": "Lit",
+               "line": 40,
+               "col": 26,
+               "type": {
+                "kind": "i32"
+               },
+               "value": 5
+              }
+             }
+            },
+            {
+             "node": "Break",
+             "line": 40,
+             "col": 29
+            }
+           ]
+          },
+          {
+           "node": "Case",
+           "line": 41,
+           "col": 13,
+           "labels": [],
+           "default": true,
+           "body": [
+            {
+             "node": "ExprStmt",
+             "line": 41,
+             "col": 22,
+             "expr": {
+              "node": "Assign",
+              "line": 41,
+              "col": 22,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "Name",
+               "line": 41,
+               "col": 22,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "k",
+                "owner": "Mix.sw",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              },
+              "value": {
+               "node": "Lit",
+               "line": 41,
+               "col": 26,
+               "type": {
+                "kind": "i32"
+               },
+               "value": -1
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "node": "Return",
+         "line": 43,
+         "col": 9,
+         "expr": {
+          "node": "Name",
+          "line": 43,
+          "col": 16,
+          "type": {
+           "kind": "i32"
+          },
+          "sym": {
+           "kind": "param",
+           "name": "k",
+           "owner": "Mix.sw",
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 46,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "name",
+       "owner": "Mix",
+       "static": true,
+       "params": [
+        {
+         "kind": "class",
+         "name": "java.lang.String"
+        }
+       ],
+       "ret": {
+        "kind": "class",
+        "name": "java.lang.String"
+       }
+      },
+      "name": "name",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 46,
+        "col": 24,
+        "sym": {
+         "kind": "param",
+         "name": "s",
+         "owner": "Mix.name",
+         "type": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        },
+        "type": {
+         "kind": "class",
+         "name": "java.lang.String"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "class",
+       "name": "java.lang.String"
+      },
+      "body": {
+       "node": "Block",
+       "line": 46,
+       "col": 34,
+       "stmts": [
+        {
+         "node": "Switch",
+         "line": 47,
+         "col": 9,
+         "expr": {
+          "node": "Paren",
+          "line": 47,
+          "col": 16,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.String"
+          },
+          "x": {
+           "node": "Name",
+           "line": 47,
+           "col": 17,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "s",
+            "owner": "Mix.name",
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           }
+          }
+         },
+         "cases": [
+          {
+           "node": "Case",
+           "line": 48,
+           "col": 13,
+           "labels": [
+            {
+             "node": "Lit",
+             "line": 48,
+             "col": 18,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "a"
+            }
+           ],
+           "default": false,
+           "body": [
+            {
+             "node": "Return",
+             "line": 48,
+             "col": 23,
+             "expr": {
+              "node": "Lit",
+              "line": 48,
+              "col": 30,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "alpha"
+             }
+            }
+           ]
+          },
+          {
+           "node": "Case",
+           "line": 49,
+           "col": 13,
+           "labels": [
+            {
+             "node": "Lit",
+             "line": 49,
+             "col": 18,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "b"
+            }
+           ],
+           "default": false,
+           "body": [
+            {
+             "node": "Return",
+             "line": 49,
+             "col": 23,
+             "expr": {
+              "node": "Lit",
+              "line": 49,
+              "col": 30,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "beta"
+             }
+            }
+           ]
+          },
+          {
+           "node": "Case",
+           "line": 50,
+           "col": 13,
+           "labels": [],
+           "default": true,
+           "body": [
+            {
+             "node": "Return",
+             "line": 50,
+             "col": 22,
+             "expr": {
+              "node": "Lit",
+              "line": 50,
+              "col": 29,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": "other"
+             }
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 54,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "grid",
+       "owner": "Mix",
+       "static": true,
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "array",
+        "elem": {
+         "kind": "array",
+         "elem": {
+          "kind": "i32"
+         }
+        }
+       }
+      },
+      "name": "grid",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 54,
+        "col": 25,
+        "sym": {
+         "kind": "param",
+         "name": "n",
+         "owner": "Mix.grid",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "array",
+       "elem": {
+        "kind": "array",
+        "elem": {
+         "kind": "i32"
+        }
+       }
+      },
+      "body": {
+       "node": "Block",
+       "line": 54,
+       "col": 32,
+       "stmts": [
+        {
+         "node": "Local",
+         "line": 55,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "g",
+          "owner": "Mix.grid",
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           }
+          }
+         },
+         "type": {
+          "kind": "array",
+          "elem": {
+           "kind": "array",
+           "elem": {
+            "kind": "i32"
+           }
+          }
+         },
+         "init": {
+          "node": "NewArray",
+          "line": 55,
+          "col": 21,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           }
+          },
+          "elem": {
+           "kind": "i32"
+          },
+          "dims": [
+           {
+            "node": "Name",
+            "line": 55,
+            "col": 29,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "n",
+             "owner": "Mix.grid",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           {
+            "node": "Name",
+            "line": 55,
+            "col": 32,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "n",
+             "owner": "Mix.grid",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          ]
+         }
+        },
+        {
+         "node": "For",
+         "line": 56,
+         "col": 9,
+         "init": [
+          {
+           "node": "Local",
+           "line": 56,
+           "col": 14,
+           "sym": {
+            "kind": "local",
+            "name": "i",
+            "owner": "Mix.grid",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           },
+           "init": {
+            "node": "Lit",
+            "line": 56,
+            "col": 22,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 0
+           }
+          }
+         ],
+         "cond": {
+          "node": "Binary",
+          "line": 56,
+          "col": 25,
+          "type": {
+           "kind": "bool"
+          },
+          "op": "<",
+          "left": {
+           "node": "Name",
+           "line": 56,
+           "col": 25,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "i",
+            "owner": "Mix.grid",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "right": {
+           "node": "Name",
+           "line": 56,
+           "col": 29,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "n",
+            "owner": "Mix.grid",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          }
+         },
+         "update": [
+          {
+           "node": "Unary",
+           "line": 56,
+           "col": 32,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "++",
+           "x": {
+            "node": "Name",
+            "line": 56,
+            "col": 32,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "i",
+             "owner": "Mix.grid",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "postfix": true
+          }
+         ],
+         "body": {
+          "node": "For",
+          "line": 57,
+          "col": 13,
+          "init": [
+           {
+            "node": "Local",
+            "line": 57,
+            "col": 18,
+            "sym": {
+             "kind": "local",
+             "name": "j",
+             "owner": "Mix.grid",
+             "type": {
+              "kind": "i32"
+             }
+            },
+            "type": {
+             "kind": "i32"
+            },
+            "init": {
+             "node": "Lit",
+             "line": 57,
+             "col": 26,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 0
+            }
+           }
+          ],
+          "cond": {
+           "node": "Binary",
+           "line": 57,
+           "col": 29,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "<",
+           "left": {
+            "node": "Name",
+            "line": 57,
+            "col": 29,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "j",
+             "owner": "Mix.grid",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Name",
+            "line": 57,
+            "col": 33,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "n",
+             "owner": "Mix.grid",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           }
+          },
+          "update": [
+           {
+            "node": "Unary",
+            "line": 57,
+            "col": 36,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "++",
+            "x": {
+             "node": "Name",
+             "line": 57,
+             "col": 36,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "j",
+              "owner": "Mix.grid",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "postfix": true
+           }
+          ],
+          "body": {
+           "node": "ExprStmt",
+           "line": 57,
+           "col": 41,
+           "expr": {
+            "node": "Assign",
+            "line": 57,
+            "col": 41,
+            "type": {
+             "kind": "i32"
+            },
+            "target": {
+             "node": "Index",
+             "line": 57,
+             "col": 41,
+             "type": {
+              "kind": "i32"
+             },
+             "arr": {
+              "node": "Index",
+              "line": 57,
+              "col": 41,
+              "type": {
+               "kind": "array",
+               "elem": {
+                "kind": "i32"
+               }
+              },
+              "arr": {
+               "node": "Name",
+               "line": 57,
+               "col": 41,
+               "type": {
+                "kind": "array",
+                "elem": {
+                 "kind": "array",
+                 "elem": {
+                  "kind": "i32"
+                 }
+                }
+               },
+               "sym": {
+                "kind": "local",
+                "name": "g",
+                "owner": "Mix.grid",
+                "type": {
+                 "kind": "array",
+                 "elem": {
+                  "kind": "array",
+                  "elem": {
+                   "kind": "i32"
+                  }
+                 }
+                }
+               }
+              },
+              "index": {
+               "node": "Name",
+               "line": 57,
+               "col": 43,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "i",
+                "owner": "Mix.grid",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              }
+             },
+             "index": {
+              "node": "Name",
+              "line": 57,
+              "col": 46,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "j",
+               "owner": "Mix.grid",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            },
+            "value": {
+             "node": "Binary",
+             "line": 57,
+             "col": 51,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "*",
+             "left": {
+              "node": "Name",
+              "line": 57,
+              "col": 51,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "i",
+               "owner": "Mix.grid",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "right": {
+              "node": "Name",
+              "line": 57,
+              "col": 55,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "j",
+               "owner": "Mix.grid",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "Return",
+         "line": 58,
+         "col": 9,
+         "expr": {
+          "node": "Name",
+          "line": 58,
+          "col": 16,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           }
+          },
+          "sym": {
+           "kind": "local",
+           "name": "g",
+           "owner": "Mix.grid",
+           "type": {
+            "kind": "array",
+            "elem": {
+             "kind": "array",
+             "elem": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 61,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "mix",
+       "owner": "Mix",
+       "static": true,
+       "params": [
+        {
+         "kind": "i64"
+        },
+        {
+         "kind": "i32"
+        },
+        {
+         "kind": "f64"
+        },
+        {
+         "kind": "u16"
+        },
+        {
+         "kind": "i8"
+        }
+       ],
+       "ret": {
+        "kind": "i64"
+       }
+      },
+      "name": "mix",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 61,
+        "col": 21,
+        "sym": {
+         "kind": "param",
+         "name": "a",
+         "owner": "Mix.mix",
+         "type": {
+          "kind": "i64"
+         }
+        },
+        "type": {
+         "kind": "i64"
+        }
+       },
+       {
+        "node": "Param",
+        "line": 61,
+        "col": 29,
+        "sym": {
+         "kind": "param",
+         "name": "b",
+         "owner": "Mix.mix",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       },
+       {
+        "node": "Param",
+        "line": 61,
+        "col": 36,
+        "sym": {
+         "kind": "param",
+         "name": "c",
+         "owner": "Mix.mix",
+         "type": {
+          "kind": "f64"
+         }
+        },
+        "type": {
+         "kind": "f64"
+        }
+       },
+       {
+        "node": "Param",
+        "line": 61,
+        "col": 46,
+        "sym": {
+         "kind": "param",
+         "name": "ch",
+         "owner": "Mix.mix",
+         "type": {
+          "kind": "u16"
+         }
+        },
+        "type": {
+         "kind": "u16"
+        }
+       },
+       {
+        "node": "Param",
+        "line": 61,
+        "col": 55,
+        "sym": {
+         "kind": "param",
+         "name": "by",
+         "owner": "Mix.mix",
+         "type": {
+          "kind": "i8"
+         }
+        },
+        "type": {
+         "kind": "i8"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "i64"
+      },
+      "body": {
+       "node": "Block",
+       "line": 61,
+       "col": 64,
+       "stmts": [
+        {
+         "node": "Local",
+         "line": 62,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "r",
+          "owner": "Mix.mix",
+          "type": {
+           "kind": "i64"
+          }
+         },
+         "type": {
+          "kind": "i64"
+         },
+         "init": {
+          "node": "Binary",
+          "line": 62,
+          "col": 18,
+          "type": {
+           "kind": "i64"
+          },
+          "op": "<<",
+          "left": {
+           "node": "Name",
+           "line": 62,
+           "col": 18,
+           "type": {
+            "kind": "i64"
+           },
+           "sym": {
+            "kind": "param",
+            "name": "a",
+            "owner": "Mix.mix",
+            "type": {
+             "kind": "i64"
+            }
+           }
+          },
+          "right": {
+           "node": "Paren",
+           "line": 62,
+           "col": 23,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Binary",
+            "line": 62,
+            "col": 24,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "&",
+            "left": {
+             "node": "Name",
+             "line": 62,
+             "col": 24,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "b",
+              "owner": "Mix.mix",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "right": {
+             "node": "Lit",
+             "line": 62,
+             "col": 28,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 7
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 63,
+         "col": 9,
+         "expr": {
+          "node": "Assign",
+          "line": 63,
+          "col": 9,
+          "type": {
+           "kind": "i64"
+          },
+          "op": "^",
+          "target": {
+           "node": "Name",
+           "line": 63,
+           "col": 9,
+           "type": {
+            "kind": "i64"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "r",
+            "owner": "Mix.mix",
+            "type": {
+             "kind": "i64"
+            }
+           }
+          },
+          "value": {
+           "node": "Cast",
+           "line": 63,
+           "col": 14,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Name",
+            "line": 63,
+            "col": 20,
+            "type": {
+             "kind": "f64"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "c",
+             "owner": "Mix.mix",
+             "type": {
+              "kind": "f64"
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 64,
+         "col": 9,
+         "expr": {
+          "node": "Assign",
+          "line": 64,
+          "col": 9,
+          "type": {
+           "kind": "i64"
+          },
+          "op": "+",
+          "target": {
+           "node": "Name",
+           "line": 64,
+           "col": 9,
+           "type": {
+            "kind": "i64"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "r",
+            "owner": "Mix.mix",
+            "type": {
+             "kind": "i64"
+            }
+           }
+          },
+          "value": {
+           "node": "Binary",
+           "line": 64,
+           "col": 14,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "+",
+           "left": {
+            "node": "Name",
+            "line": 64,
+            "col": 14,
+            "type": {
+             "kind": "u16"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "ch",
+             "owner": "Mix.mix",
+             "type": {
+              "kind": "u16"
+             }
+            }
+           },
+           "right": {
+            "node": "Name",
+            "line": 64,
+            "col": 19,
+            "type": {
+             "kind": "i8"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "by",
+             "owner": "Mix.mix",
+             "type": {
+              "kind": "i8"
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 65,
+         "col": 9,
+         "expr": {
+          "node": "Assign",
+          "line": 65,
+          "col": 9,
+          "type": {
+           "kind": "i64"
+          },
+          "op": ">>>",
+          "target": {
+           "node": "Name",
+           "line": 65,
+           "col": 9,
+           "type": {
+            "kind": "i64"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "r",
+            "owner": "Mix.mix",
+            "type": {
+             "kind": "i64"
+            }
+           }
+          },
+          "value": {
+           "node": "Lit",
+           "line": 65,
+           "col": 16,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 1
+          }
+         }
+        },
+        {
+         "node": "Return",
+         "line": 66,
+         "col": 9,
+         "expr": {
+          "node": "Binary",
+          "line": 66,
+          "col": 16,
+          "type": {
+           "kind": "i64"
+          },
+          "op": "+",
+          "left": {
+           "node": "Binary",
+           "line": 66,
+           "col": 16,
+           "type": {
+            "kind": "i64"
+           },
+           "op": "%",
+           "left": {
+            "node": "Name",
+            "line": 66,
+            "col": 16,
+            "type": {
+             "kind": "i64"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "r",
+             "owner": "Mix.mix",
+             "type": {
+              "kind": "i64"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 66,
+            "col": 20,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1000
+           }
+          },
+          "right": {
+           "node": "Paren",
+           "line": 66,
+           "col": 27,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Binary",
+            "line": 66,
+            "col": 28,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "/",
+            "left": {
+             "node": "Name",
+             "line": 66,
+             "col": 28,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "param",
+              "name": "b",
+              "owner": "Mix.mix",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "right": {
+             "node": "Lit",
+             "line": 66,
+             "col": 32,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 3
+            }
+           }
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 69,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "thrower",
+       "owner": "Mix",
+       "static": true,
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "name": "thrower",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 69,
+        "col": 25,
+        "sym": {
+         "kind": "param",
+         "name": "x",
+         "owner": "Mix.thrower",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 69,
+       "col": 49,
+       "stmts": [
+        {
+         "node": "If",
+         "line": 70,
+         "col": 9,
+         "cond": {
+          "node": "Paren",
+          "line": 70,
+          "col": 12,
+          "type": {
+           "kind": "bool"
+          },
+          "x": {
+           "node": "Binary",
+           "line": 70,
+           "col": 13,
+           "type": {
+            "kind": "bool"
+           },
+           "op": ">",
+           "left": {
+            "node": "Name",
+            "line": 70,
+            "col": 13,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "Mix.thrower",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 70,
+            "col": 17,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          }
+         },
+         "then": {
+          "node": "Throw",
+          "line": 70,
+          "col": 20,
+          "expr": {
+           "node": "New",
+           "line": 70,
+           "col": 26,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.IllegalStateException"
+           },
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.IllegalStateException",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Concat",
+             "line": 70,
+             "col": 52,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "parts": [
+              {
+               "node": "Lit",
+               "line": 70,
+               "col": 52,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "value": "big "
+              },
+              {
+               "node": "Name",
+               "line": 70,
+               "col": 61,
+               "type": {
+                "kind": "i32"
+               },
+               "sym": {
+                "kind": "param",
+                "name": "x",
+                "owner": "Mix.thrower",
+                "type": {
+                 "kind": "i32"
+                }
+               }
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "If",
+         "line": 71,
+         "col": 9,
+         "cond": {
+          "node": "Paren",
+          "line": 71,
+          "col": 12,
+          "type": {
+           "kind": "bool"
+          },
+          "x": {
+           "node": "Binary",
+           "line": 71,
+           "col": 13,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "==",
+           "left": {
+            "node": "Name",
+            "line": 71,
+            "col": 13,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "Mix.thrower",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 71,
+            "col": 18,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          }
+         },
+         "then": {
+          "node": "Throw",
+          "line": 71,
+          "col": 21,
+          "expr": {
+           "node": "New",
+           "line": 71,
+           "col": 27,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Exception"
+           },
+           "sym": {
+            "kind": "ctor",
+            "name": "<init>",
+            "owner": "java.lang.Exception",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Lit",
+             "line": 71,
+             "col": 41,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "two"
+            }
+           ]
+          }
+         }
+        }
+       ]
+      },
+      "mods": [
+       "static"
+      ],
+      "throws": [
+       {
+        "kind": "class",
+        "name": "java.lang.Exception"
+       }
+      ]
+     },
+     {
+      "node": "MethodDecl",
+      "line": 74,
+      "col": 5,
+      "sym": {
+       "kind": "method",
+       "name": "main",
+       "owner": "Mix",
+       "static": true,
+       "params": [
+        {
+         "kind": "array",
+         "elem": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "name": "main",
+      "kind": "method",
+      "params": [
+       {
+        "node": "Param",
+        "line": 74,
+        "col": 29,
+        "sym": {
+         "kind": "param",
+         "name": "args",
+         "owner": "Mix.main",
+         "type": {
+          "kind": "array",
+          "elem": {
+           "kind": "class",
+           "name": "java.lang.String"
+          }
+         }
+        },
+        "type": {
+         "kind": "array",
+         "elem": {
+          "kind": "class",
+          "name": "java.lang.String"
+         }
+        }
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      },
+      "body": {
+       "node": "Block",
+       "line": 74,
+       "col": 44,
+       "stmts": [
+        {
+         "node": "Local",
+         "line": 75,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "m",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "Mix"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "Mix"
+         },
+         "init": {
+          "node": "New",
+          "line": 75,
+          "col": 17,
+          "type": {
+           "kind": "class",
+           "name": "Mix"
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "Mix",
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         }
+        },
+        {
+         "node": "Local",
+         "line": 76,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "in",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "Mix.Inner"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "Mix.Inner"
+         },
+         "init": {
+          "node": "New",
+          "line": 76,
+          "col": 24,
+          "type": {
+           "kind": "class",
+           "name": "Mix.Inner"
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "Mix.Inner",
+           "params": [
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 76,
+            "col": 36,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 3
+           }
+          ],
+          "outer": {
+           "node": "Name",
+           "line": 76,
+           "col": 24,
+           "type": {
+            "kind": "class",
+            "name": "Mix"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "m",
+            "owner": "Mix.main",
+            "type": {
+             "kind": "class",
+             "name": "Mix"
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 77,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 77,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 77,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 77,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 77,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Call",
+              "line": 77,
+              "col": 28,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "Name",
+               "line": 77,
+               "col": 28,
+               "type": {
+                "kind": "class",
+                "name": "Mix.Inner"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "in",
+                "owner": "Mix.main",
+                "type": {
+                 "kind": "class",
+                 "name": "Mix.Inner"
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "get",
+               "owner": "Mix.Inner",
+               "params": [],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": []
+             },
+             {
+              "node": "Lit",
+              "line": 77,
+              "col": 39,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 77,
+              "col": 45,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 77,
+               "col": 45,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "fib",
+               "owner": "Mix",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 77,
+                "col": 49,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 10
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 77,
+              "col": 55,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 77,
+              "col": 61,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 77,
+               "col": 61,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "sw",
+               "owner": "Mix",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 77,
+                "col": 64,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 1
+               }
+              ]
+             },
+             {
+              "node": "Call",
+              "line": 77,
+              "col": 69,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 77,
+               "col": 69,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "sw",
+               "owner": "Mix",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 77,
+                "col": 72,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 3
+               }
+              ]
+             },
+             {
+              "node": "Call",
+              "line": 77,
+              "col": 77,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 77,
+               "col": 77,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "sw",
+               "owner": "Mix",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 77,
+                "col": 80,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 9
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 77,
+              "col": 85,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 77,
+              "col": 91,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 77,
+               "col": 91,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "name",
+               "owner": "Mix",
+               "static": true,
+               "params": [
+                {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                }
+               ],
+               "ret": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 77,
+                "col": 96,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                "value": "b"
+               }
+              ]
+             },
+             {
+              "node": "Call",
+              "line": 77,
+              "col": 103,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 77,
+               "col": 103,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "name",
+               "owner": "Mix",
+               "static": true,
+               "params": [
+                {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                }
+               ],
+               "ret": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 77,
+                "col": 108,
+                "type": {
+                 "kind": "class",
+                 "name": "java.lang.String"
+                },
+                "value": "z"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "ForEach",
+         "line": 78,
+         "col": 9,
+         "var": {
+          "node": "Local",
+          "line": 78,
+          "col": 14,
+          "sym": {
+           "kind": "local",
+           "name": "c",
+           "owner": "Mix.main",
+           "type": {
+            "kind": "class",
+            "name": "Mix.Color"
+           }
+          },
+          "type": {
+           "kind": "class",
+           "name": "Mix.Color"
+          }
+         },
+         "iterable": {
+          "node": "Call",
+          "line": 78,
+          "col": 24,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "class",
+            "name": "Mix.Color"
+           }
+          },
+          "target": {
+           "node": "TypeName",
+           "line": 78,
+           "col": 24,
+           "type": {
+            "kind": "class",
+            "name": "Mix.Color"
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "values",
+           "owner": "Mix.Color",
+           "static": true,
+           "params": [],
+           "ret": {
+            "kind": "array",
+            "elem": {
+             "kind": "class",
+             "name": "Mix.Color"
+            }
+           }
+          },
+          "args": []
+         },
+         "body": {
+          "node": "ExprStmt",
+          "line": 78,
+          "col": 40,
+          "expr": {
+           "node": "Call",
+           "line": 78,
+           "col": 40,
+           "type": {
+            "kind": "void"
+           },
+           "target": {
+            "node": "Select",
+            "line": 78,
+            "col": 40,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            },
+            "obj": {
+             "node": "TypeName",
+             "line": 78,
+             "col": 40,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.System"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "out",
+             "owner": "java.lang.System",
+             "static": true,
+             "type": {
+              "kind": "class",
+              "name": "java.io.PrintStream"
+             }
+            }
+           },
+           "sym": {
+            "kind": "method",
+            "name": "println",
+            "owner": "java.io.PrintStream",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Concat",
+             "line": 78,
+             "col": 59,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "parts": [
+              {
+               "node": "Name",
+               "line": 78,
+               "col": 59,
+               "type": {
+                "kind": "class",
+                "name": "Mix.Color"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "c",
+                "owner": "Mix.main",
+                "type": {
+                 "kind": "class",
+                 "name": "Mix.Color"
+                }
+               }
+              },
+              {
+               "node": "Lit",
+               "line": 78,
+               "col": 63,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "value": ":"
+              },
+              {
+               "node": "Call",
+               "line": 78,
+               "col": 69,
+               "type": {
+                "kind": "i32"
+               },
+               "target": {
+                "node": "Name",
+                "line": 78,
+                "col": 69,
+                "type": {
+                 "kind": "class",
+                 "name": "Mix.Color"
+                },
+                "sym": {
+                 "kind": "local",
+                 "name": "c",
+                 "owner": "Mix.main",
+                 "type": {
+                  "kind": "class",
+                  "name": "Mix.Color"
+                 }
+                }
+               },
+               "sym": {
+                "kind": "method",
+                "name": "weight",
+                "owner": "Mix.Color",
+                "params": [],
+                "ret": {
+                 "kind": "i32"
+                }
+               },
+               "args": []
+              },
+              {
+               "node": "Lit",
+               "line": 78,
+               "col": 82,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "value": ":"
+              },
+              {
+               "node": "Call",
+               "line": 78,
+               "col": 88,
+               "type": {
+                "kind": "i32"
+               },
+               "target": {
+                "node": "Name",
+                "line": 78,
+                "col": 88,
+                "type": {
+                 "kind": "class",
+                 "name": "Mix.Color"
+                },
+                "sym": {
+                 "kind": "local",
+                 "name": "c",
+                 "owner": "Mix.main",
+                 "type": {
+                  "kind": "class",
+                  "name": "Mix.Color"
+                 }
+                }
+               },
+               "sym": {
+                "kind": "method",
+                "name": "ordinal",
+                "owner": "java.lang.Enum",
+                "params": [],
+                "ret": {
+                 "kind": "i32"
+                }
+               },
+               "args": []
+              }
+             ]
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 79,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "s",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "Mix.Shape"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "Mix.Shape"
+         },
+         "init": {
+          "node": "New",
+          "line": 79,
+          "col": 19,
+          "type": {
+           "kind": "class",
+           "name": "",
+           "args": [
+            {
+             "kind": "class",
+             "name": "anonymous Mix.Shape"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "",
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [],
+          "body": {
+           "node": "ClassDecl",
+           "line": 79,
+           "col": 31,
+           "name": "",
+           "qname": "",
+           "kind": "class",
+           "extends": {
+            "kind": "class",
+            "name": "Mix.Shape"
+           },
+           "implements": [
+            {
+             "kind": "class",
+             "name": "Mix.Shape"
+            }
+           ],
+           "members": [
+            {
+             "node": "MethodDecl",
+             "line": 79,
+             "col": 31,
+             "sym": {
+              "kind": "ctor",
+              "name": "<init>",
+              "owner": "",
+              "params": [],
+              "ret": {
+               "kind": "void"
+              }
+             },
+             "name": "<init>",
+             "kind": "ctor",
+             "params": [],
+             "ret": {
+              "kind": "void"
+             },
+             "body": {
+              "node": "Block",
+              "line": 79,
+              "col": 31,
+              "stmts": [
+               {
+                "node": "CtorCall",
+                "line": 79,
+                "col": 31,
+                "kind": "super:implicit",
+                "sym": {
+                 "kind": "ctor",
+                 "name": "<init>",
+                 "owner": "java.lang.Object",
+                 "params": [],
+                 "ret": {
+                  "kind": "void"
+                 }
+                },
+                "args": []
+               }
+              ]
+             },
+             "mods": [
+              "IMPLICIT"
+             ]
+            },
+            {
+             "node": "MethodDecl",
+             "line": 79,
+             "col": 33,
+             "sym": {
+              "kind": "method",
+              "name": "area",
+              "owner": "",
+              "params": [],
+              "ret": {
+               "kind": "f64"
+              }
+             },
+             "name": "area",
+             "kind": "method",
+             "params": [],
+             "ret": {
+              "kind": "f64"
+             },
+             "body": {
+              "node": "Block",
+              "line": 79,
+              "col": 54,
+              "stmts": [
+               {
+                "node": "Return",
+                "line": 79,
+                "col": 56,
+                "expr": {
+                 "node": "Binary",
+                 "line": 79,
+                 "col": 63,
+                 "type": {
+                  "kind": "f64"
+                 },
+                 "op": "*",
+                 "left": {
+                  "node": "Lit",
+                  "line": 79,
+                  "col": 63,
+                  "type": {
+                   "kind": "f64"
+                  },
+                  "value": 2.5
+                 },
+                 "right": {
+                  "node": "Select",
+                  "line": 79,
+                  "col": 69,
+                  "type": {
+                   "kind": "i32"
+                  },
+                  "obj": {
+                   "node": "TypeName",
+                   "line": 79,
+                   "col": 69,
+                   "type": {
+                    "kind": "class",
+                    "name": "Mix"
+                   }
+                  },
+                  "sym": {
+                   "kind": "field",
+                   "name": "LIMIT",
+                   "owner": "Mix",
+                   "static": true,
+                   "type": {
+                    "kind": "i32"
+                   }
+                  }
+                 }
+                }
+               }
+              ]
+             },
+             "mods": [
+              "public"
+             ]
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 80,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 80,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 80,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 80,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "f64"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Call",
+            "line": 80,
+            "col": 28,
+            "type": {
+             "kind": "f64"
+            },
+            "target": {
+             "node": "Name",
+             "line": 80,
+             "col": 28,
+             "type": {
+              "kind": "class",
+              "name": "Mix.Shape"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "s",
+              "owner": "Mix.main",
+              "type": {
+               "kind": "class",
+               "name": "Mix.Shape"
+              }
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "area",
+             "owner": "Mix.Shape",
+             "params": [],
+             "ret": {
+              "kind": "f64"
+             }
+            },
+            "args": []
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 81,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "g",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           }
+          }
+         },
+         "type": {
+          "kind": "array",
+          "elem": {
+           "kind": "array",
+           "elem": {
+            "kind": "i32"
+           }
+          }
+         },
+         "init": {
+          "node": "Call",
+          "line": 81,
+          "col": 21,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           }
+          },
+          "target": {
+           "node": "TypeName",
+           "line": 81,
+           "col": 21,
+           "type": {
+            "kind": "class",
+            "name": "Mix"
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "grid",
+           "owner": "Mix",
+           "static": true,
+           "params": [
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "array",
+            "elem": {
+             "kind": "array",
+             "elem": {
+              "kind": "i32"
+             }
+            }
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 81,
+            "col": 26,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 4
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 82,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "sum",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 82,
+          "col": 19,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 0
+         }
+        },
+        {
+         "node": "ForEach",
+         "line": 83,
+         "col": 9,
+         "var": {
+          "node": "Local",
+          "line": 83,
+          "col": 14,
+          "sym": {
+           "kind": "local",
+           "name": "row",
+           "owner": "Mix.main",
+           "type": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           }
+          },
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "i32"
+           }
+          }
+         },
+         "iterable": {
+          "node": "Name",
+          "line": 83,
+          "col": 26,
+          "type": {
+           "kind": "array",
+           "elem": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           }
+          },
+          "sym": {
+           "kind": "local",
+           "name": "g",
+           "owner": "Mix.main",
+           "type": {
+            "kind": "array",
+            "elem": {
+             "kind": "array",
+             "elem": {
+              "kind": "i32"
+             }
+            }
+           }
+          }
+         },
+         "body": {
+          "node": "ForEach",
+          "line": 83,
+          "col": 29,
+          "var": {
+           "node": "Local",
+           "line": 83,
+           "col": 34,
+           "sym": {
+            "kind": "local",
+            "name": "x",
+            "owner": "Mix.main",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "iterable": {
+           "node": "Name",
+           "line": 83,
+           "col": 42,
+           "type": {
+            "kind": "array",
+            "elem": {
+             "kind": "i32"
+            }
+           },
+           "sym": {
+            "kind": "local",
+            "name": "row",
+            "owner": "Mix.main",
+            "type": {
+             "kind": "array",
+             "elem": {
+              "kind": "i32"
+             }
+            }
+           }
+          },
+          "body": {
+           "node": "ExprStmt",
+           "line": 83,
+           "col": 47,
+           "expr": {
+            "node": "Assign",
+            "line": 83,
+            "col": 47,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "+",
+            "target": {
+             "node": "Name",
+             "line": 83,
+             "col": 47,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "sum",
+              "owner": "Mix.main",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "value": {
+             "node": "Name",
+             "line": 83,
+             "col": 54,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "x",
+              "owner": "Mix.main",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 84,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 84,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 84,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 84,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 84,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Name",
+              "line": 84,
+              "col": 28,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "sum",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 84,
+              "col": 34,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 84,
+              "col": 40,
+              "type": {
+               "kind": "i64"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 84,
+               "col": 40,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "mix",
+               "owner": "Mix",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i64"
+                },
+                {
+                 "kind": "i32"
+                },
+                {
+                 "kind": "f64"
+                },
+                {
+                 "kind": "u16"
+                },
+                {
+                 "kind": "i8"
+                }
+               ],
+               "ret": {
+                "kind": "i64"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 84,
+                "col": 44,
+                "type": {
+                 "kind": "i64"
+                },
+                "value": 1234567
+               },
+               {
+                "node": "Lit",
+                "line": 84,
+                "col": 54,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 5
+               },
+               {
+                "node": "Lit",
+                "line": 84,
+                "col": 57,
+                "type": {
+                 "kind": "f64"
+                },
+                "value": 7.9
+               },
+               {
+                "node": "Lit",
+                "line": 84,
+                "col": 62,
+                "type": {
+                 "kind": "u16"
+                },
+                "value": "x"
+               },
+               {
+                "node": "Cast",
+                "line": 84,
+                "col": 67,
+                "type": {
+                 "kind": "i8"
+                },
+                "x": {
+                 "node": "Lit",
+                 "line": 84,
+                 "col": 74,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "value": 3
+                }
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 84,
+              "col": 79,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Select",
+              "line": 84,
+              "col": 85,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "obj": {
+               "node": "TypeName",
+               "line": 84,
+               "col": 85,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "label",
+               "owner": "Mix",
+               "static": true,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               }
+              }
+             },
+             {
+              "node": "Select",
+              "line": 84,
+              "col": 93,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "TypeName",
+               "line": 84,
+               "col": 93,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "counter",
+               "owner": "Mix",
+               "static": true,
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             {
+              "node": "Select",
+              "line": 84,
+              "col": 103,
+              "type": {
+               "kind": "i64"
+              },
+              "obj": {
+               "node": "TypeName",
+               "line": 84,
+               "col": 103,
+               "type": {
+                "kind": "class",
+                "name": "Mix"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "total",
+               "owner": "Mix",
+               "static": true,
+               "type": {
+                "kind": "i64"
+               }
+              }
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 85,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "b",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "Mix.Box",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "Mix.Box",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          ]
+         },
+         "init": {
+          "node": "New",
+          "line": 85,
+          "col": 25,
+          "type": {
+           "kind": "class",
+           "name": "Mix.Box",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "Mix.Box",
+           "params": [
+            {
+             "kind": "typevar",
+             "name": "T"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Lit",
+            "line": 85,
+            "col": 35,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "value": "boxed"
+           }
+          ]
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 86,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 86,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 86,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 86,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 86,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Call",
+              "line": 86,
+              "col": 28,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "Call",
+               "line": 86,
+               "col": 28,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.String"
+               },
+               "target": {
+                "node": "Name",
+                "line": 86,
+                "col": 28,
+                "type": {
+                 "kind": "class",
+                 "name": "Mix.Box",
+                 "args": [
+                  {
+                   "kind": "class",
+                   "name": "java.lang.String"
+                  }
+                 ]
+                },
+                "sym": {
+                 "kind": "local",
+                 "name": "b",
+                 "owner": "Mix.main",
+                 "type": {
+                  "kind": "class",
+                  "name": "Mix.Box",
+                  "args": [
+                   {
+                    "kind": "class",
+                    "name": "java.lang.String"
+                   }
+                  ]
+                 }
+                }
+               },
+               "sym": {
+                "kind": "method",
+                "name": "get",
+                "owner": "Mix.Box",
+                "params": [],
+                "ret": {
+                 "kind": "typevar",
+                 "name": "T"
+                }
+               },
+               "args": []
+              },
+              "sym": {
+               "kind": "method",
+               "name": "length",
+               "owner": "java.lang.String",
+               "params": [],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": []
+             },
+             {
+              "node": "Call",
+              "line": 86,
+              "col": 47,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "target": {
+               "node": "Name",
+               "line": 86,
+               "col": 47,
+               "type": {
+                "kind": "class",
+                "name": "Mix.Box",
+                "args": [
+                 {
+                  "kind": "class",
+                  "name": "java.lang.String"
+                 }
+                ]
+               },
+               "sym": {
+                "kind": "local",
+                "name": "b",
+                "owner": "Mix.main",
+                "type": {
+                 "kind": "class",
+                 "name": "Mix.Box",
+                 "args": [
+                  {
+                   "kind": "class",
+                   "name": "java.lang.String"
+                  }
+                 ]
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "get",
+               "owner": "Mix.Box",
+               "params": [],
+               "ret": {
+                "kind": "typevar",
+                "name": "T"
+               }
+              },
+              "args": []
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "For",
+         "line": 87,
+         "col": 9,
+         "init": [
+          {
+           "node": "Local",
+           "line": 87,
+           "col": 14,
+           "sym": {
+            "kind": "local",
+            "name": "i",
+            "owner": "Mix.main",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           },
+           "init": {
+            "node": "Lit",
+            "line": 87,
+            "col": 22,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 0
+           }
+          }
+         ],
+         "cond": {
+          "node": "Binary",
+          "line": 87,
+          "col": 25,
+          "type": {
+           "kind": "bool"
+          },
+          "op": "<",
+          "left": {
+           "node": "Name",
+           "line": 87,
+           "col": 25,
+           "type": {
+            "kind": "i32"
+           },
+           "sym": {
+            "kind": "local",
+            "name": "i",
+            "owner": "Mix.main",
+            "type": {
+             "kind": "i32"
+            }
+           }
+          },
+          "right": {
+           "node": "Lit",
+           "line": 87,
+           "col": 29,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 4
+          }
+         },
+         "update": [
+          {
+           "node": "Unary",
+           "line": 87,
+           "col": 32,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "++",
+           "x": {
+            "node": "Name",
+            "line": 87,
+            "col": 32,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "i",
+             "owner": "Mix.main",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "postfix": true
+          }
+         ],
+         "body": {
+          "node": "Block",
+          "line": 87,
+          "col": 37,
+          "stmts": [
+           {
+            "node": "Try",
+            "line": 88,
+            "col": 13,
+            "resources": [],
+            "body": {
+             "node": "Block",
+             "line": 88,
+             "col": 17,
+             "stmts": [
+              {
+               "node": "ExprStmt",
+               "line": 89,
+               "col": 17,
+               "expr": {
+                "node": "Call",
+                "line": 89,
+                "col": 17,
+                "type": {
+                 "kind": "void"
+                },
+                "target": {
+                 "node": "TypeName",
+                 "line": 89,
+                 "col": 17,
+                 "type": {
+                  "kind": "class",
+                  "name": "Mix"
+                 }
+                },
+                "sym": {
+                 "kind": "method",
+                 "name": "thrower",
+                 "owner": "Mix",
+                 "static": true,
+                 "params": [
+                  {
+                   "kind": "i32"
+                  }
+                 ],
+                 "ret": {
+                  "kind": "void"
+                 }
+                },
+                "args": [
+                 {
+                  "node": "Name",
+                  "line": 89,
+                  "col": 25,
+                  "type": {
+                   "kind": "i32"
+                  },
+                  "sym": {
+                   "kind": "local",
+                   "name": "i",
+                   "owner": "Mix.main",
+                   "type": {
+                    "kind": "i32"
+                   }
+                  }
+                 }
+                ]
+               }
+              },
+              {
+               "node": "ExprStmt",
+               "line": 90,
+               "col": 17,
+               "expr": {
+                "node": "Call",
+                "line": 90,
+                "col": 17,
+                "type": {
+                 "kind": "void"
+                },
+                "target": {
+                 "node": "Select",
+                 "line": 90,
+                 "col": 17,
+                 "type": {
+                  "kind": "class",
+                  "name": "java.io.PrintStream"
+                 },
+                 "obj": {
+                  "node": "TypeName",
+                  "line": 90,
+                  "col": 17,
+                  "type": {
+                   "kind": "class",
+                   "name": "java.lang.System"
+                  }
+                 },
+                 "sym": {
+                  "kind": "field",
+                  "name": "out",
+                  "owner": "java.lang.System",
+                  "static": true,
+                  "type": {
+                   "kind": "class",
+                   "name": "java.io.PrintStream"
+                  }
+                 }
+                },
+                "sym": {
+                 "kind": "method",
+                 "name": "println",
+                 "owner": "java.io.PrintStream",
+                 "params": [
+                  {
+                   "kind": "class",
+                   "name": "java.lang.String"
+                  }
+                 ],
+                 "ret": {
+                  "kind": "void"
+                 }
+                },
+                "args": [
+                 {
+                  "node": "Concat",
+                  "line": 90,
+                  "col": 36,
+                  "type": {
+                   "kind": "class",
+                   "name": "java.lang.String"
+                  },
+                  "parts": [
+                   {
+                    "node": "Lit",
+                    "line": 90,
+                    "col": 36,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.lang.String"
+                    },
+                    "value": "ok "
+                   },
+                   {
+                    "node": "Name",
+                    "line": 90,
+                    "col": 44,
+                    "type": {
+                     "kind": "i32"
+                    },
+                    "sym": {
+                     "kind": "local",
+                     "name": "i",
+                     "owner": "Mix.main",
+                     "type": {
+                      "kind": "i32"
+                     }
+                    }
+                   }
+                  ]
+                 }
+                ]
+               }
+              }
+             ]
+            },
+            "catches": [
+             {
+              "node": "Catch",
+              "line": 91,
+              "col": 15,
+              "sym": {
+               "kind": "local",
+               "name": "e",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "class",
+                "name": "java.lang.IllegalStateException"
+               }
+              },
+              "types": [
+               {
+                "kind": "class",
+                "name": "java.lang.IllegalStateException"
+               }
+              ],
+              "body": {
+               "node": "Block",
+               "line": 91,
+               "col": 47,
+               "stmts": [
+                {
+                 "node": "ExprStmt",
+                 "line": 92,
+                 "col": 17,
+                 "expr": {
+                  "node": "Call",
+                  "line": 92,
+                  "col": 17,
+                  "type": {
+                   "kind": "void"
+                  },
+                  "target": {
+                   "node": "Select",
+                   "line": 92,
+                   "col": 17,
+                   "type": {
+                    "kind": "class",
+                    "name": "java.io.PrintStream"
+                   },
+                   "obj": {
+                    "node": "TypeName",
+                    "line": 92,
+                    "col": 17,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.lang.System"
+                    }
+                   },
+                   "sym": {
+                    "kind": "field",
+                    "name": "out",
+                    "owner": "java.lang.System",
+                    "static": true,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.io.PrintStream"
+                    }
+                   }
+                  },
+                  "sym": {
+                   "kind": "method",
+                   "name": "println",
+                   "owner": "java.io.PrintStream",
+                   "params": [
+                    {
+                     "kind": "class",
+                     "name": "java.lang.String"
+                    }
+                   ],
+                   "ret": {
+                    "kind": "void"
+                   }
+                  },
+                  "args": [
+                   {
+                    "node": "Concat",
+                    "line": 92,
+                    "col": 36,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.lang.String"
+                    },
+                    "parts": [
+                     {
+                      "node": "Lit",
+                      "line": 92,
+                      "col": 36,
+                      "type": {
+                       "kind": "class",
+                       "name": "java.lang.String"
+                      },
+                      "value": "ise "
+                     },
+                     {
+                      "node": "Call",
+                      "line": 92,
+                      "col": 45,
+                      "type": {
+                       "kind": "class",
+                       "name": "java.lang.String"
+                      },
+                      "target": {
+                       "node": "Name",
+                       "line": 92,
+                       "col": 45,
+                       "type": {
+                        "kind": "class",
+                        "name": "java.lang.IllegalStateException"
+                       },
+                       "sym": {
+                        "kind": "local",
+                        "name": "e",
+                        "owner": "Mix.main",
+                        "type": {
+                         "kind": "class",
+                         "name": "java.lang.IllegalStateException"
+                        }
+                       }
+                      },
+                      "sym": {
+                       "kind": "method",
+                       "name": "getMessage",
+                       "owner": "java.lang.Throwable",
+                       "params": [],
+                       "ret": {
+                        "kind": "class",
+                        "name": "java.lang.String"
+                       }
+                      },
+                      "args": []
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                }
+               ]
+              }
+             },
+             {
+              "node": "Catch",
+              "line": 93,
+              "col": 15,
+              "sym": {
+               "kind": "local",
+               "name": "e",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Exception"
+               }
+              },
+              "types": [
+               {
+                "kind": "class",
+                "name": "java.lang.Exception"
+               }
+              ],
+              "body": {
+               "node": "Block",
+               "line": 93,
+               "col": 35,
+               "stmts": [
+                {
+                 "node": "ExprStmt",
+                 "line": 94,
+                 "col": 17,
+                 "expr": {
+                  "node": "Call",
+                  "line": 94,
+                  "col": 17,
+                  "type": {
+                   "kind": "void"
+                  },
+                  "target": {
+                   "node": "Select",
+                   "line": 94,
+                   "col": 17,
+                   "type": {
+                    "kind": "class",
+                    "name": "java.io.PrintStream"
+                   },
+                   "obj": {
+                    "node": "TypeName",
+                    "line": 94,
+                    "col": 17,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.lang.System"
+                    }
+                   },
+                   "sym": {
+                    "kind": "field",
+                    "name": "out",
+                    "owner": "java.lang.System",
+                    "static": true,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.io.PrintStream"
+                    }
+                   }
+                  },
+                  "sym": {
+                   "kind": "method",
+                   "name": "println",
+                   "owner": "java.io.PrintStream",
+                   "params": [
+                    {
+                     "kind": "class",
+                     "name": "java.lang.String"
+                    }
+                   ],
+                   "ret": {
+                    "kind": "void"
+                   }
+                  },
+                  "args": [
+                   {
+                    "node": "Concat",
+                    "line": 94,
+                    "col": 36,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.lang.String"
+                    },
+                    "parts": [
+                     {
+                      "node": "Lit",
+                      "line": 94,
+                      "col": 36,
+                      "type": {
+                       "kind": "class",
+                       "name": "java.lang.String"
+                      },
+                      "value": "ex "
+                     },
+                     {
+                      "node": "Call",
+                      "line": 94,
+                      "col": 44,
+                      "type": {
+                       "kind": "class",
+                       "name": "java.lang.String"
+                      },
+                      "target": {
+                       "node": "Name",
+                       "line": 94,
+                       "col": 44,
+                       "type": {
+                        "kind": "class",
+                        "name": "java.lang.Exception"
+                       },
+                       "sym": {
+                        "kind": "local",
+                        "name": "e",
+                        "owner": "Mix.main",
+                        "type": {
+                         "kind": "class",
+                         "name": "java.lang.Exception"
+                        }
+                       }
+                      },
+                      "sym": {
+                       "kind": "method",
+                       "name": "getMessage",
+                       "owner": "java.lang.Throwable",
+                       "params": [],
+                       "ret": {
+                        "kind": "class",
+                        "name": "java.lang.String"
+                       }
+                      },
+                      "args": []
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                }
+               ]
+              }
+             }
+            ],
+            "final": {
+             "node": "Block",
+             "line": 95,
+             "col": 23,
+             "stmts": [
+              {
+               "node": "ExprStmt",
+               "line": 96,
+               "col": 17,
+               "expr": {
+                "node": "Unary",
+                "line": 96,
+                "col": 17,
+                "type": {
+                 "kind": "i32"
+                },
+                "op": "++",
+                "x": {
+                 "node": "Select",
+                 "line": 96,
+                 "col": 17,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "obj": {
+                  "node": "TypeName",
+                  "line": 96,
+                  "col": 17,
+                  "type": {
+                   "kind": "class",
+                   "name": "Mix"
+                  }
+                 },
+                 "sym": {
+                  "kind": "field",
+                  "name": "counter",
+                  "owner": "Mix",
+                  "static": true,
+                  "type": {
+                   "kind": "i32"
+                  }
+                 }
+                },
+                "postfix": true
+               }
+              }
+             ]
+            }
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 99,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "twice",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.Function",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.Function",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         },
+         "init": {
+          "node": "Lambda",
+          "line": 99,
+          "col": 44,
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.Function",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          },
+          "params": [
+           {
+            "node": "Param",
+            "line": 99,
+            "col": 44,
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "Mix.main",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.Integer"
+             }
+            },
+            "type": {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           }
+          ],
+          "body": {
+           "node": "Binary",
+           "line": 99,
+           "col": 49,
+           "type": {
+            "kind": "i32"
+           },
+           "op": "*",
+           "left": {
+            "node": "Name",
+            "line": 99,
+            "col": 49,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            },
+            "sym": {
+             "kind": "param",
+             "name": "x",
+             "owner": "Mix.main",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.Integer"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 99,
+            "col": 53,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 2
+           }
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 100,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "add",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.BiFunction",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.BiFunction",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           },
+           {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          ]
+         },
+         "init": {
+          "node": "MethodRef",
+          "line": 100,
+          "col": 53,
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.BiFunction",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            },
+            {
+             "kind": "class",
+             "name": "java.lang.Integer"
+            }
+           ]
+          },
+          "target": {
+           "node": "TypeName",
+           "line": 100,
+           "col": 53,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.Integer"
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "sum",
+           "owner": "java.lang.Integer",
+           "static": true,
+           "params": [
+            {
+             "kind": "i32"
+            },
+            {
+             "kind": "i32"
+            }
+           ],
+           "ret": {
+            "kind": "i32"
+           }
+          },
+          "mode": "invoke"
+         }
+        },
+        {
+         "node": "Local",
+         "line": 101,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "sup",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.Supplier",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.util.function.Supplier",
+          "args": [
+           {
+            "kind": "class",
+            "name": "java.lang.String"
+           }
+          ]
+         },
+         "init": {
+          "node": "Lambda",
+          "line": 101,
+          "col": 32,
+          "type": {
+           "kind": "class",
+           "name": "java.util.function.Supplier",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          },
+          "params": [],
+          "body": {
+           "node": "Concat",
+           "line": 101,
+           "col": 38,
+           "type": {
+            "kind": "class",
+            "name": "java.lang.String"
+           },
+           "parts": [
+            {
+             "node": "Select",
+             "line": 101,
+             "col": 38,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "obj": {
+              "node": "TypeName",
+              "line": 101,
+              "col": 38,
+              "type": {
+               "kind": "class",
+               "name": "Mix"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "label",
+              "owner": "Mix",
+              "static": true,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              }
+             }
+            },
+            {
+             "node": "Select",
+             "line": 101,
+             "col": 46,
+             "type": {
+              "kind": "i32"
+             },
+             "obj": {
+              "node": "TypeName",
+              "line": 101,
+              "col": 46,
+              "type": {
+               "kind": "class",
+               "name": "Mix"
+              }
+             },
+             "sym": {
+              "kind": "field",
+              "name": "counter",
+              "owner": "Mix",
+              "static": true,
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 102,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 102,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 102,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 102,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 102,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Call",
+              "line": 102,
+              "col": 28,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              },
+              "target": {
+               "node": "Name",
+               "line": 102,
+               "col": 28,
+               "type": {
+                "kind": "class",
+                "name": "java.util.function.Function",
+                "args": [
+                 {
+                  "kind": "class",
+                  "name": "java.lang.Integer"
+                 },
+                 {
+                  "kind": "class",
+                  "name": "java.lang.Integer"
+                 }
+                ]
+               },
+               "sym": {
+                "kind": "local",
+                "name": "twice",
+                "owner": "Mix.main",
+                "type": {
+                 "kind": "class",
+                 "name": "java.util.function.Function",
+                 "args": [
+                  {
+                   "kind": "class",
+                   "name": "java.lang.Integer"
+                  },
+                  {
+                   "kind": "class",
+                   "name": "java.lang.Integer"
+                  }
+                 ]
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "apply",
+               "owner": "java.util.function.Function",
+               "params": [
+                {
+                 "kind": "typevar",
+                 "name": "T"
+                }
+               ],
+               "ret": {
+                "kind": "typevar",
+                "name": "R"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 102,
+                "col": 40,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 21
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 102,
+              "col": 46,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 102,
+              "col": 52,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.Integer"
+              },
+              "target": {
+               "node": "Name",
+               "line": 102,
+               "col": 52,
+               "type": {
+                "kind": "class",
+                "name": "java.util.function.BiFunction",
+                "args": [
+                 {
+                  "kind": "class",
+                  "name": "java.lang.Integer"
+                 },
+                 {
+                  "kind": "class",
+                  "name": "java.lang.Integer"
+                 },
+                 {
+                  "kind": "class",
+                  "name": "java.lang.Integer"
+                 }
+                ]
+               },
+               "sym": {
+                "kind": "local",
+                "name": "add",
+                "owner": "Mix.main",
+                "type": {
+                 "kind": "class",
+                 "name": "java.util.function.BiFunction",
+                 "args": [
+                  {
+                   "kind": "class",
+                   "name": "java.lang.Integer"
+                  },
+                  {
+                   "kind": "class",
+                   "name": "java.lang.Integer"
+                  },
+                  {
+                   "kind": "class",
+                   "name": "java.lang.Integer"
+                  }
+                 ]
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "apply",
+               "owner": "java.util.function.BiFunction",
+               "params": [
+                {
+                 "kind": "typevar",
+                 "name": "T"
+                },
+                {
+                 "kind": "typevar",
+                 "name": "U"
+                }
+               ],
+               "ret": {
+                "kind": "typevar",
+                "name": "R"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 102,
+                "col": 62,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 3
+               },
+               {
+                "node": "Lit",
+                "line": 102,
+                "col": 65,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 4
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 102,
+              "col": 70,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 102,
+              "col": 76,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "target": {
+               "node": "Name",
+               "line": 102,
+               "col": 76,
+               "type": {
+                "kind": "class",
+                "name": "java.util.function.Supplier",
+                "args": [
+                 {
+                  "kind": "class",
+                  "name": "java.lang.String"
+                 }
+                ]
+               },
+               "sym": {
+                "kind": "local",
+                "name": "sup",
+                "owner": "Mix.main",
+                "type": {
+                 "kind": "class",
+                 "name": "java.util.function.Supplier",
+                 "args": [
+                  {
+                   "kind": "class",
+                   "name": "java.lang.String"
+                  }
+                 ]
+                }
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "get",
+               "owner": "java.util.function.Supplier",
+               "params": [],
+               "ret": {
+                "kind": "typevar",
+                "name": "T"
+               }
+              },
+              "args": []
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 103,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "sb",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "java.lang.StringBuilder"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.lang.StringBuilder"
+         },
+         "init": {
+          "node": "New",
+          "line": 103,
+          "col": 28,
+          "type": {
+           "kind": "class",
+           "name": "java.lang.StringBuilder"
+          },
+          "sym": {
+           "kind": "ctor",
+           "name": "<init>",
+           "owner": "java.lang.StringBuilder",
+           "params": [],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": []
+         }
+        },
+        {
+         "node": "Labeled",
+         "line": 104,
+         "col": 9,
+         "label": "outer",
+         "body": {
+          "node": "For",
+          "line": 105,
+          "col": 9,
+          "init": [
+           {
+            "node": "Local",
+            "line": 105,
+            "col": 14,
+            "sym": {
+             "kind": "local",
+             "name": "i",
+             "owner": "Mix.main",
+             "type": {
+              "kind": "i32"
+             }
+            },
+            "type": {
+             "kind": "i32"
+            },
+            "init": {
+             "node": "Lit",
+             "line": 105,
+             "col": 22,
+             "type": {
+              "kind": "i32"
+             },
+             "value": 0
+            }
+           }
+          ],
+          "cond": {
+           "node": "Binary",
+           "line": 105,
+           "col": 25,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "<",
+           "left": {
+            "node": "Name",
+            "line": 105,
+            "col": 25,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "i",
+             "owner": "Mix.main",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 105,
+            "col": 29,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 5
+           }
+          },
+          "update": [
+           {
+            "node": "Unary",
+            "line": 105,
+            "col": 32,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "++",
+            "x": {
+             "node": "Name",
+             "line": 105,
+             "col": 32,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "i",
+              "owner": "Mix.main",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            },
+            "postfix": true
+           }
+          ],
+          "body": {
+           "node": "Block",
+           "line": 105,
+           "col": 37,
+           "stmts": [
+            {
+             "node": "Local",
+             "line": 106,
+             "col": 13,
+             "sym": {
+              "kind": "local",
+              "name": "j",
+              "owner": "Mix.main",
+              "type": {
+               "kind": "i32"
+              }
+             },
+             "type": {
+              "kind": "i32"
+             },
+             "init": {
+              "node": "Lit",
+              "line": 106,
+              "col": 21,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 0
+             }
+            },
+            {
+             "node": "While",
+             "line": 107,
+             "col": 13,
+             "cond": {
+              "node": "Paren",
+              "line": 107,
+              "col": 19,
+              "type": {
+               "kind": "bool"
+              },
+              "x": {
+               "node": "Lit",
+               "line": 107,
+               "col": 20,
+               "type": {
+                "kind": "bool"
+               },
+               "value": true
+              }
+             },
+             "body": {
+              "node": "Block",
+              "line": 107,
+              "col": 26,
+              "stmts": [
+               {
+                "node": "If",
+                "line": 108,
+                "col": 17,
+                "cond": {
+                 "node": "Paren",
+                 "line": 108,
+                 "col": 20,
+                 "type": {
+                  "kind": "bool"
+                 },
+                 "x": {
+                  "node": "Binary",
+                  "line": 108,
+                  "col": 21,
+                  "type": {
+                   "kind": "bool"
+                  },
+                  "op": ">",
+                  "left": {
+                   "node": "Name",
+                   "line": 108,
+                   "col": 21,
+                   "type": {
+                    "kind": "i32"
+                   },
+                   "sym": {
+                    "kind": "local",
+                    "name": "j",
+                    "owner": "Mix.main",
+                    "type": {
+                     "kind": "i32"
+                    }
+                   }
+                  },
+                  "right": {
+                   "node": "Name",
+                   "line": 108,
+                   "col": 25,
+                   "type": {
+                    "kind": "i32"
+                   },
+                   "sym": {
+                    "kind": "local",
+                    "name": "i",
+                    "owner": "Mix.main",
+                    "type": {
+                     "kind": "i32"
+                    }
+                   }
+                  }
+                 }
+                },
+                "then": {
+                 "node": "Continue",
+                 "line": 108,
+                 "col": 28,
+                 "label": "outer"
+                }
+               },
+               {
+                "node": "If",
+                "line": 109,
+                "col": 17,
+                "cond": {
+                 "node": "Paren",
+                 "line": 109,
+                 "col": 20,
+                 "type": {
+                  "kind": "bool"
+                 },
+                 "x": {
+                  "node": "Binary",
+                  "line": 109,
+                  "col": 21,
+                  "type": {
+                   "kind": "bool"
+                  },
+                  "op": "==",
+                  "left": {
+                   "node": "Name",
+                   "line": 109,
+                   "col": 21,
+                   "type": {
+                    "kind": "i32"
+                   },
+                   "sym": {
+                    "kind": "local",
+                    "name": "i",
+                    "owner": "Mix.main",
+                    "type": {
+                     "kind": "i32"
+                    }
+                   }
+                  },
+                  "right": {
+                   "node": "Lit",
+                   "line": 109,
+                   "col": 26,
+                   "type": {
+                    "kind": "i32"
+                   },
+                   "value": 4
+                  }
+                 }
+                },
+                "then": {
+                 "node": "Break",
+                 "line": 109,
+                 "col": 29,
+                 "label": "outer"
+                }
+               },
+               {
+                "node": "ExprStmt",
+                "line": 110,
+                "col": 17,
+                "expr": {
+                 "node": "Call",
+                 "line": 110,
+                 "col": 17,
+                 "type": {
+                  "kind": "class",
+                  "name": "java.lang.StringBuilder"
+                 },
+                 "target": {
+                  "node": "Call",
+                  "line": 110,
+                  "col": 17,
+                  "type": {
+                   "kind": "class",
+                   "name": "java.lang.StringBuilder"
+                  },
+                  "target": {
+                   "node": "Call",
+                   "line": 110,
+                   "col": 17,
+                   "type": {
+                    "kind": "class",
+                    "name": "java.lang.StringBuilder"
+                   },
+                   "target": {
+                    "node": "Call",
+                    "line": 110,
+                    "col": 17,
+                    "type": {
+                     "kind": "class",
+                     "name": "java.lang.StringBuilder"
+                    },
+                    "target": {
+                     "node": "Name",
+                     "line": 110,
+                     "col": 17,
+                     "type": {
+                      "kind": "class",
+                      "name": "java.lang.StringBuilder"
+                     },
+                     "sym": {
+                      "kind": "local",
+                      "name": "sb",
+                      "owner": "Mix.main",
+                      "type": {
+                       "kind": "class",
+                       "name": "java.lang.StringBuilder"
+                      }
+                     }
+                    },
+                    "sym": {
+                     "kind": "method",
+                     "name": "append",
+                     "owner": "java.lang.StringBuilder",
+                     "params": [
+                      {
+                       "kind": "i32"
+                      }
+                     ],
+                     "ret": {
+                      "kind": "class",
+                      "name": "java.lang.StringBuilder"
+                     }
+                    },
+                    "args": [
+                     {
+                      "node": "Name",
+                      "line": 110,
+                      "col": 27,
+                      "type": {
+                       "kind": "i32"
+                      },
+                      "sym": {
+                       "kind": "local",
+                       "name": "i",
+                       "owner": "Mix.main",
+                       "type": {
+                        "kind": "i32"
+                       }
+                      }
+                     }
+                    ]
+                   },
+                   "sym": {
+                    "kind": "method",
+                    "name": "append",
+                    "owner": "java.lang.StringBuilder",
+                    "params": [
+                     {
+                      "kind": "u16"
+                     }
+                    ],
+                    "ret": {
+                     "kind": "class",
+                     "name": "java.lang.StringBuilder"
+                    }
+                   },
+                   "args": [
+                    {
+                     "node": "Lit",
+                     "line": 110,
+                     "col": 37,
+                     "type": {
+                      "kind": "u16"
+                     },
+                     "value": ","
+                    }
+                   ]
+                  },
+                  "sym": {
+                   "kind": "method",
+                   "name": "append",
+                   "owner": "java.lang.StringBuilder",
+                   "params": [
+                    {
+                     "kind": "i32"
+                    }
+                   ],
+                   "ret": {
+                    "kind": "class",
+                    "name": "java.lang.StringBuilder"
+                   }
+                  },
+                  "args": [
+                   {
+                    "node": "Name",
+                    "line": 110,
+                    "col": 49,
+                    "type": {
+                     "kind": "i32"
+                    },
+                    "sym": {
+                     "kind": "local",
+                     "name": "j",
+                     "owner": "Mix.main",
+                     "type": {
+                      "kind": "i32"
+                     }
+                    }
+                   }
+                  ]
+                 },
+                 "sym": {
+                  "kind": "method",
+                  "name": "append",
+                  "owner": "java.lang.StringBuilder",
+                  "params": [
+                   {
+                    "kind": "u16"
+                   }
+                  ],
+                  "ret": {
+                   "kind": "class",
+                   "name": "java.lang.StringBuilder"
+                  }
+                 },
+                 "args": [
+                  {
+                   "node": "Lit",
+                   "line": 110,
+                   "col": 59,
+                   "type": {
+                    "kind": "u16"
+                   },
+                   "value": " "
+                  }
+                 ]
+                }
+               },
+               {
+                "node": "ExprStmt",
+                "line": 111,
+                "col": 17,
+                "expr": {
+                 "node": "Unary",
+                 "line": 111,
+                 "col": 17,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "op": "++",
+                 "x": {
+                  "node": "Name",
+                  "line": 111,
+                  "col": 17,
+                  "type": {
+                   "kind": "i32"
+                  },
+                  "sym": {
+                   "kind": "local",
+                   "name": "j",
+                   "owner": "Mix.main",
+                   "type": {
+                    "kind": "i32"
+                   }
+                  }
+                 },
+                 "postfix": true
+                }
+               }
+              ]
+             }
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 114,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 114,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 114,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 114,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Call",
+            "line": 114,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "target": {
+             "node": "Name",
+             "line": 114,
+             "col": 28,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.StringBuilder"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "sb",
+              "owner": "Mix.main",
+              "type": {
+               "kind": "class",
+               "name": "java.lang.StringBuilder"
+              }
+             }
+            },
+            "sym": {
+             "kind": "method",
+             "name": "toString",
+             "owner": "java.lang.StringBuilder",
+             "params": [],
+             "ret": {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            },
+            "args": []
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 115,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "o",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "class",
+           "name": "java.lang.Object"
+          }
+         },
+         "type": {
+          "kind": "class",
+          "name": "java.lang.Object"
+         },
+         "init": {
+          "node": "Name",
+          "line": 115,
+          "col": 20,
+          "type": {
+           "kind": "class",
+           "name": "Mix.Box",
+           "args": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ]
+          },
+          "sym": {
+           "kind": "local",
+           "name": "b",
+           "owner": "Mix.main",
+           "type": {
+            "kind": "class",
+            "name": "Mix.Box",
+            "args": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ]
+           }
+          }
+         }
+        },
+        {
+         "node": "If",
+         "line": 116,
+         "col": 9,
+         "cond": {
+          "node": "Paren",
+          "line": 116,
+          "col": 12,
+          "type": {
+           "kind": "bool"
+          },
+          "x": {
+           "node": "InstanceOf",
+           "line": 116,
+           "col": 13,
+           "type": {
+            "kind": "bool"
+           },
+           "x": {
+            "node": "Name",
+            "line": 116,
+            "col": 13,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.Object"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "o",
+             "owner": "Mix.main",
+             "type": {
+              "kind": "class",
+              "name": "java.lang.Object"
+             }
+            }
+           },
+           "test": {
+            "kind": "class",
+            "name": "Mix.Box"
+           }
+          }
+         },
+         "then": {
+          "node": "ExprStmt",
+          "line": 116,
+          "col": 31,
+          "expr": {
+           "node": "Call",
+           "line": 116,
+           "col": 31,
+           "type": {
+            "kind": "void"
+           },
+           "target": {
+            "node": "Select",
+            "line": 116,
+            "col": 31,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            },
+            "obj": {
+             "node": "TypeName",
+             "line": 116,
+             "col": 31,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.System"
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "out",
+             "owner": "java.lang.System",
+             "static": true,
+             "type": {
+              "kind": "class",
+              "name": "java.io.PrintStream"
+             }
+            }
+           },
+           "sym": {
+            "kind": "method",
+            "name": "println",
+            "owner": "java.io.PrintStream",
+            "params": [
+             {
+              "kind": "class",
+              "name": "java.lang.String"
+             }
+            ],
+            "ret": {
+             "kind": "void"
+            }
+           },
+           "args": [
+            {
+             "node": "Lit",
+             "line": 116,
+             "col": 50,
+             "type": {
+              "kind": "class",
+              "name": "java.lang.String"
+             },
+             "value": "box"
+            }
+           ]
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 117,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "d",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "init": {
+          "node": "Binary",
+          "line": 117,
+          "col": 20,
+          "type": {
+           "kind": "f64"
+          },
+          "op": "/",
+          "left": {
+           "node": "Lit",
+           "line": 117,
+           "col": 20,
+           "type": {
+            "kind": "f64"
+           },
+           "value": 1.0
+          },
+          "right": {
+           "node": "Lit",
+           "line": 117,
+           "col": 26,
+           "type": {
+            "kind": "i32"
+           },
+           "value": 3
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 118,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "f",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "f32"
+          }
+         },
+         "type": {
+          "kind": "f32"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 118,
+          "col": 19,
+          "type": {
+           "kind": "f32"
+          },
+          "value": 2.5
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 119,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 119,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 119,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 119,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 119,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Name",
+              "line": 119,
+              "col": 28,
+              "type": {
+               "kind": "f64"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "d",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "f64"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 119,
+              "col": 32,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Name",
+              "line": 119,
+              "col": 38,
+              "type": {
+               "kind": "f32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "f",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "f32"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 119,
+              "col": 42,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Cast",
+              "line": 119,
+              "col": 48,
+              "type": {
+               "kind": "i64"
+              },
+              "x": {
+               "node": "Name",
+               "line": 119,
+               "col": 55,
+               "type": {
+                "kind": "f64"
+               },
+               "sym": {
+                "kind": "local",
+                "name": "d",
+                "owner": "Mix.main",
+                "type": {
+                 "kind": "f64"
+                }
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 119,
+              "col": 59,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Call",
+              "line": 119,
+              "col": 65,
+              "type": {
+               "kind": "i32"
+              },
+              "target": {
+               "node": "TypeName",
+               "line": 119,
+               "col": 65,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Math"
+               }
+              },
+              "sym": {
+               "kind": "method",
+               "name": "max",
+               "owner": "java.lang.Math",
+               "static": true,
+               "params": [
+                {
+                 "kind": "i32"
+                },
+                {
+                 "kind": "i32"
+                }
+               ],
+               "ret": {
+                "kind": "i32"
+               }
+              },
+              "args": [
+               {
+                "node": "Lit",
+                "line": 119,
+                "col": 74,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 3
+               },
+               {
+                "node": "Lit",
+                "line": 119,
+                "col": 77,
+                "type": {
+                 "kind": "i32"
+                },
+                "value": 4
+               }
+              ]
+             },
+             {
+              "node": "Lit",
+              "line": 119,
+              "col": 82,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Select",
+              "line": 119,
+              "col": 88,
+              "type": {
+               "kind": "i32"
+              },
+              "obj": {
+               "node": "TypeName",
+               "line": 119,
+               "col": 88,
+               "type": {
+                "kind": "class",
+                "name": "java.lang.Integer"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "MAX_VALUE",
+               "owner": "java.lang.Integer",
+               "static": true,
+               "type": {
+                "kind": "i32"
+               }
+              }
+             }
+            ]
+           }
+          ]
+         }
+        },
+        {
+         "node": "Local",
+         "line": 120,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "k",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "init": {
+          "node": "Lit",
+          "line": 120,
+          "col": 17,
+          "type": {
+           "kind": "i32"
+          },
+          "value": 0
+         }
+        },
+        {
+         "node": "DoWhile",
+         "line": 121,
+         "col": 9,
+         "body": {
+          "node": "Block",
+          "line": 121,
+          "col": 12,
+          "stmts": [
+           {
+            "node": "ExprStmt",
+            "line": 121,
+            "col": 14,
+            "expr": {
+             "node": "Assign",
+             "line": 121,
+             "col": 14,
+             "type": {
+              "kind": "i32"
+             },
+             "op": "+",
+             "target": {
+              "node": "Name",
+              "line": 121,
+              "col": 14,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "k",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             "value": {
+              "node": "Lit",
+              "line": 121,
+              "col": 19,
+              "type": {
+               "kind": "i32"
+              },
+              "value": 3
+             }
+            }
+           }
+          ]
+         },
+         "cond": {
+          "node": "Paren",
+          "line": 121,
+          "col": 30,
+          "type": {
+           "kind": "bool"
+          },
+          "x": {
+           "node": "Binary",
+           "line": 121,
+           "col": 31,
+           "type": {
+            "kind": "bool"
+           },
+           "op": "<",
+           "left": {
+            "node": "Name",
+            "line": 121,
+            "col": 31,
+            "type": {
+             "kind": "i32"
+            },
+            "sym": {
+             "kind": "local",
+             "name": "k",
+             "owner": "Mix.main",
+             "type": {
+              "kind": "i32"
+             }
+            }
+           },
+           "right": {
+            "node": "Lit",
+            "line": 121,
+            "col": 35,
+            "type": {
+             "kind": "i32"
+            },
+            "value": 10
+           }
+          }
+         }
+        },
+        {
+         "node": "Local",
+         "line": 122,
+         "col": 9,
+         "sym": {
+          "kind": "local",
+          "name": "c",
+          "owner": "Mix.main",
+          "type": {
+           "kind": "u16"
+          }
+         },
+         "type": {
+          "kind": "u16"
+         },
+         "init": {
+          "node": "Cast",
+          "line": 122,
+          "col": 18,
+          "type": {
+           "kind": "u16"
+          },
+          "x": {
+           "node": "Paren",
+           "line": 122,
+           "col": 25,
+           "type": {
+            "kind": "i32"
+           },
+           "x": {
+            "node": "Binary",
+            "line": 122,
+            "col": 26,
+            "type": {
+             "kind": "i32"
+            },
+            "op": "+",
+            "left": {
+             "node": "Lit",
+             "line": 122,
+             "col": 26,
+             "type": {
+              "kind": "u16"
+             },
+             "value": "a"
+            },
+            "right": {
+             "node": "Name",
+             "line": 122,
+             "col": 32,
+             "type": {
+              "kind": "i32"
+             },
+             "sym": {
+              "kind": "local",
+              "name": "k",
+              "owner": "Mix.main",
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           }
+          }
+         }
+        },
+        {
+         "node": "ExprStmt",
+         "line": 123,
+         "col": 9,
+         "expr": {
+          "node": "Call",
+          "line": 123,
+          "col": 9,
+          "type": {
+           "kind": "void"
+          },
+          "target": {
+           "node": "Select",
+           "line": 123,
+           "col": 9,
+           "type": {
+            "kind": "class",
+            "name": "java.io.PrintStream"
+           },
+           "obj": {
+            "node": "TypeName",
+            "line": 123,
+            "col": 9,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.System"
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "out",
+            "owner": "java.lang.System",
+            "static": true,
+            "type": {
+             "kind": "class",
+             "name": "java.io.PrintStream"
+            }
+           }
+          },
+          "sym": {
+           "kind": "method",
+           "name": "println",
+           "owner": "java.io.PrintStream",
+           "params": [
+            {
+             "kind": "class",
+             "name": "java.lang.String"
+            }
+           ],
+           "ret": {
+            "kind": "void"
+           }
+          },
+          "args": [
+           {
+            "node": "Concat",
+            "line": 123,
+            "col": 28,
+            "type": {
+             "kind": "class",
+             "name": "java.lang.String"
+            },
+            "parts": [
+             {
+              "node": "Name",
+              "line": 123,
+              "col": 28,
+              "type": {
+               "kind": "i32"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "k",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "i32"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 123,
+              "col": 32,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Name",
+              "line": 123,
+              "col": 38,
+              "type": {
+               "kind": "u16"
+              },
+              "sym": {
+               "kind": "local",
+               "name": "c",
+               "owner": "Mix.main",
+               "type": {
+                "kind": "u16"
+               }
+              }
+             },
+             {
+              "node": "Lit",
+              "line": 123,
+              "col": 42,
+              "type": {
+               "kind": "class",
+               "name": "java.lang.String"
+              },
+              "value": " "
+             },
+             {
+              "node": "Paren",
+              "line": 123,
+              "col": 48,
+              "type": {
+               "kind": "bool"
+              },
+              "x": {
+               "node": "Binary",
+               "line": 123,
+               "col": 49,
+               "type": {
+                "kind": "bool"
+               },
+               "op": "||",
+               "left": {
+                "node": "Binary",
+                "line": 123,
+                "col": 49,
+                "type": {
+                 "kind": "bool"
+                },
+                "op": "&&",
+                "left": {
+                 "node": "Binary",
+                 "line": 123,
+                 "col": 49,
+                 "type": {
+                  "kind": "bool"
+                 },
+                 "op": ">",
+                 "left": {
+                  "node": "Name",
+                  "line": 123,
+                  "col": 49,
+                  "type": {
+                   "kind": "i32"
+                  },
+                  "sym": {
+                   "kind": "local",
+                   "name": "k",
+                   "owner": "Mix.main",
+                   "type": {
+                    "kind": "i32"
+                   }
+                  }
+                 },
+                 "right": {
+                  "node": "Lit",
+                  "line": 123,
+                  "col": 53,
+                  "type": {
+                   "kind": "i32"
+                  },
+                  "value": 5
+                 }
+                },
+                "right": {
+                 "node": "Binary",
+                 "line": 123,
+                 "col": 58,
+                 "type": {
+                  "kind": "bool"
+                 },
+                 "op": "!=",
+                 "left": {
+                  "node": "Name",
+                  "line": 123,
+                  "col": 58,
+                  "type": {
+                   "kind": "u16"
+                  },
+                  "sym": {
+                   "kind": "local",
+                   "name": "c",
+                   "owner": "Mix.main",
+                   "type": {
+                    "kind": "u16"
+                   }
+                  }
+                 },
+                 "right": {
+                  "node": "Lit",
+                  "line": 123,
+                  "col": 63,
+                  "type": {
+                   "kind": "u16"
+                  },
+                  "value": "z"
+                 }
+                }
+               },
+               "right": {
+                "node": "Binary",
+                "line": 123,
+                "col": 70,
+                "type": {
+                 "kind": "bool"
+                },
+                "op": "==",
+                "left": {
+                 "node": "Name",
+                 "line": 123,
+                 "col": 70,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "sym": {
+                  "kind": "local",
+                  "name": "k",
+                  "owner": "Mix.main",
+                  "type": {
+                   "kind": "i32"
+                  }
+                 }
+                },
+                "right": {
+                 "node": "Lit",
+                 "line": 123,
+                 "col": 75,
+                 "type": {
+                  "kind": "i32"
+                 },
+                 "value": 0
+                }
+               }
+              }
+             }
+            ]
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "mods": [
+       "public",
+       "static"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]
