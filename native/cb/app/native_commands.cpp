@@ -16,6 +16,7 @@
 #include "cb/build/flat_thunk.hpp"
 #include "cb/build/watcom.hpp"
 #include "cb/core/error.hpp"
+#include "cb/exact/command.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
 #include "cb/formats/cab.hpp"
@@ -32,6 +33,7 @@
 #include "cb/symbols/demangle.hpp"
 #include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
+#include "cb/store/analyze_command.hpp"
 #include "cb/store/versions_command.hpp"
 #include "cb/symbols/identify.hpp"
 #include "cb/symbols/prototypes.hpp"
@@ -40,7 +42,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 23> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge"};
+constexpr std::array<std::string_view, 25> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -334,6 +336,12 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set("dos-source", [production](std::span<const std::string> args) -> int { return production->dos_source()(args); });
     table.set(production->dos_build());
     table.set(production->driver_judge());
+
+    // exact <PROJECT> <stage> ...: the exact-match stages (toolchains, library, carve, names, ledger, draft, ...)
+    table.set("exact", exact::command::runner(exact::command::Environment{config}));
+
+    // analyze <module> ...: the analyses of a module and the facts they file
+    table.set(store::analyze_command::command(store::analyze_command::Environment{config, corpus}));
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));
