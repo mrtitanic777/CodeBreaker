@@ -123,7 +123,7 @@ def main(prj, argv):
                     with open(os.path.join(part.src, h), "rb") as s, open(prj.path(h), "wb") as d:
                         d.write(s.read())
         for a, t in new.items():
-            with open(prj.path("f%05x.c" % a), "w", newline="\n") as fh:
+            with open(prj.path("f%05x.c" % a), "w", encoding="latin1", newline="\n") as fh:
                 fh.write(t)
         print("written: %d files in %s" % (len(new), prj.src))
     return 0
