@@ -12,6 +12,7 @@
 #include "cb/base/converted.hpp"
 #include "cb/build/driver.hpp"
 #include "cb/build/resources.hpp"
+#include "cb/coverage/reach_command.hpp"
 #include "cb/build/flat_thunk.hpp"
 #include "cb/build/watcom.hpp"
 #include "cb/core/error.hpp"
@@ -30,6 +31,7 @@
 #include "cb/symbols/demangle.hpp"
 #include "cb/symbols/dos_interrupts.hpp"
 #include "cb/symbols/driver_services.hpp"
+#include "cb/store/versions_command.hpp"
 #include "cb/symbols/identify.hpp"
 #include "cb/symbols/prototypes.hpp"
 
@@ -37,7 +39,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 15> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings"};
+constexpr std::array<std::string_view, 17> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -315,6 +317,12 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // identify <module> | --learn WHAT=FILE...: a module's runtime-library functions and its compiler (it opens the knowledge base and
     // the corpus's modules when it runs)
     table.set(symbols::identify::command(symbols::Environment{corpus.get(), &config}));
+
+    // versions <old> <new> ...: two builds compared function by function, work carried from the old build's results
+    table.set(store::versions_command::command(store::versions_command::Environment{config, corpus}));
+
+    // reach ...: how far CodeBreaker gets with every program of the corpora
+    table.set(coverage::reach_command::command(coverage::reach_command::Environment{config, corpus}));
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));
