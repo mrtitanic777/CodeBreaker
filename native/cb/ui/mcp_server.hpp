@@ -30,8 +30,9 @@
 // each tool's parameters, and a call's arguments are checked the way pydantic checks them (lax mode). Requests are answered in order.
 //
 // What the tools read of the rest of the program comes in through `Services`: the corpus, the inspector, the ledger, the analyses, the
-// decompiler, the version comparison, the function store's names. A service that is not given makes its tool say so. The JSON the
-// services answer is the document the Python modules answered, and the tools page, cut and combine it.
+// decompiler, the version comparison, the function store's names. `standard_services` fills every one from the program's own modules; a service
+// that is not given (a test's stand-in) makes its tool say so. The JSON the services answer is the document the Python modules answered, and the
+// tools page, cut and combine it.
 #pragma once
 
 #include <chrono>
@@ -148,8 +149,14 @@ struct Services {
     std::function<std::string()> version;
 };
 
-// The services the program's own modules answer: the folders, the corpus, the inspector (mcp_standard.cpp). The rest is the application's.
+// The services the program's own modules answer, every one: the folders, the corpus, the inspector, the code (disassembly, cross-references), the
+// decompiler, the version comparison, the names, the runtime libraries, the ledger, the command table, the source tree (mcp_standard.cpp and its
+// parts). The parts they read are made when a tool first asks. `config` and `corpus` outlive the services.
 Services standard_services(const cb::config::Config& config, const cb::base::Corpus& corpus);
+// A corpus over the configuration's products that tells a file's kind by the format readers (what the services need of it).
+std::shared_ptr<cb::base::Corpus> standard_corpus(const cb::config::Config& config);
+// What the service under the tools runs in: the state and the checkout, the ledger's corpus and function store, the corpus's files.
+service::Environment standard_environment(const cb::config::Config& config, const cb::base::Corpus& corpus);
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
 

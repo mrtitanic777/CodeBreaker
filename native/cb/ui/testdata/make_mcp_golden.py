@@ -1,6 +1,6 @@
 """Talks to the Python MCP server over stdio and records its answers (the golden the C++ server is compared with).
 
-Run from the main checkout:  python -B native/cb/ui/testdata/make_mcp_golden.py <worktree> <out.json>
+Run it with the main checkout as the third argument (its Python is served):  python -B native/cb/ui/testdata/make_mcp_golden.py <worktree> <out.json> [<main checkout>]
 """
 import json
 import os
@@ -8,9 +8,10 @@ import subprocess
 import sys
 
 wt, out = sys.argv[1], sys.argv[2]
+main = sys.argv[3] if len(sys.argv) > 3 else "."   # the checkout whose Python is served (default: the current folder)
 env = dict(os.environ, CB_SERVICE="0")
 p = subprocess.Popen([sys.executable, "-B", "-m", "codebreaker", "mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                     stderr=subprocess.DEVNULL, env=env, cwd=".")
+                     stderr=subprocess.DEVNULL, env=env, cwd=main)
 
 
 def rpc(msg):
@@ -50,6 +51,28 @@ calls = [
     ("job", {"job_id": "nothing"}),
     ("jobs", {}),
     ("nosuchtool", {}),
+    # the code, the names and the runtime libraries (calls 17 and on): a 32-bit module (lz32.dll), a 16-bit one (lzexpand.dll) and a DOS program
+    ("disasm", {"module": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "bfea1000"}),
+    ("disasm", {"module": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "bfea1000", "count": 12}),
+    ("disasm", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "addr": "2:0000"}),
+    ("disasm", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "addr": "LZINIT", "count": 8}),
+    ("disasm", {"module": wt + "/native/cb/formats/testdata/find.exe", "addr": "100"}),
+    ("xrefs", {"module": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "bfea1000"}),
+    ("xrefs", {"module": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "KERNEL32!OpenFile"}),
+    ("xrefs", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "addr": "LZINIT"}),
+    ("xrefs", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "addr": "4:0000"}),
+    ("names", {"module": wt + "/native/cb/formats/testdata/lz32.dll", "limit": 10}),
+    ("names", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "limit": 12}),
+    ("identify", {"module": wt + "/native/cb/formats/testdata/lz32.dll"}),
+    ("identify", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll"}),
+    ("hex_dump", {"module": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "bfea1000", "length": 32}),
+    ("hex_dump", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "addr": "2:0000"}),
+    ("diff_function", {"module_a": wt + "/native/cb/formats/testdata/lz32.dll", "module_b": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "bfea1000"}),
+    ("diff_function", {"module_a": wt + "/native/cb/formats/testdata/lz32.dll", "module_b": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "nosuchfunction"}),
+    # one function decompiled now (calls 34 and on): a 32-bit function by itself, a 16-bit one cut out of its module's C, a function that is not there
+    ("decompile_function", {"module": wt + "/native/cb/formats/testdata/lz32.dll", "addr": "bfea1000"}),
+    ("decompile_function", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "addr": "1:0000"}),
+    ("decompile_function", {"module": wt + "/native/cb/formats/testdata/lzexpand.dll", "addr": "9:9999"}),
 ]
 for i, (name, args) in enumerate(calls):
     answers["call %d %s" % (i, name)] = rpc({"jsonrpc": "2.0", "id": 100 + i, "method": "tools/call", "params": {"name": name, "arguments": args}})

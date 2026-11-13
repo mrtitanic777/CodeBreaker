@@ -1,0 +1,9 @@
+[
+ ["resource", {"module": "lz32.dll", "offset": 4192, "size": 820, "type_id": 16, "wide": true}],
+ ["resource", {"module": "charmap.exe", "offset": 13664, "size": 592, "type_id": 2, "wide": false}],
+ ["resource", {"module": "charmap.exe", "offset": 11680, "size": 48, "type_id": 14, "wide": false}],
+ ["inspect", {"module": "charmap.exe", "section": "resources"}],
+ ["inspect", {"module": "nosuchsection.exe"}],
+ ["strings", {"module": "charmap.exe", "min_len": 6, "limit": 15}],
+ ["hex_dump", {"module": "charmap.exe", "offset": 11680, "length": 48}]
+]

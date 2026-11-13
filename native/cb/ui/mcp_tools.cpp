@@ -90,7 +90,8 @@ bool is_interactive(std::string_view command) { return std::find(kInteractive.be
 std::string file_kind(const std::string& rel) {   // "built" (made by a build, or in a folder a build writes), "notes", or "source"
     static const std::set<std::string> built = {".obj", ".o",   ".lib", ".exp", ".res", ".map", ".dll", ".exe", ".drv", ".vxd", ".386",
                                                 ".sym", ".log", ".pdb", ".ilk", ".err", ".lst", ".com", ".sys", ".bin"};
-    const std::vector<std::string_view> parts = text::split(lowered(rel), '/');
+    const std::string low = lowered(rel);   // (named: the pieces are views into it)
+    const std::vector<std::string_view> parts = text::split(low, '/');
     const std::string name(parts.back());
     const std::size_t dot = name.rfind('.');
     const std::string ext = dot == std::string::npos || dot == 0 ? "" : name.substr(dot);

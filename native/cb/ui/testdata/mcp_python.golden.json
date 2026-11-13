@@ -116,6 +116,45 @@
    "isError": true
   }
  },
+ "call 17 disasm": {
+  "id": 117,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"function\": \"sub_001000\",\n  \"start\": \"bfea1000\",\n  \"end\": \"bfea1039\",\n  \"limit\": \"bfea1057\",\n  \"module\": \"lz32.dll\",\n  \"addr\": \"bfea1000\",\n  \"how\": \"the function, as decoded from its start\",\n  \"count\": 20,\n  \"listing\": \"bfea1000  00400  55                   push ebp\\nbfea1001  00401  8B EC                mov ebp, esp\\nbfea1003  00403  8B 45 0C             mov eax, dword ptr [ebp + 0xc]\\nbfea1006  00406  83 F8 01             cmp eax, 1\\nbfea1009  00409  75 27                jne 0xbfea1032\\nbfea100b  0040b  B0 00                mov al, 0\\nbfea100d  0040d  86 05 16 20 EA BF    xchg byte ptr [0xbfea2016], al\\nbfea1013  00413  0A C0                or al, al\\nbfea1015  00415  74 1B                je 0xbfea1032\\nbfea1017  00417  FF 75 08             push dword ptr [ebp + 8]\\nbfea101a  0041a  E8 DB 03 00 00       call 0xbfea13fa                   ; sub_0013FA (thunk: KERNEL32!DisableThreadLibraryCalls)\\nbfea101f  0041f  68 0D 20 EA BF       push 0xbfea200d                   ; \\\"LZ32.DLL\\\"\\nbfea1024  00424  68 00 20 EA BF       push 0xbfea2000                   ; \\\"SYSTHUNK.DLL\\\"\\nbfea1029  00429  E8 29 00 00 00       call 0xbfea1057                   ; sub_001057\\nbfea102e  0042e  0B C0                or eax, eax\\nbfea1030  00430  74 03                je 0xbfea1035\\nbfea1032  00432  2B C0                sub eax, eax\\nbfea1034  00434  40                   inc eax\\nbfea1035  00435  C9                   leave\\nbfea1036  00436  C2 0C 00             ret 0xc\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 18 disasm": {
+  "id": 118,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"inside\": \"sub_001000+0\",\n  \"module\": \"lz32.dll\",\n  \"addr\": \"bfea1000\",\n  \"how\": \"12 instructions read straight on\",\n  \"count\": 12,\n  \"listing\": \"bfea1000  00400  55                   push ebp\\nbfea1001  00401  8B EC                mov ebp, esp\\nbfea1003  00403  8B 45 0C             mov eax, dword ptr [ebp + 0xc]\\nbfea1006  00406  83 F8 01             cmp eax, 1\\nbfea1009  00409  75 27                jne 0xbfea1032\\nbfea100b  0040b  B0 00                mov al, 0\\nbfea100d  0040d  86 05 16 20 EA BF    xchg byte ptr [0xbfea2016], al\\nbfea1013  00413  0A C0                or al, al\\nbfea1015  00415  74 1B                je 0xbfea1032\\nbfea1017  00417  FF 75 08             push dword ptr [ebp + 8]\\nbfea101a  0041a  E8 DB 03 00 00       call 0xbfea13fa                   ; sub_0013FA (thunk: KERNEL32!DisableThreadLibraryCalls)\\nbfea101f  0041f  68 0D 20 EA BF       push 0xbfea200d                   ; \\\"LZ32.DLL\\\"\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 19 disasm": {
+  "id": 119,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"function\": \"LZINIT\",\n  \"start\": \"10080000\",\n  \"end\": \"100801bb\",\n  \"limit\": \"100801bc\",\n  \"module\": \"lzexpand.dll\",\n  \"addr\": \"10080000\",\n  \"how\": \"the function, as decoded from its start\",\n  \"count\": 158,\n  \"listing\": \"10080000  1E                   push ds\\n10080001  58                   pop ax\\n10080002  90                   nop\\n10080003  45                   inc bp\\n10080004  55                   push bp\\n10080005  8B EC                mov bp, sp\\n10080007  1E                   push ds\\n10080008  8E D8                mov ds, ax\\n1008000a  83 EC 1E             sub sp, 0x1e\\n1008000d  57                   push di\\n1008000e  56                   push si\\n1008000f  8B 7E 06             mov di, word ptr [bp + 6]\\n10080012  57                   push di\\n10080013  8D 46 E6             lea ax, [bp - 0x1a]\\n10080016  16                   push ss\\n10080017  50                   push ax\\n10080018  9A AA 00 38 10       lcall 0x1038, 0xaa                ; sub_8_00AA\\n1008001d  83 C4 06             add sp, 6\\n10080020  8B F0                mov si, ax\\n10080022  83 FE 01             cmp si, 1\\n10080025  74 17                je 0x1008003e\\n10080027  83 3E 74 02 00       cmp word ptr [0x274], 0\\n1008002c  7C 10                jl 0x1008003e\\n1008002e  7F 07                jg 0x10080037\\n10080030  83 3E 72 02 0E       cmp word ptr [0x272], 0xe\\n10080035  72 07                jb 0x1008003e\\n10080037  B8 FF FF             mov ax, 0xffff\\n1008003a  E9 72 01             jmp 0x100801af\\n1008003e  4E                   dec si\\n1008003f  74 03                je 0x10080044\\n10080041  E9 56 01             jmp 0x1008019a\\n10080044  8D 46 E6             lea ax, [bp - 0x1a]\\n10080047  16                   push ss\\n10080048  50                   push ax\\n10080049  9A A2 01 38 10       lcall 0x1038, 0x1a2               ; sub_8_01A2\\n1008004e  83 C4 04             add sp, 4\\n10080051  48                   dec ax\\n10080052  74 03                je 0x10080057\\n10080054  E9 43 01             jmp 0x1008019a\\n10080057  80 7E EE 41          cmp byte ptr [bp - 0x12], 0x41\\n1008005b  75 05                jne 0x10080062\\n1008005d  B8 01 00             mov ax, 1\\n10080060  EB 02                jmp 0x10080064\\n10080062  2B C0                sub ax, ax\\n10080064  48                   dec ax\\n10080065  74 07                je 0x1008006e\\n10080067  B8 F8 FF             mov ax, 0xfff8\\n1008006a  E9 42 01             jmp 0x100801af\\n1008006e  8B 16 30 00          mov dx, word ptr [0x30]\\n10080072  89 56 FC             mov word ptr [bp - 4], dx\\n10080075  8B 1E 30 00          mov bx, word ptr [0x30]\\n10080079  D1 E3                shl bx, 1\\n1008007b  83 BF 10 00 00       cmp word ptr [bx + 0x10], 0\\n10080080  74 1E                je 0x100800a0\\n10080082  FF 06 30 00          inc word ptr [0x30]\\n10080086  83 3E 30 00 10       cmp word ptr [0x30], 0x10\\n1008008b  7C 06                jl 0x10080093\\n1008008d  C7 06 30 00 00 00    mov word ptr [0x30], 0\\n10080093  39 16 30 00          cmp word ptr [0x30], dx\\n10080097  75 DC                jne 0x10080075\\n10080099  B8 FB FF             mov ax, 0xfffb\\n1008009c  E9 10 01             jmp 0x100801af\\n100800a0  A1 30 00             mov ax, word ptr [0x30]\\n100800a3  89 46 F8             mov word ptr [bp - 8], ax\\n100800a6  6A 42                push 0x42\\n100800a8  6A 00                push 0\\n100800aa  68 A5 18             push 0x18a5\\n100800ad  9A 00 00 00 E0       lcall 0xe000, 0                   ; KERNEL!GLOBALALLOC\\n100800b2  8B F8                mov di, ax\\n100800b4  0B FF                or di, di\\n100800b6  74 E1                je 0x10080099\\n100800b8  57                   push di\\n100800b9  9A 60 00 00 E0       lcall 0xe000, 0x60                ; KERNEL!GLOBALLOCK\\n100800be  8B F0                mov si, ax\\n100800c0  89 56 FC             mov word ptr [bp - 4], dx\\n100800c3  0B D0                or dx, ax\\n100800c5  75 0D                jne 0x100800d4\\n100800c7  57                   push di\\n100800c8  9A 10 00 00 E0       lcall 0xe000, 0x10                ; KERNEL!GLOBALFREE\\n100800cd  B8 FA FF             mov ax, 0xfffa\\n100800d0  E9 DC 00             jmp 0x100801af\\n100800d4  8B 46 06             mov ax, word ptr [bp + 6]\\n100800d7  8E 46 FC             mov es, word ptr [bp - 4]\\n100800da  26 89 04             mov word ptr es:[si], ax\\n100800dd  8A 46 EE             mov al, byte ptr [bp - 0x12]\\n100800e0  26 88 44 02          mov byte ptr es:[si + 2], al\\n100800e4  26 C7 44 03 00 00    mov word ptr es:[si + 3], 0\\n100800ea  8B 46 F0             mov ax, word ptr [bp - 0x10]\\n100800ed  8B 56 F2             mov dx, word ptr [bp - 0xe]\\n100800f0  26 89 44 05          mov word ptr es:[si + 5], ax\\n100800f4  26 89 54 07          mov word ptr es:[si + 7], dx\\n100800f8  8B 46 F4             mov ax, word ptr [bp - 0xc]\\n100800fb  8B 56 F6             mov dx, word ptr [bp - 0xa]\\n100800fe  26 89 44 09          mov word ptr es:[si + 9], ax\\n10080102  26 89 54 0B          mov word ptr es:[si + 0xb], dx\\n10080106  2B C0                sub ax, ax\\n10080108  26 89 44 0F          mov word ptr es:[si + 0xf], ax\\n1008010c  26 89 44 0D          mov word ptr es:[si + 0xd], ax\\n10080110  8B 5E F8             mov bx, word ptr [bp - 8]\\n10080113  D1 E3                shl bx, 1\\n10080115  89 BF 10 00          mov word ptr [bx + 0x10], di\\n10080119  06                   push es\\n1008011a  56                   push si\\n1008011b  89 76 E2             mov word ptr [bp - 0x1e], si\\n1008011e  8C 46 E4             mov word ptr [bp - 0x1c], es\\n10080121  9A 00 00 20 10       lcall 0x1020, 0                   ; sub_5_0000\\n10080126  83 C4 04             add sp, 4\\n10080129  A1 48 00             mov ax, word ptr [0x48]\\n1008012c  8B 16 4A 00          mov dx, word ptr [0x4a]\\n10080130  03 06 7C 02          add ax, word ptr [0x27c]\\n10080134  40                   inc ax\\n10080135  A3 4C 00             mov word ptr [0x4c], ax\\n10080138  89 16 4E 00          mov word ptr [0x4e], dx\\n1008013c  A3 50 00             mov word ptr [0x50], ax\\n1008013f  89 16 52 00          mov word ptr [0x52], dx\\n10080143  C7 06 7E 02 00 00    mov word ptr [0x27e], 0\\n10080149  A1 54 00             mov ax, word ptr [0x54]\\n1008014c  8B 16 56 00          mov dx, word ptr [0x56]\\n10080150  03 06 76 02          add ax, word ptr [0x276]\\n10080154  A3 58 00             mov word ptr [0x58], ax\\n10080157  89 16 5A 00          mov word ptr [0x5a], dx\\n1008015b  A1 54 00             mov ax, word ptr [0x54]\\n1008015e  A3 5C 00             mov word ptr [0x5c], ax\\n10080161  89 16 5E 00          mov word ptr [0x5e], dx\\n10080165  2B C0                sub ax, ax\\n10080167  A3 82 02             mov word ptr [0x282], ax\\n1008016a  A3 80 02             mov word ptr [0x280], ax\\n1008016d  FF 76 E4             push word ptr [bp - 0x1c]\\n10080170  FF 76 E2             push word ptr [bp - 0x1e]\\n10080173  9A 52 00 20 10       lcall 0x1020, 0x52                ; sub_5_0052\\n10080178  83 C4 04             add sp, 4\\n1008017b  57                   push di\\n1008017c  9A 70 00 00 E0       lcall 0xe000, 0x70                ; KERNEL!GLOBALUNLOCK\\n10080181  FF 06 30 00          inc word ptr [0x30]\\n10080185  83 3E 30 00 10       cmp word ptr [0x30], 0x10\\n1008018a  7C 06                jl 0x10080192\\n1008018c  C7 06 30 00 00 00    mov word ptr [0x30], 0\\n10080192  8B 46 F8             mov ax, word ptr [bp - 8]\\n10080195  80 C4 04             add ah, 4\\n10080198  EB 15                jmp 0x100801af\\n1008019a  57                   push di\\n1008019b  6A 00                push 0\\n1008019d  6A 00                push 0\\n1008019f  6A 00                push 0\\n100801a1  9A 40 00 00 E0       lcall 0xe000, 0x40                ; KERNEL!_LLSEEK\\n100801a6  0B D0                or dx, ax\\n100801a8  74 03                je 0x100801ad\\n100801aa  E9 8A FE             jmp 0x10080037\\n100801ad  8B C7                mov ax, di\\n100801af  5E                   pop si\\n100801b0  5F                   pop di\\n100801b1  4D                   dec bp\\n100801b2  4D                   dec bp\\n100801b3  8B E5                mov sp, bp\\n100801b5  1F                   pop ds\\n100801b6  5D                   pop bp\\n100801b7  4D                   dec bp\\n100801b8  CA 02 00             retf 2\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
  "call 2 strings": {
   "id": 102,
   "jsonrpc": "2.0",
@@ -129,6 +168,136 @@
    "isError": false
   }
  },
+ "call 20 disasm": {
+  "id": 120,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"inside\": \"LZINIT+0\",\n  \"module\": \"lzexpand.dll\",\n  \"addr\": \"10080000\",\n  \"how\": \"8 instructions read straight on\",\n  \"count\": 8,\n  \"listing\": \"10080000  1E                   push ds\\n10080001  58                   pop ax\\n10080002  90                   nop\\n10080003  45                   inc bp\\n10080004  55                   push bp\\n10080005  8B EC                mov bp, sp\\n10080007  1E                   push ds\\n10080008  8E D8                mov ds, ax\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 21 disasm": {
+  "id": 121,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool disasm: ValueError: find.exe: not a 32-bit module, a 16-bit module or a driver",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 22 xrefs": {
+  "id": 122,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"module\": \"lz32.dll\",\n  \"addr\": \"bfea1000\",\n  \"function\": \"sub_001000\",\n  \"from_code\": [],\n  \"referred\": [],\n  \"in_data\": [],\n  \"calls\": [\n    {\n      \"site\": \"bfea101a\",\n      \"kind\": \"call\",\n      \"to\": \"sub_0013FA (thunk: KERNEL32!DisableThreadLibraryCalls)\"\n    },\n    {\n      \"site\": \"bfea1029\",\n      \"kind\": \"call\",\n      \"to\": \"sub_001057\"\n    }\n  ],\n  \"say\": \"nothing in the module refers to it: it is entered from outside (an export)\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 23 xrefs": {
+  "id": 123,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"module\": \"lz32.dll\",\n  \"addr\": \"bfea30a0\",\n  \"import\": \"KERNEL32!OpenFile\",\n  \"from_code\": [\n    {\n      \"site\": \"bfea12b5\",\n      \"in\": \"LZOpenFileA\",\n      \"how\": \"call [slot]\"\n    }\n  ],\n  \"referred\": [],\n  \"in_data\": []\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 24 xrefs": {
+  "id": 124,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"module\": \"lzexpand.dll\",\n  \"addr\": \"10080000\",\n  \"function\": \"LZINIT\",\n  \"exported_as\": \"LZINIT\",\n  \"from_code\": [\n    {\n      \"site\": \"100802d1\",\n      \"in\": \"LZOPENFILE\",\n      \"how\": \"call\"\n    }\n  ],\n  \"referred\": [],\n  \"in_data\": [],\n  \"calls\": [\n    {\n      \"site\": \"10080018\",\n      \"kind\": \"call\",\n      \"to\": \"sub_8_00AA\"\n    },\n    {\n      \"site\": \"10080049\",\n      \"kind\": \"call\",\n      \"to\": \"sub_8_01A2\"\n    },\n    {\n      \"site\": \"100800ad\",\n      \"kind\": \"call\",\n      \"to\": \"KERNEL!GLOBALALLOC\"\n    },\n    {\n      \"site\": \"100800b9\",\n      \"kind\": \"call\",\n      \"to\": \"KERNEL!GLOBALLOCK\"\n    },\n    {\n      \"site\": \"100800c8\",\n      \"kind\": \"call\",\n      \"to\": \"KERNEL!GLOBALFREE\"\n    },\n    {\n      \"site\": \"10080121\",\n      \"kind\": \"call\",\n      \"to\": \"sub_5_0000\"\n    },\n    {\n      \"site\": \"10080173\",\n      \"kind\": \"call\",\n      \"to\": \"sub_5_0052\"\n    },\n    {\n      \"site\": \"1008017c\",\n      \"kind\": \"call\",\n      \"to\": \"KERNEL!GLOBALUNLOCK\"\n    },\n    {\n      \"site\": \"100801a1\",\n      \"kind\": \"call\",\n      \"to\": \"KERNEL!_LLSEEK\"\n    }\n  ]\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 25 xrefs": {
+  "id": 125,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"module\": \"lzexpand.dll\",\n  \"addr\": \"10180000\",\n  \"function\": \"LZSTART\",\n  \"exported_as\": \"LZSTART\",\n  \"from_code\": [\n    {\n      \"site\": \"1018016c\",\n      \"in\": \"LZCOPY\",\n      \"how\": \"call\"\n    }\n  ],\n  \"referred\": [],\n  \"in_data\": [],\n  \"calls\": [\n    {\n      \"site\": \"1018004a\",\n      \"kind\": \"call\",\n      \"to\": \"sub_1_0000\"\n    }\n  ]\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 26 names": {
+  "id": 126,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"total\": 39,\n  \"offset\": 0,\n  \"count\": 10,\n  \"rows\": [\n    {\n      \"addr\": \"bfea1000\",\n      \"key\": \"bfea1000\",\n      \"name\": \"sub_bfea1000\",\n      \"source\": \"(none)\"\n    },\n    {\n      \"addr\": \"bfea1057\",\n      \"key\": \"bfea1057\",\n      \"name\": \"sub_bfea1057\",\n      \"source\": \"(none)\"\n    },\n    {\n      \"addr\": \"bfea1075\",\n      \"key\": \"bfea1075\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea1077\",\n      \"key\": \"bfea1077\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10a5\",\n      \"key\": \"bfea10a5\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10a7\",\n      \"key\": \"bfea10a7\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10bd\",\n      \"key\": \"bfea10bd\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10bf\",\n      \"key\": \"bfea10bf\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10e2\",\n      \"key\": \"bfea10e2\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10e4\",\n      \"key\": \"bfea10e4\",\n      \"name\": \"thunk stub\",\n      \"source\": \"runtime library: Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    }\n  ],\n  \"next\": 10,\n  \"imports\": 17\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 27 names": {
+  "id": 127,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"total\": 46,\n  \"offset\": 0,\n  \"count\": 12,\n  \"rows\": [\n    {\n      \"addr\": \"10000000\",\n      \"key\": \"1:0000\",\n      \"name\": \"sub_1_0000\",\n      \"source\": \"(none)\"\n    },\n    {\n      \"addr\": \"100000b2\",\n      \"key\": \"1:00b2\",\n      \"name\": \"sub_1_00b2\",\n      \"source\": \"(none)\"\n    },\n    {\n      \"addr\": \"10000116\",\n      \"key\": \"1:0116\",\n      \"name\": \"sub_1_0116\",\n      \"source\": \"(none)\"\n    },\n    {\n      \"addr\": \"10080000\",\n      \"key\": \"2:0000\",\n      \"name\": \"LZINIT\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"100801bc\",\n      \"key\": \"2:01bc\",\n      \"name\": \"GETEXPANDEDNAME\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"10080262\",\n      \"key\": \"2:0262\",\n      \"name\": \"LZOPENFILE\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"100802ee\",\n      \"key\": \"2:02ee\",\n      \"name\": \"LZSEEK\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"100803d6\",\n      \"key\": \"2:03d6\",\n      \"name\": \"LZREAD\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"100806f0\",\n      \"key\": \"2:06f0\",\n      \"name\": \"LZCLOSE\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"10100000\",\n      \"key\": \"3:0000\",\n      \"name\": \"WEP\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"10180000\",\n      \"key\": \"4:0000\",\n      \"name\": \"LZSTART\",\n      \"source\": \"export\"\n    },\n    {\n      \"addr\": \"101800a6\",\n      \"key\": \"4:00a6\",\n      \"name\": \"LZDONE\",\n      \"source\": \"export\"\n    }\n  ],\n  \"next\": 12,\n  \"imports\": 22\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 28 identify": {
+  "id": 128,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"identified\": 19,\n  \"rows\": [\n    {\n      \"addr\": \"bfea1075\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea1077\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10a5\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10a7\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10bd\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10bf\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10e2\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea10e4\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea1109\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea110b\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea1123\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea1125\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea1135\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea1139\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea113b\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea115b\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea115d\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea116c\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    },\n    {\n      \"addr\": \"bfea116e\",\n      \"name\": \"thunk stub\",\n      \"library\": \"Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    }\n  ],\n  \"compiler\": {\n    \"linker\": \"2.50\",\n    \"compiler\": \"Microsoft Visual C++ 2.x\",\n    \"evidence\": [\n      \"linker version 2.50 in the header\",\n      \"19 functions from Microsoft thunk compiler: a 32-to-16-bit flat thunk\"\n    ]\n  }\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 29 identify": {
+  "id": 129,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"identified\": 4,\n  \"rows\": [\n    {\n      \"addr\": \"10500010\",\n      \"name\": \"_dos_getftime\",\n      \"library\": \"Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)\"\n    },\n    {\n      \"addr\": \"10500042\",\n      \"name\": \"_dos_setftime\",\n      \"library\": \"Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)\"\n    },\n    {\n      \"addr\": \"105002e2\",\n      \"name\": \"_NMSG_TEXT\",\n      \"library\": \"Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)\"\n    },\n    {\n      \"addr\": \"1050034e\",\n      \"name\": \"_GetDGROUP\",\n      \"library\": \"Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)\"\n    }\n  ],\n  \"compiler\": {\n    \"linker\": \"5.20\",\n    \"compiler\": \"Microsoft Visual C++ 1.5 (16-bit)\",\n    \"evidence\": [\n      \"linker version 5.20 in the header\",\n      \"4 functions from Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)\"\n    ]\n  }\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
  "call 3 command_help": {
   "id": 103,
   "jsonrpc": "2.0",
@@ -136,6 +305,97 @@
    "content": [
     {
      "text": "Error executing tool command_help: no command 'nosuchcommand'; `commands` lists them",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 30 hex_dump": {
+  "id": 130,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"addr\": \"bfea1000\",\n  \"offset\": 1024,\n  \"length\": 32,\n  \"size\": 5632,\n  \"text\": \"00000400  55 8B EC 8B 45 0C 83 F8 01 75 27 B0 00 86 05 16  U...E....u'.....\\n00000410  20 EA BF 0A C0 74 1B FF 75 08 E8 DB 03 00 00 68   ....t..u......h\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 31 hex_dump": {
+  "id": 131,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool hex_dump: 10080000 is not stored in the file (or lzexpand.dll is not a 32-bit module: give `offset`)",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 32 diff_function": {
+  "id": 132,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"from\": \"bfea1000\",\n  \"to\": \"bfea1000\",\n  \"from_name\": \"sub_001000\",\n  \"to_name\": \"sub_001000\",\n  \"status\": \"identical\",\n  \"level\": \"bytes\",\n  \"score\": 1.0,\n  \"sizes\": [\n    57,\n    57\n  ],\n  \"diff\": \"  bfea1000 push ebp                             bfea1000 push ebp\\n  bfea1001 mov ebp, esp                         bfea1001 mov ebp, esp\\n  bfea1003 mov eax, dword ptr [ebp + 0xc]       bfea1003 mov eax, dword ptr [ebp + 0xc]\\n  bfea1006 cmp eax, 1                           bfea1006 cmp eax, 1\\n  bfea1009 jne 0xbfea1032                       bfea1009 jne 0xbfea1032\\n  bfea100b mov al, 0                            bfea100b mov al, 0\\n  bfea100d xchg byte ptr [0xbfea2016], al       bfea100d xchg byte ptr [0xbfea2016], al\\n  bfea1013 or al, al                            bfea1013 or al, al\\n  bfea1015 je 0xbfea1032                        bfea1015 je 0xbfea1032\\n  bfea1017 push dword ptr [ebp + 8]             bfea1017 push dword ptr [ebp + 8]\\n  bfea101a call 0xbfea13fa                      bfea101a call 0xbfea13fa\\n  bfea101f push 0xbfea200d                      bfea101f push 0xbfea200d\\n  bfea1024 push 0xbfea2000                      bfea1024 push 0xbfea2000\\n  bfea1029 call 0xbfea1057                      bfea1029 call 0xbfea1057\\n  bfea102e or eax, eax                          bfea102e or eax, eax\\n  bfea1030 je 0xbfea1035                        bfea1030 je 0xbfea1035\\n  bfea1032 sub eax, eax                         bfea1032 sub eax, eax\\n  bfea1034 inc eax                              bfea1034 inc eax\\n  bfea1035 leave                                bfea1035 leave\\n  bfea1036 ret 0xc                              bfea1036 ret 0xc\",\n  \"differ\": 0\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 33 diff_function": {
+  "id": 133,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool diff_function: no function 'nosuchfunction' in either build (compare_versions lists the pairs)",
+     "type": "text"
+    }
+   ],
+   "isError": true
+  }
+ },
+ "call 34 decompile_function": {
+  "id": 134,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"name\": \"sub_001000\",\n  \"text\": \"int4 sub_001000(int4 a1,int4 a2,int4 a3)\\n\\n{\\n  char cVar1;\\n  int4 iVar2;\\n  \\n  cVar1 = cRambfea2016;\\n  if (a2 == 1) {\\n    LOCK();\\n    cRambfea2016 = '\\\\0';\\n    UNLOCK();\\n    if (cVar1 != '\\\\0') {\\n      func_0xbfea13fa(a1);\\n      iVar2 = func_0xbfea1057(0xbfea2000,0xbfea200d);\\n      if (iVar2 == 0) {\\n        return 0;\\n      }\\n    }\\n  }\\n  return 1;\\n}\",\n  \"module\": \"lz32.dll\",\n  \"addr\": \"bfea1000\",\n  \"note\": \"decompiled now; not built or judged\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 35 decompile_function": {
+  "id": 135,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "{\n  \"text\": \"int2 __cdecl16far sub_1_0000(void)\\n\\n{\\n  int2 *piVar1;\\n  int2 iVar2;\\n  xunknown2 unaff_DS;\\n  \\n  if (*(int2 *)0x46 != 0 || *(int2 *)0x44 != 0) {\\n    return 1;\\n  }\\n  iVar2 = KERNEL_15(0x1080,0,0x2040);\\n  *(xunknown2 *)0x44 = 0;\\n  *(int2 *)0x46 = iVar2;\\n  if (iVar2 == 0 && *(int2 *)0x44 == 0) {\\n    return 0;\\n  }\\n  *(xunknown2 *)0x27c = 0x8000;\\n  *(xunknown2 *)0x276 = 0x8000;\\n  do {\\n    if (*(int2 *)0x276 == 0) {\\n      KERNEL_17(*(int2 *)0x46);\\n      return 0;\\n    }\\n    iVar2 = KERNEL_15(*(uint2 *)0x27c + 1,(uint2)(0xfffe < *(uint2 *)0x27c),0x2040);\\n    *(xunknown2 *)0x48 = 0;\\n    *(int2 *)0x4a = iVar2;\\n    if (iVar2 != 0 || *(int2 *)0x48 != 0) {\\n      iVar2 = KERNEL_15(*(int2 *)0x276,0,0x2040);\\n      *(xunknown2 *)0x54 = 0;\\n      *(int2 *)0x56 = iVar2;\\n      if (iVar2 != 0 || *(int2 *)0x54 != 0) {\\n        return 1;\\n      }\\n      KERNEL_17(*(int2 *)0x4a);\\n    }\\n    *(int2 *)0x276 = *(int2 *)0x276 + -0x400;\\n    piVar1 = (int2 *)0x27c;\\n    *piVar1 = *piVar1 + -0x400;\\n  } while (*piVar1 != 0);\\n  KERNEL_17(*(int2 *)0x46);\\n  return 0;\\n}\",\n  \"module\": \"lzexpand.dll\",\n  \"addr\": \"1:0000\",\n  \"note\": \"decompiled now; not built or judged\"\n}",
+     "type": "text"
+    }
+   ],
+   "isError": false
+  }
+ },
+ "call 36 decompile_function": {
+  "id": 136,
+  "jsonrpc": "2.0",
+  "result": {
+   "content": [
+    {
+     "text": "Error executing tool decompile_function: no function header naming 9:9999 in the module's C; run_command decompile writes all of it",
      "type": "text"
     }
    ],

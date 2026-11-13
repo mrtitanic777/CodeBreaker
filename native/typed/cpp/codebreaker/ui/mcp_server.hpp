@@ -2,10 +2,10 @@
 // old command table (__main__.hpp registers `main`). Forwarding only; deleted with the old command table.
 //
 // The module (the wire, the 32 tools, the transports) is native/cb/ui/mcp_server. `main` builds what it needs from the checkout's configuration:
-// the corpus, a service over the state folder (the function store at state/functions.sqlite and state/db, as the Python's `functions.open()`
-// finds it), a link to the running service (started on demand), and the services the program's own modules answer (the folders, the corpus,
-// the inspector: cb::ui::mcp::standard_services). The services that need the whole application -- the ledger, the analyses, the decompiler, the
-// version comparison, the function store's names, the command table -- are the application's to give; a tool whose service is not given says so.
+// the corpus (standard_corpus), a service over the state folder (standard_environment: the function store at state/functions.sqlite and state/db, as
+// the Python's `functions.open()` finds it), a link to the running service (started on demand), and the services every tool reads, filled from
+// the program's own modules (cb::ui::mcp::standard_services: the folders, the corpus, the inspector, the code, the decompiler, the version
+// comparison, the names, the ledger, the command table).
 //
 // Not carried over: the old Hooks, the tool functions as C++ functions and `INTERACTIVE()` (no caller used them; the tools are
 // `cb::ui::mcp::Server::call_tool` and the wire's own), and the old service module's process-wide state (a ServiceLink is an object).
@@ -48,19 +48,10 @@ inline int64_t main(const py::list<py::str>& argv) {
     auto has = [&](const char* flag) { return std::find(args.begin(), args.end(), std::string(flag)) != args.end(); };
 
     const ::cb::config::Config& config = ::cb::config::current();
-    static ::cb::base::Corpus corpus(config.products());
-    ::cb::ui::service::Environment env;
-    env.state = config.state();
-    env.root = config.checkout_root();
-    env.ledger.corpus = &corpus;
-    env.ledger.state_dir = env.state;
-    const std::optional<std::string> db = ::cb::fs::get_env("CB_FUNCTIONS_DB");
-    env.ledger.store_index = db && !db->empty() ? std::filesystem::path(*db) : env.state / "functions.sqlite";
-    env.ledger.store_folder = env.state / "db";
-    env.retail = [](std::string_view name) { return corpus.retail(name); };
-    static ::cb::ui::service::Service service(std::move(env));
+    static const std::shared_ptr<::cb::base::Corpus> corpus = mcp::standard_corpus(config);
+    static ::cb::ui::service::Service service(mcp::standard_environment(config, *corpus));
     static ::cb::ui::service::ServiceLink link(service, {.mode = ::cb::ui::service::mode_of_environment(), .start = true});
-    mcp::Server server(service, link, mcp::standard_services(config, corpus), mcp::Options{.writes = !has("--public")});   // (public: the reading tools only)
+    mcp::Server server(service, link, mcp::standard_services(config, *corpus), mcp::Options{.writes = !has("--public")});   // (public: the reading tools only)
 
     if (has("--http")) {
         const int port = std::stoi(after("--http").value_or("0"));
