@@ -1,0 +1,60 @@
+== retail_privileges
+privileges set: 2, 9, 10 (pal50)
+exit=0
+== logan_privileges
+privileges set: none
+exit=0
+== retail_set
+privileges now: 2, 3 -> <out>/retail_set.xex
+exit=0
+== retail_set_hex_and_high
+privileges now: 9, 10, 31 -> <out>/retail_set2.xex
+exit=0
+== retail_no_change
+privileges now: 2, 9, 10 -> <out>/retail_same.xex
+exit=0
+== logan_no_entry
+xex-edit: the header has no privilege entry for bit 3 (key 30000)
+exit=1
+== bit_range
+xex-edit: privilege bits are 0-63: '+99'
+exit=1
+== bit_sign
+xex-edit: a change is +bit or -bit: '3'
+exit=1
+== nop3
+nop at 82061868 -> <out>/nop3.xex
+exit=0
+== nop1
+nop at 82061870 -> <out>/nop1.xex
+exit=0
+== nop_outside
+xex-edit: 81000000+4 is outside the image (82000000, 2C0000 bytes)
+exit=1
+== bytes
+bytes at 82061868 -> <out>/bytes.xex
+exit=0
+== asm
+asm at 82061868 -> <out>/asm.xex
+exit=0
+== asm_branch
+asm at 82061868 -> <out>/asmb.xex
+exit=0
+== hook
+hook at 82061868 -> <out>/hook.xex
+exit=0
+== hook_relative
+xex-edit: the instruction at 82061868 is a relative branch (48000098): it cannot be moved to the cave
+exit=1
+== asm_only
+386000054e80002048000018
+exit=0
+== asm_only_label
+xex-edit: unsupported mnemonic: top:
+exit=1
+== asm_bad
+xex-edit: unsupported mnemonic: frobnicate
+exit=1
+== unknown
+unknown operation 'frobnicate' (privileges, nop, bytes, asm, hook, asm-only)
+exit=2
