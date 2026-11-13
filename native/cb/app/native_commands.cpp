@@ -8,7 +8,9 @@
 #include "cb/analyze/dos_functions.hpp"
 #include "cb/base/config.hpp"
 #include "cb/base/corpus.hpp"
+#include "cb/base/converted.hpp"
 #include "cb/build/driver.hpp"
+#include "cb/build/resources.hpp"
 #include "cb/build/flat_thunk.hpp"
 #include "cb/build/watcom.hpp"
 #include "cb/core/error.hpp"
@@ -33,7 +35,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 12> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source"};
+constexpr std::array<std::string_view, 13> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -295,6 +297,17 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set("ne-source", [le_env, stub_finder](std::span<const std::string> args) -> int {
         source::ne_writer::Environment env{le_env.nasm, le_env.state, stub_finder()};
         return source::ne_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
+    });
+
+    // resources <module> ... [--out DIR]: a module's resources as .rc and files, compiled with OpenWatcom's wrc and compared;
+    // without --out into the module's project folder (Converted/<name>/assets/resources/)
+    lazy_command(table, "resources", [corpus, &config] {
+        build::resources::Environment env;
+        env.open_watcom = ft_openwatcom_of(config);
+        env.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
+        const std::filesystem::path converted = config.path("converted").value_or(config.checkout_root() / "Converted");
+        env.project = [converted](const std::filesystem::path& binary) { return base::converted::Store(converted).project(binary); };
+        return build::resources::command(env);
     });
 
     // xex <command> <file.xex> [args]: the xex program, with this process's stdout and stderr
