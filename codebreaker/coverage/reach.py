@@ -155,8 +155,8 @@ def programs(inputs, containers=20, log=print):
                 out.extend((inner, d) for inner in _unpack(d, containers, log))
                 dirs[:] = []
                 continue
-            dirs[:] = [x for x in dirs if not x.startswith(".") and x not in ("__pycache__", "node_modules")]
-            for name in files:
+            dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x not in ("__pycache__", "node_modules"))
+            for name in sorted(files):                       # (the same order on every machine: which of equal-sized programs is judged)
                 one(os.path.join(d, name), root)
     return out
 
