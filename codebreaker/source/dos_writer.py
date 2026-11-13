@@ -504,7 +504,7 @@ def _driver_and_vxd(module_path, outdir, log=None):
         f.write(body)
     result.update(image=out, file=out, same=bytes(body) == original)
     if not result["same"]:
-        first = first_difference(body, original)
+        first = first_difference(bytes(body), original)
         result["notes"].append("the file differs from the original at %#x (%d bytes, original %d)" % (
             first, len(body), len(original)))
         result["equivalent"] = bool(r["same"] and _module_came_back(v))
@@ -656,7 +656,7 @@ def _as_file(p, outdir, stem, linked, result, log=None):
         f.write(body)
     result.update(file=out, file_same=body == data)
     if not result["file_same"]:
-        first = first_difference(body, data)
+        first = first_difference(bytes(body), data)
         result.setdefault("remarks", []).append("the file differs from the original's at %#x (%d bytes, original %d)" % (
             first, len(body), len(data)))
 
@@ -775,7 +775,7 @@ def _as_pklite_file(p, data, oh, exe, h, module, outdir, stem, out, result, log=
         f.write(body)
     result.update(file=out, file_same=body == data)
     if not result["file_same"]:
-        first = first_difference(body, data)
+        first = first_difference(bytes(body), data)
         result.setdefault("remarks", []).append("the file differs from the original's at %#x (%d bytes, original %d)" % (
             first, len(body), len(data)))
 

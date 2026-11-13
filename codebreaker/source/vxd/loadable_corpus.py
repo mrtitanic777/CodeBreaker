@@ -105,9 +105,10 @@ def _summary(results, secs):
 
 if __name__ == "__main__":
     from codebreaker.base import settings
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    srcdir = args[0] if args else paths.root()
-    out = args[1] if len(args) > 1 else settings.state("vxd", "loadable.json")
     redo = sys.argv[sys.argv.index("--redo") + 1].split(",") if "--redo" in sys.argv else []
     workers = int(sys.argv[sys.argv.index("--workers") + 1]) if "--workers" in sys.argv else 4
+    taken = {sys.argv.index(o) + 1 for o in ("--redo", "--workers") if o in sys.argv}    # (the values of the options are not folders)
+    args = [a for i, a in enumerate(sys.argv) if i and not a.startswith("--") and i not in taken]
+    srcdir = args[0] if args else paths.root()
+    out = args[1] if len(args) > 1 else settings.state("vxd", "loadable.json")
     run(srcdir, out, redo=redo, workers=workers, root=ROOT)
