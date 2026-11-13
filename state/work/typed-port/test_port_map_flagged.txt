@@ -1,0 +1,155 @@
+test_achievements.py: 7
+    test_humanize_names (2/6)
+    test_lang_names_override (1/3)
+    test_run_emits_all_artifacts (1/7)
+    test_block_texture_resolver (2/6)
+    test_title_id_normalize_and_suggest (4/7)
+    test_run_writes_title_id (4/7)
+    test_wire_icons_crops_and_writes_tiles (2/4)
+test_apimap.py: 2
+    test_unmapped_returns_none (1/1)
+    test_symbol_extraction (1/2)
+test_assets.py: 6
+    test_extract_mirrors_jar_paths (2/11)
+    test_extract_normalizes_indexed_png (2/5)
+    test_no_normalize_when_disabled (2/4)
+    test_coverage_flags_missing_and_extra (2/8)
+    test_coverage_case_insensitive (1/5)
+    test_match_sources_maps_events_and_step_family (3/7)
+test_awt_stubs.py: 2
+    test_awt_mouse_stubs_are_generated (1/3)
+    test_mouseinfo_getpointerinfo_returns_pointerinfo (2/3)
+test_beta_fixes.py: 9
+    test_header_has_singletons_and_fields (5/5)
+    test_marker_and_bridge_ctor_dropped_but_base_kept (1/2)
+    test_container_of_new_owned_listener_list_not (1/2)
+    test_dtor_frees_scalars_and_container_not_borrowed (3/3)
+    test_getcubes_recognized_as_owned_return (1/2)
+    test_borrowed_return_not_owned (1/1)
+    test_missing_gl11_constants_now_present (2/2)
+    test_missing_gl11_functions_now_present (2/2)
+    test_nvfogdistance_holder_emitted (1/3)
+test_bytes.py: 2
+    test_byte_fields_are_zeroed_by_the_constructor (5/5)
+    test_bytes_beside_the_jvm (2/6)
+test_controller_nav.py: 2
+    test_displayguiscreen_injects_cursor_and_grab_invariant (1/3)
+    test_mousehelper_grab_made_console_safe (2/5)
+test_edition_autodetect.py: 3
+    test_beta_world_with_biome_markers (2/2)
+    test_release_by_server_package (1/2)
+    test_ambiguous_returns_none (1/1)
+test_edition_convert_integration.py: 4
+    test_explicit_edition_activates_then_restores (2/5)
+    test_autodetect_beta (2/4)
+    test_no_edition_inconclusive_keeps_default (1/4)
+    test_version_hint_selects_edition (2/4)
+test_edition_resolve.py: 1
+    test_edition_for_version (1/11)
+test_finally.py: 1
+    test_the_counter_comes_back_down_beside_the_jvm (2/5)
+test_input_io.py: 1
+    test_inputs_beside_the_jvm (4/9)
+test_ir.py: 1
+    test_arity_and_signature (1/1)
+test_java_semantics.py: 2
+    test_char_is_unsigned_in_the_emitted_code (2/2)
+    test_beside_the_jvm (3/10)
+test_kind.py: 2
+    test_classes_are_judged_filed_and_written (6/15)
+    test_a_class_that_does_not_compile_says_why (3/4)
+test_null_model.py: 1
+    test_nulls_beside_the_jvm (2/5)
+test_parse.py: 1
+    test_parse_all_fixtures (1/3)
+test_pipeline.py: 12
+    test_field_method_name_collision_renamed (2/5)
+    test_files_written (2/3)
+    test_translation_applied (2/3)
+    test_driver_becomes_raycast (1/6)
+    test_cuts_unreached_keeps_reachable_and_linkcritical (8/14)
+    test_overlay_written_files_are_roots (10/13)
+    test_overlay_roots_accept_nested_relpaths (4/6)
+    test_h_drags_cpp_partner_and_its_includes (5/8)
+    test_cross_named_implementation_kept_by_symbol_defense (6/10)
+    test_folds_forwarder_and_rewrites_includes (3/6)
+    test_resolves_forwarder_chain (4/5)
+    test_real_header_not_touched (1/3)
+test_platform_config.py: 3
+    test_detect_via_override (1/4)
+    test_require_raises_when_absent (1/2)
+    test_gated_medium_refused_without_sdk (1/3)
+test_platform_refs.py: 1
+    test_generic_entry_targets_detected_class (1/5)
+test_probe.py: 3
+    test_floats_compare_by_bits_and_nan_matches_nan (2/4)
+    test_methods_run_beside_the_jvm (2/7)
+    test_a_result_java_itself_does_not_repeat_is_left_out (2/6)
+test_probe_clock.py: 2
+    test_clock_methods_and_constructor (1/2)
+    test_only_the_static_pure_method_is_probed (1/1)
+test_probe_libraries.py: 1
+    test_codec_mus_compiles_against_the_stand_in (4/7)
+test_probe_objects.py: 1
+    test_strings_objects_and_number_text_beside_the_jvm (1/7)
+test_probe_sequence.py: 1
+    test_cases_left_out_do_not_leave_state_behind (1/6)
+test_profile_invariants.py: 4
+    test_filters_are_wellformed (2/2)
+    test_nullable_getter_return_types_are_subset (1/1)
+    test_static_init_order_has_no_dupes (1/1)
+    test_render_rule_precedes_entity_block_fallbacks (1/3)
+test_profiles_selection.py: 1
+    test_runtime_mutation_does_not_pollute_profile (1/2)
+test_project_layout.py: 7
+    test_flat_dump_gets_structured (3/5)
+    test_sln_binds_to_project_and_guid (1/4)
+    test_template_instantiates_to_valid_xml (1/2)
+    test_idempotent_no_triple_nest (2/3)
+    test_guid_is_deterministic_per_name (1/1)
+    test_existing_vcxproj_guid_is_reused (2/4)
+    test_already_structured_is_left_alone (1/1)
+test_project_scan.py: 1
+    test_prefers_deobfuscated_over_other_jar (1/3)
+test_projects.py: 3
+    test_a_plain_program_loads_no_minecraft_code (4/5)
+    test_minecraft_is_found_by_its_marks_and_options (1/3)
+    test_the_font_glyph_is_minecrafts (1/2)
+test_reflection_factory.py: 3
+    test_noarg_factory (1/8)
+    test_run_generates_and_reuses (2/10)
+    test_run_is_idempotent (1/5)
+test_review_fixes.py: 1
+    test_convert_restores_profile_and_getters_when_it_raises (3/5)
+test_runnable_entry.py: 5
+    test_detects_concrete_toplevel_runnable (1/1)
+    test_abstract_runnable_is_ignored_beta_guard (2/2)
+    test_ui_runnable_with_superclass_is_ignored (1/1)
+    test_ambiguous_returns_none (2/2)
+    test_entry_point_constructs_and_runs_with_default_args (1/5)
+test_runtime_stubs.py: 3
+    test_corpus_class_inherits_stub_methods (1/6)
+    test_jmap_has_java_map_surface (1/1)
+    test_list_and_set_expose_iterator_member (1/3)
+test_scaffold.py: 4
+    test_c_skeleton (4/8)
+    test_csharp_skeleton (3/5)
+    test_rust_skeleton (6/6)
+    test_unknown_language_raises (1/1)
+test_strings_regex.py: 1
+    test_strings_beside_the_jvm (2/6)
+test_two_phase.py: 2
+    test_constructors_become_j2xinit (7/11)
+    test_block_opacity_beside_the_jvm (3/7)
+test_types.py: 1
+    test_reference_arrays_hold_pointers (1/6)
+test_ui_mark.py: 5
+    test_discover_by_name_and_inheritance (2/7)
+    test_mark_inserts_greppable_marker (1/8)
+    test_mark_is_idempotent (3/4)
+    test_dry_run_does_not_edit (3/4)
+    test_run_writes_index (3/4)
+test_vcxproj_filters.py: 2
+    test_write_filters_emits_debug_folder (1/10)
+    test_build_parent_map_reads_headers (1/2)
+114

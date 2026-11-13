@@ -1,6 +1,6 @@
-# Test port map, half 1 (tests/test_*.py test_analysis..test_platforms, plus tests/java)
+# Test port map, half 1 (final) (tests/test_*.py test_analysis..test_platforms, plus tests/java)
 
-2026-11-13. Tags: [C] covered by an existing native/cb test (cited), [P] ported now, [N] not needed (why), [G] gap (not covered, not ported this pass).
+2026-11-13 (updated after the second pass). Tags: [C] covered by an existing native/cb test (cited), [P] ported (this pass or the first), [N] not needed (why). No [G] is left in this half; see Counts.
 Native tests are `area.module.test` (CB_TEST). "Covered" means the suite body was read and a native test checks the same behaviour; most native tests are
 goldens of what the Python answered, so inputs are often the same real files. tests/java rows were matched by test name and area only (marked "by name").
 Python checks that need the retail corpus / DOSBox / MASM / a PowerPC compiler skip; their native twins skip the same way.
@@ -32,10 +32,10 @@ Python checks that need the retail corpus / DOSBox / MASM / a PowerPC compiler s
 - [C] seeds_not_run_again -- verify.concolic.seeds_that_took_a_known_path_are_not_run_again
 - [C] loop_sampled_not_all -- verify.concolic.the_budget_limits_runs_and_says_the_paths_are_a_sample
 - [C] shadow_gives_a_jumps_condition -- emulate.shadow.a_compare_and_branch_is_a_condition_of_the_path, memory_bytes_are_inputs_until_the_run_writes_them
-- [G] a_run_with_its_shadow_is_the_same_run (real LZEXPAND functions, with/without shadow)
+- [P] a_run_with_its_shadow_is_the_same_run -- emulate.windows16.a_run_with_its_shadow_is_the_same_run (LZEXPAND, 8 entries x 3 inputs, with/without the real pcodecheck shadow: end, steps, calls, writes, results alike; skips without pcodecheck)
 - [C] lifter_gives_the_specifications_p_code -- emulate.pcode.lifts_a_16_bit_instruction_in_its_window
-- [G] 32_bit_run_with_its_shadow_is_the_same_run (LZ32 exports; shadow vs fast tracer fingerprint)
-- [G] 32_bit_explorer_finds_every_path_of_lzopenfile
+- [P] 32_bit_run_with_its_shadow_is_the_same_run -- verify.win32.a_32_bit_run_with_its_shadow_is_the_same_run (LZ32 exports x the fixed+confirm vectors, fast tracer vs one-instruction shadowed run)
+- [P] 32_bit_explorer_finds_every_path_of_lzopenfile -- verify.win32.the_explorer_finds_every_path_of_lzopenfile (complete, >=4 paths, each kept input takes a path no seed took)
 - [C] powerpc_shadow_condition_over_an_argument -- emulate.shadow.lift_mode_follows_the_processor_language, emulate.pcode.lifts_powerpc
 - [C] lifter_names_the_powerpc_registers -- emulate.pcode.lifts_powerpc
 
@@ -83,9 +83,9 @@ Python checks that need the retail corpus / DOSBox / MASM / a PowerPC compiler s
 
 ## test_frozen.py (22 recorded cases) and test_frozen_slow.py (7)
 - [C] c_text interrupt_helper_name/interrupt_helpers/interrupt_routines -- decompile.c_text.* (same names) (3)
-- [G] c_text _far_loads/_global_type/_loads_dgroup/_more_helpers/_ram_type (5): private passes; behaviour in decompile.c_text.shared_selector_structs, ss_store_places, constants, but recorded cases not replayed
+- [P] c_text _far_loads/_global_type/_loads_dgroup/_more_helpers/_ram_type (5) -- decompile.c_text.frozen_* (the recorded cases copied to decompile/testdata/frozen/c_text; far_loads16/loads_dgroup16 exposed from c_text_win16.cpp)
 - [C] formats ne_lzexpand, pe_lz32, resources_lzexpand, inspect_lzexpand, pe_functions_lz32, cab_mini, fonts_vgafix (7) -- formats.ne.*, formats.pe.lz32_*, formats.resources.the_resource_table_of_a_real_16bit_module, formats.inspect.describe_equals_the_recorded_original, formats.pe_functions.lz32_*, formats.cab.real_windows_95_mini_cab_against_expand, formats.fonts.a_fon_lists_its_fonts
-- [G] formats ne_keyboard, pe_notepad, le_vmouse, dos_mode, resources_notepad, detect_vmouse, detect_mode (7): same readers tested on other files, these recorded outputs not replayed
+- [P] formats ne_keyboard, pe_notepad, le_vmouse, dos_mode, resources_notepad, detect_vmouse, detect_mode (7) -- formats.frozen.* (recorded outputs in formats/testdata/frozen, compared fact by fact; keyboard.drv and vmouse.vxd are native testdata copies, notepad.exe and mode.com are read from the Win95 corpus and pass without it)
 - [C] slow: describe ne_lzexpand, pe_lz32, le_vmouse, dos_mode, ne_keyboard -- decompile.describe.*_is_what_the_original_wrote, ne_driver_and_every_policy_switch (5); c_text_module lzexpand/lz32 -- decompile.c_text.compilable16_on_lzexpand, compilable32 (2)
 
 ## test_inspect_render.py (2) [C] formats.inspect.render_makes_records_and_tables (both: nested-by-any-row and unchanged cases)
@@ -113,7 +113,7 @@ Python checks that need the retail corpus / DOSBox / MASM / a PowerPC compiler s
 - [P] lane_judges -- engine.lane_kit.machines.the_genesis_demo_cartridge_is_judged (tests/data/genesis/demo.asm, native 68000 assembler)
 
 ## test_match_powerpc.py (4)
-- [G] one_function_whole, masks_are_fields, distance, original_stops_at_padding: `match` on PowerPC (verify/authored/match.py ARCH["powerpc"]) has no native module (native has match16, repair, search16, shape only). Port the module, then these.
+- [P] one_function_whole, masks_are_fields, distance, original_stops_at_padding -- source.pipeline_ppc.* (native PowerPC match: pipeline_ppc exposes ppc_compile_function / ppc_original_code / ppc_compare; the Xbox 360 compiler of settings.json is used, the tests skip without it)
 
 ## test_mcp.py (13)
 - [C] -- ui.mcp.the_command_table_is_the_catalog, the_code_is_read_as_the_python_did, the_service_answers_the_tools_by_name, the_names_and_the_runtime_libraries_are_read_as_the_python_did, commands_and_jobs, the_reading_tools_only_when_there_are_no_writes, slow_values_are_worked_out_in_the_background_and_kept, reading_what_was_made, one_function_is_decompiled_now_as_the_python_did, two_builds_are_compared_and_one_function_shown_side_by_side, the_ledger_is_kept_and_served_from_the_kept_copy_while_a_new_one_is_made, the_http_transport_checks_the_token_the_host_and_the_session (one each, same order as the Python tests)
@@ -125,13 +125,13 @@ Python checks that need the retail corpus / DOSBox / MASM / a PowerPC compiler s
 
 ## test_native_engine.py (4)
 - [C] same facts and runs/store/knowledge/verdict words -- engine.engine.*, engine.facts.*, engine.function_store.a_store_written_by_the_c_engine_reads_the_same, knowledge.store.digests_follow_the_piece, engine.function_store.older_spellings_read_as_the_words_now (behaviour)
-- [G] replay of tests/data/native_engine_golden.txt (Python-literal rows of 4 cases) not done natively
+- [P] replay of tests/data/native_engine_golden.txt -- engine.engine_golden.the_same_facts_and_runs_as_the_python_engine (the "facts" case: same pipeline, same 18 asks and changes; value, kept/made counts per kind, what was made, every fact row incl. SHA-1 hashes; the golden converted to engine/testdata/engine_facts.golden.json). store/kb/verdicts cases stay [C] (above). Differences: the binary size, a file fact's folder, the engine's own file/binary step versions, and a batch step's input recorded twice by the Python are left out
 
 ## test_native_formats.py (1) [C] formats.pe.* (truncation/damaged), formats.ne.damage_never_crashes, formats.le.errors_and_damage, formats.dos.errors, reader facts on real files; [N] the Python-attribute digest mechanism
 
 ## test_native_trace.py (6)
 - [C] same_record_synthetic/shadow32/driver/win16/lz32/record_has_what_was_run -- emulate.native_trace.*, emulate.native_shadow.*, emulate.native_driver.*, emulate.native_win16.*, emulate.emulator.the_real_lz32_dll_traces_the_same_fresh_and_kept (behaviour)
-- [N] python_raises_through (Python hook plumbing); [G] tests/data/native_trace_golden.txt digests not replayed
+- [N] python_raises_through (Python hook plumbing); [P] tests/data/native_trace_golden.txt -- emulate.emulator.cases_the_recorder_agreed_gave_one_record_give_one_record: the golden is a digest of the Python's repr of each record, which cannot be reproduced without writing Python's text; what it pins that can be is which cases gave the SAME record (plain/stub/stub-unique-reads for f(7), g, h; judge/judge-capped for g, h) -- those groups are checked on the same module and the same eight configurations, with f(5) worked out from the code. The 16-bit / LZ32 / driver / shadow32 digests (lz16, lz32, driver, shadow) are not replayed: [C] by the native twins (emulate.native_win16.*, emulate.emulator.the_real_lz32_dll..., emulate.native_driver.*, emulate.native_shadow.*)
 
 ## test_nes.py (8)
 - [C] cartridge -- formats.nes.*; table_round_trip -- decompile.m6502.roundtrip_every_opcode; source_rebuilds -- source.nes_writer.the_program_comes_back_as_source_that_builds_the_same_rom; interpreter -- emulate.m6502.run_multiplies, run_logs_device_accesses_in_order; flags_documented -- emulate.m6502.adc_binary, sbc_carry_is_no_borrow, jsr_rts_brk_rti, indirect_jmp_page_bug; decompiles -- decompile.decompiler.nes_cartridge_as_c
@@ -149,23 +149,36 @@ Python checks that need the retail corpus / DOSBox / MASM / a PowerPC compiler s
 - [C] test_achievements (12) -- java.minecraft.achievements.* (scan_achievements, humanize_and_const_name, distribute_score, map_to_platform_warnings, load_lang_names, run_matches_the_python_module, resolve_icon_atlas, normalize_title_id, suggest_title_id, title_id_from_config, wire_icons_*)
 - [C] test_apimap (12) -- java.apimap.*; test_applet_ping (4) -- java.minecraft.applet_ping.*; test_assets (11) -- java.console.assets.*, java.console.xact.*, java.rgba_png.*
 - [C] test_awt_stubs (6) -- java.runtime.stub_members_match_python, class_stub_text_and_members (runtime.golden.txt holds Point/PointerInfo/MouseInfo)
-- test_beta_fixes (35): [C] 32 -- java.header.typed_enum, constant_enum, java.rules.hotpath_alloc, silent_dispatch, infinite_loop, side_effect_in_branch, virtual_call_in_ctor.*, java.ownership.*, java.console.platform_equivalents.*; [G] 3: scalar_signed_buffer_unsigned, dependency_ordered_before_dependent, seed_priority_preserved
-- [G] test_build3_fixes (5): static shadowing renames; array field null init/reassign
+- test_beta_fixes (35): [C] 32 -- java.header.typed_enum, constant_enum, java.rules.hotpath_alloc, silent_dispatch, infinite_loop, side_effect_in_branch, virtual_call_in_ctor.*, java.ownership.*, java.console.platform_equivalents.* (by name; see the flagged list for the 9 whose literals were not all found); [P] 3 -- java.types.a_byte_scalar_is_signed_and_its_buffer_unsigned, java.init_driver.a_dependency_runs_before_its_dependent, java.init_driver.the_seed_order_of_a_profile_is_kept
+- [P] test_build3_fixes (5) -- java.corpus.a_static_shadowing_an_inherited_instance_method_is_renamed, a_static_with_nothing_to_shadow_is_not_renamed, a_static_overload_beside_an_instance_override_is_not_renamed; java.emitted.an_array_field_initialised_to_null_is_left_empty, an_array_field_assigned_null_becomes_the_empty_array (real front end, javac of the JDK)
 - [C] beside-the-JVM translations (test_bytes 2, test_finally 1, test_input_io 1, test_java_semantics 2, test_null_model 1, test_strings_regex 1, two_phase block_opacity 1 = 9) -- translate.java.*, translate.java_libc.*, translate.java_objects.*, translate.javajudge.*, translate.judge_native_jvm.* (same behaviour, by name)
-- [G] emitted-C++ cases: call_arg_cast 1, ctor_delegation_cast 1, int_array_unbox 2, int_cast 1, noequals_identity 2, ptr_factory 1, collection_out_params 5 (13) -- java.ownership.*, translate.cpp03.* cover by area
+- [P] emitted-C++ cases (13): call_arg_cast 1, ctor_delegation_cast 1, int_array_unbox 2, noequals_identity 2, ptr_factory 1, int_cast 1 -- java.emitted.* (translate/java_ports_test.cpp: Java source -> the application's assembly with the real javac front end -> the emitted C++ text; int_cast compiles the class with g++ and runs it: Java's saturated values); collection_out_params 5 -- java.corpus.* + java.ownership.a_promoted_collection_is_a_reference_in_the_signature
 - [C] test_controller_nav (11) -- java.minecraft.controller_nav.*; test_edition_* (20) -- java.minecraft.edition.*, java.minecraft.package.profile_for_follows_edition_then_version_then_source
-- [C] test_emit (12), test_emit_source (22) -- java.header.*, java.emit.naming.*, java.source.cases_match_python (by name; goldens of the same IR shapes)
-- [G] test_host_compile_fixes (5) -- host-compile of emitted C++, no native twin (includes half: java.runtime.every_canonical_header_is_wired)
+- [P] test_emit (12), test_emit_source (22) -- java.emit_ports.* (java/emit/emit_ports_test.cpp: the same classes, resolvers and substrings, one native test each; the Python built the IR by hand, here the Java that parses to it; bodies are the source test's stand-in) and java.emitted.a_nested_static_aggregate_array_is_not_a_braced_new (the real translator). Were by name only.
+- [P] test_host_compile_fixes (5) -- java.emitted.host_compile_fixes_text (4 text checks in one) and java.emitted.every_class_and_the_runtime_compile (g++ over Probe, Inflate and the runtime unit, then runs it)
 - [C] test_ir (11) -- java.ir.*; test_kind (5) -- verify.lanes.java.*; test_parse (11) -- java.parse.*
-- [G] test_pc_platform (3) -- builds/runs the PC platform layer with g++
+- [P] test_pc_platform (3) -- java.pc_platform.the_pc_layer_replaces_the_stubs (passes); it_builds_and_runs and sound_saving_and_resources_work build with g++ and SDL2 but SKIP here: without LWJGL / the sound system on javac's classpath the game's bodies are unsupported (throw at start-up), as the Python skipped without LWJGL
 - [C] test_pipeline (19) -- java.transpile.*, java.report.*, java.runtime.file_sets_match_python, java.minecraft.raycast.*, java.prune.*, java.overlays.*
 - [C] test_platform_config (12) -- java.console.sdk.*, java.console.platform_config.*; test_platform_coverage_symbols (3) -- java.minecraft.platform_coverage.*; test_platform_refs (5), test_runnable_entry (6) -- java.platform_refs.*
 - [C] test_probe* (14) -- java.probe.*; test_profile_invariants (5), test_profiles_selection (4) -- java.profiles.*, java.minecraft.editions.*, xbox360.*
 - [C] test_project_layout (8), test_project_scan (4), test_projects (4), test_vcxproj_filters (4), test_ui_mark (7) -- java.console.project_layout.*, project_scan.*, java.projects.*, java.console.vcxproj.*, java.minecraft.ui_mark.*, java.debug.*
 - [C] test_reflection_factory (7) -- java.reflection_factory.*; test_render_fix (5) -- java.minecraft.render_fix.*
-- test_review_fixes (11): [C] 5 -- controller_nav anchors, convert restores, applet_ping registered, alpha/beta edition (java.minecraft.controller_nav.*, java.run.tool_table, java.minecraft.edition.detect); [G] 6 -- tochararray/getbytes memory, save360 mount gate x2, Math.sqrt/atan2, alpha_test toggle, viewport clamp (platform-layer C++ sources)
+- test_review_fixes (11): [C] 5 -- controller_nav anchors, convert restores, applet_ping registered, alpha/beta edition (java.minecraft.controller_nav.*, java.run.tool_table, java.minecraft.edition.detect); [P] 6 -- java.platform.tochararray_and_getbytes_memory_is_bounded, save360_shutdown_releases_the_mount_gate, save360_unwritable_mount_is_closed_before_the_fallback, javamathsqrt_resolves_atan2_with_a_float_argument, toggling_alpha_test_does_not_reset_the_alpha_ref, the_viewport_height_comes_from_the_backbuffer_and_y_is_clamped (the platform layer's C++ read and compiled with g++)
 - [C] test_rules (13) -- java.rules.*; test_runtime_stubs (9) -- java.stubs.*, java.runtime.*; test_scaffold (5) -- java.scaffold.*; test_two_phase (4 of 5) -- java.twophase.*; test_types (19) -- java.types.*
 
-# Counts
-Python tests/checks listed: 410 (suites 29 + java). Covered about 360 (incl. ~60 java matched by name only), ported 8 (6 cases: aim, standin, 2 assembler, nes lane, genesis lane = 6 tests covering 6 Python tests; the assembler 2 cover 1), not needed 6, gaps below.
-GAP list (follow-up ports): concolic x3, match_powerpc x4, frozen 12 recorded cases, native_engine/native_trace golden replays 2, java 38 (beta_fixes 3, build3 5, emitted-C++ 13, host_compile 5, pc_platform 3, review_fixes 6, plus pipeline-level none).
+# Counts (final, 2026-11-13, second pass)
+
+Python tests/checks listed: 410 (29 suites + tests/java 375 test functions by the literal check; the first pass counted 330 java tests by name -- parametrised and class-nested ones differ).
+
+Closed in this pass (all green in `area` builds: source 418, decompile 189, emulate 269, verify 292, formats 558, engine 91, java 557, translate 405 passed, 0 failed):
+- test_concolic 3 -> ported (emulate.windows16.a_run_with_its_shadow_is_the_same_run, verify.win32.a_32_bit_run_with_its_shadow_is_the_same_run, verify.win32.the_explorer_finds_every_path_of_lzopenfile)
+- test_match_powerpc 4 -> ported (source.pipeline_ppc.*, with the Xbox 360 compiler)
+- test_frozen 12 recorded cases -> ported (decompile.c_text.frozen_* 5, formats.frozen.* 7)
+- native_engine_golden.txt -> ported (engine.engine_golden..., hashes included); native_trace_golden.txt -> ported in the form the digests allow (the cases that gave one record give one record; the digests themselves are hashes of Python text)
+- java gap tests: 35 ported (beta_fixes 3, build3 5, emitted-C++ 13, host_compile 5, pc_platform 3 -- 2 of them skip without LWJGL / the sound system on javac's classpath, review_fixes 6) -- translate/java_ports_test.cpp (33 native tests)
+- test_emit 12 + test_emit_source 22 (were by name) -> ported one for one (java/emit/emit_ports_test.cpp, 33 native tests, + 1 in java_ports_test.cpp)
+New native tests: 83 in six new files + 3 (concolic) + 1 (trace golden) added to existing files = 87.
+
+The by-name java matches (the ~55 of the first pass; in all 375 java tests): checked by a LITERAL CROSS-CHECK, not side by side -- every string an assertion or call of a Python test names (6+ characters) looked up in native/cb/java, translate, verify, engine, platforms (sources and testdata): 230 of 375 tests have every literal found natively (confirmed), 34 more are the emit ports above, ~11 are the gap ports above; 114 have literals missing (state/work/typed-port/test_port_map_flagged.txt, test by test, with how many literals): most are inputs the native tests spell differently (a golden file holds the whole text, a skip reason, a file name), so the check is a lower bound, not a finding -- they stay [C by name] and are NOT individually confirmed. Highest-risk among them for a follow-up read: test_pipeline (12: pruning, overlays, forwarders), test_two_phase constructors_become_j2xinit, test_beta_fixes header/dtor ownership (9), test_project_layout (7), test_ui_mark (5), test_runnable_entry (5), the "beside the JVM" differentials (test_bytes, finally, input_io, java_semantics, null_model, strings_regex, probe*: native twins are translate.javajudge*/judge_native_jvm, whose fixtures are not these programs).
+
+Not ported, with reason: nothing of the 38 listed gaps is left. Findings: (1) the emitted PC programs (pc_platform) abort at start-up with UnsupportedOperationException when LWJGL is not on the front end's classpath -- the two run tests skip; whether the native front end is given the LWJGL stand-ins by the application was not checked. (2) native_trace digests cannot be replayed (Python text); (3) a worktree build finds pcodecheck in the main checkout (win32 judge tests that look for it beside native/cb skip in a worktree; the new tests search upward like pcode_test does).
