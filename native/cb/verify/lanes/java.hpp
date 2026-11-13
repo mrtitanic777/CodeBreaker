@@ -35,11 +35,16 @@ class JavaLane final : public Kind {
 public:
     // Bump when what a verdict means changes (the flags, the judge, the transpile call).
     static constexpr int kRev = 3;
-    // The dialect the program is compiled as, and the label the transpiler is asked for.
+    // The dialect the program is compiled as when none is asked for (the 360's), and the label the transpiler is asked for then.
     static constexpr std::string_view kStandard = "c++03";
     static constexpr std::string_view kCppStandard = "C++03";
-    // The compiler's switches for a syntax check: the dialect, no code, no warnings.
-    static const std::vector<std::string>& flags();
+    // The compiler's switches for a syntax check: the dialect (a compiler's `-std=` word, "c++03" or "c++17"), no code, no warnings.
+    static std::vector<std::string> flags(std::string_view standard = kStandard);
+
+    // What differs between one use of the lane and another, given where it is made.
+    struct Options {
+        std::string standard{kStandard};                     // the dialect the transpiled program is compiled and run as
+    };
 
     // Where the tools are. An empty `cxx` is no compiler (the lane has no profile); an empty `javac` no JDK (nothing is run).
     struct Tools {
@@ -52,10 +57,11 @@ public:
     // Transpile the Java source in the first folder into the second, as this kind asks (C++03, no platform).
     using Convert = std::function<java::transpile::Summary(const std::filesystem::path& java_dir, const std::filesystem::path& out_dir)>;
 
-    JavaLane(ToolsFn tools, Convert convert) : tools_(std::move(tools)), convert_(std::move(convert)) {}
+    JavaLane(ToolsFn tools, Convert convert, Options options = {})
+        : tools_(std::move(tools)), convert_(std::move(convert)), options_(std::move(options)) {}
 
     const std::string& name() const override;
-    // The digest covers the revision, the compiler, the flags, the probe's revision, the JDK and the game's libraries.
+    // The digest covers the revision, the compiler, the dialect, the flags, the probe's revision, the JDK and the game's libraries.
     // NotFoundError when there is no C++ compiler.
     Profile profile(const std::filesystem::path& module_path) const override;
     // Transpile the module into <work>/cpp. Classes are named by their .java file. UsageError for a jar.
@@ -93,12 +99,12 @@ public:
     // Compile one translation unit for syntax and types. `prefix` is a header precompiled by `precompile` -- the support headers every
     // unit starts with -- included first. ToolError when the compiler cannot be started.
     static Check check(const std::filesystem::path& cxx, const std::filesystem::path& include_dir, const std::filesystem::path& unit,
-                       const std::optional<std::filesystem::path>& prefix = std::nullopt);
+                       const std::optional<std::filesystem::path>& prefix = std::nullopt, std::string_view standard = kStandard);
     // stdafx.h and the Java runtime (JavaRT.h and what it includes) precompiled once for the module: every class unit starts with them,
     // and parsing them was four fifths of each class's compile. The header to pass as `prefix`, or nothing (a compiler that is not
     // GCC's, or the header did not precompile).
     static std::optional<std::filesystem::path> precompile(const std::filesystem::path& cxx, const std::filesystem::path& include_dir,
-                                                           const std::filesystem::path& work);
+                                                           const std::filesystem::path& work, std::string_view standard = kStandard);
 
     // ---- the judge ---------------------------------------------------------------------------------------------------------
 
@@ -111,6 +117,7 @@ public:
     // What judging a class needs of the whole build.
     struct Context {
         Tools tools;
+        std::string standard{kStandard};                     // the dialect the C++ is compiled as
         java::probe::Toolchain toolchain;
         std::filesystem::path include_dir;                   // the emitted C++
         std::filesystem::path work;
@@ -124,6 +131,7 @@ public:
 private:
     ToolsFn tools_;
     Convert convert_;
+    Options options_;
 };
 
 }  // namespace cb::verify::lanes

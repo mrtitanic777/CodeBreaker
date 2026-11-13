@@ -1,10 +1,11 @@
 // codebreaker/translate/javajudge.hpp -- COMPAT SHIM over cb/translate/javajudge.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// The module is native/cb/translate/javajudge.{hpp,cpp}: the judge, given what it needs of the rest of CodeBreaker as small
-// interfaces. This header is those interfaces over the old ports that still provide them -- the java lane (verify/lanes/java),
-// the probe (java/probe), the whole-program back ends (backends/cpp17, backends/c_java) and the Java front end a host gives
-// with set_java_frontend() -- and keeps the old entry points: judge_tree, judge_program, lower_program, build and the verdict
-// words. The units the front end lowers are old trees; the judge reads them as typed nodes (the old tree's L2 document) and the
+// The module is native/cb/translate/javajudge.{hpp,cpp} (the judge, given what it needs of the rest of CodeBreaker as small
+// interfaces) and javajudge_lane (the java lane, cb/verify/lanes/java, as the tree judge's lane: the dialect of a back end is
+// the lane's option, no module variable is reassigned). This header is the interfaces of the program judge over the old ports that
+// still provide them -- the probe (java/probe), the whole-program back ends (backends/cpp17, backends/c_java) and the Java front end
+// a host gives with set_java_frontend() -- and the tree judge's conversion (the old transpiler's, whose front end is the host's),
+// and keeps the old entry points: judge_tree, judge_program, lower_program, build and the verdict words. The units the front end lowers are old trees; the judge reads them as typed nodes (the old tree's L2 document) and the
 // back ends are handed the old trees they were written for.
 //
 // What the old file held that nothing outside it used (the harness's formats and helpers, probe_methods ...) is the new
@@ -28,7 +29,13 @@
 #include "cb/core/process.hpp"
 #include "cb/core/text.hpp"
 #include "cb/translate/javajudge.hpp"
+#include "cb/translate/javajudge_lane.hpp"
 #include "cb/translate/l2.hpp"
+
+#ifdef ERROR
+#undef ERROR   // (wingdi.h, from the process and lane headers: it is the name of a ledger Category in the old java ports below)
+#endif
+
 #include "codebreaker/java/probe.hpp"
 #include "codebreaker/translate/backends/c_java.hpp"
 #include "codebreaker/translate/backends/cpp17.hpp"
@@ -36,6 +43,7 @@
 #include "codebreaker/translate/ir.hpp"
 #include "codebreaker/translate/l2.hpp"
 #include "codebreaker/verify/lanes/java.hpp"
+#include "codebreaker/java/transpile.hpp"
 #include "codebreaker/verify/verdicts.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
@@ -158,42 +166,6 @@ namespace lane = codebreaker::verify::lanes::java;
 namespace V = codebreaker::verify::verdicts;
 namespace probe = codebreaker::java::probe;
 
-// the java lane as the tree judge's interface
-class OldLane final : public jj::TreeLane {
-public:
-    std::vector<std::string> prepare(const std::filesystem::path& src, const std::filesystem::path& work, jj::Backend backend) override {
-        // (the lane's module variables are the Python's: set for the run, put back after -- see judge_tree below)
-        m_ = lane::prepare(cb::compat::to_py(cb::fs::to_text(src)), cb::compat::to_py(cb::fs::to_text(work)));
-        built_ = lane::build(m_, cb::compat::to_py(cb::fs::to_text(src)), cb::compat::to_py(cb::fs::to_text(work)));
-        (void)backend;
-        std::vector<std::string> names;
-        for (const py::str& n : m_.order) {
-            if (built_.items.contains(n)) names.push_back(n.utf8());
-        }
-        return names;
-    }
-    jj::LaneResult judge(const std::string& cls) override {
-        const py::str name = cb::compat::to_py(cls);
-        lane::Verdict v = lane::judge(built_.context, built_.items.at(name));
-        const py::str& word = std::get<0>(v);
-        jj::LaneResult out;
-        out.reason = std::get<1>(v).utf8();
-        out.detail = std::get<3>(v).utf8();
-        if (word == V::NO_COMPILE) out.verdict = jj::LaneVerdict::NoCompile;
-        else if (word == V::DIVERGENT) out.verdict = jj::LaneVerdict::Divergent;
-        else if (V::GOOD().contains(word)) out.verdict = jj::LaneVerdict::Good;
-        return out;
-    }
-    std::size_t gaps(const std::string& cls) override {
-        const py::str name = cb::compat::to_py(cls);
-        return m_.texts.contains(name) ? static_cast<std::size_t>(m_.texts.at(name).count(py::str("J2X-GAP:"))) : 0;
-    }
-
-private:
-    lane::Prepared m_;
-    lane::Built built_;
-};
-
 // the old trees as typed nodes (their L2 documents), made in `arena`
 inline std::vector<cb::translate::ir::Node*> typed(cb::Arena& arena, const py::list<ir::NodeP>& old_units) {
     std::vector<cb::translate::ir::Node*> out;
@@ -203,41 +175,24 @@ inline std::vector<cb::translate::ir::Node*> typed(cb::Arena& arena, const py::l
 
 }  // namespace shim_detail
 
+// The conversion the java lane asks for, as the old transpiler does it (its front end is the Python's, a host's): the Java source
+// folder into C++ of the dialect `label` ("C++03", "C++17"), for no platform and with no report.
+inline cb::verify::lanes::JavaLane::Convert old_convert(std::string_view label) {
+    return [label = std::string(label)](const std::filesystem::path& java_dir, const std::filesystem::path& out_dir) {
+        const auto old = codebreaker::java::transpile::convert(cb::compat::to_py(cb::fs::to_text(java_dir)), cb::compat::to_py(cb::fs::to_text(out_dir)),
+                                                               std::nullopt, nullptr, false, cb::compat::to_py(label), std::nullopt);
+        cb::java::transpile::Summary out;
+        out.markers = cb::compat::from_py(old.markers);
+        return out;
+    };
+}
+
 // Every class of the Java tree `src` converted by the transpiler with the body back end `backend` ('cpp03' or 'cpp17') and
 // judged by the java lane (probe.py). `only`: just these classes; `workers`: threads judging at once.
 inline TreeVerdicts judge_tree(const py::str& src, const py::str& work, const py::str& backend = py::str("cpp03"),
                                const std::optional<py::set<py::str>>& only = std::nullopt, int64_t workers = 2, const Log& log_in = nullptr) {
-    namespace lane = shim_detail::lane;
-    namespace probe = shim_detail::probe;
     const bool cpp17 = backend == py::str("cpp17");
     if (!cpp17 && backend != py::str("cpp03")) throw py::KeyError(py::repr(backend).utf8());
-    const py::str label = py::str(cpp17 ? "C++17" : "C++03"), std_ = py::str(cpp17 ? "c++17" : "c++03");
-    // (lane.CPP_STD, lane.STD, lane.FLAGS, probe.CXX_STD are module variables the Python reassigns and puts back)
-    py::str& lane_std = const_cast<py::str&>(lane::STD);
-    py::str& lane_cpp_std = const_cast<py::str&>(lane::CPP_STD);
-    const py::str saved_cpp_std = lane_cpp_std, saved_std = lane_std, saved_cxx = probe::CXX_STD;
-    const py::list<py::str> saved_flags = lane::FLAGS.copy();
-    struct Restore {
-        std::function<void()> f;
-        ~Restore() { f(); }
-    } restore{[&] {
-        lane_cpp_std = saved_cpp_std;
-        lane_std = saved_std;
-        probe::CXX_STD = saved_cxx;
-        lane::FLAGS.clear();
-        lane::FLAGS.extend(saved_flags);
-    }};
-    lane_cpp_std = label;
-    lane_std = std_;
-    probe::CXX_STD = std_;
-    {
-        py::list<py::str> flags{py::str("-std=") + std_};
-        for (const py::str& f : saved_flags) {
-            if (!f.startswith(py::str("-std="))) flags.append(f);
-        }
-        lane::FLAGS.clear();
-        lane::FLAGS.extend(flags);
-    }
     jj::TreeOptions options;
     options.workers = static_cast<unsigned>(workers < 1 ? 1 : workers);
     if (only) {
@@ -253,8 +208,19 @@ inline TreeVerdicts judge_tree(const py::str& src, const py::str& work, const py
             std::fputc('\n', stdout);
         }
     };
-    shim_detail::OldLane old_lane;
-    const auto judged = jj::judge_tree(old_lane, cb::fs::from_text(src.utf8()), cb::fs::from_text(work.utf8()),
+    // (the tools: where the settings say the host compiler and the JDK are; the game's libraries are the probe's)
+    jj::JavaTreeLane lane(
+        [] {
+            cb::verify::lanes::JavaLane::Tools t;
+            t.cxx = cb::fs::from_text(_host_cxx().utf8());
+            auto [javac, java] = codebreaker::verify::lanes::java::jdk();
+            t.javac = cb::fs::from_text(javac.utf8());
+            t.java = cb::fs::from_text(java.utf8());
+            for (const py::str& jar : codebreaker::java::probe::libraries()) t.libraries.push_back(cb::fs::from_text(jar.utf8()));
+            return t;
+        },
+        old_convert);
+    const auto judged = jj::judge_tree(lane, cb::fs::from_text(src.utf8()), cb::fs::from_text(work.utf8()),
                                        cpp17 ? jj::Backend::Cpp17 : jj::Backend::Cpp03, options);
     TreeVerdicts out;
     for (const auto& [cls, j] : judged) {

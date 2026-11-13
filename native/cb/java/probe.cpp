@@ -821,7 +821,8 @@ std::optional<stdfs::path> library(const Toolchain& tools, const stdfs::path& cp
         const UnitResult r = compile_unit(tools, cpp_dir, cpp_dir / unit, obj);
         return r.ok ? std::optional(obj) : std::nullopt;
     });
-    const stdfs::path tmp = lib.string() + "." + std::to_string(_getpid()) + ".tmp";
+    // (absolute: ar runs in the objects' folder, where a path relative to the caller's does not reach)
+    const stdfs::path tmp = stdfs::absolute(lib).string() + "." + std::to_string(_getpid()) + ".tmp";
     // the member list in a file: the command line would be too long for Windows
     const stdfs::path listing = tmp.string() + ".rsp";
     std::string members;

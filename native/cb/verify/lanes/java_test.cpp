@@ -205,6 +205,33 @@ CB_TEST("verify.lanes.java.a_class_that_does_not_compile_is_no_compile_and_one_t
     CB_CHECK_EQ(good.detail, "compiles (g++ -std=c++03 -fsyntax-only -w); not run: no JDK (settings: java)");
 });
 
+CB_TEST("verify.lanes.java.the_dialect_is_an_option_of_the_lane", [] {
+    fs::ScopedTempDir dir("cb_java_lane");
+    put_text(dir.path() / "cxx.exe", "compiler one");
+    JavaLane::Tools t;
+    t.cxx = dir.path() / "cxx.exe";
+    const auto tools = [&] { return t; };
+    JavaLane c03(tools, fake_convert);
+    JavaLane c17(tools, fake_convert, {.standard = "c++17"});
+    CB_CHECK((JavaLane::flags("c++17") == std::vector<std::string>{"-std=c++17", "-fsyntax-only", "-w"}));
+    CB_CHECK(c17.profile({}).settings.find("-std=c++17 -fsyntax-only -w") != std::string::npos);
+    CB_CHECK(c17.profile({}).settings.find("c++03") == std::string::npos);
+    CB_CHECK(c17.profile({}).digest != c03.profile({}).digest);      // a verdict is for one dialect
+    CB_CHECK_EQ(c03.profile({}).digest, JavaLane(tools, fake_convert, {}).profile({}).digest);   // the default is the 360's
+    if (!host_compiler_runs()) return;
+    // the judge compiles in the dialect of its context: a C++11 form is a refusal in C++03
+    put_text(dir.path() / "inc" / "Auto.cpp", "int f() { auto x = 1; return x; }\n");
+    JavaLane::Context context;
+    context.tools.cxx = "g++";
+    context.include_dir = dir.path() / "inc";
+    context.work = dir.path() / "work";
+    CB_CHECK(JavaLane::judge_class(context, {"Auto", dir.path() / "inc" / "Auto.cpp", {}}).verdict == Verdict::NoCompile);
+    context.standard = "c++17";
+    const Judgement as17 = JavaLane::judge_class(context, {"Auto", dir.path() / "inc" / "Auto.cpp", {}});
+    CB_CHECK(as17.verdict == Verdict::Inconclusive);
+    CB_CHECK_EQ(as17.detail, "compiles (g++ -std=c++17 -fsyntax-only -w); not run: no JDK (settings: java)");
+});
+
 CB_TEST("verify.lanes.java.precompile_is_for_gcc_only", [] {
     fs::ScopedTempDir dir("cb_java_lane");
     CB_CHECK(!JavaLane::precompile("clang++.exe", dir.path() / "inc", dir.path() / "work"));

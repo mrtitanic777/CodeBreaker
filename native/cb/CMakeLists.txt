@@ -232,7 +232,7 @@ if(CB_ASAN)
 endif()
 
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java cb_verify)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
@@ -355,7 +355,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b1.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b2.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/java.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"

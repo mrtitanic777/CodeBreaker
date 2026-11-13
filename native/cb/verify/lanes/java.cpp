@@ -41,9 +41,8 @@ std::string joined(std::span<const std::string> lines, std::string_view separato
 
 }  // namespace
 
-const std::vector<std::string>& JavaLane::flags() {
-    static const std::vector<std::string> kFlags = {"-std=" + std::string(kStandard), std::string(kSyntaxOnly), "-w"};
-    return kFlags;
+std::vector<std::string> JavaLane::flags(std::string_view standard) {
+    return {"-std=" + std::string(standard), std::string(kSyntaxOnly), "-w"};
 }
 
 const std::string& JavaLane::name() const {
@@ -95,12 +94,13 @@ std::string JavaLane::module_sha(const stdfs::path& path) {
 // ---- the host compiler -----------------------------------------------------------------------------------------------------
 
 JavaLane::Check JavaLane::check(const stdfs::path& cxx, const stdfs::path& include_dir, const stdfs::path& unit,
-                                const std::optional<stdfs::path>& prefix) {
+                                const std::optional<stdfs::path>& prefix, std::string_view standard) {
     // -iquote, not -I: the emitted tree has headers named like the C library's (Math.h, Locale.h) and on a case-insensitive disk -I
     // would put them in front of <math.h> and <locale.h>
     process::ProcessSpec spec;
     spec.argv = {fs::to_text(cxx)};
-    spec.argv.insert(spec.argv.end(), flags().begin(), flags().end());
+    const std::vector<std::string> switches = flags(standard);
+    spec.argv.insert(spec.argv.end(), switches.begin(), switches.end());
     spec.argv.insert(spec.argv.end(), {"-iquote", fs::to_text(include_dir)});
     if (prefix && !prefix->empty()) spec.argv.insert(spec.argv.end(), {"-include", fs::to_text(*prefix)});
     spec.argv.push_back(fs::to_text(unit));
@@ -115,7 +115,8 @@ JavaLane::Check JavaLane::check(const stdfs::path& cxx, const stdfs::path& inclu
     return out;
 }
 
-std::optional<stdfs::path> JavaLane::precompile(const stdfs::path& cxx, const stdfs::path& include_dir, const stdfs::path& work) {
+std::optional<stdfs::path> JavaLane::precompile(const stdfs::path& cxx, const stdfs::path& include_dir, const stdfs::path& work,
+                                                std::string_view standard) {
     // GCC's (g++, g++-13, x86_64-w64-mingw32-g++): a precompiled .gch is its format; clang++ has "g++" in its name and is not it
     const std::string compiler = text::lower(fs::to_text(cxx.stem()));
     if (compiler != "g++" && !compiler.ends_with("-g++") && !compiler.starts_with("g++-")) return std::nullopt;
@@ -125,7 +126,7 @@ std::optional<stdfs::path> JavaLane::precompile(const stdfs::path& cxx, const st
     java::textutil::write_text(head, "#include \"stdafx.h\"\n#include \"JavaRT.h\"\n");
     process::ProcessSpec spec;
     spec.argv = {fs::to_text(cxx)};
-    for (const std::string& f : flags()) {
+    for (const std::string& f : flags(standard)) {
         if (f != kSyntaxOnly) spec.argv.push_back(f);
     }
     spec.argv.insert(spec.argv.end(), {"-iquote", fs::to_text(include_dir), "-x", "c++-header", fs::to_text(head), "-o", fs::to_text(head) + ".gch"});
@@ -144,7 +145,7 @@ Profile JavaLane::profile(const stdfs::path&) const {
     std::string libraries;
     for (const stdfs::path& jar : tools.libraries) libraries += (libraries.empty() ? "" : ",") + fs::to_text(jar.filename());   // what the game is compiled against
     const auto stamp = [](const stdfs::path& tool) { return tool.empty() ? std::string("none") : base::cache::tool_id(tool); };
-    const std::string settings = std::format("java rev {} cxx {} flags {} probe {} javac {} java {}{}", kRev, stamp(tools.cxx), joined(flags(), " "),
+    const std::string settings = std::format("java rev {} cxx {} flags {} probe {} javac {} java {}{}", kRev, stamp(tools.cxx), joined(flags(options_.standard), " "),
                                              java::probe::kRevision, stamp(tools.javac), stamp(tools.java),
                                              libraries.empty() ? std::string() : " libraries " + libraries);
     return {crypto::to_hex(crypto::sha1(as_bytes(settings))).substr(0, 12), settings};
@@ -211,16 +212,17 @@ Built JavaLane::build(const Prepared& prepared, const stdfs::path&, const stdfs:
     }
     auto context = std::make_shared<Context>();
     context->tools = tools;
+    context->standard = options_.standard;
     context->include_dir = m.out;
     context->work = work;
     java::probe::Toolchain& tc = context->toolchain;
     tc.cxx = tools.cxx;
     tc.javac = tools.javac;
     tc.java = tools.java;
-    tc.cxx_std = std::string(kStandard);
+    tc.cxx_std = options_.standard;
     tc.libraries = tools.libraries;
     tc.shim_sources = tools.shim_sources;
-    tc.prefix = precompile(tools.cxx, m.out, work);
+    tc.prefix = precompile(tools.cxx, m.out, work, options_.standard);
     if (!tools.javac.empty()) {
         const stdfs::path staged = work / "javasrc";
         java::probe::stage_sources(m.src, staged);
@@ -237,14 +239,14 @@ Built JavaLane::build(const Prepared& prepared, const stdfs::path&, const stdfs:
 
 Judgement JavaLane::judge_class(const Context& context, const Item& item) {
     const lane_common::Judgement judged = lane_common::judged([&]() -> lane_common::Judgement {
-        const Check checked = check(context.tools.cxx, context.include_dir, item.unit, context.toolchain.prefix);
+        const Check checked = check(context.tools.cxx, context.include_dir, item.unit, context.toolchain.prefix, context.standard);
         if (!checked.ok) {
             const std::string first = checked.errors.empty() ? "the compiler rejected it" : checked.errors.front();
             const std::size_t shown = std::min<std::size_t>(checked.errors.size(), 20);
             return {Verdict::NoCompile, first.substr(0, 200), {}, joined(std::span(checked.errors).first(shown), "\n")};
         }
         const auto compiles = [&](const std::string& why) {
-            return std::format("compiles ({} {}); not run: {}", fs::to_text(context.tools.cxx.filename()), joined(flags(), " "), why);
+            return std::format("compiles ({} {}); not run: {}", fs::to_text(context.tools.cxx.filename()), joined(flags(context.standard), " "), why);
         };
         if (context.tools.javac.empty() || item.source.empty() || !context.tree) {
             return {Verdict::Inconclusive, "not-run", {}, compiles("no JDK (settings: java)")};
