@@ -4,9 +4,11 @@
 #include <array>
 #include <map>
 #include <mutex>
+#include <set>
 
 #include "cb/core/error.hpp"
 #include "cb/knowledge/reads.hpp"
+#include "cb/knowledge/sources.hpp"
 
 namespace cb::knowledge {
 
@@ -199,6 +201,7 @@ struct Knowledge::Impl {
     std::mutex mutex;
     std::unique_ptr<proto::PrototypeTable> table;           // made at the first ask
     std::map<std::string, rtl::SignatureTable> signatures;   // by platform
+    std::set<std::string> authored_loaded;                    // "platform:kind" of the authored kinds this object has made sure are in the store
 };
 
 Knowledge::Knowledge(Store& store, proto::HeaderFolders headers) : store_(store), impl_(std::make_unique<Impl>(std::move(headers))) {}
@@ -208,6 +211,14 @@ Knowledge::~Knowledge() = default;
 std::optional<Value> Knowledge::known(std::string_view platform_name, std::string_view kind, std::string_view key) {
     const std::string p = platform(platform_name);
     record(p, kind, key);
+    // A kind that is authored has its rows in the store only once its file has been read: a store that has not been asked for the whole kind
+    // (`table`) holds none of them, and a lookup would find nothing.
+    bool first = false;
+    {
+        const std::lock_guard lock(impl_->mutex);
+        first = impl_->authored_loaded.insert(p + ":" + std::string(kind)).second;
+    }
+    if (first && AuthoredSources::find({p, std::string(kind)}) != nullptr) (void)store_.authored_table({p, std::string(kind)});
     return store_.get(p, kind, key);
 }
 

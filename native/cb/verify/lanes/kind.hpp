@@ -52,6 +52,10 @@ struct Prepared {
     std::vector<std::string> all_keys;                      // every function's key, sorted
     std::unordered_map<std::string, std::string> texts;     // name -> the text it is judged for
     std::string sig;                                        // what a verdict was reached for: the source, and the lane's revision
+
+    // Put another text in place of a function's for the next build (teeth breaks functions this way). A kind whose build reads the text
+    // from the model it keeps (the module as it made it compilable) overrides this to change that too.
+    virtual void set_text(const std::string& name, std::string text) { texts[name] = std::move(text); }
 };
 
 // What a build gives: the functions the judge can be asked about, the judge, and the functions that were not built.

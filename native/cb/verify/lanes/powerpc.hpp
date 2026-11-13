@@ -172,6 +172,10 @@ public:
 
     struct PreparedPowerPc final : Prepared {
         decompile::c_text::ModulePPC module;
+        void set_text(const std::string& name, std::string text) override {
+            module.made.set_text(name, text);         // (the build reads the module's)
+            texts[name] = std::move(text);
+        }
     };
 
     // What the reconstruction path is told: a verdict is per function.

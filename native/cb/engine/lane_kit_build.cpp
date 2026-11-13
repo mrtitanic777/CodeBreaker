@@ -24,6 +24,14 @@ namespace {
 
 // ---- a module's interface, read from its own tables ------------------------------------------------------------------------------
 
+// The name a module calls itself (a 16-bit module's own name, a 32-bit one's export table name without its extension), in capitals, as the module
+// definition writes it; the file's own name when the module gives none.
+std::string kit_module_name(std::string given, const stdfs::path& file) {
+    std::replace(given.begin(), given.end(), '\0', ' ');   // (a name field padded with NULs or spaces)
+    given = std::string(text::trim(given));
+    return text::upper(given.empty() ? fs::to_text(file.stem()) : given);
+}
+
 build::definitions::Interface kit_interface_of(const stdfs::path& file, bool sixteen_bit) {
     namespace bd = build::definitions;
     bd::Interface iface;
@@ -31,7 +39,7 @@ build::definitions::Interface kit_interface_of(const stdfs::path& file, bool six
         const formats::ne::Module ne = formats::ne::Module::open_file(file);
         iface.kind = bd::ModuleKind::Win16;
         iface.library = (ne.header().flags & 0x8000) != 0;   // the header's library flag, not the file name
-        iface.name = ne.module_name();
+        iface.name = kit_module_name(ne.module_name(), file);
         iface.heap = ne.header().heap_size;
         iface.stack = ne.header().stack_size;
         const std::vector<formats::ne::Name> nonresident = ne.nonresident_names();
@@ -77,7 +85,7 @@ build::definitions::Interface kit_interface_of(const stdfs::path& file, bool six
     iface.kind = bd::ModuleKind::Win32;
     iface.library = pe.header().is_dll();
     const formats::pe::ExportTable table = pe.export_table();
-    iface.name = !table.module.empty() ? table.module : fs::to_text(file.filename());
+    iface.name = kit_module_name(stdfs::path(table.module).stem().string(), file);
     const formats::pe::DataDirectory dir = pe.directory(0);
     std::vector<std::pair<std::uint32_t, std::uint32_t>> code;
     for (const formats::pe::Section& s : pe.sections())

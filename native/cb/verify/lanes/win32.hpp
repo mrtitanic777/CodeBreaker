@@ -175,6 +175,10 @@ public:
     struct PreparedModule final : Prepared {
         decompile::c_text::Compilable32 module;
         std::map<std::string, std::int64_t> va;      // name -> address (the inverse of by_va)
+        void set_text(const std::string& name, std::string text) override {
+            module.texts[name] = text;                // (the build reads the module's)
+            texts[name] = std::move(text);
+        }
     };
 
     // The addresses of the module's functions, ascending (the carve's).
