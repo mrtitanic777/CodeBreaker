@@ -6,10 +6,12 @@
 //     codebreaker invert <16-bit module> [--first N] [--flags "..."] [--show NAME]
 //
 // The tools that are native: early-c (the bytes of MS C 2.03 / 3.00 back to C), early-c-forward (the forward model against a quad file and its
-// object), quads, quad-align, omf, known-differences. The rest of the Python's table -- the models of Microsoft C 6 and C/C++ 8 (msc6*, msvc2*)
-// and the checks that put a model's text to the period compiler (early-c-check, early-c-round-trip, the frame and order probes) -- and the
-// module pass that runs them over a 16-bit module are not in native/cb yet: a command that names one says so and exits 2. (Their models are
-// the C++ of native/invert, on the Python-imitation layer, reached through cbinvert.dll; they move into native/cb as typed modules first.)
+// object), quads, quad-align, omf, known-differences, early-c-frame (the frame model against the compiler's own frames), and the small readers of
+// Microsoft C 6.0a (msc6-templates, msc6-walk, msc6-function, msc6-registers: cb/invert/msc6_small). The rest of the Python's table -- the larger
+// models of Microsoft C 6 and C/C++ 8 (msc6, msc6-idioms, msvc2, msvc2-forward) and the checks that put a model's text to the period compiler
+// (early-c-check, early-c-round-trip, the frame and order probes) -- and the module pass that runs them over a 16-bit module are not in native/cb yet: a command that names one says so and exits 2.
+// (Those models are the C++ of native/invert, on the Python-imitation layer, reached through cbinvert.dll; they move into native/cb as typed
+// modules first.)
 //
 // A raw runner, not a declared cli::Command: every tool reads its own words.
 #pragma once
@@ -22,11 +24,16 @@
 #include <string_view>
 #include <vector>
 
+#include "cb/core/bytes.hpp"
+
 namespace cb::invert::command {
 
 struct Environment {
     // A corpus name -> the module's file (corpus.retail); nullopt when there is none. Used by the module pass.
     std::function<std::optional<std::filesystem::path>(std::string_view)> retail;
+    // The code bytes Microsoft C 6.0a gives for one source text under these switches (build/msc6); none: the compiler refused the text. Absent
+    // where the compiler is not set up: a tool that puts a model's text to it says so and goes without.
+    std::function<std::optional<Bytes>(std::string_view text, std::string_view flags)> compile_msc6;
 };
 
 // The tools of the table, by name, with one line each, native or not.

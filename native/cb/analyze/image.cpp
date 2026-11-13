@@ -108,7 +108,9 @@ ImageSpec pe_spec(const formats::pe::Image& pe) {
         if (s == nullptr || !s->executable) continue;
         starts.insert(va);
         roots.insert(va);
-        if (e.name && is_symbol_name(*e.name)) spec.function_names[va] = *e.name;
+        // (an export by its ordinal only is called Ord<n>, as the compilers' import libraries spell it)
+        const std::string name = e.name && !e.name->empty() ? *e.name : std::format("Ord{}", e.ordinal);
+        if (is_symbol_name(name)) spec.function_names[va] = name;
     }
     if (const auto entry = pe.entry_va()) {
         roots.insert(static_cast<Va>(*entry));
