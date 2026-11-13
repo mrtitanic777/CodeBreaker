@@ -372,7 +372,8 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b5.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/module.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b4.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b4.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_pe.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

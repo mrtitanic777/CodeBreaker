@@ -1156,3 +1156,18 @@ The judge of every function the Python lane built, on the same original and the 
 | version.dll, 32 functions | 6.3 s | 3.9 s |
 
 Verdict, reason, limits (coverage, paths=N / paths-all, argc-unknown) and the one line saying what differed are the same on all 52.
+
+## source/pe_writer and source/dos_writer (agent a46293618e3407f3f, 2026-11-12)
+
+Old = the Python (`python -m codebreaker pe-source` / `dos-source`, process start included; the old typed port cannot be timed on these: its tests need the exe); New = native/cb Release /O2 in the area test process, NASM / OpenWatcom run as children in both. Real Windows 95 programs.
+
+| What | Python | C++ |
+|---|---|---|
+| pe-source lz32.dll (378 instructions) | 1.9 s | 0.33 s |
+| pe-source version.dll (612) / htmla.dll (10,033) | 0.9 s / 3 s | 0.35 s / 0.76 s |
+| dos-source choice.com | about 1 s (probes known) | 1.1 s (a fresh probe file) |
+| dos-source find.exe / xcopy.exe (EXEPACK, file composed) | about 1 s / 1 s (probes known) | 2.2 s / 0.8 s (a fresh probe file) |
+| dos-source EXTRACT.EXE (PKLITE) | 9 s (probes asked for the first time) | 1.2 s (probes known) |
+| dos-source IO.SYS (47,882 instructions, 82 rounds) | 34 s and 38 s (two runs) | 29 s and 47 s (two runs; the machine was busy in the second) |
+
+Where the C++ has no advantage the time is the assembler and linker (a process per round and per probe batch), the same in both.

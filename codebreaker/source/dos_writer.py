@@ -151,7 +151,9 @@ class Writer(object):
                 continue                                     # more than one relocated word: written as bytes
             target = None
             groups = set(ins.groups)
-            if (capstone.x86.X86_GRP_JUMP in groups or capstone.x86.X86_GRP_CALL in groups) and len(ins.operands) == 1 \
+            # (loop and jcxz are branches too -- capstone files them under "branch relative", not "jump" -- and go to a label like the rest)
+            if (capstone.x86.X86_GRP_JUMP in groups or capstone.x86.X86_GRP_CALL in groups
+                    or ins.mnemonic in ("loop", "loope", "loopne", "jcxz", "jecxz")) and len(ins.operands) == 1 \
                     and ins.operands[0].type == capstone.x86.X86_OP_IMM and where is None and \
                     ins.bytes[0] not in (0x9A, 0xEA):
                 delta = (ins.operands[0].imm - ((at + ins.size) & 0xFFFF)) & 0xFFFF

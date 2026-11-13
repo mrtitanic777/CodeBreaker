@@ -115,7 +115,7 @@ CB_TEST("build.pklite.pack_rebuilds_the_real_module", [] {
     CB_CHECK_EQ(p.header.sp, 0x200);
     CB_CHECK_EQ(p.header.min_alloc, 2631);
     CB_CHECK_EQ(p.header.relocs.size(), 1u);
-    CB_CHECK(p.header.relocs[0].segment == 7 && p.header.relocs[0].offset == 0);
+    CB_CHECK(p.header.relocs[0].segment == 0 && p.header.relocs[0].offset == 7);   // the word at 0000:0007
     // more memory asked for: the entry code is told more, nothing else changes
     const pklite::Packed more = pklite::pack(s.image, relocs, s.regs, head, 5000);
     CB_CHECK_EQ(more.module[1] | (more.module[2] << 8), 0x2881);
