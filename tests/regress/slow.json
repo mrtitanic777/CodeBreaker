@@ -1,0 +1,7 @@
+{
+  "cases": [
+    {"name": "x360-tetris", "package_setting": "regress_tetris", "argv": ["recompile-project", "{package}", "--check"], "expect_exit": 0},
+    {"name": "x360-minecraft", "package_setting": "regress_minecraft", "argv": ["recompile-project", "{package}", "--check"], "expect_exit": 0},
+    {"name": "x360-up", "package_setting": "regress_up", "argv": ["recompile-project", "{package}", "--check"], "expect_exit": 0}
+  ]
+}
