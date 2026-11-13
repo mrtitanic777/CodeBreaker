@@ -5,6 +5,8 @@
 #include <array>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "cb/analyze/dos_functions.hpp"
 #include "cb/base/config.hpp"
 #include "cb/base/settings.hpp"
@@ -14,6 +16,16 @@
 #include "cb/base/corpus_executables.hpp"
 #include "cb/base/tidy_state_command.hpp"
 #include "cb/verify/regress.hpp"
+#include "cb/analyze/ppc_calls.hpp"
+#include "cb/build/disc_image.hpp"
+#include "cb/build/period16.hpp"
+#include "cb/build/xex_edit.hpp"
+#include "cb/core/json.hpp"
+#include "cb/formats/fonts.hpp"
+#include "cb/formats/gfx.hpp"
+#include "cb/formats/media.hpp"
+#include "cb/formats/xbox/system_ui.hpp"
+#include "cb/formats/xex_imports.hpp"
 #include "cb/build/driver.hpp"
 #include "cb/build/resources.hpp"
 #include "cb/coverage/reach_command.hpp"
@@ -59,7 +71,25 @@ namespace cb::app {
 
 namespace {
 
-constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress"});   // (counted by the compiler)
+constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16"});   // (counted by the compiler)
+
+// The console's ordinal names (data/symbols/console_ordinals.json, {library: {ordinal: name}}), read the first time a name is asked for.
+formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config& config) {
+    const std::filesystem::path file = config.data_root() / "symbols" / "console_ordinals.json";
+    auto table = std::make_shared<std::optional<Json>>();
+    return [file, table](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
+        if (!table->has_value()) {
+            std::error_code ec;
+            *table = std::filesystem::is_regular_file(file, ec) ? json::load(file) : Json::object();
+        }
+        const Json& root = **table;
+        const auto lib = root.find(std::string(library));
+        if (lib == root.end() || !lib->is_object()) return std::nullopt;
+        const auto name = lib->find(std::to_string(ordinal));
+        if (name == lib->end() || !name->is_string()) return std::nullopt;
+        return name->get<std::string>();
+    };
+}
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -423,6 +453,22 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         flush_out();
         return formats::xex::run(xex_tools, std::vector<std::string>(args.begin(), args.end()));
     });
+
+    // xex-imports, xex-edit, ppc-calls, system-ui: Xbox 360 modules through the xex program; imports named from the console's ordinals
+    table.set(formats::xex_imports::command({xex_tools, console_ordinal_names(config)}));
+    table.set(build::xex_edit::command({xex_tools}));
+    table.set(analyze::ppc_calls::command({xex_tools, console_ordinal_names(config)}));
+    table.set(formats::xbox::system_ui::command({xex_tools}));
+
+    // disc, media, gfx, fonts: disc images, console media packages, graphics and font files
+    table.set(build::disc_image::command());
+    table.set(formats::media::command());
+    table.set(formats::gfx::command());
+    table.set(formats::fonts::command(formats::fonts::Environment{
+        [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); }}));
+
+    // build16: a Win16 module built with the period toolchain (Microsoft C 6 under DOSBox-X), compared with the original
+    table.set(build::period16::command(build::period16::Environment{config, corpus}));
 
     // heavyiron <archive> ...: Heavy Iron Studios' .HO/.HIP archives
     table.set("heavyiron", [](std::span<const std::string> args) -> int {
