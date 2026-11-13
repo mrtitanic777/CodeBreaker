@@ -1,0 +1,64 @@
+exit: 0
+--- stdout
+<repo>/native/cb/formats/testdata/lz32.dll  (PE, 5632 bytes)
+
+summary:
+  format          PE32
+  type            DLL
+  machine         i386
+  module          LZ32.dll
+  description     
+  subsystem       GUI
+  linker          2.50
+  linked          <time>
+  image_base      0xbfea0000
+  entry           0xbfea1000
+  code_bytes      1536
+  sections        6
+  exports         12
+  import_modules  1
+  imports         17
+  resources       1
+
+headers:
+  file:
+    machine               i386
+    machine_id            0x14c
+    sections              6
+    timestamp             839713624
+    linked                <time>
+    optional_header_size  224
+    characteristics       EXECUTABLE 32BIT DLL
+  optional:
+    magic                    0x10b
+    linker_version           2.50
+    code_size                1536
+    initialized_data_size    3072
+    uninitialized_data_size  0
+    entry_point              0x1000
+    code_base                0x1000
+    image_base               0xbfea0000
+    section_alignment        4096
+    file_alignment           512
+    os_version               1.0
+    image_version            0.0
+    subsystem_version        4.0
+    image_size               28672
+    headers_size             1024
+    checksum                 0x3b54
+    subsystem                2
+    subsystem_name           GUI
+    dll_characteristics      0
+
+sections:
+  name    address     size  file_offset  file_size  flags                       code
+  .text   0xbfea1000  1130  0x400        1536       CODE EXECUTE READ           yes
+  .data   0xbfea2000  138   0xa00        512        INITDATA SHARED READ WRITE  no
+  .idata  0xbfea3000  382   0xc00        512        INITDATA SHARED READ        no
+  .edata  0xbfea4000  289   0xe00        512        INITDATA READ               no
+  .rsrc   0xbfea5000  916   0x1000       1024       INITDATA READ               no
+  .reloc  0xbfea6000  138   0x1400       512        INITDATA DISCARDABLE READ   no
+
+12 exports, 17 imports from 1 modules, 1 resources  (--section exports | imports | resources | all)
+--- files
+--- stderr (not compared)

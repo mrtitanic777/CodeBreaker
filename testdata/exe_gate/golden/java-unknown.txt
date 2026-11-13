@@ -1,0 +1,6 @@
+exit: 2
+--- stdout
+--- files
+--- stderr (not compared)
+codebreaker java: error: unknown command 'no_such_tool'
+run 'codebreaker java help' for the commands

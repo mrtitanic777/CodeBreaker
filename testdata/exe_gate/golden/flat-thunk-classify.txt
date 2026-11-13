@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+=== classify lz32.dll ===
+  format       PE
+  subtype      flat-thunk
+  recipe       thunk-ml-cl-link
+  n_exports    12
+  n_imports    17
+  why          imports flat-thunk helpers (SMapLS,SUnMapLS)
+--- files
+--- stderr (not compared)

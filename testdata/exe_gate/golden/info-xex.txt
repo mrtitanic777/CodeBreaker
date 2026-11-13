@@ -1,0 +1,18 @@
+exit: 0
+--- stdout
+<games>/RubyDung/RubyDung.xex  (Xbox 360 executable (XEX2), 2924544 bytes)
+
+xex:
+  image name        RubyDung.exe
+  load address      0x82000000
+  entry point       0x82067048
+  import libraries  xam.xex, xboxkrnl.exe
+  built with        XAPILIB 2.0.21256.0, D3D9 2.0.21256.0, D3DX9 2.0.21256.0, XGRAPHC 2.0.21256.0, XBOXKRNL 2.0.21256.0, LIBCPMT 2.0.11886.0, LINK 10.0.11886.0, C2 16.0.11886.0, C1 16.0.11886.0
+
+summary:
+  format     Xbox 360 executable (XEX2)
+  type       
+  family     xbox360
+  read with  codebreaker xex
+--- files
+--- stderr (not compared)

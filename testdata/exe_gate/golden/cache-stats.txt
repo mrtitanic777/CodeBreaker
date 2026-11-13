@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+kind                   size    results  generations (* = of now)
+all                  0.0 MB   (cap 2.00 GB: setting cache_max_gb)
+--- files
+--- stderr (not compared)

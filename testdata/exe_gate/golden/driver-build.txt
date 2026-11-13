@@ -1,0 +1,6 @@
+exit: 1
+--- stdout
+splitter     does not assemble: <repo>/testdata/exe_gate/in/splitter/spli
+--- files
+splitter.err 303 09fb77fa25616b5f1478a0a43add441ad25e26806a28093b99520741cd3910f8
+--- stderr (not compared)

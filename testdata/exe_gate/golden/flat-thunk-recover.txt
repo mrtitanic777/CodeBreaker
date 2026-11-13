@@ -1,0 +1,21 @@
+exit: 0
+--- stdout
+=== classify lz32.dll ===
+  format       PE
+  subtype      flat-thunk
+  recipe       thunk-ml-cl-link
+  n_exports    12
+  n_imports    17
+  why          imports flat-thunk helpers (SMapLS,SUnMapLS)
+=== recover (flat-thunk) -> <work>/out ===
+  module=lz32  exports=12  KERNEL32 ordinals=[17, 20, 21, 22, 41, 89, 90]
+  16-bit target: SYSTHUNK.DLL
+  signatures recovered from stubs: 12/12  (0 pointer args, 12 SDK prototypes)
+  recovered (from binary): lz32.def, lz32k32.def, 12/12 signatures (stub arity)
+  scaffolded (need curation): lz32.thk, lz32.c
+--- files
+lz32.c 2961 3e625cec4aec301e19c94d50064e57a226b030848d0ffbb744eb051c83840ed3
+lz32.def 338 56cb07f7adad2383915b8174188c26a7981487ae922fe2a99f2c702361b21cdf
+lz32.thk 1513 8cee0ded516c08e89e73f0fa9c6587b73e57c66548e8d58b66591d109e5140fe
+lz32k32.def 607 f18abcaf118246f69cb25efff92306b7d1f8f8085ad4cc20fc2fcbf02df20a66
+--- stderr (not compared)

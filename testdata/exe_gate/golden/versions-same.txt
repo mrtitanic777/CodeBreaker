@@ -1,0 +1,8 @@
+exit: 0
+--- stdout
+lz32.dll: 39 functions -> lz32.dll: 39
+  identical 39 (same bytes 39, same instructions 0)   changed 0   added 0   removed 0
+  of the new build's 1026 bytes of code: 100.0% identical, 0.0% changed, 0.0% added   <~>
+  names carried to the new build: 0 (0 onto identical bodies)   verified reconstructions that carry: 0
+--- files
+--- stderr (not compared)

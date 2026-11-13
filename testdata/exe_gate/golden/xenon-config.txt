@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+--- files
+d.toml 56630 06c9fda83d613881b3bbba63a63e4694587be7d8b9387299942f6c7c8b45ebc9
+--- stderr (not compared)

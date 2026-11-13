@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+<repo>/native/cb/formats/testdata/fastadd.obj  (OMF object, 505 bytes)
+
+summary:
+  format     OMF object
+  type       
+  family     dos
+  read with  (nothing yet)
+--- files
+--- stderr (not compared)

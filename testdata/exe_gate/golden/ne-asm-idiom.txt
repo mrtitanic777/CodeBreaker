@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+=== lzexpand.dll seg1 [0x0,0x1c8) ===
+*** BYTE-EXACT (456 bytes) -- 170/175 instructions live idiomatic, 5 db-pinned (97.1% live) ***
+--- files
+--- stderr (not compared)

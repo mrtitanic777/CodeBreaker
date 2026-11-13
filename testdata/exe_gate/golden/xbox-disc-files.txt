@@ -1,0 +1,5 @@
+exit: 1
+--- stdout
+--- files
+--- stderr (not compared)
+codebreaker: xdvdfs at offset 0x0: no XDVDFS volume found

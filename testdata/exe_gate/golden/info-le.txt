@@ -1,0 +1,55 @@
+exit: 0
+--- stdout
+<repo>/native/cb/formats/testdata/bios.vxd  (LE, 21429 bytes)
+
+summary:
+  format          LE
+  type            driver
+  machine         80386
+  module          BIOS
+  description     BIOS Virtual Device  (Version 4.0)
+  subsystem       Windows 386
+  linker          
+  linked          
+  image_base      0x0
+  entry           0x0
+  code_bytes      15111
+  sections        4
+  exports         0
+  import_modules  0
+  imports         0
+  resources       0
+
+headers:
+  signature            LE
+  cpu                  2
+  os                   4
+  module_version       0
+  module_flags         0x28000
+  pages                33
+  entry_object         0
+  entry                0x0
+  stack_object         0
+  stack                0
+  page_size            512
+  last_page_bytes      405
+  fixup_section_size   1488
+  loader_section_size  246
+  objects              4
+  imported_modules     0
+  data_pages_offset    0x1000
+  device_id            0x3d
+  ddk_version          0x400
+  cpu_name             80386
+  os_name              Windows 386
+
+sections:
+  name      address  size   file_offset  file_size  flags                           code
+  object 1  0x0      264    0x1000       512        READ EXECUTE PRELOAD 32BIT      yes
+  object 2  0x0      13418  0x1200       13824      READ EXECUTE 32BIT              yes
+  object 3  0x0      863    0x4800       1024       READ WRITE SHARED 32BIT         no
+  object 4  0x0      1429   0x4c00       1536       READ EXECUTE DISCARDABLE 32BIT  yes
+
+0 exports, 0 imports from 0 modules, 0 resources  (--section exports | imports | resources | all)
+--- files
+--- stderr (not compared)

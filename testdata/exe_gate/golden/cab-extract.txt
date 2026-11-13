@@ -1,0 +1,8 @@
+exit: 0
+--- stdout
+extracted 3 files to <work>/out
+--- files
+a.txt 1800 4a26bca315603e8ba47688af0b94f8061a871ca95fcb3c0358fa6a357123d741
+b/c.txt 3 62cb81b5904a262ffaeed02abef36bfc540b09f964b8b0b636662f77ffce6714
+empty 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+--- stderr (not compared)

@@ -114,13 +114,22 @@ int run_all(int argc, char** argv) {
     std::string filter;
     std::string xml_path;
     bool list_only = false;
+    std::size_t shard = 0, shards = 1;   // --shard K/N: every Nth test of the sorted list, from K (the gate runs N processes)
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--filter" && i + 1 < argc) filter = argv[++i];
         else if (arg == "--xml" && i + 1 < argc) xml_path = argv[++i];
         else if (arg == "--list") list_only = true;
+        else if (arg == "--shard" && i + 1 < argc) {
+            const std::string spec = argv[++i];
+            const std::size_t slash = spec.find('/');
+            if (slash == std::string::npos) { std::fprintf(stderr, "--shard K/N\n"); return 2; }
+            shard = std::stoul(spec.substr(0, slash));
+            shards = std::stoul(spec.substr(slash + 1));
+            if (shards == 0 || shard >= shards) { std::fprintf(stderr, "--shard K/N: K below N\n"); return 2; }
+        }
         else {
-            std::fprintf(stderr, "usage: cb_tests [--filter <substring>] [--list] [--xml <file>]\n");
+            std::fprintf(stderr, "usage: cb_tests [--filter <substring>] [--shard K/N] [--list] [--xml <file>]\n");
             return 2;
         }
     }
@@ -130,8 +139,10 @@ int run_all(int argc, char** argv) {
 
     std::size_t passed = 0, failed = 0, total_checks = 0;
     std::string xml = "<testsuite name=\"cb_tests\">\n";
+    std::size_t index = 0;
     for (const Entry& t : tests) {
         if (!filter.empty() && t.name.find(filter) == std::string::npos) continue;
+        if (index++ % shards != shard) continue;
         if (list_only) {
             std::printf("%s\n", t.name.c_str());
             continue;

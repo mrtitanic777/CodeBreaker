@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+usage: codebreaker xbox-disc <command> [options]
+
+the files of an Xbox 360 disc image: list, read one, unpack all
+
+commands:
+  files   every file of the image: its size, a tab, its path
+  read    one file of the image, written to a file (exit 3 when the image has none)
+  unpack  every file of the image, written under a folder (what is there at its full size is kept)
+--- files
+--- stderr (not compared)

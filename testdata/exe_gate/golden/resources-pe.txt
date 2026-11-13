@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+charmap.exe: 6 resources: 5 identical, 1 equivalent, 0 different, 0 missing  (written as text 3, as image files 4, opaque payload 0, fallback payload 1)
+    <work>/out/charmap.rc
+--- files
+charmap.rc 1531 3771e91d8e6fa81e8b4a0916cf88b6c9d2203b5142080f2ffd81a70d6259c3fb
+charmap.res 2970 30e3147dcf38746e2ad56decc0944b86ff931914f65a078207639322c04d4250
+charmap_link.res 3078 8bc0febd0af21d2212ce87a74fd4ff0841bc7787874e68b4e460285571461f40
+res/bitmap_110.bmp 606 3a7ff57e1a8b52b2560aaadef32080336a85ea8eaf12d933fc51588c7ef29a6f
+res/group_icon_111.ico 1094 e91b74323dc5dbd76207555491e0b23f29280712531b7f8a77a2f9dc192b2e95
+res/version_1.bin 496 79b75d6cd9ea4f0ba7c4bef8ebc41d01dabad146c51bfa420e77eb4f950df8a9
+--- stderr (not compared)

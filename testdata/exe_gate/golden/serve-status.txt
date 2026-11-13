@@ -1,0 +1,5 @@
+exit: 1
+--- stdout
+no CodeBreaker service running for <work>/state
+--- files
+--- stderr (not compared)

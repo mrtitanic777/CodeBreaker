@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+  round 1: 3 functions broken; so far 3 of 3 caught
+  by break: arguments                caught 1 of 1  (100%)
+  by break: comparison               caught 1 of 1  (100%)
+  by break: constant                 caught 1 of 1  (100%)
+  it had called VERIFIED             caught 3 of 3  (100%)
+written to <work>/out/t.json
+--- files
+t.json 1170 ece48280c74250434d89aba7642d18986bd81fab231de1bf6778d30e407ea0d1
+--- stderr (not compared)

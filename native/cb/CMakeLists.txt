@@ -428,6 +428,11 @@ cb_apply_flags(cb_cmdrun)
 target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_cmdrun)
 
+# exe_gate: runs the real codebreaker.exe on the command cases of testdata/exe_gate and compares goldens (tools\gate.cmd).
+add_executable(cb_exe_gate EXCLUDE_FROM_ALL app/exe_gate_main.cpp)
+cb_apply_flags(cb_exe_gate)
+target_link_libraries(cb_exe_gate PRIVATE cb_core)
+
 # toolrun: the `crypto` tools and the commands the switch-over moves off the old extension (xbox-disc, xex-basic, xenon-config, switch-tables,
 # corpus-executables), with the settings and the corpus the application gives them, to compare each with the Python and time it (app/toolrun_main.cpp).
 add_executable(cb_toolrun EXCLUDE_FROM_ALL app/toolrun_main.cpp)

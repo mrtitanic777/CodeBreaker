@@ -1,0 +1,27 @@
+exit: 0
+--- stdout
+  segment 1   msvc152  /AM /G2sw /Ox    (1.1 of a sample of 3)
+  segment 2   msvc152  /AM /G2sw /Ox    (1.6 of a sample of 6)
+  segment 3   msvc152  /AM /G2sw /Ox    (0.3 of a sample of 1)
+  segment 4   msvc152  /AM /G2sw /Ox    (1.9 of a sample of 4)
+  segment 5   msvc152  /AM /G2sw /Ox    (0.9 of a sample of 3)
+  segment 6   msvc152  /AM /G2sw /Ox    (0.7 of a sample of 2)
+  segment 7   msvc152  /AM /G2sw /Ox    (0.9 of a sample of 3)
+  segment 8   msvc152  /AM /G2sw /Ox    (0.4 of a sample of 3)
+  segment 9   msvc152  /AM /G3s /Oxs    (0.3 of a sample of 1)
+  segment 10  msvc152  /AM /G2sw /Ox    (1.4 of a sample of 6)
+  segment 11  msvc152  /AM /G2sw /Ox    (1.0 of a sample of 6)
+  2 functions nearer under another of their segment's switches than its first
+3 functions (runtime library aside)
+  C        Microsoft C 8 gives the original's bytes:    0   (decompiler's work: 3)
+  compiler OpenWatcom -zmsc gives Microsoft C 8's:      0   (compiler's work: 3)
+  fits     OpenWatcom's no longer than the original:     0   (would move: 3)
+  bytes over the original's length, all together: 25
+  the decompiler's patterns in functions Microsoft C 8 does not match (functions, bytes off):
+    segment helper              3     329
+    xunknown                    3     329
+    unaff_/in_/extraout_        3     329
+    split far (>> 0x10)         1     138
+    MK_FP                       1     136
+--- files
+--- stderr (not compared)

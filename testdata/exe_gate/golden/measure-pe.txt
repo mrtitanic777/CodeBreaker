@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+lz32.dll: 39 functions, 39 judged now: VERIFIED 17, IDENTIFIED (runtime library) 19, UNVERIFIED 3  <~>
+unverified by cause: stack-differs 2, exit-differs 1
+does not compile: not in the build (19)
+--- files
+--- stderr (not compared)

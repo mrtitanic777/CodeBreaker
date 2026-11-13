@@ -1,0 +1,11 @@
+exit: 0
+--- stdout
+round 1: 13 instructions come back different
+round 2: 0 instructions come back different
+lzexpand.dll: 2242 instructions, 98 (4%) written as bytes; 2 rounds; builds back THE SAME
+  source: <work>/out/lzexpand.dll.asm
+--- files
+lzexpand.dll 9936 faf467ce496dd59655ccd91c26c8ea694551f54fa6bbf5f480f398fc54d12fdd
+lzexpand.dll.asm 87318 10868fdf965394ba5e7657666eec1cfe73fc86b9b869f0a047fca09b34d6ef7e
+lzexpand.dll.map 22867 461769971cb64aa4fb1de94d0d9e2eadef1ec7d33de1743dc5a8b23e2652f32d
+--- stderr (not compared)

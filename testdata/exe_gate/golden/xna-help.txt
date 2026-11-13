@@ -1,0 +1,8 @@
+exit: 0
+--- stdout
+codebreaker xna <package, folder or game .exe> [--name N] [--no-content]
+    an XNA game as a Converted project: its assemblies as C# (ILSpy, then the fix-ups), its content converted
+codebreaker xna port <project>
+    the decompiled C# built and run on the PC
+--- files
+--- stderr (not compared)

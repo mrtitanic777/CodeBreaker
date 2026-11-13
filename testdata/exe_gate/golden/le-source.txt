@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+round 1: 6 instructions the assembler rejects
+round 2: 8 instructions come back different
+round 3: 0 instructions come back different
+splitter.vxd: 450 instructions, 14 (3%) written as bytes; 3 rounds; builds back THE SAME
+  source: <work>/out/splitter.vxd.asm
+--- files
+splitter.vxd 2596 1dfbad5ad34b6ac3f0f934dc6efc8ff1d89496e9133cb8948a45af89aa458fb6
+splitter.vxd.asm 21877 76e43ac71d0eb71ab284bf2153e69a669dede4f0c169357fd8afdd67ddbdf910
+splitter.vxd.map 4636 05cfc41235c1c5ab71d840213c262d600b264bd538b5172a53b0fbc7e8f832f9
+--- stderr (not compared)

@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+38 service tables, 1147 services named, 134 device numbers named
+splitter.vxd       40 service calls,   40 named
+srammtd.vxd         5 service calls,    5 named
+--- files
+--- stderr (not compared)

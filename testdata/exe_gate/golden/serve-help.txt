@@ -1,0 +1,17 @@
+exit: 0
+--- stdout
+usage: codebreaker serve [options]
+
+CodeBreaker as a service: one process that owns the databases and the engine and answers the terminal interface, the MCP servers and the queries
+
+Nobody needs to start it by hand: an interface starts it on demand, and every client answers in process when it is not there.
+One per state folder, on 127.0.0.1 only; its record is <state>/service/service.json and what it prints goes to serve.log.
+
+options:
+      status        the one running: pid, port, jobs, idle time
+      stop          stop the one running (its jobs with it)
+      idle MINUTES  exit after this long with no call and no job (setting service_idle_minutes; default 20)
+      port N        the port to answer on (setting service_port; default one fixed for this state folder, 20000-39999)
+  -h, --help        show this help
+--- files
+--- stderr (not compared)

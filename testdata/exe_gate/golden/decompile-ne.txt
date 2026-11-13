@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+lzexpand.dll: 46 of 46 functions -> <work>/out/lzexpand.c
+--- files
+lzexpand.c 50922 b3c807eacba66f965d8a7fb25488d77d32deb82b92290fc4a59df2116372c219
+--- stderr (not compared)

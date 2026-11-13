@@ -1,0 +1,7 @@
+exit: 0
+--- stdout
+  compiler switches that fit best: /O1 /Gz
+  sub_001000                   different distance 40/87  via [/Oy-]
+lz32.dll: 3 functions repaired toward the original's bytes: 0 identical, 0 same size, 3 different
+--- files
+--- stderr (not compared)

@@ -1,0 +1,8 @@
+exit: 0
+--- stdout
+choice.com: com, 5175 bytes loaded
+22 functions: 21 called, 1 entry; 0 of them rest on a guess
+bytes: code 2366, guessed code 0, jump tables 0, not classified 2809, total 5175
+39 interrupt calls, 35 with the service named
+--- files
+--- stderr (not compared)

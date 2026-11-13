@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+cache cleared: 0.0 MB freed
+--- files
+--- stderr (not compared)

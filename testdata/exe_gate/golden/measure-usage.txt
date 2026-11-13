@@ -1,0 +1,17 @@
+exit: 0
+--- stdout
+usage: codebreaker measure [options] <module>
+
+reconstruct and judge one module; writes nothing to the tree
+
+Reconstructs and judges the module, then prints why functions are unverified and what did not compile. Only what changed since the last measure is made again. This is the number to watch while changing the decompiler or the verifier.
+
+arguments:
+  module  a corpus name, or a folder (a Java program)
+
+options:
+      --no-engine  run the old direct path instead of the engine
+      --engine     run the engine (the default; kept for scripts)
+  -h, --help       show this help
+--- files
+--- stderr (not compared)

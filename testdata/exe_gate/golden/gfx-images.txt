@@ -1,0 +1,9 @@
+exit: 0
+--- stdout
+menu_main                    character 1     256x128  menu_bg.dds
+menu_main                    character 2      64x64   icon.png
+menu_main                    character 3      32x32   ok.tga
+engine_id                    character 7      16x16   bar.png
+CFX                          character 1       8x8    a.png
+--- files
+--- stderr (not compared)

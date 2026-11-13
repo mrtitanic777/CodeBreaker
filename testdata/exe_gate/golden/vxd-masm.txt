@@ -1,0 +1,6 @@
+exit: 0
+--- stdout
+  obj 1    1540 bytes  symbolic=500   forced_raw=1    BYTE-EXACT
+== module splitter.vxd: BYTE-EXACT (symbolic=500 forced_raw=1) ==
+--- files
+--- stderr (not compared)

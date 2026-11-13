@@ -1,0 +1,17 @@
+exit: 0
+--- stdout
+usage: codebreaker teeth [options] <module>
+
+break functions the judge passed, on purpose: does it notice?
+
+Break functions the judge has passed, one small way each, and see whether it notices.
+
+arguments:
+  module  a corpus name or a file
+
+options:
+      --rounds N   rounds of breaks (each function is broken once) (default: 3)
+      --json FILE  where the report is written (default: the report folder, named after the module)
+  -h, --help       show this help
+--- files
+--- stderr (not compared)

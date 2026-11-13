@@ -1,0 +1,5 @@
+exit: 0
+--- stdout
+5003 functions: arity for 1162, import arity for 27, 40 variadic, 1840 keep a volatile register, 1939 keep a volatile FP register
+--- files
+--- stderr (not compared)

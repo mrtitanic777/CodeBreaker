@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+11:0010  _dos_getftime                            Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+11:0042  _dos_setftime                            Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+11:02e2  _NMSG_TEXT                               Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+11:034e  _GetDGROUP                               Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+lzexpand.dll: 4 of 46 functions are a runtime library's
+built with: Microsoft Visual C++ 1.5 (16-bit) (linker 5.20)
+    linker version 5.20 in the header
+    4 functions from Microsoft Visual C++ 1.5 (16-bit): C runtime (MLIBCEW.LIB)
+--- files
+--- stderr (not compared)
