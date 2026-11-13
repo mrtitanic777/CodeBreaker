@@ -1171,3 +1171,15 @@ Old = the Python (`python -m codebreaker pe-source` / `dos-source`, process star
 | dos-source IO.SYS (47,882 instructions, 82 rounds) | 34 s and 38 s (two runs) | 29 s and 47 s (two runs; the machine was busy in the second) |
 
 Where the C++ has no advantage the time is the assembler and linker (a process per round and per probe batch), the same in both.
+## formats/xbox deferred units: mem_crypto, ciso, volumes (2026-11-12)
+
+Release build, the same input on both sides (the Python through formats.dll where it asks the native reader, as the exe does).
+
+| work | Python | C++ |
+|---|---|---|
+| MemoryCrypto: `calc_sram` + `calc_hash_2_digest` of a 0x40000-byte hypervisor | 1.58 s | 0.005 s |
+| ciso `write_cso` of Minecraft's default.xex (20 MB) | 1.07 s (formats.dll) | 0.95 s |
+| ciso `to_iso` of that CSO | 0.038 s (formats.dll) | 0.053 s (4 MB chunks through a copy; noise-sized, the write dominates) |
+| volumes open and list the Minecraft: Story Mode LIVE package (855 MB, 58 files) | 0.181 s | 0.175 s |
+
+The Python's MemoryCrypto is pure Python over `cryptography`'s AES and big ints; the C++ computes each tweak with 64-bit words and runs the AES once per call.

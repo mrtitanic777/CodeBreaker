@@ -13,6 +13,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/io.hpp"
 #include "cb/core/text.hpp"
+#include "cb/formats/xbox/volumes.hpp"
 
 namespace cb::formats::media {
 
@@ -175,6 +176,16 @@ std::string_view kind_name(VolumeKind kind) {
     case VolumeKind::Fat32: return "fat32";
     case VolumeKind::Iso9660: return "iso9660";
     case VolumeKind::Bundle: return "bundle";
+    case VolumeKind::Stfs: return "stfs";
+    case VolumeKind::Xdvdfs: return "xdvdfs";
+    case VolumeKind::God: return "god";
+    case VolumeKind::Fatx: return "fatx";
+    case VolumeKind::Nand: return "nand";
+    case VolumeKind::HeavyIron: return "heavyiron";
+    case VolumeKind::Zar: return "zar";
+    case VolumeKind::Xzp: return "xzp";
+    case VolumeKind::Pck: return "pck";
+    case VolumeKind::Parts: return "parts";
     }
     return "?";
 }
@@ -566,9 +577,11 @@ std::vector<Partition> partitions(const Source& src, std::uint64_t image_size) {
 }  // namespace
 
 std::vector<std::unique_ptr<Volume>> volumes(const std::filesystem::path& image, bool long_names) {
+    // The Xbox and Xbox 360 containers first: an Xbox 360 disc also carries an ISO 9660 video part. A Games-on-Demand folder is one.
+    if (std::optional<std::vector<std::unique_ptr<Volume>>> xbox = xbox::volumes::open(image)) return std::move(*xbox);
     std::error_code ec;
     if (std::filesystem::is_directory(image, ec))
-        throw FormatError(kReader, 0, std::format("{}: a folder, not an image file", image.filename().string()));
+        throw FormatError(kReader, 0, std::format("{}: a folder, and not a Games-on-Demand package", image.filename().string()));
     const Source whole(image);
     std::vector<std::unique_ptr<Volume>> out;
 

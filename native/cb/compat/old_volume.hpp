@@ -1,5 +1,5 @@
 // cb/compat/old_volume.hpp -- a volume of the old media shim (the Xbox containers' volumes included) as the new module reads one.
-// Conversion and forwarding only. Deleted with the last shim that includes it (when formats/xbox/volumes is refactored).
+// Conversion and forwarding only. Deleted with the last shim that includes it (the old coverage/reach).
 #pragma once
 
 #include <memory>

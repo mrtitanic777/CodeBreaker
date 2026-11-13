@@ -47,7 +47,8 @@ MASTER_PUB = RSAPublicNumbers(MASTER_E, MASTER_N).public_key()
 
 create_mask = lambda n: (1 << n) - 1
 
-# runtime
+# runtime: the tweak's CRC-16 table, built below when the module loads (main() used to be the only place that filled it, so the
+# class failed with an IndexError when the module was used as a library)
 GF2_TAB: list[int] = []
 
 # masks
@@ -95,7 +96,7 @@ def read_chunk(data: bytes | bytearray, offset: int, size: int) -> bytes:
 
 def read_chunks(data: bytes | bytearray, offset: int, size: int) -> Generator[bytes, None, None]:
 	assert (len(data) - offset) % size == 0, "data must be evenly divisible by size"
-	for i in range(offset, len(data) - offset, size):
+	for i in range(offset, len(data), size):
 		yield data[i:i + size]
 
 def rsa_encrypt(key: RSAPublicKey, data: bytes | bytearray) -> bytes:
@@ -115,6 +116,8 @@ def generate_gf2_table(iv: int, poly: int) -> list[int]:
 			c <<= 1
 		tab[i] = crc & UINT16_MASK
 	return tab
+
+GF2_TAB = generate_gf2_table(GF2_IV, GF2_POLY)
 
 def pack_sec_eng_keys(key: bytes | bytearray, buffer: bytes | bytearray, offset: int, length: int) -> bytes:
 	cycle = 0
@@ -309,6 +312,7 @@ class MemoryCrypto:
 		return self.calc_sram_checksums(hv_data_dec, hv_data_enc, 0, 0x40000)
 
 	def calc_hash_1_digest(self, hv_data_dec: bytes | bytearray, salt: bytes | bytearray) -> bytes:
+		assert len(hv_data_dec) >= 0x40000, "the hypervisor image is 0x40000 bytes"
 		salt = salt[:0x10]  # ensure salt is 0x10 in length
 
 		h = Hash(SHA1())
@@ -323,7 +327,9 @@ class MemoryCrypto:
 		return read_chunk(h.finalize(), 0xE, 6)
 
 	def calc_hash_2_digest(self, hv_data_dec: bytes | bytearray, salt: bytes | bytearray, hvex_addr: int) -> bytes:
+		assert len(hv_data_dec) >= 0x40000, "the hypervisor image is 0x40000 bytes"
 		salt = salt[:0x10]  # ensure salt is 0x10 in length
+		assert len(salt) == 0x10, "the salt is 16 bytes"
 
 		# HVEX_ADDR = 0x1B9
 
@@ -348,6 +354,7 @@ class MemoryCrypto:
 		return h.finalize()
 
 	def calc_key_blob(self, blob_nonce: bytes | bytearray) -> bytes:
+		assert len(blob_nonce) == 20, "the nonce is 20 bytes (any other length resized the blob)"
 		key_blob = bytearray(0x80)
 		key_blob[1:1+20] = blob_nonce
 		key_blob[0x15:0x15+20] = bytes.fromhex('DA39A3EE5E6B4B0D3255BFEF95601890AFD80709')
@@ -360,6 +367,7 @@ class MemoryCrypto:
 		return rsa_encrypt(MASTER_PUB, key_blob)
 
 	def calc_100f0(self, hv_data_dec: bytes | bytearray, tbl_addr: int) -> bytes:
+		assert len(hv_data_dec) >= 0x40000, "the hypervisor image is 0x40000 bytes"
 		# encrypt the clean decrypted HV
 		hv_data_enc = self.encrypt(hv_data_dec, 0, 0x40000, 0)
 
@@ -391,10 +399,6 @@ class MemoryCrypto:
 		return h.finalize()[:0x10]
 
 def main() -> int:
-	global GF2_TAB
-
-	GF2_TAB = generate_gf2_table(GF2_IV, GF2_POLY)
-
 	parser = ArgumentParser(description="A script to calculate Xbox 360 challenge responses for XOSC")
 	subparsers = parser.add_subparsers(dest="mode")
 	calculate_parser = subparsers.add_parser("calculate")
@@ -415,7 +419,7 @@ def main() -> int:
 			print("H:", hash_key.hex().upper())
 			print()
 
-			blob_nonce = b"testtest"
+			blob_nonce = b"testtest".ljust(20, bytes(1))
 
 			hvex_addr = 0xB00B
 			hv_salt = bytes.fromhex("892BB9F952C7759392A12A3184E0358E")
