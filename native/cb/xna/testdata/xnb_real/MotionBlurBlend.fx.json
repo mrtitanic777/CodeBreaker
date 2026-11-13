@@ -1,0 +1,68 @@
+[
+ {
+  "name": "TargetTexture",
+  "semantic": "",
+  "type": "texture",
+  "cls": "object",
+  "rows": 0,
+  "columns": 0,
+  "elements": 0,
+  "value": null,
+  "members": []
+ },
+ {
+  "name": "MaskTexture",
+  "semantic": "",
+  "type": "texture",
+  "cls": "object",
+  "rows": 0,
+  "columns": 0,
+  "elements": 0,
+  "value": null,
+  "members": []
+ },
+ {
+  "name": "ScreenTexture",
+  "semantic": "",
+  "type": "texture",
+  "cls": "object",
+  "rows": 0,
+  "columns": 0,
+  "elements": 0,
+  "value": null,
+  "members": []
+ },
+ {
+  "name": "screenSampler",
+  "semantic": "",
+  "type": "sampler",
+  "cls": "object",
+  "rows": 0,
+  "columns": 0,
+  "elements": 0,
+  "value": null,
+  "members": []
+ },
+ {
+  "name": "targetSampler",
+  "semantic": "",
+  "type": "sampler2D",
+  "cls": "object",
+  "rows": 0,
+  "columns": 0,
+  "elements": 0,
+  "value": null,
+  "members": []
+ },
+ {
+  "name": "maskSampler",
+  "semantic": "",
+  "type": "sampler2D",
+  "cls": "object",
+  "rows": 0,
+  "columns": 0,
+  "elements": 0,
+  "value": null,
+  "members": []
+ }
+]

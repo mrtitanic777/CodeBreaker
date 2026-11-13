@@ -1147,6 +1147,9 @@ def main(argv):
         size = opt("--size", lambda s: int(s, 0), 0x100)
         body, sec_base, _entry = disassemble.code_section(path)
         off = at - sec_base
+        if off < 0 or off > len(body):                         # (a negative offset would slice from the END of the code)
+            print("0x%08X is not in the code" % at)
+            return 2
         cpp, called, stats = recompile_function(body[off:off + size], sec_base, at, size)
         full = '#include "rex_ppc_min.h"\n\n' + _emit_forward_decls(called) + "\n\n" + cpp
         if out:

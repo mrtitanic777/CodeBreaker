@@ -1,0 +1,145 @@
+{
+ "texture_w": {
+  "file": "texture_w.xnb",
+  "platform": "w",
+  "readers": [
+   "Texture2D"
+  ],
+  "kind": "texture",
+  "format": "Color",
+  "width": 2,
+  "height": 2,
+  "levels": 1
+ },
+ "texture_x": {
+  "file": "texture_x.xnb",
+  "platform": "x",
+  "readers": [
+   "Texture2D"
+  ],
+  "kind": "texture",
+  "format": "Color",
+  "width": 2,
+  "height": 2,
+  "levels": 1
+ },
+ "dxt1_w": {
+  "file": "dxt1_w.xnb",
+  "platform": "w",
+  "readers": [
+   "Texture2D"
+  ],
+  "kind": "texture",
+  "format": "Dxt1",
+  "width": 4,
+  "height": 4,
+  "levels": 1
+ },
+ "dxt1_x": {
+  "file": "dxt1_x.xnb",
+  "platform": "x",
+  "readers": [
+   "Texture2D"
+  ],
+  "kind": "texture",
+  "format": "Dxt1",
+  "width": 4,
+  "height": 4,
+  "levels": 1
+ },
+ "texture_bgr565_w": {
+  "file": "texture_bgr565_w.xnb",
+  "platform": "w",
+  "readers": [
+   "Texture2D"
+  ],
+  "error": "ValueError: texture format Bgr565 is not converted"
+ },
+ "font_w": {
+  "file": "font_w.xnb",
+  "platform": "w",
+  "readers": [
+   "SpriteFont"
+  ],
+  "kind": "font",
+  "width": 2,
+  "height": 2,
+  "glyphs": 2
+ },
+ "sound_w": {
+  "file": "sound_w.xnb",
+  "platform": "w",
+  "readers": [
+   "SoundEffect"
+  ],
+  "kind": "sound",
+  "codec": "PCM",
+  "channels": 1,
+  "rate": 44100,
+  "duration_ms": 0,
+  "loop": [
+   0,
+   8
+  ]
+ },
+ "sound_x": {
+  "file": "sound_x.xnb",
+  "platform": "x",
+  "readers": [
+   "SoundEffect"
+  ],
+  "kind": "sound",
+  "codec": "PCM",
+  "channels": 1,
+  "rate": 44100,
+  "duration_ms": 0,
+  "loop": [
+   0,
+   8
+  ]
+ },
+ "other_w": {
+  "file": "other_w.xnb",
+  "platform": "w",
+  "readers": [
+   "String"
+  ],
+  "kind": "other"
+ },
+ "effect0_x": {
+  "file": "effect0_x.xnb",
+  "platform": "x",
+  "readers": [
+   "Effect"
+  ],
+  "kind": "effect",
+  "sha1": "a3b2e8b0cce4a9624f56ce3a279f5ac2ac763f15"
+ },
+ "effect1_x": {
+  "file": "effect1_x.xnb",
+  "platform": "x",
+  "readers": [
+   "Effect"
+  ],
+  "kind": "effect",
+  "sha1": "9c77b71e40c3f95aa8d9426ad29b40863a70bdaf"
+ },
+ "junk": {
+  "file": "junk.xnb",
+  "error": "ValueError: not an XNB file"
+ },
+ "empty": {
+  "file": "empty.xnb",
+  "kind": "empty"
+ },
+ "effect0_raw": {
+  "file": "effect0_raw.fxo",
+  "kind": "effect",
+  "sha1": "a3b2e8b0cce4a9624f56ce3a279f5ac2ac763f15"
+ },
+ "effect1_raw": {
+  "file": "effect1_raw.fxo",
+  "kind": "effect",
+  "sha1": "9c77b71e40c3f95aa8d9426ad29b40863a70bdaf"
+ }
+}

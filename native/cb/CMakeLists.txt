@@ -145,7 +145,7 @@ target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbo
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
-target_link_libraries(cb_java PUBLIC cb_core cb_translate PRIVATE cb_zlib)
+target_link_libraries(cb_java PUBLIC cb_core cb_base cb_translate cb_decompile PRIVATE cb_zlib)   # (cb_base: the configuration the tools are made from; cb_decompile: the Minecraft decompiler of `java decompile` -- static libraries may be cyclic)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
@@ -170,7 +170,7 @@ cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 
 cb_area(recompile)
-target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_formats)   # (cb_base: the converted projects of the recompile-project command)
+target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_formats cb_decompile)   # (cb_base: the converted projects of the recompile-project command)
 # the shims at the old header paths are tested too: their test file includes the old layer, so it builds at /W3
 set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/recompile/builders_shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
@@ -213,7 +213,7 @@ cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source)   # (cb_source: the NE disassembler of debug_build)
 
 cb_area(xna)
-target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats)   # (cb_base: the Converted project; cb_formats: PE and media images)
+target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decompile)   # (cb_base: the Converted project; cb_formats: PE and media images; cb_java: the PNG codec of the content converters; cb_decompile: the Xbox effect as HLSL -- static libraries may be cyclic)
 
 # The translator's back ends, front ends and the whole-program judge; the terminal interface's helpers (the terminal
 # interface itself stays Python: docs/CPP_DESIGN.md section 9).
@@ -430,6 +430,13 @@ add_executable(cb_cmdrun EXCLUDE_FROM_ALL app/cmdrun_main.cpp)
 cb_apply_flags(cb_cmdrun)
 target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_cmdrun)
+
+# cb_cmds: the proof harness of the program-reading and recompiling commands (symbols/cmds_main.cpp): classes, xdk-match, recompile,
+# recompile-project, xenon-recompile, java and xna with the Environment the command table will give them. Not built by default.
+add_executable(cb_cmds EXCLUDE_FROM_ALL symbols/cmds_main.cpp)
+cb_apply_flags(cb_cmds)
+target_link_libraries(cb_cmds PRIVATE cb_symbols cb_recompile cb_java cb_xna cb_core)
+cb_copy_prebuilt_dlls(cb_cmds)
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)

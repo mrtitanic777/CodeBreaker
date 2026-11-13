@@ -1,0 +1,2332 @@
+{
+ "wave_bank_head.xwb": {
+  "bank_name": "Wave Bank",
+  "version": 46,
+  "big": true,
+  "entry_count": 98,
+  "entries": [
+   {
+    "index": 0,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44114,
+    "align": 4,
+    "offset": 0,
+    "length": 6144
+   },
+   {
+    "index": 1,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44057,
+    "align": 4,
+    "offset": 6144,
+    "length": 8192
+   },
+   {
+    "index": 2,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 48006,
+    "align": 4,
+    "offset": 14336,
+    "length": 45056
+   },
+   {
+    "index": 3,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 47980,
+    "align": 4,
+    "offset": 59392,
+    "length": 34816
+   },
+   {
+    "index": 4,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44111,
+    "align": 4,
+    "offset": 94208,
+    "length": 67584
+   },
+   {
+    "index": 5,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 161792,
+    "length": 176128
+   },
+   {
+    "index": 6,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44101,
+    "align": 4,
+    "offset": 337920,
+    "length": 143360
+   },
+   {
+    "index": 7,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 481280,
+    "length": 124928
+   },
+   {
+    "index": 8,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 606208,
+    "length": 98304
+   },
+   {
+    "index": 9,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 704512,
+    "length": 47104
+   },
+   {
+    "index": 10,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44089,
+    "align": 4,
+    "offset": 751616,
+    "length": 49152
+   },
+   {
+    "index": 11,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44107,
+    "align": 4,
+    "offset": 800768,
+    "length": 53248
+   },
+   {
+    "index": 12,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 854016,
+    "length": 65536
+   },
+   {
+    "index": 13,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 919552,
+    "length": 94208
+   },
+   {
+    "index": 14,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44101,
+    "align": 4,
+    "offset": 1013760,
+    "length": 92160
+   },
+   {
+    "index": 15,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44101,
+    "align": 4,
+    "offset": 1105920,
+    "length": 100352
+   },
+   {
+    "index": 16,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44102,
+    "align": 4,
+    "offset": 1206272,
+    "length": 165888
+   },
+   {
+    "index": 17,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 11091,
+    "align": 2,
+    "offset": 1372160,
+    "length": 4096
+   },
+   {
+    "index": 18,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44021,
+    "align": 4,
+    "offset": 1376256,
+    "length": 4096
+   },
+   {
+    "index": 19,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 1380352,
+    "length": 26624
+   },
+   {
+    "index": 20,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44094,
+    "align": 4,
+    "offset": 1406976,
+    "length": 28672
+   },
+   {
+    "index": 21,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44069,
+    "align": 4,
+    "offset": 1435648,
+    "length": 14336
+   },
+   {
+    "index": 22,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 1449984,
+    "length": 153600
+   },
+   {
+    "index": 23,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44097,
+    "align": 4,
+    "offset": 1603584,
+    "length": 169984
+   },
+   {
+    "index": 24,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 1773568,
+    "length": 141312
+   },
+   {
+    "index": 25,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 1914880,
+    "length": 67584
+   },
+   {
+    "index": 26,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44092,
+    "align": 4,
+    "offset": 1982464,
+    "length": 77824
+   },
+   {
+    "index": 27,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 2060288,
+    "length": 69632
+   },
+   {
+    "index": 28,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 2129920,
+    "length": 73728
+   },
+   {
+    "index": 29,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44101,
+    "align": 4,
+    "offset": 2203648,
+    "length": 118784
+   },
+   {
+    "index": 30,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 2322432,
+    "length": 71680
+   },
+   {
+    "index": 31,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 2394112,
+    "length": 178176
+   },
+   {
+    "index": 32,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 2572288,
+    "length": 147456
+   },
+   {
+    "index": 33,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 2719744,
+    "length": 161792
+   },
+   {
+    "index": 34,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44086,
+    "align": 4,
+    "offset": 2881536,
+    "length": 10240
+   },
+   {
+    "index": 35,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44053,
+    "align": 4,
+    "offset": 2891776,
+    "length": 20480
+   },
+   {
+    "index": 36,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44089,
+    "align": 4,
+    "offset": 2912256,
+    "length": 34816
+   },
+   {
+    "index": 37,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44082,
+    "align": 4,
+    "offset": 2947072,
+    "length": 45056
+   },
+   {
+    "index": 38,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 10702,
+    "align": 4,
+    "offset": 2992128,
+    "length": 2048
+   },
+   {
+    "index": 39,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44182,
+    "align": 4,
+    "offset": 2994176,
+    "length": 12288
+   },
+   {
+    "index": 40,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44160,
+    "align": 4,
+    "offset": 3006464,
+    "length": 20480
+   },
+   {
+    "index": 41,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44110,
+    "align": 4,
+    "offset": 3026944,
+    "length": 43008
+   },
+   {
+    "index": 42,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44092,
+    "align": 4,
+    "offset": 3069952,
+    "length": 49152
+   },
+   {
+    "index": 43,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44109,
+    "align": 4,
+    "offset": 3119104,
+    "length": 12288
+   },
+   {
+    "index": 44,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44114,
+    "align": 4,
+    "offset": 3131392,
+    "length": 8192
+   },
+   {
+    "index": 45,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44385,
+    "align": 4,
+    "offset": 3139584,
+    "length": 4096
+   },
+   {
+    "index": 46,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 43938,
+    "align": 4,
+    "offset": 3143680,
+    "length": 4096
+   },
+   {
+    "index": 47,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44090,
+    "align": 4,
+    "offset": 3147776,
+    "length": 36864
+   },
+   {
+    "index": 48,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44073,
+    "align": 4,
+    "offset": 3184640,
+    "length": 26624
+   },
+   {
+    "index": 49,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44101,
+    "align": 4,
+    "offset": 3211264,
+    "length": 53248
+   },
+   {
+    "index": 50,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44101,
+    "align": 4,
+    "offset": 3264512,
+    "length": 28672
+   },
+   {
+    "index": 51,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44104,
+    "align": 4,
+    "offset": 3293184,
+    "length": 36864
+   },
+   {
+    "index": 52,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44102,
+    "align": 4,
+    "offset": 3330048,
+    "length": 73728
+   },
+   {
+    "index": 53,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44085,
+    "align": 4,
+    "offset": 3403776,
+    "length": 51200
+   },
+   {
+    "index": 54,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44099,
+    "align": 4,
+    "offset": 3454976,
+    "length": 51200
+   },
+   {
+    "index": 55,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44099,
+    "align": 4,
+    "offset": 3506176,
+    "length": 79872
+   },
+   {
+    "index": 56,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44083,
+    "align": 4,
+    "offset": 3586048,
+    "length": 57344
+   },
+   {
+    "index": 57,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44112,
+    "align": 4,
+    "offset": 3643392,
+    "length": 34816
+   },
+   {
+    "index": 58,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44073,
+    "align": 4,
+    "offset": 3678208,
+    "length": 24576
+   },
+   {
+    "index": 59,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44120,
+    "align": 4,
+    "offset": 3702784,
+    "length": 26624
+   },
+   {
+    "index": 60,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44069,
+    "align": 4,
+    "offset": 3729408,
+    "length": 24576
+   },
+   {
+    "index": 61,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44096,
+    "align": 4,
+    "offset": 3753984,
+    "length": 40960
+   },
+   {
+    "index": 62,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44120,
+    "align": 4,
+    "offset": 3794944,
+    "length": 30720
+   },
+   {
+    "index": 63,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44099,
+    "align": 4,
+    "offset": 3825664,
+    "length": 38912
+   },
+   {
+    "index": 64,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44128,
+    "align": 4,
+    "offset": 3864576,
+    "length": 24576
+   },
+   {
+    "index": 65,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44120,
+    "align": 4,
+    "offset": 3889152,
+    "length": 26624
+   },
+   {
+    "index": 66,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44104,
+    "align": 4,
+    "offset": 3915776,
+    "length": 26624
+   },
+   {
+    "index": 67,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44038,
+    "align": 4,
+    "offset": 3942400,
+    "length": 12288
+   },
+   {
+    "index": 68,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44622,
+    "align": 4,
+    "offset": 3954688,
+    "length": 2048
+   },
+   {
+    "index": 69,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 43955,
+    "align": 4,
+    "offset": 3956736,
+    "length": 4096
+   },
+   {
+    "index": 70,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44115,
+    "align": 4,
+    "offset": 3960832,
+    "length": 28672
+   },
+   {
+    "index": 71,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44248,
+    "align": 4,
+    "offset": 3989504,
+    "length": 4096
+   },
+   {
+    "index": 72,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44102,
+    "align": 4,
+    "offset": 3993600,
+    "length": 24576
+   },
+   {
+    "index": 73,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44014,
+    "align": 4,
+    "offset": 4018176,
+    "length": 8192
+   },
+   {
+    "index": 74,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4026368,
+    "length": 30720
+   },
+   {
+    "index": 75,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4057088,
+    "length": 45056
+   },
+   {
+    "index": 76,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4102144,
+    "length": 43008
+   },
+   {
+    "index": 77,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4145152,
+    "length": 38912
+   },
+   {
+    "index": 78,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4184064,
+    "length": 24576
+   },
+   {
+    "index": 79,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4208640,
+    "length": 38912
+   },
+   {
+    "index": 80,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4247552,
+    "length": 45056
+   },
+   {
+    "index": 81,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44091,
+    "align": 2,
+    "offset": 4292608,
+    "length": 40960
+   },
+   {
+    "index": 82,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4333568,
+    "length": 38912
+   },
+   {
+    "index": 83,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44095,
+    "align": 2,
+    "offset": 4372480,
+    "length": 34816
+   },
+   {
+    "index": 84,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44101,
+    "align": 2,
+    "offset": 4407296,
+    "length": 20480
+   },
+   {
+    "index": 85,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4427776,
+    "length": 14336
+   },
+   {
+    "index": 86,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4442112,
+    "length": 38912
+   },
+   {
+    "index": 87,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44086,
+    "align": 2,
+    "offset": 4481024,
+    "length": 47104
+   },
+   {
+    "index": 88,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4528128,
+    "length": 24576
+   },
+   {
+    "index": 89,
+    "codec_name": "XMA",
+    "channels": 1,
+    "rate": 44100,
+    "align": 2,
+    "offset": 4552704,
+    "length": 26624
+   },
+   {
+    "index": 90,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44111,
+    "align": 4,
+    "offset": 4579328,
+    "length": 8192
+   },
+   {
+    "index": 91,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44591,
+    "align": 4,
+    "offset": 4587520,
+    "length": 2048
+   },
+   {
+    "index": 92,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44121,
+    "align": 4,
+    "offset": 4589568,
+    "length": 14336
+   },
+   {
+    "index": 93,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44085,
+    "align": 4,
+    "offset": 4603904,
+    "length": 59392
+   },
+   {
+    "index": 94,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44088,
+    "align": 4,
+    "offset": 4663296,
+    "length": 86016
+   },
+   {
+    "index": 95,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 48007,
+    "align": 4,
+    "offset": 4749312,
+    "length": 57344
+   },
+   {
+    "index": 96,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44096,
+    "align": 4,
+    "offset": 4806656,
+    "length": 190464
+   },
+   {
+    "index": 97,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44102,
+    "align": 4,
+    "offset": 4997120,
+    "length": 131072
+   }
+  ]
+ },
+ "music_wave_bank_head.xwb": {
+  "bank_name": "Music Wave Bank",
+  "version": 46,
+  "big": true,
+  "entry_count": 8,
+  "entries": [
+   {
+    "index": 0,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 0,
+    "length": 3522560
+   },
+   {
+    "index": 1,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 3522560,
+    "length": 2220032
+   },
+   {
+    "index": 2,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 5742592,
+    "length": 3303424
+   },
+   {
+    "index": 3,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 9046016,
+    "length": 3713024
+   },
+   {
+    "index": 4,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 12759040,
+    "length": 3198976
+   },
+   {
+    "index": 5,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 15958016,
+    "length": 2455552
+   },
+   {
+    "index": 6,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 4,
+    "offset": 18413568,
+    "length": 2727936
+   },
+   {
+    "index": 7,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44099,
+    "align": 4,
+    "offset": 21141504,
+    "length": 3174400
+   }
+  ]
+ },
+ "sound_bank.xsb": {
+  "wave_banks": [
+   "Wave Bank",
+   "Music Wave Bank"
+  ],
+  "cues": {
+   "AvatarEnabled": {
+    "waves": [
+     [
+      0,
+      0
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AvatarDisabled": {
+    "waves": [
+     [
+      0,
+      1
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "CoinsDropping": {
+    "waves": [
+     [
+      0,
+      2
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "CoinSlotRepaired": {
+    "waves": [
+     [
+      0,
+      3
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "PowerDown": {
+    "waves": [
+     [
+      0,
+      4
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Maze1": {
+    "waves": [
+     [
+      0,
+      5
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Maze2": {
+    "waves": [
+     [
+      0,
+      6
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Maze3": {
+    "waves": [
+     [
+      0,
+      7
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Platformer1": {
+    "waves": [
+     [
+      0,
+      8
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Platformer2": {
+    "waves": [
+     [
+      0,
+      9
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Platformer3": {
+    "waves": [
+     [
+      0,
+      10
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Shooter1": {
+    "waves": [
+     [
+      0,
+      11
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Shooter2": {
+    "waves": [
+     [
+      0,
+      12
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Shooter3": {
+    "waves": [
+     [
+      0,
+      13
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Sports1": {
+    "waves": [
+     [
+      0,
+      14
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Sports2": {
+    "waves": [
+     [
+      0,
+      15
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Sports3": {
+    "waves": [
+     [
+      0,
+      16
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "CashRegister": {
+    "waves": [
+     [
+      0,
+      17
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AngryGamerPickedUp": {
+    "waves": [
+     [
+      0,
+      18
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "PowerRestored": {
+    "waves": [
+     [
+      0,
+      19
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "CoinBoxEmptying": {
+    "waves": [
+     [
+      0,
+      20
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 255,
+    "category": 1
+   },
+   "InsertCoin": {
+    "waves": [
+     [
+      0,
+      21
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Action2": {
+    "waves": [
+     [
+      0,
+      22
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Action3": {
+    "waves": [
+     [
+      0,
+      23
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Action1": {
+    "waves": [
+     [
+      0,
+      24
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Fighter2": {
+    "waves": [
+     [
+      0,
+      25
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Fighter3": {
+    "waves": [
+     [
+      0,
+      26
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Fighter1": {
+    "waves": [
+     [
+      0,
+      27
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Puzzle2": {
+    "waves": [
+     [
+      0,
+      28
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Puzzle3": {
+    "waves": [
+     [
+      0,
+      29
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Puzzle1": {
+    "waves": [
+     [
+      0,
+      30
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Racing2": {
+    "waves": [
+     [
+      0,
+      31
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Racing3": {
+    "waves": [
+     [
+      0,
+      32
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Racing1": {
+    "waves": [
+     [
+      0,
+      33
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AngryGamerBootedOut": {
+    "waves": [
+     [
+      0,
+      34
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AngryGamerPoundMachine": {
+    "waves": [
+     [
+      0,
+      35
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AngryGamerSpawned": {
+    "waves": [
+     [
+      0,
+      36
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "BookkeeperMessageDialogEnabled": {
+    "waves": [
+     [
+      0,
+      37
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "GridSelector": {
+    "waves": [
+     [
+      0,
+      38
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "GridSelectorValidMachine": {
+    "waves": [
+     [
+      0,
+      39
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "HotSquareSpawned": {
+    "waves": [
+     [
+      0,
+      40
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachineBreaks": {
+    "waves": [
+     [
+      0,
+      41
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachinePaysItselfOff": {
+    "waves": [
+     [
+      0,
+      42
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachinePickedUp": {
+    "waves": [
+     [
+      0,
+      43
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachineRotated": {
+    "waves": [
+     [
+      0,
+      44
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "Pause": {
+    "waves": [
+     [
+      0,
+      45
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "SystemMessageDialogEnabled": {
+    "waves": [
+     [
+      0,
+      46
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachineDroppedPositiveSound": {
+    "waves": [
+     [
+      0,
+      47
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachinePlaceDownGeneric": {
+    "waves": [
+     [
+      0,
+      48
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "CUSTOM_Angry Star_1": {
+    "waves": [
+     [
+      0,
+      49
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Angry Star_2": {
+    "waves": [
+     [
+      0,
+      50
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Angry Star_3": {
+    "waves": [
+     [
+      0,
+      51
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Evil Void_1": {
+    "waves": [
+     [
+      0,
+      52
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Evil Void_2": {
+    "waves": [
+     [
+      0,
+      53
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Evil Void_3": {
+    "waves": [
+     [
+      0,
+      54
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Evil Void_4": {
+    "waves": [
+     [
+      0,
+      55
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Evil Void_5": {
+    "waves": [
+     [
+      0,
+      56
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Fuel Injection_1": {
+    "waves": [
+     [
+      0,
+      57
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Fuel Injection_2": {
+    "waves": [
+     [
+      0,
+      58
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Fuel Injection_3": {
+    "waves": [
+     [
+      0,
+      59
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Fuel Injection_4": {
+    "waves": [
+     [
+      0,
+      60
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Pentathlon Gold_1": {
+    "waves": [
+     [
+      0,
+      61
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Pentathlon Gold_2": {
+    "waves": [
+     [
+      0,
+      62
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Pentathlon Gold_3": {
+    "waves": [
+     [
+      0,
+      63
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Pentathlon Gold_4": {
+    "waves": [
+     [
+      0,
+      64
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Pentathlon Gold_5": {
+    "waves": [
+     [
+      0,
+      65
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "CUSTOM_Pentathlon Gold_6": {
+    "waves": [
+     [
+      0,
+      66
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 4
+   },
+   "RecordScratchJukeBox": {
+    "waves": [
+     [
+      0,
+      67
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "OptionNavigation": {
+    "waves": [
+     [
+      0,
+      68
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "OptionSelection": {
+    "waves": [
+     [
+      0,
+      69
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachineCoinBoxFull": {
+    "waves": [
+     [
+      0,
+      70
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "BackSelection": {
+    "waves": [
+     [
+      0,
+      71
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "PopMachineDispensing": {
+    "waves": [
+     [
+      0,
+      72
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "OptionNotAvailable": {
+    "waves": [
+     [
+      0,
+      73
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MUSIC_Fistful of Quarters": {
+    "waves": [
+     [
+      1,
+      0
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 2
+   },
+   "MUSIC_Insert Coin": {
+    "waves": [
+     [
+      1,
+      1
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 255,
+    "category": 2
+   },
+   "MUSIC_Binary War": {
+    "waves": [
+     [
+      1,
+      2
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 2
+   },
+   "MUSIC_Final Boss": {
+    "waves": [
+     [
+      1,
+      3
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 2
+   },
+   "MUSIC_High Score": {
+    "waves": [
+     [
+      1,
+      4
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 2
+   },
+   "MUSIC_Power Up": {
+    "waves": [
+     [
+      1,
+      5
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 2
+   },
+   "MUSIC_Metal Hail": {
+    "waves": [
+     [
+      1,
+      6
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 2
+   },
+   "AmbientGenre_Action4": {
+    "waves": [
+     [
+      0,
+      74
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Action5": {
+    "waves": [
+     [
+      0,
+      75
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Fighter4": {
+    "waves": [
+     [
+      0,
+      76
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Fighter5": {
+    "waves": [
+     [
+      0,
+      77
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Maze4": {
+    "waves": [
+     [
+      0,
+      79
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Maze5": {
+    "waves": [
+     [
+      0,
+      78
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Platformer4": {
+    "waves": [
+     [
+      0,
+      81
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Platformer5": {
+    "waves": [
+     [
+      0,
+      80
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Puzzle4": {
+    "waves": [
+     [
+      0,
+      82
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Puzzle5": {
+    "waves": [
+     [
+      0,
+      83
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Racing4": {
+    "waves": [
+     [
+      0,
+      84
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Racing5": {
+    "waves": [
+     [
+      0,
+      85
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Shooter4": {
+    "waves": [
+     [
+      0,
+      86
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Shooter5": {
+    "waves": [
+     [
+      0,
+      87
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Sports4": {
+    "waves": [
+     [
+      0,
+      88
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Sports5": {
+    "waves": [
+     [
+      0,
+      89
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MilestoneAchieved": {
+    "waves": [
+     [
+      0,
+      90
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "HotSquareEnding": {
+    "waves": [
+     [
+      0,
+      91
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MachineDelivered": {
+    "waves": [
+     [
+      0,
+      92
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Pinball1": {
+    "waves": [
+     [
+      0,
+      93
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Pinball2": {
+    "waves": [
+     [
+      0,
+      94
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Pinball3": {
+    "waves": [
+     [
+      0,
+      95
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Pinball4": {
+    "waves": [
+     [
+      0,
+      96
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "AmbientGenre_Pinball5": {
+    "waves": [
+     [
+      0,
+      97
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 1
+   },
+   "MUSIC_Cat to the Rescue": {
+    "waves": [
+     [
+      1,
+      7
+     ]
+    ],
+    "variation": 0,
+    "weights": null,
+    "loop": 0,
+    "category": 2
+   }
+  }
+ },
+ "test_bank_be.xwb": {
+  "bank_name": "TestBank",
+  "version": 43,
+  "big": true,
+  "entry_count": 3,
+  "entries": [
+   {
+    "index": 0,
+    "codec_name": "PCM",
+    "channels": 1,
+    "rate": 22050,
+    "align": 4,
+    "offset": 0,
+    "length": 16
+   },
+   {
+    "index": 1,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 0,
+    "offset": 16,
+    "length": 64
+   },
+   {
+    "index": 2,
+    "codec_name": "WMA",
+    "channels": 2,
+    "rate": 48000,
+    "align": 0,
+    "offset": 80,
+    "length": 32
+   }
+  ],
+  "decoded": [
+   "stream_000.wav",
+   "stream_001.xma",
+   "stream_002.wma"
+  ]
+ },
+ "test_bank_le.xwb": {
+  "bank_name": "TestBank",
+  "version": 43,
+  "big": false,
+  "entry_count": 3,
+  "entries": [
+   {
+    "index": 0,
+    "codec_name": "PCM",
+    "channels": 1,
+    "rate": 22050,
+    "align": 4,
+    "offset": 0,
+    "length": 16
+   },
+   {
+    "index": 1,
+    "codec_name": "XMA",
+    "channels": 2,
+    "rate": 44100,
+    "align": 0,
+    "offset": 16,
+    "length": 64
+   },
+   {
+    "index": 2,
+    "codec_name": "WMA",
+    "channels": 2,
+    "rate": 48000,
+    "align": 0,
+    "offset": 80,
+    "length": 32
+   }
+  ],
+  "decoded": [
+   "stream_000.wav",
+   "stream_001.xma",
+   "stream_002.wma"
+  ]
+ }
+}
