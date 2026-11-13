@@ -30,6 +30,7 @@
 #include "cb/formats/xbox/disc_command.hpp"
 #include "cb/formats/xbox/heavyiron.hpp"
 #include "cb/formats/xex.hpp"
+#include "cb/invert/production.hpp"
 #include "cb/java/tools.hpp"
 #include "cb/recompile/command.hpp"
 #include "cb/recompile/xenon_tools.hpp"
@@ -55,7 +56,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 52> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "mcp", "serve"};
+constexpr std::array<std::string_view, 52> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "mcp", "invert"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -204,6 +205,11 @@ void lazy_command(CommandTable& table, std::string name, std::function<cli::Comm
         line.insert(line.end(), args.begin(), args.end());
         return one.run(line);
     });
+}
+
+// The same for a command that reads its own command line: `make` gives its runner when it runs.
+void lazy_runner(CommandTable& table, std::string name, std::function<std::function<int(std::span<const std::string>)>()> make) {
+    table.set(name, [make = std::move(make)](std::span<const std::string> args) -> int { return make()(args); });
 }
 
 }  // namespace
@@ -393,7 +399,10 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // mcp, serve: the MCP server and the local service the terminal UI talks to (the Python's wire protocol)
     table.set(ui::mcp_command::command(ui::mcp_command::Environment{config, corpus, {}}));
-    table.set(ui::serve::command(ui::serve::Environment{config, corpus, {}}));
+    // (serve: the Python's until tests/test_service.py passes against the native one)
+
+    // invert ...: the inverse models (Microsoft C 6, MSVC 2, early C) and the module pass, with the period compilers
+    lazy_runner(table, "invert", [&config, corpus] { return invert::command::runner(invert::command::production(config, corpus)); });
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));

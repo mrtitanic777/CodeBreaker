@@ -183,6 +183,9 @@ def test_idle_exit():
 
 
 def test_stale_when_the_code_changes():
+    from codebreaker import __main__ as cb_main
+    if "serve" in getattr(cb_main, "NATIVE", ()):   # the native service watches its own program, not this package's files
+        return                                      # (native/cb/ui/serve_test.cpp: ui.serve.stale_exit)
     state = os.path.join(TEMP, "stale")
     p = subprocess.Popen([sys.executable, "-m", "codebreaker", "serve", "--idle", "10"], cwd=ROOT,
                          env=_env(state), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
