@@ -158,6 +158,8 @@ Image Image::read(const std::filesystem::path& path) {
     return parse(file, base, fs::to_text(path.filename()));
 }
 
+Image Image::read_xex(const xex::Tools& tools, const std::filesystem::path& xex_file) { return read(xex::basefile(tools, xex_file)); }
+
 Image Image::parse(Bytes file, std::optional<Address> base_override, std::string_view name) {
     const formats::pe::Image pe = formats::pe::Image::parse(ByteView(file), name);
     if (pe.header().machine != kMachine) throw FormatError("powerpc image", 0, std::string(name) + ": not a PowerPC image (machine type " + pe.machine_name() + ")");
