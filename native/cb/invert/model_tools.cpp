@@ -22,6 +22,7 @@
 #include "cb/invert/msvc2.hpp"
 #include "cb/invert/msvc2_battery.hpp"
 #include "cb/platforms/decoder.hpp"
+#include "cb/symbols/libraries/coff.hpp"
 
 namespace cb::invert::tools {
 
@@ -147,7 +148,7 @@ int msc6(const Environment& environment) {
         {"retail-cdecl(seg11)", "1e589045558bec1e8ed883ec02568b760cff7606ff760aff7608569a210500003bc67506b8ffffeb03902bc05e4d4d8be51f5d4dcb", {{0, "G"}}, {}},
         {"retail-wstore(seg10)", "1e589045558bec1e8ed883ec02b8ffffa382004d4d8be51f5d4dcb", {}, {}},
         {"retail-free(seg11)",
-         "1e589045558bec1e8ed883ec02833e7e00007420ff367e009affff0000ff367e009affff0000c7067e0000002bc0a3ee00a3ec00c6068000"
+         "1e589045558bec1e8ed883ec02833e7e00007420ff367e009affff0000ff367e009affff0000c7067e0000002bc0a3ee00a3ec00c606800000"
          "2bc0a3ee00a3ec00a3f200a3f000a3f600a3f400a3fa00a3f800a3fe00a3fc00a30201a300014d4d8be51f5d4dcb",
          {{0, "G"}, {1, "H"}},
          {{0xec, {"gL_ec", msc6_small::Width::Long}}}},
@@ -271,12 +272,16 @@ Built build_with_msvc2(const Environment& environment, const std::string& source
         b.error = r.error;
         return b;
     }
-    b.found = true;   // an object; the function may still be missing
-    for (const auto& [name, fn] : formats::omf::function_bytes(*r.object)) {
-        if (!name.starts_with("_f")) continue;
-        b.code = fn.code;
-        b.fixups = fn.fixup_mask;
-        return b;
+    b.found = true;   // an object; the function may still be missing (the compiler's objects are COFF)
+    try {
+        for (const symbols::libraries::Function& fn : symbols::libraries::coff::functions(*r.object)) {
+            if (!fn.name.starts_with("_f")) continue;
+            b.code = fn.code;
+            for (std::size_t i = 0; i < fn.mask.size(); ++i)
+                if (fn.mask[i]) b.fixups.insert(i);
+            return b;
+        }
+    } catch (const Error&) {   // an object that cannot be read has no function
     }
     b.found = false;
     return b;
@@ -735,7 +740,10 @@ int module(const Environment& environment, std::span<const std::string> args) {
     if (!file) throw NotFoundError(given, 0, "no module of that name or path");
     std::vector<module_pass::Function> functions = environment.functions ? environment.functions(*file) : module_pass::framed_functions(*file);
     if (first && functions.size() > first) functions.resize(first);
-    const auto results = module_pass::run(functions, environment.compile_msc6, environment.compile_msvc152, flags, [](const std::string& line) { out("{}\n", line); });
+    const auto say = [](const std::string& line) { out("{}\n", line); };
+    const auto results = environment.compile_msc6_many || environment.compile_msvc152_many
+                             ? module_pass::run_batched(functions, environment.compile_msc6_many, environment.compile_msvc152_many, flags, say)
+                             : module_pass::run(functions, environment.compile_msc6, environment.compile_msvc152, flags, say);
     if (!show.empty()) {
         const auto it = results.find(show);
         if (it == results.end()) out("no function '{}'\n", show);
