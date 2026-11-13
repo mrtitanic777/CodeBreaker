@@ -19,7 +19,7 @@ namespace cb::source::pipeline {
 namespace stdfs = std::filesystem;
 
 World::World(const Environment& environment) : config_(environment.config), kit_(environment.config, environment.corpus) {
-    if (environment.workers) kit_.set_worker_launcher(jobs::WorkerLauncher::for_this_program());
+    if (environment.workers || engine::hosting_workers()) kit_.set_worker_launcher(jobs::WorkerLauncher::for_this_program());
 }
 
 World::~World() = default;

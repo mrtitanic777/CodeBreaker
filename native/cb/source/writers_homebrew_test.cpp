@@ -7,6 +7,7 @@
 #include "cb/source/gb_writer.hpp"
 #include "cb/source/genesis_writer.hpp"
 #include "cb/source/sms_writer.hpp"
+#include "cb/source/zx_writer.hpp"
 
 namespace cb::source {
 namespace {
@@ -37,6 +38,9 @@ CB_TEST("source.writers.homebrew.master_system", [] {
 });
 
 CB_TEST("source.writers.homebrew.game_boy_color", [] { rebuild("gb-ucity/ucity.gbc", 25, gb_writer::reconstruct); });
+
+// (the ZX Spectrum's: a tape's code block, written with the Spectrum's names)
+CB_TEST("source.writers.homebrew.zx_spectrum", [] { rebuild("zx-icarus/Icarus.tap", 50, zx_writer::reconstruct); });
 
 CB_TEST("source.writers.homebrew.genesis", [] { rebuild("genesis-2048/rom.bin", 38, genesis_writer::reconstruct); });
 

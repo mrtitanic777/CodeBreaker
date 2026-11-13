@@ -203,6 +203,9 @@ void LaneKit::add_lanes(verify::reconstruct::Kinds& kinds) {
     if (auto lane = win16_lane()) kinds.add(std::move(lane), {.per_function = true});   // (a verdict holds while the function and what it reaches are unchanged)
     if (auto lane = driver_lane()) kinds.add(std::move(lane));                          // (one signature for every entry point: the driver's source)
     if (auto lane = powerpc_lane()) kinds.add(std::move(lane), verify::lanes::PowerPcLane::traits());
+    if (auto lane = dos_lane()) kinds.add(std::move(lane));                             // (the whole program is judged as one)
+    for (const char* machine : {"nes", "sms", "gb", "genesis", "zx", "msx"})
+        if (auto lane = machine_lane(machine)) kinds.add(std::move(lane));
     if (auto lane = java_lane()) kinds.add(std::move(lane), verify::lanes::JavaLane::traits());
 }
 
@@ -213,7 +216,11 @@ verify::reconstruct::Services LaneKit::reconstruct_services(const verify::recons
     verify::reconstruct::Services s{.kinds = kinds, .store = store};
     s.kind_of_file = [&corpus](const stdfs::path& p) -> std::optional<std::string> {
         const std::optional<base::Lane> lane = corpus.lane(p);
-        if (!lane) return std::nullopt;
+        if (!lane) {
+            std::string machine = machine_of_file(p);   // (a cartridge, a snapshot, a tape)
+            if (machine.empty()) return std::nullopt;
+            return machine;
+        }
         switch (*lane) {
         case base::Lane::Pe: return is_powerpc_image(p) ? "powerpc" : "pe";
         case base::Lane::Ne: return "ne";

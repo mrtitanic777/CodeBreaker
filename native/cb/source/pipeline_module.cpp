@@ -75,11 +75,16 @@ bool made_by_us(const stdfs::path& file) {
     return std::any_of(std::begin(kOurs), std::end(kOurs), [&](std::string_view mark) { return head.find(mark) != std::string::npos; });
 }
 
+// A module written as its assembly file: a driver, a real-mode program, a cartridge, a snapshot or a tape.
+bool written_as_assembly(std::string_view kind) {
+    return kind == "le" || kind == "dos" || kind == "nes" || kind == "sms" || kind == "gb" || kind == "genesis" || kind == "zx" || kind == "msx";
+}
+
 mf::Lane lane_of_kind(std::string_view kind) {
     if (kind == "ne") return mf::Lane::Ne;
     if (kind == "powerpc") return mf::Lane::PowerPc;
     if (kind == "le") return mf::Lane::Le;
-    if (kind == "dos") return mf::Lane::Dos;
+    if (written_as_assembly(kind)) return mf::Lane::Dos;   // (the head of an assembly file: nothing in it says which machine)
     return mf::Lane::Pe;
 }
 
@@ -199,7 +204,7 @@ struct ModuleRun {
         p.source_engine = std::string(verify::reconstruct::kSource);
         p.lane = lane_of_kind(kind);
         p.flat = kind == "pe";
-        if (kind == "le" || kind == "dos") return p;
+        if (written_as_assembly(kind)) return p;
 
         const base::Lane key_lane = lane.value_or(base::Lane::Pe);
         const auto keyed = [key_lane](core16::Va address) { return symbols::names::function_key(key_lane, static_cast<symbols::names::Address>(address)); };
@@ -357,7 +362,7 @@ void write_one(World& world, const std::string& module, bool verify, std::option
     }
     ModuleRun run{world, *path, rec.kind_name(*path).value_or(""), log, verify, build_whole, out};
     const mw::Prepared prepared = run.prepare(sha, profile);
-    if (run.kind == "le" || run.kind == "dos") {
+    if (written_as_assembly(run.kind)) {
         (void)mw::write_assembly(prepared, world.store(), out, log);
         return;
     }

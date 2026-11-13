@@ -19,6 +19,7 @@
 // kept here as the decompiler describes each module (Environment::described) and given to the lane's build through
 // `Win32Lane::Services::import_lines_for`.
 //
+// Wired besides: "dos" and the machines' lanes (lane_kit_machines).
 // Not wired: the Java lane (the transpiler's Services have no production assembly yet): `add_lanes` leaves "java" out and `java_missing()` says why.
 // The PowerPC lane ("powerpc") is wired when the Xbox 360 compiler is set up (settings powerpc_tools, powerpc_lib).
 #pragma once
@@ -76,6 +77,9 @@ public:
     std::shared_ptr<const verify::lanes::Kind> driver_lane();      // "le"
     std::shared_ptr<const verify::lanes::Kind> powerpc_lane();     // "powerpc": the Xbox 360 compiler (settings powerpc_tools, powerpc_lib) is set up
     std::shared_ptr<const verify::lanes::Kind> java_lane();        // "java"
+    std::shared_ptr<const verify::lanes::Kind> dos_lane();         // "dos": real-mode programs, written back as assembly and compared whole; null without OpenWatcom's wasm and wlink
+    // "nes", "sms", "gb", "genesis", "zx", "msx": a cartridge, snapshot or tape written back by its machine's writer, rebuilt, and run beside the original's; null for another name.
+    std::shared_ptr<const verify::lanes::Kind> machine_lane(std::string_view name);
     // Adds every lane that can be made, with the traits the reconstruction path is told of it.
     void add_lanes(verify::reconstruct::Kinds& kinds);
     // Why the Java lane is not added.
@@ -108,5 +112,17 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// ---- the host program ------------------------------------------------------------------------------------------------
+// What a program that hosts the kit's workers does first in main (codebreaker.exe adds these two lines at the top of its main):
+//
+//     #include "cb/engine/lane_kit.hpp"
+//     if (const int rc = cb::engine::host_main_hook(argc, argv); rc >= 0) return rc;
+//
+// When the program was started as a worker (`--cb-worker <kind> ...`) it runs that share and returns the exit code (>= 0); otherwise it returns -1
+// and the program goes on, now known to be a host: `hosting_workers()` is true, and the pipeline commands (source/pipeline) share judging and
+// building out over worker processes of it without their Environment saying so.
+int host_main_hook(int argc, char** argv);
+bool hosting_workers();
 
 }  // namespace cb::engine

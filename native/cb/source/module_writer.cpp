@@ -371,7 +371,7 @@ Written write_assembly(const Prepared& m, engine::FunctionStore& store, const st
     if (!source.empty()) units.push_back(translate::backends::assembly::MachineFragment{m.stem, source, false});
     const Result<std::string> file = mf::assembly_file(units, facts);
     std::string text = file.value();
-    text = text::replace_all(text, "\n", "\r\n");
+    text = text::replace_all(text::replace_all(text, "\r\n", "\n"), "\n", "\r\n");   // (a source the lane read as the file has it already ends its lines with CR LF)
     out.file = out_dir / (m.stem + ".asm");
     fs::write_file(out.file, text::to_latin1(text));
     if (log) log(std::format("{}: {}", fs::to_text(out.file), counts_text(out.counts)));

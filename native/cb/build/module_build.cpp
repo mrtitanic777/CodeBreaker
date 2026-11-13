@@ -36,7 +36,7 @@ Built ModuleBuilder::build(std::string_view module, const BuildOptions& options)
         throw UsageError(std::format("{}: a {} module is not linked whole here", b.name, b.kind ? *b.kind : "None"));
     std::optional<OrderedMap<std::string, std::string>> gated = options.gated;
     if (gated) b.gated = *gated;
-    b.folder = options.outdir ? *options.outdir : s.build_folder(b.name);
+    b.folder = s.build_folder(b.name);   // (the working files live here; `outdir` is given the image alone, as the Python's is)
     const stdfs::path folder = *b.folder;
     std::error_code ec;
     stdfs::create_directories(folder, ec);
@@ -123,6 +123,12 @@ Built ModuleBuilder::build(std::string_view module, const BuildOptions& options)
         }
     }
     check(b);
+    if (options.outdir) {
+        stdfs::create_directories(*options.outdir, ec);
+        const stdfs::path delivered = *options.outdir / b.image->filename();
+        stdfs::copy_file(*b.image, delivered, stdfs::copy_options::overwrite_existing);
+        b.image = delivered;
+    }
     if (options.call) run(b);
     return b;
 }
