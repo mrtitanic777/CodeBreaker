@@ -25,8 +25,11 @@
 #include "cb/formats/inspect.hpp"
 #include "cb/formats/xbox/heavyiron.hpp"
 #include "cb/formats/xex.hpp"
+#include "cb/java/tools.hpp"
+#include "cb/recompile/command.hpp"
 #include "cb/source/commands.hpp"
 #include "cb/source/dos_writer.hpp"
+#include "cb/source/pipeline.hpp"
 #include "cb/source/le_writer.hpp"
 #include "cb/source/ne_writer.hpp"
 #include "cb/source/pe_writer.hpp"
@@ -36,13 +39,15 @@
 #include "cb/store/analyze_command.hpp"
 #include "cb/store/versions_command.hpp"
 #include "cb/symbols/identify.hpp"
+#include "cb/symbols/program_commands.hpp"
+#include "cb/xna/command.hpp"
 #include "cb/symbols/prototypes.hpp"
 
 namespace cb::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 25> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze"};
+constexpr std::array<std::string_view, 34> kNative{"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna"};
 
 // The corpus over the configuration's products: the lane of a file from cb::formats::detect.
 std::shared_ptr<base::Corpus> corpus_of(const config::Config& config) {
@@ -342,6 +347,24 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // analyze <module> ...: the analyses of a module and the facts they file
     table.set(store::analyze_command::command(store::analyze_command::Environment{config, corpus}));
+
+    // decompile, build, place: the pipeline commands that are native now (module, scoreboard, measure, teeth, sweep wait for the
+    // lane kit's worker processes and its other lanes; match, repair, score16 for their native compile/compare path)
+    for (cli::Command& c : source::pipeline::commands(source::pipeline::Environment{config, corpus}))
+        if (c.name == "decompile" || c.name == "place") table.set(std::move(c));
+
+    // recompile, recompile-project, xenon-recompile: Xbox 360 PowerPC code as C/C++ and the projects around it
+    table.set("recompile", recompile::command::recompile_runner(recompile::command::Environment{config}));
+    table.set("recompile-project", recompile::command::recompile_project_runner(recompile::command::Environment{config}));
+    table.set("xenon-recompile", recompile::command::xenon_recompile_runner(recompile::command::Environment{config}));
+
+    // classes, xdk-match: what a PowerPC program's run-time type information and the XDK's libraries name
+    table.set(symbols::program_commands::classes_command(symbols::program_commands::Environment{config}));
+    table.set("xdk-match", symbols::program_commands::xdk_match_runner(symbols::program_commands::Environment{config}));
+
+    // java <tool> ..., xna ...: the Java and XNA lanes' tools
+    table.set("java", java::tools::runner(java::tools::Environment{config}));
+    table.set("xna", xna::command::runner(xna::command::Environment{config}));
 
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));
