@@ -75,7 +75,7 @@ def test_each_class_has_one_title_and_one_label():
     from codebreaker.store import functions as F
     from codebreaker.ui import terminal
     assert F.ORDER == V.ORDER and F.TITLE is V.TITLE and F.WEAK is V.WEAK_LIMITS and F.classify is V.classify
-    assert terminal.TITLE is V.LABEL and set(terminal.VERDICTS) == set(V.SCORED)
+    assert terminal.TITLE == V.LABEL and terminal.VERDICTS == V.ORDER + (V.IDENTIFIED,) and set(terminal.VERDICTS) == set(V.SCORED)   # (the terminal's own copy of the words)
     assert set(terminal.COLOR) == set(V.SCORED) == set(terminal.MARK)
 
 

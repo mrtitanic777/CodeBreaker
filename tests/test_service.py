@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Tests for the CodeBreaker service (codebreaker/ui/serve.py) and its client (ui/service.py):
-started on demand, the token, queries and jobs answered by it, one instance per state folder,
-the command line's `facts` through it, the MCP server's tools forwarded to it, the in-process
-path when it is not there or goes away, and exiting when idle or when its code changes.
+"""Tests for the terminal interface's client of the CodeBreaker service (codebreaker/ui/client.py) against
+the native service (`serve`, native/cb/ui/serve.*): started on demand, the token, queries and jobs answered
+by it, one instance per state folder, started again when it has gone, exiting when idle or when its program
+changes -- and, when it cannot be had at all, the client saying why (Unavailable) instead of answering from
+anywhere else.
 Run:  python tests/test_service.py     (exit code 0 = all passed)
 
-Every service runs on a state folder (and a function store) of its own in a temporary folder;
-every one started here is stopped before the end. Seconds; no corpus, no toolchain."""
-import asyncio
+Needs the native program: CB_EXE, `exe` in settings.json, or the build in state/cxx/codebreaker/build (the
+checks are SKIPPED, and say so, without it). Every service runs on a state folder (and a function store) of
+its own in a temporary folder; every one started here is stopped before the end. Seconds; no corpus."""
 import http.client
-import json
 import os
 import shutil
 import subprocess
@@ -21,69 +21,101 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 TEMP = tempfile.mkdtemp(prefix="cbsvc")
-os.environ["CB_FUNCTIONS_DB"] = os.path.join(TEMP, "functions.sqlite")      # before anything opens a store
+os.environ["CB_FUNCTIONS_DB"] = os.path.join(TEMP, "functions.sqlite")
 os.environ["CB_STATE"] = os.path.join(TEMP, "state")
 os.environ["CB_CONVERTED"] = os.path.join(TEMP, "Converted")
-os.environ.pop("CB_SERVICE", None)
 os.environ.pop("CB_SERVICE_PORT", None)
 
-from codebreaker.ui import serve, service           # noqa: E402
+from codebreaker.ui import client                    # noqa: E402
 
 RESULTS = []
 STARTED = []                                         # Popen of services started here by hand
+
+
+class Skip(Exception):
+    pass
 
 
 def check(fn):
     try:
         fn()
         RESULTS.append((fn.__name__, "PASS", ""))
+    except Skip as s:
+        RESULTS.append((fn.__name__, "SKIP", str(s)))
     except Exception as e:
         RESULTS.append((fn.__name__, "FAIL", "%s: %s" % (type(e).__name__, e)))
 
 
+def _exe():
+    exe = client.program()
+    if not exe:
+        raise Skip("the native program is not built (CB_EXE)")
+    return exe
+
+
 def _env(state):
-    env = dict(os.environ, CB_STATE=state, CB_FUNCTIONS_DB=os.path.join(state, "functions.sqlite"))
-    env.pop("CB_SERVICE", None)
-    return env
+    return dict(os.environ, CB_STATE=state, CB_FUNCTIONS_DB=os.path.join(state, "functions.sqlite"))
 
 
-def _cb(args, env=None, timeout=120):
-    return subprocess.run([sys.executable, "-m", "codebreaker"] + args, cwd=ROOT, env=env or dict(os.environ),
+def _serve(args, env=None, timeout=120):
+    return subprocess.run([_exe(), "serve"] + args, cwd=ROOT, env=env or dict(os.environ),
                           capture_output=True, text=True, timeout=timeout)
 
 
-def _calls():
-    c = service.find()
-    return c.ping()["calls"] if c else None
+def _wait_record(state, seconds=60):
+    end = time.time() + seconds
+    path = os.path.join(state, "service", "service.json")
+    while time.time() < end and not os.path.exists(path):
+        time.sleep(0.2)
+    return os.path.exists(path)
 
 
 # ---- tests -----------------------------------------------------------------------------------
-def test_in_process_without_a_service():
-    assert service.record() is None and service.find() is None
-    assert service.client() is None                                 # not an interface: never started
-    assert service.call("jobs.all") == [] and service.functions("no_such_zz.dll") is None
-    os.environ["CB_SERVICE"] = "0"
+def test_unavailable_says_why():
+    """No program to start: Unavailable names where it looked. A program that exits at once: its end is said."""
+    assert client.record() is None and client.find() is None
+    real = client.program
+    client.program = lambda: None
     try:
-        assert service.client(start=True) is None                   # off: always here
+        client._drop()
+        try:
+            client.connect(force=True)
+            raise AssertionError("connected to nothing")
+        except client.Unavailable as e:
+            assert "was not found" in str(e) and "Looked for it at" in str(e), str(e)
+        try:
+            client.call("jobs.all")                                   # (the failed start is not repeated at once)
+            raise AssertionError("answered by nothing")
+        except client.Unavailable:
+            pass
+        client.program = lambda: sys.executable                      # python, run as `python serve`: it stops again
+        try:
+            client.connect(force=True)
+            raise AssertionError("connected to a program that is not a service")
+        except client.Unavailable as e:
+            assert "stopped again" in str(e) and "serve.log" in str(e), str(e)
     finally:
-        del os.environ["CB_SERVICE"]
+        client.program = real
+        client._drop()
+    assert client.find() is None and not client.connected()
 
 
 def test_started_on_demand():
-    service.START = True
-    service._drop()
-    c = service.client()
-    assert c is not None and c.started and c.pid in service.LAUNCHED, c
+    _exe()
+    client._drop()
+    c = client.connect()
+    assert c is not None and c.started and c.pid in client.LAUNCHED, c
     p = c.ping()
-    rec = service.record()
-    assert p["pid"] == rec["pid"] == c.pid and p["port"] == rec["port"] == serve.fixed_port()
+    rec = client.record()
+    assert p["pid"] == rec["pid"] == c.pid and p["port"] == rec["port"]
     assert os.path.normcase(p["state"]) == os.path.normcase(os.environ["CB_STATE"]) and not p["stale"]
-    assert os.path.isfile(os.path.join(service.folder(), "token"))
-    service.START = False
+    assert os.path.isfile(os.path.join(client.folder(), "token"))
+    assert client.connect() is c and client.connected()              # the one client of this process
 
 
 def test_the_token_is_needed():
-    c = service.find()
+    c = client.find()
+    assert c is not None
     for headers in ({}, {"X-CodeBreaker-Token": "nope"}):
         conn = http.client.HTTPConnection("127.0.0.1", c.port, timeout=5)
         conn.request("GET", "/ping", headers=headers)
@@ -95,88 +127,59 @@ def test_the_token_is_needed():
 
 
 def test_queries_answered_by_it():
-    from codebreaker.ui import mcp_server
-    before = _calls()
-    got, here = service.call("mcp.commands"), mcp_server.commands()   # its answer is the in-process one
-    if got != here:                                                    # (the native service words its usage from its own command table)
-        assert set(got) == set(here) and got["runnable"] == here["runnable"] and "<command>" in got["usage"], (got["runnable"], here["runnable"])
-    assert service.call("mcp.demangle", ["_Bar@8"])["_Bar@8"]["stack_bytes"] == 8
-    assert service.functions("no_such_zz.dll") is None
+    got = client.call("mcp.commands")
+    assert "<command>" in got["usage"] and got["runnable"], got
+    assert client.call("mcp.demangle", decorated=["_Bar@8"])["_Bar@8"]["stack_bytes"] == 8
+    assert client.call("functions", module="no_such_zz.dll") is None
+    assert client.call("jobs.all") == [] and client.call("store.overview") == []
+    assert client.call("mcp.jobs")["jobs"] == []
     try:
-        service.call("mcp.describe", "no-such-module.dll")
+        client.call("mcp.describe", path="no-such-module.dll")
         raise AssertionError("no error")
     except ValueError as e:                                           # the kind of failure carried over
         assert "no module" in str(e)
     try:
-        service.find().call("no.such.call", {})
+        client.call("no.such.call")
         raise AssertionError("no error")
     except LookupError:
         pass
-    assert _calls() - before >= 5, (before, _calls())
 
 
 def test_a_job_runs_in_it():
-    j = service.call("mcp.run_command", "demangle", ["?f@@YAHH@Z"])
-    assert j["owner"] == service.OWNER and not service.JOBS.all()    # the service's process, not ours
+    j = client.call("mcp.run_command", command="serve", args=["--status"])   # (a command every program has: the service says it runs)
+    assert j["owner"] == client.OWNER                                 # (the service keeps the jobs per client)
     end = time.time() + 120
     while time.time() < end:
-        got = service.call("mcp.job", j["id"])
+        got = client.call("mcp.job", job_id=j["id"])
         if got["status"] != "running":
             break
         time.sleep(0.3)
-    assert got["status"] == "done" and "int __cdecl f(int)" in got["log"], got
-    assert any(x["id"] == j["id"] for x in service.call("mcp.jobs")["jobs"])
-    service.stop_mine()                                               # (nothing of ours runs: a no-op)
+    assert got["status"] == "done" and "pid %d" % client.find().pid in got["log"], got
+    assert any(x["id"] == j["id"] for x in client.call("mcp.jobs")["jobs"])
+    client.stop_mine()                                                # (nothing of ours runs: a no-op)
 
 
 def test_one_instance_per_state_folder():
-    first = service.find()
-    r = _cb(["serve"], timeout=60)
+    first = client.find()
+    r = _serve([], timeout=60)
     assert r.returncode == 0 and "already running" in r.stdout and "pid %d" % first.pid in r.stdout, r.stdout + r.stderr
-    r = _cb(["serve", "--status"], timeout=60)
+    r = _serve(["--status"], timeout=60)
     assert r.returncode == 0 and "pid %d" % first.pid in r.stdout, r.stdout
-    assert service.find().pid == first.pid
+    assert client.find().pid == first.pid
 
 
-def test_facts_through_it():
-    before = _calls()
-    r = _cb(["facts", "--databases"])
-    assert r.returncode == 0 and "db_max_gb" in r.stdout, r.stdout + r.stderr
-    assert _calls() == before + 1                                     # answered by the service
-    local = _cb(["facts", "--databases"], env=dict(os.environ, CB_SERVICE="0"))
-    assert local.stdout == r.stdout and _calls() == before + 1       # the same answer, here
-
-
-def test_mcp_tools_forwarded():
-    try:
-        from mcp import Client
-    except ImportError:
-        return                                                         # (the mcp package is not installed)
-    from codebreaker.ui import mcp_server
-
-    async def go():
-        async with Client(mcp_server.build()) as c:
-            r = await c.call_tool("demangle", {"decorated": ["_Bar@8"]})
-            bad = await c.call_tool("describe", {"path": "no-such-module.dll"})
-            return json.loads(r.content[0].text), bad.is_error, bad.content[0].text
-    before = _calls()
-    got, is_error, text = asyncio.run(go())
-    assert got["_Bar@8"]["stack_bytes"] == 8 and is_error and "no module" in text
-    assert _calls() == before + 2
-
-
-def test_gone_then_in_process():
-    c = service.find()
+def test_gone_then_started_again():
+    c = client.find()
     c.stop()
-    assert c.wait_gone() and service.record() is None                 # its record taken away
-    assert service.call("mcp.demangle", ["_Bar@8"])["_Bar@8"]["stack_bytes"] == 8   # answered here
-    assert service.client() is None
+    assert c.wait_gone() and client.record() is None                  # its record taken away
+    assert client.call("mcp.demangle", decorated=["_Bar@8"])["_Bar@8"]["stack_bytes"] == 8   # started again, once
+    assert client.find() is not None and client.find().pid != c.pid
 
 
 def test_idle_exit():
     state = os.path.join(TEMP, "idle")
-    p = subprocess.Popen([sys.executable, "-m", "codebreaker", "serve", "--idle", "0.05"], cwd=ROOT,
-                         env=_env(state), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    p = subprocess.Popen([_exe(), "serve", "--idle", "0.05"], cwd=ROOT, env=_env(state),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     STARTED.append(p)
     t = time.time()
     p.wait(timeout=60)
@@ -184,55 +187,35 @@ def test_idle_exit():
     assert not os.path.exists(os.path.join(state, "service", "service.json"))
 
 
-def _stale_when_the_program_changes():
-    """The native service runs from a copy of the program; the copy's time changing (a rebuilt program) makes it exit."""
+def test_stale_when_the_program_changes():
+    """The service runs from a copy of the program; the copy's time changing (a rebuilt program) makes it exit."""
+    exe = _exe()
     state = os.path.join(TEMP, "stale")
-    copy = os.path.join(TEMP, "stale-program" + os.path.splitext(sys.executable)[1])
-    shutil.copy2(sys.executable, copy)
-    p = subprocess.Popen([copy, "-m", "codebreaker", "serve", "--idle", "10"], cwd=ROOT,
-                         env=_env(state), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-    STARTED.append(p)
-    end = time.time() + 60
-    while time.time() < end and not os.path.exists(os.path.join(state, "service", "service.json")):
-        time.sleep(0.2)
-    assert os.path.exists(os.path.join(state, "service", "service.json")), "the service did not start"
-    later = time.time() + 120
-    os.utime(copy, (later, later))                                  # the program "rebuilt"
-    p.wait(timeout=60)
-    err = p.stderr.read()
-    assert p.returncode == 0 and "code changed" in err, err
-
-
-def test_stale_when_the_code_changes():
-    from codebreaker import __main__ as cb_main
-    if "serve" in getattr(cb_main, "NATIVE", ()):   # the native service watches its own program (its size and time)
-        return _stale_when_the_program_changes()
-    state = os.path.join(TEMP, "stale")
-    p = subprocess.Popen([sys.executable, "-m", "codebreaker", "serve", "--idle", "10"], cwd=ROOT,
-                         env=_env(state), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-    STARTED.append(p)
-    end = time.time() + 60
-    while time.time() < end and not os.path.exists(os.path.join(state, "service", "service.json")):
-        time.sleep(0.2)
-    stamp = list(serve.code_stamp())
-    probe = os.path.join(serve.PACKAGE, "ui", "_stale_probe.py")    # a new file of the package: its count changes
-    with open(probe, "w") as f:
-        f.write("")
+    copy = os.path.join(os.path.dirname(exe), "stale-%d-program%s" % (os.getpid(), os.path.splitext(exe)[1]))   # (beside the program: its libraries)
+    shutil.copy2(exe, copy)
     try:
-        p.wait(timeout=30)
+        p = subprocess.Popen([copy, "serve", "--idle", "10"], cwd=ROOT, env=_env(state),
+                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        STARTED.append(p)
+        assert _wait_record(state), "the service did not start"
+        later = time.time() + 120
+        os.utime(copy, (later, later))                                # the program "rebuilt"
+        p.wait(timeout=60)
+        err = p.stderr.read()
+        assert p.returncode == 0 and "code changed" in err, err
     finally:
-        os.remove(probe)
-    err = p.stderr.read()
-    assert p.returncode == 0 and "code changed" in err and serve.code_stamp() == stamp, err
+        try:
+            os.remove(copy)
+        except OSError:
+            pass
 
 
 def main():
-    for fn in (test_in_process_without_a_service, test_started_on_demand, test_the_token_is_needed,
-               test_queries_answered_by_it, test_a_job_runs_in_it, test_one_instance_per_state_folder,
-               test_facts_through_it, test_mcp_tools_forwarded, test_gone_then_in_process, test_idle_exit,
-               test_stale_when_the_code_changes):
+    for fn in (test_unavailable_says_why, test_started_on_demand, test_the_token_is_needed, test_queries_answered_by_it,
+               test_a_job_runs_in_it, test_one_instance_per_state_folder, test_gone_then_started_again, test_idle_exit,
+               test_stale_when_the_program_changes):
         check(fn)
-    c = service.find()                                                # every service started here, stopped
+    c = client.find()                                                 # every service started here, stopped
     if c:
         c.stop()
         c.wait_gone()
@@ -244,7 +227,8 @@ def main():
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
     shutil.rmtree(TEMP, ignore_errors=True)
     fails = sum(1 for _n, s, _d in RESULTS if s == "FAIL")
-    print("%d passed, %d failed" % (sum(1 for r in RESULTS if r[1] == "PASS"), fails))
+    print("%d passed, %d skipped, %d failed" % (sum(1 for r in RESULTS if r[1] == "PASS"),
+                                                sum(1 for r in RESULTS if r[1] == "SKIP"), fails))
     return 1 if fails else 0
 
 

@@ -120,7 +120,7 @@ RichLog {
 }
 
 /* -- dialogs -------------------------------------------------------------------------------- */
-Help, Ask, Info {
+Help, Ask, Info, ServiceDown {
     align: center middle;
     background: $background 70%;
 }
@@ -151,6 +151,18 @@ Help, Ask, Info {
     padding: 1 2;
     background: $surface;
     border: round $primary;
+}
+
+#down {
+    width: 90;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: round $error;
+}
+
+#down-why {
+    margin: 1 0;
 }
 
 #info-title {
