@@ -333,7 +333,6 @@ add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/build_lib.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/harness.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xcp_dumper.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xsm3.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/kv_tool.cpp"
