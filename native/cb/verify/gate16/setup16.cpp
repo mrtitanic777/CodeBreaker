@@ -358,35 +358,60 @@ void make_cd(const Config& config, const stdfs::path& out, const Replace& replac
 
 // ---- the test --------------------------------------------------------------------------------------------------------
 
-Outcome continue_test(const Config& config, const Replace& replace, std::string_view tag, const Options& options) {
-    const Timing& timing = options.timing;
+struct Machine::Impl {
+    base::runs::Folder work;   // (declared before the machine: the machine lets go of the files first)
+    Monitor monitor;
+    stdfs::path png;
+    std::optional<process::Process> machine;
+    Impl(const Config& config, std::string_view tag, const Options& options)
+        : work(config.state, "phase3", tag), monitor(free_port(), options.timing.monitor) {}
+};
+
+Machine::Machine(const Config& config, const Replace& replace, std::string_view tag, const Options& options)
+    : impl_(std::make_unique<Impl>(config, tag, options)) {
     const stdfs::path shots = options.keep_shot ? *options.keep_shot : base::runs::results(config.state, "phase3");
     fs::make_dirs(shots);
-    Outcome outcome;
-    outcome.screenshot = shots / (std::string(tag) + ".png");
-    const stdfs::path& png = outcome.screenshot;
-
-    // The disk and the CD are copies, in this run's folder alone; the folder is gone however the run ends, after the
-    // machine (declared after it) has let go of them.
-    base::runs::Folder work(config.state, "phase3", tag);
-    const stdfs::path cd = work.path() / "cd.iso";
+    impl_->png = shots / (std::string(tag) + ".png");
+    // The disk and the CD are copies, in this run's folder alone.
+    const stdfs::path cd = impl_->work.path() / "cd.iso";
     if (options.make_cd)
         options.make_cd(cd, replace);
     else
         make_cd(config, cd, replace);
-    const stdfs::path disk = work.path() / "hd.img";
+    const stdfs::path disk = impl_->work.path() / "hd.img";
     copy_over(config.prepared_disk(), disk);
 
-    const Monitor monitor(free_port(), timing.monitor);
     process::ProcessSpec spec;
     spec.argv = {fs::to_text(config.qemu), "-M", "pc", "-m", "64",
                  "-drive", std::format("file={},format=raw,if=floppy,index=0,snapshot=on", option_path(config.boot_floppy)),
                  "-drive", std::format("file={},format=raw,if=ide,index=0", option_path(disk)),
                  "-cdrom", fs::to_text(cd), "-boot", "a", "-display", "none",
-                 "-monitor", std::format("tcp:127.0.0.1:{},server,nowait", monitor.port())};
+                 "-monitor", std::format("tcp:127.0.0.1:{},server,nowait", impl_->monitor.port())};
     spec.out = process::Capture::Discard;
     spec.err = process::Capture::Discard;
-    process::Process machine = process::start(spec);
+    impl_->machine.emplace(process::start(spec));
+}
+
+Machine::~Machine() {
+    if (impl_ && impl_->machine) {
+        impl_->machine->kill();
+        (void)impl_->machine->wait(std::chrono::seconds(20));
+    }
+}
+
+const Monitor& Machine::monitor() const { return impl_->monitor; }
+bool Machine::running() const { return impl_->machine && impl_->machine->running(); }
+const stdfs::path& Machine::folder() const { return impl_->work.path(); }
+const stdfs::path& Machine::screenshot() const { return impl_->png; }
+
+Outcome continue_test(const Config& config, const Replace& replace, std::string_view tag, const Options& options) {
+    const Timing& timing = options.timing;
+    // The machine and its folder are gone however the run ends (the machine is stopped first).
+    Machine machine(config, replace, tag, options);
+    Outcome outcome;
+    outcome.screenshot = machine.screenshot();
+    const stdfs::path& png = outcome.screenshot;
+    const Monitor& monitor = machine.monitor();
 
     Verdict verdict = Verdict::Slow;
     std::optional<Picture> screen;
@@ -440,8 +465,6 @@ Outcome continue_test(const Config& config, const Replace& replace, std::string_
     if (!concluded && screen)
         verdict = is_black(*screen) ? Verdict::FailDos : screen->width() == kScreenWidth ? Verdict::FailHang : Verdict::Slow;
 
-    machine.kill();
-    (void)machine.wait(std::chrono::seconds(20));
     outcome.verdict = verdict;
     return outcome;
 }

@@ -8,6 +8,11 @@
 //           is a fresh CD and a fresh copy of the prepared disk, and the regression's rule is two runs.
 //   setup   the same with Setup's own seven 16-bit programs (SUWIN, SETUPX, SYSDETMG, NETDI, SUEXPAND, W95INF16,
 //           SETUP.EXE) rebuilt as well -- all assembly, as the chain was proved (no gate) -- and put in their cabinets.
+//   install the whole install, to the desktop: all 22 modules ours (the 15 of MINI.CAB, Setup's seven), Setup's wizard to Start Copying,
+//           the copy, Finish, FIX95CPU's disk (a host this fast fails the first restart at IOS, whatever the modules), the restart, and
+//           Windows 95 finishing its setup (verify/gate16/install16). PASS = the desktop on the screen. An install is an hour or more of
+//           machine time, so one run is the default (--runs 2 for the milestone's rule); the last screen of each stage is kept in
+//           <state>/phase3/shots/<tag>-<stage>.png.
 //   slow    the commands of a cases file (tests/regress/slow.json) run through the codebreaker program: the Xbox 360
 //           recompile of Tetris, Minecraft and Up (`recompile-project --check`) and whatever else is slow enough to wait
 //           for a milestone. A case passes when the exit code is the one it expects and its output has the lines it names.
@@ -36,15 +41,17 @@
 
 #include "cb/base/config.hpp"
 #include "cb/core/cli.hpp"
+#include "cb/verify/gate16/install16.hpp"
 #include "cb/verify/gate16/setup16.hpp"
 
 namespace cb::verify::regress {
 
 namespace setup16 = cb::verify::gate16::setup16;
+namespace install16 = cb::verify::gate16::install16;
 
-enum class Tier { All15, Setup, Slow };
+enum class Tier { All15, Setup, Install, Slow };
 
-// "all15", "setup", "slow".
+// "all15", "setup", "install", "slow".
 std::string_view word(Tier tier);
 std::optional<Tier> tier_named(std::string_view name);
 
@@ -70,9 +77,11 @@ struct Built {
 
 struct Boot {
     std::string tag;
-    setup16::Verdict verdict = setup16::Verdict::Slow;
+    std::string verdict = "SLOW";          // setup16's or install16's word: PASS, FAIL(hang), FAIL(stuck) ...
+    bool pass = false;
     std::filesystem::path screenshot;      // the last screen (kept: <state>/phase3/shots/<tag>.png)
     std::chrono::seconds took{0};
+    std::vector<std::string> log;          // install: one line a stage
 };
 
 struct Case {
@@ -98,7 +107,7 @@ struct Report {
 // ---- what the run is told ----------------------------------------------------------------------------------------------
 
 struct Options {
-    std::size_t runs = 2;                  // boots, each from a fresh CD and disk
+    std::optional<std::size_t> runs;       // boots, each from a fresh CD and disk (default 2; for install, 1)
     std::size_t vms = 1;                   // boots at once; at most 3
     std::vector<std::string> only;         // rebuild only these (the others stay the originals): a quick look, not the regression
     std::optional<std::filesystem::path> keep_built;   // put the built images here and keep them
@@ -119,6 +128,8 @@ struct Services {
                                      const std::filesystem::path& outdir, bool all_assembly)> build;
     // Boot Setup with these files in place of its own, and press Continue.
     std::function<setup16::Outcome(const setup16::Replace& replace, const std::string& tag)> boot;
+    // install: boot Setup with these files in place of its own, and drive it to the desktop (FIX95CPU's disk and all).
+    std::function<install16::Outcome(const setup16::Replace& replace, const std::string& tag)> install;
     // Free space of the drive the state folder is on, in GB.
     std::function<double()> free_gb;
     // What a tier needs and this machine lacks (the emulator, the Setup CD, the prepared disk, the originals): one line each,

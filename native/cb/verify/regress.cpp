@@ -29,13 +29,14 @@ std::string_view word(Tier tier) {
     switch (tier) {
     case Tier::All15: return "all15";
     case Tier::Setup: return "setup";
+    case Tier::Install: return "install";
     case Tier::Slow: return "slow";
     }
     return "?";
 }
 
 std::optional<Tier> tier_named(std::string_view name) {
-    for (const Tier t : {Tier::All15, Tier::Setup, Tier::Slow})
+    for (const Tier t : {Tier::All15, Tier::Setup, Tier::Install, Tier::Slow})
         if (text::iequals(name, word(t))) return t;
     return std::nullopt;
 }
@@ -92,9 +93,11 @@ std::string Report::text() const {
         }
     }
     if (!boots.empty()) {
-        out += "boots (Setup to the License page)\n";
-        for (const Boot& b : boots)
-            out += std::format("  {:<28} {:<16} {}  screen {}\n", b.tag, setup16::word(b.verdict), seconds_text(b.took), fs::to_text(b.screenshot));
+        out += tier == Tier::Install ? "installs (Setup to the desktop)\n" : "boots (Setup to the License page)\n";
+        for (const Boot& b : boots) {
+            out += std::format("  {:<28} {:<16} {}  screen {}\n", b.tag, b.verdict, seconds_text(b.took), fs::to_text(b.screenshot));
+            for (const std::string& line : b.log) out += std::format("      {}\n", line);
+        }
     }
     if (!cases.empty()) {
         out += "cases\n";
@@ -165,12 +168,13 @@ Report run_slow(const Services& s, const Options& o) {
 }  // namespace
 
 Report run(Tier tier, const Services& s, const Options& o) {
+    const std::size_t runs = o.runs.value_or(tier == Tier::Install ? 1 : 2);
     if (o.vms < 1 || o.vms > kMaxVms) throw UsageError(std::format("--vms is 1 to {}: no more than {} machines at once", kMaxVms, kMaxVms));
-    if (o.runs < 1) throw UsageError("--runs is at least 1");
+    if (runs < 1) throw UsageError("--runs is at least 1");
     if (tier == Tier::Slow) return run_slow(s, o);
 
     std::vector<std::string> own = all15_names();
-    if (tier == Tier::Setup) own.insert(own.end(), setup_names().begin(), setup_names().end());
+    if (tier == Tier::Setup || tier == Tier::Install) own.insert(own.end(), setup_names().begin(), setup_names().end());
     for (const std::string& n : o.only)
         if (!in_list(own, n)) throw UsageError(std::format("--only {}: not a module of {}", n, word(tier)));
 
@@ -189,7 +193,9 @@ Report run(Tier tier, const Services& s, const Options& o) {
         }
     }
     if (!o.only.empty()) r.notes.push_back("--only: the other modules stay the originals; this is a look, not the regression");
-    if (o.runs < 2 && o.only.empty()) r.notes.push_back("fewer than two runs: the regression's rule is two");
+    if (runs < 2 && o.only.empty())
+        r.notes.push_back(tier == Tier::Install ? "one install: an install is an hour or more of machine time (--runs 2 for the regression's two)"
+                                                : "fewer than two runs: the regression's rule is two");
 
     // the run's own folder (built images); removed however the run ends
     stdfs::create_directories(s.work);
@@ -215,7 +221,7 @@ Report run(Tier tier, const Services& s, const Options& o) {
         }
     };
     build_set(all15_names(), s.mini_original, false);
-    if (tier == Tier::Setup) build_set(setup_names(), s.setup_original, true);
+    if (tier == Tier::Setup || tier == Tier::Install) build_set(setup_names(), s.setup_original, true);
     if (o.only.empty()) {
         for (const Expected& e : kStatusNumbers) {
             for (const Built& b : r.built) {
@@ -239,21 +245,31 @@ Report run(Tier tier, const Services& s, const Options& o) {
 
     // boot: `runs` boots, `vms` at once, each its own CD and disk copy
     std::vector<std::string> tags;
-    for (std::size_t i = 1; i <= o.runs; ++i) tags.push_back(std::format("{}-{}-{}", o.tag, word(tier), i));
+    for (std::size_t i = 1; i <= runs; ++i) tags.push_back(std::format("{}-{}-{}", o.tag, word(tier), i));
     for (std::size_t first = 0; first < tags.size(); first += o.vms) {
         std::vector<std::future<Boot>> batch;
         for (std::size_t i = first; i < std::min(tags.size(), first + o.vms); ++i) {
-            batch.push_back(std::async(std::launch::async, [&s, &replace, tag = tags[i]]() {
+            batch.push_back(std::async(std::launch::async, [&s, &replace, tag = tags[i], tier]() {
                 Boot b;
                 b.tag = tag;
                 const Clock::time_point t0 = Clock::now();
                 try {
-                    const setup16::Outcome out = s.boot(replace, tag);
-                    b.verdict = out.verdict;
-                    b.screenshot = out.screenshot;
+                    if (tier == Tier::Install) {
+                        const install16::Outcome out = s.install(replace, tag);
+                        b.verdict = std::string(install16::word(out.verdict));
+                        b.pass = out.verdict == install16::Verdict::Pass;
+                        b.screenshot = out.screenshot;
+                        b.log = out.log;
+                    } else {
+                        const setup16::Outcome out = s.boot(replace, tag);
+                        b.verdict = std::string(setup16::word(out.verdict));
+                        b.pass = out.verdict == setup16::Verdict::Pass;
+                        b.screenshot = out.screenshot;
+                    }
                 } catch (const std::exception& e) {
                     log::warn(std::format("regress: boot {} failed to run: {}", tag, e.what()));
-                    b.verdict = setup16::Verdict::Slow;
+                    b.verdict = "SLOW";
+                    b.pass = false;
                 }
                 b.took = since(t0);
                 return b;
@@ -261,8 +277,7 @@ Report run(Tier tier, const Services& s, const Options& o) {
         }
         for (auto& f : batch) r.boots.push_back(f.get());
     }
-    r.pass = std::all_of(r.boots.begin(), r.boots.end(), [](const Boot& b) { return b.verdict == setup16::Verdict::Pass; }) &&
-             r.boots.size() == o.runs;
+    r.pass = std::all_of(r.boots.begin(), r.boots.end(), [](const Boot& b) { return b.pass; }) && r.boots.size() == runs;
     r.took = since(start);
     return r;
 }
@@ -350,13 +365,22 @@ Services production_services(const config::Config& config) {
         return setup16::continue_test(machine, replace, tag);
     };
 
+    // FIX95CPU's disk: the Windows 95 design folder's (beside the corpus)
+    const std::optional<stdfs::path> corpus = config.path("corpus");
+    const stdfs::path design = corpus ? corpus->parent_path().parent_path() : stdfs::path();
+    const stdfs::path fix95cpu = design / "vm" / "FIX95CPU.IMA";
+    s.install = [state, qemu, iso, fix95cpu](const setup16::Replace& replace, const std::string& tag) {
+        const setup16::Config machine = setup16::Config::in_state(state, qemu, iso.value_or(stdfs::path()));
+        return install16::install(machine, replace, tag, fix95cpu);
+    };
+
     s.free_gb = [state]() {
         std::error_code ec;
         const stdfs::space_info info = stdfs::space(state, ec);
         return ec ? 0.0 : static_cast<double>(info.available) / (1024.0 * 1024.0 * 1024.0);
     };
 
-    s.missing = [qemu, iso, state](Tier tier) {
+    s.missing = [qemu, iso, state, fix95cpu](Tier tier) {
         std::vector<std::string> lacks;
         std::error_code ec;
         const auto need = [&](const stdfs::path& p, const char* what) {
@@ -369,7 +393,8 @@ Services production_services(const config::Config& config) {
         need(state / "mini" / "MINI.CAB", "MINI.CAB");
         need(state / "bootfloppy" / "boot95_is.img", "the boot floppy");
         for (const std::string& n : all15_names()) need(state / "mini" / "original" / n, "an original of MINI.CAB");
-        if (tier == Tier::Setup)
+        if (tier == Tier::Install) need(fix95cpu, "FIX95CPU's disk, FIX95CPU.IMA of the Windows 95 design folder");
+        if (tier == Tier::Setup || tier == Tier::Install)
             for (const std::string& n : setup_names()) need(state / "setup" / "original" / n, "an original of Setup's programs");
         return lacks;
     };
@@ -385,9 +410,9 @@ Services production_services(const config::Config& config) {
 
 cli::Command command(const config::Config& config) {
     cli::Command c{"regress",
-                   "Logan's milestone regression: the all-15 Setup boot, the Setup chain, the slow cases",
-                   {cli::Positional{"tier", "all15 | setup | slow"},
-                    cli::Option{"--runs", "", "boots, each from a fresh CD and disk (default 2)", cli::Arg::Value, "N"},
+                   "Logan's milestone regression: the all-15 Setup boot, the Setup chain, the full install, the slow cases",
+                   {cli::Positional{"tier", "all15 | setup | install | slow"},
+                    cli::Option{"--runs", "", "boots, each from a fresh CD and disk (default 2; install: 1)", cli::Arg::Value, "N"},
                     cli::Option{"--vms", "", "boots at once, 1 to 3 (default 1)", cli::Arg::Value, "N"},
                     cli::Option{"--only", "", "rebuild only these modules, the rest stay the originals (a look, not the regression)", cli::Arg::Value, "NAME,..."},
                     cli::Option{"--keep-built", "", "keep the built images in this folder", cli::Arg::Value, "DIR"},
@@ -398,13 +423,15 @@ cli::Command command(const config::Config& config) {
                    {},
                    "Verify",
                    "all15 rebuilds the 15 modules of Setup's MINI.CAB from source, puts them on Setup's CD and boots Windows 95 Setup in QEMU to the License "
-                   "page (PASS in every run). setup adds Setup's own seven 16-bit programs, rebuilt as assembly. slow runs the commands of the cases file. "
+                   "page (PASS in every run). setup adds Setup's own seven 16-bit programs, rebuilt as assembly. install builds both sets and installs Windows 95 on them in "
+                   "QEMU to the desktop (the copy, the restart, FIX95CPU's disk, Windows finishing its setup; an hour or more a run; the last screen of each stage is "
+                   "kept under <state>/phase3/shots). slow runs the commands of the cases file. "
                    "At most 3 machines at once; only the machines this run started are stopped; the run's copies are deleted; nothing starts with under 30 GB "
                    "free. Exit 0 on PASS, 1 on FAIL or a run that could not start."};
     c.handler = [config](const cli::Args& args) {
         const std::string name = args.required("tier");
         const std::optional<Tier> tier = tier_named(name);
-        if (!tier) throw UsageError("regress: '" + name + "' is not all15, setup or slow");
+        if (!tier) throw UsageError("regress: '" + name + "' is not all15, setup, install or slow");
         Options o;
         if (const auto v = args.integer<std::size_t>("runs")) o.runs = *v;
         if (const auto v = args.integer<std::size_t>("vms")) o.vms = *v;

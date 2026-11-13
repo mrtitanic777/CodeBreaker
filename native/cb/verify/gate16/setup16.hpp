@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -137,6 +138,28 @@ struct Options {
     std::optional<std::filesystem::path> keep_shot;      // the screenshot's folder (default: <state>/phase3/shots)
     // What makes the CD (default: make_cd above): a test puts a small one here.
     std::function<void(const std::filesystem::path& out, const Replace& replace)> make_cd;
+};
+
+// A Setup machine that is running: the run's own folder (the CD with `replace` in place, a copy of the prepared disk -- 650 MB, gone with
+// the machine), and QEMU started on them with a monitor on a port of this computer. The floppy is the one that starts `SETUP /IS`; the
+// machine boots from it. Whoever drives the machine -- continue_test, or the full install (install16) -- takes its monitor.
+class Machine {
+public:
+    Machine(const Config& config, const Replace& replace, std::string_view tag, const Options& options = {});
+    Machine(const Machine&) = delete;
+    Machine& operator=(const Machine&) = delete;
+    ~Machine();   // the machine is stopped (its job, nothing else), then the folder is removed
+
+    const Monitor& monitor() const;
+    bool running() const;
+    // The run's own folder: a place for a file the run needs (a floppy to put in the machine).
+    const std::filesystem::path& folder() const;
+    // Where the last screen is kept: <shots>/<tag>.png.
+    const std::filesystem::path& screenshot() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // Boot Setup with `replace` and press Continue.

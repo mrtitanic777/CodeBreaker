@@ -19,6 +19,8 @@ namespace rsfs = std::filesystem;
 struct RegressFake {
     fs::ScopedTempDir dir{"cb-regress"};
     std::atomic<int> boots{0};
+    std::atomic<int> installs{0};
+    install16::Verdict install_verdict = install16::Verdict::Pass;
     std::atomic<int> at_once{0}, most_at_once{0};
     std::vector<std::string> built_names;
     std::vector<bool> all_assembly_seen;
@@ -62,6 +64,16 @@ struct RegressFake {
             ++boots;
             --at_once;
             return setup16::Outcome{boot_verdict, dir.path() / (tag + ".png")};
+        };
+        s.install = [this](const setup16::Replace& replace, const std::string& tag) {
+            CB_CHECK_EQ(replace.size(), std::size_t{22});   // (all of ours: the 15 of MINI.CAB and Setup's seven)
+            ++installs;
+            install16::Outcome o;
+            o.verdict = install_verdict;
+            o.stage = "windows";
+            o.screenshot = dir.path() / (tag + ".png");
+            o.log = {"    12s  copy: the copy is done", "    90s  windows: the desktop"};
+            return o;
         };
         return s;
     }
@@ -198,4 +210,35 @@ CB_TEST("verify.regress.tier_names", [] {
     CB_CHECK(!tier_named("all"));
     CB_CHECK_EQ(all15_names().size(), std::size_t{15});
     CB_CHECK_EQ(setup_names().size(), std::size_t{7});
+});
+
+CB_TEST("verify.regress.install_builds_all_twenty_two_and_installs_once", [] {
+    RegressFake f;
+    const Report r = run(Tier::Install, f.services(), {});
+    CB_CHECK(r.pass);
+    CB_CHECK_EQ(f.built_names.size(), std::size_t{22});
+    CB_CHECK_EQ(f.installs.load(), 1);   // (an install is an hour of machine time: one unless --runs says more)
+    CB_CHECK_EQ(f.boots.load(), 0);      // (not the License-page boot)
+    CB_CHECK_EQ(r.boots.size(), std::size_t{1});
+    CB_CHECK(has(r.text(), "installs (Setup to the desktop)"));
+    CB_CHECK(has(r.text(), "regress-install-1"));
+    CB_CHECK(has(r.text(), "windows: the desktop"));
+    CB_CHECK(has(r.text(), "note: one install"));
+    CB_CHECK(rsfs::is_empty(f.dir.path() / "work"));
+});
+
+CB_TEST("verify.regress.a_failed_install_fails_the_run_and_says_where", [] {
+    RegressFake f;
+    f.install_verdict = install16::Verdict::FailFix;
+    const Report r = run(Tier::Install, f.services(), {});
+    CB_CHECK(!r.pass);
+    CB_CHECK(has(r.text(), "FAIL(fix95cpu)"));
+    CB_CHECK(has(r.text(), "FAIL in"));
+    const Report two = run(Tier::Install, f.services(), {.runs = 2});
+    CB_CHECK_EQ(two.boots.size(), std::size_t{2});
+});
+
+CB_TEST("verify.regress.the_install_tier_has_its_name", [] {
+    CB_CHECK(tier_named("install").has_value());
+    CB_CHECK_EQ(std::string(word(Tier::Install)), "install");
 });

@@ -6,6 +6,7 @@
 //     table.set("driver-source", production.driver_source());
 //     table.set("dos-source", production.dos_source());
 //     table.set(production.dos_build());                     // dos-build <folder> [--against F]
+//     table.set(production.boot_floppy());                   // boot-floppy [--image F] [--out F] [--extract DIR]
 //     table.set(production.driver_judge());                  // driver-judge <rebuilt> <original>
 //
 // Each module of this area takes what it needs from the world as an `Environment` (the DDK's names, the assemblers, the linkers, the corpus, the state
@@ -50,6 +51,9 @@ public:
     Runner dos_source() const;
     // `dos-build <folder> [--against ORIGINAL]`.
     cli::Command dos_build() const;
+    // `boot-floppy [--image ORIGINAL.img] [--out FILE.img] [--extract DIR]`: the Windows 95 Setup boot floppy (build/floppy.hpp), its programs
+    // written and built by the DOS writer with the same surroundings `dos-source` has.
+    cli::Command boot_floppy() const;
     // `driver-judge <rebuilt> <original> | --self-check <original>`: every entry point of both drivers run and compared.
     cli::Command driver_judge() const;
 
