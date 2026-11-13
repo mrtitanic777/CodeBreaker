@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "cb/core/json.hpp"
+#include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
 
 namespace cb::knowledge::show {
@@ -133,6 +134,31 @@ Outcome run(Base& base, std::span<const std::string> args_in) {
     const double made = about->made_at ? *about->made_at : static_cast<double>(std::time(nullptr));
     say(std::format("source: {}\norigin: {}\nmade:   {}\nhash:   {}", about->source, about->origin, local_time_text(made), about->hash));
     return out;
+}
+
+cli::Command command(const Environment& environment) {
+    cli::Command c;
+    c.name = "knowledge";
+    c.summary = "what the knowledge base holds, and where each piece came from";
+    c.params = {
+        cli::Positional{"platform", "a platform (or a lane's name for it): its kinds", false},
+        cli::Positional{"kind", "a kind: its keys (the first 200)", false},
+        cli::Positional{"key", "a key: its value, source, origin", false},
+        cli::Option{"--load", "", "load every authored file first", cli::Arg::Flag},
+    };
+    c.handler = [environment](const cli::Args& a) {
+        std::vector<std::string> words;
+        for (const char* name : {"platform", "kind", "key"}) {
+            const std::optional<std::string> word = a.value(name);
+            if (!word) break;
+            words.push_back(*word);
+        }
+        if (a.flag("load")) words.emplace_back("--load");
+        const Outcome outcome = run(environment.base(), words);
+        out_text(outcome.text);
+        return outcome.exit_code;
+    };
+    return c;
 }
 
 }  // namespace cb::knowledge::show
