@@ -9,7 +9,8 @@ Layout (clean-room from the documented format / XUIHelper by SGCSam):
   header (20 bytes, BE):  magic 'XUIB', version(=5), flags, toolVersion(u16),
                           fileSize, sectionCount(u16)
   section table:          sectionCount x { magic(u32), offset(u32), length(u32) }
-  section data:           based at 20 + sectionCount*12
+  section data:           each section at its offset from the START OF THE FILE (the first begins where
+                          the table ends, 20 + sectionCount*12; the rest follow end to end)
   STRN section:           repeated { u16 length, UTF-16BE chars[length] }
 
 This reads the container and its strings; it does not (yet) rebuild the full
@@ -49,8 +50,7 @@ class XUR:
     def section_data(self, magic):
         for m, off, length in self.sections:
             if m == magic:
-                s = self.data_base + off
-                return self.d[s:s + length]
+                return self.d[off:off + length]
         return None
 
     def strings(self):
@@ -73,7 +73,7 @@ def build_strn(strings):
     body = b""
     for s in strings:
         e = s.encode("utf-16-be")
-        body += struct.pack(">H", len(s)) + e
+        body += struct.pack(">H", len(e) // 2) + e                  # the length is in UTF-16 units, not code points
     return body
 
 
@@ -91,18 +91,15 @@ def set_strings(data, new_strings):
     idx, soff, slen = strn
     body = build_strn(new_strings)
     delta = len(body) - slen
-    db = x.data_base
-    area = data[db:]
-    new_area = area[:soff] + body + area[soff + slen:]
-    out = bytearray(data[:db])                          # header + section table
-    struct.pack_into(">I", out, 14, x.file_size + delta)    # file size
+    out = bytearray(data[:soff] + body + data[soff + slen:])    # the other sections keep their bytes and their order
+    struct.pack_into(">I", out, 14, x.file_size + delta)        # file size
     for i, (m, off, length) in enumerate(x.sections):
         eo = 20 + i * 12
         if i == idx:
-            struct.pack_into(">I", out, eo + 8, len(body))     # STRN new length
+            struct.pack_into(">I", out, eo + 8, len(body))      # STRN new length
         elif off > soff:
-            struct.pack_into(">I", out, eo + 4, off + delta)   # shift later section
-    return bytes(out) + new_area
+            struct.pack_into(">I", out, eo + 4, off + delta)    # shift later section
+    return bytes(out)
 
 
 def set_string(data, index, text):

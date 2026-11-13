@@ -637,6 +637,7 @@ void xdbf_achievements(Call &c) {
         int64_t from = 0;
         for (;;) {
             int64_t at = rest.find("\0\0", 2, from);
+            while (at >= 0 && (at & 1)) at = rest.find("\0\0", 2, at + 1);   // each string ends with a zero UTF-16 unit: two zero bytes on a unit boundary
             if (at < 0) { strs.push_back(rest.slice(from)); break; }
             strs.push_back(rest.slice(from, at));
             from = at + 2;
