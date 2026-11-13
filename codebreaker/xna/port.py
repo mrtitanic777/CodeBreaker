@@ -51,8 +51,9 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUNTIME = os.path.join(HERE, "runtime")
-APISTUBS = os.path.join(HERE, "apistubs")
+DATA = os.path.join(os.path.dirname(os.path.dirname(HERE)), "data", "xna")   # runtime/, apistubs/, shadercheck/
+RUNTIME = os.path.join(DATA, "runtime")
+APISTUBS = os.path.join(DATA, "apistubs")
 STUBBED = ("GamerServices", "Net", "Storage", "Avatar")
 HAND_WRITTEN = ("Guide", "Gamer", "SignedInGamer", "SignedInGamerCollection", "GamerServicesDispatcher",
                 "StorageDevice", "StorageContainer")

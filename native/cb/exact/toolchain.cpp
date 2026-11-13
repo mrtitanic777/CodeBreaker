@@ -148,7 +148,7 @@ namespace cb::exact::toolchain {
 Locations Locations::of_checkout(const stdfs::path& checkout_root) {
     Locations l;
     l.checkout_root = checkout_root;
-    l.profiles = checkout_root / "codebreaker" / "exact" / "toolchains";
+    l.profiles = checkout_root / "data" / "exact" / "toolchains";
     l.state = checkout_root / "state";
     const stdfs::path settings = checkout_root / "settings.json";
     std::error_code ec;

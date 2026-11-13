@@ -13,7 +13,7 @@
 //   --cpp DIR    writes each module that translated anything through the C++17 back end
 //                (native/l2's l2cpp17): DIR/<module path>.hpp / .cpp, and DIR/spans.json (per
 //                module, each function's first and last source line; a declined unit's reason)
-//   --api DIR    the API maps the back end reads (default: <package dir>/java/api_maps)
+//   --api DIR    the API maps the back end reads (default: <checkout>/data/java/api_maps)
 //   --no-backend do not hold translated functions to what the back end writes (see README)
 //   --stubs DIR  a folder of <module>.pyi stubs (MonkeyType's output), read as parameter hints (inference wins; conflicts reported)
 //   --hints DIR  the hints (types.json, refuse.json, refuse.<policy>.json; default native/pyengine/hints)

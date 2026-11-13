@@ -50,7 +50,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::java_lane() {
     }
     const config::Config& config = impl_->config;
     if (!kit_host_cxx(config)) return nullptr;   // no compiler: the lane has no profile
-    const java::JavaData data(config.checkout_root() / "codebreaker" / "java");
+    const java::JavaData data(config.checkout_root() / "data" / "java");
     std::error_code ec;
     if (!stdfs::is_directory(data.root(), ec)) return nullptr;
 
@@ -85,7 +85,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::java_lane() {
 }
 
 std::string_view LaneKit::java_missing() {
-    return "the Java lane needs a C++ compiler (settings host_cxx, or g++ on the PATH) and the lane's data folder (codebreaker/java); a JDK (setting java) lets it also run the classes";
+    return "the Java lane needs a C++ compiler (settings host_cxx, or g++ on the PATH) and the lane's data folder (data/java); a JDK (setting java) lets it also run the classes";
 }
 
 }  // namespace cb::engine

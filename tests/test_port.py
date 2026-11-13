@@ -17,7 +17,7 @@ if ROOT not in sys.path:
 from codebreaker.port import pre_ansi                                                   # noqa: E402
 from codebreaker.port import __main__ as port_main                                      # noqa: E402
 
-PROFILE = json.load(open(os.path.join(ROOT, "codebreaker", "port", "runtimes", "dos_c_early.json")))
+PROFILE = json.load(open(os.path.join(ROOT, "data", "port", "runtimes", "dos_c_early.json")))
 RESULTS = []
 
 # a program as the C of 1984 had it: old-style definitions, a member used on a char *, a name buffer whose

@@ -34,7 +34,7 @@ from codebreaker.translate.backends import cpp03, jmodel
 from codebreaker.translate.backends.cpp03 import Decline
 from codebreaker.translate.backends.jmodel import LIB as _LIB, char_literal as _char, constant_init as _constant_init
 
-RUNTIME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'runtime', 'c')
+RUNTIME = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'data', 'translate', 'runtime', 'c')
 CLANG = r'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin\clang.exe'
 FLAGS = ('-std=c11', '-fwrapv', '-O1', '-w')
 

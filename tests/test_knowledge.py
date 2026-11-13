@@ -117,7 +117,7 @@ def test_authored_files_are_read_through_it(d):
     kb = store.open()
     stamp = kb.stamp("win32", "signature")
     assert stamp == sources.file_stamp(sources.AUTHORED[("win32", "signature")][0])
-    assert kb.about("win32", "signature", "000000")[0].replace("\\", "/") == "codebreaker/symbols/runtime_signatures.json"
+    assert kb.about("win32", "signature", "000000")[0].replace("\\", "/") == "data/symbols/runtime_signatures.json"
 
 
 def test_the_stand_ins_are_data(d):

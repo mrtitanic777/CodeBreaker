@@ -48,7 +48,7 @@ public:
     static ServiceTable parse(std::string_view json_text, std::string_view source = "dos_interrupts.json");
     // The file; IoError / ParseError.
     static ServiceTable load(const std::filesystem::path& file);
-    // The project's own file (<checkout>/codebreaker/symbols/dos_interrupts.json, the checkout from CB_CHECKOUT_ROOT
+    // The project's own file (<checkout>/data/symbols/dos_interrupts.json, the checkout from CB_CHECKOUT_ROOT
     // or the working folder), read once per process.
     static const ServiceTable& standard();
 

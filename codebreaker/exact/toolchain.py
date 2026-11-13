@@ -39,6 +39,7 @@ from codebreaker.base import cache as _cache
 from codebreaker.base import settings
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+TOOLCHAINS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "data", "exact", "toolchains")   # the profiles
 CACHE_VERSION = "1"
 
 
@@ -65,7 +66,7 @@ def kit_path(kit, path, base=None):
 
 
 def profiles():
-    d = os.path.join(HERE, "toolchains")
+    d = TOOLCHAINS
     return sorted(f[:-5] for f in os.listdir(d) if f.endswith(".json"))
 
 
@@ -362,7 +363,7 @@ _LOADED = {}
 def load(name, variant=None):
     k = (name, variant)
     if k not in _LOADED:
-        with open(os.path.join(HERE, "toolchains", name + ".json")) as f:
+        with open(os.path.join(TOOLCHAINS, name + ".json")) as f:
             p = json.load(f)
         if p.get("plugin"):                                 # (a toolchain whose running is code: module:Class)
             import importlib

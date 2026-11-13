@@ -116,7 +116,7 @@ CB_TEST("java.frontend.javac_runs_and_what_it_lowers_matches_the_python", [] {
     fe::DumpTools tools;
     tools.java = *java;
     tools.javac = javac;
-    tools.treedump_source = testing::data_path("../../codebreaker/translate/frontends/java/TreeDump.java");
+    tools.treedump_source = testing::data_path("../../data/translate/frontends/java/TreeDump.java");
     tools.state = dir.path();
     Arena arena;
     const std::vector<ir::Node*> units = fe::lower_program(arena, testing::data_path("java/testdata/frontend/src"), tools);

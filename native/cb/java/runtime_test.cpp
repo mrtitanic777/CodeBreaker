@@ -17,7 +17,7 @@ using namespace cb::java;
 bool rt_has(const std::string& text, std::string_view needle) { return text.find(needle) != std::string::npos; }
 namespace stdfs = std::filesystem;
 
-JavaData rt_real_data() { return JavaData(cb::testing::data_path("../../codebreaker/java")); }
+JavaData rt_real_data() { return JavaData(cb::testing::data_path("../../data/java")); }
 
 const runtime::Runtime& rt_runtime() {
     static const runtime::Runtime r(rt_real_data());
@@ -113,7 +113,7 @@ CB_TEST("java.runtime.every_canonical_header_is_wired", [] {
 CB_TEST("java.runtime.unwired_canonical_is_reported", [] {
     cb::fs::ScopedTempDir tmp("cbruntime");
     const stdfs::path java = tmp.path() / "java";
-    cb::fs::copy_tree(cb::testing::data_path("../../codebreaker/java/platform/canonical"), java / "platform" / "canonical");
+    cb::fs::copy_tree(cb::testing::data_path("../../data/java/platform/canonical"), java / "platform" / "canonical");
     cb::fs::write_text(java / "platform" / "canonical" / "Zebra.h", "// a canonical header nothing wires\n");
     cb::fs::write_text(java / "platform" / "canonical" / "notes.txt", "not a header\n");
     const runtime::Runtime r{JavaData(java)};
@@ -127,7 +127,7 @@ CB_TEST("java.runtime.missing_canonical_folder", [] {
 
 CB_TEST("java.runtime.canonical_headers_are_taken_verbatim", [] {
     const auto& files = rt_runtime().files();
-    CB_CHECK_EQ(files.at("Random.h"), textutil::read_text(cb::testing::data_path("../../codebreaker/java/platform/canonical/Random.h")));
+    CB_CHECK_EQ(files.at("Random.h"), textutil::read_text(cb::testing::data_path("../../data/java/platform/canonical/Random.h")));
     CB_CHECK(files.contains("JavaRT.h"));
     CB_CHECK(files.contains("GL11.h"));
     CB_CHECK_EQ(files.at("Iterator.h"), "#ifndef ITERATOR_H\n#define ITERATOR_H\n#include \"JIterator.h\"\n#endif\n");

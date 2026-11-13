@@ -32,7 +32,7 @@ from codebreaker.formats.pe import open_pe
 from codebreaker.symbols import api_arguments, demangle, prototypes
 from codebreaker.symbols.libraries import coff
 
-_TABLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ordinal_names.json")
+_TABLE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "symbols", "ordinal_names.json")
 # Exports no definition file or import library names, named from documentation instead, for
 # people to read (documented()). name() does not use them: the decompiler's names come from
 # files only, and these would change what it writes.

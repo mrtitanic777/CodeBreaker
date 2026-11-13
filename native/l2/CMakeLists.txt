@@ -82,7 +82,7 @@ else()
   target_link_libraries(l2_tests PRIVATE l2core)
 endif()
 endif()
-target_compile_definitions(l2_tests PRIVATE L2_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../../codebreaker/translate/l2.schema.json"
+target_compile_definitions(l2_tests PRIVATE L2_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../../data/translate/l2.schema.json"
                                             L2_TESTDATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 if(MSVC)
   target_compile_options(l2_tests PRIVATE /EHsc /utf-8)
@@ -94,7 +94,7 @@ add_test(NAME l2_tests COMMAND l2_tests)
 add_executable(cpp17_tests tests/test_cpp17.cc)
 target_link_libraries(cpp17_tests PRIVATE l2cpp17)
 target_compile_definitions(cpp17_tests PRIVATE L2_TESTDATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
-                                               API_MAPS="${CMAKE_CURRENT_SOURCE_DIR}/../../codebreaker/java/api_maps")
+                                               API_MAPS="${CMAKE_CURRENT_SOURCE_DIR}/../../data/java/api_maps")
 if(MSVC)
   target_compile_options(cpp17_tests PRIVATE /EHsc /utf-8)
   target_link_options(cpp17_tests PRIVATE /STACK:268435456)

@@ -21,9 +21,10 @@ import os
 
 from codebreaker.translate import l2, native_l2
 
-RUNTIME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'runtime', 'cpp17')
+_DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'data')
+RUNTIME = os.path.join(_DATA, 'translate', 'runtime', 'cpp17')
 FLAGS = ('-std=c++17', '-fwrapv', '-w', '-O1')
-API_MAPS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'java', 'api_maps')
+API_MAPS = os.path.join(_DATA, 'java', 'api_maps')
 
 
 class Decline(Exception):

@@ -71,8 +71,8 @@ struct AuthoredKind {
 
 // The folders the authored files are in.
 struct DataFolders {
-    std::filesystem::path symbols;   // <checkout>/codebreaker/symbols
-    std::filesystem::path models;    // <checkout>/codebreaker/knowledge/models
+    std::filesystem::path symbols;   // <checkout>/data/symbols
+    std::filesystem::path models;    // <checkout>/data/knowledge/models
 
     static DataFolders under(const std::filesystem::path& checkout);
     // CB_CHECKOUT_ROOT when set, else the working folder.
@@ -104,7 +104,7 @@ public:
     // kinds.
     std::vector<KindId> changed(const std::filesystem::path& file, KindStore& store);
 
-    // The file's name relative to the checkout, as the base shows it ("codebreaker/symbols/ordinal_names.json").
+    // The file's name relative to the checkout, as the base shows it ("data/symbols/ordinal_names.json").
     std::string source_label(const AuthoredKind& kind) const;
 
 private:

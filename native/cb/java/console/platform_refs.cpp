@@ -314,7 +314,7 @@ namespace {
 std::string refs_banner(std::string_view base, std::string_view ext, Platform platform) {
     const bool pc = platform == Platform::PcOpenGl;
     const std::string_view label = pc ? "PC (SDL2 + OpenGL)" : "Xbox 360";
-    const std::string_view where = pc ? "codebreaker/java/platform/pc/reference" : "codebreaker/java/platform/reference";
+    const std::string_view where = pc ? "data/java/platform/pc/reference" : "data/java/platform/reference";
     return std::format(
         "// ============================ PLATFORM REFERENCE ============================\n"
         "// Hand-written {0} platform layer, emitted from\n"

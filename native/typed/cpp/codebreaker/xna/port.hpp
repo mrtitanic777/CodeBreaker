@@ -59,7 +59,7 @@ inline std::filesystem::path path_of(const py::str& s) { return cb::compat::lega
 
 inline nw::Tools tools() {
     nw::Tools t;
-    const std::filesystem::path here = path_of(py::settings::checkout_root()) / "codebreaker" / "xna";
+    const std::filesystem::path here = path_of(py::settings::checkout_root()) / "data" / "xna";
     t.runtime_dir = here / "runtime";
     t.apistubs_dir = here / "apistubs";
     t.state = cb::compat::legacy::state_dir();

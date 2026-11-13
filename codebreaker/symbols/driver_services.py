@@ -29,7 +29,7 @@ import json
 import os
 import re
 
-TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "driver_services.json")
+TABLE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "symbols", "driver_services.json")
 _loaded = None
 
 _BEGIN = re.compile(r"^\s*Begin_Service_Table\s+(\w+)", re.I)

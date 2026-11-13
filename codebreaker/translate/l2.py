@@ -15,7 +15,7 @@ import os
 
 from codebreaker.translate import ir
 
-SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'l2.schema.json')
+SCHEMA = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'translate', 'l2.schema.json')
 _NODES = dict((c.__name__, c) for c in vars(ir).values()
               if isinstance(c, type) and issubclass(c, ir.Node) and c not in (ir.Node, ir.Stmt, ir.Expr))
 

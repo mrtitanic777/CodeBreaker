@@ -1,5 +1,5 @@
 "VMM"
-source: codebreaker/symbols/driver_services.json
+source: data/symbols/driver_services.json
 origin: authored
 made:   2026-11-12 07:22 PM
 hash:   0e849c0eebdd8bc49644c86f44967693e86e4e37

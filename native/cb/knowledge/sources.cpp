@@ -56,7 +56,7 @@ Rows signature_rows(const Value& document, std::string_view bits, std::string_vi
 }  // namespace
 
 DataFolders DataFolders::under(const std::filesystem::path& checkout) {
-    return {checkout / "codebreaker" / "symbols", checkout / "codebreaker" / "knowledge" / "models"};
+    return {checkout / "data" / "symbols", checkout / "data" / "knowledge" / "models"};
 }
 
 DataFolders DataFolders::from_environment() {
@@ -113,7 +113,7 @@ std::filesystem::path AuthoredSources::path_of(const AuthoredKind& k) const {
 }
 
 std::string AuthoredSources::source_label(const AuthoredKind& k) const {
-    return std::string(k.folder == DataFolder::Symbols ? "codebreaker/symbols/" : "codebreaker/knowledge/models/") + k.file;
+    return std::string(k.folder == DataFolder::Symbols ? "data/symbols/" : "data/knowledge/models/") + k.file;
 }
 
 Rows AuthoredSources::read(const AuthoredKind& k) const {

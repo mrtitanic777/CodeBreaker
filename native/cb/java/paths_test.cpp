@@ -17,9 +17,9 @@ CB_TEST("java.paths.join", [] {
 
 CB_TEST("java.paths.locate_from_env", [] {
     fs::ScopedTempDir tmp("cbjava");
-    fs::make_dirs(tmp.path() / "codebreaker" / "java");
+    fs::make_dirs(tmp.path() / "data" / "java");
     fs::ScopedEnv env("CB_CHECKOUT_ROOT", fs::to_text(tmp.path()));
-    CB_CHECK(fs::same_path(JavaData::locate().root(), tmp.path() / "codebreaker" / "java"));
+    CB_CHECK(fs::same_path(JavaData::locate().root(), tmp.path() / "data" / "java"));
 });
 
 }  // namespace

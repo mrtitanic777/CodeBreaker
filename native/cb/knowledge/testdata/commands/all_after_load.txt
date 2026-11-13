@@ -1,16 +1,16 @@
-  dos      interrupt                     27      19.6 KB  authored 27                  codebreaker/symbols/dos_interrupts.json
-  vxd      api_model                      6       0.1 KB  authored 6                   codebreaker/knowledge/models/vxd.json
-  vxd      device                       109       0.6 KB  authored 109                 codebreaker/symbols/driver_services.json
-  vxd      driver                        25       0.1 KB  authored 25                  codebreaker/symbols/driver_services.json
-  vxd      message                       51       0.7 KB  authored 51                  codebreaker/symbols/driver_services.json
-  vxd      service_table                 38      25.7 KB  authored 38                  codebreaker/symbols/driver_services.json
-  win16    api_model                     14       0.5 KB  authored 14                  codebreaker/knowledge/models/win16.json
-  win16    kernel_ordinal                17       0.2 KB  authored 17                  codebreaker/knowledge/models/win16.json
-  win16    signature                   3988     602.6 KB  authored 3988                codebreaker/symbols/runtime_signatures.json
-  win32    api_model                     97       0.9 KB  authored 97                  codebreaker/knowledge/models/win32.json
-  win32    argument_bytes.header       7279      11.5 KB  authored 7279                codebreaker/symbols/win32_arguments.json
-  win32    signature                   5233     824.4 KB  authored 5233                codebreaker/symbols/runtime_signatures.json
-  windows  ordinal_names                  9     234.8 KB  authored 9                   codebreaker/symbols/ordinal_names.json
-  xbox360  ordinal_names                  3      67.7 KB  authored 3                   codebreaker/symbols/console_ordinals.json
+  dos      interrupt                     27      19.6 KB  authored 27                  data/symbols/dos_interrupts.json
+  vxd      api_model                      6       0.1 KB  authored 6                   data/knowledge/models/vxd.json
+  vxd      device                       109       0.6 KB  authored 109                 data/symbols/driver_services.json
+  vxd      driver                        25       0.1 KB  authored 25                  data/symbols/driver_services.json
+  vxd      message                       51       0.7 KB  authored 51                  data/symbols/driver_services.json
+  vxd      service_table                 38      25.7 KB  authored 38                  data/symbols/driver_services.json
+  win16    api_model                     14       0.5 KB  authored 14                  data/knowledge/models/win16.json
+  win16    kernel_ordinal                17       0.2 KB  authored 17                  data/knowledge/models/win16.json
+  win16    signature                   3988     602.6 KB  authored 3988                data/symbols/runtime_signatures.json
+  win32    api_model                     97       0.9 KB  authored 97                  data/knowledge/models/win32.json
+  win32    argument_bytes.header       7279      11.5 KB  authored 7279                data/symbols/win32_arguments.json
+  win32    signature                   5233     824.4 KB  authored 5233                data/symbols/runtime_signatures.json
+  windows  ordinal_names                  9     234.8 KB  authored 9                   data/symbols/ordinal_names.json
+  xbox360  ordinal_names                  3      67.7 KB  authored 3                   data/symbols/console_ordinals.json
   (bodies) 0 recorded, 0 distinct, 0 in two or more modules
 exit=0

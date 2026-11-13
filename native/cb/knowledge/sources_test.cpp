@@ -77,7 +77,7 @@ CB_TEST("knowledge.sources.catalogue", [] {
     for (const AuthoredKind& k : all) in_driver_services += k.file == "driver_services.json";
     CB_CHECK_EQ(in_driver_services, 4);
     CB_CHECK_EQ(AuthoredSources({}).source_label(*AuthoredSources::find({"vxd", "api_model"})),
-                "codebreaker/knowledge/models/vxd.json");
+                "data/knowledge/models/vxd.json");
 });
 
 CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
@@ -99,7 +99,7 @@ CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
         CB_CHECK_EQ(rows.size(), count);
     }
     CB_CHECK_EQ(store.makes, 14);
-    CB_CHECK_EQ(store.kinds.at({"vxd", "device"}).source, "codebreaker/symbols/driver_services.json");
+    CB_CHECK_EQ(store.kinds.at({"vxd", "device"}).source, "data/symbols/driver_services.json");
 });
 
 CB_TEST("knowledge.sources.real_rows_content", [] {
@@ -223,8 +223,8 @@ CB_TEST("knowledge.sources.unknown_kind_is_misuse", [] {
 
 CB_TEST("knowledge.sources.data_folders", [] {
     const DataFolders d = DataFolders::under("C:/repo");
-    CB_CHECK_EQ(fs::to_text(d.symbols), "C:/repo/codebreaker/symbols");
-    CB_CHECK_EQ(fs::to_text(d.models), "C:/repo/codebreaker/knowledge/models");
+    CB_CHECK_EQ(fs::to_text(d.symbols), "C:/repo/data/symbols");
+    CB_CHECK_EQ(fs::to_text(d.models), "C:/repo/data/knowledge/models");
     const fs::ScopedEnv env("CB_CHECKOUT_ROOT", "D:/elsewhere");
-    CB_CHECK_EQ(fs::to_text(DataFolders::from_environment().symbols), "D:/elsewhere/codebreaker/symbols");
+    CB_CHECK_EQ(fs::to_text(DataFolders::from_environment().symbols), "D:/elsewhere/data/symbols");
 });
