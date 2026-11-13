@@ -595,7 +595,7 @@ int run(const cli::Args& args, base::Corpus& corpus, Ledger& ledger) {
     return 0;
 }
 
-cli::Command command(base::Corpus& corpus, Ledger& ledger) {
+cli::Command declaration() {
     cli::Command c;
     c.name = "versions";
     c.summary = "match the functions of two builds: identical, changed, added, removed";
@@ -612,6 +612,11 @@ cli::Command command(base::Corpus& corpus, Ledger& ledger) {
                 cli::Option{"--all", "", "every module of the product", cli::Arg::Flag},
                 cli::Option{"--shared", "", "the functions the programs share", cli::Arg::Flag},
                 cli::Option{"--carry", "", "file the carried reconstructions and names in the store", cli::Arg::Flag}};
+    return c;
+}
+
+cli::Command command(base::Corpus& corpus, Ledger& ledger) {
+    cli::Command c = declaration();
     c.handler = [&corpus, &ledger](const cli::Args& args) { return run(args, corpus, ledger); };
     return c;
 }
