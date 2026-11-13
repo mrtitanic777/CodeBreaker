@@ -1,0 +1,61 @@
+== ecc
+built 8 pages with ECC -> <w>/flash.bin (4224 bytes)
+exit=0
+== info_flash
+file size   : 0x1080 (4224 bytes)
+layout      : 8 pages x 528 (512 data + 16 spare)
+flash size  : 0x1000 (0 MB)
+ECC         : all 8 pages OK
+exit=0
+== info_raw
+file size   : 0x1000 (4096 bytes)
+layout      : 8 raw pages x 512 (no spare) — use `ecc` to build
+exit=0
+== verify_good
+pages       : 8
+ECC result  : all pages valid
+exit=0
+== verify_bad
+pages       : 8
+ECC result  : 2 bad: [2, 5]
+exit=1
+== info_bad
+file size   : 0x1080 (4224 bytes)
+layout      : 8 pages x 528 (512 data + 16 spare)
+flash size  : 0x1000 (0 MB)
+ECC         : 2 bad pages (e.g. [2, 5])
+exit=0
+== fix
+recomputed ECC for 8 pages -> <w>/fixed.bin
+exit=0
+== unecc
+stripped 8 pages -> <w>/raw2.bin (4096 bytes raw)
+exit=0
+== usage
+usage:
+  nandtool info   <img>              page/geometry summary
+  nandtool verify <img>              check every page's ECC
+  nandtool unecc  <img> <out>        strip spare -> raw 512-page data
+  nandtool ecc    <raw> <out>        add spare + ECC -> flash image
+  nandtool fix    <img> <out>        recompute all ECC in place
+exit=0
+== help
+usage:
+  nandtool info   <img>              page/geometry summary
+  nandtool verify <img>              check every page's ECC
+  nandtool unecc  <img> <out>        strip spare -> raw 512-page data
+  nandtool ecc    <raw> <out>        add spare + ECC -> flash image
+  nandtool fix    <img> <out>        recompute all ECC in place
+exit=0
+== unknown_op
+usage:
+  nandtool info   <img>              page/geometry summary
+  nandtool verify <img>              check every page's ECC
+  nandtool unecc  <img> <out>        strip spare -> raw 512-page data
+  nandtool ecc    <raw> <out>        add spare + ECC -> flash image
+  nandtool fix    <img> <out>        recompute all ECC in place
+exit=0
+== odd_size
+file size   : 0x1600 (5632 bytes)
+layout      : 11 raw pages x 512 (no spare) — use `ecc` to build
+exit=0
