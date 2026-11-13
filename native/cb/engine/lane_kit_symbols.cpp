@@ -12,6 +12,10 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
 #include "cb/decompile/describe.hpp"
+#include "cb/decompile/environment.hpp"
+#include "cb/formats/powerpc_image.hpp"
+#include "cb/symbols/names.hpp"
+#include "cb/symbols/ordinals.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/ne.hpp"
@@ -338,6 +342,48 @@ struct KitEnvironment::Impl {
     std::optional<translate::native_l2::Library> library;
     std::optional<symbols::runtime_library::SignatureTable> signatures;   // the runtime library's functions by their leading bytes, from the knowledge base
     std::map<stdfs::path, std::unordered_map<std::string, build::watcom::NumberedImport>> numbered;   // by module: what the description said
+
+    // PowerPC images read (the last few: the facts, the functions and the names are asked in turn for one), and what names their functions.
+    std::mutex ppc_lock;
+    std::map<stdfs::path, std::shared_ptr<const formats::powerpc_image::Image>> ppc_images;
+    std::shared_ptr<decompile::environment::CorpusModules> ppc_modules;
+    std::unique_ptr<symbols::ordinals::Ordinals> ppc_ordinals;
+    std::unique_ptr<symbols::names::Namer> ppc_namer;
+
+    std::shared_ptr<const formats::powerpc_image::Image> ppc_image(const stdfs::path& module) {
+        std::lock_guard hold(ppc_lock);
+        auto& slot = ppc_images[module];
+        if (!slot) {
+            if (ppc_images.size() > 4) {
+                for (auto it = ppc_images.begin(); it != ppc_images.end();) it = (it->first != module) ? ppc_images.erase(it) : std::next(it);
+            }
+            slot = std::make_shared<const formats::powerpc_image::Image>(formats::powerpc_image::Image::read(module));
+        }
+        return slot;
+    }
+
+    // The namer, made when first asked (naming a PowerPC image's functions needs no ordinal table, but the namer holds one).
+    symbols::names::Namer& namer() {
+        std::lock_guard hold(ppc_lock);
+        if (!ppc_namer) {
+            ppc_modules = std::make_shared<decompile::environment::CorpusModules>(corpus);
+            knowledge::Knowledge& base = kb;
+            ppc_ordinals = std::make_unique<symbols::ordinals::Ordinals>(*ppc_modules, decompile::environment::shipped_tables(base),
+                                                                         [&base](std::string_view name) { return base.spelling(name); });
+            symbols::names::Namer::Services services{corpus, *ppc_ordinals, nullptr};
+            services.powerpc = [this](const stdfs::path& module) -> std::optional<symbols::names::PowerPcNames> {
+                const std::shared_ptr<const formats::powerpc_image::Image> image = ppc_image(module);   // (ppc_lock is not held when the namer asks)
+                symbols::names::PowerPcNames out;
+                if (image->entry() != 0) out.entry = image->entry();
+                out.functions.assign(image->functions().begin(), image->functions().end());
+                for (const formats::powerpc_image::VirtualMethod& m : formats::powerpc_image::virtual_methods(*image))
+                    out.methods.push_back({m.address, m.class_name, m.slot});
+                return out;
+            };
+            ppc_namer = std::make_unique<symbols::names::Namer>(std::move(services));
+        }
+        return *ppc_namer;
+    }
 };
 
 KitEnvironment::KitEnvironment(const config::Config& config, base::Corpus& corpus, knowledge::Knowledge& kb)
@@ -393,12 +439,20 @@ std::optional<std::vector<decompile::struct_text::Structure>> KitEnvironment::re
     }
 }
 
-decompile::describe::PowerPcFacts KitEnvironment::powerpc_facts(const stdfs::path&) {
-    throw UsageError(std::string(LaneKit::powerpc_missing()));
+decompile::describe::PowerPcFacts KitEnvironment::powerpc_facts(const stdfs::path& module) {
+    const std::shared_ptr<const formats::powerpc_image::Image> image = impl_->ppc_image(module);
+    decompile::describe::PowerPcFacts out;
+    for (const formats::powerpc_image::Span& s : image->spans()) out.spans.push_back({s.va, s.file_offset, s.size});
+    out.imports.insert(image->imports().begin(), image->imports().end());
+    out.inlined.insert(image->inlined().begin(), image->inlined().end());
+    // what run-time type information and the entry point name for certain
+    for (const auto& [address, named] : impl_->namer().powerpc_names(module)) out.names[static_cast<decompile::decompiler::Va>(address)] = named.name;
+    return out;
 }
 
-std::vector<decompile::decompiler::Va> KitEnvironment::powerpc_functions(const stdfs::path&) {
-    throw UsageError(std::string(LaneKit::powerpc_missing()));
+std::vector<decompile::decompiler::Va> KitEnvironment::powerpc_functions(const stdfs::path& module) {
+    const std::shared_ptr<const formats::powerpc_image::Image> image = impl_->ppc_image(module);
+    return std::vector<decompile::decompiler::Va>(image->functions().begin(), image->functions().end());
 }
 
 // what the builders ask of a module that was decompiled: the imports it has by number

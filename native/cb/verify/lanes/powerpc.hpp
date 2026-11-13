@@ -81,7 +81,7 @@ public:
     static guided::Input to_guided(const Vector& v);
     static Vector from_guided(const guided::Input& v);
 
-    // Input `v` with the named inputs (shadow.vars) set to `values`: an argument register, bytes of memory -- behind the pointers given as
+    // Input `v` with the named inputs (shadow.vars) set to `values`: an argument register, what the calls outside the image return, bytes of memory -- behind the pointers given as
     // whole pages, the input's `fill` under them. Nothing when no value differs.
     static std::optional<Vector> derive(const Vector& v, const concolic::Values& values, const concolic::Vars& names);
 
@@ -146,6 +146,7 @@ public:
         std::uint32_t base = 0;
         Span code;
         std::vector<Span> writable;
+        std::vector<std::uint32_t> functions;   // the function starts the image states (its .pdata and the targets of its calls)
     };
     using ReadImage = std::function<Image(const std::filesystem::path&)>;
 

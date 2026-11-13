@@ -21,6 +21,8 @@
 #include "cb/verify/lane_common.hpp"
 #include "cb/verify/lanes/driver.hpp"
 #include "cb/verify/lanes/java.hpp"
+#include "cb/verify/lanes/powerpc.hpp"
+#include "cb/formats/powerpc_image.hpp"
 #include "cb/verify/lanes/win16.hpp"
 #include "cb/verify/lanes/win32.hpp"
 
@@ -28,6 +30,17 @@ namespace cb::engine {
 
 namespace stdfs = std::filesystem;
 using namespace kit_detail;
+
+namespace {
+// A PE file for the Xbox 360: the PowerPC machine type.
+bool is_powerpc_image(const stdfs::path& p) {
+    try {
+        return formats::pe::Image::open(p).header().machine == formats::powerpc_image::kMachine;
+    } catch (const Error&) {
+        return false;
+    }
+}
+}  // namespace
 
 // ---- the parts ---------------------------------------------------------------------------------------------------------------
 
@@ -189,12 +202,10 @@ void LaneKit::add_lanes(verify::reconstruct::Kinds& kinds) {
     if (auto lane = win32_lane()) kinds.add(std::move(lane), verify::lanes::Win32Lane::traits());
     if (auto lane = win16_lane()) kinds.add(std::move(lane), {.per_function = true});   // (a verdict holds while the function and what it reaches are unchanged)
     if (auto lane = driver_lane()) kinds.add(std::move(lane));                          // (one signature for every entry point: the driver's source)
+    if (auto lane = powerpc_lane()) kinds.add(std::move(lane), verify::lanes::PowerPcLane::traits());
     if (auto lane = java_lane()) kinds.add(std::move(lane), verify::lanes::JavaLane::traits());
 }
 
-std::string_view LaneKit::powerpc_missing() {
-    return "the PowerPC lane needs the image reader formats/powerpc_image, which is not in native/cb yet";
-}
 
 verify::reconstruct::Services LaneKit::reconstruct_services(const verify::reconstruct::Kinds& kinds, FunctionStore& store) {
     Impl& i = *impl_;
@@ -204,7 +215,7 @@ verify::reconstruct::Services LaneKit::reconstruct_services(const verify::recons
         const std::optional<base::Lane> lane = corpus.lane(p);
         if (!lane) return std::nullopt;
         switch (*lane) {
-        case base::Lane::Pe: return "pe";
+        case base::Lane::Pe: return is_powerpc_image(p) ? "powerpc" : "pe";
         case base::Lane::Ne: return "ne";
         case base::Lane::Le: return "le";
         case base::Lane::Dos: return "dos";

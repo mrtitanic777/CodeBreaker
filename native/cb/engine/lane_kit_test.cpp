@@ -50,9 +50,8 @@ CB_TEST("engine.lane_kit.the_kit_is_made_of_the_settings_and_says_which_lanes_it
     verify::reconstruct::Kinds kinds;
     kit.add_lanes(kinds);
     const std::vector<std::string> names = kinds.names();
-    // the lanes that can be wired are filed under the corpus's names for them; the PowerPC and Java lanes are not wired, and say why
-    for (const std::string& name : names) CB_CHECK(name == "pe" || name == "ne" || name == "le");
-    CB_CHECK(!LaneKit::powerpc_missing().empty());
+    // the lanes that can be wired are filed under the corpus's names for them; the Java lane is not wired, and says why
+    for (const std::string& name : names) CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc");
     CB_CHECK(!LaneKit::java_missing().empty());
     // a lane made again is the same lane: one decompiler, one builder, one knowledge base
     CB_CHECK(kit.win32_lane() == kit.win32_lane());
@@ -83,6 +82,7 @@ CB_TEST("engine.lane_kit.the_worker_kinds_are_registered_and_no_launcher_means_t
     // a lane is found by the name results are filed under
     CB_CHECK(kit.lane_named("nonesuch") == nullptr);
     CB_CHECK(kit.lane_named("pe") == kit.win32_lane());
+    CB_CHECK(kit.lane_named("powerpc") == kit.powerpc_lane());
 });
 
 CB_TEST("engine.lane_kit.proof", [] {

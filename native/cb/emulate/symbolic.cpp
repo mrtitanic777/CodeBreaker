@@ -237,7 +237,10 @@ _Z3_ast* Z3Terms::term(const Expr* root) {
         if (memo_.contains(e)) continue;
         if (!expanded) {
             stack.emplace_back(e, true);
-            for (const Expr* a : e->arg) {
+            // (the arguments are made first to last, depth first, as z3's own interface makes them: the solver's answers depend on the
+            // order its terms were made in, so the same conditions are the same questions as the Python's)
+            for (std::size_t k = 3; k-- > 0;) {
+                const Expr* a = e->arg[k];
                 if (a != nullptr && !memo_.contains(a)) stack.emplace_back(a, false);
             }
             continue;
@@ -293,11 +296,23 @@ _Z3_ast* Z3Terms::term(const Expr* root) {
                 }
                 break;
             }
-            case Op::Eq: same_width(e, a, b); t = z.Z3_mk_eq(c, built(a), built(b)); break;
+            // z3's Python interface writes `x == value` and `x < value` with the value first (the right operand, a numeral, is a subclass of
+            // the left's type, so Python asks it first: `value == x`, `value > x`). The solver spends its steps on the shape it is given, so
+            // the same conditions are made the same way (`ULT` and `ULE` are functions there and keep their order).
+            case Op::Eq:
+                same_width(e, a, b);
+                t = b->op == Op::Const && a->op != Op::Const ? z.Z3_mk_eq(c, built(b), built(a)) : z.Z3_mk_eq(c, built(a), built(b));
+                break;
             case Op::ULt: same_width(e, a, b); t = z.Z3_mk_bvult(c, built(a), built(b)); break;
             case Op::ULe: same_width(e, a, b); t = z.Z3_mk_bvule(c, built(a), built(b)); break;
-            case Op::SLt: same_width(e, a, b); t = z.Z3_mk_bvslt(c, built(a), built(b)); break;
-            case Op::SLe: same_width(e, a, b); t = z.Z3_mk_bvsle(c, built(a), built(b)); break;
+            case Op::SLt:
+                same_width(e, a, b);
+                t = b->op == Op::Const && a->op != Op::Const ? z.Z3_mk_bvsgt(c, built(b), built(a)) : z.Z3_mk_bvslt(c, built(a), built(b));
+                break;
+            case Op::SLe:
+                same_width(e, a, b);
+                t = b->op == Op::Const && a->op != Op::Const ? z.Z3_mk_bvsge(c, built(b), built(a)) : z.Z3_mk_bvsle(c, built(a), built(b));
+                break;
             case Op::BNot: t = z.Z3_mk_not(c, built(a)); break;
             case Op::BAnd: {
                 Z3_ast both[2] = {built(a), built(b)};
@@ -310,7 +325,12 @@ _Z3_ast* Z3Terms::term(const Expr* root) {
                 break;
             }
             case Op::BXor: t = z.Z3_mk_xor(c, built(a), built(b)); break;
-            case Op::Nz: t = z.Z3_mk_not(c, z.Z3_mk_eq(c, built(a), bv_value(0, a->bits))); break;
+            case Op::Nz: {
+                // (`x != 0` as z3's own interface writes it, a `distinct`: the shape the solver spends its steps on is the Python's)
+                Z3_ast both[2] = {built(a), bv_value(0, a->bits)};
+                t = z.Z3_mk_distinct(c, 2, both);
+                break;
+            }
         }
         CB_ASSERT(t != nullptr, std::format("no term for {}", to_text(e->op)));
         memo_.emplace(e, t);
