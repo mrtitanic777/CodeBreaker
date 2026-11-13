@@ -11,9 +11,11 @@
 
 #include <chrono>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <string>
 
 #include "cb/core/fs.hpp"
+#include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 
@@ -178,6 +180,40 @@ CB_TEST("invert.msc6_small.mask_zeroes_what_the_linker_fills", [] {
     CB_CHECK(mask(Bytes{}).empty());
     const Bytes none = bytes_of("1e589045558bec1e8ed8b80700");
     CB_CHECK_EQ(hex_of(mask(none)), std::string("1e589045558bec1e8ed8b80700"));   // (an immediate load is the program's own value: not masked)
+});
+
+// Every function of a real 16-bit module (the Windows 95 LZEXPAND.DLL, 46 of them) through the readers: what the Python's models answered for each --
+// the text, or the reason it declined -- and the masked bytes. (The golden is the Python's own run, testdata/msc6_small_lzexpand.json.)
+CB_TEST("invert.msc6_small.every_function_of_a_real_module_reads_as_the_python_read_it", [] {
+    const Json rows = json::load(testing::data_path("invert/testdata/msc6_small_lzexpand.json"));
+    std::size_t leaves = 0, with_registers = 0;
+    for (const Json& row : rows) {
+        const std::string name = row.at("name").get<std::string>();
+        const Bytes code = bytes_of(row.at("code").get<std::string>());
+        const auto check = [&](const char* what, const Json& want, const auto& got) {
+            if (want.at(0).is_null()) {
+                if (got.ok()) testing::record_failure(__FILE__, __LINE__, name + " " + what + ": read, where the Python declined: " + want.at(1).get<std::string>());
+                else if (std::string(got.error().what()) != want.at(1).get<std::string>())
+                    testing::record_failure(__FILE__, __LINE__, name + " " + what + ": declined with '" + got.error().what() + "', the Python with '" + want.at(1).get<std::string>() + "'");
+            } else if (!got.ok()) {
+                testing::record_failure(__FILE__, __LINE__, name + " " + what + ": declined with '" + got.error().what() + "', where the Python read it");
+            } else if (got.value().text != want.at(0).get<std::string>()) {
+                testing::record_failure(__FILE__, __LINE__, name + " " + what + ": read differently:\n" + got.value().text + "\n--- the Python:\n" + want.at(0).get<std::string>());
+            }
+            testing::count_check();
+        };
+        const Result<Leaf> leaf_read = leaf(code);
+        check("leaf", row.at("leaf"), leaf_read);
+        leaves += leaf_read.ok() ? 1 : 0;
+        const Result<Registers> registers_read = registers(code, {{0, "G"}, {1, "H"}, {2, "K"}});
+        check("registers", row.at("registers"), registers_read);
+        with_registers += registers_read.ok() ? 1 : 0;
+        check("loop", row.at("loop"), counted_loop(code, {{0, "G"}, {1, "H"}}));
+        CB_CHECK_EQ(hex_of(mask(code)), row.at("mask").get<std::string>());
+    }
+    CB_CHECK_EQ(rows.size(), std::size_t{46});
+    CB_CHECK_EQ(leaves, std::size_t{1});
+    CB_CHECK_EQ(with_registers, std::size_t{2});
 });
 
 // CB_MSC6_SMALL_BENCH=<calls> times each reader on the bytes above (for the old-against-new timing of the report).
