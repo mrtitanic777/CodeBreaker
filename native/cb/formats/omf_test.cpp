@@ -242,3 +242,37 @@ CB_TEST("formats.omf.errors", [] {
     CB_CHECK(omf::walk(ByteView(d).first(d.size() - 5)).records.size() > 3);
     CB_CHECK_THROWS_AS(FormatError, omf::library(Bytes{}));  // not even a first byte
 });
+
+// tests/test_verification.py::test_a_cextdef_is_numbered_with_the_other_externals -- Microsoft C 8 names some externals through LNAMES
+// (CEXTDEF, 0xBC): a fix-up's external index counts them with the EXTDEFs.
+CB_TEST("formats.omf.a_cextdef_is_numbered_with_the_other_externals", [] {
+    const Bytes code = {0x9A, 0, 0, 0, 0, 0xCB};
+    const Bytes obj = cat({omf::record(0x80, Bytes{0x03, 'f', '.', 'c'}),
+                           omf::record(0x96, Bytes{0x00, 0x05, '_', 'T', 'E', 'X', 'T', 0x04, 'C', 'O', 'D', 'E', 0x04, '_', 'f', 'a', 'r'}),
+                           omf::record(0x98, cat({Bytes{0x28, static_cast<std::uint8_t>(code.size()), 0x00}, Bytes{0x02, 0x03, 0x01}})),
+                           omf::record(0xBC, Bytes{0x04, 0x00}),                                      // external 1: name 4, _far
+                           omf::record(0x8C, Bytes{0x04, '_', 'e', 'x', 't', 0x00}),                  // external 2
+                           omf::record(0xA0, cat({Bytes{0x01, 0x00, 0x00}, code})),
+                           omf::record(0x9C, Bytes{0xCC, 0x01, 0x26, 0x02, 0x02}),                    // a far pointer at +1, to external 2
+                           omf::record(0x8A, Bytes{0x00})});
+    const omf::Object o = omf::read(obj);
+    CB_CHECK((o.externals == std::vector<std::string>{"_far", "_ext"}));
+    CB_CHECK_EQ(o.fixups.size(), std::size_t{1});
+    CB_CHECK(o.fixups[0].target.kind == omf::Target::Kind::External);
+    CB_CHECK_EQ(o.fixups[0].target.name.value_or(""), "_ext");
+});
+
+// tests/test_verification.py::test_a_backpatch_record_is_added_into_the_code -- Microsoft C 8 at /Od writes `sub sp, 0` and gives the
+// frame's size in a BAKPAT record after the function: the reader adds it in.
+CB_TEST("formats.omf.a_backpatch_record_is_added_into_the_code", [] {
+    const Bytes code = {0x55, 0x8B, 0xEC, 0x81, 0xEC, 0, 0, 0x8B, 0xE5, 0x5D, 0xC3};
+    const Bytes obj = cat({omf::record(0x80, Bytes{0x03, 'f', '.', 'c'}),
+                           omf::record(0x96, Bytes{0x00, 0x05, '_', 'T', 'E', 'X', 'T', 0x04, 'C', 'O', 'D', 'E'}),
+                           omf::record(0x98, cat({Bytes{0x28, static_cast<std::uint8_t>(code.size()), 0x00}, Bytes{0x02, 0x03, 0x01}})),
+                           omf::record(0xA0, cat({Bytes{0x01, 0x00, 0x00}, code})),
+                           omf::record(0xB2, Bytes{0x01, 0x01, 0x05, 0x00, 0x0A, 0x00}),               // segment 1, a word at offset 5: add 10
+                           omf::record(0x8A, Bytes{0x00})});
+    const omf::Object o = omf::read(obj);
+    const Bytes& text = o.segments.at("_TEXT");
+    CB_CHECK((Bytes(text.begin() + 3, text.begin() + 7) == Bytes{0x81, 0xEC, 10, 0}));
+});
