@@ -9,8 +9,11 @@
 // body is declined, where the Python sliced backwards from the end.
 #include "cb/invert/msc6_small.hpp"
 
+#include <chrono>
+#include <iostream>
 #include <string>
 
+#include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 
@@ -175,4 +178,25 @@ CB_TEST("invert.msc6_small.mask_zeroes_what_the_linker_fills", [] {
     CB_CHECK(mask(Bytes{}).empty());
     const Bytes none = bytes_of("1e589045558bec1e8ed8b80700");
     CB_CHECK_EQ(hex_of(mask(none)), std::string("1e589045558bec1e8ed8b80700"));   // (an immediate load is the program's own value: not masked)
+});
+
+// CB_MSC6_SMALL_BENCH=<calls> times each reader on the bytes above (for the old-against-new timing of the report).
+CB_TEST("invert.msc6_small.bench", [] {
+    const std::optional<std::string> calls = fs::get_env("CB_MSC6_SMALL_BENCH");
+    if (!calls || calls->empty()) return;
+    const std::size_t n = std::stoul(*calls);
+    const Bytes branch = leaf_of("837e0600750" "5b80100eb03b80200"), cleaned = bytes_of(kCleanup);
+    const Bytes regs = bytes_of("1e589045558bec1e8ed883ec02568b7606569a00000000508bf09a000000008bc65e4d4d8be51f5d4dca0200");
+    const auto time = [&](const char* what, const auto& once) {
+        const auto start = std::chrono::steady_clock::now();
+        std::size_t sink = 0;
+        for (std::size_t i = 0; i < n; ++i) sink += once();
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        std::cout << what << ": " << seconds / static_cast<double>(n) * 1e6 << " us per call (" << sink << ")\n";
+    };
+    time("leaf", [&] { return leaf(branch).value().text.size(); });
+    time("cleanup", [&] { return cleanup(cleaned, {{0x44, "gpA"}, {0x48, "gpB"}, {0x54, "gpC"}}).value().size(); });
+    time("walk", [&] { return walk(cleaned, {{0x44, {"gpA", Width::Long}}, {0x48, {"gpB", Width::Long}}, {0x54, {"gpC", Width::Long}}}, "F").value().text.size(); });
+    time("registers", [&] { return registers(regs, {{0, "G"}, {1, "H"}}).value().text.size(); });
+    time("mask", [&] { return mask(cleaned).size(); });
 });

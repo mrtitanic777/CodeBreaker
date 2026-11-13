@@ -51,7 +51,7 @@ std::string_view kind_word(ImageKind kind) { return kind == ImageKind::Pe ? "pe"
 // What each analysis is given of the ones before it, made when first asked for.
 class Pipeline {
 public:
-    explicit Pipeline(Image& image) : image_(image) {}
+    Pipeline(Image& image, std::optional<dispatch::DeviceBlock> device) : image_(image), device_(std::move(device)) {}
 
     const call_graph::Graph& graph() {
         if (!graph_) graph_ = call_graph::build(image_);
@@ -74,9 +74,11 @@ public:
         return *structures_;
     }
     Image& image() { return image_; }
+    const std::optional<dispatch::DeviceBlock>& device() const { return device_; }
 
 private:
     Image& image_;
+    std::optional<dispatch::DeviceBlock> device_;
     std::optional<call_graph::Graph> graph_;
     std::optional<conventions::Report> conventions_;
     std::optional<ConventionFacts> summary_;
@@ -90,7 +92,7 @@ Counts counts_of(const OrderedMap<std::string, std::int64_t>& m) {
     return out;
 }
 
-void run_analysis(Analysis which, Pipeline& p, ImageKind kind, const stdfs::path& path, Section& s) {
+void run_analysis(Analysis which, Pipeline& p, ImageKind kind, const stdfs::path& path, const Options& options, const Environment& environment, Section& s) {
     switch (which) {
     case Analysis::CallGraph: {
         const call_graph::Report r = call_graph::analyse(p.image(), p.graph());
@@ -141,10 +143,12 @@ void run_analysis(Analysis which, Pipeline& p, ImageKind kind, const stdfs::path
         const classes::Analysis r = classes::analyse(classes::Inputs{p.image(), p.graph(), p.summary()}, p.structures());
         s.counts = counts_of(r.counts);
         s.text = r.text;
+        detail::classes_rows(s, r, kind);
+        s.stores_facts = true;
         break;
     }
     case Analysis::Dispatch: {
-        const dispatch::Report r = dispatch::analyse(p.image(), p.summary());
+        const dispatch::Report r = dispatch::analyse(p.image(), p.summary(), p.device());
         s.counts = detail::dispatch_counts(r.counts);
         s.text = r.text;
         detail::dispatch_rows(s, r, kind);
@@ -160,8 +164,30 @@ void run_analysis(Analysis which, Pipeline& p, ImageKind kind, const stdfs::path
         s.stores_facts = true;
         break;
     }
-    case Analysis::Observe:
-        throw UnsupportedError("analyze", 0, "observe runs the module's functions in the emulator: not run natively yet");
+    case Analysis::Observe: {
+        observe::Setting setting;
+        setting.module = path;
+        setting.environment = environment.emulator;
+        if (!setting.environment.resolve && environment.retail)
+            setting.environment.resolve = [retail = environment.retail](std::string_view name) {
+                const std::optional<stdfs::path> found = retail(name);
+                if (!found) throw NotFoundError(fs::from_text(name), 0, "no module of that name");
+                return *found;
+            };
+        setting.argc = environment.import_argc;
+        setting.limit = options.observed;
+        const observe::Seen seen = observe::run(p.image(), p.conventions().facts, p.structures(), setting);
+        const observe::Report r = observe::analyse(p.image(), p.conventions().facts, p.structures(), seen);
+        s.counts = detail::observe_counts(r.counts);
+        s.text = r.text;
+        for (facts::Row& row : observe::fact_rows(r, kind)) {
+            const knowledge::Value* addr = row.value.get("addr");
+            s.row_at.push_back(addr != nullptr && addr->integer() ? std::optional<Va>(*addr->integer()) : std::nullopt);
+            s.rows.push_back(std::move(row));
+        }
+        s.stores_facts = true;
+        break;
+    }
     }
 }
 
@@ -266,15 +292,19 @@ std::string names() {
 }
 
 Result run(std::string_view module, const Options& options, const Environment& environment) {
+    // "vmm32.vxd#vmm": one driver of a bundle
+    const std::size_t hash = module.find('#');
+    const std::string_view file_name = module.substr(0, hash);
+    const std::string_view member = hash == std::string_view::npos ? std::string_view() : module.substr(hash + 1);
     std::optional<stdfs::path> path;
-    if (stdfs::is_regular_file(fs::from_text(module))) path = fs::from_text(module);
-    else if (environment.retail) path = environment.retail(module);
-    if (!path) throw UsageError(std::format("no module '{}' (a corpus name or a path)", module));
+    if (stdfs::is_regular_file(fs::from_text(file_name))) path = fs::from_text(file_name);
+    else if (environment.retail) path = environment.retail(file_name);
+    if (!path) throw UsageError(std::format("no module '{}' (a corpus name or a path)", file_name));
 
     const auto started = Clock::now();
-    detail::Loaded loaded = detail::load_module(*path, environment);
+    detail::Loaded loaded = detail::load_module(*path, environment, member);
     Result out;
-    out.module = text::lower(fs::to_text(path->filename()));
+    out.module = text::lower(fs::to_text(path->filename())) + (member.empty() ? std::string() : "#" + text::lower(std::string(member)));
     out.path = *path;
     out.kind = loaded.kind;
     out.image = std::move(loaded.image);
@@ -289,13 +319,13 @@ Result run(std::string_view module, const Options& options, const Environment& e
     for (std::size_t i = 0; i < kAnalyses; ++i)
         if (std::find(what.begin(), what.end(), static_cast<Analysis>(i)) != what.end()) ordered.push_back(static_cast<Analysis>(i));
 
-    Pipeline pipeline(*out.image);
+    Pipeline pipeline(*out.image, loaded.device);
     for (const Analysis which : ordered) {
         Section s;
         s.analysis = which;
         const auto t = Clock::now();
         try {
-            run_analysis(which, pipeline, out.kind, *path, s);
+            run_analysis(which, pipeline, out.kind, *path, options, environment, s);
         } catch (const std::exception& e) {   // one analysis failing on a module is a finding, not the end
             s = Section{};
             s.analysis = which;
@@ -403,7 +433,7 @@ cli::Command command(const Environment& environment) {
     c.summary = "run the analyses on a module and write what they found";
     c.area = "Analyze";
     c.description = "The analyses: " + names() + ". The default is all but observe.";
-    c.params = {cli::Positional{"module", "a corpus name or a path: a 32-bit module (PE) or a 16-bit module (NE)"},
+    c.params = {cli::Positional{"module", "a corpus name or a path: a 32-bit module (PE), a 16-bit module (NE) or a driver (LE; \"vmm32.vxd#vmm\" names one in a bundle)"},
                 cli::Option{"--what", "", "which analyses, comma-separated", cli::Arg::Value, "A,B,C"},
                 cli::Option{"--out", "", "where the report goes (default: <state>/analyze/<module>.txt)", cli::Arg::Value, "FILE"},
                 cli::Option{"--run", "", "also run N functions in the emulator (observe); \"all\" for every function", cli::Arg::Value, "N|all"},
@@ -430,7 +460,9 @@ cli::Command command(const Environment& environment) {
         if (options.what.empty()) options.what = defaults();
         if (const auto run = args.value("run")) {
             if (std::find(options.what.begin(), options.what.end(), Analysis::Observe) == options.what.end()) options.what.push_back(Analysis::Observe);
-            if (*run != "all") {
+            if (*run == "all") {
+                options.observed.reset();
+            } else {
                 const auto n = text::parse_int<std::size_t>(*run, 10);
                 if (!n) throw UsageError("--run expects a number or 'all', got '" + *run + "'");
                 options.observed = n;

@@ -6,10 +6,10 @@
 //     codebreaker invert <16-bit module> [--first N] [--flags "..."] [--show NAME]
 //
 // The tools that are native: early-c (the bytes of MS C 2.03 / 3.00 back to C), early-c-forward (the forward model against a quad file and its
-// object), quads, quad-align, omf, known-differences, and the small readers of Microsoft C 6.0a (msc6-templates, msc6-walk, msc6-function,
-// msc6-registers: cb/invert/msc6_small). The rest of the Python's table -- the larger models of Microsoft C 6 and C/C++ 8 (msc6, msc6-idioms,
-// msvc2, msvc2-forward) and the checks that put a model's text to the period compiler (early-c-check, early-c-round-trip, the frame and order
-// probes) -- and the module pass that runs them over a 16-bit module are not in native/cb yet: a command that names one says so and exits 2.
+// object), quads, quad-align, omf, known-differences, early-c-frame (the frame model against the compiler's own frames), and the small readers of
+// Microsoft C 6.0a (msc6-templates, msc6-walk, msc6-function, msc6-registers: cb/invert/msc6_small). The rest of the Python's table -- the larger
+// models of Microsoft C 6 and C/C++ 8 (msc6, msc6-idioms, msvc2, msvc2-forward) and the checks that put a model's text to the period compiler
+// (early-c-check, early-c-round-trip, the frame and order probes) -- and the module pass that runs them over a 16-bit module are not in native/cb yet: a command that names one says so and exits 2.
 // (Those models are the C++ of native/invert, on the Python-imitation layer, reached through cbinvert.dll; they move into native/cb as typed
 // modules first.)
 //

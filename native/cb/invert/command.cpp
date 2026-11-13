@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <set>
 #include <format>
 
 #include "cb/core/error.hpp"
@@ -11,6 +12,7 @@
 #include "cb/formats/omf.hpp"
 #include "cb/invert/early_c.hpp"
 #include "cb/invert/early_c_forward.hpp"
+#include "cb/invert/early_c_frame.hpp"
 #include "cb/invert/msc6_small.hpp"
 #include "cb/invert/known_differences.hpp"
 #include "cb/invert/quad_align.hpp"
@@ -25,7 +27,7 @@ namespace stdfs = std::filesystem;
 constexpr std::array<Tool, 19> kTools{{
     {"early-c", "FILE OFFSET LENGTH -> C", true},
     {"early-c-check", "... and put the text to Microsoft C 2.03", false},
-    {"early-c-frame", "the stack-frame model against its table", false},
+    {"early-c-frame", "the stack-frame model against its table", true},
     {"early-c-round-trip", "compile -> read -> compile, for locals", false},
     {"early-c-frame-probe", "how the compiler places locals", false},
     {"early-c-order-probe", "how it orders loads and stores", false},
@@ -95,6 +97,86 @@ int omf_tool(std::span<const std::string> args) {
 
 int known_differences_tool() {
     out("{}", KnownDifferences().listing());
+    return 0;
+}
+
+// ---- early-c-frame ----------------------------------------------------------------------------------------------------------------------
+
+// The stack frames of small functions as the C compiler of 1983-84 laid them out (the oracle harness's seed set): the temporaries, the locals and
+// the parameters the source declared, the frame size the compiler gave, and the frame offsets its code reached.
+struct FrameCase {
+    std::string_view name;
+    std::vector<std::string> temps;
+    std::vector<early_c_frame::Local> locals;
+    std::vector<early_c_frame::Param> params;
+    std::uint32_t frame_size;
+    std::vector<early_c_frame::Offset> reached;
+};
+
+const std::vector<FrameCase>& frame_cases() {
+    using L = early_c_frame::Local;
+    using P = early_c_frame::Param;
+    static const std::vector<FrameCase> cases{
+        {"f01", {}, {L{"a", "int", 1}}, {}, 2, {0}},
+        {"f02", {}, {L{"a", "int", 1}, L{"b", "int", 1}}, {}, 4, {0, 2}},
+        {"f03", {}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}}, {}, 6, {0, 2, 4}},
+        {"f04", {}, {L{"a", "int", 1}, L{"b", "int", 1}}, {}, 4, {0, 2}},
+        {"f08", {}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}}, {}, 6, {0, 4}},   // b unused
+        {"f11", {}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}, L{"d", "int", 1}}, {}, 8, {0, 2, 4, 6}},
+        {"f12", {"int"}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}}, {P{"p", "int"}}, 8, {2, 4, 6, 12}},
+        {"f13", {"int"}, {L{"a", "int", 1}, L{"b", "int", 1}}, {}, 6, {2, 4}},
+        {"f14", {"long"}, {L{"a", "int", 1}, L{"b", "long", 1}}, {P{"p", "int"}}, 10, {4, 6, 8, 14}},
+        {"f15", {"int"}, {L{"a", "int", 1}, L{"b", "int", 1}}, {}, 6, {2, 4}},
+        {"g01", {"int"}, {L{"a", "int", 1}, L{"b", "int", 1}}, {}, 6, {2, 4}},
+        {"g02", {"int", "int"}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}}, {}, 10, {4, 6, 8}},
+        {"g03", {"long"}, {L{"a", "long", 1}, L{"b", "long", 1}}, {}, 12, {4, 6, 8, 10}},
+        {"g04", {"long"}, {L{"a", "long", 1}, L{"b", "int", 1}}, {}, 10, {4, 6, 8}},
+        {"g05", {}, {L{"a", "int", 1}, L{"b", "long", 1}, L{"c", "long", 1}}, {}, 10, {0}},
+        {"g06", {}, {L{"a", "char", 1}, L{"b", "char", 1}}, {}, 2, {0, 1}},
+        {"g07", {}, {L{"a", "int", 1}, L{"b", "char", 1}, L{"c", "long", 1}}, {}, 8, {0, 2, 3, 5}},
+        {"g08", {}, {L{"a", "int", 3}}, {}, 6, {0}},
+        {"g09", {}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}}, {}, 6, {0, 2, 4}},
+        {"g10", {"int"}, {L{"a", "int", 1}}, {P{"p", "int"}}, 4, {2, 8}},
+        {"g11", {"int"}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}}, {}, 8, {2, 4, 6}},
+        {"g12", {"int"}, {L{"a", "int", 1}}, {}, 4, {2}},
+        {"g13", {"int"}, {L{"a", "int", 1}, L{"b", "int", 1}}, {}, 6, {2, 4}},
+        {"g14", {"long"}, {L{"a", "long", 1}, L{"b", "long", 1}, L{"c", "long", 1}}, {}, 16, {4, 6, 8, 10, 12, 14}},
+        {"g15", {}, {L{"a", "int", 1}, L{"b", "int", 1}, L{"c", "int", 1}, L{"d", "int", 1}, L{"e", "int", 1}}, {}, 10, {0, 2, 4, 6, 8}},
+    };
+    return cases;
+}
+
+std::string offsets_text(const std::set<early_c_frame::Offset>& offsets) {
+    std::vector<std::string> parts;
+    for (const early_c_frame::Offset o : offsets) parts.push_back(std::to_string(o));
+    return "[" + text::join(parts, ", ") + "]";
+}
+
+// early-c-frame: the frame model against the compiler's own frames. Each case must give the frame size and cover every offset the code reached.
+int early_c_frame_tool() {
+    std::size_t good_cases = 0;
+    for (const FrameCase& c : frame_cases()) {
+        const early_c_frame::Layout layout = early_c_frame::layout(c.temps, c.locals, c.params);
+        std::set<early_c_frame::Offset> predicted;   // every local slot, the high word of a long, and the parameters
+        for (const early_c_frame::Local& local : c.locals) {
+            const early_c_frame::Offset base = layout.local_offsets.at(local.name);
+            const std::uint32_t size = early_c_frame::type_size(local.type);
+            for (std::uint32_t k = 0; k < local.count; ++k) {
+                predicted.insert(base + k * size);
+                if (local.type == "long" || local.type == "float") predicted.insert(base + k * size + 2);
+            }
+        }
+        for (const early_c_frame::Param& param : c.params) predicted.insert(layout.param_offsets.at(param.name));
+        bool good = layout.frame_size == c.frame_size;
+        for (const early_c_frame::Offset d : c.reached)
+            if (!predicted.contains(d)) good = false;
+        if (good) {
+            ++good_cases;
+        } else {
+            out("  {:<5} FAIL  fs={}/{}  pred={}  obs={}\n", c.name, layout.frame_size, c.frame_size, offsets_text(predicted), offsets_text({c.reached.begin(), c.reached.end()}));
+        }
+    }
+    out("framemodel self-test: {}/{} byte-exact frame layouts\n", good_cases, frame_cases().size());
     return 0;
 }
 
@@ -215,6 +297,7 @@ int msc6_registers_tool(const Environment& environment) {
 
 int run_tool(const Tool& tool, std::span<const std::string> rest, const Environment& environment) {
     if (!tool.native) return not_native(tool);
+    if (tool.name == "early-c-frame") return early_c_frame_tool();
     if (tool.name == "msc6-templates") return msc6_templates_tool(rest, environment);
     if (tool.name == "msc6-function") return msc6_function_tool(environment);
     if (tool.name == "msc6-walk") return msc6_walk_tool(environment);

@@ -71,8 +71,7 @@ CB_TEST("exact.command.a_program_whose_functions_all_have_sources_drafts_nothing
     Surrounding s;
     testing::CapturedStd cap;
     CB_CHECK_EQ(command::run(std::vector<std::string>{fs::to_text(test::research_root() / "msc-3.0/recon/p0"), "draft"}, s.environment), 0);
-    CB_CHECK_EQ(cap.out(), "0 functions drafted: 
-");
+    CB_CHECK_EQ(cap.out(), "0 functions drafted: \n");
 });
 
 CB_TEST("exact.command.proof", [] {

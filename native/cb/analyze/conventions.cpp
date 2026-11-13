@@ -735,15 +735,16 @@ knowledge::Value to_value(const Fact& f) {
     m.insert_or_assign("addr", Value(static_cast<std::int64_t>(f.addr)));
     m.insert_or_assign("kind", Value("convention"));
     m.insert_or_assign("name", Value(f.name));
-    m.insert_or_assign("shape", Value(std::string(name_of(f.shape))));
     if (f.shape == Shape::NotCode) {   // nothing else is known of what is not code
+        m.insert_or_assign("shape", Value(std::string(name_of(f.shape))));
         m.insert_or_assign("convention", Value());
         m.insert_or_assign("args", Value());
         m.insert_or_assign("arg_source", Value());
         return Value(std::move(m));
     }
-    if (f.thunk_of) m.insert_or_assign("thunk_of", Value(*f.thunk_of));
+    if (f.thunk_of) m.insert_or_assign("thunk_of", Value(*f.thunk_of));   // (what the shape rests on is said before the shape: the order of the Python's rows)
     if (f.constant) m.insert_or_assign("constant", Value(*f.constant));
+    m.insert_or_assign("shape", Value(std::string(name_of(f.shape))));
     if (!f.tail_calls.empty()) m.insert_or_assign("tail_calls", text_list(f.tail_calls));
     m.insert_or_assign("convention", f.convention ? Value(*f.convention) : Value());
     m.insert_or_assign("reg_args", text_list(f.reg_args));

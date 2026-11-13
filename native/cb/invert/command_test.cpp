@@ -121,6 +121,11 @@ CB_TEST("invert.command.the_small_readers_of_microsoft_c_6_are_native", [] {
         CB_CHECK_EQ(run_words({"--tool", "msc6-templates", "1e589045558bec1e8ed8909090904d4d8be51f5d4dca0400"}), 1);
         CB_CHECK_EQ(cap.out(), "DECLINED: body not a modeled leaf template (4 bytes: 90909090)\n");
     }
+    {
+        testing::CapturedStd cap;   // the frame model against the compiler's own frames: the Python's line for it
+        CB_CHECK_EQ(run_words({"--tool", "early-c-frame"}), 0);
+        CB_CHECK_EQ(cap.out(), "framemodel self-test: 25/25 byte-exact frame layouts\n");
+    }
     CB_CHECK_THROWS_AS(UsageError, (void)run_words({"--tool", "msc6-templates"}));
     CB_CHECK_THROWS_AS(UsageError, (void)run_words({"--tool", "msc6-templates", "1e5"}));
 

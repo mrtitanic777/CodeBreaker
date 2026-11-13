@@ -2,10 +2,11 @@
 //
 //     codebreaker analyze <module> [--what a,b,c] [--out FILE] [--run N|all] [--facts] [--starts FILE] [--json] [--no-store] [--summary]
 //
-//     <module>   any module the corpus names, or a path: a 32-bit module (PE) or a 16-bit module (NE). A driver (LE) is not read here yet.
+//     <module>   any module the corpus names, or a path: a 32-bit module (PE), a 16-bit module (NE) or a driver (LE); "vmm32.vxd#vmm" names one driver
+//                inside a bundle
 //     --what     which analyses, of: call_graph, conventions, globals, strings, structures, classes, dispatch, resources, observe
 //                (default: all but observe)
-//     --run N    also run N functions in the emulator (observe), "all" for every function. Not run natively yet: the section says so.
+//     --run N    also run N functions in the emulator (observe), "all" for every function (observe alone: the first hundred). 32-bit modules only.
 //     --out FILE where the report goes (default: <state>/analyze/<module>.txt)
 //     --facts    list every fact in the report, not only the counts and highlights
 //     --starts   write the function starts found that the decompiler's description lacks, as lines of that description
@@ -20,8 +21,7 @@
 // The analyses run in the order of the list above; each is given what the ones before it found (the call graph, the strings, the calling
 // conventions, the structures). One failing analysis is a finding, not the end: its section says `failed` and the rest run. The facts of the
 // analyses go to the fact table of the function store (analyze/facts.hpp), replacing what the same analysis stored for the module before:
-// call_graph, conventions, globals, strings, structures, dispatch (but for its keyword dispatchers) and resources store theirs; classes reports counts
-// and text only (its facts are not turned into rows yet).
+// call_graph, conventions, globals, strings, structures, classes, dispatch, resources and observe store theirs.
 #pragma once
 
 #include <cstdint>
@@ -38,6 +38,7 @@
 #include "cb/analyze/native.hpp"
 #include "cb/core/cli.hpp"
 #include "cb/decompile/describe.hpp"
+#include "cb/emulate/emulator.hpp"
 
 namespace cb::analyze::report {
 
@@ -91,15 +92,19 @@ struct Environment {
     decompile::describe::Knowledge* knowledge = nullptr;
     // The name of an exported function of a system module by its number ("KERNEL", 17 -> "OpenFile"); nullopt when not known.
     std::function<std::optional<std::string>(std::string_view module, std::uint32_t ordinal)> export_name;
+    // What the emulator that runs a module's functions (observe) asks: how the headers declare a Windows function, and how many arguments an imported
+    // function pops (`import_argc`: none given, the emulator's default). Its modules are found by `retail`.
+    emulate::emulator::Environment emulator;
+    emulate::emulator::ImportArgc import_argc;
 };
 
 struct Options {
     std::vector<Analysis> what;                 // empty: defaults()
     bool store = true;
-    std::optional<std::size_t> observed;        // --run N (nullopt with Observe asked: the first hundred)
+    std::optional<std::size_t> observed = 100;  // the functions observe runs, the informative first (--run N); nullopt: every one (--run all)
 };
 
-// Load a module and run the analyses on it. UsageError for a module that is not found; UnsupportedError for one of a format not read here (a driver).
+// Load a module and run the analyses on it. UsageError for a module that is not found; UnsupportedError for one of a format not read here (a DOS program).
 Result run(std::string_view module, const Options& options, const Environment& environment);
 
 // The report as text. With `all_facts`, every fact is listed.

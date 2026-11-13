@@ -10,6 +10,7 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
+#include "cb/formats/le.hpp"
 #include "cb/formats/ne.hpp"
 #include "cb/formats/pe.hpp"
 
@@ -136,16 +137,91 @@ Loaded load_ne_module(const stdfs::path& path, const Environment& environment) {
     return out;
 }
 
+// A driver (LE): the description makes each object's address and applies the fix-ups; the layout is its result, with the device descriptor block, whose
+// procedures are entered from outside.
+Loaded load_le_module(const stdfs::path& path, std::string_view member, const Environment& environment) {
+    std::vector<std::pair<std::string, formats::le::Module>> found = formats::le::open_modules(path);
+    if (!member.empty())
+        std::erase_if(found, [&](const auto& m) { return text::lower(m.first) != text::lower(std::string(member)); });
+    if (found.empty())
+        throw UsageError(std::format("{}: no driver image{}", fs::to_text(path.filename()), member.empty() ? std::string() : " named " + std::string(member)));
+    const formats::le::Module& module = found.front().second;
+    const stdfs::path work = environment.state / "analyze" / "work" /
+                             (text::lower(fs::to_text(path.filename())) + (member.empty() ? std::string() : "-" + text::lower(std::string(member))));
+    fs::make_dirs(work);
+    NoKnowledge nothing;
+    decompile::describe::Knowledge& knowledge = environment.knowledge != nullptr ? *environment.knowledge : nothing;
+    const decompile::describe::LeDescription d = decompile::describe::describe_le(module, found.front().first, work, knowledge);
+
+    image::LeLayout layout;
+    std::map<Va, bool> executable;
+    for (const auto& [index, span] : d.spans) executable[span.first] = true;
+    std::map<int, bool> writable;
+    for (const formats::le::Object& o : module.objects()) writable[static_cast<int>(o.index)] = o.writable();
+    std::map<std::uint32_t, Bytes> blobs;   // (the description's bytes live in one blob; its `bytes` lines say where)
+    for (const std::string& line : d.lines) {
+        const std::vector<std::string_view> p = text::split(line, '	');
+        if (p.empty()) continue;
+        if (p[0] == "bytes" && p.size() >= 5) {
+            const auto va = text::parse_int<std::uint64_t>(p[1], 16), off = text::parse_int<std::uint64_t>(p[3], 16), size = text::parse_int<std::uint64_t>(p[4], 16);
+            if (!va || !off || !size) continue;
+            const Bytes blob = fs::read_file(fs::from_text(p[2]));
+            image::LeObject o;
+            o.index = static_cast<int>((*va - image::kLeBase) / image::kLeStride + 1);
+            o.bytes.assign(blob.begin() + static_cast<std::ptrdiff_t>(*off), blob.begin() + static_cast<std::ptrdiff_t>(std::min<std::uint64_t>(*off + *size, blob.size())));
+            o.code = executable.contains(static_cast<Va>(*va));
+            const auto w = writable.find(o.index);
+            o.writable = w != writable.end() && w->second;
+            layout.objects.push_back(std::move(o));
+        } else if (p[0] == "F" && p.size() >= 3) {
+            if (const auto va = text::parse_int<std::uint64_t>(p[1], 16)) layout.functions[static_cast<Va>(*va)] = std::string(p[2]);
+        } else if (p[0] == "I" && p.size() >= 3) {
+            if (const auto va = text::parse_int<std::uint64_t>(p[1], 16)) layout.imports[static_cast<Va>(*va)] = (p[2].starts_with("VMM_") ? "VMM!" : "VXD!") + std::string(p[2]);
+        }
+    }
+
+    // the places a 32-bit address is written (internal fix-ups of source type 7), each with what the object now holds there
+    layout.has_pointers = true;
+    try {
+        for (const auto& [place, fixup] : module.fixups()) {
+            const auto* internal = std::get_if<formats::le::InternalFixup>(&fixup);
+            if (internal == nullptr || internal->source_type != 7 || place.offset < 0) continue;
+            const auto o = std::ranges::find(layout.objects, static_cast<int>(place.object), &image::LeObject::index);
+            if (o == layout.objects.end() || static_cast<std::size_t>(place.offset) + 4 > o->bytes.size()) continue;
+            const auto at = static_cast<std::size_t>(place.offset);
+            const Va target = static_cast<Va>(o->bytes[at]) | static_cast<Va>(o->bytes[at + 1]) << 8 | static_cast<Va>(o->bytes[at + 2]) << 16 | static_cast<Va>(o->bytes[at + 3]) << 24;
+            layout.pointers.emplace_back(image::le_address(static_cast<int>(place.object), static_cast<std::uint32_t>(place.offset)), Pointer{PointerKind::Abs32, target});
+        }
+    } catch (const FormatError&) {   // a damaged fix-up table: the file does not say where addresses are written
+        layout.pointers.clear();
+        layout.has_pointers = false;
+    }
+
+    Loaded out;
+    out.kind = ImageKind::Le;
+    try {
+        if (const std::optional<formats::le::Ddb> ddb = module.ddb()) {
+            layout.device_descriptor = image::le_address(static_cast<int>(ddb->object), static_cast<std::uint32_t>(ddb->rva));
+            out.device = dispatch::DeviceBlock{*layout.device_descriptor, ddb->name};
+        }
+    } catch (const FormatError&) {   // a damaged descriptor: no device
+    }
+    out.image = std::make_shared<Image>(image::load(image::le_spec(layout)));
+    return out;
+}
+
 }  // namespace
 
-Loaded load_module(const stdfs::path& path, const Environment& environment) {
+Loaded load_module(const stdfs::path& path, const Environment& environment, std::string_view member) {
+    // a bundle of drivers (VMM32.VXD's W3) is read as its drivers
+    if (const auto header = formats::detect::new_header(path); header && (*header == formats::detect::NewHeader::W3 || *header == formats::detect::NewHeader::W4))
+        return load_le_module(path, member, environment);
     const std::optional<formats::detect::Lane> lane = formats::detect::lane(path);
     if (!lane) throw UnsupportedError("analyze", 0, std::format("{}: not a module the analyses read (a PE, or an NE)", fs::to_text(path.filename())));
     switch (*lane) {
     case formats::detect::Lane::Pe: return load_pe_module(path);
     case formats::detect::Lane::Ne: return load_ne_module(path, environment);
-    case formats::detect::Lane::Le:
-        throw UnsupportedError("analyze", 0, std::format("{}: a virtual device driver is not read here yet", fs::to_text(path.filename())));
+    case formats::detect::Lane::Le: return load_le_module(path, member, environment);
     case formats::detect::Lane::Dos: break;
     }
     throw UnsupportedError("analyze", 0, std::format("{}: a DOS program is not read here", fs::to_text(path.filename())));
