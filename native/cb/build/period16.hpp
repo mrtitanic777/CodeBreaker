@@ -23,19 +23,22 @@
 // several the original's length, none identical (the old tool gives the same) -- a measure of what is left, not
 // of the build.
 //
-// The `build16 <source folder> [--original MODULE] [--work DIR] [--stub DONOR]` command is declared with the app's
-// commands: it calls build(), prints compare()'s lines, and writes normalize()'s file.
+// The `build16 <source folder> [--original MODULE] [--work DIR] [--stub DONOR]` command is command() below: it calls
+// build(), writes normalize()'s file over the DLL when a donor is named, and prints compare()'s lines.
 #pragma once
 
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "cb/base/config.hpp"
 #include "cb/build/dos_run.hpp"
+#include "cb/core/cli.hpp"
 
 namespace cb::build::period16 {
 
@@ -89,5 +92,17 @@ Comparison compare(ByteView built, ByteView original);
 // relative to the header. FormatError when the donor's stub cannot replace the built one (not a multiple of 16
 // bytes, longer than it, or a difference that is not a whole number of sectors).
 Bytes normalize(ByteView built, ByteView donor);
+
+struct Environment {
+    config::Config config;                   // dosbox_x, msc6, msvc152 and the checkout (the Windows 3.1 DLL kit is in it)
+    std::shared_ptr<base::Corpus> corpus;    // the retail binaries and the DDK; the configuration's own when null
+};
+
+// The tools settings.json names, the kit in the checkout (or the main checkout of a worktree), and the DDK's LIB folder.
+Tools tools_from(const config::Config& config, const base::Corpus& corpus);
+
+// `build16 FOLDER [--original MODULE] [--work DIR] [--stub DONOR]`: the DLL built in DOSBox-X from the folder's sources
+// (exit 1 when none was made), the donor's DOS stub put in front of it, the segments compared with the original's.
+cli::Command command(const Environment& environment);
 
 }  // namespace cb::build::period16

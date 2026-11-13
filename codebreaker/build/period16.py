@@ -189,6 +189,13 @@ def main(argv):
         return 2
     folder = argv[0]
     work = argv[argv.index("--work") + 1] if "--work" in argv else None
+    donor = None
+    if "--stub" in argv:
+        donor = argv[argv.index("--stub") + 1]
+        donor = donor if os.path.isfile(donor) else corpus.retail(donor)
+        if not donor:                                       # found before the build, which takes minutes
+            print("no module to take the DOS stub from: %s" % argv[argv.index("--stub") + 1])
+            return 3
     dll = build(folder, work)
     if not dll:
         print("no DLL was made (see CL.TXT and LINK.TXT in the work folder)")
@@ -196,10 +203,10 @@ def main(argv):
     print("built: %s" % dll)
     original = argv[argv.index("--original") + 1] if "--original" in argv else os.path.basename(dll)
     original = original if os.path.isfile(original) else corpus.retail(original)
-    if "--stub" in argv:
-        donor = argv[argv.index("--stub") + 1]
-        donor = donor if os.path.isfile(donor) else corpus.retail(donor)
+    if donor:
         normalize(dll, donor, dll)
     if original:
         compare(dll, original)
+    else:
+        print("no original named %s to compare with" % (argv[argv.index("--original") + 1] if "--original" in argv else os.path.basename(dll)))
     return 0
