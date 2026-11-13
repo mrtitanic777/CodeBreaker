@@ -88,7 +88,8 @@ std::optional<long long> retf_total(const Bytes &segb, long long start, long lon
   long long e = brfind(segb, EPI, start, end);
   if (e < 0) return std::nullopt;
   long long q = e + (long long)EPI.size();
-  if (byte_or(segb, q) == 0xca) return at(segb, q + 1) | (at(segb, q + 2) << 8);
+  // a `ca` with fewer than two bytes after it is padding, not `retf N`: no total (it raised IndexError and lost the segment)
+  if (byte_or(segb, q) == 0xca && q + 2 < (long long)segb.size()) return at(segb, q + 1) | (at(segb, q + 2) << 8);
   return std::nullopt;
 }
 
