@@ -182,18 +182,24 @@ struct ProductionState {
         return std::move(*got);
     }
 
+    // The emulator takes the texts in sessions of at most kSession each: one session for hundreds of texts outlasts its time limit and loses them all.
+    static constexpr std::size_t kSession = 100;
     std::vector<std::optional<Bytes>> in_emulator(msc6b::Compiler compiler, std::span<const std::string> texts, std::string_view flags) {
-        std::vector<msc6b::Source> sources;
-        sources.reserve(texts.size());
-        for (const std::string& t : texts) sources.push_back({t, std::nullopt});
-        const msc6b::Context ctx{tools, *runner, the_cache()};
-        msc6b::CompileOptions options;
-        options.compiler = compiler;
-        options.work = config.state(std::format("invert/{}/work", compiler == msc6b::Compiler::Msc6 ? "msc6" : "msvc152"));
-        std::vector<std::optional<msc6b::Code>> built = msc6b::compile_many(ctx, sources, "", flags, options);
         std::vector<std::optional<Bytes>> out;
-        out.reserve(built.size());
-        for (auto& b : built) out.push_back(b ? std::optional<Bytes>(std::move(b->code)) : std::nullopt);
+        out.reserve(texts.size());
+        for (std::size_t first = 0; first < texts.size() || (texts.empty() && first == 0); first += kSession) {
+            const std::size_t n = std::min(kSession, texts.size() - first);
+            std::vector<msc6b::Source> sources;
+            sources.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) sources.push_back({texts[first + i], std::nullopt});
+            const msc6b::Context ctx{tools, *runner, the_cache()};
+            msc6b::CompileOptions options;
+            options.compiler = compiler;
+            options.work = config.state(std::format("invert/{}/work", compiler == msc6b::Compiler::Msc6 ? "msc6" : "msvc152"));
+            std::vector<std::optional<msc6b::Code>> built = msc6b::compile_many(ctx, sources, "", flags, options);
+            for (auto& b : built) out.push_back(b ? std::optional<Bytes>(std::move(b->code)) : std::nullopt);
+            if (texts.empty()) break;
+        }
         return out;
     }
 
