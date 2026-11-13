@@ -548,3 +548,147 @@ CB_TEST("emulate.emulator.the_real_lz32_dll_traces_the_same_fresh_and_kept", [] 
     }
     CB_CHECK_EQ(traced, std::size_t{12});
 });
+
+// ---- the recorder's agreed records (tests/test_native_trace.py, tests/data/native_trace_golden.txt) ---------------------------------------------
+//
+// The Python test traced a small module made of three hand-assembled functions in each of eight configurations of the recorder and wanted, for each case,
+// the digest of the record the Python and the C++ recorders had agreed on (a hash of the Python's text of the record: it cannot be made here without
+// writing Python's repr). What the golden pins is also which cases gave the SAME record -- a run that stubs its imports and one that does not, when
+// the run meets none; a run and the same run under a cap it does not reach -- and that is what is checked here: the same module (the code bytes below
+// are the Python test's, but for the import slot's address), the same eight configurations and arguments, and every set of cases the golden gives one
+// digest must give one record here, a record being its end, result, stack, instructions that ran, the imports entered and the branches taken. Beside
+// them the record of f is worked out from its code.
+//
+//   f(a, p):   if (*p != a) { *p = a; Sleep(a); }  read an unmapped page  ...  g()  ...  ret 8       g: a counted loop       h: call 0; int 20h
+namespace {
+
+constexpr std::uint32_t kTraceBase = 0x10000000, kTraceF = 0x00, kTraceG = 0x30, kTraceH = 0x40;
+constexpr std::uint32_t kTraceP = kScratchBase + 0x100;
+
+Bytes emu_trace_text() {
+    Bytes t(0x100, 0x90);
+    emu_place(t, kTraceF,
+              {0x55, 0x8B, 0xEC, 0x53,                           // push ebp ; mov ebp,esp ; push ebx
+               0x8B, 0x45, 0x08, 0x8B, 0x4D, 0x0C,               // mov eax,[ebp+8] ; mov ecx,[ebp+0Ch]
+               0x8B, 0x19, 0x3B, 0xD8, 0x74, 0x09,               // mov ebx,[ecx] ; cmp ebx,eax ; je +9
+               0x89, 0x01, 0x50, 0xFF, 0x15, 0x50, 0x20, 0x00, 0x10,   // mov [ecx],eax ; push eax ; call [Sleep slot at 10002050h]
+               0x8B, 0x15, 0x00, 0x00, 0x40, 0x00,               // mov edx,[400000h]: an unmapped page
+               0x49, 0x75, 0x02, 0x33, 0xC0,                     // dec ecx ; jne +2 ; xor eax,eax
+               0xE8, 0x07, 0x00, 0x00, 0x00,                     // call g
+               0x5B, 0x5D, 0xC2, 0x08, 0x00});                   // pop ebx ; pop ebp ; ret 8
+    emu_place(t, kTraceG, {0xB9, 0x03, 0x00, 0x00, 0x00, 0x01, 0xC8, 0xE2, 0xFC, 0xC3});   // mov ecx,3 ; add eax,ecx ; loop -4 ; ret
+    emu_place(t, kTraceH, {0x33, 0xC0, 0xFF, 0xD0, 0xCD, 0x20, 0x01, 0x00, 0x02, 0x00, 0xC3});   // xor eax,eax ; call eax ; int 20h ... ; ret
+    return t;
+}
+
+struct TraceConfig {
+    const char* name;
+    std::function<void(TraceOptions&)> set;
+};
+
+// What a record is, for comparing two of them.
+std::string emu_trace_seen(const Trace& t) {
+    std::string out = std::format("{} ret={:x} esp={} saved={} insns={} |", t.exit_text(), t.ret.value_or(0), t.esp_delta.value_or(0), t.saved_regs ? 1 : 0, t.record.insn_count);
+    for (const std::uint64_t a : t.record.path) out += std::format(" {:x}", a);
+    out += " | calls";
+    if (t.record.api_calls) {
+        for (const nt::ApiCall& c : *t.record.api_calls) {
+            out += " " + c.api + "(";
+            if (c.args) for (const std::int64_t a : *c.args) out += std::format("{:x},", a);
+            out += ")";
+        }
+    }
+    out += " | branches";
+    for (const nt::BranchEntry& b : t.record.branches) out += std::format(" {:x}{}", b.address, b.taken ? "T" : "F");
+    return out;
+}
+
+}  // namespace
+
+CB_TEST("emulate.emulator.cases_the_recorder_agreed_gave_one_record_give_one_record", [] {
+    fs::ScopedTempDir dir("cb-emulator-trace");
+    const sfs::path module = dir.path() / "native-trace-test.dll";
+    fs::write_file(module, emu_pe(kTraceBase, emu_trace_text(), kText, true));
+    Environment env;
+    env.resolve = [&](std::string_view) { return module; };
+    Tracer tracer(env);
+    const ImportArgc sleep_argc = [](const nt::ImportName& n) -> std::optional<std::int64_t> { return n.name == "Sleep" ? std::optional<std::int64_t>(1) : std::nullopt; };
+    const auto judge = [&](TraceOptions& o) {
+        o.stub_externals = true;
+        o.reads = false;
+        o.stop_wild = true;
+        o.quiet_stack = true;
+        o.reuse = true;
+        o.fast = true;
+        o.lean = true;
+        o.pads = nt::AddressRange{0xC0DE0000, 0xC0DE1000};
+        o.argc = sleep_argc;
+    };
+    const std::vector<TraceConfig> configs = {
+        {"plain", [](TraceOptions& o) { o.stub_externals = false; }},
+        {"stub", [&](TraceOptions& o) { o.stub_externals = true; o.argc = sleep_argc; }},
+        {"stub-unique-reads", [&](TraceOptions& o) { o.stub_externals = true; o.stub_ret_unique = true; o.reads = true; o.argc = sleep_argc; }},
+        {"judge", judge},
+        {"judge-branches", [&](TraceOptions& o) { judge(o); o.branches = true; }},
+        {"judge-capped", [&](TraceOptions& o) { judge(o); o.insn_cap = 12; }},
+        {"one-at-a-time", [&](TraceOptions& o) { judge(o); o.fast = false; o.lean = false; o.branches = true; }},
+        {"no-resolver", [](TraceOptions& o) { o.stub_externals = true; o.reuse = true; o.fast = true; }},
+    };
+    // the golden: key -> digest, for the cases of this module (f with two argument lists, g, h)
+    std::map<std::string, std::string> digest_of;
+    for (const std::string_view line : text::split(fs::read_text(testing::data_path("emulate/testdata/native_trace_golden.txt")), '\n')) {
+        const std::size_t cut = line.rfind(' ');
+        if (cut == std::string_view::npos) continue;
+        const std::string key(line.substr(0, cut));
+        if (key.starts_with("0x30 ") || key.starts_with("0x40 ") || (key.starts_with("f ") && key.find("shadow") == std::string::npos && key.find("raises") == std::string::npos))
+            digest_of[key] = std::string(line.substr(cut + 1));
+    }
+    CB_CHECK_EQ(digest_of.size(), std::size_t{32});   // 8 configurations x (f twice, g, h)
+
+    std::map<std::string, std::string> seen;   // key -> the record here
+    for (const TraceConfig& config : configs) {
+        for (const std::uint32_t a : {5u, 7u}) {
+            TraceOptions o;
+            config.set(o);
+            o.args = std::vector<std::uint32_t>{a, kTraceP};
+            o.mem_init.push_back(MemoryInit{kTraceP, Bytes{7, 0, 0, 0}});
+            seen[std::format("f {} [{}, {}]", config.name, a, kTraceP)] = emu_trace_seen(tracer.trace("native-trace-test.dll", FuncSelector{std::uint64_t{kTraceF}}, o));
+        }
+        for (const std::uint32_t off : {kTraceG, kTraceH}) {
+            TraceOptions o;
+            config.set(o);
+            o.args = std::vector<std::uint32_t>{0, 0};
+            seen[std::format("0x{:x} {}", off, config.name)] = emu_trace_seen(tracer.trace("native-trace-test.dll", FuncSelector{std::uint64_t{off}}, o));
+        }
+    }
+    CB_CHECK_EQ(seen.size(), digest_of.size());
+    std::size_t groups = 0;
+    for (const auto& [key, digest] : digest_of) {
+        for (const auto& [other, other_digest] : digest_of) {
+            if (key >= other || digest != other_digest) continue;
+            ++groups;
+            CB_CHECK(seen.contains(key) && seen.contains(other));
+            if (seen.at(key) != seen.at(other)) testing::record_failure(__FILE__, __LINE__, "the golden gives '" + key + "' and '" + other + "' one record, but here they differ:\n  " + seen.at(key) + "\n  " + seen.at(other));
+        }
+    }
+    CB_CHECK(groups >= 8);   // the golden's sets: plain/stub/stub-unique-reads for f(7) g and h; judge/judge-capped for g and h
+
+    // the record of f(5, p) with its imports stubbed, worked out from the code: *p (7) != 5, so it stores 5 and enters Sleep(5); it reads the unmapped page
+    // 400000h (mapped on demand); ecx = P != 1 so the jne goes; g runs (3 passes); ret 8 -- stdcall with two arguments
+    TraceOptions o;
+    o.stub_externals = true;
+    o.argc = sleep_argc;
+    o.args = std::vector<std::uint32_t>{5, kTraceP};
+    o.mem_init.push_back(MemoryInit{kTraceP, Bytes{7, 0, 0, 0}});
+    const Trace t = tracer.trace("native-trace-test.dll", FuncSelector{std::uint64_t{kTraceF}}, o);
+    CB_CHECK_EQ(t.exit_text(), "ret");
+    CB_CHECK_EQ(t.esp_delta.value_or(0), 12u);
+    CB_CHECK(t.record.api_calls.has_value() && t.record.api_calls->size() == 1);
+    if (t.record.api_calls && !t.record.api_calls->empty()) {
+        CB_CHECK_EQ((*t.record.api_calls)[0].api, "kernel32.dll!Sleep");   // (the import directory's spelling of the DLL's name)
+        CB_CHECK(((*t.record.api_calls)[0].args == std::optional<std::vector<std::int64_t>>(std::vector<std::int64_t>{5})));
+    }
+    CB_CHECK_EQ(t.record.path.front(), std::uint64_t{kTraceBase + kText + kTraceF});
+    const std::string with5 = seen.at(std::format("f stub [5, {}]", kTraceP)), with7 = seen.at(std::format("f stub [7, {}]", kTraceP));
+    CB_CHECK(with5 != with7);   // the other argument: the je goes, Sleep is not entered
+});

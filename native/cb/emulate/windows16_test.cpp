@@ -10,6 +10,7 @@
 #include "cb/emulate/windows16.hpp"
 
 #include <format>
+#include <iostream>
 #include <map>
 #include <set>
 
@@ -19,7 +20,9 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/emulate/pcode.hpp"
 #include "cb/emulate/unicorn_uc.hpp"
+#include "cb/formats/ne.hpp"
 #include "cb/knowledge/package.hpp"
 
 using namespace cb;
@@ -593,4 +596,94 @@ CB_TEST("emulate.windows16.the_run_record_carries_what_the_judge_compares", [] {
     CB_CHECK_EQ(b.exit.value_or(""), "bad-ordinal");
     CB_CHECK(std::holds_alternative<std::monostate>(b.results.at("AX")));
     CB_CHECK(!b.steps.has_value());
+});
+
+// ---- the shadow only watches (tests/test_concolic.py: a_run_with_its_shadow_is_the_same_run) ------------------------------------------------
+
+namespace {
+
+// pcodecheck as the pcode tests find it: the environment's, else native/decompiler/build/bin of the checkout (a worktree's build is in the main one).
+std::filesystem::path w16shadow_pcodecheck() {
+    if (auto env = fs::get_env("CB_PCODECHECK"); env && !env->empty()) return *env;
+    sfs::path dir = sfs::path(CB_SOURCE_DIR);
+    for (int i = 0; i < 6 && !dir.empty(); ++i, dir = dir.parent_path()) {
+        const sfs::path exe = dir / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
+        if (sfs::exists(exe)) return exe;
+    }
+    return {};
+}
+
+// What the judge compares of a run: its end, steps, the calls out, the writes, the registers it hands back.
+std::string w16shadow_seen(const Run& r) {
+    std::string out = std::format("{} {} ", r.exit.value_or("-"), r.steps.value_or(0));
+    for (const Call& c : r.calls) out += c.name.value_or("?") + ";";
+    out += " |";
+    for (const MemoryWrite& w : r.writes) out += std::format(" {:x}/{}/{:x}", w.address, w.size, w.value);
+    out += " |";
+    for (const auto& [name, value] : r.results) {
+        out += " " + name + "=";
+        if (const auto* v = std::get_if<std::uint64_t>(&value)) out += std::format("{:x}", *v);
+    }
+    return out;
+}
+
+}  // namespace
+
+// The shadow only watches: LZEXPAND's functions run with it and without it end alike, make the same calls and the same writes, in as many steps --
+// also where the shadow meets a selector no descriptor names (LZCOPY, an unmodelled call answering 2: it once stopped the run there).
+CB_TEST("emulate.windows16.a_run_with_its_shadow_is_the_same_run", [] {
+    const sfs::path exe = w16shadow_pcodecheck();
+    if (exe.empty()) {
+        std::cerr << "windows16 shadow test: no pcodecheck (native/decompiler); skipped\n";
+        return;
+    }
+    pcode::LifterSet lifters(pcode::PcodeConfig::from_environment(exe.parent_path(), sfs::path(CB_SOURCE_DIR) / "decompiler" / "languages"));
+    if (lifters.get(pcode::Mode::X86Real16) == nullptr) {
+        std::cerr << "windows16 shadow test: no x86 real-mode lift; skipped\n";
+        return;
+    }
+    World w;
+    const sfs::path path = module_path("lz");
+    const formats::ne::Module module = formats::ne::Module::open_file(path);
+    std::vector<formats::ne::Entry> entries;
+    for (const formats::ne::Entry& e : module.entries()) {
+        if (e.kind != formats::ne::Entry::Kind::Unused && e.segment != 0 && entries.size() < 8) entries.push_back(e);
+    }
+    CB_CHECK_EQ(entries.size(), std::size_t{8});
+    const std::uint32_t ds = segment_base(module.header().autodata_segment != 0 ? module.header().autodata_segment : 1);
+    struct Input {
+        std::vector<std::uint16_t> args;
+        std::optional<std::uint32_t> stub_ret;
+        std::vector<MemoryInit> mem;
+    };
+    const std::uint16_t safe = kSafeSelector;
+    const std::vector<Input> inputs = {{{0, 0, 0, 0, 0, 0, 0, 0}, std::nullopt, {}},
+                                       {{1, 0x40, safe, 2, 0x80, safe, 3, 0x100}, std::nullopt, {}},
+                                       {{0, 0, 0, 0, 0, 0, 0, 0}, 2u, {MemoryInit{DataOffset{50}, Bytes(6, 0)}}}};
+    std::size_t compared = 0;
+    for (const formats::ne::Entry& e : entries) {
+        for (const Input& in : inputs) {
+            std::vector<std::string> runs;
+            for (const bool watched : {false, true}) {
+                ProbeOptions o;
+                o.function = CodePoint{e.segment, e.offset};
+                o.args = in.args;
+                o.near_entry = false;
+                o.ports = true;
+                o.stub_ret = in.stub_ret;
+                o.mem_init = in.mem;
+                w.governor = {};
+                std::unique_ptr<native_shadow::Shadow> shadow;
+                if (watched) {
+                    shadow = std::make_unique<native_shadow::Shadow>(native_shadow::Setup::for_lifter(
+                        native_shadow::Kind::Real16, *lifters.get(pcode::Mode::X86Real16), {{ds, ds + 0x10000ull}}, std::nullopt, false));
+                    o.shadow = shadow.get();
+                }
+                runs.push_back(w16shadow_seen(w.runner.recorded(path, o)));
+            }
+            CB_CHECK_EQ(runs[0], runs[1]);
+            ++compared;
+        }
+    }
+    CB_CHECK_EQ(compared, std::size_t{24});
 });

@@ -1,0 +1,589 @@
+{
+ "file": "notepad.exe",
+ "output": {
+  "build": {
+   "entry_rva": 4096,
+   "entry_va": 4198400,
+   "image_base": 4194304,
+   "kind": "EXE",
+   "linker_version": "2.50",
+   "machine": "i386",
+   "magic": "PE32",
+   "subsystem": "GUI",
+   "timestamp": 804476045
+  },
+  "code_sections": [
+   [
+    4198400,
+    {
+     "len": 14848,
+     "sha256": "dbdfc85467d819b13be28b43936710d409f0f06c06c417d383c0ae19ad422093"
+    },
+    ".text"
+   ]
+  ],
+  "codeview": null,
+  "dll": false,
+  "exports": [],
+  "imports": {
+   "4223624": [
+    "GDI32.dll",
+    "CreateDCA"
+   ],
+   "4223628": [
+    "GDI32.dll",
+    "GetTextCharset"
+   ],
+   "4223632": [
+    "GDI32.dll",
+    "SelectObject"
+   ],
+   "4223636": [
+    "GDI32.dll",
+    "GetStockObject"
+   ],
+   "4223640": [
+    "GDI32.dll",
+    "DeleteDC"
+   ],
+   "4223644": [
+    "GDI32.dll",
+    "AbortDoc"
+   ],
+   "4223648": [
+    "GDI32.dll",
+    "DeleteObject"
+   ],
+   "4223652": [
+    "GDI32.dll",
+    "StartPage"
+   ],
+   "4223656": [
+    "GDI32.dll",
+    "StartDocA"
+   ],
+   "4223660": [
+    "GDI32.dll",
+    "EndPage"
+   ],
+   "4223664": [
+    "GDI32.dll",
+    "GetTextExtentPointA"
+   ],
+   "4223668": [
+    "GDI32.dll",
+    "GetDeviceCaps"
+   ],
+   "4223672": [
+    "GDI32.dll",
+    "SetAbortProc"
+   ],
+   "4223676": [
+    "GDI32.dll",
+    "GetTextMetricsA"
+   ],
+   "4223680": [
+    "GDI32.dll",
+    "SetBkMode"
+   ],
+   "4223684": [
+    "GDI32.dll",
+    "CreateFontA"
+   ],
+   "4223688": [
+    "GDI32.dll",
+    "LPtoDP"
+   ],
+   "4223692": [
+    "GDI32.dll",
+    "SetWindowExtEx"
+   ],
+   "4223696": [
+    "GDI32.dll",
+    "SetMapMode"
+   ],
+   "4223700": [
+    "GDI32.dll",
+    "EndDoc"
+   ],
+   "4223704": [
+    "GDI32.dll",
+    "SetViewportExtEx"
+   ],
+   "4223712": [
+    "KERNEL32.dll",
+    "LocalAlloc"
+   ],
+   "4223716": [
+    "KERNEL32.dll",
+    "LocalLock"
+   ],
+   "4223720": [
+    "KERNEL32.dll",
+    "LocalReAlloc"
+   ],
+   "4223724": [
+    "KERNEL32.dll",
+    "lstrlenA"
+   ],
+   "4223728": [
+    "KERNEL32.dll",
+    "_lclose"
+   ],
+   "4223732": [
+    "KERNEL32.dll",
+    "DeleteFileA"
+   ],
+   "4223736": [
+    "KERNEL32.dll",
+    "_lwrite"
+   ],
+   "4223740": [
+    "KERNEL32.dll",
+    "LocalUnlock"
+   ],
+   "4223744": [
+    "KERNEL32.dll",
+    "lstrcmpA"
+   ],
+   "4223748": [
+    "KERNEL32.dll",
+    "lstrcpynA"
+   ],
+   "4223752": [
+    "KERNEL32.dll",
+    "_llseek"
+   ],
+   "4223756": [
+    "KERNEL32.dll",
+    "LocalFree"
+   ],
+   "4223760": [
+    "KERNEL32.dll",
+    "GlobalUnlock"
+   ],
+   "4223764": [
+    "KERNEL32.dll",
+    "GlobalLock"
+   ],
+   "4223768": [
+    "KERNEL32.dll",
+    "GlobalAlloc"
+   ],
+   "4223772": [
+    "KERNEL32.dll",
+    "GetLocalTime"
+   ],
+   "4223776": [
+    "KERNEL32.dll",
+    "GetTimeFormatA"
+   ],
+   "4223780": [
+    "KERNEL32.dll",
+    "GetDateFormatA"
+   ],
+   "4223784": [
+    "KERNEL32.dll",
+    "lstrcmpiA"
+   ],
+   "4223788": [
+    "KERNEL32.dll",
+    "GetProfileStringA"
+   ],
+   "4223792": [
+    "KERNEL32.dll",
+    "lstrcatA"
+   ],
+   "4223796": [
+    "KERNEL32.dll",
+    "FindFirstFileA"
+   ],
+   "4223800": [
+    "KERNEL32.dll",
+    "FindClose"
+   ],
+   "4223804": [
+    "KERNEL32.dll",
+    "lstrcpyA"
+   ],
+   "4223808": [
+    "KERNEL32.dll",
+    "GetLastError"
+   ],
+   "4223812": [
+    "KERNEL32.dll",
+    "CreateFileA"
+   ],
+   "4223816": [
+    "KERNEL32.dll",
+    "GetCommandLineA"
+   ],
+   "4223820": [
+    "KERNEL32.dll",
+    "GetLocaleInfoA"
+   ],
+   "4223824": [
+    "KERNEL32.dll",
+    "GlobalFree"
+   ],
+   "4223828": [
+    "KERNEL32.dll",
+    "ExitProcess"
+   ],
+   "4223832": [
+    "KERNEL32.dll",
+    "GetStartupInfoA"
+   ],
+   "4223836": [
+    "KERNEL32.dll",
+    "GetModuleHandleA"
+   ],
+   "4223840": [
+    "KERNEL32.dll",
+    "_lcreat"
+   ],
+   "4223844": [
+    "KERNEL32.dll",
+    "_lopen"
+   ],
+   "4223848": [
+    "KERNEL32.dll",
+    "_lread"
+   ],
+   "4223856": [
+    "SHELL32.dll",
+    "ShellExecuteA"
+   ],
+   "4223860": [
+    "SHELL32.dll",
+    "DragQueryFileA"
+   ],
+   "4223864": [
+    "SHELL32.dll",
+    "DragFinish"
+   ],
+   "4223868": [
+    "SHELL32.dll",
+    "DragAcceptFiles"
+   ],
+   "4223872": [
+    "SHELL32.dll",
+    "ShellAboutA"
+   ],
+   "4223880": [
+    "USER32.dll",
+    "GetMessageA"
+   ],
+   "4223884": [
+    "USER32.dll",
+    "IsDialogMessageA"
+   ],
+   "4223888": [
+    "USER32.dll",
+    "GetWindowTextA"
+   ],
+   "4223892": [
+    "USER32.dll",
+    "CharNextA"
+   ],
+   "4223896": [
+    "USER32.dll",
+    "CheckMenuItem"
+   ],
+   "4223900": [
+    "USER32.dll",
+    "CloseClipboard"
+   ],
+   "4223904": [
+    "USER32.dll",
+    "IsClipboardFormatAvailable"
+   ],
+   "4223908": [
+    "USER32.dll",
+    "OpenClipboard"
+   ],
+   "4223912": [
+    "USER32.dll",
+    "GetSubMenu"
+   ],
+   "4223916": [
+    "USER32.dll",
+    "GetMenu"
+   ],
+   "4223920": [
+    "USER32.dll",
+    "LoadStringA"
+   ],
+   "4223924": [
+    "USER32.dll",
+    "LoadAcceleratorsA"
+   ],
+   "4223928": [
+    "USER32.dll",
+    "GetSystemMenu"
+   ],
+   "4223932": [
+    "USER32.dll",
+    "RegisterWindowMessageA"
+   ],
+   "4223936": [
+    "USER32.dll",
+    "SetWindowLongA"
+   ],
+   "4223940": [
+    "USER32.dll",
+    "CreateWindowExA"
+   ],
+   "4223944": [
+    "USER32.dll",
+    "LoadCursorA"
+   ],
+   "4223948": [
+    "USER32.dll",
+    "RegisterClassExA"
+   ],
+   "4223952": [
+    "USER32.dll",
+    "GetSystemMetrics"
+   ],
+   "4223956": [
+    "USER32.dll",
+    "SetCursor"
+   ],
+   "4223960": [
+    "USER32.dll",
+    "UpdateWindow"
+   ],
+   "4223964": [
+    "USER32.dll",
+    "CharPrevA"
+   ],
+   "4223968": [
+    "USER32.dll",
+    "GetClientRect"
+   ],
+   "4223972": [
+    "USER32.dll",
+    "PeekMessageA"
+   ],
+   "4223976": [
+    "USER32.dll",
+    "SetDlgItemTextA"
+   ],
+   "4223980": [
+    "USER32.dll",
+    "TabbedTextOutA"
+   ],
+   "4223984": [
+    "USER32.dll",
+    "CreateDialogParamA"
+   ],
+   "4223988": [
+    "USER32.dll",
+    "EnableWindow"
+   ],
+   "4223992": [
+    "USER32.dll",
+    "TranslateAcceleratorA"
+   ],
+   "4223996": [
+    "USER32.dll",
+    "ReleaseDC"
+   ],
+   "4224000": [
+    "USER32.dll",
+    "GetDC"
+   ],
+   "4224004": [
+    "USER32.dll",
+    "SendDlgItemMessageA"
+   ],
+   "4224008": [
+    "USER32.dll",
+    "GetDlgCtrlID"
+   ],
+   "4224012": [
+    "USER32.dll",
+    "ChildWindowFromPoint"
+   ],
+   "4224016": [
+    "USER32.dll",
+    "ScreenToClient"
+   ],
+   "4224020": [
+    "USER32.dll",
+    "GetCursorPos"
+   ],
+   "4224024": [
+    "USER32.dll",
+    "GetDlgItemTextA"
+   ],
+   "4224028": [
+    "USER32.dll",
+    "wsprintfA"
+   ],
+   "4224032": [
+    "USER32.dll",
+    "PostQuitMessage"
+   ],
+   "4224036": [
+    "USER32.dll",
+    "IsIconic"
+   ],
+   "4224040": [
+    "USER32.dll",
+    "DestroyWindow"
+   ],
+   "4224044": [
+    "USER32.dll",
+    "MessageBeep"
+   ],
+   "4224048": [
+    "USER32.dll",
+    "MessageBoxA"
+   ],
+   "4224052": [
+    "USER32.dll",
+    "DefWindowProcA"
+   ],
+   "4224056": [
+    "USER32.dll",
+    "EnableMenuItem"
+   ],
+   "4224060": [
+    "USER32.dll",
+    "GetLastActivePopup"
+   ],
+   "4224064": [
+    "USER32.dll",
+    "ShowWindow"
+   ],
+   "4224068": [
+    "USER32.dll",
+    "EndDialog"
+   ],
+   "4224072": [
+    "USER32.dll",
+    "SetForegroundWindow"
+   ],
+   "4224076": [
+    "USER32.dll",
+    "WinHelpA"
+   ],
+   "4224080": [
+    "USER32.dll",
+    "LoadIconA"
+   ],
+   "4224084": [
+    "USER32.dll",
+    "SendMessageA"
+   ],
+   "4224088": [
+    "USER32.dll",
+    "GetFocus"
+   ],
+   "4224092": [
+    "USER32.dll",
+    "PostMessageA"
+   ],
+   "4224096": [
+    "USER32.dll",
+    "SetFocus"
+   ],
+   "4224100": [
+    "USER32.dll",
+    "InvalidateRect"
+   ],
+   "4224104": [
+    "USER32.dll",
+    "MoveWindow"
+   ],
+   "4224108": [
+    "USER32.dll",
+    "DispatchMessageA"
+   ],
+   "4224112": [
+    "USER32.dll",
+    "TranslateMessage"
+   ],
+   "4224116": [
+    "USER32.dll",
+    "SetWindowTextA"
+   ],
+   "4224124": [
+    "comdlg32.dll",
+    "GetSaveFileNameA"
+   ],
+   "4224128": [
+    "comdlg32.dll",
+    "PageSetupDlgA"
+   ],
+   "4224132": [
+    "comdlg32.dll",
+    "FindTextA"
+   ],
+   "4224136": [
+    "comdlg32.dll",
+    "GetOpenFileNameA"
+   ],
+   "4224140": [
+    "comdlg32.dll",
+    "GetFileTitleA"
+   ],
+   "4224144": [
+    "comdlg32.dll",
+    "CommDlgExtendedError"
+   ]
+  },
+  "machine": "i386",
+  "module": "",
+  "optional": {
+   "checksum": 52600,
+   "code_base": 4096,
+   "code_size": 14848,
+   "dll_characteristics": 0,
+   "entry_point": 4096,
+   "file_alignment": 512,
+   "headers_size": 1024,
+   "image_base": 4194304,
+   "image_size": 49152,
+   "image_version": "0.0",
+   "initialized_data_size": 18432,
+   "linker_version": "2.50",
+   "magic": 267,
+   "os_version": "1.0",
+   "section_alignment": 4096,
+   "subsystem": 2,
+   "subsystem_name": "GUI",
+   "subsystem_version": "4.0",
+   "uninitialized_data_size": 1536
+  },
+  "relocs": {
+   "count": 996,
+   "head": [
+    10011,
+    10026,
+    10031,
+    10040,
+    10055,
+    10064,
+    10070,
+    10075,
+    10081,
+    10087,
+    10093,
+    10098,
+    10104,
+    10119,
+    10145,
+    10150,
+    10162,
+    10178,
+    10186,
+    10192
+   ],
+   "sha256": "a70f95b2b4ffd5cd0993ee3c3862929da3d7be463240f45b98a7e5353652ee17"
+  }
+ },
+ "sha256": "6bcd5e9cbe1605fa2f36ad0f5a6d65bff016c52806afa44adde7d0932839b324"
+}

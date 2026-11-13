@@ -201,3 +201,15 @@ CB_TEST("exact.standin.indexes", [] {
     Bytes too_big;
     CB_CHECK_THROWS_AS(FormatError, standin::append_index(too_big, 0x8000));
 });
+
+CB_TEST("exact.standin.a_fixup_location_is_four_bits", [] {
+    // (tests/test_exact_fixes.py) M=0, location 9 (a 32-bit offset), offset 4; fix data: frame method 5, target method 2
+    // (external), P=1; external 1. The location was masked to three bits, so 9 read as 1 (a low byte).
+    const Bytes record = {static_cast<std::uint8_t>(0x80 | (9 << 2)), 0x04, (5 << 4) | 4 | 2, 0x01};
+    standin::FixupThreads threads;
+    auto fixes = standin::read_fixups(record, threads);
+    CB_CHECK_EQ(fixes.size(), 1u);
+    CB_CHECK_EQ(fixes[0].location, 9);
+    fixes[0].at = 4;
+    CB_CHECK_EQ(standin::write_fixup_record(fixes, 0).at(3), static_cast<std::uint8_t>(0x80 | (9 << 2)));
+});

@@ -73,5 +73,9 @@ CodeData code_segment_data(const std::vector<std::pair<std::string, std::optiona
 // {segment: [(offset, segment whose selector the loader puts there)]}: the module's own selector fix-ups (a selector, or the
 // selector half of a far pointer), chains followed.
 std::map<std::int64_t, std::vector<std::pair<std::int64_t, std::int64_t>>> selector_sites(const std::filesystem::path& module);
+// The offsets from BP of the argument words the function at [start, end) of `code` loads as far pointers (`les bx, [bp+6]`).
+std::set<std::int64_t> far_loads16(ByteView code, std::int64_t start, std::int64_t end);
+// Whether the function at `off` loads DS with the data segment `dgroup` in its prologue.
+bool loads_dgroup16(ByteView code, std::int64_t off, std::int64_t dgroup);
 
 }  // namespace cb::decompile::c_text::internal

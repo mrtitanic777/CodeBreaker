@@ -25,8 +25,10 @@
 //     table keyed by path.
 #include "cb/verify/lanes/win32.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <set>
 
 #include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
@@ -35,6 +37,7 @@
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 #include "cb/emulate/pcode.hpp"
+#include "cb/formats/pe.hpp"
 #include "cb/symbols/prototypes.hpp"
 #include "cb/verify/lanes/win32_internal.hpp"
 
@@ -341,4 +344,152 @@ CB_TEST("verify.win32.the_kind", [] {
     CB_CHECK(a.settings.find("paths false ") != std::string::npos);   // no lifter: the inputs are guessed, and the profile says so
     // the inputs are part of it: a profile is what a verdict depends on besides the source
     CB_CHECK(a.settings.find("[args 0 0 0 0 ret 0]") != std::string::npos);
+});
+
+// ---- the shadow and the path explorer on LZ32 (tests/test_concolic.py) ---------------------------------------------------------------------
+//
+// The lifter is pcodecheck as the pcode tests find it (the environment's, else native/decompiler/build/bin of the checkout, a worktree's build being
+// in the main one); without it these say so and pass.
+
+namespace {
+
+stdfs::path w32sh_pcodecheck() {
+    if (auto env = cb::fs::get_env("CB_PCODECHECK"); env && !env->empty()) return *env;
+    stdfs::path dir = stdfs::path(CB_SOURCE_DIR);
+    for (int i = 0; i < 6 && !dir.empty(); ++i, dir = dir.parent_path()) {
+        const stdfs::path exe = dir / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
+        if (stdfs::exists(exe)) return exe;
+    }
+    return {};
+}
+
+// LZ32 as the judge has it: its lifter, the imports' argument counts and the thunk stubs the Python lane recorded.
+struct W32ShRig {
+    cb::emulate::pcode::LifterSet lifters;
+    NoDecompiler decompiler;
+    cb::build::functions::FunctionBuilder builder;
+    std::map<std::string, std::optional<std::int64_t>> argc;
+    Win32Lane::Services services;
+    std::unique_ptr<Win32Lane::Context> context;
+    stdfs::path module = cb::testing::data_path("formats/testdata/lz32.dll");
+
+    explicit W32ShRig(const stdfs::path& exe)
+        : lifters(cb::emulate::pcode::PcodeConfig::from_environment(exe.parent_path(), stdfs::path(CB_SOURCE_DIR) / "decompiler" / "languages")),
+          services{decompiler, builder, {}, {}, nullptr, nullptr, &lifters, {}, nullptr} {
+        const Json golden = cb::json::load(data("lz32/verdicts.json"));
+        for (const auto& [key, value] : golden["environment"]["argc"].items())
+            argc[key] = value.is_null() ? std::nullopt : std::optional<std::int64_t>(value.get<std::int64_t>());
+        services.tracer.resolve = [](std::string_view name) { return stdfs::path(std::string(name)); };
+        services.import_argc = [this](std::string_view dll, std::string_view name) -> std::optional<std::int64_t> {
+            const auto it = argc.find(std::string(dll) + "|" + std::string(name));
+            return it != argc.end() ? it->second : std::nullopt;
+        };
+        context = std::make_unique<Win32Lane::Context>(services, module);
+        for (const auto& [hex, name] : golden["stubs"].items()) context->stubs.at[std::stoull(hex, nullptr, 16)] = name.get<std::string>();
+        for (const auto& [name, n] : golden["stub_argc"].items())
+            context->stubs.argc[name] = n.is_null() ? std::nullopt : std::optional<std::int64_t>(n.get<std::int64_t>());
+    }
+
+    bool ready() { return lifters.get(cb::emulate::pcode::Mode::X86Flat32) != nullptr; }
+    // The exports (name, address) of the module.
+    std::vector<std::pair<std::string, std::uint64_t>> exports() const {
+        const cb::formats::pe::Image image = cb::formats::pe::Image::open(module);
+        std::vector<std::pair<std::string, std::uint64_t>> out;
+        for (const cb::formats::pe::Export& e : image.exports())
+            out.emplace_back(e.name.value_or("#" + std::to_string(e.ordinal)), image.optional_header().image_base + e.rva);
+        return out;
+    }
+};
+
+// What the judge compares of a run: its end, steps, the result, the calls out, the stack, the registers kept, the instructions that ran.
+std::string w32sh_seen(const cb::emulate::Run& r) {
+    std::string out = std::format("{} {} ", r.exit.value_or("-"), r.steps.value_or(0));
+    if (const cb::emulate::Register* eax = r.results.find("EAX"); eax != nullptr && std::holds_alternative<std::uint64_t>(*eax))
+        out += std::format("eax={:x} ", std::get<std::uint64_t>(*eax));
+    for (const cb::emulate::Call& c : r.calls) {
+        out += c.name.value_or("?") + "(";
+        if (c.args) for (const std::int64_t a : *c.args) out += std::format("{:x},", a);
+        out += ");";
+    }
+    out += std::format(" stack={} kept={} |", r.stack.value_or(-1), r.kept());
+    for (const cb::emulate::MemoryWrite& w : r.writes) out += std::format(" {:x}/{}/{:x}", w.address, w.size, w.value);
+    out += " |";
+    std::vector<std::uint64_t> path = r.path;
+    std::sort(path.begin(), path.end());
+    for (const std::uint64_t a : path) out += std::format(" {:x}", a);
+    return out;
+}
+
+}  // namespace
+
+// The 32-bit shadow only watches: LZ32's exports traced with it (one instruction at a time) and without it (the fast tracer) give the judge the
+// same run.
+CB_TEST("verify.win32.a_32_bit_run_with_its_shadow_is_the_same_run", [] {
+    const stdfs::path exe = w32sh_pcodecheck();
+    if (exe.empty()) {
+        std::cerr << "win32 shadow test: no pcodecheck (native/decompiler); skipped\n";
+        return;
+    }
+    W32ShRig rig(exe);
+    if (!rig.ready()) {
+        std::cerr << "win32 shadow test: no x86 flat lift; skipped\n";
+        return;
+    }
+    const std::vector<Vector> fixed = Win32Lane::vectors(), confirm = Win32Lane::confirm_vectors();
+    std::vector<Vector> seeds(fixed.begin() + 1, fixed.end());
+    for (std::size_t i = 0; i < 3 && i < confirm.size(); ++i) seeds.push_back(confirm[i]);
+    const auto exports = rig.exports();
+    CB_CHECK(exports.size() >= 8);
+    std::size_t compared = 0, observed = 0;
+    for (std::size_t k = 0; k < 8 && k < exports.size(); ++k) {
+        for (const Vector& v : seeds) {
+            const auto fast = cb::verify::lanes::win32::observed_run(*rig.context, exports[k].second, v, nullptr);
+            cb::emulate::native_shadow::Shadow shadow(cb::emulate::native_shadow::Setup::for_lifter(
+                cb::emulate::native_shadow::Kind::Flat32, *rig.lifters.get(cb::emulate::pcode::Mode::X86Flat32), {{0x200000, 0x210000}}));
+            const auto watched = cb::verify::lanes::win32::observed_run(*rig.context, exports[k].second, v, &shadow);
+            CB_CHECK_EQ(fast.has_value(), watched.has_value());
+            if (fast && watched) {
+                CB_CHECK_EQ(w32sh_seen(*fast), w32sh_seen(*watched));
+                ++observed;
+            }
+            ++compared;
+        }
+    }
+    CB_CHECK(compared >= 8 * 5);
+    CB_CHECK(observed > compared / 2);   // most runs are observations: the equality is not between two nothings
+});
+
+// LZOpenFileA through the x86-32-flat p-code: its paths found, said to be all, and each input kept takes one no seed took.
+CB_TEST("verify.win32.the_explorer_finds_every_path_of_lzopenfile", [] {
+    const stdfs::path exe = w32sh_pcodecheck();
+    if (exe.empty()) {
+        std::cerr << "win32 explorer test: no pcodecheck (native/decompiler); skipped\n";
+        return;
+    }
+    W32ShRig rig(exe);
+    if (!rig.ready()) {
+        std::cerr << "win32 explorer test: no x86 flat lift; skipped\n";
+        return;
+    }
+    std::uint64_t va = 0;
+    for (const auto& [name, address] : rig.exports())
+        if (name == "LZOpenFileA") va = address;
+    CB_CHECK(va != 0);
+    std::vector<Vector> seeds = Win32Lane::vectors();
+    for (Vector& v : Win32Lane::confirm_vectors()) seeds.push_back(std::move(v));
+    const auto [kept, got] = cb::verify::lanes::win32::explore_vectors(*rig.context, va, seeds, {});
+    CB_CHECK(got != nullptr);
+    if (!got) return;
+    CB_CHECK(got->complete);
+    CB_CHECK(got->paths >= 4);
+    CB_CHECK(!kept.empty());
+    const auto trail_of = [&](const Vector& v) {
+        std::vector<std::pair<std::uint64_t, bool>> t;
+        const auto o = cb::verify::lanes::win32::branch_run(*rig.context, va, v);
+        if (o) for (const auto& b : o->branches) t.emplace_back(b.address, b.taken);
+        return t;
+    };
+    std::set<std::vector<std::pair<std::uint64_t, bool>>> trails;
+    for (const Vector& v : seeds) trails.insert(trail_of(v));
+    for (const Vector& v : kept) CB_CHECK(!trails.contains(trail_of(v)));
 });

@@ -1,0 +1,9 @@
+{
+ "file": "vmouse.vxd",
+ "output": {
+  "format": "LE",
+  "lane": "le",
+  "signature": "4c45"
+ },
+ "sha256": "8170d3f33fd0914e3b3b792c0e3a653e8a8cf5ea152474f654589c343c858132"
+}

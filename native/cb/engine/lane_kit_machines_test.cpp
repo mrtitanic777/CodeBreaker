@@ -8,9 +8,12 @@
 #include <algorithm>
 #include <iostream>
 
+#include "cb/build/m6502_asm.hpp"
+#include "cb/build/m68k_asm.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/source/isa.hpp"
 #include "cb/verify/lanes/image_lane.hpp"
 
 using namespace cb;
@@ -34,8 +37,7 @@ struct Sample {
 
 // One machine: the program as it was, a copy with a function's first byte changed (some function of the first few changes what the program does), and the
 // two compared.
-void machine_judges_an_edited_program(const Sample& sample) {
-    const stdfs::path original = machines_sample(sample.file);
+void machine_judges_a_program(const Sample& sample, const stdfs::path& original) {
     std::error_code ec;
     if (!stdfs::is_regular_file(original, ec)) {
         std::cout << "no sample for " << sample.machine << ": " << fs::to_text(original) << "\n";
@@ -103,6 +105,8 @@ void machine_judges_an_edited_program(const Sample& sample) {
     CB_CHECK(diverged != 0);   // (a function whose first instruction is turned over does something else, and the run beside the original's says so)
 }
 
+void machine_judges_an_edited_program(const Sample& sample) { machine_judges_a_program(sample, machines_sample(sample.file)); }
+
 }  // namespace
 
 CB_TEST("engine.lane_kit.machines.a_known_machine_has_a_lane_and_another_name_has_none", [] {
@@ -130,3 +134,27 @@ CB_TEST("engine.lane_kit.machines.game_boy_edited_program", [] { machine_judges_
 CB_TEST("engine.lane_kit.machines.master_system_edited_program", [] { machine_judges_an_edited_program({"sms", "sms-peterlemon/HelloWorld.sms", 0, 0x4000}); });
 CB_TEST("engine.lane_kit.machines.genesis_edited_program", [] { machine_judges_an_edited_program({"genesis", "genesis-2048/rom.bin", 0, 0x100000}); });
 CB_TEST("engine.lane_kit.machines.msx_edited_program", [] { machine_judges_an_edited_program({"msx", "msx-nohzdyve/nohzdyve.rom", 0x4000, 0x10000}); });
+
+// The programs tests/test_nes.py and tests/test_m68k.py (test_lane_judges) were written around, hand-written for the lanes and kept in testdata
+// (no corpus needed): built with CodeBreaker's own assemblers, written back as source by the lane, rebuilt as the original, and judged beside an
+// edited copy.
+CB_TEST("engine.lane_kit.machines.the_nes_demo_cartridge_is_judged", [] {
+    fs::ScopedTempDir dir("cb-lane-kit-nes-demo");
+    const build::m6502_asm::Assembler assembler(source::isa::m6502_encoder());
+    const Bytes rom = assembler.build(fs::read_text(testing::data_path("decompile/testdata/m6502_demo.s")),
+                                      fs::read_text(testing::data_path("engine/testdata/lane_kit/nes_demo.cfg")), dir.path());
+    CB_CHECK_EQ(rom.size(), 16u + 0x4000u + 0x2000u);
+    const stdfs::path cartridge = dir.path() / "demo.nes";
+    fs::write_file(cartridge, rom);
+    // (PRG is at $C000 and starts after the 16-byte header: file offset = address - $BFF0)
+    machine_judges_a_program({"nes", "demo.nes", 0xBFF0, 16u + 0x4000u}, cartridge);
+});
+
+CB_TEST("engine.lane_kit.machines.the_genesis_demo_cartridge_is_judged", [] {
+    fs::ScopedTempDir dir("cb-lane-kit-genesis-demo");
+    const build::m68k_asm::Assembler assembler(source::isa::m68k_encoder());
+    const Bytes rom = assembler.build(fs::read_text(testing::data_path("engine/testdata/lane_kit/genesis_demo.asm")));
+    const stdfs::path cartridge = dir.path() / "demo.md";
+    fs::write_file(cartridge, rom);
+    machine_judges_a_program({"genesis", "demo.md", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
+});
