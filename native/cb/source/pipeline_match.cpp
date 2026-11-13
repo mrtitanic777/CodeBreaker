@@ -13,7 +13,8 @@
 //     different     another length
 //
 // `--try` compiles under several sets of switches and reports, per function, the best; which set matches most functions says how the module was built.
-// A 16-bit module (Microsoft C in an emulator: verify/authored/match16) and an Xbox 360 image (its compiler's objects, read by bits) are not made here.
+// A 16-bit module goes to Microsoft C (pipeline_match16.cpp: verify/authored/match16, under its own options); an Xbox 360 image (its compiler's objects,
+// read by bits) is not made here.
 #include <algorithm>
 #include <map>
 #include <mutex>
@@ -33,6 +34,7 @@
 #include "cb/formats/pe.hpp"
 #include "cb/formats/pe_functions.hpp"
 #include "cb/platforms/decoder.hpp"
+#include "cb/source/pipeline_match16.hpp"
 #include "cb/source/pipeline_world.hpp"
 #include "cb/symbols/libraries/coff.hpp"
 #include "cb/verify/lanes/win32.hpp"
@@ -258,7 +260,7 @@ int match_command(World& world, const cli::Args& args) {
     const std::optional<base::Lane> lane = world.corpus().lane(*path);
     if (text::iends_with(given, ".xex") || (lane == base::Lane::Pe && world.reconstructor().kind_name(*path) == "powerpc"))
         throw UsageError("match: an Xbox 360 image is not made native yet (its compiler's objects are read by bits)");
-    if (lane == base::Lane::Ne) throw UsageError("match: a 16-bit module goes through match16 (Microsoft C in an emulator), which is not made native yet");
+    if (lane == base::Lane::Ne) return match16_command(world, *path, args);   // Microsoft C (pipeline_match16.cpp)
     if (lane != base::Lane::Pe) throw UsageError(given + ": a 32-bit or 16-bit Windows module is needed");
 
     const std::string period = world.config().text("period_compiler");
@@ -621,13 +623,21 @@ cli::Command match(const Environment& environment) {
                           {cli::Positional{"module", "a 32-bit module of the corpus, or a path"},
                            cli::Option{"--flags", "", "the compiler's switches (default: /O2 /Gz)", cli::Arg::Value, "SWITCHES"},
                            cli::Option{"--try", "", "go through several sets of switches and report the best for each function", cli::Arg::Flag},
-                           cli::Option{"--json", "", "write each function's result there", cli::Arg::Value, "FILE"}},
+                           cli::Option{"--json", "", "write each function's result there", cli::Arg::Value, "FILE"},
+                           cli::Option{"--compiler", "", "a 16-bit module: the only compiler to try (msc6 or msvc152)", cli::Arg::Value, "NAME"},
+                           cli::Option{"--first", "", "a 16-bit module: only its first N functions", cli::Arg::Value, "N"},
+                           cli::Option{"--choose", "", "a 16-bit module: find the switches again though an earlier run remembered them", cli::Arg::Flag},
+                           cli::Option{"--sdk", "", "a 16-bit module: also say the Windows calls through the SDK's prototypes", cli::Arg::Flag},
+                           cli::Option{"--no-fold", "", "a 16-bit module: do not fold the decompiler's temporaries back", cli::Arg::Flag},
+                           cli::Option{"--search", "", "a 16-bit module: ROUNDS of rewrites of the last bytes of the near misses", cli::Arg::Value, "ROUNDS"},
+                           cli::Option{"--wine", "", "a 16-bit module: also type the imports as Wine's .spec files do", cli::Arg::Flag}},
                           {},
                           {},
                           "Reconstruct",
                           "A second, optional signal: where a function's C, compiled with a compiler of the original's time, comes out as the original's bytes, "
                           "the C is as near what was written as a binary can show. identical: every byte outside the places the linker fills in is the "
-                          "same; same size: some bytes differ; different: another length."};
+                          "same; same size: some bytes differ; different: another length. A 16-bit module is compiled by Microsoft C (in an emulator or on "
+                          "Windows itself), segment by segment with the switches that fit it best (--flags names them)."};
     return in_world(std::move(declared), environment, [](World& world, const cli::Args& args) { return match_command(world, args); });
 }
 

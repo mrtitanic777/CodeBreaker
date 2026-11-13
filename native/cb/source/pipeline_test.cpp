@@ -12,6 +12,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/source/pipeline_world.hpp"
+#include "cb/verify/gate16/scoreboard16.hpp"
 
 namespace stdfs = std::filesystem;
 using namespace cb;
@@ -125,6 +126,93 @@ CB_TEST("source.pipeline.sequence_ratio_is_difflibs", [] {
     CB_CHECK_EQ(ratio(bytes({}), bytes({})), 1.0);
     CB_CHECK_EQ(ratio(bytes({'x', 'y', 'z'}), bytes({})), 0.0);
 });
+CB_TEST("source.pipeline.repair_with_no_module_says_its_usage", [] {
+    Surroundings w;
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(w.cli.run({"repair"}), kExitUsage);
+    CB_CHECK(cap.out().find("repair <module>") != std::string::npos);
+});
+
+// What the Python answers (the translated codebreaker.exe, `repair lz32.dll`, the 32-bit period compiler set up; about 20 s, so only when asked for):
+// "lz32.dll: 39 functions repaired toward the original's bytes: 1 identical, 7 same size, 31 different", the switches /O1 /Gz, and `sub_001000 different
+// distance 40/87 via [/Oy-]` as the first function it moved.
+CB_TEST("source.pipeline.repair_lz32_as_the_python_did", [] {
+    if (!fs::get_env("CB_PIPELINE_SLOW")) return;
+    Surroundings w;
+    const std::string period = w.config.text("period_compiler");
+    if (!w.has_corpus() || period.empty()) return;
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(w.cli.run({"repair", "lz32.dll"}), 0);
+    CB_CHECK(cap.out().find("compiler switches that fit best: /O1 /Gz") != std::string::npos);
+    CB_CHECK(cap.out().find("sub_001000                   different distance 40/87  via [/Oy-]") != std::string::npos);
+    CB_CHECK(cap.out().find("lz32.dll: 39 functions repaired toward the original's bytes: 1 identical, 7 same size, 31 different") != std::string::npos);
+});
+
+CB_TEST("source.pipeline.score16_with_no_module_says_its_usage", [] {
+    Surroundings w;
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(w.cli.run({"score16"}), kExitUsage);
+    CB_CHECK(cap.out().find("score16 <16-bit module>") != std::string::npos);
+    CB_CHECK(cap.out().find("score16 --show FUNCTION --json FILE") != std::string::npos);
+});
+
+// `score16 --show` reads a saved board and prints the function's C and the three compilers' instructions side by side (what the Python printed for
+// the same board: the C, a header line, one line per instruction).
+CB_TEST("source.pipeline.score16_shows_a_function_of_a_saved_board", [] {
+    Surroundings w;
+    verify::gate16::scoreboard16::Row row;
+    row.segment = 1;
+    row.original = 1;
+    row.c = "void f(void) { }";
+    row.hex = {"c3", "c3", "cb"};
+    verify::gate16::scoreboard16::Rows rows;
+    rows.insert_or_assign("f", row);
+    fs::ScopedTempDir dir("pipeline-board");
+    const stdfs::path board = dir.path() / "board.json";
+    fs::write_text(board, verify::gate16::scoreboard16::rows_to_json(rows));
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(w.cli.run({"score16", "--show", "f", "--json", fs::to_text(board)}), 0);
+    CB_CHECK(cap.out().starts_with("===== f\nvoid f(void) { }\n"));
+    CB_CHECK(cap.out().find("original") != std::string::npos);
+    CB_CHECK(cap.out().find("Microsoft C 8") != std::string::npos);
+    CB_CHECK(cap.out().find("OpenWatcom -zmsc") != std::string::npos);
+    CB_CHECK(cap.out().find("ret") != std::string::npos);
+    CB_CHECK_THROWS_AS(UsageError, w.cli.run({"score16", "--show", "missing", "--json", fs::to_text(board)}));
+});
+
+// A compiler that is neither of the two is not set up -- said before anything is decompiled (the module is read for its lane only).
+CB_TEST("source.pipeline.match_of_a_16_bit_module_names_the_compilers_it_has", [] {
+    Surroundings w;
+    if (!w.has_corpus()) return;
+    testing::CapturedStd cap;
+    bool refused = false;
+    try {
+        (void)w.cli.run({"match", "lzexpand.dll", "--compiler", "nothing"});
+    } catch (const UsageError& e) {
+        refused = std::string(e.what()).find("Microsoft C is not set up") != std::string::npos;
+    } catch (const Error&) {   // the native decompiler is not built here
+        return;
+    }
+    CB_CHECK(refused);
+});
+
+// What the Python answers (`python -m codebreaker match lzexpand.dll --first 8`, Visual C++ 1.52c running on Windows itself, 2026-11-12; about 10 s,
+// so only when asked for): two segments' switches found, and the first eight functions all different, the nearest 55 of 112 bytes off.
+CB_TEST("source.pipeline.match_lzexpand_as_the_python_did", [] {
+    if (!fs::get_env("CB_PIPELINE_SLOW")) return;
+    Surroundings w;
+    const std::optional<stdfs::path> msvc152 = w.config.path("msvc152"), dosbox = w.config.path("dosbox_x");
+    std::error_code ec;
+    if (!w.has_corpus() || !msvc152 || !dosbox || !stdfs::is_regular_file(*dosbox, ec) || !stdfs::is_regular_file(*msvc152 / "BIN" / "CL.EXE", ec)) return;
+    testing::CapturedStd cap;
+    CB_CHECK_EQ(w.cli.run({"match", "lzexpand.dll", "--first", "8"}), 0);
+    const std::string out = cap.out();
+    CB_CHECK(out.find("  segment 1   msvc152  /AM /G2sw /Ox    (1.1 of a sample of 3)\n") != std::string::npos);
+    CB_CHECK(out.find("lzexpand.dll: 8 functions compiled with Microsoft C (msvc152 /AM /G2s /Ox; msvc152 /AM /G2sw /Ox): different 8\n") != std::string::npos);
+    CB_CHECK(out.find("  sub_1_00B2                   different  55 of 112 bytes differ\n") != std::string::npos);
+    CB_CHECK(out.find("  LZREAD                       different  1190 of 1304 bytes differ\n") != std::string::npos);
+});
+
 CB_TEST("source.pipeline.proof", [] {
     const std::optional<std::string> proof = fs::get_env("CB_PIPELINE_PROOF");
     if (!proof || proof->empty()) return;
