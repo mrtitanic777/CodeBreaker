@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <any>
 #include <format>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 #include "cb/core/capstone_api.hpp"
 #include "cb/core/crypto.hpp"
@@ -44,6 +47,28 @@ Win32Lane::Context::Context(const Win32Lane::Services& services, stdfs::path ori
       fingerprints(services.fingerprints),
       import_argc(services.import_argc),
       tracers(services.tracer) {
+    // A run asks for the argument count of every import its function calls, so thousands of times; the answer comes from the knowledge base and
+    // the exporting module's code, and is the same each time: asked once.
+    if (services.import_argc) {
+        struct Memo {
+            std::mutex lock;
+            std::unordered_map<std::string, std::optional<std::int64_t>> answers;
+        };
+        auto memo = std::make_shared<Memo>();
+        import_argc = [ask = services.import_argc, memo](std::string_view dll, std::string_view name) -> std::optional<std::int64_t> {
+            std::string key(dll);
+            key += '!';
+            key += name;
+            {
+                const std::lock_guard<std::mutex> guard(memo->lock);
+                if (const auto it = memo->answers.find(key); it != memo->answers.end()) return it->second;
+            }
+            const std::optional<std::int64_t> answer = ask(dll, name);
+            const std::lock_guard<std::mutex> guard(memo->lock);
+            memo->answers.emplace(std::move(key), answer);
+            return answer;
+        };
+    }
     if (services.content_sha) sha = services.content_sha(original);
     if (services.lifters != nullptr) lifter = services.lifters->get(emulate::pcode::Mode::X86Flat32);
 }
