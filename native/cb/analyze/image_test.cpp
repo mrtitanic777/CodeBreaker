@@ -202,3 +202,10 @@ CB_TEST("analyze.image.an_le_layout_names_what_the_device_block_gives_away", [] 
     CB_CHECK(spec.functions[3] == std::make_pair(image::le_address(1, 0x30), image::le_address(1, 0x40)));
     CB_CHECK_EQ(spec.imports.at(image::le_address(2, 0x70)), std::string("VMM!Get_VM_Handle"));
 });
+
+CB_TEST("analyze.image.a_prologue_the_sweep_does_not_reach_is_not_a_function", [] {
+    // crtdll.dll holds a 55 8B EC inside a table at 7FD269F2: the live Python's sweep never reads an instruction there, so it is no function.
+    Image got = image::load_pe(open_pe("crtdll.dll"));
+    CB_CHECK_EQ(got.functions().size(), std::size_t{814});
+    CB_CHECK(!std::ranges::binary_search(got.functions(), Va{0x7FD269F2}));
+});
