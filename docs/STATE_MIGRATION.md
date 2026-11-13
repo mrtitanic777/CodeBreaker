@@ -113,3 +113,20 @@ Of the 29 older profiles that hold results, one stood for the settings in force 
 revisions 19 to 47 against 48, and kinds with no verifier set up in that proof).
 Knowledge base: 19,373 bodies of 25 modules and 2,915 learned rows (`win32 argument_bytes.code`) carried; 1,316 learned
 win16 rows, 16,896 authored and 25,206 derived rows reported as left. A second run found nothing to carry.
+
+## Proof on a copy of the whole stateful part (2026-11-13)
+
+`cb_state_cmds` (`native/cb/app/state_cmds_main.cpp`, target `cb_state_cmds`, not built by default) runs `names`, `knowledge`,
+`coverage`, `progress`, `facts`, `origin`, `driver-services` and `migrate-state` with the surroundings the command table will give
+them, so each can be compared with the Python on the same state folder (`CB_STATE=<copy>`).
+
+On a copy of `functions.sqlite`, `db/*.sqlite` (1,268 databases, 1.3 GB as a SQLite backup) and the top-level JSON files:
+`migrate-state` takes 0.7 s, a second run finds nothing to do, and the Python commands print the same afterwards as before
+(`names`, `knowledge`, `coverage`, `facts`, `origin`, `driver-services`). Worth knowing:
+
+* `--dry` writes nothing of what it reports, but building the verifier settings in force makes the lane kit extract the driver kit
+  into `state/driver_kit` and refresh `knowledge.v2.sqlite`'s authored rows: both are made again from their sources.
+* DOS verdicts are not carried: the Python's DOS lane judges with `binnt` wasm/wlink (`build/driver.tool`), the native DOS lane
+  with `binnt64`, so the settings differ by tool size and the migration (rightly) leaves them; the native judge makes them again.
+* Bodies indexed independently by both sides agree digest for digest (PE and Win16 modules); only `lzexpand.dll` (a Win16 module
+  with 9 more bodies found natively) differs in 5 of 30.

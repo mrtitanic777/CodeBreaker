@@ -32,7 +32,7 @@ def main(argv):
     p, kind = knowledge.platform(argv[0]), argv[1]
     if len(argv) == 2:
         t = knowledge.table(p, kind)
-        for key in list(t)[:200]:
+        for key in sorted(t)[:200]:
             print(key)
         print("(%d)" % len(t))
         return 0
