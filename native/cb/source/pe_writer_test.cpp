@@ -8,6 +8,7 @@
 #include "cb/source/pe_writer.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 
 #include "cb/base/config.hpp"
@@ -196,6 +197,52 @@ CB_TEST("source.pe_writer.the_command_prints_what_was_done_and_exits_by_whether_
     const std::vector<std::string> with_stub = {fs::to_text(pe_lz32()), "--stub", fs::to_text(dir.path() / "stub.bin"), "--out", fs::to_text(dir.path() / "s")};
     CB_CHECK_EQ(command(with_stub, env, say), 0);
     CB_CHECK(fs::read_text(dir.path() / "s" / "lz32.dll.asm").find("incbin") != std::string::npos);
+});
+
+
+// A 32-bit program of one section (`code` at its entry, image base 0x400000) built by hand: only what the reader needs.
+Bytes pe_with_code(ByteView code) {
+    Bytes f(0x400, 0);
+    const auto put = [&](std::size_t at, std::uint32_t v, int n) {
+        for (int i = 0; i < n; ++i) f[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (8 * i));
+    };
+    put(0, 0x5A4D, 2);
+    put(0x3C, 0x40, 4);                       // e_lfanew
+    put(0x40, 0x4550, 4);                     // the PE signature
+    put(0x44, 0x14C, 2);                      // i386
+    put(0x46, 1, 2);                          // one section
+    put(0x54, 0xE0, 2);                       // optional header size
+    put(0x56, 0x2102, 2);                     // a DLL, 32-bit
+    put(0x58, 0x10B, 2);
+    put(0x68, 0x1000, 4);                     // entry
+    put(0x74, 0x400000, 4);                   // image base
+    put(0x78, 0x1000, 4);                     // section alignment
+    put(0x7C, 0x200, 4);                      // file alignment
+    put(0x88, 4, 2);                          // subsystem version
+    put(0x90, 0x2000, 4);                     // size of image
+    put(0x94, 0x200, 4);                      // size of headers
+    put(0x9C, 2, 2);                          // subsystem
+    put(0xB4, 16, 4);                         // data directories
+    const std::size_t sec = 0x58 + 0xE0;
+    std::memcpy(&f[sec], ".text", 5);
+    put(sec + 8, static_cast<std::uint32_t>(code.size()), 4);
+    put(sec + 12, 0x1000, 4);
+    put(sec + 16, 0x200, 4);
+    put(sec + 20, 0x200, 4);
+    put(sec + 36, 0x60000020, 4);
+    std::copy(code.begin(), code.end(), f.begin() + 0x200);
+    return f;
+}
+
+CB_TEST("source.pe_writer.a_scaled_index_is_written_nosplit_so_the_assembler_keeps_it_one_register", [] {
+    // mov eax, [ecx*4 + 0x10]; mov edx, fs:[ebx*8]; ret
+    const Bytes code = {0x8B, 0x04, 0x8D, 0x10, 0x00, 0x00, 0x00, 0x64, 0x8B, 0x14, 0xDD, 0x00, 0x00, 0x00, 0x00, 0xC3};
+    Image image(formats::pe::Image::parse(pe_with_code(code), "idx.dll"), "idx.dll");
+    CB_CHECK_EQ(image.instruction_count(), 3u);
+    const std::string text = image.source({}, true).text;
+    CB_CHECK(text.find("mov eax, dword [nosplit ecx*4 + 0x10]") != std::string::npos);
+    CB_CHECK(text.find("[fs:nosplit ebx*8") != std::string::npos);
+    for (const char c : text) CB_CHECK(c >= 0x20 || c == '\n' || c == '\r' || c == '\t');   // (the Python once wrote control characters in the replacement)
 });
 
 }  // namespace

@@ -7,6 +7,8 @@ rem                                    (4 jobs, the project's cap): cb_tests as 
 rem     tools\gate.cmd --no-build      skip the build (the objects are current)
 rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default state\cxx\codebreaker\build\codebreaker.exe, else the main checkout's)
 rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone)
+rem     tools\gate.cmd --no-ui         skip the UI's Python tests (the terminal interface stays Python and needs real python + Textual,
+rem                                    which the exe cannot run; --update, --filter and --no-unit skip them too)
 rem     tools\gate.cmd --filter lz32   only the cases whose name contains this (no unit tests)
 rem     tools\gate.cmd --update ...    record goldens of the selected cases from the program's current output (review the diff before committing)
 rem
@@ -17,15 +19,18 @@ set ROOT=%~dp0..
 set B=%ROOT%\state\cxx\cb
 set BUILD=1
 set UNIT=1
+set UI=1
 set EXE=
 set PASS=
+set UI_RC=0
 :args
 if "%1"=="" goto run
 if "%1"=="--no-build" (set BUILD=0& shift& goto args)
-if "%1"=="--no-unit" (set UNIT=0& shift& goto args)
+if "%1"=="--no-unit" (set UNIT=0& set UI=0& shift& goto args)
+if "%1"=="--no-ui" (set UI=0& shift& goto args)
 if "%1"=="--exe" (set EXE=%2& shift& shift& goto args)
-if "%1"=="--update" (set UNIT=0& set PASS=%PASS% --update& shift& goto args)
-if "%1"=="--filter" (set UNIT=0& set PASS=%PASS% --filter %2& shift& shift& goto args)
+if "%1"=="--update" (set UNIT=0& set UI=0& set PASS=%PASS% --update& shift& goto args)
+if "%1"=="--filter" (set UNIT=0& set UI=0& set PASS=%PASS% --filter %2& shift& shift& goto args)
 set PASS=%PASS% %1
 shift
 goto args
@@ -45,4 +50,21 @@ set CMD="%B%\bin\cb_exe_gate.exe" --repo "%ROOT%" --jobs %GJOBS%
 if not "%EXE%"=="" set CMD=%CMD% --exe "%EXE%"
 if "%UNIT%"=="1" set CMD=%CMD% --unit "%B%\bin\cb_tests.exe"
 %CMD% %PASS%
-exit /b %ERRORLEVEL%
+set RC=%ERRORLEVEL%
+if "%UI%"=="1" call :ui
+if %UI_RC% NEQ 0 set RC=%UI_RC%
+exit /b %RC%
+
+rem The terminal interface (codebreaker/ui) stays Python, and its tests need real python with Textual: the exe's translated runtime
+rem cannot run them (they skip there). They run against the program under test, reported like the other results.
+:ui
+set UI_RC=0
+where python >nul 2>nul || (echo UI tests: FAIL -- python is not on the PATH ^(the terminal interface's tests need it^)& set UI_RC=1& exit /b 1)
+if "%EXE%"=="" (if exist "%ROOT%\state\cxx\codebreaker\build\codebreaker.exe" set CB_EXE=%ROOT%\state\cxx\codebreaker\build\codebreaker.exe) else set CB_EXE=%EXE%
+set T0=%TIME%
+echo.
+echo UI tests (python, Textual): test_ui.py::test_terminal_interface, test_ui_thin.py
+python "%ROOT%\tests\test_ui.py" --only test_terminal_interface || set UI_RC=1
+python "%ROOT%\tests\test_ui_thin.py" || set UI_RC=1
+if %UI_RC% EQU 0 (echo UI tests: PASS ^(started %T0%, ended %TIME%^)) else echo UI tests: FAIL
+exit /b %UI_RC%

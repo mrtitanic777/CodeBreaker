@@ -332,11 +332,15 @@ def test_terminal_interface():
 
 
 def main():
-    for fn in (test_describe_32bit, test_describe_16bit_driver_and_dos, test_describe_never_raises,
-               test_strings_bytes_and_resources, test_info_command, test_ledger_agrees_with_the_store,
-               test_ledger_reads_without_writing, test_progress_reading, test_service_reads_the_store,
-               test_terminal_interface):
-        check(fn)
+    """`--only NAME ...` runs just those tests (tools/gate.cmd runs test_terminal_interface this way, under python)."""
+    every = (test_describe_32bit, test_describe_16bit_driver_and_dos, test_describe_never_raises,
+             test_strings_bytes_and_resources, test_info_command, test_ledger_agrees_with_the_store,
+             test_ledger_reads_without_writing, test_progress_reading, test_service_reads_the_store,
+             test_terminal_interface)
+    only = sys.argv[sys.argv.index("--only") + 1:] if "--only" in sys.argv else None
+    for fn in every:
+        if only is None or fn.__name__ in only:
+            check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
     fails = sum(1 for _n, s, _d in RESULTS if s == "FAIL")
