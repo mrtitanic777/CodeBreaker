@@ -1,0 +1,2 @@
+31 files written to <dir>
+exit=0

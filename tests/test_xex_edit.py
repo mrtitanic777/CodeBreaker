@@ -68,6 +68,18 @@ def test_branches():
     assert labels[4:] == struct.pack(">I", 0x4BFFFFFC)
 
 
+def test_a_branch_that_does_not_reach_is_refused_not_wrapped():
+    for line in ("b 0x20", "bl 0x7FFFFFF0", "beq 0x82010000"):
+        try:
+            ppc_asm.assemble(line, 0x82000000)
+        except ppc_asm.AsmError as e:
+            assert "out of range" in str(e)
+        else:
+            raise AssertionError("%s assembled" % line)
+    ppc_asm.assemble("b 0x83FFFFFC", 0x82000000)       # the farthest forward a `b` reaches
+    ppc_asm.assemble("beq 0x82007FFC", 0x82000000)
+
+
 def _module(privileges):
     """A header with one privilege entry (key 0x30000)."""
     data = bytearray(0x40)

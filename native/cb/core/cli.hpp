@@ -90,6 +90,10 @@ struct Command {
     std::vector<Command> subcommands;
     std::string area;                     // heading in `help` ("Decompile"); empty = "Commands"
     std::string description;              // longer text after the usage line in this command's help
+    // The command parses its own arguments from some point on: once the positionals before its variadic one are taken, every
+    // later token (a leading dash, `--help` and all) goes to that variadic positional untouched. For commands whose arguments
+    // are another tool's (`xex-edit <op> ...`, `crypto <tool> ...`).
+    bool passthrough = false;
 };
 
 class Cli {

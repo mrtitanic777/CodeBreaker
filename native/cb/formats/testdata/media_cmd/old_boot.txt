@@ -1,0 +1,21 @@
+fat12 volume '': 1 files, 0 folders, 600 bytes
+    system               (no parameter block)
+    bytes per sector     512
+    sectors per cluster  1
+    reserved sectors     1
+    fats                 2
+    root entries         64
+    total sectors        320
+    media                FE
+    sectors per fat      1
+    sectors per track    8
+    heads                0
+    hidden sectors       0
+    clusters             313
+    serial               
+    label                
+    file system          
+    signature            0000
+    boot code            
+         600  1980-00-00 00:00  OLD.TXT
+exit=0

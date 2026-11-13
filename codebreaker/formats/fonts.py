@@ -89,6 +89,7 @@ def main(argv):
     List the fonts in a .FON or .FNT file (a module name of the selected corpus will do), and
     draw TEXT in one of them."""
     import os
+    import sys
     if not argv:
         print(main.__doc__)
         return 2
@@ -101,7 +102,11 @@ def main(argv):
     for i, f in enumerate(found):
         print("  [%d] %s" % (i, f.describe()))
     if "--show" in argv and found:
-        f = found[int(argv[argv.index("--index") + 1]) if "--index" in argv else 0]
+        index = int(argv[argv.index("--index") + 1]) if "--index" in argv else 0
+        if not 0 <= index < len(found):                  # (it used to stop on an IndexError)
+            print("--index %d is out of range (the file has %d fonts)" % (index, len(found)), file=sys.stderr)
+            return 2
+        f = found[index]
         if f.vector:
             print("  a vector font has no bitmaps to draw")
             return 0

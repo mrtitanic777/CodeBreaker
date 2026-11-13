@@ -1,0 +1,14 @@
+bundle volume 'alone.bin': 11 files, 0 folders, 179829 bytes
+    modules              11
+       30895                    KERNEL.EXE
+        1234                    SYSTEM.EXE
+        1847                    KEYBOARD.EXE
+        2643                    MOUSE.EXE
+       13408                    DISPLAY.EXE
+         400                    SOUND.EXE
+        3180                    COMM.EXE
+       33438                    GDI.EXE
+       68688                    USER.EXE
+         192                    MSDOSD.EXE
+       23904                    MSDOS.EXE
+exit=0

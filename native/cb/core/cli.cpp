@@ -180,7 +180,9 @@ Cli::Parsed Cli::parse(const std::vector<std::string>& args) const {
     bool options_ended = false;
     for (std::size_t at = i; at < args.size(); ++at) {
         const std::string& tok = args[at];
-        if (options_ended) {
+        if (cmd->passthrough && next_positional < positionals.size() && positionals[next_positional]->variadic) {
+            add_positional(tok);
+        } else if (options_ended) {
             add_positional(tok);
         } else if (tok == "--") {
             options_ended = true;

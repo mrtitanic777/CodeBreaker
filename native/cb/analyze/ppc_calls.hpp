@@ -38,6 +38,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cb/core/cli.hpp"
+#include "cb/formats/xex.hpp"
+#include "cb/formats/xex_imports.hpp"
+
 namespace cb::analyze::ppc_calls {
 
 inline constexpr int kLookback = 14;                          // instructions back from a call that set its arguments
@@ -108,5 +112,19 @@ std::string summary(const Result& r);
 
 // The result as tab-separated lines: "kind", "address or name", "value"; one section per kind, sorted.
 std::string to_tsv(const Result& r);
+
+// ---- from a file ------------------------------------------------------------------------------------------------------
+
+struct Environment {
+    formats::xex::Tools tools;                       // where the xex program is: an .xex is read through its basefile
+    formats::xex_imports::OrdinalNames ordinal_name; // the console's ordinal names, which name an .xex's imports
+};
+
+// The functions of a PowerPC image or an .xex as listings (function discovery, then the disassembler), the import stubs by name and the
+// compiler's register runs: the Module the passes run on. IoError / FormatError for a file that is not a readable PowerPC image.
+Module module_of(const std::filesystem::path& file, const Environment& environment);
+
+// `ppc-calls <module.xex or image> [-o calls.tsv]`: prints `summary` of the analysis (and with -o writes `to_tsv` there and says so).
+cli::Command command(const Environment& environment);
 
 }  // namespace cb::analyze::ppc_calls

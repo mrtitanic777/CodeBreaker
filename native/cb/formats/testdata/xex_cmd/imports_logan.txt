@@ -1,0 +1,124 @@
+library	ordinal	name	kind	slot	thunk
+xam.xex	425	XamLoaderTerminateTitle	function	0x82000408	0x8229D940
+xam.xex	732	XamShowMessageBoxUIEx	function	0x82000400	0x8229D920
+xam.xex	971	XGetAVPack	function	0x82000404	0x8229D930
+xam.xex	972	XGetGameRegion	function	0x8200040C	0x8229D950
+xam.xex	977	XGetVideoMode	function	0x82000410	0x8229D910
+xboxkrnl.exe	1	DbgBreakPoint	function	0x820005BC	0x8229DF30
+xboxkrnl.exe	3	DbgPrint	function	0x82000430	0x8229D9C0
+xboxkrnl.exe	13	ExCreateThread	function	0x820005E8	0x8229DFE0
+xboxkrnl.exe	16	ExGetXConfigSetting	function	0x82000428	0x8229D9A0
+xboxkrnl.exe	21	ExRegisterTitleTerminateNotification	function	0x820004F0	0x8229DC30
+xboxkrnl.exe	25	ExTerminateThread	function	0x820005CC	0x8229DF70
+xboxkrnl.exe	27	ExThreadObjectType	variable	0x82000444	
+xboxkrnl.exe	40	HalReturnToFirmware	function	0x82000464	0x8229DA50
+xboxkrnl.exe	77	KeAcquireSpinLockAtRaisedIrql	function	0x820004C8	0x8229DBA0
+xboxkrnl.exe	82	KeBugCheck	function	0x82000558	0x8229DDB0
+xboxkrnl.exe	83	KeBugCheckEx	function	0x82000474	0x8229DA80
+xboxkrnl.exe	89	KeDebugMonitorData	variable	0x8200044C	
+xboxkrnl.exe	90	KeDelayExecutionThread	function	0x82000588	0x8229DE70
+xboxkrnl.exe	93	KeEnableFpuExceptions	function	0x8200057C	0x8229DE40
+xboxkrnl.exe	95	KeEnterCriticalRegion	function	0x82000540	0x8229DD50
+xboxkrnl.exe	102	KeGetCurrentProcessType	function	0x82000478	0x8229DA90
+xboxkrnl.exe	107	KeLockL2	function	0x8200055C	0x8229DDC0
+xboxkrnl.exe	108	KeUnlockL2	function	0x82000560	0x8229DDD0
+xboxkrnl.exe	111	KeInitializeDpc	function	0x82000564	0x8229DDE0
+xboxkrnl.exe	123	KeInsertQueueDpc	function	0x820004CC	0x8229DBB0
+xboxkrnl.exe	125	KeLeaveCriticalRegion	function	0x82000530	0x8229DD20
+xboxkrnl.exe	131	KeQueryPerformanceFrequency	function	0x82000418	0x8229D960
+xboxkrnl.exe	137	KeReleaseSpinLockFromRaisedIrql	function	0x820004C4	0x8229DB90
+xboxkrnl.exe	143	KeResetEvent	function	0x82000544	0x8229DD60
+xboxkrnl.exe	151	KeSetAffinityThread	function	0x82000448	0x8229DA10
+xboxkrnl.exe	153	KeSetBasePriorityThread	function	0x8200043C	0x8229D9F0
+xboxkrnl.exe	154	KeSetCurrentProcessType	function	0x82000568	0x8229DDF0
+xboxkrnl.exe	157	KeSetEvent	function	0x820004A8	0x8229DB20
+xboxkrnl.exe	173	KeTimeStampBundle	variable	0x82000598	
+xboxkrnl.exe	176	KeWaitForSingleObject	function	0x82000548	0x8229DD70
+xboxkrnl.exe	177	KfAcquireSpinLock	function	0x820004AC	0x8229DB30
+xboxkrnl.exe	180	KfReleaseSpinLock	function	0x820004A4	0x8229DB10
+xboxkrnl.exe	186	MmAllocatePhysicalMemoryEx	function	0x8200054C	0x8229DD80
+xboxkrnl.exe	189	MmFreePhysicalMemory	function	0x820004B4	0x8229DB50
+xboxkrnl.exe	190	MmGetPhysicalAddress	function	0x820004DC	0x8229DBF0
+xboxkrnl.exe	196	MmQueryAddressProtect	function	0x82000518	0x8229DCD0
+xboxkrnl.exe	204	NtAllocateVirtualMemory	function	0x8200046C	0x8229DA60
+xboxkrnl.exe	207	NtClose	function	0x82000420	0x8229D980
+xboxkrnl.exe	209	NtCreateEvent	function	0x82000424	0x8229D990
+xboxkrnl.exe	210	NtCreateFile	function	0x820005E0	0x8229DFC0
+xboxkrnl.exe	218	NtDuplicateObject	function	0x820005E4	0x8229DFD0
+xboxkrnl.exe	219	NtFlushBuffersFile	function	0x820005D0	0x8229DF80
+xboxkrnl.exe	220	NtFreeVirtualMemory	function	0x8200047C	0x8229DAA0
+xboxkrnl.exe	223	NtOpenFile	function	0x820005A0	0x8229DEC0
+xboxkrnl.exe	228	NtQueryDirectoryFile	function	0x820005D4	0x8229DF90
+xboxkrnl.exe	231	NtQueryFullAttributesFile	function	0x820005B4	0x8229DF10
+xboxkrnl.exe	232	NtQueryInformationFile	function	0x820005A8	0x8229DEE0
+xboxkrnl.exe	238	NtQueryVirtualMemory	function	0x82000488	0x8229DAD0
+xboxkrnl.exe	239	NtQueryVolumeInformationFile	function	0x8200059C	0x8229DEB0
+xboxkrnl.exe	240	NtReadFile	function	0x820005DC	0x8229DFB0
+xboxkrnl.exe	241	NtReadFileScatter	function	0x820005D8	0x8229DFA0
+xboxkrnl.exe	247	NtSetInformationFile	function	0x820005A4	0x8229DED0
+xboxkrnl.exe	253	NtWaitForSingleObjectEx	function	0x82000494	0x8229DB00
+xboxkrnl.exe	255	NtWriteFile	function	0x820005AC	0x8229DEF0
+xboxkrnl.exe	259	ObCreateSymbolicLink	function	0x82000554	0x8229DDA0
+xboxkrnl.exe	260	ObDeleteSymbolicLink	function	0x82000550	0x8229DD90
+xboxkrnl.exe	261	ObDereferenceObject	function	0x82000438	0x8229D9E0
+xboxkrnl.exe	272	ObReferenceObjectByHandle	function	0x82000440	0x8229DA00
+xboxkrnl.exe	283	RtlCompareMemoryUlong	function	0x82000480	0x8229DAB0
+xboxkrnl.exe	293	RtlEnterCriticalSection	function	0x82000458	0x8229DA30
+xboxkrnl.exe	294	RtlFillMemoryUlong	function	0x82000470	0x8229DA70
+xboxkrnl.exe	295	RtlFreeAnsiString	function	0x820005C0	0x8229DF40
+xboxkrnl.exe	299	RtlImageXexHeaderField	function	0x8200045C	0x8229DA40
+xboxkrnl.exe	300	RtlInitAnsiString	function	0x8200041C	0x8229D970
+xboxkrnl.exe	301	RtlInitUnicodeString	function	0x820005C8	0x8229DF60
+xboxkrnl.exe	302	RtlInitializeCriticalSection	function	0x82000484	0x8229DAC0
+xboxkrnl.exe	303	RtlInitializeCriticalSectionAndSpinCount	function	0x82000584	0x8229DE60
+xboxkrnl.exe	304	RtlLeaveCriticalSection	function	0x82000454	0x8229DA20
+xboxkrnl.exe	307	RtlMultiByteToUnicodeN	function	0x820005B8	0x8229DF20
+xboxkrnl.exe	309	RtlNtStatusToDosError	function	0x82000490	0x8229DAF0
+xboxkrnl.exe	310	RtlRaiseException	function	0x8200048C	0x8229DAE0
+xboxkrnl.exe	314	_snprintf	function	0x820004B0	0x8229DB40
+xboxkrnl.exe	315	sprintf	function	0x820004E8	0x8229DC20
+xboxkrnl.exe	322	RtlUnicodeStringToAnsiString	function	0x820005C4	0x8229DF50
+xboxkrnl.exe	323	RtlUnicodeToMultiByteN	function	0x820005B0	0x8229DF00
+xboxkrnl.exe	327	RtlUnwind	function	0x82000580	0x8229DE50
+xboxkrnl.exe	333	_vsnprintf	function	0x820004E4	0x8229DC10
+xboxkrnl.exe	338	KeTlsAlloc	function	0x82000574	0x8229DE20
+xboxkrnl.exe	339	KeTlsFree	function	0x82000578	0x8229DE30
+xboxkrnl.exe	340	KeTlsGetValue	function	0x8200056C	0x8229DE00
+xboxkrnl.exe	341	KeTlsSetValue	function	0x82000570	0x8229DE10
+xboxkrnl.exe	342	XboxHardwareInfo	variable	0x82000468	
+xboxkrnl.exe	344	XboxKrnlVersion	variable	0x820004EC	
+xboxkrnl.exe	403	XexExecutableModuleHandle	variable	0x82000460	
+xboxkrnl.exe	404	XexCheckExecutablePrivilege	function	0x8200042C	0x8229D9B0
+xboxkrnl.exe	407	XexGetProcedureAddress	function	0x82000590	0x8229DE90
+xboxkrnl.exe	409	XexLoadImage	function	0x82000594	0x8229DEA0
+xboxkrnl.exe	417	XexUnloadImage	function	0x8200058C	0x8229DE80
+xboxkrnl.exe	421	__C_specific_handler	function	0x82000434	0x8229D9D0
+xboxkrnl.exe	430	ExLoadedCommandLine	variable	0x82000450	
+xboxkrnl.exe	433	VdCallGraphicsNotificationRoutines	function	0x820004F4	0x8229DC40
+xboxkrnl.exe	436	VdEnableDisableClockGating	function	0x82000520	0x8229DCF0
+xboxkrnl.exe	438	VdEnableRingBufferRPtrWriteBack	function	0x820004D4	0x8229DBD0
+xboxkrnl.exe	441	VdGetCurrentDisplayGamma	function	0x8200051C	0x8229DCE0
+xboxkrnl.exe	442	VdGetCurrentDisplayInformation	function	0x820004F8	0x8229DC50
+xboxkrnl.exe	445	VdGetSystemCommandBuffer	function	0x820004C0	0x8229DB80
+xboxkrnl.exe	446	VdGlobalDevice	variable	0x8200049C	
+xboxkrnl.exe	447	VdGlobalXamDevice	variable	0x820004A0	
+xboxkrnl.exe	448	VdGpuClockInMHz	variable	0x82000528	
+xboxkrnl.exe	449	VdHSIOCalibrationLock	variable	0x8200053C	
+xboxkrnl.exe	450	VdInitializeEngines	function	0x82000510	0x8229DCB0
+xboxkrnl.exe	451	VdInitializeRingBuffer	function	0x820004D8	0x8229DBE0
+xboxkrnl.exe	453	VdInitializeScalerCommandBuffer	function	0x8200052C	0x8229DD10
+xboxkrnl.exe	454	VdIsHSIOTrainingSucceeded	function	0x82000514	0x8229DCC0
+xboxkrnl.exe	455	VdPersistDisplay	function	0x820004B8	0x8229DB60
+xboxkrnl.exe	457	VdQueryVideoFlags	function	0x82000524	0x8229DD00
+xboxkrnl.exe	458	VdQueryVideoMode	function	0x82000500	0x8229DC70
+xboxkrnl.exe	467	VdSetDisplayMode	function	0x820004FC	0x8229DC60
+xboxkrnl.exe	468	VdSetDisplayModeOverride	function	0x82000504	0x8229DC80
+xboxkrnl.exe	469	VdSetGraphicsInterruptCallback	function	0x8200050C	0x8229DCA0
+xboxkrnl.exe	473	VdSetSystemCommandBufferGpuIdentifierAddress	function	0x820004E0	0x8229DC00
+xboxkrnl.exe	476	VdShutdownEngines	function	0x82000508	0x8229DC90
+xboxkrnl.exe	479	KiApcNormalRoutineNop	function	0x820004D0	0x8229DBC0
+xboxkrnl.exe	603	VdSwap	function	0x820004BC	0x8229DB70
+xboxkrnl.exe	614	KeCertMonitorData	variable	0x82000498	
+xboxkrnl.exe	617	VdRetrainEDRAM	function	0x82000534	0x8229DD30
+xboxkrnl.exe	618	VdRetrainEDRAMWorker	function	0x82000538	0x8229DD40
+exit=0

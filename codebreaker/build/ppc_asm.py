@@ -167,6 +167,8 @@ def assemble_one(line, addr=0, labels=None):
         li = dest if aa else (dest - addr)
         if li & 3:
             raise AsmError("branch target not 4-aligned")
+        if not -0x2000000 <= li < 0x2000000:            # 24-bit displacement in words: a farther target would wrap
+            raise AsmError("branch target out of range (%d bytes)" % li)
         return (18 << 26) | (li & 0x03FFFFFC) | (aa << 1) | lk
     if mn in _BCOND or mn in ("bc", "bcl"):
         if mn in _BCOND:
@@ -178,6 +180,8 @@ def assemble_one(line, addr=0, labels=None):
         bd = dest - addr
         if bd & 3:
             raise AsmError("branch target not 4-aligned")
+        if not -0x8000 <= bd < 0x8000:                  # 14-bit displacement in words
+            raise AsmError("branch target out of range (%d bytes)" % bd)
         return (16 << 26) | (bo << 21) | (bi << 16) | (bd & 0xFFFC) | lk
 
     # ---- D-form -----------------------------------------------------------

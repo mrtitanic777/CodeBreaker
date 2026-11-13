@@ -1,0 +1,30 @@
+== full
+SegoeXbox-Light.xtt                          5323
+xenonclatin.xtt                              5272
+xenonjklatin.xtt                             5289
+3 files -> <w>/o1
+exit=0
+== online
+SegoeXbox-Light.xtt                          5323
+xenonclatin.xtt                              5272
+xenonjklatin.xtt                             5289
+Guide.ChatAndMessenger.xex               (not in <online>)
+Guide.Voicemail.xex                      (not in <online>)
+3 files -> <w>/o2
+exit=0
+== nofont
+SegoeXbox-Light.xtt                          5323
+Traceback (most recent call last):
+  (translated code)
+ValueError: <d>/su_nofont.bin: no $flash_xenonclatin.xttp
+exit=1
+== not_an_update
+Traceback (most recent call last):
+  (translated code)
+ValueError: <d>/su_other.bin: no $flash_xam.xex (not a system update?)
+exit=1
+== not_a_package
+Traceback (most recent call last):
+  (translated code)
+ValueError: not an STFS package (magic b'MZ/x90/x00')
+exit=1

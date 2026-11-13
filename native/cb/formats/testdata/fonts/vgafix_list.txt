@@ -1,0 +1,3 @@
+vgafix.fon: 1 font(s)
+  [0] Fixedsys       12pt 15px  fixed        chars 32..255  version 2.00
+exit=0

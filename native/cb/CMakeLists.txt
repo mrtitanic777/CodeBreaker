@@ -156,7 +156,7 @@ cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_build cb_translate cb_symbols cb_knowledge)   # (cb_symbols, cb_knowledge, cb_base: environment.cpp reads the argument sizes, ordinal and driver tables the base keeps; cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment; cb_translate: the L2 library client and the module model c_text writes)
 
 cb_area(analyze)
-target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate)   # (cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
+target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate cb_recompile)   # (cb_recompile: function discovery and the disassembler of the ppc-calls command; cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
 
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats cb_java)   # (omf_object: an OMF module as the lanes' object record; cb_java: the zip reader of the pre-release Pascal kit, command.cpp -- static libraries may be cyclic)
@@ -423,6 +423,13 @@ target_link_libraries(cb_mcp_stdio PRIVATE cb_ui cb_core)
 cb_copy_prebuilt_dlls(cb_mcp_stdio)
 add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
+
+# cmdrun: runs the command layers of formats, build and analyze with the surroundings the application will give them, to compare each with the
+# Python on real inputs (app/cmdrun_main.cpp). Not built by default.
+add_executable(cb_cmdrun EXCLUDE_FROM_ALL app/cmdrun_main.cpp)
+cb_apply_flags(cb_cmdrun)
+target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
+cb_copy_prebuilt_dlls(cb_cmdrun)
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)

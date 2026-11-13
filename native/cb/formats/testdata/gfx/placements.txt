@@ -1,0 +1,5 @@
+menu_main                depth 1   menu_bg.dds            at (10.0, 20.0) scale (1.000, 1.000)
+menu_main                depth 2   icon.png               at (-75.0, 3.0) scale (0.500, 1.500)
+menu_main                depth 3   ok.tga                 at (0.3, -0.5) scale (1.000, 1.000)
+engine_id                depth 1   bar.png                at (0.0, 0.0) scale (2.000, 1.000)
+exit=0

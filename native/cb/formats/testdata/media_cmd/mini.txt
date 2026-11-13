@@ -1,0 +1,15 @@
+iso9660 volume 'MINI_SETUP': 4 files, 2 folders, 2770 bytes
+    system               
+    label                MINI_SETUP
+    blocks               39
+    block size           2048
+    created              2026111109003000
+    long names           yes
+    bootable             no
+    <folder>  2026-11-11 09:00  Docs
+          14  2026-11-11 09:00  Docs/Hello.txt
+    <folder>  2026-11-11 09:00  Win95
+        2321  2026-11-11 09:00  Win95/Mini.cab
+          15  2026-11-11 09:00  Win95/Readme
+         420  2026-11-11 09:00  Win95/Setup.exe
+exit=0
