@@ -296,8 +296,15 @@ def _nasm_inc():
     import tempfile
     d = os.path.join(tempfile.gettempdir(), "ne_idiom_nasm_inc")
     os.makedirs(d, exist_ok=True)
-    shim = os.path.join(os.path.dirname(_nasm_bin()), "test", "masm",
-                        "cmacros_shim.inc")
+    # the shim is in the nasm source tree's test/masm: beside the program, or above it where the program is in a build folder
+    here = os.path.dirname(_nasm_bin())
+    shim = os.path.join(here, "test", "masm", "cmacros_shim.inc")
+    for _ in range(4):
+        cand = os.path.join(here, "test", "masm", "cmacros_shim.inc")
+        if os.path.exists(cand):
+            shim = cand
+            break
+        here = os.path.dirname(here)
     dst = os.path.join(d, "cmacros_shim.inc")
     if os.path.exists(shim) and (not os.path.exists(dst)
                                  or os.path.getmtime(shim) > os.path.getmtime(dst)):

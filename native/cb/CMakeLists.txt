@@ -253,7 +253,7 @@ target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms c
 cb_area(store)
 target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_compare cb_knowledge)
 
-target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify cb_exact)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
 target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage cb_symbols cb_analyze cb_decompile cb_compare cb_store cb_knowledge cb_app cb_platforms cb_source cb_java cb_formats ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client; cb_symbols: the demangler and the names of the MCP server; cb_analyze: its disassembly; cb_decompile, cb_engine: its decompiler; cb_compare, cb_store: the version comparison; cb_app: the command table; cb_platforms, cb_java: what a file is; cb_source: the source tree -- static libraries may be cyclic)
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
@@ -421,6 +421,12 @@ add_executable(cb_mcp_stdio EXCLUDE_FROM_ALL ui/mcp_stdio_main.cpp)
 cb_apply_flags(cb_mcp_stdio)
 target_link_libraries(cb_mcp_stdio PRIVATE cb_ui cb_core)
 cb_copy_prebuilt_dlls(cb_mcp_stdio)
+# The source writers' commands (vxd, ne-asm, driver-source, dos-source, dos-build, driver-judge) as a program of their own: the proof harness of
+# source/commands.hpp (the application registers the same commands).
+add_executable(cb_source_commands EXCLUDE_FROM_ALL source/commands_main.cpp)
+cb_apply_flags(cb_source_commands)
+target_link_libraries(cb_source_commands PRIVATE cb_source cb_core)
+cb_copy_prebuilt_dlls(cb_source_commands)
 add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 

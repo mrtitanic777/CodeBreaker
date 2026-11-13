@@ -1,6 +1,8 @@
 // cb-unity: alone (file-local helpers named for this module)
 #include "cb/source/vxd/idiom.hpp"
 
+#include "cb/source/vxd/corpus.hpp"
+
 #include <algorithm>
 #include <array>
 #include <format>
@@ -1208,7 +1210,8 @@ int main(const Environment& env, std::span<const std::string> args) {
             if (a.flag("--verify")) {
                 const stdfs::path folder = path_argument ? fs::from_text(*path_argument) : env.corpus.root();
                 std::vector<std::pair<std::string, le::Module>> held;
-                for (const stdfs::path& file : drivers_in(folder)) {
+                // (the whole corpus of drivers: *.vxd, *.386, *.pdr, *.mpd and the few under other names, as the corpus tool takes it)
+                for (const stdfs::path& file : corpus::driver_files(folder)) {
                     try {
                         for (auto& member : le::open_modules(file)) held.emplace_back(text::lower(module_stem(member.first)), std::move(member.second));
                     } catch (const Error&) {

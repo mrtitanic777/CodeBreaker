@@ -197,13 +197,12 @@ def emit_source_and_def(D, vxdname, force_raw=None, functional=False):
 
 
 def _assemble_coff(asm_text, root):
-    tc = vxd_masm._stage_toolchain(root)
-    ok, out, work = run_dos({"c": tc},
-                            ["c:\\ml.exe -coff -c -Fom.obj m.asm > asm.txt"],
-                            ["m.obj", "asm.txt"], files={"m.asm": asm_text}, timeout=180)
-    log = open(os.path.join(work, "asm.txt"), errors="replace").read() if work and os.path.exists(
-        os.path.join(work, "asm.txt")) else ""
-    return out.get("m.obj"), log, work
+    """(object, log, work folder): nasm in MASM mode, else the native DDK ML, else the period ML under DOS -- the assemblers the object-level test
+    (vxd_masm.assemble_coff) uses. The period ML under DOSBox alone refuses what the others take (A2070 on a driver's every other object), and
+    the linked file is then never made."""
+    import tempfile
+    obj, log = vxd_masm.assemble_coff(asm_text, root)
+    return obj, log, tempfile.mkdtemp(prefix="cb_link_")
 
 
 def _link_vxd(obj_bytes, def_text, root, work):
