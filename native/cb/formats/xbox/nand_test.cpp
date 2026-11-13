@@ -1,6 +1,6 @@
 // Tests of cb/formats/xbox/nand.hpp on a small flash made by a recipe (a newer root block, an older one, a two-block file, a file whose
 // logical block is carried by another physical block, a directory name met twice). The Python's Flash reads the same recipe's bytes
-// (state/work/xbox-deferred/vol_golden.py) as: root block 5, files one.bin (start 1, size 16584, time 333: the later of its two
+// (state/work/typed-port/xbox-deferred/vol_golden.py) as: root block 5, files one.bin (start 1, size 16584, time 333: the later of its two
 // entries) and two.bin (start 3, size 50, time 222), and the SHA-1s below.
 //
 // DIVERGES from the Python: a flash whose file chain or pages lie outside the dump is FormatError (ValueError / a short slice), and a

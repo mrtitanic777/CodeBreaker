@@ -1,6 +1,6 @@
 // Tests of cb/formats/xbox/ciso.hpp. The images this writes from the 88064-byte test volume are compared byte for byte with what the
 // Python's ciso module writes (formats.dll's writers) for the same ISO: the CSO is 1964 bytes with SHA-1 8e95613e..., the CCI 1808 with
-// ab76c999... (state/work/xbox-deferred/vol_golden.py); reading them back gives the volume again, as the Python does.
+// ab76c999... (state/work/typed-port/xbox-deferred/vol_golden.py); reading them back gives the volume again, as the Python does.
 //
 // DIVERGES from the Python: a damaged LZ4 block, an index that does not fit the file and a block whose padding exceeds it are
 // FormatError (CisoError / Lz4Error / IndexError); a size that the image's own header makes impossible is refused before an index of

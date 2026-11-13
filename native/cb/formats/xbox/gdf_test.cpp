@@ -1,6 +1,6 @@
 // Tests of cb/formats/xbox/gdf.hpp. The expected values (the built image's SHA-1, the root directory, the file hashes) are what the
 // Python's gdf module gives -- gdf.build_xdvdfs and gdf.GDF through formats.dll -- for the same four files
-// (state/work/xbox-deferred/vol_golden.py in the work that wrote this), so the builder and the reader are compared with it.
+// (state/work/typed-port/xbox-deferred/vol_golden.py in the work that wrote this), so the builder and the reader are compared with it.
 //
 // DIVERGES from the Python: a volume that is not there is FormatError (ValueError / AssertionError); `read` of a path that is not a
 // file is NotFoundError (KeyError); a directory entry whose name would run past its sector is skipped, as before, and a read before the

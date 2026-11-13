@@ -1,6 +1,6 @@
 // Tests of cb/formats/xbox/pck.hpp on a 286-byte container made for the purpose: a property, four entries (a PNG in a folder, a file with
 // a backslash in its name, an empty one, a last payload the file cuts one byte short) and the padding the format shows between payloads.
-// The Python's pck.parse / pck.payloads (state/work/xbox-deferred/vol_golden.py) give: version 3, properties [(7, 'ver')], the entries
+// The Python's pck.parse / pck.payloads (state/work/typed-port/xbox-deferred/vol_golden.py) give: version 3, properties [(7, 'ver')], the entries
 // (33, 0, 'tex/a.png') (35, 1, 'b\\c.loc') (0, 2, 'empty') (40, 3, 'd.grf'), table_end 146; the payloads tex_a.png (33), b_c.loc (35) and
 // d.grf (39 of 40), reading stopping at 287 of 286 bytes.
 //

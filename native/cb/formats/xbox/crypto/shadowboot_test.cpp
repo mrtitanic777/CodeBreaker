@@ -1,4 +1,4 @@
-// Tests of cb/formats/xbox/crypto/shadowboot.hpp on a synthetic image: SB, SC and SD made by state/work/xbox-deferred/shadow_golden.py (in
+// Tests of cb/formats/xbox/crypto/shadowboot.hpp on a synthetic image: SB, SC and SD made by state/work/typed-port/xbox-deferred/shadow_golden.py (in
 // the work that wrote this) and kept in formats/testdata/shadowboot, signed with the xecrypt test key (formats/testdata/xecrypt/rsa2048.*,
 // standing for both the 1BL's and the SB's); the hypervisor and kernel from a formula, an identity stand-in for the Xbox LZX library, and
 // a counter stream for the random bytes. The Python's ShadowbootImage.create makes from the same parts, keys and stream the image whose

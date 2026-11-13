@@ -1,6 +1,6 @@
 // Tests of cb/formats/xbox/crypto/mem_crypto.hpp against the values the Python module (MemCrypto.py) gives for the same inputs.
 // The expected values below were made by running the Python on a synthetic 0x40000-byte image (byte i = i*7 + (i>>8)*13) with the
-// keys 00..0f, 10..1f, 20..2f (state/work/xbox-deferred/mem_golden.py in the work that wrote this), and the digest of the long ones.
+// keys 00..0f, 10..1f, 20..2f (state/work/typed-port/xbox-deferred/mem_golden.py in the work that wrote this), and the digest of the long ones.
 //
 // DIVERGES from the Python: the Python's tweak table is empty until its main() runs, so the module used as a library fails with an
 // IndexError (fixed in the Python too, which now builds the table at import); a key blob of a nonce that is not 20 bytes resized

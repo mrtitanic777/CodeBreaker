@@ -1,7 +1,7 @@
 // Tests of cb/formats/xbox/crypto/harness.hpp over synthetic test data (byte i = i*29 + (i>>7)*3 + 7, 0x40010 bytes) and the xecrypt test
 // RSA key. The console's own test data is not in the repository, so the known answers do not match and every check of the symmetric
 // ciphers and the digests reports FAILED -- which is what the Python's harness.main prints for the same files
-// (state/work/xbox-deferred/harness_golden.py in the work that wrote this): the report below is its output, line for line, and the values
+// (state/work/typed-port/xbox-deferred/harness_golden.py in the work that wrote this): the report below is its output, line for line, and the values
 // each check computed are the ones the Python's XeCrypt gives for the same inputs.
 //
 // DIVERGES from the Python: the test data and the key come with the call rather than from `Data/` in the working folder, and the CPU key

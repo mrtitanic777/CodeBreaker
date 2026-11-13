@@ -1,5 +1,5 @@
 // Tests of cb/formats/xbox/volumes.hpp. The expected facts (kinds, labels, where, boot fields, file lists, hashes of what is read) are
-// what the Python's volumes.volumes gives for the same inputs (state/work/xbox-deferred/vol_golden*.py): the real Minecraft package from
+// what the Python's volumes.volumes gives for the same inputs (state/work/typed-port/xbox-deferred/vol_golden*.py): the real Minecraft package from
 // C:/Nexia360/Games when it is there (the test is silent when it is not), the FATX, Heavy Iron and ISO fixtures of formats/testdata, and
 // containers made here from the XDVDFS volume of gdf_test (a plain image, CSO, CCI, a Games-on-Demand package written by god::write_god
 // in both layouts, a package of bare parts, a flash, a PCK and XZP).

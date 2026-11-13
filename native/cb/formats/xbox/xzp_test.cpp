@@ -1,5 +1,5 @@
 // Tests of cb/formats/xbox/xzp.hpp on a v3 (dashboard) and a v1 (Minecraft) container made for the purpose; the Python's xzp.parse and
-// xzp.payloads (state/work/xbox-deferred/vol_golden.py) give for the v3: version 3, size 135, base 93, table end 93, entries
+// xzp.payloads (state/work/typed-port/xbox-deferred/vol_golden.py) give for the v3: version 3, size 135, base 93, table end 93, entries
 // (18, 0, '..\\media\\a.png') (21, 18, 'skin\\b.xur') (2, 39, 'c:evil') (1, 41, '..\\..'), payloads media/a.png and skin/b.xur (the entry
 // with a colon and the one that is only `..` parts are dropped); for the v1: version 1, size 134, base 97, entries
 // (17, 0, 'media\\a.png') (20, 17, 'media\\de-DE\\s.xus').

@@ -1,5 +1,5 @@
 // Tests of cb/formats/xbox/crypto/stream_io.hpp. The expected bytes and values come from running the Python StreamIO
-// (state/work/xbox-deferred/stream_golden.py) through the same calls.
+// (state/work/typed-port/xbox-deferred/stream_golden.py) through the same calls.
 //
 // DIVERGES from the Python: a short integer read is TruncatedError (the Python's struct.error, or an IndexError for one byte);
 // `read(n)` still answers what is there; a name never labelled and a seek before the start are UsageError (KeyError / OSError).

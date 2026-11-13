@@ -1,5 +1,5 @@
 // Tests of cb/formats/xbox/zar.hpp. The compressed archive below is what the Python's ZarWriter (zar.pack, zstd level 6) makes of a
-// folder of four files (state/work/xbox-deferred/zar_golden.py): b.bin (768 bytes), Z-empty, data/a.txt (78000 bytes of repeated text,
+// folder of four files (state/work/typed-port/xbox-deferred/zar_golden.py): b.bin (768 bytes), Z-empty, data/a.txt (78000 bytes of repeated text,
 // two blocks) and data/sub/Deep.TXT (9 bytes); the Python's ZarReader lists them as below and reads the SHA-1s checked here. Reading it
 // needs libzstd (found as zar::load_zstd does, or at the Git for Windows copy); where there is none, those checks are skipped. The
 // structure checks run on archives made by hand here, with raw (stored) blocks and a stand-in codec for the compressed kind.

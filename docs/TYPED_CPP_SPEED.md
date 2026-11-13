@@ -1156,3 +1156,16 @@ The judge of every function the Python lane built, on the same original and the 
 | version.dll, 32 functions | 6.3 s | 3.9 s |
 
 Verdict, reason, limits (coverage, paths=N / paths-all, argc-unknown) and the one line saying what differed are the same on all 52.
+
+## formats/xbox deferred units: mem_crypto, ciso, volumes (2026-11-12)
+
+Release build, the same input on both sides (the Python through formats.dll where it asks the native reader, as the exe does).
+
+| work | Python | C++ |
+|---|---|---|
+| MemoryCrypto: `calc_sram` + `calc_hash_2_digest` of a 0x40000-byte hypervisor | 1.58 s | 0.005 s |
+| ciso `write_cso` of Minecraft's default.xex (20 MB) | 1.07 s (formats.dll) | 0.95 s |
+| ciso `to_iso` of that CSO | 0.038 s (formats.dll) | 0.053 s (4 MB chunks through a copy; noise-sized, the write dominates) |
+| volumes open and list the Minecraft: Story Mode LIVE package (855 MB, 58 files) | 0.181 s | 0.175 s |
+
+The Python's MemoryCrypto is pure Python over `cryptography`'s AES and big ints; the C++ computes each tweak with 64-bit words and runs the AES once per call.
