@@ -124,7 +124,7 @@ names::Namer& Workbench::namer() {
         services.collect_ordinals = [this](std::span<const std::filesystem::path> files) {
             const ordinals::ShippedTables tables = remake_ordinal_table(*environment_.corpus, *parts_->modules, files, [](std::string_view line) { cb::out("{}\n", line); });
             std::filesystem::path file = environment_.ordinal_file;
-            if (file.empty()) file = environment_.config->checkout_root() / "codebreaker" / "symbols" / "ordinal_names.json";
+            if (file.empty()) file = environment_.config->checkout_root() / "data" / "symbols" / "ordinal_names.json";
             const std::string text = ordinals::format_shipped(tables);
             fs::write_file(file, ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
         };

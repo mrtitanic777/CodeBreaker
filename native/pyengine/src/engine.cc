@@ -355,7 +355,7 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
     }
     for (auto& [m, mr] : tr.modules)
         if (mr.unit) r.units[m] = py::json_dump(to_json(mr.unit));
-    if (o.extended && o.backend) backend_pass(o, r, o.api.empty() ? (root / "java" / "api_maps").string() : o.api, judged_refused);
+    if (o.extended && o.backend) backend_pass(o, r, o.api.empty() ? (root.parent_path() / "data" / "java" / "api_maps").string() : o.api, judged_refused);
     if (!o.out.empty()) {
         fs::path out(o.out);
         for (auto& [m, text] : r.units) write_text(out / "l2" / (m + ".json"), text);

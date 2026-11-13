@@ -16,8 +16,8 @@ class JavaData {
 public:
     explicit JavaData(std::filesystem::path root) : root_(std::move(root)) {}
 
-    // The folder of a checkout's Java lane: $CB_CHECKOUT_ROOT/codebreaker/java when the variable is set, else the
-    // nearest codebreaker/java above the current directory. NotFoundError if neither exists.
+    // The folder of a checkout's Java lane: $CB_CHECKOUT_ROOT/data/java when the variable is set, else the
+    // nearest data/java above the current directory. NotFoundError if neither exists.
     static JavaData locate();
 
     const std::filesystem::path& root() const { return root_; }

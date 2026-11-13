@@ -15,7 +15,7 @@ namespace jv = codebreaker::java;
 using cb::compat::from_py;
 using cb::compat::to_py;
 
-void sw3_point_at_the_java_data() { jv::_paths::set_here(to_py(cb::testing::data_path("../../codebreaker/java").string())); }
+void sw3_point_at_the_java_data() { jv::_paths::set_here(to_py(cb::testing::data_path("../../data/java").string())); }
 
 CB_TEST("java.shims_w3b8.runtime_views", [] {
     sw3_point_at_the_java_data();

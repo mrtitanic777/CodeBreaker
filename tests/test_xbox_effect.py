@@ -165,7 +165,7 @@ def test_mgfx_parameters():
 def _shadercheck():
     """xna/shadercheck built into state/xna/shadercheck (again when its source is newer)."""
     from codebreaker.base import settings
-    src = os.path.join(ROOT, "codebreaker", "xna", "shadercheck")
+    src = os.path.join(ROOT, "data", "xna", "shadercheck")
     out = settings.state("xna", "shadercheck")
     exe = os.path.join(out, "shadercheck.exe" if os.name == "nt" else "shadercheck")
     newest = max(os.path.getmtime(os.path.join(src, f)) for f in ("Program.cs", "shadercheck.csproj"))

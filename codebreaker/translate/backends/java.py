@@ -32,7 +32,7 @@ import re
 
 from codebreaker.translate import ir
 
-RUNTIME = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'java_runtime')
+RUNTIME = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'data', 'translate', 'backends', 'java_runtime')
 
 JPRIM = {'bool': 'boolean', 'i8': 'byte', 'u8': 'byte', 'char': 'byte', 'i16': 'short', 'u16': 'char',
          'i32': 'int', 'u32': 'int', 'i64': 'long', 'u64': 'long', 'f32': 'float', 'f64': 'double',

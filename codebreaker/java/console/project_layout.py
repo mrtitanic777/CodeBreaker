@@ -29,7 +29,7 @@ import shutil
 import hashlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-_TEMPLATE = os.path.join(HERE, 'templates', 'xbox360.vcxproj.in')
+_TEMPLATE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(HERE))), 'data', 'java', 'console', 'templates', 'xbox360.vcxproj.in')
 
 # things that stay at the solution root (never moved down into the project subfolder)
 _ROOT_KEEP_EXT = ('.sln', '.sdf', '.suo')

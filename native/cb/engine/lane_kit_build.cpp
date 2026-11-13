@@ -193,7 +193,7 @@ build::module::Services LaneKit::module_services() {
         return std::nullopt;
     };
     s.build_folder = [state = config.state()](std::string_view name) { return state / "build" / std::string(name); };
-    s.kept_as_asm_file = config.checkout_root() / "codebreaker" / "build" / "kept_as_asm.txt";
+    s.kept_as_asm_file = config.checkout_root() / "data" / "build" / "kept_as_asm.txt";
     s.prepare = [win16, win32, &corpus](const stdfs::path& file, const stdfs::path& work) {
         build::module::Prepared out;
         const std::optional<base::Lane> lane = corpus.lane(file);

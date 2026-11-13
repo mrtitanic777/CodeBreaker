@@ -322,8 +322,8 @@ def verify_integrated(out_dir, bases):
     return bad
 
 
-_LAYER = {'xbox360': ('Xbox 360', 'codebreaker/java/platform/reference'),
-          'pc_opengl': ('PC (SDL2 + OpenGL)', 'codebreaker/java/platform/pc/reference')}
+_LAYER = {'xbox360': ('Xbox 360', 'data/java/platform/reference'),
+          'pc_opengl': ('PC (SDL2 + OpenGL)', 'data/java/platform/pc/reference')}
 
 
 def _banner(base, ext, platform='xbox360'):

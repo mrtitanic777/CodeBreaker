@@ -41,7 +41,7 @@ from codebreaker.formats.pe import open_pe
 from codebreaker.symbols import libraries, ordinals
 from codebreaker import platforms
 
-_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runtime_signatures.json")
+_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "symbols", "runtime_signatures.json")
 _LONGEST = 1024                 # bytes of a function that are compared
 _FEWEST = 10                    # bytes the linker does not touch that a signature must have
 _LEAD = 6                       # signatures are looked up by this many leading bytes (fewer when they are masked)

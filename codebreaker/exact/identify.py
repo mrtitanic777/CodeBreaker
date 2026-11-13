@@ -26,7 +26,7 @@ def candidates(prj, tries=None):
     ext = {os.path.splitext(p)[1].lower() for at, p in prj.sources()}
     out = []
     for n in tcm.profiles():
-        p = json.load(open(os.path.join(tcm.HERE, "toolchains", n + ".json")))
+        p = json.load(open(os.path.join(tcm.TOOLCHAINS, n + ".json")))
         se = (p.get("source_ext") or (".pas" if "pascal" in n else ".plm" if "plm" in n else ".c")).lower()
         if se not in ext:
             continue

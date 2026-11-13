@@ -53,7 +53,7 @@ cache::Cache tool_test_cache(const std::filesystem::path& dir) {
 // ---- compilers ---------------------------------------------------------------------------------------------------------------
 
 CB_TEST("port.tool.compilers_of_the_real_file", [] {
-    const Compilers c = load_compilers(tool_checkout() / "codebreaker" / "port" / "compilers.json");
+    const Compilers c = load_compilers(tool_checkout() / "data" / "port" / "compilers.json");
     CB_CHECK(c.contains("gcc") && c.contains("clang") && c.contains("msvc") && c.contains("ml64"));
     CB_CHECK(!c.contains("about"));
     CB_CHECK(std::find(c.at("gcc").build.begin(), c.at("gcc").build.end(), "{srcs}") != c.at("gcc").build.end());
@@ -96,7 +96,7 @@ CB_TEST("port.tool.expand_fills_the_templates", [] {
 });
 
 CB_TEST("port.tool.diagnostics_of_each_compilers_words", [] {
-    const Compilers c = load_compilers(tool_checkout() / "codebreaker" / "port" / "compilers.json");
+    const Compilers c = load_compilers(tool_checkout() / "data" / "port" / "compilers.json");
     const std::string gcc =
         "stray.c:1:1: note: a note with nothing before it\n"
         "prog.c:3:5: error: 'x' undeclared (first use in this function)\n"
@@ -568,7 +568,7 @@ CB_TEST("port.tool.the_platform_layer", [] {
 });
 
 CB_TEST("port.tool.the_build_script", [] {
-    const Compilers c = load_compilers(tool_checkout() / "codebreaker" / "port" / "compilers.json");
+    const Compilers c = load_compilers(tool_checkout() / "data" / "port" / "compilers.json");
     CB_CHECK_EQ(build_script("gcc", c.at("gcc"), "gcc.exe", "program.exe", {"a.c", "b.c", "dosrt.c", "ported64.obj"}),
                 "#!/bin/sh\n# the port built by gcc (made by CodeBreaker's port)\ncd \"$(dirname \"$0\")\"\n"
                 "gcc.exe -std=c11 -O1 -fsigned-char -fwrapv -Wall -I. -o program.exe a.c b.c dosrt.c ported64.obj\n");

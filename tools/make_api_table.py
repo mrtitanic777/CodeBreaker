@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""make_api_table.py -- (re)generate codebreaker/symbols/win32_arguments.json from the Win32 headers.
+"""make_api_table.py -- (re)generate data/symbols/win32_arguments.json from the Win32 headers.
 
     python tools/make_api_table.py
 
@@ -151,7 +151,7 @@ def main():
                 if "..." in params or conv.upper() in ("WINAPIV", "CDECL", "__CDECL", "_CDECL") or _BY_VALUE.search(params):
                     continue
                 table[name] = 0 if params in ("", "void", "VOID") else 4 * (params.count(",") + 1)
-    out = os.path.join(ROOT, "codebreaker", "symbols", "win32_arguments.json")
+    out = os.path.join(ROOT, "data", "symbols", "win32_arguments.json")
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         json.dump(table, f, sort_keys=True, indent=0)
     print("%d functions -> %s" % (len(table), os.path.relpath(out, ROOT)))

@@ -1,6 +1,6 @@
 // cb/java/production.hpp -- the transpiler made from the settings: the production assembly of assembly.hpp.
 //
-//     const JavaData data(config.checkout_root() / "codebreaker" / "java");
+//     const JavaData data(config.checkout_root() / "data" / "java");
 //     auto assembly = production::make_assembly(config, data);                       // javac's tree of the sources as the front end
 //     JavaLane lane(tools, assembly->converter("C++03"));
 //

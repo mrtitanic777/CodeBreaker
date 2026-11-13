@@ -25,7 +25,7 @@ constexpr std::uint32_t kImageBase = dos::kLoadSegment * 16;
 
 const symbols::dos_interrupts::ServiceTable& dos_image_services() {
     static const auto table = symbols::dos_interrupts::ServiceTable::load(
-        std::filesystem::path(CB_SOURCE_DIR).parent_path() / "codebreaker" / "symbols" / "dos_interrupts.json");
+        std::filesystem::path(CB_SOURCE_DIR).parent_path() / "data" / "symbols" / "dos_interrupts.json");
     return table;
 }
 

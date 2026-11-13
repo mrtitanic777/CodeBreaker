@@ -192,7 +192,7 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
     services.placement = [context](std::string_view name, const std::filesystem::path& file) -> std::pair<std::string, std::string> {
         const source::placement::Placement placement(
             context->corpus().design_dir().parent_path(),
-            source::placement::load_table(context->config().checkout_root() / "codebreaker" / "source" / "placement.json", context->corpus().current()));
+            source::placement::load_table(context->config().checkout_root() / "data" / "source" / "placement.json", context->corpus().current()));
         const source::placement::Decision d = placement.resolve(name, file, context->corpus().lane(file));
         return {d.folder, std::string(source::placement::how_name(d.how))};
     };

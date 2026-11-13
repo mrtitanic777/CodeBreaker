@@ -40,7 +40,7 @@ public:
 };
 
 struct TrWorld {
-    cb::java::JavaData data{cb::testing::data_path("../../codebreaker/java")};
+    cb::java::JavaData data{cb::testing::data_path("../../data/java")};
     cb::java::runtime::Runtime runtime{data};
     cb::java::profiles::ProfileSet profiles;
     cb::java::projects::ProjectSet projects{data.path({"projects"})};

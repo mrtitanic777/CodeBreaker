@@ -21,7 +21,7 @@ import shutil
 import subprocess
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SOURCE = os.path.join(_HERE, 'TreeDump.java')
+_SOURCE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))), 'data', 'translate', 'frontends', 'java', 'TreeDump.java')
 TIMEOUT = 1800
 
 

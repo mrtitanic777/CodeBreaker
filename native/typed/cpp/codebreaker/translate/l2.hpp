@@ -45,7 +45,7 @@ struct ValidationError : py::Exception {
     const char* type() const override { return "ValidationError"; }
 };
 
-// The path of l2.schema.json: <repo>/codebreaker/translate/l2.schema.json, found from this file's place in the tree
+// The path of l2.schema.json: <repo>/data/translate/l2.schema.json, found from this file's place in the tree
 // (<repo>/native/typed/cpp/codebreaker/translate/l2.hpp). A variable: a caller with the schema elsewhere sets it.
 inline py::str& schema_path_variable() {
     static py::str path = [] {
@@ -55,7 +55,7 @@ inline py::str& schema_path_variable() {
             if (cut == std::string::npos) break;
             p = p.substr(0, cut);
         }
-        return py::bytes(p + "/codebreaker/translate/l2.schema.json").decode("utf-8");
+        return py::bytes(p + "/data/translate/l2.schema.json").decode("utf-8");
     }();
     return path;
 }

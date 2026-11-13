@@ -1369,7 +1369,7 @@ def _build16(b, path, m, folder):
         if n in stems:
             forced.add(n)
             if n in b.origins:
-                b.origins[n].evidence.append("kept as its instructions (build/kept_as_asm.txt): " + why)
+                b.origins[n].evidence.append("kept as its instructions (data/build/kept_as_asm.txt): " + why)
     for n, why in getattr(b, "gated", {}).items():           # (C that, run, did not do what the original does)
         if n in stems:
             forced.add(n)
@@ -2059,7 +2059,7 @@ def _gate16_keys(path, names, m):
     return {n: cache.key(module_key, tools, header, n, m.texts.get(n, ""), deps(n)) for n in names}
 
 
-KEPT_AS_ASM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kept_as_asm.txt")
+KEPT_AS_ASM = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "build", "kept_as_asm.txt")
 
 
 def kept_as_asm(module):

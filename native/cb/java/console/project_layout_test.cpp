@@ -19,7 +19,7 @@ const vcxproj::FilterRules& rules() {
     return r;
 }
 
-stdfs::path template_file() { return testing::data_path("../../codebreaker/java/console/templates/xbox360.vcxproj.in"); }
+stdfs::path template_file() { return testing::data_path("../../data/java/console/templates/xbox360.vcxproj.in"); }
 
 // A folder's files as the golden lists them: every folder in the order of its path (written with backslashes), its
 // files by name; the solution and project files with their text, the others with their size.

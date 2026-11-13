@@ -40,7 +40,7 @@ def tree_root():
 def _table():
     global _tables
     if _tables is None:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "placement.json"), encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "source", "placement.json"), encoding="utf-8") as f:
             _tables = json.load(f)
     return _tables.get(corpus.current()) or {"known": {}, "prefix": [], "suffix": {}, "installed": {}, "kind": {}}
 

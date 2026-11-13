@@ -166,7 +166,7 @@ int learn_command(const Environment& environment, const std::vector<std::string>
     const std::vector<rl::LearnSource> sources = learn_sources(arguments);
     const rl::Learned learned = rl::learn(sources, decoders, [](const std::string& line) { cb::out("{}\n", line); });
     std::filesystem::path file = environment.signature_file;
-    if (file.empty()) file = environment.config->checkout_root() / "codebreaker" / "symbols" / "runtime_signatures.json";
+    if (file.empty()) file = environment.config->checkout_root() / "data" / "symbols" / "runtime_signatures.json";
     const std::string text = rl::format_signature_file(learned);
     fs::write_file(file, ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
     cb::out("{} 32-bit and {} 16-bit signatures\n", learned.count(rl::Bits::X32), learned.count(rl::Bits::X16));

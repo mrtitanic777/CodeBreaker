@@ -30,7 +30,7 @@ import os
 
 from codebreaker.translate import ir
 
-RUNTIME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'dotnet', 'runtime')
+RUNTIME = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'data', 'translate', 'dotnet', 'runtime')
 
 KEYWORDS = frozenset('''abstract as base bool break byte case catch char checked class const continue decimal default
 delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int

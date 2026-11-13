@@ -157,7 +157,7 @@ CB_TEST("java.shims.apimap", [] {
     namespace am = jv::apimap;
     // (load() needs the old platform_equivalents port, which is not part of this test: build the registry by hand)
     am::Registry reg(std::make_shared<cb::java::apimap::Registry>(
-        cb::java::apimap::Registry::load(cb::testing::data_path("../../codebreaker/java/api_maps"))));
+        cb::java::apimap::Registry::load(cb::testing::data_path("../../data/java/api_maps"))));
     auto m = reg.resolve(py::str("Math.sqrt"), py::str("java"), py::str("cpp"));
     CB_CHECK(m != nullptr);
     CB_CHECK_EQ(from_py(m->kind), "direct");
@@ -272,7 +272,7 @@ CB_TEST("java.shims.console_project_files", [] {
     namespace con = jv::console;
     cb::fs::ScopedTempDir tmp("cbshim");
     cb::fs::copy_tree(cb::testing::data_path("java/console/testdata/layout/in_flat"), tmp.path() / "in");
-    con::project_layout::set_here(to_py(cb::fs::to_text(cb::testing::data_path("../../codebreaker/java/console"))));
+    con::project_layout::set_here(to_py(cb::fs::to_text(cb::testing::data_path("../../data/java/console"))));
     py::list<std::tuple<py::str, py::str>> rules;
     rules.append(std::make_tuple(py::str("^Block$"), py::str("Blocks")));
     con::vcxproj::_reseed(rules);

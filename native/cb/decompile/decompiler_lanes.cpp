@@ -199,7 +199,7 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     };
     Functions grown = lanes_grow(*this, *d, line, 8);
     const symbols::dos_interrupts::ServiceTable table =
-        symbols::dos_interrupts::ServiceTable::load(context_.settings.checkout / "codebreaker" / "symbols" / "dos_interrupts.json");
+        symbols::dos_interrupts::ServiceTable::load(context_.settings.checkout / "data" / "symbols" / "dos_interrupts.json");
     DosProgramC result;
     result.functions.order = std::move(grown.order);
     result.functions.by_va = std::move(grown.by_va);

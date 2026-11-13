@@ -109,7 +109,7 @@ C3Program c3_load(const std::filesystem::path& dir) {
 }
 
 const cb::java::runtime::Runtime& c3_runtime() {
-    static const cb::java::runtime::Runtime r{cb::java::JavaData(cb::testing::data_path("../../codebreaker/java"))};
+    static const cb::java::runtime::Runtime r{cb::java::JavaData(cb::testing::data_path("../../data/java"))};
     return r;
 }
 

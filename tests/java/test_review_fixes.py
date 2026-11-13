@@ -15,8 +15,8 @@ from codebreaker.java.projects.minecraft import edition
 from codebreaker.java.projects.minecraft import controller_nav
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_CANON = os.path.join(_ROOT, 'codebreaker', 'java', 'platform', 'canonical')
-_REF = os.path.join(_ROOT, 'codebreaker', 'java', 'platform', 'reference')
+_CANON = os.path.join(_ROOT, 'data', 'java', 'platform', 'canonical')
+_REF = os.path.join(_ROOT, 'data', 'java', 'platform', 'reference')
 
 
 def _read(*parts):

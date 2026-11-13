@@ -34,14 +34,14 @@ namespace ir = cb::translate::ir;
 using ir::Node;
 
 const apimap::Registry& cjt_registry() {
-    static const apimap::Registry reg = apimap::Registry::load(cb::testing::data_path("../../codebreaker/java/api_maps"));
+    static const apimap::Registry reg = apimap::Registry::load(cb::testing::data_path("../../data/java/api_maps"));
     return reg;
 }
 
 cs::Options cjt_options() {
     cs::Options options;
     options.libraries["java"] = cj::factory(cjt_registry());
-    options.runtime_dir = cb::testing::data_path("../../codebreaker/translate/dotnet/runtime");
+    options.runtime_dir = cb::testing::data_path("../../data/translate/dotnet/runtime");
     return options;
 }
 
@@ -168,7 +168,7 @@ CB_TEST("translate.csharp_java.a_unit_of_another_language_is_left_to_the_writer"
 CB_TEST("translate.csharp_java.a_java_unit_without_the_library_is_declined", [] {
     auto u = cjt_load("calc");
     cs::Options none;
-    none.runtime_dir = cb::testing::data_path("../../codebreaker/translate/dotnet/runtime");
+    none.runtime_dir = cb::testing::data_path("../../data/translate/dotnet/runtime");
     cs::Program p(u->units, none);
     CB_CHECK(!p.ledger().empty());
     CB_CHECK_EQ(p.ledger()[0].kind, std::string("library"));

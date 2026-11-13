@@ -24,7 +24,7 @@ VENDORED = ("codebreaker/formats/xbox/crypto/",)
 
 
 def _files(kinds=(".py",)):
-    for d in ("codebreaker", "tests", "tools"):
+    for d in ("codebreaker", "data", "tests", "tools"):
         for base, dirs, files in os.walk(os.path.join(ROOT, d)):
             dirs[:] = [x for x in dirs if x != "__pycache__"]
             for f in files:

@@ -23,7 +23,7 @@ frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData&
         std::error_code ec;
         tools.javac = stdfs::is_regular_file(sibling, ec) ? sibling : stdfs::path("javac");
     }
-    tools.treedump_source = config.checkout_root() / "codebreaker" / "translate" / "frontends" / "java" / "TreeDump.java";
+    tools.treedump_source = config.checkout_root() / "data" / "translate" / "frontends" / "java" / "TreeDump.java";
     tools.state = config.state();
     // the libraries the game is attributed against (setting java_libs: LWJGL, the sound system), and the stand-ins for the classes no library
     // download has, ahead of them

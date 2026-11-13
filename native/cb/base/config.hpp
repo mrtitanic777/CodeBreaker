@@ -35,6 +35,8 @@ public:
     static Config load(const std::filesystem::path& checkout_root);
 
     const std::filesystem::path& checkout_root() const { return root_; }
+    // The data the program ships with (JSON tables, Java API maps, toolchain profiles, runtimes): <checkout>/data.
+    std::filesystem::path data_root() const { return root_ / "data"; }
 
     // The setting as text: a string as it is, a number in decimal, a bool "true"/"false"; "" when not set.
     std::string text(std::string_view key) const;
@@ -87,7 +89,7 @@ private:
 };
 
 // The checkout this program belongs to: CB_CHECKOUT_ROOT when set; else the first folder at or above the running
-// executable that holds codebreaker/__main__.py and native/; else the first such folder at or above the working
+// executable that holds data/ and native/; else the first such folder at or above the working
 // folder; else the working folder.
 std::filesystem::path find_checkout();
 

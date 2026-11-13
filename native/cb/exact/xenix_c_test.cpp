@@ -312,7 +312,7 @@ CB_TEST("exact.xenix_c.the_real_compiler", [] {
     if (!kit || !stdfs::is_directory(cfs::from_text(*kit))) return;   // (not set up: nothing to run)
     cfs::ScopedTempDir dir("cbxenixreal");
     tc::Locations locations;
-    locations.profiles = cb::testing::data_path("../../codebreaker/exact/toolchains");
+    locations.profiles = cb::testing::data_path("../../data/exact/toolchains");
     locations.state = dir.path() / "state";
     locations.checkout_root = dir.path();
     const std::string source = "long widen(a, b)\nunsigned a;\nint b;\n{\n    b = b + 1;\n    return a;\n}\n";

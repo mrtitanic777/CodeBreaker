@@ -344,7 +344,7 @@ void write_one(World& world, const std::string& module, bool verify, std::option
         const std::string name = fs::to_text(folder.filename());
         const stdfs::path state_folder = world.config().state(stdfs::path("source") / name);
         const stdfs::path out = out_dir.value_or(state_folder);
-        const java::JavaData data(world.config().checkout_root() / "codebreaker" / "java");
+        const java::JavaData data(world.config().checkout_root() / "data" / "java");
         const std::unique_ptr<java::assembly::Assembly> assembly = java::production::make_assembly(world.config(), data);
         const stdfs::path java_dir = verify::lanes::JavaLane::source_dir(*path);
         const source::java_writer::Conversion convert = [&](const stdfs::path& into) { (void)assembly->converter(std::string(verify::lanes::JavaLane::kCppStandard))(java_dir, into); };
@@ -360,7 +360,7 @@ void write_one(World& world, const std::string& module, bool verify, std::option
     if (out_dir) {
         out = *out_dir;
     } else if (in_corpus(corpus, *path)) {
-        const stdfs::path table_file = world.config().checkout_root() / "codebreaker" / "source" / "placement.json";
+        const stdfs::path table_file = world.config().checkout_root() / "data" / "source" / "placement.json";
         const placement::Placement where(corpus.design_dir().parent_path(), placement::load_table(table_file, corpus.current()));
         out = where.folder(name, *path, corpus.lane(*path));
     } else {

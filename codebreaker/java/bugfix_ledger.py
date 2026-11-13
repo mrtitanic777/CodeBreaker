@@ -81,11 +81,13 @@ def _scan_file(path):
     return entries
 
 
-def collect(repo_root):
-    """Return [{'layer','file','slug','line','desc'}] across every authored layer."""
+def collect(repo_root, data_root=None):
+    """Return [{'layer','file','slug','line','desc'}] across every authored layer. `data_root` is where the platform
+    layers are (the checkout's data/java); without it they are looked for under `repo_root` too."""
     out = []
     for layer, rel in _LAYERS:
-        root = os.path.join(repo_root, rel)
+        base = repo_root if (layer == 'generator' or data_root is None) else data_root
+        root = os.path.join(base, rel)
         if not os.path.isdir(root):
             continue
         for dirpath, dirs, files in os.walk(root):
@@ -97,7 +99,7 @@ def collect(repo_root):
                 if not fn.endswith(_EXTS) or fn == _SELF:
                     continue
                 full = os.path.join(dirpath, fn)
-                rel_file = os.path.relpath(full, repo_root).replace('\\', '/')
+                rel_file = os.path.relpath(full, base).replace('\\', '/')
                 for e in _scan_file(full):
                     e['layer'] = layer
                     e['file'] = rel_file
@@ -152,11 +154,12 @@ def render(entries):
 def run(repo_root=None, out_path=None):
     """Collect markers and write BUGFIX_LEDGER.md (default: state/java/BUGFIX_LEDGER.md). `repo_root` is
     the folder whose layers are scanned (default: this package). Returns the entry list."""
-    if repo_root is None:
+    default_root = repo_root is None
+    if default_root:
         repo_root = os.path.dirname(os.path.abspath(__file__))
-    entries = collect(repo_root)
+    from codebreaker.base import settings
+    entries = collect(repo_root, os.path.join(settings.ROOT, 'data', 'java') if default_root else None)
     if out_path is None:
-        from codebreaker.base import settings
         out_path = settings.state('java', 'BUGFIX_LEDGER.md')
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(render(entries))

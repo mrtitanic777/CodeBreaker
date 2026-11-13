@@ -42,7 +42,7 @@ namespace l2 = cb::translate::l2;
 using ir::Node;
 
 const jlc::LibC& jot_library() {
-    static const apimap::Registry registry = apimap::Registry::load(cb::testing::data_path("../../codebreaker/java/api_maps"));
+    static const apimap::Registry registry = apimap::Registry::load(cb::testing::data_path("../../data/java/api_maps"));
     static const jlc::LibC library(registry);
     return library;
 }

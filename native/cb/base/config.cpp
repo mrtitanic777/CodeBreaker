@@ -80,7 +80,7 @@ std::string as_text(const Value& v) {
 
 bool has_checkout_marks(const stdfs::path& dir) {
     std::error_code ec;
-    return stdfs::is_regular_file(dir / "codebreaker" / "__main__.py", ec) && stdfs::is_directory(dir / "native", ec);
+    return stdfs::is_directory(dir / "data", ec) && stdfs::is_directory(dir / "native", ec);
 }
 
 std::optional<stdfs::path> checkout_at_or_above(stdfs::path dir) {

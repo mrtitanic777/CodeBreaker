@@ -82,7 +82,8 @@ def reachable():
             work += [m for f in files if f.endswith(".py") for m in _imports(os.path.join(base, f), d)]
     # what the package loads by name from data (toolchain profiles), and every module that is a
     # program of its own
-    for base, dirs, files in os.walk(os.path.join(ROOT, "codebreaker")):
+    for top in ("codebreaker", "data"):                                    # (the data the package loads lives in data/)
+      for base, dirs, files in os.walk(os.path.join(ROOT, top)):
         dirs[:] = [x for x in dirs if x != "__pycache__"]
         for f in files:
             p = os.path.join(base, f)

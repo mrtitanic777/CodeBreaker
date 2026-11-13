@@ -15,8 +15,9 @@ import os
 from codebreaker.knowledge import store
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SYMBOLS = os.path.join(os.path.dirname(_HERE), "symbols")
-_MODELS = os.path.join(_HERE, "models")
+_DATA = os.path.join(os.path.dirname(os.path.dirname(_HERE)), "data")
+_SYMBOLS = os.path.join(_DATA, "symbols")
+_MODELS = os.path.join(_DATA, "knowledge", "models")
 
 
 def _json(path):
@@ -112,4 +113,4 @@ def authored(platform, kind, kb=None):
             return read(path)
         except (OSError, ValueError):
             return {}
-    return kb.ensure(platform, kind, stamp, make, os.path.relpath(path, os.path.dirname(os.path.dirname(_HERE))))
+    return kb.ensure(platform, kind, stamp, make, os.path.relpath(path, os.path.dirname(_DATA)))

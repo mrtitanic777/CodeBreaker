@@ -26,7 +26,7 @@ namespace l2 = cb::translate::l2;
 using ir::Node;
 
 const apimap::Registry& jlc_registry() {
-    static const apimap::Registry reg = apimap::Registry::load(cb::testing::data_path("../../codebreaker/java/api_maps"));
+    static const apimap::Registry reg = apimap::Registry::load(cb::testing::data_path("../../data/java/api_maps"));
     return reg;
 }
 

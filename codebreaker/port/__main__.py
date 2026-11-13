@@ -23,10 +23,11 @@ from codebreaker.base import cache, ctext
 from codebreaker.port import pre_ansi
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+DATA = os.path.join(os.path.dirname(os.path.dirname(HERE)), "data", "port")   # compilers.json, runtimes/, platform/
 
 
 def load_compilers():
-    c = json.load(open(os.path.join(HERE, "compilers.json")))
+    c = json.load(open(os.path.join(DATA, "compilers.json")))
     try:                                                    # (the user's own, from settings.json)
         s = json.load(open(os.path.join(HERE, "..", "..", "settings.json")))
         for k, v in s.get("port", {}).get("compilers", {}).items():
@@ -731,7 +732,7 @@ def main(argv):
     memory_guard(out)                                       # (and never more of its memory than it may have)
     opt = lambda k, d=None: argv[argv.index(k) + 1] if k in argv else d
     comp = opt("--compiler", "gcc")
-    profile = json.load(open(os.path.join(HERE, "runtimes", opt("--runtime", "dos_c_early") + ".json")))
+    profile = json.load(open(os.path.join(DATA, "runtimes", opt("--runtime", "dos_c_early") + ".json")))
     for pj in (os.path.join(src, "project.json"), os.path.join(src, "src", "project.json")):
         if os.path.isfile(pj):                              # (the recon's build: the library's objects linked first -
             firsts = [os.path.basename(x).upper() for x in json.load(open(pj)).get("first_objects", [])]
@@ -757,7 +758,7 @@ def main(argv):
     roles = {n: asm_role(t, profile) for n, t in asm.items()}
     os.makedirs(out, exist_ok=True)
     for n in ("dosrt.h", "dosrt.c"):
-        shutil.copy(os.path.join(HERE, "platform", n), os.path.join(out, n))
+        shutil.copy(os.path.join(DATA, "platform", n), os.path.join(out, n))
     with open(os.path.join(out, "dosrt_config.h"), "w", newline="\n") as f:   # (the old runtime's ways)
         f.write("/* dosrt_config.h -- the old runtime's ways (made by CodeBreaker's port from the profile %s) */\n"
                 "#define DOSRT_TEXT_MODE %d\n#define DOSRT_CONSOLE_TEXT %d\n#define DOSRT_EXIT_STATUS %d\n" % (

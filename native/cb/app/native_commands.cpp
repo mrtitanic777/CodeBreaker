@@ -281,7 +281,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     });
 
     // dos-interrupts [<interrupt> [<AH> [<AL>]]]: the checkout's own dos_interrupts.json
-    const std::filesystem::path interrupts = config.checkout_root() / "codebreaker" / "symbols" / "dos_interrupts.json";
+    const std::filesystem::path interrupts = config.checkout_root() / "data" / "symbols" / "dos_interrupts.json";
     table.set("dos-interrupts", [interrupts](std::span<const std::string> args) -> int {
         return symbols::dos_interrupts::run(symbols::dos_interrupts::ServiceTable::load(interrupts), args);
     });
