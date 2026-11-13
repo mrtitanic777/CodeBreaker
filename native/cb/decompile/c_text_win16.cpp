@@ -660,4 +660,9 @@ Module16 compilable16(Services& services, const std::filesystem::path& module, c
     return m;
 }
 
+namespace internal {
+std::set<std::int64_t> far_loads16(ByteView code, std::int64_t start, std::int64_t end) { return w16_far_loads(code, start, end); }
+bool loads_dgroup16(ByteView code, std::int64_t off, std::int64_t dgroup) { return w16_loads_dgroup(code, off, dgroup); }
+}  // namespace internal
+
 }  // namespace cb::decompile::c_text
