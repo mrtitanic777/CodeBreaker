@@ -133,8 +133,7 @@ def extract_header(path):
 def _ow_header_dirs():
     """OpenWatcom's own Win32 headers -- the toolchain we actually BUILD with, so prototypes
     extracted here match exactly what wcc386 compiles against (no E1071/E1062/E1051 header-skew)."""
-    from codebreaker.build import watcom as toolchain
-    ow = toolchain.openwatcom_root()
+    ow = os.environ.get("CB_OPENWATCOM") or json.load(open(os.path.join(ROOT, "settings.json"), encoding="utf-8")).get("openwatcom")   # (the setting `openwatcom`)
     return [d for d in (os.path.join(ow, "h", "nt"), os.path.join(ow, "h")) if os.path.isdir(d)]
 
 
