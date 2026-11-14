@@ -7,6 +7,7 @@
 #include <mutex>
 #include <set>
 #include <process.h>
+#include <windows.h>
 #include <stdlib.h>
 
 #include <nlohmann/json.hpp>
@@ -171,7 +172,8 @@ Report run_slow(const Services& s, const Options& o) {
         all = all && c.status != "FAIL";
         r.cases.push_back(std::move(c));
     }
-    r.pass = all && !r.cases.empty();
+    // every case skipped is not a pass: nothing was checked
+    r.pass = all && std::ranges::any_of(r.cases, [](const Case& c) { return c.status == "PASS"; });
     r.took = since(start);
     return r;
 }
@@ -435,7 +437,7 @@ cli::Command command(const config::Config& config) {
                     cli::Option{"--keep-built", "", "keep the built images in this folder", cli::Arg::Value, "DIR"},
                     cli::Option{"--tag", "", "the name the boots' screenshots are filed under (default regress)", cli::Arg::Value, "TAG"},
                     cli::Option{"--cases", "", "slow: the cases file (default tests/regress/slow.json)", cli::Arg::Value, "FILE"},
-                    cli::Option{"--exe", "", "slow: the codebreaker program the cases run", cli::Arg::Value, "FILE"}},
+                    cli::Option{"--exe", "", "slow: the codebreaker program the cases run (default: this one)", cli::Arg::Value, "FILE"}},
                    {},
                    {},
                    "Verify",
@@ -458,6 +460,11 @@ cli::Command command(const config::Config& config) {
         if (const auto v = args.value("tag")) o.tag = *v;
         o.cases = args.value("cases") ? fs::from_text(*args.value("cases")) : config.checkout_root() / "tests" / "regress" / "slow.json";
         if (const auto v = args.value("exe")) o.exe = fs::from_text(*v);
+        else {                                                                       // this program
+            std::wstring self(32768, L'\0');
+            self.resize(GetModuleFileNameW(nullptr, self.data(), static_cast<DWORD>(self.size())));
+            if (!self.empty()) o.exe = stdfs::path(self);
+        }
         const Report r = run(*tier, production_services(config), o);
         cb::out("{}", r.text());
         return r.pass ? kExitOk : kExitFailed;

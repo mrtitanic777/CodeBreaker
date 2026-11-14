@@ -396,7 +396,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set("exact", exact::command::runner(exact::command::Environment{config}));
 
     // analyze <module> ...: the analyses of a module and the facts they file
-    {   // observe's runs go out to worker processes when this program hosts them (cbexe/host.cc)
+    {   // observe's runs go out to worker processes when this program hosts them
         std::optional<jobs::WorkerLauncher> workers;
         if (engine::hosting_workers()) workers = jobs::WorkerLauncher::for_this_program();
         table.set(store::analyze_command::command(store::analyze_command::Environment{config, corpus, std::move(workers)}));

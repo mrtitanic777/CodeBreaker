@@ -8,9 +8,7 @@
 //     codebreaker demangle <name> ...                  cb::symbols::demangle
 //     codebreaker dos-interrupts [<int> [<AH> [<AL>]]]  cb::symbols::dos_interrupts
 //
-// The exe reaches this through one C entry point, cb_native_command(), called from native/cbexe/commands.cc; the
-// translated codebreaker/__main__.py hands it a command line whose command is_native() before anything else reads it
-// (so `--corpus NAME` is acted on here, by CommandTable).
+// codebreaker.exe's main hands every command line to this table (so `--corpus NAME` is acted on here, by CommandTable).
 #pragma once
 
 #include <memory>

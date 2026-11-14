@@ -5,8 +5,7 @@
 // operator new / delete of up to 512 bytes come from free lists by size class (16-byte steps), each thread keeping its own, carved from 1 MB
 // slabs of one reserved address range; larger blocks, and any block not from that range, are malloc's and free's. The command layers allocate
 // small strings, vectors and tree nodes at every turn, and measured on `decompile kernel32.dll` the process heap (RtlAllocateHeap / RtlFreeHeap)
-// was over a quarter of the program's time; with this the plain program matches the translated-Python one, which has had the same allocator
-// (native/pyrt/src/alloc.cc, the same code) all along. CB_MALLOC=1 in the environment turns it off (every block malloc's), to tell a memory
+// was over a quarter of the program's time; with this the program's allocation cost is a small part of its time. CB_MALLOC=1 in the environment turns it off (every block malloc's), to tell a memory
 // bug from the allocator's.
 #include <windows.h>
 #include <xmmintrin.h>   // _mm_prefetch
