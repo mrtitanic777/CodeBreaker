@@ -5,7 +5,7 @@ rem
 rem     tools\gate.cmd                 build native/cb (incremental: ninja's object cache is the compile cache), then in ONE parallel run
 rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of testdata\exe_gate
 rem     tools\gate.cmd --no-build      skip the build (the objects are current)
-rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default state\cxx\codebreaker\build\codebreaker.exe, else the main checkout's)
+rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else state\cxx\codebreaker\build\codebreaker.exe, else the main checkout's)
 rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone)
 rem     tools\gate.cmd --no-ui         skip the UI's Python tests (the terminal interface stays Python and needs real python + Textual,
 rem                                    which the exe cannot run; --update, --filter and --no-unit skip them too)
@@ -35,6 +35,9 @@ set PASS=%PASS% %1
 shift
 goto args
 :run
+rem the program under test: --exe, else CB_EXE (the one setting every tool honors: set it to the plain native program,
+rem state\cxx\codebreaker\native\codebreaker.exe, to gate that), else the translated-Python build
+if "%EXE%"=="" if defined CB_EXE set EXE=%CB_EXE%
 call "%HERE%disk_guard.cmd" || exit /b 1
 set JOBS=%CB_BUILD_JOBS%
 if "%JOBS%"=="" set /a JOBS=%NUMBER_OF_PROCESSORS% / 2
