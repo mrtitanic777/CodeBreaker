@@ -53,18 +53,6 @@ def kit_dir(name):
     return path
 
 
-def kit_path(kit, path, base=None):
-    """a file named in a profile or project: "KIT:path" in that kit, else in `kit`, else from `base`"""
-    k, sep, rest = path.partition(":")
-    if sep and len(k) > 1:
-        return os.path.join(kit_dir(k), rest)
-    if kit:
-        return os.path.join(kit_dir(kit), path)
-    return os.path.normpath(os.path.join(base or ".", path))
-
-
-
-
 def profiles():
     d = TOOLCHAINS
     return sorted(f[:-5] for f in os.listdir(d) if f.endswith(".json"))

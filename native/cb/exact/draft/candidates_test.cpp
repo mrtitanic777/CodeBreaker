@@ -228,3 +228,22 @@ CB_TEST("exact.draft.candidates.localize_names_the_routines_and_the_data", [] {
     CB_CHECK_EQ(a.source, "extern int g_0005;\nextern f02000(), foo();\n\nf()\n{\n    x = foo();\n    y = f02000();\n    g_0005 = ax;\n}");
     CB_CHECK((a.registers_left == std::vector<std::string>{"ax"}));   // (a register the model left: a draft for a person)
 });
+
+// (tests/test_port_fixes.py, the exact.draft.candidates case) Merging arrays of structs of one size into one array: the second
+// localize of the same text on the same facts lays out the merged struct array as the first did. The Python kept its tables in
+// module globals, so the second run read the field list of the first as a field's type and declared `[(0, 'int'), (4, 'int')] f0;`;
+// here the tables are the State the caller holds, and the second run must be the first.
+CB_TEST("exact.draft.candidates.localize_twice_lays_out_the_merged_struct_array_the_same", [] {
+    cand::Settings settings;
+    text::ProjectCaches caches;
+    cand::State state = fresh();
+    for (const char* name : {"g_1000", "g_1004"}) {
+        state.facts.arrays[name] = std::string("struct s_") + name;
+        state.facts.struct_arrays[name] = text::StructArray{8, "int", {}};
+    }
+    const std::string src = "int f(i)\nint i;\n{\n    int x;\n    x = g_1000[i].f0;\n    g_1004[i].f0 = x;\n    return x;\n}";
+    const auto first = cand::localize(settings, src, 0, {}, state, caches);
+    const auto again = cand::localize(settings, src, 0, {}, state, caches);
+    CB_CHECK(first.source.find("struct s_g_1000 { int f0; char _2[2]; int f4; char _6[2]; };") != std::string::npos);
+    CB_CHECK_EQ(again.source, first.source);
+});
