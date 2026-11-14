@@ -845,14 +845,17 @@ std::optional<std::string> Decompiler::c_from_l2(const std::optional<std::string
         const Json doc = notes.l2_exact_json ? json::parse(*notes.l2_exact_json) : translate::l2::to_json(*notes.l2);   // (its far pointers: L2's types say which)
         if (module != nullptr) {
             Json facts = internal::facts_json(*module);
+            // (`left`, the facts as the back end left them, is read by the 16-bit path's flags() alone; the 32-bit module's facts are
+            // every function name and global, and writing them out again for every function was a fifth of the time)
+            const bool keep_left = module->path == c_text::ModuleFacts::Path::Win16;
             try {
                 body = lib.function(doc, kMoved, std::nullopt, &facts);
             } catch (...) {
-                module->left = json::dump(facts, json::Style::Compact);
+                if (keep_left) module->left = json::dump(facts, json::Style::Compact);
                 throw;
             }
             internal::apply_left(*module, facts);
-            module->left = json::dump(facts, json::Style::Compact);
+            if (keep_left) module->left = json::dump(facts, json::Style::Compact);
         } else {
             body = lib.function(doc, kMoved);
         }

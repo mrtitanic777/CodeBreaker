@@ -613,8 +613,14 @@ CB_TEST("decompile.decompiler.c_from_l2", [] {
     CB_CHECK(facts.structs_used.contains("struct_1"));
     CB_CHECK(facts.novalue);
     CB_CHECK_EQ(facts.interrupts.size(), std::size_t{1});
-    CB_CHECK(facts.left.has_value());   // (the facts as the back end left them, for flags())
-    CB_CHECK(dt_has(*facts.left, "\"declared\":\"int g(void)\""));
+    CB_CHECK(!facts.left.has_value());   // (the 32-bit module's facts are not kept as text: only the 16-bit path reads them, for flags())
+    ct::ModuleFacts facts16;
+    facts16.path = ct::ModuleFacts::Path::Win16;
+    ct::FunctionNotes notes16;
+    notes16.l2 = notes.l2;
+    CB_CHECK(f.decompiler.c_from_l2("printed", notes16, std::nullopt, &facts16).has_value());
+    CB_CHECK(facts16.left.has_value());   // (the facts as the back end left them, for flags())
+    CB_CHECK(dt_has(*facts16.left, "\"declared\":\"int g(void)\""));
     // without module facts it is only the text
     ct::FunctionNotes bare;
     bare.l2 = notes.l2;
@@ -629,6 +635,7 @@ CB_TEST("decompile.decompiler.c_from_l2", [] {
     ct::FunctionNotes missing;
     missing.l2 = f.decompiler.node_of(Json::parse(dt_document("keyerror")));
     ct::ModuleFacts missing_facts;
+    missing_facts.path = ct::ModuleFacts::Path::Win16;
     CB_CHECK_EQ(f.decompiler.c_from_l2("printed", missing, std::nullopt, &missing_facts).value(), "printed");
     CB_CHECK(missing_facts.left.has_value() && dt_has(*missing_facts.left, "int partial(void)"));
     ct::FunctionNotes broken;

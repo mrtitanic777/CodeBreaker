@@ -20,14 +20,19 @@ Json facts_tuple(std::initializer_list<Json> items) { return Json{{"$t", Json(it
 
 Json facts_set_of_text(const std::set<std::string>& items) {
     Json list = Json::array();
+    list.get_ref<Json::array_t&>().reserve(items.size());
     for (const std::string& s : items) list.push_back(s);
-    return Json{{"$s", list}};
+    Json out = Json::object();
+    out["$s"] = std::move(list);   // (moved: `Json{{"$s", list}}` copies the whole list)
+    return out;
 }
 
 Json facts_set_of_numbers(const std::set<std::int64_t>& items) {
     Json list = Json::array();
     for (const std::int64_t n : items) list.push_back(n);
-    return Json{{"$s", list}};
+    Json out = Json::object();
+    out["$s"] = std::move(list);
+    return out;
 }
 
 template <class Map>

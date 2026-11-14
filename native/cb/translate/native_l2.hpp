@@ -139,6 +139,7 @@ public:
     // One entry point with its arguments -> the answer. LibraryError (or its subtypes) for an error status; when `facts` is
     // given, the keys the library wrote to it (also when it fails) are put in it.
     Json call(std::string_view name, const Json& arguments, Json* facts = nullptr) const;
+    Json answer_of(std::string_view name, const std::pair<int, std::string>& raw, Json* facts) const;   // (call_raw's answer, read as call reads it)
 
     // ---- the C back end (backends/c) ----
 

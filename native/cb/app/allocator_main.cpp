@@ -23,7 +23,7 @@ constexpr int kClasses = (int)(kMax / kStep);    // 16, 32, ... 512
 constexpr size_t kSlab = size_t(1) << 20;        // committed at a time, all of one class
 constexpr size_t kRange = size_t(64) << 30;      // address space reserved once
 constexpr int kBatch = 64;                       // blocks a thread takes or gives back at a time
-constexpr int kKeep = 512;                       // a thread's list beyond this goes back to the shared one
+constexpr int kKeep = 8192;                      // a thread's list beyond this goes back to the shared one (the commands are one busy thread: building and dropping a whole fact tree must not shuffle blocks through the shared list)
 
 struct Block { Block* next; };
 

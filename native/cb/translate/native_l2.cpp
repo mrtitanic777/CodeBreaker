@@ -101,7 +101,11 @@ std::pair<int, std::string> Library::call_raw(std::string_view name, std::string
 }
 
 Json Library::call(std::string_view name, const Json& arguments, Json* facts) const {
-    const auto [status, text] = call_raw(name, wire(arguments));
+    return answer_of(name, call_raw(name, wire(arguments)), facts);
+}
+
+Json Library::answer_of(std::string_view name, const std::pair<int, std::string>& raw, Json* facts) const {
+    const auto& [status, text] = raw;
     Json answer;
     if (!json::try_parse(text, answer)) bad_answer(name, "the library's answer is not JSON");
     if (status == 0) return answer;
@@ -125,7 +129,13 @@ std::string Library::function(const Json& doc, std::span<const std::string> move
         far_json = Json::array();
         for (const std::string& name : *far) far_json.push_back(name);   // (a set: already in order)
     }
-    const Json r = call("function", Json::array({doc, strings_json(moved), far_json, facts != nullptr ? *facts : Json(nullptr)}), facts);
+    // The module's facts are most of what a function's call carries (every function name, every global ...): they go into the
+    // arguments by swap, not by copy, and come back out before the answer is merged into them.
+    Json arguments = Json::array({doc, strings_json(moved), far_json, Json(nullptr)});
+    if (facts != nullptr) arguments[3].swap(*facts);
+    const std::string text = wire(arguments);
+    if (facts != nullptr) arguments[3].swap(*facts);
+    const Json r = answer_of("function", call_raw("function", text), facts);
     if (facts != nullptr && items(r).size() > 1 && items(r)[1].is_object()) {
         if (!facts->is_object()) *facts = Json::object();
         for (const auto& [k, v] : items(r)[1].items()) (*facts)[k] = v;
