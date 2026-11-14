@@ -250,10 +250,25 @@ def test_int_proofs():
     assert 'total += i;' in s and 'i += 3;' in s                         # a bounded counter: plain
 
 
+def _msvc_env():
+    """The environment vcvars64.bat sets up: the install the setting `visual_studio` names, else the newest vswhere finds."""
+    from codebreaker.base import settings
+    vs = settings.get("visual_studio")
+    if not vs:
+        where = os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                             "Microsoft Visual Studio", "Installer", "vswhere.exe")
+        out = subprocess.run([where, "-latest", "-prerelease", "-products", "*", "-requires",
+                              "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+                             capture_output=True, text=True).stdout.strip()
+        vs = out.splitlines()[0]
+    bat = os.path.join(vs, "VC", "Auxiliary", "Build", "vcvars64.bat")
+    out = subprocess.run(f'cmd /c ""{bat}" >nul && set"', shell=True, capture_output=True, text=True).stdout
+    return dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+
+
 def _msvc():
     try:
-        from codebreaker.recompile.xenon import msvc_env
-        env = dict(msvc_env())
+        env = _msvc_env()
     except Exception:
         return None
     cl = shutil.which('cl', path=env.get('Path') or env.get('PATH'))

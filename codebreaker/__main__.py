@@ -133,8 +133,6 @@ COMMANDS = {
     "ui": ("codebreaker.ui.terminal", []),
     "settings": ("codebreaker.base.settings", []),
     "cache": ("codebreaker.base.cache", []),
-    "recompile": ("codebreaker.recompile.powerpc", []),
-    "xenon-recompile": ("codebreaker.recompile.xenon", []),
     "xdk-match": ("codebreaker.symbols.xdk_libraries", []),
     # C++ (native/cbexe/commands.cc, in codebreaker.exe)
     "xbox-disc": ("codebreaker_native", ["xbox-disc"]),
