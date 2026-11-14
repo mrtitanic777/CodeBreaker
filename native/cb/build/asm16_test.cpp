@@ -281,6 +281,32 @@ CB_TEST("build.asm16.a_whole_segment_and_a_run_of_functions", [] {
     CB_CHECK(!has(half, "_f1_b6:\n") || has(half, "public _f1_b6"));
 });
 
+// NETDI's segment 54 is flagged code and holds only strings that far pointers name: read as instructions they gave 666 functions
+// that did not assemble back to their bytes. A segment of text has no instructions; every byte of it stays a byte.
+CB_TEST("build.asm16.a_code_segment_of_strings_has_no_instructions", [] {
+    using namespace std::string_literals;
+    const std::string strings = "NONET\0WINDOWS_NET\0WORKGROUP_CLIENT\0NETDI: lpRegLogConf = 0x%lx\0NETDI: Nothing selected in CB.\0"s;
+    const Bytes code(strings.begin(), strings.end());
+    const ne::Module m = ne::Module::open(tiny_ne(code, {}));
+    platforms::DecoderSet decoders;
+    asm16::Request r;
+    r.seg = 1;
+    r.start = 0;
+    r.end = 6;
+    r.publics = {{0, "_s_nonet"}, {6, "_s_windows_net"}};
+    const asm16::Function f(m, r, answer_symbols, decoders);
+    CB_CHECK(f.insns().empty());
+    // the same bytes as code (a real function's: push bp, mov bp,sp, pop bp, retf) do have instructions
+    const Bytes real{0x55, 0x8B, 0xEC, 0x5D, 0xCB};
+    const ne::Module c = ne::Module::open(tiny_ne(real, {}));
+    asm16::Request q;
+    q.seg = 1;
+    q.start = 0;
+    q.end = 5;
+    q.publics = {{0, "_f1_0"}};
+    CB_CHECK(!asm16::Function(c, q, answer_symbols, decoders).insns().empty());
+});
+
 CB_TEST("build.asm16.a_code_segment_that_is_not_there_is_refused", [] {
     // the module's data segment is no code: a request into it finds no bytes to follow
     const ne::Module& m = lzexpand();
