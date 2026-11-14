@@ -38,7 +38,7 @@ goto args
 rem the program under test: --exe, else CB_EXE (the one setting every tool honors), else the one tools\build_codebreaker_exe.cmd installs
 set OWN_EXE=0
 if "%EXE%"=="" if defined CB_EXE set EXE=%CB_EXE%
-if "%EXE%"=="" (set OWN_EXE=1& set EXE=%ROOT%statexdebreakerbuilddebreaker.exe)
+if "%EXE%"=="" (set OWN_EXE=1& set EXE=%ROOT%\state\cxx\codebreaker\build\codebreaker.exe)
 call "%HERE%disk_guard.cmd" || exit /b 1
 set JOBS=%CB_BUILD_JOBS%
 if "%JOBS%"=="" set /a JOBS=%NUMBER_OF_PROCESSORS% / 2

@@ -92,7 +92,7 @@ native/nasm/         the assembler: NASM's engine with a MASM 6.x mode, `--masm`
                      BSD-2-Clause; native/nasm/docs/MASM-COMPATIBILITY.md, test/masm)
 native/retromcp/     the Java decompile engine: RetroMCP's (Java, Gradle; MIT), run headless by
                      decompile/jar.py
-tests/               python tests/run_all.py -- run before every commit
+tests/               tools/gate.cmd -- the gate (cb_tests, command cases against codebreaker.exe, the UI's Python tests)
 tools/               measuring and keeping the code base itself in order
 docs/                STATUS.md (where things stand), NOT_IN_REPO.md (what to attach, and its setting)
 ```

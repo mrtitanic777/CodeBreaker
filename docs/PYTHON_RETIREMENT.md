@@ -482,3 +482,24 @@ about 10 ms.
   `cli-help` and `cli-unknown` were re-recorded for the native wording (no `python -m`, the native catalog, usage on stderr).
 - The native program still loads the prebuilt `native/<lib>/build/bin` DLLs (`cbl2.dll` for decompile, the xex program,
   ...): they must exist beside the checkout until those libraries are folded in.
+
+## 9. The plain program is codebreaker.exe; pyengine is gone (branch `retire-pyengine`)
+
+Done on the branch `retire-pyengine` (to be merged when the Python batches are done; details and numbers in
+`state/work/typed-port/retire_pyengine.md`):
+
+- `tools\build_codebreaker_exe.cmd` builds target `codebreaker` of the one `native/cb` tree (`state\cxx\cb`) and installs it, with
+  unicorn/capstone/libz3, as `state\cxx\codebreaker\build\codebreaker.exe`. That is the path `.mcp.json`, `tests/run_all.py`,
+  `tools\gate.cmd` and `codebreaker/ui/client.py` already used, so none of them changed their default. `tools\build_codebreaker.cmd`
+  (the side-by-side build of section 8) is folded into it. `tools\build_cb.cmd` builds the program too (it is part of the default target).
+- Deleted: `native/pyengine`, `native/pyrt`, `native/typed` (with the `compare.image` manifest), `native/ported`, `native/cb/compat`
+  (shims and `py_bridge`), `native/cbexe`, the 15 `*shims*_test.cpp`, `tools/cb_shim`, `tools/build_rt_exe.cmd`; from
+  `native/cb/CMakeLists.txt` the `cb_shim_check` library, the shim/compat test blocks, the `big.cc` source and the include roots of
+  the old layer; `CB_WITH_PYTHON`; `tools\build_cb.cmd shims`.
+- `tools\gate.cmd` is the one gate: `cb_tests`, `cb_exe_gate` on the real exe, then the UI's Python tests under real python. It builds
+  and installs the exe when `--exe`/`CB_EXE` do not name one.
+- `tests/run_all.py` no longer runs suites inside the exe (there is no translated Python): it runs them under real python, with `CB_EXE`
+  set, and does not build anything. Nothing in the gate needs it. Keep it only while Python suites other than the UI's remain; delete
+  it with the last of them (its compile cache and `--changed` plan live in `native/testkit` and the Python import graph, both Python-world).
+- Still there, on purpose: the `cbtrace` target (the Python `emulate/native_trace.py` loads it) and `native/{engine,formats,symbols,invert,analyze}`
+  (step 7e, after the Python callers go).
