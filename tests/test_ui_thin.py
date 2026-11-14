@@ -6,8 +6,8 @@ Run:  python tests/test_ui_thin.py     (exit code 0 = all passed)
 
 The tree is copied to a temporary folder and run there with `python -E` (nothing of this checkout on the path;
 Textual and Rich from the site; an editable install of the package is hidden). The tour needs the native program
-(CB_EXE, `exe` in settings.json or the build in state/cxx), Textual and the corpus (it seeds the function store
-test_ui.py does), and is SKIPPED without them; the import check needs Textual only."""
+(CB_EXE, `exe` in settings.json or the build in state/cxx) and Textual (it seeds a function store of its own, tests/
+ui_seed.py does), and is SKIPPED without them; the import check needs Textual only."""
 import importlib.util
 import json
 import os
@@ -118,12 +118,9 @@ async def tour():
     print("TOUR-OK", len(mod.rows), modules)
 
 asyncio.run(tour())
-# the call no screen makes without a person typing: a name (the seeded function has no body to carry it: the service says so, as a ValueError)
-try:
-    T.STORE.name_function(%(module)r, %(addr)r, "thin_client_name")
-    raise AssertionError("named a function with no body")
-except ValueError as e:
-    assert "no body recorded" in str(e), e
+# the call no screen makes without a person typing: a name for a function (its body is recorded in the knowledge base of the state folder)
+named = T.STORE.name_function(%(module)r, %(addr)r, "thin_client_name")
+assert named.get("named") == "thin_client_name" and named.get("body"), named
 print("NAME-OK")
 c = client.find()
 if c:
@@ -140,25 +137,22 @@ def test_every_screen_works_with_only_the_ui_present():
     if not client.program():
         raise Skip("the native program is not built (CB_EXE)")
     sys.path.insert(0, os.path.join(ROOT, "tests"))
-    import test_ui                                                # (its own function store, CB_FUNCTIONS_DB: the service started below shares it)
-    try:
-        module, _sha, _digest = test_ui._fill_store()
-    except test_ui.Skip as e:
-        raise Skip(str(e))
-    image = test_ui.pe.open_pe(module)
-    addr = sorted("%08x" % (image.image_base + x["rva"]) for x in image.export_table()["symbols"][:6])[0]
+    import ui_seed
+    store_dir = tempfile.mkdtemp(prefix="cbthinstore")        # the function store the service started below shares (CB_FUNCTIONS_DB)
+    store = os.path.join(store_dir, "functions.sqlite")
+    module, _sha, addr = ui_seed.fill_store(store)
     tree = tempfile.mkdtemp(prefix="cbthin")
     state = tempfile.mkdtemp(prefix="cbthinstate")
     try:
         _only_ui(tree)
-        env = dict(os.environ, CB_EXE=client.program(), CB_STATE=state)
+        env = dict(os.environ, CB_EXE=client.program(), CB_STATE=state, CB_FUNCTIONS_DB=store)
         r = subprocess.run([sys.executable, "-E", "-c", DRIVER % {"tree": tree, "module": module, "addr": addr}], cwd=tree,
                            capture_output=True, text=True, timeout=600, env=env)
         assert r.returncode == 0 and "TOUR-OK" in r.stdout and "NAME-OK" in r.stdout, r.stdout[-800:] + r.stderr[-2500:]
     finally:
         shutil.rmtree(tree, ignore_errors=True)
         shutil.rmtree(state, ignore_errors=True)
-        shutil.rmtree(test_ui.TEMP, ignore_errors=True)
+        shutil.rmtree(store_dir, ignore_errors=True)
 
 
 def main():

@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""Tests for what shows the work: the terminal interface. Run:  python tests/test_ui.py     (exit code 0 = all passed)
+"""The terminal interface's test (the one interface that stays Python). Run:  python tests/test_ui.py     (exit code 0 = all passed)
 
-They use two small corpus modules (version.dll, lzexpand.dll) and a function store of
-their own in a temporary folder -- the real store is never opened. Checks that need the corpus
-are SKIPPED when it is not present."""
+It needs real python with Textual, and the native program (CB_EXE, `exe` in settings.json, or the build in state/cxx); without them it
+is SKIPPED. The store it shows is a small one of its own in a temporary folder (tests/ui_seed.py), never the real one. Everything else
+this file once checked -- describe, strings, the ledger, progress, the service's reads -- is a native test (docs: batch9.md)."""
 import os
 import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+for p in (ROOT, os.path.join(ROOT, "tests")):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 TEMP = tempfile.mkdtemp(prefix="cbui")
 os.environ["CB_FUNCTIONS_DB"] = os.path.join(TEMP, "functions.sqlite")      # before anything opens a store
 
-from codebreaker.base import corpus                          # noqa: E402
-from codebreaker.formats import pe                           # noqa: E402
-from codebreaker.store import functions as F                 # noqa: E402
+import ui_seed                                               # noqa: E402
 
 RESULTS = []
 
@@ -35,42 +34,16 @@ def check(fn):
         RESULTS.append((fn.__name__, "FAIL", "%s: %s" % (type(e).__name__, e)))
 
 
-def _module(name):
-    if not os.path.isdir(corpus.root()):
-        raise Skip("retail corpus not present")
-    path = corpus.retail(name)
-    if not path:
-        raise Skip("%s is not in the corpus" % name)
-    return path
-
-
-# --- a store of our own ----------------------------------------------------------------------
 def _fill_store():
-    """A store of our own holding version.dll with one function of each outcome."""
-    path = _module("version.dll")
-    digest = "test-verifier-settings"          # (what the rows are filed under: the interface shows the store's rows whatever their settings)
-    sha = corpus.sha(path)
-    fs = F.open()
-    if not fs.addresses(sha):
-        image = pe.open_pe(path)
-        addrs = sorted("%08x" % (image.image_base + x["rva"]) for x in image.export_table()["symbols"][:6])
-        outcome = [("equivalent", "coverage=90"), ("equivalent", "coverage=20,low-coverage"), ("divergent", ""),
-                   ("inconclusive", ""), ("no-compile", "")]
-        fs.add_module(sha, "version.dll", path, "pe")
-        fs.add_functions(sha, addrs)
-        fs.record_many(sha, "decompiler", "1", digest, [
-            dict(addr=a, sig="s", name="f%d" % i, source="int f%d(void) { return %d; }" % (i, i), verdict=v,
-                 limits=lim, reason="ret-differs" if v == "divergent" else "")
-            for i, (a, (v, lim)) in enumerate(zip(addrs, outcome))])
-    fs.close()
-    return path, sha, digest
+    """A store of our own holding lz32.dll with one function of each outcome: (the module's path, its sha, its first address)."""
+    return ui_seed.fill_store(os.environ["CB_FUNCTIONS_DB"])
 
 
 def test_terminal_interface():
     """The terminal interface (ui/terminal.py) against the native service: its verdict bar and
     addresses, the store's overview it opens on, and every screen shown headless -- home, a module,
     its tabs, help, jobs -- then the service gone: ServiceDown says so and `r` brings it back.
-    Needs the native program (CB_EXE or the build in state/cxx) and a corpus."""
+    Needs the native program (CB_EXE or the build in state/cxx)."""
     import importlib.util
     if not hasattr(sys, "meta_path"):
         raise Skip("run under python: the exe's translated runtime has no asyncio/Textual (async def needs Python's compiler)")
@@ -83,10 +56,8 @@ def test_terminal_interface():
     assert len(b.plain) == 20 and b.plain == "\u2588" * 20
     assert len(T.bar({}, 12).plain) == 12
     assert T.flat_address("4:015c") == "1018015c" and T.flat_address("401000") == "401000"
-    over = F.overview()                                     # (the test's own store)
-    assert all({"name", "functions", "latest"} <= set(m) for m in over)
-    path = _module("lzexpand.dll")
-    version, _sha, _digest = _fill_store()
+    path = ui_seed.ne_module()
+    version, _sha, _addr = _fill_store()
     if not client.program():
         raise Skip("the native program is not built (CB_EXE)")
     was_state = os.environ.get("CB_STATE")
@@ -110,7 +81,7 @@ def test_terminal_interface():
             await pilot.press("escape", "escape")
             await pilot.pause(0.5)
             assert isinstance(app.screen, T.Home)
-            assert any(r["name"] == "version.dll" for r in app.screen.rows), app.screen.rows   # the overview, from the service
+            assert any(r["name"] == "lz32.dll" for r in app.screen.rows), app.screen.rows   # the overview, from the service
             app.push_screen(T.Module(version))                                                 # a module the store holds
             for _ in range(40):
                 await pilot.pause(0.5)
