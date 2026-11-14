@@ -21,7 +21,6 @@ import struct
 from codebreaker.base import settings
 from codebreaker.build import driver as builder
 
-CONDITIONS = ("o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g")
 SPELLING = {"pushal": "pushad", "popal": "popad", "int3": "int 3", "retn": "ret", "fwait": "wait",
             "pushaw": "pusha", "popaw": "popa", "retfw": "retf", "iretw": "iret"}
 STRING_OPS = re.compile(r"^(rep |repe |repne )?(movs|cmps|stos|lods|scas|ins|outs)([bwd])\b")
@@ -184,49 +183,3 @@ def _last_segment_data(obj):
     return out
 
 
-def culprits(original, built, pieces):
-    """Which instructions did not come back as they were. `pieces` covers the original in
-    order: (offset, length, mask or None, key or None, is a jump inside the segment); a piece
-    with a key is an instruction written as its mnemonic. The built bytes are walked piece by
-    piece, so that an instruction that came back longer or shorter is found itself, and not
-    the first place behind it where the bytes no longer line up. A jump that only changed
-    because what it jumps over changed size is blamed only when nothing else is.
-    -> the set of keys to write as bytes instead."""
-    def same(pos, piece):
-        off, n, mask, _key, _jump = piece
-        if pos < 0 or pos + n > len(built):
-            return False
-        a, b = built[pos:pos + n], original[off:off + n]
-        if mask is None:
-            return a == b
-        return all(x == y for x, y, k in zip(a, b, mask) if not k)
-
-    pos, bad, jumps = 0, set(), set()
-    count = len(pieces)
-    k = 0
-    while k < count:
-        piece = pieces[k]
-        if same(pos, piece):
-            pos += piece[1]
-            k += 1
-            continue
-        if piece[3] is not None:
-            (jumps if piece[4] else bad).add(piece[3])
-        # where does the built file continue? try the sizes this piece may have come back with
-        ahead = [q for q in pieces[k + 1:k + 5] if q[1] >= 2] or pieces[k + 1:k + 2]
-        for d in sorted(range(-8, 17), key=abs):
-            p = pos + piece[1] + d
-            if p < pos:
-                continue
-            q = p
-            for nxt in pieces[k + 1:k + 1 + max(1, len(ahead))]:
-                if not same(q, nxt):
-                    break
-                q += nxt[1]
-            else:
-                pos = p
-                break
-        else:
-            break                                            # lost: what was found so far is the lesson
-        k += 1
-    return bad or jumps

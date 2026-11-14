@@ -90,3 +90,30 @@ Wiring changed: `platforms/dos.py` and `platforms/vxd.py` lose `lane` (now `None
 - `tools/check_imports.py` after each group, under plain python: group 1: 307 pass / 18 fail (all in group 3's modules, as before); group 2: 292 / 18; group 3: 289 modules, 0 failing, 0 dangling.
 - Native, area builds (CB_BUILD_JOBS=3): `area engine --filter engine.nes_demo` 5 passed (185 checks, none skipped); `area source --filter source.ppc_recompiled` 5 passed (74 checks, the SDK compiler, g++ and the kernel headers all present); `area source --filter source.nasm_fragments` 3 passed (it failed on the first try, on a wrong key: the check has teeth);
   `area recompile --filter recompile.x360` 11 passed with the two slow ones skipped, and `CB_SLOW_TESTS=1 ... recompile.x360.the_runtimes` passed (clang-cl build of `xex_image_test`, ReadImage vs basefile on LoganMinecraftTest.xex).
+
+## Tidy after the three groups
+
+`tools/tidy.py` (a row of `run_all.py`) failed on what the deletions orphaned; `tidy.py --apply`: **3 more modules, 235 lines** (`build/{mzfile,stubjoin,vxdfile}`: only the deleted DOS and driver writers reached them; native twins `native/cb/build/{mzfile,stubjoin,vxdfile}` with their tests) and
+**130 lines of unused definitions** (`formats/dos.kernel_parts`, `formats/le.W3File`, `source/assembly.{CONDITIONS,culprits}`, `source/ne_asm/segdiff._segment`). `check_imports`: 286 modules, 0 failing.
+
+## Totals and what is left
+
+| | modules | lines |
+|---|---|---|
+| NES lane | 8 | 1,105 |
+| recompile/* | 15 | 5,510 |
+| Windows writers + DOS/driver lanes | 8 | 4,122 |
+| orphaned by them (tidy) | 3 | 235 |
+| **modules** | **34** | **10,972** |
+| tests and tools deleted | `test_nes`, `test_recompile`, `test_x360`, `tools/sleigh_verify_6502` | 759 |
+| golden generators deleted | 8 | 1,014 |
+| definitions removed by tidy | | 130 |
+
+Python modules left: 286 under `codebreaker/` (320 before this batch). Left on purpose: `verify/authored/*`, `verify/gate16/*`, `verify/lanes/powerpc` and the `module_writer` closure (the integrator's boot decision), `translate/*`, `exact/*`, and the rest of the live UI/`__main__`/corpus closure.
+
+## Verification run here (worktree, translated exe `tools\build_codebreaker_exe.cmd fast` with `_CL_=/wd4702`, absolute `settings.json`)
+
+- `tools\build_cb.cmd` (the whole of `cb_tests`, jobs 3): **5,621 passed, 0 failed** (263,681 checks), with the new tests among them.
+- `codebreaker.exe tools/check_imports.py`: 289 modules, 0 failing, 0 dangling (before tidy).
+- `CB_EXE=... codebreaker.exe tests/run_all.py --quick --jobs 2 --no-build`: every one of the 33 suites ok; the one failure was `tools/tidy.py` (above, fixed).
+- Not run: `tools\gate.cmd` (command cases) -- as in batch 4 the worktree differs from the main checkout in settings and state, and no command case touches the deleted Python (the plain exe runs no Python).
