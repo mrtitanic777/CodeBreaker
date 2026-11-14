@@ -79,10 +79,10 @@ codebreaker/
   java/        the Java transpiler (was J2CTool): Java source -> C++03, deterministic
                transpile.py  THE converter: parse, resolve types and ownership, emit, check
                emit/, rules.py, runtime.py, profiles/ (Minecraft eras), platform/ (the console layer)
-               console/      the Xbox 360 port: assets, XACT audio, achievements, the post-convert
-                             rewrites, the Visual Studio project; run.py: `java <tool>`
-  ui/          the terminal interface (terminal.py), the MCP server, service.py under both, and
-               serve.py, the service process they are clients of
+               console/      the Xbox 360 port's platform tables and SDK reading (assets, XACT audio, the
+                             Visual Studio project and `java <tool>` are native/cb/java)
+  ui/          the terminal interface (terminal.py), the MCP server and service.py under both (the
+               service process they are clients of is native: `codebreaker serve`, native/cb/ui)
 native/decompiler/   the native decompiler (C++): decompiler.cc around the Ghidra decompiler core
                      in core/ (Apache-2.0, see core/LICENSE, core/NOTICE); upstream
                      version and every local patch: docs/GHIDRA_FORK.md
