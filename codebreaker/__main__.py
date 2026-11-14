@@ -102,36 +102,10 @@ import importlib
 import importlib.util
 import sys
 
-COMMANDS = {
-    "place": ("codebreaker.source.placement", []),
-    "flat-thunk": ("codebreaker.build.flat_thunk", []),
-    "decompile": ("codebreaker.decompile.decompiler", []),
-    "identify": ("codebreaker.symbols.runtime_library", []),
-    "demangle": ("codebreaker.symbols.demangle", []),
-    "dos-functions": ("codebreaker.analyze.dos_functions", []),
-    "dos-interrupts": ("codebreaker.symbols.dos_interrupts", []),
-    "driver-services": ("codebreaker.symbols.driver_services", []),
-    "origin": ("codebreaker.analyze.origin", []),
-    "driver-build": ("codebreaker.build.driver", []),
-    "resources": ("codebreaker.build.resources", []),
-    "cab": ("codebreaker.formats.cab", []),
-    "xex": ("codebreaker.formats.xex", []),
-    "ui": ("codebreaker.ui.terminal", []),
-    "settings": ("codebreaker.base.settings", []),
-    "cache": ("codebreaker.base.cache", []),
-    "xdk-match": ("codebreaker.symbols.xdk_libraries", []),
-    # C++ (native/cbexe/commands.cc, in codebreaker.exe)
-    "xbox-disc": ("codebreaker_native", ["xbox-disc"]),
-    "xex-basic": ("codebreaker_native", ["xex-basic"]),
-    "xenon-config": ("codebreaker_native", ["xenon-config"]),
-    "switch-tables": ("codebreaker_native", ["switch-tables"]),
-    "corpus-executables": ("codebreaker_native", ["corpus-executables"]),
-}
-
-
 # Commands codebreaker.exe runs on native/cb (cb/app/native_commands.hpp), Python not involved: the whole command
-# line, --corpus included, goes to codebreaker_native's "cb". Under plain Python (no codebreaker_native) they run as
-# the modules COMMANDS names.
+# line, --corpus included, goes to codebreaker_native's "cb". Every command is one of them but `ui`, the terminal
+# interface, which is the one thing that is Python (codebreaker/ui); under plain Python (no codebreaker_native) only
+# `ui` runs, and the rest are the native program's (codebreaker.exe, or the plain `codebreaker` program).
 NATIVE = ("info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java")
 
 
@@ -150,15 +124,17 @@ def main(argv):
     code = _native_command(argv)
     if code is not None:
         return code
-    from codebreaker.base import corpus
-    argv = corpus.take_option(argv)                          # --corpus NAME, for any command
-    if not argv and sys.stdin.isatty() and sys.stdout.isatty() and importlib.util.find_spec("textual"):
-        argv = ["ui"]                                        # (no command, in a terminal: the interface)
-    if not argv or argv[0] in ("-h", "--help", "help") or argv[0] not in COMMANDS:
-        print(__doc__)
-        return 0 if argv and argv[0] in ("-h", "--help", "help") else 2
-    module, fixed = COMMANDS[argv[0]]
-    return importlib.import_module(module).main(fixed + argv[1:])
+    words = [w for i, w in enumerate(argv) if w != "--corpus" and (i == 0 or argv[i - 1] != "--corpus")]
+    if not words and sys.stdin.isatty() and sys.stdout.isatty() and importlib.util.find_spec("textual"):
+        words = ["ui"]                                       # (no command, in a terminal: the interface)
+    if words and words[0] == "ui":
+        from codebreaker.ui import terminal
+        return terminal.main(words[1:])
+    print(__doc__)
+    if words and words[0] not in ("-h", "--help", "help"):
+        print("codebreaker: %r is run by the native program (codebreaker.exe), not by python -m codebreaker" % words[0])
+        return 2
+    return 0 if words else 2
 
 
 def _entry():
