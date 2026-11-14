@@ -32,6 +32,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <span>
@@ -106,6 +107,19 @@ struct NamesUsed {
     bool mk_fp = false;                     // it builds far pointers with MK_FP
 };
 
+// The facts of a 32-bit module that are the same for every function of it (its function names, the globals it calls through, the
+// globals that hold pointers, the arguments its definitions take). They are held once and shared by every function's ModuleFacts, with
+// their text as the C back end takes it written once at first use (the decompiler makes it): a copy of each in each function's facts,
+// and writing them out again for each, was most of what a 32-bit module's C cost.
+struct FlatShared {
+    std::set<std::string> functions;
+    std::set<std::string> called_through;
+    std::set<std::string> pointer_globals;
+    std::map<std::string, std::int64_t> takes;
+    mutable std::once_flag text_once;
+    mutable std::string functions_text, called_through_text, pointer_globals_text, takes_text;   // JSON, the library's form
+};
+
 // The module's facts handed to the C back end for ONE function, and what the back end leaves in them. The 16-bit ones are
 // module_facts16()'s plus the module's later decisions; the 32-bit and PowerPC ones are what compilable32 and
 // compilable_powerpc decide.
@@ -138,6 +152,7 @@ struct ModuleFacts {
     std::set<std::string> pointer_globals;               // globals holding pointers
     std::map<std::string, std::int64_t> takes;           // {function: arguments its definition takes}, not __cdecl ones
     std::optional<std::map<std::string, struct_text::PlannedParam>> struct_fields;   // the fields of the structures this function reads through its parameters
+    std::shared_ptr<const FlatShared> shared;            // when set, the module's `functions`, `called_through`, `pointer_globals` and `takes` are these (and the four above are empty)
 
     // --- left by the back end
     std::optional<std::string> declared;                 // 32-bit and PowerPC: its heading as written

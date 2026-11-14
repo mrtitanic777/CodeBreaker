@@ -278,9 +278,9 @@ CB_TEST("decompile.c_text.compilable32", [] {
     CB_CHECK(has(m.preamble, "#define uRam00403000_1 (*(uint1 *)0x00403000)"));
     CB_CHECK(stand.seen.at("sub_401100").aliases.at("uRam00403000") == "uRam00403000_1");
     CB_CHECK(stand.seen.at("sub_401000").aliases.empty());
-    CB_CHECK(stand.seen.at("sub_401000").pointer_globals.contains("pcRam00403010"));
-    CB_CHECK(stand.seen.at("sub_401000").pointer_globals.contains("_uRam00403004") == false);
-    CB_CHECK(stand.seen.at("sub_401000").called_through.contains("cRam00403020"));
+    CB_CHECK(stand.seen.at("sub_401000").shared->pointer_globals.contains("pcRam00403010"));
+    CB_CHECK(stand.seen.at("sub_401000").shared->pointer_globals.contains("_uRam00403004") == false);
+    CB_CHECK(stand.seen.at("sub_401000").shared->called_through.contains("cRam00403020"));
     CB_CHECK(stand.seen.at("sub_401000").without_notes);
     // the declarations: the import (its argument bytes from the table), each function, and the ECX pragma
     CB_CHECK(has(m.preamble, "int __stdcall MessageBoxA();"));

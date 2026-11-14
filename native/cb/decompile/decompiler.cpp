@@ -843,7 +843,13 @@ std::optional<std::string> Decompiler::c_from_l2(const std::optional<std::string
     std::string body;
     try {
         const Json doc = notes.l2_exact_json ? json::parse(*notes.l2_exact_json) : translate::l2::to_json(*notes.l2);   // (its far pointers: L2's types say which)
-        if (module != nullptr) {
+        if (module != nullptr && module->shared != nullptr && module->path == c_text::ModuleFacts::Path::Flat32) {
+            // (a 32-bit module: its facts written as text, the module-wide parts once; what the back end left in them is read from its answer,
+            // which holds every key it wrote -- the facts as given were never read back by apply_left, whose keys the back end writes)
+            Json left;
+            body = lib.function_with_facts_text(doc, kMoved, internal::facts_text(*module), &left);
+            internal::apply_left(*module, left);
+        } else if (module != nullptr) {
             Json facts = internal::facts_json(*module);
             // (`left`, the facts as the back end left them, is read by the 16-bit path's flags() alone; the 32-bit module's facts are
             // every function name and global, and writing them out again for every function was a fifth of the time)
