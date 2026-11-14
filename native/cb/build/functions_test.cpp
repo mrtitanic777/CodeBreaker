@@ -553,13 +553,13 @@ CB_TEST("build.functions.every_function_is_compiled_and_a_rejected_one_is_stood_
 
 CB_TEST("build.functions.groups_share_a_pool_and_keep_their_own_folders_and_options", [] {
     Kit k;
-    FunctionBuilder builder({.workers = {.workers = 1}});   // (one at a time: the fake compiler's log is not written by two at once)
+    FunctionBuilder builder({});
     const stdfs::path a = k.work("seg1"), b = k.work("seg2");
     Texts texts = {{"f", fn("f")}, {"g", fn("g")}, {"h", fn("h")}};
     const std::vector<Group> groups = {{{"-zq"}, {"f", "g"}, a}, {{"-zq", "-mm"}, {"h"}, b}};
     const ExtraFlags more = {{"g", {"-nt=CODE9"}}};
-    const auto out = builder.compile_groups(k.compiler, "H", texts, groups, std::nullopt, more);
-    CB_CHECK_EQ(out.size(), 2u);
+    const auto out = builder.compile_groups(k.compiler, "H", texts, groups, 1, more);   // (one at a time, said outright: CB_JOBS, which the gate sets, would
+    CB_CHECK_EQ(out.size(), 2u);                                                                  // override a worker setting, and the fake compiler's log is not written by two at once)
     CB_CHECK_EQ(out[0].stems.at("g"), "f0001");
     CB_CHECK_EQ(out[1].stems.at("h"), "f0000");   // numbered within its folder
     const std::string calls_a = fs::read_text(a / "calls.txt");
