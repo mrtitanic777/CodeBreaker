@@ -9,6 +9,7 @@
 // (native/pyrt/src/alloc.cc, the same code) all along. CB_MALLOC=1 in the environment turns it off (every block malloc's), to tell a memory
 // bug from the allocator's.
 #include <windows.h>
+#include <xmmintrin.h>   // _mm_prefetch
 
 #include <cstdint>
 #include <cstdlib>
@@ -23,7 +24,7 @@ constexpr int kClasses = (int)(kMax / kStep);    // 16, 32, ... 512
 constexpr size_t kSlab = size_t(1) << 20;        // committed at a time, all of one class
 constexpr size_t kRange = size_t(64) << 30;      // address space reserved once
 constexpr int kBatch = 64;                       // blocks a thread takes or gives back at a time
-constexpr int kKeep = 8192;                      // a thread's list beyond this goes back to the shared one (the commands are one busy thread: building and dropping a whole fact tree must not shuffle blocks through the shared list)
+constexpr int kKeep = 2048;                      // a thread's list beyond this goes back to the shared one (the commands are one busy thread; 2048 per class keeps a whole fact tree's churn off the shared list without a list so long its blocks are cold)
 
 struct Block { Block* next; };
 
@@ -127,6 +128,7 @@ inline void* alloc(size_t n) {
             if (!b && refill(t, c)) b = t.list[c];
             if (b) {
                 t.list[c] = b->next;
+                _mm_prefetch(reinterpret_cast<const char*>(t.list[c]), _MM_HINT_T0);   // the next block of this class is the next new's first touch: have it in cache (the top self-time of `decompile kernel32.dll` was this load missing)
                 t.count[c]--;
                 return b;
             }

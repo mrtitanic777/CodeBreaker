@@ -250,7 +250,7 @@ CB_TEST("source.pipeline.match_of_a_powerpc_image_as_the_python_did", [] {
 CB_TEST("source.pipeline.module_of_a_java_program_as_the_python_did", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
-    const stdfs::path folder = testing::data_path("../../tests/java/fixtures/java");
+    const stdfs::path folder = testing::data_path("java/testdata/tools_fixtures");
     std::error_code ec;
     if (!stdfs::is_directory(folder, ec) || !java::production::find_java(w.config)) return;
     fs::ScopedTempDir out("pipeline-java");

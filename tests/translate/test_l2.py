@@ -10,7 +10,6 @@ import pytest
 from codebreaker.translate import ir, l2
 from codebreaker.translate.frontends import java as fj
 from codebreaker.translate.frontends.java import lower as L
-from codebreaker.verify.lanes import java
 
 jsonschema = pytest.importorskip('jsonschema')
 
@@ -40,7 +39,7 @@ def test_the_schema_is_valid_and_names_every_node():
         assert tuple(rules) == ir.OVERFLOW, node
 
 
-@pytest.mark.skipif(not java.jdk()[0], reason='needs a JDK')
+@pytest.mark.skipif(not fj.jdk()[0], reason='needs a JDK')
 def test_lowered_java_is_valid_l2_and_round_trips(tmp_path):
     (tmp_path / 'src').mkdir()
     (tmp_path / 'src' / 'Mix.java').write_text(SOURCE, encoding='utf-8')

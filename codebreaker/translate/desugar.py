@@ -19,6 +19,44 @@ never a guess). `run(units, keep)` rewrites in place; `keep` names the forms the
 """
 from codebreaker.translate import ir
 
+
+_PURE_OWNERS = frozenset(('java.lang.String', 'java.lang.Math', 'java.lang.Integer', 'java.lang.Float',
+                          'java.lang.Double', 'java.lang.Long', 'java.lang.Character', 'java.lang.Boolean',
+                          'java.lang.Class', 'java.lang.reflect.Constructor'))   # (lookups: no state they change)
+
+
+def _effects(n):
+    """Does evaluating `n` change anything (a call into the program, an allocation, an assignment, ++/--)?"""
+    for x in ir.walk(n):
+        if isinstance(x, (ir.Assign, ir.New)):            # (an array's allocation is not observable: its
+            return True                                  # elements are walked like any operand)
+        if isinstance(x, ir.Unary) and x.op in ('++', '--'):
+            return True
+        if isinstance(x, ir.Call) and not (x.sym is not None and x.sym.owner in _PURE_OWNERS):
+            return True
+    return False
+
+
+def _strip_paren(e):
+    while isinstance(e, ir.Paren):
+        e = e.x
+    return e
+
+
+def _written(n):
+    """Names (locals, fields) that evaluating `n` assigns or increments."""
+    out = set()
+    for x in ir.walk(n):
+        target = x.target if isinstance(x, ir.Assign) else (x.x if isinstance(x, ir.Unary) and x.op in ('++', '--') else None)
+        target = _strip_paren(target) if target is not None else None
+        if isinstance(target, (ir.Name, ir.Select)) and target.sym is not None:
+            out.add(target.sym.name)
+    return out
+
+
+def _read(n):
+    return set(x.sym.name for x in ir.walk(n) if isinstance(x, (ir.Name, ir.Select)) and x.sym is not None)
+
 FORMS = ('foreach', 'switchexpr', 'stringswitch', 'pattern')
 
 
@@ -228,11 +266,10 @@ class _Desugar(object):
         chain = _ancestors(root, sw)
         if chain is None:
             return None
-        from codebreaker.translate.backends import cpp03
         others = [n for n in _siblings(chain, sw)]
-        if any(cpp03._effects(n) for n in others):
+        if any(_effects(n) for n in others):
             return None
-        if cpp03._written(sw) & set().union(*[cpp03._read(n) for n in others] or [set()]):
+        if _written(sw) & set().union(*[_read(n) for n in others] or [set()]):
             return None
         p = dict(line=s.line, col=s.col)
         tmp = ir.Sym('local', self.fresh('sw'), self.owner, type=sw.type)

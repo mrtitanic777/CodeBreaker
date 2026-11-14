@@ -10,9 +10,6 @@ the L2 over (l2.to_json) and the text back, until its callers move to C++ themse
                            source, {function: (first, last) source line})
     program(units, main)   a whole Java program from L2 -> its C++ text (the modern forms C++17 has no word
                            for are lowered first: translate/desugar.py)
-    Bodies(ctx, units)     inside the Java transpiler (`convert(..., cpp_std='C++17')`): every body written
-                           by the C++03 back end's writer with the C++17 forms (cpp03.Bodies17) -- the
-                           transpiler's declarations are C++03's, so its bodies move to C++ with cpp03
 
 Both raise Decline for what the back end cannot write. Without cbl2.dll there is no C++17 back end
 (native_l2.why_not() says why; build: native/l2/CMakeLists.txt).
@@ -22,17 +19,12 @@ import os
 from codebreaker.translate import l2, native_l2
 
 _DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'data')
-RUNTIME = os.path.join(_DATA, 'translate', 'runtime', 'cpp17')
 FLAGS = ('-std=c++17', '-fwrapv', '-w', '-O1')
 API_MAPS = os.path.join(_DATA, 'java', 'api_maps')
 
 
 class Decline(Exception):
     """The C++17 back end does not write this unit (the reason says why)."""
-
-
-def source_path(module):
-    return module.replace('.', '/') + '.cpp'
 
 
 def _native():
@@ -59,9 +51,3 @@ def program(units, main=None):
     desugar.run(units, keep=('foreach', 'switchexpr'))
     docs = [l2.to_json(u) for u in units]
     return native_l2.call('cpp17_program', docs, main, plain=0)
-
-
-def Bodies(ctx, units):
-    """The transpiler's bodies in C++17 (cpp03's writer with the C++17 forms)."""
-    from codebreaker.translate.backends import cpp03
-    return cpp03.Bodies17(ctx, units)
