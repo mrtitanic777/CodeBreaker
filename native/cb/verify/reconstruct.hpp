@@ -92,6 +92,10 @@ private:
     std::uint64_t generation_ = 0;
 };
 
+// The verifier settings in force per kind, from the lanes alone (no function store needed): what Reconstructor::digests() / profiles() say.
+std::map<std::string, std::optional<std::string>> digests_of(const Kinds& kinds);
+std::map<std::string, lanes::Profile> profiles_of(const Kinds& kinds);
+
 // ---- what a run is given --------------------------------------------------------------------------------------------------
 
 struct Services {
