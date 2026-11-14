@@ -26,7 +26,11 @@ bool near_grey(const Rgb& p, unsigned lowest, unsigned highest) {
 }
 
 // The default desktop's teal. The 16-colour driver's DAC has six bits a channel, so the 128 comes out a few levels either side.
-bool is_teal(const Rgb& p) { return p.r < 40 && p.g >= 100 && p.g <= 160 && p.b >= 100 && p.b <= 160 && (p.g > p.b ? p.g - p.b : p.b - p.g) < 16; }
+// (the desktop of the first full install, read off its screen: (87, 168, 168) in the driver's 256 colours; the 16-colour screen's is (0, 130, 130))
+bool is_teal(const Rgb& p) {
+    const int g = p.g, b = p.b, r = p.r;
+    return g >= 100 && g <= 190 && std::abs(g - b) <= 14 && g - r >= 60;
+}
 
 std::string key_for(char c) {
     switch (c) {

@@ -194,6 +194,9 @@ CB_TEST("verify.gate16.install16.words", [] {
 
 CB_TEST("verify.gate16.install16.the_desktop_is_teal_with_a_taskbar", [] {
     CB_CHECK(is_desktop(desktop()));
+    Picture real = solid(640, 480, Rgb{87, 168, 168});          // (the desktop as the real machine shows it)
+    paint(real, 0, 452, 640, 480, kGrey);
+    CB_CHECK(is_desktop(real));
     CB_CHECK(!is_desktop(solid(640, 480, kTeal)));            // (Windows' own teal before the shell: no taskbar)
     CB_CHECK(!is_desktop(page(3)));                            // (a wizard page)
     CB_CHECK(!is_desktop(solid(720, 400, kTeal)));             // (a text screen is never the desktop)
