@@ -41,6 +41,9 @@ if exist "%ROOT%\native\retromcp\build\libs\retromcp.jar" (
     copy /y "%ROOT%\native\retromcp\build\libs\retromcp.jar" "%OUT%\native\retromcp\build\libs\" >nul
 )
 
+rem the folders the archive left empty (testdata\ and tests\ whose files were all left out)
+for /f "delims=" %%D in ('dir /ad /b /s "%OUT%" ^| sort /r') do rd "%%D" 2>nul
 "%OUT%\bin\codebreaker.exe" help >nul 2>&1 || (echo the packaged program does not start& exit /b 1)
+if exist "%OUT%\state" rmdir /s /q "%OUT%\state"
 tar -a -cf "%REL%\%NAME%.zip" -C "%REL%" %NAME% || exit /b 1
 echo packaged %REL%\%NAME%.zip
