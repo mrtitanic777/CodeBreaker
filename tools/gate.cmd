@@ -68,8 +68,10 @@ where python >nul 2>nul || (echo UI tests: FAIL -- python is not on the PATH ^(t
 if "%EXE%"=="" (set CB_EXE=%ROOT%\state\cxx\codebreaker\build\codebreaker.exe) else set CB_EXE=%EXE%
 set T0=%TIME%
 echo.
-echo UI tests (python, Textual): test_ui.py::test_terminal_interface, test_ui_thin.py
+echo UI tests (python, Textual): test_ui.py::test_terminal_interface, test_ui_thin.py, tools\check_imports.py, tools\tidy.py
 python "%ROOT%\tests\test_ui.py" --only test_terminal_interface || set UI_RC=1
 python "%ROOT%\tests\test_ui_thin.py" || set UI_RC=1
+python "%ROOT%\tools\check_imports.py" || set UI_RC=1
+python "%ROOT%\tools\tidy.py" || set UI_RC=1
 if %UI_RC% EQU 0 (echo UI tests: PASS ^(started %T0%, ended %TIME%^)) else echo UI tests: FAIL
 exit /b %UI_RC%
