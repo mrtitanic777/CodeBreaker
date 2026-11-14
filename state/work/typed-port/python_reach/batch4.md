@@ -97,3 +97,21 @@ Left on purpose, and why (this is as far as the tangle went):
 | run_all.py rows `test_z80.py`, `test_m68k.py` | removed |
 
 New native test inputs: `native/cb/engine/testdata/lane_kit/{sms,gb,msx,zx}_demo.asm` (copies of `tests/data/*/demo.asm`, which stay).
+
+### The five conditions (group 2a)
+
+1. native C++ committed: `native/cb/{decompile,emulate,formats,build,source,verify/lanes,platforms}` one file each (the name heuristic of `report.py` finds none for `verify/lanes/{gb,genesis,sms,nes,z80_flat}`, `platforms/zx`: checked by hand, they are `engine/lane_kit_machines.cpp` and `platforms/machines`).
+2. tests pass as C++: `area engine` 95 passed, `area source` 421 passed (both with the new tests); the Python tests that imported a deleted module were deleted or cut; `check_imports` on the rebuilt exe: 320 modules, 0 dangling.
+3. agreement with the Python: the native tests of these modules compare against goldens the Python made (`*_the_pythons`, `the_old_harness_sources_make_what_the_python_made`, `golden_*` ...).
+4. callers: `cand4.py` shows no outside importer for the 31 (the NES lane keeps `verify/lanes/image_lane`, so it stays); the sibling repositories have no hit.
+5. boot: none of the 31 is in the closure of `verify/gate16/*` / `source/module_writer` (`module_writer` names the machine kinds as strings only).
+
+## What was run here (worktree, translated exe built from this tree: `tools\build_codebreaker_exe.cmd fast`, `_CL_=/wd4702`, absolute `settings.json`, `CB_CORPUS_ROOT`)
+
+- `codebreaker.exe tools/check_imports.py`: 320 modules import, 0 dangling.
+- `codebreaker.exe tests/run_all.py --quick --jobs 2 --no-build`: every suite passes except `test_recompile.py` (`test_whole_image`, `test_discover_built_addresses`: "the xex program is not built" -- the
+  worktree reaches the main checkout's `Converted/Minecraft`, so they run instead of skipping, and `native/xex` is not built in a worktree; nothing in `recompile/*` or its test was touched). With `build_native.cmd l2 engine formats dosexec symbols invert analyze testkit cb`
+  built (a fresh worktree has none of the native libraries): `test_run_record.py`, `test_drivers.py`, `test_platforms.py` and the rest pass.
+- UI tests under real python (`tools\gate.cmd` runs them after the exe cases): `tests/test_ui.py --only test_terminal_interface` and `tests/test_ui_thin.py` pass (the second needed `test_ui.inspect` replaced by `formats.pe`: commit 6b4f10965).
+- `tools\gate.cmd` on the plain native exe (`tools\build_codebreaker.cmd`, `CB_EXE`): the 155 command cases fail only where a worktree differs from the main checkout (settings.json paths, no `state/`, `native/decompiler` and `native/xex` not built): the set of failures with the main checkout's
+  plain exe against this worktree's cases is the same 5 (`dos-build driver-build facts-binary facts-make settings`), and `module-pe`, `scoreboard`, `tidy-dry`, `tidy-stray` differ only in paths/state of the worktree. No case exercises the deleted Python (the plain exe runs no Python).
