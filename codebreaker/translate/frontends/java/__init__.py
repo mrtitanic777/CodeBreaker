@@ -25,9 +25,19 @@ _SOURCE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.d
 TIMEOUT = 1800
 
 
+def jdk():
+    """(javac, java) -- the JDK the front end and the behavioural judge run -- or ("", "")."""
+    from codebreaker.decompile import jar
+    java = jar.find_java() or ""
+    javac = ""
+    if java:
+        sibling = os.path.join(os.path.dirname(java), "javac" + (".exe" if os.name == "nt" else ""))
+        javac = sibling if os.path.isfile(sibling) else (shutil.which("javac") or "")
+    return (javac, java) if javac else ("", "")
+
+
 def _jdk():
-    from codebreaker.verify.lanes import java as _vj
-    javac, java = _vj.jdk()
+    javac, java = jdk()
     if not javac:
         raise RuntimeError('the Java front end needs a JDK (settings.json: java)')
     return javac, java

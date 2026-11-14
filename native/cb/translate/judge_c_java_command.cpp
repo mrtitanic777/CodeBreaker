@@ -136,28 +136,14 @@ ProductionHost make_host(const Environment& environment) {
     return {std::move(host), state};
 }
 
-RoundTripInputs default_inputs(const Environment& environment, const stdfs::path& staging) {
+RoundTripInputs default_inputs(const Environment& environment, const stdfs::path& /*staging: the classes are kept as files now*/) {
     const stdfs::path root = environment.config.checkout_root();
     RoundTripInputs inputs;
-    for (const char* name : {"Vec3D", "MathHelper", "AxisAlignedBB"}) inputs.files.push_back(root / "tests" / "java" / "fixtures" / "java" / (std::string(name) + ".java"));
+    // the fixture classes, the clang front end's round-trip program, and Base and Sub (the C++03 back end's test classes, package `sample`)
+    const stdfs::path data = root / "data" / "translate" / "judge_c_java";
+    for (const char* name : {"Vec3D", "MathHelper", "AxisAlignedBB"}) inputs.files.push_back(data / (std::string(name) + ".java"));
     inputs.files.push_back(root / "codebreaker" / "translate" / "frontends" / "clang" / "corpus" / "roundtrip" / "RoundTrip.java");
-    // Base and Sub are the C++03 back end's test classes, kept as text in its test: written out as package `sample`
-    const std::string tests = fs::read_text(root / "tests" / "translate" / "test_cpp03_bodies.py");
-    fs::make_dirs(staging);
-    for (const char* name : {"BASE", "SUB"}) {
-        const std::string open = std::string(name) + " = '''";
-        const std::size_t begin = tests.find(open);
-        if (begin == std::string::npos) throw NotFoundError(root / "tests" / "translate" / "test_cpp03_bodies.py", 0, std::string("the class text ") + name + " is not there");
-        const std::size_t from = begin + open.size();
-        const std::size_t end = tests.find("'''", from);
-        std::string body = tests.substr(from, end - from);
-        body.erase(std::remove(body.begin(), body.end(), '\r'), body.end());
-        std::string cls = text::lower(name);
-        cls[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(cls[0])));
-        const stdfs::path file = staging / (cls + ".java");
-        fs::write_text(file, "package sample;\n\n" + body);
-        inputs.files.push_back(file);
-    }
+    for (const char* name : {"Base", "Sub"}) inputs.files.push_back(data / (std::string(name) + ".java"));
     inputs.main_class = "sample.RoundTrip";
     return inputs;
 }

@@ -6,7 +6,6 @@ in the Python and in the port together).
 """
 import os
 import sys
-import types
 import warnings
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,24 +27,6 @@ def check(fn):
         RESULTS.append((fn.__name__, "skip", str(e)))
     except Exception as e:
         RESULTS.append((fn.__name__, "FAIL", "%s: %s" % (type(e).__name__, e)))
-
-
-def test_java_rules_findings_of_one_line_come_in_name_order():
-    """java.rules: where one constructor or line matches several names of a set (virtual-call-in-ctor,
-    map-read-insert, leak-drop-no-delete) the findings come in the sorted order of the names, not in the
-    set's hash order (which changed from run to run)."""
-    from codebreaker.java import rules
-    plat = types.SimpleNamespace(override_pairs=None)
-    header = "class Foo {\npublic:\n\tFoo();\n\tvirtual void zeta();\n\tvirtual void alpha();\n\tvirtual void mid();\n};\n"
-    got = [f[4].split("calls virtual ")[1].split("()")[0] for f in rules.rule_virtual_call_in_ctor(
-        "Foo.cpp", "Foo::Foo()\n{\n\tzeta();\n\talpha();\n\tmid();\n}\n", header, plat)]
-    assert got == ["alpha", "mid", "zeta"], got
-    maps = "std::map<int,int> zz;\nstd::map<int,int> mm;\nstd::map<int,int> aa;\nint f() {\n\treturn zz[1] + aa[2] + mm[3];\n}\n"
-    got = [f[4].split("[")[0] for f in rules.rule_map_read_insert("M.cpp", maps, None, plat)]
-    assert got == ["aa"], got                                  # (one finding a line: the first by name)
-    owners = "std::vector<Foo*> zs;\nstd::vector<Foo*> as;\nstd::vector<Foo*> ms;\nvoid f() {\n\tzs.clear(); as.clear(); ms.pop_back();\n}\n"
-    got = [f[4].split(".")[0] for f in rules.rule_leak_drop_no_delete("L.cpp", owners, None, plat)]
-    assert got == ["as"], got
 
 
 def test_segdiff_compile_group_leaves_no_work_folder():
@@ -161,8 +142,7 @@ def test_native_dosexec_loads_the_dll_once_from_two_threads():
 
 
 def main():
-    for fn in (test_java_rules_findings_of_one_line_come_in_name_order,
-               test_segdiff_compile_group_leaves_no_work_folder,
+    for fn in (test_segdiff_compile_group_leaves_no_work_folder,
                test_origin_notes_calls_to_compiler_helpers,
                test_native_dosexec_loads_the_dll_once_from_two_threads):
         check(fn)

@@ -4,7 +4,6 @@
 import pytest
 
 from codebreaker.translate.frontends import java as fj
-from codebreaker.verify.lanes import java
 
 SOURCE = '''import java.util.List;
 
@@ -25,7 +24,7 @@ public class Demo {
 }
 '''
 
-needs_jdk = pytest.mark.skipif(not java.jdk()[0], reason='needs a JDK')
+needs_jdk = pytest.mark.skipif(not fj.jdk()[0], reason='needs a JDK')
 
 
 def _walk(n):
