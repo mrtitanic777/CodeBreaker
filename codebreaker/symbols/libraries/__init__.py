@@ -20,7 +20,7 @@ and where in its section it starts --
 
 What is done with a match is for the one asking: symbols/runtime_library.py keeps digests of the
 C runtime's and MFC's functions and names a module's functions by them; symbols/xdk_libraries.py
-names an Xbox 360 program's XDK functions; verify/gate16/runtime16.py sets Microsoft C 8's
+names an Xbox 360 program's XDK functions; the native source/pipeline_match16 sets Microsoft C 8's
 16-bit library routines beside each function of a module.
 """
 import struct

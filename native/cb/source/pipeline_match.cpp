@@ -35,6 +35,7 @@
 #include "cb/formats/pe_functions.hpp"
 #include "cb/platforms/decoder.hpp"
 #include "cb/source/pipeline_match16.hpp"
+#include "cb/source/pipeline_period.hpp"
 #include "cb/source/pipeline_ppc.hpp"
 #include "cb/source/pipeline_world.hpp"
 #include "cb/symbols/libraries/coff.hpp"
@@ -355,10 +356,7 @@ std::string repair_rstrip(std::string_view s) {
     return std::string(s);
 }
 
-struct RepairSource {
-    std::string header;
-    std::map<std::string, std::string> texts;
-};
+}  // namespace
 
 RepairSource repair_period_source(const std::string& header, const std::vector<std::string>& order, const std::unordered_map<std::string, std::string>& texts,
                                   const std::set<std::string>& imports, const std::set<std::uint64_t>& targets) {
@@ -475,6 +473,8 @@ std::string repair_needed_header(const std::string& header, std::string_view tex
     }
     return text::join(keep, "\n");
 }
+
+namespace {
 
 // The period compiler as the search is given it: CL.EXE, in the environment it was made for. A text compiled once is kept for the run (a search tries
 // the same text again and again).

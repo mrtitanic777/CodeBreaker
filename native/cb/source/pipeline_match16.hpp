@@ -11,11 +11,13 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "cb/core/cli.hpp"
 #include "cb/source/pipeline_world.hpp"
+#include "cb/symbols/libraries/package.hpp"
 #include "cb/verify/authored/match16.hpp"
 
 namespace cb::source::pipeline {
@@ -40,6 +42,12 @@ struct Match16Run {
 
 // Runs the match of `module` (an NE file). `log` hears each line the run says as it goes. UsageError when Microsoft C is not set up.
 Match16Run run_match16(World& world, const std::filesystem::path& module, const Match16Options& options, const verify::authored::match16::Log& log);
+
+// Which of `functions` are the compiler's run-time library, linked and not written: each of `routines` (a library's routines, each named
+// "LIBRARY.LIB:name", with the places the linker fills in masked) is set beside the start of each function, the longest routine that fits names it.
+// function name -> the routine's name.
+std::map<std::string, std::string> identify_run_time_library(std::vector<symbols::libraries::Function> routines,
+                                                              std::span<const verify::authored::match16::Function> functions);
 
 // `match <16-bit module> ...`: runs it and prints what the Python prints.
 int match16_command(World& world, const std::filesystem::path& module, const cli::Args& args);

@@ -33,7 +33,7 @@ def tools():
 
 PLATFORM = Platform(
     name="powerpc", title="Xbox 360 (PowerPC)", family="PowerPC", source="c", machine=0x01F2,
-    lane="codebreaker.verify.lanes.powerpc", recognise=_recognise,
+    lane=None, recognise=_recognise,                 # (the lane is native: cb/verify/lanes/powerpc)
     loader=Loader(container="XEX2 -> PE", readable=_open, open=Ref("codebreaker.formats.powerpc_image", "read")),
     cpu=Cpu("PowerPC:BE:64:Xenon:homed", bits=64, endian="big", decoder="codebreaker.emulate.powerpc",
             registers=tuple("r%d" % i for i in range(32)), stack="r1"),
