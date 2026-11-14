@@ -492,20 +492,3 @@ for _q in LIB_SUPERS:
         LIB.setdefault(_q, _q.rsplit('.', 1)[-1])
 
 
-def char_literal(c):
-    """A Java char as a char16_t literal."""
-    o = ord(c) if isinstance(c, str) else int(c)
-    if 32 <= o < 127 and chr(o) not in '\\\'':
-        return "u'%s'" % chr(o)
-    return '(char16_t)%d' % o
-
-
-def constant_init(f):
-    """A static field whose initialiser is a literal number, char or boolean (no class initialisation needed)."""
-    init = f.init
-    while isinstance(init, ir.Paren):
-        init = init.x
-    if isinstance(init, ir.Unary) and init.op == '-' and isinstance(init.x, ir.Lit):
-        init = init.x
-    return isinstance(init, ir.Lit) and init.value is not None and not isinstance(init.value, str) \
-        and f.type is not None and f.type.is_prim
