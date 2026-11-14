@@ -1,0 +1,145 @@
+codebreaker.__main__ 170 tests= [] tools= ['tools.carve', 'tools.unreachable'] cb= 0
+codebreaker.analyze 23 tests= ['test_analysis', 'test_dos', 'test_port_fixes', 'translate'] tools= [] cb= 10
+codebreaker.analyze.call_graph 110 tests= ['test_analysis'] tools= [] cb= 3
+codebreaker.analyze.classes 533 tests= ['test_analysis'] tools= [] cb= 0
+codebreaker.analyze.conventions 136 tests= ['test_analysis'] tools= [] cb= 4
+codebreaker.analyze.dispatch 404 tests= ['test_analysis'] tools= [] cb= 1
+codebreaker.analyze.dos_functions 516 tests= ['test_dos'] tools= [] cb= 2
+codebreaker.analyze.globals 105 tests= ['test_analysis'] tools= [] cb= 1
+codebreaker.analyze.image 524 tests= ['test_analysis', 'translate'] tools= [] cb= 6
+codebreaker.analyze.native 157 tests= [] tools= [] cb= 2
+codebreaker.analyze.origin 489 tests= ['test_port_fixes'] tools= [] cb= 1
+codebreaker.analyze.strings 191 tests= ['test_analysis'] tools= [] cb= 3
+codebreaker.analyze.structures 421 tests= ['test_analysis', 'translate'] tools= [] cb= 2
+codebreaker.base 0 tests= ['frozen_subjects', 'run_all', 'test_analysis', 'test_assembler', 'test_concolic', 'test_converted', 'test_dos', 'test_drivers', 'test_media', 'test_native_formats', 'test_native_trace', 'test_pklite', 'test_plumbing', 'test_run_record', 'test_symbols', 'test_ui', 'test_ui_thin', 'test_verification', 'test_versions', 'test_xex'] tools= ['tools.freeze_tests', 'tools.golden', 'tools.l2c'] cb= 57
+codebreaker.base.cache 591 tests= ['test_plumbing', 'test_verification'] tools= [] cb= 10
+codebreaker.base.converted 188 tests= ['test_converted'] tools= [] cb= 2
+codebreaker.base.corpus 292 tests= ['frozen_subjects', 'test_analysis', 'test_concolic', 'test_dos', 'test_drivers', 'test_media', 'test_native_formats', 'test_native_trace', 'test_pklite', 'test_plumbing', 'test_run_record', 'test_symbols', 'test_ui', 'test_verification', 'test_versions', 'test_xex'] tools= ['tools.freeze_tests', 'tools.l2c'] cb= 24
+codebreaker.base.parallel 268 tests= ['run_all', 'test_plumbing', 'test_verification'] tools= [] cb= 4
+codebreaker.base.settings 286 tests= ['test_assembler', 'test_dos', 'test_drivers', 'test_verification', 'test_versions'] tools= ['tools.golden', 'tools.l2c'] cb= 41
+codebreaker.build 0 tests= ['msc8', 'test_dos', 'test_drivers', 'test_exepack', 'test_flat_thunk', 'test_pklite', 'test_plumbing', 'test_port_fixes', 'test_powerpc', 'test_readable', 'test_symbols', 'test_verification'] tools= ['tools.make_api_table'] cb= 25
+codebreaker.build.asm16 674 tests= ['test_verification'] tools= [] cb= 0
+codebreaker.build.data 530 tests= [] tools= [] cb= 3
+codebreaker.build.definitions 208 tests= [] tools= [] cb= 2
+codebreaker.build.dos_sessions 185 tests= [] tools= [] cb= 1
+codebreaker.build.dos_tools 77 tests= ['test_dos'] tools= [] cb= 2
+codebreaker.build.driver 332 tests= ['test_drivers'] tools= [] cb= 4
+codebreaker.build.exepack 107 tests= ['test_exepack'] tools= [] cb= 0
+codebreaker.build.flat_thunk 1085 tests= ['test_flat_thunk'] tools= [] cb= 2
+codebreaker.build.functions 678 tests= ['test_powerpc', 'test_readable', 'test_verification'] tools= [] cb= 3
+codebreaker.build.masm 442 tests= ['test_dos'] tools= [] cb= 2
+codebreaker.build.msc6 924 tests= ['msc8', 'test_dos', 'test_verification'] tools= [] cb= 1
+codebreaker.build.msvc152 79 tests= ['test_port_fixes'] tools= [] cb= 1
+codebreaker.build.native_dos 207 tests= ['test_dos'] tools= [] cb= 1
+codebreaker.build.pklite 380 tests= ['test_pklite'] tools= [] cb= 0
+codebreaker.build.resources 658 tests= [] tools= [] cb= 1
+codebreaker.build.watcom 160 tests= ['msc8', 'test_plumbing', 'test_readable', 'test_symbols', 'test_verification'] tools= ['tools.make_api_table'] cb= 11
+codebreaker.compare 0 tests= ['test_symbols'] tools= [] cb= 4
+codebreaker.compare.mask 90 tests= ['test_symbols'] tools= [] cb= 4
+codebreaker.decompile 0 tests= ['frozen_subjects', 'test_dos', 'test_frozen', 'test_plumbing', 'test_port_fixes', 'test_verification', 'test_vmx128', 'translate'] tools= ['tools.freeze_tests', 'tools.golden', 'tools.l2c'] cb= 21
+codebreaker.decompile.asm_blocks 267 tests= ['translate'] tools= [] cb= 2
+codebreaker.decompile.c_text 1428 tests= ['frozen_subjects', 'test_frozen', 'translate'] tools= ['tools.freeze_tests'] cb= 5
+codebreaker.decompile.decompiler 893 tests= ['test_dos', 'test_frozen', 'test_plumbing', 'test_verification', 'translate'] tools= ['tools.freeze_tests', 'tools.golden', 'tools.l2c'] cb= 5
+codebreaker.decompile.describe 2104 tests= ['frozen_subjects', 'test_dos', 'test_port_fixes', 'test_verification'] tools= ['tools.golden'] cb= 14
+codebreaker.decompile.frame16 236 tests= ['translate'] tools= [] cb= 2
+codebreaker.decompile.inline_asm 191 tests= [] tools= [] cb= 2
+codebreaker.decompile.jar 188 tests= [] tools= [] cb= 2
+codebreaker.decompile.shape16 111 tests= ['translate'] tools= [] cb= 2
+codebreaker.decompile.struct_text 114 tests= ['translate'] tools= [] cb= 1
+codebreaker.decompile.vmx128 374 tests= ['test_vmx128'] tools= [] cb= 0
+codebreaker.emulate 45 tests= ['test_concolic', 'test_knowledge', 'test_native_trace', 'test_plumbing', 'test_powerpc', 'test_run_record', 'test_verification'] tools= [] cb= 15
+codebreaker.emulate.driver 217 tests= ['test_knowledge', 'test_native_trace'] tools= [] cb= 1
+codebreaker.emulate.emulator 616 tests= ['test_concolic', 'test_native_trace', 'test_run_record'] tools= [] cb= 5
+codebreaker.emulate.fast_uc 69 tests= ['test_plumbing'] tools= [] cb= 1
+codebreaker.emulate.native_driver 204 tests= [] tools= [] cb= 1
+codebreaker.emulate.native_shadow 239 tests= [] tools= [] cb= 4
+codebreaker.emulate.native_trace 390 tests= ['test_native_trace'] tools= [] cb= 4
+codebreaker.emulate.native_win16 209 tests= [] tools= [] cb= 1
+codebreaker.emulate.pcode 147 tests= ['test_concolic', 'test_native_trace'] tools= [] cb= 2
+codebreaker.emulate.ports16 195 tests= ['test_verification'] tools= [] cb= 1
+codebreaker.emulate.powerpc 916 tests= ['test_concolic', 'test_powerpc'] tools= [] cb= 2
+codebreaker.emulate.run 76 tests= ['test_run_record'] tools= [] cb= 4
+codebreaker.emulate.shadow 681 tests= ['test_concolic', 'test_native_trace'] tools= [] cb= 2
+codebreaker.emulate.symbolic 193 tests= ['test_concolic'] tools= [] cb= 2
+codebreaker.emulate.windows16 1138 tests= ['test_concolic', 'test_knowledge', 'test_native_trace', 'test_run_record', 'test_verification'] tools= [] cb= 4
+codebreaker.engine 17 tests= ['test_engine', 'test_knowledge', 'test_knowledge_reads', 'test_native_engine', 'test_store', 'test_ui_thin'] tools= [] cb= 6
+codebreaker.engine.engine 268 tests= ['test_engine', 'test_knowledge_reads', 'test_native_engine'] tools= [] cb= 1
+codebreaker.engine.facts 182 tests= ['test_engine', 'test_knowledge', 'test_native_engine', 'test_store'] tools= [] cb= 3
+codebreaker.engine.native_engine 1048 tests= ['test_native_engine'] tools= [] cb= 5
+codebreaker.exact 0 tests= ['test_dos', 'test_dpmi', 'test_port_fixes'] tools= [] cb= 4
+codebreaker.exact.aout 82 tests= [] tools= [] cb= 1
+codebreaker.exact.emu 0 tests= ['test_dos', 'test_dpmi', 'test_port_fixes'] tools= [] cb= 3
+codebreaker.exact.emu.dos 803 tests= ['test_dos'] tools= [] cb= 2
+codebreaker.exact.emu.dpmi 736 tests= ['test_dpmi'] tools= [] cb= 1
+codebreaker.exact.emu.native_dosexec 163 tests= ['test_port_fixes'] tools= [] cb= 1
+codebreaker.formats 0 tests= ['frozen_subjects', 'test_concolic', 'test_dos', 'test_drivers', 'test_exepack', 'test_media', 'test_native_formats', 'test_native_trace', 'test_pklite', 'test_plumbing', 'test_powerpc', 'test_run_record', 'test_ui', 'test_verification', 'test_versions', 'test_vmx128', 'test_xex'] tools= ['tools.golden'] cb= 47
+codebreaker.formats.cab 177 tests= ['frozen_subjects', 'test_media'] tools= [] cb= 1
+codebreaker.formats.detect 88 tests= ['frozen_subjects', 'test_plumbing'] tools= [] cb= 8
+codebreaker.formats.dos 250 tests= ['frozen_subjects', 'test_dos', 'test_exepack', 'test_pklite', 'test_verification'] tools= [] cb= 6
+codebreaker.formats.le 375 tests= ['frozen_subjects', 'test_drivers'] tools= ['tools.golden'] cb= 6
+codebreaker.formats.native 223 tests= ['test_native_formats'] tools= [] cb= 11
+codebreaker.formats.ne 163 tests= ['frozen_subjects', 'test_concolic', 'test_native_trace', 'test_verification', 'test_versions'] tools= [] cb= 15
+codebreaker.formats.omf 248 tests= ['test_verification'] tools= [] cb= 6
+codebreaker.formats.pe 176 tests= ['frozen_subjects', 'test_concolic', 'test_run_record', 'test_ui'] tools= [] cb= 18
+codebreaker.formats.pe_functions 366 tests= ['frozen_subjects', 'test_versions'] tools= [] cb= 4
+codebreaker.formats.powerpc_image 128 tests= ['test_powerpc', 'test_vmx128'] tools= [] cb= 5
+codebreaker.formats.resources 196 tests= ['frozen_subjects'] tools= [] cb= 1
+codebreaker.formats.xex 173 tests= ['test_vmx128', 'test_xex'] tools= [] cb= 5
+codebreaker.jobs 0 tests= ['test_knowledge_reads', 'test_plumbing'] tools= [] cb= 4
+codebreaker.jobs.pool 287 tests= ['test_knowledge_reads', 'test_plumbing'] tools= [] cb= 4
+codebreaker.knowledge 173 tests= ['test_knowledge', 'test_knowledge_reads', 'test_native_engine'] tools= [] cb= 17
+codebreaker.knowledge.reads 174 tests= ['test_knowledge_reads'] tools= [] cb= 10
+codebreaker.knowledge.sources 116 tests= ['test_knowledge'] tools= [] cb= 5
+codebreaker.knowledge.store 72 tests= ['test_knowledge', 'test_knowledge_reads', 'test_native_engine'] tools= [] cb= 8
+codebreaker.platforms 387 tests= ['test_port_fixes', 'test_run_record'] tools= [] cb= 25
+codebreaker.platforms.dos 34 tests= [] tools= [] cb= 0
+codebreaker.platforms.java 27 tests= [] tools= [] cb= 0
+codebreaker.platforms.vxd 43 tests= [] tools= [] cb= 0
+codebreaker.platforms.win16 58 tests= [] tools= [] cb= 0
+codebreaker.platforms.win32 42 tests= [] tools= [] cb= 0
+codebreaker.platforms.xbox360 45 tests= [] tools= [] cb= 0
+codebreaker.source 0 tests= ['test_port_fixes', 'test_readable', 'translate'] tools= [] cb= 3
+codebreaker.source.assembly 185 tests= [] tools= [] cb= 1
+codebreaker.source.ne_asm 0 tests= ['test_port_fixes'] tools= [] cb= 0
+codebreaker.source.ne_asm.segdiff 212 tests= ['test_port_fixes'] tools= [] cb= 0
+codebreaker.source.placement 121 tests= [] tools= [] cb= 1
+codebreaker.source.readable 644 tests= ['test_readable', 'translate'] tools= [] cb= 1
+codebreaker.store 0 tests= ['test_knowledge', 'test_native_engine', 'test_store', 'test_symbols', 'test_ui', 'test_ui_thin', 'test_verdicts', 'test_verification'] tools= [] cb= 1
+codebreaker.store.functions 126 tests= ['test_knowledge', 'test_native_engine', 'test_store', 'test_symbols', 'test_ui', 'test_verdicts', 'test_verification'] tools= [] cb= 1
+codebreaker.symbols 0 tests= ['test_dos', 'test_drivers', 'test_knowledge_reads', 'test_symbols', 'test_verification'] tools= [] cb= 23
+codebreaker.symbols.api_arguments 428 tests= ['test_knowledge_reads'] tools= [] cb= 6
+codebreaker.symbols.demangle 107 tests= ['test_symbols'] tools= [] cb= 2
+codebreaker.symbols.dos_interrupts 101 tests= ['test_dos'] tools= [] cb= 3
+codebreaker.symbols.driver_services 280 tests= ['test_drivers'] tools= [] cb= 4
+codebreaker.symbols.libraries 104 tests= ['test_symbols'] tools= [] cb= 5
+codebreaker.symbols.libraries.coff 166 tests= ['test_symbols'] tools= [] cb= 2
+codebreaker.symbols.libraries.omf 152 tests= [] tools= [] cb= 1
+codebreaker.symbols.native 70 tests= [] tools= [] cb= 2
+codebreaker.symbols.ordinals 377 tests= ['test_symbols'] tools= [] cb= 3
+codebreaker.symbols.prototypes 124 tests= ['test_knowledge_reads', 'test_symbols'] tools= [] cb= 6
+codebreaker.symbols.runtime_library 386 tests= ['test_symbols'] tools= [] cb= 3
+codebreaker.symbols.sdk_structs 265 tests= [] tools= [] cb= 3
+codebreaker.symbols.wine16 89 tests= ['test_symbols', 'test_verification'] tools= [] cb= 1
+codebreaker.symbols.xdk_libraries 151 tests= [] tools= [] cb= 2
+codebreaker.translate 6 tests= ['test_readable', 'test_verdicts', 'translate'] tools= ['tools.l2c'] cb= 11
+codebreaker.translate.backends 1 tests= ['translate'] tools= ['tools.l2c'] cb= 5
+codebreaker.translate.backends.asm 71 tests= ['translate'] tools= [] cb= 1
+codebreaker.translate.backends.c 96 tests= ['translate'] tools= ['tools.l2c'] cb= 4
+codebreaker.translate.backends.cpp17 53 tests= [] tools= [] cb= 1
+codebreaker.translate.backends.module_file 127 tests= ['translate'] tools= [] cb= 0
+codebreaker.translate.desugar 490 tests= ['translate'] tools= [] cb= 1
+codebreaker.translate.frontends 2 tests= ['translate'] tools= [] cb= 0
+codebreaker.translate.frontends.java 118 tests= ['translate'] tools= [] cb= 0
+codebreaker.translate.frontends.java.lower 543 tests= ['translate'] tools= [] cb= 0
+codebreaker.translate.ir 320 tests= ['translate'] tools= [] cb= 3
+codebreaker.translate.l2 431 tests= ['test_readable', 'test_verdicts', 'translate'] tools= [] cb= 5
+codebreaker.translate.native_l2 340 tests= ['translate'] tools= [] cb= 4
+codebreaker.verify 12 tests= ['frozen_subjects', 'test_concolic', 'test_native_engine', 'test_native_trace', 'test_plumbing', 'test_run_record', 'test_ui_thin', 'test_verdicts', 'test_verification'] tools= [] cb= 12
+codebreaker.verify.compare 228 tests= ['test_plumbing', 'test_verdicts', 'test_verification'] tools= [] cb= 4
+codebreaker.verify.concolic 229 tests= ['test_concolic'] tools= [] cb= 1
+codebreaker.verify.guided 222 tests= [] tools= [] cb= 3
+codebreaker.verify.lane_common 264 tests= ['test_run_record', 'test_verdicts', 'test_verification'] tools= [] cb= 2
+codebreaker.verify.lanes 4 tests= ['frozen_subjects', 'test_concolic', 'test_native_trace', 'test_run_record', 'test_verdicts', 'test_verification'] tools= [] cb= 5
+codebreaker.verify.lanes.win16 727 tests= ['test_run_record', 'test_verdicts', 'test_verification'] tools= [] cb= 1
+codebreaker.verify.lanes.win32 917 tests= ['frozen_subjects', 'test_concolic', 'test_native_trace', 'test_run_record', 'test_verdicts'] tools= [] cb= 3
+codebreaker.verify.verdicts 215 tests= ['test_native_engine', 'test_verdicts'] tools= [] cb= 6

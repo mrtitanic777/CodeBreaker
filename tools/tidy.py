@@ -2,21 +2,18 @@
 """tidy.py -- keep the package free of what nothing uses.
 
     python tools/tidy.py             report: unused imports, undefined names, unused definitions,
-                                     modules nothing reaches   (exit code 1 if there are any)
+                                     (exit code 1 if there are any)
     python tools/tidy.py --apply     remove them, repeating until nothing more comes loose
 
-Removing one thing frees another: an import nothing uses kept a module reachable, that module
-held the only callers of a function elsewhere, and so on. `--apply` runs the three steps in turn
-until a whole pass removes nothing:
+Removing one thing frees another: an import nothing uses leaves a function with no callers, and so
+on. `--apply` runs the two steps in turn until a whole pass removes nothing:
 
     1. imports a file does not use                       (pyflakes finds them)
     2. top-level functions, classes and constants whose name appears nowhere else   (tools/prune.py)
-    3. modules no command, test or tool can reach        (tools/unreachable.py)
 
 Undefined names are reported and never "fixed": they are bugs. Run the tests afterwards.
 """
 import ast
-import io
 import os
 import re
 import subprocess
@@ -25,7 +22,6 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import prune                                                            # noqa: E402
-import unreachable                                                      # noqa: E402
 
 _MSG = re.compile(r"^(.*?):(\d+):\d+:? (.*)$")
 
@@ -116,14 +112,7 @@ def main(argv):
         defs = prune.find()
         if apply and defs:
             prune.apply(defs)
-        buf, old = io.StringIO(), sys.stdout
-        sys.stdout = buf
-        try:
-            unreachable.main(["--delete"] if apply else [])
-        finally:
-            sys.stdout = old
-        dead = [ln for ln in buf.getvalue().splitlines() if re.match(r"\s*\d+  codebreaker/", ln)]
-        step = n_imp + len(defs) + len(dead)
+        step = n_imp + len(defs)
         total += step
         if not apply:
             for path, wanted in sorted(found.items()):
@@ -131,8 +120,6 @@ def main(argv):
                     print("unused import   %s:%d" % (os.path.relpath(path, ROOT).replace("\\", "/"), line))
             for p, n, a, b in defs:
                 print("unused          %s  %s (%d lines)" % (os.path.relpath(p, ROOT).replace("\\", "/"), n, b - a))
-            for ln in dead:
-                print("unreachable    " + ln)
             break
         if not step:
             break

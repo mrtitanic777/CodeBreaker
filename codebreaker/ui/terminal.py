@@ -715,7 +715,8 @@ class Home(Screen):
         try:
             mods = STORE.overview()
         except Exception as e:                                  # noqa: BLE001
-            self.app.call_from_thread(lambda: self.query_one("#totals", Static).update(Text(str(e), style="#e06c75")))
+            why = str(e)                                        # (the name `e` is gone when the thread runs the callback)
+            self.app.call_from_thread(lambda: self.query_one("#totals", Static).update(Text(why, style="#e06c75")))
             return
         rows = []
         for m in mods:
