@@ -1,0 +1,727 @@
+{
+ "node": "Unit",
+ "package": "",
+ "path": "c:\\users\\mrtit\\documents\\github\\codebreaker\\.claude\\worktrees\\agent-a266aa9dbab93f9e2\\state\\work\\j2x-proof\\w\\cpp\\sub.cpp",
+ "target": {
+  "char_signed": true,
+  "language": "c++",
+  "long": 4,
+  "pointer": 8,
+  "std": "c++14",
+  "triple": "x86_64-pc-windows-msvc",
+  "wchar": 2
+ },
+ "types": [
+  {
+   "col": 7,
+   "extends": {
+    "kind": "class",
+    "name": "Base"
+   },
+   "kind": "class",
+   "line": 14,
+   "members": [
+    {
+     "body": {
+      "col": 6,
+      "line": 10,
+      "node": "Block",
+      "stmts": [
+       {
+        "args": [
+         {
+          "col": 6,
+          "left": {
+           "col": 6,
+           "line": 10,
+           "node": "Name",
+           "sym": {
+            "kind": "param",
+            "name": "var1",
+            "owner": "Sub",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "line": 10,
+          "node": "Binary",
+          "op": "+",
+          "right": {
+           "col": 6,
+           "line": 10,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 1
+          },
+          "type": {
+           "kind": "i32"
+          }
+         }
+        ],
+        "col": 6,
+        "kind": "super",
+        "line": 10,
+        "node": "CtorCall",
+        "sym": {
+         "kind": "ctor",
+         "name": "Base",
+         "owner": "Base",
+         "params": [
+          {
+           "kind": "i32"
+          }
+         ],
+         "ret": {
+          "kind": "void"
+         }
+        }
+       },
+       {
+        "col": 6,
+        "expr": {
+         "col": 6,
+         "line": 10,
+         "node": "Assign",
+         "target": {
+          "col": 6,
+          "line": 10,
+          "node": "Select",
+          "obj": {
+           "col": 6,
+           "line": 10,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Sub"
+           },
+           "x": {
+            "col": 6,
+            "line": 10,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Sub"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "extra",
+           "owner": "Sub",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "value": {
+          "col": 6,
+          "line": 10,
+          "node": "Lit",
+          "type": {
+           "kind": "i32"
+          },
+          "value": 0
+         }
+        },
+        "line": 10,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 6,
+        "expr": {
+         "col": 6,
+         "line": 10,
+         "node": "Assign",
+         "target": {
+          "col": 6,
+          "line": 10,
+          "node": "Select",
+          "obj": {
+           "col": 6,
+           "line": 10,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Sub"
+           },
+           "x": {
+            "col": 6,
+            "line": 10,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Sub"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "extra",
+           "owner": "Sub",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "value": {
+          "col": 6,
+          "line": 10,
+          "node": "Lit",
+          "type": {
+           "kind": "i32"
+          },
+          "value": 7
+         }
+        },
+        "line": 10,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 6,
+        "expr": {
+         "col": 6,
+         "line": 10,
+         "node": "Assign",
+         "op": "+",
+         "target": {
+          "col": 6,
+          "line": 10,
+          "node": "Select",
+          "obj": {
+           "col": 6,
+           "line": 10,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Sub"
+           },
+           "x": {
+            "col": 6,
+            "line": 10,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Sub"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "extra",
+           "owner": "Sub",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         },
+         "value": {
+          "col": 6,
+          "line": 10,
+          "node": "Select",
+          "obj": {
+           "col": 6,
+           "line": 10,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Base"
+           },
+           "x": {
+            "col": 6,
+            "implicit": true,
+            "line": 10,
+            "node": "Cast",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Base"
+             }
+            },
+            "x": {
+             "col": 6,
+             "line": 10,
+             "node": "This",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "Sub"
+              }
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "size",
+           "owner": "Base",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         }
+        },
+        "line": 10,
+        "node": "ExprStmt"
+       }
+      ]
+     },
+     "col": 6,
+     "kind": "ctor",
+     "line": 10,
+     "mods": [
+      "public"
+     ],
+     "name": "Sub",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 14,
+       "line": 10,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "Sub",
+        "type": {
+         "kind": "i32"
+        }
+       },
+       "type": {
+        "kind": "i32"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "ctor",
+      "name": "Sub",
+      "owner": "Sub",
+      "params": [
+       {
+        "kind": "i32"
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "body": {
+      "col": 6,
+      "line": 18,
+      "node": "Block",
+      "stmts": []
+     },
+     "col": 6,
+     "kind": "dtor",
+     "line": 18,
+     "mods": [
+      "public",
+      "virtual"
+     ],
+     "name": "~Sub",
+     "node": "MethodDecl",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "~Sub",
+      "owner": "Sub",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "col": 6,
+     "line": 19,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "extra",
+      "owner": "Sub",
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    },
+    {
+     "body": {
+      "col": 10,
+      "line": 22,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 7,
+        "init": {
+         "args": [
+          {
+           "col": 7,
+           "line": 24,
+           "node": "Name",
+           "sym": {
+            "kind": "param",
+            "name": "var0",
+            "owner": "build",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           }
+          }
+         ],
+         "col": 7,
+         "line": 24,
+         "memory": "manual",
+         "node": "New",
+         "sym": {
+          "kind": "ctor",
+          "name": "Sub",
+          "owner": "Sub",
+          "params": [
+           {
+            "kind": "i32"
+           }
+          ],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Sub"
+          }
+         }
+        },
+        "line": 24,
+        "node": "Local",
+        "sym": {
+         "kind": "local",
+         "name": "var1",
+         "owner": "build",
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Sub"
+          }
+         }
+        },
+        "type": {
+         "kind": "ptr",
+         "space": "flat",
+         "to": {
+          "kind": "class",
+          "name": "Sub"
+         }
+        }
+       },
+       {
+        "col": 10,
+        "expr": {
+         "col": 10,
+         "left": {
+          "col": 10,
+          "left": {
+           "col": 10,
+           "line": 22,
+           "node": "Select",
+           "obj": {
+            "col": 10,
+            "line": 22,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "Sub"
+            },
+            "x": {
+             "col": 10,
+             "line": 22,
+             "node": "Name",
+             "sym": {
+              "kind": "local",
+              "name": "var1",
+              "owner": "build",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Sub"
+               }
+              }
+             },
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "Sub"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "extra",
+            "owner": "Sub",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "line": 22,
+          "node": "Binary",
+          "op": "*",
+          "right": {
+           "col": 10,
+           "line": 22,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 3
+          },
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "line": 22,
+         "node": "Binary",
+         "op": "+",
+         "right": {
+          "col": 10,
+          "line": 22,
+          "node": "Select",
+          "obj": {
+           "col": 10,
+           "line": 22,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Base"
+           },
+           "x": {
+            "col": 10,
+            "implicit": true,
+            "line": 22,
+            "node": "Cast",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Base"
+             }
+            },
+            "x": {
+             "col": 10,
+             "line": 22,
+             "node": "Name",
+             "sym": {
+              "kind": "local",
+              "name": "var1",
+              "owner": "build",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Sub"
+               }
+              }
+             },
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "Sub"
+              }
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "size",
+           "owner": "Base",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "line": 22,
+        "node": "Return"
+       }
+      ]
+     },
+     "col": 10,
+     "kind": "method",
+     "line": 22,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "name": "build",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 20,
+       "line": 22,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var0",
+        "owner": "build",
+        "type": {
+         "kind": "i32"
+        }
+       },
+       "type": {
+        "kind": "i32"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "i32"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "build",
+      "owner": "Sub",
+      "params": [
+       {
+        "kind": "i32"
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      },
+      "static": true
+     }
+    },
+    {
+     "body": {
+      "col": 11,
+      "line": 28,
+      "node": "Block",
+      "stmts": []
+     },
+     "col": 11,
+     "kind": "method",
+     "line": 28,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "name": "initStatics",
+     "node": "MethodDecl",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "initStatics",
+      "owner": "Sub",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "static": true
+     }
+    }
+   ],
+   "mods": [
+    "polymorphic"
+   ],
+   "name": "Sub",
+   "node": "ClassDecl",
+   "qname": "Sub"
+  }
+ ]
+}

@@ -184,8 +184,11 @@ public:
     int serve_stdio();
 
     // The streamable HTTP transport on `host`:`port` behind the bearer token; `hosts` are the extra Host names answered to, `is_public`
-    // the reading tools only and the token also accepted as the URL's first segment. Returns when `stop` is requested.
-    int serve_http(std::uint16_t port, const std::string& host, const std::vector<std::string>& hosts, bool is_public, std::stop_token stop = {});
+    // the reading tools only and the token also accepted as the URL's first segment. Returns when `stop` is requested. `port` 0 takes
+    // any free port; `listening` is called, once the socket accepts connections, with the port it has (so a caller that needs to
+    // connect waits for it instead of guessing).
+    int serve_http(std::uint16_t port, const std::string& host, const std::vector<std::string>& hosts, bool is_public, std::stop_token stop = {},
+                   const std::function<void(std::uint16_t)>& listening = {});
 
     struct Impl;
 

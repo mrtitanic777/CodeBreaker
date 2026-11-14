@@ -96,7 +96,7 @@ class Lift(object):
 
     def node(self, n):
         if isinstance(n, list):
-            return [self.node(x) for x in n]
+            return [lift_type(x) if isinstance(x, ir.Type) else self.node(x) for x in n]   # (the types in a list too: implements, throws, a catch's types, type arguments)
         if not isinstance(n, ir.Node):
             return n
         if isinstance(n, ir.Block):

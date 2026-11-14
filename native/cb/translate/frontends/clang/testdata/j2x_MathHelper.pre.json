@@ -1,0 +1,873 @@
+{
+ "node": "Unit",
+ "package": "",
+ "path": "c:\\users\\mrtit\\documents\\github\\codebreaker\\.claude\\worktrees\\agent-a266aa9dbab93f9e2\\state\\work\\j2x-proof\\w\\cpp\\mathhelper.cpp",
+ "target": {
+  "char_signed": true,
+  "language": "c++",
+  "long": 4,
+  "pointer": 8,
+  "std": "c++14",
+  "triple": "x86_64-pc-windows-msvc",
+  "wchar": 2
+ },
+ "types": [
+  {
+   "col": 7,
+   "kind": "class",
+   "line": 12,
+   "members": [
+    {
+     "body": {
+      "col": 13,
+      "line": 11,
+      "node": "Block",
+      "stmts": []
+     },
+     "col": 13,
+     "kind": "dtor",
+     "line": 11,
+     "mods": [
+      "public",
+      "virtual"
+     ],
+     "name": "~MathHelper",
+     "node": "MethodDecl",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "~MathHelper",
+      "owner": "MathHelper",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "col": 24,
+     "init": {
+      "args": [
+       {
+        "col": 28,
+        "line": 9,
+        "node": "Lit",
+        "type": {
+         "kind": "i32"
+        },
+        "value": 65536
+       }
+      ],
+      "col": 28,
+      "line": 9,
+      "memory": "stack",
+      "node": "New",
+      "sym": {
+       "kind": "ctor",
+       "name": "JArray",
+       "owner": "JArray<f32>",
+       "params": [
+        {
+         "kind": "i32"
+        }
+       ],
+       "ret": {
+        "kind": "void"
+       }
+      },
+      "type": {
+       "args": [
+        {
+         "kind": "f32"
+        }
+       ],
+       "kind": "class",
+       "name": "JArray"
+      }
+     },
+     "line": 16,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "s_SIN_TABLE",
+      "owner": "MathHelper",
+      "static": true,
+      "type": {
+       "args": [
+        {
+         "kind": "f32"
+        }
+       ],
+       "kind": "class",
+       "name": "JArray"
+      }
+     },
+     "type": {
+      "args": [
+       {
+        "kind": "f32"
+       }
+      ],
+      "kind": "class",
+      "name": "JArray"
+     }
+    },
+    {
+     "body": {
+      "col": 19,
+      "line": 15,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 19,
+        "expr": {
+         "col": 19,
+         "line": 15,
+         "node": "Cast",
+         "type": {
+          "kind": "f32"
+         },
+         "x": {
+          "col": 19,
+          "implicit": true,
+          "line": 15,
+          "node": "Cast",
+          "type": {
+           "kind": "f32"
+          },
+          "x": {
+           "col": 19,
+           "line": 15,
+           "node": "Paren",
+           "type": {
+            "kind": "f64"
+           },
+           "x": {
+            "args": [
+             {
+              "col": 19,
+              "line": 15,
+              "node": "Cast",
+              "type": {
+               "kind": "f64"
+              },
+              "x": {
+               "col": 19,
+               "implicit": true,
+               "line": 15,
+               "node": "Cast",
+               "type": {
+                "kind": "f64"
+               },
+               "x": {
+                "col": 19,
+                "line": 15,
+                "node": "Name",
+                "sym": {
+                 "kind": "param",
+                 "name": "var0",
+                 "owner": "sqrt_float",
+                 "type": {
+                  "kind": "f32"
+                 }
+                },
+                "type": {
+                 "kind": "f32"
+                }
+               }
+              }
+             }
+            ],
+            "col": 19,
+            "line": 15,
+            "node": "Call",
+            "sym": {
+             "kind": "function",
+             "name": "javaMathSqrt",
+             "owner": "JavaRT.h",
+             "params": [
+              {
+               "kind": "f64"
+              }
+             ],
+             "ret": {
+              "kind": "f64"
+             },
+             "static": true
+            },
+            "type": {
+             "kind": "f64"
+            }
+           }
+          }
+         }
+        },
+        "line": 15,
+        "node": "Return"
+       }
+      ]
+     },
+     "col": 19,
+     "kind": "method",
+     "line": 15,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "name": "sqrt_float",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 36,
+       "line": 15,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var0",
+        "owner": "sqrt_float",
+        "type": {
+         "kind": "f32"
+        }
+       },
+       "type": {
+        "kind": "f32"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "f32"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "sqrt_float",
+      "owner": "MathHelper",
+      "params": [
+       {
+        "kind": "f32"
+       }
+      ],
+      "ret": {
+       "kind": "f32"
+      },
+      "static": true
+     }
+    },
+    {
+     "body": {
+      "col": 17,
+      "line": 20,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 6,
+        "init": {
+         "args": [
+          {
+           "col": 6,
+           "line": 22,
+           "node": "Name",
+           "sym": {
+            "kind": "param",
+            "name": "var0",
+            "owner": "floor_double",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          }
+         ],
+         "col": 6,
+         "line": 22,
+         "node": "Call",
+         "sym": {
+          "kind": "function",
+          "name": "j2xToInt",
+          "owner": "JavaRT.h",
+          "params": [
+           {
+            "kind": "f64"
+           }
+          ],
+          "ret": {
+           "kind": "i32"
+          },
+          "static": true
+         },
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "line": 22,
+        "node": "Local",
+        "sym": {
+         "kind": "local",
+         "name": "var2",
+         "owner": "floor_double",
+         "type": {
+          "kind": "i32"
+         }
+        },
+        "type": {
+         "kind": "i32"
+        }
+       },
+       {
+        "col": 17,
+        "expr": {
+         "col": 17,
+         "line": 20,
+         "node": "Paren",
+         "type": {
+          "kind": "i32"
+         },
+         "x": {
+          "col": 17,
+          "cond": {
+           "col": 17,
+           "left": {
+            "col": 17,
+            "line": 20,
+            "node": "Name",
+            "sym": {
+             "kind": "param",
+             "name": "var0",
+             "owner": "floor_double",
+             "type": {
+              "kind": "f64"
+             }
+            },
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "line": 20,
+           "node": "Binary",
+           "op": "<",
+           "right": {
+            "col": 17,
+            "line": 20,
+            "node": "Cast",
+            "type": {
+             "kind": "f64"
+            },
+            "x": {
+             "col": 17,
+             "implicit": true,
+             "line": 20,
+             "node": "Cast",
+             "type": {
+              "kind": "f64"
+             },
+             "x": {
+              "col": 17,
+              "line": 20,
+              "node": "Name",
+              "sym": {
+               "kind": "local",
+               "name": "var2",
+               "owner": "floor_double",
+               "type": {
+                "kind": "i32"
+               }
+              },
+              "type": {
+               "kind": "i32"
+              }
+             }
+            }
+           },
+           "type": {
+            "kind": "bool"
+           }
+          },
+          "line": 20,
+          "node": "Cond",
+          "orelse": {
+           "col": 17,
+           "line": 20,
+           "node": "Name",
+           "sym": {
+            "kind": "local",
+            "name": "var2",
+            "owner": "floor_double",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "then": {
+           "col": 17,
+           "left": {
+            "col": 17,
+            "line": 20,
+            "node": "Name",
+            "sym": {
+             "kind": "local",
+             "name": "var2",
+             "owner": "floor_double",
+             "type": {
+              "kind": "i32"
+             }
+            },
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "line": 20,
+           "node": "Binary",
+           "op": "-",
+           "right": {
+            "col": 17,
+            "line": 20,
+            "node": "Lit",
+            "type": {
+             "kind": "i32"
+            },
+            "value": 1
+           },
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         }
+        },
+        "line": 20,
+        "node": "Return"
+       }
+      ]
+     },
+     "col": 17,
+     "kind": "method",
+     "line": 20,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "name": "floor_double",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 37,
+       "line": 20,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var0",
+        "owner": "floor_double",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "i32"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "floor_double",
+      "owner": "MathHelper",
+      "params": [
+       {
+        "kind": "f64"
+       }
+      ],
+      "ret": {
+       "kind": "i32"
+      },
+      "static": true
+     }
+    },
+    {
+     "body": {
+      "col": 18,
+      "line": 26,
+      "node": "Block",
+      "stmts": [
+       {
+        "body": {
+         "col": 18,
+         "line": 26,
+         "node": "Block",
+         "stmts": [
+          {
+           "col": 18,
+           "expr": {
+            "col": 18,
+            "line": 26,
+            "node": "Assign",
+            "target": {
+             "args": [
+              {
+               "col": 18,
+               "line": 26,
+               "node": "Name",
+               "sym": {
+                "kind": "local",
+                "name": "var0",
+                "owner": "initStatics",
+                "type": {
+                 "kind": "i32"
+                }
+               },
+               "type": {
+                "kind": "i32"
+               }
+              }
+             ],
+             "col": 18,
+             "line": 26,
+             "node": "Call",
+             "sym": {
+              "kind": "method",
+              "name": "operator[]",
+              "owner": "JArray<f32>",
+              "params": [
+               {
+                "kind": "i32"
+               }
+              ],
+              "ret": {
+               "kind": "ptr",
+               "ref": true,
+               "space": "flat",
+               "to": {
+                "kind": "f32"
+               }
+              }
+             },
+             "target": {
+              "col": 18,
+              "line": 26,
+              "node": "Select",
+              "obj": {
+               "col": 18,
+               "line": 26,
+               "node": "TypeName",
+               "type": {
+                "kind": "class",
+                "name": "MathHelper"
+               }
+              },
+              "sym": {
+               "kind": "field",
+               "name": "s_SIN_TABLE",
+               "owner": "MathHelper",
+               "static": true,
+               "type": {
+                "args": [
+                 {
+                  "kind": "f32"
+                 }
+                ],
+                "kind": "class",
+                "name": "JArray"
+               }
+              },
+              "type": {
+               "args": [
+                {
+                 "kind": "f32"
+                }
+               ],
+               "kind": "class",
+               "name": "JArray"
+              }
+             },
+             "type": {
+              "kind": "f32"
+             }
+            },
+            "type": {
+             "kind": "f32"
+            },
+            "value": {
+             "col": 18,
+             "line": 26,
+             "node": "Cast",
+             "type": {
+              "kind": "f32"
+             },
+             "x": {
+              "col": 18,
+              "implicit": true,
+              "line": 26,
+              "node": "Cast",
+              "type": {
+               "kind": "f32"
+              },
+              "x": {
+               "col": 18,
+               "line": 26,
+               "node": "Paren",
+               "type": {
+                "kind": "f64"
+               },
+               "x": {
+                "args": [
+                 {
+                  "col": 18,
+                  "left": {
+                   "col": 18,
+                   "left": {
+                    "col": 18,
+                    "left": {
+                     "col": 18,
+                     "line": 26,
+                     "node": "Cast",
+                     "type": {
+                      "kind": "f64"
+                     },
+                     "x": {
+                      "col": 18,
+                      "implicit": true,
+                      "line": 26,
+                      "node": "Cast",
+                      "type": {
+                       "kind": "f64"
+                      },
+                      "x": {
+                       "col": 18,
+                       "line": 26,
+                       "node": "Name",
+                       "sym": {
+                        "kind": "local",
+                        "name": "var0",
+                        "owner": "initStatics",
+                        "type": {
+                         "kind": "i32"
+                        }
+                       },
+                       "type": {
+                        "kind": "i32"
+                       }
+                      }
+                     }
+                    },
+                    "line": 26,
+                    "node": "Binary",
+                    "op": "*",
+                    "right": {
+                     "col": 18,
+                     "line": 26,
+                     "node": "Lit",
+                     "type": {
+                      "kind": "f64"
+                     },
+                     "value": 3.141592653589793
+                    },
+                    "type": {
+                     "kind": "f64"
+                    }
+                   },
+                   "line": 26,
+                   "node": "Binary",
+                   "op": "*",
+                   "right": {
+                    "col": 18,
+                    "line": 26,
+                    "node": "Lit",
+                    "type": {
+                     "kind": "f64"
+                    },
+                    "value": 2.0
+                   },
+                   "type": {
+                    "kind": "f64"
+                   }
+                  },
+                  "line": 26,
+                  "node": "Binary",
+                  "op": "/",
+                  "right": {
+                   "col": 18,
+                   "line": 26,
+                   "node": "Lit",
+                   "type": {
+                    "kind": "f64"
+                   },
+                   "value": 65536.0
+                  },
+                  "type": {
+                   "kind": "f64"
+                  }
+                 }
+                ],
+                "col": 18,
+                "line": 26,
+                "node": "Call",
+                "sym": {
+                 "kind": "function",
+                 "name": "sin",
+                 "owner": "std",
+                 "params": [
+                  {
+                   "kind": "f64"
+                  }
+                 ],
+                 "ret": {
+                  "kind": "f64"
+                 },
+                 "static": true
+                },
+                "type": {
+                 "kind": "f64"
+                }
+               }
+              }
+             }
+            }
+           },
+           "line": 26,
+           "node": "ExprStmt"
+          }
+         ]
+        },
+        "col": 18,
+        "cond": {
+         "col": 18,
+         "left": {
+          "col": 18,
+          "line": 26,
+          "node": "Name",
+          "sym": {
+           "kind": "local",
+           "name": "var0",
+           "owner": "initStatics",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         },
+         "line": 26,
+         "node": "Binary",
+         "op": "<",
+         "right": {
+          "col": 18,
+          "line": 26,
+          "node": "Lit",
+          "type": {
+           "kind": "i32"
+          },
+          "value": 65536
+         },
+         "type": {
+          "kind": "bool"
+         }
+        },
+        "init": [
+         {
+          "col": 11,
+          "init": {
+           "col": 11,
+           "line": 28,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          },
+          "line": 28,
+          "node": "Local",
+          "sym": {
+           "kind": "local",
+           "name": "var0",
+           "owner": "initStatics",
+           "type": {
+            "kind": "i32"
+           }
+          },
+          "type": {
+           "kind": "i32"
+          }
+         }
+        ],
+        "line": 26,
+        "node": "For",
+        "update": [
+         {
+          "col": 18,
+          "line": 26,
+          "node": "Unary",
+          "op": "++",
+          "postfix": false,
+          "type": {
+           "kind": "i32"
+          },
+          "x": {
+           "col": 18,
+           "line": 26,
+           "node": "Name",
+           "sym": {
+            "kind": "local",
+            "name": "var0",
+            "owner": "initStatics",
+            "type": {
+             "kind": "i32"
+            }
+           },
+           "type": {
+            "kind": "i32"
+           }
+          }
+         }
+        ]
+       }
+      ]
+     },
+     "col": 18,
+     "kind": "method",
+     "line": 26,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "name": "initStatics",
+     "node": "MethodDecl",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "initStatics",
+      "owner": "MathHelper",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "static": true
+     }
+    }
+   ],
+   "mods": [
+    "polymorphic"
+   ],
+   "name": "MathHelper",
+   "node": "ClassDecl",
+   "qname": "MathHelper"
+  }
+ ]
+}
