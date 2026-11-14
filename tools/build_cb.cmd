@@ -3,7 +3,6 @@ rem build_cb.cmd [asan] [-- cb_tests args] -- build native/cb (docs/CPP_DESIGN.m
 rem
 rem     tools\build_cb.cmd                       Release build in state\cxx\cb, run every test
 rem     tools\build_cb.cmd area exact            only area exact: its library, what it links, its tests (fast)
-rem     tools\build_cb.cmd shims                 compile check of the old-path shims only (merge checks run it)
 rem     tools\build_cb.cmd asan                  /fsanitize=address build in state\cxx\cb-asan, run every test
 rem     tools\build_cb.cmd -- --filter core.io   run only the tests whose name contains core.io
 rem
@@ -31,11 +30,6 @@ rem tools\build_cb.cmd area NAME [args] -- only one area's library, what it link
 if "%1"=="area" (
   cmake --build "%B%" --target cb_tests_%2 -j %JOBS% || exit /b 1
   "%B%\bin\cb_tests_%2.exe" %3 %4 %5 %6 %7 %8 %9
-  exit /b %ERRORLEVEL%
-)
-rem tools\build_cb.cmd shims -- only the compile check of the old-path shims (cb_shim_check; not in the default build)
-if "%1"=="shims" (
-  cmake --build "%B%" --target cb_shim_check -j %JOBS%
   exit /b %ERRORLEVEL%
 )
 cmake --build "%B%" -j %JOBS% || exit /b 1

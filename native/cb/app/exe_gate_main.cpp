@@ -6,7 +6,7 @@
 //                 [--jobs N] [--filter TEXT] [--update] [--keep] [--list] [--unit CB_TESTS_EXE [--shards N]]
 //
 //   --exe-root the checkout the program belongs to, when --exe is a wrapper (its paths are printed as <root>)
-//   --exe      the program (default: <repo>/state/cxx/codebreaker/build/codebreaker.exe, else the main checkout's)
+//   --exe      the program (default: <repo>/state/cxx/codebreaker/build/codebreaker.exe)
 //   --repo     where inputs and cases live (default: the folder above native/, found from the current directory)
 //   --cases    default <repo>/testdata/exe_gate/cases.txt        --golden  default <repo>/testdata/exe_gate/golden
 //   --corpus   the Win95 corpus files (default: the CB_CORPUS environment variable, else ../Windows95/design/corpus/files);

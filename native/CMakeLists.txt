@@ -7,15 +7,11 @@
 #   cmake --build state/cxx/cb
 #   state/cxx/cb/bin/cb_tests.exe
 #
-# During the transition the program is still built by tools/build_codebreaker_exe.cmd (pyengine-generated CMake).
-# That generated project joins this tree with
-#   add_subdirectory(<CodeBreaker>/native/cb  <binary dir>/cb)    # defines cb_core ...
-#   target_link_libraries(codebreaker PRIVATE cb_core)
-# which is what -DCB_WITH_PYTHON=ON describes: the same executable, with the translated Python linked in too.
+# The program is the `codebreaker` target of this tree; tools/build_codebreaker_exe.cmd builds it and installs it as
+# state/cxx/codebreaker/build/codebreaker.exe.
 cmake_minimum_required(VERSION 3.20)
 project(codebreaker_native LANGUAGES CXX C)
 
-option(CB_WITH_PYTHON "link the translated Python (pydyn, pyrt) into codebreaker" ON)
 option(CB_ASAN "build with /fsanitize=address (the test target is run under it once per module before merge)" OFF)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

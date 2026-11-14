@@ -147,10 +147,6 @@ target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbo
 cb_area(java)
 target_link_libraries(cb_java PUBLIC cb_core cb_base cb_translate cb_decompile PRIVATE cb_zlib)   # (cb_base: the configuration the tools are made from; cb_decompile: the Minecraft decompiler of `java decompile` -- static libraries may be cyclic)
 
-# The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
-# old layer, so they build at /W3 without /WX like compat/.
-file(GLOB_RECURSE CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*shims*_test.cpp")   # every area's old-path shim tests
-set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_build cb_translate cb_symbols cb_knowledge)   # (cb_symbols, cb_knowledge, cb_base: environment.cpp reads the argument sizes, ordinal and driver tables the base keeps; cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment; cb_translate: the L2 library client and the module model c_text writes)
@@ -171,8 +167,6 @@ target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 
 cb_area(recompile)
 target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_formats cb_decompile)   # (cb_base: the converted projects of the recompile-project command)
-# the shims at the old header paths are tested too: their test file includes the old layer, so it builds at /W3
-set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/recompile/builders_shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 # The recompiler's own pieces (builders, disassembler, the title project) and the source writers (placement, assembly,
 # the NE assembly tools).
@@ -181,10 +175,6 @@ target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats)
 
 cb_area(invert)
 target_link_libraries(cb_invert PUBLIC cb_core cb_base cb_formats cb_platforms cb_build cb_decompile cb_symbols cb_exact)   # (cb_platforms: the 16-bit decoder the models decode with)
-# The shims at the old header paths (invert/*.hpp under native/typed/cpp) are tested too; their test includes the old layer, so
-# it builds at /W3 without /WX like the java and compat shim tests.
-file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/invert/shims_test.cpp")
-set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
@@ -238,119 +228,6 @@ target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms c
 target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage cb_symbols cb_analyze cb_decompile cb_compare cb_store cb_knowledge cb_app cb_platforms cb_source cb_java cb_formats ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client; cb_symbols: the demangler and the names of the MCP server; cb_analyze: its disassembly; cb_decompile, cb_engine: its decompiler; cb_compare, cb_store: the version comparison; cb_app: the command table; cb_platforms, cb_java: what a file is; cb_source: the source tree -- static libraries may be cyclic)
 target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
 
-# compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
-# test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
-file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
-set_source_files_properties(${CB_COMPAT_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-"
-  INCLUDE_DIRECTORIES "${CB_NATIVE_ROOT}/ported/include;${CB_NATIVE_ROOT}/typed/cpp;${CB_NATIVE_ROOT}/l2/src")
-get_property(CB_ALL_TESTS_SO_FAR GLOBAL PROPERTY CB_TEST_SOURCES)
-set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_ALL_TESTS_SO_FAR} ${CB_COMPAT_TESTS})
-# The shims that have a translation unit of their own (they call old ports that cannot be linked into cb_tests) are compiled, not
-# run: this keeps them honest until their last consumer is refactored. At /W3 without /WX, like the compat tests.
-add_library(cb_shim_check OBJECT EXCLUDE_FROM_ALL
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dpmi.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/authored/match16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b4.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b2.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b3.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xna.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asmdata.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/sanitize.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/__main__.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/asm16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_coverage.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/genesis.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b3_staged.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b8.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/gb.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b1.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b2.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b1.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dos.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/runtime_library.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/api_arguments.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/cpp_classes.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/driver_services.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/sdk_structs.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/media.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/build_lib.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xcp_dumper.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xsm3.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/kv_tool.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/export_keys.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/exp_signer.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/hypervisor.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/xekeys_signer.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/cpu_key.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/create_key.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/sd_signer.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/xbox/crypto/se_patcher.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_formats_w1b14.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xbox_assets.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/applet_ping.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/render_fix.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/projects/minecraft/sound_fix.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_w1b23.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_ppc.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b2.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b9.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b11.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b12.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w2b13.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b1.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b2.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b5.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b7.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b9.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/names.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b12.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b11.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w3b15.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_lane_kit.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b5.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/module.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w4b3.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w5b4.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_source_pe.cpp")
-cb_apply_flags(cb_shim_check)
-target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
-target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
-target_link_libraries(cb_shim_check PUBLIC cb_base cb_build cb_port cb_symbols cb_xna cb_verify)
 
 # where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
 # before the copy below (see native/third_party/README.md)
@@ -364,7 +241,7 @@ function(cb_copy_prebuilt_dlls target)
 endfunction()
 
 # ---- cbtrace.dll: the recorder's C interface (emulate/tracer/cbtrace.h), for the callers that still reach it through
-# ctypes or LoadLibrary (the old ports and the dynamic exe). The same sources as cb_emulate's tracer, exported. It is
+# ctypes or LoadLibrary (the Python callers that remain). The same sources as cb_emulate's tracer, exported. It is
 # handed engines made by the caller's own Unicorn and so calls that DLL (tracer/libs.hpp use_libraries). Not built
 # under ASan: the sanitizer runtime does not belong in a DLL the Python process loads.
 if(NOT CB_ASAN)
@@ -380,17 +257,11 @@ get_property(CB_ALL_TESTS GLOBAL PROPERTY CB_TEST_SOURCES)
 add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} cb.manifest)
 cb_apply_flags(cb_tests)
 target_compile_definitions(cb_tests PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
-target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")   # for the shims' tests
 # Every area library (cb_area records it in CB_AREAS), so a new area needs no edit here.
 get_property(CB_ALL_AREAS GLOBAL PROPERTY CB_AREAS)
 target_link_libraries(cb_tests PRIVATE ${CB_ALL_AREAS})
-# the pytypes shim converts the old layer's Big (pyengine's unbounded integer): its test needs that class
-target_sources(cb_tests PRIVATE "${CB_NATIVE_ROOT}/pyengine/src/big.cc")
-set_source_files_properties("${CB_NATIVE_ROOT}/pyengine/src/big.cc" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
-# the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
-target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
 # the kit's worker host (see above): the libraries every area links, and the DLLs next to it
 add_executable(cb_lane_worker EXCLUDE_FROM_ALL engine/lane_worker_main.cpp)
@@ -428,13 +299,12 @@ cb_apply_flags(cb_cmdrun)
 target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_cmdrun)
 
-# codebreaker_cb: the plain C++ program (docs/PYTHON_RETIREMENT.md step 2): main is cb::app's command table, no Python; it hosts its own workers
-# (app/host_hook.cpp). Not built by default; codebreaker.exe (the translated Python plus native/cb) is still the shipped program.
-add_executable(cb_codebreaker EXCLUDE_FROM_ALL app/codebreaker_main.cpp app/allocator_main.cpp cb.manifest)
-cb_apply_flags(cb_codebreaker)
-target_link_libraries(cb_codebreaker PRIVATE cb_app cb_core)
-set_target_properties(cb_codebreaker PROPERTIES OUTPUT_NAME codebreaker_cb)
-cb_copy_prebuilt_dlls(cb_codebreaker)
+# codebreaker: THE program (tools/build_codebreaker_exe.cmd installs it as state/cxx/codebreaker/build/codebreaker.exe, the path every tool
+# uses). main is cb::app's command table; it hosts its own workers (app/host_hook.cpp); `ui` starts the Python terminal under real python.
+add_executable(codebreaker app/codebreaker_main.cpp app/allocator_main.cpp cb.manifest)
+cb_apply_flags(codebreaker)
+target_link_libraries(codebreaker PRIVATE cb_app cb_core)
+cb_copy_prebuilt_dlls(codebreaker)
 
 # exe_gate: runs the real codebreaker.exe on the command cases of testdata/exe_gate and compares goldens (tools\gate.cmd).
 add_executable(cb_exe_gate EXCLUDE_FROM_ALL app/exe_gate_main.cpp)
@@ -484,12 +354,11 @@ add_test(NAME cb_tests COMMAND cb_tests)
 
 # cb_tests_<area>: one area's tests alone, built on request (tools\build_cb.cmd area <name>). A change to one area needs
 # only that area's library, what it links, and its own tests -- not every area's tests (40% of a full build) nor the
-# shim tests that compile the old py:: layer (24%). The merge check still builds and runs the whole cb_tests.
+# tests of other areas. The merge check still builds and runs the whole cb_tests.
 get_property(CB_AREAS_FOR_AREA_TESTS GLOBAL PROPERTY CB_AREAS)
 foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
   string(REGEX REPLACE "^cb_" "" area "${lib}")
   get_property(area_tests GLOBAL PROPERTY CB_AREA_TESTS_${area})
-  list(FILTER area_tests EXCLUDE REGEX "shims")
   if(NOT area_tests)
     continue()
   endif()

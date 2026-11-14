@@ -1,11 +1,11 @@
 @echo off
-rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--update] [--filter TEXT] -- the gate: what `codebreaker.exe tests\run_all.py --quick`
-rem was, as native programs (docs/PYTHON_RETIREMENT.md 5.2).
+rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--update] [--filter TEXT] -- THE gate (docs/PYTHON_RETIREMENT.md 5.2): cb_tests, every command
+rem case of cb_exe_gate against the real codebreaker.exe, and the terminal interface's Python tests. tests\run_all.py is not part of it.
 rem
-rem     tools\gate.cmd                 build native/cb (incremental: ninja's object cache is the compile cache), then in ONE parallel run
+rem     tools\gate.cmd                 build native/cb and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run
 rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of testdata\exe_gate
 rem     tools\gate.cmd --no-build      skip the build (the objects are current)
-rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else state\cxx\codebreaker\build\codebreaker.exe, else the main checkout's)
+rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else state\cxx\codebreaker\build\codebreaker.exe, which this script builds and installs)
 rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone)
 rem     tools\gate.cmd --no-ui         skip the UI's Python tests (the terminal interface stays Python and needs real python + Textual,
 rem                                    which the exe cannot run; --update, --filter and --no-unit skip them too)
@@ -35,9 +35,10 @@ set PASS=%PASS% %1
 shift
 goto args
 :run
-rem the program under test: --exe, else CB_EXE (the one setting every tool honors: set it to the plain native program,
-rem state\cxx\codebreaker\native\codebreaker.exe, to gate that), else the translated-Python build
+rem the program under test: --exe, else CB_EXE (the one setting every tool honors), else the one tools\build_codebreaker_exe.cmd installs
+set OWN_EXE=0
 if "%EXE%"=="" if defined CB_EXE set EXE=%CB_EXE%
+if "%EXE%"=="" (set OWN_EXE=1& set EXE=%ROOT%statexdebreakerbuilddebreaker.exe)
 call "%HERE%disk_guard.cmd" || exit /b 1
 set JOBS=%CB_BUILD_JOBS%
 if "%JOBS%"=="" set /a JOBS=%NUMBER_OF_PROCESSORS% / 2
@@ -49,6 +50,7 @@ if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAK
 set TARGETS=cb_exe_gate
 if "%UNIT%"=="1" set TARGETS=cb_tests cb_exe_gate
 if "%BUILD%"=="1" cmake --build "%B%" --target %TARGETS% -j %JOBS% || exit /b 1
+if "%BUILD%"=="1" if "%OWN_EXE%"=="1" call "%HERE%build_codebreaker_exe.cmd" || exit /b 1
 set CMD="%B%\bin\cb_exe_gate.exe" --repo "%ROOT%" --jobs %GJOBS%
 if not "%EXE%"=="" set CMD=%CMD% --exe "%EXE%"
 if "%UNIT%"=="1" set CMD=%CMD% --unit "%B%\bin\cb_tests.exe"
@@ -58,12 +60,12 @@ if "%UI%"=="1" call :ui
 if %UI_RC% NEQ 0 set RC=%UI_RC%
 exit /b %RC%
 
-rem The terminal interface (codebreaker/ui) stays Python, and its tests need real python with Textual: the exe's translated runtime
-rem cannot run them (they skip there). They run against the program under test, reported like the other results.
+rem The terminal interface (codebreaker/ui) stays Python, and its tests need real python with Textual. They run against the program under
+rem test, reported like the other results.
 :ui
 set UI_RC=0
 where python >nul 2>nul || (echo UI tests: FAIL -- python is not on the PATH ^(the terminal interface's tests need it^)& set UI_RC=1& exit /b 1)
-if "%EXE%"=="" (if exist "%ROOT%\state\cxx\codebreaker\build\codebreaker.exe" set CB_EXE=%ROOT%\state\cxx\codebreaker\build\codebreaker.exe) else set CB_EXE=%EXE%
+if "%EXE%"=="" (set CB_EXE=%ROOT%\state\cxx\codebreaker\build\codebreaker.exe) else set CB_EXE=%EXE%
 set T0=%TIME%
 echo.
 echo UI tests (python, Textual): test_ui.py::test_terminal_interface, test_ui_thin.py

@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """Run the test suites and exit non-zero if any of them fails.
 
-    codebreaker.exe tests/run_all.py                    # all suites
-    codebreaker.exe tests/run_all.py --quick            # skip the slower end-to-end suites (the merge gate)
-    codebreaker.exe tests/run_all.py --changed [BASE]   # only the suites that depend on what changed since BASE
-    codebreaker.exe tests/run_all.py --plan             # with --changed: say what would run, run nothing
-    codebreaker.exe tests/run_all.py --jobs N           # N jobs side by side (default: settings.json "workers")
-    codebreaker.exe tests/run_all.py --no-cache         # run the compilers instead of asking the compile cache
-    codebreaker.exe tests/run_all.py --no-build         # run the codebreaker.exe there is, even if it is stale
+    python tests/run_all.py                    # all suites
+    python tests/run_all.py --quick            # skip the slower end-to-end suites (the merge gate)
+    python tests/run_all.py --changed [BASE]   # only the suites that depend on what changed since BASE
+    python tests/run_all.py --plan             # with --changed: say what would run, run nothing
+    python tests/run_all.py --jobs N           # N jobs side by side (default: settings.json "workers")
+    python tests/run_all.py --no-cache         # run the compilers instead of asking the compile cache
+    python tests/run_all.py --no-build         # run the codebreaker.exe there is, even if it is stale
 
-Use this as the gate before committing:  codebreaker.exe tests/run_all.py && git commit ...
+Use this as the gate before committing:  python tests/run_all.py && git commit ...
 (Piping a single suite through `tail` hides its exit code; this script does not.)
 
-The program under test is codebreaker.exe (state/cxx/codebreaker/build, or CB_EXE): every suite runs in it,
-whatever runs this script, and there is no python fallback. It is built from the sources, the tests among
-them, so a codebreaker.exe older than any of them is rebuilt first (tools/build_codebreaker_exe.cmd,
-incremental) unless --no-build.
+The Python suites run under real python (this interpreter; pytest and Textual where a suite needs them). The
+native program is a separate thing they talk to: codebreaker.exe (state/cxx/codebreaker/build, built by
+tools/build_codebreaker_exe.cmd, or CB_EXE), which the suites that need it find through CB_EXE. This runner is
+no longer the gate: tools/gate.cmd is (cb_tests, every command case of cb_exe_gate, and the UI's Python tests).
+What remains here is a convenience for the Python that is still in the tree.
 
 Side by side.  Suites run in parallel, up to the `workers` setting (CB_JOBS, --jobs override it); every job
 gets CB_JOBS=1, so `workers` processes are busy in all. tests/translate and tests/java (pytest folders) are
@@ -46,7 +47,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 KIT = os.path.join(ROOT, "native", "testkit", "build", "bin", "testkit.exe")
 EXE = os.environ.get("CB_EXE") or os.path.join(ROOT, "state", "cxx", "codebreaker", "build", "codebreaker.exe")
-BUILT_FROM = ("codebreaker", "tests", "tools", os.path.join("native", "typed"), os.path.join("native", "cbexe"))
+PY = sys.executable                                    # the suites run under real python
 
 # (file, slow, group). dosbox: suites that start DOSBox-X (one emulator at a time); service: servers on a
 # port. (Suites with a state folder of their own, in a temporary folder, need no group.)
@@ -101,11 +102,11 @@ def job_count(argv=()):
 # ---------------------------------------------------------------------------------------------------
 def launch_pytest(target, tmp):
     os.makedirs(os.path.dirname(tmp), exist_ok=True)               # (pytest makes the basetemp, not its parent)
-    return [EXE, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "run_all", "--basetemp=" + tmp, target]
+    return [PY, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "run_all", "--basetemp=" + tmp, target]
 
 
 def child_env(argv=()):
-    env = dict(os.environ, CB_NO_FP_CACHE="1", CB_JOBS="1",           # verdicts from the current code; one worker a job
+    env = dict(os.environ, CB_EXE=EXE, CB_NO_FP_CACHE="1", CB_JOBS="1",           # verdicts from the current code; one worker a job
                PYTHONPATH=os.pathsep.join(p for p in (HERE, os.environ.get("PYTHONPATH")) if p))
     if "--no-cache" in argv:
         env["CB_TEST_CACHE"] = "0"
@@ -141,7 +142,7 @@ def suite_jobs(name, group, times, n):
     with open(path, encoding="utf-8") as f:                      # a file of pytest tests only: run by pytest
         own = "__main__" in f.read()
     # a script reports what it imported through the interpreter (-X importtime), a pytest run through the plugin
-    cmd = [EXE, "-X", "importtime", path] if own else launch_pytest(path, state_dir("test-tmp", name))
+    cmd = [PY, "-X", "importtime", path] if own else launch_pytest(path, state_dir("test-tmp", name))
     return [dict(suite=name, label=name, group=group, est=times.get(name, 5.0), cmd=cmd, trace=None if own else trace_path(name))]
 
 
@@ -317,34 +318,10 @@ def changed_suites(base, names):
     return {ln[4:] for ln in out if ln.startswith("RUN ")}, None
 
 
-def stale_source():
-    """-> a source file newer than codebreaker.exe (None: it is current), or the exe's path if there is none."""
-    if not os.path.isfile(EXE):
-        return EXE
-    built = os.path.getmtime(EXE)
-    for top in BUILT_FROM:
-        for d, dirs, files in os.walk(os.path.join(ROOT, top)):
-            dirs[:] = [x for x in dirs if x not in ("__pycache__", "build")]
-            for f in files:
-                if f.endswith((".py", ".json", ".hpp", ".cpp", ".cc", ".h")) and os.path.getmtime(os.path.join(d, f)) > built:
-                    return os.path.join(d, f)
-    return None
-
-
 def ensure_exe(argv):
-    """codebreaker.exe current with the sources (built if not), or exit: the suites run nothing else."""
-    why = stale_source()
-    if why is None:
-        return
-    if "--no-build" in argv and os.path.isfile(EXE):
-        print("-- codebreaker.exe is older than %s (--no-build: run anyway)" % os.path.relpath(why, ROOT))
-        return
-    print("-- building codebreaker.exe (%s)" % ("none yet" if why == EXE else "older than " + os.path.relpath(why, ROOT)), flush=True)
-    r = subprocess.run(["cmd", "/c", os.path.join(ROOT, "tools", "build_codebreaker_exe.cmd")], cwd=ROOT,
-                       capture_output=True, text=True, errors="replace")
-    if r.returncode or not os.path.isfile(EXE):
-        print("\n".join(((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-30:]))
-        print("FAILED: codebreaker.exe did not build")
+    """The native program is there for the suites that talk to it, or exit with how to build it."""
+    if not os.path.isfile(EXE):
+        print("FAILED: %s is not built (tools/build_codebreaker_exe.cmd), or set CB_EXE" % EXE)
         sys.exit(2)
 
 

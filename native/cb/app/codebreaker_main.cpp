@@ -1,10 +1,10 @@
-// cb/app/codebreaker_main.cpp -- the plain C++ `codebreaker` program (docs/PYTHON_RETIREMENT.md step 2): main is the command table of
+// cb/app/codebreaker_main.cpp -- THE `codebreaker` program: main is the command table of
 // cb::app directly, with no translated Python behind it. It runs every native command as codebreaker.exe does, hosts the worker processes
 // of the lane kit and of analyze (it launches ITSELF as the worker: host_hook.cpp), and says plainly, exit 2, for a command that is not
 // native yet (there is no fallback).
 //
-//     codebreaker_cb [--corpus NAME] <command> [arguments]
-//     codebreaker_cb                 in a terminal: the terminal interface; `ui [module]` likewise
+//     codebreaker [--corpus NAME] <command> [arguments]
+//     codebreaker                 in a terminal: the terminal interface; `ui [module]` likewise
 //
 // The terminal interface is the one thing that stays Python (codebreaker/ui/terminal.py, Textual): it runs under a real python found by
 // find_python() and talks to this program's `serve` (CB_EXE is set to this program for it; ui/client.py starts the service with it).
