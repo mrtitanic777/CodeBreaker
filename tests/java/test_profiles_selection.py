@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """The reseed-on-switch hook: profiles.use() must actually retarget the frozen profile globals in
-typemap/rules/vcxproj/signatures/pipeline, and round-trip cleanly (no profile-object pollution)."""
+typemap/rules/pipeline, and round-trip cleanly (no profile-object pollution)."""
 
 import pytest
 
-from codebreaker.java import profiles, typemap, rules, signatures, transpile as pipeline
-from codebreaker.java.console import vcxproj
+from codebreaker.java import profiles, typemap, rules, transpile as pipeline
 
 
 @pytest.fixture(autouse=True)
@@ -22,8 +21,6 @@ def _globals_match(p):
     assert typemap.NULLABLE_GETTER_RETURN_TYPE == dict(p.nullable_getter_return_type)
     assert typemap.DEFAULT_VALUE_TYPES == set(p.default_value_types)
     assert rules._HEAVY_TYPES == tuple(p.heavy_types)
-    assert vcxproj._FILTER_RULES == list(p.vcxproj_filters)
-    assert signatures._PACKAGE_ROLES == dict(p.package_roles)
     assert pipeline._STATIC_INIT_ORDER == list(p.static_init_order)
 
 
@@ -36,9 +33,7 @@ def test_use_reseeds_every_global(name):
 def test_generic_empties_globals():
     profiles.use('generic')
     assert typemap.KNOWN_NULLABLE_FIELDS == set()
-    assert vcxproj._FILTER_RULES == []
     assert rules._HEAVY_TYPES == ()
-    assert signatures._PACKAGE_ROLES == {}
     assert pipeline._STATIC_INIT_ORDER == []
 
 
@@ -46,13 +41,11 @@ def test_round_trip_is_clean_no_pollution():
     # snapshot the default
     base_getters = set(typemap.KNOWN_NULLABLE_GETTERS)
     base_fields = set(typemap.KNOWN_NULLABLE_FIELDS)
-    base_filters = list(vcxproj._FILTER_RULES)
     # switch away and back
     profiles.use('minecraft_rubydung')
     profiles.use('minecraft_xbox360')
     assert typemap.KNOWN_NULLABLE_GETTERS == base_getters
     assert typemap.KNOWN_NULLABLE_FIELDS == base_fields
-    assert vcxproj._FILTER_RULES == base_filters
 
 
 def test_runtime_mutation_does_not_pollute_profile():

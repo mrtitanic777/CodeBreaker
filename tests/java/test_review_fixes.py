@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from codebreaker.java import run as cli, parse, transpile as pipeline, profiles
+from codebreaker.java import parse, transpile as pipeline, profiles
 from codebreaker.java.projects.minecraft import edition
 from codebreaker.java.projects.minecraft import controller_nav
 
@@ -158,12 +158,6 @@ def test_viewport_height_comes_from_backbuffer_and_y_is_clamped():
     assert 'g_fbH =' not in vp                     # no longer captured from an arbitrary (0,0,w,h)
     assert 'if (fy < 0) fy = 0;' in vp
     assert 'GetBackBuffer' in _func_body(text, 'void glSetDevice(IDirect3DDevice9* dev)')
-
-
-# ---------------------------------------------------------------- 11. applet-ping CLI
-def test_applet_ping_cli_is_registered(tmp_path, capsys):
-    assert cli.main(['applet-ping', str(tmp_path)]) == 0
-    assert 'applet ping' in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------- 12. edition markers

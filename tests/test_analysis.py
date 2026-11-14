@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Tests for the analyses (codebreaker/analyze): the image, the call graph, conventions, globals,
-strings, structures, classes, dispatch, resources and the fact table, on three small modules of
+strings, structures, classes and dispatch, on three small modules of
 the corpus -- notepad.exe (32-bit), lzexpand.dll (16-bit) and vmouse.vxd (a driver).
 Run:  python tests/test_analysis.py     (exit code 0 = all passed)
 
 Checks that need the retail corpus are SKIPPED when it is not present. Nothing is run in the
-emulator here (that takes minutes); observe.py's own arithmetic is checked on a made-up record."""
+emulator here (that takes minutes). (observe, resources, report and the fact table are native/cb/analyze's: its tests.)"""
 import os
 import sys
 import tempfile
@@ -14,8 +14,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from codebreaker.analyze import (call_graph, classes, conventions, dispatch, facts, globals as global_variables,  # noqa: E402
-                                 image, observe, report, resources, strings, structures)
+from codebreaker.analyze import (call_graph, classes, conventions, dispatch, globals as global_variables,  # noqa: E402
+                                 image, strings, structures)
 from codebreaker.base import corpus  # noqa: E402
 
 RESULTS = []
@@ -154,16 +154,13 @@ def test_structures():
     assert structures.analyse(img)["counts"]["fields"] == sum(len(s["fields"]) for s in found)
 
 
-def test_dispatch_and_resources():
+def test_dispatch():
     img = _image("notepad.exe")
     msgs = dispatch.messages(img)
     names = {dispatch.MESSAGES.get(v) for m in msgs for v in m["messages"]}
     assert {"WM_COMMAND", "WM_INITDIALOG", "WM_CLOSE"} <= names
     sw = dispatch.switches(img)
     assert any(s["table"] for s in sw) and all(s["cases"] for s in sw)
-    loads, _controls = resources.uses(img)
-    assert any(u["type"] == "STRING" and u["present"] for u in loads)
-    assert not any(u["present"] is False for u in loads)                      # notepad loads only what it carries
     le = _image("vmouse.vxd")
     ctl = dispatch.control_messages(le)
     assert ctl and "Device_Init" in ctl["handles"]
@@ -176,52 +173,9 @@ def test_classes_none_in_c():
     assert classes._decorated(".?AVCWnd@@") == "CWnd" and classes._decorated(".?AVInner@Outer@@") == "Outer::Inner"
 
 
-def test_observation_arithmetic():
-    out = {"fields": {}, "nested": {}, "indirect": [], "passes": [], "exit": None, "removed": None, "returns": None}
-    rec = {"exit": "ret", "esp_delta": 12, "ret": observe.BUFFERS + 0x10000,
-           "mem_reads": [{"addr": observe.BUFFERS + 8, "size": 4, "value": 0},
-                         {"addr": observe.MARK + (1 << 24) + (0x10 << 12) + 4, "size": 2, "value": 0}],
-           "mem_writes": [{"addr": observe.BUFFERS + 8, "size": 4, "value": 1}],
-           "calls": [{"pc": 0x401000, "indirect": True, "resolved_target": 0x402000, "external": False}],
-           "api_calls": [("USER32.DLL!SetWindowTextA", [5, observe.BUFFERS + 0x20])]}
-    observe._digest(rec, out)
-    assert out["fields"] == {0: {8: [4, 1, 1]}} and out["nested"] == {(1, 0x10): {4: [2, 1, 0]}}
-    assert out["removed"] == 8 and out["returns"] == ("argument", 1) and out["indirect"] == [(0x401000, 0x402000)]
-    assert out["passes"] == [("USER32.DLL!SetWindowTextA", 1, 0, 0x20, "address")]
-    assert observe._after({"mem_writes": [{"addr": 0x1002, "size": 2, "value": 0x4241}]}, 0x1000, b"....") == b"..AB"
-
-
-def test_report_and_fact_table():
-    _image("lzexpand.dll")
-    os.environ["CB_FUNCTIONS_DB"] = os.path.join(tempfile.mkdtemp(prefix="cbfacts"), "functions.sqlite")
-    try:
-        r = report.run("lzexpand.dll", ("call_graph", "conventions", "dispatch"))
-        assert set(r["counts"]) == {"call_graph", "conventions", "dispatch"} and "failed" not in str(r["counts"])
-        text = report.text(r)
-        assert "== call graph" in text and "16-bit Windows module" in text
-        fs = facts.open()
-        tally = fs.tally(r["sha"])
-        assert tally["conventions"]["convention"] == r["functions"]
-        img = r["image"]
-        va = next(v for v, n in img.exports.items() if n == "LZOPENFILE")
-        rows = fs.get(r["sha"], analysis="conventions", addr=facts.key(img, va))
-        assert rows and rows[0]["value"]["convention"] == "pascal far"
-        report.run("lzexpand.dll", ("conventions",))                         # storing again replaces
-        assert fs.tally(r["sha"])["conventions"]["convention"] == r["functions"]
-        fs.close()
-        try:
-            report.run("lzexpand.dll", ("no_such_analysis",))
-            raise AssertionError("an unknown analysis was accepted")
-        except ValueError:
-            pass
-    finally:
-        del os.environ["CB_FUNCTIONS_DB"]
-
-
 def main():
     for fn in (test_image_32, test_image_16_and_driver, test_arguments_of_a_call, test_call_graph, test_conventions,
-               test_globals_and_strings, test_globals_count_indexed_arrays, test_structures, test_dispatch_and_resources, test_classes_none_in_c,
-               test_observation_arithmetic, test_report_and_fact_table):
+               test_globals_and_strings, test_globals_count_indexed_arrays, test_structures, test_dispatch, test_classes_none_in_c):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
