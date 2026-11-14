@@ -48,7 +48,7 @@ driver-services-small: driver-services {fmt}/splitter.vxd {fmt}/srammtd.vxd
 classes-xex: classes {games}/RubyDung/RubyDung.xex @needs=games
 resources-ne: resources {fmt}/lzexpand.dll --out {out}
 resources-pe: resources {fmt}/charmap.exe --out {out}
-coverage-all: coverage @head=3
+coverage-all: coverage @head=3 @mask="(32-bit|16-bit) [0-9a-f]{12}"
 coverage-module: coverage --module lz32.dll @needs=corpus
 reach-file: reach {fmt}/lz32.dll
 reach-folder: reach {fmt}/cab
