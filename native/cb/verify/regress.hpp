@@ -137,6 +137,10 @@ struct Services {
     std::function<std::vector<std::string>(Tier tier)> missing;
     // Where the run's own folder is made (the built images; gone at the end).
     std::filesystem::path work;
+    // Where the run's locks are made (empty: no locks). Runs on one checkout share the module build folders (state/build/<name>) and a
+    // boot's tag names its disk and screenshots: a run takes the build lock while it builds, and a tag's lock while that boot runs, and
+    // waits ("waiting for regress run pid N") when another run has them. The locks are the system's: a killed run's goes with it.
+    std::filesystem::path lock_dir;
     std::filesystem::path mini_original, setup_original;
     // slow: run `argv` with `exe`; the exit code and the output.
     std::function<std::pair<int, std::string>(const std::vector<std::string>& argv, std::chrono::minutes timeout)> run_exe;

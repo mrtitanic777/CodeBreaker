@@ -406,3 +406,26 @@ CB_TEST("build.module.build_without_openwatcom_is_a_usage_error_and_a_foreign_ki
     CB_CHECK_THROWS_AS(UsageError, ModuleBuilder(services).build("m.dll", {.outdir = dir.path() / "out"}));
     CB_CHECK_EQ(prepared, 1);
 });
+
+CB_TEST("build.module.build_many_gives_each_module_its_own_error", [] {
+    fs::ScopedTempDir dir("cb-module");
+    mt_write(dir.path() / "a.dll", Bytes(64, 1));
+    mt_write(dir.path() / "b.dll", Bytes(64, 1));
+    Services services;
+    services.retail = [&](std::string_view name) -> std::optional<std::filesystem::path> {
+        if (name == "gone.dll") return std::nullopt;
+        return dir.path() / std::string(name);
+    };
+    services.build_folder = [&](std::string_view name) { return dir.path() / "build" / std::string(name); };
+    services.kind_of = [](const std::filesystem::path& p) { return std::optional<std::string>(p.filename() == "a.dll" ? "dos" : "pe"); };
+    services.workers = [] { return 1; };
+    services.prepare = [](const std::filesystem::path& m, const std::filesystem::path&) -> Prepared { throw FormatError(m.filename().string(), 0, "cannot open for writing"); };
+    const auto made = ModuleBuilder(services).build_many({"a.dll", "b.dll", "gone.dll"}, {}, false);
+    CB_CHECK_EQ(made.size(), std::size_t{3});
+    CB_CHECK_EQ(made[0].first, "a.dll");
+    CB_CHECK(made[0].second.error.find("dos") != std::string::npos);        // a's own: a dos module is not linked whole
+    CB_CHECK(made[1].second.error.find("cannot open for writing") != std::string::npos);   // b's own: its prepare failed
+    CB_CHECK(made[1].second.error.find("dos") == std::string::npos);
+    CB_CHECK(made[2].second.error.find("no module") != std::string::npos);   // the third is not in the corpus
+    for (const auto& [name, b] : made) CB_CHECK(!b.linked());
+});
