@@ -58,8 +58,8 @@ bool is_desktop(const Picture& screen);
 // Windows' "The file ... could not be found ... Copy files from:" box, with its path selected.
 bool is_copy_from_box(const Picture& screen);
 // A 720-wide text screen with more than 150 pixels of the given text colour (DOS's bright green SUCCESS and bright yellow ERROR of
-// FIX95CPU's batch file): the colour is matched by sign, not by value (the DAC's rounding).
-enum class TextColour { BrightGreen, BrightYellow };
+// FIX95CPU's batch file, and its red text): the colour is matched by sign, not by value (the DAC's rounding).
+enum class TextColour { BrightGreen, BrightYellow, Red };
 bool has_text_colour(const Picture& screen, TextColour colour);
 // The share (0..1) of the pictures' pixels, on a 160x120 copy of each, that differ by more than a few levels; 1 for pictures of two sizes.
 double changed_share(const Picture& before, const Picture& after);

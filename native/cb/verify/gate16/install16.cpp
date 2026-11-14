@@ -266,13 +266,20 @@ bool Driver::restart_into_dos() {
         const std::optional<Picture>& p = look();
         if (!p) continue;
         if (p->width() == kTextWidth) {
-            // Whatever the machine booted -- FIX95CPU's disk, or the floppy Setup started from (its DOS part again: an "X:\WIN95>" prompt that
-            // waits for nothing), which a restart can fall back to -- it is made to boot FIX95CPU's now: the disk in, the machine reset.
-            nap(seconds(15));
+            // The first text screen is the BIOS's, or Setup's own DOS part finishing. Let the machine settle: what it shows then is FIX95CPU's
+            // disk (red text of its batch file) or the floppy Setup started from, which a restart can fall back to (Setup's DOS part again: grey
+            // text and an "X:\WIN95>" prompt that waits for nothing). That one is swapped for FIX95CPU's disk and the machine reset -- never
+            // sooner: Setup's last work in DOS is on the disk until then, and a reset in its middle leaves "NO OPERATING SYSTEM DETECTED".
+            wait_quiet(seconds(30), t_.restart_at_most);
+            const std::optional<Picture>& settled = look();
+            if (settled && has_text_colour(*settled, TextColour::Red)) {
+                stage_ends("finish", std::format("Windows restarted into FIX95CPU's disk{}", oks ? " (after OK to the floppy-disk box)" : ""));
+                return true;
+            }
             if (!put_in_fix_disk()) return false;
             c_.command("system_reset");
             nap(seconds(5));
-            stage_ends("finish", std::format("Windows restarted into DOS{}; the machine reset to boot FIX95CPU's disk", oks ? " (after OK to the floppy-disk box)" : ""));
+            stage_ends("finish", "Windows restarted into Setup's own floppy; the machine reset to boot FIX95CPU's disk");
             return true;
         }
         // Setup sees the disk in the drive and asks for it out ("Setup detected a disk in your floppy disk drive... Click OK to restart"):
@@ -466,6 +473,7 @@ bool has_text_colour(const Picture& screen, TextColour colour) {
         const unsigned r = px[i], g = px[i + 1], b = px[i + 2];
         switch (colour) {
         case TextColour::BrightGreen: n += g > 220 && r < 130 && b < 130; break;
+        case TextColour::Red: n += r > 140 && g < 60 && b < 60; break;
         case TextColour::BrightYellow: n += r > 220 && g > 220 && b < 130; break;
         }
     }

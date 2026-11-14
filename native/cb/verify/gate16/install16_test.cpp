@@ -66,7 +66,7 @@ Picture text_screen(unsigned lines, std::optional<Rgb> colour) {
 // the long copy, the restart into FIX95CPU's disk and the Windows that comes up after.
 class FakeSetup final : public Console {
 public:
-    enum class Ends { Desktop, FloppyBox, FixError, StaysDos, CopyNeverEnds, WindowsErrorBox };
+    enum class Ends { Desktop, FloppyBox, SetupFloppyAgain, FixError, StaysDos, CopyNeverEnds, WindowsErrorBox };
     explicit FakeSetup(Ends ends) : ends_(ends) {}
 
     std::vector<std::string> keys;
@@ -86,7 +86,10 @@ public:
     void command(std::string_view c) override {
         commands.emplace_back(c);
         if (c.rfind("change floppy0", 0) == 0) fix_in_ = true;
-        if (c == "system_reset" && phase_ == Phase::Restart) go(Phase::Restart);   // (the clock of the boot begins again)
+        if (c == "system_reset" && phase_ == Phase::Restart) {
+            reset_ = true;
+            go(Phase::Restart);   // (the clock of the boot begins again)
+        }
         if (c == "eject floppy0") fix_in_ = false;
     }
     std::string ask(std::string_view c) override {
@@ -105,6 +108,7 @@ private:
     unsigned page_ = 0;                // the wizard's page; the FIX95CPU disk's screen
     unsigned looks_ = 0;
     bool fix_in_ = false;
+    bool reset_ = false;
     bool enter_for_question_ = false;  // Windows' last question answered
 
     void go(Phase p) {
@@ -117,7 +121,8 @@ private:
         now_ += t;
         if (phase_ == Phase::SetupDos && in_phase() > std::chrono::seconds(30)) go(Phase::Wizard);
         if (phase_ == Phase::Copy && ends_ != Ends::CopyNeverEnds && in_phase() > std::chrono::seconds(900)) go(Phase::Finish);
-        if (phase_ == Phase::Restart && in_phase() > std::chrono::seconds(20)) go(Phase::Fix);
+        // (Setup's own floppy boots again and waits at its prompt until the machine is reset)
+        if (phase_ == Phase::Restart && in_phase() > std::chrono::seconds(reset_ ? 20 : 35) && (ends_ != Ends::SetupFloppyAgain || reset_)) go(Phase::Fix);
     }
     void press(std::string_view k) {
         switch (phase_) {
@@ -148,7 +153,9 @@ private:
         case Phase::Copy: return page(looks_);   // the bar moves with every look
         case Phase::Finish: return page(3);
         case Phase::Box: return page(9);
-        case Phase::Restart: return in_phase() < std::chrono::seconds(8) ? solid(640, 480, kBlack) : text_screen(2, std::nullopt);
+        case Phase::Restart:
+            if (in_phase() < std::chrono::seconds(8)) return solid(640, 480, kBlack);
+            return text_screen(2, ends_ == Ends::SetupFloppyAgain && !reset_ ? std::optional<Rgb>(Rgb{170, 170, 170}) : std::nullopt);
         case Phase::Fix:
             if (page_ < 3) return text_screen(4 + 2 * page_, Rgb{170, 0, 0});
             if (page_ == 3) {
@@ -231,14 +238,11 @@ CB_TEST("verify.gate16.install16.the_install_reaches_the_desktop", [] {
     const auto joined = [](const std::vector<std::string>& v) { std::string t; for (const std::string& k : v) t += k + " "; return t; };
     CB_CHECK_EQ(joined(machine.keys), joined(expected));
     // FIX95CPU's disk goes in before Finish and comes out before the restart; the machine boots from the hard disk
-    CB_CHECK_EQ(machine.commands.size(), std::size_t{7});
+    CB_CHECK_EQ(machine.commands.size(), std::size_t{4});
     CB_CHECK(machine.commands[0].rfind("change floppy0 fix95cpu.ima", 0) == 0);
     CB_CHECK_EQ(machine.commands[1], "ask info block");   // (the disk is in when the machine says so)
-    CB_CHECK(machine.commands[2].rfind("change floppy0 fix95cpu.ima", 0) == 0);   // (and again when the machine is down, then reset)
-    CB_CHECK_EQ(machine.commands[3], "ask info block");
-    CB_CHECK_EQ(machine.commands[4], "system_reset");
-    CB_CHECK_EQ(machine.commands[5], "boot_set c");
-    CB_CHECK_EQ(machine.commands[6], "eject floppy0");
+    CB_CHECK_EQ(machine.commands[2], "boot_set c");
+    CB_CHECK_EQ(machine.commands[3], "eject floppy0");    // (no reset: the machine booted FIX95CPU's disk by itself)
     // every stage is kept for whoever looks, the desktop last
     CB_CHECK(std::find(machine.kept.begin(), machine.kept.end(), "copy") != machine.kept.end());
     CB_CHECK(std::find(machine.kept.begin(), machine.kept.end(), "fix95cpu") != machine.kept.end());
@@ -290,4 +294,14 @@ CB_TEST("verify.gate16.install16.the_copy_from_box_has_its_path_selected", [] {
     paint(box, 130, 258, 325, 272, Rgb{0, 0, 168});
     CB_CHECK(is_copy_from_box(box));
     CB_CHECK(!is_copy_from_box(page(3)));
+});
+
+CB_TEST("verify.gate16.install16.setups_own_floppy_booting_again_is_swapped_and_reset", [] {
+    FakeSetup machine(FakeSetup::Ends::SetupFloppyAgain);
+    const Outcome o = drive(machine, "fix95cpu.ima");
+    CB_CHECK_EQ(std::string(word(o.verdict)), "PASS");
+    const auto reset = std::find(machine.commands.begin(), machine.commands.end(), "system_reset");
+    CB_CHECK(reset != machine.commands.end());
+    // the disk is put in again, and found in, before the reset (change, ask), and the reset is not the first thing done
+    CB_CHECK(reset - machine.commands.begin() >= 4);
 });
