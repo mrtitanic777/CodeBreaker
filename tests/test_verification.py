@@ -92,52 +92,6 @@ def test_variant_store():
     assert fs.match_tally("m1", "msvc") == (2, 1, 1, 0)   # 2 functions, 1 identical, 1 same size, 0 different
 
 
-def test_repair_knobs_preserve_meaning():
-    """The repair knobs are behaviour-preserving source rewrites, and the distance measure ranks
-    a right-length near-match ahead of a wrong-length one and ignores linker-filled bytes."""
-    from codebreaker.verify.authored import repair, match
-    src = "int f(int a, int b){\n  int x;\n  int y;\n  return a + b;\n}"
-    knobs = dict(repair._knobs(src, 16, 4))
-    assert any(k.startswith("pad") for k in knobs)       # the original reserves 16, the draft 4
-    assert any(k.startswith("order") for k in knobs)     # two locals -> a reordering
-    assert "b + a" in next(v for k, v in knobs.items() if k.startswith("swap"))
-    assert "char codebreaker_unused[12]" in knobs[next(k for k in knobs if k.startswith("pad"))]
-    assert match.distance((b"\x55\x8b\xec\xc3", bytes(4)), (b"\x55\x8b\xec\xc3", bytes(4)))[:2] == ("identical", 0)
-    assert match.distance((b"\x55\x8b\xec\x90", bytes(4)), (b"\x55\x8b\xec\xc3", bytes(4)))[:2] == ("same size", 1)
-    masked = b"\x00\x01\x01\x01\x01"                      # a 4-byte call displacement, ignored
-    assert match.distance((b"\xe8\x11\x22\x33\x44", masked), (b"\xe8\x99\x88\x77\x66", masked))[1] == 0
-
-
-def test_repair_search_with_any_compiler():
-    """The search works with whatever compiles: here a stand-in whose `bytes` are the order of
-    the declarations, so only the authored order is at distance 0."""
-    from codebreaker.verify.authored import repair
-    authored = "f(a)\nint a;\n{\n\tint x;\n\tregister int y;\n\treturn a;\n}"
-    fake = lambda text: (" ".join(text.split()).encode(), bytes(len(" ".join(text.split()))))
-    moved = authored.replace("\tint x;\n\tregister int y;", "\tregister int y;\n\tint x;")
-    assert moved != authored
-    r = repair.repair(fake, moved, fake(authored))
-    assert r["distance"] == 0 and r["knobs"].startswith("order"), r
-    kinds = set(k.rstrip("0123456789") for k, _s in repair._knobs(authored, 0, None))
-    assert kinds == {"order", "register", "regparam"}, kinds
-
-
-def test_period_compiler_gives_the_original_back():
-    """A source file of the reconstructed 1984 linker, compiled by the XENIX C compiler through
-    build/period.py, is the linker's own bytes."""
-    from codebreaker.build import period
-    from codebreaker.verify.authored import match
-    if "xenix-c" not in period.names():
-        raise Skip("needs the XENIX C compiler (settings: xenix_c)")
-    p = period.get("xenix-c")
-    units = p.units()
-    assert len(units) >= 20, len(units)
-    u = next(x for x in units if x.name == "main.c")
-    assert match.distance(p.compile(u.source, tempfile.mkdtemp()), u.original)[:2] == ("identical", 0)
-    other = next(x for x in units if x.name != "main.c")          # another file's code is not main's
-    assert match.distance(p.compile(other.source, tempfile.mkdtemp()), u.original)[0] != "identical"
-
-
 def test_a_verdict_holds_until_what_it_was_for_changes():
     """A function's signature covers its own text and everything it can reach, and nothing else:
     changing one function re-judges it and its callers, and leaves the rest of the module alone."""
@@ -164,30 +118,6 @@ def test_a_verdict_holds_until_what_it_was_for_changes():
     assert reconstruct.signatures(m, "whole") == dict.fromkeys(M.order, "whole")
 
 
-def test_period_source_gives_the_declarations_an_author_had():
-    """For a period compiler an import is called through its slot, a global is a variable, an
-    address the module's relocations name is the address of a variable, and a function that
-    only hands back what happened to be in EAX returns nothing."""
-    from codebreaker.verify.authored import match, repair
-    header = "\n".join(["typedef int int4;", "int __stdcall HeapFree();", "#define iRam00401000 (*(int4 *)0x401000)",
-                        "#define iRam00900000 (*(int4 *)0x900000)", "int4 f(int4 a1);", "int4 __cdecl g(void);"])
-    texts = {"f": "int4 f(int4 a1)\n{\n  g();\n  return HeapFree(iRam00401000,0,a1 -0x400eff90) + 0x402000 + 0x12345;\n}",
-             "g": "int4 __cdecl g(void)\n{\n  int4 in_EAX;\n  \n  return in_EAX;\n}"}
-    h, t = match.period_source(header, texts, {"HeapFree"}, {0x401000, 0x402000, 0xbff10070})
-    assert "__declspec(dllimport) int __stdcall HeapFree();" in h
-    assert "extern int4 iRam00401000;" in h and "#define iRam00900000" in h      # only what is relocated
-    assert "a1 + (int4)&codebreaker_at_bff10070) + (int4)&codebreaker_at_00402000 + 0x12345" in t["f"], t["f"]
-    assert "extern char codebreaker_at_00402000;" in h
-    assert t["g"].startswith("void __cdecl g(void)") and "in_EAX" not in t["g"] and "void __cdecl g(void);" in h
-    near = match.needed_header(h, t["g"])
-    assert "HeapFree" not in near and "typedef int int4;" in near and "g(void);" in near
-    src = "int f(int a,int b){\n  if (a < *(int *)(b + 4)) {\n    a = 1;\n  }\n  while (g(a) != 0) a++;\n  if (a & 1 == b) a = 2;\n  return a;\n}"
-    tests = [v for k, v in repair._knobs(src, 0, None) if k.startswith("test")]
-    assert len(tests) == 1 and "if (*(int *)(b + 4) > a)" in tests[0]            # not a call, not `&`
-    framed = "int f(void)\n{\n  struct { int a; uint1 _rest[8]; } _f;\n  return 0;\n}"
-    assert "uint1 _rest[4]; } _f;" in dict(repair._knobs(framed, 8, 12))["frame4"]
-
-
 def test_breaks_change_what_a_function_does():
     """The judge's self-test breaks a function one small way at a time, in its statements only."""
     from codebreaker.verify import teeth
@@ -199,26 +129,6 @@ def test_breaks_change_what_a_function_does():
     assert "y != 3" in made["comparison"] and "a1 - a2" in made["operator"]
     assert "g(a2,a1)" in made["arguments"] and "*(int4 *)a1 =" not in made["store"]
     assert all(t.startswith("int4 f(int4 a1,int4 a2)") for t in made.values())
-
-
-def test_other_shapes_of_the_same_function():
-    """An if-chain on one value is offered as a switch, and `r = x;` before the final `return r;`
-    as `return x;` -- but not through a variable narrower than what the function returns, nor
-    where a branch holds a `break`."""
-    from codebreaker.verify.authored import repair
-    src = "\n".join([
-        "int4 f(int4 a1,int4 a2)", "", "{", "  int4 iVar1;", "  ", "  iVar1 = g(a1);", "  if (iVar1 == 0) {",
-        "    iVar1 = 0;", "  }", "  else {", "    if (a2 == 0) {", "      h(a1);", "    }", "    else if (a2 == 1) {",
-        "      k(a1);", "    }", "    else {", "      a1 = 3;", "    }", "    iVar1 = a1;", "  }", "  return iVar1;", "}"])
-    knobs = dict(repair._knobs(src, 0, None))
-    assert "switch (a2) {\ncase 0:\n{\n      h(a1);\n    }\nbreak;\ncase 1:" in knobs["switch0"], knobs["switch0"]
-    assert "default:\n{\n      a1 = 3;\n    }\n}" in knobs["switch0"]
-    assert "    return 0;\n" in knobs["return"] and "    return a1;\n" in knobs["return"], knobs["return"]
-    assert "iVar1 = g(a1);" in knobs["return"]                       # not the last thing done: kept
-    narrow = src.replace("  int4 iVar1;", "  uint1 iVar1;")
-    assert "return" not in dict(repair._knobs(narrow, 0, None))
-    looped = src.replace("      k(a1);", "      break;")
-    assert not any(k.startswith("switch") for k, _v in repair._knobs(looped, 0, None))
 
 
 def test_object_file_of_the_16_bit_compiler_is_read():
@@ -343,22 +253,6 @@ def test_a_pair_of_parameters_used_only_together_is_one_far_pointer_and_a_c_name
     assert "__cdecl SETUPX_132();" in out and "__stdcall USER_33();" in out
 
 
-def test_the_last_mile_search_rewrites_a_comparison_the_way_a_source_had_it():
-    """Ghidra writes `0x19 < iVar1`; SUWIN's sub_3_200C was `iVar1 >= 0x1a` (cmp cx, 1Ah; jl):
-    the search's comparison rewrites give both sides of a constant, and either order of operands."""
-    import random
-    from codebreaker.verify.authored import search16
-    assert search16._LEFT.sub(search16._left, "if (0x19 < iVar1) {") == "if (iVar1 >= 0x1a) {"
-    assert search16._COMPARE.sub(search16._compare, "x <= 0x19 && y > 3 && z >= -0x2") == \
-        "x < 0x1a && y >= 0x4 && z > -0x3"
-    text = "int f()\n{\n  int2 a;\n  uint2 b;\n  \n  if (0x19 < a) {\n  }\n}"
-    seen = {search16.rewrite(text, random.Random(s)) for s in range(40)}
-    assert text.replace("(0x19 < a)", "(a >= 0x1a)") in seen
-    assert text.replace("  int2 a;\n  uint2 b;", "  uint2 b;\n  int2 a;") in seen       # declaration order
-    assert text.replace("  int2 a;", "  uint2 a;") in seen                               # signedness
-    assert search16.rewrite("int f()\n{\n  return 0;\n}", random.Random(0)) is None
-
-
 def test_the_frame_structure_is_taken_apart_into_the_locals_a_source_declares():
     """SUWIN's sub_2_0A92: two 260-byte buffers (one reached 10 bytes below its member, as the
     decompiler printed it) and a word read through the structure become two buffers and a variable."""
@@ -403,23 +297,6 @@ def test_a_call_s_arguments_are_what_its_callee_removes_of_what_was_pushed():
     assert calls("684220" "57" "9a000000e0" "52" "50" "9a100000e0" "cb") == [("GlobalSize", 2), ("GlobalAlloc", 6)]
     assert calls("bb0100" "56" "9a200000e0" "50" "9a300000e0" "cb") == [("none", None), ("two", 4)]
     assert calls("bb0100" "50" "9a100000e0" "cb") == [("GlobalAlloc", 2)]
-
-
-def test_source_files_are_told_by_push_cs_calls_and_an_if_else_can_be_turned_around():
-    """SUWIN's sub_2_594A calls sub_2_595C as `push cs; call` -- the same source file, so it and
-    everything between them is one file; a function no such call reaches is a file of its own.
-    The search's branch rewrite: `if (a == 0) {A} else {B}` -> `if (a != 0) {B} else {A}`."""
-    import random
-    from codebreaker.verify.authored import match16, search16
-    # three functions of segment 2 at 0x10, 0x20, 0x30: the first calls the third near (push cs; call)
-    a = bytes([0x0E, 0xE8]) + (0x30 - (0x10 + 4)).to_bytes(2, "little", signed=True) + bytes([0xCB])
-    where = {1: (2, 0x10), 2: (2, 0x20), 3: (2, 0x30), 4: (2, 0x40)}
-    originals = {1: (a, b"\0" * len(a)), 2: (b"\xcb", b"\0"), 3: (b"\xcb", b"\0"), 4: (b"\xcb", b"\0")}
-    address = {"f1": 1, "f2": 2, "f3": 3, "f4": 4}
-    assert match16.source_files(["f1", "f2", "f3", "f4"], where, originals, address) == [["f1", "f2", "f3"], ["f4"]]
-    text = "int f()\n{\n  int2 a;\n  \n  if (a == 0) {\n    g();\n  }\n  else {\n    h();\n  }\n  return a;\n}"
-    seen = {search16.rewrite(text, random.Random(s)) for s in range(60)}
-    assert "int f()\n{\n  int2 a;\n  \n  if (a != 0) {\n    h();\n  }\n  else {\n    g();\n  }\n  return a;\n}" in seen
 
 
 def test_a_cextdef_is_numbered_with_the_other_externals():
@@ -554,20 +431,6 @@ def test_a_far_call_to_an_import_with_an_addend_is_named_with_it(tmp_path):
     f = asm16.Function(nef, 1, 0, len(code), "_f", lambda kind, *what: "_IMP_%s_%s" % what if kind == "import" else None)
     assert f.text, f.why
     assert "call far ptr _IMP_KERNEL_15 + 4" in f.text
-
-
-def test_a_run_time_library_routine_is_named_outside_the_linker_s_bytes(monkeypatch):
-    """A function that is a library routine byte for byte, outside the places the linker filled in
-    (the routine's fix-ups, the original's relocations), is the library's -- __aFlmul in SUWIN."""
-    from codebreaker.symbols import libraries
-    from codebreaker.verify.gate16 import runtime16
-    routine = bytes([0x55, 0x8B, 0xEC, 0x9A, 0, 0, 0, 0, 0x5D, 0xCA, 0x08, 0x00])
-    mask = bytes([0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0])
-    monkeypatch.setattr(runtime16, "_routines", [libraries.Function("MDLLCEW.LIB:__aFlmul", routine, mask, 0)])
-    linked = bytes([0x55, 0x8B, 0xEC, 0x9A, 0x34, 0x12, 0xFF, 0xFF, 0x5D, 0xCA, 0x08, 0x00])
-    other = bytes([0x55, 0x8B, 0xEC, 0x9A, 0x34, 0x12, 0xFF, 0xFF, 0x5D, 0xCA, 0x06, 0x00])
-    got = runtime16.identify({"f": (linked, b"\0" * 12), "g": (other, b"\0" * 12)})
-    assert got == {"f": "MDLLCEW.LIB:__aFlmul"}
 
 
 def test_a_function_reading_ax_dx_or_bx_before_writing_it_takes_them_as_fastcall_arguments():
@@ -850,13 +713,10 @@ def main():
     for fn in (test_programs_stored_one_after_another_are_each_found, test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
                test_chunks_come_back_in_address_order,
                test_the_judge_s_build_has_the_original_s_code_segment_where_c_still_reads_it,
-               test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
-               test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
+               test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do, test_function_store, test_variant_store, test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_every_kind_keeps_fingerprints_and_writes_calls_alike,
-               test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
-               test_other_shapes_of_the_same_function,
+               test_breaks_change_what_a_function_does,
                test_object_file_of_the_16_bit_compiler_is_read, test_a_verdict_is_for_the_compiled_code,
-               test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental,
                test_a_callee_that_gives_back_the_caller_s_ax_returns_no_dx_either):
         try:

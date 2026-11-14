@@ -240,6 +240,12 @@ std::map<std::string, std::string> m16p_identify(const stdfs::path& msvc152, std
             if (f.code.size() >= 6 && free >= 4) routines.push_back(std::move(f));
         }
     }
+    return identify_run_time_library(std::move(routines), functions);
+}
+
+}  // namespace
+
+std::map<std::string, std::string> identify_run_time_library(std::vector<symbols::libraries::Function> routines, std::span<const am16::Function> functions) {
     std::stable_sort(routines.begin(), routines.end(), [](const auto& a, const auto& b) { return a.code.size() > b.code.size(); });   // longest first
     std::map<std::uint32_t, std::vector<const symbols::libraries::Function*>> by_start;
     for (const symbols::libraries::Function& f : routines)
@@ -260,8 +266,6 @@ std::map<std::string, std::string> m16p_identify(const stdfs::path& msvc152, std
     }
     return out;
 }
-
-}  // namespace
 
 // ---- the run ----------------------------------------------------------------------------------------------------------------------------------
 

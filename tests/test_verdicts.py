@@ -124,11 +124,7 @@ def test_the_producers_speak_it():
     assert reconstruct.GOOD is V.GOOD and reconstruct.NOT_RUN is V.NOT_RUN
     assert win32.GOOD is V.GOOD and win16.NOT_RUN is V.NOT_RUN
     assert lane_common.judged(lambda info: (_ for _ in ()).throw(ValueError("x")))[0] == V.INCONCLUSIVE
-    from codebreaker.verify.authored import match
-    assert match._ORDER == V.MATCHES
-    assert match.compare((b"\x90\xc3", bytes(2)), (b"\x90\xc3", bytes(2)))[0] == V.IDENTICAL
-    assert match.compare((b"\x90\xc3", bytes(2)), (b"\x91\xc3", bytes(2)))[0] == V.SAME_SIZE
-    assert compare.__name__
+    assert compare.__name__                      # (the match words: native verify.verdicts, compare.mask)
 
 
 def main():

@@ -931,7 +931,6 @@ def test_moved_struct_fields():
     `((struct_7 *)a1)->f_0->f_1c`)."""
     from codebreaker.analyze import image, structures
     from codebreaker.decompile import struct_text
-    from codebreaker.verify.authored import match
     i4, u1 = {'kind': 'i32'}, {'kind': 'u8'}
     code = {'kind': 'class', 'name': 'code'}
 
@@ -968,8 +967,7 @@ def test_moved_struct_fields():
     assert facts['structs_used'] == {'struct_1'}
     header = "typedef int int4;\n" + struct_text.declarations(planned, facts['structs_used'])
     assert "typedef struct struct_1 {\n  int4 f_0;\n  uint1 _gap_4[4];\n  int4 f_8;\n  uint1 _gap_c[4];\n  code *f_10;\n} struct_1;" in header, header
-    near = match.needed_header(header, text)
-    assert "int4 f_8;" in near and "struct_1" not in match.needed_header(header, c.function(g, c.MOVED, facts={}))
+    # (the header such a function needs: native source.pipeline_period.the_needed_header_keeps_a_structure_only_when_the_function_names_it)
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
 
