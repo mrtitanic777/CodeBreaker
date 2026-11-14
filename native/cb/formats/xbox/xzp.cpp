@@ -1,8 +1,11 @@
 #include "cb/formats/xbox/xzp.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <utility>
 
 #include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/core/io.hpp"
 #include "cb/core/text.hpp"
 
@@ -94,6 +97,44 @@ std::vector<Payload> payloads(ByteView d) {
         p.size = static_cast<std::size_t>(std::min<std::uint64_t>(e.size, d.size() - p.offset));
         out.push_back(std::move(p));
     }
+    return out;
+}
+
+Bytes build(const std::filesystem::path& folder, ByteView template_pack) {
+    if (template_pack.size() < kV1Table || as_text(template_pack.subspan(0, 4)) != "XUIZ") {
+        throw FormatError(kReader, 0, "the template is not a XUIZ container");
+    }
+    struct File {
+        std::string name;
+        std::filesystem::path path;
+    };
+    std::vector<File> files;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(folder)) {
+        if (!entry.is_regular_file()) continue;
+        files.push_back({text::replace_all(fs::to_text(entry.path().lexically_relative(folder)), "/", "\\"), entry.path()});
+    }
+    std::stable_sort(files.begin(), files.end(), [](const File& a, const File& b) { return text::lower(a.name) < text::lower(b.name); });
+
+    Bytes table, payload;
+    for (const File& f : files) {
+        const Bytes data = fs::read_file(f.path);
+        const Bytes name = text::to_utf16le(f.name);
+        const std::size_t units = name.size() / 2;
+        if (data.size() >= (std::size_t{1} << 24) || units > 0xFFFF) throw UnsupportedError(kReader, 0, "an entry too large for the v1 table: " + f.name);
+        const std::size_t offset = payload.size();
+        for (int shift = 16; shift >= 0; shift -= 8) table.push_back(static_cast<std::uint8_t>(data.size() >> shift));   // u24be size
+        for (int shift = 24; shift >= 0; shift -= 8) table.push_back(static_cast<std::uint8_t>(offset >> shift));       // u32be offset
+        table.push_back(static_cast<std::uint8_t>(units));                                                              // u16le name length
+        table.push_back(static_cast<std::uint8_t>(units >> 8));
+        table.insert(table.end(), name.begin(), name.end());
+        payload.insert(payload.end(), data.begin(), data.end());
+    }
+    Bytes out(template_pack.begin(), template_pack.begin() + kV1Table);
+    const std::uint32_t base_relative = static_cast<std::uint32_t>(kV1Table + table.size() - kBaseRelative);
+    for (int i = 0; i < 4; ++i) out[0x10 + i] = static_cast<std::uint8_t>(base_relative >> (24 - 8 * i));
+    out.insert(out.end(), table.begin(), table.end());
+    out.insert(out.end(), payload.begin(), payload.end());
+    for (int i = 0; i < 4; ++i) out[0x08 + i] = static_cast<std::uint8_t>(out.size() >> (24 - 8 * i));
     return out;
 }
 

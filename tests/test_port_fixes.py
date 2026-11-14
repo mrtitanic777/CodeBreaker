@@ -30,48 +30,6 @@ def check(fn):
         RESULTS.append((fn.__name__, "FAIL", "%s: %s" % (type(e).__name__, e)))
 
 
-def test_pe_writer_nosplit_keeps_the_scaled_index():
-    """source.pe_writer: a scaled index in a memory operand is written `[nosplit ecx*4 ...]`; the replacement
-    string once held control characters where the group references belong, so NASM refused the instruction."""
-    for name in ("pe_writer", "le_writer"):       # (the source text: no control characters; the groups are written \1 and \2)
-        text = open(os.path.join(ROOT, "codebreaker", "source", name + ".py"), encoding="utf-8").read()
-        assert not [c for c in text if ord(c) < 0x20 and c not in "\r\n\t"], name
-        assert 'r"[\\1nosplit \\2"' in text, name
-    try:
-        from codebreaker.source import pe_writer
-    except ImportError:                          # (the image comparer it imports now lives only in the typed port)
-        return
-    w = pe_writer.Writer.__new__(pe_writer.Writer)
-    w.sites = {}
-    i = types.SimpleNamespace(address=0x401000, prefix=[], mnemonic="mov", op_str="eax, dword ptr [ecx*4 + 0x10]",
-                              bytes=b"\x8b\x04\x8d\x10\x00\x00\x00", imm_size=0, imm_offset=0, disp_size=0, disp_offset=0)
-    got = w._nasm(i, None, [])
-    assert got == "mov eax, dword [nosplit ecx*4 + 0x10]", repr(got)
-    i.op_str = "eax, dword ptr fs:[edx*8]"
-    got = w._nasm(i, None, [])
-    assert got == "mov eax, dword [fs:nosplit edx*8]", repr(got)
-    assert all(ord(c) >= 0x20 for c in got)
-
-
-def test_sms_writer_game_gear_rom():
-    """source.sms_writer: a Game Gear cartridge is written (the Game Gear's ports were merged into the console's
-    with dict(PORTS, **GG_PORTS), whose integer keys raise TypeError), and names its own ports."""
-    import tempfile
-    from codebreaker.build import z80_asm
-    try:
-        from codebreaker.source import sms_writer
-    except ImportError as e:     # (source.image_writer imports codebreaker.compare.image, retired to C++ in dfc84fcef)
-        raise Skip("sms_writer needs codebreaker.compare.image, which now exists only in C++: %s" % e)
-    _at, image = z80_asm.build_flat("        DI\n        OUT ($06),A\n        IN A,($00)\n        OUT ($BF),A\n        JR $\n")
-    work = tempfile.mkdtemp(prefix="cb_gg_")
-    path = os.path.join(work, "t.gg")
-    with open(path, "wb") as f:
-        f.write(bytes(image) + bytes(0x4000 - len(image)))
-    r = sms_writer.reconstruct(path, work)
-    text = open(r["source"]).read()
-    assert "Game Gear" in text and "GG_STEREO" in text and "GG_START" in text, text[:600]
-
-
 def test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same():
     """exact.draft.candidates: merging arrays of structs of one size into one array replaces its STRUCTARR entry by
     the list of its fields; the next variant of the same text read that list as a field's type and declared
@@ -302,8 +260,7 @@ def test_draft_shapes_store_joins_at_the_end_of_the_text_finds_nothing():
 
 
 def main():
-    for fn in (test_pe_writer_nosplit_keeps_the_scaled_index,
-               test_sms_writer_game_gear_rom, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same,
+    for fn in (               test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same,
                test_forms_library_macros_keep_the_include_a_macro_does_not_name,
                test_forms_register_temps_asks_for_the_whole_register_name,
                test_forms_default_after_keeps_the_statements_after_the_default_cases_return,

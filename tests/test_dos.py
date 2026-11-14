@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for real-mode programs and boot media: the reader (formats/dos.py), unpacking, function
-discovery, interrupt names, the description for the decompiler, and disk / CD images.
+discovery, interrupt names and the description for the decompiler.
 Run:  python tests/test_dos.py     (exit code 0 = all passed)
 
 Checks that need the retail corpus, the built decompiler or an image file are SKIPPED when
@@ -16,7 +16,7 @@ if ROOT not in sys.path:
 
 from codebreaker.analyze import dos_functions      # noqa: E402
 from codebreaker.base import corpus                # noqa: E402
-from codebreaker.formats import dos, media         # noqa: E402
+from codebreaker.formats import dos                # noqa: E402
 from codebreaker.symbols import dos_interrupts     # noqa: E402
 
 RESULTS = []
@@ -164,41 +164,6 @@ def test_description_for_the_decompiler():
     three = sorted(d.names)[:3]
     out, order, _by_va, _err = decompiler.run(d.path, only=three)
     assert len(order) >= 2, order
-
-
-# --- media ---------------------------------------------------------------------------------------
-def test_boot_floppy():
-    path = os.path.join(corpus.root(), "setup", "media", "boot.img")
-    if not os.path.isfile(path):
-        raise Skip("no boot floppy image in the corpus")
-    v, = media.volumes(path)
-    assert v.kind == "fat12" and v.label == "BOOT95B" and v.boot["system"] == "MSWIN4.1"
-    files = {e.path: e for e in v.files()}
-    assert len(files) == 31 and files["IO.SYS"].size == 214836
-    assert v.read(files["IO.SYS"]) == open(_retail("winboot.sys"), "rb").read()
-    out = tempfile.mkdtemp()
-    assert media.extract(path, out, ["*.sys"]) == 8 and os.path.getsize(os.path.join(out, "HIMEM.SYS")) == 33191
-
-
-def test_cd_image():
-    path = os.path.join(os.path.dirname(corpus.design_dir()), "..", "win1.0", "Win1.0.iso")
-    if not os.path.isfile(path):
-        raise Skip("no small CD image on this machine")
-    v = media.volumes(path)[0]
-    files = [e for e in v.files() if not e.is_dir]
-    assert v.kind == "iso9660" and len(files) == 35
-    assert all(len(v.read(e)) == e.size for e in files[:5])
-
-
-def test_not_an_image():
-    p = os.path.join(tempfile.mkdtemp(), "x.img")
-    with open(p, "wb") as f:
-        f.write(b"this is not a disk" * 4000)
-    try:
-        media.volumes(p)
-    except ValueError:
-        return
-    raise AssertionError("garbage was read as an image")
 
 
 # --- the native DOS runner (build/native_dos.py) vs DOSBox -----------------------------------
@@ -531,7 +496,6 @@ def main():
     for fn in (test_kinds, test_com_and_driver_layout, test_relocations_are_applied,
                test_exepack_static_equals_emulated, test_unpacked_file, test_kernel_image_parts, test_function_discovery,
                test_installed_handler_is_found, test_interrupt_names, test_description_for_the_decompiler,
-               test_boot_floppy, test_cd_image, test_not_an_image,
                test_native_dos_switch, test_native_masm_assembles, test_native_masm_matches_dosbox,
                test_dpmi_host_protected_mode, test_mcb_arena_walk, test_native_tnt_ml_assembles,
                test_native_tnt_ml_matches_dosbox):

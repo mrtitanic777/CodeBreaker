@@ -120,28 +120,6 @@ class LEFile:
         decoded DDB or None. The name is what `Declare_Virtual_Device <name>` emits."""
 
 
-class W3File:
-    r"""W3 container (e.g. vmm32.vxd): a bundle of concatenated LE images. The header is 'W3',
-    a version word, a module count dword, then `count` 16-byte entries (8-char name + dword file
-    offset + dword size) starting at +0x10. Win95 builds vmm32.vxd by packing VMM (and, on some
-    machines, the statically-loaded VxDs) into one W3 so the loader maps them together."""
-
-    def __init__(s, data, lfa):
-        native.required()
-        s.d = data
-        s.lfa = lfa
-        s.__dict__.update(native.call("le.w3", data, lfa))
-
-    def modules(s):
-        """[(name, LEFile), ...] for each embedded LE image (offsets are the module's LE header)."""
-        return _opened(s.d, native.call("le.w3_modules", s.d, s.lfa))
-
-    @classmethod
-    def from_file(cls, path):
-        d = open(path, "rb").read()
-        return cls(d, int.from_bytes(d[0x3C:0x40], "little"))
-
-
 @native.answered("le.open_vxds", args_of=_file_args, result=_vxds_result)
 def open_vxds(path):
     """[(name, LEFile), ...] for any VxD file: one entry for a plain LE/LX, all embedded modules

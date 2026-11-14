@@ -145,7 +145,8 @@ def test_every_screen_works_with_only_the_ui_present():
         module, _sha, _digest = test_ui._fill_store()
     except test_ui.Skip as e:
         raise Skip(str(e))
-    addr = sorted("%08x" % x["address"] for x in test_ui.inspect.describe(module)["exports"]["symbols"][:6])[0]
+    image = test_ui.pe.open_pe(module)
+    addr = sorted("%08x" % (image.image_base + x["rva"]) for x in image.export_table()["symbols"][:6])[0]
     tree = tempfile.mkdtemp(prefix="cbthin")
     state = tempfile.mkdtemp(prefix="cbthinstate")
     try:
