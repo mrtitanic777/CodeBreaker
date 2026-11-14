@@ -1,6 +1,6 @@
 """direct.py <suffix>...: direct importers (modules, tests, tools, native generators) of each module, from a fresh graph.json."""
 import json, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 G = json.load(open(P + "graph.json"))
 g, ext = G["graph"], G["ext"]
 g["codebreaker.__main__"] = []

@@ -1,5 +1,5 @@
 import json, os, re, collections, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "graph.json"))
 graph, ext, files = d["graph"], d["ext"], d["files"]
 DL = json.load(open(P + "deleted_lines.json")) if os.path.exists(P + "deleted_lines.json") else {}
@@ -179,7 +179,7 @@ del_l = sum(r["lines"] for r in rows if r["m"] in deleted)
 w("# Python reach inventory: who still reaches each codebreaker/ module")
 w("")
 w("Made 2026-11-13, re-run after batch 3 (every command but `ui` native; batches 1, 2 and 3 deleted; the totals and rows below are the tree after batch 3). Every row is")
-w("computed (state/work/typed-port/python_reach/graph.py and report.py: AST import graph of every .py, lazy imports and dotted-name")
+w("computed (docs/history/python-port/python_reach/graph.py and report.py: AST import graph of every .py, lazy imports and dotted-name")
 w("strings included, plus tests/, tools/ and native/ generators); the batch-1 verdicts at the end were checked by hand; the batch-2 section corrects the batch-1 estimate of the deletable pool.")
 w("")
 w("%d modules / %d lines under codebreaker/ (ui is listed too, it is the kept terminal)." % (len(rows), tot_l))
@@ -252,7 +252,7 @@ for k in sorted(pk):
         tag = "DELETED batch 1" if r["m"] in deleted else ""
         w("| %s | %d | %s | %s | %s |" % (name, r["lines"], tag + (" was: " if tag else "") + reached(r) if tag else reached(r), r["rep"] or "none found", conds(r)))
     w("")
-open("state/work/typed-port/python_reach.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
+open("docs/history/python-port/python_reach.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
 print("wrote", len(out), "lines")
 cnt = collections.Counter(conds(r) for r in rows)
 print(cnt.most_common(12))

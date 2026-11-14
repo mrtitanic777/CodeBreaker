@@ -2,7 +2,7 @@
 
 Roots, scripts and conditions as in batch 7 (`python_reach/g7.py`, `twin7.py`, `tools/check_imports.py`). The Python Java component was held by about 57 test files; batch 7 left it because `twin7.py` (a name-similarity hint) found
 114 of the 328 cases of `tests/java/*` with no obvious native twin. This batch read each of those 114 against the native tests (the Python case and the native test side by side, not by name), found the native test that checks the
-same behaviour, or ported the case as a native test. Earlier maps (`state/work/typed-port/test_port_map.md`, third pass: the 114 literal-flagged cases; `test_port_map_2.md` for `tests/translate/*` and `tests/test_port_fixes.py`) were reused where they cite
+same behaviour, or ported the case as a native test. Earlier maps (`docs/history/python-port/test_port_map.md`, third pass: the 114 literal-flagged cases; `test_port_map_2.md` for `tests/translate/*` and `tests/test_port_fixes.py`) were reused where they cite
 a specific native test; 24 of the 114 are in that third pass, 90 were read fresh here.
 
 ## Result

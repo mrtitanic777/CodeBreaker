@@ -1,7 +1,7 @@
 """Batch 3 reach: every command but `ui` is native, so the roots are the UI, __main__'s corpus option, compare.image (typed manifest),
 tools/*.py still used, and the tests (the exe's gate)."""
 import json, re, collections, sys, os
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "graph.json"))
 graph, ext, files = d["graph"], d["ext"], d["files"]
 RETIRED_TOOLS = set(sys.argv[1:])  # tool basenames treated as retired

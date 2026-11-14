@@ -1,5 +1,5 @@
 import json, collections, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "live.json"))
 g = d["cutgraph"]
 live = set(d["live"])

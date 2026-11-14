@@ -1,6 +1,6 @@
 """keep6.py: closure of the kept-out set (boot closure + live roots); what remains of a prefix outside it."""
 import json, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "pool6.json"))
 g, lines, live = d["graph"], d["lines"], set(d["live"])
 KEEP = ("verify.authored", "verify.gate16", "verify.lanes.powerpc", "source.module_writer", "ui")

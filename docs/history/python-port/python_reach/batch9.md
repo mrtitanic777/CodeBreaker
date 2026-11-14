@@ -206,7 +206,7 @@ The suites left in `run_all.py`: `check_imports`, `tidy`, `test_ui`, `test_ui_th
 
 ## The tests: case-by-case
 
-Every deleted suite file's cases, with the native test that checks the same behaviour (or the reason none is needed), as written in `state/work/typed-port/test_port_map.md` and `test_port_map_2.md` (batches 1-8; both copied here with this note). Tags of map 1: [C] covered by an existing native test, [P] ported; status words of map 2: COVERED, PORTED, NOT NEEDED, BLOCKED (none remain for these files). The sections for the deleted files follow verbatim.
+Every deleted suite file's cases, with the native test that checks the same behaviour (or the reason none is needed), as written in `docs/history/python-port/test_port_map.md` and `test_port_map_2.md` (batches 1-8; both copied here with this note). Tags of map 1: [C] covered by an existing native test, [P] ported; status words of map 2: COVERED, PORTED, NOT NEEDED, BLOCKED (none remain for these files). The sections for the deleted files follow verbatim.
 
 ## test_analysis.py (12)
 - [C] test_image_32 -- analyze.image.a_pe_module_has_the_functions_the_live_loader_found, ...spans_imports_and_relocations...

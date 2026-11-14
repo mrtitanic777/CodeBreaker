@@ -1,6 +1,6 @@
 """why6.py <module-suffix>: a shortest import path from the kept roots to the module."""
 import json, sys, collections
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "pool6.json"))
 g = d["graph"]
 KEEP = ("verify.authored", "verify.gate16", "verify.lanes.powerpc", "source.module_writer", "ui")

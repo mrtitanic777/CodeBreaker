@@ -1,7 +1,7 @@
 """g9.py: holders of each codebreaker module. usage: g9.py [holders|why MOD]"""
 import sys, os
 sys.argv=[sys.argv[0]]+sys.argv[1:]
-exec(open("state/work/typed-port/python_reach/g7.py").read().split('if __name__')[0])
+exec(open("docs/history/python-port/python_reach/g7.py").read().split('if __name__')[0])
 g,weak,mods=graph(set())
 for m in g: g[m]|=weak[m]
 rev={}

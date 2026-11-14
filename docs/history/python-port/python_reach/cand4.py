@@ -1,5 +1,5 @@
 import json, sys, collections
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 g = json.load(open(P + "live3.json"))["graph"]
 ext = json.load(open(P + "graph.json"))["ext"]
 rows = {r["m"]: r for r in json.load(open(P + "rows.json"))}

@@ -1,6 +1,6 @@
 """holders.py <suffix>...: after fixpoint's cut, which kept files / b6 modules import each directly."""
 import json, collections, sys
-exec(open("state/work/typed-port/python_reach/fixpoint.py").read().split("print(\"iterations\"")[0])
+exec(open("docs/history/python-port/python_reach/fixpoint.py").read().split("print(\"iterations\"")[0])
 for s in sys.argv[1:]:
     t = "codebreaker." + s
     kept_files = [f for f, ms in fileimp.items() if f not in cut and t in ms]

@@ -1,5 +1,5 @@
 import json, collections
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 rows = {r["m"]: r for r in json.load(open(P + "rows.json"))}
 g = json.load(open(P + "live3.json"))["graph"]
 pool = set(json.load(open(P + "pool3.json"))["dead"])

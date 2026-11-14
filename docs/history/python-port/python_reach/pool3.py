@@ -1,6 +1,6 @@
 """Batch 3 pool: modules no live root reaches (ui/main/tools), grouped with the tests that hold them (connected components)."""
 import json, re, os, collections, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "live3.json"))
 g = d["graph"]; lines = d["lines"]; tools = d["tools"]; tests = d["tests"]
 RET = set(a + ".py" for a in sys.argv[1:])

@@ -1,6 +1,6 @@
 """batch 6: after retiring the named tools, which modules are held only by tools / only by tests / by nothing."""
 import json, sys, os
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "graph.json")); graph, ext, files = d["graph"], d["ext"], d["files"]
 RET = set(sys.argv[1:])
 graph["codebreaker.base.corpus"] = ["codebreaker", "codebreaker.base", "codebreaker.base.settings"]

@@ -1,5 +1,5 @@
 import json, collections
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 ok = json.load(open(P + "solve3.json")) + ["codebreaker.build.ppc_asm", "codebreaker.formats.xex_edit", "codebreaker.base.tidy_state", "codebreaker.build.period16"]
 rows = {r["m"]: r for r in json.load(open(P + "rows.json"))}
 c = collections.defaultdict(lambda: [0, 0])

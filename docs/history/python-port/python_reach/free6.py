@@ -1,6 +1,6 @@
 """free6.py <prefix,...>: modules of the prefixes outside the kept closure, with line counts and their outside holders (tests, tools, other modules)."""
 import json, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 d = json.load(open(P + "pool6.json"))
 g, lines = d["graph"], d["lines"]
 keep = set(json.load(open(P + "keep6.json")))

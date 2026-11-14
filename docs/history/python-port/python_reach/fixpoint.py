@@ -2,7 +2,7 @@
 D = modules dead once the tests that import a member of D (and the tools that do) are cut and `__main__`'s fallback table is dropped.
 Keepers (roots): the terminal UI, base.settings, and batch 6's areas (translate, java, exact) -- and every other test/tool."""
 import json, os, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 G = json.load(open(P + "graph.json"))
 g = G["graph"]; ext = G["ext"]; files = G["files"]
 lines = json.load(open(P + "live3.json"))["lines"]

@@ -1,7 +1,7 @@
 # Python reach inventory: who still reaches each codebreaker/ module
 
 Made 2026-11-13, re-run after batch 3 (every command but `ui` native; batches 1, 2 and 3 deleted; the totals and rows below are the tree after batch 3). Every row is
-computed (state/work/typed-port/python_reach/graph.py and report.py: AST import graph of every .py, lazy imports and dotted-name
+computed (docs/history/python-port/python_reach/graph.py and report.py: AST import graph of every .py, lazy imports and dotted-name
 strings included, plus tests/, tools/ and native/ generators); the batch-1 verdicts at the end were checked by hand; the batch-2 section corrects the batch-1 estimate of the deletable pool.
 
 320 modules / 109750 lines under codebreaker/ (ui is listed too, it is the kept terminal).

@@ -1,6 +1,6 @@
 """cand5.py <prefix,prefix,...>: the candidate set (modules whose name starts with one of the prefixes, relative to codebreaker.) and who outside it imports each."""
 import json, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 g = json.load(open(P + "live3.json"))["graph"]
 ext = json.load(open(P + "graph.json"))["ext"]
 pre = ["codebreaker." + x for x in sys.argv[1].split(",")]

@@ -1,6 +1,6 @@
 """boot.py: the Python closure of the all-15 boot drivers, and who outside it imports each member."""
 import json, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 g = json.load(open(P + "graph.json"))
 graph, ext, files = g["graph"], g["ext"], g["files"]
 live = json.load(open(P + "live3.json"))

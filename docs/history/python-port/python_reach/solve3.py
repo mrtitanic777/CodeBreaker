@@ -1,6 +1,6 @@
 """Which pool modules can go: no importer outside the deleted set, every test holder mapped natively (half 1 of test_port_map.md)."""
 import json, sys, collections
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 pool = json.load(open(P + "pool3.json"))
 dead = set(pool["dead"])
 rows = {r["m"]: r for r in json.load(open(P + "rows.json"))}

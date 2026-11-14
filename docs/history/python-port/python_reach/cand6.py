@@ -1,6 +1,6 @@
 """cand6.py <prefix,...>: who outside the candidate set imports it (modules from pool6.json, tests/tools from graph.json)."""
 import json, sys
-P = "state/work/typed-port/python_reach/"
+P = "docs/history/python-port/python_reach/"
 g = json.load(open(P + "pool6.json"))["graph"]
 ext = json.load(open(P + "graph.json"))["ext"]
 pre = ["codebreaker." + x for x in sys.argv[1].split(",")]
