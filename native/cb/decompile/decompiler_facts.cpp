@@ -32,9 +32,12 @@ Json facts_set_of_numbers(const std::set<std::int64_t>& items) {
 
 template <class Map>
 Json facts_text_to_number(const Map& map) {
-    Json out = Json::object();
-    for (const auto& [k, v] : map) out[k] = v;
-    return out;
+    // (Json keeps its keys in insertion order in a vector, and `out[k] =` searches it for the key: quadratic in the map's size, and the
+    // module's maps run to thousands of names, rebuilt for every function. The keys of a std::map are distinct, so they go in straight.)
+    typename Json::object_t object;
+    object.reserve(map.size());
+    for (const auto& [k, v] : map) object.emplace_back(k, Json(v));
+    return Json(std::move(object));
 }
 
 // A dict of the library's with keys that are not text: {"$d": [[key, value], ...]}; an empty one is the plain `{}`.
