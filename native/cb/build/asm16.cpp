@@ -192,6 +192,17 @@ std::vector<Place> relocated_places(const std::vector<ne::Relocation>& records, 
     return out;
 }
 
+// Whether a segment's bytes are text and nothing else: nine in ten of them printable ASCII, white space or NUL, and enough of
+// them (a few bytes of code can read as text by chance; a segment of strings cannot be anything else).
+bool asm16_segment_is_text(ByteView bytes) {
+    if (bytes.size() < 64) return false;
+    std::size_t text = 0;
+    for (const std::uint8_t b : bytes) {
+        if (b == 0 || b == '\t' || b == '\n' || b == '\r' || (b >= 0x20 && b < 0x7F)) ++text;
+    }
+    return text * 10 >= bytes.size() * 9;
+}
+
 // KERNEL's huge-pointer constants, __AHSHIFT (113) and __AHINCR (114), taken as a byte or a word: the number the
 // loader writes there in protected mode, 3 and 8. (`db low offset _KERNEL_113` does not assemble: SETUPX's segment 28,
 // its decompressor, fell back to C over it -- and faulted 15% into copying files.)
@@ -398,6 +409,10 @@ void Function::build(const ne::Module& module, const Request& request, const Sym
     for (const PublicSymbol& p : publics_) entry_points.insert(p.offset);
     for (const std::uint32_t e : request.extra_entries) entry_points.insert(e);
     std::vector<std::uint32_t> work(entry_points.begin(), entry_points.end());
+    // A segment the file calls code that holds text and nothing else -- NETDI's segment 54 is 12554 bytes of strings ("NONET",
+    // "NETDI: Nothing selected in CB.") that far pointers name -- has no code to follow: read as instructions the strings gave 666
+    // "functions" that did not assemble back to their bytes (12766 for 12554) and fell to C and then to stand-ins. They stay bytes.
+    if (!work.empty() && asm16_segment_is_text(blob_)) work.clear();
     std::set<std::uint32_t> seen;
     missing_.clear();
     tables_.clear();
