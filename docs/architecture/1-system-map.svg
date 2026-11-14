@@ -1,52 +1,110 @@
-<svg viewBox="0 0 1120 600" xmlns="http://www.w3.org/2000/svg" role="img" style="color:#3a4654;background:#ffffff" aria-label="Layered system map: four entry points feed the drivers, which call verify/reconstruct.run; it asks the platform registry for a lane and runs five stages (decompile, build, judge, record, write), each backed by an engine, all on a shared foundation of base and formats."><style>@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap");.toc{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:22px;font-size:14px}.toc a{color:#2747c4;text-decoration:none}.toc a:hover{text-decoration:underline}.bx{fill:#ffffff;stroke:#3a4654;stroke-width:1.2}.ax{fill:#e6ebfb;stroke:#2747c4;stroke-width:1.6}.dx{fill:#f2f4f6;stroke:#3a4654;stroke-width:1;stroke-dasharray:4 3}.sx{fill:#f2f4f6;stroke:#3a4654;stroke-width:1}.ln{stroke:currentColor;fill:none;stroke-width:1.4}.ln.d{stroke-dasharray:5 4}.t{fill:#141c26;font:600 13px "Instrument Sans",system-ui,sans-serif}.t.a{fill:#2747c4}.s{fill:#56626f;font:12px "Instrument Sans",system-ui,sans-serif}.sm{fill:#56626f;font:11.5px "JetBrains Mono",ui-monospace,Consolas,monospace}.lb{fill:#56626f;font:500 11px "JetBrains Mono",ui-monospace,Consolas,monospace}.layer{fill:#56626f;font:600 11px "JetBrains Mono",ui-monospace,Consolas,monospace;letter-spacing:.06em;text-transform:uppercase}.v-ok{fill:#17794a}.v-warn{fill:#946200}.v-bad{fill:#b4322b}.v-dim{fill:#5e6874}.b-ok{fill:#e3f3ea;stroke:#17794a}.b-bad{fill:#fbe6e4;stroke:#b4322b}.b-dim{fill:#eceef1;stroke:#5e6874}.b-warn{fill:#fbf1da;stroke:#946200}.tbl{overflow-x:auto;margin-top:18px;border:1px solid #c5ccd4;border-radius:6px;background:#ffffff}</style><rect width="100%" height="100%" fill="#ffffff"/>
-<defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
-<!-- layer labels -->
-<text class="layer" x="124" y="53" text-anchor="end">Ways in</text>
-<text class="layer" x="124" y="159" text-anchor="end">Orchestration</text>
-<text class="layer" x="124" y="288" text-anchor="end">Per module</text>
-<text class="layer" x="124" y="440" text-anchor="end">Engines</text>
-<text class="layer" x="124" y="553" text-anchor="end">Foundation</text>
-<!-- row 1 -->
-<rect class="bx" x="140" y="20" width="225" height="58" rx="4"/><text class="t" x="152" y="40">Command line</text><text class="sm" x="152" y="57">python -m codebreaker</text><text class="s" x="152" y="72">__main__.py · 66 commands</text>
-<rect class="bx" x="385" y="20" width="225" height="58" rx="4"/><text class="t" x="397" y="40">Terminal interface</text><text class="sm" x="397" y="57">ui/terminal.py</text><text class="s" x="397" y="72">ui · in the command prompt</text>
-<rect class="bx" x="630" y="20" width="225" height="58" rx="4"/><text class="t" x="642" y="40">Query layer</text><text class="sm" x="642" y="57">ui/service.py</text><text class="s" x="642" y="72">one reading under both</text>
-<rect class="bx" x="875" y="20" width="225" height="58" rx="4"/><text class="t" x="887" y="40">MCP server</text><text class="sm" x="887" y="57">ui/mcp_server.py</text><text class="s" x="887" y="72">tools for an assistant</text>
-<path class="ln" d="M252,78 V100 M497,78 V100 M742,78 V100 M987,78 V100 M252,100 H987"/>
-<path class="ln" d="M290,100 V122" marker-end="url(#a1)"/>
-<!-- row 2 -->
-<rect class="bx" x="140" y="124" width="300" height="62" rx="4"/><text class="t" x="152" y="145">Drivers</text><text class="s" x="152" y="162">module · measure · sweep</text><text class="s" x="152" y="178">reach --judge · coverage · scoreboard</text>
-<rect class="ax" x="470" y="124" width="300" height="62" rx="4"/><text class="t a" x="482" y="145">verify/reconstruct.run</text><text class="s" x="482" y="162">one path for every platform</text><text class="s" x="482" y="178">265 lines, no platform branches</text>
-<rect class="bx" x="800" y="124" width="300" height="62" rx="4"/><text class="t" x="812" y="145">platforms/ · 13 descriptors</text><text class="s" x="812" y="162">identify(path) → its lane module</text><text class="sm" x="812" y="178">verify/&lt;kind&gt;.py: 4 functions</text>
-<path class="ln" d="M440,155 H468" marker-end="url(#a1)"/><text class="lb" x="455" y="148" text-anchor="middle">run</text>
-<path class="ln" d="M770,155 H798" marker-end="url(#a1)"/><text class="lb" x="785" y="148" text-anchor="middle">ask</text>
-<!-- fan out to stages -->
-<path class="ln" d="M620,186 V212 M220,212 H1020"/>
-<path class="ln" d="M220,212 V234 M420,212 V234 M620,212 V234 M820,212 V234 M1020,212 V234" marker-end="url(#a1)"/>
-<text class="lb" x="628" y="204">calls in order</text>
-<!-- row 3 stages -->
-<g>
-<rect class="bx" x="140" y="236" width="160" height="96" rx="4"/><text class="t" x="152" y="257">1 · Decompile</text><text class="sm" x="152" y="276">describe.py</text><text class="sm" x="152" y="293">→ decompiler.exe</text><text class="sm" x="152" y="310">→ c_text.py</text>
-<rect class="bx" x="340" y="236" width="160" height="96" rx="4"/><text class="t" x="352" y="257">2 · Build</text><text class="sm" x="352" y="276">build/functions</text><text class="s" x="352" y="293">each function compiled</text><text class="s" x="352" y="310">one module linked</text>
-<rect class="bx" x="540" y="236" width="160" height="96" rx="4"/><text class="t" x="552" y="257">3 · Judge</text><text class="sm" x="552" y="276">&lt;kind&gt;.judge</text><text class="s" x="552" y="293">both run, same inputs</text><text class="s" x="552" y="310">jobs/pool workers</text>
-<rect class="bx" x="740" y="236" width="160" height="96" rx="4"/><text class="t" x="752" y="257">4 · Record</text><text class="sm" x="752" y="276">store/functions</text><text class="s" x="752" y="293">functions.sqlite</text><text class="s" x="752" y="310">verdict per profile</text>
-<rect class="bx" x="940" y="236" width="160" height="96" rx="4"/><text class="t" x="952" y="257">5 · Write</text><text class="sm" x="952" y="276">module_writer</text><text class="s" x="952" y="293">placement in the tree</text><text class="s" x="952" y="310">status per function</text>
-</g>
-<path class="ln" d="M300,284 H338" marker-end="url(#a1)"/><text class="lb" x="320" y="277" text-anchor="middle">C</text>
-<path class="ln" d="M500,284 H538" marker-end="url(#a1)"/><text class="lb" x="520" y="277" text-anchor="middle">DLL</text>
-<path class="ln" d="M700,284 H738" marker-end="url(#a1)"/><text class="lb" x="720" y="277" text-anchor="middle">result</text>
-<path class="ln" d="M900,284 H938" marker-end="url(#a1)"/><text class="lb" x="920" y="277" text-anchor="middle">rows</text>
-<!-- row 4 engines -->
-<rect class="sx" x="140" y="388" width="160" height="96" rx="4"/><text class="t" x="152" y="409">Native decompiler</text><text class="s" x="152" y="428">forked Ghidra core</text><text class="s" x="152" y="445">SLEIGH: x86, PowerPC</text><text class="s" x="152" y="462">+ 6502 Z80 SM83 68k</text>
-<rect class="sx" x="340" y="388" width="160" height="96" rx="4"/><text class="t" x="352" y="409">Toolchains</text><text class="s" x="352" y="428">OpenWatcom · NASM fork</text><text class="s" x="352" y="445">own Z80/SM83/68k asm</text><text class="s" x="352" y="462">period MSC (DOSBox-X)</text>
-<rect class="sx" x="540" y="388" width="160" height="96" rx="4"/><text class="t" x="552" y="409">Emulators</text><text class="s" x="552" y="428">Unicorn: x86, PowerPC</text><text class="s" x="552" y="445">Win16 env · VxD ring 0</text><text class="s" x="552" y="462">own 6502 Z80 SM83 68k</text>
-<rect class="sx" x="740" y="388" width="160" height="96" rx="4"/><text class="t" x="752" y="409">Names and facts</text><text class="s" x="752" y="428">symbols/: imports, CRT</text><text class="s" x="752" y="445">prototypes, demangle</text><text class="s" x="752" y="462">analyze/: structs, calls</text>
-<rect class="sx" x="940" y="388" width="160" height="96" rx="4"/><text class="t" x="952" y="409">Outputs</text><text class="sm" x="952" y="428">Converted/&lt;bin&gt;/</text><text class="s" x="952" y="445">the Win95 source tree</text><text class="s" x="952" y="462">scoreboard · reports</text>
-<path class="ln" d="M220,388 V334" marker-end="url(#a1)"/><text class="lb" x="227" y="366">C text</text>
-<path class="ln" d="M420,388 V334" marker-end="url(#a1)"/><text class="lb" x="427" y="366">objects</text>
-<path class="ln" d="M620,388 V334" marker-end="url(#a1)"/><text class="lb" x="627" y="366">traces</text>
-<path class="ln" d="M820,388 V334" marker-end="url(#a1)"/><text class="lb" x="827" y="366">names</text>
-<path class="ln" d="M1020,332 V386" marker-end="url(#a1)"/><text class="lb" x="1027" y="366">files</text>
-<!-- row 5 foundation -->
-<rect class="bx" x="140" y="520" width="470" height="58" rx="4"/><text class="t" x="152" y="540">base/</text><text class="s" x="200" y="540">settings · corpus · cache · parallel · converted</text><text class="s" x="152" y="565">results filed under a hash of their inputs (state/cache/)</text>
-<rect class="bx" x="630" y="520" width="470" height="58" rx="4"/><text class="t" x="642" y="540">formats/</text><text class="s" x="710" y="540">96 readers: PE NE LE MZ XEX XBE · ROMs · CAB · ISO · STFS</text><text class="s" x="642" y="565">platforms recognise files, and stages read them, through these</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 860" width="1240" height="860">
+<title>CodeBreaker system map</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/></marker></defs>
+<rect width="1240" height="860" rx="14" fill="#0f1419"/>
+<text x="32" y="46" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#e6edf3" text-anchor="start" font-weight="700">CodeBreaker — system map</text>
+<text x="32" y="72" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8b949e" text-anchor="start" font-weight="normal">One native program (codebreaker.exe, C++20) on one engine; every platform plugs into the same path.</text>
+<rect x="24" y="92" width="1192" height="112" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="38" y="114" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">INTERFACES</text>
+<rect x="40" y="124" width="270" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="52" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">codebreaker &lt;command&gt;</text>
+<text x="52" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">75 commands, one native program</text>
+<rect x="326" y="124" width="270" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="338" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Terminal UI  (codebreaker ui)</text>
+<text x="338" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Textual client of the service</text>
+<rect x="612" y="124" width="270" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="624" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">MCP server  (codebreaker mcp)</text>
+<text x="624" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">32 tools for an assistant</text>
+<rect x="898" y="124" width="302" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="910" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Service  (codebreaker serve)</text>
+<text x="910" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">one process: jobs, store, live progress</text>
+<rect x="24" y="222" width="1192" height="150" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="38" y="244" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">THE PATH — RECONSTRUCT, THEN PROVE</text>
+<rect x="40" y="256" width="172" height="64" rx="9" fill="#123a3a" stroke="#39c5cf" stroke-width="1.4"/>
+<text x="126.0" y="280" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Unpack</text>
+<text x="126.0" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">formats/</text>
+<line x1="212" y1="288" x2="236" y2="288" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="236" y="256" width="172" height="64" rx="9" fill="#123a3a" stroke="#39c5cf" stroke-width="1.4"/>
+<text x="322.0" y="280" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Identify</text>
+<text x="322.0" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">symbols/ analyze/</text>
+<line x1="408" y1="288" x2="432" y2="288" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="432" y="256" width="172" height="64" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
+<text x="518.0" y="280" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Decompile</text>
+<text x="518.0" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">decompile/ + L2</text>
+<line x1="604" y1="288" x2="628" y2="288" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="628" y="256" width="172" height="64" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
+<text x="714.0" y="280" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Write source</text>
+<text x="714.0" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">source/ port/ exact/</text>
+<line x1="800" y1="288" x2="824" y2="288" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="824" y="256" width="172" height="64" rx="9" fill="#3d2f12" stroke="#d29922" stroke-width="1.4"/>
+<text x="910.0" y="280" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Build</text>
+<text x="910.0" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">build/</text>
+<line x1="996" y1="288" x2="1020" y2="288" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1020" y="256" width="172" height="64" rx="9" fill="#1b3d2a" stroke="#3fb950" stroke-width="1.4"/>
+<text x="1106.0" y="280" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Judge</text>
+<text x="1106.0" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">emulate/ compare/ verify/</text>
+<text x="40" y="348" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">verify/ runs the path per function and records a verdict;  coverage/  scoreboards it;  invert/ and exact/ move bodies toward the authored source.</text>
+<rect x="24" y="390" width="1192" height="186" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="38" y="412" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">PLATFORM LANES</text>
+<rect x="40" y="424" width="186" height="136" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="52" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Windows / DOS</text>
+<text x="52" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">PE · NE · LE (VxD) · MZ</text>
+<text x="52" y="485.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Win95 · Win3.x · DOS</text>
+<text x="52" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">OpenWatcom + MASM rebuild</text>
+<rect x="236" y="424" width="186" height="136" rx="9" fill="#1b3d2a" stroke="#3fb950" stroke-width="1.4"/>
+<text x="248" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Xbox 360</text>
+<text x="248" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">XEX · STFS · discs · GoD</text>
+<text x="248" y="485.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">PowerPC → C per function</text>
+<text x="248" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">whole titles → C++ (recompile)</text>
+<rect x="432" y="424" width="186" height="136" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
+<text x="444" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">XNA / .NET</text>
+<text x="444" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">IL → C# (ILSpy, de4dot)</text>
+<text x="444" y="485.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">content, XACT, HLSL</text>
+<text x="444" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">MonoGame project</text>
+<rect x="628" y="424" width="186" height="136" rx="9" fill="#3d2f12" stroke="#d29922" stroke-width="1.4"/>
+<text x="640" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Java</text>
+<text x="640" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">bytecode → C++03</text>
+<text x="640" y="485.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">judged beside the JVM</text>
+<text x="640" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">jrt.hpp runtime</text>
+<rect x="824" y="424" width="186" height="136" rx="9" fill="#123a3a" stroke="#39c5cf" stroke-width="1.4"/>
+<text x="836" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">8 / 16-bit</text>
+<text x="836" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">NES · SMS/GG · GB/GBC</text>
+<text x="836" y="485.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Genesis · Spectrum · MSX</text>
+<text x="836" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">own 6502/Z80/SM83/68000</text>
+<rect x="1020" y="424" width="186" height="136" rx="9" fill="#43201f" stroke="#f85149" stroke-width="1.4"/>
+<text x="1032" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Translator</text>
+<text x="1032" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Java · Python · C#</text>
+<text x="1032" y="485.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">→ L2 → C / C++17 / C++03</text>
+<text x="1032" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">py.hpp / jrt.hpp runtimes</text>
+<rect x="24" y="594" width="590" height="244" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="38" y="616" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">SHARED ENGINE  (NATIVE/CB)</text>
+<rect x="40" y="628" width="270" height="92" rx="9" fill="#21262d" stroke="#8b949e" stroke-width="1.4"/>
+<text x="52" y="652" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">engine/ · store/ · knowledge/</text>
+<text x="52" y="672" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">incremental engine, program DB,</text>
+<text x="52" y="689.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">function store, knowledge base</text>
+<rect x="326" y="628" width="272" height="92" rx="9" fill="#21262d" stroke="#8b949e" stroke-width="1.4"/>
+<text x="338" y="652" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">core/ · base/ · jobs/</text>
+<text x="338" y="672" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">bytes, fs, json, regex, locks,</text>
+<text x="338" y="689.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">settings, cache, runs, parallel jobs</text>
+<rect x="40" y="732" width="558" height="92" rx="9" fill="#21262d" stroke="#8b949e" stroke-width="1.4"/>
+<text x="52" y="756" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">app/  —  codebreaker.exe</text>
+<text x="52" y="776" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">the command table, the catalog, start-up; regress / gate harnesses</text>
+<text x="52" y="793.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">(tools\gate.cmd: 5,450 unit tests · 155 command cases · UI tests)</text>
+<rect x="626" y="594" width="590" height="244" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="640" y="616" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">NATIVE ENGINES  (NATIVE/)</text>
+<rect x="642" y="628" width="272" height="92" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
+<text x="654" y="652" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">decompiler/</text>
+<text x="654" y="672" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">SLEIGH specs → p-code → C</text>
+<text x="654" y="689.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">x86 · PowerPC/VMX128 · more</text>
+<rect x="928" y="628" width="272" height="92" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
+<text x="940" y="652" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">l2/</text>
+<text x="940" y="672" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">the typed IR hub: passes,</text>
+<text x="940" y="689.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">C / C++17 / C++03 back ends</text>
+<rect x="642" y="732" width="272" height="92" rx="9" fill="#1b3d2a" stroke="#3fb950" stroke-width="1.4"/>
+<text x="654" y="756" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">xenonrecomp/ · rexglue/ · x360/</text>
+<text x="654" y="776" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Xbox 360 recompiler and runtime</text>
+<rect x="928" y="732" width="272" height="92" rx="9" fill="#3d2f12" stroke="#d29922" stroke-width="1.4"/>
+<text x="940" y="756" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">nasm/ · dosexec/</text>
+<text x="940" y="776" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">MASM-dialect NASM fork,</text>
+<text x="940" y="793.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">DOS execution for period tools</text>
 </svg>

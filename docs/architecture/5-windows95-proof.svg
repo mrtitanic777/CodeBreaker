@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 330" width="1240" height="330">
+<title>The Windows 95 proof</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/></marker></defs>
+<rect width="1240" height="330" rx="14" fill="#0f1419"/>
+<text x="32" y="46" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#e6edf3" text-anchor="start" font-weight="700">The Windows 95 proof — whole modules, rebuilt from source, installing the real OS</text>
+<text x="32" y="72" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8b949e" text-anchor="start" font-weight="normal">The milestone regression: every rebuilt module is used for real, end to end, on a VM.</text>
+<rect x="32" y="104" width="212" height="96" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="138.0" y="128" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">15 MINI.CAB modules</text>
+<text x="138.0" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">KERNEL · USER · GDI ...</text>
+<text x="138.0" y="165.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">rebuilt from C + asm</text>
+<line x1="244" y1="152" x2="273" y2="152" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="273" y="104" width="212" height="96" rx="9" fill="#123a3a" stroke="#39c5cf" stroke-width="1.4"/>
+<text x="379.0" y="128" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Boot floppy</text>
+<text x="379.0" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">made by boot-floppy</text>
+<text x="379.0" y="165.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">from the rebuilt files</text>
+<line x1="485" y1="152" x2="514" y2="152" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="514" y="104" width="212" height="96" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
+<text x="620.0" y="128" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Setup chain</text>
+<text x="620.0" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">SETUPX · SUWIN · NETDI</text>
+<text x="620.0" y="165.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">7 Setup programs, ours</text>
+<line x1="726" y1="152" x2="755" y2="152" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="755" y="104" width="212" height="96" rx="9" fill="#3d2f12" stroke="#d29922" stroke-width="1.4"/>
+<text x="861.0" y="128" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Full install</text>
+<text x="861.0" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">all 22 modules ours</text>
+<text x="861.0" y="165.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">copy, restart, configure</text>
+<line x1="967" y1="152" x2="996" y2="152" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="996" y="104" width="212" height="96" rx="9" fill="#1b3d2a" stroke="#3fb950" stroke-width="1.4"/>
+<text x="1102.0" y="128" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Desktop</text>
+<text x="1102.0" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">Windows 95 running</text>
+<text x="1102.0" y="165.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">on rebuilt modules</text>
+<text x="32" y="244" font-family="Cascadia Mono, Consolas, Menlo, monospace" font-size="14" fill="#3fb950" text-anchor="start" font-weight="normal">regress all15   2/2 PASS  (boot to Setup&#x27;s License page)</text>
+<text x="32" y="268" font-family="Cascadia Mono, Consolas, Menlo, monospace" font-size="14" fill="#3fb950" text-anchor="start" font-weight="normal">regress setup   2/2 PASS  (the Setup chain)</text>
+<text x="32" y="292" font-family="Cascadia Mono, Consolas, Menlo, monospace" font-size="14" fill="#3fb950" text-anchor="start" font-weight="normal">regress install 2/2 PASS  (Setup to the desktop, ~1 h each)</text>
+<text x="660" y="268" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e" text-anchor="start" font-weight="normal">screenshots: docs/images/win95-*.png</text>
+</svg>

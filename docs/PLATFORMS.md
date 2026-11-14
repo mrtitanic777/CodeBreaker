@@ -4,7 +4,7 @@ CodeBreaker's aim: take **any** program -- from 8-bit computers and arcade board
 console, PC and phone of today -- back to source that is readable, compiles, and behaves as the
 original did. One tool, one pipeline, one way of judging; a platform is what plugs into it.
 
-![CodeBreaker, end to end](platforms.png)
+![Platforms and lanes](architecture/4-platforms-and-lanes.svg)
 
 ## The layers
 

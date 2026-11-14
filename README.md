@@ -1,255 +1,258 @@
 # CodeBreaker
 
-Reconstructs readable, maintainable, compilable source from binaries, and checks that what it
-wrote behaves like the original.
+**Binaries back to readable source — proven by running it.**
 
-A reconstruction is only counted when it has been compiled, run next to the original in an
-emulator on the same inputs, and observed to do the same things: the same calls with the same
-arguments, the same return value, the same memory left behind, the same stack and registers.
-Byte-identical output is not the goal; it is used as a signal for which of several sources that
-all behave right is nearest to what a person wrote.
+CodeBreaker takes a compiled program — a Windows DLL, a DOS tool, a device driver, an Xbox 360 game,
+a Java program, an 8-bit cartridge — and gives back source code a person can read, change and build,
+in the language it was first written in. Then it proves the source is right: it compiles it, runs
+it beside the original in an emulator on the same inputs, and compares what both actually did.
 
-![how the parts fit](docs/architecture.png)
+A function only counts when it **compiles** and **behaves like the original**: the same calls with
+the same arguments, the same return value, the same memory left behind, the same stack and
+registers. Byte-identical output is never the goal; it is only used as a hint for which of several
+correct sources is closest to what was originally written.
+
+![The terminal interface: every module in the store and how far each has come](docs/images/ui-home.svg)
+
+> **Version 2.0.0** — CodeBreaker is now one native C++20 program (`codebreaker.exe`). Every command
+> runs natively; the only Python left is the terminal interface, a thin client of the native service.
+
+---
+
+## Contents
+
+- [What it handles](#what-it-handles)
+- [See it work](#see-it-work)
+- [How it works](#how-it-works)
+- [System map](#system-map)
+- [The Windows 95 proof](#the-windows-95-proof)
+- [Getting started](#getting-started)
+- [Commands](#commands)
+- [Repository layout](#repository-layout)
+- [Testing](#testing)
+- [Documentation](#documentation)
+- [License](#license)
+
+---
 
 ## What it handles
 
-| Kind of code | Comes back as | Rebuilt | Judged |
+| Kind of code | Comes back as | Rebuilt | Checked by |
 |---|---|---|---|
-| 32-bit Windows modules, original Xbox (XBE) | C | per function, into a DLL | by behaviour, beside the original |
-| 16-bit Windows modules | C, or its assembly where it was written in assembly | per function, into a DLL | by behaviour, beside the original |
-| Xbox 360 (PowerPC: .xex, packages, discs) | C per function; or the whole title recompiled to C++ that runs on a PC (`recompile-project`) | per function / the whole game | by behaviour, beside the original; recompiled titles play |
-| Virtual device drivers | assembly source (the driver kit's macros) | whole, from that source | byte for byte, and by behaviour |
-| Real-mode DOS programs | assembly source | whole, from that source | byte for byte |
-| NES, Master System / Game Gear, Game Boy / Color, Genesis, ZX Spectrum, MSX | assembly source (ca65, WLA-DX, RGBDS, Motorola syntax, sjasmplus) | whole cartridge or tape | byte for byte, and its functions run in CodeBreaker's own 6502 / Z80 / SM83 / 68000 |
-| XNA games (.NET, Xbox 360 or PC) | C# (ILSpy, de4dot), content as PNG/JSON/WAV, shaders as HLSL | a MonoGame project (`xna port`) | builds and runs |
-| Java programs | C++03 | per class, with the host compiler | by behaviour beside the JVM (methods with primitive arguments), else compiles |
+| 32-bit Windows modules, original Xbox (XBE) | C | per function, into a DLL | behaviour, beside the original |
+| 16-bit Windows modules (NE) | C — or assembly, where it was written in assembly | per function, or the whole module | behaviour; Windows 95 boots and installs on them |
+| VxD drivers, real-mode DOS programs | assembly source (DDK macros, MASM, NASM) | the whole file | byte for byte, and behaviour |
+| Xbox 360 (XEX, packages, discs) | C per function; or the whole title as C++ that runs on a PC | per function / the whole game | behaviour; recompiled titles play |
+| XNA games (.NET, Xbox 360 or PC) | C#, content as PNG / JSON / WAV, shaders as HLSL | a MonoGame project | builds and runs |
+| Java programs | C++03 | per class | behaviour, beside the JVM |
+| NES, Master System / Game Gear, Game Boy / Color, Genesis, ZX Spectrum, MSX | assembly source (ca65, WLA-DX, RGBDS, Motorola syntax, sjasmplus) | the whole cartridge or tape | byte for byte; functions run in CodeBreaker's own 6502 / Z80 / SM83 / 68000 |
 
-Every platform plugs into one path (`verify/reconstruct.py`) through one description of it
-(`codebreaker/platforms/`); docs/PLATFORMS.md is the whole map, with what is not handled yet.
-`python -m codebreaker reach <anything>` says what CodeBreaker makes of any file or folder
-(discs and packages opened), and docs/TESTED_SOFTWARE.md lists the real programs put through.
+Beyond reconstruction, the same engine is a **universal translator**: Java, Python and C# programs
+go into one typed intermediate form (L2) and come out as C, C++17 or C++03.
 
-## One of each
+`codebreaker reach <any file or folder>` says what CodeBreaker makes of anything you point it at
+(discs and packages are opened). The real programs put through each lane are listed in
+[docs/TESTED_SOFTWARE.md](docs/TESTED_SOFTWARE.md); the full platform map, including what is not
+handled yet, is [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
-```
-codebreaker/
-  base/        settings.py   where things are on this machine (settings.json)
-               corpus.py     the original binaries: find one, identify it
-               cache.py      results kept by what made them: nothing is compiled or decompiled twice;
-                             old generations dropped, all of it under a cap (cache_max_gb)
-               runs.py       a run's own folder (disk and CD copies), deleted when the run ends
-               parallel.py   the one number of things that run side by side
-  formats/     reading files: pe, ne, le (drivers), dos, powerpc_image, resources, cab, media, fonts
-  decompile/   describe.py   take a file apart and describe it to the decompiler
-               decompiler.py THE decompiler: run the native program on a description
-               c_text.py     make its output C that compiles and means what the original meant
-               struct_text.py  field accesses written as fields (p->f_48)
-  build/       functions.py  THE builder: compile each function, link a DLL / an image
-               module.py     a whole module: functions, data, resources, exports
-               driver.py, resources.py, definitions.py, disc_image.py
-               period.py, msc6.py, msvc152.py   compilers of the original's time
-               period16.py   a 16-bit DLL built with Microsoft C 6 and LINK 5.60
-               flat_thunk.py a 32-to-16-bit thunk DLL built with the thunk compiler, ML, CL and LINK
-               masm.py, dos_tools.py, dos_sessions.py   DOS tools run in DOSBox-X
-  emulate/     one runner per kind, one door: emulate.runner(kind)
-               emulator.py (32-bit), windows16.py, driver.py, powerpc.py
-  analyze/     call graph, conventions, globals, strings, structures, classes, dispatch
-  symbols/     names: imports by number, runtime-library functions, C++ names, DOS and driver
-               services, debug symbols and the source file each function came from, debug builds
-  verify/      reconstruct.py  THE path: decompile, build, run, compare, record
-               compare.py      THE comparer: do two builds of a function behave alike?
-               lanes/          what differs per kind: win32, win16, powerpc, driver, dos, java, and the
-                               cartridge and tape lanes (nes, sms, gb, genesis, zx, msx: image_lane)
-               teeth.py        the judge judged: functions broken on purpose
-               authored/       toward the authored source, with a period compiler: match, repair, shape
-               gate16/         the 16-bit system test: modules booted alone, Setup's run, first divergence
-               sweep.py, measure.py            the corpus, and one module
-  store/       functions.py  THE store: every function, every reconstruction, every verdict
-  jobs/        pool.py       THE runner: work spread over processes, surviving a crash
-  source/      module_writer.py, placement.py   the reconstructed module as source files, in the tree
-               readable.py   SDK constants and names written in after judging (same object code)
-               driver_writer.py, dos_writer.py, assembly.py   assembly source that builds back
-               vxd/          a driver as the driver kit's macro source (Declare_Virtual_Device ...)
-               ne_asm/       16-bit hand-written assembly as SDK cMacros source (cProc, cBegin ...)
-  invert/      compiler models: the code a compiler emits for each statement, read backwards --
-               Microsoft C 2.03 / the C of 1983-84, Microsoft C 6, Visual C++ 1.52 and 2.0
-  compare/     versions.py   the functions of two builds of a module: same, changed, added, removed
-  coverage/    ledger.py     how much of every module is accounted for
-               reach.py      anything thrown at it: what each program is, and how far its lane gets
-  java/        the Java transpiler (was J2CTool): Java source -> C++03, deterministic
-               transpile.py  THE converter: parse, resolve types and ownership, emit, check
-               emit/, rules.py, runtime.py, profiles/ (Minecraft eras), platform/ (the console layer)
-               console/      the Xbox 360 port's platform tables and SDK reading (assets, XACT audio, the
-                             Visual Studio project and `java <tool>` are native/cb/java)
-  ui/          the terminal interface (terminal.py), the MCP server and service.py under both (the
-               service process they are clients of is native: `codebreaker serve`, native/cb/ui)
-native/decompiler/   the native decompiler (C++): decompiler.cc around the Ghidra decompiler core
-                     in core/ (Apache-2.0, see core/LICENSE, core/NOTICE); upstream
-                     version and every local patch: docs/GHIDRA_FORK.md
-native/xex/          the Xbox 360 executable engine (C++): .xex in, basefile out; convert, patch,
-                     re-sign (docs/XEX.md)
-native/nasm/         the assembler: NASM's engine with a MASM 6.x mode, `--masm` (C, gcc;
-                     BSD-2-Clause; native/nasm/docs/MASM-COMPATIBILITY.md, test/masm)
-native/retromcp/     the Java decompile engine: RetroMCP's (Java, Gradle; MIT), run headless by
-                     decompile/jar.py
-tests/               tools/gate.cmd -- the gate (cb_tests, command cases against codebreaker.exe, the UI's Python tests)
-tools/               measuring and keeping the code base itself in order
-docs/                STATUS.md (where things stand), NOT_IN_REPO.md (what to attach, and its setting)
-```
+![Platforms and lanes](docs/architecture/4-platforms-and-lanes.svg)
 
-## Setup
+---
 
-Copy `settings.example.json` to `settings.json` and fill in where the original binaries and the
-OpenWatcom compiler are; `pip install -r requirements.txt`. The rest is optional -- the period
-compilers, DOSBox-X, MASM, the PowerPC compiler -- and docs/NOT_IN_REPO.md lists each with its
-setting. `workers` is how many things run at once (default half the processors, at most 6).
-What CodeBreaker makes of each binary goes into its own folder under `Converted/` (original/, src/,
-assets/, build/, reports/, README.txt; docs/NOT_IN_REPO.md); caches go to `state/`. Neither is committed.
+## See it work
 
-### What is kept, and how big it gets
+**A module, function by function.** Each function's recovered source, its assembly, its calls, and
+the judge's verdict. This is `lzexpand.dll` from Windows 95: 16-bit code coming back as C with its
+far pointers intact.
 
-`state/` looks after its own size. Three rules keep it there:
+![A 16-bit module's recovered C in the terminal interface](docs/images/ui-module-source.svg)
 
-- **The cache holds one generation, under a cap.** Every kept result -- decompiled C, compiled
-  objects, the judge's fingerprints, assembled listings -- is filed by a hash of what made it, in
-  one sqlite file per kind (`state/cache/<kind>/<generation>.sqlite`), not millions of small files.
-  A kind's generation is the version of the code that makes it (the comparer's `REV`, the
-  decompiler's build and languages: `GENERATIONS` in base/cache.py); when the code moves on, the
-  results of the old generation are dropped the first time the kind is used -- one file deleted.
-  All of the caches together stay under `cache_max_gb` (default 2): as results are written, past
-  the cap the ones used longest ago go first. `CB_NO_CACHE=1` keeps nothing for a run.
-- **A run's copies are the run's.** Every harness that boots a copied disk or CD (`setup16`, `vxd
-  boot`, the record16 tools) works in `state/<tool>/runs/<run>/`, deleted when the run ends; a run
-  that was killed is swept by the next run of that tool once it is a day old. Only the last
-  screenshot and log of each tag are kept, in the tool's one results folder (`state/phase3/shots`,
-  `state/vxdboot/shots`).
-- **Every tool writes under its own folder**, `state/<tool>/`, never loose at the top of `state/`.
+| Assembly beside it | The judge's verdict |
+|---|---|
+| ![Assembly view](docs/images/ui-module-asm.svg) | ![Verdict view](docs/images/ui-module-verdict.svg) |
 
-```
-python -m codebreaker cache               what is kept, kind by kind, its generations, the cap
-python -m codebreaker cache --prune       old generations dropped, the cap held
-python -m codebreaker cache --clear       all of it gone (costs time, nothing else)
-python -m codebreaker tidy-state [--dry]  state/'s size by part; the stale removed: killed runs, old
-                                          caches, build objects of Converted projects idle two weeks
-                                          (--stray: also what no part of CodeBreaker writes)
+**Windows 95 Setup, running on modules rebuilt from CodeBreaker's source.** These are screenshots
+from the milestone regression run of 2026-11-14 — a real VM, booting and installing with every
+reconstructed module in place:
+
+| Setup starts | The license page | The wizard |
+|---|---|---|
+| ![Setup's welcome](docs/images/win95-setup-welcome.png) | ![The license page](docs/images/win95-setup-license.png) | ![The setup wizard](docs/images/win95-setup-wizard.png) |
+
+| Copying Windows | The desktop, installed |
+|---|---|
+| ![Copying files](docs/images/win95-setup-copy.png) | ![The Windows 95 desktop](docs/images/win95-desktop.png) |
+
+---
+
+## How it works
+
+![How a binary becomes source](docs/architecture/2-reconstruction-flow.svg)
+
+1. **Unpack and identify.** Containers are opened (discs, packages, cabinets, ROM sets). Each file's
+   CPU, OS, SDK and compiler are named, and runtime-library functions are *identified by signature*
+   instead of being reconstructed — they were linked, not written.
+2. **Decompile.** Machine code is lifted through SLEIGH processor specs to p-code, then into **L2**, a
+   typed intermediate form where types, structures, far pointers and calling conventions are worked
+   out.
+3. **Write the source as it was authored.** Compiled code comes back as C; hand-written assembly
+   stays assembly (MASM, NASM or the DDK's macros). Names are found once and propagated across the
+   whole corpus.
+4. **Build.** With OpenWatcom C and MASM, or with the original's period compilers when matching
+   bytes is useful as a check.
+5. **Judge.** The original and the rebuild run side by side in an emulator, from the same state with
+   the same inputs, and every observable effect is compared.
+
+![The judge](docs/architecture/3-the-judge.svg)
+
+The judge is tested too: `codebreaker teeth` breaks functions it passed, on purpose, and checks
+that it notices.
+
+---
+
+## System map
+
+![CodeBreaker system map](docs/architecture/1-system-map.svg)
+
+| Layer | Where | What lives there |
+|---|---|---|
+| Interfaces | `native/cb/app`, `native/cb/ui`, `codebreaker/ui` | the command table, the MCP server (32 tools), the service, the Textual terminal client |
+| The path | `formats` → `symbols`, `analyze` → `decompile` → `source`, `port`, `exact` → `build` → `emulate`, `compare`, `verify` | reconstruct, rebuild, judge, record |
+| Lanes | `recompile`, `xna`, `java`, `translate`, `platforms`, `invert` | Xbox 360 recompilation, XNA ports, Java, the translator, platform descriptions, compiler inversion |
+| Engine | `engine`, `store`, `knowledge`, `coverage`, `jobs`, `core`, `base` | incremental engine and program database, function store, knowledge base, scoreboards, jobs, the C++ foundation |
+| Native engines | `native/decompiler`, `native/l2`, `native/xenonrecomp`, `native/rexglue`, `native/x360`, `native/nasm`, `native/dosexec` | SLEIGH decompiler, the L2 IR, the Xbox 360 recompiler and runtime, a MASM-dialect NASM, DOS execution |
+
+`native/cb` alone is about 505,000 lines of C++ across 26 areas, with 5,450 unit tests.
+
+---
+
+## The Windows 95 proof
+
+![The Windows 95 proof](docs/architecture/5-windows95-proof.svg)
+
+Per-function judging shows that each function behaves the same. The Windows 95 lane goes further:
+whole modules rebuilt from CodeBreaker's source are put back into the real operating system and
+used for real. The milestone regression (`codebreaker regress`) boots the 15 MINI.CAB modules to
+Setup, runs the whole Setup chain on Setup's own reconstructed programs, and installs Windows 95 to
+the desktop with all 22 modules rebuilt — two runs of each, on VMs.
+
+---
+
+## Getting started
+
+**Requirements:** Windows 10 or 11 (x64), Visual Studio 2026 with the C++ workload (MSVC, CMake and
+Ninja), and Git. For the terminal interface: Python 3.10+ with `pip install textual`. The individual
+lanes use their own tools (OpenWatcom, DOSBox-X, the period compilers, an Xbox 360 SDK); `codebreaker
+settings` lists every one and whether it was found.
+
+```bash
+git clone https://github.com/mrtitanic777/CodeBreaker.git
 ```
 
-## Use
-
-```
-python -m codebreaker reach <file or folder> [--judge]   what each program is, and how far it gets
-python -m codebreaker module comctl32.dll      decompile, build, judge, write the module's source
-python -m codebreaker measure commdlg.dll      the same without writing to the source tree
-python -m codebreaker sweep [--16 | --all]     every module of the corpus, resumably
-python -m codebreaker scoreboard               rewrite the scoreboard from stored results
-python -m codebreaker teeth advapi32.dll       break verified functions on purpose: does the judge notice?
-python -m codebreaker repair comctl32.dll      move each function toward the bytes a 1994 compiler gave
-python -m codebreaker decompile user.exe       just the C, for any module
-python -m codebreaker driver-source vkd.vxd    a driver's assembly source, built back and checked
-python -m codebreaker dos-source find.exe      the same for a real-mode program
-python -m codebreaker analyze shell32.dll      structures, classes, call graph, conventions
-python -m codebreaker invert olecli.dll        functions read back into the source their compiler was given
-python -m codebreaker vxd idiom vkd.vxd        a driver as the driver kit's macro source
-python -m codebreaker vxd boot --drivers vtd --vmm32   drivers rebuilt into a copy of an installed
-                                               Windows 95, booted in QEMU: desktop? (docs/VXD.md)
-python -m codebreaker ne-asm idiom KRNL386.EXE 1 0x4a4 0x4fa   16-bit assembly as cMacros source
-python -m codebreaker build16 tests/fixtures/lzexpand          a 16-bit DLL with the period tools
-python -m codebreaker flat-thunk lz32.dll --build DIR          a thunk DLL with the period tools
-python -m codebreaker module path/to/java/src  a Java program as C++03, every class compiled and labelled
-python -m codebreaker java convert SRC OUT --platform xbox360 --project   the transpiler's own tools
-python -m codebreaker                          in a terminal: the interface below (piped: every command)
-python -m codebreaker help                     every command
+```bash
+cd CodeBreaker
 ```
 
-A run of a module that was run before only redoes what changed: a verdict holds for as long as
-the function's source, and the source of everything it calls, is the same.
-
-### In the command prompt
-
-`python -m codebreaker` with no command, in a terminal (or `python -m codebreaker ui [module]`),
-is CodeBreaker as a full-screen interface in the same window (codebreaker/ui/terminal.py, Textual):
-every module the store holds with its verdicts as a coloured bar; a module's functions beside
-their C, assembly, callers and callees and the judge's verdict; `m` measures a module, `d`
-decompiles a function now, `n` names it, `i` shows what the file is, `j` follows jobs live,
-`ctrl+p` opens any module or command, `?` lists every key. Where a change to the judge has left
-functions unjudged, each shows the last verdict it had, marked as an earlier judge's.
-
-### From an assistant (MCP)
-
-`python -m codebreaker mcp` is CodeBreaker as an MCP server (codebreaker/ui/mcp_server.py), so
-an assistant such as Claude Code can use it directly: 32 tools, from `triage` (a module at a
-glance) and `disasm`/`xrefs` (its code and what refers to what) to `function` (the reconstructed C
-and its verdict), `diff_function` (one function in two builds) and `run_command` (any command as a
-background job). `.mcp.json` registers it for this project; elsewhere,
-`claude mcp add --scope user codebreaker -- python -m codebreaker mcp`. `--http PORT` serves it
-over HTTP behind a token, and `--public` limits that to the reading tools for the internet.
-docs/MCP.md has every tool, how to connect, and a worked example.
-
-### One process behind them: the service
-
-The terminal interface and every MCP server are clients of one process, the CodeBreaker service
-(`python -m codebreaker serve`, codebreaker/ui/serve.py): it keeps the binaries' databases open,
-the engine's step versions, the slow answers (a decompile, the ledger) and the jobs, so two
-interfaces see the same jobs and one's answer is the other's at once. Nobody starts it by hand --
-an interface starts it the first time it needs it -- and it exits after `service_idle_minutes`
-(default 20) with no call and no job, or as soon as its own code or settings.json changes. The
-`facts` command uses it when it runs. It answers on 127.0.0.1 only, each request carrying the
-token in state/service/, one per checkout. `serve --status` says whether one runs, `serve --stop`
-stops it; `CB_SERVICE=0` keeps everything in process, as before (and anything answers in process
-when the service is not there).
-
-## What a verdict means
-
-```
-VERIFIED            ran beside the original on every input and did the same, returning cleanly
-VERIFIED (weak)     the same, with a stated limit: low coverage, only faults compared, a callee
-                    that was a stand-in, an import whose arguments could not be compared
-UNVERIFIED          did something different; the store says what and on which input
-NOT JUDGED          neither side could be run on any input
-DOES NOT COMPILE    the reconstruction is not yet C the compiler accepts
-NO SOURCE           the decompiler produced nothing
+```bash
+tools\build_codebreaker_exe.cmd
 ```
 
-A Java class is run beside the original where it can be: its methods with primitive parameters and
-results -- static ones directly, instance ones on an object made with a constructor that takes
-primitives -- are called on the same inputs in the JVM (the source compiled by javac) and natively,
-and compared exactly -- VERIFIED, or VERIFIED (weak) "methods-partial" when only some of
-its methods could be run. A class with no such method is NOT JUDGED once it compiles.
+The program is installed as `state\cxx\codebreaker\build\codebreaker.exe` (add that folder to `PATH`). Copy
+`settings.example.json` to `settings.json` and point it at your corpus and tools, then:
 
-`teeth` is what says how far to trust the first of these: it breaks functions the judge passed
-(a constant one higher, a comparison turned round, a store left out) and counts how many of the
-breaks the judge catches.
-
-## Toward the authored source
-
-Many sources behave alike; only one was written. `repair` compiles each verified function with
-a compiler of the original's time and searches rewrites that change no meaning for the one whose
-bytes are nearest the original's: the compiler switches the module was built with, a frame
-pointer kept or not, the declarations in force, a `switch` for an if-chain, an early return.
-The period compiler is given the declarations an author had (imports as imports, globals as
-variables). The search itself is tested on source known to be the authored one: Microsoft's
-1984 librarian, whose reconstruction compiles to the original byte for byte -- each function is
-knocked away from it and must be brought back.
-
-## Keeping it one of each
-
-The test gate fails if a module does not import, imports something that is not there, or if
-anything in the package is unused. The tools that keep it so:
-
-```
-tools/tidy.py --apply      remove unused imports, unused definitions, unreachable modules
-tools/carve.py --apply     remove what a real run never calls and nothing live refers to
-tools/merge.py A B         fold module A into module B and point every user at B
-tools/move.py A B names    move definitions from A to B
-tools/sample.py 16 14      a quick reading across several modules
-tools/causes.py 16|32      why functions are not verified, across all judged modules
-tools/failures.py MODULE   the same for one module
-tools/trace16.py M F       one 16-bit function, original and rebuilt, side by side
-tools/chart.py             redraw docs/architecture.png
+```bash
+codebreaker settings
 ```
 
-## Where this came from
+```bash
+codebreaker reach C:\path\to\some.dll
+```
 
-A restructuring of an earlier checkout that had grown by accretion (its last state is the tag
-`v1-before-consolidation`). What it had that is still of use was brought into this package and
-checked against what the old code produced; the rest was retired. The tool is this package.
+```bash
+codebreaker ui
+```
+
+---
+
+## Commands
+
+75 commands, one program. `codebreaker help` lists them all; the ones most people start with:
+
+| Command | What it does |
+|---|---|
+| `reach <file or folder>` | what CodeBreaker makes of anything: formats, lanes, what can be reconstructed |
+| `module <name>` | reconstruct one module: decompile, build, judge, write its source |
+| `decompile <name>` | decompile any module (32-bit, 16-bit, PowerPC) to C |
+| `measure <name>` | reconstruct and judge one module without writing to the source tree |
+| `sweep` | reconstruct and judge every module of the corpus (resumable) |
+| `coverage` | how much of every module is accounted for, and in what state |
+| `names` / `identify` | best names for every function; runtime-library functions and what built the module |
+| `recompile-project <title> --check` | an Xbox 360 title as a C++ project that runs on a PC, built and run headless |
+| `xna <package>` | an XNA game as C#, content and HLSL, ready for MonoGame |
+| `java <tool>` | the Java transpiler (Java to C++03) |
+| `driver-source`, `dos-source`, `pe-source`, `ne-source` | whole-file assembly source, built and compared byte for byte |
+| `regress all15\|setup\|install\|slow` | the milestone regression: Windows 95 boot, Setup chain, full install, slow cases |
+| `ui` | the terminal interface |
+| `mcp` | CodeBreaker as an MCP server, so an AI assistant can drive it ([docs/MCP.md](docs/MCP.md)) |
+
+---
+
+## Repository layout
+
+```
+native/cb/          the program: 26 areas of C++20 (see the system map)
+native/decompiler/  SLEIGH processor specs and the decompiler core
+native/l2/          L2, the typed intermediate form, and its back ends
+native/x360/, native/xenonrecomp/, native/rexglue/   the Xbox 360 recompiler and runtime
+native/nasm/        NASM with a MASM dialect, for reconstructed assembly
+codebreaker/ui/     the terminal interface (Python + Textual), a client of `codebreaker serve`
+data/               tables CodeBreaker reads: API maps, symbol tables, runtimes for translated code
+targets/            programs being taken back to source, with their research notes
+testdata/, tests/   command goldens, fixtures and the interface's tests
+tools/              build and gate scripts
+docs/               design notes, platform map, tested software, diagrams
+```
+
+Original binaries, toolchains and generated output are kept outside version control
+([docs/NOT_IN_REPO.md](docs/NOT_IN_REPO.md)).
+
+---
+
+## Testing
+
+```bash
+tools\gate.cmd
+```
+
+The gate builds everything and runs, in one parallel pass:
+
+- **5,450 unit tests** (`cb_tests`, in 8 shards);
+- **155 command cases** — every command run as a user would, its output compared with a reviewed
+  golden ([testdata/exe_gate](testdata/exe_gate));
+- the terminal interface's tests, under a real Python.
+
+The milestone regression adds the end-to-end proofs: `codebreaker regress all15`, `setup`,
+`install` and `slow` (an Xbox 360 title recompiled and run headless).
+
+---
+
+## Documentation
+
+| Document | About |
+|---|---|
+| [PLATFORMS.md](docs/PLATFORMS.md) | every platform family: what is handled, what is next |
+| [TESTED_SOFTWARE.md](docs/TESTED_SOFTWARE.md) | real programs put through each lane, and the results |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | the program database, incremental engine and service |
+| [CPP_DESIGN.md](docs/CPP_DESIGN.md) | how the C++ is written: vocabulary types, errors, layering |
+| [TRANSLATOR_DESIGN.md](docs/TRANSLATOR_DESIGN.md) | the universal translator over L2 |
+| [RECOMPILE.md](docs/RECOMPILE.md) | Xbox 360 titles recompiled to C++ |
+| [VXD.md](docs/VXD.md), [WIN16_LESSONS.md](docs/WIN16_LESSONS.md) | the Windows 9x driver and 16-bit lanes |
+| [MCP.md](docs/MCP.md) | driving CodeBreaker from an AI assistant |
+| [PYTHON_RETIREMENT.md](docs/PYTHON_RETIREMENT.md) | how the program moved from Python to native C++ |
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Third-party components under
+`native/` keep their own licenses.
