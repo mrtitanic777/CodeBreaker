@@ -20,10 +20,6 @@ import re
 import struct
 import subprocess
 
-# /Gc: a function declared without a convention is pascal, as the reconstruction's own default
-FLAG_SETS = ("/AM /Gcsw /Os", "/AM /Gcsw /Ox", "/AS /Gcsw /Os", "/AL /Gcsw /Os", "/AM /Gcsw /Od", "/AM /Gc2sw /Os",
-             "/AM /Gc2sw /Ox", "/AM /Gcs /Os", "/AS /Gcs /Os")   # (/G2: SUWIN has push imm and leave)
-
 
 def _tools(compiler="msc6"):
     """(DOSBox-X, the compiler's folder). compiler: "msc6" (Microsoft C 6.0a) or "msvc152"
@@ -349,13 +345,6 @@ def wine_definition(text, export):
         decls = re.sub(r"^\s*\w+\s+%s\s*;[ \t]*\n" % re.escape(hi), "", decls, flags=re.M)
         decls = re.sub(r"^(\s*)\w+(\s+)%s\s*;" % re.escape(lo), r"\1%s\2%s;" % (wine16.c_type(kind), lo), decls, flags=re.M)
     return head + ",".join(out) + close + decls + body
-
-
-def sdk_header(header, sdk=None):
-    """WINDOWS.H, then `header` (whose imports by number keep their own declarations: a call that
-    cannot be said through the SDK's prototype -- sdk_calls -- stays as it was)"""
-    sdk = sdk if sdk is not None else windows_h()
-    return sdk + "\n" + header if sdk else header
 
 
 _WIDE = re.compile(r"FAR\s*\*|\bLP|\bH?PSTR\b|\bLONG\b|\bDWORD\b|\bFARPROC\b|\bSEGPTR\b|\bCOLORREF\b|\bLRESULT\b")
