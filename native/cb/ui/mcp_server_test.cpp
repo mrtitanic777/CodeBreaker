@@ -71,7 +71,7 @@ struct Fixture {
         s.hexdump = [](const sfs::path& p, std::int64_t offset, std::int64_t n) {
             return formats::inspect::hexdump(p, static_cast<std::uint64_t>(offset), static_cast<std::uint64_t>(n));
         };
-        s.version = [] { return std::string("2.0.0"); };
+        s.version = [] { return std::string("1.0.0"); };
         s.command_help = [](std::string_view) { return std::nullopt; };
         s.command_names = [] { return std::vector<std::string>{"decompile", "ui", "measure", "mcp", "progress", "reach", "decompile"}; };
         s.usage = [] { return std::string("usage: codebreaker <command>"); };

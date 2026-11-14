@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 520" width="1240" height="520">
+<title>One program, one service</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/></marker></defs>
+<rect width="1240" height="520" rx="14" fill="#0f1419"/>
+<text x="32" y="46" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#e6edf3" text-anchor="start" font-weight="700">One program, one service</text>
+<text x="32" y="72" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8b949e" text-anchor="start" font-weight="normal">Every way in reaches the same command table; long work runs as jobs on one service process.</text>
+<rect x="32" y="110" width="230" height="80" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="147.0" y="134" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Command line</text>
+<text x="147.0" y="154" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">codebreaker &lt;command&gt; ...</text>
+<rect x="32" y="210" width="230" height="80" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="147.0" y="234" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Terminal UI</text>
+<text x="147.0" y="254" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">codebreaker ui (Textual)</text>
+<rect x="32" y="310" width="230" height="80" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="147.0" y="334" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">AI assistant</text>
+<text x="147.0" y="354" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">codebreaker mcp (stdio / HTTP)</text>
+<rect x="330" y="210" width="250" height="80" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
+<text x="455.0" y="234" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">codebreaker serve</text>
+<text x="455.0" y="254" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">one process per state folder</text>
+<text x="455.0" y="271.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">started on demand</text>
+<line x1="262" y1="250" x2="330" y2="250" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="262" y1="350" x2="330" y2="270" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="330" y="110" width="250" height="80" rx="9" fill="#21262d" stroke="#8b949e" stroke-width="1.4"/>
+<text x="455.0" y="134" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Command table</text>
+<text x="455.0" y="154" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">app/native_commands</text>
+<text x="455.0" y="171.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">75 commands, one catalog</text>
+<line x1="262" y1="150" x2="330" y2="150" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="455" y1="210" x2="455" y2="190" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="650" y="110" width="250" height="80" rx="9" fill="#3d2f12" stroke="#d29922" stroke-width="1.4"/>
+<text x="775.0" y="134" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Jobs</text>
+<text x="775.0" y="154" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">queued, followed live,</text>
+<text x="775.0" y="171.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">stoppable</text>
+<rect x="650" y="210" width="250" height="80" rx="9" fill="#1b3d2a" stroke="#3fb950" stroke-width="1.4"/>
+<text x="775.0" y="234" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Engine</text>
+<text x="775.0" y="254" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">incremental: a step reruns</text>
+<text x="775.0" y="271.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">only when its inputs change</text>
+<rect x="650" y="310" width="250" height="80" rx="9" fill="#123a3a" stroke="#39c5cf" stroke-width="1.4"/>
+<text x="775.0" y="334" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Lanes</text>
+<text x="775.0" y="354" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">Win16 · Win32 · DOS · VxD</text>
+<text x="775.0" y="371.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">PowerPC · Java · 8/16-bit</text>
+<line x1="580" y1="150" x2="650" y2="150" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="580" y1="250" x2="650" y2="250" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="775" y1="290" x2="775" y2="310" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="970" y="110" width="238" height="280" rx="9" fill="#21262d" stroke="#8b949e" stroke-width="1.4"/>
+<text x="1089.0" y="134" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">State  (state/)</text>
+<text x="1089.0" y="154" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">function store + program DBs</text>
+<text x="1089.0" y="171.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">facts with what made them</text>
+<text x="1089.0" y="189.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">knowledge base (names, sigs)</text>
+<text x="1089.0" y="206.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">cache, capped and pruned</text>
+<text x="1089.0" y="224.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">per-run folders, deleted</text>
+<text x="1089.0" y="241.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">when the run ends</text>
+<text x="1089.0" y="259.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal"></text>
+<text x="1089.0" y="276.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">settings.json: where things are</text>
+<line x1="900" y1="250" x2="970" y2="250" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="32" y="440" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">The UI and the MCP server are thin clients: neither reads the store directly; the service answers both, so what one sees the other sees.</text>
+<text x="32" y="464" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Emulator runs go out to worker processes (engine/lane_worker), apart from the service.</text>
+</svg>

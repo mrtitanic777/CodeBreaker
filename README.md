@@ -14,7 +14,7 @@ correct sources is closest to what was originally written.
 
 ![The terminal interface: every module in the store and how far each has come](docs/images/ui-home.svg)
 
-> **Version 2.0.0** — CodeBreaker is now one native C++20 program (`codebreaker.exe`). Every command
+> **Version 1.0.0** — the first official release. CodeBreaker is one native C++20 program (`codebreaker.exe`). Every command
 > runs natively; the only Python left is the terminal interface, a thin client of the native service.
 
 ---
@@ -25,6 +25,7 @@ correct sources is closest to what was originally written.
 - [See it work](#see-it-work)
 - [How it works](#how-it-works)
 - [System map](#system-map)
+- [Architecture in depth](#architecture-in-depth)
 - [The Windows 95 proof](#the-windows-95-proof)
 - [Getting started](#getting-started)
 - [Commands](#commands)
@@ -55,7 +56,7 @@ go into one typed intermediate form (L2) and come out as C, C++17 or C++03.
 [docs/TESTED_SOFTWARE.md](docs/TESTED_SOFTWARE.md); the full platform map, including what is not
 handled yet, is [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
-![Platforms and lanes](docs/architecture/4-platforms-and-lanes.svg)
+![Platforms and lanes](docs/architecture/06-platforms-and-lanes.svg)
 
 ---
 
@@ -87,7 +88,7 @@ reconstructed module in place:
 
 ## How it works
 
-![How a binary becomes source](docs/architecture/2-reconstruction-flow.svg)
+![How a binary becomes source](docs/architecture/02-reconstruction-flow.svg)
 
 1. **Unpack and identify.** Containers are opened (discs, packages, cabinets, ROM sets). Each file's
    CPU, OS, SDK and compiler are named, and runtime-library functions are *identified by signature*
@@ -103,7 +104,7 @@ reconstructed module in place:
 5. **Judge.** The original and the rebuild run side by side in an emulator, from the same state with
    the same inputs, and every observable effect is compared.
 
-![The judge](docs/architecture/3-the-judge.svg)
+![The judge](docs/architecture/03-the-judge.svg)
 
 The judge is tested too: `codebreaker teeth` breaks functions it passed, on purpose, and checks
 that it notices.
@@ -112,7 +113,7 @@ that it notices.
 
 ## System map
 
-![CodeBreaker system map](docs/architecture/1-system-map.svg)
+![CodeBreaker system map](docs/architecture/01-system-map.svg)
 
 | Layer | Where | What lives there |
 |---|---|---|
@@ -126,9 +127,33 @@ that it notices.
 
 ---
 
+## Architecture in depth
+
+**Inside the decompiler.** Four loaders feed one engine; every format reaches the same p-code, the
+same L2 passes, and the same C and assembly writers.
+
+![Inside the decompiler](docs/architecture/04-decompiler.svg)
+
+**One program, one service.** The command line, the terminal interface and the MCP server all reach
+the same command table; long work runs as jobs on one service process over one state folder.
+
+![One program, one service](docs/architecture/05-program-and-service.svg)
+
+**Xbox 360: a whole title recompiled to C++.** From a retail package, disc or folder to a PC program
+that builds and runs.
+
+![Xbox 360 recompile](docs/architecture/07-xbox360-recompile.svg)
+
+**The universal translator.** Every source language goes into L2 and every target comes out of it,
+so a new language is one front end or one back end — never a hand-written pair.
+
+![The universal translator](docs/architecture/08-universal-translator.svg)
+
+---
+
 ## The Windows 95 proof
 
-![The Windows 95 proof](docs/architecture/5-windows95-proof.svg)
+![The Windows 95 proof](docs/architecture/09-windows95-proof.svg)
 
 Per-function judging shows that each function behaves the same. The Windows 95 lane goes further:
 whole modules rebuilt from CodeBreaker's source are put back into the real operating system and
@@ -139,6 +164,12 @@ the desktop with all 22 modules rebuilt — two runs of each, on VMs.
 ---
 
 ## Getting started
+
+**Download.** The [latest release](https://github.com/mrtitanic777/CodeBreaker/releases/latest) has
+`CodeBreaker-1.0.0-win64.zip`: the program (`bin\codebreaker.exe`), the engines it calls and the
+tables it reads, with no tests. Unzip it, add its `bin` folder to `PATH`, and run `codebreaker settings`.
+
+**Or build from source:**
 
 **Requirements:** Windows 10 or 11 (x64), Visual Studio 2026 with the C++ workload (MSVC, CMake and
 Ninja), and Git. For the terminal interface: Python 3.10+ with `pip install textual`. The individual
@@ -208,17 +239,21 @@ native/nasm/        NASM with a MASM dialect, for reconstructed assembly
 codebreaker/ui/     the terminal interface (Python + Textual), a client of `codebreaker serve`
 data/               tables CodeBreaker reads: API maps, symbol tables, runtimes for translated code
 targets/            programs being taken back to source, with their research notes
-testdata/, tests/   command goldens, fixtures and the interface's tests
-tools/              build and gate scripts
+tests/              everything for testing: the command cases and goldens, fixtures, the interface's tests
+tools/              build, gate and packaging scripts (package_release.cmd makes the release zip)
 docs/               design notes, platform map, tested software, diagrams
 ```
 
-Original binaries, toolchains and generated output are kept outside version control
-([docs/NOT_IN_REPO.md](docs/NOT_IN_REPO.md)).
+Unit tests sit beside the code they test (`*_test.cpp` and `testdata/` folders under `native/`). None of
+the test material ships: the release package holds only the program and what it reads at run time, and
+the source archives leave the tests out. Original binaries, toolchains and generated output are kept
+outside version control ([docs/NOT_IN_REPO.md](docs/NOT_IN_REPO.md)).
 
 ---
 
 ## Testing
+
+![How CodeBreaker is tested](docs/architecture/10-testing.svg)
 
 ```bash
 tools\gate.cmd
@@ -228,7 +263,7 @@ The gate builds everything and runs, in one parallel pass:
 
 - **5,450 unit tests** (`cb_tests`, in 8 shards);
 - **155 command cases** — every command run as a user would, its output compared with a reviewed
-  golden ([testdata/exe_gate](testdata/exe_gate));
+  golden ([tests/exe_gate](tests/exe_gate));
 - the terminal interface's tests, under a real Python.
 
 The milestone regression adds the end-to-end proofs: `codebreaker regress all15`, `setup`,

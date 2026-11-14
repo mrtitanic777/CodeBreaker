@@ -1,15 +1,15 @@
 # The command cases of cb_exe_gate (native/cb/app/exe_gate_main.cpp, run by tools\gate.cmd): codebreaker.exe is run on each line and
-# its exit code, stdout and the files it leaves in {out} are compared with testdata/exe_gate/golden/<name>.txt. Every command of the
+# its exit code, stdout and the files it leaves in {out} are compared with tests/exe_gate/golden/<name>.txt. Every command of the
 # table in codebreaker/__main__.py has two to four cases here (usage, a real run, an error); `ui` and `boot-floppy` are the exceptions:
 # `ui` is the interactive terminal (its smoke is a terminal test, not a command line), and `boot-floppy` rebuilds the whole Setup floppy
 # (80 s). Goldens were recorded from the exe that ran the translated Python for the commands not yet native (2026-11-13), then each
 # command's output was read: where a native command differs from the Python only in wording, the golden is re-recorded after review
 # (`tools\gate.cmd --update --filter NAME`), and that diff is what a reviewer reads.
 #
-# Inputs are small real files kept in the repository (native/cb/*/testdata, tests/fixtures, testdata/exe_gate/in) and, for what only
+# Inputs are small real files kept in the repository (native/cb/*/testdata, tests/fixtures, tests/exe_gate/in) and, for what only
 # exists on the owner's machine, the Win95 corpus (@needs=corpus) and the Xbox 360 games folder (@needs=games: skipped when absent).
 fmt = {repo}/native/cb/formats/testdata
-td = {repo}/testdata/exe_gate/in
+td = {repo}/tests/exe_gate/in
 
 # --- what a file is: info, names, identify, decompile, analyze -------------------------------------------------------------------
 info-pe: info {fmt}/lz32.dll

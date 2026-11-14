@@ -1,0 +1,6 @@
+exit: 1
+--- stdout
+splitter     does not assemble: <repo>/tests/exe_gate/in/splitter/splitter.asm(63): Error! E064: Brackets are not b
+--- files
+splitter.err 294 f1b7f4ae94c9b0a6b7b38ff386e5e4f323a54bf621e0a8d292dc7764023b3b35
+--- stderr (not compared)

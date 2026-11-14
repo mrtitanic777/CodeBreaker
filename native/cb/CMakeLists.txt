@@ -306,7 +306,7 @@ cb_apply_flags(codebreaker)
 target_link_libraries(codebreaker PRIVATE cb_app cb_core)
 cb_copy_prebuilt_dlls(codebreaker)
 
-# exe_gate: runs the real codebreaker.exe on the command cases of testdata/exe_gate and compares goldens (tools\gate.cmd).
+# exe_gate: runs the real codebreaker.exe on the command cases of tests/exe_gate and compares goldens (tools\gate.cmd).
 add_executable(cb_exe_gate EXCLUDE_FROM_ALL app/exe_gate_main.cpp)
 cb_apply_flags(cb_exe_gate)
 target_link_libraries(cb_exe_gate PRIVATE cb_core)

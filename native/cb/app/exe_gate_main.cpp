@@ -8,7 +8,7 @@
 //   --exe-root the checkout the program belongs to, when --exe is a wrapper (its paths are printed as <root>)
 //   --exe      the program (default: <repo>/state/cxx/codebreaker/build/codebreaker.exe)
 //   --repo     where inputs and cases live (default: the folder above native/, found from the current directory)
-//   --cases    default <repo>/testdata/exe_gate/cases.txt        --golden  default <repo>/testdata/exe_gate/golden
+//   --cases    default <repo>/tests/exe_gate/cases.txt        --golden  default <repo>/tests/exe_gate/golden
 //   --corpus   the Win95 corpus files (default: the CB_CORPUS environment variable, else ../Windows95/design/corpus/files);
 //              cases that need it are skipped, and counted as skipped, when it is not there
 //   --jobs     cases run side by side (default 4, the project's cap)
@@ -390,8 +390,8 @@ int main(int argc, char** argv) {
         if (env.repo.empty()) return usage("no repository found (run from inside it, or pass --repo)");
         env.repo = stdfs::absolute(env.repo).lexically_normal();
         if (!env.repo.has_filename()) env.repo = env.repo.parent_path();
-        env.cases = cases ? *cases : env.repo / "testdata" / "exe_gate" / "cases.txt";
-        env.golden = golden ? *golden : env.repo / "testdata" / "exe_gate" / "golden";
+        env.cases = cases ? *cases : env.repo / "tests" / "exe_gate" / "cases.txt";
+        env.golden = golden ? *golden : env.repo / "tests" / "exe_gate" / "golden";
         env.scratch = env.repo / "state" / "work" / "exe_gate" / ("run-" + std::to_string(_getpid()));   // one gate at a time per process
         if (exe) env.exe = *exe;
         else {

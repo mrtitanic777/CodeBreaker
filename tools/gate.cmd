@@ -3,7 +3,7 @@ rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--update] [--filter TEXT] --
 rem case of cb_exe_gate against the real codebreaker.exe, and the terminal interface's Python tests. tests\run_all.py is not part of it.
 rem
 rem     tools\gate.cmd                 build native/cb and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run
-rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of testdata\exe_gate
+rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of tests\exe_gate
 rem     tools\gate.cmd --no-build      skip the build (the objects are current)
 rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else state\cxx\codebreaker\build\codebreaker.exe, which this script builds and installs)
 rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone)

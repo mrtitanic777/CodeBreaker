@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 470" width="1240" height="470">
-<title>The judge</title>
+<title>The judge — behaviour, not bytes</title>
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/></marker></defs>
 <rect width="1240" height="470" rx="14" fill="#0f1419"/>
 <text x="32" y="46" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#e6edf3" text-anchor="start" font-weight="700">The judge — behaviour, not bytes</text>
@@ -33,5 +33,5 @@
 <text x="1015.0" y="253.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">teeth: functions the judge passed</text>
 <text x="1015.0" y="270.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">are broken on purpose — it must notice</text>
 <line x1="750" y1="240" x2="830" y2="240" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
-<text x="40" y="420" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e" text-anchor="start" font-weight="normal">Verdicts:  verified (behaves as the original, on inputs that covered it)  ·  weak (a match, with a limit)  ·  unverified (behaves otherwise)  ·  not-judged (could not run)  ·  no-compile</text>
+<text x="32" y="420" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Verdicts:  verified (behaves as the original, on inputs that covered it)  ·  weak (a match, with a limit)  ·  unverified (behaves otherwise)  ·  not-judged  ·  no-compile</text>
 </svg>

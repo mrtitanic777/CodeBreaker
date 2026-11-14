@@ -1,5 +1,0 @@
-exit: 0
---- stdout
-<repo>/testdata/exe_gate/in/choice_src/choice.com: THE SAME as <repo>/native/cb/formats/testdata/choice.com
---- files
---- stderr (not compared)

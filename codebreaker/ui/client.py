@@ -76,7 +76,8 @@ def folder():
 def candidates():
     """The places the program is looked for, in order."""
     tail = "codebreaker.exe" if os.name == "nt" else "codebreaker"
-    found = [setting("exe"), os.path.join(ROOT, "state", "cxx", "codebreaker", "build", tail), shutil.which("codebreaker")]
+    found = [setting("exe"), os.path.join(ROOT, "state", "cxx", "codebreaker", "build", tail),   # a checkout's build
+             os.path.join(ROOT, "bin", tail), shutil.which("codebreaker")]                       # a release package's
     return [p for p in found if p]
 
 

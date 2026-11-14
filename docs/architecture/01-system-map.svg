@@ -1,23 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 860" width="1240" height="860">
-<title>CodeBreaker system map</title>
+<title>CodeBreaker — system map</title>
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/></marker></defs>
 <rect width="1240" height="860" rx="14" fill="#0f1419"/>
 <text x="32" y="46" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#e6edf3" text-anchor="start" font-weight="700">CodeBreaker — system map</text>
 <text x="32" y="72" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8b949e" text-anchor="start" font-weight="normal">One native program (codebreaker.exe, C++20) on one engine; every platform plugs into the same path.</text>
 <rect x="24" y="92" width="1192" height="112" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
 <text x="38" y="114" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">INTERFACES</text>
-<rect x="40" y="124" width="270" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<rect x="40" y="124" width="276" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
 <text x="52" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">codebreaker &lt;command&gt;</text>
 <text x="52" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">75 commands, one native program</text>
-<rect x="326" y="124" width="270" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
-<text x="338" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Terminal UI  (codebreaker ui)</text>
-<text x="338" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Textual client of the service</text>
-<rect x="612" y="124" width="270" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
-<text x="624" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">MCP server  (codebreaker mcp)</text>
-<text x="624" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">32 tools for an assistant</text>
-<rect x="898" y="124" width="302" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
-<text x="910" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Service  (codebreaker serve)</text>
-<text x="910" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">one process: jobs, store, live progress</text>
+<rect x="332" y="124" width="276" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="344" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Terminal UI  (codebreaker ui)</text>
+<text x="344" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">Textual client of the service</text>
+<rect x="624" y="124" width="276" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="636" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">MCP server  (codebreaker mcp)</text>
+<text x="636" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">32 tools for an assistant</text>
+<rect x="916" y="124" width="276" height="66" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
+<text x="928" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Service  (codebreaker serve)</text>
+<text x="928" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">jobs, store, live progress</text>
 <rect x="24" y="222" width="1192" height="150" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
 <text x="38" y="244" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">THE PATH — RECONSTRUCT, THEN PROVE</text>
 <rect x="40" y="256" width="172" height="64" rx="9" fill="#123a3a" stroke="#39c5cf" stroke-width="1.4"/>
@@ -43,7 +43,7 @@
 <rect x="1020" y="256" width="172" height="64" rx="9" fill="#1b3d2a" stroke="#3fb950" stroke-width="1.4"/>
 <text x="1106.0" y="280" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="middle" font-weight="600">Judge</text>
 <text x="1106.0" y="300" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="middle" font-weight="normal">emulate/ compare/ verify/</text>
-<text x="40" y="348" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">verify/ runs the path per function and records a verdict;  coverage/  scoreboards it;  invert/ and exact/ move bodies toward the authored source.</text>
+<text x="40" y="348" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">verify/ runs the path per function and records a verdict;  coverage/ scoreboards it;  invert/ and exact/ move bodies toward the authored source.</text>
 <rect x="24" y="390" width="1192" height="186" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
 <text x="38" y="412" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">PLATFORM LANES</text>
 <rect x="40" y="424" width="186" height="136" rx="9" fill="#1f3a5f" stroke="#58a6ff" stroke-width="1.4"/>
@@ -55,7 +55,7 @@
 <text x="248" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">Xbox 360</text>
 <text x="248" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">XEX · STFS · discs · GoD</text>
 <text x="248" y="485.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">PowerPC → C per function</text>
-<text x="248" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">whole titles → C++ (recompile)</text>
+<text x="248" y="503.0" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">whole titles → C++</text>
 <rect x="432" y="424" width="186" height="136" rx="9" fill="#2e2350" stroke="#bc8cff" stroke-width="1.4"/>
 <text x="444" y="448" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">XNA / .NET</text>
 <text x="444" y="468" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">IL → C# (ILSpy, de4dot)</text>
@@ -88,7 +88,7 @@
 <text x="338" y="689.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">settings, cache, runs, parallel jobs</text>
 <rect x="40" y="732" width="558" height="92" rx="9" fill="#21262d" stroke="#8b949e" stroke-width="1.4"/>
 <text x="52" y="756" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#e6edf3" text-anchor="start" font-weight="600">app/  —  codebreaker.exe</text>
-<text x="52" y="776" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">the command table, the catalog, start-up; regress / gate harnesses</text>
+<text x="52" y="776" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">the command table, the catalog, start-up; the regress and gate harnesses</text>
 <text x="52" y="793.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8b949e" text-anchor="start" font-weight="normal">(tools\gate.cmd: 5,450 unit tests · 155 command cases · UI tests)</text>
 <rect x="626" y="594" width="590" height="244" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1"/>
 <text x="640" y="616" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#8b949e" text-anchor="start" font-weight="700">NATIVE ENGINES  (NATIVE/)</text>
