@@ -106,7 +106,7 @@ CB_TEST("exact.aout.no_relocation_words", [] {
     CB_CHECK_EQ(image.symbols[0].name, "_start");
 });
 
-// A real-shaped object found by the fuzzing of the old harness (case 1 of exact.aout): magic 0410, text 33, data 5,
+// A real-shaped object found by fuzzing (case 1 of exact.aout): magic 0410, text 33, data 5,
 // no bss, a header word that makes the file carry relocation words for both; relocation kinds 0 and 5-7 name
 // nothing known and stay as segment "?", the linker being the one to refuse them.
 CB_TEST("exact.aout.unknown_relocation_kinds_are_kept", [] {

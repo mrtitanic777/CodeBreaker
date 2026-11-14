@@ -58,7 +58,7 @@ CB_TEST("knowledge.show.listing_of_every_kind", [] {
     FakeBase base;
     const sh::Outcome out = run(base, {});
     CB_CHECK_EQ(out.exit_code, 0);
-    // the format of the Python's "  %-8s %-24s %7d  %8.1f KB  %-28s %s" (checked against it), origins in name order
+    // the format "  %-8s %-24s %7d  %8.1f KB  %-28s %s" (checked against it), origins in name order
     CB_CHECK_EQ(out.text,
                 "state/db/knowledge.sqlite\n"
                 "  win32    prototype                     42      12.5 KB  authored 40, learned 2       headers/x.h\n"

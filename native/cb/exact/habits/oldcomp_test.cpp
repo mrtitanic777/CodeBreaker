@@ -141,10 +141,10 @@ CB_TEST("exact.habits.oldcomp.truncated_input_fails_without_error", [] {
     CB_CHECK(!judge(bytes_of({0xe8, 0x10}), bytes_of({0xe8, 0x12})).equivalent);
 });
 
-// The older Python's verdicts on 384 procedure pairs (every pair it accepted, a share of each kind of refusal, and the pairs
-// it died on), checked in as testdata/oldcomp.cases. The pairs are those of the harness that generated them: a procedure
+// The recorded verdicts on 384 procedure pairs (every pair accepted, a share of each kind of refusal, and the pairs
+// that made it fail), checked in as testdata/oldcomp.cases. The pairs are those of the harness that generated them: a procedure
 // built from the habits above, damaged in a few ways.
-CB_TEST("exact.habits.oldcomp.cases_of_the_python_it_replaces", [] {
+CB_TEST("exact.habits.oldcomp.recorded_cases", [] {
     const std::string data = fs::read_text(testing::data_path("exact/habits/testdata/oldcomp.cases"));
     int cases = 0;
     int accepted = 0;
@@ -160,7 +160,7 @@ CB_TEST("exact.habits.oldcomp.cases_of_the_python_it_replaces", [] {
         const auto verdict = oldcomp::equivalent(from_hex(f[0]), from_hex(f[1]), fixups);
         ++cases;
         const auto expected = text::split(f[3], '|');
-        if (expected[0] == "ERR") continue;   // the Python raised IndexError / struct.error: here the pair just fails or not
+        if (expected[0] == "ERR") continue;   // the recording failed on this pair: here the pair just fails or not
         if (expected[0] == "T") {
             ++accepted;
             CB_CHECK(verdict.equivalent);

@@ -20,7 +20,7 @@ namespace trn = cb::java::transpile;
 namespace stdfs = std::filesystem;
 using cb::Json;
 
-// The translator of these tests: the deterministic fake back end, with the tally the Python golden run was given.
+// The translator of these tests: the deterministic fake back end, with the tally the golden run was given.
 class TrFakeTranslator : public trn::BodyTranslator {
 public:
     trn::TranslatedBodies translate(const trn::TranslateRequest& request) override {
@@ -50,9 +50,9 @@ struct TrWorld {
 
 stdfs::path trt_source() { return cb::testing::data_path("java/testdata/source"); }
 
-// testdata/convert.golden.json: the original Python convert() on testdata/source with the same fake translator, three configurations:
+// testdata/convert.golden.json: the recorded convert() result on testdata/source with the same fake translator, three configurations:
 // the file set (a sha256 of each file's text; the report folder by name only), the progress lines, and the summary.
-CB_TEST("java.transpile.convert_matches_python", [] {
+CB_TEST("java.transpile.convert_matches_golden", [] {
     const Json golden = cb::json::load(cb::testing::data_path("java/testdata/convert.golden.json"));
     TrWorld world;
     for (const Json& config : golden) {
@@ -115,7 +115,7 @@ CB_TEST("java.transpile.standards", [] {
     CB_CHECK_EQ(trn::parse_standard("C++98").year, 1998);
     CB_CHECK_EQ(trn::parse_standard("C++17").label, "C++17");
     CB_CHECK_EQ(trn::parse_standard("C++23").year, 2023);
-    // DIVERGES: the Python read an unknown label as C++03; a typo is now an error
+    // an unknown label is an error (a typo is not read as C++03)
     CB_CHECK_THROWS_AS(cb::UsageError, (void)trn::parse_standard("C++4"));
     CB_CHECK_THROWS_AS(cb::UsageError, (void)trn::parse_standard("c++11"));
 });
@@ -189,8 +189,7 @@ CB_TEST("java.transpile.parse_failures_are_ledgered_not_fatal", [] {
 }
 );
 
-// ---- tests/java/test_edition_convert_integration.py and test_review_fixes.py (the profile of a conversion). The Python switched a process-wide active
-// profile for the run and restored it after; here the profile of a conversion is handed down, so "restored" is "the shared profile set was never
+// ---- the profile of a conversion. The profile of a conversion is handed down, so "restored" is "the shared profile set was never
 // switched" (checked on the active name). The cases that pick a Minecraft edition need the Minecraft project, which this world does not have: they
 // are in translate/java_ports_test.cpp, on the application's own assembly.
 

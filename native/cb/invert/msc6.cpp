@@ -255,7 +255,7 @@ struct Dec {
 
   long long N() const { return (long long)md.size(); }
 
-  const platforms::Insn &M(long long i) const {   // md[i], Python's negative indexing included
+  const platforms::Insn &M(long long i) const {   // md[i]; a negative index counts from the end
     long long j = i < 0 ? i + N() : i;
     if (j < 0 || j >= N()) fail( "list index out of range");
     return md[(size_t)j];

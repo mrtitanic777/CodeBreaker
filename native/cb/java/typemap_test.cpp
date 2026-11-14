@@ -10,7 +10,7 @@ namespace {
 
 using namespace cb::java::typemap;
 
-// testdata/typemap.golden.json: every table of the Python module, dumped by it and sorted (reviewed: the tables
+// testdata/typemap.golden.json: every table, dumped and sorted (reviewed: the tables
 // are data, and the same data is what the C++ must hold).
 const cb::Json& golden() {
     static const cb::Json j = cb::json::load(cb::testing::data_path("java/testdata/typemap.golden.json"));
@@ -33,7 +33,7 @@ void check_map(const char* key, const NameMap& actual) {
     }
 }
 
-CB_TEST("java.typemap.sets_match_python", [] {
+CB_TEST("java.typemap.sets_match_golden", [] {
     check_set("primitives", primitives());
     check_set("containers", containers());
     check_set("value_stdlib", value_stdlib());
@@ -44,7 +44,7 @@ CB_TEST("java.typemap.sets_match_python", [] {
     check_set("runtime_enum_like", runtime_enum_like());
 });
 
-CB_TEST("java.typemap.maps_match_python", [] {
+CB_TEST("java.typemap.maps_match_golden", [] {
     check_map("java_to_cpp", java_to_cpp());
     check_map("port_note_types", port_note_types());
     check_map("raw_container_default", raw_container_default());

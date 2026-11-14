@@ -1,6 +1,6 @@
 // Tests of cb/formats/xex_imports.hpp on real Xbox 360 modules (Minecraft builds under C:/Nexia360/Games: a test whose module or the
 // xex program is not on this machine is skipped). The `xex-imports` command's output is compared with what `codebreaker xex-imports`
-// printed for the same files (testdata/xex_cmd/imports_*.txt, made by the translated Python: stdout and `exit=N`).
+// printed for the same files (testdata/xex_cmd/imports_*.txt: stdout and `exit=N`).
 #include "cb/formats/xex_imports.hpp"
 
 #include <memory>
@@ -32,7 +32,7 @@ bool xex_imports_run(const char* game_file, const char* golden_name, const fs::S
 
 }  // namespace
 
-CB_TEST("formats.xex_imports.the_command_prints_what_the_python_printed", [] {
+CB_TEST("formats.xex_imports.the_command_prints_the_recorded_output", [] {
     const fs::ScopedTempDir dir{"cb-xex-imports"};
     xex_imports_run("LoganMinecraftTest/LoganMinecraftTest.xex", "imports_logan.txt", dir);
     xex_imports_run("RubyDung/RubyDung.xex", "imports_rubydung.txt", dir);

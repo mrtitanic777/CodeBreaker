@@ -1,7 +1,7 @@
 // Tests of the whole-file writer of device drivers over real ones: splitter.vxd and srammtd.vxd (Windows 95's, a few hundred instructions each,
 // code and data objects, fix-ups of every width). A driver is read and its code found without an assembler; written back it needs NASM
 // (settings: nasm, or CB_NASM) and those tests are skipped where there is none. The golden sources (testdata/writers/le_*.golden.asm) are what
-// the Python writer's port wrote; they were read through -- the macros, an object's functions, the fix-up records and the page table -- and
+// the writer wrote; they were read through -- the macros, an object's functions, the fix-up records and the page table -- and
 // the test builds them again and holds the result to the original byte for byte.
 
 #include "cb/source/le_writer.hpp"

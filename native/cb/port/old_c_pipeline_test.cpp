@@ -1,7 +1,6 @@
 // Tests of the helpers and pipeline steps of cb/port/old_c_data (old_c_scan, joins_next, global_definitions,
 // loose_calls, gather_notes, rename_pascal_calls, declared_return_types, add_missing_includes, allocator_block_sizes,
-// array_sizes_of, guard_headers). Where the Python has the same function the expected values are what it gave on the same
-// input (state/work/cpp-refactor/p2/unit_expect.py); the steps that were inline in Port.modernize are checked by hand.
+// array_sizes_of, guard_headers). The expected values were checked by hand.
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 #include "cb/port/old_c_data.hpp"
@@ -24,7 +23,7 @@ std::string show_globals(const std::vector<GlobalDefinition>& defs) {
 CB_TEST("port.old_c_scan.integers_are_hex_or_decimal_and_whole", [] {
     CB_CHECK_EQ(c_integer("0x1F").value_or(0), 31u);
     CB_CHECK_EQ(c_integer("0X1f").value_or(0), 31u);
-    CB_CHECK_EQ(c_integer("010").value_or(99), 8u);    // (octal, as C reads it; DIVERGES: the Python's int("010", 0) raised)
+    CB_CHECK_EQ(c_integer("010").value_or(99), 8u);    // (octal, as C reads it)
     CB_CHECK_EQ(c_integer("08").value_or(99), 8u);     // (not C: read as decimal)
     CB_CHECK_EQ(c_integer("0").value_or(99), 0u);
     CB_CHECK(!c_integer(""));
@@ -95,7 +94,7 @@ CB_TEST("port.old_c_data.global_definitions_list_the_one_name_definitions_at_a_f
         "int a;\nstatic char *p = \"x\";\nstruct s *sp;\nint tab[3] = { 1, 2, 3 };\nextern int e;\nint f();\nint (*fp)();\n"
         "int x, y;\nunsigned long big = 70000L;\nvoid g() { int local; }\nstatic unsigned  int  w  =  5 ;\nchar name[] = \"a;b\";\n"
         "struct s { int m; };\nFILE *out = 0;\nregister int r;\n";
-    // as the Python's _globals gives them (the function pointer and the lists are no one-name definitions; a structure
+    // (the function pointer and the lists are no one-name definitions; a structure
     // on one line is read as a member, as it always was)
     CB_CHECK_EQ(show_globals(global_definitions(text)),
                 "0:a|int|@|<none>\n1:p|char|*@|\"x\"\n2:sp|struct s|*@|<none>\n3:tab|int|@[3]|{ 1, 2, 3 }\n8:big|unsigned long|@|70000L\n"
@@ -211,7 +210,7 @@ CB_TEST("port.old_c_data.a_file_gets_the_headers_of_the_structures_it_uses_and_t
     CB_CHECK_EQ(tags.at("struct s"), "a.h");
     CB_CHECK_EQ(out.at("b.c"), "#include \"port.h\"\n#include \"a.h\"\nextern int a[1];\nextern int g[3];\nstruct s *p;\nstruct both *q;\n");
     CB_CHECK_EQ(out.at("d.c"), "#include \"a.h\"\nstruct s *p;\n");   // (it has it)
-    CB_CHECK_EQ(out.at("e.c"), "#include \"extra.h\"\nint e;\n");     // (DIVERGES: the Python raised on a file with no #include)
+    CB_CHECK_EQ(out.at("e.c"), "#include \"extra.h\"\nint e;\n");     // (a file with no #include is not an error)
     CB_CHECK_EQ(text::join(notes.at("header of the structures a file uses, which it did not include: included"), " | "),
                 "b.c (a.h) | e.c (extra.h)");
 });

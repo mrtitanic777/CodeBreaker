@@ -1,6 +1,6 @@
-// The recorded cases of the format readers (tests/test_frozen.py, tests/fixtures/frozen/formats): each reader was given a small retail binary once and what it
+// The recorded cases of the format readers: each reader was given a small retail binary once and what it
 // answered was kept; the same binary goes to the native reader here and the same facts are wanted. The fixtures are copied to testdata/frozen. The facts are
-// compared as the reader names them (not as the Python's dictionaries were shaped), every one the fixture holds.
+// compared as the reader names them (not as a dictionary would be shaped), every one the fixture holds.
 //
 //   ne_keyboard        KEYBOARD.DRV: segments, entry table, names, references, relocations, resource table
 //   le_vmouse          VMOUSE.VXD: header, device block, description, every fix-up
@@ -263,7 +263,7 @@ CB_TEST("formats.frozen.pe_notepad", [] {
     const auto relocs = image.base_relocs();
     const Json& wr = want["relocs"];
     CB_CHECK_EQ(relocs.size(), wr["count"].get<std::size_t>());
-    // (the recorded "head" is a window of twenty in the middle of the list, from entry 396: the Python's own summary of a long list)
+    // (the recorded "head" is a window of twenty in the middle of the list, from entry 396: a summary of a long list)
     const std::size_t window = 396;
     CB_CHECK_EQ(wr["head"].size(), std::size_t{20});
     for (std::size_t i = 0; i < wr["head"].size() && window + i < relocs.size(); ++i) CB_CHECK_EQ(relocs[window + i], wr["head"][i].get<std::uint64_t>());
@@ -312,7 +312,7 @@ CB_TEST("formats.frozen.resources_notepad", [] {
         }
     }
     const std::vector<std::string> want = rec["output"].get<std::vector<std::string>>();
-    // (the Python lists a type's entries in the order of its resource names; compare as sets of the same lines, and the count)
+    //
     CB_CHECK_EQ(got.size(), want.size());
     std::vector<std::string> a = got, b = want;
     std::sort(a.begin(), a.end());

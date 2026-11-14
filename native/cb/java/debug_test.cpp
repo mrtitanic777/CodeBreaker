@@ -11,9 +11,8 @@ namespace stdfs = std::filesystem;
 
 std::string golden(const char* relative) { return cb::fs::read_text(cb::testing::data_path(std::string("java/testdata/") + relative)); }
 
-// testdata/debug_on/*, debug_off/Debug.h: the three files exactly as the Python module's constants and
-// write_debug() produce them.
-CB_TEST("java.debug.text_matches_python", [] {
+// testdata/debug_on/*, debug_off/Debug.h: the three files exactly as the debug header writer produces them.
+CB_TEST("java.debug.text_matches_golden", [] {
     CB_CHECK_EQ(debug::debug_header(true), golden("debug_on/Debug.h"));
     CB_CHECK_EQ(debug::debug_header(false), golden("debug_off/Debug.h"));
     CB_CHECK_EQ(std::string(debug::debug_cpp()), golden("debug_on/Debug.cpp"));

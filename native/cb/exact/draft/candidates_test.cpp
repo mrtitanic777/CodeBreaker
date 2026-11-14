@@ -7,22 +7,22 @@ using namespace cb::exact;
 using namespace cb::exact::draft;
 namespace cand = cb::exact::draft::candidates;
 
-// The module is held to the Python module it replaced on a recorded corpus (candidates_replay_test.cpp: the checked-in part
+// The module is held to recorded answers on a corpus (candidates_replay_test.cpp: the checked-in part
 // in testdata/draft_candidates, the whole of it - 39,824 cases of every pass, the longs, the structs, the frame, the
 // localizer, the byte fields read off real KRNL386/GDI code - with CB_CANDIDATES_REPLAY). The cases below say what a pass is for,
 // each on the smallest text that shows it.
 //
-// DIVERGES from the Python module (draft/candidates.py), on purpose:
-//   * the module's tables (FPINFO, STRUCTPTR, FRAMEW, FRAME, FILLNAME, and text.py's ARRAYS, UCHAR, LONGINFO ...) are a State held
+// Design notes:
+//   * the module's tables (FPINFO, STRUCTPTR, FRAMEW, FRAME, FILLNAME, ARRAYS, UCHAR, LONGINFO ...) are a State held
 //     by the caller; FRAME is an argument of fill_frame and candidates; FILLNAME is FillerName
-//   * a library macro whose `as` begins with no name (`$%s`) has no name to leave out of the declarations (the Python raised
-//     AttributeError for the whole localize)
+//   * a library macro whose `as` begins with no name (`$%s`) has no name to leave out of the declarations (it does not
+//     fail the whole localize)
 //   * a number that is the place of a string the data never ends (no zero byte before the image's end) is no string: the
-//     Python cut the last byte off such a run (find returned -1)
-//   * byte_fields gives nothing - and leaves the caller's tables as they were - when the checker declines, as the Python did; the
+//     last byte of such a run is not cut off
+//   * byte_fields gives nothing - and leaves the caller's tables as they were - when the checker declines; the
 //     tables it fills (the frame slots, the ranges) are in its result instead of module tables
-//   * a number in an instruction is read as Python's int(x, 0): a leading zero is no number (it raised ValueError, which the range
-//     scan swallowed)
+//   * a number in an instruction is read with base 0: a leading zero is no number (the range
+//     scan skips it)
 
 namespace {
 
@@ -229,9 +229,9 @@ CB_TEST("exact.draft.candidates.localize_names_the_routines_and_the_data", [] {
     CB_CHECK((a.registers_left == std::vector<std::string>{"ax"}));   // (a register the model left: a draft for a person)
 });
 
-// (tests/test_port_fixes.py, the exact.draft.candidates case) Merging arrays of structs of one size into one array: the second
-// localize of the same text on the same facts lays out the merged struct array as the first did. The Python kept its tables in
-// module globals, so the second run read the field list of the first as a field's type and declared `[(0, 'int'), (4, 'int')] f0;`;
+// Merging arrays of structs of one size into one array: the second
+// localize of the same text on the same facts lays out the merged struct array as the first did. (With the tables in
+// global state the second run would read the field list of the first as a field's type and declare `[(0, 'int'), (4, 'int')] f0;`;
 // here the tables are the State the caller holds, and the second run must be the first.
 CB_TEST("exact.draft.candidates.localize_twice_lays_out_the_merged_struct_array_the_same", [] {
     cand::Settings settings;

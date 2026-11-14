@@ -75,8 +75,8 @@ CB_TEST("java.parse.value_type_header_fields_constructor_and_body", [] {
 });
 
 CB_TEST("java.parse.members_are_attributed_to_their_own_line", [] {
-    // DIVERGES: the Python gave a member the line where the text since the previous member began (the previous
-    // member's last line, or earlier past blank lines); the line the member itself starts on is what the ledger wants.
+    // a member's line is the line the member itself starts on (what the ledger wants), not where the text since the previous
+    // member began.
     const ir::JClass c = jp::parse_source("class A {\n\n\tint x;\n\n\n\tvoid f() {\n\t}\n}\n");
     CB_CHECK_EQ(c.field("x")->line, 3u);
     CB_CHECK_EQ(c.method("f")->line, 6u);

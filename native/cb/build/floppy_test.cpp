@@ -1,7 +1,7 @@
 // Tests of cb/build/floppy.hpp: a small FAT12 floppy the test lays out (files that span clusters, a volume label, a file that is replaced
 // by bigger or smaller contents, errors), and Windows 95's Setup boot floppy (setup/media/boot.img of the corpus; a test that needs it is
-// skipped when the corpus is not on this machine) against what the Python's `floppy.read` / `floppy.make` and `boot-floppy --extract`
-// gave for it (testdata/floppy: the extracted files' names, sizes and SHA-1, and the hashes of two images made from it).
+// skipped when the corpus is not on this machine) against the recorded results of reading it, making a floppy from it and `boot-floppy --extract`
+//  (testdata/floppy: the extracted files' names, sizes and SHA-1, and the hashes of two images made from it).
 #include "cb/build/floppy.hpp"
 
 #include <map>
@@ -125,7 +125,7 @@ CB_TEST("build.floppy.make_refuses_a_foreign_boot_sector_and_files_that_do_not_f
     CB_CHECK_THROWS_AS(floppy::DoNotFitError, floppy::make(disk, disk.boot, {{"ALPHA.TXT", Bytes(30 * 512, 1)}, {"BETA.BIN", Bytes(30 * 512 + 1, 2)}}));
 });
 
-CB_TEST("build.floppy.windows_95_setup_floppy_reads_and_makes_like_the_python", [] {
+CB_TEST("build.floppy.windows_95_setup_floppy_reads_and_makes_as_recorded", [] {
     const auto original = floppy_corpus_image();
     if (!original) return;
     const floppy::Disk disk = floppy::read(*original);
@@ -141,7 +141,7 @@ CB_TEST("build.floppy.windows_95_setup_floppy_reads_and_makes_like_the_python", 
     CB_CHECK_THROWS_AS(floppy::DoNotFitError, floppy::make(disk, disk.boot, {{"HIMEM.SYS", Bytes(2000000, 'x')}}));
 });
 
-CB_TEST("build.floppy.extract_writes_the_originals_files_like_the_python", [] {
+CB_TEST("build.floppy.extract_writes_the_originals_files_as_recorded", [] {
     const auto original = floppy_corpus_image();
     if (!original) return;
     const fs::ScopedTempDir dir{"cb-floppy"};
@@ -150,6 +150,6 @@ CB_TEST("build.floppy.extract_writes_the_originals_files_like_the_python", [] {
     const std::string target = fs::to_text(dir.path() / "files");
     const std::string printed = testing::run_command(floppy::command(env), {"--image", fs::to_text(dir.path() / "boot.img"), "--extract", target});
     CB_CHECK_EQ(text::replace_all(printed, target, "<dir>"), floppy_golden("extract.txt"));
-    // the manifest of the Python lists names as the floppy has them (upper case, in byte order)
+    // the manifest lists names as the floppy has them (upper case, in byte order)
     CB_CHECK_EQ(testing::tree_manifest(dir.path() / "files"), floppy_golden("extract_manifest.txt"));
 });

@@ -37,7 +37,7 @@ namespace cb::formats::xbox::crypto {
 
 namespace {
 
-// The Python package's tools, in the order it lists them (its modules that define main, by file name).
+// The tools, in the order they are listed (one per tool module, by file name).
 const std::vector<std::string_view> kToolNames = {
     "MemCrypto", "bin2lang",   "bootchain", "cpu_key",        "cpukey_ecd",    "create_key",     "exp_build_task", "exp_signer", "export_keys",
     "flashplan", "format_key", "fuses",     "harness",        "hypervisor",    "keyvault",       "kv_tool",        "lzx",        "nand",

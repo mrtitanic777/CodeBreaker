@@ -5,13 +5,12 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from verify/reconstruct.py:
-//   * a file nothing reconstructs is a UsageError (the Python raised ValueError); `try_identity` is the form for a caller
+// Design notes:
+//   * a file nothing reconstructs is a UsageError; `try_identity` is the form for a caller
 //     that treats that as "no identity";
-//   * the judge runs in this process (one at a time, or `judge_threads` threads) unless the caller gives `judge_batch`; the
-//     Python started worker processes of its own;
+//   * the judge runs in this process (one at a time, or `judge_threads` threads) unless the caller gives `judge_batch`;
 //   * the engine's way of making the same results (engine/lanes) is not part of this module;
-//   * a run reports what it did in an `Outcome` (its `line()` is the one line the Python printed).
+//   * a run reports what it did in an `Outcome` (its `line()` is the one line printed).
 
 using namespace cb;
 using namespace cb::verify;

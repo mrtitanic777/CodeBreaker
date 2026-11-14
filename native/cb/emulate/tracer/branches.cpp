@@ -1,4 +1,4 @@
-// branches.cc -- the branch log (trace_function(branches=True), emulator._branch_hook): for each
+// branches.cc -- the branch log: for each
 // conditional jump of the function itself, which way it went and what the comparison before it
 // compared -- the values, and the memory each came from (a register's: where it was last loaded
 // from in this function, if it was not written since).
@@ -22,7 +22,7 @@ static uint64_t address_of(uc_engine *uc, const Operand &m) {
     return uint64_t(a) & 0xFFFFFFFFull;
 }
 
-// _operand_value: false where Python's raises
+// false where the operand cannot be read
 static bool value_of(Run *r, const Operand &op, uint64_t &value, bool &has_at, uint64_t &at) {
     uint64_t mask;
     if (!mask_of(op.size, mask))

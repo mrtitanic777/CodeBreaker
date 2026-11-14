@@ -73,7 +73,7 @@ nlohmann::ordered_json load_results(const stdfs::path& file) {
     return nlohmann::ordered_json::parse(raw);
 }
 
-// A copy beside the file, then renamed over it: a reader never sees half of it. Laid out as the Python wrote it (indent 1, non-ASCII escaped).
+// A copy beside the file, then renamed over it: a reader never sees half of it. Laid out with indent 1, non-ASCII escaped.
 void save_results(const stdfs::path& file, const nlohmann::ordered_json& results) {
     fs::make_dirs(file.parent_path().empty() ? stdfs::path(".") : file.parent_path());
     fs::write_file_atomic(file, as_bytes(results.dump(1, ' ', true)));

@@ -18,7 +18,7 @@ CB_TEST("java.cmake.template", [] {
     CB_CHECK(t.find("${CMAKE_CURRENT_SOURCE_DIR}/*.cpp") != std::string::npos);   // CMake's own variables untouched
     CB_CHECK(t.find("$<TARGET_FILE_DIR:MinecraftBeta>/Content") != std::string::npos);
 
-    // the text the Python module produced for the same name (reviewed: same CMake, line for line)
+    // the golden text for the same name (reviewed line by line)
     CB_CHECK_EQ(java::cmake::cmakelists_text("Game"), fs::read_text(testing::data_path("java/testdata/cmake_Game.golden.txt")));
 
     fs::ScopedTempDir tmp("cbjava");

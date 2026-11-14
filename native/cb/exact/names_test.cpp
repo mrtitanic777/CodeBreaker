@@ -1,11 +1,11 @@
 // Tests of naming a program's functions and data after another version of it, on the real projects of the research (LIB 2.40 after 2.20, LINK 2.44
-// after 2.40, C 3.00's P2 after P1) against what the live Python's exact/names.py answered (testdata/w5b3.golden.json): the names and how each was
+// after 2.40, C 3.00's P2 after P1) against the recorded answers (testdata/w5b3.golden.json): the names and how each was
 // found, the data names, the pairs of places in the order they were made (the order the seed stage reads them in), the command's text with -v and
 // without, the SYMBOLS --write makes (and keeps on a second run), the names a project has, the functions it is made of and the masked instructions of
 // a function; and, on a project of our own, the "names" and "place_by" files in both of their formats.
 //
-// DIVERGES from the Python: a carver that fails on a project is the same as none (both fall back to the places the project names), but a failure is
-// logged at the debug level; the Python swallowed every exception there.
+// Behaviour pinned here: a carver that fails on a project is the same as none (both fall back to the places the project names), but a failure is
+// logged at the debug level.
 #include "cb/exact/names.hpp"
 
 #include "cb/exact/real_projects.hpp"
@@ -44,7 +44,7 @@ Json pairs_json(const OrderedMap<std::int64_t, std::int64_t>& m) {
 
 }  // namespace
 
-CB_TEST("exact.names.the_names_carried_between_real_versions_are_the_pythons", [] {
+CB_TEST("exact.names.the_names_carried_between_real_versions_match_the_recorded_output", [] {
     test::Real real;
     if (test::skipped(real, "names")) return;
     for (auto it = golden().at("names").begin(); it != golden().at("names").end(); ++it) {

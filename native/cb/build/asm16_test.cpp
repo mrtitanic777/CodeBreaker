@@ -1,5 +1,5 @@
 // Tests of cb/build/asm16.hpp on LZEXPAND.DLL, a real Windows 95 16-bit module (formats/testdata/lzexpand.dll). The golden
-// texts in testdata/ were made by the original asm16.py on the same functions and read over by hand: the segment's
+// texts in testdata/ were recorded on the same functions and read over by hand: the segment's
 // instructions, the places the loader fixes written as symbols, the labels where a jump goes.
 #include "cb/build/asm16.hpp"
 
@@ -71,7 +71,7 @@ Bytes object_of(ByteView code) {
 }
 
 // A one-segment NE module (name T, importing KERNEL) holding `code`, with these relocation records (source, flags, offset, module,
-// ordinal): the same bytes tests/test_verification.py builds for the original.
+// ordinal): the same bytes the original is built from.
 struct Reloc {
     std::uint8_t source, flags;
     std::uint16_t offset, module, ordinal;
@@ -319,10 +319,8 @@ CB_TEST("build.asm16.a_code_segment_that_is_not_there_is_refused", [] {
     CB_CHECK(f.text().has_value() || !f.why().empty());
 });
 
-// DIVERGES: the original named a far call to an import with an addend by the last word of the expression and wrote `call far ptr 4`
-// (the same bug in tests/test_verification.py's proof, fixed in asm16.py too); and a hole whose start equals its end made its `write`
-// loop for ever, one `db 0 dup` line a turn. Neither is reached by any function of the Win95 modules the old harness covers (699
-// functions, every attribute and the text in six forms equal); the order the discovery of instructions put them in is no longer
+// A far call to an import with an addend is named by the whole expression (never `call far ptr 4`), and a hole whose start equals its end
+// writes nothing. The old harness covered 699 functions of the Win95 modules (every attribute and the text in six forms equal); the order the discovery of instructions put them in is no longer
 // the order of the maps (they are ordered by offset), which only a function with two instructions ending at one place could tell.
 CB_TEST("build.asm16.a_far_call_to_an_import_with_an_addend_is_named_with_it", [] {
     // The far call's operand is a fix-up of the import KERNEL.15, additive (the place holds the addend, 4).

@@ -202,7 +202,7 @@ int run(const Layout& layout, const Options& options, const CacheHooks& cache) {
     const std::vector<Part> before = parts(layout);
     std::uint64_t total = 0;
     for (const Part& p : before) total += p.bytes;
-    std::string state_text = fs::to_text(layout.state);   // (as the platform writes a path: the Python printed backslashes on Windows)
+    std::string state_text = fs::to_text(layout.state);   // (as the platform writes a path)
 #ifdef _WIN32
     std::replace(state_text.begin(), state_text.end(), '/', '\\');
 #endif

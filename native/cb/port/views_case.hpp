@@ -1,5 +1,5 @@
-// cb/port/views_case.hpp -- test support: the cases of testdata/views (make_views_cases.py): a program's sources, and what
-// the Python original made of them. Used by program_prep_test.cpp, old_c_text_test.cpp and views_test.cpp.
+// cb/port/views_case.hpp -- test support: the cases of testdata/views a program's sources, and what
+// the passes made of them. Used by program_prep_test.cpp, old_c_text_test.cpp and views_test.cpp.
 #pragma once
 
 #include <nlohmann/json.hpp>

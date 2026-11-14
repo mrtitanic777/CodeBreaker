@@ -1,12 +1,12 @@
-// driver_rec.cc -- the flat ring-0 driver recorder (codebreaker/emulate/driver.py `run`): the
-// hooks of a VxD entry point's run under Unicorn, in C++.  Python still lays the regions out,
+// driver_rec.cc -- the flat ring-0 driver recorder: the
+// hooks of a VxD entry point's run under Unicorn, in C++.  The host lays the regions out,
 // sets the registers, starts the run (uc_emu_start to _RET) and reads the result; this attaches
-// driver.run's hooks to Python's own Unicorn handle, in driver.run's order, and keeps the record
-// they made.  Each step is the Python's, so the record and the run are the same.
+// the hooks to the host's own Unicorn handle, in the order of the run, and keeps the record
+// they made.  Each step is made in the order of the run.
 //
-// What stays Python: which register a service answers in (driver_services + the knowledge base),
+// What stays with the host: which register a service answers in (driver_services + the knowledge base),
 // asked once per distinct service and kept for the run (the stand-in's resolver, cbt_drv_answers),
-// and -- a run kept beside a shadow (the path explorer's) stays on the Python hooks for now.
+// and -- a run kept beside a shadow (the path explorer's) stays on the host hooks for now.
 #include <cstring>
 #include <unordered_map>
 #include <unordered_set>
@@ -18,7 +18,7 @@
 
 namespace cb::emulate::tracer {
 
-// driver.py / emulator.py caps, repeated here.
+// The caps of the recorders.
 static constexpr uint64_t D_PAGE = 0x1000;
 static constexpr int64_t D_MAX_MEM = 40000;           // emulator._MAX_MEM
 static constexpr int64_t D_MAX_MAPS = 512;            // emulator._MAX_MAPS
@@ -72,7 +72,7 @@ struct DrvRun {
 // REGISTERS[:6] for given(): eax, ebx, ecx, edx, esi, edi
 static const int GIVEN_REGS[6] = {R_EAX, R_EBX, R_ECX, R_EDX, R_ESI, R_EDI};
 
-// (regs, 4 stack words) at ESP, as driver.run's given().
+// (regs, 4 stack words) at ESP, as the run's given().
 static void given(DrvRun *r, uint64_t out_regs[6], int &nregs, uint64_t out_words[4], int &nwords) {
     for (int i = 0; i < 6; i++)
         out_regs[i] = r->r(GIVEN_REGS[i]) & 0xFFFFFFFFull;
@@ -88,7 +88,7 @@ static void given(DrvRun *r, uint64_t out_regs[6], int &nregs, uint64_t out_word
 }
 
 // answer(): EAX and carry as the input says; jump_back pops the return address.  false on a read
-// that could not be made (driver.run then ends the run as a fault, the same either way).
+// that could not be made (the run then ends as a fault, the same either way).
 static bool answer(DrvRun *r, bool jump_back) {
     r->setr(R_EAX, r->service_eax & 0xFFFFFFFFull);
     uint64_t fl = r->r(R_EFLAGS);
@@ -188,7 +188,7 @@ static void on_intr(uc_engine *, uint32_t intno, void *user) {
         push_call(r, false, device, service, r->ncalls <= D_MAX_CALLS);   // driver: len(calls) <= MAX_CALLS
         int32_t place = where_for(r, int32_t(device), int32_t(service));
         if (place == -2)
-            return;                                // Python raised in the resolver
+            return;                                // the host failed in the resolver
         if (service & 0x8000) {                    // jump: the service returns to our caller
             answer(r, true);
         } else {

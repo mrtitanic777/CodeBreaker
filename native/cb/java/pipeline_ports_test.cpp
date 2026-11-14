@@ -1,5 +1,4 @@
-// Ports of tests/java/test_pipeline.py (the prune, forwarder and raycast classes), the same inputs and the same expectations, one
-// native test per Python test. (The Python tests called pipeline._prune_unreferenced and _coalesce_forwarders; here the prune module.)
+// The pipeline's prune, forwarder and raycast classes (through the prune module).
 #include <algorithm>
 #include <set>
 #include <string>

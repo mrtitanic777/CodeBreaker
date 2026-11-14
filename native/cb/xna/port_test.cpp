@@ -4,15 +4,14 @@
 // stand-in `dotnet` (a batch file that answers with a fixed error, then with success) -- the whole of prepare and build over a small
 // project: the folder it writes, the project file, the rounds, reports/port.json. The real dotnet, MonoGame and mgfxc are theirs.
 //
-// Hand-checked against port.py: each rewrite's pattern and replacement, the order of the fixes, the keys of port.json, the lines
+// Hand-checked: each rewrite's pattern and replacement, the order of the fixes, the keys of port.json, the lines
 // `xna port` prints.
 //
-// DIVERGES from port.py:
-//   * the files a rewrite or a fix touches keep their line endings (the Python's text mode turned CRLF into the platform's: the same
-//     on Windows) and are written without a byte-order mark;
-//   * the report names files with `/`, the Python's with the platform's separator; the errors of the report are listed by code in
-//     sorted order; reports/port.json is written with nlohmann's dump(1);
-//   * a missing XNA Game Studio, ffmpeg or hook is a NotFoundError/UnsupportedError (the Python's RuntimeError/ImportError).
+// Behaviour pinned here:
+//   * the files a rewrite or a fix touches keep their line endings and are written without a byte-order mark;
+//   * the report names files with `/`; the errors of the report are listed by code in sorted order; reports/port.json is written
+//     with nlohmann's dump(1);
+//   * a missing XNA Game Studio, ffmpeg or hook is a NotFoundError/UnsupportedError.
 #include "cb/xna/port.hpp"
 
 #include <nlohmann/json.hpp>

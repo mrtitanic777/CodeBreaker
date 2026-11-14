@@ -22,7 +22,7 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-// The 16261 the Python's Setup tooling gave a rebuilt MINI.CAB (a cabinet set's identity: any number does, the file's
+// The 16261 the Setup tooling gave a rebuilt MINI.CAB (a cabinet set's identity: any number does, the file's
 // own cabinet is the whole set).
 constexpr std::uint16_t kMiniSetId = 16261;
 constexpr std::string_view kCdFolder = "/WIN95";

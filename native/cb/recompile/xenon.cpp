@@ -181,8 +181,8 @@ const Environment& Xenon::msvc_env() {
         if (eq == std::string_view::npos || eq == 0) continue;   // (the hidden per-drive entries start with '=')
         env[std::string(line.substr(0, eq))] = std::string(line.substr(eq + 1));
     }
-    // DIVERGES: the original went on with an empty environment when vcvars64.bat failed, and the build then failed
-    // for a reason that did not name it
+    // a vcvars64.bat that gives no environment is an error that names it (an empty environment would fail the build for a
+    // reason that did not)
     if (env.empty()) throw ToolError("vcvars64.bat", r.code, r.out + r.err, "gave no environment");
     msvc_env_ = std::move(env);
     return *msvc_env_;

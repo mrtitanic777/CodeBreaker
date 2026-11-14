@@ -113,7 +113,7 @@ std::string globals_note(analyze::Image& image, std::string_view header) {
             const auto found = variables.find(static_cast<analyze::Va>(a));
             if (found == variables.end()) continue;
             const analyze::globals::Variable& g = found->second;
-            std::string initial;   // as the Python shows it: a label, "0x.." for a value, "uninitialised"
+            std::string initial;   // a label, "0x.." for a value, "uninitialised"
             switch (g.initial.kind) {
                 case analyze::globals::Initial::Kind::Uninitialised: initial = "uninitialised"; break;
                 case analyze::globals::Initial::Kind::Value: initial = std::format("0x{:x}", g.initial.value); break;

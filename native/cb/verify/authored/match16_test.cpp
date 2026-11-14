@@ -4,11 +4,11 @@
 // it "compiles" a function to the original's bytes under the settings and ways of saying a test names, and to the original with one
 // byte changed under any other -- so what is tested is the selection (what the driver asks, what it keeps), not Microsoft C.
 //
-// Every expectation was worked out by hand from match16.py (the sample, the ranking by score with ties in the order tried, the file's
-// vote); the one the Python decided by dict order (a file's total, the first of the greatest) is the same here by the order tried.
+// Every expectation was worked out by hand (the sample, the ranking by score with ties in the order tried, the file's
+// vote; a file's total goes to the first of the greatest, by the order tried).
 //
-// DIVERGES from match16.py: the toolchain, the text passes and the run-time library are the caller's (inputs, not imports); the
-// remembered choices are written with two-space indent (the Python's was one); a function's compiled code is kept in the result
+// Design notes: the toolchain, the text passes and the run-time library are the caller's (inputs, not imports); the
+// remembered choices are written with two-space indent; a function's compiled code is kept in the result
 // (`Result::code`), not on the function `run` as attributes.
 #include "cb/verify/authored/match16.hpp"
 

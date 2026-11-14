@@ -707,7 +707,7 @@ Description describe(const std::filesystem::path& path, const DescribeHooks& hoo
             case detect::NewHeader::Le:
             case detect::NewHeader::Lx: describe_le(std::move(data), d); break;
             case detect::NewHeader::W3: describe_bundle(std::move(data), d); break;
-            default: describe_dos(data.size(), dos, d); break;  // a plain DOS program (and a W4 bundle, as the Python did)
+            default: describe_dos(data.size(), dos, d); break;  // a plain DOS program (and a W4 bundle)
         }
         d.ok = true;
     } catch (const std::exception& e) {  // the header itself is damaged

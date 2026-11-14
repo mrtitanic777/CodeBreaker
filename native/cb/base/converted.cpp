@@ -116,7 +116,7 @@ Manifest manifest_of(const Json& j) {
     }
     if (const auto it = j.find("steps"); it != j.end() && it->is_array()) {
         for (const Json& s : *it) {
-            if (s.is_object()) m.steps.push_back(step_of(s));   // DIVERGES: a step that is no object is dropped (the Python raised)
+            if (s.is_object()) m.steps.push_back(step_of(s));   // a step that is no object is dropped
         }
         used.insert("steps");
     }
@@ -292,7 +292,7 @@ void Project::record(std::string_view command, const std::vector<stdfs::path>& o
 }
 
 void Project::write(const Manifest& m) const {
-    // indent 1 and ASCII escapes: the text the Python's json.dump(d, indent=1) wrote
+    // indent 1 and ASCII escapes: the project.json layout: indent 1, ASCII escapes
     const std::string text = json_of(m).dump(1, ' ', true);
     // project.json is the record of what was done: replaced whole or not at all. README.txt is made from it, and again at the next
     // write.
@@ -309,7 +309,7 @@ stdfs::path Store::root() const {
 
 Project Store::project(const stdfs::path& binary, const std::optional<std::string>& name_given,
                        const std::optional<stdfs::path>& base_folder) const {
-    // DIVERGES: an empty name is no name (the Python took it as one for finding a project, so nothing was found)
+    // an empty name is no name (it would match no project)
     const std::optional<std::string> name = name_given && !name_given->empty() ? name_given : std::nullopt;
     const stdfs::path path = stdfs::absolute(binary);
     const std::string digest = sha1_of(path);

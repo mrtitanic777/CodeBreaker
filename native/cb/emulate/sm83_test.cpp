@@ -3,15 +3,15 @@
 // HALT / STOP / undecodable bytes, devices on the bus, running a function, and the run record.
 //
 // Every expected value is worked out by hand from the Game Boy CPU manual (Pan Docs) and the SM83 opcode map, by writing
-// the program in RGBDS syntax and assembling it with cb::decompile::sm83 (not recorded from this code). The old harness
-// (state/work/typed-port/emulate.sm83: 7,952 cases made by the Python module) agrees on every one of its step and run
+// the program in RGBDS syntax and assembling it with cb::decompile::sm83 (not recorded from this code). An old harness
+// of 7,952 cases agrees on every one of its step and run
 // cases that the CPU defines.
 //
-// DIVERGES from the Python module:
-//  - Registers are 8 and 16 bits wide types (Python's ints could hold more), and F keeps only its high nibble when run()
-//    is given it (the Python stored whatever it was handed).
-//  - A run's `io` is what that run logged (the Python gave the bus's whole log, carried over a reused bus).
-//  - A CPU that was told HALT, hit STOP, or cannot decode, returns a Fault from step() instead of raising.
+// Notes:
+//  - Registers are 8 and 16 bits wide types, and F keeps only its high nibble when run()
+//    is given it.
+//  - A run's `io` is what that run logged.
+//  - A CPU that was told HALT, hit STOP, or cannot decode, returns a Fault from step().
 #include "cb/emulate/sm83.hpp"
 
 #include <format>

@@ -1,10 +1,10 @@
-// cb/engine/nes_demo_test.cpp -- the NES lane on the repository's own demo cartridge, end to end (the checks tests/test_nes.py made):
+// cb/engine/nes_demo_test.cpp -- the NES lane on the repository's own demo cartridge, end to end (the NES lane checks):
 // the cartridge, the program run on the 6502 interpreter, the source written back, the SLEIGH 6502 specification against the interpreter,
 // and the native decompiler's C of it.
 //
 // The program is decompile/testdata/m6502_demo.s, hand-written for the lane, built with CodeBreaker's own assembler (engine/testdata/lane_kit/
 // nes_demo.cfg lays it out). The tests that need the native decompiler (native/decompiler/build/bin: decompiler.exe, pcodecheck.exe, of this
-// checkout or the main one) print SKIP when it is not built, as the Python did; the lane's judge on this cartridge is
+// checkout or the main one) print SKIP when it is not built; the lane's judge on this cartridge is
 // engine.lane_kit.machines.the_nes_demo_cartridge_is_judged.
 //
 // Names here are file-local to this unity unit: every one starts with `nd_`.
@@ -201,7 +201,7 @@ private:
 
 }  // namespace
 
-// tests/test_nes.py test_cartridge: the program's vectors and the functions the flow from them finds.
+// The cartridge: the program's vectors and the functions the flow from them finds.
 CB_TEST("engine.nes_demo.the_cartridge_and_its_functions", [] {
     cb::fs::ScopedTempDir dir("cb-nes-demo");
     const Bytes image = nd_cartridge_bytes(dir.path());
@@ -264,7 +264,7 @@ CB_TEST("engine.nes_demo.the_source_rebuilds_the_cartridge", [] {
         CB_CHECK(text.find(want) != std::string::npos);
 });
 
-// tools/sleigh_verify_6502.py: every documented opcode, in states of every register, one instruction on the SLEIGH specification's p-code and on
+// The SLEIGH cross-check: every documented opcode, in states of every register, one instruction on the SLEIGH specification's p-code and on
 // the interpreter; A X Y S, the flags, the next address and the bytes written must agree.
 CB_TEST("engine.nes_demo.sleigh_6502_agrees_with_the_interpreter", [] {
     const std::optional<stdfs::path> bin = nd_native_bin("pcodecheck.exe");

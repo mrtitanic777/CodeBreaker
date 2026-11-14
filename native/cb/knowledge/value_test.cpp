@@ -6,11 +6,10 @@
 #include "cb/core/error.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from the Python base's values (pickled rows, engine/facts):
-//   * a tuple and a "shared constant" str were values of their own in the old Json (what a pickle kept); a Value has
-//     lists and texts only, and the encoding is the base's own versioned format -- no pickle is read or written;
-//   * an integer wider than 64 bits was refused (OverflowError); it is a FormatError now, as it never fit;
-//   * the NaN / Infinity / -Infinity literals json.load accepted are not JSON and are a ParseError.
+// Behaviour pinned here:
+//   * a Value has lists and texts only (no tuples), and the encoding is the base's own versioned format;
+//   * an integer wider than 64 bits is a FormatError, as it never fits;
+//   * the NaN / Infinity / -Infinity literals are not JSON and are a ParseError.
 
 using namespace cb;
 using namespace cb::knowledge;

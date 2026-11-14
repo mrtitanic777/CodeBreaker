@@ -1,18 +1,17 @@
 // Tests of the 16-bit module build as steps of the engine.
 //
-// testdata/win16.golden.json is the live Python engine/win16.py run on a real 16-bit module of the Windows 95 corpus (awdevl16.dll, 25
-// functions; testdata/gen_win16.py): the decompiled module as the lane's prepare made it (the data the steps read), and the facts the
-// Python's steps made of it -- the segment table, the functions, the description's lines, and for the first dozen functions the C, the
+// testdata/win16.golden.json is the recorded run on a real 16-bit module of the Windows 95 corpus (awdevl16.dll, 25
+// functions): the decompiled module as the lane's prepare made it (the data the steps read), and the facts the
+// steps made of it -- the segment table, the functions, the description's lines, and for the first dozen functions the C, the
 // source as the build compiles it, the contract; the notes of two; and, for the first six, the compiler's options and text of the
 // object and the flow check. The C++ steps, given the same module by a stage, must make the same documents. (The compiler here is a
 // stand-in program: what OpenWatcom made of the text is the compiler's; that the steps hand it the same options and text is what the
 // golden holds.)
 //
-// DIVERGES from the Python:
+// Design notes:
 //   * A fact is a document: the module is kept as the document of Module16, an object as its bytes in hex, and the linked file in the
-//     build folder, named by ne.image (the Python pickled the module and the Built, and kept the file's bytes in the fact).
-//   * The compiler's work is offered to the link by FunctionBuilder::serve, around the link call; the Python patched two functions of
-//     build/functions for the length of it.
+//     build folder, named by ne.image.
+//   * The compiler's work is offered to the link by FunctionBuilder::serve, around the link call.
 //   * What is particular to the platform (the segments, the lane's preparation, the gate, the contract check and the link) is given as
 //     Stages; the steps' own logic -- which facts each is made of, the loop of the gate and the link -- is what is tested here.
 #include "cb/engine/win16.hpp"
@@ -91,7 +90,7 @@ const Json& golden() {
     return doc;
 }
 
-// The module as the Python's lane made it.
+// The module as the lane made it.
 Module16 golden_module() {
     const Json& m = golden().at("module");
     Module16 out;
@@ -253,9 +252,9 @@ Module16 small_module() {
 
 }  // namespace
 
-// ---- the Python's steps on a real module ----------------------------------------------------------------------------------------------
+// ---- the steps on a real module ----------------------------------------------------------------------------------------------
 
-CB_TEST("engine.win16.the_steps_make_what_the_pythons_steps_made_of_a_real_module", [] {
+CB_TEST("engine.win16.the_steps_make_what_the_recorded_steps_made_of_a_real_module", [] {
     World16 w(golden_module());
     const Json& want = golden().at("facts");
     expect(canon(w.get("ne.segments")) == canon(want.at("ne.segments")), "ne.segments");
@@ -280,7 +279,7 @@ CB_TEST("engine.win16.the_steps_make_what_the_pythons_steps_made_of_a_real_modul
             expect(canon(w.get("function.l2", it.key())) == canon(it.value().at("l2")), "function.l2 " + it.key());
         }
     }
-    // the compiler is handed the Python's options and text
+    // the compiler is handed the recorded options and text
     for (auto it = golden().at("compiled").begin(); it != golden().at("compiled").end(); ++it) {
         const Json& c = it.value();
         if (!c.at("object").is_null()) {

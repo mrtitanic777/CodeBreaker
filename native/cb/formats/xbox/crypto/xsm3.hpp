@@ -69,7 +69,7 @@ private:
     Bytes random_console_swap_enc_;
 };
 
-// The sample packets of the Python tool: a Microsoft controller's identification, a console challenge and a verify.
+// The sample packets of the tool: a Microsoft controller's identification, a console challenge and a verify.
 std::span<const std::uint8_t> sample_identification();
 std::span<const std::uint8_t> sample_challenge();
 std::span<const std::uint8_t> sample_verify();

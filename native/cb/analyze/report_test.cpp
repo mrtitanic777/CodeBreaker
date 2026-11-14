@@ -2,8 +2,7 @@
 // (THINKJET.DRV). What each analysis finds is its own tests'; here is that the report runs them in order on what the ones before found, writes the
 // text, the JSON and the starts, stores the facts that have rows, and says what failed or is not run.
 //
-// CB_ANALYZE_PROOF="<module path>" runs every analysis but observe on that module (no store) and prints the counts as JSON and the time, for comparing
-// with the translated Python's `analyze --json` on the same module.
+// CB_ANALYZE_PROOF="<module path>" runs every analysis but observe on that module (no store) and prints the counts as JSON and the time.
 #include "cb/analyze/report.hpp"
 
 #include <chrono>

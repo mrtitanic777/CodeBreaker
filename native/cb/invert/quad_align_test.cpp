@@ -1,11 +1,9 @@
 // Tests of cb/invert/quad_align.hpp: the quad file of the oracle program FXU.C, the real Lattice C objects HELLO, CAND
 // and PROBE (testdata/), and objects built with the OMF record writer for the 32-bit record forms and damage.
 //
-// DIVERGES from the Python tool: the 32-bit SEGDEF, LEDATA and PUBDEF records (0x99, 0xa1, 0x91) are read with their
-// 32-bit fields where the Python read the 16-bit layout for all of them (it misplaced the segment name and placed the
-// data at the wrong offset); data that would reach past 16 MiB of a segment is a FormatError where the Python grew
-// a buffer without limit; a quad record promising more payload than the file holds is a TruncatedError where the
-// Python clamped it; a damaged OMF record is a FormatError where the Python raised struct.error.
+// The 32-bit SEGDEF, LEDATA and PUBDEF records (0x99, 0xa1, 0x91) are read with their 32-bit fields; data that would reach
+// past 16 MiB of a segment is a FormatError; a quad record promising more payload than the file holds is a TruncatedError;
+// a damaged OMF record is a FormatError.
 #include "cb/invert/quad_align.hpp"
 
 #include <string>

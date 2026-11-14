@@ -1,22 +1,20 @@
 // shadow.cc -- the path explorer's symbolic shadow of an x86 run, kept up beside the emulator
-// instruction by instruction (what emulate/shadow.py's Shadow16 / Shadow32 / ShadowLE did from
-// the Python hooks, and emulate/symbolic.py's expression constructors).
+// instruction by instruction (Shadow16 / Shadow32 / ShadowLE, and the expression constructors).
 //
 // Before each instruction runs, its p-code (the decompiler's own SLEIGH specification, lifted
-// by pcodecheck -- asked through Python's lifter once per distinct instruction for the life of
+// by pcodecheck -- asked through the host's lifter once per distinct instruction for the life of
 // the process) is evaluated twice over at once: concretely, from the registers and memory as
 // they are, and symbolically for the values made from an input.  Only the symbolic half is kept:
 // which register bytes and memory bytes hold an expression over the inputs.  A conditional jump
 // whose condition is such an expression is a condition of the path; its direction is the one
 // the emulator then takes (the next instruction says which).
 //
-// Every step is shadow.py's, in the same order, making the same expressions (symbolic.py's
-// folds included), so the path, the trail, the inputs and what was lost are the same.  An
-// expression is a node of this shadow's arena; Python reads them back as symbolic.py's tuples
-// (codebreaker/emulate/native_shadow.py) only when the run is over.
+// Every step is made in the order of the run, making the same expressions (folds included), so the path, the trail, the inputs and what was lost are the same.  An
+// expression is a node of this shadow's arena; the host reads them back as tuples
+// only when the run is over.
 //
 // Values are at most 128 bits here (an XMM register; x87's 80): an instruction with a wider
-// value (AVX) ends the shadow ("shadow: wide"), where Python's integers went on.
+// value (AVX) ends the shadow ("shadow: wide"), where unbounded integers would go on.
 #include <algorithm>
 #include <cstring>
 #include <deque>
@@ -149,7 +147,7 @@ static U128 mask_bits(int64_t bits) {
 static bool negative(const U128 &v, int64_t size) { return size > 0 && v.bit(int(8 * size - 1)); }
 static U128 neg(const U128 &v) { return U128() - v; }
 
-// ---- expressions (symbolic.py) ----------------------------------------------------------------
+// ---- expressions ----------------------------------------------------------------
 enum Op : int32_t {
     E_VAR, E_CONST, E_ADD, E_SUB, E_AND, E_OR, E_XOR, E_MUL, E_UDIV, E_UREM, E_SDIV, E_SREM, E_NEG,
     E_NOT, E_SHL, E_LSHR, E_ASHR, E_ZEXT, E_SEXT, E_EXTRACT, E_CONCAT, E_ITE, E_POPCOUNT, E_BOOL,
@@ -402,7 +400,7 @@ struct Shadow {
         return false;
     }
 
-    // -- symbolic.py
+    // -- expressions
     const Expr *node(int32_t op, int64_t bits, const Expr *a = nullptr, const Expr *b = nullptr,
                      const Expr *c = nullptr) {
         arena.emplace_back();
@@ -635,7 +633,7 @@ const Lifted *Shadow::lifted(uc_engine *uc, uint64_t address, uint64_t cs_base, 
         buf.resize(size_t(got) + 1);
         got = lift(raw, int32_t(n), offv, buf.data(), int32_t(buf.size()));
     }
-    if (got == -2) {                          // Python raised in the lifter: its type's name
+    if (got == -2) {                          // the host failed in the lifter: its type's name
         static thread_local std::string name;
         name.assign(buf.data());
         throw PyErr{name.c_str()};
@@ -1001,7 +999,7 @@ void Shadow::run(uc_engine *uc, uint64_t address, uint64_t cs_base, const Lifted
                 }
                 break;
             case P_INT_SDIV: case P_INT_SREM: {
-                if (bc.zero()) {                 // (Python: `if y`)
+                if (bc.zero()) {                 //
                     c = U128();
                     break;
                 }
@@ -1034,7 +1032,7 @@ void Shadow::run(uc_engine *uc, uint64_t address, uint64_t cs_base, const Lifted
                 U128 r = (code == P_INT_SCARRY ? x + y : x - y) & am;
                 U128 t = code == P_INT_SCARRY ? ((x ^ r) & (y ^ r)) : ((x ^ y) & (x ^ r));
                 bool over = negative(t, asize);
-                // Python takes _sx of the full value: a value wider than asize changes the sum
+                // the sign extension is of the full value: a value wider than asize changes the sum
                 if ((ac & ~am).zero() && (bc & ~am).zero())
                     c = U128(over);
                 else

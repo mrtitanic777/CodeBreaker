@@ -22,7 +22,7 @@ Words words(std::span<const std::string> s) {
 } // namespace
 
 CB_TEST("app.commands.catalog_lists_every_command", [] {
-    // the 72 commands of the Python __main__.COMMANDS table (its 70 documented ones, score16 and exact)
+    // the 72 commands, 70 documented plus score16 and exact
     const char* expected[] = {"module",
                               "scoreboard",
                               "place",

@@ -331,7 +331,7 @@ std::uint32_t table_checksum(ByteView table) {
     return sum;
 }
 
-// Python's round of a quotient: halves go to the even neighbour.
+// Round of a quotient: halves go to the even neighbour.
 int round_half_even(double v) { return static_cast<int>(std::nearbyint(v)); }
 
 }  // namespace

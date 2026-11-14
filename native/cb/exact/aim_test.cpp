@@ -119,8 +119,8 @@ CB_TEST("exact.aim.normalize_masks_what_a_link_changes", [] {
     CB_CHECK_EQ(norm("mov", "ax, word ptr [bp"), "mov ax, word ptr [bp");   // an unclosed bracket is left as it is
 });
 
-// (tests/test_exact_fixes.py) The number in an operand is read by its own base: a decimal with a leading zero ("08") is 8
-// (the Python read it with int(text, 0), which refuses it); hex and the large-constant mask are as before.
+// The number in an operand is read by its own base: a decimal with a leading zero ("08") is 8
+// (a base-0 read would refuse it); hex and the large-constant mask read as usual.
 CB_TEST("exact.aim.a_decimal_with_a_leading_zero_is_read_as_decimal", [] {
     const auto norm = [](const char* mnemonic, const char* ops) {
         return aim::normalize(x86::Insn{0, {}, mnemonic, ops});

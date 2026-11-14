@@ -1,18 +1,17 @@
-// The port's passes, and the mending, against what the Python gave over real programs: the C of two old Microsoft
+// The port's passes, and the mending, against recorded answers over real programs: the C of two old Microsoft
 // tools (lib 2.20, and the first pass of the C 3.00 compiler's own source) as the port had modernised it.
 //
 // testdata/pre_ansi_p5/<target>.json holds the program's texts as the passes were given them (`out` the modernised
 // files, `orig` the original text of the few files a pass changes), the port's state at that point (`port`: the
-// functions, the files' own text, the library names ...), and for each function what the Python
-// (codebreaker/port/pre_ansi.py) returned or did to the state: one case per file for each text pass, call_at on
+// functions, the files' own text, the library names ...), and for each function what it
+// returned or did to the state: one case per file for each text pass, call_at on
 // sampled lines, widen_member on structure members, union_member_for, visible_tags, the three passes over every file
 // at once, stored_wide and passed_on, and `mend` over six complaints of each kind (and a second run of all of them
-// twice, the loop's way). The files were made by state/work/cpp-refactor/pre_ansi_p5/dump.py from the live Python;
-// the sampled complaints are the old harness's (state/work/typed-port/port.pre_ansi.p5/expected.py).
+// twice, the loop's way). The sampled complaints are recorded in the files.
 //
 // What is compared is what the answer means: notes are compared as sets of places under each reason (the order a
 // pass found them in is not meaning); regular-expression rules by their text; the order of rules that different
-// variables made is not compared (the Python listed function pointers in the order it met them, the C++ by name).
+// variables made is not compared (function pointers are listed by name).
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -208,7 +207,7 @@ bool check_notes(const std::string& what, const NoteSet& actual, const NoteSet& 
     if (actual == expected)
         return true;
     expect(false,
-           what + ": notes differ (+ the C++ has more, - the Python has more)" + note_differences(actual, expected));
+           what + ": notes differ (+ the run has more, - the record has more)" + note_differences(actual, expected));
     return false;
 }
 
@@ -287,7 +286,7 @@ VariableKey key_from(const Json& j) {
     return {j.at("file"), j.at("function"), j.at("variable")};
 }
 
-// Compares what the Python's state_json recorded with the state after the C++ ran. `before` is the port as it was.
+// Compares the recorded state with the state after the run. `before` is the port as it was.
 void check_state(const std::string& what, const Json& expected, const MendState& after, const Sources& out_after,
                  const Program& p) {
     // the functions that changed, and how
@@ -454,7 +453,7 @@ void run_cases(const Json& program, Spent& spent) {
             const auto got =
                 widen_member(p.out.at(file), c.at("tag").get<std::string>(), c.at("member").get<std::string>());
             if (want.is_null()) {
-                expect(!got, what + ": widened what the Python did not");
+                expect(!got, what + ": widened what the record did not");
             } else {
                 expect(got && delta_of(p.out.at(file), *got) == want,
                        what + " " + file + " " + c.at("tag").dump() + " " + c.at("member").dump() + ": differs");
@@ -572,7 +571,6 @@ CB_TEST("port.pre_ansi_p5.golden.msc-3.00-p0", [] {
     report("msc-3.00-p0", spent);
 });
 // small programs written to reach each branch of the passes and of the mending
-// (state/work/cpp-refactor/pre_ansi_p5/units.py)
 CB_TEST("port.pre_ansi_p5.golden.units", [] {
     const Json file = load_file("units.json");
     Spent spent;
@@ -582,7 +580,7 @@ CB_TEST("port.pre_ansi_p5.golden.units", [] {
 });
 
 // Bigger programs, not checked in (the C 3.00 compiler's own source is 1.3 MB of golden data): any
-// testdata/pre_ansi_p5/extra-*.json that dump.py has written is run too.
+// testdata/pre_ansi_p5/extra-*.json, when present, is run too.
 CB_TEST("port.pre_ansi_p5.golden.extra", [] {
     const std::filesystem::path dir = cb::testing::data_path("port/testdata/pre_ansi_p5");
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {

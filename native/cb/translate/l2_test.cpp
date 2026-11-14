@@ -2,15 +2,13 @@
 // is the Python front end's Unit for a small program, testdata/l2_java_units.json the Java front end's for a program of
 // modern Java; both are what the producers wrote, and they must read, walk and write back as the same documents.
 //
-// DIVERGES from codebreaker/translate/l2.py (where a document was a dict of whatever its producer put there):
+// Behaviour pinned here:
 //   * a slot holding a value of the wrong kind (a string where a list is, a type with an unknown kind) is a FormatError at
-//     the reader; the Python kept the raw value in the slot and failed later, in whoever used it;
-//   * a flag that is false, a list that is empty and a slot that is null are not written (the Python wrote the ones its
-//     producer set); a list slot the walk follows is always written, empty or not, so no consumer meets null where it iterates;
-//   * a key a node has no slot for is dropped on reading (a Python document kept none either, but its `slots()` was a list a
-//     subclass could extend); Local's `at` of the schema has no slot in the typed tree and is dropped;
-//   * a float that is not finite is written as its name and read back as that text; the Python wrote repr() and read it back
-//     the same way;
+//     the reader;
+//   * a flag that is false, a list that is empty and a slot that is null are not written; a list slot the walk follows is always
+//     written, empty or not, so no consumer meets null where it iterates;
+//   * a key a node has no slot for is dropped on reading; Local's `at` of the schema has no slot in the typed tree and is dropped;
+//   * a float that is not finite is written as its name and read back as that text;
 //   * an integer above 2**64 is not kept (a JSON number that large is a float here).
 #include "cb/translate/l2.hpp"
 

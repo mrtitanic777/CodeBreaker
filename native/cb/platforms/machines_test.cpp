@@ -1,5 +1,4 @@
-// Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis. Each is checked against the values the
-// Python platform modules (codebreaker/platforms/{nes,sms,gb,genesis}.py) give, read from those files.
+// Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis. Each is checked against the values below.
 #include "cb/platforms/gb.hpp"
 #include "cb/platforms/genesis.hpp"
 #include "cb/platforms/nes.hpp"
@@ -7,9 +6,8 @@
 
 #include "cb/core/testing.hpp"
 
-// DIVERGES from the Python modules: the descriptors are data only (the readers, runners, assemblers and source writers
-// the Python named by module are the layers' own tables keyed on Id now); `_recognise` is the registry's probe
-// (`is_nes`, `is_sms`, `is_gb`, `is_genesis`).
+// The descriptors are data only (the readers, runners, assemblers and source writers are the layers' own tables keyed
+// on Id); recognising a file is the registry's probe (`is_nes`, `is_sms`, `is_gb`, `is_genesis`).
 
 using namespace cb::platforms;
 

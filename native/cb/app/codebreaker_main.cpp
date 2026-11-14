@@ -1,5 +1,5 @@
 // cb/app/codebreaker_main.cpp -- THE `codebreaker` program: main is the command table of
-// cb::app directly, with no translated Python behind it. It runs every native command as codebreaker.exe does, hosts the worker processes
+// cb::app directly. It runs every native command as codebreaker.exe does, hosts the worker processes
 // of the lane kit and of analyze (it launches ITSELF as the worker: host_hook.cpp), and says plainly, exit 2, for a command that is not
 // native yet (there is no fallback).
 //

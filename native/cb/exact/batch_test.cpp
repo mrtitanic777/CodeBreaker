@@ -6,9 +6,9 @@
 using namespace cb;
 using namespace cb::exact;
 
-// DIVERGES from the Python module (batch.py), on purpose:
-//   * error_lines ignores a warning however it is spaced ("T.C(5) : warning ..."); the Python's pattern let a warning
-//     with a blank after the colon through as an error line, which only made a batch drop candidates it need not
+// Behaviour pinned here:
+//   * error_lines ignores a warning however it is spaced ("T.C(5) : warning ..."); a warning
+//     with a blank after the colon is not an error line (it would make a batch drop candidates it need not)
 //   * \w is ASCII
 
 namespace {

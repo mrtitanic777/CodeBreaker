@@ -17,16 +17,16 @@ std::filesystem::path fixture(std::string_view name) {
     return testing::data_path(std::string("formats/testdata/texture/") + std::string(name));
 }
 
-// "b<length>:<sha1>": a byte string as the old harness recorded it
+// "b<length>:<sha1>": a byte string as recorded
 std::string tag(ByteView b) { return std::format("b{}:{}", b.size(), crypto::to_hex(crypto::sha1(b))); }
 // ... or "h:<the bytes in hex>" for the tiny ones
 std::string hex_tag(ByteView b) { return "h:" + crypto::to_hex(b); }
 bool same(ByteView got, const std::string& want) { return want.starts_with("h:") ? hex_tag(got) == want : tag(got) == want; }
 
-// ---- the old reader's answers, on real surfaces -------------------------------------------------------------
+// ---- the recorded answers, on real surfaces --------------------------------------------------------------------
 
 CB_TEST("formats.xbox.texture.tiled_offsets_as_the_old_reader_computed_them", [] {
-    // 552 (x, y, width in blocks, log2 block bytes) -> byte offset, from the Gildor/UModel formula as the Python ran it
+    // 552 (x, y, width in blocks, log2 block bytes) -> byte offset, from the Gildor/UModel formula
     const J golden = J::parse(fs::read_text(fixture("golden.json")));
     const J& rows = golden["tiled_offset"];
     CB_CHECK(rows.size() > 500);
@@ -44,7 +44,7 @@ std::string from_hex_text(const std::string& tag_value) {   // "S:64787431" -> "
     for (std::size_t i = 2; i + 1 < tag_value.size(); i += 2) out.push_back(static_cast<char>(std::stoi(tag_value.substr(i, 2), nullptr, 16)));
     return out;
 }
-// -1 for what does not fit a surface's dimension (the old reader took any Python int; a size is 0..2^32-1 here)
+// -1 for what does not fit a surface's dimension (a size is 0..2^32-1 here)
 long long int_of(const std::string& t) {
     const auto v = text::parse_int<long long>(std::string_view(t).substr(2));
     return v && *v >= 0 && *v <= 0xFFFFFFFFll ? *v : -1;
@@ -56,7 +56,7 @@ CB_TEST("formats.xbox.texture.real_surfaces_as_the_old_reader_processed_them", [
     for (const J& entry : golden["cases"]) {
         const std::vector<std::string> c = entry["case"].get<std::vector<std::string>>();
         const std::string result = entry["result"].get<std::string>();
-        const bool error_expected = result.starts_with("[\"ERR\"");   // the old reader raised
+        const bool error_expected = result.starts_with("[\"ERR\"");   // the recording failed here
         const J want = error_expected ? J() : J::parse(result);
         bool threw = false;
         auto expect_same = [&](ByteView got, const std::string& want_tag = std::string()) {
@@ -94,9 +94,9 @@ CB_TEST("formats.xbox.texture.real_surfaces_as_the_old_reader_processed_them", [
             if (op == "tile") {
                 expect_same(tile(data, w, h, *f));
             } else if (op == "untile") {
-                // DIVERGES: surface data shorter than the tiled layout reaches (a linear file read as tiled). The old reader
-                // assigned each short slice into a bytearray, which shortened the result by what was missing; this one keeps
-                // the size of the surface and leaves the missing blocks zero. The blocks the data does reach are compared.
+                // Surface data shorter than the tiled layout reaches (a linear file read as tiled): the surface keeps its full size
+                // and the missing blocks are zero (a reader that assigned short slices would shorten the result by what was missing).
+                // The blocks the data does reach are compared.
                 const BlockSize bs = blocks(w, h);
                 std::uint64_t reach = 0;
                 for (std::uint32_t y = 0; y < bs.height; ++y) {

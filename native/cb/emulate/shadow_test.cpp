@@ -5,11 +5,11 @@
 // its inputs (by the small evaluator below, independent of the shadow's code) and must hold exactly when the interpreter takes that
 // way. Programs are encoded by hand from the Power ISA.
 //
-// DIVERGES from the Python module:
-//  - `span` is gone from the constructor: the Python stored it and never read it.
-//  - a SUBPIECE that takes nothing of its input is a constant 0 (the Python's extract of no bits raised, and the shadow went off).
+// Notes:
+//  - the constructor takes no `span`.
+//  - a SUBPIECE that takes nothing of its input is a constant 0.
 //  - a user operation, an instruction without a decoding or an operation without a symbolic meaning say so in `lost` in their own words
-//    (the Python wrote "shadow: <exception name>" for what it could not follow); only whether `lost` is empty is read by the explorer.
+//; only whether `lost` is empty is read by the explorer.
 #include "cb/emulate/shadow.hpp"
 
 #include <cstdlib>

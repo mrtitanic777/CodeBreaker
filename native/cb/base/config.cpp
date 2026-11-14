@@ -26,8 +26,7 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-// The defaults settings.json overrides (codebreaker/base/settings.py's DEFAULTS, kept in step while the Python
-// still reads the same file).
+// The defaults settings.json overrides (the same keys the terminal UI client reads).
 struct Default {
     std::string_view key;
     std::string_view value;
@@ -53,8 +52,8 @@ constexpr std::array kDefaults{
     Default{"struct_recovery", "all"},
 };
 
-// The settings whose value is a path (relative ones are taken against the checkout): settings.py's _PATHS, plus
-// "reference" (the Python left a relative one relative to the working folder, which is never what was meant).
+// The settings whose value is a path (relative ones are taken against the checkout): the path keys, plus
+// "reference" (a relative one is taken against the checkout, not the working folder).
 constexpr std::array<std::string_view, 38> kPathSettings{
     "corpus",        "openwatcom",   "build_cache",  "decompiler_bin", "xex_bin",          "tracer_bin",
     "formats_bin",   "engine_bin",   "dosexec_bin",  "symbols_bin",    "invert_bin",       "analyze_bin",
@@ -163,7 +162,7 @@ std::optional<stdfs::path> Config::path(std::string_view key) const {
     const std::string t = text(key);
     if (t.empty()) return std::nullopt;
     stdfs::path p = fs::from_text(t);
-    if (p.is_relative() && is_path_setting(key)) p = root_ / p;   // (as settings.py: only path settings are joined)
+    if (p.is_relative() && is_path_setting(key)) p = root_ / p;   // (only path settings are joined)
     return p.lexically_normal();
 }
 

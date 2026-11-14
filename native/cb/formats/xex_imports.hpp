@@ -46,7 +46,7 @@ struct Import {
 using OrdinalNames = std::function<std::optional<std::string>(std::string_view library, std::uint32_t ordinal)>;
 
 // The imports of the XEX whose bytes are `xex_file`, by library and ordinal; `image` is the module's PowerPC image (its basefile),
-// which says what each record holds. None for a module with no import header. FormatError / TruncatedError for a damaged header.
+// which says what each record holds. Empty for a module with no import header. FormatError / TruncatedError for a damaged header.
 std::vector<Import> imports(ByteView xex_file, const powerpc_image::Image& image, const OrdinalNames& names);
 
 struct Environment {

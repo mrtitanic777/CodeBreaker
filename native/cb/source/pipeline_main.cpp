@@ -1,5 +1,5 @@
 // cb_pipeline: runs the pipeline commands of source/pipeline.hpp on a command line, with the settings of the main checkout (and the state folder CB_STATE
-// names), so each can be compared with the Python's answer on real inputs. Not built by default (`cmake --build <dir> --target cb_pipeline`).
+// names), so each can be compared with a recorded answer on real inputs. Not built by default (`cmake --build <dir> --target cb_pipeline`).
 //
 //     CB_STATE=<folder> cb_pipeline decompile lz32.dll
 #include <string>

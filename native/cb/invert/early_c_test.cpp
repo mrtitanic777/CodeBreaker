@@ -1,18 +1,15 @@
 // Tests of cb/invert/early_c.hpp. The compiler model itself is early_c_tracker / early_c_walk / early_c_text over flow16; these pin the typed API over
 // it: the settings and hooks reaching the model, the findings and results coming back, the text helpers, and the errors.
 //
-// testdata/early_c.golden.json holds 397 calls of recover / recover_cfg with the answers the Python module gave: the
+// testdata/early_c.golden.json holds 397 calls of recover / recover_cfg with the recorded answers: the
 // default-settings call for each input (the ten seed functions of the oracle harness -- an add, calls, a max, a loop, a
 // copy chain, a long, a switch, near/far/Pascal calls -- junk and one-byte inputs, a load base, call names) and, for every
 // setting and hook, the calls whose answer it changes, so each entry documents what a setting does; plus a spread of
 // mutated and truncated inputs. The hooks are the harness's: SWITCH answers at addresses divisible by 6, CALLINFO and
 // CALLREGS answer by a formula of the call's address and target.
 //
-// DIVERGES from the Python: registers a statement writes are listed in the fixed order ax bx cx dx si di es, where the
-// Python's followed the hash of each register name in its process (so two runs could differ); a hook that throws
-// propagates its exception, where the Python's ctypes callback swallowed it as "no answer"; errors are
-// FormatError/UnsupportedError/InternalError, not the Python's exception names; to_c builds its local declarations with
-// early_c_frame, where the model carried a copy of that logic.
+// Registers a statement writes are listed in the fixed order ax bx cx dx si di es; a hook that throws propagates its
+// exception; errors are FormatError/UnsupportedError/InternalError; to_c builds its local declarations with early_c_frame.
 #include "cb/invert/early_c.hpp"
 
 #include <nlohmann/json.hpp>
@@ -69,7 +66,7 @@ ec::Hooks harness_hooks(const std::string& which) {
                 address = far.address, target = far.target->seg + far.target->off;
             }
             const std::uint32_t n = (address + target) % 5;
-            return n > 1 && n != 4 ? n * 2 : 0;   // (n == 4: the Python's hook raised, which the model took as no answer)
+            return n > 1 && n != 4 ? n * 2 : 0;   // (n == 4: no answer)
         };
     }
     if (which.find('r') != std::string::npos) {
@@ -118,7 +115,7 @@ Json json_of(const ec::Recovered& r) {
     return Json::array({r.frame_size, r.params, r.statements, r.return_type, r.locals});
 }
 
-// What the Python's LAST held, as the harness recorded it, compared field by field (absent keys are empty).
+// What LAST held, as the harness recorded it, compared field by field (absent keys are empty).
 bool findings_match(const Json& last, const ec::Findings& f) {
     if (strs(last.value("saved", Json::array())) != f.saved_registers) return false;
     std::vector<std::pair<std::string, std::uint32_t>> rp;
@@ -154,7 +151,7 @@ CB_TEST("invert.early_c.golden_cases", [] {
             const ec::Recovered r = structured ? ec::recover_cfg(code, base, names, options) : ec::recover(code, base, names, options);
             ++answers;
             if (c.contains("exc")) {
-                failures += label + ": the Python raised " + c["exc"].get<std::string>() + "\n";
+                failures += label + ": the golden expects the error " + c["exc"].get<std::string>() + "\n";
             } else if (json_of(r) != c["rec"]) {
                 failures += label + "\n  got      " + json_of(r).dump() + "\n  expected " + c["rec"].dump() + "\n";
             } else if (!findings_match(c["last"], r.findings)) {
@@ -194,7 +191,7 @@ CB_TEST("invert.early_c.seed_functions_default_settings", [] {
 
 CB_TEST("invert.early_c.settings_and_hooks_reach_the_model", [] {
     // helper operators: a long multiply is a call of the library's helper at offset 18 (`e8 00 00` at 15); the driver says
-    // that helper divides (the answers are the Python module's for the same input)
+    // that helper divides (the answers are the recorded ones for the same input)
     const Bytes lmul = from_hex("558bec8b46048b5e068b4e088b560ae800008bc35dc3");
     CB_CHECK((ec::recover(lmul).statements == std::vector<std::string>{"return (a * b);"}));
     CB_CHECK((ec::recover(lmul, 0, {{18, "/"}}).statements == std::vector<std::string>{"return (a / b);"}));
@@ -226,7 +223,7 @@ CB_TEST("invert.early_c.settings_and_hooks_reach_the_model", [] {
 
 CB_TEST("invert.early_c.errors", [] {
     // A max function cut off in the middle of its jump, structured, with the harness's hook that names argument registers:
-    // the model reads past the end (the Python's IndexError); here it is a FormatError.
+    // the model reads past the end (a FormatError).
     ec::Options registers;
     registers.hooks = harness_hooks("r");
     const Bytes cut = from_hex("558bec8b46043b46067e058b46");

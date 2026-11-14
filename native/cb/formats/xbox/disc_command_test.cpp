@@ -1,12 +1,12 @@
 // Tests of the `xbox-disc` command (cb/formats/xbox/disc_command.hpp) on a disc image and on a Games on Demand package of the same volume, against what
-// `codebreaker.exe xbox-disc ...` (the translated Python with formats.dll's disc reader) printed and wrote for them: testdata/disc_goldens.txt, made by
+// `codebreaker.exe xbox-disc ...` printed and wrote for them: testdata/disc_goldens.txt, made by
 // testdata/make_disc_goldens.py from the files this test writes when CB_DISC_SAMPLE_OUT names a folder (the volume built by gdf::build from four files,
 // as gdf_test.cpp builds it, and its package from god::write_god).
 //
 // The golden holds each command's stdout, exit code and the files it wrote (size and SHA-1). Every case below is run on the native command and compared.
 //
-// DIVERGES from the Python: nothing the command prints or writes; `files` lists in gdf.hpp's order (lower-cased path) where the Python walked the
-// directory tree, which is the same order for a flat root named like these four files (the golden says so).
+// Behaviour pinned here: nothing the command prints or writes; `files` lists in gdf.hpp's order (lower-cased path), which is the
+// same order as walking the directory tree for a flat root named like these four files (the golden says so).
 #include "cb/formats/xbox/disc_command.hpp"
 
 #include <algorithm>
@@ -101,7 +101,7 @@ std::string run(const std::vector<std::string>& args, const stdfs::path& written
 }
 
 // Used once, by hand: writes the volume and its package where make_disc_goldens.py reads them.
-CB_TEST("formats.xbox.disc_command.write_the_samples_for_the_python_goldens", [] {
+CB_TEST("formats.xbox.disc_command.write_the_samples_for_the_goldens", [] {
     const auto out = fs::get_env("CB_DISC_SAMPLE_OUT");
     if (!out) return;
     const Bytes volume = sample_volume();
@@ -121,7 +121,7 @@ CB_TEST("formats.xbox.disc_command.files_lists_every_file_with_its_size", [] {
     CB_CHECK_EQ(run({"files", forward(fs::to_text(data))}), got);
 });
 
-CB_TEST("formats.xbox.disc_command.files_agree_with_the_python_on_the_same_image", [] {
+CB_TEST("formats.xbox.disc_command.files_match_the_recorded_output", [] {
     const fs::ScopedTempDir dir{"cb-disc"};
     fs::write_file(dir.path() / "four.iso", sample_volume());
     const std::string w = forward(fs::to_text(dir.path()));
@@ -140,7 +140,7 @@ CB_TEST("formats.xbox.disc_command.read_writes_one_file_and_a_missing_file_is_ex
     // the path is matched without regard to case
     CB_CHECK_EQ(run({"read", w + "/four.iso", "DEFAULT.XEX", w + "/out/y.xex"}), "exit=0\n");
     CB_CHECK(equal_bytes(fs::read_file(dir.path() / "out" / "y.xex"), fs::read_file(dir.path() / "out" / "x.xex")));
-    // the disc has no such file: nothing written, exit 3 (what the Python's golden says)
+    // the disc has no such file: nothing written, exit 3 (what the golden says)
     const std::string missing = run({"read", w + "/four.iso", "nothing.xex", w + "/out/z.xex"}, dir.path() / "out" / "z.xex");
     CB_CHECK_EQ(text::replace_all(missing, w, "<w>"), golden("read_missing"));
     CB_CHECK(!stdfs::exists(dir.path() / "out" / "z.xex"));

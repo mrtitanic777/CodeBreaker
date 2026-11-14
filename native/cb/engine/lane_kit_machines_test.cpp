@@ -147,7 +147,7 @@ CB_TEST("engine.lane_kit.machines.master_system_edited_program", [] { machine_ju
 CB_TEST("engine.lane_kit.machines.genesis_edited_program", [] { machine_judges_an_edited_program({"genesis", "genesis-2048/rom.bin", 0, 0x100000}); });
 CB_TEST("engine.lane_kit.machines.msx_edited_program", [] { machine_judges_an_edited_program({"msx", "msx-nohzdyve/nohzdyve.rom", 0x4000, 0x10000}); });
 
-// The programs tests/test_nes.py and tests/test_m68k.py (test_lane_judges) were written around, hand-written for the lanes and kept in testdata
+// The programs NES and Genesis lane tests are built around, hand-written for the lanes and kept in testdata
 // (no corpus needed): built with CodeBreaker's own assemblers, written back as source by the lane, rebuilt as the original, and judged beside an
 // edited copy.
 CB_TEST("engine.lane_kit.machines.the_nes_demo_cartridge_is_judged", [] {
@@ -171,7 +171,7 @@ CB_TEST("engine.lane_kit.machines.the_genesis_demo_cartridge_is_judged", [] {
     machine_judges_a_program({"genesis", "demo.md", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
 });
 
-// The Spectrum demo (tests/test_z80.py::test_spectrum_lane's) as a 48K snapshot stopped at its start: the flat Z80 lane writes it back, rebuilds it as the
+// The Spectrum demo as a 48K snapshot stopped at its start: the flat Z80 lane writes it back, rebuilds it as the
 // original, and judges an edited copy. (The snapshot's RAM from $4000 follows its 27-byte header: file offset = address - $3FE5.)
 CB_TEST("engine.lane_kit.machines.the_zx_demo_snapshot_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-zx-demo");
@@ -197,7 +197,7 @@ CB_TEST("engine.lane_kit.machines.the_zx_demo_snapshot_is_judged", [] {
 });
 
 // The three other hand-written demos of the Z80 family (the Master System's in WLA-DX, the Game Boy's in RGBDS, the MSX cartridge's in sjasmplus: what
-// tests/test_z80.py's lane tests were written around), built with CodeBreaker's own assemblers and judged like the NES and Genesis demos above, so that
+// Z80 lane tests are built around), built with CodeBreaker's own assemblers and judged like the NES and Genesis demos above, so that
 // the machines are held to a program of the repository's own when the homebrew samples are not on the machine.
 CB_TEST("engine.lane_kit.machines.the_master_system_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-sms-demo");

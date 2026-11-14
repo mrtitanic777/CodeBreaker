@@ -1,5 +1,5 @@
 // Tests of linking a program from its sources: the objects the linker is given and the files it is run with, and the comparison of what it wrote with the
-// original -- on the real projects of the research (C 3.00's P0 and P1, LIB 3.00) against what the live Python's exact/link.py answered
+// original -- on the real projects of the research (C 3.00's P0 and P1, LIB 3.00) against the recorded answers
 // (testdata/w5b3.golden.json): where the library part begins, the linker's switches, the kit's objects linked first, the objects of the variables
 // without a value, the library's modules the rest needs (CRTLIB) and the names left open, an EXE taken apart, and the diagnosis of an EXE against the
 // original -- the same, one with bytes damaged in the code, the library part and the data, one with its data moved by two bytes -- and where a data
@@ -7,7 +7,7 @@
 // the gate's, not a unit test's), and the project's modules by a compiler that is none: what is tested of them is that a module that does not compile
 // stops the link, and a kit's object goes in as it is.
 //
-// DIVERGES from the Python:
+// Behaviour pinned here:
 //   * The linker's environment (PATH=C:\ and TMP=C:\) is the DOS host's to give: DosHost::run has no environment.
 //   * A relocation of an EXE is held as (offset << 16) | segment; the comparisons are the same ones.
 #include "cb/exact/link.hpp"
@@ -53,7 +53,7 @@ struct FakeDos final : linkwhole::DosHost {
 
 }  // namespace
 
-CB_TEST("exact.link.the_inputs_of_the_link_of_a_real_program_are_the_pythons", [] {
+CB_TEST("exact.link.the_inputs_of_the_link_of_a_real_program_match_the_recorded_output", [] {
     test::Real real;
     if (test::skipped(real, "link inputs")) return;
     for (auto it = golden().at("link").begin(); it != golden().at("link").end(); ++it) {
@@ -99,7 +99,7 @@ CB_TEST("exact.link.an_exe_taken_apart_and_compared_with_the_original", [] {
         const std::size_t base = static_cast<std::size_t>(parts.header[4]) * 16;
         for (std::size_t off : {std::size_t{0x40}, std::size_t{0x41}, std::size_t{p->own_end()} + 5, static_cast<std::size_t>(p->dgroup()) + 7, static_cast<std::size_t>(p->dgroup()) + 8, static_cast<std::size_t>(p->dgroup()) + 300})
             bad[base + off] ^= 0x55;
-        check(sha1_of(bad) == want.at("damaged_sha").get<std::string>(), std::string(name) + ": the damaged copy is the Python's");
+        check(sha1_of(bad) == want.at("damaged_sha").get<std::string>(), std::string(name) + ": the damaged copy is the recorded one");
         check(link::diagnose(*p, exe, bad) == want.at("diagnose_damaged").get<std::vector<std::string>>(), std::string(name) + ": diagnose of the damaged");
         // the data moved by two bytes
         Bytes shifted(exe.begin(), exe.begin() + static_cast<std::ptrdiff_t>(base + p->dgroup() + 20));
@@ -121,7 +121,7 @@ CB_TEST("exact.link.drift_names_where_one_runs_ahead_of_the_other", [] {
     Bytes a;
     for (int i = 0; i < 600; ++i) a.push_back(static_cast<std::uint8_t>((i * 7 + (i >> 3)) & 0xFF));
     const Json& cases = golden().at("drift_synthetic").at("cases");
-    check(sha1_of(a) == golden().at("drift_synthetic").at("a").get<std::string>(), "the synthetic bytes are the Python's");
+    check(sha1_of(a) == golden().at("drift_synthetic").at("a").get<std::string>(), "the synthetic bytes are the recorded ones");
     for (const Json& c : cases) {
         const std::size_t cut = c.at(0).get<std::size_t>();
         Bytes b(a.begin(), a.begin() + static_cast<std::ptrdiff_t>(cut));

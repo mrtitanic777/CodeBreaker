@@ -1,4 +1,4 @@
-// Tests of the names written into a function's source after judging (source/readable): the cases of the Python's tests/test_readable.py, on the
+// Tests of the names written into a function's source after judging (source/readable): the cases on the
 // SDK headers of this machine (a machine without them checks only the reading of calls).
 #include "cb/source/readable.hpp"
 
@@ -144,7 +144,7 @@ CB_TEST("source.readable.comparisons_fields_and_strings", [] {
 });
 
 // CB_READABLE_PROOF="<function text file>;<out file>" writes the pass over that function (the first of a one-function module), for a comparison with the
-// Python on a real function; the strings of the module are not known there.
+// recorded output on a real function; the strings of the module are not known there.
 CB_TEST("source.readable.proof", [] {
     const std::optional<std::string> proof = fs::get_env("CB_READABLE_PROOF");
     if (!proof || proof->empty()) return;

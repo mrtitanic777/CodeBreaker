@@ -405,7 +405,7 @@ int repair_powerpc_command(World& world, const stdfs::path& path, const rp::Argu
 //
 // The period compilers a machine has, and the units each gives to compare with (build/period): the 32-bit compiler of 1994 and Microsoft C of 1990-93
 // compile one function at a time and have no units of their own; they are tried on the modules `repair` is given. Only the XENIX C compiler has units --
-// the source files of the reconstruction of LINK and LIB, which xcc.py (the setting xenix_c's folder) finds the original executable's stretch for.
+// the source files of the reconstruction of LINK and LIB, which the xcc script (the setting xenix_c's folder) finds the original executable's stretch for.
 
 namespace {
 

@@ -27,7 +27,7 @@ std::int64_t word_at(ByteView b, std::int64_t offset) {
 
 std::int64_t signed_word_at(ByteView b, std::int64_t offset) { return static_cast<std::int16_t>(word_at(b, offset)); }
 
-// Python-style "%0Nx": a negative value is its magnitude with a minus sign, the width counting the sign.
+// A "%0Nx" format: a negative value is its magnitude with a minus sign, the width counting the sign.
 std::string hex_pad(std::int64_t v, int width) {
     const bool negative = v < 0;
     const std::uint64_t magnitude = negative ? 0 - static_cast<std::uint64_t>(v) : static_cast<std::uint64_t>(v);

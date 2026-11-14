@@ -3,16 +3,14 @@
 // class compiled and run by the JVM, and a "translation" (a batch file standing in for the program a back end built) that
 // answers as it should, and as it should not.
 //
-// DIVERGES from javajudge.py:
-//   * judge_tree returns its classes in the order the lane made them, whichever finished first (the Python's dict was in the
-//     order of completion), and is silent unless given a log (it printed by default);
-//   * judge_program answers NotRun with the reason when there is no JDK (the Python raised RuntimeError); the harness and the
-//     Java sources it writes have "\n" line ends (Python's text mode wrote "\r\n" on Windows);
-//   * the front end, probe, builds and lane are given to it (ProgramHost, ProbeInputs, TreeLane) instead of imported; the
-//     lane's module variables (STD, FLAGS ...) the Python reassigned and restored are the lane's own business, set in
-//     TreeLane::prepare;
-//   * a program that a back end declines (an exception from the build) is Refused with the reason, as before; an exception of
-//     another kind (a failure of the judge's own) is not caught.
+// Behaviour pinned here:
+//   * judge_tree returns its classes in the order the lane made them, whichever finished first, and is silent unless given a log;
+//   * judge_program answers NotRun with the reason when there is no JDK; the harness and the Java sources it writes have "\n"
+//     line ends;
+//   * the front end, probe, builds and lane are given to it (ProgramHost, ProbeInputs, TreeLane); the lane's own settings (STD,
+//     FLAGS ...) are the lane's business, set in TreeLane::prepare;
+//   * a program that a back end declines (an exception from the build) is Refused with the reason; an exception of another kind
+//     (a failure of the judge's own) is not caught.
 #include "cb/translate/javajudge.hpp"
 
 #include <algorithm>

@@ -6,9 +6,9 @@
 // and a COFF object written by hand carries the symbols. The real nasm and ML are used where installed. The listing of a real driver
 // (splitter.vxd) goes through the module end to end.
 //
-// DIVERGES from the Python module, by design: the assemblers' files get the line ends the text has (the Python's text-mode write turned
+// Behaviour pinned here: the assemblers' files get the line ends the text has (a text-mode write would turn
 // the CRLF of the text into CR CR LF); the DOS lane is the caller's (`Toolchain::period`) and not found here; a COFF object that is cut
-// short is a FormatError (the Python raised struct.error or ValueError).
+// short is a FormatError.
 #include "cb/source/vxd/masm.hpp"
 
 #include <format>

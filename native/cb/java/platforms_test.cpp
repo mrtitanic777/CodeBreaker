@@ -45,9 +45,9 @@ CB_TEST("java.platforms.table", [] {
     }
 });
 
-// testdata/stub_comments.golden.json: get_stub_comment of the Python module for every platform x subsystem key,
+// testdata/stub_comments.golden.json: the stub comment for every platform x subsystem key,
 // including an unknown platform, an unknown subsystem and an empty one.
-CB_TEST("java.platforms.stub_comments_match_python", [] {
+CB_TEST("java.platforms.stub_comments_match_golden", [] {
     const cb::Json& golden = load("stub_comments.golden.json");
     CB_CHECK_EQ(golden.size(), std::size_t{112});
     for (const auto& [key, expected] : golden.items()) {
@@ -56,9 +56,9 @@ CB_TEST("java.platforms.stub_comments_match_python", [] {
     }
 });
 
-// testdata/stdafx.golden.json: generate_stdafx of the Python module for each platform, two unknown ids ("generic"
+// testdata/stdafx.golden.json: the generated stdafx for each platform, two unknown ids ("generic"
 // is what the runtime passes when there is no platform) and one non-default standard label.
-CB_TEST("java.platforms.stdafx_matches_python", [] {
+CB_TEST("java.platforms.stdafx_matches_golden", [] {
     const cb::Json& golden = load("stdafx.golden.json");
     for (const auto& [key, expected] : golden.items()) {
         const auto bar = key.find('|');

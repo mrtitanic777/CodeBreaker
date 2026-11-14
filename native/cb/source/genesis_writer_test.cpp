@@ -1,8 +1,7 @@
 // Tests of the Genesis writer over a small cartridge of its own: the vector table and the header, a reset handler that writes the VDP's
 // control port and calls a subroutine and then loops, the subroutine, a vertical-blank handler and a table of text. The program is machine
 // code written out byte by byte; the writer is held to what it is for -- the source it writes, built again, is the cartridge it came
-// from -- and to the text it writes, a golden file that was read through for correctness (testdata/writers/genesis.golden.asm; the
-// Python writer wrote the same bytes for this cartridge).
+// from -- and to the text it writes, a golden file that was read through for correctness (testdata/writers/genesis.golden.asm).
 
 #include "cb/source/genesis_writer.hpp"
 

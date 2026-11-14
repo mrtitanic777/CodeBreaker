@@ -1,6 +1,6 @@
-// Tests of the Java front end (cb/java/frontend.hpp). The goldens are what the Python front end made of the same programs:
+// Tests of the Java front end (cb/java/frontend.hpp). The goldens are checked in:
 // testdata/frontend/golden/<unit>.treedump.json is javac's typed tree of the unit (TreeDump's JSON) and <unit>.l2.json the L2 document
-// the Python lowering (codebreaker/translate/frontends/java/lower.py) made of it. Features.java (testdata/frontend/src) has one of each
+// the lowering's L2 document for it. Features.java (testdata/frontend/src) has one of each
 // construct the lowering handles (generics, an enum with a body, a record, lambdas, a method reference, an anonymous class, switch
 // expressions, try-with-resources with a multi-catch, an instanceof pattern, labelled loops, assert ...); EnumOS1, ICamera and MathHelper are
 // the transpiler's test fixtures (testdata/tools_fixtures).
@@ -47,7 +47,7 @@ std::string jf_difference(const Json& a, const Json& b, const std::string& path 
     return path + ": " + a.dump().substr(0, 80) + " against " + b.dump().substr(0, 80);
 }
 
-// The Python's L2 writes a flag that is false (`"postfix": false` on every Unary, `"default": false` on a Case); this module's writer leaves a
+// The goldens write a flag that is false (`"postfix": false` on every Unary, `"default": false` on a Case); this module's writer leaves a
 // default out. The documents are the same.
 void jf_without_default_postfix(Json& doc) {
     if (doc.is_object()) {
@@ -59,7 +59,7 @@ void jf_without_default_postfix(Json& doc) {
     }
 }
 
-Json jf_python_document(const std::string& unit) {
+Json jf_golden_document(const std::string& unit) {
     Json doc = json::load(jf_golden(unit + ".l2.json"));
     jf_without_default_postfix(doc);
     return doc;
@@ -70,7 +70,7 @@ void jf_check_unit(const char* unit, const char* path) {
     const Json tree = json::load(jf_golden(std::string(unit) + ".treedump.json"));
     const ir::Node* node = fe::lower_unit(arena, tree, path);
     const Json ours = translate::l2::to_json(*node);
-    const Json theirs = jf_python_document(unit);
+    const Json theirs = jf_golden_document(unit);
     CB_CHECK_EQ(jf_difference(ours, theirs), std::string());
 }
 
@@ -93,8 +93,8 @@ CB_TEST("java.frontend.parse_type", [] {
     CB_CHECK(ir::to_text(*fe::parse_type(std::nullopt)) == ir::to_text(*ir::any_type()));
 });
 
-CB_TEST("java.frontend.the_features_unit_matches_the_python", [] { jf_check_unit("Features", "sample/features/Features"); });
-CB_TEST("java.frontend.fixtures_match_the_python", [] {
+CB_TEST("java.frontend.the_features_unit_matches_the_golden", [] { jf_check_unit("Features", "sample/features/Features"); });
+CB_TEST("java.frontend.fixtures_match_the_golden", [] {
     jf_check_unit("EnumOS1", "sample/EnumOS1");
     jf_check_unit("ICamera", "sample/ICamera");
     jf_check_unit("MathHelper", "sample/MathHelper");
@@ -105,7 +105,7 @@ CB_TEST("java.frontend.a_dump_that_is_not_a_tree_is_a_parse_error", [] {
     CB_CHECK_THROWS_AS(ParseError, fe::lower_unit(arena, json::parse(R"({"k": "COMPILATION_UNIT", "typeDecls": [{"k": "CLASS", "members": [{"k": "METHOD", "body": {"k": "BLOCK", "statements": [{"k": "IF"}]}}]}]})"), "x"));
 });
 
-CB_TEST("java.frontend.javac_runs_and_what_it_lowers_matches_the_python", [] {
+CB_TEST("java.frontend.javac_runs_and_what_it_lowers_matches_the_golden", [] {
     // the JDK: the java the decompiler finds, and javac beside it
     const std::optional<std::filesystem::path> java = decompile::jar::find_java({});
     if (!java) return;
@@ -121,7 +121,7 @@ CB_TEST("java.frontend.javac_runs_and_what_it_lowers_matches_the_python", [] {
     Arena arena;
     const std::vector<ir::Node*> units = fe::lower_program(arena, testing::data_path("java/testdata/frontend/src"), tools);
     CB_CHECK_EQ(units.size(), std::size_t{1});
-    const Json theirs = jf_python_document("Features");
+    const Json theirs = jf_golden_document("Features");
     CB_CHECK_EQ(jf_difference(translate::l2::to_json(*units[0]), theirs), std::string());
     // the compiled TreeDump is kept for the next run
     CB_CHECK(std::filesystem::is_directory(dir.path() / "translate"));

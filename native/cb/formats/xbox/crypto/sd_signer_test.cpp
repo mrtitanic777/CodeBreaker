@@ -1,7 +1,7 @@
 // Tests of cb/formats/xbox/crypto/sd_signer.hpp: signing a CD/SD (padding, size, signature that verifies, zeroed nonce), the
 // checksum line, refusing an image that is not a CD/SD, and the command on files (output beside the input or to -o).
 //
-// DIVERGES from the Python (sd_signer.py): the key store and arguments are the command's, not module globals; a bad magic is a
+// Behaviour pinned here: the key store and arguments are the command's, not module globals; a bad magic is a
 // FormatError and a missing input a NotFoundError rather than an assert / argparse error; the command prints through cb::out.
 #include "cb/formats/xbox/crypto/sd_signer.hpp"
 

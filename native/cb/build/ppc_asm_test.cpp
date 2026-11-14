@@ -1,6 +1,6 @@
 // Tests of the PowerPC assembler. Every expected word below was worked out by hand from the PowerPC instruction
 // formats (opcode<<26, RT/RS<<21, RA<<16, RB<<11, XO<<1) and agrees with what Capstone's PowerPC decoder prints for
-// it (the encodings tests/test_xex_edit.py checked).
+// it.
 #include "cb/build/ppc_asm.hpp"
 
 #include "cb/core/testing.hpp"
@@ -51,8 +51,7 @@ CB_TEST("build.ppc_asm.encodings", [] {
 });
 
 CB_TEST("build.ppc_asm.destination_first_forms", [] {
-    // DIVERGES: the port encoded `or r3,r4,r5` as `or r4,r3,r5` (destination and source swapped), unseen while the
-    // two registers were equal, and `sub rD,rA,rB` as `subf rD,rA,rB` (rB-rA). In assembler syntax `or rA,rS,rB`
+    // In assembler syntax `or rA,rS,rB`
     // names the destination first but encodes RS (the second operand) in the high register field; `sub rD,rA,rB`
     // is rA-rB, that is `subf rD,rB,rA`.
     CB_CHECK_EQ(one("or r3, r4, r5"), 0x7C832B78u);
@@ -119,10 +118,10 @@ CB_TEST("build.ppc_asm.errors", [] {
     CB_CHECK_EQ(line_of("li r3, 0x10000\n"), 1u);            // does not fit 16 bits
     CB_CHECK_EQ(line_of("li r3, banana\n"), 1u);
     CB_CHECK_EQ(line_of("ori r3, r3, -1\n"), 1u);            // an unsigned field takes no negative
-    CB_CHECK_EQ(line_of("ori r3, r3, 0x12345\n"), 1u);       // DIVERGES: it was silently cut to 16 bits
+    CB_CHECK_EQ(line_of("ori r3, r3, 0x12345\n"), 1u);       // refused: an immediate does not fit 16 bits
     CB_CHECK_EQ(line_of("lwz r3, r4\n"), 1u);                // not D(rA)
-    CB_CHECK_EQ(line_of("lwz r3, 8(r40)\n"), 1u);            // DIVERGES: r40 was taken as r8
-    CB_CHECK_EQ(line_of("lwz r3, 0x10000(r1)\n"), 1u);       // DIVERGES: the displacement was cut to 16 bits
+    CB_CHECK_EQ(line_of("lwz r3, 8(r40)\n"), 1u);            // refused: no register r40
+    CB_CHECK_EQ(line_of("lwz r3, 0x10000(r1)\n"), 1u);       // refused: the displacement does not fit 16 bits
     CB_CHECK_EQ(line_of("lwz r3, ff(r1)\n"), 1u);            // bare hex is not a number here
     CB_CHECK_EQ(line_of("mtspr 1024, r3\n"), 1u);            // SPR numbers are 10 bits
 });

@@ -1,12 +1,9 @@
 // Tests of cb/invert/msc6_small.hpp: Microsoft C 6.0a's leaf templates, the statement walker, the free idiom, the register variables and the
 // counted loop, on the bytes the compiler gave for small functions.
 //
-// The expected texts of leaf, cleanup, registers, counted_loop and mask are what the Python models answered for the same bytes (run through
-// the Python itself, each read over for sense). The walker's are written out by hand: the Python's answer for a walk that read was
-// unbalanced JSON (a bug of native/invert/msc6_small.cc, fixed there too -- see _bugs/LIST.md), so there is nothing to copy.
+// The expected texts of leaf, cleanup, registers, counted_loop and mask are the recorded answers for the same bytes, each read over for sense. The walker's are written out by hand.
 //
-// DIVERGES from the Python: the code ending inside a statement is a decline here, where the Python raised IndexError; an if whose jump leaves the
-// body is declined, where the Python sliced backwards from the end.
+// Code ending inside a statement is a decline; an if whose jump leaves the body is declined.
 #include "cb/invert/msc6_small.hpp"
 
 #include <chrono>
@@ -182,9 +179,9 @@ CB_TEST("invert.msc6_small.mask_zeroes_what_the_linker_fills", [] {
     CB_CHECK_EQ(hex_of(mask(none)), std::string("1e589045558bec1e8ed8b80700"));   // (an immediate load is the program's own value: not masked)
 });
 
-// Every function of a real 16-bit module (the Windows 95 LZEXPAND.DLL, 46 of them) through the readers: what the Python's models answered for each --
-// the text, or the reason it declined -- and the masked bytes. (The golden is the Python's own run, testdata/msc6_small_lzexpand.json.)
-CB_TEST("invert.msc6_small.every_function_of_a_real_module_reads_as_the_python_read_it", [] {
+// Every function of a real 16-bit module (the Windows 95 LZEXPAND.DLL, 46 of them) through the readers: what the models answer for each --
+// the text, or the reason it declined -- and the masked bytes. (The golden is testdata/msc6_small_lzexpand.json.)
+CB_TEST("invert.msc6_small.every_function_of_a_real_module_reads_as_recorded", [] {
     const Json rows = json::load(testing::data_path("invert/testdata/msc6_small_lzexpand.json"));
     std::size_t leaves = 0, with_registers = 0;
     for (const Json& row : rows) {
@@ -192,13 +189,13 @@ CB_TEST("invert.msc6_small.every_function_of_a_real_module_reads_as_the_python_r
         const Bytes code = bytes_of(row.at("code").get<std::string>());
         const auto check = [&](const char* what, const Json& want, const auto& got) {
             if (want.at(0).is_null()) {
-                if (got.ok()) testing::record_failure(__FILE__, __LINE__, name + " " + what + ": read, where the Python declined: " + want.at(1).get<std::string>());
+                if (got.ok()) testing::record_failure(__FILE__, __LINE__, name + " " + what + ": read, where a decline is expected: " + want.at(1).get<std::string>());
                 else if (std::string(got.error().what()) != want.at(1).get<std::string>())
-                    testing::record_failure(__FILE__, __LINE__, name + " " + what + ": declined with '" + got.error().what() + "', the Python with '" + want.at(1).get<std::string>() + "'");
+                    testing::record_failure(__FILE__, __LINE__, name + " " + what + ": declined with '" + got.error().what() + "', expected '" + want.at(1).get<std::string>() + "'");
             } else if (!got.ok()) {
-                testing::record_failure(__FILE__, __LINE__, name + " " + what + ": declined with '" + got.error().what() + "', where the Python read it");
+                testing::record_failure(__FILE__, __LINE__, name + " " + what + ": declined with '" + got.error().what() + "', where it should read");
             } else if (got.value().text != want.at(0).get<std::string>()) {
-                testing::record_failure(__FILE__, __LINE__, name + " " + what + ": read differently:\n" + got.value().text + "\n--- the Python:\n" + want.at(0).get<std::string>());
+                testing::record_failure(__FILE__, __LINE__, name + " " + what + ": read differently:\n" + got.value().text + "\n--- expected:\n" + want.at(0).get<std::string>());
             }
             testing::count_check();
         };

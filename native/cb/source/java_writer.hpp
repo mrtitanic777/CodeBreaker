@@ -9,8 +9,8 @@
 //
 // A file in the folder that CodeBreaker did not write is never replaced: the whole tree then goes to the state folder instead.
 //
-// DIVERGES from the Python writer: a class file's line ends are left as the converter wrote them (the Python rewrote them through text
-// mode, which made them CRLF on Windows); a file's head is judged on its first 600 bytes, not its first 600 characters.
+// Line ends: a class file's line ends are left as the converter wrote them (no text-mode rewrite, which would make them
+// CRLF on Windows); a file's head is judged on its first 600 bytes, not its first 600 characters.
 #pragma once
 
 #include <filesystem>

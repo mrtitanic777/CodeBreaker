@@ -15,7 +15,7 @@ namespace {
 using J = nlohmann::json;
 namespace stdfs = std::filesystem;
 
-// golden.json is the ORIGINAL Python's (XeCrypt.py) answers; the keys next to it were generated with it. Nothing here signs
+// golden.json is the recorded answers of a reference implementation (XeCrypt); the keys next to it were generated with it. Nothing here signs
 // anything real: the keys are test keys.
 stdfs::path fixture(std::string_view name) { return testing::data_path(std::string("formats/testdata/xecrypt/") + std::string(name)); }
 const J& golden() {
@@ -35,7 +35,7 @@ Bytes concat(std::initializer_list<ByteView> parts) {
     return out;
 }
 
-// ---- big numbers, against Python's ints -----------------------------------------------------------------------------
+// ---- big numbers, against a reference ---------------------------------------------------------------------------
 
 CB_TEST("formats.xbox.crypto.xecrypt.nat_arithmetic_agrees_with_python_ints", [] {
     int checked = 0;
@@ -256,7 +256,7 @@ CB_TEST("formats.xbox.crypto.xecrypt.byte_order_helpers", [] {
 
 // ---- RSA ------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.xecrypt.keys_parse_and_agree_with_the_python", [] {
+CB_TEST("formats.xbox.crypto.xecrypt.keys_parse_and_match_the_recorded_output", [] {
     for (const auto& [bits_text, want] : golden()["keys"].items()) {
         const unsigned bits = static_cast<unsigned>(std::stoul(bits_text));
         const Bytes prv_bytes = key_file("rsa" + bits_text + ".prv"), pub_bytes = key_file("rsa" + bits_text + ".pub");
@@ -277,7 +277,7 @@ CB_TEST("formats.xbox.crypto.xecrypt.keys_parse_and_agree_with_the_python", [] {
         const Bytes m = hex(want["prv_crypt"][0]);
         CB_CHECK_EQ(hexs(prv.prv_crypt(m)), want["prv_crypt"][1].get<std::string>());
         CB_CHECK(equal_bytes(pub.pub_crypt(prv.prv_crypt(m)), m));   // public undoes private
-        if (!want["pub_crypt"].is_null()) CB_CHECK_EQ(hexs(pub.pub_crypt(m)), want["pub_crypt"][1].get<std::string>());   // (the Python could not open a public 1536 key)
+        if (!want["pub_crypt"].is_null()) CB_CHECK_EQ(hexs(pub.pub_crypt(m)), want["pub_crypt"][1].get<std::string>());   //
         // PKCS#1
         const Bytes h = sha(as_bytes("keys"));
         CB_CHECK_EQ(hexs(prv.sign_pkcs1(h)), want["pkcs1"][0].get<std::string>());
@@ -292,7 +292,7 @@ CB_TEST("formats.xbox.crypto.xecrypt.keys_parse_and_agree_with_the_python", [] {
     }
 });
 
-CB_TEST("formats.xbox.crypto.xecrypt.the_bootloader_signature_scheme_as_the_python_made_it", [] {
+CB_TEST("formats.xbox.crypto.xecrypt.the_bootloader_signature_scheme", [] {
     const RsaKey prv = RsaKey::parse(key_file("rsa2048.prv")), pub = prv.public_key();
     for (const J& c : golden()["sig"]) {
         const Bytes hash = hex(c["hash"]), salt = hex(c["salt"]);
@@ -363,7 +363,7 @@ CB_TEST("formats.xbox.crypto.xecrypt.damaged_and_odd_keys_are_refused", [] {
     Bytes bad_u = good;
     bad_u[0x1D0 - 3] ^= 4;   // the coefficient
     CB_CHECK_THROWS_AS(FormatError, (void)RsaKey::parse(bad_u));
-    // trailing bytes after a key are tolerated (the old reader did), the key is the leading part
+    // trailing bytes after a key are tolerated, the key is the leading part
     Bytes longer = good;
     longer.resize(good.size() + 16, 0);
     CB_CHECK_NOTHROW((void)RsaKey::parse(longer));
@@ -416,7 +416,7 @@ CB_TEST("formats.xbox.crypto.xecrypt.montgomery_inverse", [] {
 
 // ---- keyvaults ------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.xecrypt.keyvaults_as_the_python_sealed_them", [] {
+CB_TEST("formats.xbox.crypto.xecrypt.keyvaults", [] {
     const J& g = golden()["keyvault"];
     const Bytes cpu = hex(g["cpu_key"]), enc = hex(g["enc"]), plain = hex(g["plain"]);
     const Result<Bytes> opened = keyvault_decrypt(cpu, enc);

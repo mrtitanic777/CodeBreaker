@@ -142,7 +142,7 @@ std::vector<string> Tracker::take_args(int i0, const string &kind, const string 
     take = args;
     args.clear();
   } else {
-    // Python: s.args[len - n:] (n may be negative only through a negative clean-up: slices clamp)
+    // the last n arguments (n may be negative only through a negative clean-up: the slice clamps)
     long long L = (long long)args.size(), cut = L - n;
     if (cut < 0) cut = 0;
     if (cut > L) cut = L;

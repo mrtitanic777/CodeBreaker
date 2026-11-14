@@ -1,6 +1,6 @@
 // Tests of the Game Boy writer over a small cartridge of its own. The program is machine code written out byte by byte; the writer is
 // held to what it is for -- the source it writes, built again, is the cartridge it came from -- and to the text it writes, a golden
-// file that was read through for correctness (testdata/writers/gb.golden.asm; the Python writer wrote the same bytes for this cartridge).
+// file that was read through for correctness (testdata/writers/gb.golden.asm).
 
 #include "cb/source/gb_writer.hpp"
 

@@ -2,7 +2,7 @@
 // compare/testdata/versions folder (a PE, two NE drivers and a DOS driver), in a temporary state folder (CB_STATE).
 //
 // CB_REACH_PROOF="<name>;<file or folder>[;<file or folder>...]" runs reach over those inputs (a run named <name>) and prints what the command says and
-// how long it took, for comparing with the translated Python's `reach` on the same inputs (its results file is state/reach/<name>.json).
+// how long it took, for comparing runs of `reach` on the same inputs (its results file is state/reach/<name>.json).
 #include "cb/coverage/reach_command.hpp"
 
 #include <chrono>

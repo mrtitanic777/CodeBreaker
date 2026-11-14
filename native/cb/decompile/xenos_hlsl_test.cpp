@@ -19,14 +19,14 @@ namespace x = cb::decompile::xenos_hlsl;
 using std::string;
 using std::string_view;
 
-// DIVERGES from the Python module (the old harness: 7,872 generated shaders, 442 real and damaged containers, 6,000 calls of
-// the small functions; the text of every translation that completes is the original's, and the checked-in SDK shaders'
+// Notes (an old harness: 7,872 generated shaders, 442 real and damaged containers, 6,000 calls of
+// the small functions; the text of every translation that completes is the recorded one, and the checked-in SDK shaders'
 // are its output):
-//  - a shader whose stage has the other kind of input table (Python: ValueError from tuple unpacking) cannot be built: the
+//  - a shader whose stage has the other kind of input table cannot be built: the
 //    types keep vertex inputs and pixel inputs apart;
-//  - microcode that executes slots past its end is a FormatError (Python: ValueError from unpacking a short slice);
-//  - a matrix constant with no rows or columns is Unsupported (Python: ZeroDivisionError);
-//  - `number_text` of a double past the float range is 1e38, as an infinity is (Python: OverflowError).
+//  - microcode that executes slots past its end is a FormatError;
+//  - a matrix constant with no rows or columns is Unsupported;
+//  - `number_text` of a double past the float range is 1e38, as an infinity is.
 
 namespace {
 
@@ -190,10 +190,9 @@ CB_TEST("decompile.xenos_hlsl.what_it_refuses", [] {
     CB_CHECK(empty.text.find("return output;") != string::npos);
 });
 
-// The 16 shaders of the SDK's sample effects (tests/data/xbox_effects), read by the Python reader and translated by the
-// Python original: the text is the original's, and was read through (registers, constants, predicates, a loop and forward
+// The 16 shaders of the SDK's sample effects (tests/data/xbox_effects), with the recorded translation: the text was read through (registers, constants, predicates, a loop and forward
 // jumps are among them).
-CB_TEST("decompile.xenos_hlsl.sdk_shaders_translate_as_the_original_did", [] {
+CB_TEST("decompile.xenos_hlsl.sdk_shaders_translate_as_recorded", [] {
     const cb::Json all = cb::json::load(cb::testing::data_path("decompile/testdata/xenos_hlsl_sdk.json"));
     CB_CHECK_EQ(all.size(), 16u);
     for (const cb::Json& e : all) {
@@ -239,8 +238,8 @@ CB_TEST("decompile.xenos_hlsl.helpers_text", [] {
     CB_CHECK(x::kHelpers.ends_with("}\n"));
 });
 
-// The old harness of the Python module (state/work/typed-port/decompile.xenos_hlsl): 7,872 shaders built from the SDK's
-// with generated microcode, edited constant tables and literals, each translated by the original; replayed when
+// An old harness: 7,872 shaders built from the SDK's
+// with generated microcode, edited constant tables and literals, each recorded; replayed when
 // CB_XENOS_CORPUS names its folder (cases.txt and expected.txt, one case and one JSON answer per line). Not part of the
 // normal run: the corpus is generated state, not source.
 namespace {
@@ -263,7 +262,7 @@ struct Fields {
 
 }  // namespace
 
-CB_TEST("decompile.xenos_hlsl.python_corpus", [] {
+CB_TEST("decompile.xenos_hlsl.recorded_corpus", [] {
     const auto dir = cb::fs::get_env("CB_XENOS_CORPUS");
     if (!dir) return;
     const string cases = cb::fs::read_text(std::filesystem::path(*dir) / "cases.txt");
@@ -332,7 +331,7 @@ CB_TEST("decompile.xenos_hlsl.python_corpus", [] {
         }
         const long long nwords = in.num();
         for (long long k = 0; k < nwords; ++k) s.words.push_back(static_cast<std::uint32_t>(in.num()));
-        // a Python ValueError was a shader whose stage has the other input table (not expressible here) or a short microcode
+        // a recorded ValueError is a shader whose stage has the other input table (not expressible here) or a short microcode
         const cb::Json want = cb::json::parse(answer_lines[n]);
         ++checked;
         string got;
@@ -343,16 +342,16 @@ CB_TEST("decompile.xenos_hlsl.python_corpus", [] {
         } catch (const x::Unsupported& e) {
             if (want.contains("error") && want["error"].get<string>() == "Unsupported") continue;
             if (want.contains("error") && want["error"].get<string>() == "ValueError" && string(e.what()).find("vertex fetch") != string::npos) {
-                ++arity;   // (a vertex fetch in a pixel shader: the Python unpacked its 4-tuple input as a 3-tuple)
+                ++arity;   // (a vertex fetch in a pixel shader)
                 continue;
             }
             got = string("<Unsupported> ") + e.what();
         } catch (const cb::Error& e) {
-            // (FormatError is the Python's ValueError, any other Python error is a crash of its own)
+            // (FormatError stands for the recorded ValueError; any other recorded error is a crash of its own)
             if (want.contains("error") && want["error"].get<string>() != "Unsupported") continue;
             got = string("<error ") + e.kind().data() + ">";
         }
-        if (name.find("tuple") != string::npos) {   // (the other input table's arity: not expressible, see DIVERGES)
+        if (name.find("tuple") != string::npos) {   // (the other input table's arity: not expressible, see the notes at the top)
             ++arity;
             continue;
         }

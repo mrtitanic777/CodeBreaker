@@ -145,7 +145,7 @@ private:
     std::optional<SplitDecl> split_;
 };
 
-// A rule of sanitize.py's null-segment reads: variable `var` of `type` in `file` is read through the null segment,
+// A rule for null-segment reads: variable `var` of `type` in `file` is read through the null segment,
 // as the original did on DOS.
 struct NullRead {
     enum class Kind { Plain, Var, Assign, Mem };

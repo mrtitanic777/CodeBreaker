@@ -1,7 +1,7 @@
 // Tests of cb::formats::inspect on real files (formats/testdata) and on damaged and crafted input.
 //
-// The golden documents in testdata/inspect/*.describe.json were produced by the original Python inspector
-// (codebreaker.formats.inspect.describe) on the same files and read through before being checked in: they are the
+// The golden documents in testdata/inspect/*.describe.json were produced by an earlier inspector on the same files
+// and read through before being checked in: they are the
 // recorded behaviour of the product, not of this module. `path` is left out of them (it is the caller's spelling).
 #include <algorithm>
 #include <set>

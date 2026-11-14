@@ -237,8 +237,8 @@ _Z3_ast* Z3Terms::term(const Expr* root) {
         if (memo_.contains(e)) continue;
         if (!expanded) {
             stack.emplace_back(e, true);
-            // (the arguments are made first to last, depth first, as z3's own interface makes them: the solver's answers depend on the
-            // order its terms were made in, so the same conditions are the same questions as the Python's)
+            // (the arguments are made first to last, depth first, in a fixed order: the solver's answers depend on the
+            // order its terms were made in, so the same conditions are always the same questions)
             for (std::size_t k = 3; k-- > 0;) {
                 const Expr* a = e->arg[k];
                 if (a != nullptr && !memo_.contains(a)) stack.emplace_back(a, false);
@@ -296,8 +296,7 @@ _Z3_ast* Z3Terms::term(const Expr* root) {
                 }
                 break;
             }
-            // z3's Python interface writes `x == value` and `x < value` with the value first (the right operand, a numeral, is a subclass of
-            // the left's type, so Python asks it first: `value == x`, `value > x`). The solver spends its steps on the shape it is given, so
+            // `x == value` and `x < value` are written with the value first (`value == x`, `value > x`: z3's interface puts a numeral on the right first). The solver spends its steps on the shape it is given, so
             // the same conditions are made the same way (`ULT` and `ULE` are functions there and keep their order).
             case Op::Eq:
                 same_width(e, a, b);
@@ -326,7 +325,7 @@ _Z3_ast* Z3Terms::term(const Expr* root) {
             }
             case Op::BXor: t = z.Z3_mk_xor(c, built(a), built(b)); break;
             case Op::Nz: {
-                // (`x != 0` as z3's own interface writes it, a `distinct`: the shape the solver spends its steps on is the Python's)
+                // (`x != 0` as z3 writes it, a `distinct`: the shape the solver spends its steps on)
                 Z3_ast both[2] = {built(a), bv_value(0, a->bits)};
                 t = z.Z3_mk_distinct(c, 2, both);
                 break;

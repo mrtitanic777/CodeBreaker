@@ -1,8 +1,8 @@
 // Tests of cb/formats/pe.hpp on real Windows 95 modules (testdata/) and on small synthetic images that reach what no small
 // real module has (forwarders, delay imports, TLS, a CLR header, a Rich record, certificates, PE32+).
 //
-// DIVERGES from the Python reader (state/work/typed-port/_bugs/LIST.md): a trailing odd byte of a UTF-16 resource name is
-// dropped (the Python replaced it with U+FFFD); a corrupt export directory whose address table is missing is an empty
+// Behaviour pinned here: a trailing odd byte of a UTF-16 resource name is
+// dropped; a corrupt export directory whose address table is missing is an empty
 // list unless it claims more than 2^26 entries.
 #include "cb/formats/pe.hpp"
 

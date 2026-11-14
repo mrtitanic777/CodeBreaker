@@ -309,7 +309,7 @@ std::size_t Volume::extract_all(const Partition& p, const std::filesystem::path&
     std::size_t n = 0;
     for (const Entry* e : all) {
         const std::filesystem::path dst = safe_destination(out_dir, e->path);
-        if (is_reserved_device_name(e->name)) continue;   // DIVERGES: the old reader wrote such a file to the device (the data vanished)
+        if (is_reserved_device_name(e->name)) continue;   // such a file would be written to the device (the data would vanish)
         if (e->is_directory) {
             fs::make_dirs(dst);
         } else {

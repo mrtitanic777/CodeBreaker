@@ -1,6 +1,6 @@
 // Tests of the structure passes of views.hpp that work on a program the port has already read: pass_through_params,
-// offset_views, bss_ends, copied_members, ptr2_names. The state is the Python original's at the moment each was first
-// called inside Port.modernize (testdata/views/<case>/state.json); the expected answers are the Python's.
+// offset_views, bss_ends, copied_members, ptr2_names. The state is the recorded one at the moment each pass is first
+// called (testdata/views/<case>/state.json); the expected answers are recorded with it.
 //
 // The constructor's own structure passes (anon_tags ... array_tails) are checked with the constructor, in
 // program_prep_test.cpp. Some checks are written by hand here: the cases the passes name in their comments.
@@ -52,7 +52,7 @@ Fn fn_of(const J& j) {
     f.returns_void = j["void"].get<bool>();
     f.loose = j["loose"].get<bool>();
     f.bare = j["bare"].get<std::size_t>();
-    f.varargs = truthy(j["varargs"]);   // (the Python keeps the names of the variable arguments there)
+    f.varargs = truthy(j["varargs"]);   // (the names of the variable arguments are kept there)
     f.va_slots = truthy(j["va_slots"]);
     f.ret_set = truthy(j["ret_set"]);
     f.int_ret = truthy(j["int_ret"]);
@@ -82,7 +82,7 @@ std::unique_ptr<Restored> restore(const Case& c, const char* moment) {
 }
 
 J mapping_json(const std::map<std::string, ViewMember>& mapping) {
-    // (the Python's dict order is the order of the other structure's layout; compared as sorted lists)
+    // (the order is that of the other structure's layout; compared as sorted lists)
     std::vector<J> items;
     for (const auto& [k, v] : mapping)
         items.push_back(J::array({k, v.pun ? J::array({"pun", v.base, v.offset, v.type}) : J::array({"names", v.names})}));
@@ -125,7 +125,7 @@ void check_case(const std::string& name) {
     // offset_views and bss_ends, from the state offset_views was first called in
     auto r = restore(c, "offset_views");
     ViewContext cx = r->context();
-    if (!c.real) {   // (the calls the original made inside modernize, in their order, on the texts they were given)
+    if (!c.real) {   // (the calls the port makes, in their order, on the texts they were given)
         for (const J& call : want["calls"]) {
             const std::string kind = call[0].get<std::string>(), file = call[1].get<std::string>();
             const std::string input = fs::read_text(c.dir / "in" / kind / file);
@@ -143,7 +143,7 @@ void check_case(const std::string& name) {
         offset_views(cx, "", "");   // (the first call works the views out)
     }
     CB_CHECK(r->caches.views.has_value());
-    // the views as the original has them (the Python's dict order is the order they were found in)
+    // the views as recorded (the order is the order they were found in)
     J got_views = J::array();
     for (const auto& [x, v] : *r->caches.views) {
         J entry = J::array({x, v.other, v.file, J::array()});

@@ -42,7 +42,7 @@ Bytes bytes_of(std::string_view s) { return to_bytes(s); }
 }  // namespace
 
 CB_TEST("base.converted.clean_name", [] {
-    // from the cases of the Python's harness
+    // from the cases of the original harness
     CB_CHECK_EQ(converted::clean_name(""), "binary");
     CB_CHECK_EQ(converted::clean_name("x"), "x");
     CB_CHECK_EQ(converted::clean_name("hello world"), "hello_world");
@@ -119,7 +119,7 @@ CB_TEST("base.converted.default_name_of_a_generic_xex_is_the_name_its_header_giv
     CB_CHECK_EQ(converted::default_name(dir.path() / "cut" / "default.xex"), "cut");
 });
 
-CB_TEST("base.converted.a_project_is_made_once_and_recorded_like_the_python_did", [] {
+CB_TEST("base.converted.a_project_is_made_once_and_recorded_in_project_json", [] {
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path out = temp.path();
     const stdfs::path in = out / "in";
@@ -148,7 +148,7 @@ CB_TEST("base.converted.a_project_is_made_once_and_recorded_like_the_python_did"
     const converted::Project second = store.project(other);
     CB_CHECK_EQ(second.name(), "My_Game_v2_2");
 
-    // the files are the text the Python wrote for the same run (golden data made by the Python; <IN>/<OUT> stand for the places)
+    // the files are the recorded text for the same run (golden data; <IN>/<OUT> stand for the places)
     CB_CHECK_EQ(masked(fs::read_text(p.manifest_path()), in, out), golden("game.project.json"));
     CB_CHECK_EQ(masked(fs::read_text(p.root() / "README.txt"), in, out), golden("game.README.txt"));
     CB_CHECK_EQ(masked(fs::read_text(second.manifest_path()), in, out), golden("game2.project.json"));
@@ -195,7 +195,7 @@ CB_TEST("base.converted.recording_a_command_again_replaces_its_step", [] {
 });
 
 CB_TEST("base.converted.an_output_beside_the_project_is_not_inside_it", [] {
-    // DIVERGES: the Python tested the folder as a text prefix, so Converted/foo_2/x counted as inside Converted/foo and was
+    // The folder is tested as a path, not a text prefix: otherwise Converted/foo_2/x counted as inside Converted/foo and was
     // recorded as ..\foo_2\x; it is recorded as the absolute path it is
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path game = temp.path() / "foo.bin";
@@ -249,7 +249,7 @@ CB_TEST("base.converted.a_damaged_manifest_is_an_empty_one_and_unknown_keys_surv
     const converted::Manifest m = p.manifest();
     CB_CHECK_EQ(m.name.value_or("?"), "hand");
     CB_CHECK(!m.size.has_value());   // not an integer: kept as it was, not read
-    CB_CHECK_EQ(m.steps.size(), std::size_t{1});   // DIVERGES: a step that is no object is dropped (the Python raised AttributeError)
+    CB_CHECK_EQ(m.steps.size(), std::size_t{1});   // a step that is no object is dropped
     CB_CHECK(fs::same_path(*p.original_file(), p.original() / "x.bin"));
 
     p.record("new", {}, "n");
@@ -274,7 +274,7 @@ CB_TEST("base.converted.text_that_is_not_ascii_is_kept_in_the_manifest", [] {
     fs::write_file(game, bytes_of("x"));
     converted::Store store(temp.path() / "Converted", ticking());
     const converted::Project p = store.project(game);
-    p.record("c", {}, "caf\xC3\xA9 \xE2\x82\xAC");   // as the Python's ensure_ascii wrote it: é €
+    p.record("c", {}, "caf\xC3\xA9 \xE2\x82\xAC");   // written with ASCII escapes: é €
     CB_CHECK(fs::read_text(p.manifest_path()).find("caf\\u00e9 \\u20ac") != std::string::npos);
     CB_CHECK_EQ(p.manifest().steps[0].notes, "caf\xC3\xA9 \xE2\x82\xAC");
     CB_CHECK(fs::read_text(p.root() / "README.txt").find("    caf\xC3\xA9 \xE2\x82\xAC\r\n") != std::string::npos);

@@ -1,6 +1,6 @@
 // Tests of cb/formats/fonts.hpp on real Windows 95 .FON files (testdata/fonts/): COURE.FON (fixed-pitch, 2.x), 8514SYS.FON
 // (proportional), MODERN.FON (a vector font), VGAFIX.FON. The command's output is compared with what `codebreaker fonts ...`
-// printed for the same files (the *.txt goldens, made by the translated Python: stdout and `exit=N`).
+// printed for the same files (the *.txt goldens: stdout and `exit=N`).
 #include "cb/formats/fonts.hpp"
 
 #include <string>
@@ -86,7 +86,7 @@ CB_TEST("formats.fonts.a_bare_fnt_is_one_font_and_other_files_none", [] {
     CB_CHECK_THROWS_AS(FormatError, fonts::Font::parse(Bytes(0x200, 0)));
 });
 
-CB_TEST("formats.fonts.the_command_prints_what_the_python_printed", [] {
+CB_TEST("formats.fonts.the_command_prints_the_recorded_output", [] {
     CB_CHECK_EQ(run({text_of("coure.fon"), "--show", "Hi"}), golden("coure_hi.txt"));
     CB_CHECK_EQ(run({text_of("coure.fon"), "--index", "1", "--show", "Aq~ #"}), golden("coure_second.txt"));
     CB_CHECK_EQ(run({text_of("modern.fon"), "--show", "x"}), golden("modern_vector.txt"));

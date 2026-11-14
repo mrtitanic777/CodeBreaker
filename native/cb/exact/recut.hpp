@@ -26,7 +26,7 @@ struct RelocTable {
     std::uint32_t offset = 0;
 };
 
-// What recut reads of the project (exact/project, refactored later, fills this in).
+// What recut reads of the project (exact/project fills this in).
 struct Original {
     const SymbolTable& symbols;                                // the project's SYMBOLS
     std::optional<std::vector<std::uint32_t>> packed_relocs;   // when the program is EXEPACK-packed: its relocations, in order

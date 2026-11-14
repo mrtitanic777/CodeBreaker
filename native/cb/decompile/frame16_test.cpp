@@ -17,12 +17,12 @@ using cb::Bytes;
 using cb::Json;
 using std::string;
 
-// DIVERGES from the Python module (the old harness, 57 documents, and 400 random ones made for this port -- locals of
+// Notes (an old harness of 57 documents, and 400 random ones -- locals of
 // every type, buffers, far pointers, pieces `_2_2_`, asm fragments, if-returns, bad ranges -- agreed on every tree and every
-// report; testdata/frame16_cases.jsonl keeps 55 of them, with the original's answers, read through by hand):
-//  - the tree is edited in place (the original copied it first);
-//  - a Local with no symbol name is kept where it was and never given a place (the original keyed its places by None);
-//  - the decoder is Capstone 5.0.7 through capstone.dll (the original used the Python binding of the same library).
+// report; testdata/frame16_cases.jsonl keeps 55 of them, with their recorded answers, read through by hand):
+//  - the tree is edited in place;
+//  - a Local with no symbol name is kept where it was and never given a place;
+//  - the decoder is Capstone 5.0.7 through capstone.dll.
 
 namespace {
 

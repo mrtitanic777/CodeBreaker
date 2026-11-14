@@ -1,16 +1,15 @@
-// Tests of the driver lane, on three real Windows 95 drivers (BIOS, SPLITTER, SRAMMTD: formats/testdata) against what the live Python's
-// verify/lanes/driver.py answered (testdata/driver_lane.golden.json, made by testdata/gen_driver_lane.py): the inputs of each entry point, a
+// Tests of the driver lane, on three real Windows 95 drivers (BIOS, SPLITTER, SRAMMTD: formats/testdata) against the recorded answers
+// (testdata/driver_lane.golden.json): the inputs of each entry point, a
 // fingerprint of one input of each, the verdict of every entry point against itself, and -- for every equivalent one -- the verdicts of copies
 // with one executed instruction broken (which byte of the file, which instruction, what the judge said and why); plus the command, the kind
 // interface (prepare, build) and the profile on stand-in tools.
 //
-// DIVERGES from verify/lanes/driver.py:
-//   * the profile and the digest of what a run left in memory are made over our own bytes, not the SHA-1 of Python's repr of a tuple (a verdict store
-//     the Python wrote is rebuilt, hence REV 5); a tool that cannot be found is the same as any other in the profile;
-//   * a driver that cannot be read is an `inconclusive` verdict "judge: <error kind>" where the Python's text named the exception and its message;
-//   * the path explorer is on only when the lane is given the p-code lifters; the golden was made where the Python had none either (concolic_ready
+// Design notes:
+//   * the profile and the digest of what a run left in memory are made over our own bytes; a tool that cannot be found is the same as any other in the profile;
+//   * a driver that cannot be read is an `inconclusive` verdict "judge: <error kind>";
+//   * the path explorer is on only when the lane is given the p-code lifters; the golden was made without them (concolic_ready
 //     false), so no `paths=N` limit is compared;
-//   * `driver-judge` says "not found" with exit code 3 (the Python: 2); the services' placeholder, the settings and the paths come from the lane's spec.
+//   * `driver-judge` says "not found" with exit code 3; the services' placeholder, the settings and the paths come from the lane's spec.
 #include "cb/verify/lanes/driver.hpp"
 
 #include <nlohmann/json.hpp>
@@ -75,7 +74,7 @@ void drv_check_judgement(const std::string& what, const Judgement& got, const or
     if (verdict != want_verdict.get<std::string>() || got.reason != want_reason.get<std::string>() ||
         drv_limits(got.limits) != drv_limits(want_limits.get<std::vector<std::string>>()) || got.detail != want_detail.get<std::string>()) {
         testing::record_failure(__FILE__, __LINE__,
-                                std::format("{}: the judge said {} / {} / [{}] / {} but the Python said {} / {} / [{}] / {}", what, verdict, got.reason,
+                                std::format("{}: the judge said {} / {} / [{}] / {} but expected {} / {} / [{}] / {}", what, verdict, got.reason,
                                             drv_limits(got.limits), got.detail, want_verdict.get<std::string>(), want_reason.get<std::string>(),
                                             drv_limits(want_limits.get<std::vector<std::string>>()), want_detail.get<std::string>()));
     }
@@ -83,7 +82,7 @@ void drv_check_judgement(const std::string& what, const Judgement& got, const or
 
 }  // namespace
 
-CB_TEST("verify.driver.the_inputs_of_each_entry_point_are_the_pythons", [] {
+CB_TEST("verify.driver.the_inputs_of_each_entry_point_are_the_recorded_ones", [] {
     DriverWorld w;
     const DriverLane lane(w.spec());
     for (const auto& [file, rec] : drv_golden().at("files").items()) {
@@ -110,7 +109,7 @@ CB_TEST("verify.driver.the_inputs_of_each_entry_point_are_the_pythons", [] {
     CB_CHECK(!driver_entry_before("v86_api", "service_0"));
 });
 
-CB_TEST("verify.driver.a_fingerprint_is_what_the_python_recorded", [] {
+CB_TEST("verify.driver.a_fingerprint_is_the_recorded_one", [] {
     DriverWorld w;
     const DriverLane lane(w.spec());
     for (const auto& [file, rec] : drv_golden().at("files").items()) {
@@ -135,7 +134,7 @@ CB_TEST("verify.driver.a_fingerprint_is_what_the_python_recorded", [] {
     }
 });
 
-CB_TEST("verify.driver.each_entry_point_judged_against_itself_is_the_pythons_verdict", [] {
+CB_TEST("verify.driver.each_entry_point_judged_against_itself_is_the_recorded_verdict", [] {
     DriverWorld w;
     const DriverLane lane(w.spec());
     for (const auto& [file, rec] : drv_golden().at("files").items()) {
@@ -152,7 +151,7 @@ CB_TEST("verify.driver.each_entry_point_judged_against_itself_is_the_pythons_ver
     }
 });
 
-CB_TEST("verify.driver.a_copy_with_one_executed_instruction_broken_is_judged_as_the_python_judged_it", [] {
+CB_TEST("verify.driver.a_copy_with_one_executed_instruction_broken_is_judged_as_recorded", [] {
     DriverWorld w;
     const DriverLane lane(w.spec());
     fs::ScopedTempDir out("cb-driver-lane-breaks");

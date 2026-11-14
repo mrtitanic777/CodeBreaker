@@ -1,22 +1,17 @@
 // Tests of the Game Boy assembler: the opcodes of the instructions the Game Boy lane writes (bytes checked against the
 // Game Boy CPU manual), the directives (SECTION and its banks, db / dw / ds, INCBIN, EQU), labels and the two passes,
-// comments and line ends, every way a line is refused, and the 102 sources the Python assembler was run on (the old
-// harness, state/work/typed-port/build.sm83_asm: the demo program at three ROM sizes, every directive and instruction form,
+// comments and line ends, every way a line is refused, and the 102 sources an old harness was run on (the demo program at three ROM sizes, every directive and instruction form,
 // and the broken ones), with what it made -- the ROM or the line it refused.
 //
-// DIVERGES from the Python (the cases of testdata/sm83_asm/cases.json marked "diverges", and the notes below):
-//   * A line is ended by \n, \r\n or a lone \r. The Python's str.splitlines() also ended one at \v, \f, \x1c-\x1e, \x85, U+2028
-//     and U+2029 (case 72: a source whose "lines" are separated by form feed, vertical tab and the like), and strip() took
-//     every Unicode space off a line (case 100: U+2003 around an instruction). Neither is source anyone writes.
+// Notes (the cases of testdata/sm83_asm/cases.json marked "diverges", and the notes below):
+//   * A line is ended by \n, \r\n or a lone \r. Other Unicode line separators (, , -, U+0085, U+2028, U+2029; case 72) do not end a line, and only ASCII spaces
+//     are stripped (case 100: U+2003 around an instruction). Neither is source anyone writes.
 //   * An expression that is wrong -- a division by zero, `7//2`, `(1, 2)` as an operand -- is an AsmError naming the line
-//     (cases 66, 67, 68, 77). The Python's evaluator let ZeroDivisionError and SyntaxError escape, and read `db (1, 2)` as the
-//     byte 12 (case 77), a quirk of its string rewriting that nothing relied on.
-//   * An INCBIN file that is not there is an IoError (NotFoundError), the Python's FileNotFoundError.
-//   * The characters of a db string are written as Latin-1 (a character beyond it becomes `?`); the Python refused one beyond
-//     U+00FF with an error. Text is otherwise taken as the bytes it is.
-//   * A `ds` count past the ROM is refused at once (the Python made the bytes first, and a count of a few billion ran it out
-//     of memory).
-//   * The messages are the AsmError's own: the line is its line() and the text of the line follows (the Python's "line N: ...").
+//     (cases 66, 67, 68, 77).  `db (1, 2)` is refused too (case 77).
+//   * An INCBIN file that is not there is an IoError (NotFoundError).
+//   * The characters of a db string are written as Latin-1 (a character beyond it becomes `?`). Text is otherwise taken as the bytes it is.
+//   * A `ds` count past the ROM is refused at once (a count of a few billion never makes the bytes).
+//   * The messages are the AsmError's own: the line is its line() and the text of the line follows.
 #include "cb/build/sm83_asm.hpp"
 
 #include <format>
@@ -253,7 +248,7 @@ CB_TEST("build.sm83_asm.banks_are_16k_each_and_seen_at_4000", [] {
     CB_CHECK_EQ(rom("SECTION \"a\", ROMX[$4000],BANK[ 3 ]\nlp: jp lp\n db lp", 0x10000)[0xC000], std::uint8_t{0xC3});
     // a bank that does not fit the ROM
     CB_CHECK_EQ(refused_at("SECTION \"a\", ROMX[$4000], BANK[2]\n db 1", 0x8000), 2u);
-    // an address below the window is bank 1 at offset -$1000: the byte lands at $3000 of the ROM, as the Python put it
+    // an address below the window is bank 1 at offset -$1000: the byte lands at $3000 of the ROM
     CB_CHECK_EQ(rom("SECTION \"a\", ROMX[$3000], BANK[1]\n db 1", 0x8000)[0x3000], std::uint8_t{1});
 });
 
@@ -306,7 +301,7 @@ CB_TEST("build.sm83_asm.the_message_has_the_text_after_the_label_and_the_reason"
 });
 
 CB_TEST("build.sm83_asm.a_wrong_expression_is_an_error_not_a_crash", [] {
-    // DIVERGES: the Python let ZeroDivisionError and SyntaxError out
+    // a division by zero and a syntax error are refused
     CB_CHECK_EQ(refused_at(std::string(kRom0) + " db 1/0"), 2u);
     CB_CHECK_EQ(refused_at(std::string(kRom0) + " db 7//2"), 2u);
     CB_CHECK_EQ(refused_at(std::string(kRom0) + " ld a,1/0"), 2u);
@@ -320,7 +315,7 @@ CB_TEST("build.sm83_asm.relative_jumps_have_a_reach", [] {
 });
 
 CB_TEST("build.sm83_asm.a_string_is_written_as_latin1", [] {
-    // DIVERGES: "café" is 63 61 66 E9 (the Python); a character beyond Latin-1 is `?` here, an error there
+    // Design notes: "café" is 63 61 66 E9; a character beyond Latin-1 is `?` here, an error there
     CB_CHECK_EQ(at("SECTION \"a\", ROM0[$0]\n db \"caf\xC3\xA9\"", 0, 4), std::string("636166e9"));
     CB_CHECK_EQ(at("SECTION \"a\", ROM0[$0]\n db \"a\xE2\x82\xAC\"", 0, 2), std::string("613f"));
 });
@@ -354,11 +349,11 @@ Bytes unpack(const std::string& packed, std::size_t size) {
 
 }  // namespace
 
-// Each case: what the Python made of a source (its ROM, or the line it refused) at a size and with INCBIN files from a folder.
+// Each case: what is made of a source (its ROM, or the line it refused) at a size and with INCBIN files from a folder.
 // The ROM is compared byte for byte; a refusal by the line and the kind of error. Reviewed: the cases are the ones of the
 // harness's source (demo program, every directive and instruction form, every kind of fault), and each case that differs from
-// the Python is marked "diverges" with what it answers now.
-CB_TEST("build.sm83_asm.the_old_harness_sources_make_what_the_python_made", [] {
+// the recorded answer is marked "diverges" with what it answers now.
+CB_TEST("build.sm83_asm.the_old_harness_sources_make_what_is_recorded", [] {
     const auto cases = cb::json::load(cb::testing::data_path("build/testdata/sm83_asm/cases.json"));
     CB_CHECK_EQ(cases.size(), std::size_t{102});
     std::size_t made = 0, refused = 0, diverging = 0;

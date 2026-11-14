@@ -2,7 +2,7 @@
 // writes a port, calls a service of a device through INT 20h (twice) and returns is run, and what was recorded is checked
 // against what the code does.
 //
-// DIVERGES from the Python module: the result is typed (the exit is a DriverExit, the cover a vector in order of first
+// Notes: the result is typed (the exit is a DriverExit, the cover a vector in order of first
 // arrival rather than a set, the calls carry a ServiceCall); the register and instruction ids come from Unicorn's headers
 // instead of the caller.
 #include "cb/emulate/native_driver.hpp"

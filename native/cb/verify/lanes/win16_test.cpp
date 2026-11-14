@@ -1,18 +1,18 @@
-// Tests of the 16-bit Windows lane, on a real module (LZEXPAND.DLL: formats/testdata) against what the live Python's verify/lanes/win16.py answered
-// (testdata/win16_lane.golden.json, made by testdata/gen_win16_lane.py): the fixed inputs, the fingerprint of every exported function on the first ten
+// Tests of the 16-bit Windows lane, on a real module (LZEXPAND.DLL: formats/testdata) against the recorded answers
+// (testdata/win16_lane.golden.json): the fixed inputs, the fingerprint of every exported function on the first ten
 // of them, the spans of the functions, the directed inputs, the places of a caller-frame helper, and the verdict of every exported function beside
 // itself and beside another function of the module standing in for its rebuild; plus the kind interface (prepare, build) over stand-in compile and link
 // steps, and the pieces a build is made of (the code images, the rebuild's own data, the names of code segments).
 //
-// DIVERGES from verify/lanes/win16.py:
-//   * the four scattered inputs are drawn from a SplitMix64 generator seeded with 0x16, not Python's Mersenne Twister, so those words differ (they are
-//     deterministic and made as the Python made them: every word a different even offset below 0x7F00, odd words the safe selector in every second input);
+// Design notes:
+//   * the four scattered inputs are drawn from a SplitMix64 generator seeded with 0x16, so those words differ (they are
+//     deterministic: every word a different even offset below 0x7F00, odd words the safe selector in every second input);
 //     the golden is compared on the ten fixed inputs only;
-//   * the guessing explorer (the lane has no lifters here, as the Python had none) draws from the same generator, so the inputs it finds differ and a
+//   * the guessing explorer (the lane has no lifters here) draws from the same generator, so the inputs it finds differ and a
 //     `coverage=NN` limit may differ by a few points: verdicts, reasons and details are compared exactly, limits other than coverage exactly, coverage
 //     within ten points;
-//   * the original's runs are kept within one judgement only (the Python kept them in the fingerprint cache as well);
-//   * the profile is made over our own text, not the SHA-1 of Python's repr of a tuple.
+//   * the original's runs are kept within one judgement only;
+//   * the profile is made over our own text.
 #include "cb/verify/lanes/win16.hpp"
 
 #include <nlohmann/json.hpp>
@@ -81,7 +81,7 @@ std::vector<std::int64_t> w16_words(const ordered_json& j) { return j.get<std::v
 
 }  // namespace
 
-CB_TEST("verify.win16.the_fixed_inputs_are_the_pythons", [] {
+CB_TEST("verify.win16.the_fixed_inputs_are_the_recorded_ones", [] {
     const std::vector<Vector16> v = win16_vectors();
     CB_CHECK_EQ(v.size(), w16_golden().at("n_vectors").get<std::size_t>());
     for (std::size_t i = 0; i < 10; ++i) CB_CHECK(v[i].args == w16_words(w16_golden().at("vectors").at(i)));
@@ -99,7 +99,7 @@ CB_TEST("verify.win16.the_fixed_inputs_are_the_pythons", [] {
     CB_CHECK_EQ(v[0].words().size(), std::size_t(8));
 });
 
-CB_TEST("verify.win16.a_fingerprint_is_what_the_python_recorded", [] {
+CB_TEST("verify.win16.a_fingerprint_is_the_recorded_one", [] {
     Win16World w;
     emulate::native_trace::Governor governor;
     w16::Runner runner(w.environment(governor));
@@ -152,7 +152,7 @@ CB_TEST("verify.win16.a_fingerprint_is_what_the_python_recorded", [] {
     CB_CHECK(compared >= 200);
 });
 
-CB_TEST("verify.win16.the_inputs_aimed_at_what_the_code_tests_are_the_pythons", [] {
+CB_TEST("verify.win16.the_inputs_aimed_at_what_the_code_tests_are_the_recorded_ones", [] {
     const formats::ne::Module nef = formats::ne::Module::open_file(w16_module());
     std::map<std::uint64_t, core16::SegOff> where;
     const auto places = w16_places();
@@ -189,7 +189,7 @@ CB_TEST("verify.win16.a_caller_frame_helpers_places_are_read_from_its_c", [] {
     CB_CHECK(w16_golden().at("frames").at(1).at(2).is_null());
 });
 
-CB_TEST("verify.win16.each_exported_function_judged_beside_the_python_judged_it", [] {
+CB_TEST("verify.win16.each_exported_function_is_judged_as_recorded", [] {
     Win16World w;
     const Win16Lane lane(w.spec());
     const formats::ne::Module nef = formats::ne::Module::open_file(w16_module());
@@ -222,10 +222,10 @@ CB_TEST("verify.win16.each_exported_function_judged_beside_the_python_judged_it"
             if (got.verdict == Verdict::Divergent) ++divergent;
             testing::count_check();
             if (std::string(word(got.verdict)) != want.at(0).get<std::string>() || got.reason != want.at(1).get<std::string>() || got.detail != want.at(3).get<std::string>()) {
-                testing::record_failure(__FILE__, __LINE__, std::format("{}: the judge said {} / {} / {} but the Python said {} / {} / {}", name, word(got.verdict), got.reason, got.detail,
+                testing::record_failure(__FILE__, __LINE__, std::format("{}: the judge said {} / {} / {} but expected {} / {} / {}", name, word(got.verdict), got.reason, got.detail,
                                                                        want.at(0).get<std::string>(), want.at(1).get<std::string>(), want.at(3).get<std::string>()));
             }
-            // the limits: all but the coverage exactly, the coverage within ten points (the guessed inputs are not the Python's)
+            // the limits: all but the coverage exactly, the coverage within ten points (the guessed inputs differ)
             std::vector<std::string> mine, theirs;
             int mine_cov = -1, their_cov = -1;
             for (const std::string& l : got.limits) {
@@ -241,7 +241,7 @@ CB_TEST("verify.win16.each_exported_function_judged_beside_the_python_judged_it"
             const auto strip = [](std::vector<std::string>& v) { v.erase(std::remove(v.begin(), v.end(), "low-coverage"), v.end()); };
             if (std::abs(mine_cov - their_cov) > 10) {
                 testing::count_check();
-                testing::record_failure(__FILE__, __LINE__, std::format("{}: coverage {} but the Python had {}", name, mine_cov, their_cov));
+                testing::record_failure(__FILE__, __LINE__, std::format("{}: coverage {} but expected {}", name, mine_cov, their_cov));
             }
             strip(mine);
             strip(theirs);

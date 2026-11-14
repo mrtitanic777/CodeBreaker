@@ -13,7 +13,7 @@
 // unit of padding after it (`same_data` compares with that in mind); and a 16-bit resource has no language.
 //
 // Walking a PE file's resource directory is the PE reader's (cb::formats::pe): it hands the entries to
-// `from_pe_entries`. Until it lands, the old PE port does that through the shim at the old header path.
+// `from_pe_entries`.
 #pragma once
 
 #include <cstdint>

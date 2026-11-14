@@ -1,13 +1,13 @@
 // Tests of `codebreaker xna` complete (cb/xna/command.hpp), on a real XNA game: Arcadecraft's package under C:/Nexia360/Games (skipped when it,
-// ILSpy's command line or the settings' de4dot are not on this machine), against what the translated Python's `xna` made of it
+// ILSpy's command line or the settings' de4dot are not on this machine), against the recorded output of the same game
 // (testdata/command/):
 //   arcadecraft_content.tsv       one line per converted .xnb (740 of them: 442 textures, 6 fonts, 3 effects, 289 other), sorted: path, platform, kind,
 //                                 format, width, height, levels, glyphs, the effect's SHA-1, how many type readers and the first
 //   arcadecraft_decompile.json    each assembly of the game, how it was cleaned and what the fix-ups did (6 assemblies; SunBurn is obfuscated)
 //   the stdout of the command, and the C# of the six projects, by digest (below)
-// The converted textures were compared with the Python's pixel for pixel (460 files of content), and the C# file for file (613): see the report.
+// The converted textures were compared with the reference run pixel for pixel (460 files of content), and the C# file for file (613): see the report.
 //
-// DIVERGES from the Python, by design: the reports are written with a two-space indent, and an error in a content record carries this module's
+// The reports are written with a two-space indent, and an error in a content record carries this module's
 // message (the records are compared with the text of an error left out).
 #include "cb/xna/command.hpp"
 
@@ -70,7 +70,7 @@ CB_TEST("xna.command.usage", [] {
     CB_CHECK(cap.out().find("xna: ") != std::string::npos);
 });
 
-CB_TEST("xna.command.arcadecraft_matches_the_python", [] {
+CB_TEST("xna.command.arcadecraft_matches_the_golden", [] {
     const auto game = testing::game_file("Arcadecraft/35BC57B394081DACC69A21C3B66888F8B27DC77658");
     if (!game) return;
     fs::ScopedTempDir dir{"cb-xna-command"};

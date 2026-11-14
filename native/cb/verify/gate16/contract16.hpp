@@ -84,7 +84,7 @@ std::vector<Call> calls(const platforms::Decoder& decoder, ByteView image, unsig
 
 // ---- the two modules -----------------------------------------------------------------------------------------------
 
-// The selector of a segment in a described module (describe.py FIRST_SELECTOR: moves to describe.hpp when that module
+// The selector of a segment in a described module (moves to describe.hpp when that module
 // is refactored) and the address of an offset in it.
 inline constexpr std::uint32_t kFirstSelector = 0x1000;
 constexpr std::uint32_t address_of(unsigned segment, std::uint32_t offset) {

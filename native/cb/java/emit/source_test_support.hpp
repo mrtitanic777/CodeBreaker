@@ -1,6 +1,5 @@
 // A deterministic stand-in for the translator's back end (emit/source.hpp BodySource), for the tests of the source emitter and of the
-// converter: every answer is a function of the question's names, so a test can state what the output must be -- and the same rules in
-// state/work/java_w3b8/golden_source.py made the golden outputs from the original Python.
+// converter: every answer is a function of the question's names, so a test can state what the output must be.
 #pragma once
 
 #include <optional>

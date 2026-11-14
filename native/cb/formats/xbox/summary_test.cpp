@@ -1,9 +1,9 @@
-// Tests of cb/formats/xbox/summary.hpp: what `info` adds to the format line of an Xbox file. The expected facts are what the Python's formats.xbox.summary answers for the same
-// files (testdata/assets/make_asset_goldens.py: the fixtures of the readers' tests, an XACT wave bank built as test_xwb builds it, and an XUI package built as test_xzp_round_trip builds it);
+// Tests of cb/formats/xbox/summary.hpp: what `info` adds to the format line of an Xbox file. The expected facts are the recorded answers for the same
+// files (testdata/assets/make_asset_goldens: the fixtures of the readers' tests, an XACT wave bank and an XUI package built for the purpose);
 // the files are identified by cb::formats::detect as `info` does.
 //
-// DIVERGES from the Python: a boolean is shown true / false (not True / False) and a format name that is none is left out (not "None"); the section tags of a XUR scene are
-// the tags (the Python showed each as a number: fixed there too).
+// Behaviour pinned here: a boolean is shown true / false (not True / False) and a format name that is none is left out (not "None"); the section tags of a XUR scene are
+// the tags.
 #include "cb/formats/xbox/summary.hpp"
 
 #include <map>
@@ -51,17 +51,17 @@ static std::string show(const xbox::SummaryFacts& facts) {
     return out;
 }
 
-CB_TEST("formats.xbox.summary.each_fixture_is_summarised_as_the_python_does", [] {
+CB_TEST("formats.xbox.summary.each_fixture_is_summarised", [] {
     for (const char* name : {"gpd.bin", "xbe_demo.bin", "xpr0.bin", "xpr2.bin", "xur.bin", "t.bik", "t.chd", "xwb.bin", "pack.xzp"}) {
         const xbox::SummaryFacts want = expected(name), got = ours(name);
         CB_CHECK(!want.empty());
         CB_CHECK(want == got);
-        if (want != got) cb::testing::record_failure(__FILE__, __LINE__, std::string(name) + "\n python:\n" + show(want) + " ours:\n" + show(got));
+        if (want != got) cb::testing::record_failure(__FILE__, __LINE__, std::string(name) + "\n want:\n" + show(want) + " ours:\n" + show(got));
     }
 });
 
 CB_TEST("formats.xbox.summary.the_info_command_describes_an_xbox_file_by_its_own_reader", [] {
-    // test_xbe in tests/test_xbox_formats.py: `info` of a default.xbe says its title and title id
+    // `info` of a default.xbe says its title and title id
     fs::ScopedTempDir dir("summary");
     fs::write_file(dir.path() / "default.xbe", fs::read_file(fs::from_text(xbox::asset_dump::fixture("xbe_small.bin"))));
     testing::CapturedStd cap;

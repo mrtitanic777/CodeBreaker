@@ -1,13 +1,11 @@
 // Tests of cb/emulate/unicorn_uc.hpp on the real prebuilt unicorn.dll: machine code run in each mode, memory and registers, the hooks, a saved
 // context put back, and what is thrown when Unicorn refuses.
 //
-// DIVERGES from the Python module and its port:
-//  - a call that fails throws UcFault (an EmulationError) carrying Unicorn's error number and text, not unicorn.UcError;
-//  - the engine takes the library's table as an argument (the default is cb/core's prebuilt DLL), where the port loaded a DLL by path
-//    once for the process (`load_unicorn`); register names are the upper-case names without the `UC_X86_REG_` prefix;
-//  - an engine of a width other than 16, 32 or 64 bits is a UsageError (the port made a 32-bit one);
-//  - reg_read_float is the first word of the register as a double, as the port's was (the Python binding's answer for ST0 was one
-//    integer): kept so that judged runs are the same; see _bugs/LIST.md.
+// Notes:
+//  - a call that fails throws UcFault (an EmulationError) carrying Unicorn's error number and text;
+//  - the engine takes the library's table as an argument (the default is cb/core's prebuilt DLL); register names are the upper-case names without the `UC_X86_REG_` prefix;
+//  - an engine of a width other than 16, 32 or 64 bits is a UsageError (a 32-bit engine is not made instead);
+//  - reg_read_float is the first word of the register as a double, the answer for ST0 being one integer: kept so that judged runs stay the same.
 #include "cb/emulate/unicorn_uc.hpp"
 
 #include "cb/core/error.hpp"

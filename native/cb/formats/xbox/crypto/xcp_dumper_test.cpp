@@ -1,12 +1,12 @@
 // Tests of cb/formats/xbox/crypto/xcp_dumper.hpp on two small packages made for the tests (testdata/make_xcp_samples.py: a cabinet with the header
-// reserve and the folder reserve an XCP has, encrypted piece by piece with a record each, and the same cabinet in the clear), against what the Python
-// printed and wrote for them (testdata/xcp_goldens.txt: `codebreaker.exe crypto xcp_dumper --ignore --no-backup [-k KEY]`, which extracts with Windows'
+// reserve and the folder reserve an XCP has, encrypted piece by piece with a record each, and the same cabinet in the clear), against the recorded output
+// (testdata/xcp_goldens.txt: `codebreaker.exe crypto xcp_dumper --ignore --no-backup [-k KEY]`, which extracts with Windows'
 // expand.exe where the native tool reads the cabinet itself).
 //
-// NOT run on a real XCP (none is on this machine): the format the tool reads is the one the Python documents by its offsets, the samples follow it.
+// NOT run on a real XCP (none is on this machine): the samples follow the format's documented offsets.
 //
-// DIVERGES from the Python: the prompt before the file is consumed reads a line from standard input and an end of input stops the tool (the Python's
-// input() raised EOFError); names are renumbered for 1000 files at most; extraction is native (cab.hpp) rather than a program.
+// Behaviour pinned here: the prompt before the file is consumed reads a line from standard input and an end of input stops the tool;
+// names are renumbered for 1000 files at most; extraction is native (cab.hpp) rather than a program.
 #include "cb/formats/xbox/crypto/xcp_dumper.hpp"
 
 #include <string>
@@ -57,14 +57,14 @@ std::string run(const fs::ScopedTempDir& dir, std::vector<std::string> args) {
     return out;
 }
 
-CB_TEST("formats.xbox.crypto.xcp_dumper.decrypts_and_converts_a_package_as_the_python_does", [] {
+CB_TEST("formats.xbox.crypto.xcp_dumper.decrypts_and_converts_a_package", [] {
     const fs::ScopedTempDir dir{"cb-xcp"};
     fs::write_file(dir.path() / "sample.xcp", sample("encrypted"));
     const std::string w = forward(fs::to_text(dir.path()));
     CB_CHECK_EQ(run(dir, {"--ignore", "--no-backup", "-k", kKeyHex, w + "/sample.xcp"}), golden("encrypted"));
 });
 
-CB_TEST("formats.xbox.crypto.xcp_dumper.converts_a_package_that_is_not_encrypted_as_the_python_does", [] {
+CB_TEST("formats.xbox.crypto.xcp_dumper.converts_a_package_that_is_not_encrypted", [] {
     const fs::ScopedTempDir dir{"cb-xcp"};
     fs::write_file(dir.path() / "sample.xcp", sample("plain"));
     const std::string w = forward(fs::to_text(dir.path()));
@@ -126,7 +126,7 @@ CB_TEST("formats.xbox.crypto.xcp_dumper.refuses_a_missing_key_a_wrong_key_and_a_
     CB_CHECK(throws(FormatError("x", 0, "x"), {"--ignore", "--no-backup", "-k", "FFEEDDCCBBAA99887766554433221100", w + "/sample.xcp"}));
     CB_CHECK(throws(NotFoundError("x", 0, "x"), {"--ignore", "--no-backup", "-k", kKeyHex, w + "/missing.xcp"}));
     CB_CHECK(throws(UsageError{"x"}, {"--ignore", "--no-backup", "-k", "123", w + "/sample.xcp"}));
-    // a wrong key leaves the package as it was (the Python decrypted the header in the file before it looked)
+    // a wrong key leaves the package as it was
     CB_CHECK(fs::read_file(dir.path() / "sample.xcp") == sample("encrypted"));
 });
 

@@ -43,7 +43,7 @@ CB_TEST("core.text.split", [] {
     auto parts = t::split("a,b,,c", ',');
     CB_CHECK_EQ(parts.size(), 4u);
     CB_CHECK_EQ(parts[2], "");
-    CB_CHECK_EQ(t::split("", ',').size(), 1u);          // "" has one empty piece, as Python's split(",")
+    CB_CHECK_EQ(t::split("", ',').size(), 1u);          // "" has one empty piece
     CB_CHECK_EQ(t::split("abc", ',').size(), 1u);
     CB_CHECK_EQ(t::split("a::b::c", "::").size(), 3u);
     CB_CHECK_EQ(t::split("a,b", "").size(), 1u);          // an empty separator splits nothing

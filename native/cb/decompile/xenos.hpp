@@ -7,7 +7,7 @@
 // are 48 bits, two to three words; fetch instructions read vertices and textures. The encodings are the ones
 // docs/XBOX360_TOOLCHAIN.md's study recovered from the SDK's microcode assembler.
 //
-// What is checked (tests/test_xenos.py and xenos_test.cpp), against the shader compiler's own listing of the same
+// What is checked (xenos_test.cpp), against the shader compiler's own listing of the same
 // microcode (`fxc /T ps_3_0 /XuFormatRaw /Fh`): the ALU word's fields -- vector and scalar opcode, destination,
 // write masks, the export bit, saturate, each source's register, select, negate and swizzle -- and the CF opcodes.
 // What is not yet: the layout of a whole program (here the leading CF words are one pair and every later group

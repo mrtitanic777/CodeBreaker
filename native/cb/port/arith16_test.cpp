@@ -229,8 +229,7 @@ std::vector<std::string> edit_lines(const std::vector<a16::Edit>& edits) {
     return out;
 }
 
-// The casts clang's tree of one file of the test data gives, against the files kept in expected/ (made by the
-// Python's pass, once its includedFrom fault was mended, and read through).
+// The casts clang's tree of one file of the test data gives, against the files kept in expected/ (read through).
 void check_against_expected(const std::string& name, std::size_t edit_count) {
     const std::optional<a16::Tree> tree = a16::dump(kClang, name, testfile(""));
     CB_CHECK(tree.has_value());
@@ -260,7 +259,7 @@ CB_TEST("port.arith16.clang.casts_that_share_a_place", [] {
     if (!have_clang()) return;
     // Two casts that end at one place each have their ")" (line 5: the whole comparison and the sum in it), and two that
     // open at one place nest the outer one first, each with its own type (line 6: (uint16_t)( ... (int16_t)(arr[2] + ...
-    // The Python kept one ")" of two, and put the two openers in the order of a set: not valid C, or the casts' types swapped.
+    // Each cast keeps its own ")", and the openers stay in order: otherwise the C is invalid or the casts' types are swapped.
     check_against_expected("nested.c", 14);
     const std::string cast = cb::fs::read_text(testfile("expected/nested.c.cast"));
     CB_CHECK(cast.find("(uint16_t)((int16_t)(arr[2] + fn(3)) >> (i ^ st.f) % arr[2]) > u") != std::string::npos);

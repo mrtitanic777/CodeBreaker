@@ -1,14 +1,13 @@
 // Tests of the pieces of `codebreaker port` that are not the port itself: the compilers it runs and reads, the source tree, the
 // assembler modules, the check rounds, PORT.md, the sanitized runs' key.
 //
-// DIVERGES from codebreaker/port/__main__.py:
-//   * the module is several (tool_compilers, tool_tree, tool_asm, tool_build, tool_report, tool_run, sanitize_run); the Python's
-//     process-wide state (the far-names cache hung on a function, the data-definition results hung on a function) is the
-//     objects' (`CallArgTypes`, `DataDefinitions`);
-//   * a text file is read with line ends made `\n` as Python's text mode did, and written with `\n`;
+// Design notes:
+//   * the tool is several modules (tool_compilers, tool_tree, tool_asm, tool_build, tool_report, tool_run, sanitize_run); its caches
+//     (far names, data definitions) are held by objects (`CallArgTypes`, `DataDefinitions`), not process-wide;
+//   * a text file is read with line ends made `\n`, and written with `\n`;
 //   * the compilers' `diag` patterns are matched with cb::Regex (`(?P<name>` works; \w \d \s are ASCII);
-//   * the memory watch stops the process with exit code 3 as before but writes no thread dump (there is no faulthandler);
-//   * a check or build result is kept in cb::base::cache (shared kinds "port-checks", "port-objects"), the old files are not read.
+//   * the memory watch stops the process with exit code 3 and writes no thread dump;
+//   * a check or build result is kept in cb::base::cache (shared kinds "port-checks", "port-objects").
 
 #include <fstream>
 

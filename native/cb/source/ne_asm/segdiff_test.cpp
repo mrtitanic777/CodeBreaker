@@ -87,7 +87,7 @@ CB_TEST("source.ne_asm.segdiff.relocation_field_widths", [] {
 });
 
 // The sizes, mask counts, first mask offsets and the digest of the segment's bytes are what the reference
-// (codebreaker/source/ne_asm/segdiff.py shipped_ne_segment) gives for lzexpand.dll.
+// gives for lzexpand.dll.
 CB_TEST("source.ne_asm.segdiff.the_shipped_side_masks_every_relocated_field", [] {
     const formats::ne::Module module = formats::ne::Module::open_file(lzexpand());
     const Shipped s1 = shipped_segment(module, 1);

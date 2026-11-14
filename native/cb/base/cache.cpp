@@ -34,8 +34,8 @@ constexpr std::uint64_t kCheckEvery = std::uint64_t{32} << 20;     // bytes a pr
 constexpr std::int64_t kTouchSeconds = 3600;                       // a result's time of use is renewed at most this often
 constexpr const char* kDropped = "_dropped";                       // where what is going waits for its deletion
 constexpr const char* kDbExtension = ".cbc";
-// The files of the Python implementation: state/cache/<kind>/<generation>.sqlite, one table entry(k, v, used). Their
-// generation names are the Python code's (a digest of its own revision values), which only that code can compute.
+// The files of the earlier implementation: state/cache/<kind>/<generation>.sqlite, one table entry(k, v, used). Their
+// generation names are that code's (a digest of its own revision values), which only that code can compute.
 constexpr const char* kLegacyExtension = ".sqlite";
 constexpr std::size_t kOldestPerFile = 4000;
 constexpr int kHoldRounds = 16;
@@ -74,8 +74,8 @@ std::string without_sidecar(const std::string& name) {
 
 bool is_legacy_name(const std::string& name) { return without_sidecar(name).ends_with(kLegacyExtension); }
 
-// One generation of a kind as it is kept: the Python's (.sqlite) or ours (.cbc file or folder), and its name.
-using Group = std::pair<bool, std::string>;   // the Python's?, generation name
+// One generation of a kind as it is kept: the earlier implementation's (.sqlite) or ours (.cbc file or folder), and its name.
+using Group = std::pair<bool, std::string>;   // the earlier implementation's?, generation name
 Group group_of(const std::string& name) { return {is_legacy_name(name), generation_stem(name)}; }
 
 std::string format_size(std::uint64_t n) {
@@ -137,7 +137,7 @@ void move_aside_unless(const stdfs::path& state_dir, const stdfs::path& kind_dir
     }
 }
 
-// Every generation of ours in a kind's folder but `generation`. The Python's files are not ours to drop here: its
+// Every generation of ours in a kind's folder but `generation`. Files of the earlier implementation are not ours to drop here: its
 // generation names are not ours to compute (prune keeps the newest of them, the cap evicts the rest).
 void drop_other_generations(const stdfs::path& state_dir, const stdfs::path& kind_dir, const std::string& generation) {
     move_aside_unless(state_dir, kind_dir, [&](const std::string& name) {
@@ -498,7 +498,7 @@ namespace {
 struct Stored {
     stdfs::path path;
     bool is_db = false;
-    bool legacy = false;   // the Python's file: its table has the time of use in the entry itself
+    bool legacy = false;   // the earlier implementation's file: its table has the time of use in the entry itself
 };
 
 // Everything kept on disk under `base`, any generation: kind -> its files and folders.
@@ -555,7 +555,7 @@ std::int64_t last_written(const Stored& s) {
 }
 
 // Which generations of a kind the cache of now keeps. Ours, when the kind's owner is known (`native_generation`): the one
-// it names. Otherwise (no owner, or the Python's files, whose generation only the Python code can name) the one written to
+// it names. Otherwise (no owner, or the earlier implementation's files, whose generation only that code can name) the one written to
 // most recently, of each format: what the code of now writes is what was written last.
 std::set<Group> kept_generations(const std::vector<Stored>& entries, const std::optional<std::string>& native_generation) {
     std::set<Group> kept;
@@ -722,7 +722,7 @@ std::vector<KindStats> Cache::stats() {
         if (base.empty()) continue;
         for (const auto& [kind, entries] : stored_under(base)) {
             auto declared = impl_->kinds.find(kind);
-            // The state folder lists everything in it (the Python's cache kept the build cache's kinds there too, and they
+            // The state folder lists everything in it (the earlier cache kept the build cache's kinds there too, and they
             // weigh the same); the build cache lists the kinds declared to belong in it.
             const bool owned = declared != impl_->kinds.end() && declared->second.spec.scope == scope;
             if (scope == Scope::Shared && !owned) continue;

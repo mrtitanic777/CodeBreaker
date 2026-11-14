@@ -17,7 +17,7 @@ namespace stdfs = std::filesystem;
 stdfs::path fixture(std::string_view name) { return testing::data_path(std::string("formats/testdata/stfs/") + std::string(name)); }
 Bytes load(std::string_view name) { return fs::read_file(fixture(name)); }
 
-// "b<length>:<sha1>": a byte string as the old harness recorded it
+// "b<length>:<sha1>": a byte string as recorded
 std::string tag(ByteView b) { return std::format("b{}:{}", b.size(), crypto::to_hex(crypto::sha1(b))); }
 
 // The template packages: header skeletons (console cert + metadata layout) of a CON, a LIVE and a PIRS package.
@@ -49,7 +49,7 @@ Bytes pack(const std::string& folder, const std::string& kind) {
     return build(f.sources(), tpl(kind));
 }
 
-// ---- packing: byte for byte what the old packer wrote --------------------------------------------------------
+// ---- packing: byte for byte what was recorded -----------------------------------------------------------------
 
 CB_TEST("formats.xbox.stfs.packing_is_byte_exact_with_the_old_packer", [] {
     const J golden = J::parse(fs::read_text(fixture("golden.json")));
@@ -190,7 +190,7 @@ CB_TEST("formats.xbox.stfs.damage", [] {
     }
 });
 
-// ---- resigning: byte for byte what the old signer wrote -----------------------------------------------------
+// ---- resigning: byte for byte what was recorded --------------------------------------------------------------
 
 CB_TEST("formats.xbox.stfs.resigning_is_byte_exact_with_the_old_signer", [] {
     const J golden = J::parse(fs::read_text(fixture("golden.json")));

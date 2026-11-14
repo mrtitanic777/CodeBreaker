@@ -12,14 +12,14 @@ using namespace cb::exact;
 namespace stdfs = std::filesystem;
 namespace omf = cb::formats::omf;
 
-// The expected values below are what the Python module this one replaced answered on the same inputs (its harness on
+// The expected values below are recorded answers on the same inputs (a harness on
 // the LINK 1.02 .. 2.44 and LIB projects of the Microsoft-Assemblers-Compilers research), the ones the tests here can
 // make without a compiler: the names of the objects, what a project accepts to differ, the object's own records. Each
 // was read through for what the linker would be given.
 //
-// DIVERGES: the Python raised TypeError at compare time for "tail_zeros": "lots" (a text that is no number); here the
-// entry is refused when it is read (ParseError). "tail_zeros": "" is, as there, "nothing accepted". A link entry that
-// names "emulate": "" counts as naming none (the Python: wanted, then a KeyError for "linker").
+// Design notes: "tail_zeros": "lots" (a text that is no number) is refused when the entry is read (ParseError);
+// "tail_zeros": "" is "nothing accepted". A link entry that
+// names "emulate": "" counts as naming none.
 
 namespace {
 

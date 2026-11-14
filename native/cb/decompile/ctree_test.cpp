@@ -14,13 +14,12 @@ namespace ct = cb::decompile::ctree;
 using ct::Node;
 using std::string;
 
-// DIVERGES from the Python module (the old harness agreed on all else: 3822 outputs over 34 snippets and every one of
+// Notes (an old harness agreed on all else: 3822 outputs over 34 snippets and every one of
 // their nodes, replayed from tree-sitter's own trees):
-//  - the parser is an argument of Source (Python imported tree-sitter inside the module);
+//  - the parser is an argument of Source;
 //  - a query on a node that lacks a field the grammar always gives it (a binary_expression with no `operator`, a call with
-//    no `function`/`arguments`) answers "not that construct" -- nullopt, false, no arguments -- where Python raised
-//    AttributeError on None;
-//  - replace() checks its span against the text (Python's slicing clamped), and overlapping edits are a UsageError.
+//    no `function`/`arguments`) answers "not that construct" -- nullopt, false, no arguments;
+//  - replace() checks its span against the text, and overlapping edits are a UsageError.
 //
 // tree-sitter is not part of this tree, so these tests replay the trees the real tree-sitter C grammar gave for a set of
 // decompiler-style snippets (testdata/ctree_trees.txt: per snippet the text, the masked text it was parsed from, and

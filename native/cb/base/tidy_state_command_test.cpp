@@ -1,5 +1,5 @@
-// Tests of cb/base/tidy_state_command: `codebreaker tidy-state` over a state folder with stale parts and a cache the Python
-// implementation (and ours) filled.
+// Tests of cb/base/tidy_state_command: `codebreaker tidy-state` over a state folder with stale parts and a cache the earlier implementation
+// (and ours) filled.
 #include "cb/base/tidy_state_command.hpp"
 
 #include "cb/base/sqlite.hpp"
@@ -15,8 +15,8 @@ void age_of(const stdfs::path& p, int hours) {
     stdfs::last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
 }
 
-// state/cache/<kind>/<generation>.sqlite as the Python implementation writes it.
-void python_cache_file(const stdfs::path& file, int rows) {
+// state/cache/<kind>/<generation>.sqlite as the earlier implementation writes it.
+void legacy_cache_file(const stdfs::path& file, int rows) {
     using cb::base::sqlite::Value;
     auto db = cb::base::sqlite::Database::open(file);
     db.exec("PRAGMA auto_vacuum=INCREMENTAL");
@@ -40,8 +40,8 @@ struct Setup {
         cb::fs::write_text(env.layout.state / "scratch.txt", "somebody's notes");                    // stray
         cb::fs::write_text(env.layout.state / "phase3" / "runs" / "killed" / "hd.img", std::string(900, 'x'));
         age_of(env.layout.state / "phase3" / "runs" / "killed", 48);
-        python_cache_file(env.layout.state / "cache" / "decompiled" / "gaaaa.sqlite", 3);
-        python_cache_file(env.layout.state / "cache" / "decompiled" / "gbbbb.sqlite", 3);
+        legacy_cache_file(env.layout.state / "cache" / "decompiled" / "gaaaa.sqlite", 3);
+        legacy_cache_file(env.layout.state / "cache" / "decompiled" / "gbbbb.sqlite", 3);
         age_of(env.layout.state / "cache" / "decompiled" / "gaaaa.sqlite", 300);
     }
     int run(std::vector<std::string> args, std::string& out) {
@@ -82,7 +82,7 @@ CB_TEST("base.tidy_state_command.removes_the_stale_and_prunes_the_cache", [] {
     CB_CHECK(!stdfs::exists(s.env.layout.state / "fingerprints.sqlite"));
     CB_CHECK(!stdfs::exists(s.env.layout.state / "phase3" / "runs" / "killed"));
     CB_CHECK(!stdfs::exists(s.env.layout.state / "cache" / "decompiled" / "gaaaa.sqlite"));
-    CB_CHECK(stdfs::exists(s.env.layout.state / "cache" / "decompiled" / "gbbbb.sqlite"));   // the Python's newest stays, intact
+    CB_CHECK(stdfs::exists(s.env.layout.state / "cache" / "decompiled" / "gbbbb.sqlite"));   // the earlier implementation's newest stays, intact
     CB_CHECK(stdfs::exists(s.env.layout.state / "scratch.txt"));                              // stray stays without --stray
 });
 

@@ -213,7 +213,7 @@ std::vector<Fixup> read_fixups(ByteView record, FixupThreads& threads) {
         }
         Fixup f;
         f.segment_relative = (c >> 6) & 1;
-        f.location = (c >> 2) & 0xF;   // (four bits; the module this was ported from kept three: a 32-bit location read as another)
+        f.location = (c >> 2) & 0xF;   // (four bits: a 32-bit location must not read as another)
         f.offset = static_cast<std::uint16_t>(((c & 3) << 8) | r.u8());
         const std::uint8_t fix_data = r.u8();
         if (fix_data & 0x80) {

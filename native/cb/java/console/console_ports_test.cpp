@@ -1,6 +1,5 @@
-// Ports of the tests/java checks the console lane's native tests spelled differently (see state/work/typed-port/test_port_map.md):
-// test_project_layout (the template's well-formedness, an idempotent re-run, an already structured folder, a flat dump's root) and
-// test_runnable_entry.test_entry_point_constructs_and_runs_with_default_args (the entry's start-up calls). Same inputs, same expectations.
+// Console lane checks: the project layout (the template's well-formedness, an idempotent re-run, an already structured folder, a
+// flat dump's root) and the runnable entry (the entry point constructs and runs with default arguments: the entry's start-up calls).
 #include <algorithm>
 #include <vector>
 

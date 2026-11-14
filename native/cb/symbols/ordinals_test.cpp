@@ -1,11 +1,10 @@
 // Tests of cb/symbols/ordinals. The naming rules run over a stand-in for the corpus (ModuleExports) so that the
 // expected answers are plain; the library readers run over real files of the SDK and DDK (testdata/ordinals: two
-// 16-bit import libraries, a 32-bit one, a definition file), their expected names being what the Python module read
-// from the same files. The readers were also run over all 597 .lib and .def files of the reference folder (227 name
-// something) and gave the Python module's answer for every one.
+// 16-bit import libraries, a 32-bit one, a definition file), their expected names being those read from the same files.
+// The readers were also run over all 597 .lib and .def files of the reference folder (227 name something).
 //
-// DIVERGES from the Python module, by design: a damaged member of an import library (or a record cut short in a 16-bit
-// one) is passed over, where the Python gave up on the whole file; a long symbol name that the string table does not
+// A damaged member of an import library (or a record cut short in a 16-bit
+// one) is passed over and the rest of the file is read; a long symbol name that the string table does not
 // end is taken to the end of the member; the shipped file is written with an indent, keys sorted.
 #include "cb/symbols/ordinals.hpp"
 
@@ -196,7 +195,7 @@ CB_TEST("symbols.ordinals.shipped_file_round_trip", [] {
 
 CB_TEST("symbols.ordinals.the_xbox_kernels_ordinal_8_is_dbgprint", [] {
     // the table the product ships (data/symbols/ordinal_names.json): an XBE's kernel thunk table is imports of xboxkrnl.exe by number
-    // (tests/test_xbe.py: "kernel ordinal 8 is DbgPrint")
+    // (kernel ordinal 8 is DbgPrint)
     const ord::ShippedTables tables = ord::parse_shipped(cb::fs::read_text(cb::testing::data_path("../../data/symbols/ordinal_names.json")));
     CB_CHECK(tables.contains("XBOXKRNL"));
     CB_CHECK_EQ(tables.at("XBOXKRNL").names.at(8), "DbgPrint");

@@ -1,8 +1,8 @@
-// DIVERGES from Pillow, the codec this replaces (the .rgba files are Pillow's Image.open(...).convert('RGBA') -- but for grey16,
-// written from the samples' high bytes, and grey2_key_hand, written by hand; every other variant agrees pixel for pixel):
-//   * a 16-bit grey keeps its high byte; Pillow clips the 16-bit value to 255. (RGB16, grey+alpha16 and RGBA16 agree: high byte.)
-//   * a grey colour key (tRNS) is compared with the RAW sample, as the PNG specification says (grey2_key_hand); Pillow compares
-//     it with the scaled sample for 1, 2 and 4 bits.
+// The .rgba files are the expected RGBA pixels of each variant (grey16 is written from the samples' high bytes, and grey2_key_hand
+// by hand):
+//   * a 16-bit grey keeps its high byte. (RGB16, grey+alpha16 and RGBA16 agree: high byte.)
+//   * a grey colour key (tRNS) is compared with the RAW sample, as the PNG specification says (grey2_key_hand), not with the
+//     scaled sample for 1, 2 and 4 bits.
 //   * a damaged picture is a FormatError (bad signature, chunk or zlib data cut short, CRC mismatch, palette index out of range)
 //     where Pillow raised its own errors; a header naming an unknown compression, filter or interlace method is an
 //     UnsupportedError.

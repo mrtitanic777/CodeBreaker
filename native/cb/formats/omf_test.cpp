@@ -1,9 +1,9 @@
 // Tests of cb/formats/omf.hpp on two real objects of Microsoft C 1.52 (testdata/fastadd.obj, txtonly.obj) and on objects and
 // libraries built here from records.
 //
-// DIVERGES from the Python reader (see state/work/typed-port/_bugs/LIST.md): a record cut short by the end of the file is a
-// TruncatedError when it is parsed (the Python took the shorter values); an index of 0 or past the end of a name/segment table is
-// a FormatError (the Python indexed from the end of the list: 0 meant the last entry); a fix-up whose target is index 0 keeps the
+// Behaviour pinned here: a record cut short by the end of the file is a
+// TruncatedError when it is parsed; an index of 0 or past the end of a name/segment table is
+// a FormatError; a fix-up whose target is index 0 keeps the
 // target Unknown.
 #include "cb/formats/omf.hpp"
 
@@ -243,7 +243,7 @@ CB_TEST("formats.omf.errors", [] {
     CB_CHECK_THROWS_AS(FormatError, omf::library(Bytes{}));  // not even a first byte
 });
 
-// tests/test_verification.py::test_a_cextdef_is_numbered_with_the_other_externals -- Microsoft C 8 names some externals through LNAMES
+// A CEXTDEF is numbered with the other externals: Microsoft C 8 names some externals through LNAMES
 // (CEXTDEF, 0xBC): a fix-up's external index counts them with the EXTDEFs.
 CB_TEST("formats.omf.a_cextdef_is_numbered_with_the_other_externals", [] {
     const Bytes code = {0x9A, 0, 0, 0, 0, 0xCB};
@@ -262,7 +262,7 @@ CB_TEST("formats.omf.a_cextdef_is_numbered_with_the_other_externals", [] {
     CB_CHECK_EQ(o.fixups[0].target.name.value_or(""), "_ext");
 });
 
-// tests/test_verification.py::test_a_backpatch_record_is_added_into_the_code -- Microsoft C 8 at /Od writes `sub sp, 0` and gives the
+// A backpatch record is added into the code: Microsoft C 8 at /Od writes `sub sp, 0` and gives the
 // frame's size in a BAKPAT record after the function: the reader adds it in.
 CB_TEST("formats.omf.a_backpatch_record_is_added_into_the_code", [] {
     const Bytes code = {0x55, 0x8B, 0xEC, 0x81, 0xEC, 0, 0, 0x8B, 0xE5, 0x5D, 0xC3};

@@ -5,8 +5,7 @@
 // but adds one, and has a slot the function starts do not know), CIface, CMulti (derives CBase and CIface: a second table
 // for the CIface sub-object at offset 8), CUnrelated (shares a merged body with CIface).
 //
-// DIVERGES from the Python module: a byte that is not ASCII in a decorated name becomes U+FFFD as the Python's decode with
-// "replace" did, per byte; `functions` is kept sorted by address where the Python kept the order the occurrences were met.
+// A byte that is not ASCII in a decorated name becomes U+FFFD (per byte); `functions` is kept sorted by address.
 #include "cb/symbols/cpp_classes.hpp"
 
 #include <nlohmann/json.hpp>

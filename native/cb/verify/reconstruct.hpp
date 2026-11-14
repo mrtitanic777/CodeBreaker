@@ -23,8 +23,8 @@
 //
 // (the hook borrows `rec`: it must outlive the ledger).
 //
-// Not carried over from the Python: the engine's own way of making the same results (engine/lanes, step by step with
-// the facts of the program database) belongs to that module; and the judge's worker processes, which were the answer to
+// Not part of this module: the engine's own way of making the same results (engine/lanes, step by step with
+// the facts of the program database) belongs to that module; and the judge's worker processes,, which would be the answer to
 // emulators keeping state per process -- a lane's judge is thread-safe now (kind.hpp), and `Services::judge_batch` is the
 // place for a caller that wants processes (cb/jobs/workers.hpp) anyway.
 #pragma once

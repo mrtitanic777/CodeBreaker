@@ -1,4 +1,4 @@
-// The golden inputs of the analyses: a module of the Windows 95 corpus as the live Python and cbanalyze.dll were handed
+// The golden inputs of the analyses: a module of the Windows 95 corpus as the engine is handed
 // it (testdata/<module>.image: spans, function starts, imports, relocations; <module>.names: the names after discovery).
 // Included by the *_test.cpp files that run an analysis over those modules.
 #pragma once

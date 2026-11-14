@@ -1,17 +1,16 @@
-// Tests of cb/formats/xbox/crypto/shadowboot.hpp on a synthetic image: SB, SC and SD made by state/work/typed-port/xbox-deferred/shadow_golden.py (in
-// the work that wrote this) and kept in formats/testdata/shadowboot, signed with the xecrypt test key (formats/testdata/xecrypt/rsa2048.*,
+// Tests of cb/formats/xbox/crypto/shadowboot.hpp on a synthetic image: SB, SC and SD made once with a reference implementation
+// and kept in formats/testdata/shadowboot, signed with the xecrypt test key (formats/testdata/xecrypt/rsa2048.*,
 // standing for both the 1BL's and the SB's); the hypervisor and kernel from a formula, an identity stand-in for the Xbox LZX library, and
-// a counter stream for the random bytes. The Python's ShadowbootImage.create makes from the same parts, keys and stream the image whose
+// a counter stream for the random bytes. The reference implementation makes from the same parts, keys and stream the image whose
 // SHA-1 is checked here, and its parse gives the facts compared below (keys, offsets, digests, the metadata, the patch table). (The
-// Python's keyvault encryption draws 16 random bytes for a field it overwrites at once; the harness gives it zeros for those, so that the
+// reference keyvault encryption draws 16 random bytes for a field it overwrites at once; the harness gives it zeros for those, so that the
 // 8 bytes of obfuscation key that follow are the ones the C++ draws.)
 //
-// DIVERGES from the Python: the checks and the build take their keys from a `Keys` rather than module globals; a body or a bootloader that
-// lies outside the image is FormatError (the Python read short and failed later); an unknown SMC console number reads "unknown" (the
-// Python's table had 10 entries for the 16 numbers a nibble can be, an IndexError past them); the patch table is looked for only where the
-// SD has its loader (the Python's `find` returned -1 for none and went on from offset 15); a patch record's size is its real size in
-// bytes (the Python's field was four times it); `shadowboot build` with a keyvault is refused with the key's own error (the Python
-// passed an all-zero CPU key, which XeCryptKeyVaultEncrypt rejects as invalid, so it never worked).
+// Behaviour pinned here: the checks and the build take their keys from a `Keys`; a body or a bootloader that
+// lies outside the image is FormatError; an unknown SMC console number reads "unknown"; the patch table is looked for only where the
+// SD has its loader; a patch record's size is its real size in
+// bytes; `shadowboot build` with a keyvault is refused with the key's own error (XeCryptKeyVaultEncrypt rejects an all-zero
+// CPU key as invalid).
 #include "cb/formats/xbox/crypto/shadowboot.hpp"
 
 #include "cb/core/crypto.hpp"
@@ -95,10 +94,10 @@ static Bytes the_image(const sbt::Keys& keys) {
     return sbt::ShadowbootImage::create(the_parts(), keys, lzx, rng);
 }
 
-CB_TEST("formats.xbox.crypto.shadowboot.create_makes_the_pythons_image", [] {
+CB_TEST("formats.xbox.crypto.shadowboot.create_makes_the_recorded_image", [] {
     const sbt::Keys keys = test_keys();
     const Bytes parts_sb = the_parts().sb;
-    CB_CHECK_EQ(sha1_hex(parts_sb), "572dc50e606bb45785448b0bdebb8ff853106c2c");   // the fixtures are the ones the Python used
+    CB_CHECK_EQ(sha1_hex(parts_sb), "572dc50e606bb45785448b0bdebb8ff853106c2c");   // the fixtures are the recorded ones
     CB_CHECK_EQ(sha1_hex(the_parts().sc), "d15158ea7ea86226165484c0a968f906d9fa5b6a");
     CB_CHECK_EQ(sha1_hex(the_parts().sd), "6fc892ac4000d3f1870fdd6a6ee1b0ed52d76576");
     CB_CHECK_EQ(sha1_hex(the_parts().se), "b69869660017dbb6dfaea4e4856aa2f0dfc8d4e5");
@@ -107,7 +106,7 @@ CB_TEST("formats.xbox.crypto.shadowboot.create_makes_the_pythons_image", [] {
     CB_CHECK_EQ(sha1_hex(image), "b4908074dfadd6085166e7aeea41bdbf608c63d8");
 });
 
-CB_TEST("formats.xbox.crypto.shadowboot.parse_reads_what_the_python_reads", [] {
+CB_TEST("formats.xbox.crypto.shadowboot.parse_reads", [] {
     const sbt::Keys keys = test_keys();
     const Bytes image = the_image(keys);
     IdentityLzx lzx;

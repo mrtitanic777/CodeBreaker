@@ -1,7 +1,6 @@
 // cb-unity: alone
-// Tests of the `facts` command (cb/engine/show.hpp): the output over a binary's database against what `python -m codebreaker facts ...` printed
-// over the same database file (testdata/commands/tracert.facts.sqlite: facts given by hand to tracert.exe's database, made and run by
-// state/work/cmdlayer/gen_facts.sh). <STATE> and <BIN> stand for the folders. The one line that depends on where the binary is (the `binary` fact
+// Tests of the `facts` command (cb/engine/show.hpp): the output over a binary's database against the recorded output
+// over the same database file (testdata/commands/tracert.facts.sqlite: facts given by hand to tracert.exe's database). <STATE> and <BIN> stand for the folders. The one line that depends on where the binary is (the `binary` fact
 // holds its path, so its size depends on the path's length) is left out of the comparisons.
 #include <filesystem>
 #include <memory>

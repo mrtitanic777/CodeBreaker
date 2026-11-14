@@ -1,7 +1,7 @@
 // Tests of the DOS writer over real programs of Windows 95: choice.com (a .COM file), find.exe and xcopy.exe (MZ programs LINK /EXEPACK stored)
 // and xcopy32.exe (a DOS program with a Windows module behind it). Writing a program back needs OpenWatcom's assembler and linker (settings:
 // openwatcom, or CB_OPENWATCOM); those tests are skipped where there is none. The golden sources (testdata/writers/dos_choice.golden.asm,
-// dos_xcopy.golden.asm) are what the Python writer (`dos-source`) wrote for the same files; the tests build the C++ writer's source again,
+// dos_xcopy.golden.asm) are the recorded `dos-source` output for the same files; the tests build the C++ writer's source again,
 // hold it to the golden text and, more to the point, hold the file it builds to the original byte for byte.
 
 #include "cb/source/dos_writer.hpp"
@@ -52,7 +52,7 @@ std::optional<std::filesystem::path> dw_corpus_file(std::string_view relative) {
 }
 std::string dw_lf(const std::filesystem::path& file) { return text::replace_all(fs::read_text(file), "\r\n", "\n"); }
 
-CB_TEST("source.dos_writer.a_com_file_builds_back_the_same_and_its_source_is_what_the_python_writer_wrote", [] {
+CB_TEST("source.dos_writer.a_com_file_builds_back_the_same_and_its_source_is_the_recorded_source", [] {
     const auto options = dw_options();
     if (!options) return;   // (no OpenWatcom on this machine)
     fs::ScopedTempDir dir("cb_dos_writer");
@@ -155,7 +155,7 @@ CB_TEST("source.dos_writer.the_relocation_table_is_written_in_the_original_linke
     CB_CHECK_EQ(r.remarks.size(), 1u);
     CB_CHECK_EQ(r.remarks.front(), "the relocation table is written in the original linker's order");
     CB_CHECK(dw_lf(r.sources.front()) == dw_golden("dos_xcopy.golden.asm"));
-    // <stem>.build.json as the Python wrote it, key for key
+    // <stem>.build.json, key for key
     CB_CHECK_EQ(fs::read_text(dir.path() / "xcopy.build.json"),
                 "{\n \"stem\": \"xcopy\",\n \"product\": \"xcopy.exe\",\n \"flat\": false,\n \"regs\": null,\n \"facts\": {\n  \"file\": \"XCOPY.EXE\",\n  \"packer\": \"EXEPACK\",\n"
                 "  \"overlay\": false,\n  \"min_alloc\": 68,\n  \"full_last\": false,\n  \"words\": 8,\n  \"order\": [\n   3566,\n   2396\n  ]\n }\n}");
@@ -242,7 +242,7 @@ CB_TEST("source.dos_writer.a_driver_with_a_vxd_is_put_together_as_the_original_i
     const auto options_found = dw_options();
     if (!options_found) return;
     Options options = *options_found;
-    // DRVSPACE.BIN: a real-mode driver and a VxD in one file. The VxD is the driver lane's (here the one the Python driver writer built for it,
+    // DRVSPACE.BIN: a real-mode driver and a VxD in one file. The VxD is the driver lane's (here the recorded one,
     // testdata/writers/dsvxd.vxd); the driver is written and built here
     std::filesystem::path asked;
     options.write_vxd = [&](const std::filesystem::path& program, const std::filesystem::path& outdir, const Log&) {

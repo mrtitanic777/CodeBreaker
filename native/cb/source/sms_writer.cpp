@@ -68,7 +68,7 @@ public:
     std::uint32_t size(const z80::Insn& insn) const override { return insn.size; }
     std::string text(const z80::Insn& insn) const override {
         std::string t = z80::text(insn, names_);
-        if (port_access(insn) && insn.value_count > 0) {   // (the port written by its name)
+        if (port_access(insn) && insn.value_count > 0) {   // (the port is written by its name)
             const auto named = port_names_.find(static_cast<std::uint32_t>(insn.values[0]));
             if (named != port_names_.end()) t = text::replace_all(t, std::format("(${:02X})", insn.values[0]), "(" + named->second + ")");
         }

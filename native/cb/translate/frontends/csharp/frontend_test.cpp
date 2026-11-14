@@ -1,8 +1,8 @@
 // Tests of the C# front end's tool runner and of the C# kit's pairs, on the repo's C# corpus (tests/translate/corpus/csharp: the
 // programs the kit was written against) and on programs written here.
 //
-// What the runner must give is what the Python gave: CsTreeDump is the same C# program, so the tree it dumps for a corpus file is
-// the checked-in one (testdata/csharp_<program>.dump.json, written by the Python runner), and its lowering the checked-in L2.
+// CsTreeDump is a C# program, so the tree it dumps for a corpus file is
+// the checked-in one (testdata/csharp_<program>.dump.json), and its lowering the checked-in L2.
 // Every test needs the .NET SDK and passes without it (a machine with none has no C# front end to test).
 #include "cb/translate/frontends/csharp/frontend.hpp"
 
@@ -85,7 +85,7 @@ CB_TEST("translate.csharp.frontend.the_tool_is_compiled_once_and_kept", [] {
     CB_CHECK(dll.parent_path().filename().string().starts_with("csdump-"));
 });
 
-CB_TEST("translate.csharp.frontend.dumps_are_what_the_python_runner_wrote", [] {
+CB_TEST("translate.csharp.frontend.dumps_are_the_recorded_trees", [] {
     const dn::Sdk* sdk = csf_installed();
     if (sdk == nullptr) return;
     CsfWork work("dumps");
@@ -197,7 +197,7 @@ CB_TEST("translate.csharp.pairs.every_corpus_program_round_trips_to_equivalent",
         CB_CHECK(v.verdict == dn::judge::Verdict::Equivalent);
         if (v.verdict != dn::judge::Verdict::Equivalent) std::fprintf(stderr, "%s: %s\n", file.stem().string().c_str(), v.detail.c_str());
         CB_CHECK(!v.files.empty());
-        // the lines each program prints, as the Python judge counted them
+        // the lines each program prints
         static const std::map<std::string, std::string> kLines = {{"Accounts", "12 lines"}, {"Bank", "12 lines"}, {"Generics", "8 lines"}, {"Inventory", "6 lines"}, {"Linq", "6 lines"},
                                                                   {"Numbers", "12 lines"}, {"Records", "12 lines"}, {"Shapes", "5 lines"}, {"Sieve", "7 lines"}, {"Text", "10 lines"}};
         CB_CHECK(kLines.contains(file.stem().string()) && v.detail == kLines.at(file.stem().string()));
@@ -220,12 +220,12 @@ CB_TEST("translate.csharp.pairs.a_refused_construct_is_a_refused_verdict", [] {
     const dn::pairs::Verdict v = dn::pairs::Pairs{*sdk, frontend, arena}.csharp_to_csharp({src}, work.path / "out");
     CB_CHECK(v.verdict == dn::judge::Verdict::Refused);
     CB_CHECK(!v.refused.empty());
-    // the detail is the Python judge's, word for word
+    // the detail, word for word
     CB_CHECK(v.detail == "Gap:3 iterator: `yield return` / `yield break`: an iterator (a state machine); P.Count iterator: `yield return` / `yield break`: an iterator (a state machine)");
 });
 
 // Java -> C#: the Java lane's front end (javac's tree), the C# back end with Java's library, and the two programs run beside each other.
-// The programs are the kit's Java corpus, judged equivalent by the Python pair with these line counts.
+// The programs are the kit's Java corpus, judged equivalent with these line counts.
 CB_TEST("translate.csharp.pairs.java_programs_round_trip_to_equivalent", [] {
     const dn::Sdk* sdk = csf_installed();
     const stdfs::path jdk = "C:/Program Files/Java/jdk-21/bin";
@@ -281,11 +281,11 @@ CB_TEST("translate.csharp.pairs.what_the_cpp03_path_cannot_carry_is_refused", []
     }
 });
 
-// A comparison with the Python runner on programs of any size, off by default: CB_CS_PROOF_OUT names a folder, CB_CS_PROOF_SPECS a
+// A proof run on programs of any size, off by default: CB_CS_PROOF_OUT names a folder, CB_CS_PROOF_SPECS a
 // list of NAME=SOURCE (a folder or a file) separated by `;`. Each program is dumped and lowered (compile errors do not stop it: the
 // dump of a program that does not bind is a tree like any other), and its L2 documents and refusals are written under
-// <out>/<name>/native_l2.json and native_refused.json, with the time each step took, for tools to compare with the Python's.
-CB_TEST("translate.csharp.frontend.proof_against_python", [] {
+// <out>/<name>/native_l2.json and native_refused.json, with the time each step took.
+CB_TEST("translate.csharp.frontend.proof_run", [] {
     const auto out = cb::fs::get_env("CB_CS_PROOF_OUT");
     const auto specs = cb::fs::get_env("CB_CS_PROOF_SPECS");
     const dn::Sdk* sdk = csf_installed();

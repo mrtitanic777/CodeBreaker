@@ -1,9 +1,9 @@
 // Tests of cb/formats/ne.hpp on real Windows 95 16-bit modules (testdata/): LZEXPAND.DLL (a library with 12 segments,
 // relocations of every use, imported and exported names) and CHARMAP.EXE (resources).
 //
-// DIVERGES from the Python reader: an alignment shift whose result does not fit 63 bits is a FormatError (the Python raised
-// OverflowError at the same point); `standalone` lays out with 16-bit sector numbers and says so (FormatError) when the image
-// does not fit, where the Python raised struct.error.
+// Behaviour pinned here: an alignment shift whose result does not fit 63 bits is a FormatError;
+// `standalone` lays out with 16-bit sector numbers and says so (FormatError) when the image
+// does not fit.
 #include "cb/formats/ne.hpp"
 
 #include "cb/core/fs.hpp"

@@ -1,18 +1,18 @@
 // Tests of the lanes' steps: a lane's reconstruct-and-judge made of facts, kept and made again only where what it was made from changed.
 //
-// A made-up lane (FakeKind) stands in for the real ones, as it does in the Python's tests/test_engine.py: prepare reads the binary's
+// A made-up lane (FakeKind) stands in for the real ones, : prepare reads the binary's
 // words and makes one function of each, build "compiles" each function to the digits of its body (so a comment leaves its code alone)
 // and refuses a function that has an x in it, judge says equivalent for an even key and divergent for an odd one and notes each call.
-// testdata/lanes.golden.json is that Python scenario run through the live engine/lanes.py (testdata/gen_lanes.py): after each stage
+// testdata/lanes.golden.json is the recorded scenario: after each stage
 // -- the first run, asked again, a comment added by hand, a change to a function's code and a function added by hand, and both given
 // facts forgotten -- the rows, the texts, the keys, what the build said of each function, the functions judged in that stage and the
 // build's [kept, made]; the C++ steps must give the same documents.
 //
-// DIVERGES from the Python:
+// Design notes:
 //   * A fact is a document: the decompiled module is kept as ModuleDoc (header, order, keys, texts, sig), the live module by the
-//     lanes object; the Python pickled the module itself into its fact. A module given functions by hand is prepared again with them.
-//   * pe.image keeps the linked file in the build folder and the fact names it (the Python kept the file's bytes in the fact).
-//   * The judge runs on threads of this process, a function that throws is "not run"; the Python's pool ran worker processes.
+//     lanes object. A module given functions by hand is prepared again with them.
+//   * pe.image keeps the linked file in the build folder and the fact names it.
+//   * The judge runs on threads of this process, a function that throws is "not run".
 #include "cb/engine/lanes.hpp"
 
 #include <algorithm>
@@ -245,9 +245,9 @@ std::string got(World& w, const std::shared_ptr<facts::Database>& db, const std:
 
 }  // namespace
 
-// ---- the Python's scenario ----------------------------------------------------------------------------------------------------------
+// ---- the recorded scenario ----------------------------------------------------------------------------------------------------------
 
-CB_TEST("engine.lanes.the_steps_give_what_the_pythons_steps_gave_stage_by_stage", [] {
+CB_TEST("engine.lanes.the_steps_give_what_the_recorded_steps_gave_stage_by_stage", [] {
     World w("2 7 4 9");
     const auto db = w.db();
     const Json& stages = golden().at("stages");
@@ -415,7 +415,7 @@ CB_TEST("engine.lanes.the_errors_of_declaring_and_asking", [] {
 
 // ---- the module's document -------------------------------------------------------------------------------------------------------
 
-CB_TEST("engine.lanes.a_module_document_round_trips_and_a_hand_made_text_changes_the_sig_as_the_python_does", [] {
+CB_TEST("engine.lanes.a_module_document_round_trips_and_a_hand_made_text_changes_the_sig_as_recorded", [] {
     ModuleDoc d;
     d.header = "typedef int int4;";
     d.order = {"f0", "f1", "f2"};

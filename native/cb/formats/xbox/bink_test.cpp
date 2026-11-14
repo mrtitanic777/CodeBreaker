@@ -1,8 +1,8 @@
-// Tests of cb/formats/xbox/bink.hpp. test_xma_and_bink in tests/test_xbox_formats.py writes a "BIKi" file (header: size 1000000, 300 frames, largest 8192, 1280x720 at
-// 30/1, one audio track) and reads its header; the same file is checked here against the Python's answers (testdata/assets/make_asset_goldens.py). XMA's half of that
-// test is cb/xna/xact (xna.xact.xma2_in_a_riff_container_matches_the_python).
+// Tests of cb/formats/xbox/bink.hpp. A "BIKi" file (header: size 1000000, 300 frames, largest 8192, 1280x720 at
+// 30/1, one audio track) is written and its header read; the same file is checked here against recorded answers (testdata/assets/make_asset_goldens). XMA's half of that
+// check is in cb/xna/xact.
 //
-// DIVERGES from the Python: a header shorter than its 44 bytes is TruncatedError (struct.error); the video flags are a number, shown as 0x%08X.
+// Behaviour pinned here: a header shorter than its 44 bytes is TruncatedError; the video flags are a number, shown as 0x%08X.
 #include "cb/formats/xbox/bink.hpp"
 
 #include "cb/core/error.hpp"
@@ -24,12 +24,12 @@ static Bytes header(std::string_view magic, std::uint32_t den = 1, std::uint32_t
     return w.take();
 }
 
-CB_TEST("formats.xbox.bink.the_fixture_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.bink.the_fixture_reads", [] {
     const Bytes file = fs::read_file(fs::from_text(asset_dump::fixture("t.bik")));
     CB_CHECK(equal_bytes(file, header("BIKi")));
     const std::string diff = asset_dump::difference(asset_dump::golden("t.bik"), asset_dump::dump_bink("t.bik", file));
     CB_CHECK(diff.empty());
-    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the Python:\n" + diff);
+    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the recorded dump:\n" + diff);
 });
 
 CB_TEST("formats.xbox.bink.test_xma_and_bink_header", [] {

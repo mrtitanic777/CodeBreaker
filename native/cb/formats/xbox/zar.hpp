@@ -24,7 +24,7 @@
 // or `zstd.dll` beside the program (see DynLib), in the folder the environment variable CODEBREAKER_ZSTD_DLL names, or on the
 // path. An archive whose blocks are all stored raw reads without it; a compressed block with no codec is UnsupportedError.
 //
-// Not here: writing archives and the integrity check, which the Python module has (its writer needs zstd compression too).
+// Not here: writing archives and the integrity check (the writer needs zstd compression too).
 //
 // Errors: FormatError for a structure that does not hold together (bad magic or version, a size that is not the file's, a block outside
 // the data, a directory loop, an entry with no name), NotFoundError for a path that is not in the archive.

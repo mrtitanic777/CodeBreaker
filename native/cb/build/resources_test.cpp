@@ -2,29 +2,25 @@
 // templates, the .rc and payload files of real 16-bit and 32-bit modules, reading the compiler's .res layout, comparing
 // two sets of resources, and -- when OpenWatcom is named in CB_OPENWATCOM -- the whole round trip through wrc.
 //
-// What the old harness (state/work/typed-port/build.resources, the Python's own outputs on 28 Windows 95 modules)
-// established, and this port reproduces: the .rc and every payload file of 25 of the 28 modules byte for byte (the first
+// What an old harness (recorded outputs on 28 Windows 95 modules)
+// established, and these tests reproduce: the .rc and every payload file of 25 of the 28 modules byte for byte (the first
 // comment line aside); the statements of 669 dialogs, menus, accelerator tables and version blocks at the three text
 // modes (655 identical, the others as below); the counts of 14 end-to-end rebuilds (identical, equivalent, written as
 // text, as files, as payloads) and the sizes of their .res files (12 identical, 2 as below); the compare() verdicts on
 // mutated copies of the modules.
 //
-// DIVERGES from the Python:
+// Notes:
 //   * A 32-bit string whose UTF-16 ends in an odd byte (three Windows 95 modules have such a version block, "Microsoft
-//     C" with half a character behind it) reads as the text before the odd byte; the Python's decoder made it U+FFFD,
-//     which is beyond Latin-1, so those modules' .rc was written in UTF-8 with a replacement character in it. Here the
+//     C" with half a character behind it) reads as the text before the odd byte; the
 //     text stays Latin-1 and the .rc is written with octal escapes (3 of 28 modules; 14 statements of 669).
-//   * read_res(): a 16-bit entry whose body runs past the end of the file is a TruncatedError; the Python clamped the
-//     body to what was there and went on. A name with no terminator in a 16-bit .res is likewise a TruncatedError (the
-//     Python's ValueError). (The 32-bit layout keeps its one clamp -- the last body pushed up to three bytes past the end
-//     by the compiler's alignment -- which the compiler's real output needs.)
+//   * read_res(): a 16-bit entry whose body runs past the end of the file is a TruncatedError.
+//     A name with no terminator in a 16-bit .res is likewise a TruncatedError. (The 32-bit layout keeps its one clamp -- the last body pushed up to three bytes past the end by the compiler's alignment -- which the compiler's real output needs.)
 //   * write_rc(): a resource whose own name has no source form (a zero character in it) is a NoSourceForm error, and
-//     rebuild() reports it as `error`; the Python let NoSourceForm escape from rebuild().
-//   * A lone surrogate cannot reach quoted(): the readers decode text to valid UTF-8 (U+FFFD for the damage), so the
-//     Python's "text the compiler cannot take" for a surrogate is not a case here.
+//     rebuild() reports it as `error`.
+//   * A lone surrogate cannot reach quoted(): the readers decode text to valid UTF-8 (U+FFFD for the damage), so a
+//     surrogate never occurs there.
 //   * Payload files are named from the plan in memory: one that another resource of the module has taken with other
-//     bytes is numbered; the Python also numbered a name left on disk by an earlier run with other contents. Files left
-//     by an earlier round are overwritten, not kept under a new name.
+//     bytes is numbered. Files left by an earlier round are overwritten, not kept under a new name.
 #include "cb/build/resources.hpp"
 
 #include <algorithm>
@@ -532,7 +528,7 @@ CB_TEST("build.resources.read_res_reads_a_16_bit_layout", [] {
 });
 
 CB_TEST("build.resources.read_res_16_bit_damage_is_a_truncated_error", [] {
-    // DIVERGES: the Python clamped a body that ran past the end; a damaged file is an error here
+    // a body that runs past the end is damage, and an error
     const Bytes cut = cat({entry16(10u, std::string("DATA"), bytes_of("hello")), entry16(6u, 1u, Bytes(6, 0))});
     CB_CHECK_THROWS_AS(cb::TruncatedError, (void)br::read_res(cb::ByteView(cut).first(cut.size() - 4), false));
     CB_CHECK_THROWS_AS(cb::TruncatedError, (void)br::read_res(Bytes(120, 'B'), false));   // a name with no terminator
@@ -560,7 +556,7 @@ bool keys_are(const std::vector<Key>& got, std::initializer_list<Key> expected) 
     return got.size() == expected.size() && std::equal(got.begin(), got.end(), expected.begin());
 }
 
-// The verdicts are the Python's on the same mutations of the same modules.
+// The verdicts are the recorded ones on the same mutations of the same modules.
 CB_TEST("build.resources.compare_a_16_bit_module_with_changed_copies_of_itself", [] {
     const std::vector<fr::Resource> orig = br::read_module(module("charmap.exe")).resources;
     // 8 resources, of which 2 icon images belong to the group: 6 are compared

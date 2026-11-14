@@ -1,27 +1,22 @@
 // Tests of the C# front end's lowering (Roslyn's bound tree into the IR).
 //
 // Two kinds of input. The real ones: testdata/csharp_<program>.dump.json is what CsTreeDump (the .NET SDK's own Roslyn) wrote for
-// a corpus program of tests/translate/corpus/csharp, and testdata/csharp_<program>.l2.json the L2 document the Python
-// lowering made of it (reviewed: units, members, properties, enum constants, a sample of bodies, no Unsupported); the lowering
+// a corpus program of tests/translate/corpus/csharp, and testdata/csharp_<program>.l2.json the checked-in L2 document for it (reviewed: units, members, properties, enum constants, a sample of bodies, no Unsupported); the lowering
 // here must give the same document. The made ones: testdata/csharp_cases.json holds small trees written as Roslyn writes them,
 // each with the document the lowering must give and the refusals it must list, so that every construct that is refused, every
-// hoist rule, every parenthesis rule and every shape the corpus does not reach has a case; the Python lowering gives the same
-// documents for them (tests/translate/test_csharp_lower_trees.py).
+// hoist rule, every parenthesis rule and every shape the corpus does not reach has a case.
 //
-// DIVERGES from codebreaker/translate/frontends/csharp/lower.py:
+// Behaviour pinned here:
 //   * a tree that is not a CsTreeDump tree (a member missing, a value of the wrong kind) is a ParseError naming the member and
-//     the line; the Python failed with a KeyError or a TypeError wherever it happened to read it;
-//   * an enum constant above 2**63-1 (a ulong enum) is an Unsupported member (the IR's constant is 64-bit signed); the Python
-//     kept the big integer;
-//   * a symbol of a kind the front end has no use for (an alias, an assembly) is a Global of its name; the Python made a symbol of
-//     the lower-cased kind;
+//     the line;
+//   * an enum constant above 2**63-1 (a ulong enum) is an Unsupported member (the IR's constant is 64-bit signed);
+//   * a symbol of a kind the front end has no use for (an alias, an assembly) is a Global of its name;
 //   * a dump text with a half of a surrogate pair in a string (which JSON can only write as \ud800) is a ParseError at the
 //     JSON reader; a char constant that is such a half is written as the three bytes generalised UTF-8 gives it;
 //   * `ir.Type('class', None)` (a symbol with no owner used as a qualifier) is a class of the empty name;
-//   * where the Python had a latent fault (named arguments out of order were lowered twice, so a temporary or a hoisted
-//     statement an argument needed was made twice; `x op= y` with an operator Roslyn names otherwise became a plain assignment;
-//     a relational pattern the same; a constructor initialiser whose argument cannot be carried made the whole file a failure),
-//     both are fixed: lowered once, refused, refused, an Unsupported initialiser.
+//   * named arguments out of order are lowered once (a temporary or a hoisted statement an argument needs is made once); `x op= y`
+//     with an operator Roslyn names otherwise is refused, and so is a relational pattern; a constructor initialiser whose argument
+//     cannot be carried is an Unsupported initialiser, not a failure of the whole file.
 //   * an array creation with an empty initialiser carries the length 0 (the IR cannot say "present but empty").
 #include "cb/translate/frontends/csharp/lower.hpp"
 

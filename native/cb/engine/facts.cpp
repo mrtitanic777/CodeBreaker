@@ -91,7 +91,7 @@ std::string hash_of(char tag, ByteView data) {
 }
 
 std::string inputs_text(const std::vector<Input>& inputs) {
-    // the layout the Python wrote: [["kind", "key", "hash"], ...]
+    // the layout: [["kind", "key", "hash"], ...]
     Json a = Json::array();
     for (const Input& i : inputs) a.push_back(Json::array({i.kind, i.key, i.hash}));
     return json::dump(a, json::Style::PythonCompatible);

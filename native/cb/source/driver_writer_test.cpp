@@ -1,19 +1,19 @@
 // cb-unity: alone
 // Tests of the driver writer over real Windows 95 drivers: BIOS, SPLITTER and SRAMMTD (formats/testdata), and DRVSPACE.BIN, a real-mode driver
-// with a VxD (DSVXD) behind it (testdata/writers). The source the writer makes is held to what the Python writer (`driver-source`, run on the
-// same files) wrote: byte for byte for the text with every instruction as a mnemonic (testdata/writers/driver_*.all.golden.asm, made by
-// Writer.source(None) of the Python), and -- where OpenWatcom's assembler and linker are on the machine (settings: openwatcom, or
+// with a VxD (DSVXD) behind it (testdata/writers). The source the writer makes is held to the recorded `driver-source` output (run on the
+// same files): byte for byte for the text with every instruction as a mnemonic (testdata/writers/driver_*.all.golden.asm, made by
+// Writer.source(None)), and -- where OpenWatcom's assembler and linker are on the machine (settings: openwatcom, or
 // CB_OPENWATCOM; those tests are skipped where there is none) -- for the source after the rounds (driver_*.final.golden.asm), the driver it
-// builds (it must be the original's module, and the image the Python built is kept as driver_srammtd.built.vxd) and the VxD file DRVSPACE.BIN
+// builds (it must be the original's module, and the recorded image is kept as driver_srammtd.built.vxd) and the VxD file DRVSPACE.BIN
 // is put together from.
 //
-// DIVERGES from codebreaker/source/driver_writer.py:
+// Design notes:
 //   * a patched field that runs past the end of its object (its first byte within three of the end) is not read as a marker in the decoder's
-//     window; the Python raised struct.error for it, so no driver of the corpus has one;
-//   * `Result::same()` is the module coming back (all five checks) -- the Python's `same` is the share of bytes equal outside the patched
-//     places, a float that dos_writer read as a flag (any non-zero share was "the VxD is the same module");
+//     window;
+//   * `Result::same()` is the module coming back (all five checks), not a share of bytes equal outside the patched
+//     places;
 //   * the service names come from the caller (ServiceLabel), not from a table the module reads itself;
-//   * errors are the types of cb/core/error.hpp (the Python raised KeyError/SystemExit); the files are written as Latin-1 with CRLF as before.
+//   * errors are the types of cb/core/error.hpp; the files are written as Latin-1 with CRLF.
 
 #include "cb/source/driver_writer.hpp"
 
@@ -44,7 +44,7 @@ std::filesystem::path drw_data(std::string_view name) { return testing::data_pat
 
 std::string drw_lf(const std::filesystem::path& file) { return text::replace_all(fs::read_text(file), "\r\n", "\n"); }
 
-// The driver kit's names of the services, as the table the Python writer reads says them.
+// The driver kit's names of the services.
 const symbols::driver_services::Table& drw_table() {
     static const symbols::driver_services::Table table = [] {
         const knowledge::Value doc = knowledge::Value::from_json_text(fs::read_text(testing::data_path("symbols/testdata/driver_services.json")));
@@ -91,14 +91,14 @@ void drw_check_all_mnemonics(const std::filesystem::path& file, std::string_view
     CB_CHECK(written.text == drw_lf(drw_data(golden)));
 }
 
-CB_TEST("source.driver_writer.the_source_with_every_instruction_a_mnemonic_is_what_the_python_writer_wrote", [] {
+CB_TEST("source.driver_writer.the_source_with_every_instruction_a_mnemonic_is_the_recorded_source", [] {
     drw_check_all_mnemonics(drw_driver("splitter.vxd"), "driver_splitter.all.golden.asm", 499, 97, 12);
     drw_check_all_mnemonics(drw_driver("srammtd.vxd"), "driver_srammtd.all.golden.asm", 415, 341, 6);
     // the VxD behind DRVSPACE.BIN: the loader reads the LE past the real-mode driver
     drw_check_all_mnemonics(drw_data("drvspace.bin"), "driver_dsvxd.all.golden.asm", 241, 100, 4);
 });
 
-CB_TEST("source.driver_writer.a_larger_driver_has_the_instructions_and_functions_the_python_writer_found", [] {
+CB_TEST("source.driver_writer.a_larger_driver_has_the_instructions_and_functions", [] {
     DrwWritten d(drw_driver("bios.vxd"));
     const Writer::Text written = d.writer->source(nullptr);
     CB_CHECK_EQ(written.counts.instructions, 4943u);
@@ -213,7 +213,7 @@ CB_TEST("source.driver_writer.a_driver_is_written_built_and_comes_back_the_origi
     const Result r = reconstruct(drw_driver("srammtd.vxd"), dir.path(), *options);
     drw_check_built(r, 415, 4, 341);
     CB_CHECK(r.source == dir.path() / "srammtd.asm");
-    // the source after the rounds is what the Python writer's was, the four instructions it could not have back written as bytes
+    // the source after the rounds is the recorded one, the four instructions it could not have back written as bytes
     CB_CHECK(drw_lf(r.source) == drw_lf(drw_data("driver_srammtd.final.golden.asm")));
     CB_CHECK(fs::read_file(*r.image) == fs::read_file(drw_data("driver_srammtd.built.vxd")));
     // the definitions the linker was given, and the L2 tree beside the source
@@ -233,7 +233,7 @@ CB_TEST("source.driver_writer.the_vxd_behind_a_real_mode_driver_is_written_as_th
     drw_check_built(direct, 241, 2, 100);
     CB_CHECK(direct.source == dir.path() / "direct" / "dsvxd.asm");
     CB_CHECK(drw_lf(direct.source) == drw_lf(drw_data("driver_dsvxd.final.golden.asm")));
-    CB_CHECK(fs::read_file(*direct.image) == fs::read_file(drw_data("dsvxd.vxd")));   // (the image the Python built)
+    CB_CHECK(fs::read_file(*direct.image) == fs::read_file(drw_data("dsvxd.vxd")));   // (the recorded image)
 
     // the hook: what dos_writer asks for, answered with the same
     std::vector<std::string> said;

@@ -12,8 +12,8 @@ using namespace cb;
 using namespace cb::exact;
 namespace stdfs = std::filesystem;
 
-// testdata/modules/src is the source folder of a small program (the fixture the Python module this one replaced was
-// run on: the rows, the library's start, the parts, the combined texts and the address lists below are what it
+// testdata/modules/src is the source folder of a small program (the fixture the recorded answers were made on:
+// the rows, the library's start, the parts, the combined texts and the address lists below are what was
 // made of it, each combined text read through for what a compiler would be given):
 //
 //     MODULES   main.c 01000 (data 0100, -Ox), util.c 01200 (data 02a0), kit.obj, tables.c (data only),
@@ -269,7 +269,7 @@ CB_TEST("exact.modules.check_compares_every_function_and_the_data", [] {
     CB_CHECK(r.functions[0].address == std::optional<std::uint32_t>(0x1000));
     CB_CHECK_EQ(r.functions[0].length, 6u);
     CB_CHECK(r.functions[1].verdict == modules::Verdict::Differs);
-    CB_CHECK_EQ(r.functions[1].differing_bytes, 5u);   // (the bytes the comparer lists, as the Python did: 0, 1, 3, 4, 5)
+    CB_CHECK_EQ(r.functions[1].differing_bytes, 5u);   // (the bytes the comparer lists: 0, 1, 3, 4, 5)
     CB_CHECK(r.functions[2].verdict == modules::Verdict::Same);   // a name SYMBOLS knows as code, at its place
     CB_CHECK(r.functions[2].address == std::optional<std::uint32_t>(0x1100));
     CB_CHECK(r.functions[3].verdict == modules::Verdict::NoPlace);

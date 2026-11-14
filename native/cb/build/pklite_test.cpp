@@ -36,7 +36,7 @@ CB_TEST("build.pklite.reads_a_real_module", [] {
     CB_CHECK_EQ(s.end, 45573u);
     CB_CHECK_EQ(s.image.size(), 86150u);
     CB_CHECK_EQ(s.tokens.size(), 33011u);
-    CB_CHECK_EQ(crypto::crc32(s.image), 0x0f5a1005u);   // (as the original Python read it)
+    CB_CHECK_EQ(crypto::crc32(s.image), 0x0f5a1005u);   //
     CB_CHECK(s.tokens.back() == Token::end());
     CB_CHECK_EQ(std::count(s.tokens.begin(), s.tokens.end(), Token::mark()), 2);   // 86150 bytes: marks at 32491 and 73451
     CB_CHECK(s.regs == (pklite::Registers{.cs = 2260, .ip = 30, .ss = 5568, .sp = 5120}));

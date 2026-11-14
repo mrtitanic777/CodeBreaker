@@ -6,13 +6,11 @@
 #include "cb/core/error.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from codebreaker/knowledge/reads.py and its port:
-//   * a read is a typed Read (platform, kind, key); split() of text with fewer than two colons was a ValueError and is
-//     Read::parse() returning nullopt;
-//   * the reads of a worker process cross as bytes (encode_reads/decode_reads), not as a pickle;
-//   * digest() takes the base's answer and each kind's freshener from its owner (ReadDigests::on_kind) instead of
-//     importing the symbols modules; a freshener that throws is logged and the kind hashed as it stands (the Python
-//     swallowed every Exception silently).
+// Behaviour pinned here:
+//   * a read is a typed Read (platform, kind, key); text with fewer than two colons is Read::parse() returning nullopt;
+//   * the reads of a worker process cross as bytes (encode_reads/decode_reads);
+//   * digest() takes the base's answer and each kind's freshener from its owner (ReadDigests::on_kind); a freshener
+//     that throws is logged and the kind hashed as it stands.
 
 using namespace cb;
 using namespace cb::knowledge;
@@ -35,7 +33,7 @@ CB_TEST("knowledge.reads.constants_and_text", [] {
 });
 
 CB_TEST("knowledge.reads.parse", [] {
-    // harvested from the old harness: the first two colons separate, the key keeps the rest
+    // recorded cases: the first two colons separate, the key keeps the rest
     const Read a = *Read::parse("win32:prototype:GetDlgItem");
     CB_CHECK_EQ(a.platform, "win32");
     CB_CHECK_EQ(a.kind, "prototype");
@@ -45,7 +43,7 @@ CB_TEST("knowledge.reads.parse", [] {
     CB_CHECK_EQ(Read::parse("::")->platform, "");
     CB_CHECK_EQ(Read::parse("x:y:z:with:many:colons")->key, "z:with:many:colons");
     CB_CHECK_EQ(Read::parse("p:k:\xC3\xA9")->key, "\xC3\xA9");
-    CB_CHECK(!Read::parse("a:b"));      // the old split raised ValueError
+    CB_CHECK(!Read::parse("a:b"));      // fewer than two colons
     CB_CHECK(!Read::parse("a"));
     CB_CHECK(!Read::parse(""));
     for (const char* t : {"a:b:c", "::", "x:y:z:w"}) CB_CHECK_EQ(Read::parse(t)->text(), t);

@@ -1,13 +1,13 @@
-// Tests of cb/formats/xbox/xur.hpp. test_xur in tests/test_xbox_formats.py builds a one-section XUR5 scene (four strings), reads its strings, re-emits it with
-// the same strings (byte-identical) and with one replaced; the same is checked here, with the expected lines the Python answers for that scene
-// (testdata/assets/make_asset_goldens.py), plus a scene with sections after STRN to show them move.
+// Tests of cb/formats/xbox/xur.hpp. A one-section XUR5 scene (four strings) is built, its strings read, and it is re-emitted with
+// the same strings (byte-identical) and with one replaced; the same is checked here, with the recorded expected lines for that scene
+// (testdata/assets/make_asset_goldens), plus a scene with sections after STRN to show them move.
 //
-// A section's offset is from the start of the file: the Minecraft title's own scenes (cut from its XUI package) show it -- a first section at 56 or 68 in a file whose table ends there. The Python
-// read it as from the end of the table, which fixed scenes built to that belief and made every real scene read as garbage; fixed in both.
+// A section's offset is from the start of the file: the Minecraft title's own scenes (cut from its XUI package) show it -- a first section at 56 or 68 in a file whose table ends there.
+// (Reading it as from the end of the table would make every real scene read as garbage.)
 //
-// DIVERGES from the Python: a string cut off by the end of its section is FormatError (the Python kept the part there was); a string index out of range is
-// UsageError (IndexError); the length of a string in the table is its UTF-16 unit count (the Python wrote its code-point count, which differs for a character
-// outside the Basic Multilingual Plane, so such a string did not read back as written).
+// Behaviour pinned here: a string cut off by the end of its section is FormatError; a string index out of range is
+// UsageError; the length of a string in the table is its UTF-16 unit count (not its code-point count, which differs for a character
+// outside the Basic Multilingual Plane).
 #include "cb/formats/xbox/xur.hpp"
 
 #include "cb/core/error.hpp"
@@ -45,17 +45,17 @@ static Bytes scene(const std::vector<std::string>& strings, bool with_tail = fal
     return w.take();
 }
 
-CB_TEST("formats.xbox.xur.the_fixture_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.xur.the_fixture_reads", [] {
     const Bytes file = fs::read_file(fs::from_text(asset_dump::fixture("xur.bin")));
     const std::string diff = asset_dump::difference(asset_dump::golden("xur.bin"), asset_dump::dump_xur("xur.bin", file));
     CB_CHECK(diff.empty());
-    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the Python:\n" + diff);
+    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the recorded dump:\n" + diff);
 });
 
 CB_TEST("formats.xbox.xur.test_xur", [] {
     const std::vector<std::string> strs = {"XuiCanvas", "file://game:/skin.png", "Press A to continue", ""};
     const Bytes blob = scene(strs);
-    CB_CHECK(equal_bytes(blob, fs::read_file(fs::from_text(asset_dump::fixture("xur.bin")))));   // the scene the Python builds
+    CB_CHECK(equal_bytes(blob, fs::read_file(fs::from_text(asset_dump::fixture("xur.bin")))));   // the recorded scene
     const xur::Scene x = xur::Scene::parse(blob);
     CB_CHECK_EQ(x.version, 5u);
     CB_CHECK_EQ(x.sections.size(), 1u);

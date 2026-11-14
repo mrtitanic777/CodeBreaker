@@ -37,7 +37,7 @@ struct Settings {
     Hooks hooks;
 };
 
-// What a recovery finds out besides its text (the Python's module dict LAST, carried from `recover` to `recover_cfg`).
+// What a recovery finds out besides its text (carried from `recover` to `recover_cfg`).
 struct Findings {
     bool has_saved = false, has_register_params = false, has_fp_types = false, has_fp_return = false, has_unsigned_longs = false;
     std::vector<std::string> saved;

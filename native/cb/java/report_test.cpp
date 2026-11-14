@@ -36,7 +36,7 @@ CB_TEST("java.report.bar", [] {
     CB_CHECK_EQ(rpt::bar(3, 18, 0), "");
     CB_CHECK_EQ(rpt::bar(0, 4, 8), "\xC2\xB7\xC2\xB7\xC2\xB7\xC2\xB7");
     CB_CHECK_EQ(rpt::bar(8, 4, 8), "\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88\xE2\x96\x88");
-    CB_CHECK_EQ(rpt::bar(1, 4, 8), "\xC2\xB7\xC2\xB7\xC2\xB7\xC2\xB7");   // half a cell rounds to even: 0, as the Python's round
+    CB_CHECK_EQ(rpt::bar(1, 4, 8), "\xC2\xB7\xC2\xB7\xC2\xB7\xC2\xB7");   // half a cell rounds to even: 0, rounded to even
     CB_CHECK_EQ(rpt::bar(3, 4, 8), "\xE2\x96\x88\xE2\x96\x88\xC2\xB7\xC2\xB7");   // 1.5 rounds to 2
 });
 

@@ -9,14 +9,12 @@
 namespace ia = cb::decompile::inline_asm;
 using std::string;
 
-// DIVERGES from the Python module (the old harness agreed on all else; the expected texts below were produced by the
-// original Python on the same bytes with the same Capstone 5.0.7 and read through by hand):
-//  - `rep insb` / `rep insw` are written `rep ...` (Python's test `mnemonic[:4] in (..., "ins", ...)` can never be true
-//    for the four-letter slice "insb", so it wrote `repe insb`: the same F3 prefix byte, the wrong word);
+// Notes (the expected texts below were recorded on the same bytes with Capstone 5.0.7 and read through by hand):
+//  - `rep insb` / `rep insw` are written `rep ...` (not `repe insb`: the F3 prefix byte is the same, the word is `rep`);
 //  - the instructions are cb::decompile::inline_asm::Instruction values and the registers Capstone's ids (uint16), the
-//    segment a plain number: Python's dict keyed by both ints and ("segment", offset) tuples is two maps;
-//  - a refusal is a Result carrying NotAsmBody (Python returned (None, why)); the text is the same;
-//  - a decoded stream cut short in the middle of a prologue/epilogue probe is "no frame" (Python raised IndexError).
+//    segment a plain number;
+//  - a refusal is a Result carrying NotAsmBody; the text is the same;
+//  - a decoded stream cut short in the middle of a prologue/epilogue probe is "no frame".
 
 namespace {
 

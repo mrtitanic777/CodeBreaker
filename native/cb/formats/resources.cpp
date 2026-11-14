@@ -180,8 +180,8 @@ std::vector<Resource> read_ne(ByteView d) {
             res.type = ident(type_id);
             res.name = ident(id);
             res.flags = flags;
-            // A resource that runs past the end of the file gets what is there (an inspector's leniency, as the old
-            // reader's slices gave).
+            // A resource that runs past the end of the file gets what is there (an inspector's leniency:
+            // the slice is clipped to the file).
             const std::uint64_t start = std::min<std::uint64_t>(offset, d.size());
             const std::uint64_t stop = std::min<std::uint64_t>(offset + length, d.size());
             res.data.assign(d.begin() + static_cast<std::ptrdiff_t>(start), d.begin() + static_cast<std::ptrdiff_t>(stop));

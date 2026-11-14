@@ -9,10 +9,9 @@ using namespace cb;
 using namespace cb::exact;
 using namespace cb::exact::draft;
 
-// DIVERGES from the Python stage (draft/__init__.py), on purpose:
+// Design notes:
 //   * the model's mutable switches (FPCASTS, UNSIGNED_CAST, SWITCH, flow16.CMPSWITCH) are arguments of each call
-//     (`Reading`, `Structuring`), so no call can leak a switch into the next; what the Python reset in `finally` is
-//     simply not set
+//     (`Reading`, `Structuring`), so no call can leak a switch into the next;
 //   * FRAME, FPINFO and LONGINFO, the module tables the later passes read, are fields of `ModelTexts`
 //   * a decoding error of the model is any std::exception at the function boundary, its text the first line of the
 //     message (cut at 100 bytes, not 100 code points)

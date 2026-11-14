@@ -1,5 +1,5 @@
 // cb/port/old_c_passes.hpp -- what the C of before the standard did that today's does not: the rewriting passes of
-// the port's last stretch (the Python's pre_ansi PART 5, minus the mending loop in mend.hpp).
+// the port's last stretch (all but the mending loop in mend.hpp).
 //
 // The program the port reads was written for a 16-bit compiler on the 8086, where an int, a near pointer and the
 // word a structure keeps were all 16 bits and so one could stand in for another. Today's pointers are wider than an
@@ -24,7 +24,7 @@ namespace cb::port {
 using Notes = OrderedMap<std::string, std::vector<std::string>>;
 
 // The program's files: name -> text, in the order the program lists them. An entry whose text is empty is a file
-// the port has nothing to say about (the Python held None there).
+// the port has nothing to say about.
 using Sources = OrderedMap<std::string, std::string>;
 
 // The port's rules, each by a name, on or off. A rule is on unless the spec turns it off: a comma-separated list

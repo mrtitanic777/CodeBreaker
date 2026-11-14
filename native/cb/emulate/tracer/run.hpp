@@ -98,7 +98,7 @@ struct Run {
     bool fast = false, lean = false, reads = false, quiet = false, stop_wild = false, stub = false;
     bool unique = false, branches = false, pads = false, saving = false;
 
-    // memory put back after the run (reuse): pages saved by Python before it, and by the hooks
+    // memory put back after the run (reuse): pages saved by the host before it, and by the hooks
     std::unordered_set<uint64_t> saved_keys;
     std::vector<uint64_t> saved_base;
     std::vector<std::vector<uint8_t>> saved_data;
@@ -177,7 +177,7 @@ void hook_mem(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64
 void hook_write(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user);
 bool hook_unmapped(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user);
 void hook_intr(uc_engine *uc, uint32_t intno, void *user);
-int stand_in(Run *r, uint64_t address, int64_t hit);        // 0 answered, 1 go on, 2 stop (Python raised)
+int stand_in(Run *r, uint64_t address, int64_t hit);        // 0 answered, 1 go on, 2 stop
 void hook_branch(uc_engine *uc, uint64_t address, uint32_t size, void *user);
 int restore(Run *r);
 // The hooks of a run, in trace_function's order (and a fast run gone one instruction at a time); detach takes them off.

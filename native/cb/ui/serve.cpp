@@ -46,7 +46,7 @@ void start_winsock() {
     if (!started) throw IoError(stdfs::path(), 0, "the network stack did not start");
 }
 
-// What a line of the service's log says, with the time as the Python service wrote it ("2026-11-13 09:05:01 AM").
+// What a line of the service's log says, with the time as the UI client shows it ("2026-11-13 09:05:01 AM").
 void say(const std::string& line) {
     std::time_t now = std::time(nullptr);
     std::tm tm{};
@@ -165,7 +165,7 @@ std::uint16_t fixed_port(const stdfs::path& state, std::optional<std::int64_t> c
     if (configured && *configured > 0 && *configured < 65536) return static_cast<std::uint16_t>(*configured);
     std::error_code ec;
     std::string where = fs::to_text(stdfs::absolute(state, ec));
-    std::ranges::replace(where, '/', '\\');   // (what the Python's normcase makes of the folder)
+    std::ranges::replace(where, '/', '\\');   // (the case-folded form of the folder, as the UI client computes it)
     where = text::lower(where);
     return static_cast<std::uint16_t>(20000 + crypto::crc32(cb::as_bytes(where)) % 20000);
 }

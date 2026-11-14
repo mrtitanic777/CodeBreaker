@@ -1,17 +1,17 @@
 // Tests of cb/decompile/describe.hpp on real Windows 95 modules: a 16-bit library (LZEXPAND.DLL), a 16-bit driver (KEYBOARD.DRV, with each
 // switch of the Policy turned off in turn), a virtual device driver (VMOUSE.VXD), a DOS program (FIND.EXE), a PE (LZ32.DLL) and a NES cartridge.
 //
-// The goldens in testdata/describe/ are the description files the original (Python) describer wrote for the same inputs, with the folder
+// The goldens in testdata/describe/ are the description files the original describer wrote for the same inputs, with the folder
 // the blob was written into taken out of each `bytes` line; each was compared with what this code writes and the differences read
 // through (there are none for these inputs: they agree line for line). What describing asks of the symbol tables is answered from
 // testdata/describe/knowledge.txt, the answers the original was given for these modules.
 //
-// DIVERGES from the Python module (the old harness covered 29 modules and every function-level reader):
+// Notes (an old harness covered 29 modules and every function-level reader):
 //  - the environment variables CB_CALLER_ARGS, CB_CALLER_RESULTS, CB_FASTCALL, CB_INLINE_HELPERS and CB_NO_CALL_OVERRIDES are the fields of
 //    Policy; the experiment CB_POINTER_CALLS (`O` lines for calls through a pointer in a PE; off, and found to make msjava.dll worse) is
 //    not carried over;
-//  - a code segment whose table says it has no data in the file is read as empty (the original sliced the first bytes of the file for it);
-//  - a program that sets no data segment is an UnsupportedError (the original raised a TypeError formatting it).
+//  - a code segment whose table says it has no data in the file is read as empty;
+//  - a program that sets no data segment is an UnsupportedError.
 
 #include "cb/decompile/describe.hpp"
 

@@ -1,12 +1,10 @@
 // Tests of cb/translate/backends/module_file: the files a module's reconstruction is written as -- the C file (one, or in
 // parts) with the status at its head, and a driver's assembly file -- from the L2 tree and the facts of the binary.
 //
-// The expected texts are the output of the Python back end (translate/backends/module_file.py) for the same module and
-// facts, read through and kept because they say what the file is meant to say.
+// The expected texts were read through and kept because they say what the file is meant to say.
 //
-// DIVERGES from the Python: the facts are a record (the status classes are an ordered list of title and count, not a key
-// order plus two dicts); a unit that is not one of the kinds the file writes is declined with the assembly back end's
-// error, not a Python exception; a module with no source for the assembly file takes the same one-line stand-in.
+// The facts are a record (the status classes are an ordered list of title and count); a unit that is not one of the kinds the
+// file writes is declined with the assembly back end's error; a module with no source for the assembly file takes the same one-line stand-in.
 #include "cb/translate/backends/module_file.hpp"
 
 #include "cb/core/testing.hpp"
@@ -184,7 +182,7 @@ CB_TEST("translate.module_file.parts_declines_other_documents", [] {
     const auto one = mf::parts(mf_module(arena, {ir::make(arena, std::move(bare))})).value();
     CB_CHECK(one.size() == 1 && one[0].status.empty() && one[0].text == std::string());
     CB_CHECK_EQ(mf::part_text(one[0]), std::string("/*  */\n\n"));
-    // DIVERGES: a status that holds "*/" no longer ends its own comment (the Python wrote it as it was, leaving C text behind)
+    // a status that holds "*/" does not end its own comment
     CB_CHECK_EQ(mf::part_text({"a */ b", std::nullopt}), std::string("/* a * / b */\n"));
 });
 

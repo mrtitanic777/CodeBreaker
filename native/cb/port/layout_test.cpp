@@ -1,5 +1,5 @@
 // Tests of cb/port/old_sizes, struct_layout and union_views: the sizes the old compilers gave, the layouts they made, and
-// the unions the port lays out again. Expected values come from the Python original (reviewed).
+// the unions the port lays out again. Expected values were reviewed by hand.
 #include "cb/core/testing.hpp"
 #include "cb/port/old_sizes.hpp"
 #include "cb/port/struct_layout.hpp"
@@ -81,7 +81,7 @@ CB_TEST("port.struct_layout.forward_uses_settle_in_a_few_rounds", [] {
     // `struct a` uses `struct b`, defined after it: the first round does not know b's size
     const StructLayouts lay = lay_out_structs(std::vector<std::string>{"struct a { char c; struct b x; };\nstruct b { long l; int i; };\n"}, 2, 2);
     CB_CHECK_EQ(lay.at("struct b").size, 6u);
-    CB_CHECK_EQ(show(lay.at("struct a")), "8: c@0+1 x@2+6");   // (as the Python gives: a's size is known the second round)
+    CB_CHECK_EQ(show(lay.at("struct a")), "8: c@0+1 x@2+6");   // (a's size is known the second round)
     CB_CHECK(lay_out_structs(std::vector<std::string>{}, 2, 2).empty());
 });
 
@@ -107,8 +107,8 @@ CB_TEST("port.union_views.views_meet_at_the_same_old_places", [] {
         "};\n";
     Notes notes;
     const std::string out = union_views(un, notes, "v.h");
-    // the second view had nothing where the first has the pointer's room: a line of its own gives it (the Python's
-    // placement, one line above the one-line view: kept)
+    // the second view had nothing where the first has the pointer's room: a line of its own gives it (one line above
+    // the one-line view)
     CB_CHECK_EQ(out,
                 "struct view {\n"
                 "    union {\n"
@@ -184,8 +184,7 @@ CB_TEST("port.union_views.a_structure_whose_size_changes_counts_as_a_view", [] {
     SizeChanges sizes;
     sizes["struct big"] = {4, 12};
     Notes notes;
-    // (the plain member `struct big y;` is a view at the start: the one-line view gets a byte of room above its line,
-    //  as the Python places it)
+    // (the plain member `struct big y;` is a view at the start: the one-line view gets a byte of room above its line)
     CB_CHECK_EQ(union_views(un, notes, "f.c", sizes),
                 "union u {\n"
                 "            char _old0[1];\t\t/* (where the other views have members) */\n"

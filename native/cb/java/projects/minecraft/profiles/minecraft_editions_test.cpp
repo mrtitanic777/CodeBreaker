@@ -1,5 +1,5 @@
 // The six edition profiles (rubydung, indev, infdev, alpha, beta, release). The counts and first keys below were
-// read off the Python registry (codebreaker.java.profiles.get) and checked by hand against the module sources.
+// checked by hand against the module sources.
 #include <optional>
 #include <set>
 #include <string>
@@ -56,7 +56,7 @@ CB_TEST("java.minecraft.editions.shapes", [] {
     check_shape(mcp::minecraft_release::profile(), "minecraft_release", {10, 19, 55, 2, 18, 11, 10, 4});
 });
 
-// tests/java/test_profile_invariants.py and test_profiles_selection.py: what every registered edition profile must satisfy.
+// What every registered edition profile must satisfy.
 CB_TEST("java.minecraft.editions.every_profile_satisfies_the_structural_invariants", [] {
     const std::vector<Profile> all = {mcp::minecraft_rubydung::profile(), mcp::minecraft_indev::profile(), mcp::minecraft_infdev::profile(),
                                       mcp::minecraft_alpha::profile(), mcp::minecraft_beta::profile(), mcp::minecraft_release::profile(),

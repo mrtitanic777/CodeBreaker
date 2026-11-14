@@ -6,7 +6,7 @@ using namespace cb;
 using namespace cb::port::csource;
 
 CB_TEST("port.csource.lines_and_depths", [] {
-    CB_CHECK_EQ(split_lines("a\nb\n").size(), 3u); // (the empty piece after the last newline stays: Python's split)
+    CB_CHECK_EQ(split_lines("a\nb\n").size(), 3u); // (the empty piece after the last newline stays)
     CB_CHECK_EQ(join_lines(split_lines("a\r\nb\n")), "a\r\nb\n");
     CB_CHECK_EQ(split_lines("").size(), 1u);
     const auto ds = depths(split_lines("f()\n{\n  if (x) {\n    y;\n  }\n}\n"));
@@ -23,7 +23,7 @@ CB_TEST("port.csource.call_args", [] {
     CB_CHECK_EQ(line.substr((*spans)[0].start, (*spans)[0].end - (*spans)[0].start), "a");
     CB_CHECK_EQ(line.substr((*spans)[1].start, (*spans)[1].end - (*spans)[1].start), " g(b, c)");
     CB_CHECK_EQ(line.substr((*spans)[2].start, (*spans)[2].end - (*spans)[2].start), " d[1, 2]");
-    // a call with no arguments has one empty one, as the Python's did
+    // a call with no arguments has one empty one
     CB_CHECK_EQ(call_args("f()", "f")->size(), 1u);
     // the first call of that name; a longer name that ends the same way is another
     CB_CHECK(!call_args("xf(1)", "f").has_value());
@@ -60,7 +60,7 @@ CB_TEST("port.csource.object_before", [] {
     CB_CHECK_EQ(object_before(c, c.find("->")), 4u); // (*p)
     CB_CHECK_EQ(object_before(c, c.rfind("->")), c.find("f(a)"));
     CB_CHECK_EQ(object_before("((int *)p)->x", 10), 0u); // a parenthesized object: the whole
-    // DIVERGES: an unbalanced bracket was an index of -1 in the Python; the object starts at the line's start here
+    // an unbalanced bracket: the object starts at the line's start
     CB_CHECK_EQ(object_before("a) ->x", 3), 0u);
 });
 

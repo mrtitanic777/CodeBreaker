@@ -2,10 +2,9 @@
 // Tests of cb/store/functions (where the function store is and how it is opened) and cb/store/versions_ledger (what `codebreaker versions` asks of
 // the corpus, the store and the body store), on a store made in a temporary folder.
 //
-// DIVERGES from the Python module, by design: the verdict vocabulary (ORDER, TITLE, WEAK, IDENTIFIED, SCORED, classify) is verify/verdicts's and is
-// not repeated here; `_ro` (the URI of a read-only sqlite3 connection) is gone, the store opens its own files; `latest` answers classes, not their
-// words; the state folder is an argument (nothing is read from settings), and opening a store for writing makes its folders, where the Python's
-// default_path made the state folder just by being asked.
+// Design notes: the verdict vocabulary (ORDER, TITLE, WEAK, IDENTIFIED, SCORED, classify) is verify/verdicts's and is
+// not repeated here; `latest` answers classes, not their words;
+// the state folder is an argument (nothing is read from settings), and opening a store for writing makes its folders (asking for the path alone makes nothing).
 #include "cb/store/functions.hpp"
 
 #include "cb/base/corpus.hpp"

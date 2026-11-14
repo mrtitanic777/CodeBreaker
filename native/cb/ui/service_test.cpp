@@ -16,11 +16,11 @@
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 
-// DIVERGES from ui/service.py:
-//   * errors are cb::Error types (UsageError for the Python's ValueError, IoError for OSError, NoSuchCall for LookupError); the
-//     wire still says ValueError / OSError / LookupError, as the Python's server does;
+// Design notes:
+//   * errors are cb::Error types (UsageError for ValueError, IoError for OSError, NoSuchCall for LookupError); the
+//     wire still says ValueError / OSError / LookupError;
 //   * a call's owner is an argument of the call; only a tool that starts a job asks whom the call is answered for (AnsweringFor, set by the
-//     server around one tool's call), as the Python's answering_for does;
+//     server around one tool's call);
 //   * the client's state (the service found last, when it was looked for) is a ServiceLink's, not module globals;
 //   * jobs run in a Job Object of their own, so stopping one stops what it started and ending this program ends the jobs.
 

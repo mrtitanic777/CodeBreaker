@@ -1,14 +1,13 @@
 // Tests of cb/symbols/runtime_library. The signatures are made from real library files (testdata of symbols/libraries: a
-// C runtime object, 16-bit libraries, an import library), and the expected values are what the Python module made from
-// the same files (digests, mask runs, the substance counts, the rows learn() wrote). The identifying and the compiler
+// C runtime object, 16-bit libraries, an import library), and the expected values are those made from
+// the same files (digests, mask runs, the substance counts, the rows learn() writes). The identifying and the compiler
 // guess run over modules written out byte by byte, so that the answers can be checked by hand.
 //
-// DIVERGES from the Python module, by design:
-//   * the tool block before a PE header: the Python read its records backwards in pairs and so reported the block's last
-//     two padding words as a record (product 0, build 0, count 0) and lost the first real one; this reads the records
-//     from after the padding (see state/work/typed-port/_bugs/LIST.md);
-//   * a block with no start mark is not a tool block (the Python took everything back to the DOS header);
-//   * a function start in a segment the module does not have is a FormatError (the Python raised KeyError);
+// Behaviour pinned here:
+//   * the tool block before a PE header: its records are read from after the padding, so the block's last
+//     padding words are not reported as a record and the first real one is kept;
+//   * a block with no start mark is not a tool block;
+//   * a function start in a segment the module does not have is a FormatError;
 //   * a library that cannot be read is logged with the error's own text.
 #include "cb/symbols/runtime_library.hpp"
 
@@ -181,7 +180,7 @@ CB_TEST("symbols.runtime_library.c_name", [] {
     CB_CHECK_EQ(rl::c_name("_f@x"), "f@x");
     CB_CHECK_EQ(rl::c_name("_f@"), "f@");
     CB_CHECK_EQ(rl::c_name("?Foo@@YAXXZ"), "?Foo@@YAXXZ");
-    CB_CHECK_EQ(rl::c_name("@fastcall@4"), "fastcall");   // (the Python module gave an empty name for these)
+    CB_CHECK_EQ(rl::c_name("@fastcall@4"), "fastcall");
     CB_CHECK_EQ(rl::c_name("plain"), "plain");
     CB_CHECK_EQ(rl::c_name(""), "");
     CB_CHECK_EQ(rl::c_name("_"), "");
@@ -414,7 +413,7 @@ CB_TEST("symbols.runtime_library.compiler_from_marks_and_libraries", [] {
 });
 
 CB_TEST("symbols.runtime_library.frame_instructions", [] {
-    // each answer is the Python module's _FRAME pattern's on the same text
+    // each answer is what the frame pattern gives on the same text
     struct Case {
         const char* mnemonic;
         const char* operands;
@@ -461,7 +460,7 @@ CB_TEST("symbols.runtime_library.learn_from_library_files", [] {
                                                   {"PowerPC", lib_path("xhttp.obj")}};
     std::vector<std::string> log;
     const rl::Learned learned = rl::learn(sources, decoders, [&](const std::string& s) { log.push_back(s); });
-    // what the Python module's learn() found for the same files, in its order
+    // what learn() finds for the same files, in its order
     CB_CHECK_EQ(learned.libraries.size(), std::size_t{3});
     CB_CHECK_EQ(learned.libraries[0], "Test C runtime (ATOF.OBJ)");
     CB_CHECK_EQ(learned.libraries[2], "Test VxD library (LIBVXD.LIB)");
@@ -498,7 +497,7 @@ CB_TEST("symbols.runtime_library.signature_file_format", [] {
     cb::platforms::DecoderSet decoders;
     const std::vector<rl::LearnSource> sources = {{"Test C runtime", lib_path("atof.obj")}, {"Test MFC thing", lib_path("debug.lib")}};
     const rl::Learned learned = rl::learn(sources, decoders, [](const std::string&) {});
-    // the text the Python module wrote for these two libraries
+    // the text written for these two libraries
     const std::string expected =
         "{\"libraries\": [\"Test C runtime (ATOF.OBJ)\", \"Test MFC thing (DEBUG.LIB)\"],\n"
         "\"32\": [\n"

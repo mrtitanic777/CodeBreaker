@@ -2,7 +2,7 @@
 // pass puts every reading to a compiler in one call per switch set, and the hooks whose tool is not set up stay empty.
 //
 // CB_INVERT_REAL="<word>;<word>;..." runs the command with those words in the production environment of the checkout CB_INVERT_CHECKOUT names (else the
-// one this program runs from) -- the real compilers -- and prints what it said and how long it took, for comparing with the translated Python's `invert`.
+// one this program runs from) -- the real compilers -- and prints what it said and how long it took, for timing.
 #include "cb/invert/production.hpp"
 
 #include "cb/build/dos_tools.hpp"

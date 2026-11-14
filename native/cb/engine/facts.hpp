@@ -17,11 +17,10 @@
 //
 // and its hash is the SHA-1 of the tag and those bytes: two facts are the same exactly when their hashes are. A small
 // value is kept in its row; a large one (past kBlobAt bytes) once in the blob table, by its hash, however many facts
-// hold it. (The tag P of the databases the Python wrote -- a pickle -- is Python's: such a fact reads as an
+// hold it. (The tag P of older databases -- a pickle -- cannot be read here: such a fact reads as an
 // UnsupportedError and is made again.)
 //
-// The file layout is the one native/engine (cbengine.dll, which the Python still calls) writes, so a database is read
-// by either.
+// The file layout is the one native/engine (cbengine.dll) writes.
 //
 // The size of it all is looked after the way base/cache looks after the cache's: the facts a step made under another
 // version are dropped (drop_other_versions, once per step per process), and all the databases together are held under

@@ -36,7 +36,7 @@
 //     pe.image                  the module linked and checked: {name, report, rejected, image: the file's name in the build folder}
 //                                                                                          <- lane.pe.module, .keys, .function
 //
-// What a fact is, here: a document. The decompiled module of the Python was pickled into its fact; here the fact is the document
+// What a fact is, here: a document. The fact is the document
 // (ModuleDoc) and the live module -- the lane's own Prepared, which may carry what no document can -- is kept by this object in a
 // table under the document's hash. A process that finds the fact kept and the module not (a new run) asks the lane to prepare it
 // again, and so does a build asked for with functions given by hand (a Prepared cannot be copied: it may be a lane's own type).

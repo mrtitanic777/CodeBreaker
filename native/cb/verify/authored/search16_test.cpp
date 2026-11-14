@@ -106,7 +106,7 @@ CB_TEST("verify.search16.each_rewrite_alone", [] {
     // nothing of the kind: nothing
     CB_CHECK(!rewritten("f()\n{\n}"));
     CB_CHECK(!rewritten(""));
-    // DIVERGES: a constant written in octal (a leading 0: the Python's int(x, 0) raised ValueError) is left alone
+    // A constant written in octal (a leading 0) is left alone
     CB_CHECK(!rewritten("f()\n{\n    if (x <= 010) {\n    }\n}"));
 });
 

@@ -4,10 +4,10 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from codebreaker/platforms/win16.py:
-//   * the descriptor is data only: the Python's Ref slots (which module's `NEFile`, `ow_tool` ... to call) are the
-//     layers' own tables now, keyed on Id::Win16; tools() and library() are the build layer's (build::Watcom);
-//   * call(): "error: <kind>" names the cb::Error that stopped the run, not a Python exception class.
+// Behaviour pinned here:
+//   * the descriptor is data only: which reader, tool and so on to use are the layers' own tables, keyed on Id::Win16;
+//     tools() and library() are the build layer's (build::Watcom);
+//   * call(): "error: <kind>" names the cb::Error that stopped the run.
 
 using namespace cb;
 using namespace cb::platforms;

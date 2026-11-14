@@ -1,5 +1,5 @@
 // cb-unity: alone
-// Tests of ui/serve: the listening service over a Service -- the wire the Python terminal interface's client speaks (ping, call, stop, the token),
+// Tests of ui/serve: the listening service over a Service -- the wire the terminal interface's client speaks (ping, call, stop, the token),
 // the port a state folder gets, the idle and stale exits -- and the declared commands `serve` and `mcp`.
 #include "cb/ui/serve.hpp"
 
@@ -54,8 +54,8 @@ struct RunningHost {
 
 }  // namespace
 
-CB_TEST("ui.serve.a_state_folder_has_one_fixed_port_the_python_service_picked_too", [] {
-    // worked out by the Python service: 20000 + crc32(normcase(abspath(state))) % 20000
+CB_TEST("ui.serve.a_state_folder_has_one_fixed_port_as_recorded", [] {
+    // worked out as the UI client does: 20000 + crc32(normcase(abspath(state))) % 20000
     CB_CHECK_EQ(serve::fixed_port("C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\state", std::nullopt), 37249);
     CB_CHECK_EQ(serve::fixed_port("C:\\Temp\\Some State", std::nullopt), 29767);
     CB_CHECK_EQ(serve::fixed_port("c:/temp/some state", std::nullopt), 29767);   // (the case and the slashes do not matter on Windows)
@@ -63,7 +63,7 @@ CB_TEST("ui.serve.a_state_folder_has_one_fixed_port_the_python_service_picked_to
     CB_CHECK_EQ(serve::fixed_port("C:\\Temp\\Some State", 0), 29767);
 });
 
-CB_TEST("ui.serve.the_wire_is_the_python_services", [] {
+CB_TEST("ui.serve.the_wire_matches_the_recorded_one", [] {
     fs::ScopedTempDir tmp("cb-serve");
     RunningHost running(tmp.path(), {.secret = "s3cret"});
     service::Client client(running.host.port(), "s3cret");

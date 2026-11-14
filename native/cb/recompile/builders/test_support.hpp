@@ -1,5 +1,5 @@
 // cb/recompile/builders/test_support.hpp -- what the builders' tests share: operand tokens as the recompiler spells them, and
-// the reader of the golden files (testdata/<module>.golden.txt, made by testdata/gen_builders_golden.py from the reference
+// the reader of the golden files (testdata/<module>.golden.txt, made from the reference
 // builders over a spread of operands, and spot-checked against the PowerPC manual's definitions).
 #pragma once
 

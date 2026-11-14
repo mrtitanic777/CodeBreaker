@@ -15,7 +15,7 @@ namespace stdfs = std::filesystem;
 
 // ---- text forms the goldens use ---------------------------------------------------------------------------------
 
-// A list as Python shows it: ['a', 'b'].
+// A list as the goldens show it: ['a', 'b'].
 std::string list_text(const std::vector<std::string>& v) {
     std::string out = "[";
     for (std::size_t i = 0; i < v.size(); ++i) out += (i ? ", '" : "'") + v[i] + "'";
@@ -51,8 +51,7 @@ void tree_text(const stdfs::path& root, const stdfs::path& dir, const std::strin
     for (const std::string& d : dirs) tree_text(root, dir / d, from, rows);
 }
 
-// The Python (which listed a cue's events as the code mentioned them, repeats included) repeated "step.grass"; the new
-// module lists each event once.
+// A cue's events are listed once each (the goldens list a repeated "step.grass" twice).
 std::string without_repeated_events(std::string golden) { return text::replace_all(golden, "step.grass, step.grass", "step.grass"); }
 
 // ---- banks -----------------------------------------------------------------------------------------------------
@@ -63,7 +62,7 @@ CB_TEST("java.console.xact.pcm_bank_matches_the_original_byte_for_byte", [] {
                                            test::data("xact/wav/dig_stone.wav")};
     const stdfs::path out = tmp.path() / "sounds.golden.xwb";
     const std::vector<xact::PcmEntry> entries = xact::build_pcm_xwb(wavs, out);
-    CB_CHECK(equal_bytes(fs::read_file(out), fs::read_file(test::data("xact/sounds.golden.xwb"))));   // the very bytes the Python wrote
+    CB_CHECK(equal_bytes(fs::read_file(out), fs::read_file(test::data("xact/sounds.golden.xwb"))));   // the very bytes of the golden
 
     std::string got = "build_pcm_xwb:";
     for (const auto& e : entries) got += std::format(" {}:{}:{}:{}", e.name, e.mini, e.offset, e.length);

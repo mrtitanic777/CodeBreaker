@@ -1,5 +1,4 @@
-// cb/port/old_c_text.hpp -- the text passes of the port that rewrite one file at a time (the Python's pre_ansi lines
-// 230-735): the widths of the old types, the formats of printf, the sizes and offsets a program gave as the numbers
+// cb/port/old_c_text.hpp -- the text passes of the port that rewrite one file at a time: the widths of the old types, the formats of printf, the sizes and offsets a program gave as the numbers
 // they were, the old `extern f();` declarations, and the shared variables of a header.
 //
 // Each takes a file's text and returns the new text; the places it changed go to the report's notes as "file:line".

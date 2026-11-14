@@ -1,15 +1,14 @@
-// Tests of cb/formats/xbox/crypto/nand_tool.hpp. The ECC values were computed by the original Python and checked against the
+// Tests of cb/formats/xbox/crypto/nand_tool.hpp. The ECC values were computed once and checked against the
 // one property real flash has: an erased page (every data and spare byte 0xFF) carries an all-ones ECC, so its spare stays 0xFF.
 //
-// DIVERGES from the Python tool:
+// Behaviour pinned here:
 //  - The spare layouts decode the bit-fields in C order (the first field in the LOW bits: block_id's top nibble is the low half of
-//    byte 1, the block type the low six bits of byte 12), which is the order the ECC routines of the same module rely on; the
-//    Python declared them as big-endian structures, putting both in the high bits. Its block_id/fs_size also masked the shifted
-//    byte away ((x << 8) & 0xF), which always gave 0 for the high part.
-//  - Flash reads and writes cover their last partial page (the Python's page loop stopped one page short, so a transfer that
-//    ended inside a page lost that page's part); negative offsets are not offsets here.
-//  - A flash offset inside a page's spare maps to the start of the next page's data; the Python gave an offset past the page.
-//  - `nandtool` with an unknown operation is a usage error (the Python printed the usage and succeeded).
+//    byte 1, the block type the low six bits of byte 12), which is the order the ECC routines of the same module rely on;
+//    block_id and fs_size keep their high part (the shifted byte is not masked away).
+//  - Flash reads and writes cover their last partial page, so a transfer that ended inside a page keeps that page's part;
+//    negative offsets are not offsets here.
+//  - A flash offset inside a page's spare maps to the start of the next page's data.
+//  - `nandtool` with an unknown operation is a usage error.
 #include "cb/formats/xbox/crypto/nand_tool.hpp"
 
 #include <string>

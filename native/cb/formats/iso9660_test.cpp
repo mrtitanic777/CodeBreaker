@@ -9,7 +9,7 @@
 //     /WIN95/SETUP.EXE ("Setup.exe"):      "MZ-setup-exe-original" twenty times = 420 bytes
 //     /WIN95/README.  ("Readme"):          "read me first\r\n"
 //     /DOCS/HELLO.TXT ("Hello.txt"):       "hello, volume\n"
-// DIVERGES from pycdlib's rm_file + add_fp (what verify/gate16/setup16.py did to put a file on the CD): the volume is
+// Unlike pycdlib's rm_file + add_fp, replacing a file leaves the volume as it is: the volume is
 // not laid out again; the new data is appended and the records repointed, so every other file stays where it was.
 
 using namespace cb;

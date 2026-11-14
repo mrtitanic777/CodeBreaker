@@ -42,7 +42,7 @@ const Json& object(const Json& node, std::string_view key);
 // The member's text; empty when absent or null; a ParseError when it is some other kind of value.
 std::string text(const Json& node, std::string_view key);
 std::optional<std::string> maybe_text(const Json& node, std::string_view key);
-// Python's truth of the member: absent, null, false, 0, "" and an empty list or object are false.
+// The truth of the member: absent, null, false, 0, "" and an empty list or object are false.
 bool flag(const Json& node, std::string_view key);
 std::string kind(const Json& node);
 // The node's children (empty when it has none).
@@ -208,7 +208,7 @@ public:
     int name_depth_ = 0;
 };
 
-// A path as Python's os.path.normcase(os.path.abspath(path)) writes it on Windows.
+// A path made absolute and case-normalised, as Windows compares paths.
 std::string normal_path(std::string_view path);
 // The directory part of such a path.
 std::string directory_of(const std::string& path);

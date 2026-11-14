@@ -1,7 +1,7 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of `judge-c-java`: the command's shape and, where the machine has a JDK and clang, the round trip with a Host made from the production
 // pieces (the Java lane's converter, clang reading its C++ back, j2x, the Java back end, javac and the JVM) on the Java lane's fixture classes.
-// tools/judge_c_java.py roundtrip gives `equivalent`, tier `idiomatic`, no notes, and the Java in testdata/j2x_RoundTripped.java.txt for them.
+// The round trip gives `equivalent`, tier `idiomatic`, no notes, and the Java in testdata/j2x_RoundTripped.java.txt for them.
 #include "cb/translate/judge_c_java_command.hpp"
 
 #include <algorithm>
@@ -50,7 +50,7 @@ CB_TEST("translate.judge_c_java.default_inputs_are_the_fixture_classes", [] {
     CB_CHECK(base.find("this.scale += var2;") != std::string::npos);
 });
 
-CB_TEST("translate.judge_c_java.the_roundtrip_command_gives_the_python_verdict", [] {
+CB_TEST("translate.judge_c_java.the_roundtrip_command_gives_the_expected_verdict", [] {
     const jc::Environment e = jct_environment();
     if (!jct_machine_has_the_tools(e)) return;
     cb::fs::make_dirs(cb::testing::data_path("../../state/work/judge-c-java-tests"));

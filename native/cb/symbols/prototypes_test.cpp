@@ -1,9 +1,9 @@
 // Tests of cb/symbols/prototypes: small header folders written into a temporary directory, shaped like the real ones
 // (OpenWatcom's h/nt and h/win, Microsoft's SDK and DDK). The same reader was also run over the real folders of the
-// corpus (8,292 Win32 and 1,874 Win16 declarations) and gave the table the old engine gave, name for name and in the
+// corpus (8,292 Win32 and 1,874 Win16 declarations) and gave the expected table, name for name and in the
 // same order.
 //
-// DIVERGES from the Python module's reader: the character classes are ASCII (a byte above 0x7F in a header is not a
+// The character classes are ASCII (a byte above 0x7F in a header is not a
 // word character), and a header's names are sorted as written. No header of the real folders differs by it.
 #include "cb/symbols/prototypes.hpp"
 

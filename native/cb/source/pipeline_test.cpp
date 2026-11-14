@@ -1,7 +1,7 @@
 // Tests of the pipeline commands (source/pipeline): every command is declared, and the ones that need no judging run on a real module of the
 // corpus (the Windows 95 modules of the sibling repository; a machine without them runs the first test only), in a temporary state folder (CB_STATE).
 //
-// What the Python answers on the same inputs is in the goldens of the tests below (lz32.dll: `python -m codebreaker decompile lz32.dll` writes the
+// The recorded answers on the same inputs are in the goldens of the tests below (lz32.dll: `codebreaker decompile lz32.dll` writes the
 // file whose size and first lines are checked; `place` names the folders). CB_PIPELINE_PROOF="<command words, ';' between>" runs one command
 // and prints its output and how long it took.
 #include "cb/source/pipeline.hpp"
@@ -66,11 +66,11 @@ CB_TEST("source.pipeline.decompile_writes_a_modules_functions_as_c", [] {
     CB_CHECK(cap.out().starts_with("lz32.dll: 39 of 39 functions -> "));
     const std::string text = fs::read_text(out.path() / "lz32.c");
     CB_CHECK(text.starts_with("/* lz32.dll -- decompiled by CodeBreaker; not built, not judged. */\n\n#pragma pack(1)\n"));
-    CB_CHECK_EQ(text.size(), std::size_t{18451});   // the Python's file, byte for byte
+    CB_CHECK_EQ(text.size(), std::size_t{18451});   // the recorded file, byte for byte
 });
 
 
-// The files `module` writes are the Python's, line for line (the goldens are what `python -m codebreaker module` wrote for lz32.dll and lzexpand.dll
+// The files `module` writes are the recorded ones, line for line (the goldens are what `codebreaker module` wrote for lz32.dll and lzexpand.dll
 // on this machine, 2026-11-12), but for the line that names the verifier's settings (a digest of the native verifier's own tools).
 namespace {
 
@@ -100,19 +100,19 @@ bool module_matches_golden(Surroundings& w, const std::string& name, const std::
 
 }  // namespace
 
-CB_TEST("source.pipeline.module_writes_what_the_python_wrote_for_a_32_bit_module", [] {
+CB_TEST("source.pipeline.module_writes_the_recorded_source_for_a_32_bit_module", [] {
     Surroundings w;
     if (!w.has_corpus()) return;
     (void)module_matches_golden(w, "lz32.dll", {"lz32.c", "lz32.h"});
 });
 
-CB_TEST("source.pipeline.module_writes_what_the_python_wrote_for_a_16_bit_module", [] {
+CB_TEST("source.pipeline.module_writes_the_recorded_source_for_a_16_bit_module", [] {
     Surroundings w;
     if (!w.has_corpus()) return;
     (void)module_matches_golden(w, "lzexpand.dll", {"lzexpand.h"});
 });
 
-// The ratio of two byte runs as Python's difflib gives it (the values are difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()).
+// The ratio of two byte runs as difflib gives it (the values are difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()).
 CB_TEST("source.pipeline.sequence_ratio_is_difflibs", [] {
     const auto bytes = [](std::initializer_list<int> v) {
         Bytes out;
@@ -134,10 +134,10 @@ CB_TEST("source.pipeline.repair_with_no_module_says_its_usage", [] {
     CB_CHECK(cap.out().find("repair <module>") != std::string::npos);
 });
 
-// What the Python answers (the translated codebreaker.exe, `repair lz32.dll`, the 32-bit period compiler set up; about 20 s, so only when asked for):
+// The recorded answer (`repair lz32.dll`, the 32-bit period compiler set up; about 20 s, so only when asked for):
 // "lz32.dll: 39 functions repaired toward the original's bytes: 1 identical, 7 same size, 31 different", the switches /O1 /Gz, and `sub_001000 different
 // distance 40/87 via [/Oy-]` as the first function it moved.
-CB_TEST("source.pipeline.repair_lz32_as_the_python_did", [] {
+CB_TEST("source.pipeline.repair_lz32", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const std::string period = w.config.text("period_compiler");
@@ -157,7 +157,7 @@ CB_TEST("source.pipeline.score16_with_no_module_says_its_usage", [] {
     CB_CHECK(cap.out().find("score16 --show FUNCTION --json FILE") != std::string::npos);
 });
 
-// `score16 --show` reads a saved board and prints the function's C and the three compilers' instructions side by side (what the Python printed for
+// `score16 --show` reads a saved board and prints the function's C and the three compilers' instructions side by side (the recorded output for
 // the same board: the C, a header line, one line per instruction).
 CB_TEST("source.pipeline.score16_shows_a_function_of_a_saved_board", [] {
     Surroundings w;
@@ -197,9 +197,9 @@ CB_TEST("source.pipeline.match_of_a_16_bit_module_names_the_compilers_it_has", [
     CB_CHECK(refused);
 });
 
-// What the Python answers (`python -m codebreaker match lzexpand.dll --first 8`, Visual C++ 1.52c running on Windows itself, 2026-11-12; about 10 s,
+// The recorded answer (`codebreaker match lzexpand.dll --first 8`, Visual C++ 1.52c running on Windows itself, 2026-11-12; about 10 s,
 // so only when asked for): two segments' switches found, and the first eight functions all different, the nearest 55 of 112 bytes off.
-CB_TEST("source.pipeline.match_lzexpand_as_the_python_did", [] {
+CB_TEST("source.pipeline.match_lzexpand", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const std::optional<stdfs::path> msvc152 = w.config.path("msvc152"), dosbox = w.config.path("dosbox_x");
@@ -214,7 +214,7 @@ CB_TEST("source.pipeline.match_lzexpand_as_the_python_did", [] {
     CB_CHECK(out.find("  LZREAD                       different  1190 of 1304 bytes differ\n") != std::string::npos);
 });
 
-// repair --truth names the period compilers a machine has; the 32-bit compiler of 1994 and Microsoft C have no units of their own (the Python's profile
+// repair --truth names the period compilers a machine has; the 32-bit compiler of 1994 and Microsoft C have no units of their own (their profile
 // gives none), so nothing is tried and the line says so; a compiler that is not set up is refused with the list of those that are.
 CB_TEST("source.pipeline.repair_truth_of_a_compiler_with_no_units", [] {
     Surroundings w;
@@ -229,9 +229,9 @@ CB_TEST("source.pipeline.repair_truth_of_a_compiler_with_no_units", [] {
     CB_CHECK_THROWS_AS(UsageError, w.cli.run({"repair", "--truth", "no-such-compiler"}));
 });
 
-// What the Python answers on natalsu.exe, the PowerPC image of the formats tests (`python -m codebreaker match natalsu.exe`, the Xbox 360 compiler set up,
+// The recorded answer on natalsu.exe, the PowerPC image of the formats tests (`codebreaker match natalsu.exe`, the Xbox 360 compiler set up,
 // 2026-11-13; about a minute, so only when asked for): 87 functions, 8 identical, 8 same size, 67 different, 4 that do not compile.
-CB_TEST("source.pipeline.match_of_a_powerpc_image_as_the_python_did", [] {
+CB_TEST("source.pipeline.match_of_a_powerpc_image", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const std::optional<stdfs::path> tools = w.config.path("powerpc_tools");
@@ -245,9 +245,9 @@ CB_TEST("source.pipeline.match_of_a_powerpc_image_as_the_python_did", [] {
     CB_CHECK(out.find("  identical            8\n  same size            8\n  different            67\n  does not compile     4\n") != std::string::npos);
 });
 
-// What the Python writes for tests/java/fixtures/java (`python -m codebreaker module tests/java/fixtures/java --out DIR`, g++ and a JDK set up, 2026-11-13, 18 s;
+// The recorded output for the Java fixture (`codebreaker module <fixture> --out DIR`, g++ and a JDK set up, 2026-11-13, 18 s;
 // the files are the same bytes, line ends aside): nine classes, one verified by running it beside the JVM, two weakly, six compiled and not run.
-CB_TEST("source.pipeline.module_of_a_java_program_as_the_python_did", [] {
+CB_TEST("source.pipeline.module_of_a_java_program", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
     const stdfs::path folder = testing::data_path("java/testdata/tools_fixtures");

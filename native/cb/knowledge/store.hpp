@@ -27,7 +27,7 @@
 //
 // The Store is the knowledge of `KindStore` (what loading an authored kind asks), of `show::Base` (what the `knowledge`
 // command lists), and gives `ReadDigests` its answers (`digest`). It is thread-safe: one mutex serialises the connection.
-// The file is this module's own (`knowledge.v2.sqlite`; the file the old Python-driven base keeps is left to it).
+// The file is this module's own (`knowledge.v2.sqlite`; an older base's file is left alone and its contents are made again).
 #pragma once
 
 #include <chrono>

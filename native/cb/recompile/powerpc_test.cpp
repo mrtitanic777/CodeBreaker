@@ -16,8 +16,7 @@
 using namespace cb;
 namespace ppcgen = cb::recompile::powerpc;
 
-// DIVERGES from the Python: an instruction whose operands the module cannot read is a PPC_UNIMPLEMENTED trap (the Python raised out
-// of recompile_function, or wrote "None" into a statement it then trapped); the hand-written handlers the builders shadow (add, lwz,
+// An instruction whose operands the module cannot read is a PPC_UNIMPLEMENTED trap; the hand-written handlers the builders shadow (add, lwz,
 // fmr ...) are gone; --all writes the mapping table beside the file by replacing its extension, not every ".cpp" of the path.
 
 namespace {
@@ -141,7 +140,7 @@ CB_TEST("recompile.powerpc.every_instruction_as_the_reference_makes_it", [] {
         ++rows;
         const std::vector<std::string> got = ppcgen::emit_insn(row, bounds, tables);
         if (expected.size() == 1 && expected[0] == "!EXC") {
-            // DIVERGES: the Python raised; an instruction whose operands cannot be read is a trap here
+            // an instruction whose operands cannot be read is a trap
             ++traps;
             std::string_view stem = row.mnemonic;   // (a record form's trap names its base operation)
             while (stem.ends_with('.')) stem.remove_suffix(1);

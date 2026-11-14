@@ -2,14 +2,10 @@
 // gets, what is read back, the switch, and how a refusal of the executive reaches the caller. (The real executive,
 // exact/emu/dos, is tested with its own module.)
 //
-// DIVERGES from the Python:
-//   * a stem with an empty, `.` or `..` part is a UsageError (the Python joined it to the work folder as given, so
-//   `../x`
-//     wrote outside it);
-//   * the work folder is deleted when the call returns (the products are already read into the result; the Python left
-//   it
-//     for the caller to remove, and the result named it);
-//   * a .LST / .LOG keeps the CRLF line ends the tool wrote (the Python's text-mode read translated them to LF);
+// Notes:
+//   * a stem with an empty, `.` or `..` part is a UsageError (it could write outside the work folder);
+//   * the work folder is deleted when the call returns (the products are already read into the result);
+//   * a .LST / .LOG keeps the CRLF line ends the tool wrote;
 //   * an unknown value of CB_NATIVE_DOS means "auto", as it did.
 #include "cb/build/native_dos.hpp"
 

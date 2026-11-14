@@ -22,8 +22,8 @@ Doc document_a() {
 
 }  // namespace
 
-CB_TEST("engine.facts.encode_is_what_the_python_kept", [] {
-    // (each expectation is what codebreaker/engine/facts.py's encode made of the same value)
+CB_TEST("engine.facts.encode_is_the_recorded_encoding", [] {
+    // (each expectation is the recorded encoding of the same value)
     const Encoded doc = encode(document_a());
     CB_CHECK_EQ(doc.tag, 'J');
     CB_CHECK_EQ(text_of(doc), "{\"a\":[1,2.5,null,\"\\u00e9\"],\"b\":1}");   // keys sorted, compact, ASCII (the escape is in the text)
@@ -52,7 +52,7 @@ CB_TEST("engine.facts.decode_round_trips", [] {
     CB_CHECK(!(std::get<Doc>(back) == doc));
     CB_CHECK(std::get<std::string>(decode('S', as_bytes("héllo"))) == "héllo");
     CB_CHECK(std::get<Bytes>(decode('B', Bytes{1, 2})) == (Bytes{1, 2}));
-    CB_CHECK_THROWS_AS(UnsupportedError, (void)decode('P', Bytes{0x80, 4}));   // a pickle is Python's
+    CB_CHECK_THROWS_AS(UnsupportedError, (void)decode('P', Bytes{0x80, 4}));   // a pickle cannot be read
     CB_CHECK_THROWS_AS(UnsupportedError, (void)decode('X', {}));
     CB_CHECK_THROWS_AS(Error, (void)decode('J', as_bytes("{not json")));
 });
@@ -60,7 +60,7 @@ CB_TEST("engine.facts.decode_round_trips", [] {
 CB_TEST("engine.facts.hashes_are_the_sha1_of_tag_and_bytes", [] {
     fs::ScopedTempDir dir;
     auto db = Database::open(dir.path() / "a.sqlite");
-    // (hashlib.sha1(b"S" + b"text") and the others, from the Python)
+    // (hashlib.sha1(b"S" + b"text") and the others, recorded)
     CB_CHECK_EQ(db->write("k", "1", std::string("text"), "s", "v", {}), "47ff5e97ba0a894ae59639eca8261a06c7673cb7");
     CB_CHECK_EQ(db->write("k", "2", Bytes{0, 1}, "s", "v", {}), "46cb18115cf117ca4b94ac63456131e6450f3dfa");
     CB_CHECK_EQ(db->write("k", "3", document_a(), "s", "v", {}), "a6b7db146e393c9960df976f288f53db12929628");

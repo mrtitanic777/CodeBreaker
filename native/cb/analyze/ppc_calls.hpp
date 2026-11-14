@@ -23,7 +23,7 @@
 //   * Variadic: a function that stores r8, r9 and r10 to its caller's frame before its own `stwu` is homing the
 //     va_list area; its fixed arguments are the registers below the lowest one homed.
 //
-// These passes come from the clean-room xam decompile (tools/infer_*.py), where they turned thousands of refused
+// These passes come from the clean-room xam decompile, where they turned thousands of refused
 // functions into faithful C; here they run on a listing of the module's functions (recompile/disassemble) found by
 // function discovery (recompile/discover), for any module. Making the Module from a file is the job of those two.
 #pragma once

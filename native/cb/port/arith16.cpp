@@ -83,7 +83,7 @@ Op op_of(std::string_view s, Kind kind) {
     return Op::Other;
 }
 
-// The 8086's type of a type as the source names it (the Python's W16): chars and bytes were ints of 16 bits.
+// The 8086's type of a type as the source names it: chars and bytes were ints of 16 bits.
 std::optional<Prim> prim_of(std::string_view t) {
     static const std::unordered_map<std::string_view, Prim> prims = {
         {"int16_t", Prim::I16}, {"short", Prim::I16},         {"uint16_t", Prim::U16},      {"unsigned short", Prim::U16},

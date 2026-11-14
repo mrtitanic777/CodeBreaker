@@ -58,7 +58,7 @@ CB_TEST("store.analyze_command.proof", [] {
     if (!proof || proof->empty()) return;
     Surrounding s;
     const auto started = std::chrono::steady_clock::now();
-    // CB_ANALYZE_COMMAND_OUT: write the whole report (every fact listed) there, for comparing its text with the Python's; CB_ANALYZE_COMMAND_WHAT: which analyses
+    // CB_ANALYZE_COMMAND_OUT: write the whole report (every fact listed) there, for inspecting its text; CB_ANALYZE_COMMAND_WHAT: which analyses
     std::vector<std::string> words{"analyze", *proof, "--no-store"};
     if (const auto report = fs::get_env("CB_ANALYZE_COMMAND_OUT"); report && !report->empty()) {
         words.insert(words.end(), {"--facts", "--out", *report});

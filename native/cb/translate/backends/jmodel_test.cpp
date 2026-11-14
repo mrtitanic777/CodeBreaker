@@ -9,9 +9,8 @@
 //     enum Color { RED { }, GREEN }                            class Bag { List<String> items; }
 //     interface Two { void f(); void g(); }                    interface Mixed { void f(); default void g() {..} static void h() {..} }
 //
-// DIVERGES from the Python model (jmodel.py), by design: classes are found by pointer, not by `id()`; a method or class
-// that does not exist is an empty optional or null, not a `None` in a tuple; the model takes the units alone (the Python's
-// unused `package_names` flag is gone); a `Name` with a missing type is captured with no type, not an error.
+// Design notes: classes are found by pointer; a method or class that does not exist is an empty optional or null; the model
+// takes the units alone; a `Name` with a missing type is captured with no type, not an error.
 #include "cb/translate/backends/jmodel.hpp"
 
 #include "cb/core/testing.hpp"

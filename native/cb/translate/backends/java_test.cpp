@@ -1,22 +1,20 @@
 // Tests of the Java back end: the text helpers (names, literals, types), the pointer analysis, tier choice, and whole programs.
 //
 // The programs are C and C++ sources the clang front end lowered (testdata/java/*.c, *.cpp; the L2 documents beside them are its
-// output, without columns). Each golden .java file is what codebreaker/translate/backends/java.py wrote for that document; it was
+// output, without columns). Each golden .java file is the checked-in output for that document; it was
 // read through, and the real judge (translate/judge_native_jvm: clang build of the original beside javac and the JVM) ran each
 // program and found its exit code equal to the C build's: FaithfulCore, FaithfulArith (every integer width and sign, floats,
 // conversions, compound assignment on locals and in memory), FaithfulVa, FaithfulOverloads. GapGoto's body reaches its gap on
-// purpose. make_java_golden.py makes the files again.
+// purpose.
 //
-// DIVERGES from java.py:
-//   * a C name's non-ASCII bytes become `_` (the Python kept letters outside ASCII: Java would have taken them, C sources
-//     here have none);
-//   * a literal's digits are written by std::to_chars's shortest form, the same digits Python's repr gave;
+// Behaviour pinned here:
+//   * a C name's non-ASCII bytes become `_`;
+//   * a literal's digits are written by std::to_chars's shortest form;
 //   * the library mapping (java_libc) and the idiomatic tier (java_objects) are the caller's: a program that calls the C library
 //     with no mapping is refused for the call, and the idiomatic tier is a TierFactory (a fake one stands in below);
-//   * fixed in this module and in java.py: a char constant of 127 (DEL) was written as repr's `'\x7f'`, which Java does not
-//     read, and a character literal whose C spelling Java lacks ('\x41', '\a') was copied as it stood; `a ? f() : g();` as a
-//     statement lowered its first branch twice (the discarded lines still took frame space and temporary names); a dereference
-//     as an lvalue wrote its pointer expression twice (the second only for its precedence).
+//   * a char constant of 127 (DEL) is written as a form Java reads, and a character literal whose C spelling Java lacks ('\x41',
+//     '\a') is rewritten; `a ? f() : g();` as a statement lowers each branch once (no discarded lines taking frame space and
+//     temporary names); a dereference as an lvalue writes its pointer expression once.
 #include "cb/translate/backends/java.hpp"
 
 #include <algorithm>
@@ -95,7 +93,7 @@ std::string jv_notes_text(const java::Program& prog) {
     return out;
 }
 
-// What the Python made of each program: its Java and its notes.
+// What each program was written as: its Java and its notes.
 void jv_check_golden(const std::string& name) {
     auto p = jv_load(name);
     const java::Program prog = jv_write(*p, name);
@@ -353,7 +351,7 @@ CB_TEST("translate.java.jname", [] {
     CB_CHECK_EQ(java::jname("Mem"), "Mem_");     // names the runtime owns
     CB_CHECK_EQ(java::jname("frame"), "frame_");
     CB_CHECK_EQ(java::jname("1st"), "1st_");
-    CB_CHECK_EQ(java::jname("caf\xC3\xA9"), "caf__");   // (DIVERGES: bytes outside ASCII)
+    CB_CHECK_EQ(java::jname("caf\xC3\xA9"), "caf__");   // bytes outside ASCII become `_`
     CB_CHECK_EQ(java::jname("__unnamed_1"), "__unnamed_1");
 });
 
@@ -538,7 +536,7 @@ CB_TEST("translate.java.null_constants_and_allocs", [] {
     CB_CHECK(!java::from_alloc(ir::make(b.arena, ir::Call{.sym = other})));
 });
 
-// Speed: the whole of FaithfulArith (about 400 small functions) as Java; java.py took 112 ms on the same document (docs/TYPED_CPP_SPEED.md).
+// Speed: the whole of FaithfulArith (about 400 small functions) as Java.
 CB_TEST("translate.java.speed", [] {
     auto p = jv_load("FaithfulArith");
     double best = 1e9;

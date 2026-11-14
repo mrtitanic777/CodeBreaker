@@ -1,7 +1,7 @@
 // Tests of the whole-file writer of 32-bit programs over two real ones: lz32.dll and version.dll (Windows 95's LZ decompressor and version
 // API, 378 and 612 instructions of code, import tables, base relocations). The program is read and its code found without an assembler;
 // written back it needs NASM (settings: nasm, or CB_NASM) and those tests are skipped where there is none. The golden sources
-// (testdata/writers/pe_lz32.golden.asm, pe_version.golden.asm) are what the Python writer (`pe-source`) wrote for the same two files; the
+// (testdata/writers/pe_lz32.golden.asm, pe_version.golden.asm) are the recorded `pe-source` output for the same two files; the
 // test builds the C++ writer's source again, holds it to the golden text, and -- more to the point -- holds the image it assembles to the
 // original byte for byte.
 
@@ -101,7 +101,7 @@ CB_TEST("source.pe_writer.an_instruction_that_is_written_as_bytes_keeps_its_mnem
     CB_CHECK(text.find(expected_comment) != std::string::npos);
 });
 
-CB_TEST("source.pe_writer.the_programs_build_back_the_same_and_the_source_is_what_the_python_writer_wrote", [] {
+CB_TEST("source.pe_writer.the_programs_build_back_the_same_and_the_source_is_the_recorded_source", [] {
     const auto nasm = assembler_for_pe_tests();
     if (!nasm) return;   // (no assembler on this machine)
     struct Case {
@@ -242,7 +242,7 @@ CB_TEST("source.pe_writer.a_scaled_index_is_written_nosplit_so_the_assembler_kee
     const std::string text = image.source({}, true).text;
     CB_CHECK(text.find("mov eax, dword [nosplit ecx*4 + 0x10]") != std::string::npos);
     CB_CHECK(text.find("[fs:nosplit ebx*8") != std::string::npos);
-    for (const char c : text) CB_CHECK(c >= 0x20 || c == '\n' || c == '\r' || c == '\t');   // (the Python once wrote control characters in the replacement)
+    for (const char c : text) CB_CHECK(c >= 0x20 || c == '\n' || c == '\r' || c == '\t');   //
 });
 
 }  // namespace

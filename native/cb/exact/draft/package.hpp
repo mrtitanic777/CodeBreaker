@@ -27,8 +27,8 @@
 //     package      the model's texts of a function, and the stage itself (this file)
 //
 // What the stage asks of the rest of CodeBreaker is declared here as interfaces (`InverseModel`, `Project`): the
-// inverse models (invert/*), the project, the library stage and the prover (draft/prove) are refactored in later
-// waves and implement them.
+// inverse models (invert/*), the project, the library stage and the prover (draft/prove) implement them
+// and are handed in.
 #pragma once
 
 #include <any>

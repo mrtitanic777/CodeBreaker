@@ -398,7 +398,7 @@ Comparison compare(const le::Module& built, const le::Module& original) {
             continue;
         const Bytes& ba = loaded_a.object(objects_a[i].index);
         const Bytes& bb = loaded_b.object(objects_b[i].index);
-        // (only the places that lie inside the object leave the count: DIVERGES, see driver_test.cpp)
+        // (only the places that lie inside the object leave the count: see driver_test.cpp)
         std::vector<bool> skip(ba.size(), false);
         auto skip_patched = [&](const Patched& patched, std::uint32_t object) {
             const auto it = patched.find(object);

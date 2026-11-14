@@ -1,15 +1,11 @@
 // Tests of the 68000 assembler's directive layer, over a miniature instruction encoder (the real one is the
 // decompiler's and arrives with that module): NOP, RTS, BRA.S / BRA.W label, JMP label.L.
 //
-// DIVERGES from the Python:
-//   * `NAME equ <expression naming a label defined later>` resolves on the last pass (the Python refused it on the
-//   first, with
-//     a KeyError that became an AsmError, though the same expression is fine in `dc`).
+// Notes:
+//   * `NAME equ <expression naming a label defined later>` resolves on the last pass (as the same expression does in `dc`).
 //   * `dcb` with a negative count, an `org` or `dcb` that would make an image of more than 64 MiB, and a negative
-//   address are
-//     AsmErrors (the Python moved the location counter backwards, tried to allocate, or wrapped).
-//   * A "string" in dc.b is the bytes between its quotes (the source is bytes), not the Latin-1 encoding of a decoded
-//   str.
+//     address are AsmErrors.
+//   * A "string" in dc.b is the bytes between its quotes (the source is bytes), not a decoded Latin-1 text.
 #include "cb/build/m68k_asm.hpp"
 
 #include "cb/core/testing.hpp"
@@ -166,7 +162,7 @@ CB_TEST("build.m68k_asm.forward_labels_and_branch_sizes", [] {
 });
 
 CB_TEST("build.m68k_asm.forward_equ_resolves", [] {
-    // (DIVERGES from the Python, which refused a constant whose value names a label defined later)
+    // (a constant whose value names a label defined later is accepted)
     const Bytes image = kAsm.build("size equ endlabel-startlabel\nstartlabel: dc.b 1,2,3\nendlabel: dc.b size\n");
     CHECK_SAME(image, b({1, 2, 3, 3}));
 });

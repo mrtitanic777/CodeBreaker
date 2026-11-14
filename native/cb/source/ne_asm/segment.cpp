@@ -69,8 +69,8 @@ const char* lookup_name(const std::array<NamedValue, N>& table, std::uint32_t va
 constexpr std::string_view kPushBp = "push   bp";
 constexpr std::string_view kMovBpSp = "mov    bp,sp";
 
-// The prologue scan (`push bp` followed by `mov bp,sp` starts a function) is ON (Logan, 2026-11-12). The Python module this
-// replaced wrote the `push bp` of its test with one space where objdump writes three, so the scan never found anything; it
+// The prologue scan (`push bp` followed by `mov bp,sp` starts a function) is ON (Logan, 2026-11-12). An earlier version
+// wrote the `push bp` of its test with one space where objdump writes three, so the scan never found anything; it
 // adds 1,413 function starts to the Setup chain's modules (none to the 15 MINI.CAB ones), checked by a Setup boot.
 constexpr bool kScanPushBpPrologue = true;
 // The instructions a far procedure's frame may follow (objdump's spelling): `mov ax,ds / nop / inc bp` of an exported

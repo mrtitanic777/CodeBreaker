@@ -2,8 +2,7 @@
 // signature formats, the SMC cipher, the CPU-key ECC, keyvault sealing and the page ECC.
 //
 // This is what the console's kernel does with its keys, written out so the tools that rebuild boot chains and keyvaults can run
-// anywhere. Credit where it is due: the algorithms were worked out by cOz and the Xbox 360 scene (the Python this replaces was
-// "Gigantic shoutout to cOz for all the help in porting this").
+// anywhere. Credit where it is due: the algorithms were worked out by cOz and the Xbox 360 scene.
 //
 // Conventions
 //   * Byte strings are ByteView in and Bytes out. A function that edits its argument takes a ByteSpan and says so.

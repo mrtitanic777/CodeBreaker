@@ -2,7 +2,7 @@
 //
 // CodeBreaker ships `unicorn.dll`, `capstone.dll` and `libz3.dll` beside codebreaker.exe (docs/CPP_DESIGN.md
 // section 9, decisions 1 and 2; the files and their licences are listed in native/third_party/README.md).
-// Nothing is read from Python's site-packages. `DynLib` is the loader the three API modules (unicorn_api.hpp,
+// Nothing is read from an interpreter's package folders. `DynLib` is the loader the three API modules (unicorn_api.hpp,
 // capstone_api.hpp, z3_api.hpp) share: it finds the DLL in a fixed list of places, loads it once, and hands out
 // typed function pointers.
 #pragma once

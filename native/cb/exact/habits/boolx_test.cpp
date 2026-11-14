@@ -131,10 +131,10 @@ CB_TEST("exact.habits.boolx.more_than_one_way_out_is_not_a_single_condition", []
     CB_CHECK_EQ(v.why, "more than one way out");
 });
 
-// What the Python this replaces said about 279 pairs of stretches (every pair it called the same, a few of each kind of
+// The recorded verdicts on 279 pairs of stretches (every pair called the same, a few of each kind of
 // refusal), checked in as testdata/boolx.cases; the stretches are those of the harness that generated them. A reason is
 // compared whole, except those that name a value (up to the first words).
-CB_TEST("exact.habits.boolx.cases_of_the_python_it_replaces", [] {
+CB_TEST("exact.habits.boolx.recorded_cases", [] {
     const std::string data = fs::read_text(testing::data_path("exact/habits/testdata/boolx.cases"));
     const auto parse_code = [](std::string_view s) {
         Code out;

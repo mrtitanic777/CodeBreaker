@@ -13,13 +13,13 @@ using namespace cb::exact;
 namespace stdfs = std::filesystem;
 namespace omf = cb::formats::omf;
 
-// What the module is held to: the Python module this one replaced (its pad rule, its place rules, its merge of
+// What the module is held to: recorded answers (its pad rule, its place rules, its merge of
 // toolchains, its counts line) on objects the tests make themselves, each case read through for what the program
 // would hold.
 //
-// DIVERGES: a compiland's row whose project names no "toolchain" has no `by` here (the Python put None there, which
-// its own write() could not join); a source whose first-procedure file has no address (a place by names) is left as
-// the names place it (the Python raised TypeError subtracting from None).
+// Design notes: a compiland's row whose project names no "toolchain" has no `by` (a null `by` could not
+// be joined when written); a source whose first-procedure file has no address (a place by names) is left as
+// the names place it.
 
 namespace {
 

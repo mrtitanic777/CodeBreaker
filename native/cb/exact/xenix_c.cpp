@@ -66,7 +66,7 @@ bool xc_stores_register(std::string_view line, std::string_view reg) {
            x.find_first_of("(_") != std::string_view::npos;
 }
 
-// The lines with [from, to) replaced (as Python slices are: past the end is the end).
+// The lines with [from, to) replaced.
 void xc_replace(std::vector<std::string>& lines, std::size_t from, std::size_t to, const std::vector<std::string>& with) {
     from = std::min(from, lines.size());
     to = std::min(std::max(to, from), lines.size());

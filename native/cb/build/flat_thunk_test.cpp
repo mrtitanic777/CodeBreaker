@@ -120,8 +120,8 @@ CB_TEST("build.flat_thunk.a_stub_says_how_many_argument_bytes_and_pointers", [] 
 });
 
 CB_TEST("build.flat_thunk.a_ret_cut_off_inside_its_operand_resolves_nothing", [] {
-    // DIVERGES: the Python read the two operand bytes with struct.unpack and raised struct.error when the stub's extent ended
-    // inside them (a decode desync that landed on 0xC2 at the end); the result is an unresolved signature
+    // A RET whose two operand bytes are cut off by the end of the stub's extent
+    // (a decode desync that landed on 0xC2 at the end) and the result is an unresolved signature
     const std::set<std::uint32_t> none;
     CB_CHECK(!ft::stub_signature(bytes_of({0x55, 0xC2}), 0x1000, none).argument_bytes.has_value());
     CB_CHECK(!ft::stub_signature(bytes_of({0x55, 0xC2, 0x04}), 0x1000, none).argument_bytes.has_value());
@@ -147,7 +147,7 @@ CB_TEST("build.flat_thunk.argument_bytes_by_epilogue", [] {
 // ---- classify and diff ----------------------------------------------------------------------------------------------
 
 CB_TEST("build.flat_thunk.classify", [] {
-    // the answers of the Python's classify on the same files
+    // the recorded answers of classify on the same files
     auto c = ft::classify(formats_data("lz32.dll"));
     CB_CHECK(c.format == ft::Format::Pe);
     CB_CHECK(c.subtype == ft::Subtype::FlatThunk);
@@ -500,9 +500,9 @@ CB_TEST("build.flat_thunk.a_build_without_its_tools_or_sources_fails_with_a_reas
 
 // ---- recover --------------------------------------------------------------------------------------------------------
 
-CB_TEST("build.flat_thunk.recovered_source_is_what_the_python_wrote", [] {
-    // the files the Python's recover_flat_thunk made for the same modules and the same small SDK table (golden data: made by
-    // the Python, read through for the cases below)
+CB_TEST("build.flat_thunk.recovered_source_is_the_recorded_one", [] {
+    // the files recover_flat_thunk makes for the same modules and the same small SDK table (golden data, read through
+    // for the cases below)
     const auto sdk = small_sdk();
     CB_CHECK_EQ(sdk.size(), std::size_t{8});
     for (const char* name : {"version", "dciman32", "tapi32", "mpr"}) {

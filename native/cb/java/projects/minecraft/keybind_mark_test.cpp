@@ -1,10 +1,9 @@
-// DIVERGES (checked against the Python on its 81 recorded cases -- CR, CRLF, bad UTF-8, non-ASCII keys, files named like
-// folders, a source folder that is a file: 0 unexplained differences):
-//   * the tree is walked with names ordered by bytes (upper case first), files before folders; the Windows listing the Python
-//     saw ordered them by letters. Only the order of `sites` across folders differs; the index sorts by file and line.
-//   * `run` on a source folder that does not exist is a NotFoundError (the Python's FileNotFoundError came from writing the
-//     index); an explicit `index_dir` that does not exist is created instead of failing after the files were already marked.
-//   * files are written back with LF endings (the Python's text mode wrote CRLF on Windows).
+// Checked against 81 recorded cases -- CR, CRLF, bad UTF-8, non-ASCII keys, files named like folders, a source folder that is a file:
+//   * the tree is walked with names ordered by bytes (upper case first), files before folders; the index sorts by file and line,
+//     so only the order of `sites` across folders depends on the walk.
+//   * `run` on a source folder that does not exist is a NotFoundError; an explicit `index_dir` that does not exist is created
+//     instead of failing after the files were already marked.
+//   * files are written back with LF endings.
 
 #include <filesystem>
 #include <string>
@@ -66,7 +65,7 @@ CB_TEST("java.minecraft.keybind_mark.keys_on_line", [] {
     CB_CHECK(keys_on_line("Keyboard::getEventKey() != Keyboard::KEY_F1").empty());        // only `==` and isKeyDown
     CB_CHECK(keys_on_line("x == Keyboard::KEY_F1").empty());
     CB_CHECK(keys_on_line("").empty());
-    // a key named with a letter beyond ASCII is one name (as the Python's \w read it)
+    // a key named with a letter beyond ASCII is one name
     CB_CHECK(keys_on_line("Keyboard::isKeyDown(Keyboard::KEY_\xC3\xA9t\xC3\xA9)") == V{"\xC3\xA9t\xC3\xA9"});
     CB_CHECK(keys_on_line("Keyboard::isKeyDown(Keyboard::KEY_)").empty());
 });

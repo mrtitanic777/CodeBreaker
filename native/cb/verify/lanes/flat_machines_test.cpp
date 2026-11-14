@@ -1,6 +1,5 @@
 // Tests of the two machines the flat Z80 lane serves (verify/lanes/msx, verify/lanes/zx): their kind names, the lane's version, and
-// the ROM each says it has. The values are those of the Python modules (`z80_flat.lane("msx", 2, (0x0000, 0x4000))` and the same for
-// "zx"); both machines have 16 KB of ROM at $0000, and the kind names are the platforms' (platforms/msx, platforms/zx).
+// the ROM each says it has. Both machines have 16 KB of ROM at $0000, and the kind names are the platforms' (platforms/msx, platforms/zx).
 #include "cb/verify/lanes/msx.hpp"
 #include "cb/verify/lanes/zx.hpp"
 

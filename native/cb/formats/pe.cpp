@@ -294,7 +294,7 @@ std::vector<Import> Image::imports() const {
         if (auto at = rva_to_offset(name_rva)) dll = strict_cstring(data_, *at, kReader);
         auto thunks = rva_to_offset(lookup ? lookup : iat_rva);
         if (!thunks) continue;
-        const std::uint64_t width = header_.is_plus ? 8 : 4;  // the Python reader read 4-byte thunks in a PE32+ too
+        const std::uint64_t width = header_.is_plus ? 8 : 4;  // thunks are 8 bytes in a PE32+
         const std::uint64_t by_ordinal = std::uint64_t{1} << (width * 8 - 1);
         for (std::uint64_t j = 0;; ++j) {
             const std::uint64_t val = header_.is_plus ? get<std::uint64_t>(data_, *thunks + j * width, kReader)

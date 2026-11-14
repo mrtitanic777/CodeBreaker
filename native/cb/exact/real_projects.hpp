@@ -1,5 +1,5 @@
 // The real exact projects of the Microsoft-Assemblers-Compilers research (C 3.00's P0-P3, LIB, LINK, MASM ...), as the tests of carve, bss, names, link
-// and run open them, and the golden (testdata/w5b3.golden.json) the live Python made of them (testdata/gen_w5b3.py). Included by those *_test.cpp
+// and run open them, and the golden (testdata/w5b3.golden.json) recorded from them. Included by those *_test.cpp
 // files only. The research folder is the sibling of the checkout (CB_RESEARCH names another), the kits and profiles are the checkout's
 // (settings.json; CB_MAIN_CHECKOUT names another checkout): a machine that has none of it passes these tests without running them, and says so.
 #pragma once

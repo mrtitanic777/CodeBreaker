@@ -14,8 +14,8 @@ namespace {
 using J = nlohmann::json;
 namespace stdfs = std::filesystem;
 
-// The archives are the synthetic ones the old harness built (a1: three layers, textures, a duplicate id; a2: one asset; a3: two
-// PSLD layers; a5: odd sizes and an empty layer; a6: duplicate ids), and golden.json is the ORIGINAL Python's answers on them.
+// The archives are the synthetic ones of the recording (a1: three layers, textures, a duplicate id; a2: one asset; a3: two
+// PSLD layers; a5: odd sizes and an empty layer; a6: duplicate ids), and golden.json holds the recorded answers on them.
 stdfs::path fixture(std::string_view name) { return testing::data_path(std::string("formats/testdata/heavyiron/") + std::string(name)); }
 Bytes load(std::string_view name) { return fs::read_file(fixture(name)); }
 J golden() { return J::parse(fs::read_text(fixture("golden.json"))); }
@@ -38,7 +38,7 @@ std::int32_t get32(const Bytes& b, std::size_t at) {
     return static_cast<std::int32_t>((std::uint32_t{b[at]} << 24) | (std::uint32_t{b[at + 1]} << 16) | (std::uint32_t{b[at + 2]} << 8) | b[at + 3]);
 }
 
-// ---- reading, as the old reader did ---------------------------------------------------------------------------------
+// ---- reading --------------------------------------------------------------------------------------------------
 
 CB_TEST("formats.xbox.heavyiron.the_archives_parse_as_the_old_reader_parsed_them", [] {
     const J g = golden();
@@ -111,7 +111,7 @@ CB_TEST("formats.xbox.heavyiron.finding_an_asset_by_id_and_layer", [] {
     CB_CHECK_THROWS_AS(UsageError, (void)a6.find(7, 0));
 });
 
-// ---- replacing, as the old writer did -------------------------------------------------------------------------------
+// ---- replacing -------------------------------------------------------------------------------------------------
 
 CB_TEST("formats.xbox.heavyiron.replace_writes_what_the_old_writer_wrote", [] {
     const J g = golden();
@@ -126,7 +126,7 @@ CB_TEST("formats.xbox.heavyiron.replace_writes_what_the_old_writer_wrote", [] {
         }
         const Archive a = Archive::parse(data);
         const Bytes fresh = pattern(c[3].get<std::size_t>());
-        if (c[4].is_string()) {   // "E": the old writer refused (an ambiguous or unknown id)
+        if (c[4].is_string()) {   // "E": refused in the recording (an ambiguous or unknown id)
             CB_CHECK_THROWS_AS(UsageError, (void)replace(data, a, id_of(c[1]), fresh, layer_of(c[2])));
             ++errors;
             continue;
@@ -276,7 +276,7 @@ CB_TEST("formats.xbox.heavyiron.textures_decode_as_the_old_reader_found_them", [
         CB_CHECK_EQ(t.value().image.height, w[1].get<std::uint32_t>());
         CB_CHECK_EQ(t.value().format_byte, w[2].get<int>());
         CB_CHECK_EQ(t.value().image.rgba.size(), std::size_t{t.value().image.width} * t.value().image.height * 4);
-        // the old reader handed exactly this blob to the DXT decoder; so does this one
+        // the recording handed exactly this blob to the DXT decoder; so does this one
         const TextureDescriptor d = texture_descriptor(asset_bytes(data, *a.find(id_of(c[0]), layer_of(c[1]))));
         const Asset* blob = a.find_all(d.blob_id).front();
         CB_CHECK_EQ(sha(asset_bytes(data, *blob)), w[3].get<std::string>());

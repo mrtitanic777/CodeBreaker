@@ -5,13 +5,12 @@
 
 #include <windows.h>
 
-// DIVERGES from codebreaker/jobs/workers.cpp (the port):
+// Design notes:
 //   * the kinds a worker can do are registered by the host (WorkerKinds), not hard-wired to gate/judge/build; a kind it
-//     does not know is exit code 2, a share that throws is exit code 3 (as before);
-//   * unhex is strict: an odd or non-hex token is a FormatError (the port decoded it to garbage); running out of tokens
-//     is a FormatError (the port threw std::out_of_range);
-//   * a hand-over folder is a Handover (deleted on scope exit, also on an exception); scratch_folder() left it to
-//     the caller;
+//     does not know is exit code 2, a share that throws is exit code 3;
+//   * unhex is strict: an odd or non-hex token is a FormatError; running out of tokens
+//     is a FormatError;
+//   * a hand-over folder is a Handover (deleted on scope exit, also on an exception);
 //   * the child is started in a Job Object with an optional timeout; a crashed worker is an exit code, never an
 //     exception; count() is cb::parallel::workers() (no separate function).
 
@@ -100,7 +99,7 @@ CB_TEST("jobs.workers.launcher_command_and_disabled", [] {
     CB_CHECK(!none.enabled());
     CB_CHECK_THROWS_AS(UsageError, (void)none.run("gate", {}));
     const fs::ScopedEnv off("CB_NO_WORKERS", "1");
-    CB_CHECK(!WorkerLauncher("C:/x/codebreaker.exe").enabled());               // the switch of the old program
+    CB_CHECK(!WorkerLauncher("C:/x/codebreaker.exe").enabled());               // the switch of the launching program
     CB_CHECK(WorkerLauncher::for_this_program().exe().empty());
 });
 

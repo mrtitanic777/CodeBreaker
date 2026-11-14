@@ -36,12 +36,12 @@
 //              with entry), and
 //              PRAGMA user_version = kFormatVersion. An entry whose envelope is wrong, whose schema is not the
 //              reader's, or whose checksum fails is simply a miss; a file of another format version is replaced.
-//              The Python implementation's files (<kind>/<generation>.sqlite, entry(k, v, used)) are understood too -- listed,
+//              The earlier implementation's files (<kind>/<generation>.sqlite, entry(k, v, used)) are understood too -- listed,
 //              counted, held under the cap, pruned (the newest generation stays), cleared -- and never read or rewritten
 //              as results: a switch from one implementation to the other costs only the results.
 //              A kind whose results are files a tool writes itself (path()) has a folder,
 //              <root>/<kind>/<generation>/<first two key characters>/<key>, instead. Nothing older than this format
-//              is read: a cache the Python wrote is a cache that is rebuilt. Deleting the folder costs time and
+//              is read: a cache the earlier implementation wrote is a cache that is rebuilt. Deleting the folder costs time and
 //              nothing else. `Config::disabled` (CB_NO_CACHE=1) turns every lookup into a miss and keeps nothing.
 //
 // One Cache is thread-safe and meant to be shared by every worker of a process.
@@ -151,7 +151,7 @@ struct KindStats {
     std::vector<std::string> generations;       // on disk
     std::optional<std::string> current;         // the generation of now, if the kind is declared
     // Parallel to `generations`: is it kept by prune (the generation of now)? For a declared kind that is `current`; for a kind
-    // nobody declared, and for the Python's files, the one written to most recently.
+    // nobody declared, and for the earlier implementation's files, the one written to most recently.
     std::vector<bool> of_now;
 };
 

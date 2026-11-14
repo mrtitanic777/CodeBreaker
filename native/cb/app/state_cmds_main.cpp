@@ -1,7 +1,6 @@
 // cb_state_cmds: the proof harness of the commands that read and write the state folder -- names, knowledge, coverage, progress, facts, origin,
 // driver-services -- and of `migrate-state`. Each gets the Environment the command table will give it (the settings, the corpus, the verifier
-// profiles in force), so what it reads of a state folder and writes to it can be compared with what the translated Python did on the same
-// folder. Not part of codebreaker.exe; not built by default (`cmake --build <dir> --target cb_state_cmds`).
+// profiles in force), so what it reads of a state folder and writes to it can be checked on a copy of a real folder. Not part of codebreaker.exe; not built by default (`cmake --build <dir> --target cb_state_cmds`).
 //
 //     CB_STATE=<copy of state> cb_state_cmds <command> [arguments]
 //

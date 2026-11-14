@@ -1,5 +1,5 @@
-// cb/recompile/x360_real_test.cpp -- the two slow checks of tests/test_x360.py, which build and run real programs (set CB_SLOW_TESTS=1; each prints SKIP
-// otherwise, or when a tool or the game is not on this machine, as the Python did):
+// cb/recompile/x360_real_test.cpp -- the two slow checks that build and run real programs (set CB_SLOW_TESTS=1; each prints SKIP
+// otherwise, or when a tool or the game is not on this machine):
 //
 //  - the runtime's xex::ReadImage (native/x360/runtime/src/xex.cpp, the path XAM's data reads take), built with clang-cl by native/x360/runtime/test,
 //    gives the xex engine's basefile of a real XEX at the base its header states, with every resource inside it and the resources the engine lists;

@@ -1,11 +1,9 @@
 // Tests of cb/symbols/xdk_libraries on code written out as PowerPC words (0x4E800020 is blr, 0x48000001 bl, 0x38600000
 // li r3,0 and so on), so every case reads plainly. The signatures and the matcher were also run on the real XDK
-// libraries (libcMT, XAPOBase, multidisc, oldnames) against the Xbox 360 programs of the corpus, and gave the Python
-// module's signatures and matches: see the report of the refactor.
+// libraries (libcMT, XAPOBase, multidisc, oldnames) against the Xbox 360 programs of the corpus.
 //
-// DIVERGES from the Python module, by design: a function whose mask is shorter than its code uses the words the mask
-// covers (the Python's struct.unpack raised); the signatures are not kept by this module (the caller keeps them, under
-// the stamp), so there is no knowledge-base access in it; the output of `-o` is the JSON the Python wrote.
+// A function whose mask is shorter than its code uses the words the mask covers; the signatures are not kept by
+// this module (the caller keeps them, under the stamp), so there is no knowledge-base access in it.
 #include "cb/symbols/xdk_libraries.hpp"
 
 #include "cb/core/error.hpp"

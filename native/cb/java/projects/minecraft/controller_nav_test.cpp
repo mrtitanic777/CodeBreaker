@@ -1,8 +1,7 @@
-// DIVERGES (checked against the Python on its 143 recorded cases -- 22 text patches each of the six kinds, run() over twelve
-// fake converted trees, twice each; 2 differences, both here):
-//   * patch_mousehelper_grab with only ONE of the two functions present returned the half-patched text with ok = false; it now
-//     returns the text unchanged (nothing uses the text of a failed patch: run() drops it).
-//   * files are written back with LF endings (the Python's text mode wrote CRLF on Windows).
+// Checked against 143 recorded cases -- 22 text patches each of the six kinds, run() over twelve fake converted trees, twice each:
+//   * patch_mousehelper_grab with only ONE of the two functions present returns the text unchanged with ok = false (nothing uses
+//     the text of a failed patch: run() drops it).
+//   * files are written back with LF endings.
 
 #include <filesystem>
 #include <string>
@@ -21,7 +20,7 @@ namespace stdfs = std::filesystem;
 using Names = std::vector<std::string>;
 
 // Fixtures: a converted tree in the converter's style (`in`, plus `in_container` for an edition with GuiContainer),
-// and what the Python module produced for them (`expected*`: read and checked by hand -- the anchors it found, the
+// and the recorded output for them (`expected*`: read and checked by hand -- the anchors it found, the
 // order of the includes, the injected lines).
 stdfs::path data(const char* name) { return testing::data_path(std::string("java/projects/minecraft/testdata/controller_nav/") + name); }
 

@@ -4,23 +4,22 @@
 // environment's options, the selftest and the command. (The real emulator and the real MASM are run by the old executive's
 // tests and the exe gate: cb_tests holds no executive of its own.)
 //
-// What the old harness (state/work/typed-port/build.masm) established, and this port keeps: the products' parts (object,
+// What an old harness established, and these tests keep: the products' parts (object,
 // listing, log) as the tool made them, a part the tool did not make is absent, the cache serves a repeated source without a
 // run, an assembly that made no object is not kept, and the selftest's account and verdict.
 //
-// DIVERGES from the Python:
-//   * The results of assemble_many() are in the order the sources were given (the Python's were a dict whose cache hits came
-//     after the misses), and a stem given twice is a UsageError (the Python's dict kept the last).
+// Notes:
+//   * The results of assemble_many() are in the order the sources were given, and a stem given twice is a UsageError.
 //   * No work folder is left behind: the cold boot's folder is deleted when the call returns (the products are already read
-//     into the result), and `work` is empty; the Python left it for the caller to remove.
-//   * A .LST or .LOG keeps the CRLF line ends the tool wrote (the Python's text-mode read translated them to LF) -- as
+//     into the result), and `work` is empty.
+//   * A .LST or .LOG keeps the CRLF line ends the tool wrote -- as
 //     build/native_dos already does.
 //   * The cold boot runs through the DosRunner (the exe's DOSBox-X driver) and no longer polls a DONE.FLG sentinel of its own;
 //     whether the emulator exits by itself or is stopped once the products exist is the runner's.
-//   * The cache holds the object and the listing (the Python's zlib blob held the same; it never kept the log), in the layout
-//     of schema 2 of kind "masm", so the Python's entries are misses.
+//   * The cache holds the object and the listing, in the layout
+//     of schema 2 of kind "masm".
 //   * `masm` lists the object's segments without the "# work dir" line (there is none); its selftest names the functions as
-//     `name=size` instead of printing a Python dict.
+//     `name=size`.
 #include "cb/build/masm.hpp"
 
 #include <atomic>

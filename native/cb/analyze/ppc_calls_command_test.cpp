@@ -1,8 +1,8 @@
 // Tests of the `ppc-calls` command (cb/analyze/ppc_calls.hpp's `command`) on a real Xbox 360 module (LoganMinecraftTest.xex under
 // C:/Nexia360/Games: skipped when it or the xex program is not on this machine), against what `codebreaker ppc-calls ... -o` printed and
-// wrote (testdata/ppc_calls/logan.txt and logan.tsv, made by the translated Python).
+// wrote (testdata/ppc_calls/logan.txt and logan.tsv, recorded).
 //
-// DIVERGES from the Python: the written file has LF line ends (the Python's text mode wrote CRLF on Windows).
+// The written file has LF line ends.
 #include <string>
 
 #include "cb/analyze/ppc_calls.hpp"
@@ -13,7 +13,7 @@
 
 using namespace cb;
 
-CB_TEST("analyze.ppc_calls_command.a_module_is_analysed_like_the_python_did", [] {
+CB_TEST("analyze.ppc_calls_command.a_module_is_analysed_as_recorded", [] {
     const fs::ScopedTempDir dir{"cb-ppc-calls"};
     const auto module = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
     const auto tools = testing::real_xex_tools(dir.path() / "unpacked");

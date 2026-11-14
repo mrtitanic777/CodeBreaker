@@ -1,5 +1,4 @@
-// Tests of the data of an assembler module as C (asmdata). The expected values are what the Python original (asmdata.py)
-// made of the same sources, read through by hand: the bytes of a small data module, its relocations and labels, the typed
+// Tests of the data of an assembler module as C (asmdata). The expected values were read through by hand: the bytes of a small data module, its relocations and labels, the typed
 // C of its tables, and the numbered messages of the C library's tables.
 #include <format>
 
@@ -105,8 +104,7 @@ CB_TEST("port.asmdata.typed_tables_take_the_c_programs_types_and_what_points_to_
 });
 
 CB_TEST("port.asmdata.a_table_whose_type_has_no_size_is_noted_and_left_out", [] {
-    // DIVERGES: the Python divided by the missing size and raised TypeError for the whole module; the table is noted
-    // ("no size for ...") and the others are made.
+    // The table is noted ("no size for ...") and the others are made.
     const std::string c = "struct unknown_here;\nstruct unknown_here hook;\nchar *names[3];\n";
     const std::vector<std::string> program{c};
     const asm16::CTypes types(program, program);

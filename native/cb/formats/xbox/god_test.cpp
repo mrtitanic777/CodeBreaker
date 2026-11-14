@@ -1,14 +1,14 @@
 // Tests of cb/formats/xbox/god.hpp. The expected hashes of the 300-block package were computed by an independent
-// implementation of the layout (Python's hashlib, written from the format description, not from this code) and then
+// implementation of the layout and then
 // read against it: the part is 1 master block + 2 subparts (204 and 96 blocks) = 4096 + 2*4096 + 300*4096 bytes; the header
 // carries the title ids big-endian, the block count in 24 bits, the part count little-endian, the parts' size in 0x100s.
 //
-// DIVERGES from the Python tool:
-//  - A title cut at the header's 0x7E-byte limit never ends in half a surrogate pair (the Python cut the bytes).
-//  - A volume of more than 2^24 blocks (64 GiB) is a UsageError where the Python wrote the low 24 bits; an empty volume is a
-//    UsageError where the Python failed on the missing first part.
+// Behaviour pinned here:
+//  - A title cut at the header's 0x7E-byte limit never ends in half a surrogate pair.
+//  - A volume of more than 2^24 blocks (64 GiB) is a UsageError (the block count is 24 bits); an empty volume is a
+//    UsageError (there is no first part).
 //  - The part files are written as the volume streams (one subpart at a time), not collected first.
-//  - A part shorter than a master block adds nothing to the volume's size (the Python's arithmetic went negative).
+//  - A part shorter than a master block adds nothing to the volume's size.
 //  - The tool's info/list/iso2god/xex2god operations read and build XDVDFS volumes; they stay with the disc-image tool and are
 //    usage errors here.
 #include "cb/formats/xbox/god.hpp"
@@ -219,7 +219,7 @@ CB_TEST("formats.xbox.god.install_to_god", [] {
 
     const Bytes god = install_to_god(installed);
     CB_CHECK_EQ(god.size(), installed.size());
-    CB_CHECK_EQ(hex(crypto::sha1(god)), "ca911fd3cff2104ece3bba1c098c167aebe43d25");   // from the Python-side model of the transform
+    CB_CHECK_EQ(hex(crypto::sha1(god)), "ca911fd3cff2104ece3bba1c098c167aebe43d25");   // recorded from a reference model of the transform
     CB_CHECK_EQ(std::string(as_text(ByteView(god).first(4))), "LIVE");
     CB_CHECK_EQ(hex(ByteView(god).subspan(0x22C, 8)), "ffffffffffffffff");
     CB_CHECK_EQ(hex(ByteView(god).subspan(0x340, 8)), "0000ad0e00007000");

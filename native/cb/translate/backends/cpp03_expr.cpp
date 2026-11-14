@@ -407,7 +407,7 @@ Code Writer::write_new_array(const ir::Node& e, const ir::NewArray& n) {
         for (const ir::Node* x : n.init) parts.push_back(expr(x).code);
         return {std::format("(JArrayInit<{} >(), {})", array_element(ct), detail::join_commas(parts)), ct};
     }
-    if (n.dims.empty()) return {ct + "()", ct};   // `new T[]{}`: an empty array (the Python wrote `(JArrayInit<T >(), )`, which is not C++)
+    if (n.dims.empty()) return {ct + "()", ct};   // `new T[]{}`: an empty array (`(JArrayInit<T >(), )` would not be C++)
     const std::size_t total = ir::dims(e.type).first;
     std::vector<std::string> dims;
     for (const ir::Node* d : n.dims) dims.push_back(expr(d).code);

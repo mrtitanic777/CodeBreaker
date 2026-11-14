@@ -1,5 +1,4 @@
-// sound_fix: the text form is checked against goldens written by the Python pass and reviewed by hand
-// (testdata/gen_fixes_golden.py); the tree form is built here from the shapes the pass matches.
+// sound_fix: the text form is checked against reviewed goldens; the tree form is built here from the shapes the pass matches.
 #include <string>
 
 #include "cb/core/arena.hpp"

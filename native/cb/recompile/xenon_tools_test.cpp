@@ -1,11 +1,11 @@
 // Tests of the Xbox 360 preparation commands (cb/recompile/xenon_tools.hpp) on a real Xbox 360 program (LoganMinecraftTest.xex of C:/Nexia360/Games:
-// each test is skipped when it or the xex program is not on this machine), against what the translated Python wrote for the same program
-// (testdata/xenon_tools_goldens.txt, made by testdata/make_xenon_tools_goldens.py): the size and SHA-1 of every file the three commands write.
+// each test is skipped when it or the xex program is not on this machine), against the recorded output for the same program
+// (testdata/xenon_tools_goldens.txt): the size and SHA-1 of every file the three commands write.
 //
 // `switch-tables` also runs XenonAnalyse from the built XenonRecomp tree (native/xenonrecomp/build under the checkout the configuration names; the main
 // checkout's when the tests run in a worktree); it is skipped when that is not built, so no test builds XenonRecomp.
 //
-// DIVERGES from the Python: nothing in what is written. A missing .xex is an error (the Python raised, as an exception of the translated code).
+// A missing .xex is an error.
 #include "cb/recompile/xenon_tools.hpp"
 
 #include <string>
@@ -80,7 +80,7 @@ std::string golden_file(const std::string& name, const std::string& rel) {
     return {};
 }
 
-// The size and SHA-1 of a file. A configuration names the module that wrote it in its first line; the Python's name for it is put back (as the other
+// The size and SHA-1 of a file. A configuration names the module that wrote it in its first line; the golden's name for it (its source file) is put back (as the other
 // recompile tests do).
 std::string described(const stdfs::path& file) {
     Bytes data = fs::read_file(file);
@@ -97,7 +97,7 @@ std::string forward(std::string s) { return text::replace_all(s, "\\", "/"); }
 // What the command prints (nothing, for these) and its exit code.
 std::string run_one(const cli::Command& command, std::vector<std::string> args) { return testing::run_command(command, std::move(args)); }
 
-CB_TEST("recompile.xenon_tools.xex_basic_writes_what_the_python_writes", [] {
+CB_TEST("recompile.xenon_tools.xex_basic_writes_the_recorded_output", [] {
     Setup s;
     if (!s.ok) return;
     const std::string w = forward(fs::to_text(s.dir.path()));
@@ -106,7 +106,7 @@ CB_TEST("recompile.xenon_tools.xex_basic_writes_what_the_python_writes", [] {
     CB_CHECK(!stdfs::exists(s.dir.path() / "basic" / "default.xex.part"));
 });
 
-CB_TEST("recompile.xenon_tools.xenon_config_writes_what_the_python_writes", [] {
+CB_TEST("recompile.xenon_tools.xenon_config_writes_the_recorded_output", [] {
     Setup s;
     if (!s.ok) return;
     const std::string w = forward(fs::to_text(s.dir.path()));

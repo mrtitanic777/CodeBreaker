@@ -22,10 +22,10 @@ namespace nc = cb::exact::habits::newcomp;
 // The cases were read through for what each habit is: the notes are the reading of the code (REVIEWED: for the 159 that
 // are the same, the habit named is the one the case was written to show; the rest stop where the code differs).
 //
-// DIVERGES: a procedure cut short in the middle of an instruction or its entry (two of the cases) raised IndexError in the
-// original; here it is answered ("no pattern", "the entry is not call helper / dw frame").
-// The text of an instruction with no operand has no trailing blank (the original's "ret "), which shows in the
-// notes that name an instruction; nothing else in what is answered. The original's module tables DEBUG, AMAP and GWALK are not carried over: the
+// Design notes: a procedure cut short in the middle of an instruction or its entry (two of the cases) is answered
+// ("no pattern", "the entry is not call helper / dw frame") rather than read past its end.
+// The text of an instruction with no operand has no trailing blank ("ret", not "ret "), which shows in the
+// notes that name an instruction; nothing else in what is answered. There are no module-level DEBUG, AMAP and GWALK tables: the
 // alignment and the compiled code's instruction starts are part of the answer (`Finding`); DEBUG's lines are not printed.
 
 namespace {
@@ -101,7 +101,7 @@ CB_TEST("exact.habits.newcomp.the_originals_answers", [] {
             got = "{\"ok\":" + (r ? newcomp_test_json(*r) : std::string("null")) + "}";
         }
         ++n;
-        if (want.starts_with("{\"err\"")) {   // (a procedure cut short: the original read past its end - IndexError - this answers)
+        if (want.starts_with("{\"err\"")) {   // (a procedure cut short: this answers it)
             ++errors;
             continue;
         }

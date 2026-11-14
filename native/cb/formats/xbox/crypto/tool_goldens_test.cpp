@@ -1,22 +1,22 @@
-// Tests of the small tools of the `crypto` command against what the Python printed and wrote for the same inputs: testdata/tools_goldens.txt, made by
-// testdata/make_tools_goldens.py (`codebreaker.exe crypto <tool> ...`, the translated Python; the exp_signer cases by `python -m codebreaker` because the
-// exe's ctypes key structures cannot sign). Each case builds the inputs the generator builds (pattern(n, seed) and the structured images below),
+// Tests of the small tools of the `crypto` command against recorded output for the same inputs: testdata/tools_goldens.txt (recorded with
+// `codebreaker.exe crypto <tool> ...`; the exp_signer cases were recorded separately because the
+// recording exe's key structures could not sign). Each case builds the inputs the generator builds (pattern(n, seed) and the structured images below),
 // runs the native command in a folder of its own and compares its output and the files it wrote (size and SHA-1) with the golden.
 //
 // The tools covered: bin2lang bootchain cpukey_ecd exp_signer flashplan format_key fuses hypervisor keyvault nand patch_checker smc xdk_extract
 // xell_unpack xval.
 //
-// DIVERGES from the Python (each is normalised here, with what it is):
-//   bin2lang, format_key  the Python's print() adds a blank line after the source it has printed; the native tool prints the source once
-//   cpukey_ecd            the verdicts are compared as values: the native tool prints yes/no and one "error:" line each, not Python's dict and list repr
-//   fuses                 the Python prints the CPU key a second time at the end
-//   smc config            fields the data is too short for are "-" (the Python printed None)
+// Behaviour pinned here:
+//   bin2lang, format_key  the recording has a blank line after the source it has printed; the native tool prints the source once
+//   cpukey_ecd            the verdicts are compared as values: the native tool prints yes/no and one "error:" line each, not a dict and list repr
+//   fuses                 the recorded output prints the CPU key a second time at the end
+//   smc config            fields the data is too short for are "-"
 //   nand info             the native tool lists the header's fields as rows; only path, size and type are compared
-//   hypervisor info       keys_are_55 is yes/no, and the hash ranges are rows of hex (the Python printed a list of decimal pairs)
-//   xval                  the typo "Intergrity" of one finding is fixed (here and in the Python source)
-//   xell_unpack           the native tool lists the files it wrote; the Python printed nothing
-//   xdk_extract           the Python crashed at the end of the file after extracting everything (exit 1); the native tool exits 0
-//   files                 text the Python wrote with CRLF (it writes text the Windows way) is written with LF; compared with the CRLF made LF
+//   hypervisor info       keys_are_55 is yes/no, and the hash ranges are rows of hex
+//   xval                  the typo "Intergrity" of one finding is fixed
+//   xell_unpack           the native tool lists the files it wrote; the recording printed nothing
+//   xdk_extract           the recording crashed at the end of the file after extracting everything (exit 1); the native tool exits 0
+//   files                 text recorded with CRLF (written the Windows way) is written with LF; compared with the CRLF made LF
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -215,7 +215,7 @@ struct Case {
     std::vector<std::string> text_outputs;
 };
 
-// A scope in which the current folder is the case's, as the Python ran in it.
+// A scope in which the current folder is the case's, as the recording ran.
 class InFolder {
 public:
     explicit InFolder(const stdfs::path& folder) : before_(stdfs::current_path()) { stdfs::current_path(folder); }
@@ -305,13 +305,13 @@ std::string only_rows(const std::string& text_in, std::initializer_list<std::str
 
 void check_case(const Case& c, const std::string& expected) {
     const std::string got = run_case(c);
-    if (got != expected) testing::record_failure(__FILE__, __LINE__, "case " + c.name + ":\n--- native ---\n" + got + "--- python ---\n" + expected);
+    if (got != expected) testing::record_failure(__FILE__, __LINE__, "case " + c.name + ":\n--- native ---\n" + got + "--- recorded ---\n" + expected);
     testing::count_check();
 }
 
 // ---- tests --------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.tool_goldens.bin2lang_writes_each_language_as_the_python_does", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.bin2lang_writes_each_language", [] {
     const Bytes data37 = pattern(37, 1);
     const std::vector<std::pair<std::string, std::string>> languages = {{"python", "Data"}, {"c", "Buf"}, {"c++", "ExpPubKey"}, {"csharp", "Blob"},
                                                                          {"php", "payload"}, {"php-old", "payload"}, {"py", "x"}};
@@ -336,7 +336,7 @@ CB_TEST("formats.xbox.crypto.tool_goldens.bin2lang_refuses_an_unknown_language_a
     CB_CHECK((fails_with<NotFoundError>(crypto, {"bin2lang", w + "/missing.bin", w + "/o.txt"})));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.bootchain_finds_the_stages_the_python_finds", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.bootchain_finds_the_stages", [] {
     check_case({"bootchain_full", "bootchain", {"{w}/nand.bin"}, {{"nand.bin", make_nand()}}, {}, {}}, golden("bootchain_full"));
     check_case({"bootchain_empty", "bootchain", {"{w}/nand.bin"}, {{"nand.bin", Bytes(0x1000, 0)}}, {}, {}}, golden("bootchain_empty"));
     check_case({"bootchain_short", "bootchain", {"{w}/nand.bin"}, {{"nand.bin", Bytes(0x20, 0)}}, {}, {}}, golden("bootchain_short"));
@@ -356,7 +356,7 @@ CB_TEST("formats.xbox.crypto.tool_goldens.bootchain_extracts_a_stage", [] {
     CB_CHECK((fails_with<UsageError>(crypto, {"bootchain", w + "/nand.bin", "--extract", "1"})));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.cpukey_ecd_agrees_with_the_python_on_its_verdicts", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.cpukey_ecd_matches_the_recorded_output", [] {
     namespace ecd = xcrypto::cpukey_ecd;
     struct Row {
         std::string name;
@@ -390,8 +390,8 @@ CB_TEST("formats.xbox.crypto.tool_goldens.cpukey_ecd_agrees_with_the_python_on_i
                a.hamming_weight == b.hamming_weight && a.ecd_ok == b.ecd_ok && a.errors == b.errors;
     };
     for (const Row& row : rows) CB_CHECK(same(ecd::validate(row.key), parse(golden(row.name))));
-    // the valid keys: the golden's key is not in the file, so take it from the Python's own generator by the property that matters: a key made by
-    // the native generator passes the verdict the Python gives a key made the same way, and each way of breaking one gives the Python's reasons
+    // the valid keys: the golden's key is not in the file, so take it from a key generator by the property that matters: a key made by
+    // the native generator passes the verdict a key made the same way gets in the recording, and each way of breaking one gives the recorded reasons
     xcrypto::xecrypt::SeededRandom random(7);
     for (int i = 0; i < 20; ++i) {
         const ecd::Key key = ecd::generate(random);
@@ -410,9 +410,9 @@ CB_TEST("formats.xbox.crypto.tool_goldens.cpukey_ecd_agrees_with_the_python_on_i
     }
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.fuses_print_the_lines_as_the_python_does", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.fuses_print_the_lines", [] {
     for (const auto& [name, data] : std::vector<std::pair<std::string, Bytes>>{{"fuses_pattern", pattern(0x60, 2)}, {"fuses_clean", Bytes(0x60, 0)}, {"fuses_longer", pattern(0x80, 3)}})
-        check_case({name, "fuses", {"{w}/fuses.bin"}, {{"fuses.bin", data}}, {}, {}}, without_last_row(golden(name), "  cpu_key"));   // (the Python printed the CPU key again, last)
+        check_case({name, "fuses", {"{w}/fuses.bin"}, {{"fuses.bin", data}}, {}, {}}, without_last_row(golden(name), "  cpu_key"));   //
 });
 
 CB_TEST("formats.xbox.crypto.tool_goldens.fuses_refuse_too_little", [] {
@@ -421,14 +421,14 @@ CB_TEST("formats.xbox.crypto.tool_goldens.fuses_refuse_too_little", [] {
     CB_CHECK((fails_with<FormatError>(xcrypto::command(xcrypto::Environment{}), {"fuses", forward(fs::to_text(dir.path())) + "/f.bin"})));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.keyvault_reads_the_fields_the_python_reads", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.keyvault_reads_the_fields", [] {
     const std::vector<std::tuple<std::string, std::uint32_t, unsigned>> rows = {{"retail", 2, 0x00FF}, {"devkit", 1, 0xFF00}, {"recovery", 0x40000001, 0},
                                                                                 {"unknown", 0x77, 1}, {"test_retail", 0x40000002, 0xFFFF}};
     for (const auto& [name, type, region] : rows)
         check_case({"keyvault_" + name, "keyvault", {"{w}/kv.bin"}, {{"kv.bin", make_keyvault(type, region)}}, {}, {}}, golden("keyvault_" + name));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.flashplan_gives_the_pythons_advice", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.flashplan_gives_the_recorded_advice", [] {
     const std::vector<std::pair<std::string, std::vector<std::string>>> rows = {
         {"flashplan_plan", {"plan", "Corona 4G", "RGH 3"}},
         {"flashplan_plan_jasper", {"plan", "Jasper 256MB", "RGH 1.2", "--class", "FreeBoot"}},
@@ -448,7 +448,7 @@ CB_TEST("formats.xbox.crypto.tool_goldens.flashplan_gives_the_pythons_advice", [
     for (const auto& [name, args] : rows) check_case({name, "flashplan", args, {}, {}, {}}, golden(name));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.smc_decrypts_encrypts_extracts_and_reads_like_the_python", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.smc_decrypts_encrypts_extracts_and_reads", [] {
     const Bytes plain = make_smc_plain();
     const Bytes encrypted = xcrypto::xecrypt::smc_encrypt(plain);
     Bytes nand = make_flash_header(0x1000, 0x1800, 0x2000, 0x4000);
@@ -491,17 +491,17 @@ CB_TEST("formats.xbox.crypto.tool_goldens.hypervisor_info_and_clean", [] {
     const Bytes hv = make_hypervisor(21);
     const std::string got = run_case({"hypervisor_info", "hypervisor", {"info", "{w}/hv.bin"}, {{"hv.bin", hv}}, {}, {}});
     std::string expected = golden("hypervisor_info");
-    // keys_are_55 and the hash ranges are written differently; the rows the Python printed are the same values
+    // keys_are_55 and the hash ranges are written differently; the recorded rows are the same values
     CB_CHECK_EQ(only_rows(got, {"  size", "  build", "  qfe", "  white_key", "  aes_key", "  hash_key", "  security_hash_100f0"}),
                 only_rows(expected, {"  size", "  build", "  qfe", "  white_key", "  aes_key", "  hash_key", "  security_hash_100f0"}));
     CB_CHECK(got.find("keys_are_55          yes") != std::string::npos && expected.find("keys_are_55          True") != std::string::npos);
     // the pairs: "(92801934, 294918042)" in decimal against "0x05... 0x11..." in hex
     static const std::regex pair_pattern("\\((\\d+), (\\d+)\\)");
-    std::vector<std::string> python_pairs;
+    std::vector<std::string> recorded_pairs;
     for (std::sregex_iterator it(expected.begin(), expected.end(), pair_pattern), end; it != end; ++it)
-        python_pairs.push_back(std::format("0x{:08X} 0x{:08X}", std::stoul((*it)[1]), std::stoul((*it)[2])));
-    CB_CHECK_EQ(python_pairs.size(), std::size_t{6});
-    for (std::size_t i = 0; i < python_pairs.size(); ++i) CB_CHECK(got.find(std::format("  {:<20} {}", std::format("hash_range_{}", i), python_pairs[i])) != std::string::npos);
+        recorded_pairs.push_back(std::format("0x{:08X} 0x{:08X}", std::stoul((*it)[1]), std::stoul((*it)[2])));
+    CB_CHECK_EQ(recorded_pairs.size(), std::size_t{6});
+    for (std::size_t i = 0; i < recorded_pairs.size(); ++i) CB_CHECK(got.find(std::format("  {:<20} {}", std::format("hash_range_{}", i), recorded_pairs[i])) != std::string::npos);
     check_case({"hypervisor_clean", "hypervisor", {"clean", "{w}/dumped.bin", "{w}/base.bin", "{w}/clean.bin"}, {{"dumped.bin", hv}, {"base.bin", make_hypervisor(22)}}, {"clean.bin"}, {}},
                golden("hypervisor_clean"));
     check_case({"hypervisor_clean_short_base", "hypervisor", {"clean", "{w}/dumped.bin", "{w}/base.bin", "{w}/clean.bin"}, {{"dumped.bin", hv}, {"base.bin", pattern(0x12000, 23)}},
@@ -509,7 +509,7 @@ CB_TEST("formats.xbox.crypto.tool_goldens.hypervisor_info_and_clean", [] {
                golden("hypervisor_clean_short_base"));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.xval_names_the_violations_the_python_names", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.xval_names_the_violations", [] {
     // the encrypted values are the generator's (DES of the two words under the serial's key); the arguments are in the goldens' case names only by
     // their meaning, so they are made again here with the native DES and the HMAC key the tool documents
     const auto encrypted = [](const std::string& serial, std::uint32_t high, std::uint32_t low) {
@@ -540,24 +540,24 @@ CB_TEST("formats.xbox.crypto.tool_goldens.xval_refuses_what_is_not_a_serial_or_a
     CB_CHECK((fails_with<UsageError>(crypto, {"xval", "123456789012", "not hex at all!!"})));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.patch_checker_reports_the_conflicts_the_python_reports", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.patch_checker_reports_the_conflicts", [] {
     const Bytes table_a = make_patch_table({{0x1000, pattern(16, 24)}, {0x1008, pattern(16, 25)}, {0x2000, pattern(8, 26)}});
     const Bytes table_b = make_patch_table({{0x100, pattern(8, 27)}, {0x200, pattern(8, 28)}});
     check_case({"patch_checker_default", "patch_checker", {},
                 {{"Output/NonZero/RGL_flash.bin", table_a}, {"Output/NonZero/RGL_hdd.bin", table_b}, {"Output/Zero/VRGL_flash.bin", table_b}, {"Output/Zero/VRGL_hdd.bin", table_a}}, {}, {}},
                golden("patch_checker_default"));
-    // tables named on the command line are checked instead of the default four (the Python reads only the four)
+    // tables named on the command line are checked instead of the default four
     const std::string got = run_case({"patch_checker_files", "patch_checker", {"{w}/a.bin", "{w}/b.bin"}, {{"a.bin", table_a}, {"b.bin", table_b}}, {}, {}});
     CB_CHECK_EQ(got, "Patch Conflict!\nPatch A: 0x00001000 - 0x00001010\nPatch B: 0x00001008 - 0x00001018\nPatch Conflict!\nPatch A: 0x00001008 - 0x00001018\nPatch B: 0x00001000 - 0x00001010\nexit=0\n");
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.xell_unpack_splits_the_images_like_the_python", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.xell_unpack_splits_the_images", [] {
     Case c{"xell_unpack", "xell_unpack", {}, {{"XeLL/xell-1f.bin", make_xell(1)}, {"XeLL/xell-2f.bin", make_xell(2)}, {"XeLL/xell-gggggg.bin", make_xell(3)}}, {}, {}};
     for (const char* name : {"xell-1f", "xell-2f", "xell-gggggg"})
         for (const char* suffix : {"-stage-1.bin", "-stage-2-compressed.elf", "-stage-2-decompressed.elf"}) c.outputs.push_back(std::string("XeLL/") + name + suffix);
     const std::string expected = golden("xell_unpack");
     const std::string got = run_case(c);
-    // (the native tool lists the files it wrote; the Python printed nothing)
+    // (the native tool lists the files it wrote; the recording printed nothing)
     CB_CHECK_EQ(only_rows(got, {"file ", "exit="}), only_rows(expected, {"file ", "exit="}));
     CB_CHECK(got.find("XeLL/xell-1f-stage-1.bin") != std::string::npos);
 });
@@ -578,7 +578,7 @@ CB_TEST("formats.xbox.crypto.tool_goldens.xdk_extract_writes_the_cabinets_after_
     const std::string cabs[] = {"xdk_0.cab", "xdk_1.cab", "xdk_2.cab"};
     Case c{"xdk_extract", "xdk_extract", {"{w}/setup.exe", "{w}/cabs", "-p", "xdk"}, {{"setup.exe", make_pe({300, 5000, 64})}}, {}, {}};
     for (const std::string& cab : cabs) c.outputs.push_back("cabs/" + cab);
-    // (the Python extracted all three and then crashed reading past the end of the file: exit 1)
+    //
     check_case(c, text::replace_all(golden("xdk_extract"), "exit=1", "exit=0"));
     check_case({"xdk_extract_no_cabs", "xdk_extract", {"{w}/setup.exe", "{w}/cabs"}, {{"setup.exe", make_pe({})}}, {}, {}}, text::replace_all(golden("xdk_extract_no_cabs"), "exit=1", "exit=0"));
 });
@@ -596,7 +596,7 @@ CB_TEST("formats.xbox.crypto.tool_goldens.xdk_extract_refuses_what_is_not_an_i38
     CB_CHECK((fails_with<FormatError>(crypto, {"xdk_extract", w + "/arm.exe", w + "/o"})));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.exp_signer_signs_like_the_python", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.exp_signer_signs", [] {
     const Bytes prv = read_testdata("test_rsa_prv.bin");
     check_case({"exp_signer_plain", "exp_signer", {"{w}/payload.bin", "-o", "{w}/out.bin", "-k", "{w}/prv.bin"}, {{"payload.bin", pattern(100, 31)}, {"prv.bin", prv}}, {"out.bin"}, {}},
                golden("exp_signer_plain"));
@@ -607,7 +607,7 @@ CB_TEST("formats.xbox.crypto.tool_goldens.exp_signer_signs_like_the_python", [] 
                golden("exp_signer_in_place"));
 });
 
-CB_TEST("formats.xbox.crypto.tool_goldens.format_key_writes_the_header_like_the_python", [] {
+CB_TEST("formats.xbox.crypto.tool_goldens.format_key_writes_the_header", [] {
     check_case({"format_key", "format_key", {}, {{"Keys/custom_pub.bin", read_testdata("test_rsa_pub.bin")}}, {"Output/Zero/ExpPubKey.h"}, {"Output/Zero/ExpPubKey.h"}},
                without_print_newline(golden("format_key")));
 });

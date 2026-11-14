@@ -1,5 +1,4 @@
-// applet_ping: the text form is checked against goldens written by the Python pass and reviewed by hand
-// (testdata/gen_fixes_golden.py); the tree form is built here from the shape the pass matches.
+// applet_ping: the text form is checked against reviewed goldens; the tree form is built here from the shape the pass matches.
 #include <string>
 
 #include "cb/core/arena.hpp"

@@ -1,7 +1,6 @@
-// The port of the assembly against what the Python gave over real programs. Runs only when CB_ASM16_ORACLE names a folder
-// with expected.txt and inputs.txt of the old harness (state/work/typed-port/port.asm16: `label<TAB>json` lines made by
-// codebreaker.port.asm16 over the assembly of five old Microsoft tools, and the files they were made from). For each assembly
-// module of each tree it ports the module twice as the harness did (plain; then with argument types, far routines, a data
+// The port of the assembly against recorded answers over real programs. Runs only when CB_ASM16_ORACLE names a folder
+// with expected.txt and inputs.txt (`label<TAB>json` lines recorded over the assembly of five old Microsoft tools, and the files they were made from). For each assembly
+// module of each tree it ports the module twice (plain; then with argument types, far routines, a data
 // map, a listing and aliases) and compares what it means: the text emitted, the kinds before every line, each routine's exit
 // and writes, the arguments found.
 // cb-unity: alone
@@ -51,7 +50,7 @@ struct Expected {
 
 J origins_json(const OriginSet& o) {
     std::vector<J> v;
-    for (const Origin& x : o.get()) {   // (the set is in the order the Python sorted them: by kind, then the names)
+    for (const Origin& x : o.get()) {   // (the set is ordered by kind, then the names)
         if (x.source == Origin::Source::In) v.push_back(J::array({"in", x.a, x.b}));
         else if (x.source == Origin::Source::Param) v.push_back(J::array({"param", x.a, x.n}));
         else v.push_back(J::array({"segof", x.a}));
@@ -100,7 +99,7 @@ std::vector<std::string> split_tabs(const std::string& line) {
     return out;
 }
 
-// Seconds spent in the module's real work (what the old harness timed as CTypes, c_functions, Port(), run and emit).
+// Seconds spent in the module's real work (CTypes, c_functions, the port, run and emit).
 struct Clock {
     double ctypes = 0, c_functions = 0, construct = 0, run = 0, emit = 0;
     template <class F>
@@ -137,7 +136,7 @@ std::string first_diff(const std::string& a, const std::string& b) {
 
 CB_TEST("port.asm16.oracle", [] {
     const auto dir_env = fs::get_env("CB_ASM16_ORACLE");
-    if (!dir_env) return;   // (the old harness's output is not part of the tree)
+    if (!dir_env) return;   // (the recorded output is not part of the tree)
     const std::filesystem::path dir = fs::from_text(*dir_env);
     const Expected exp(dir / "expected.txt");
     std::map<std::string, std::vector<std::string>> trees, asms;
@@ -273,7 +272,7 @@ CB_TEST("port.asm16.oracle", [] {
                     error = e.what();
                 }
                 const bool want_ok = want_run->is_string();
-                c.check(ran == want_ok, tag + " run: " + (ran ? "ran, Python failed" : "failed (" + error + "), Python ran"));
+                c.check(ran == want_ok, tag + " run: " + (ran ? "ran, the record says it failed" : "failed (" + error + "), the record says it ran"));
                 if (!ran || !want_ok) continue;
                 if (const auto w = exp.get(tag + " called")) c.check(J(std::vector<std::string>(m.called().begin(), m.called().end())) == *w, tag + " called");
                 if (const auto w = exp.get(tag + " own_ptr")) {
@@ -334,7 +333,7 @@ CB_TEST("port.asm16.oracle", [] {
                 if (want_emit->is_string()) {
                     c.check(emitted && text_out == want_emit->get<std::string>(), tag + " emit: " + (emitted ? first_diff(text_out, want_emit->get<std::string>()) : error));
                 } else {
-                    c.check(!emitted, tag + " emit: Python failed (" + want_emit->dump().substr(0, 160) + "), ours emitted");
+                    c.check(!emitted, tag + " emit: the record says it failed (" + want_emit->dump().substr(0, 160) + "), ours emitted");
                     if (!emitted) {   // (the same line, the same complaint)
                         const std::string py_msg = (*want_emit)[2].get<std::string>();
                         c.check(py_msg == error, tag + " emit message: got " + error + " want " + py_msg);

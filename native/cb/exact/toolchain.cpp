@@ -24,7 +24,7 @@ namespace {
 
 [[noreturn]] void toolchain_bad(const std::string& what) { throw FormatError("toolchain profile", 0, what); }
 
-// int(x, 0): a number, or text as a number ("0x749D", "256")
+// A number, or text read as a number in base 0 ("0x749D", "256")
 std::int64_t toolchain_number(const OJson& v, std::string_view where) {
     if (v.is_number_integer()) return v.get<std::int64_t>();
     if (v.is_string()) {

@@ -4,8 +4,8 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from codebreaker/platforms/vxd.py: the descriptor is data only (the Python's Ref slots -- the LE reader, the
-// driver emulator, build/driver's tool, source/driver_writer -- are the layers' own tables now, keyed on Id::Vxd);
+// The descriptor is data only (the LE reader, the driver emulator, build/driver's tool and source/driver_writer are the
+// layers' own tables, keyed on Id::Vxd);
 // tools() is the build layer's. entries() is vxd_entry_points().
 
 using namespace cb;

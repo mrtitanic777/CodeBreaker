@@ -6,7 +6,7 @@
 // <module>.names the names it was given after discovery, and <module>.answers.json what it answered, in the order
 // asked: discovery (with a digest of every decoded function), the call graph, the strings table, uses, stack
 // strings and formats, and the resource uses. Each test builds the Image from the first two files and runs the
-// C++ analyses on it. The files were made by state/work/cpp-refactor/analyze/gen.py from the live Python and DLL.
+// C++ analyses on it. The files are recorded golden data.
 //
 // What is compared is what the answer means: lists the engine built in a hash order that no one chose (the order of
 // a function's callees, the far addresses one instruction holds) are compared as sets, and the topological order of
@@ -62,7 +62,7 @@ std::optional<std::int64_t> as_optional(const Json& j) {
     return j.is_null() ? std::nullopt : std::optional<std::int64_t>(as_int(j));
 }
 
-// ---- a decoded function as text, the way gen.py wrote it ---------------------------------------------------------
+// ---- a decoded function as text, the way the golden files write it ---------------------------------------------------------
 
 std::string dash(const std::string& s) { return s.empty() ? "-" : s; }
 

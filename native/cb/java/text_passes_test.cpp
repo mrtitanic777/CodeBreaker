@@ -1,5 +1,5 @@
-// Tests of cb/java/finalize, prune and init_driver against what the original Python passes (codebreaker.java.transpile) made of the
-// same inputs: testdata/{finalize,tree,init}.golden.json (state/work/java_w3b8/golden_text.py).
+// Tests of cb/java/finalize, prune and init_driver against the recorded results for the
+// same inputs: testdata/{finalize,tree,init}.golden.json.
 #include <nlohmann/json.hpp>
 
 #include <map>
@@ -21,13 +21,12 @@ namespace {
 namespace stdfs = std::filesystem;
 using cb::Json;
 
-// The Python wrote its files in text mode (CRLF on Windows); the new text writer writes LF on every platform (DIVERGES: the goldens are
-// compared with their line ends normalised).
+// The text writer writes LF on every platform; the goldens are compared with their line ends normalised.
 std::string tp_lf(const std::string& text) { return cb::text::replace_all(text, "\r\n", "\n"); }
 
 Json tp_golden(const char* name) { return cb::json::load(cb::testing::data_path(std::string("java/testdata/") + name)); }
 
-CB_TEST("java.finalize.cases_match_python", [] {
+CB_TEST("java.finalize.cases_match_golden", [] {
     const Json cases = tp_golden("finalize.golden.json");
     CB_CHECK_EQ(cases.size(), std::size_t{6});
     const std::set<std::string, std::less<>> escapes = {"Item"};
@@ -51,12 +50,12 @@ CB_TEST("java.finalize.cases_match_python", [] {
 });
 
 CB_TEST("java.finalize.discarded_new_keeps_the_blank_lines", [] {
-    // DIVERGES from the Python: its `\s*$` swallowed the blank lines that followed a rewritten statement; they are kept
+    // the blank lines that follow a rewritten statement are kept
     const std::string got = cb::java::finalize::finalize_emitted("new Foo();\n\n\nint x;\n");
     CB_CHECK_EQ(got, "delete new Foo();  // J2X-BUGFIX discarded-new-leak\n\n\nint x;\n");
 });
 
-CB_TEST("java.prune.tree_passes_match_python", [] {
+CB_TEST("java.prune.tree_passes_match_golden", [] {
     const Json golden = tp_golden("tree.golden.json");
     cb::fs::ScopedTempDir tmp("cbprune");
     for (const auto& [name, text] : golden["files"].items()) cb::fs::write_file(tmp.path() / name, cb::ByteView(reinterpret_cast<const std::uint8_t*>(text.get<std::string>().data()), text.get<std::string>().size()));
@@ -76,7 +75,7 @@ CB_TEST("java.prune.tree_passes_match_python", [] {
     CB_CHECK(messages == golden["messages"].get<std::vector<std::string>>());
 });
 
-CB_TEST("java.prune.defined_symbols_match_python", [] {
+CB_TEST("java.prune.defined_symbols_match_golden", [] {
     const Json golden = tp_golden("tree.golden.json");
     for (const auto& [name, input] : golden["symbol_inputs"].items()) {
         const std::set<std::string> got = cb::java::prune::defined_symbols(input.get<std::string>());
@@ -98,7 +97,7 @@ std::vector<cb::java::ir::JClass> tp_init_classes() {
     return classes;
 }
 
-CB_TEST("java.init_driver.order_matches_python", [] {
+CB_TEST("java.init_driver.order_matches_golden", [] {
     const Json golden = tp_golden("init.golden.json");
     const auto classes = tp_init_classes();
     CB_CHECK_EQ(golden["orders"].size(), std::size_t{12});
@@ -109,7 +108,7 @@ CB_TEST("java.init_driver.order_matches_python", [] {
     }
 });
 
-CB_TEST("java.init_driver.files_match_python", [] {
+CB_TEST("java.init_driver.files_match_golden", [] {
     const Json golden = tp_golden("init.golden.json");
     const auto classes = tp_init_classes();
     cb::fs::ScopedTempDir tmp("cbinit");

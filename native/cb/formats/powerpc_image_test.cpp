@@ -1,5 +1,5 @@
 // Tests of cb/formats/powerpc_image.hpp. natalsu.exe is a real Xbox 360 image (the dashboard's natalsu, unpacked from its .xex; it is
-// held as it sits in memory); natalsu.golden.txt is what codebreaker/formats/powerpc_image.py says of it (gen_powerpc_image_golden.py).
+// held as it sits in memory); natalsu.golden.txt is the recorded description of it (gen_powerpc_image_golden.py).
 // The run-time type information and the file layout are tested on a small image made here, whose every word is written out.
 #include "cb/formats/powerpc_image.hpp"
 
@@ -27,7 +27,7 @@ std::vector<std::string> golden_lines() {
 
 std::uint64_t hex_of(const std::string& s) { return std::stoull(s, nullptr, 16); }
 
-CB_TEST("formats.powerpc_image.a_real_image_as_the_python_read_it", [] {
+CB_TEST("formats.powerpc_image.a_real_image", [] {
     const Image image = natalsu();
     CB_CHECK_EQ(image.base(), 0x98000000u);
     CB_CHECK(image.memory_layout());

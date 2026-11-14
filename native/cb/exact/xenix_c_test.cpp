@@ -5,12 +5,12 @@
 // instructions in which one block is moved), the variants and the cache without the kit. With the kit (CB_KIT_XENIX86 names the XENIX
 // files' folder) both variants compile a small C file to an object, and one that does not parse is refused with the pass that stopped.
 //
-// Hand-checked against xenix_c.py: each rule's pattern and result, the patch's offsets (which bytes `was` must be), the hook's registers
+// Hand-checked: each rule's pattern and result, the patch's offsets (which bytes `was` must be), the hook's registers
 // and the list's links after a swap, the line a stopped pass adds to the log.
 //
-// DIVERGES from xenix_c.py: a variant's `patch` that is not a boolean is false (the Python took any truthy value); the cache key is made
-// from the profile's JSON text, not Python's repr of its items; the rules are applied by their letters in order, a letter that is no rule is
-// a UsageError (the Python raised KeyError); a source with LF line ends is the same compile as one with CR LF (as before).
+// Design notes: a variant's `patch` that is not a boolean is false; the cache key is made
+// from the profile's JSON text; the rules are applied by their letters in order, a letter that is no rule is
+// a UsageError; a source with LF line ends is the same compile as one with CR LF.
 #include "cb/exact/xenix_c.hpp"
 
 #include <nlohmann/json.hpp>

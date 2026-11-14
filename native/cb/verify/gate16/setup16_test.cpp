@@ -10,15 +10,14 @@
 #include "cb/formats/iso9660.hpp"
 #include "cb/jobs/workers.hpp"
 
-// DIVERGES from verify/gate16/setup16.py:
-//   * the CD is patched in place (cb/formats/iso9660.hpp), not written again by pycdlib: every file that was not
+// Design notes:
+//   * the CD is patched in place (cb/formats/iso9660.hpp): every file that was not
 //     replaced stays where it was on the image;
-//   * the verdicts are an enum (`word()` gives the strings the Python returned, byte for byte);
-//   * a screen too short to hold one of the three pixels the License and error-box tests look at is "not that screen"; the
-//     Python raised IndexError there, which ended the run;
+//   * the verdicts are an enum (`word()` gives the strings);
+//   * a screen too short to hold one of the three pixels the License and error-box tests look at is "not that screen";
 //   * a picture QEMU wrote only in part, a monitor that does not answer yet, and a PPM that cannot be read are all "no
-//     picture this time" and the run looks again, as the Python did for OSError/ValueError; the Enter that cannot be sent
-//     is not an error either (the wait that follows ends as FAIL(timeout)); the Python raised;
+//     picture this time" and the run looks again; the Enter that cannot be sent
+//     is not an error either (the wait that follows ends as FAIL(timeout));
 //   * the CD is Setup's with a file replaced -- the test of continue_test starts cb_fake_qemu.exe (verify/gate16/
 //     fake_qemu_main.cpp), which speaks QEMU's monitor, in QEMU's place, and does not boot anything.
 

@@ -1,7 +1,7 @@
 // cb-unity: alone
-// The old harness of the Python module (state/work/typed-port/coverage.reach): what the original answered on real files.
-// The inputs and answers were copied into coverage/testdata and read through (the platforms they name, the numbers in the
-// tables). Only the words of the report's first sentence differ: it names the command as `codebreaker reach` now.
+// Golden tests of `reach`: what it answers on real files.
+// The inputs and answers are kept into coverage/testdata and read through (the platforms they name, the numbers in the
+// tables). Only the words of the report's first sentence differ: it names the command as `codebreaker reach`.
 #include <algorithm>
 #include <format>
 

@@ -21,7 +21,7 @@ std::string hex_of(ByteView b) {
     return out;
 }
 
-// The two objects of the old harness's "a" program (an OMF crt0 and a module of C), as omf.read returns them.
+// The two objects of the recorded "a" program (an OMF crt0 and a module of C), as omf.read returns them.
 LinkInput crt0(bool odd = false) {
     LinkInput in;
     in.name = "a_crt0.obj";
@@ -82,7 +82,7 @@ std::uint16_t word(const Bytes& b, std::size_t at) { return static_cast<std::uin
 
 }  // namespace
 
-// The recorded result of the Python linker on these two objects (exact.linkemu harness, first case), whose header and
+// The recorded result of the linker on these two objects (first case of the recording), whose header and
 // fix-ups were checked word by word: 658 bytes, DGROUP at 0x70, relocations (0x10, seg 0) and (0x12, seg 7), the
 // stack at paragraph 0xd with 0x100 bytes, the checksum making the words add up to 0xFFFF.
 CB_TEST("exact.linkemu.two_modules_of_a_small_model_program", [] {

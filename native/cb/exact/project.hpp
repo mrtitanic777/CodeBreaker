@@ -37,7 +37,7 @@
 //     modules::run(*p->as_modules(), args);                  // a stage driven from the project
 //
 // What the project cannot do itself comes in through `Services`: the compilers (exact/toolchain), the function finder
-// (carve, which still lives in the old layer), the inverse models and the prover of the draft stage. A member that
+// (carve), the inverse models and the prover of the draft stage. A member that
 // needs one says so with a UsageError when it is not given.
 #pragma once
 

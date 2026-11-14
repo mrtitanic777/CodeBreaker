@@ -1,12 +1,10 @@
 // Tests of the typed client of the L2 core library. The library itself (native/l2, cbl2.dll) is a separate program that has
 // its own tests; these check what this client adds -- the protocol, the answers' shapes, the errors -- on inputs whose answers
-// are the C back end's rules as tests/translate/test_c_backend.py states them (PrintC's: a rule per case). They need the DLL
+// are the C back end's rules (PrintC's: a rule per case). They need the DLL
 // (cmake --build native/l2/build --target cbl2, or CB_L2_DLL naming it); without it they say so and pass.
 //
-// DIVERGES from native_l2.py / the old port: the library's errors are LibraryError (Declined, Cpp17Declined) carrying the
-// library's own word, not Python exception classes; the arguments' tagged forms ({"$t"}, {"$s"}, {"$d"}) are passed as the
-// Json they are rather than as Python tuples, sets and dicts; the schema is told to the library once per distinct text; none of
-// the Python's caches that made the ctypes crossing cheaper ($keep, $put, known_text) exist (nothing crosses a process).
+// Design notes: the library's errors are LibraryError (Declined, Cpp17Declined) carrying the library's own word; the arguments'
+// tagged forms ({"$t"}, {"$s"}, {"$d"}) are passed as the Json they are; the schema is told to the library once per distinct text.
 #include "cb/translate/native_l2.hpp"
 
 #include <cstdlib>

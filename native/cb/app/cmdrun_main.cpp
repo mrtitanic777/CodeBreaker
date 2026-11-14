@@ -1,5 +1,5 @@
 // cmdrun: runs the command layers of the formats, build and analyze areas on a command line, with the surroundings the integrator's table
-// will give them (a corpus, the xex program, the console ordinals, OpenWatcom, nasm), so each can be compared with the Python's output on
+// will give them (a corpus, the xex program, the console ordinals, OpenWatcom, nasm), so each can be run on
 // real inputs. Not built by default (`cmake --build <dir> --target cb_cmdrun`).
 //
 //     cmdrun [--corpus DIR] [--xex-bin DIR] [--state DIR] [--ordinals FILE] [--nasm EXE] [--openwatcom DIR] [--design DIR] <command> [args...]

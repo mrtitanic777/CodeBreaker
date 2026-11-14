@@ -1,9 +1,7 @@
-// DIVERGES (checked against the Python on its 85 recorded cases: 0 unexplained differences):
-//   * names are walked ordered by bytes, files before folders (the Python saw the Windows listing order); the catalogue is
-//     sorted, so nothing visible changes.
-//   * `run` on a source folder that does not exist is a NotFoundError (the Python's FileNotFoundError came from writing the
-//     index); an explicit `index_dir` that does not exist is created.
-//   * files are written back with LF endings (the Python's text mode wrote CRLF on Windows).
+// Checked against 85 recorded cases:
+//   * names are walked ordered by bytes, files before folders; the catalogue is sorted, so the walk order is not visible.
+//   * `run` on a source folder that does not exist is a NotFoundError; an explicit `index_dir` that does not exist is created.
+//   * files are written back with LF endings.
 
 #include <filesystem>
 #include <string>

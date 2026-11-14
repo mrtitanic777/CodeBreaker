@@ -1,11 +1,10 @@
-// cb/translate/judge_c_java_command.hpp -- `codebreaker judge-c-java`: the C/C++ <-> Java judge as a command (tools/judge_c_java.py's, natively).
+// cb/translate/judge_c_java_command.hpp -- `codebreaker judge-c-java`: the C/C++ <-> Java judge as a command.
 //
 //     codebreaker judge-c-java roundtrip [--keep] [--work DIR] [--main CLASS] [FILE.java ...]
 //
 // `roundtrip` judges Java -> C++ -> Java (judge_native_jvm::roundtrip): the Java lane writes the classes as C++, clang reads that back, j2x maps
 // the Java runtime in it onto Java's library, the Java back end writes Java again, and the original and the round-tripped program run on the JVM.
-// With no FILE it judges the Java lane's fixture classes (Vec3D, MathHelper, AxisAlignedBB, Base, Sub) with the round-trip driver, as the Python
-// tool did. It prints `Round trip: <verdict>` and the one-row table (program, verdict, tier, reason), and exits 0 for an equivalent verdict, 1 for any
+// With no FILE it judges the Java lane's fixture classes (Vec3D, MathHelper, AxisAlignedBB, Base, Sub) with the round-trip driver. It prints `Round trip: <verdict>` and the one-row table (program, verdict, tier, reason), and exits 0 for an equivalent verdict, 1 for any
 // other.
 //
 // The Host the judge is given is made from the production pieces: the JDK of the settings (java, JAVA_HOME, PATH), the Java lane's converter
@@ -41,7 +40,7 @@ struct ProductionHost {
 };
 ProductionHost make_host(const Environment& environment);
 
-// The fixture classes of the Java lane and the driver, as the Python tool listed them: the files (staged under `staging`), and the qualified main class.
+// The fixture classes of the Java lane and the driver, the files (staged under `staging`), and the qualified main class.
 struct RoundTripInputs {
     std::vector<std::filesystem::path> files;
     std::string main_class;

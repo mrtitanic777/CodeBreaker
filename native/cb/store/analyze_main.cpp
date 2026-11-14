@@ -1,5 +1,4 @@
-// cb_analyze_run: runs `analyze` of store/analyze_command on a command line, with the settings of the main checkout, to compare its report with the
-// Python's on real modules. Not built by default.
+// cb_analyze_run: runs `analyze` of store/analyze_command on a command line, with the settings of the main checkout, to inspect its report on real modules. Not built by default.
 //
 //     cb_analyze_run analyze crtdll.dll --run 60
 #include <string>

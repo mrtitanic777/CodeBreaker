@@ -1,5 +1,5 @@
 // Tests of the C back end for Java (c_java), on real Java programs: the units the Java front end lowers (L2), written as C and
-// compared with what the Python back end wrote for the same units (the goldens in testdata/c_java: the translator's own corpus --
+// compared with the checked-in goldens (the goldens in testdata/c_java: the translator's own corpus --
 // bank, calc, generics, sample, shapes, textstats, and the programs of its suites t03 and t17 -- plus `zoo` (the phase-6 test's
 // program: interfaces, abstract classes, records, lambdas, try/catch/finally), `mix` (enums, inner classes, an anonymous class,
 // statics, labelled jumps, string switch, 2-D arrays, shifts, long arithmetic, boxed lambdas, method references) and `names` (locals
@@ -8,13 +8,11 @@
 //
 // The programs the back end declines (feat, minecraft, modernlib, streams) are declined here for the same reason.
 //
-// DIVERGES from c_java.py:
-//   * the first line of the C text names the C++ module, not the Python file (the goldens' first line is changed to match; every
-//     other line is the Python's);
-//   * a string literal's length and its escapes are in UTF-16 units: a character above U+FFFF is a surrogate pair (the Python
-//     counted code points and wrote `\x1f600`); the Python is fixed alike;
-//   * a lambda reading a local whose C name differs from its Java name (`register`, `self`, `a$b`) finds it (the Python looked the
-//     capture up by the Java name and declined "unknown local"); the Python is fixed alike;
+// Behaviour the goldens pin down:
+//   * the first line of the C text names the C++ module;
+//   * a string literal's length and its escapes are in UTF-16 units: a character above U+FFFF is a surrogate pair, not one code
+//     point written `\x1f600`;
+//   * a lambda reading a local whose C name differs from its Java name (`register`, `self`, `a$b`) finds it by the C name;
 //   * an array initialiser's nested `new T[]{...}` without a type of its own takes its element type without the tree being changed;
 #include "cb/translate/backends/c_java.hpp"
 
@@ -90,7 +88,7 @@ void check_declined(const std::string& name) {
         CB_CHECK_EQ(std::string("Decline: ") + d.what(), want);
         return;
     }
-    fail(name + " was written, the Python declined it");
+    fail(name + " was written, but the golden declines it");
 }
 
 }  // namespace

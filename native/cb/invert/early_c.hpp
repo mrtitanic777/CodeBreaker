@@ -4,7 +4,7 @@
 // round trip: the recovered C compiles back to the same bytes.
 //
 // The model itself (the register-value tracker in early_c_tracker / early_c_walk, the text passes over what it emits in
-// early_c_text, the control flow in flow16) reads Capstone's operand text; this module is its typed API. Everything the Python kept as module settings and hooks is an `Options` value the caller
+// early_c_text, the control flow in flow16) reads Capstone's operand text; this module is its typed API. Every setting and hook is an `Options` value the caller
 // passes to each call, so two recoveries with different settings can run side by side.
 //
 //     early_c::Options options;
@@ -13,7 +13,7 @@
 //     std::string c = early_c::to_c("fn", fn.frame_size, fn.params, fn.statements, fn.return_type, fn.locals);
 //
 // Registers a statement may name (si, di, es ...) are listed in the model's fixed order ax bx cx dx si di es: where
-// the Python's order followed the hash of each name in its process (set order), the result is deterministic here.
+// the result is deterministic: names are visited in a fixed order.
 //
 // Errors: input the model cannot lift (bytes that are not the modelled compiler's code) is a FormatError; a function
 // shape it recognises and does not handle is an UnsupportedError; a failed internal check is an InternalError. A hook's
@@ -80,7 +80,7 @@ struct Options {
     std::optional<bool> returns_value;       // from a whole-program "is the result ever read by a caller"; absent: a local heuristic
     Hooks hooks;
 
-    // The defaults with the environment's switches applied, as the Python read them: MC2INV_FAR=1 (far_pointers),
+    // The defaults with the environment's switches applied, as the program reads them: MC2INV_FAR=1 (far_pointers),
     // MC2INV_DEADREGS=1 (dead_registers), MC2INV_UNSIGNED=1 (unsigned_compares), MASM_CRET and CFG_NOCAP when set and
     // not empty (caller_cleans, uncapped_structures).
     static Options from_environment();

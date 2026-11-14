@@ -27,7 +27,7 @@ bool all_of_class(std::string_view s, std::string_view extra) {
 }
 
 // The text between a leading "(" and the given ending, when the whole of c is "(" ... ending (and the middle has no
-// newline: the original's `.` did not match one).
+// newline).
 std::optional<std::string_view> inside_parens(std::string_view c, std::string_view ending) {
     if (c.size() < 1 + ending.size() || c.front() != '(' || !c.ends_with(ending)) return std::nullopt;
     const std::string_view middle = c.substr(1, c.size() - 1 - ending.size());

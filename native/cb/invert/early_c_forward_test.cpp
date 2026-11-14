@@ -1,13 +1,10 @@
-// Tests of cb/invert/early_c_forward.hpp. The expected bytes of each modelled function were produced by the original
-// Python model on the same quad records and then READ: every one is a plausible Microsoft C 3.00 small-model function
-// (push bp; sub sp,N with the stack probe; mov bp,sp; body; add sp,N; pop bp; ret) whose body matches the statement
+// Tests of cb/invert/early_c_forward.hpp. The expected bytes of each modelled function were recorded from the model on the same quad records and then READ: every one is a
+// plausible Microsoft C 3.00 small-model function (push bp; sub sp,N with the stack probe; mov bp,sp; body; add sp,N; pop bp; ret) whose body matches the statement
 // the quads describe. The real quad file of the oracle program (testdata/FXU.Q) is covered by the failure it must give:
 // its calls and string operands are outside what the model covers.
 //
-// DIVERGES from the Python model: a short jump whose distance does not fit rel8 is an UnsupportedError where the Python
-// wrapped the displacement into a wrong byte; the Python's KeyError/IndexError/TypeError/NotImplementedError ways of
-// refusing a function are FormatError (a malformed quad) and UnsupportedError (a shape not modelled) in a Result; the
-// printed report is the same text.
+// A short jump whose distance does not fit rel8 is an UnsupportedError (never a wrapped displacement); a function the model
+// refuses is a FormatError (a malformed quad) or an UnsupportedError (a shape not modelled) in a Result.
 #include "cb/invert/early_c_forward.hpp"
 
 #include <string>
@@ -203,7 +200,7 @@ CB_TEST("invert.early_c_forward.refusals", [] {
     CB_CHECK_EQ(kind_of({}), "FormatError");                                                                       // no FUNC-BEGIN
     CB_CHECK_EQ(kind_of({quad(0x23, Bytes{1})}), "FormatError");                                                   // a FUNC-BEGIN too short
     CB_CHECK_EQ(kind_of({begin(6), quad(0x2c, temp()), quad(0x2e, kNoPayload)}), "FormatError");                  // (no open `if` for the label)
-    // quads the model has no code for are skipped, as in the Python (a call generates nothing here)
+    // quads the model has no code for are skipped, (a call generates nothing here)
     CB_CHECK_EQ(kind_of({begin(6), quad(0x20, Bytes{0xaa}), quad(0x24, ops({konst(0)}))}), "ok");
     // a frame offset that does not fit a byte: parameter 200 is past [bp+255]
     CB_CHECK_EQ(kind_of({begin(6), quad(0x00, ops({var(300), var(7)})), quad(0x24, ops({konst(0)}))}), "UnsupportedError");

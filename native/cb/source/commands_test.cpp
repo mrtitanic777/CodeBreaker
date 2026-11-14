@@ -1,6 +1,6 @@
 // cb-unity: alone (test helpers named for this module)
-// Tests of cb/source/commands: that every tool of the `vxd` and `ne-asm` commands is wired (the tables are the Python tables'), that a command made from
-// the settings does nothing until it runs, and the commands that need no tool of the machine. The commands run on real inputs against the Python in the
+// Tests of cb/source/commands: that every tool of the `vxd` and `ne-asm` commands is wired, that a command made from
+// the settings does nothing until it runs, and the commands that need no tool of the machine. The commands run on real inputs in the
 // report of the change (cb_source_commands).
 #include "cb/source/commands.hpp"
 

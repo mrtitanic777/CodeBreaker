@@ -29,7 +29,7 @@ CB_TEST("verify.shape.statements", [] {
     CB_CHECK((sh::statements("{ a = 1; if (x) { b(", 1, 20) == std::vector<Span>{{2, 8}}));
     CB_CHECK(sh::statements("", 0, 0).empty());
     CB_CHECK(sh::statements("   ", 0, 3).empty());
-    // DIVERGES: a `hi` past the end of the text was an IndexError in the Python; it is the end of the text here
+    // A `hi` past the end of the text is the end of the text
     CB_CHECK((sh::statements("a = 1; b();", 0, 100) == std::vector<Span>{{0, 6}, {7, 11}}));
     CB_CHECK(sh::statements("a = 1;", 10, 100).empty());
     // zeros alone are not octal: `00` is zero
@@ -66,8 +66,8 @@ CB_TEST("verify.shape.switches", [] {
     CB_CHECK(switches("\n    if (y) { z(); } else if (x == 1) { a(); } else if (x == 2) { b(); }\n}").empty());
     // a chain that is not closed
     CB_CHECK(switches("\n    if (x == 1) { a(); } else if (x == 2) { b(); ").empty());
-    // DIVERGES: a constant written in octal (a leading 0: the Python's int(x, 0) raised ValueError and the whole call
-    // failed) is left alone, so that chain is not rewritten; chains with other constants still are
+    // A constant written in octal (a leading 0) is left alone,
+    // so that chain is not rewritten; chains with other constants still are
     CB_CHECK(switches("\n    if (x == 012) { a(); } else if (x == 2) { b(); }\n}").empty());
     CB_CHECK_EQ(switches("\n    if (x == 012) { a(); } else if (x == 2) { b(); }\n    if (v == 5) { a(); } else if (v == 6) { b(); }\n}").size(), std::size_t{1});
 });

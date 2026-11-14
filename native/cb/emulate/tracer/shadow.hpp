@@ -1,7 +1,6 @@
 // shadow.h -- the path explorer's symbolic shadow of a run (shadow.cc), as the recorders call it:
 // stepped before each instruction, told of each call the environment answered, of memory it
-// wrote and registers it set.  The same calls emulate/shadow.py's Shadow made from the Python
-// hooks, now made from the C++ ones.
+// wrote and registers it set.  The recorders make these calls from the C++ hooks.
 #pragma once
 #include <cstdint>
 

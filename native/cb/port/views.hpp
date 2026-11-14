@@ -1,5 +1,4 @@
-// cb/port/views.hpp -- the passes that mend how the program's structures meet each other (the Python's Port methods
-// anon_tags .. offset_views).
+// cb/port/views.hpp -- the passes that mend how the program's structures meet each other.
 //
 // The old compilers laid structures out by their bytes, and the programs used that: an anonymous structure given by value
 // and also a header's member; a word that was a pointer in one place and a number in another; a file's own structure that

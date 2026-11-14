@@ -433,14 +433,14 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set("java", java::tools::runner(java::tools::Environment{config}));
     table.set("xna", xna::command::runner(xna::command::Environment{config}));
 
-    // mcp, serve: the MCP server and the local service the terminal UI talks to (the Python's wire protocol)
+    // mcp, serve: the MCP server and the local service the terminal UI talks to (the wire protocol the UI client speaks)
     table.set(ui::mcp_command::command(ui::mcp_command::Environment{config, corpus, {}}));
     table.set(ui::serve::command(ui::serve::Environment{config, corpus, {}}));
 
     // invert ...: the inverse models (Microsoft C 6, MSVC 2, early C) and the module pass, with the period compilers
     lazy_runner(table, "invert", [&config, corpus] { return invert::command::runner(invert::command::production(config, corpus)); });
 
-    // cache, tidy-state: the result cache (native and the Python's files) and state/'s clean-up
+    // cache, tidy-state: the result cache (native and older state files) and state/'s clean-up
     table.set(base::cache::command(base::cache::CommandEnvironment{base::cache::settings_of(config), {}}));
     table.set(base::tidy_state::command(base::tidy_state::environment_of(config)));
     table.set(verify::regress::command(config));

@@ -15,7 +15,7 @@
 // <state>/service/service.json (pid, port, root, state, when started); its token <state>/service/token, a new secret each start, which every
 // request must carry (header X-CodeBreaker-Token). What it prints goes to <state>/service/serve.log.
 //
-// The wire is the one service.hpp's Client speaks and the terminal interface's (Python) client speaks: HTTP+JSON.
+// The wire is the one service.hpp's Client speaks and the terminal interface's client speaks: HTTP+JSON.
 //
 //     GET  /ping   -> {pid, port, root, state, started, idle_minutes, idle_for, calls, busy, jobs, stale}
 //     POST /call   {"name": N, "args": {...}, "owner": CLIENT} -> {"value": ...} or {"error": text, "kind": ValueError|OSError|LookupError|...}

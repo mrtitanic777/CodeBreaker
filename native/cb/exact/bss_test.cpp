@@ -1,8 +1,8 @@
 // Tests of the variables that begin without a value (src/BSS), on the real projects of the research (C 3.00's P0 and P2, LIB 3.00, LINK 2.44 and MASM 5.10,
-// whose compiler puts its communal names in a segment of its own) against what the live Python's exact/bss.py answered (testdata/w5b3.golden.json): the range,
+// whose compiler puts its communal names in a segment of its own) against the recorded answers (testdata/w5b3.golden.json): the range,
 // the names with their places, the library modules' own _BSS holes, the text of src/BSS and the command's output.
 //
-// DIVERGES from the Python: a word of a source is a run of ASCII letters, digits and underscores (the Python's \w took any letter of the text read as
+// Behaviour pinned here: a word of a source is a run of ASCII letters, digits and underscores (not any letter of the text read as
 // Latin-1); none of the projects has a source with a letter beyond ASCII in a name.
 #include "cb/exact/bss.hpp"
 
@@ -14,7 +14,7 @@ using test::canon;
 using test::check;
 using test::golden;
 
-CB_TEST("exact.bss.the_proposals_for_real_programs_are_the_pythons", [] {
+CB_TEST("exact.bss.the_proposals_for_real_programs_match_the_recorded_output", [] {
     test::Real real;
     if (test::skipped(real, "bss")) return;
     int with_holes = 0, with_communal = 0;

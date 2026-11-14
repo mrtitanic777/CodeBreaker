@@ -1,6 +1,6 @@
 // The proof of the XNA/XACT converters on real game files: with CB_XNA_PROOF_DIR=<folder> holding files.txt (one path per line; .xnb, .xwb or .xsb),
 // this converts every file with the native code into <folder>/native/<n>/ and writes what each made to <folder>/native_records.json, and prints the
-// time it took. state/work/typed-port/xna_proof/compare.py runs the Python on the same list and compares the records and every byte written.
+// time it took.
 // Without the variable the test does nothing: the files are on the owner's machine (C:/Nexia360/Library, Games). CB_XNA_PROOF_FFMPEG names ffmpeg.
 #include <chrono>
 #include <cstdio>
@@ -20,7 +20,7 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-CB_TEST("xna.proof.real_files_are_converted_for_the_comparison_with_the_python", [] {
+CB_TEST("xna.proof.real_files_are_converted_for_the_comparison", [] {
     const std::optional<std::string> folder = cb::fs::get_env("CB_XNA_PROOF_DIR");
     if (!folder) return;
     const stdfs::path dir = cb::fs::from_text(*folder);

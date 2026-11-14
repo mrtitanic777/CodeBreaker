@@ -1,9 +1,8 @@
 // Tests of cb/build/xex_edit.hpp on real Xbox 360 modules (Minecraft builds under C:/Nexia360/Games: a test whose module or the xex program
 // is not on this machine is skipped). The command's output and the files it writes are compared with what `codebreaker xex-edit ...`
-// printed and wrote (testdata/xex_edit/edit.txt: each case's stdout and exit code; edit_files.txt: "name size sha1" of every file it wrote,
-// both made by the translated Python).
+// printed and wrote (testdata/xex_edit/edit.txt: each case's stdout and exit code; edit_files.txt: "name size sha1" of every file it wrote).
 //
-// DIVERGES from the Python: the assembler's error text is the C++ assembler's (the lines are compared up to "xex-edit: ").
+// The assembler's error text is the C++ assembler's (the lines are compared up to "xex-edit: ").
 #include "cb/build/xex_edit.hpp"
 
 #include <algorithm>
@@ -76,7 +75,7 @@ CB_TEST("build.xex_edit.privileges_are_read_set_and_cleared_where_they_stand", [
     w.check("bit_sign", {"privileges", w.text_of(w.retail), "3", w.out("x.xex")});
 });
 
-CB_TEST("build.xex_edit.code_edits_write_the_same_images_as_the_python", [] {
+CB_TEST("build.xex_edit.code_edits_write_the_same_images_as_recorded", [] {
     XexEditWorld w;
     if (!w.ready()) return;
     w.check("nop3", {"nop", w.text_of(w.logan), "0x82061868", "3", w.out("nop3.xex")});
@@ -87,7 +86,7 @@ CB_TEST("build.xex_edit.code_edits_write_the_same_images_as_the_python", [] {
     w.check("asm_branch", {"asm", w.text_of(w.logan), "0x82061868", "b 0x82061900", w.out("asmb.xex")});
     w.check("hook", {"hook", w.text_of(w.logan), "0x82061868", "0x82062000", "li r3, 1; li r4, 2", w.out("hook.xex")});
     w.check("hook_relative", {"hook", w.out("asmb.xex"), "0x82061868", "0x82062000", "li r3, 1", w.out("x.xex")});
-    // every file written is the Python's: name, size, sha1
+    // every file written is the recorded one: name, size, sha1
     std::string written = testing::tree_manifest(w.dir.path());
     std::string expected;
     std::vector<std::string> expected_lines;
@@ -104,7 +103,7 @@ CB_TEST("build.xex_edit.code_edits_write_the_same_images_as_the_python", [] {
     CB_CHECK_EQ(code_files, expected);
 });
 
-CB_TEST("build.xex_edit.the_privilege_images_are_the_pythons", [] {
+CB_TEST("build.xex_edit.the_privilege_images_are_the_recorded_ones", [] {
     XexEditWorld w;
     if (!w.ready()) return;
     w.check("retail_set", {"privileges", w.text_of(w.retail), "+3", "-pal50", "-9", w.out("retail_set.xex")});
@@ -132,7 +131,7 @@ CB_TEST("build.xex_edit.the_assembler_alone_prints_bytes_and_its_errors_are_repo
     const std::string bad = run({"asm-only", "frobnicate r3"});
     CB_CHECK(bad.starts_with("xex-edit: "));
     CB_CHECK(bad.ends_with("exit=1\n"));
-    const std::string far = run({"asm-only", "b 0x20", "0x82000000"});   // (the Python wrapped such a branch silently)
+    const std::string far = run({"asm-only", "b 0x20", "0x82000000"});   //
     CB_CHECK(far.starts_with("xex-edit: "));
     CB_CHECK(far.ends_with("exit=1\n"));
     CB_CHECK_EQ(run({"frobnicate", "x.xex"}), cases.at("unknown"));

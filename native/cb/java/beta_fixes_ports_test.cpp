@@ -1,5 +1,5 @@
-// Ports of the tests/java/test_beta_fixes.py checks whose literals no native test spelled: the destructor the emitter writes for owned members
-// (TestOwnershipBroadening.test_dtor_frees_scalars_and_container_not_borrowed) and the GL11 / NVFogDistance stubs (TestGL11Stub). Same inputs, same substrings.
+// Checks whose literals no other native test spells: the destructor the emitter writes for owned members (it frees scalars and
+// containers, not borrowed ones) and the GL11 / NVFogDistance stubs.
 #include <string>
 
 #include "cb/core/testing.hpp"
@@ -50,7 +50,7 @@ CB_TEST("java.beta_fixes.the_gl11_stub_has_the_functions_the_corpus_uses", [] {
     for (const char* fn : {"glNormalPointer", "glScaled"}) CB_CHECK(bfp_has(gl11, std::string("void ") + fn + "("));
 });
 
-// ---- tests/java/test_awt_stubs.py: the AWT types Indev's MouseHelper uses get no-op stubs, so the reachable game code compiles on the console -------
+// ---- the AWT stubs: the AWT types Indev's MouseHelper uses get no-op stubs, so the reachable game code compiles on the console -------
 
 CB_TEST("java.awt_stubs.the_mouse_stubs_are_generated_and_registered", [] {
     const auto& files = bfp_runtime().files();
@@ -71,7 +71,7 @@ CB_TEST("java.awt_stubs.the_mouse_stubs_are_generated_and_registered", [] {
     CB_CHECK(cb::java::typemap::runtime_static_holders().contains("MouseInfo"));   // MouseInfo.getPointerInfo() is a static call
 });
 
-// ---- tests/java/test_runtime_stubs.py ---------------------------------------------------------------------------------------------------------------
+// ---- the runtime stubs ---------------------------------------------------------------------------------------------------------------
 
 CB_TEST("java.runtime_stubs.jmap_has_the_java_map_surface_and_list_and_set_an_iterator_member", [] {
     const auto& files = bfp_runtime().files();

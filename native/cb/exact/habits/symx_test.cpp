@@ -158,10 +158,10 @@ CB_TEST("exact.habits.symx.byte_registers", [] {
     CB_CHECK(compare({ins("mov ax, bx"), ins("and ax, 0xff"), ins("push ax")}, {ins("mov ax, bx"), ins("and ax, 0xff"), ins("push ax")}).same);
 });
 
-// The older Python's verdicts on 694 pairs of stretches (a third of them "the same", the rest one of each kind of refusal),
+// The recorded verdicts on 694 pairs of stretches (a third of them "the same", the rest one of each kind of refusal),
 // checked in as testdata/symx.cases; the pairs are those of the harness that generated them. Only the kind of reason is
 // compared (what is up to the colon), not its wording.
-CB_TEST("exact.habits.symx.cases_of_the_python_it_replaces", [] {
+CB_TEST("exact.habits.symx.recorded_cases", [] {
     const std::string data = fs::read_text(testing::data_path("exact/habits/testdata/symx.cases"));
     const auto parse_stretch = [](std::string_view s) {
         Stretch out;

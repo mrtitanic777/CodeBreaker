@@ -408,10 +408,10 @@ CB_TEST("exact.emu.isis.damaged_object_files", [] {
     CB_CHECK_THROWS_AS(UsageError, isis::Machine({{1, w.dir.path()}}, ""));
 });
 
-// What the Python this replaces did with 91 runs (a hand-made set that uses every call, and 55 programs of random
+// The recorded results of 91 runs (a hand-made set that uses every call, and 55 programs of random
 // instructions that use every instruction, run on the fixtures in testdata/isis): the console, the instruction count,
 // the registers, the flags, a checksum of the whole 64 KiB, and the host files afterwards, all equal.
-CB_TEST("exact.emu.isis.programs_of_the_python_it_replaces", [] {
+CB_TEST("exact.emu.isis.recorded_programs", [] {
     const stdfs::path data = testing::data_path("exact/emu/testdata/isis");
     const std::string lines = fs::read_text(data / "cases.jsonl");
     int cases = 0;

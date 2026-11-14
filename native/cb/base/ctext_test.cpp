@@ -34,8 +34,7 @@ CB_TEST("base.ctext.open_literals_run_to_the_end", [] {
     CB_CHECK_EQ(ctext::blank("/*/"), "   ");
     CB_CHECK_EQ(ctext::blank("/**/"), "    ");
     CB_CHECK_EQ(ctext::blank("/* /* */ */"), "         */");
-    // DIVERGES: an open string whose last character is an escaped quote stays open: its final quote is blanked too.
-    // The Python took the final quote for the closing one and left it showing (`"abc\"` -> `"   "`).
+    // An open string whose last character is an escaped quote stays open: its final quote is blanked too.
     CB_CHECK_EQ(ctext::blank("\"abc\\\"\nx"), "\"     \nx");
 });
 

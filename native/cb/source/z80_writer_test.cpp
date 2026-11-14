@@ -1,6 +1,6 @@
 // Tests of the flat Z80 writer over small programs of its own. The programs are machine code written out byte by byte; the writer is
 // held to what it is for -- the source it writes, built again, is the block it came from -- and to the text it writes, a golden file
-// that was read through for correctness (testdata/writers/z80.golden.asm; the Python writer wrote the same bytes for this block).
+// that was read through for correctness (testdata/writers/z80.golden.asm).
 
 #include "cb/source/z80_writer.hpp"
 

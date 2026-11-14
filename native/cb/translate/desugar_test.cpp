@@ -1,14 +1,12 @@
 // Tests of the lowering pass: each form on a hand-built method (the tree after the pass is read back node by node), the
 // forms a back end keeps, what the pass leaves alone, and a real program -- the Java front end's units for a program of
-// modern Java, lowered, must equal what the Python implementation lowered them to (testdata/l2_java_units.desugared.json,
-// made by codebreaker/translate/desugar.py on the same document).
+// modern Java, lowered, must equal the checked-in document (testdata/l2_java_units.desugared.json).
 //
-// DIVERGES from desugar.py:
-//   * a labelled for-each has its own body lowered before the loop is (translate.desugar.foreach_label_and_nesting): the
-//     Python lowered the loop and left a for-each inside it as it was, so the back end declined the method. Fixed in the Python
-//     too (tests/translate/test_desugar.py); listed in state/work/typed-port/_bugs/LIST.md;
+// Behaviour pinned here:
+//   * a labelled for-each has its own body lowered before the loop is (translate.desugar.foreach_label_and_nesting), so no
+//     for-each is left inside it for the back end to decline;
 //   * a method body, branch or loop body that is a bare list of statements (the decompiler's form) is lowered statement by
-//     statement; the Python failed with AttributeError on one.
+//     statement.
 #include "cb/translate/desugar.hpp"
 
 #include <nlohmann/json.hpp>
@@ -540,7 +538,7 @@ CB_TEST("translate.desugar.nested_statements_and_try", [] {
 
 CB_TEST("translate.desugar.a_real_program", [] {
     // The Java front end's units for a program of modern Java (for-each, switch expressions, a string switch, patterns),
-    // lowered here and by codebreaker/translate/desugar.py: the same documents.
+    // lowered, and the result is the checked-in document.
     const Json units = cb::json::load(cb::testing::data_path("translate/testdata/l2_java_units.json"));
     const Json want = cb::json::load(cb::testing::data_path("translate/testdata/l2_java_units.desugared.json"));
     Arena arena;
@@ -552,7 +550,7 @@ CB_TEST("translate.desugar.a_real_program", [] {
     const std::size_t lowered = ds::run(arena, trees);
     CB_CHECK_EQ(lowered, want.at("lowered").get<std::size_t>());
     for (Node* t : trees) CB_CHECK_EQ(count_kind(t, "ForEach"), std::size_t(0));
-    // (the two documents as the Python wrote them and as this wrote them: key order and null slots do not count)
+    // (the two documents are compared by content: key order and null slots do not count)
     Json got = Json::array();
     for (Node* t : trees) got.push_back(l2::to_json(*t));
     Arena reread;

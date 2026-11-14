@@ -33,15 +33,15 @@ a16::Tree tree_of(const std::string& json) {
     return std::move(*t);
 }
 
-// What the Python's pass made of prog.c and prog.h (testdata/gen_oldlayout_golden.py), read through by hand.
+// What the pass makes of prog.c and prog.h, read through by hand.
 const std::vector<std::string> kProg{"prog.c"};
 
 }  // namespace oltest
 
 using namespace oltest;
 
-// DIVERGES from the Python: declare() scans on from the end of each body it writes (the Python used offsets of the text as it was
-// before the first definition of a tag changed it: damaged text for a second definition); the typed tree names a header's
+// declare() scans on from the end of each body it writes (never from offsets of the text as it was before the first definition
+// of a tag changed it, which would damage a second definition); the typed tree names a header's
 // locations by their own file (the includedFrom fault of arith16).
 
 // ---- types ---------------------------------------------------------------------------------------------------------
@@ -98,7 +98,7 @@ CB_TEST("port.oldlayout.declare_one_word_again", [] {
 });
 
 CB_TEST("port.oldlayout.declare_two_definitions_of_a_tag", [] {
-    // (the Python took the second one's place from the text as it was before the first was changed: damaged text)
+    // (the second one's place is taken from the text as it is after the first was changed)
     const std::string def = "struct sym {\n\tstruct sym *next;\n};\n";
     const std::string out = old::declare(def + "/* between */\n" + def, {"struct sym"}, {{{"struct sym", "next"}, "struct sym *"}});
     const std::string one = "struct sym {\n\tuint16_t next;\t/* (a handle: struct sym *) */\n};\n";

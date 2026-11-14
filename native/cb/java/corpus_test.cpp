@@ -29,9 +29,9 @@ std::vector<ir::JClass> cort_parse_all() {
 
 Json cort_names(const std::set<std::string, std::less<>>& names) { return Json(std::vector<std::string>(names.begin(), names.end())); }
 
-// testdata/corpus.golden.json: what the original Python passes (codebreaker.java.transpile) made of the corpus in testdata/corpus, as
-// compact JSON with sorted keys; this test builds the same document from the new passes.
-CB_TEST("java.corpus.passes_match_python", [] {
+// testdata/corpus.golden.json: the recorded result of the passes on the corpus in testdata/corpus, as
+// compact JSON with sorted keys; this test builds the same document from the passes.
+CB_TEST("java.corpus.passes_match_golden", [] {
     const auto runtime = cb::java::runtime::Runtime(cb::java::JavaData(cb::testing::data_path("../../data/java")));
     std::vector<ir::JClass> classes = cort_parse_all();
     std::size_t methods_before = 0, methods_after = 0;

@@ -3,17 +3,16 @@
 // running a function, devices, and the run record.
 //
 // Every expected value is worked out by hand from the M68000 Programmer's Reference Manual (not recorded from this code),
-// by writing the program in Motorola syntax and assembling it with cb::decompile::m68k. The old harness
-// (state/work/typed-port/emulate.m68k: 128,383 cases made by the Python module) agrees on every one of its single-step
+// by writing the program in Motorola syntax and assembling it with cb::decompile::m68k. An old harness
+// of 128,383 cases agrees on every one of its single-step
 // and run cases that the CPU defines.
 //
-// DIVERGES from the Python module:
-//  - A device read's value is cut to the access's size (the Python passed a negative or wider number on, and the flags
-//    then depended on bits the access never had).
-//  - A run's `io` is what that run logged (the Python gave the bus's whole log, carried over a reused bus).
-//  - Registers are 32 bits and SR 16 (Python's ints could hold more); the entry address is 32 bits.
+// Notes:
+//  - A device read's value is cut to the access's size (the flags never depend on bits the access did not have).
+//  - A run's `io` is what that run logged.
+//  - Registers are 32 bits and SR 16; the entry address is 32 bits.
 //  - An instruction the interpreter has no operand semantics for (an operand kind the decoder never gives that
-//    instruction) is an InternalError, not a TypeError; hand-made instructions are not a thing a Cpu is asked to run.
+//    instruction) is an InternalError; hand-made instructions are not a thing a Cpu is asked to run.
 //  - A Bus over memory takes any size; an image that does not fit is a UsageError.
 #include "cb/emulate/m68k.hpp"
 

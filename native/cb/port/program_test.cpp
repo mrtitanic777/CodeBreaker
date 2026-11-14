@@ -1,5 +1,5 @@
 // Tests of the files the port rewrites and adds (rewrite, frames, bss, headers) on a mini program: an old-style C
-// file and its header. The expected text is what the Python original makes of the same input (reviewed line by line).
+// file and its header. The expected text was reviewed line by line.
 #include "cb/base/ctext.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/port/bss.hpp"

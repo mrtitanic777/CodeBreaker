@@ -9,8 +9,8 @@
 // left out the caller proves alone (draft/prove's mending). Candidates with preprocessor lines other than #include,
 // or a different file comment (MFLAGS) from the rest, are not batched.
 //
-// The toolchain and the OMF symbol renamer are not refactored yet; `compile_many` takes them as the small interfaces
-// below, which the project and the OMF module will fill.
+// The toolchain and the OMF symbol renamer are reached through the small interfaces below, which the project
+// and the OMF module fill; `compile_many` takes them as parameters.
 #pragma once
 
 #include <cstddef>

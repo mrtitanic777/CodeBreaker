@@ -1,12 +1,11 @@
 // Tests of the java lane as the tree judge's lane (javajudge_lane.hpp), over the transpiler as the application assembles it
-// (java/assembly) -- everything native/cb has but the Java front end, which is javac's: the front end here serves the units a run
-// of the Python front end made of the fixtures (testdata/javajudge/units.json, the L2 documents of `cpp03.java_units`).
+// (java/assembly) -- everything native/cb has but the Java front end, which is javac's: the front end here serves the units recorded for
+// the fixtures (testdata/javajudge/units.json).
 //
 //   * the dialect each back end asks for reaches the lane as an option (the flags, the label the transpiler is asked for), and
 //     nothing else is touched: two judgements of two dialects in a row are each made in theirs;
-//   * the nine fixture classes (the Python java kind's own: tests/java/fixtures/java) judged on each back end give, class by class,
-//     the verdict, the gaps and the reason the Python javajudge.judge_tree gave (testdata/javajudge/verdicts.python.json, made by
-//     running it). The host compiler and the JDK are needed; without them the test says so and passes nothing it did not check.
+//   * the nine fixture classes judged on each back end give, class by class,
+//     the verdict, the gaps and the reason recorded in testdata/javajudge/verdicts.python.json. The host compiler and the JDK are needed; without them the test says so and passes nothing it did not check.
 
 #include "cb/translate/javajudge_lane.hpp"
 
@@ -82,8 +81,8 @@ CB_TEST("translate.javajudge_lane.the_lane_is_given_the_dialect_it_converts_in",
 });
 
 // The program in `folder` (src/, units.json, verdicts.python.json) judged on each back end and compared, class by class, with the
-// verdict, the gaps and the reason the Python gave.
-void jl_judge_against_python(const stdfs::path& folder) {
+// verdict, the gaps and the reason recorded.
+void jl_judge_against_golden(const stdfs::path& folder) {
     const Json units = json::load(folder / "units.json");
     const Json golden = json::load(folder / "verdicts.python.json");
     const stdfs::path src = folder / "src";
@@ -121,21 +120,21 @@ void jl_judge_against_python(const stdfs::path& folder) {
     }
 }
 
-CB_TEST("translate.javajudge_lane.fixtures_are_judged_as_the_python_judged_them", [] {
+CB_TEST("translate.javajudge_lane.fixtures_are_judged_as_recorded", [] {
     if (!jl_have_tools()) {
         CB_CHECK(true);   // (no host compiler or JDK here: nothing to run)
         return;
     }
-    jl_judge_against_python(testing::data_path("translate/testdata/javajudge"));
+    jl_judge_against_golden(testing::data_path("translate/testdata/javajudge"));
 });
 
 // More programs, made the same way and kept outside the checkout (the proof run's: CB_JAVAJUDGE_EXTRA is a folder of folders, each
 // with src/, units.json and verdicts.python.json).
-CB_TEST("translate.javajudge_lane.more_programs_as_the_python_judged_them", [] {
+CB_TEST("translate.javajudge_lane.more_programs_are_judged_as_recorded", [] {
     const std::optional<std::string> extra = fs::get_env("CB_JAVAJUDGE_EXTRA");
     if (!extra || !jl_have_tools()) return;
     for (const auto& entry : stdfs::directory_iterator(fs::from_text(*extra))) {
-        if (entry.is_directory()) jl_judge_against_python(entry.path());
+        if (entry.is_directory()) jl_judge_against_golden(entry.path());
     }
 });
 

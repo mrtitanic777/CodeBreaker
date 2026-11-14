@@ -80,7 +80,7 @@ std::vector<std::pair<Json, const Json*>> pairs_of(const Json& j) {
 std::string text_of(const Json& j) { return j.is_string() ? j.get<std::string>() : std::string(); }
 std::int64_t number_of(const Json& j) { return j.is_number() ? j.get<std::int64_t>() : 0; }
 
-// Python's truth: null, false, zero, empty text, an empty list or dict are false.
+// Truthiness: null, false, zero, empty text, an empty list or dict are false.
 bool truthy(const Json& j) {
     if (j.is_null()) return false;
     if (j.is_boolean()) return j.get<bool>();

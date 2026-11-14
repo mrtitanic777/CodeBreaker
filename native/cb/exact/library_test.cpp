@@ -13,18 +13,17 @@ using namespace cb::exact;
 namespace stdfs = std::filesystem;
 namespace omf = cb::formats::omf;
 
-// P0.EXE of the Microsoft C 3.00 sources (testdata/data/p0: image and symbols in fixture.txt) looked for the way the
-// Python module the old exact.library was run on it: with the real libraries of the msc300 kit (SLIBC.LIB, SLIBFP.LIB,
+// P0.EXE of the Microsoft C 3.00 sources (testdata/data/p0: image and symbols in fixture.txt) looked for in
+// the real libraries of the msc300 kit (SLIBC.LIB, SLIBFP.LIB,
 // EM.LIB, and the loose objects SSETARGV, SVARSTCK and BINMODE; the kit is found by CB_KIT_MSC300 or next to the
 // checkout, and the tests that need it say so and pass where it is not). testdata/library/p0_crtlib.txt is the CRTLIB the
-// Python wrote (68 lines: the modules of the library in the order the linker took them, each with where its code or
+// recorded CRTLIB (68 lines: the modules of the library in the order the linker took them, each with where its code or
 // data stands, its stand-ins and what none of the kit's modules defines), read through for what P0 links (atoi and atol
 // one jump to __catox, atof's fltused, the stand-in for the module of 2014 bytes of another version); p0_summary.txt what
 // the command printed after it.
 //
-// DIVERGES: a module placed "by the names" no longer takes a place below 0 (the Python indexed the image from its end
-// there); a data check on a negative place no longer reads the image from the end either. A Member keeps no L2 module
-// (the Python held its publics in one).
+// Design notes: a module placed "by the names" does not take a place below 0 (the image is not indexed
+// from its end); a data check on a negative place does not read the image from the end either. A Member keeps no L2 module.
 
 namespace {
 

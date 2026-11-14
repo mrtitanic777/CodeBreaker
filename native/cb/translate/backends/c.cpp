@@ -8,7 +8,7 @@ namespace cb::translate::backends::c {
 
 namespace {
 
-// The passes of c_text done on the tree, in order. (The Python listed open_arguments twice in the module set; once is the set.)
+// The passes of c_text done on the tree, in order.
 constexpr std::array<std::string_view, 52> kMovedPasses = {
     "far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers", "null_is_zero",
     "global_pointer_steps", "one_name_for_globals", "far_result", "model_word", "joined_arguments", "far_arguments",

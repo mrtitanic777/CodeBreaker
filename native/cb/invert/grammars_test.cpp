@@ -1,5 +1,5 @@
 // Tests of cb/invert/grammars.hpp. The candidate texts were checked by hand against what the compiler oracle accepts
-// (the thunk and buffer-read idioms of OLECLI) and against the Python generators' output for the same shapes.
+// (the thunk and buffer-read idioms of OLECLI) and against the recorded output for the same shapes.
 #include "cb/invert/grammars.hpp"
 
 #include <set>

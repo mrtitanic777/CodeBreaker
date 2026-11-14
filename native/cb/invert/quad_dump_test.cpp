@@ -1,10 +1,8 @@
 // Tests of cb/invert/quad_dump.hpp on a real Lattice C 2.12 quad file (testdata/FXU.Q, the compiler's output for the
 // oracle program FXU.C) and on small constructed files for the framing rules and damaged input.
 //
-// DIVERGES from the Python tool: a record whose head promises more payload than the file holds is reported (and the
-// walk stops) where the Python clamped the payload to the end of the file and went on; a file shorter than the 0x50
-// bytes of header fields is a TruncatedError before anything is printed, where the Python printed its first line and
-// then raised struct.error. The name list is printed with double quotes, not Python's list repr.
+// A record whose head promises more payload than the file holds is reported (and the walk stops); a file shorter than the
+// 0x50 bytes of header fields is a TruncatedError before anything is printed. The name list is printed with double quotes.
 #include "cb/invert/quad_dump.hpp"
 
 #include <array>
@@ -79,7 +77,7 @@ CB_TEST("invert.quad_dump.real_file_dump", [] {
     CB_CHECK_EQ(std::string(head[0]), "== FXU.Q (10522 bytes) ==");
     CB_CHECK_EQ(std::string(head[1]), "0x00 magic=0  0x04 type-size-tbl=[2, 1, 2, 1, 2, 1, 2, 4, 4, 8]");
     CB_CHECK(std::string(head[2]).starts_with("0x4e symbolcount=30  name-pool@0x289e=[\"main\", \"argc\", \"argv\", \"c\""));
-    // From the blank line before the record heading on, the text is what the Python tool printed for the same file.
+    // From the blank line before the record heading on, the text is the recorded output for the same file.
     const std::size_t at = text.find("\n-- quad records");
     CB_CHECK(at != std::string::npos);
     CB_CHECK_EQ(text.substr(at), fs::read_text(testing::data_path("invert/testdata/FXU.records.golden.txt")));
@@ -116,8 +114,7 @@ CB_TEST("invert.quad_dump.no_terminator_and_overrun", [] {
     CB_CHECK_EQ(pa.scan.records.size(), std::size_t{2});
     CB_CHECK_EQ(pa.scan.end_offset, std::size_t{0x5c + 6});
     CB_CHECK(qd::dump(pa, "a.q").find("  (reached 0x62; name pool at 0x62)\n") != std::string::npos);
-    // The name pool is found by its bytes, so records whose last bytes are printable are taken for pool (the Python
-    // tool did the same): here the RETURN record's head and the pool's first NUL are all that is printable.
+    // The name pool is found by its bytes, so records whose last bytes are printable are taken for pool: here the RETURN record's head and the pool's first NUL are all that is printable.
     const qd::File swallowed = qd::parse(make_file({{0x23, {1}}, {0x24, {}}}, false, "name\0"sv));
     CB_CHECK_EQ(swallowed.scan.records.size(), std::size_t{1});
     CB_CHECK_EQ(swallowed.scan.pool_offset, std::size_t{0x5c + 3});

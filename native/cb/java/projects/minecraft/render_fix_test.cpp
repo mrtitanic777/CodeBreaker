@@ -1,5 +1,4 @@
-// render_fix: the text form is checked against a golden written by the Python pass and reviewed by hand
-// (testdata/gen_fixes_golden.py) and against the cases of tests/java/test_render_fix.py; the tree form is built here
+// render_fix: the text form is checked against a reviewed golden and against the recorded cases; the tree form is built here
 // from the shapes the pass matches.
 #include <string>
 

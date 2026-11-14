@@ -8,7 +8,7 @@
 // The rules are tidy_state.hpp's; this is the command over them, with the result cache's own clean-up (cache.hpp's prune and
 // its cap) as the cache rule. It needs the settings and nothing else: the state and Converted folders and the cache's caps all
 // come from the configuration, and the cache is told no kinds (it keeps, of each, the generation written to most recently --
-// what the code of now writes -- which is also how the Python implementation's files are looked after).
+// what the code of now writes -- which is also how files of an earlier implementation are looked after).
 #pragma once
 
 #include "cb/base/cache_command.hpp"

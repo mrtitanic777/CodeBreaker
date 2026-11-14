@@ -1,12 +1,11 @@
-// Tests of `codebreaker java <tool>` complete (cb/java/tools.hpp) on the transpiler's own test fixtures (native/cb/java/testdata/tools_fixtures, from the Python suite: nine
-// classes), against what the translated Python printed and wrote for the same commands (testdata/tools/): the text of each tool, with the
+// Tests of `codebreaker java <tool>` complete (cb/java/tools.hpp) on the transpiler's own test fixtures (native/cb/java/testdata/tools_fixtures: nine
+// classes), against the recorded output of the same commands (testdata/tools/): the text of each tool, with the
 // folders it names replaced by <fixtures> and <out>, and for the trees a tool writes a manifest ("path size sha1") of its files.
 //
 // The conversions need a JDK (javac's typed tree is the front end's input): skipped where there is none. What a conversion writes is
 // compared for the nine classes of the fixture (their headers and sources); the runtime and platform files beside them are the lane's data.
 //
-// DIVERGES from the Python, by design: a line that reports a problem goes to stderr (the Python printed it); a text a file holds for a person
-// writes yes/no where the Python's formatting printed True/False (PLATFORM_CHOICES.md); a path an emitted file names uses `/` (the SDK folder in
+// A line that reports a problem goes to stderr; a text a file holds for a person writes yes/no (PLATFORM_CHOICES.md); a path an emitted file names uses `/` (the SDK folder in
 // PLATFORM_CHOICES.md and PLATFORM_LAYER.md); platform.config.json ends with a newline.
 #include "cb/java/tools.hpp"
 
@@ -95,23 +94,23 @@ bool jtt_fixture_class(const std::string& rel) {
     return rel.find('/') == std::string::npos && std::find(kClasses.begin(), kClasses.end(), rel.substr(0, rel.rfind('.'))) != kClasses.end();
 }
 
-void jtt_convert_against_python(const char* std_label, const char* golden_text, const char* golden_manifest) {
+void jtt_convert_against_golden(const char* std_label, const char* golden_text, const char* golden_manifest) {
     if (!jtt_have_jdk()) return;
     JttSetup setup;
     const stdfs::path out = setup.dir.path() / (std::string("out") + (std::string(std_label) == "C++03" ? "03" : "17"));
     const JttRun r = jtt_run(setup.environment, {"convert", fs::to_text(jtt_fixtures()), fs::to_text(out), "--cpp-std", std_label});
     CB_CHECK_EQ(r.code, 0);
-    // (the golden names the folder the Python converted into: out03 / out17 under <out>)
+    // (the golden names the folder converted into: out03 / out17 under <out>)
     CB_CHECK_EQ(jtt_norm(r.out, setup.dir.path()), text::replace_all(jtt_golden(golden_text), "<out>/", "<out>/"));
     CB_CHECK_EQ(jtt_manifest(out, jtt_fixture_class), jtt_golden(golden_manifest));
 }
 
 }  // namespace
 
-CB_TEST("java.tools.convert_cpp03_matches_the_python", [] { jtt_convert_against_python("C++03", "convert03.txt", "convert03_classes.manifest"); });
-CB_TEST("java.tools.convert_cpp17_matches_the_python", [] { jtt_convert_against_python("C++17", "convert17.txt", "convert17_classes.manifest"); });
+CB_TEST("java.tools.convert_cpp03_matches_the_golden", [] { jtt_convert_against_golden("C++03", "convert03.txt", "convert03_classes.manifest"); });
+CB_TEST("java.tools.convert_cpp17_matches_the_golden", [] { jtt_convert_against_golden("C++17", "convert17.txt", "convert17_classes.manifest"); });
 
-CB_TEST("java.tools.scaffold_in_each_language_matches_the_python", [] {
+CB_TEST("java.tools.scaffold_in_each_language_matches_the_golden", [] {
     JttSetup setup;
     for (const auto& [language, golden, label] : {std::tuple{"c", "scaffold_c.manifest", "C"}, std::tuple{"csharp", "scaffold_cs.manifest", "C#"},
                                                   std::tuple{"rust", "scaffold_rust.manifest", "Rust"}}) {
@@ -123,13 +122,13 @@ CB_TEST("java.tools.scaffold_in_each_language_matches_the_python", [] {
     }
 });
 
-CB_TEST("java.tools.signatures_match_the_python", [] {
+CB_TEST("java.tools.signatures_match_the_golden", [] {
     JttSetup setup;
     const stdfs::path out = setup.dir.path() / "signatures.md";
     const JttRun r = jtt_run(setup.environment, {"signatures", fs::to_text(jtt_fixtures()), "--out", fs::to_text(out)});
     CB_CHECK_EQ(r.code, 0);
     CB_CHECK_EQ(jtt_norm(r.out, setup.dir.path()), jtt_golden("signatures.txt"));
-    // (the text names the command as `codebreaker java ...`, not as the Python's `python -m codebreaker java ...`)
+    // (the text names the command as `codebreaker java ...`, with no interpreter prefix)
     CB_CHECK_EQ(fs::read_text(out), text::replace_all(jtt_golden("signatures.md"), "`python -m codebreaker java", "`codebreaker java"));
 });
 
@@ -140,7 +139,7 @@ CB_TEST("java.tools.apimap_lists_the_legacy_map_too", [] {
     CB_CHECK_EQ(r.out, jtt_golden("apimap_subsystems.txt"));
 });
 
-CB_TEST("java.tools.debug_support_is_emitted_as_the_python_did", [] {
+CB_TEST("java.tools.debug_support_is_emitted_as_recorded", [] {
     JttSetup setup;
     for (const char* name : {"debug", "debug_off"}) {
         const stdfs::path out = setup.dir.path() / name;

@@ -102,7 +102,7 @@ void check_image(const std::string& name) {
 
     fs::ScopedTempDir dir("fatx-test");
     const std::vector<Listed> got = list_with_crcs(v, p, dir.path());
-    // the old reader's listing: rows [path ("/" after a folder), size, crc]; the first row ("./") is the root
+    // the recorded listing: rows [path ("/" after a folder), size, crc]; the first row ("./") is the root
     std::vector<Listed> want;
     for (const J& row : golden["list"][1]) {
         std::string path = row[0];

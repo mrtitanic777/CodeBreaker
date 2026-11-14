@@ -1,17 +1,15 @@
 // cb/emulate/m6502_test.cpp -- the 6502 interpreter: instruction semantics (flags, wrap-arounds, stack), the bus and its
 // device ranges, running a function, and the run record.
 //
-// Every expected value below is worked out by hand from the 6502 documentation (not recorded from this code). The old
-// harness (state/work/typed-port/emulate.m6502: 19,510 cases made by the Python module) also agrees on every case with
-// in-range inputs; the cases that gave the Python module registers outside a byte (a = -5 .. 600) have no meaning on a
+// Every expected value below is worked out by hand from the 6502 documentation (not recorded from this code). An old
+// harness of 19,510 cases also agrees on every case with
+// in-range inputs; the cases that gave registers outside a byte (a = -5 .. 600) have no meaning on a
 // chip and are not carried over.
 //
-// DIVERGES from the Python module:
-//  - Registers, the stack pointer and the entry address are 8 and 16 bits wide types; Python's ints could hold more, and a
-//    run entered at 0x1FFF0 did not return at once (its pc never equalled 0xFFF0) while here the entry is 0xFFF0.
-//  - A Bus takes exactly 64 KB (a shorter bytearray was an IndexError at the first access past its end).
-//  - A run's `io` is what that run logged; the Python gave the bus's whole log, which a bus reused for a second run
-//    carried over from the first.
+// Notes:
+//  - Registers, the stack pointer and the entry address are 8 and 16 bits wide types.
+//  - A Bus takes exactly 64 KB.
+//  - A run's `io` is what that run logged, not the bus's whole log.
 //  - An undocumented opcode is a Fault returned by step(), not an exception.
 #include "cb/emulate/m6502.hpp"
 

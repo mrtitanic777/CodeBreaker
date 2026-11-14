@@ -8,8 +8,7 @@
 // A command RUNS when something registers a runner for it: a `cli::Command` (declared: parsed, validated and
 // documented by cb::cli) or a raw runner (hands the words after the command name to code that parses them itself --
 // the transition's way for a command whose module is not yet declared). A command with a catalog row and no runner
-// goes to the fallback runner if there is one (while the program still hands unported commands to the translated
-// Python `__main__`), else it is reported as not available in this build.
+// goes to the fallback runner if there is one, else it is reported as not available in this build.
 //
 // `--corpus NAME` before or after any command selects another product's files (settings.json: corpora); the
 // option is taken off here and acted on through the Environment, so the command never sees it.
@@ -73,7 +72,7 @@ public:
     void set(std::string_view name, RawRunner runner);
     void set(cli::Command command);
     // What a command with a catalog row and no runner is handed to: the whole command line, the command's name first
-    // (the translated Python `__main__` finds the command again by name).
+    // (the receiving program finds the command again by name).
     void set_fallback(RawRunner runner);
     bool has_runner(std::string_view name) const;
 

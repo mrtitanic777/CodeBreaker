@@ -1,12 +1,11 @@
 // Tests of cb/symbols/driver_services. The table is the real one (testdata/driver_services.json, the table the knowledge base
 // holds for the vxd platform); the include-file reader runs over real files of the Windows 95 driver kit (testdata/driver_kit:
 // VKD, VCACHE, PAGESWAP, MMDEVLDR and NETVXD whole, and the device-id and message parts of VMM.INC), its expected answers being
-// what the Python module read from the same files; and over small include files written out for the forms the real ones do not
+// those read from the same files; and over small include files written out for the forms the real ones do not
 // have (the C header's #define, `=`, a macro's own Begin_Service_Table line, one device claimed by two files).
 //
-// DIVERGES from the Python module, by design: a table whose device key is not hex, or whose name is not text, is a FormatError
-// at the load (the Python failed with ValueError / TypeError at the first use); lines of the kit's files end at \n, \r\n and
-// \r (the Python's splitlines also split on form feeds and a few control characters, which the kit's files do not use); a
+// A table whose device key is not hex, or whose name is not text, is a FormatError at the load; lines of the kit's files end at
+// \n, \r\n and \r (form feeds and other control characters do not split lines); a
 // device number that does not fit 32 bits is not a number.
 #include "cb/symbols/driver_services.hpp"
 
@@ -125,7 +124,7 @@ CB_TEST("symbols.driver_services.coverage_of_a_driver", [] {
     CB_CHECK_EQ(c.missing.size(), std::size_t{2});
     CB_CHECK_EQ((c.missing.at({0xD, 0x500})), std::size_t{2});   // the jump bit does not make a service another
     CB_CHECK_EQ((c.missing.at({0x7FF, 2})), std::size_t{1});
-    // (the Python module's layout: "%-16s %4d service calls, %4d named" and "  NAME xN" for each unnamed one)
+    // ("%-16s %4d service calls, %4d named" and "  NAME xN" for each unnamed one)
     CB_CHECK_EQ(ds::coverage_line(t, "vkd.vxd", c), std::format("{:<16} {:>4} service calls, {:>4} named  VKD_Service_0500 x2  VxD_07FF_0002 x1", "vkd.vxd", 6, 3));
     // at most six unnamed ones are listed
     std::vector<ds::ServiceCall> many;
@@ -137,7 +136,7 @@ CB_TEST("symbols.driver_services.coverage_of_a_driver", [] {
 
 CB_TEST("symbols.driver_services.device_numbers", [] {
     const std::map<std::string, std::uint32_t> known = {{"NAME", 5}, {"MULTIMEDIA_OEM_ID", 0x440}};
-    // the Python module's answers
+    // the expected answers
     CB_CHECK_EQ(ds::parse_device_number("0000DH", known).value_or(999), std::uint32_t{13});
     CB_CHECK_EQ(ds::parse_device_number("38H", known).value_or(999), std::uint32_t{56});
     CB_CHECK_EQ(ds::parse_device_number("0x28", known).value_or(999), std::uint32_t{40});

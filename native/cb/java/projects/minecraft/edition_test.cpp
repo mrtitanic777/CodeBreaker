@@ -1,5 +1,4 @@
-// Edition resolution. The expected values of the version-id and corpus cases were produced by the Python module
-// (codebreaker.java.projects.minecraft.edition) and checked by hand against the era each id/corpus names.
+// Edition resolution. The expected values of the version-id and corpus cases were checked by hand against the era each id/corpus names.
 #include <string>
 #include <vector>
 
@@ -137,7 +136,7 @@ CB_TEST("java.minecraft.edition.resolve_unknown_explicit", [] {
     }
 });
 
-// tests/java/test_edition_autodetect.py, the three cases the table above spelled with other classes: the same corpora.
+// Autodetection: the three cases the table above spelled with other classes: the same corpora.
 CB_TEST("java.minecraft.edition.a_beta_world_with_biome_and_region_markers", [] {
     CB_CHECK_EQ(detected(make_corpus({{"World", "net.minecraft.src"}, {"BiomeGenBase", nullptr}, {"RegionFile", nullptr}})), "beta");
 });

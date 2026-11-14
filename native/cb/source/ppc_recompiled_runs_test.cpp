@@ -1,9 +1,9 @@
-// cb/source/ppc_recompiled_runs_test.cpp -- recompiled PowerPC runs and gives the answers the C it was compiled from gives (tests/test_recompile.py).
+// cb/source/ppc_recompiled_runs_test.cpp -- recompiled PowerPC runs and gives the answers the C it was compiled from gives.
 //
 // Each case is C compiled with the Xbox 360 compiler (settings.json: powerpc_tools), its PowerPC recompiled to C++ (recompile/powerpc), built with g++
 // against the rexglue kernel core's runtime headers, run, and compared with the same computation done here. Also: two functions dispatched through the
 // indirect-call table, a function reading big-endian guest memory, and VMX128 words decoded first. A machine without the compiler, g++ or the kernel
-// core's headers prints SKIP, as the Python did. (It sits in area source because that area sees both the compiler's wrapper and the recompiler.)
+// core's headers prints SKIP. (It sits in area source because that area sees both the compiler's wrapper and the recompiler.)
 //
 // Names here are file-local to this unity unit: every one starts with `rr_`.
 #include <cmath>

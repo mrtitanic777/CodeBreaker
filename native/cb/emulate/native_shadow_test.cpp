@@ -2,14 +2,14 @@
 // word by word against what the recorder writes: tracer/cbtrace.h), and a shadow of a real run -- machine code on the prebuilt Unicorn,
 // lifted by the built pcodecheck (they say so and pass when this machine has not built it).
 //
-// DIVERGES from the Python module and its port:
+// Notes:
 //  - the recorder is linked in (cb/emulate/tracer), not found as a DLL, so there is no enabled()/why_not()/require(): a shadow is
 //    always there to make;
 //  - the conditions are nodes of an ExprPool the Run owns (a shared_ptr<const Run> is held for as long as they are used), not shared
 //    expression trees;
 //  - tables that lie (an operation, kind or string that is not there, a node made of one after it, a constant wider than 64 bits) are a
-//    FormatError, where the Python raised IndexError, OverflowError or KeyError;
-//  - the place and the name of an input are typed (`Place`), not the Python's tuple of two or three.
+//    FormatError;
+//  - the place and the name of an input are typed (`Place`).
 #include "cb/emulate/native_shadow.hpp"
 
 #include <filesystem>

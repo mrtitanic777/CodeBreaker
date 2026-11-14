@@ -9,10 +9,10 @@
 // function's L2 document says (placeholders, calls, arguments); a DOS program and a NES cartridge made C through the whole path, and the
 // command. The 16-bit and 32-bit lanes are proved against the product (the six modules of the report in the commit message).
 //
-// DIVERGES from the Python module: the `timeout=` of the runs is gone (the process API has one for a run that needs it; nothing here did);
-// a note of the program's that is not well formed is a FormatError (Python raised AttributeError on a structure note, IndexError on the others);
-// the asm-blocks pass is run through asm_blocks::place with its own decoder (the Python port raised NotImplementedError there); a function
-// that dies with the governor's note and no block written before it is skipped (Python raised TypeError formatting None).
+// Notes: the `timeout=` of the runs is gone (the process API has one for a run that needs it; nothing here did);
+// a note of the program's that is not well formed is a FormatError;
+// the asm-blocks pass is run through asm_blocks::place with its own decoder; a function
+// that dies with the governor's note and no block written before it is skipped.
 #include "cb/decompile/decompiler.hpp"
 
 #include <cstdlib>

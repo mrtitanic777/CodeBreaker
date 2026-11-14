@@ -1,14 +1,10 @@
 // Tests of cb/symbols/wine16: the .spec lines of Wine's 16-bit modules (the shapes Wine's files have, plus the shapes
-// that are not lines at all), and a Wine `dlls` folder made in a temporary folder. The expected exports are what the
-// Python module read from the same text (the lines below were run through it once, all of them: the same exports, the
-// same lines passed over).
+// that are not lines at all), and a Wine `dlls` folder made in a temporary folder.
 //
-// DIVERGES from the Python module, by design: the Python's `\s`, `\w` and `\d` were Unicode's, so a no-break space, an
-// em space or an Arabic-Indic digit counted as white space or as a number; here white space and digits are ASCII (Wine's
-// files are ASCII), and the bytes of a non-ASCII letter are letters of a name. An ordinal that does not fit 32 bits is
-// not an export. The exports of a module are in ordinal order (the Python's dict was in the order of the lines, which nothing
-// reads as an order). When two spec files of a module declare one ordinal, the later file in name order replaces the earlier
-// (the Python's was the file system's listing order).
+// White space and digits are ASCII (Wine's files are ASCII), and the bytes of a non-ASCII letter are letters of a name, so a
+// no-break space, an em space or an Arabic-Indic digit is neither white space nor a number. An ordinal that does not fit 32 bits is
+// not an export. The exports of a module are in ordinal order. When two spec files of a module declare one ordinal, the later
+// file in name order replaces the earlier.
 #include "cb/symbols/wine16.hpp"
 
 #include "cb/core/fs.hpp"
@@ -130,7 +126,7 @@ CB_TEST("symbols.wine16.read_spec.ordinals", [] {
     CB_CHECK_EQ(e.at(0).name, "Zero");
     CB_CHECK_EQ(e.at(7).name, "Lead");
     CB_CHECK_EQ(e.at(13).name, "Over");   // the later line wins
-    CB_CHECK(w16::read_spec("99999999999 pascal Big(word)\n").empty());   // (DIVERGES: more than any ordinal is)
+    CB_CHECK(w16::read_spec("99999999999 pascal Big(word)\n").empty());   // (more than any ordinal is)
 });
 
 CB_TEST("symbols.wine16.read_spec.spacing_and_what_follows", [] {
@@ -157,7 +153,7 @@ CB_TEST("symbols.wine16.read_spec.non_ascii_names", [] {
     CB_CHECK_EQ(e.at(20).name, "N\xC3\xA4me");
     CB_CHECK(e.at(20).args == args({ArgKind::Word}));
     CB_CHECK(!e.at(22).args.has_value());
-    // DIVERGES: a no-break space is no white space, and an Arabic-Indic digit no ordinal
+    // a no-break space is no white space, and an Arabic-Indic digit no ordinal
     CB_CHECK(w16::read_spec("\xC2\xA0" "49 pascal Foo()\n").empty());
     CB_CHECK(w16::read_spec("\xD9\xA3 pascal ArabicDigit(word)\n").empty());
 });

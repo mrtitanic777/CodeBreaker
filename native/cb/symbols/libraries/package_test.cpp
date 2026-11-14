@@ -1,11 +1,10 @@
 // Tests of cb/symbols/libraries (read, fits, Index) on the real objects and libraries of testdata (see coff_test.cpp and
-// omf_test.cpp for where they come from), and on words written out for the index. The Python module's answers on the
-// same inputs were compared once (kind, function count, every function's name, bytes, mask and offset).
+// omf_test.cpp for where they come from), and on words written out for the index. The expected kind, function count and every
+// function's name, bytes, mask and offset were checked once against the files.
 //
-// DIVERGES from the Python module, by design: `read` of a single damaged COFF object is a FormatError (the Python let
-// struct.error through), and of a library whose header page is cut off gives no function (the Python raised); the kind
-// is an enum, not 16 / 32 / "powerpc"; `Index::find` with `ignore` not as long as the words is a UsageError (the Python let
-// a shorter one compare only the words it covered and raised IndexError for a longer one).
+// `read` of a single
+// damaged COFF object is a FormatError, and of a library whose header page is cut off gives no function; the kind
+// is an enum; `Index::find` with `ignore` not as long as the words is a UsageError.
 #include "cb/symbols/libraries/package.hpp"
 
 #include <algorithm>

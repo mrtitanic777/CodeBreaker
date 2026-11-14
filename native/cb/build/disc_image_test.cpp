@@ -1,9 +1,9 @@
 // Tests of cb/build/disc_image.hpp: the images the writer makes from the test trees (testdata/disc: real DOS and Windows files and some
 // awkward names) are the ones `codebreaker disc` made, byte for byte but for the date the volume was written (testdata/disc_golden:
 // the command's output, and the size and SHA-1 of each image with those two dates zeroed). The trees get fixed modification times
-// first, as the Python's images were made from trees with the same ones.
+// first.
 //
-// DIVERGES from the Python: a character that is not ASCII becomes one '_' however many characters its upper-case form has; the
+// A character that is not ASCII becomes one '_' however many characters its upper-case form has; the
 // usage lines are ours.
 #include "cb/build/disc_image.hpp"
 
@@ -100,7 +100,7 @@ CB_TEST("build.disc_image.names_are_cut_to_level_one", [] {
     CB_CHECK((disc_image::level1_name("", true) == Name{"_", ""}));
 });
 
-CB_TEST("build.disc_image.the_images_are_the_pythons", [] {
+CB_TEST("build.disc_image.the_images_are_the_recorded_ones", [] {
     DiscWorld w;
     CB_CHECK_EQ(w.run({w.w + "/tree", w.w + "/plain.iso"}), disc_case("plain"));
     CB_CHECK_EQ(w.run({w.w + "/tree", w.w + "/vol.iso", "--volume", "My Disc! v1.0"}), disc_case("volume"));

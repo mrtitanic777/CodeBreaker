@@ -12,8 +12,7 @@ namespace t = cb::decompile::l2tree;
 using cb::Json;
 using std::string;
 
-// DIVERGES from the Python module (decompile/l2tree did not exist there: frame16, shape16 and asm_blocks each carried a
-// copy of _walk, _lists and _at): the tree is a Json, edited in place; origin offsets are reduced to 16 bits and sorted.
+// Notes: the tree is a Json, edited in place; origin offsets are reduced to 16 bits and sorted.
 
 CB_TEST("decompile.l2tree.member_text_integer", [] {
     const Json node = cb::json::parse(R"({"node":"Name","n":7,"s":"text","z":null,"f":1.5,"o":{"a":1},"l":[]})");

@@ -2,7 +2,7 @@
 // folder (CB_STATE). What a stage says is the stage's own tests'; here is that the command reaches every one of them and answers as run.hpp says.
 //
 // CB_EXACT_PROOF="<word>;<word>;..." runs the command with those words (the project, the stage, its options) and prints what it said and how long it
-// took, for comparing with the translated Python's `exact` on the same words.
+// took, for comparing runs of `exact` on the same words.
 #include "cb/exact/command.hpp"
 
 #include <chrono>
@@ -38,7 +38,7 @@ CB_TEST("exact.command.the_commands_own_answers", [] {
         CB_CHECK_EQ(command::run(words({"--help"}), s.environment), 0);
         CB_CHECK_EQ(cap.out(), run::usage() + "\n");
     }
-    // --toolchains: the profiles of the checkout, as the Python listed them
+    // --toolchains: the profiles of the checkout
     testing::CapturedStd cap;
     CB_CHECK_EQ(command::run(words({"--toolchains"}), s.environment), test::golden().at("run_toolchains").at(1).get<int>());
     test::check(cap.out() == test::golden().at("run_toolchains").at(0).get<std::string>(), "--toolchains");
@@ -79,7 +79,7 @@ CB_TEST("exact.command.proof", [] {
     if (!proof || proof->empty()) return;
     std::vector<std::string> args;
     for (const std::string_view piece : text::split(*proof, ';')) args.emplace_back(piece);
-    // CB_EXACT_PROOF_STATE: the state folder to run in (its compile cache and beam history are kept): a second run is warm, as the Python's is
+    // CB_EXACT_PROOF_STATE: the state folder to run in (its compile cache and beam history are kept): a second run is warm
     const std::optional<std::string> kept = fs::get_env("CB_EXACT_PROOF_STATE");
     Surrounding s;
     std::optional<fs::ScopedEnv> state_env;
@@ -100,7 +100,7 @@ CB_TEST("exact.command.draft_proves_the_first_functions_of_a_real_program", [] {
         if (entry.path().filename().string().starts_with("f") && entry.path().extension() == ".c") std::filesystem::remove(entry.path());
     testing::CapturedStd cap;
     CB_CHECK_EQ(command::run(std::vector<std::string>{fs::to_text(folder), "draft", "--limit", "3", "-v"}, s.environment), 0);
-    // what the Python's draft stage said of the same three functions: the model reads each, the compiler proves each identical
+    // what the draft stage said of the same three functions: the model reads each, the compiler proves each identical
     CB_CHECK_EQ(cap.out(), "00002    36  identical\n00026    91  identical\n00081    69  identical\n3 functions drafted: 3 identical\n");
     CB_CHECK(std::filesystem::is_regular_file(folder / "src" / "f00002.c"));
     CB_CHECK(fs::read_text(folder / "src" / "f00002.c").starts_with("/* drafted by codebreaker exact draft (early_c), identical */\n"));

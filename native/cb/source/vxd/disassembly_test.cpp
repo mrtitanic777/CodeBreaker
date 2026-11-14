@@ -1,16 +1,14 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of cb/source/vxd/disassembly on the real Windows 95 drivers of formats/testdata (splitter.vxd, srammtd.vxd, bios.vxd). The
-// goldens (testdata/splitter.asm.golden, srammtd.asm.golden) are the listings the Python module wrote for the first two, with the
-// DDK's names the Python found: the tables below are the services those listings name (the DDK is not in the repository). The
-// counts (instructions, code bytes, labels, tables, the service table, the check of every byte) are the Python's, from its harness
-// (state/work/typed-port/source.vxd.disassembly/expected.txt).
+// goldens (testdata/splitter.asm.golden, srammtd.asm.golden) are the recorded listings for the first two, with the
+// DDK's names: the tables below are the services those listings name (the DDK is not in the repository). The
+// counts (instructions, code bytes, labels, tables, the service table, the check of every byte) are recorded from a harness
 //
-// DIVERGES from the Python module, by design: an internal fix-up with no target (a 16-bit selector fix-up) is no entry point,
-// branch target, label or table entry (the Python stopped with a TypeError when one reached an `&` or a comparison); a table of
+// Behaviour pinned here: an internal fix-up with no target (a 16-bit selector fix-up) is no entry point,
+// branch target, label or table entry; a table of
 // pointers ends at the first fix-up that is a selector; the recovery's byte states are arrays, not sets of places, and iterating
-// the instructions, labels and tables is in order of place (the Python's were in the order the descent found things); the
-// listing files are written with LF line ends (the Python's text-mode write made CRLF on Windows); Capstone is 5.0.7 where the
-// Python's was 4.0.2 -- the listings are identical on these drivers.
+// the instructions, labels and tables is in order of place; the
+// listing files are written with LF line ends; Capstone is 5.0.7 where the recording used 4.0.2 -- the listings are identical on these drivers.
 #include "cb/source/vxd/disassembly.hpp"
 
 #include <chrono>
@@ -89,7 +87,7 @@ CB_TEST("source.vxd.disassembly.string_ranges_gates", [] {
     using namespace std::string_literals;
     const auto ranges = [](const std::string& text) { return vx::string_ranges(cb::as_bytes(text)); };
     using R = std::vector<std::pair<std::size_t, std::size_t>>;
-    // (each answer is the Python module's on the same bytes)
+    // (each answer is the recorded one on the same bytes)
     CB_CHECK(ranges("\x01\x02Hello World\x00\x03"s) == (R{{2, 13}}));          // NUL-terminated, 11 printable, vowels, letters
     CB_CHECK(ranges("\x01Hello W\x00"s).empty());                              // seven: too short
     CB_CHECK(ranges("\x01Hello Wo\x00"s) == (R{{1, 9}}));                      // eight is enough
@@ -106,7 +104,7 @@ CB_TEST("source.vxd.disassembly.string_ranges_gates", [] {
     CB_CHECK(ranges("").empty());
 });
 
-CB_TEST("source.vxd.disassembly.splitter_listing_matches_the_python_module", [] {
+CB_TEST("source.vxd.disassembly.splitter_listing_matches_the_recorded_output", [] {
     const le::Module splitter = driver("splitter.vxd");
     const vx::DdkNames names = golden_names();
     const vx::Disassembly code = vx::Disassembly::run(splitter, names);
@@ -115,7 +113,7 @@ CB_TEST("source.vxd.disassembly.splitter_listing_matches_the_python_module", [] 
     CB_CHECK(listing == golden("splitter.asm.golden"));
     CB_CHECK_EQ(listing.size(), 18059u);
 
-    // what the Python module counted
+    // the recorded counts
     CB_CHECK_EQ(code.instructions().size(), 501u);
     CB_CHECK_EQ(code.code_bytes(1), 1415u);
     CB_CHECK_EQ(code.labels().size(), 64u);
@@ -160,7 +158,7 @@ CB_TEST("source.vxd.disassembly.splitter_listing_matches_the_python_module", [] 
     CB_CHECK(has(listing, "VMMCall  VMM.Hook_Device_Service"));
 });
 
-CB_TEST("source.vxd.disassembly.srammtd_listing_matches_the_python_module", [] {
+CB_TEST("source.vxd.disassembly.srammtd_listing_matches_the_recorded_output", [] {
     const le::Module module = driver("srammtd.vxd");
     const vx::DdkNames names = golden_names();
     const vx::Disassembly code = vx::Disassembly::run(module, names);
@@ -308,10 +306,10 @@ CB_TEST("source.vxd.disassembly.files_and_commands", [] {
     CB_CHECK(std::filesystem::exists(tmp.path() / "default-listing" / "bios.vxd.asm"));
 });
 
-// The Python module's counts on its whole harness (273 real drivers of the Windows 95 corpus), and the time this takes: with
-// CB_VXD_DISASSEMBLY_HARNESS=<...>/state/work/typed-port/source.vxd.disassembly (its expected.txt names the drivers by their corpus path). The old
+// The recorded counts on a whole harness (273 real drivers of the Windows 95 corpus), and the time this takes: with
+// CB_VXD_DISASSEMBLY_HARNESS=<folder of the recording> (its expected.txt names the drivers by their corpus path). The old
 // C++ port's time for the same 273 recoveries, measured by that harness on the same machine, is 19.4 s (rc_run.log, `disasm`).
-CB_TEST("source.vxd.disassembly.agrees_with_the_python_module_on_its_harness", [] {
+CB_TEST("source.vxd.disassembly.agrees_with_its_harness", [] {
     const auto folder = cb::fs::get_env("CB_VXD_DISASSEMBLY_HARNESS");
     if (!folder) return;
     std::istringstream in(cb::fs::read_text(std::filesystem::path(*folder) / "expected.txt"));
@@ -346,7 +344,7 @@ CB_TEST("source.vxd.disassembly.agrees_with_the_python_module_on_its_harness", [
         if (!same) {
             ++differ;
             if (differ <= 8) {
-                first += std::format("\n  {}: python {} here {} {} {} {}", fields[1].substr(fields[1].rfind('\\') + 1), want.dump().substr(0, 70), code.instructions().size(), covered,
+                first += std::format("\n  {}: recorded {} here {} {} {} {}", fields[1].substr(fields[1].rfind('\\') + 1), want.dump().substr(0, 70), code.instructions().size(), covered,
                                      code.labels().size(), code.jump_tables().size());
             }
         }

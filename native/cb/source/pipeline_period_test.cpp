@@ -1,6 +1,6 @@
 // Tests of the text passes `repair <32-bit module>` gives a period compiler (pipeline_period.hpp) and of the run-time library `match <16-bit module>`
-// names (pipeline_match16.hpp). They replace the Python cases of tests/test_verification.py (period source, a run-time library routine named outside
-// the linker's bytes) and of tests/translate/test_c_backend.py (the header a moved-field function needs).
+// names (pipeline_match16.hpp). They cover period source, a run-time library routine named outside
+// the linker's bytes, and the header a moved-field function needs.
 #include "cb/source/pipeline_period.hpp"
 
 #include <string>

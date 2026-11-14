@@ -71,7 +71,7 @@ usage: codebreaker <command> [arguments]
     xenon-config <basic.xex> <out.toml>
                                     a module's XenonRecomp configuration (--out-dir, --switch-tables, --file-path)
     switch-tables <basic.xex> <out.toml>
-                                    its switch tables (switches.py's, with XenonAnalyse's)
+                                    its switch tables (with XenonAnalyse's)
     corpus-executables              every corpus executable: its format, a tab, its path
     xex-edit <op> <file.xex> ...    change its privilege flags, or its code at an address (nop, bytes, asm, hook)
     ppc-calls <.xex or image> [-o F]

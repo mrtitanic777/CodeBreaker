@@ -6,12 +6,11 @@
 // under another name, the name that lives at one address, the function that is too short. The expected signatures were worked out by hand from
 // the listing and the masking rules.
 //
-// DIVERGES from the Python module, by design: the .MAP is read by lines (a line is ` SSSS:OOOO  name`; the Python's pattern could join a name on
-// the next line when the offset ended its line); names.json is written by the module, one entry a line with the keys sorted as text, as the
-// Python wrote it, and read back as a typed table (segment, offset, name), with ParseError for a file that is not one (the Python raised a
-// JSONDecodeError or ValueError); the debug build and the retail module are opened by the caller.
+// The .MAP is read by lines (a line is ` SSSS:OOOO  name`, so a name is never joined from the next line when the offset ends
+// its line); names.json is written by the module, one entry a line with the keys sorted as text, and read back as a typed table
+// (segment, offset, name), with ParseError for a file that is not one; the debug build and the retail module are opened by the caller.
 //
-// NOT fixed, as it decides which functions match (see _bugs): a far call `call 0x1:0x20` is masked by the branch rule first, to `call X:0x20`, so
+// Known limitation, as it decides which functions match: a far call `call 0x1:0x20` is masked by the branch rule first, to `call X:0x20`, so
 // the offset of a far call target stays in the signature and a function that makes one is matched only where the offset happens to agree.
 #include "cb/symbols/debug_build.hpp"
 
@@ -188,7 +187,7 @@ CB_TEST("symbols.debug_build.an_export_keeps_its_own_signature", [] {
 CB_TEST("symbols.debug_build.names_json_round_trips", [] {
     const db::Names names = {{{1, 0x90}, "A"}, {{10, 0x10}, "B"}, {{2, 0xFE}, "C\"q"}};
     const std::string text = db::to_json(names);
-    CB_CHECK_EQ(text, "{\n\"10:0010\": \"B\",\n\"1:0090\": \"A\",\n\"2:00fe\": \"C\\\"q\"\n}");   // keys sorted as text ('0' sorts before ':'), as the Python wrote them
+    CB_CHECK_EQ(text, "{\n\"10:0010\": \"B\",\n\"1:0090\": \"A\",\n\"2:00fe\": \"C\\\"q\"\n}");   // keys sorted as text ('0' sorts before ':')
     const auto overrides = db::parse_overrides(text);
     CB_CHECK_EQ(overrides.size(), 3U);
     CB_CHECK_EQ(overrides.at(1).at(0x90), "A");

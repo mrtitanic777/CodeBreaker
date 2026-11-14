@@ -3,13 +3,11 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from verify/lanes/dos.py:
-//   * the profile digest is the first 12 hex digits of the SHA-1 of "dos rev 93 tools <name>:<size>:<mtime> ...", not
-//     of Python's repr of a tuple (a store the Python lane wrote is rebuilt); a tool that cannot be found is
-//     "<name>:missing" (the Python added an empty string, which made two missing tools indistinguishable);
+// Design notes:
+//   * the profile digest is the first 12 hex digits of the SHA-1 of "dos rev 93 tools <name>:<size>:<mtime> ..."; a tool that cannot be found is
+//     "<name>:missing";
 //   * the packager's writer and tools are given to the lane, not found through `platforms.of("dos")`;
-//   * a linked program with no source text has keys but no per-function texts, as before; the Python then failed with a
-//     KeyError in build() (it indexed the empty key table), the C++ keeps the keys.
+//   * a linked program with no source text has keys but no per-function texts.
 
 using namespace cb;
 using namespace cb::verify;

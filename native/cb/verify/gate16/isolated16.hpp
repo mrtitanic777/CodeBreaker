@@ -17,9 +17,8 @@
 // returns, chosen to take branches of the original no other input took), and the scattered ones once more over a patterned data segment. CB_NO_GUIDED=1
 // leaves the guided ones out. The guided inputs are looked for only once the others all agree: a function found to differ needs no more.
 //
-// Not carried over from the Python: the worker processes the work was shared out over (the emulators are not process-global now: the shares are
-// threads, each with a Runner and a governor of its own), and the pickled caches of the original's runs and of the guided inputs (no pickle in C++;
-// the checker's runs of the original are kept within one check).
+// The work is shared over threads, each with a Runner and a governor of its own (the emulators are not process-global);
+// the checker's runs of the original are kept within one check.
 #pragma once
 
 #include <cstdint>

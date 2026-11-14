@@ -1,18 +1,17 @@
-// The Python tests of tests/java that checked what the transpiler EMITS, or a pass of the corpus, or the platform layer's C++ sources -- the ones no other
-// native test covered -- ported with the same inputs and the same expectations:
+// Tests of what the Java transpiler EMITS, of the whole-program passes of the corpus, and of the platform layer's C++ sources:
 //
-//   test_call_arg_cast, test_ctor_delegation_cast, test_int_array_unbox (2), test_noequals_identity (2), test_ptr_factory, test_int_cast
+//   call-argument casts, constructor delegation, int-array unboxing, equals() identity, pointer factories, int casts
 //       Java source in, the transpiler's C++ out, as the application assembles it (java/assembly) with the real front end: javac's typed tree of
 //       the sources (TreeDump). They need a JDK; without one they say so and pass.
-//   test_host_compile_fixes (5)   the same, then the emitted classes and a runtime unit compiled with the host g++ (skipped without one)
-//   test_collection_out_params (5), test_build3_fixes (3 of 5), test_beta_fixes (3)   the whole-program passes on parsed classes
-//   test_review_fixes (6)   the platform layer's C++ (JavaString.h, JavaRT.h, Save360.reference.cpp, GL11.reference.cpp): read, and compiled by g++
-//   test_build3_fixes (2: arrays assigned null) and test_pc_platform (3) are in the last tests.
-//   test_cpp17_backend (2): Modern.java as a whole C++17 program run beside the JVM, and Tally.java through the transpiler as C++17 beside C++03,
-//       compiled with -fsyntax-only (the rest of that file is translate.cpp17.* / translate.jmodel.* / translate.desugar.*). They need a JDK and g++;
+//   host-compile fixes   the same, then the emitted classes and a runtime unit compiled with the host g++ (skipped without one)
+//   collection out-parameters, build-3 and beta fixes   the whole-program passes on parsed classes
+//   platform layer review   the platform layer's C++ (JavaString.h, JavaRT.h, Save360.reference.cpp, GL11.reference.cpp): read, and compiled by g++
+//   arrays assigned null and the PC platform are in the last tests.
+//   the C++17 back end (2): Modern.java as a whole C++17 program run beside the JVM, and Tally.java through the transpiler as C++17 beside C++03,
+//       compiled with -fsyntax-only (the rest is translate.cpp17.* / translate.jmodel.* / translate.desugar.*). They need a JDK and g++;
 //       the first also cbl2.dll (native/l2/build, or CB_L2_DLL).
 //
-// The Python converted with `profiles.use('minecraft_xbox360')` active between tests; a conversion here reads the profile it asks for (none).
+// A conversion reads the profile it asks for (none by default); no profile is active between tests.
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -149,7 +148,7 @@ std::string jpo_run(const stdfs::path& exe, const stdfs::path& cwd, int* code = 
 }  // namespace
 
 // ================================================================================================================================================
-// test_call_arg_cast.py: `entityMap.a((Entity)null, var1).size()` -- a nullable getter of another class must not type `entityMap.a()`, and a cast
+// `entityMap.a((Entity)null, var1).size()` -- a nullable getter of another class must not type `entityMap.a()`, and a cast
 // that is a call's argument is not a grouping cast: the call's result stays a value (`.size()`, not `->size()`).
 CB_TEST("java.emitted.a_cast_argument_is_not_a_grouping_cast_and_a_list_result_keeps_its_dot", [] {
     if (!jpo_ready("emitted-cpp")) return;
@@ -171,7 +170,7 @@ CB_TEST("java.emitted.a_cast_argument_is_not_a_grouping_cast_and_a_list_result_k
     CB_CHECK(!jpo_has(cpp, "PathPoint"));                       // the mis-typed hoist is gone
 });
 
-// test_ctor_delegation_cast.py: a transitive `this((Block)var1, 1)` delegation threads the argument through the X-typed overload.
+// a transitive `this((Block)var1, 1)` delegation threads the argument through the X-typed overload.
 CB_TEST("java.emitted.a_transitive_delegation_with_a_cast_argument_threads_blockid", [] {
     if (!jpo_ready("emitted-cpp")) return;
     const JpoConverted done = jpo_convert({
@@ -186,7 +185,7 @@ CB_TEST("java.emitted.a_transitive_delegation_with_a_cast_argument_threads_block
     CB_CHECK(!jpo_has(cpp, "this->itemID = ((Block*)var1);"));              // the Block*->int assignment is gone
 });
 
-// test_int_array_unbox.py: `(int[])list.remove(i)` of a raw list unboxes the JObject element.
+// `(int[])list.remove(i)` of a raw list unboxes the JObject element.
 CB_TEST("java.emitted.an_int_array_cast_of_a_raw_list_remove_unboxes", [] {
     if (!jpo_ready("emitted-cpp")) return;
     const JpoConverted done = jpo_convert({{"Holder.java", "import java.util.List;\nimport java.util.ArrayList;\n"
@@ -208,7 +207,7 @@ CB_TEST("java.emitted.an_int_array_cast_of_a_field_chain_unboxes", [] {
     CB_CHECK(!jpo_has(cpp, "(int[])"));
 });
 
-// test_noequals_identity.py: `.equals()` on a class that declares no equals() is reference identity; one that does keeps its call.
+// `.equals()` on a class that declares no equals() is reference identity; one that does keeps its call.
 CB_TEST("java.emitted.equals_on_a_class_without_one_is_identity", [] {
     if (!jpo_ready("emitted-cpp")) return;
     const JpoConverted done = jpo_convert({
@@ -231,7 +230,7 @@ CB_TEST("java.emitted.a_class_with_equals_keeps_the_call", [] {
     CB_CHECK(!jpo_has(cpp, "(a == b)"));
 });
 
-// test_ptr_factory.py: a stub class's static factory (`Runtime.getRuntime()`) gets `->` on its result.
+// a stub class's static factory (`Runtime.getRuntime()`) gets `->` on its result.
 CB_TEST("java.emitted.runtime_getruntime_chains_with_an_arrow", [] {
     if (!jpo_ready("emitted-cpp")) return;
     const JpoConverted done = jpo_convert({{"Gui.java", "package net.minecraft.client.gui;\npublic class Gui {\n public void draw() {\n"
@@ -245,8 +244,8 @@ CB_TEST("java.emitted.runtime_getruntime_chains_with_an_arrow", [] {
     CB_CHECK(!jpo_has(cpp, "getRuntime().maxMemory"));   // the `.` form is gone
 });
 
-// test_int_cast.py: Java's (int)/(long) of a float or double saturates (NaN -> 0), so every such cast of an emitted class is j2xToInt / j2xToLong; the
-// Python then judged the class against the JVM. Here the emitted class is compiled and run, and the saturated values are Java's.
+// Java's (int)/(long) of a float or double saturates (NaN -> 0), so every such cast of an emitted class is j2xToInt / j2xToLong.
+// The emitted class is compiled and run, and the saturated values are Java's.
 CB_TEST("java.emitted.out_of_range_casts_saturate_like_java", [] {
     if (!jpo_ready("emitted-cpp") || !jpo_tool_runs("g++", "--version")) return;
     const JpoConverted done = jpo_convert({{"Casts.java", "public class Casts {\n\tpublic static int toInt(float var0) {\n\t\treturn (int)(var0 * 10430.378F);\n\t}\n\n"
@@ -267,7 +266,7 @@ CB_TEST("java.emitted.out_of_range_casts_saturate_like_java", [] {
 });
 
 // ================================================================================================================================================
-// test_host_compile_fixes.py: the classes of the Alpha corpus that did not compile with a host g++, transpiled and compiled.
+// the classes of the Alpha corpus that did not compile with a host g++, transpiled and compiled.
 namespace {
 
 const std::map<std::string, std::string>& jpo_host_sources() {
@@ -380,8 +379,8 @@ CB_TEST("java.emitted.every_class_and_the_runtime_compile", [] {
 });
 
 // ================================================================================================================================================
-// test_build3_fixes.py: a static method that shadows an inherited instance one is renamed; arrays assigned null become empty arrays.
-// test_emit_source.py TestNestedAggregateArrayStatic.test_no_braced_new_array, through the real translator: `static int[][] x = new int[][]{{..},{..}}` is a
+// a static method that shadows an inherited instance one is renamed; arrays assigned null become empty arrays.
+// Through the real translator: `static int[][] x = new int[][]{{..},{..}}` is a
 // nested JArray builder, never a braced `new int[][]` (the C2087 "missing subscript" crash class).
 CB_TEST("java.emitted.a_nested_static_aggregate_array_is_not_a_braced_new", [] {
     if (!jpo_ready("emitted-cpp")) return;
@@ -433,7 +432,7 @@ CB_TEST("java.emitted.an_array_field_assigned_null_becomes_the_empty_array", [] 
 });
 
 // ================================================================================================================================================
-// test_beta_fixes.py: a signed byte scalar is `signed char` and its buffer unsigned; static initialisers run after what they read.
+// a signed byte scalar is `signed char` and its buffer unsigned; static initialisers run after what they read.
 CB_TEST("java.types.a_byte_scalar_is_signed_and_its_buffer_unsigned", [] {
     std::vector<jir::JClass> classes;
     classes.push_back(java::parse::parse_source("package sample;\npublic class P {}\n"));
@@ -469,7 +468,7 @@ CB_TEST("java.init_driver.the_seed_order_of_a_profile_is_kept", [] {
 });
 
 // ================================================================================================================================================
-// test_collection_out_params.py: a collection parameter a method mutates is an out-parameter (a C++ reference), else the value copy drops the callee's
+// a collection parameter a method mutates is an out-parameter (a C++ reference), else the value copy drops the callee's
 // writes (the getCollidingBoundingBoxes "player falls through the world" bug). The three signals, the read-only negative case, the emitter's rendering.
 namespace {
 
@@ -533,7 +532,7 @@ CB_TEST("java.ownership.a_promoted_collection_is_a_reference_in_the_signature", 
 });
 
 // ================================================================================================================================================
-// test_review_fixes.py: the platform layer's C++ (the sources the transpiler copies out), read and compiled.
+// the platform layer's C++ (the sources the transpiler copies out), read and compiled.
 namespace {
 
 stdfs::path jpo_canonical() { return testing::data_path("../../data/java/platform/canonical"); }
@@ -641,8 +640,8 @@ CB_TEST("java.platform.the_viewport_height_comes_from_the_backbuffer_and_y_is_cl
 });
 
 // ================================================================================================================================================
-// test_pc_platform.py: the PC platform (pc_opengl): SDL2 + real OpenGL behind LWJGL's API, a generated PC entry point and a CMake project.
-// The conversion needs LWJGL on javac's classpath (the Python skipped without it); building and running needs g++ and SDL2.
+// the PC platform (pc_opengl): SDL2 + real OpenGL behind LWJGL's API, a generated PC entry point and a CMake project.
+// The conversion needs LWJGL on javac's classpath (without it the test is skipped); building and running needs g++ and SDL2.
 namespace {
 
 constexpr const char* jpo_spin_game = R"(import org.lwjgl.opengl.Display;
@@ -699,7 +698,7 @@ CB_TEST("java.pc_platform.it_builds_and_runs", [] {
     if (!spin) return;
     const stdfs::path out = spin->out->path();
     // Without LWJGL's classes on javac's classpath the game's calls into it are not typed and the translator writes them as unsupported (a throw): the
-    // program builds but cannot run. The Python skipped here too ("cannot convert without LWJGL").
+    // program builds but cannot run.
     if (jpo_has(fs::read_text(out / "Spin.cpp"), "UnsupportedOperationException")) {
         std::cerr << "pc platform: LWJGL is not on the front end's classpath here, so the game's bodies are unsupported; skipped\n";
         return;
@@ -729,7 +728,7 @@ CB_TEST("java.pc_platform.it_builds_and_runs", [] {
 
 // The sound system, saving and resources on the PC (FIXED BUGs: the SoundSystem stub was silent, Writer.write(String) was lost so options.txt saved
 // empty, a resource asked for under a folder was missing from the flattened Content folder). Building it needs SDL2 and the vorbis libraries; the
-// Python's check wrote a tone with the `wave` module and read the mixed output back -- here the tone is written as a WAV by hand.
+// the check writes a tone as a WAV by hand and reads the mixed output back.
 CB_TEST("java.pc_platform.sound_saving_and_resources_work", [] {
     std::error_code ec;
     if (!jpo_ready("pc platform") || !jpo_tool_runs("g++", "--version") || !stdfs::is_regular_file("C:/msys64/mingw64/include/SDL2/SDL.h", ec) ||
@@ -808,8 +807,8 @@ public class Noise {
 });
 
 // ================================================================================================================================================
-// test_pipeline.py (TestMethodRenameCollision, TestPipeline.test_files_written / test_translation_applied) and test_two_phase.py
-// (test_constructors_become_j2xinit), with the real front end: the Java in, the files out.
+// Method-rename collisions, the files written, the translation applied, and constructors becoming j2xinit, with the real front end:
+// the Java in, the files out.
 
 // Java allows a field `isRunning` and a method `isRunning(...)`; C++ does not: the method is renamed.
 CB_TEST("java.pipeline.a_method_named_like_a_field_is_renamed_in_the_header", [] {
@@ -837,9 +836,9 @@ CB_TEST("java.pipeline.a_class_gives_header_and_source_and_an_interface_only_a_h
     CB_CHECK(jpo_has(cpp, "int Foo::getX()"));
 });
 
-// test_edition_convert_integration.py: a conversion picks its edition's profile (an explicit one, the corpus's own marks, a version hint) for that
-// conversion only, and says so; nothing conclusive keeps the default. (The Python restored a process-wide active profile afterwards; here the
-// profile is handed down, so there is nothing to restore.)
+// a conversion picks its edition's profile (an explicit one, the corpus's own marks, a version hint) for that
+// conversion only, and says so; nothing conclusive keeps the default. (The profile is handed down,
+// so there is no process-wide state to restore.)
 namespace {
 
 struct JpoEditionRun {
@@ -922,11 +921,11 @@ CB_TEST("java.twophase.the_constructors_become_j2xinit", [] {
 });
 
 // ================================================================================================================================================
-// The "beside the JVM" tests of tests/java (test_bytes, test_finally, test_java_semantics, test_null_model, test_strings_regex, test_probe,
-// test_probe_objects, test_two_phase, test_probe_sequence, test_input_io, test_probe_libraries): the Java program is converted by the
+// The "beside the JVM" tests (byte fields, finally, Java semantics, the null model, strings and regex, probes, two-phase blocks, input I/O,
+// probe libraries): the Java program is converted by the
 // application's assembly (real front end), then every method of a class runs in the JVM and in the converted C++ on the same inputs and the
 // results are compared -- the same programs, the same classes and methods wanted, the same "no difference" expectation. They need javac, a JVM and
-// g++, and say so and pass without them (as the Python skipped).
+// g++, and say so and pass without them.
 
 namespace jprobe = cb::java::probe;
 
@@ -993,7 +992,7 @@ constexpr const char* kJpbPacket =
 
 }  // namespace
 
-// test_bytes.py: every constructor zeroes byte fields as Java does (they were garbage on a fresh packet).
+// every constructor zeroes byte fields as Java does (they were garbage on a fresh packet).
 CB_TEST("java.beside_the_jvm.a_constructor_zeroes_the_byte_fields", [] {
     if (!jpo_ready("beside-the-jvm")) return;
     const JpoConverted done = jpo_convert({{"Packet.java", kJpbPacket}});
@@ -1013,7 +1012,7 @@ CB_TEST("java.beside_the_jvm.bytes", [] {
     if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
 });
 
-// test_finally.py: a `finally` body runs before every return that leaves its try.
+// a `finally` body runs before every return that leaves its try.
 CB_TEST("java.beside_the_jvm.the_finally_counter_comes_back_down", [] {
     const auto tools = jpb_tools(false);
     if (!tools) return;
@@ -1026,7 +1025,7 @@ CB_TEST("java.beside_the_jvm.the_finally_counter_comes_back_down", [] {
     if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
 });
 
-// test_java_semantics.py: an empty array is not null, a null dereference in a try reaches its handler, Java's char is unsigned.
+// an empty array is not null, a null dereference in a try reaches its handler, Java's char is unsigned.
 namespace {
 
 const std::map<std::string, std::string> kJpbSemantics = {
@@ -1075,7 +1074,7 @@ CB_TEST("java.beside_the_jvm.empty_arrays_null_handlers_and_unsigned_chars", [] 
     }
 });
 
-// test_null_model.py: a String, List, Map or Set carries a null state of its own.
+// a String, List, Map or Set carries a null state of its own.
 CB_TEST("java.beside_the_jvm.null_strings_lists_maps_and_sets", [] {
     const auto tools = jpb_tools(false);
     if (!tools) return;
@@ -1098,7 +1097,7 @@ CB_TEST("java.beside_the_jvm.null_strings_lists_maps_and_sets", [] {
     if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
 });
 
-// test_strings_regex.py: the string and regex runtime (Pattern/Matcher, replaceAll, split, compareTo, hashCode, MD5).
+// the string and regex runtime (Pattern/Matcher, replaceAll, split, compareTo, hashCode, MD5).
 CB_TEST("java.beside_the_jvm.strings_and_regular_expressions", [] {
     const auto tools = jpb_tools(false);
     if (!tools) return;
@@ -1121,7 +1120,7 @@ CB_TEST("java.beside_the_jvm.strings_and_regular_expressions", [] {
     if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
 });
 
-// test_probe.py: primitives in and out (a static table built with Math.PI), and a result Java does not repeat is left out.
+// primitives in and out (a static table built with Math.PI), and a result Java does not repeat is left out.
 CB_TEST("java.beside_the_jvm.methods_with_primitives_and_a_char_that_cannot_be_held", [] {
     const auto tools = jpb_tools(false);
     if (!tools) return;
@@ -1161,7 +1160,7 @@ CB_TEST("java.beside_the_jvm.a_result_java_does_not_repeat_is_left_out", [] {
     CB_CHECK_EQ(run.result.judged, std::size_t{1});
 });
 
-// test_probe_objects.py: Strings in and out, objects made as arguments (by a static factory) and compared by their fields, a void method by its object
+// Strings in and out, objects made as arguments (by a static factory) and compared by their fields, a void method by its object
 // afterwards, a double printed as Java prints it.
 CB_TEST("java.beside_the_jvm.strings_objects_and_number_text", [] {
     const auto tools = jpb_tools(false);
@@ -1181,7 +1180,7 @@ CB_TEST("java.beside_the_jvm.strings_objects_and_number_text", [] {
     CB_CHECK(run.result.judged >= 6);
 });
 
-// test_two_phase.py test_block_opacity_beside_the_jvm and test_probe_sequence.py: a transparent block is not opaque; a case left out leaves no state.
+// A transparent block is not opaque; a case left out leaves no state.
 CB_TEST("java.beside_the_jvm.a_glass_block_is_not_opaque", [] {
     const auto tools = jpb_tools(false);
     if (!tools) return;
@@ -1220,7 +1219,7 @@ CB_TEST("java.beside_the_jvm.cases_left_out_leave_no_state_behind", [] {
     if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
 });
 
-// test_input_io.py: needs LWJGL in the settings' java_libs (as the Python did).
+// needs LWJGL in the settings' java_libs.
 CB_TEST("java.beside_the_jvm.keyboard_names_and_a_missing_resource", [] {
     const auto tools = jpb_tools(true);
     if (!tools) return;
@@ -1242,7 +1241,7 @@ CB_TEST("java.beside_the_jvm.keyboard_names_and_a_missing_resource", [] {
     if (!run.result.differs.empty()) std::cerr << run.what_differs() << "\n";
 });
 
-// test_probe_libraries.py: the stand-in for Minecraft's own build of the sound codec lets CodecMus compile against the sound-system jar.
+// the stand-in for Minecraft's own build of the sound codec lets CodecMus compile against the sound-system jar.
 CB_TEST("java.beside_the_jvm.codec_mus_compiles_against_the_stand_in", [] {
     const auto tools = jpb_tools(true);
     if (!tools) return;
@@ -1271,7 +1270,7 @@ CB_TEST("java.beside_the_jvm.codec_mus_compiles_against_the_stand_in", [] {
 });
 
 // ================================================================================================================================================
-// test_cpp17_backend.py test_the_program_runs_as_the_jvm_runs_it: a modern Java program (records, a sealed interface and patterns, a switch expression
+// A modern Java program (records, a sealed interface and patterns, a switch expression
 // and a switch on strings, lambdas, streams, a map) lowered by the real front end, written as one C++17 program by the whole-program back end, built
 // with g++ and run beside the JVM: the output and the exit code must agree.
 namespace {
@@ -1424,7 +1423,7 @@ CB_TEST("java.cpp17.the_program_runs_as_the_jvm_runs_it", [] {
     CB_CHECK_EQ(got.exit_code, want.exit_code);
 });
 
-// test_cpp17_backend.py test_inside_the_transpiler_beside_cpp03: Tally.java converted by the transpiler for C++17 and for C++03: the C++17 text has a
+// Tally.java converted by the transpiler for C++17 and for C++03: the C++17 text has a
 // range-for, the switch expression as a lambda and `auto*` for a new; neither has a gap; the C++17 text compiles (-fsyntax-only).
 CB_TEST("java.cpp17.inside_the_transpiler_beside_cpp03", [] {
     if (!jpo_ready("cpp17-transpile")) return;

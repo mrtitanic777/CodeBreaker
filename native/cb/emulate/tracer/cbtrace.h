@@ -1,21 +1,19 @@
 /* cbtrace.h -- the C interface of CodeBreaker's run recorder (cbtrace.dll).
  *
- * The recorder is the per-instruction half of codebreaker/emulate/emulator.py trace_function:
- * the hooks Unicorn calls while one 32-bit function runs.  Python still lays the machine out,
+ * The recorder is the per-instruction half of a 32-bit function trace:
+ * the hooks Unicorn calls while one 32-bit function runs.  The host lays the machine out,
  * writes the frame, starts each run (uc_emu_start) and puts memory back afterwards; this DLL
- * attaches its hooks to Python's own Unicorn handle, in the order Python attached its own, and
+ * attaches its hooks to the host's own Unicorn handle, in the order of the run, and
  * keeps the record those hooks made: the instruction path and texts, the calls, the memory
  * reads and writes, the pages mapped on demand, the imports entered (each answered by a
  * stand-in that takes its arguments off the stack), and the branch log.
  *
- * During a run Python is called only the first time each import is entered in it, to ask its
+ * During a run the host is called only the first time each import is entered in it, to ask its
  * argument count and which of its parameters give something back (the resolver below; the
  * answer is a lookup, kept for the rest of the run).
  *
- * Plain C, loaded with ctypes (codebreaker/emulate/native_trace.py): nothing here depends on a
- * Python version.  Unicorn and Capstone are the very DLLs Python's `unicorn` and `capstone`
- * packages loaded, found by path at cbt_init, so a run and its decoded text are the same as the
- * Python tracer's.
+ * Plain C: nothing here depends on the host language.  Unicorn and Capstone are the DLLs the host
+ * loaded, found by path at cbt_init, so a run and its decoded text are the same as the host's own.
  */
 #ifndef CBTRACE_H
 #define CBTRACE_H
@@ -34,7 +32,7 @@ extern "C" {
 
 #define CBT_VERSION 1
 
-/* run options (cbt_config.flags) -- the trace_function arguments of the same names */
+/* run options (cbt_config.flags) -- the run's options of the same names */
 #define CBT_FAST      0x001   /* told of whole straight runs, not of each instruction */
 #define CBT_LEAN      0x002   /* writes as (address, size, value, pc); pages as first written */
 #define CBT_READS     0x004   /* record memory reads too */
@@ -50,12 +48,11 @@ extern "C" {
 /* The resolver: an import was entered.  `index` is its place in cbt_config.sentinels.
  * out[0] = its argument count, or -1 when not known; out[1] = n, the parameters through which
  * it gives something back, then n pairs (parameter's place, value given or -1 for a handle).
- * At most `cap` pairs.  Returns 0, or nonzero when Python raised (the run then stops and
- * Python raises the same exception where its own hook would have). */
+ * At most `cap` pairs.  Returns 0, or nonzero when the host failed (the run then stops and * the host reports it). */
 typedef int (*cbt_resolver)(int32_t index, int64_t *out, int32_t cap);
 
 typedef struct cbt_config {
-    void *uch;                         /* Python's uc._uch */
+    void *uch;                         /* the host's uc handle */
     uint32_t flags;
     int32_t sha_id;                    /* cbt_intern of the traced module's hash: the branch decode cache key */
     int64_t insn_cap, stub_ret, stub_cleanup;
@@ -66,10 +63,10 @@ typedef struct cbt_config {
     uint64_t quiet_lo, quiet_hi;
     uint64_t lean_low_end;             /* lean writes are followed in [0, lean_low_end] ... */
     uint64_t lean_high_begin;          /* ... and [lean_high_begin, 0xFFFFFFFF] */
-    const int32_t *statics; int32_t nstatics;      /* cbt_static ids, in trace_function's order */
+    const int32_t *statics; int32_t nstatics;      /* cbt_static ids, in the order of the run */
     const uint64_t *init_pages; int64_t ninit;     /* page numbers (address >> 12) set before the run */
     const uint64_t *mapped; int64_t nmapped;       /* page bases already mapped */
-    const uint64_t *presaved; int64_t npresaved;   /* page bases Python already saved (reuse) */
+    const uint64_t *presaved; int64_t npresaved;   /* page bases the host already saved (reuse) */
     const uint64_t *sentinels; int64_t nsentinels; /* import landing addresses; index = place */
     cbt_resolver resolver;
     void *shadow;                      /* cbt_sh_new's: stepped before each instruction, or NULL */
@@ -92,7 +89,7 @@ typedef struct cbt_result {
     int64_t lean_seen;
     int64_t api_calls_set;             /* a stand-in got as far as recording calls (the key exists) */
     int64_t gov_n;
-    int64_t hook_error;                /* 0, 1: Python raised in the resolver, 2: a Unicorn error (uc_err) */
+    int64_t hook_error;                /* 0, 1: the host failed in the resolver, 2: a Unicorn error (uc_err) */
     int64_t uc_err;
     const uint64_t *path; int64_t npath;
     const uint64_t *mn_addr; int64_t nmn;
@@ -109,7 +106,7 @@ typedef struct cbt_result {
 } cbt_result;
 
 CBT_API int cbt_version(void);
-/* Load the Unicorn and Capstone DLLs Python loaded (full paths).  0, or nonzero with `err` set. */
+/* Load the Unicorn and Capstone DLLs the host loaded (full paths).  0, or nonzero with `err` set. */
 CBT_API int cbt_init(const wchar_t *unicorn_dll, const wchar_t *capstone_dll, char *err, int32_t errlen);
 /* Unicorn's id for a register name as Capstone spells it, upper-cased (x86_const UC_X86_REG_<NAME>). */
 CBT_API void cbt_register(const char *name, int32_t uc_id);
@@ -120,7 +117,7 @@ CBT_API int32_t cbt_static(uint64_t lo, uint64_t hi, const uint8_t *image);
 CBT_API int32_t cbt_intern(const char *s);
 
 CBT_API void *cbt_begin(const cbt_config *cfg);
-CBT_API int cbt_attach(void *run);               /* the hooks, in trace_function's order */
+CBT_API int cbt_attach(void *run);               /* the hooks, in the order of the run */
 CBT_API int cbt_attach_code(void *run);          /* a fast run gone one instruction at a time */
 CBT_API int cbt_switched(void *run);
 /* out[0] hook_error, out[1] uc_err, out[2] truncated, out[3] gov_n, out[4] switched */
@@ -132,19 +129,19 @@ CBT_API int cbt_restore(void *run);              /* put back the pages this run'
 CBT_API void cbt_free(void *run);
 
 /* ============================================================================================
- * The flat driver recorder (codebreaker/emulate/driver.py `run`): a VxD's ring-0 entry points.
- * The same model as the 32-bit tracer -- Python lays memory out, sets the registers, starts the
- * run (uc_emu_start to _RET) and reads the result; this holds driver.run's hooks (the per-
+ * The flat driver recorder: a VxD's ring-0 entry points.
+ * The same model as the 32-bit tracer -- the host lays memory out, sets the registers, starts the
+ * run (uc_emu_start to _RET) and reads the result; this holds the driver run's hooks (the per-
  * instruction code hook that tells the image's own code from a call out through a pointer, the
  * shared memory hooks, the INT 20h service calls, and the I/O ports) and keeps what they
- * recorded.  During a run Python is asked one thing, once per distinct service: which register
+ * recorded.  During a run the host is asked one thing, once per distinct service: which register
  * the service answers in (driver_services + the knowledge base), a lookup kept for the run.
  * ============================================================================================ */
 
 /* A service was called (INT 20h): `device` and `service` (the 0x8000 jump bit kept).  out[0] =
  * the place in driver.RESULT/REGISTERS (0 eax, 1 ebx, 2 ecx, 3 edx, 4 esi, 5 edi, 6 ebp) the
- * service answers in, or -1 (it answers in EAX, as most do).  Returns 0, or nonzero when Python
- * raised (the run stops and Python raises the same exception after it). */
+ * service answers in, or -1 (it answers in EAX, as most do).  Returns 0, or nonzero when the host
+ * failed (the run stops and the host reports the failure after it). */
 typedef int (*cbt_drv_answers)(int32_t device, int32_t service, int32_t *out);
 /* The same question with a context pointer, for a caller that is not a process-wide function (cbt_drv_set_answers). */
 typedef int (*cbt_drv_answers_ctx)(void *user, int32_t device, int32_t service, int32_t *out);
@@ -153,7 +150,7 @@ typedef int (*cbt_drv_answers_ctx)(void *user, int32_t device, int32_t service, 
 #define CBT_DRV_PORT_WORDS 4   /* kind (0 in, 1 out), port, size, value */
 
 typedef struct cbt_drv_config {
-    void *uch;                         /* Python's uc._uch */
+    void *uch;                         /* the host's uc handle */
     int32_t reg_ids[10];               /* Unicorn ids: eax,ebx,ecx,edx,esi,edi,ebp,esp,eip,eflags */
     int32_t ins_in, ins_out;           /* UC_X86_INS_IN, UC_X86_INS_OUT */
     uint64_t vm_addr;                  /* driver.VM: an answering register is set to it */
@@ -183,33 +180,33 @@ typedef struct cbt_drv_result {
 
 CBT_API void *cbt_drv_begin(const cbt_drv_config *cfg);
 CBT_API void cbt_drv_set_answers(void *run, cbt_drv_answers_ctx fn, void *user);   /* before attach: answers through fn(user, ...) */
-CBT_API int cbt_drv_attach(void *run);                  /* the hooks, in driver.run's order */
+CBT_API int cbt_drv_attach(void *run);                  /* the hooks, in the order of the run */
 CBT_API void cbt_drv_state(void *run, int64_t *out);    /* [0] hook_error, [1] uc_err, [2] gov_n */
 CBT_API const cbt_drv_result *cbt_drv_result_get(void *run);
 CBT_API int cbt_drv_detach(void *run);
 CBT_API void cbt_drv_free(void *run);
 
 /* ============================================================================================
- * The 16-bit recorder (codebreaker/emulate/windows16.py `trace_function16`): one NE function run.
- * The same model again -- Python lays the module out (the GDT, the segments, the frame), starts
+ * The 16-bit recorder: one NE function run.
+ * The same model again -- the host lays the module out (the GDT, the segments, the frame), starts
  * the run (uc_emu_start to SENT_BASE) and reads the result; this holds the per-instruction code
  * hook's plain path (the intercept/cap/near-and-far-return/import-sentinel decisions, the
  * instruction count and the path) and the memory hooks (the segment-limit check and the shared
- * reads/writes/pages-on-demand, filled with the pattern as trace_function16's).  The heavy, rare
- * events stay Python, called from the hooks: the import stand-in (import_stub, the NE oracle), a
+ * reads/writes/pages-on-demand, filled with the pattern as the 16-bit run does).  The heavy, rare
+ * events stay with the host, called from the hooks: the import stand-in (import_stub, the NE oracle), a
  * call into another of the module's functions (answer), and interrupts (int 21h as DOS3Call).
- * The branch log and the ports' device model stay Python hooks too; the ports' clock reads the
+ * The branch log and the ports' device model stay host hooks too; the ports' clock reads the
  * live instruction count this recorder keeps (`count`).  A run beside a shadow, a recorded-system
- * context, or with a prelude stays entirely on the Python hooks.
+ * context, or with a prelude stays entirely on the host hooks.
  * ============================================================================================ */
 
 /* An event the code hook met: a is the address (sentinel/intercept) or the interrupt number; n is
- * the instruction count then.  Returns 0, or nonzero when Python raised (the run stops; Python
- * raises the same exception after it). */
+ * the instruction count then.  Returns 0, or nonzero when the host failed (the run stops; the host
+ * reports the failure after it). */
 typedef int (*cbt_w16_event)(int64_t a, int64_t n);
 
 typedef struct cbt_w16_config {
-    void *uch;                         /* Python's uc._uch */
+    void *uch;                         /* the host's uc handle */
     int32_t eip_id;                    /* Unicorn id of EIP (the record's pc, the limit check) */
     int32_t near_fn, fill;             /* near entry; fill newly mapped pages with the pattern */
     int64_t cap;                       /* insn_cap */
@@ -221,7 +218,7 @@ typedef struct cbt_w16_config {
     void *shadow;                      /* cbt_sh_new's (kind 16), or NULL */
     uint64_t own_lo, own_hi;           /* a recorded-system context: the module's own code reached
                                           through a recorded far pointer (OWN_BASE ..); 0, 0 none */
-    cbt_w16_event on_own;              /* -> 0 not redirected, 1 redirected, 2 Python raised */
+    cbt_w16_event on_own;              /* -> 0 not redirected, 1 redirected, 2 the host failed */
 } cbt_w16_config;
 
 typedef struct cbt_w16_result {
@@ -248,22 +245,21 @@ CBT_API void cbt_w16_state(void *run, int64_t *out);    /* [0] hook_error, [1] u
 CBT_API const cbt_w16_result *cbt_w16_result_get(void *run);
 CBT_API int cbt_w16_detach(void *run);
 /* After a prelude's calls: the path, the instruction count and the reads and writes start again
- * (trace_function16 discards the prelude's trace; the other counters carry on, as there). */
+ * (the prelude's trace is discarded; the other counters carry on). */
 CBT_API void cbt_w16_reset(void *run);
 CBT_API void cbt_w16_free(void *run);
 
 /* ============================================================================================
- * The path explorer's symbolic shadow (codebreaker/emulate/native_shadow.py; was emulate/shadow.py
- * Shadow16 / Shadow32 / ShadowLE): the conditions a run's path went by, as expressions over its
- * inputs.  Made by Python, handed to a recorder above (its `shadow`), which steps it before each
- * instruction and tells it of the calls it answered; Python reads the path back after the run.
- * Python is asked one thing during a run: the p-code of an instruction not lifted before in this
- * process (pcodecheck's line, through Python's lifter).
+ * The path explorer's symbolic shadow (Shadow16 / Shadow32 / ShadowLE): the conditions a run's path went by, as expressions over its
+ * inputs.  Made by the host, handed to a recorder above (its `shadow`), which steps it before each
+ * instruction and tells it of the calls it answered; the host reads the path back after the run.
+ * the host is asked one thing during a run: the p-code of an instruction not lifted before in this
+ * process (pcodecheck's line, through the host's lifter).
  * ============================================================================================ */
 
 /* The p-code of the instruction at the start of `code` (n bytes) at `offset`: writes pcodecheck's
  * line (no newline) to out and returns its length (more than cap-1: call again with that room),
- * -1 when it does not decode, -2 when Python raised (out = the exception type's name). */
+ * -1 when it does not decode, -2 when the host failed (out = the exception type's name). */
 typedef int (*cbt_sh_lift)(const uint8_t *code, int32_t n, uint64_t offset, char *out, int32_t cap);
 
 typedef struct cbt_sh_config {

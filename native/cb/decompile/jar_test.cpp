@@ -13,15 +13,12 @@ namespace jar = cb::decompile::jar;
 namespace fs = cb::fs;
 using std::filesystem::path;
 
-// DIVERGES from the Python module:
-//  - repair_array_params works on bytes: a source with bytes that are not UTF-8 keeps them (Python decoded with
-//    errors="replace", so a repaired file came back with U+FFFD in their place) and line ends are untouched (Python's
-//    text mode rewrote a repaired file with the platform's CRLF);
-//  - the PATH search does not look in the current directory first (shutil.which did);
+// Notes:
+//  - repair_array_params works on bytes: a source with bytes that are not UTF-8 keeps them and line ends are untouched;
+//  - the PATH search does not look in the current directory first;
 //  - settings arrive as a jar::Settings value instead of being read from settings.json inside the module;
-//  - one `src` directory wins a tie by name order (os.walk's order was the file system's).
-// (The old harness, 6699-case style, had the module run a fake `java` written in Python against the same flows;
-// these tests run the same flows against a batch-file fake so they need no Python.)
+//  - one `src` directory wins a tie by name order.
+// (These tests run the flows against a batch-file fake `java`.)
 
 namespace {
 
@@ -225,8 +222,7 @@ CB_TEST("decompile.jar.find_java", [] {
         CB_CHECK(got && fs::same_path(*got, d / "mine/java.exe"));
         got = jar::find_java(s, d / "other/javaw.exe");
         CB_CHECK(got && fs::same_path(*got, d / "other/javaw.exe"));
-        // an explicit path that does not exist falls through to the next source (settings are not consulted: Python
-        // took `explicit or settings` and then fell through to JAVA_HOME)
+        // an explicit path that does not exist falls through to the next source (settings are not consulted)
         got = jar::find_java(s, d / "nowhere.exe");
         CB_CHECK(got && fs::same_path(*got, d / "home/bin/java.exe"));
     }

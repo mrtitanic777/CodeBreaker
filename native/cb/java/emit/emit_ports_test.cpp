@@ -1,6 +1,5 @@
-// tests/java/test_emit.py and tests/java/test_emit_source.py ported one for one (the native header and source tests are goldens of other inputs): the same
-// classes, the same resolver, the same substrings wanted. The Python built each class by hand (ir.JClass, ir.Field, ir.Method with its body lines); here
-// the same class is the Java source that parses to it -- the parser's own bodies are the raw lines the emitter reads. The source emitter's bodies come from
+// Header and source emitter checks (the native header and source tests are goldens of other inputs): hand-built classes, one resolver,
+// the substrings wanted. Each class is the Java source that parses to it -- the parser's own bodies are the raw lines the emitter reads. The source emitter's bodies come from
 // the deterministic stand-in of the converter's tests (they are not what these checks are about: the skeleton around them is).
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
@@ -43,7 +42,7 @@ bool ep_event(const ledger::Ledger& led, std::string_view rule) {
 
 std::filesystem::path ep_java(const char* name) { return cb::testing::data_path(std::string("java/testdata/parse/") + name); }
 
-// ---- test_emit.py: TestHeaderHandBuilt ---------------------------------------------------------------------------------------------------
+// ---- hand-built headers ---------------------------------------------------------------------------------------------------
 
 constexpr const char* kFoo = R"(public class Foo extends Bar {
     public Block field;
@@ -129,7 +128,7 @@ CB_TEST("java.emit_ports.the_unsigned_escape_hatch", [] {
     CB_CHECK(ep_has(ep_header("public class SomeClass { public byte raw; }", ep_resolver({}), options), "unsigned char raw;"));
 });
 
-// ---- test_emit_source.py: TestSourceSafety -----------------------------------------------------------------------------------------------
+// ---- source safety -----------------------------------------------------------------------------------------------
 
 namespace {
 

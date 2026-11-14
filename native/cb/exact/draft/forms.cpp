@@ -685,7 +685,7 @@ std::optional<Declaration> declaration_of(sv l, sv x) {
 
 }  // namespace
 
-// t with x's declaration (`int a, x, b;` - a parameter's, a local's) as `new;`, or None
+// t with x's declaration (`int a, x, b;` - a parameter's, a local's) as `new;`, or nothing
 std::optional<std::string> redeclare(sv t, sv x, sv new_declaration) {
     const Lines lines = split_nl(t);
     for (std::size_t i = 0; i < lines.size(); ++i) {   // (the first line that is a declaration of x)

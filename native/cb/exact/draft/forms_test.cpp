@@ -13,22 +13,22 @@ namespace dt = cb::exact::draft::text;
 namespace ct = cb::text;
 using Json = nlohmann::json;
 
-// DIVERGES from the Python module (draft/forms.py), on purpose:
+// Design notes:
 //   * the module's tables (ARRAYS, STRUCTARR, BYTEPTR, PTRSIZE, FILEPTR, REGSLOTS, _LIBDATA, _HEADERS, _TABLES) are a
 //     FunctionFacts, a ProjectCaches and FrameOptions held by the caller; FILEPTR's "#include"/"#include2" are
-//     facts.include/include2 (absent, not None)
-//   * a library macro without a header no longer erases the header an earlier macro (or data macro) gave: Python
-//     stored None over it (fixed in the Python too); see exact.draft.forms.keeps_the_include_a_macro_does_not_name
-//   * register_temps asks for the declaration of the register variable by its whole name: Python's pattern also matched
-//     a declaration whose name merely ENDED with the name (`register int r_si;` for `si`) (fixed in the Python too)
+//     facts.include/include2 (absent when unset)
+//   * a library macro without a header does not erase the header an earlier macro (or data macro) gave;
+//     see exact.draft.forms.keeps_the_include_a_macro_does_not_name
+//   * register_temps asks for the declaration of the register variable by its whole name, so
+//     a declaration whose name merely ENDS with the name (`register int r_si;` for `si`) is not matched
 //   * a macro spec whose `as` takes a different number of arguments than the call has, or has a conversion other than
-//     %s, and a data macro of element size 0, throw UsageError (Python: TypeError, ZeroDivisionError - on the first
+//     %s, and a data macro of element size 0, throw UsageError (on the first
 //     match, as here); the library data of a project that has none is an empty map
-//   * a `#define` mask written with a leading 0 (`010`) is read as decimal (Python's int(v, 0) raised)
-//   * default_after declines when statements follow the default's return after a blank line (the original rebuilt the
+//   * a `#define` mask written with a leading 0 (`010`) is read as decimal
+//   * default_after declines when statements follow the default's return after a blank line (rebuilding the
 //     switch without them)
-//   * case_falls: a case label on the very first line of the text has no line before it (Python indexed line -1)
-//   * bool_trees: labels that go round are no test (Python recursed until the interpreter gave up)
+//   * case_falls: a case label on the very first line of the text has no line before it
+//   * bool_trees: labels that go round are no test
 //   * header files are found by a name-ordered walk of the kit (os.walk's order was the file system's)
 //   * \w \d \s are ASCII (a draft is ASCII)
 
@@ -197,12 +197,12 @@ Json run_case(const std::string& op, const std::optional<std::string>& text_arg,
 
 }  // namespace
 
-// ---- the golden file: small real drafts the Python original was run on (reviewed), with the results it gave -----------
+// ---- the golden file: small real drafts that were run and reviewed, with the results they gave -------------------
 // One case per line: `op <TAB> S<text>|N <TAB> S<extra> ... <TAB> => <TAB> {"r": result, "t": tables}`; the text escapes
-// \t \n \r and \\. The cases are the smallest texts of the old harness's corpus (8475 draft bodies) on which each pass
+// \t \n \r and \\. The cases are the smallest texts of a recorded corpus (8475 draft bodies) on which each pass
 // changes something, plus one on which it does not; every result was read and judged right (the pass does what its
 // comment says) before it was kept.
-CB_TEST("exact.draft.forms.golden_cases_from_the_python_module", [] {
+CB_TEST("exact.draft.forms.golden_cases", [] {
     const std::string file = fs::read_text(testing::data_path("exact/testdata/draft_forms.cases"));
     std::size_t cases = 0;
     for (std::string_view line : ct::lines(file)) {
@@ -267,7 +267,7 @@ CB_TEST("exact.draft.forms.keeps_the_include_a_macro_does_not_name", [] {
     const std::vector<forms::LibraryMacroSpec> without_header = {{"_filbuf", "getc(%s)", "FILE", std::nullopt, {}}};
     const std::string t = forms::library_macros(stream_read, without_header, facts);
     CB_CHECK_EQ(t, "{\n    ax = getc(stdin);\n}");
-    CB_CHECK(facts.include.has_value() && *facts.include == "stdio.h");   // Python stored None over it
+    CB_CHECK(facts.include.has_value() && *facts.include == "stdio.h");   // an include is not erased by a macro without one
     CB_CHECK_EQ(facts.streams.at("stdin"), "FILE");
 });
 
@@ -341,7 +341,7 @@ CB_TEST("exact.draft.forms.the_kits_headers", [] {
 // ---- tests, stores, control flow -----------------------------------------------------------------------------------
 
 CB_TEST("exact.draft.forms.register_temps_names_the_whole_variable", [] {
-    // `si` is not declared: `r_si` ends with it, and Python took that for its declaration
+    // `si` is not declared: `r_si` ends with it but is not its declaration
     const std::string src = "int f(x)\nint x;\n{\n    register int r_si;\n    si = foo(a);\n    x = (si + 1);\n}";
     CB_CHECK(!forms::register_temps(src).has_value());
     const std::string good = "int f(x)\nint x;\n{\n    register int r_si;\n    r_si = foo(a);\n    x = (strlen(b) + r_si);\n}";
@@ -360,7 +360,7 @@ CB_TEST("exact.draft.forms.constants_and_steps", [] {
 });
 
 CB_TEST("exact.draft.forms.control_flow_corners", [] {
-    // a default that falls into a case that returns: the statements after the switch (and the original's blank-line loss
+    // a default that falls into a case that returns: the statements after the switch (a blank-line loss
     // is not reproduced: such a text is left alone)
     const std::string sw = "    switch (x) {\n    default:\n        foo(bx);\n    case 3:\n        return 0;\n    }";
     CB_CHECK_EQ(*forms::default_after(sw), "    switch (x) {\n    case 3:\n        return 0;\n    }\n    foo(bx);\n    return 0;");

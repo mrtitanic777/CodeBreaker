@@ -81,7 +81,7 @@ struct StdProfiles {
 
 // Made when the ledger first asks, from the lanes alone (a machine with no function store yet has the same settings in force).
 // CB_MCP_STORED_PROFILES=1 asks for none always: the ledger then reads the results as the store last filed them, whichever verifier made them
-// (the proof against the Python server's answers uses it: the two verifiers' settings digests differ, so the results the Python judged are not
+// (the proof against the recorded answers uses it: the two verifiers' settings digests differ, so the recorded results are not
 // "under the settings in force" of this one until it judges them again).
 std::function<std::map<std::string, std::optional<std::string>>()> verifier_profiles(const config::Config& config) {
     const auto profiles = std::make_shared<StdProfiles>();

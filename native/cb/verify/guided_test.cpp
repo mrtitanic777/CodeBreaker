@@ -12,13 +12,11 @@
 using namespace cb;
 using namespace cb::verify::guided;
 
-// DIVERGES (from the Python verify/guided.py this replaces; each reviewed):
-//  * the "fixed changes" stage draws from SplitMix64 seeded by Options::seed, not CPython's Mersenne Twister: the same
+// Design notes:
+//  * the "fixed changes" stage draws from SplitMix64 seeded by Options::seed: the same
 //    inputs are found where a comparison opens the branch (the common case), and the random picks differ;
-//  * a value wider than its operand (`value` 0xFFFF for a one-byte compare) is cut to the operand's size; the Python's
-//    value.to_bytes raised OverflowError. Such a pair is not produced by the lanes (values come from the operand);
-//  * putting a value into a memory block wider than what is left of it grows the block (the Python's bytearray slice
-//    assignment did too); a place outside any block is an InternalError, not an IndexError.
+//  * a value wider than its operand (`value` 0xFFFF for a one-byte compare) is cut to the operand's size. Such a pair is not produced by the lanes (values come from the operand);
+//  * putting a value into a memory block wider than what is left of it grows the block; a place outside any block is an InternalError.
 
 namespace {
 

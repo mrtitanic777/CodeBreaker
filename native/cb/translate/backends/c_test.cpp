@@ -1,9 +1,6 @@
 // Tests of the C back end's data (backends/c): the pass sets the writer does on the tree, the decompiler's scalar sizes, and a
-// parameter's name. The sets are those of codebreaker/translate/backends/c.py (MOVED 52, IN_MODULE 43 with open_arguments listed
-// twice, FLAT 13, POWERPC 8), checked by their sizes and by what each is a subset of.
-//
-// DIVERGES from c.py: IN_MODULE listed `open_arguments` twice; the set has it once (42 passes). A parameter's name is its
-// symbol's (a typed Param has no name of its own to fall back to).
+// parameter's name. The sets (MOVED 52, IN_MODULE 42, FLAT 13, POWERPC 8) are checked by their sizes and by what each is a subset of.
+// A parameter's name is its symbol's (a typed Param has no name of its own to fall back to).
 #include "cb/translate/backends/c.hpp"
 
 #include <algorithm>

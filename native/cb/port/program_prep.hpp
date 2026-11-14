@@ -1,5 +1,5 @@
 // cb/port/program_prep.hpp -- the first reading of a program: which of its files the port keeps, and the mending that is
-// the same for every program before the passes of the port begin (the Python's Port.__init__).
+// the same for every program before the passes of the port begin.
 //
 // The program's own C library (the modules that define fopen, malloc, _main...) and its headers are left out: the C
 // library of today stands in. What is kept is mended where the old bytes mean something a compiler of today would not

@@ -2,12 +2,10 @@
 // interrupt handler, a far pointer in data, a prologue nothing calls) and real DOS programs of Windows 95 (testdata/ of
 // cb/formats: a .COM file, EXEPACKed and PKLITEd programs' siblings, a device driver, an EXE carrying a driver header).
 //
-// The expected figures for the real programs are what the original analysis (the Python it replaces) gave for the same
-// bytes; 715 programs (133 of the corpus and 700 made-up ones, 118 of which the original crashed on) were compared in all
-// when this was written.
+// The expected figures for the real programs are the recorded figures for the same
+// bytes (133 programs of the corpus and 700 made-up ones were checked when this was written).
 //
-// DIVERGES from the Python (see state/work/typed-port/_bugs/LIST.md): a relocation at the last byte of the image, or a
-// program with no data segment that jumps or calls through memory, crashed the Python with a TypeError; here the far
+// A relocation at the last byte of the image, or a program with no data segment that jumps or calls through memory: the far
 // pointer is not one, and the table or variable is not followed.
 #include "cb/analyze/dos_functions.hpp"
 

@@ -1,13 +1,12 @@
 // Tests of the XNB converter (cb/xna/xnb.hpp). testdata/xnb/ holds an .xnb of each kind the converter handles (made by a script that
 // writes them as XNA's content pipeline lays them out: a texture in both byte orders, DXT1 in both word orders, a format that is not
 // converted, a sprite font, PCM sounds for the PC and for the console, a type the converter only lists, two real Xbox 360 effects taken from
-// games' content, junk and an empty file) and what the translated Python's xnb.convert made of each: its record (python_records.json), the
+// games' content, junk and an empty file) and the recorded result for each: its record (python_records.json), the
 // pixels of its PNG (*.pixels: width, height, the RGBA bytes in hex), its WAV, its .fx and .fx.json, its font JSON.
 //
 // Compressed content (LZX frames) is tested on a real game's files by the xna command's proof on Arcadecraft (see run_test / the report).
 //
-// DIVERGES from the Python, by design: the text of an error ("ValueError: not an XNB file" is the Python's; here the message is the reader's
-// own) is not compared, only that the record names the file and carries an "error"; JSON files are written with a two-space indent.
+// The text of an error is not compared (the message is the reader's own), only that the record names the file and carries an "error"; JSON files are written with a two-space indent.
 #include "cb/xna/xnb.hpp"
 
 #include <nlohmann/json.hpp>
@@ -29,7 +28,7 @@ namespace stdfs = std::filesystem;
 stdfs::path xt_data(std::string_view name) { return testing::data_path("xna/testdata/xnb/" + std::string(name)); }
 
 // The pixels of a PNG as the goldens write them: "width height\nhex".
-// An effect's HLSL as the goldens have it: they name the module that wrote them by its Python file.
+// An effect's HLSL as the goldens have it: they name the module that wrote them by its source file.
 std::string xt_fx(const std::string& text) { return text::replace_all(text, "decompile/xbox_effect.py)", "decompile/xbox_effect)"); }
 
 std::string xt_pixels(const stdfs::path& png) {
@@ -52,13 +51,13 @@ struct XtConverted {
     stdfs::path out() const { return dir.path(); }
 };
 
-// Convert one sample, and check its record against the Python's.
+// Convert one sample, and check its record against the recorded one.
 XtConverted xt_convert(const std::string& name, const std::string& file = {}) {
     XtConverted c;
     const std::string input = file.empty() ? name + ".xnb" : file;
     c.record = xt_record(xnb::convert(xt_data(input), c.dir.path()));
-    Json python = json::load(xt_data("python_records.json"));
-    Json want = python.at(name);
+    Json recorded = json::load(xt_data("python_records.json"));
+    Json want = recorded.at(name);
     if (want.contains("error")) want["error"] = "<error>";
     CB_CHECK_EQ(c.record.dump(), want.dump());
     return c;
@@ -128,8 +127,8 @@ CB_TEST("xna.xnb.an_effect_on_its_own", [] {
         fs::ScopedTempDir dir{"cb-xnb"};
         const std::optional<std::string> record = xnb::convert_effect_file(xt_data(std::string(name) + ".fxo"), dir.path());
         CB_CHECK(record.has_value());
-        const Json python = json::load(xt_data("python_records.json")).at(name);
-        CB_CHECK_EQ(json::parse(*record).dump(), python.dump());
+        const Json recorded = json::load(xt_data("python_records.json")).at(name);
+        CB_CHECK_EQ(json::parse(*record).dump(), recorded.dump());
         CB_CHECK_EQ(fs::read_text(dir.path() / (std::string(name) + ".fx")), xt_fx(fs::read_text(xt_data(std::string(name) + ".fx"))));
     }
     fs::ScopedTempDir dir{"cb-xnb"};
@@ -167,10 +166,10 @@ CB_TEST("xna.xnb.damaged_files_are_format_errors", [] {
     CB_CHECK_THROWS_AS(FormatError, xnb::read_texture(xnb::read(cut).data, xnb::read(cut).offset));
 });
 
-// Real content of a game (Arcadecraft: textures and a font in LZX frames, an effect): what the Python made of each file.
-CB_TEST("xna.xnb.real_compressed_content_matches_the_python", [] {
-    const Json python = json::load(testing::data_path("xna/testdata/xnb_real/python_records.json"));
-    for (const auto& [file, entry] : python.items()) {
+// Real content of a game (Arcadecraft: textures and a font in LZX frames, an effect): the recorded result for each file.
+CB_TEST("xna.xnb.real_compressed_content_matches_the_golden", [] {
+    const Json recorded = json::load(testing::data_path("xna/testdata/xnb_real/python_records.json"));
+    for (const auto& [file, entry] : recorded.items()) {
         const stdfs::path input = testing::data_path("xna/testdata/xnb_real/" + file);
         const std::string name = file.substr(0, file.size() - 4);
         fs::ScopedTempDir dir{"cb-xnb"};

@@ -25,7 +25,7 @@ using nlohmann::ordered_json;
 // The commands that are interfaces and servers, not jobs.
 constexpr std::array<std::string_view, 3> kInteractive = {"ui", "progress", "mcp"};
 
-std::string py_repr(std::string_view s) {   // the quoting Python's repr gives a str: ' unless the text holds one and no "
+std::string py_repr(std::string_view s) {   // the quoting a repr-style string gets: ' unless the text holds one and no "
     const bool single = s.find('\'') == std::string_view::npos || s.find('"') != std::string_view::npos;
     std::string out(1, single ? '\'' : '"');
     for (const char c : s) {
@@ -44,7 +44,7 @@ std::string str_of(const Json& a, const char* key) { return a.at(key).get<std::s
 std::int64_t int_of(const Json& a, const char* key) { return a.at(key).get<std::int64_t>(); }
 bool bool_of(const Json& a, const char* key) { return a.at(key).get<bool>(); }
 
-// The text of an object's member, or "" (a Python dict's `.get(key) or ""`).
+// The text of an object's member, or "".
 std::string text_member(const Json& o, const char* key) {
     if (!o.is_object()) return "";
     const auto it = o.find(key);
@@ -75,7 +75,7 @@ std::string address_of(const Json& v) {   // "%x" % a if an int, else str(a)
 
 std::string strip_text(std::string_view s) { return std::string(text::trim(s)); }
 
-// Python's `os.path.realpath` for the purposes of containment: an absolute path, symbolic links resolved where the file exists.
+// The real path, for the purposes of containment: an absolute path, symbolic links resolved where the file exists.
 sfs::path real_path(const sfs::path& p) {
     std::error_code ec;
     sfs::path out = sfs::weakly_canonical(p, ec);

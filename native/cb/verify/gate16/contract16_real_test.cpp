@@ -7,9 +7,9 @@
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 
-// Real code, and the Python's answers on it. testdata/contract16/<module>.calls holds the relocated code segments of a
-// Windows 95 16-bit module (as describe16 gives them) and, for each function, what the Python's contract16._calls
-// answered with the callee-name and removed-bytes formulas below (state/work/w0b29/dump_calls.py wrote it with Capstone
+// Real code. testdata/contract16/<module>.calls holds the relocated code segments of a
+// Windows 95 16-bit module (as describe16 gives them) and, for each function, what the recorded analysis
+// answered with the callee-name and removed-bytes formulas below (written with Capstone
 // 5.0.7, the engine this tree uses). 474 calls over four modules: near and far, with pushes, cleanups by `add sp`, by
 // `pop`, by LEAVE, and joins. Each line is `segment <n> <hex image>` or `function <segment> <lo> <hi> <rows>`; a row is
 // `callee,taken off,pushed,leave` and rows are joined by ';'.
@@ -51,7 +51,7 @@ std::string row_text(const std::vector<Call>& found) {
 
 }  // namespace
 
-CB_TEST("verify.gate16.contract16.real_modules_agree_with_the_python", [] {
+CB_TEST("verify.gate16.contract16.real_modules_match_recorded", [] {
     platforms::DecoderSet decoders;
     const platforms::Decoder& cs = decoders.get(platforms::Arch::X86, 16, true);
     std::size_t functions = 0, with_calls = 0, rows = 0, disagreements = 0;
@@ -79,7 +79,7 @@ CB_TEST("verify.gate16.contract16.real_modules_agree_with_the_python", [] {
             if (row_text(got) != expected) {
                 ++disagreements;
                 testing::record_failure(__FILE__, __LINE__,
-                                        std::format("{} {}:{:x}: got [{}], the Python said [{}]", module, segment, lo,
+                                        std::format("{} {}:{:x}: got [{}], expected [{}]", module, segment, lo,
                                                     row_text(got), expected));
             }
         }

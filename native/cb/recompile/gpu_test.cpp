@@ -30,8 +30,7 @@ bool braces_balance(std::string_view text) {
 }  // namespace
 
 CB_TEST("recompile.gpu.the_files_are_the_originals", [] {
-    // SHA-256 of codebreaker.recompile.gpu.GPU_H, GPU_CPP, D3D12_CPP and TRANSLATORS_CPP (computed from the Python
-    // module's strings when this port was made)
+    // SHA-256 of GPU_H, GPU_CPP, D3D12_CPP and TRANSLATORS_CPP (recorded from the original strings)
     const auto files = graphics_files();
     CB_CHECK_EQ(files.size(), 4u);
     CB_CHECK_EQ(files[0].path, "graphics/xe_gpu.h");

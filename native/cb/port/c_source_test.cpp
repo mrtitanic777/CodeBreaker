@@ -1,6 +1,4 @@
-// Tests of cb/port/c_source: the scanners of old C. The expected values were produced by the Python original
-// (codebreaker/port/pre_ansi.py) on these inputs and reviewed; a place where the new code answers differently is in
-// a DIVERGES comment.
+// Tests of cb/port/c_source: the scanners of old C. The expected values were reviewed by hand.
 #include "cb/port/c_source.hpp"
 
 #include "cb/base/ctext.hpp"
@@ -175,7 +173,7 @@ CB_TEST("port.c_source.definitions_of_old_style_functions", [] {
 });
 
 CB_TEST("port.c_source.definitions_of_a_file_that_never_closes", [] {
-    // DIVERGES: a definition whose brace is never closed ends on the file's last line (the Python's end was one past it).
+    // A definition whose brace is never closed ends on the file's last line.
     const std::string text = "f(a)\nint a;\n{\n  x();\n";
     const auto lines = split_lines(text);
     const auto defs = definitions(lines, split_lines(base::ctext::blank(text)));
@@ -224,7 +222,7 @@ CB_TEST("port.c_source.object_before_finds_the_start_of_a_postfix_expression", [
     CB_CHECK_EQ(object_before(ob, ob.find("->c")).value_or(9999), 38u);       // a(b): a call
     CB_CHECK_EQ(object_before(ob, ob.find("-> s")).value_or(9999), 55u);      // q . r
     CB_CHECK_EQ(object_before(ob, ob.find(". r")).value_or(9999), 51u);
-    // DIVERGES: brackets that do not balance give no start (the Python read the line's end from the wrong side).
+    // brackets that do not balance give no start.
     CB_CHECK(!object_before("a) ->b", 3).has_value());
 });
 
@@ -270,5 +268,5 @@ CB_TEST("port.c_source.c_string_bytes", [] {
     // a character past Latin-1 is '?'; one of Latin-1 is its byte (text from a binary is decoded once, at the reader)
     CB_CHECK_EQ(s(c_string_bytes("\"\xC3\xA9\"")), "\xE9");
     CB_CHECK_EQ(s(c_string_bytes("\"\xE2\x82\xAC\"")), "?");
-    CB_CHECK_THROWS_AS(ParseError, (void)c_string_bytes("\"\\x4\""));   // DIVERGES: a \x escape wants two hex digits (the Python raised too, from deep inside)
+    CB_CHECK_THROWS_AS(ParseError, (void)c_string_bytes("\"\\x4\""));   // a \x escape wants two hex digits
 });

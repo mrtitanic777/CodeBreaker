@@ -2,8 +2,8 @@
 // a.out object (XENIX's C compiler) holds, in one typed shape.
 //
 // The linker emulation (linkemu), the function comparer (compare) and the a.out reader (aout) all speak this record.
-// The OMF reader (formats/omf) will produce it when that module is refactored; until then a shim converts the old
-// reader's result into it. Names are UTF-8 text decoded from the file's Latin-1 bytes; segment bytes stay Bytes.
+// The OMF reader (formats/omf) is converted into it by the callers that read objects.
+// Names are UTF-8 text decoded from the file's Latin-1 bytes; segment bytes stay Bytes.
 #pragma once
 
 #include <cstdint>

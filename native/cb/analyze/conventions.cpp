@@ -742,7 +742,7 @@ knowledge::Value to_value(const Fact& f) {
         m.insert_or_assign("arg_source", Value());
         return Value(std::move(m));
     }
-    if (f.thunk_of) m.insert_or_assign("thunk_of", Value(*f.thunk_of));   // (what the shape rests on is said before the shape: the order of the Python's rows)
+    if (f.thunk_of) m.insert_or_assign("thunk_of", Value(*f.thunk_of));   // (what the shape rests on is said before the shape)
     if (f.constant) m.insert_or_assign("constant", Value(*f.constant));
     m.insert_or_assign("shape", Value(std::string(name_of(f.shape))));
     if (!f.tail_calls.empty()) m.insert_or_assign("tail_calls", text_list(f.tail_calls));

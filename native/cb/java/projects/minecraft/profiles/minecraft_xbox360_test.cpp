@@ -22,7 +22,7 @@ std::string classify(const std::vector<FilterRule>& rules, std::string_view cls)
     return "";
 }
 
-// Expected folders for sample class names, computed with Python's re over the original table (first match wins).
+// Expected folders for sample class names, computed over the rule table (first match wins).
 struct Case {
     const char* cls;
     const char* folder;

@@ -224,7 +224,7 @@ public:
   std::map<int, int> tgt;
   bool has_epi = false;
   long long epi = 0, pbase = 4, retn = 0;
-  // the attributes the Python sets on the way (getattr(s, "_x", default))
+  // the optional attributes set on the way (each has a default)
   Value cbw;
   bool s8_on = false, sm_on = false, p8_on = false, pw_on = false;
   int s8_i = 0, sm_i = 0, p8_i = 0, pw_i = 0;

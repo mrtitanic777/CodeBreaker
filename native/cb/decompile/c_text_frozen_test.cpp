@@ -1,5 +1,5 @@
-// The recorded cases of the C text's private passes (tests/test_frozen.py, tests/fixtures/frozen/c_text): each pass was given real inputs once, and what it
-// answered was kept; the same inputs go to the same passes here and the same answers are wanted. The fixtures are copied to testdata/frozen/c_text; the
+// The recorded cases of the C text's private passes (testdata/frozen/c_text): each pass was given real inputs once, and what it
+// answered was kept; the same inputs go to the same passes here and the same answers are wanted. The
 // five here are the ones the other C text tests do not replay (the interrupt passes are checked in c_text_test.cpp).
 //
 //   _ram_type      the C type of a 32-bit / PowerPC global from the decompiler's prefix
@@ -8,7 +8,7 @@
 //   _loads_dgroup  whether a 16-bit function's prologue loads DS with the module's own data
 //   _more_helpers  the joins, pieces and widenings written for every pair of sizes
 //
-// A window `{"$w": [start, hex]}` is a large buffer read only there (zeros elsewhere), as the Python recorded it.
+// A window `{"$w": [start, hex]}` is a large buffer read only there (zeros elsewhere).
 #include <nlohmann/json.hpp>
 
 #include "cb/core/fs.hpp"
@@ -85,7 +85,7 @@ CB_TEST("decompile.c_text.frozen_loads_dgroup", [] {
     CB_CHECK_EQ(loads, std::size_t{2});
 });
 
-// What the core writes beyond the helpers spelled out in the header text: the Python took the text it was written beside; the native x86_helpers() takes
+// What the core writes beyond the helpers spelled out in the header text: x86_helpers() takes
 // the header's own helpers_text(), which must be that text.
 CB_TEST("decompile.c_text.frozen_more_helpers", [] {
     const Json g = frozen_cases("_more_helpers");

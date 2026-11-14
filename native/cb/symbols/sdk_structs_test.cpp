@@ -1,14 +1,12 @@
 // Tests of cb/symbols/sdk_structs on testdata/sdk_structs/layouts.h: structures written in the shapes the SDK headers
 // use (nested structures, packing, arrays sized by constants, pointers, a declaration with a macro in it, nested braces,
-// a preprocessor line in a body). Every expected layout was also what the Python module read from the same file. The
-// reader was run over the real headers too (OpenWatcom's h/nt, the Win32 SDK's and the DDK's INC32: 8,514 structures and
-// 6,526 pointer types) and gave the Python module's table for every one but eight, listed below.
+// a preprocessor line in a body). The reader was
+// run over the real headers too (OpenWatcom's h/nt, the Win32 SDK's and the DDK's INC32: 8,514 structures and
+// 6,526 pointer types).
 //
-// DIVERGES from the Python module, by design (and listed as a bug fixed in state/work/typed-port/_bugs/LIST.md): a
-// declaration of one word in a structure's body -- a macro the header expands to fields, as PROPSHEETPAGEA_V1_FIELDS --
-// is not a field, and the structure it is in cannot be laid out. The Python read the macro's name as a type and a
-// field name cut from it (`PROPSHEETPAGEA_V1_FIELD` `S`) and gave the eight PROPSHEET structures of commctrl.h an
-// invented 4-byte layout with a field called S.
+// A declaration of one word in a structure's body -- a macro the header expands to fields, as PROPSHEETPAGEA_V1_FIELDS --
+// is not a field, and the structure it is in cannot be laid out (reading the macro's name as a type with a field name cut
+// from it would invent a 4-byte layout with a field called S for the eight PROPSHEET structures of commctrl.h).
 #include "cb/symbols/sdk_structs.hpp"
 
 #include "cb/core/fs.hpp"
@@ -89,7 +87,7 @@ CB_TEST("symbols.sdk_structs.what_cannot_be_laid_out", [] {
     const ss::StructTable t = table();
     CB_CHECK(t.layout("UNKNOWNFIELD") == nullptr);   // a field of a type of unknown size
     CB_CHECK(t.layout("BADARRAY") == nullptr);       // a length no constant gives
-    CB_CHECK(t.layout("MACRO") == nullptr);          // a macro where a field should be (DIVERGES, see above)
+    CB_CHECK(t.layout("MACRO") == nullptr);          // a macro where a field should be (see the header)
     CB_CHECK(t.layout("WITHUNION") == nullptr);      // braces inside: the declaration is not read
     CB_CHECK(t.layout("DIRECTIVE") == nullptr);      // a preprocessor line inside
     CB_CHECK(t.layout("NoSuchStructure") == nullptr);

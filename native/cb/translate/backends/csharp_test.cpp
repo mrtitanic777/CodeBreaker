@@ -6,12 +6,10 @@
 // A library for another source language (Java's) is a `csharp::Library`; the tests use a small one to check the hooks the
 // writer calls, and that a language with none is declined, class by class.
 //
-// DIVERGES from the Python back end (csharp.py), by design: a statement list where a statement is expected (a bare list of
-// statements as a body) is written as a block, where the Python declined it; a float literal is the shortest text that reads
-// back as the same value (`1E+22`, `100000.0`), not Python's `repr`; constant folding for `unchecked` is exact in 64 bits (the
-// Python divided through floats); two units of one file stem get `_2`, not one file over the other; a u64 literal above
-// int64's maximum is written (the Python could not hold one); a for-each over a Java iterable, a lone getter, and the rest of
-// the output are as the Python wrote them.
+// Behaviour pinned here: a statement list where a statement is expected (a bare list of statements as a body) is written as a
+// block; a float literal is the shortest text that reads back as the same value (`1E+22`, `100000.0`); constant folding for
+// `unchecked` is exact in 64 bits; two units of one file stem get `_2`, not one file over the other; a u64 literal above
+// int64's maximum is written.
 #include "cb/translate/backends/csharp.hpp"
 #include "cb/translate/l2.hpp"
 
@@ -951,7 +949,7 @@ namespace {
 
 // The C# corpus programs of tests/translate/corpus/csharp (written for the kit), as the Roslyn front end lowers them: their
 // units as L2 JSON, and the C# text the back end wrote for them. The text was read through for correctness -- it is the program
-// again, in C#'s own idioms -- and is what the Python back end wrote, but for the differences listed in DIVERGES above.
+// again, in C#'s own idioms -- and is what the checked-in goldens hold.
 void check_corpus_program(const std::string& name) {
     const std::string stem = "translate/testdata/csharp_" + name;
     const cb::Json docs = cb::json::load(cb::testing::data_path(stem + ".l2.json"));
@@ -1001,9 +999,9 @@ std::string first_difference(const std::string& expected, const std::string& act
 }  // namespace
 
 // The programs of state/work/typed-port/translate.backends.csharp (the translator's C# corpus, the front end's own tools, the XNA
-// runtime, programs written for this back end) lowered to L2 by gen_h.py, with what the Python back end wrote for each: run
+// runtime, programs written for this back end) lowered to L2, with the recorded answer for each: run
 // when CB_CSHARP_HARNESS names the folder holding them; a run without it has nothing to compare and passes.
-CB_TEST("translate.csharp.harness.old_programs_agree", [] {
+CB_TEST("translate.csharp.harness.recorded_programs_agree", [] {
     const auto dir = cb::fs::get_env("CB_CSHARP_HARNESS");
     if (!dir) return;
     const std::string all = cb::fs::read_text(std::filesystem::path(*dir) / "expected.txt");
@@ -1042,7 +1040,7 @@ CB_TEST("translate.csharp.harness.old_programs_agree", [] {
         ++compared;
         if (!want.contains("files")) {
             CB_CHECK(false);
-            std::fprintf(stderr, "%s: the Python answered %s\n", key.c_str(), want.dump().substr(0, 200).c_str());
+            std::fprintf(stderr, "%s: the golden holds %s\n", key.c_str(), want.dump().substr(0, 200).c_str());
             continue;
         }
         const cb::Json& files = want.at("files");

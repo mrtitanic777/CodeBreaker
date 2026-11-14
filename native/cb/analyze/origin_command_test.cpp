@@ -1,5 +1,5 @@
-// Tests of the `origin` command (cb/analyze/origin.hpp's `command`) against what `python -m codebreaker origin ...` printed for the same files
-// (testdata/commands/*.txt, made by state/work/cmdlayer/gen_origin.sh).
+// Tests of the `origin` command (cb/analyze/origin.hpp's `command`) against the recorded output for the same files
+// (testdata/commands/*.txt).
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -37,13 +37,13 @@ std::string origin_data(const char* relative) { return cb::fs::to_text(cb::testi
 
 }  // namespace
 
-CB_TEST("analyze.origin_command.a_module_counts_like_the_python", [] {
+CB_TEST("analyze.origin_command.a_module_counts_as_recorded", [] {
     OriginCommandWorld w;
     CB_CHECK_EQ(w.run({origin_data("formats/testdata/lzexpand.dll")}), OriginCommandWorld::golden("lzexpand"));
     CB_CHECK_EQ(w.run({origin_data("compare/testdata/versions/win95/thinkjet.drv")}), OriginCommandWorld::golden("thinkjet"));
 });
 
-CB_TEST("analyze.origin_command.the_list_of_functions_matches_the_python", [] {
+CB_TEST("analyze.origin_command.the_list_of_functions_matches_recorded", [] {
     OriginCommandWorld w;
     CB_CHECK_EQ(w.run({origin_data("formats/testdata/lzexpand.dll"), "--list"}), OriginCommandWorld::golden("lzexpand_list"));
     CB_CHECK_EQ(w.run({origin_data("compare/testdata/versions/win95/ti850.drv"), "--list"}), OriginCommandWorld::golden("ti850_list"));

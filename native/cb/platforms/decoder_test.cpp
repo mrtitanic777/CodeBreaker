@@ -6,12 +6,11 @@
 #include "cb/core/error.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from platforms.decoder (Python capstone 4.0.2 and its port):
-//   * the engine is Capstone 5.0.7 (native/third_party), so operand text follows 5.x (PowerPC registers print as "r3",
-//     not "3"; 4.x had no operand-text for some prefixes); the decompiler is checked against the judge (7.2), not text;
-//   * a width Capstone has no mode for is a UsageError (the Python raised KeyError); an unknown architecture cannot be
-//     named (Arch is an enum, the Python raised ValueError for a string);
-//   * a decoder is a value (Decoder) owned by a DecoderSet per thread, not a shared_ptr in a thread_local map.
+// Behaviour pinned here:
+//   * the engine is Capstone 5.0.7 (native/third_party), so operand text follows 5.x (PowerPC registers print as "r3");
+//     the decompiler is checked against the judge (7.2), not text;
+//   * a width Capstone has no mode for is a UsageError; an unknown architecture cannot be named (Arch is an enum);
+//   * a decoder is a value (Decoder) owned by a DecoderSet per thread.
 
 using namespace cb;
 using namespace cb::platforms;

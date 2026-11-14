@@ -46,7 +46,7 @@ bool is_piece_file(std::string_view f) {
     return f.size() == 10 && f[0] == 'p' && f.ends_with(".pas") && std::all_of(f.begin() + 1, f.begin() + 6, is_lower_hex);
 }
 
-// a user's EDITS pattern is Python-style (\1 for a group); the engine's template says $1
+// a user's EDITS pattern uses \1 for a group; the engine's template says $1
 std::string template_of(std::string_view replacement) {
     std::string out;
     for (std::size_t i = 0; i < replacement.size(); ++i) {

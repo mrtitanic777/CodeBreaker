@@ -1,8 +1,7 @@
 // Tests of cb/emulate/driver: real Windows 95 VxDs (BIOS, SPLITTER, SRAMMTD) loaded into flat memory and run from every entry point with
-// several inputs, compared with what the Python emulate.driver recorded for the same runs (testdata/driver.golden.json, made by running the
-// Python on these files: native/cb/emulate/testdata/make_driver_golden.py); the image's layout and relocation; the resolver; the run record; errors.
+// several inputs, compared with the recorded results of the same runs (testdata/driver.golden.json); the image's layout and relocation; the resolver; the run record; errors.
 //
-// DIVERGES: `registers` took any register name Unicorn has (esp, eip, eflags too) and a name it had not was a KeyError; here the seven the
+// Note: the seven registers the
 // lanes set (eax ... ebp) are fields, and the rest cannot be named. None of the recorded runs sets another.
 #include "cb/emulate/driver.hpp"
 
@@ -46,7 +45,7 @@ template <class A, class B>
 void drv_same(const std::string& name, const char* what, const A& got, const B& want) {
     testing::count_check();
     if (got != static_cast<A>(want)) {
-        testing::record_failure(__FILE__, __LINE__, std::format("{}: {} was {} but the Python recorded {}", name, what, got, static_cast<A>(want)));
+        testing::record_failure(__FILE__, __LINE__, std::format("{}: {} was {} but expected {}", name, what, got, static_cast<A>(want)));
     }
 }
 
@@ -85,7 +84,7 @@ std::vector<MemoryInit> inputs_memory() {
     return {{kVm, Bytes(0x100, 0)}, {kClient, Bytes(0x100, 0)}, {kBuffer, sequence()}, {kObject, Bytes(0x400, 0)}, {kSafe, Bytes(16, 0xC3)}};
 }
 
-// The inputs golden.py gave each run, by name.
+// The inputs of each run, by name.
 RunOptions options_named(const std::string& vector_name) {
     RunOptions o;
     o.memory = inputs_memory();
@@ -159,7 +158,7 @@ sfs::path vxd_path(const std::string& name) { return testing::data_path("formats
 
 }  // namespace
 
-CB_TEST("emulate.driver.the_images_are_laid_out_and_relocated_as_the_python_did", [] {
+CB_TEST("emulate.driver.the_images_are_laid_out_and_relocated_as_recorded", [] {
     for (const auto& [file, want] : driver_golden().items()) {
         const Image image = Image::load(vxd_path(file));
         drv_same(file, "digest", image.digest, want["digest"].get<std::string>());
@@ -194,7 +193,7 @@ CB_TEST("emulate.driver.the_images_are_laid_out_and_relocated_as_the_python_did"
     }
 });
 
-CB_TEST("emulate.driver.every_entry_point_runs_as_the_python_recorded_it", [] {
+CB_TEST("emulate.driver.every_entry_point_runs_as_recorded", [] {
     DriverWorld w;
     std::size_t ran = 0;
     for (const auto& [file, want] : driver_golden().items()) {

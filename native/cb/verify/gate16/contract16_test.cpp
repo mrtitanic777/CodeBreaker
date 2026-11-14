@@ -4,15 +4,13 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from verify/gate16/contract16.py:
-//   * the description is handed in (`Described`), not computed with describe16 and kept by a pickle cache: the describer
+// Design notes:
+//   * the description is handed in (`Described`), not computed here: the describer
 //     belongs to decompile/describe and keeps what it describes;
 //   * a callee key is a NearCall or a FarCall; the bytes taken off after a call are a TakenOff (a count, or an operand
 //     read from a register, or "leave"), not an int or a string;
-//   * the map file is read from the text the caller gives, and a build with no m.map is no mismatch (the Python catches
-//     OSError and answers {});
-//   * the Python's `low` table of at-least counts was filled and never read; it is gone;
-//   * the "why" text lists the byte counts in numeric order (the Python sorted them as text, "12" before "2").
+//   * the map file is read from the text the caller gives, and a build with no m.map is no mismatch;
+//   * the "why" text lists the byte counts in numeric order.
 
 using namespace cb;
 using namespace cb::verify::gate16::contract16;
@@ -21,7 +19,7 @@ namespace {
 
 Bytes hex(std::string_view h) { return crypto::from_hex(h); }
 
-// the names and removed bytes the tests/test_verification.py case and the harness used for far callees
+// the names and removed bytes the tests use for far callees
 std::optional<std::string> far_name(const CalleeKey& key) {
     static const std::map<std::uint32_t, std::string> names = {
         {0xE0000000, "GlobalSize"}, {0xE0000010, "GlobalAlloc"}, {0xE0000020, "none"}, {0xE0000030, "two"}};
@@ -58,7 +56,7 @@ std::string calls_of(std::string_view code_hex, bool with_removes) {
 
 }  // namespace
 
-// The cases of the Python's tests/test_verification.py and of the old harness (expected.py), whose outputs were read
+// The cases, whose outputs were read
 // and checked by hand: each row is [callee, bytes taken off after the call, argument bytes pushed (or null), LEAVE].
 CB_TEST("verify.gate16.contract16.a_calls_arguments_are_what_its_callee_removes_of_what_was_pushed", [] {
     // `GlobalAlloc(0x2042, GlobalSize(h))` pushes the flags, then GlobalSize's handle: six bytes are GlobalAlloc's, two

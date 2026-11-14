@@ -34,7 +34,7 @@ Sprite sprite_shaders() {
 
 }  // namespace
 
-// The expected values are what the SDK's listing and the original reader gave for this effect, read through by hand.
+// The expected values are what the SDK's listing and the recorded reader output gave for this effect, read through by hand.
 CB_TEST("formats.xbox.shader.pixel_shader_of_the_sprite_effect", [] {
     const Sprite sp = sprite_shaders();
     CB_CHECK(shf::is_container(sp.pixel));
@@ -130,7 +130,7 @@ CB_TEST("formats.xbox.shader.loops_are_read_from_the_literal_records", [] {
 });
 
 // The tables fxc's listing (/Fc /Xudsrd) gives for the SDK sample effect `skinned`: the vertex shader's inputs and exports, the constant
-// table and the compiler's literals; the pixel shader's interpolators. (From tests/test_xbox_effect.py::test_shader_tables.)
+// table and the compiler's literals; the pixel shader's interpolators.
 CB_TEST("formats.xbox.shader.the_tables_of_the_skinned_effect_are_what_fxc_lists", [] {
     const fxf::Effect fx = fxf::read(effect_file("fxo_skinned.fxo"));
     std::vector<shf::Shader> vertex, pixel;

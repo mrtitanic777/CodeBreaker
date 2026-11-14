@@ -3,17 +3,15 @@
 // the test's own, the first source that has content, and the Free60 tool wrappers' failure paths. Keys are generated here (a 2048-bit
 // private key by the operating system's generator); every signature is checked by recomputing what it signs.
 //
-// DIVERGES from the Python (build_lib.py, the old harness had no cases for it):
+// Behaviour pinned here:
 //   * The in-place functions take the image and the offset instead of an open stream, and work on bytes: no position is left to
-//     restore, and a bootloader that reaches past the end of the image is a FormatError (the Python hashed or signed what was there).
-//   * An SD shorter than 0x120 bytes is a FormatError in sign_sd_4bl / verify_sd_4bl (the Python hashed the first 0x10 bytes alone
-//     and grew the bytearray to hold the signature).
+//     restore, and a bootloader that reaches past the end of the image is a FormatError.
+//   * An SD shorter than 0x120 bytes is a FormatError in sign_sd_4bl / verify_sd_4bl.
 //   * A patch table that ends before its 0xFFFFFFFF, or inside a record, is a TruncatedError (the stream class raised at the end).
 //   * apply_jump_sd_4bl with no 0x4C000024 in the image is a FormatError (the stream raised at its end).
-//   * The tools are run without a shell (an argument list), the ELF is made in a work folder of its own (the Python wrote temp.elf in
-//     the working folder), and a failure is a ToolError with the tool's name and exit code (the Python asserted).
-//   * The ctypes structures are FlashHeader and BootloaderHeader (the nonce is present or not); the BLHeader's reflection
-//     (__getitem__ / __setitem__ / __dict__) and the file helpers read_file / write_file (cb::fs) are not carried over.
+//   * The tools are run without a shell (an argument list), the ELF is made in a work folder of its own,
+//     and a failure is a ToolError with the tool's name and exit code.
+//   * The header structures are FlashHeader and BootloaderHeader (the nonce is present or not).
 #include "cb/formats/xbox/crypto/build_lib.hpp"
 
 #include <string>

@@ -1,4 +1,4 @@
-// Tests of cb/base/settings: the `settings` command, against the text the Python command printed for the same checkout.
+// Tests of cb/base/settings: the `settings` command, against the recorded text for the same checkout.
 #include "cb/base/settings.hpp"
 
 #include <algorithm>
@@ -14,7 +14,7 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-// The checkout state/work/cmdlayer/gen_settings.py makes for the Python (the same settings.json, the same folders).
+// A checkout made for the test (the same settings.json, the same folders).
 void make_settings_checkout(const stdfs::path& root) {
     cb::fs::make_dirs(root / "wc");
     cb::fs::make_dirs(root / "state");
@@ -38,7 +38,7 @@ std::vector<std::unique_ptr<cb::fs::ScopedEnv>> clear_overrides(const cb::config
 
 }  // namespace
 
-CB_TEST("base.settings.matches_the_python_listing", [] {
+CB_TEST("base.settings.matches_the_recorded_listing", [] {
     cb::fs::ScopedTempDir dir("cbsettings");
     make_settings_checkout(dir.path());
     const cb::config::Config config = cb::config::Config::load(dir.path());

@@ -1,14 +1,14 @@
 // Tests of cb/symbols/demangle: names from the MFC and COMCTL32 ordinal tables and the system headers' own exports,
 // each expected text checked by hand against what Microsoft's undname prints.
 //
-// DIVERGES from the Python module (and the engine it called, native/symbols/demangle.cc), by design:
-//   * Nesting deeper than 100 levels is not read (it was 400; real names nest a dozen deep).
-//   * Text is read as bytes, not code points: Latin-1 superscript digits (U+00B2, B3, B9), which Python's isdigit()
-//     accepted and int() refused, no longer make a name unreadable; a byte above 0x7F is an ordinary name byte.
-//   * plain(): `@N` with N beyond 32 bits is not a stack size (Python had a big integer): the name is returned as it
+// Behaviour pinned here:
+//   * Nesting deeper than 100 levels is not read (real names nest a dozen deep).
+//   * Text is read as bytes, not code points: Latin-1 superscript digits (U+00B2, B3, B9) do not make a name unreadable;
+//     a byte above 0x7F is an ordinary name byte.
+//   * plain(): `@N` with N beyond 32 bits is not a stack size: the name is returned as it
 //     stands. No real decorated name has one.
-// The old engine and this reader were also run over 4,600 decorated names (every name of the shipped ordinal
-// tables, the harness names and the corpus's own) and agree on every parse, type name and plain name.
+// The reader was also run over 4,600 decorated names (every name of the shipped ordinal
+// tables, the harness names and the corpus's own); every parse, type name and plain name was checked.
 #include "cb/symbols/demangle.hpp"
 
 #include "cb/core/error.hpp"
@@ -161,7 +161,7 @@ CB_TEST("symbols.demangle.plain_names", [] {
     CB_CHECK_EQ(p.name, "_foo@+8");
     p = dm::plain("");
     CB_CHECK_EQ(p.name, "");
-    p = dm::plain("_a@99999999999");   // DIVERGES: beyond 32 bits is not a stack size
+    p = dm::plain("_a@99999999999");   // beyond 32 bits is not a stack size
     CB_CHECK_EQ(p.name, "_a@99999999999");
 });
 

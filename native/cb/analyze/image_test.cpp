@@ -1,5 +1,5 @@
 // Tests of the Image makers: a PE module read from real files of the Windows 95 corpus (testdata/pe) and compared
-// with the module as the live Python handed it to the engine (golden_image.hpp), and the NE and LE layouts on small
+// with the module as the engine is handed it (golden_image.hpp), and the NE and LE layouts on small
 // hand-made modules.
 #include "cb/analyze/image.hpp"
 
@@ -65,7 +65,7 @@ CB_TEST("analyze.image.a_pe_module_has_the_spans_imports_and_relocations_the_liv
 CB_TEST("analyze.image.a_pe_module_has_the_functions_the_live_loader_found", [] {
     for (const char* name : {"lz32.dll", "dpwsock.dll", "password.cpl"}) {
         const std::string module = name;
-        Image want(test::read_golden_image(module));          // (the live Python's functions after discovery)
+        Image want(test::read_golden_image(module));          // (the recorded functions after discovery)
         Image got = image::load_pe(open_pe(module));
         std::set<Va> mine(got.functions().begin(), got.functions().end());
         std::size_t missing = 0;
@@ -204,7 +204,7 @@ CB_TEST("analyze.image.an_le_layout_names_what_the_device_block_gives_away", [] 
 });
 
 CB_TEST("analyze.image.a_prologue_the_sweep_does_not_reach_is_not_a_function", [] {
-    // crtdll.dll holds a 55 8B EC inside a table at 7FD269F2: the live Python's sweep never reads an instruction there, so it is no function.
+    // crtdll.dll holds a 55 8B EC inside a table at 7FD269F2: the sweep never reads an instruction there, so it is no function.
     Image got = image::load_pe(open_pe("crtdll.dll"));
     CB_CHECK_EQ(got.functions().size(), std::size_t{814});
     CB_CHECK(!std::ranges::binary_search(got.functions(), Va{0x7FD269F2}));

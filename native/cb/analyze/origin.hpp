@@ -12,7 +12,7 @@
 // BP never a plain register ...); one piece of assembly evidence makes a function assembly, and the evidence is kept with the verdict. A
 // C compiler leaves fingerprints of its own (__chkstk, its arithmetic helpers, the frame it builds and takes down).
 //
-// The verdict is worked out every time it is asked (the Python kept it in a pickle under the module's bytes; it is cheap beside
+// The verdict is worked out every time it is asked (it is cheap beside
 // describe16, which decodes every segment of the module).
 #pragma once
 

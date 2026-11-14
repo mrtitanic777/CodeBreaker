@@ -1,9 +1,8 @@
-// Tests of cb/formats/xbox/gdf.hpp. The expected values (the built image's SHA-1, the root directory, the file hashes) are what the
-// Python's gdf module gives -- gdf.build_xdvdfs and gdf.GDF through formats.dll -- for the same four files
-// (state/work/typed-port/xbox-deferred/vol_golden.py in the work that wrote this), so the builder and the reader are compared with it.
+// Tests of cb/formats/xbox/gdf.hpp. The expected values (the built image's SHA-1, the root directory, the file hashes) are recorded for the same four files,
+// so the builder and the reader are compared with them.
 //
-// DIVERGES from the Python: a volume that is not there is FormatError (ValueError / AssertionError); `read` of a path that is not a
-// file is NotFoundError (KeyError); a directory entry whose name would run past its sector is skipped, as before, and a read before the
+// Behaviour pinned here: a volume that is not there is FormatError; `read` of a path that is not a
+// file is NotFoundError; a directory entry whose name would run past its sector is skipped, and a read before the
 // start of the device (a negative base the caller gave) is FormatError.
 #include "cb/formats/xbox/gdf.hpp"
 
@@ -39,7 +38,7 @@ static Bytes pattern(std::size_t n, std::uint8_t step = 1) {
     return b;
 }
 
-// the four files the Python's golden was made from
+// the four files the golden was made from
 static std::vector<gdf::SourceFile> four_files() {
     Bytes xex = {'X', 'E', 'X', '2'};
     xex.resize(5004, 0);
@@ -54,7 +53,7 @@ static Bytes four_file_image() {
     return gdf::build(files);
 }
 
-CB_TEST("formats.xbox.gdf.build_is_the_pythons_volume", [] {
+CB_TEST("formats.xbox.gdf.build_is_the_recorded_volume", [] {
     const Bytes image = four_file_image();
     CB_CHECK_EQ(image.size(), 88064u);
     CB_CHECK_EQ(sha1_hex(image), "6caeada675d8454129f54ec1b4eb9f1c44b28f77");

@@ -12,7 +12,7 @@
 namespace v = cb::decompile::vmx128;
 using std::string;
 
-// DIVERGES from the Python module: none in the decoding or the generated SLEIGH (the old harness decoded all 77 rows
+// Notes: no differences in the decoding or the generated SLEIGH (an old harness decoded all 77 rows
 // with random free bits, 4 real games' vector words, and wrote the SLEIGH with and without declared operations; the
 // text matches the original byte for byte, and the checked-in languages/src/ppc/vmx128.sinc is its output). The
 // command-line shell (`main` with --coverage) is not here: it belongs to the command table; `coverage` takes the code

@@ -1,6 +1,6 @@
 // cb-unity: alone (test helpers named for this module)
 // A harness, not a test of behaviour: runs `identify` and `names` as the program would, over the real corpus and the real configuration, and
-// writes what they print and how long each took, to compare with what the Python prints (docs: state/work/typed-port/_bugs/LIST.md's proof notes).
+// writes what they print and how long each took, to compare runs.
 //
 //     CB_PROOF_WORK=<dir> cb_tests_symbols --filter symbols.proof
 //

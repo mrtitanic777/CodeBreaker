@@ -88,7 +88,7 @@ public:
         check(api_.uc_reg_read(uc_, reg, value), "uc_reg_read");
         return value[0];
     }
-    // What the Python binding handed back for ST0 was one integer, taken as a float: the same here, so that a run is judged as it was.
+    // ST0 reads back as one integer taken as a float, so that a run is judged as it always was.
     // (An x87 register is 80 bits: its mantissa and a sign and exponent word. The first word is the mantissa.)
     double reg_read_float(int reg) override { return static_cast<double>(reg_read(reg)); }
     void reg_write(int reg, std::uint64_t value) override { check(api_.uc_reg_write(uc_, reg, &value), "uc_reg_write"); }

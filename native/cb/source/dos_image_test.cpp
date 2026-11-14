@@ -1,12 +1,12 @@
 // Tests of cb/source/dos_image: small real-mode programs written byte by byte (a .COM file with a call, an MZ program with a
 // relocated segment word, a program too long for one segment) and what source each becomes.
 //
-// DIVERGES from codebreaker/source/dos_writer.py (class Writer):
+// Design notes (class Writer):
 //   * the program's name is given (the C++ Program has none); the source's head says it;
 //   * which jumps and calls capstone resolved is read from the instruction's bytes (the relative forms E8, E9, EB, 70-7F, E0-E3,
 //     0F 80-8F, with a 66 prefix making the displacement 32 bits wide), not from the decoder's operand records: the answer is the
 //     same where the decoder resolves them in 16-bit mode, and no detail is asked of the decoder;
-//   * a relocated word in the last byte of the image is not marked (the Python raised struct.error there).
+//   * a relocated word in the last byte of the image is not marked.
 
 #include "cb/source/dos_image.hpp"
 

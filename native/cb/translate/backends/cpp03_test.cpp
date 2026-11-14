@@ -1,6 +1,6 @@
 // Tests of the C++03 back end (cpp03), on real Java programs: the units the Java front end lowers (testdata/cpp03/PROG/units/N.json, as L2),
 // the converter's parse of each source (src/*.java) and resolver (cfg.json), written by the C++03 and the C++17 dialects and compared with
-// what the Python back end answered for every member (expected.txt: body, constructors, initialiser, array items, enum arguments,
+// the recorded answer for every member (expected.txt: body, constructors, initialiser, array items, enum arguments,
 // instance and static initialisers, plus what it counted and what it put on the ledger). The programs are the translator's own corpus
 // (calc, sample, minecraft, modern, bank, generics, shapes, streams, textstats), the programs of its test suites (t03, t17) and `feat`,
 // written to reach the branches the others do not: every literal form, shifts, float %, casts, ternaries, arrays, every loop and switch
@@ -8,12 +8,12 @@
 // sensitive operands, boxed types, reflection, ownership patterns, enums, constructor chains, varargs, marker arguments.
 // CB_CPP03_DATA names a folder of further programs of the same shape (the Minecraft Alpha and Beta sources: ~22,000 answers).
 //
-// DIVERGES from cpp03.py:
-//   * the back end no longer rewrites the tree it reads: the Python replaced a call's argument list with the one without the decompiler's
-//     marker arguments, and a second rendering of the same call (a finally body is written twice) saw the shorter list;
-//   * `new T[]{}` (an initialiser with no elements) is no longer written `(JArrayInit<T >(), )`; it is declined;
+// Behaviour pinned here:
+//   * the back end does not rewrite the tree it reads: a call's marker arguments are dropped in the rendering only, so a second
+//     rendering of the same call (a finally body is written twice) sees the full list;
+//   * `new T[]{}` (an initialiser with no elements) is declined, not written `(JArrayInit<T >(), )`;
 //   * the text of a decline reason for a type is the IR's own spelling of the type;
-//   * a float literal is printed by the shortest-digits rule, laid out as Python's repr was (the same text for every finite double).
+//   * a float literal is printed by the shortest-digits rule: fixed notation from 1e-4 up to 1e16, scientific outside.
 #include "cb/translate/backends/cpp03.hpp"
 
 #include <algorithm>
@@ -113,7 +113,7 @@ const cb::java::runtime::Runtime& c3_runtime() {
     return r;
 }
 
-// ---- the answers, as the harness of the Python back end wrote them
+// ---- the recorded answers
 using Answers = std::vector<std::pair<std::string, Json>>;   // key -> answer
 
 Json c3_lines(const std::optional<std::vector<std::string>>& r) {
@@ -246,7 +246,7 @@ C3Expected c3_expected(const C3Program& p, const std::string& mode) {
     return e;
 }
 
-// Compares a run with what the Python answered. Returns the number of members that differ (the first few are printed).
+// Compares a run with the recorded answers. Returns the number of members that differ (the first few are printed).
 std::size_t c3_compare(const C3Program& p, const std::string& mode, const C3Run& run, const C3Expected& want) {
     std::size_t bad = 0;
     const auto report = [&](const std::string& what, const Json& got, const Json& expected) {

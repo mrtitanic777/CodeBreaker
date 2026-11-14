@@ -17,13 +17,12 @@
 using namespace cb;
 using namespace cb::exact;
 
-// DIVERGES from the Python module (recut.py), on purpose:
-//   * a header whose relocation table lies outside the file is a FormatError (the Python sliced what was there and
-//     failed in struct.iter_unpack unless the cut happened to fall on an entry)
+// Design notes:
+//   * a header whose relocation table lies outside the file is a FormatError (a cut that does not fall on an entry
+//     is not read short)
 //   * a FIXUPP record before any data record, a segment named by an index no LNAMES gave, a thread no record defined
-//     and a record that ends inside a field are FormatError/TruncatedError (the Python raised TypeError, IndexError,
-//     KeyError and IndexError)
-//   * the fix-up's location is read as the 4 bits it is (the Python kept 3, so a location of 8 or more -- a 32-bit
+//     and a record that ends inside a field are FormatError/TruncatedError
+//   * the fix-up's location is read as the 4 bits it is (so a location of 8 or more -- a 32-bit
 //     form, which 16-bit records do not hold -- came back changed)
 
 namespace {
@@ -315,11 +314,11 @@ CB_TEST("exact.recut.damaged_modules", [] {
     CB_CHECK_NOTHROW(recut::recut(original(table, program), ByteView(raw).first(10)));
 });
 
-// The Python module's own answers, on objects the Python helpers built (testdata/recut: <case>.obj, the program's
-// relocations in <case>.relocs, what recut.py made of them in <case>.golden.obj). Each golden file was read through
+// The recorded answers, on objects built by helpers (testdata/recut: <case>.obj, the program's
+// relocations in <case>.relocs, what the cut made of them in <case>.golden.obj). Each golden file was read through
 // and checked against the rule (cut as late as the next run's first word allows, relocations in the program's order
 // within a record, no data record over 1024); "foreign" and "big" come out as they went in.
-CB_TEST("exact.recut.the_python_modules_answers", [] {
+CB_TEST("exact.recut.the_recorded_answers", [] {
     const std::filesystem::path dir = testing::data_path("exact/testdata/recut");
     for (const char* name : {"cut", "pointer", "mixed", "many", "big", "three", "foreign"}) {
         const Bytes raw = fs::read_file(dir / std::format("{}.obj", name));
@@ -342,9 +341,9 @@ CB_TEST("exact.recut.the_python_modules_answers", [] {
 // fix-ups, as the real compiler wrote it) and hand-made ones with a fix-up across the 1000-byte cut, each "placed in a
 // program" and given the program's relocations as a linker would list them (or damaged ways: ascending, shuffled, one
 // missing, an extra word, a duplicate, none), as the packed original's list or as an EXE header and file. The answers
-// are the Python module's: every scenario that changes the module, the damaged ones, and a sample of those that leave
-// it alone (testdata/recut_real.json; the typed-port harness state/work/typed-port/exact.recut holds all 408).
-CB_TEST("exact.recut.real_objects_as_the_python_recut_them", [] {
+// are the recorded ones: every scenario that changes the module, the damaged ones, and a sample of those that leave
+// it alone (testdata/recut_real.json holds a subset of the 408 recorded).
+CB_TEST("exact.recut.real_objects", [] {
     const Json doc = json::load(testing::data_path("exact/testdata/recut_real.json"));
     std::vector<Bytes> raws;
     for (const Json& h : doc.at("raws")) raws.push_back(crypto::from_hex(h.get<std::string>()));
@@ -370,11 +369,11 @@ CB_TEST("exact.recut.real_objects_as_the_python_recut_them", [] {
         if (!e.at("header").is_null()) {
             const Json& h = e.at("header");
             if (h.size() > 12) {
-                // (a negative table offset is not one: the Python sliced from the end of the file)
+                // (a negative table offset is not one)
                 if (h[12].get<std::int64_t>() < 0) continue;
                 table = recut::RelocTable{h[3].get<std::uint32_t>(), h[12].get<std::uint32_t>()};
             } else if (!h.empty()) {
-                header_too_short = true;   // the Python read h[12] of it: an IndexError
+                header_too_short = true;   // there is no word 12 to read
             }
         }
         const recut::Original original{symbols, packed, table, file};
@@ -385,7 +384,7 @@ CB_TEST("exact.recut.real_objects_as_the_python_recut_them", [] {
             try {
                 order = recut::relocation_order(original);
             } catch (const FormatError&) {
-                continue;   // a table that lies outside the file: the Python read what was there (see the DIVERGES block)
+                continue;   // a table that lies outside the file is a FormatError (see the design notes)
             }
             std::string text = "order=";
             if (order.size() < 12) {

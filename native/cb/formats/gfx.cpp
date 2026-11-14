@@ -94,7 +94,7 @@ ByteView clamped(ByteView data, std::size_t from, std::size_t size) {
     return data.subspan(from, std::min(size, data.size() - from));
 }
 
-// Python's repr of a font name: quoted with ' (or " when the name has a ' and no "), backslash and control characters escaped.
+// A font name as a quoted literal: quoted with ' (or " when the name has a ' and no "), backslash and control characters escaped.
 std::string repr_text(std::string_view s) {
     const char quote = s.find('\'') != std::string_view::npos && s.find('"') == std::string_view::npos ? '"' : '\'';
     std::string out(1, quote);

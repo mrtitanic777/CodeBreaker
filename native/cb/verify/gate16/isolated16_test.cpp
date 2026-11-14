@@ -1,15 +1,14 @@
-// Tests of the isolated 16-bit gate, on a real module (LZEXPAND.DLL: formats/testdata) used as its own rebuild, against what the live Python's
-// verify/gate16/isolated16.py check() answered (testdata/isolated16.golden.json, made by testdata/gen_isolated16.py): every function equals itself, and
+// Tests of the isolated 16-bit gate, on a real module (LZEXPAND.DLL: formats/testdata) used as its own rebuild, against the recorded answers of check()
+// (testdata/isolated16.golden.json): every function equals itself, and
 // beside the next function standing in for its rebuild each is told apart -- the first input and the first thing that differs -- with the callees answered
 // or run for real (chained), with the inputs given, and for a name the tables do not know; plus the parts of the comparison (what a difference says), the
 // tables as a document, the linker map and the threads the work is shared over.
 //
-// DIVERGES from isolated16.py:
-//   * a difference is worded without Python's reprs (`calls: original [a, b], ours [c]`, where the Python wrote `['a', 'b']`; a byte result `byte 5`, where the
-//     Python wrote `('byte', 5)`): the golden is compared with the quotes taken out;
+// Design notes:
+//   * a difference is worded plainly (`calls: original [a, b], ours [c]`; a byte result `byte 5`): the golden is compared with the quotes taken out;
 //   * the scattered inputs and the guessed ones are drawn from our own generator (verify/lanes/win16), so a function that passes is `equivalent` for the same
-//     reason and a function that differs is found on the same first input (the fixed ones come first and are the Python's);
-//   * the shares of a big check are threads, not worker processes; the pickled caches are gone.
+//     reason and a function that differs is found on the same first input (the fixed ones come first);
+//   * the shares of a big check are threads.
 #include "cb/verify/gate16/isolated16.hpp"
 
 #include <nlohmann/json.hpp>
@@ -89,7 +88,7 @@ void iso_compare(const std::string& label, const std::vector<Isolated16Answer>& 
         testing::count_check();
         if (got[i].name != w.at(0).get<std::string>() || std::string(word(got[i].verdict)) != w.at(1).get<std::string>() ||
             got[i].why != iso_unquoted(w.at(2).get<std::string>())) {
-            testing::record_failure(__FILE__, __LINE__, std::format("{} {}: the gate said {} / {} but the Python said {} / {}", label, got[i].name, word(got[i].verdict), got[i].why,
+            testing::record_failure(__FILE__, __LINE__, std::format("{} {}: the gate said {} / {} but expected {} / {}", label, got[i].name, word(got[i].verdict), got[i].why,
                                                                    w.at(1).get<std::string>(), iso_unquoted(w.at(2).get<std::string>())));
         }
     }
@@ -103,7 +102,7 @@ std::vector<std::string> iso_names(std::size_t from, std::size_t to) {
 
 }  // namespace
 
-CB_TEST("verify.isolated16.every_function_beside_itself_and_beside_another_is_the_pythons_verdict", [] {
+CB_TEST("verify.isolated16.every_function_beside_itself_and_beside_another_is_the_recorded_verdict", [] {
     IsoWorld w;
     const Isolated16 gate(w.spec());
     const IsolatedTables tables = w.tables();

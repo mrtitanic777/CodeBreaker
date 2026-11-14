@@ -86,7 +86,7 @@ void write_marker(const stdfs::path& marker, const std::string& source, std::uin
     stamp["source"] = source;
     stamp["size"] = size;
     stamp["format"] = kMarkerFormat;
-    json::save(marker, stamp, json::Style::PythonCompatible);   // (the Python's own title.py still reads these)
+    json::save(marker, stamp, json::Style::PythonCompatible);   // the stamp's established JSON style
 }
 
 // A file copied with its modification time.

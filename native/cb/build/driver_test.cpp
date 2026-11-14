@@ -1,15 +1,13 @@
 // Tests of the driver build: finding the source and the original, the linker script, the structural check on real VxDs
-// (the pairs' notes are what the Python build/driver.py printed for the same files), the report line, the command, and
+// (the pairs' notes are recorded), the report line, the command, and
 // -- when OpenWatcom and the Windows 95 DDK's include folder are named in CB_OPENWATCOM and CB_DRIVER_KIT -- a real
 // assemble, link and check of a small driver source.
 //
-// DIVERGES from the Python:
-//   * compare(): `same` counts a patched place only when it lies inside the object (the Python subtracted every place
-//   the
-//     loader patches from an object's size, also those past its end, which made the share too high). The patched
+// Notes:
+//   * compare(): `same` counts a patched place only when it lies inside the object. The patched
 //     places are found once per image, not once per service.
-//   * build(): an original that is not a driver (it cannot be read) gives a note and no checks; the Python raised.
-//   * a run of a tool that does not finish in 300 s gives "timed out after 300 s", as before; a tool that cannot be
+//   * build(): an original that is not a driver (it cannot be read) gives a note and no checks.
+//   * a run of a tool that does not finish in 300 s gives "timed out after 300 s"; a tool that cannot be
 //     started is a failed run with the system's message.
 #include "cb/build/driver.hpp"
 
@@ -209,7 +207,7 @@ CB_TEST("build.driver.structure_of_real_drivers", [] {
     CB_CHECK_EQ(splitter.descriptor->name, "Splitter");
     CB_CHECK_EQ(splitter.descriptor->service_count, 5u);
     CB_CHECK_EQ(splitter.services.size(), 5u);
-    CB_CHECK(splitter.services[0] == std::optional<le::Place>(le::Place{1, 315})); // the table of the Python's harness
+    CB_CHECK(splitter.services[0] == std::optional<le::Place>(le::Place{1, 315})); // the table of the recorded harness
     CB_CHECK(splitter.services[4] == std::optional<le::Place>(le::Place{1, 671}));
     CB_CHECK_EQ(splitter.exports.size(), 1u);
     CB_CHECK(splitter.exports[0].name == std::optional<std::string>("Splitter_DDB") &&
@@ -237,7 +235,7 @@ CB_TEST("build.driver.an_image_agrees_with_itself", [] {
 
 CB_TEST("build.driver.compare_names_each_difference", [] {
     const le::Module splitter = vxd("splitter.vxd"), srammtd = vxd("srammtd.vxd"), bios = vxd("bios.vxd");
-    // the notes the Python's compare() wrote for the same pairs
+    // the recorded notes of compare() for the same pairs
     const Comparison a = compare(splitter, srammtd);
     CB_CHECK(!a.checks.objects && !a.checks.descriptor && !a.checks.services && !a.checks.exports && a.checks.module);
     CB_CHECK_EQ(a.notes.size(), 5u);

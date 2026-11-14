@@ -18,7 +18,7 @@ namespace {
 
 constexpr std::uint64_t kM64 = ~std::uint64_t{0};
 constexpr std::uint64_t kM32 = 0xFFFFFFFFull;
-constexpr std::uint64_t kQuietNan = 0x7FF8000000000000ull;   // Python's math.nan
+constexpr std::uint64_t kQuietNan = 0x7FF8000000000000ull;   // a quiet NaN
 
 constexpr std::int64_t s64(std::uint64_t v) { return static_cast<std::int64_t>(v); }
 constexpr std::int64_t s32(std::uint64_t v) { return static_cast<std::int32_t>(static_cast<std::uint32_t>(v)); }

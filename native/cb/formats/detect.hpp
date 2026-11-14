@@ -19,13 +19,13 @@ namespace cb::formats::detect {
 
 // The signature at the DOS stub's new-header offset.
 enum class NewHeader { None, Pe, Ne, Le, Lx, W3, W4 };
-const char* signature_text(NewHeader sig);  // "PE" ... "W4"; "" for None
+const char* signature_text(NewHeader sig);  // "PE" ... "W4"; "" for none
 
 // The reader a file goes to.
 enum class Lane { Pe, Ne, Le, Dos };
 const char* lane_name(Lane lane);  // "pe", "ne", "le", "dos"
 
-// The new-header signature of an MZ file: nullopt when the file is unreadable or not MZ; None when it is MZ with
+// The new-header signature of an MZ file: nullopt when the file is unreadable or not MZ; none when it is MZ with
 // no known new header (a plain DOS program). `read_at` is how a signature beyond `head` is read.
 std::optional<NewHeader> new_header(const std::filesystem::path& file);
 std::optional<NewHeader> new_header(ByteView whole_file);

@@ -1,4 +1,4 @@
-// Tests of the XACT readers (cb/xna/xact.hpp), against what the translated Python's xwb / xsb / xma made of the same files (testdata/xact/):
+// Tests of the XACT readers (cb/xna/xact.hpp), against the recorded results for the same files (testdata/xact/):
 //   Wave Bank / Music Wave Bank   the first 64 KB of Arcadecraft's two wave banks (every entry's format is in the header), their entry tables
 //   Sound Bank.xsb                Arcadecraft's sound bank whole: 106 cues over two wave banks
 //   test_bank_be / _le            wave banks written for the test (PCM, XMA and WMA streams) in each byte order, and what decode_bank wrote of
@@ -43,7 +43,7 @@ Json xat_entries(const xact::WaveBank& bank) {
 
 }  // namespace
 
-CB_TEST("xna.xact.the_entries_of_real_wave_banks_match_the_python", [] {
+CB_TEST("xna.xact.the_entries_of_real_wave_banks_match_the_golden", [] {
     for (const char* name : {"wave_bank_head.xwb", "music_wave_bank_head.xwb"}) {
         const xact::WaveBank bank = xact::read_wave_bank(fs::read_file(xat_data(name)));
         Json want = xat_golden(name);
@@ -79,7 +79,7 @@ CB_TEST("xna.xact.decode_bank_without_ffmpeg_keeps_what_it_cannot_decode_raw", [
     }
 });
 
-CB_TEST("xna.xact.xma2_in_a_riff_container_matches_the_python", [] {
+CB_TEST("xna.xact.xma2_in_a_riff_container_matches_the_golden", [] {
     const Json wraps = json::load(xat_data("python_wraps.json"));
     Bytes data(100);
     for (std::size_t i = 0; i < data.size(); ++i) data[i] = static_cast<std::uint8_t>(i);
@@ -93,7 +93,7 @@ CB_TEST("xna.xact.xma2_in_a_riff_container_matches_the_python", [] {
     CB_CHECK_EQ(hex(xact::wrap_xma2(data, 5, 22050, 32)), wraps.at(2).get<std::string>());
 });
 
-CB_TEST("xna.xact.a_real_sound_bank_matches_the_python", [] {
+CB_TEST("xna.xact.a_real_sound_bank_matches_the_golden", [] {
     const xact::SoundBank bank = xact::read_sound_bank(fs::read_file(xat_data("sound_bank.xsb")));
     const Json want = xat_golden("sound_bank.xsb");
     CB_CHECK_EQ(bank.wave_banks.size(), std::size_t{2});
@@ -121,9 +121,9 @@ CB_TEST("xna.xact.pcm_is_wrapped_as_wav", [] {
 });
 
 // The banks of Minecraft's Xbox 360 builds under C:/Nexia360/Games (skipped where they are not): the 360 Edition's minecraft.xsb and resident.xwb,
-// Indev's sounds and music banks; what the Python's xsb.read and xwb.XWB made of them.
-CB_TEST("xna.xact.minecrafts_banks_match_the_python", [] {
-    const Json python = json::load(xat_data("python_minecraft_banks.json"));
+// Indev's sounds and music banks; the recorded results for them.
+CB_TEST("xna.xact.minecrafts_banks_match_the_golden", [] {
+    const Json recorded = json::load(xat_data("python_minecraft_banks.json"));
     const std::vector<std::pair<std::string, std::string>> files = {
         {"mc360_minecraft.xsb", "Minecraft Xbox 360 Edition/res/audio/minecraft.xsb"}, {"indev_sounds.xsb", "MinecraftIndev/Content/resources/sounds.xsb"},
         {"indev_music.xsb", "MinecraftIndev/Content/resources/music.xsb"},             {"mc360_resident.xwb", "Minecraft Xbox 360 Edition/res/audio/resident.xwb"},
@@ -132,9 +132,9 @@ CB_TEST("xna.xact.minecrafts_banks_match_the_python", [] {
         const auto file = testing::game_file(relative.c_str());
         if (!file) continue;
         if (name.ends_with(".xsb")) {
-            CB_CHECK(json::parse(xact::cues_json(xact::read_sound_bank(fs::read_file(*file)))) == python.at(name));
+            CB_CHECK(json::parse(xact::cues_json(xact::read_sound_bank(fs::read_file(*file)))) == recorded.at(name));
         } else {
-            CB_CHECK_EQ(xat_entries(xact::read_wave_bank(fs::read_file(*file))).dump(), python.at(name).dump());
+            CB_CHECK_EQ(xat_entries(xact::read_wave_bank(fs::read_file(*file))).dump(), recorded.at(name).dump());
         }
     }
 });

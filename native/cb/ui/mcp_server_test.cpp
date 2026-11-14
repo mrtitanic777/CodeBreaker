@@ -1,12 +1,12 @@
 // cb-unity: alone
-// Tests of cb/ui/mcp_server: the wire (initialize, the 32 tool listings, the prompt, the resource template, errors) against what the Python MCP
-// server answered over stdio (testdata/mcp_python.golden.json, made by native/cb/ui/testdata/make_mcp_golden.py); the tools called through the
-// wire on real files and on stand-ins of the services; the helpers (paging, cutting, Python's JSON lengths); the HTTP transport's checks.
+// Tests of cb/ui/mcp_server: the wire (initialize, the 32 tool listings, the prompt, the resource template, errors) against the recorded
+// answers over stdio (testdata/mcp_python.golden.json); the tools called through the
+// wire on real files and on stand-ins of the services; the helpers (paging, cutting, JSON lengths); the HTTP transport's checks.
 //
-// DIVERGES from ui/mcp_server.py:
-//   * the tools' failures are cb::Error types (UsageError for the Python's ValueError, IoError for OSError); the wire's words are the same;
+// Design notes:
+//   * the tools' failures are cb::Error types (UsageError for the wire's ValueError, IoError for OSError); the wire's words are the same;
 //   * what the tools read of the rest of the program comes in as `Services` (the ledger, the analyses, the decompiler, the version comparison
-//     and the function store's names answer their documents; a tool whose service is not given says so), where the Python imported the modules;
+//     and the function store's names answer their documents; a tool whose service is not given says so);
 //   * stdio answers each request on a thread of its own as the library does; the HTTP transport serves POST /mcp as server-sent events and
 //     does not hold a GET stream open (405).
 #include "cb/ui/mcp_server.hpp"
@@ -100,7 +100,7 @@ sfs::path lzexpand() { return testing::data_path("formats/testdata/lzexpand.dll"
 
 }  // namespace
 
-CB_TEST("ui.mcp.the_wire_answers_as_the_python_library_did", [] {
+CB_TEST("ui.mcp.the_wire_answers_as_recorded", [] {
     Fixture f;
     bool initialized = false;
     // before the handshake only initialize and ping are answered
@@ -155,7 +155,7 @@ CB_TEST("ui.mcp.the_reading_tools_only_when_there_are_no_writes", [] {
     CB_CHECK_EQ(called["result"]["content"][0]["text"].get<std::string>(), "Unknown tool: run_command");
 });
 
-CB_TEST("ui.mcp.tools_called_through_the_wire_answer_as_the_python_did", [] {
+CB_TEST("ui.mcp.tools_called_through_the_wire_answer_as_recorded", [] {
     Fixture f;
     const std::string lz = lzexpand().string();
     {   // demangle: the readable form, the declaration and the stack bytes of three names
@@ -218,7 +218,7 @@ CB_TEST("ui.mcp.a_wire_client_sends_only_the_arguments_it_was_given", [] {
     CB_CHECK(missing.contains("error"));   // (job_id has no default)
 });
 
-CB_TEST("ui.mcp.helpers_page_cut_and_measure_as_the_python_did", [] {
+CB_TEST("ui.mcp.helpers_page_cut_and_measure_as_recorded", [] {
     // paging: total, the window, where to go on
     Json rows = Json::array();
     for (int i = 0; i < 12; ++i) rows.push_back(i);
@@ -235,7 +235,7 @@ CB_TEST("ui.mcp.helpers_page_cut_and_measure_as_the_python_did", [] {
     CB_CHECK_EQ(normalize_address("1a2bh"), "1a2b");
     CB_CHECK_EQ(normalize_address("h"), "h");
     CB_CHECK_EQ(normalize_address("1:0116"), "1:0116");
-    // Python's json.dumps lengths: ", " and ": " separators, every character past ASCII escaped
+    // json.dumps lengths: ", " and ": " separators, every character past ASCII escaped
     CB_CHECK_EQ(compact_length(Json{{"a", 1}, {"b", Json::array({1, 2})}}), std::string(R"({"a": 1, "b": [1, 2]})").size());
     CB_CHECK_EQ(compact_length(Json("\xC3\xA9")), std::string(R"("\u00e9")").size());                 // é
     CB_CHECK_EQ(compact_length(Json("\xF0\x9F\x98\x80")), std::string(R"("\ud83d\ude00")").size());   // a character past the plane 0: a pair

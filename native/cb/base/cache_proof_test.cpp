@@ -1,6 +1,5 @@
-// The proof harness of `cache` and `tidy-state` against the Python implementation: runs the native commands on a folder the
-// Python commands were run on too, and writes what they print to a file. Inert unless CB_PROOF_ARGS is set (a command line,
-// "cache --prune" or "tidy-state --dry"; the settings come from the same CB_* environment variables the Python reads:
+// The proof harness of `cache` and `tidy-state`: runs the native commands on a state folder and writes what they print to a file. Inert unless CB_PROOF_ARGS is set (a command line,
+// "cache --prune" or "tidy-state --dry"; the settings come from the CB_* environment variables:
 // CB_STATE, CB_BUILD_CACHE, CB_CONVERTED, CB_CACHE_MAX_GB), so an ordinary run of the tests does nothing here.
 #include <sstream>
 

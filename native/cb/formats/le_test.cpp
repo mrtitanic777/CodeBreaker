@@ -2,11 +2,11 @@
 // 33 pages, a service table) and, when the Windows 95 corpus is present, VMM32.VXD (a W3 container). The W4 page compression is
 // tested on bytes of the real drivers.
 //
-// DIVERGES from the Python reader (see state/work/typed-port/_bugs/LIST.md): a fix-up value cut off by the end of the file is a
-// TruncatedError (the Python took the shorter value); an object that starts at page 0 and has pages is a FormatError (the Python
-// indexed the page map from the end); `file_offset` of an offset before the object is nullopt (the Python floored it into an
-// earlier page); a W4 copy that reaches before the page is a FormatError (a distance of 0 was the Python's out[0]); the W3
-// directory's member count is the 16-bit field (the Python class read 32 bits, the Python function 16).
+// Behaviour pinned here: a fix-up value cut off by the end of the file is a
+// TruncatedError; an object that starts at page 0 and has pages is a FormatError;
+// `file_offset` of an offset before the object is nullopt (it is not floored into an
+// earlier page); a W4 copy that reaches before the page is a FormatError (a distance of 0 is invalid); the W3
+// directory's member count is the 16-bit field.
 #include "cb/formats/le.hpp"
 
 #include <algorithm>
@@ -180,7 +180,7 @@ CB_TEST("formats.le.bios_multiple_objects", [] {
     for (const auto& o : m.objects()) CB_CHECK_EQ(m.object_data(o).size(), std::size_t{o.vsize});
 });
 
-// Taking an image apart and putting it back gives the same bytes for these drivers (the Python round trip does too).
+// Taking an image apart and putting it back gives the same bytes for these drivers.
 CB_TEST("formats.le.parts_roundtrip", [] {
     for (const char* name : {"splitter.vxd", "bios.vxd"}) {
         const Bytes file = testdata(name);

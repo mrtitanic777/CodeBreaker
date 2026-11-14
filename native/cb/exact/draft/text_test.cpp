@@ -10,10 +10,10 @@ using namespace cb;
 using namespace cb::exact::draft::text;
 using Json = nlohmann::json;
 
-// DIVERGES from the Python module (draft/text.py), on purpose:
-//   * a line index that is negative or past the end was Python indexing (a wrap-around or IndexError); here it is a
+// Design notes:
+//   * a line index that is negative or past the end is a
 //     bug in the caller (InternalError)
-//   * \w was Unicode in Python, here it is ASCII: a draft is ASCII, and a non-ASCII byte is not part of a name
+//   * \w is ASCII: a draft is ASCII, and a non-ASCII byte is not part of a name
 //   * the register of live_after / plain_store is a name, not a regular expression
 //   * the module's tables (UCHAR, ARRAYS, LONGINFO ...) are FunctionFacts / ProjectCaches held by the passes
 //   * GOTO_LIVE, a global switch nothing set, is LiveOptions::follow_gotos
@@ -28,8 +28,8 @@ Json json_of(const Strings& v) {
     return a;
 }
 
-// ---- the golden file: cases the old harness ran against the Python module, with the results it gave -----------------
-// One case per line: `op <TAB> arg ... <TAB> => <TAB> {"r": result}`. An argument is `S<text>` (a string), `N` (None)
+// ---- the golden file: recorded cases, with the results they gave --------------------------------------------------
+// One case per line: `op <TAB> arg ... <TAB> => <TAB> {"r": result}`. An argument is `S<text>` (a string), `N` (none)
 // or `L<item><US><item>...` (a list, each item `S<text>` or `N`); the text escapes \t \n \r and \\.
 
 struct Arg {
@@ -137,7 +137,7 @@ Json run_case(const std::string& op, const std::vector<Arg>& a) {
 
 }  // namespace
 
-CB_TEST("exact.draft.text.golden_cases_from_the_python_module", [] {
+CB_TEST("exact.draft.text.golden_cases", [] {
     const std::string file = fs::read_text(testing::data_path("exact/testdata/draft_text.cases"));
     std::size_t cases = 0;
     for (std::string_view line : text::lines(file)) {

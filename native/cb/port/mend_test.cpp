@@ -1,19 +1,18 @@
 // Tests of the port's mending (mend.hpp) and of the passes that work on the whole program (stored_wide, passed_on,
 // union_member_for, visible_tags). The golden tests next to this file (mend_golden_test.cpp) hold the same code to what
-// the Python gave over two real programs and a dozen small ones; these read as the rules they are.
+// the recorded answers over two real programs and a dozen small ones; these read as the rules they are.
 //
-// DIVERGES from the Python (pre_ansi.py), each on purpose:
-//   * stored_wide, passed_on and whole_word_stores no longer raise IndexError for a definition whose braces never close
-//     (a truncated file); they read it to the last line. Fixed in the Python too (tests/test_port.py).
-//   * stored_wide reads each file's text afresh: the Python took the texts once at the start, so a file mended after an
-//     earlier file had changed its declarations wrote the old text back over them. Fixed in the Python too.
-//   * object_before with an unbalanced bracket (`a) ->x`) starts the object at the line's start; the Python indexed from
-//     the end of the line.
-//   * the notes and rules for pointers to functions (the last loop of mend) come in the order of the pointers' names, the
-//     Python's in the order the pointers were first met; no output reads that order.
-//   * a program with no library functions named has no "given to a library function" use of a parameter; the Python
-//     built an empty alternative that matched any call.
-//   * text is bytes: the Python's code-point offsets are byte offsets here (a Latin-1 program is one byte a character).
+// Behaviour pinned here:
+//   * stored_wide, passed_on and whole_word_stores read a definition whose braces never close
+//     (a truncated file) to the last line.
+//   * stored_wide reads each file's text afresh, so a file mended after an earlier file has changed its declarations does not
+//     write the old text back over them.
+//   * object_before with an unbalanced bracket (`a) ->x`) starts the object at the line's start.
+//   * the notes and rules for pointers to functions (the last loop of mend) come in the order of the pointers' names;
+//     no output reads that order.
+//   * a program with no library functions named has no "given to a library function" use of a parameter (no empty alternative that
+//     would match any call).
+//   * text is bytes: offsets are byte offsets (a Latin-1 program is one byte a character).
 #include "cb/port/mend.hpp"
 
 #include "cb/core/regex.hpp"
@@ -257,7 +256,7 @@ CB_TEST("port.mend.parameters_that_carried_a_pointer", [] {
 });
 
 CB_TEST("port.mend.stored_wide_keeps_declarations_changed_for_an_earlier_file", [] {
-    // The Python wrote the stale text of b.c back over the declaration an earlier file's mending had changed.
+    // The stale text of b.c must not be written back over the declaration an earlier file's mending had changed.
     Sources out;
     out["a.c"] = "#include \"s.h\"\nvoid push(intptr_t n)\n{\n    struct stk *s;\n    s->v = n;\n}\n"
                  "int16_t pop(void)\n{\n    int16_t v;\n    struct stk *s;\n    v = s->v;\n    return v;\n}\n";

@@ -1,11 +1,11 @@
 // Tests of cb/formats/gfx.hpp on a synthetic Scaleform file (testdata/gfx/menu.bin: a GFx movie with three external images, two fonts and
 // four placements, junk with a stray "GFX" in it, a zlib-compressed CFX movie, and a movie of one 117-glyph font made to exercise the
 // TrueType writer). There is no real GFx file on this machine; the expected output is what `codebreaker gfx ...` printed for this one, and
-// the expected TrueType files are the ones fontTools wrote through the Python's `font_to_ttf`: every table of ours is the same bytes
+// the expected TrueType files are the ones fontTools wrote through `font_to_ttf`: every table of ours is the same bytes
 // (head's two dates and checksum adjustment, which depend on when the font was made, aside).
 //
-// DIVERGES from the Python: a placement's scale is read as the signed fixed-point number it is (the Python read it unsigned and printed a
-// flipped placement as a huge scale; state/work/typed-port/_bugs/LIST.md).
+// Behaviour pinned here: a placement's scale is read as the signed fixed-point number it is (an unsigned read would print a
+// flipped placement as a huge scale).
 #include "cb/formats/gfx.hpp"
 
 #include <format>
@@ -181,7 +181,7 @@ CB_TEST("formats.gfx.a_flipped_placement_has_a_negative_scale", [] {
     CB_CHECK(gfx::placements(cut[0].body).empty());
 });
 
-CB_TEST("formats.gfx.the_commands_print_what_the_python_printed", [] {
+CB_TEST("formats.gfx.the_commands_print_the_recorded_output", [] {
     const std::string menu = fs::to_text(gfx_data("menu.bin"));
     for (const char* name : {"scan", "images", "fonts", "placements"})
         CB_CHECK_EQ(testing::run_command(gfx::command(), {name, menu}), gfx_golden((std::string(name) + ".txt").c_str()));

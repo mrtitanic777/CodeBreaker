@@ -1,9 +1,8 @@
 // Tests of cb/formats/xbox/crypto/se_patcher.hpp, over a stand-in LZX codec (the real library is not part of this program): the
 // SE's frame (magic, build, flags, size, padding), the hash in the SD, the SD's size and signature, patch tables, and the errors.
 //
-// DIVERGES from the Python (se_patcher.py): the key, the codec and the inputs are parameters (the Python's main() had one console's
-// paths written in it, and the key in a module global); the SD and SE are returned with their lengths before padding in a struct
-// rather than nested tuples; the commented-out xell experiment is not carried.
+// Behaviour pinned here: the key, the codec and the inputs are parameters; the SD and SE are returned with their lengths before padding
+// in a struct.
 #include "cb/formats/xbox/crypto/se_patcher.hpp"
 
 #include <algorithm>

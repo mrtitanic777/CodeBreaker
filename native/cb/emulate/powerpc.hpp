@@ -201,7 +201,7 @@ struct BranchEvent {
     std::optional<Compare> compare;      // none: the field the branch tests was last set some other way
 };
 
-// emulate/shadow.py's ShadowPPC, kept up beside the run (the path explorer's): stepped before each instruction, told of
+// The PowerPC shadow, kept up beside the run (the path explorer's): stepped before each instruction, told of
 // each call out. The run is the same run with it or without.
 class Shadow {
 public:

@@ -154,7 +154,7 @@ std::filesystem::path basefile(const Tools& tools, const std::filesystem::path& 
     sidecar["libraries"] = libraries;
     std::filesystem::path sidecar_path = out;
     sidecar_path += ".json";
-    // indent 1 and escaped non-ASCII: the layout the Python wrote, which its readers (import_libraries) still read
+    // indent 1 and escaped non-ASCII: the layout the sidecar readers (import_libraries) read
     fs::write_text(sidecar_path, sidecar.dump(1, ' ', true));
     std::filesystem::rename(part, out);
     return out;

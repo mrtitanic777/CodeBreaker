@@ -2,7 +2,7 @@
 // with a base, one by an MFC class record, one that states nothing and is inferred to derive from the first), a message map found the way MFC
 // lays it out and tied to its class through a getter, a C++ try/catch table, a `__try` scope table, and the report made of them.
 //
-// DIVERGES from the Python module and its port:
+// Design notes:
 //  - results are values (vectors of records) made from the image, the call graph and the calling-convention facts it is handed, and are not
 //    kept in the image's memo; the hierarchy takes the structures recovered for the module as an argument;
 //  - a message map entry is a record (message, code, id, last id, signature, handler), not a 6-int tuple;

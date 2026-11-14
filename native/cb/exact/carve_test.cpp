@@ -1,11 +1,11 @@
 // Tests of where a program's own functions begin and end, on the real projects of the research (C 3.00's P0 and P1, LIB 3.00, LINK 2.44,
-// the C 1.0x compiler, MASM 5.10) against what the live Python's exact/carve.py answered (testdata/w5b3.golden.json, made by testdata/gen_w5b3.py):
+// the C 1.0x compiler, MASM 5.10) against the recorded answers (testdata/w5b3.golden.json):
 // the functions with why each begins, the region, the command's text, the hex patterns of the profiles run over a program's code, and starts the
 // project adds and drops.
 //
-// DIVERGES from the Python:
-//   * A start the project adds past where the program's own code ends is a FormatError (the Python's min() of nothing was a ValueError).
-//   * The prologue patterns are run by cb::Regex over the bytes (`\xHH` for a byte), not by Python's re over a bytes pattern; the same places
+// Behaviour pinned here:
+//   * A start the project adds past where the program's own code ends is a FormatError.
+//   * The prologue patterns are run by cb::Regex over the bytes (`\xHH` for a byte); the same places
 //     are found (the golden's matches of every pattern over P0's first 6000 bytes).
 #include "cb/exact/carve.hpp"
 
@@ -28,7 +28,7 @@ Json functions_json(const std::vector<carve::Function>& fs) {
 
 }  // namespace
 
-CB_TEST("exact.carve.the_functions_of_a_real_program_are_the_pythons", [] {
+CB_TEST("exact.carve.the_functions_of_a_real_program_match_the_recorded_output", [] {
     test::Real real;
     if (test::skipped(real, "carve")) return;
     for (auto it = golden().at("carve").begin(); it != golden().at("carve").end(); ++it) {
@@ -44,7 +44,7 @@ CB_TEST("exact.carve.the_functions_of_a_real_program_are_the_pythons", [] {
     }
 });
 
-CB_TEST("exact.carve.the_command_prints_what_the_python_printed_and_writes_src_funcs", [] {
+CB_TEST("exact.carve.the_command_prints_the_recorded_output_and_writes_src_funcs", [] {
     test::Real real;
     if (test::skipped(real, "carve command")) return;
     for (const char* name : {"msc-3.0/recon/p0", "lib-3.00", "masm-5.10"}) {
@@ -122,7 +122,7 @@ CB_TEST("exact.carve.starts_the_project_adds_and_drops_and_where_the_code_begins
         }
         json::save(folder / "project.json", cfg, json::Style::PythonCompatiblePretty);
         const auto p = real.open(folder);
-        if (it.value().is_string()) {   // the Python's ValueError: a start past the end of the program's own code
+        if (it.value().is_string()) {   // a start past the end of the program's own code
             CB_CHECK_THROWS_AS(FormatError, (void)carve::functions(*p));
             continue;
         }

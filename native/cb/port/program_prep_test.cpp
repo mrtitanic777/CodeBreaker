@@ -1,6 +1,5 @@
 // Tests of the first reading of a program (program_prep): which files the port keeps and the mending that is the same for
-// every program (the structure passes of views.hpp among it). The expected values are what the Python original made of
-// the same sources (testdata/views/make_views_cases.py): small hand-written programs, one for each mending, and the real
+// every program (the structure passes of views.hpp among it). The expected values are recorded in testdata/views: small hand-written programs, one for each mending, and the real
 // trees of MS C 3.00 (compared by CRC).
 #include "cb/core/testing.hpp"
 #include "cb/port/program_prep.hpp"
@@ -81,8 +80,7 @@ CB_TEST("port.program_prep.the_old_librarys_files_are_left_out", [] {
 });
 
 CB_TEST("port.program_prep.a_member_without_its_structures_closing_is_left_alone", [] {
-    // DIVERGES: the Python looked for `};` with find(), got -1 for a structure closed any other way, and cut the file at its
-    // last character; the structure is skipped now (the member keeps the type it has).
+    // A structure closed any way but `};` is skipped (the member keeps the type it has), not cut at the file's last character.
     Files files;
     files.insert_or_assign("a.h", "typedef struct rec { int n; } REC;\n");
     OrderedMap<std::string, std::string> members;

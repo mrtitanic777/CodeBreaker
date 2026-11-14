@@ -15,7 +15,7 @@ namespace {
 constexpr std::uint32_t kSliceBase = 0x822B6E00;   // where the 16 KB of Minecraft code in ppc_slice.bin loads
 constexpr std::uint32_t kDataBase = 0x82900000;    // the made data section (discover_data.bin)
 
-// What testdata/gen_discover_golden.py wrote: the image's facts, then the reference's answers as "[name]" sections.
+// What the golden holds: the image's facts, then the reference's answers as "[name]" sections.
 struct DiscoverFacts {
     std::uint32_t entry = 0;
     dc::Functions extents;

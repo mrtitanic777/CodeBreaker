@@ -1,9 +1,8 @@
 // Tests of cb/invert/known_differences.hpp: each seeded pattern on the divergence lines it was written for and on
-// near misses, the table's order, and recording a new pattern. The inputs follow the old harness's cases (checked
-// against the Python table), reviewed one by one.
+// near misses, the table's order, and recording a new pattern. The inputs follow the old harness's cases (reviewed one by one).
 //
-// DIVERGES: the Python's `$` also matched before a trailing newline, so "len+1\n" was a trailing-pad hit; cb::Regex's
-// `$` is the end of the text only. A divergence line is one line, so a trailing newline does not occur in practice.
+// cb::Regex's `$` is the end of the text only, so "len+1\n" is not a trailing-pad hit. A divergence line is one line,
+// so a trailing newline does not occur in practice.
 #include "cb/invert/known_differences.hpp"
 
 #include <string>

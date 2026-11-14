@@ -7,7 +7,7 @@
 // text whose strings and comments have been blanked (cb::base::ctext::blank keeps every offset), so a search never
 // looks inside a literal.
 //
-// Lines are 0-based, as in the Python's lists; a "line number" a compiler gives (1-based) is converted by the
+// Lines are 0-based, as in a vector of lines; a "line number" a compiler gives (1-based) is converted by the
 // caller. Offsets are byte offsets into the line.
 #pragma once
 

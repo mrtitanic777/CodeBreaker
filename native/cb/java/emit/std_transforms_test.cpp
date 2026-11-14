@@ -1,9 +1,8 @@
-// DIVERGES (checked against the Python on its 544 recorded cases: apply_std_transforms, sanitize_reserved_members and the
-// literal-masked substitution agree on all of them):
-//   * annotate_first with an EMPTY pattern: the Python split the line on it and raised ValueError("empty separator"); it now
-//     finds nothing and returns the text unchanged (32 of the recorded cases).
-//   * `\b` and `\w` are ASCII (docs/CPP_DESIGN.md 3.7): a NULL next to a non-ASCII letter ("\xC3\xA9NULL") is a whole word
-//     here, not part of a longer one as in Python. Emitted code does not have such neighbours.
+// Checked against 544 recorded cases (apply_std_transforms, sanitize_reserved_members and the literal-masked substitution), with
+// these rules:
+//   * annotate_first with an EMPTY pattern finds nothing and returns the text unchanged.
+//   * `\b` and `\w` are ASCII (docs/CPP_DESIGN.md 3.7): a NULL next to a non-ASCII letter ("\xC3\xA9NULL") is a whole word.
+//     Emitted code does not have such neighbours.
 
 #include <string>
 
@@ -101,7 +100,7 @@ CB_TEST("java.emit.std_transforms.annotate_first", [] {
     CB_CHECK_EQ(annotate_first("none\n", "X", "// n"), "none\n");
     CB_CHECK_EQ(annotate_first("tail X", "X", "// n"), "tail X  // n");
     CB_CHECK_EQ(annotate_first("", "X", "// n"), "");
-    // DIVERGES: an empty pattern. The Python split the line on it and raised "empty separator"; it now finds nothing.
+    // an empty pattern finds nothing.
     CB_CHECK_EQ(annotate_first("a\nb\n", "", "// n"), "a\nb\n");
 });
 

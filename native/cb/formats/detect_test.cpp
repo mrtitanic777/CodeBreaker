@@ -1,8 +1,8 @@
 // Tests of cb/formats/detect.hpp on the real modules in testdata/ and on small made-up files for the magic numbers.
 //
-// DIVERGES from the Python detector: the Bink codec letter in `detail` is shown as the letter when it is printable ASCII and
-// as \xNN otherwise (the Python showed any printable Latin-1 character); a corrupt header whose machine field is cut short
-// reads as machine 0 (the Python raised struct.error).
+// Behaviour pinned here: the Bink codec letter in `detail` is shown as the letter when it is printable ASCII and
+// as \xNN otherwise; a corrupt header whose machine field is cut short
+// reads as machine 0.
 #include "cb/formats/detect.hpp"
 
 #include "cb/core/fs.hpp"

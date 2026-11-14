@@ -12,13 +12,12 @@ using st::Access;
 using st::Root;
 using st::RootKind;
 
-// DIVERGES from the Python module (the old harness agreed on all else: 261 cases, compared as JSON so that the
+// Notes (an old harness agreed on all else: 261 cases, compared as JSON so that the
 // plan's key order does not count):
 //  - the plan is ordered by name (function, parameter, offset), not by the order the analysis produced things;
-//  - declarations() orders structures that end in the same number (or in none) by name -- Python left that to the
-//    iteration order of a set -- and a name without an underscore sorts first instead of raising IndexError;
-//  - a structure asked for in declarations() that the plan has no fields for is a UsageError (Python: KeyError);
-//  - an "arg" root without an index is ignored (Python: IndexError); roots of any other kind were always ignored.
+//  - declarations() orders structures that end in the same number (or in none) by name and a name without an underscore sorts first;
+//  - a structure asked for in declarations() that the plan has no fields for is a UsageError;
+//  - an "arg" root without an index is ignored; roots of any other kind were always ignored.
 
 namespace {
 

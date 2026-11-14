@@ -19,7 +19,7 @@ std::filesystem::path fixture(std::string_view name) {
 Bytes load(std::string_view name) { return fs::read_file(fixture(name)); }
 J load_json(std::string_view name) { return J::parse(fs::read_text(fixture(name))); }
 
-// ---- the typed values in the shape the old reader gave (the golden files are in that shape) -----------------
+// ---- the typed values in the recorded shape (the golden files are in that shape) -----------------------------
 
 J ident_json(const Ident& i) {
     if (const auto* n = std::get_if<std::uint32_t>(&i)) return *n;
@@ -172,7 +172,7 @@ CB_TEST("formats.resources.the_resource_table_of_a_real_16bit_module", [] {
     CB_CHECK_EQ(got.size(), 3u);
     const J rows = golden["read"];
     for (std::size_t i = 0; i < got.size() && i < rows.size(); ++i) {
-        // the old row: [type name, type id, name, language, flags, size, crc32, repr, key]
+        // the recorded row: [type name, type id, name, language, flags, size, crc32, repr, key]
         CB_CHECK_EQ(type_name(got[i].type), rows[i][0].get<std::string>());
         CB_CHECK_EQ(std::get<std::uint32_t>(got[i].type), rows[i][1].get<std::uint32_t>());
         CB_CHECK_EQ(std::get<std::uint32_t>(got[i].name), rows[i][2].get<std::uint32_t>());
@@ -188,7 +188,7 @@ CB_TEST("formats.resources.the_resource_table_of_a_real_16bit_module", [] {
     CB_CHECK(decoded.has_value());
     CB_CHECK(decoded_json(*decoded) == want);
     CB_CHECK(!decode(got[0], false).has_value());   // an icon group is not a kind decode() reads
-    // the group and its icon make the .ico the old reader made (774 bytes)
+    // the group and its icon make the recorded .ico (774 bytes)
     const Bytes ico = icon_file(got[0].data, [&](std::uint16_t id) {
         for (const Resource& r : got) {
             if (std::get<std::uint32_t>(r.type) == kIcon && std::get<std::uint32_t>(r.name) == id) return r.data;
@@ -309,7 +309,7 @@ CB_TEST("formats.resources.group_errors", [] {
 // ---- type libraries ------------------------------------------------------------------------------------------
 
 CB_TEST("formats.resources.a_type_library_describes_itself", [] {
-    const J both = load_json("stdole2_typelib.golden.json");   // [the description, the outline the old reader rendered]
+    const J both = load_json("stdole2_typelib.golden.json");   // [the description, the recorded outline]
     const J gold = both[0];
     const std::optional<TypeLibrary> lib = type_library(load("stdole2_typelib.bin"));
     CB_CHECK(lib.has_value());
@@ -328,7 +328,7 @@ CB_TEST("formats.resources.a_type_library_describes_itself", [] {
     CB_CHECK_EQ(lib->types[4].name, "IDispatch");
     CB_CHECK_EQ(lib->types[4].guid, "00020400-0000-0000-C000-000000000046");
     const std::string outline = type_library_outline(*lib);
-    CB_CHECK_EQ(outline, both[1].get<std::string>());   // text for text, as the old reader rendered it
+    CB_CHECK_EQ(outline, both[1].get<std::string>());   // text for text
     CB_CHECK(outline.starts_with("// Outline of a type library (MSFT layout)."));
     CB_CHECK(outline.find("[ uuid(00020400-0000-0000-C000-000000000046) ] interface IDispatch;") != std::string::npos);
     CB_CHECK(outline.find("struct GUID;") != std::string::npos);
@@ -340,7 +340,7 @@ CB_TEST("formats.resources.the_older_type_library_layout_is_only_named", [] {
     CB_CHECK(lib.has_value());
     CB_CHECK_EQ(lib->format, "SLTG");
     CB_CHECK(lib->name.empty() && lib->guid.empty() && lib->types.empty());
-    // as the old reader rendered it
+    // as recorded
     CB_CHECK_EQ(type_library_outline(*lib),
                 "// Outline of a type library (SLTG layout). Not compilable: only what each type is called.\nlibrary unnamed\n{\n}\n");
     CB_CHECK(!type_library(Bytes{}).has_value());

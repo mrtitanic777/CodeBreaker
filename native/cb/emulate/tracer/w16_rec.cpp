@@ -1,12 +1,12 @@
 // cb-unity: alone (its hook functions share names with driver_rec.cpp's)
-// w16_rec.cc -- the 16-bit recorder (codebreaker/emulate/windows16.py trace_function16): the
+// w16_rec.cc -- the 16-bit recorder: the
 // per-instruction code hook's plain path and the memory hooks of one NE function's run, in C++.
-// Python still lays the module out, starts the run (uc_emu_start to SENT_BASE) and reads the
-// result; this attaches the hooks to Python's own Unicorn handle, in trace_function16's order,
+// The host lays the module out, starts the run (uc_emu_start to SENT_BASE) and reads the
+// result; this attaches the hooks to the host's own Unicorn handle, in the order of the run,
 // and keeps the record the plain path and the memory hooks made.  The heavy, rare events are
-// Python callbacks: the import stand-in (import_stub), a call into another of the module's
+// host callbacks: the import stand-in (import_stub), a call into another of the module's
 // functions (answer), and interrupts (on_intr); the branch log and the ports' device model stay
-// Python hooks, which trace_function16 attaches itself.
+// host hooks.
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
@@ -83,7 +83,7 @@ static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
     W16Run *r = static_cast<W16Run *>(user);
     if (r->own_lo <= address && address < r->own_hi && r->has_own()) {
         // (a recorded-system context: the module's own code reached through a recorded far
-        //  pointer -- that function of this side's build run, by name, Python's to redirect)
+        //  pointer -- that function of this side's build run, by name, redirected by the host)
         int got = r->fire_own(int64_t(address), r->insn_count);
         if (got == 2) {
             r->hook_error = 1;

@@ -237,7 +237,7 @@ CB_TEST("recompile.jumptable.detect_jump_tables_takes_only_bctr_not_bctrl", [] {
 });
 
 CB_TEST("recompile.jumptable.a_table_without_a_bound_is_capped", [] {
-    // DIVERGES: the original read an unbounded table as long as the memory kept answering; a table that never
+    // a table that never
     // stops looking like code is cut at kMaxTableEntries (a real switch is nowhere near it)
     Mem m(kBase, 0x40);
     m.code(kBase, {lis(12, 0x8200), addi(12, 12, 0x1000), slwi(0, 11, 2), lwzx(11, 12, 0), mtctr(11), kBctrWord});

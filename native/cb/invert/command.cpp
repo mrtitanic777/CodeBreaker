@@ -47,7 +47,7 @@ constexpr std::array<Tool, 19> kTools{{
     {"msvc2-forward", "the forward model against its compiler"},
 }};
 
-// The models the Python's --check runs, in its order.
+// The models --check runs, in this order.
 constexpr std::array<std::string_view, 8> kChecks{"early-c-frame", "early-c-round-trip", "msc6-function", "msc6-registers",
                                                   "msc6-walk",      "msc6",               "msvc2-forward",  "msvc2"};
 
@@ -178,7 +178,7 @@ int early_c_frame_tool() {
 
 // ---- the small readers of Microsoft C 6.0a ----------------------------------------------------------------------------------------------
 
-// The functions the Python's self-tests read: LZEXPAND's Cleanup (the long-global free idiom, with its three globals), and a function that keeps a
+// The functions the self-tests read: LZEXPAND's Cleanup (the long-global free idiom, with its three globals), and a function that keeps a
 // call's result in SI.
 constexpr std::string_view kCleanupCode =
     "1e589045558bec1e8ed883ec02a146000b0644007411ff3646009ae70000002bc0a34600a34400a14a000b0648007411ff364a009a010100002bc0a34a00a34800a156000b0654007411ff3656"

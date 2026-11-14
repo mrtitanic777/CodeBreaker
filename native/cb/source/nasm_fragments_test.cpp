@@ -1,6 +1,6 @@
 // cb/source/nasm_fragments_test.cpp -- the NASM writers of the NE, PE and LE images give each function a MachineFragment of its own (its origin, its length to
-// the next) and the file's text is unchanged by it: the fragments joined are the file (tests/translate/test_module_model.py,
-// test_the_nasm_writers_make_each_function_a_fragment, on lzexpand.dll, lz32.dll and splitter.vxd).
+// the next) and the file's text is unchanged by it: the fragments joined are the file
+// (on lzexpand.dll, lz32.dll and splitter.vxd).
 //
 // Names here are file-local to this unity unit: every one starts with `nf_`.
 #include <string>

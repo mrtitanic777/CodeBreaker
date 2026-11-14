@@ -1,9 +1,9 @@
 // Tests of the `crypto` command (cb/formats/xbox/crypto/tools.hpp): the tool list, the tools of the native command layer reached through it,
 // and `crypto nand_tool` against what `codebreaker crypto nand_tool ...` printed and wrote for a raw image of eight pages and the same image
 // with two pages' ECC damaged (testdata/nand_tool.txt: each case's output and `exit=N`; nand_tool_files.txt: name, size and SHA-1 of the
-// files it wrote, made by the translated Python). The other tools are tested with their own modules.
+// files it wrote). The other tools are tested with their own modules.
 //
-// DIVERGES from the Python: an operation that is not one is a usage error (exit 2) where the Python printed the usage and exited 0; the
+// Behaviour pinned here: an operation that is not one is a usage error (exit 2); the
 // listing of the tools when none is named is ours.
 #include "cb/formats/xbox/crypto/tools.hpp"
 
@@ -67,7 +67,7 @@ CB_TEST("formats.xbox.crypto.tools.the_package_lists_its_tools_and_every_one_is_
     CB_CHECK_EQ(testing::run_command(command, {"keyvault"}), "exit=2\n");
 });
 
-CB_TEST("formats.xbox.crypto.tools.nand_tool_works_on_images_like_the_python", [] {
+CB_TEST("formats.xbox.crypto.tools.nand_tool_works_on_images", [] {
     const fs::ScopedTempDir dir{"cb-crypto-tools"};
     const std::string w = fs::to_text(dir.path()), raw = fs::to_text(tools_data("nand_raw.bin")), bad = fs::to_text(tools_data("nand_bad.bin"));
     CB_CHECK_EQ(tools_run(dir, {"nand_tool", "ecc", raw, w + "/flash.bin"}), tools_case("ecc"));
@@ -88,6 +88,6 @@ CB_TEST("formats.xbox.crypto.tools.nand_tool_prints_its_usage_for_no_arguments_a
     const fs::ScopedTempDir dir{"cb-crypto-tools"};
     CB_CHECK_EQ(tools_run(dir, {"nand_tool"}), tools_case("usage"));
     CB_CHECK_EQ(tools_run(dir, {"nand_tool", "-h"}), tools_case("help"));
-    // an operation that is not one: the Python printed the usage and exited 0; here it is a usage error
+    // an operation that is not one is a usage error
     CB_CHECK_THROWS_AS(UsageError, tools_run(dir, {"nand_tool", "frob", fs::to_text(tools_data("nand_raw.bin"))}));
 });

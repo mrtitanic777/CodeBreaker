@@ -2,22 +2,22 @@
 // Tests of cb/source/vxd/coalesce on the real Windows 95 drivers of formats/testdata (splitter.vxd, srammtd.vxd, bios.vxd). The
 // drivers are in the form retail's LINK writes (source lists). The form wlink writes -- one fix-up record per source, and loader
 // tables laid out its own way -- is made from each by taking the image apart (Module::parts) and writing it back (write_parts), as
-// the Python module's harness did; what coalescing and restoring must give back is checked by what the loader would see: the
+// a recording harness did; what coalescing and restoring must give back is checked by what the loader would see: the
 // same (object, offset) -> target of every fix-up, the same names and entries, the same object bytes, the headers at the same places.
 //
-// The Python module's results on the same drivers were compared one by one with CB_VXD_COALESCE_HARNESS (the folder
-// state/work/typed-port/source.vxd.coalesce of the checkout: its expected.txt and inputs/, over 54 sampled drivers and their
-// variants); that test is skipped when the variable is not set. The cases that differ are listed in DIVERGES below.
+// The recorded results on the same drivers were compared one by one with CB_VXD_COALESCE_HARNESS (the folder
+// of the recording: its expected.txt and inputs/, over 54 sampled drivers and their
+// variants); that test is skipped when the variable is not set. The cases that differ are damaged copies (see below).
 //
-// DIVERGES from the Python module, by design:
-//   * a record is read within its page (the Python read on past the page's end into the next page, or out of the file), so a damaged
-//     page fails to parse and the coalesce step is skipped where the Python made a table out of whatever it read;
-//   * more than 255 sources of one target are written as several source-list records (the Python raised on `bytes([...])`, and
-//     finalize skipped the step);
+// Behaviour pinned here:
+//   * a record is read within its page, so a damaged
+//     page fails to parse and the coalesce step is skipped;
+//   * more than 255 sources of one target are written as several source-list records, and
+//     finalize does not skip the step;
 //   * a table that would slide before the header, a header field that does not fit 32 bits, and a data-pages offset past the end
-//     of the file are errors (struct.error in the Python, or a wrap, or an IndexError);
-//   * the tables are checked to lie before the data pages before anything is written (the Python wrote first);
-//   * finalize says which steps it skipped, and why (the Python swallowed every Exception silently).
+//     of the file are errors;
+//   * the tables are checked to lie before the data pages before anything is written;
+//   * finalize says which steps it skipped, and why.
 #include "cb/source/vxd/coalesce.hpp"
 
 #include <algorithm>
@@ -242,7 +242,7 @@ CB_TEST("source.vxd.coalesce.coalesce_of_the_real_drivers", [] {
         const le::Module original = le::Module::from_buffer(Bytes(file));
         // a driver retail linked is already folded: the same bytes come back
         // (bios.vxd is a driver whose records retail's LINK did not write in the order coalescing groups them -- by target, first seen
-        // first -- so its bytes move though what they say does not; the Python module gives the same bytes, see the harness test below)
+        // first -- so its bytes move though what they say does not; the recording has the same bytes, see the harness test below)
         const Bytes same_again = co::coalesce(file);
         if (std::string_view(name) != "bios.vxd") CB_CHECK(same_again == file);
         CB_CHECK(same_fixups(le::Module::from_buffer(Bytes(same_again)), original));
@@ -424,8 +424,8 @@ CB_TEST("source.vxd.coalesce.command", [] {
     CB_CHECK_THROWS_AS(cb::NotFoundError, (void)co::main(missing));
 });
 
-// The Python module's own results, when the checkout's harness folder is named: CB_VXD_COALESCE_HARNESS=<...>/state/work/typed-port/source.vxd.coalesce
-CB_TEST("source.vxd.coalesce.agrees_with_the_python_module_on_its_harness", [] {
+// The recorded results, when the harness folder is named: CB_VXD_COALESCE_HARNESS=<folder of the recording>
+CB_TEST("source.vxd.coalesce.agrees_with_its_harness", [] {
     const auto folder = cb::fs::get_env("CB_VXD_COALESCE_HARNESS");
     if (!folder) return;
     std::size_t compared = 0, differ = 0, undamaged_differ = 0;
@@ -465,11 +465,11 @@ CB_TEST("source.vxd.coalesce.agrees_with_the_python_module_on_its_harness", [] {
         if (!both_errors && got != expected) {
             ++differ;
             if (!has_text(input_path.filename().string(), "dmg_")) ++undamaged_differ;
-            if (differ <= 12) first_differences += std::format("\n  {} {}  python {}  here {}", op, fields[1].substr(fields[1].rfind('\\') + 1), expected.substr(0, 60), got.substr(0, 60));
+            if (differ <= 12) first_differences += std::format("\n  {} {}  recorded {}  here {}", op, fields[1].substr(fields[1].rfind('\\') + 1), expected.substr(0, 60), got.substr(0, 60));
         }
     }
     CB_CHECK(compared > 1000);
-    // every difference is a damaged copy, where the Python read past the end of a page (see DIVERGES)
+    // every difference is a damaged copy, where the recording read past the end of a page
     CB_CHECK_EQ(undamaged_differ, 0u);
     cb::err("coalesce harness: {} of {} cases differ{}\n", differ, compared, first_differences);
 });

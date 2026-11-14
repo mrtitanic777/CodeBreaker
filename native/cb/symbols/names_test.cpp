@@ -3,9 +3,8 @@
 // byte at a time so that each field the reader trusts is one this file chose. The expected values were worked out from the file formats and from
 // the listings the other modules' goldens carry (LZEXPAND's exports: LZINIT at segment 2 offset 0, LZSEEK at 2:02ee ...).
 //
-// DIVERGES from the Python module, by design: addresses are unsigned 64-bit and records are structs; the caches the Python kept in module
-// variables (the .SYM index, the debug names of each module) belong to the Namer; the .SYM files of a name are tried in the order of their paths, not
-// of the directory walk; a damaged .SYM or CodeView block gives no names where the Python raised and was caught, with the same result.
+// Addresses are unsigned 64-bit and records are structs; the caches (the .SYM index, the debug names of each module) belong to the
+// Namer; the .SYM files of a name are tried in the order of their paths; a damaged .SYM or CodeView block gives no names.
 #include "cb/symbols/names.hpp"
 
 #include <algorithm>
@@ -323,8 +322,8 @@ CB_TEST("symbols.names.the_bodies_of_a_16_bit_module", [] {
 });
 
 CB_TEST("symbols.names.the_digests_are_the_ones_the_original_module_made", [] {
-    // Golden: the digests of the module this one replaces (codebreaker/symbols/names.py, run over the same two files: 39 bodies of LZEXPAND, 15 of
-    // LZ32), checked here for their count and for the first and last of each -- the whole lists were compared when the module was refactored.
+    // Golden: the recorded digests over the same two files (39 bodies of LZEXPAND, 15 of
+    // LZ32), checked here for their count and for the first and last of each.
     World w;
     nm::Namer namer(w.services());
     const auto sixteen = namer.bodies(w.lz16);

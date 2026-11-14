@@ -3,10 +3,9 @@
 // symbols/body_store) over real modules: LZ32.DLL (a flat thunk), LZEXPAND.DLL (16-bit), FIND.EXE (DOS) and NATALSU.EXE (a console image) from
 // formats/testdata, through a corpus made here, the real signature and ordinal files of the checkout, and a knowledge base of the test's own.
 //
-// The goldens in symbols/testdata/identify were made by running the Python's `identify` and `names` on the same files (the translated Python of
-// codebreaker.exe, 2026-11-12: `codebreaker identify lz32.dll`, `codebreaker names natalsu.exe` ...), carriage returns taken out. What the corpus
-// of the test lacks that the Python had (the 16-bit system modules whose export names LZEXPAND's imports are called by, the reference folder's
-// symbol files) is why LZEXPAND's import lines are left out of the comparison.
+// The goldens in symbols/testdata/identify are the recorded output of `codebreaker identify lz32.dll`, `codebreaker names natalsu.exe` ...
+// (2026-11-12), carriage returns taken out. The corpus of the test lacks the 16-bit system modules whose export names LZEXPAND's imports
+// are called by and the reference folder's symbol files, which is why LZEXPAND's import lines are left out of the comparison.
 #include <algorithm>
 #include <sstream>
 
@@ -115,7 +114,7 @@ CB_TEST("symbols.identify.a_flat_thunk_is_identified_stub_by_stub_and_its_compil
     int code = -1;
     const std::string text = w.run(sy::identify::command(w.environment), {"lz32.dll"}, &code);
     CB_CHECK_EQ(code, 0);
-    CB_CHECK_EQ(text, idn_golden("identify_lz32.dll.txt"));   // (the Python's: 19 of 39 functions, all the thunk compiler's)
+    CB_CHECK_EQ(text, idn_golden("identify_lz32.dll.txt"));   // (19 of 39 functions, all the thunk compiler's)
 });
 
 CB_TEST("symbols.identify.a_16_bit_module_is_identified_by_signature_with_segment_and_offset_addresses", [] {
@@ -180,21 +179,21 @@ CB_TEST("symbols.identify.learn_makes_the_signature_file_from_a_library", [] {
 
 // ---- names ---------------------------------------------------------------------------------------------------------------
 
-CB_TEST("symbols.names.the_command_names_a_32_bit_module_as_the_python_does", [] {
+CB_TEST("symbols.names.the_command_names_a_32_bit_module", [] {
     IdnWorld w;
     int code = -1;
     CB_CHECK_EQ(w.run(cb::symbols::names::command(w.environment), {"lz32.dll"}, &code), idn_golden("names_lz32.dll.txt"));
     CB_CHECK_EQ(code, 0);
 });
 
-CB_TEST("symbols.names.the_command_names_a_16_bit_modules_functions_as_the_python_does", [] {
+CB_TEST("symbols.names.the_command_names_a_16_bit_modules_functions", [] {
     IdnWorld w;
     const std::string text = w.run(cb::symbols::names::command(w.environment), {"lzexpand.dll"});
     CB_CHECK_EQ(idn_without(text, idn_import_line), idn_without(idn_golden("names_lzexpand.dll.txt"), idn_import_line));
     CB_CHECK(text.find("import USER") != std::string::npos);   // (the imports are listed: named only where the corpus holds USER)
 });
 
-CB_TEST("symbols.names.a_console_images_functions_and_imports_are_named_as_the_python_does", [] {
+CB_TEST("symbols.names.a_console_images_functions_and_imports_are_named", [] {
     IdnWorld w;
     CB_CHECK_EQ(w.run(cb::symbols::names::command(w.environment), {"natalsu.exe"}), idn_golden("names_natalsu.exe.txt"));
 });

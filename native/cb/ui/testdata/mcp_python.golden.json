@@ -1234,7 +1234,7 @@
      "annotations": {
       "readOnlyHint": true
      },
-     "description": "Two builds of a module function by function (compare/versions.py): identical, changed (with\na likeness score), added, removed, and the names the old build gives functions the new one\nleaves unnamed. Changed pairs come first. `status` keeps identical or changed pairs only.",
+     "description": "Two builds of a module function by function: identical, changed (with\na likeness score), added, removed, and the names the old build gives functions the new one\nleaves unnamed. Changed pairs come first. `status` keeps identical or changed pairs only.",
      "inputSchema": {
       "properties": {
        "limit": {

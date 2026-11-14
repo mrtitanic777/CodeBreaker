@@ -197,7 +197,7 @@ const std::unordered_set<std::string_view>& jv_keywords() {
     return words;
 }
 
-// The text of a double as Python's repr wrote it (the shortest digits that read back, in fixed notation from 1e-4 up to 1e16 and
+// The text of a double in its shortest round-trip form (the shortest digits that read back, in fixed notation from 1e-4 up to 1e16 and
 // in scientific notation outside), which is what the Java literal reads.
 std::string jv_double_text(double v) {
     if (v == 0.0) return std::signbit(v) ? "-0.0" : "0.0";

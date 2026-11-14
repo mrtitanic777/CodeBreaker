@@ -7,7 +7,7 @@
 //                                                       the `bctr` the finder leaves unresolved (without them such a switch is an
 //                                                       indirect call into the middle of its function)
 //
-// They are what the Dashboard's prepare_game.py and the like run as commands of the program. Each writes its output whole or not at
+// They are what the Dashboard's game-preparation scripts and the like run as commands of the program. Each writes its output whole or not at
 // all (to `<out>.part`, then renamed), its folder made. The xex program and the state folder come from the settings (`xex_bin`, the state folder),
 // XenonRecomp's own tools from the same Xenon the other recompile commands use: `switch-tables` builds XenonAnalyse the first time (native/xenonrecomp)
 // and runs it into `<out>.analysed.toml`; where it cannot be built or run, the note

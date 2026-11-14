@@ -1,5 +1,5 @@
 // Tests of cb/formats/xbox/system_ui.hpp. There is no console system update on this machine: the packages (testdata/system_ui) are STFS
-// packages made with the Python's `stfs.build` that hold the files a system update has, as junk (the module files are not XEX files, so
+// packages made with `stfs.build` that hold the files a system update has, as junk (the module files are not XEX files, so
 // the xex program finds no resources in them) and fonts of random bytes. The command's output and the files it wrote are what `codebreaker
 // system-ui ...` printed and wrote for the same packages (system_ui.txt: each case's output with `exit=N`; system_ui_files.txt: "case:
 // file size sha1"). The XUIZ filter is run with a stand-in for the xex program (a batch file), and the retail Minecraft module with the
@@ -81,11 +81,11 @@ CB_TEST("formats.xbox.system_ui.a_system_update_gives_its_fonts_and_the_xui_pack
     CB_CHECK(lines.back().starts_with(std::format("{:<40} (not in ", "Guide.Voicemail.xex")));
 });
 
-CB_TEST("formats.xbox.system_ui.the_command_prints_what_the_python_printed", [] {
+CB_TEST("formats.xbox.system_ui.the_command_prints_the_recorded_output", [] {
     const fs::ScopedTempDir dir{"cb-sysui"};
     system_ui::Environment env;
     env.tools = {dir.path() / "no-xex-program.exe", dir.path() / "unpacked"};   // (not asked: the modules are not XEX files... see below)
-    // the Python's answer for the junk modules: no resource found. Ours asks the xex program; one that is not there finds none either
+    // the recorded answer for the junk modules: no resource found. Ours asks the xex program; one that is not there finds none either
     const std::string folder = fs::to_text(dir.path());
     CB_CHECK_THROWS_AS(ToolError, testing::run_command(system_ui::command(env), {fs::to_text(sysui_data("su_full.bin")), folder + "/o1"}));
 });

@@ -2,7 +2,7 @@
 // Tests of cb/source/ne_asm/recon: the MASM text of an instruction, the db and data lines, the body of a function, the listings the divergers are found
 // from, and the loop that pins what the assembler will not encode. The assembler is given by the test (it takes a source and answers with what MASM
 // would), over LZEXPAND.DLL's first code segment with the listing of scenario_a (a canned objdump). The expected text was worked out from the module's
-// rules; the run on a real MASM, byte for byte against the Python module, is in the report of the change.
+// rules; the run on a real MASM, byte for byte, is in the report of the change.
 #include "cb/source/ne_asm/recon.hpp"
 
 #include <format>
@@ -70,7 +70,7 @@ CB_TEST("source.ne_asm.recon.an_instruction_in_masm_syntax", [] {
     CB_CHECK_EQ(rc::to_masm("cmp    ax,0x10", rc_no_label), "cmp ax,10h");
     CB_CHECK_EQ(rc::to_masm("mov    eax,DWORD PTR [bx+0x10]", rc_no_label), "mov eax,dword ptr [bx+10h]");
     CB_CHECK_EQ(rc::to_masm("mov    al,BYTE PTR [bx+0xf0]", rc_no_label), "mov al,byte ptr [bx+0f0h]");
-    // (as the Python module spells it: the `WORD PTR` rule runs before the `FWORD PTR` one and takes its tail; MASM does not mind the case)
+    //
     CB_CHECK_EQ(rc::to_masm("fld    FWORD PTR [bx]", rc_no_label), "fld Fword ptr [bx]");
     CB_CHECK_EQ(rc::to_masm("nop", rc_no_label), "nop");
     CB_CHECK_EQ(rc::to_masm("retf   0xa", rc_no_label), "retf 0ah");

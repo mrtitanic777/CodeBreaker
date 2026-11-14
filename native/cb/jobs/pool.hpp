@@ -299,8 +299,8 @@ struct Isolated {
 // Run one subprocess per item and collect each one's result. An object carrying an "error" key, a timeout, a crash
 // or no JSON object on the last stdout line counts as a FAILURE: {"error": "no-output", "rc": exit code, "stderr":
 // the last 300 bytes} or {"error": "timeout", "timeout": seconds} or {"error": <the error's kind, e.g. "ToolError" when the program cannot be started>, "detail": ...}.
-// The state file is {"done": {key: result}, "failed": {key: {"error": ..., "tries": n}}} as JSON (the layout the
-// Python wrote); an unreadable one is an empty sweep.
+// The state file is {"done": {key: result}, "failed": {key: {"error": ..., "tries": n}}} as JSON (the layout
+// json::Style::PythonCompatible writes); an unreadable one is an empty sweep.
 Isolated isolated(const std::vector<IsolatedItem>& items, const IsolatedOptions& options = {});
 
 }  // namespace cb::jobs

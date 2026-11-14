@@ -1,12 +1,12 @@
 // Tests of cb/formats/xbox/volumes.hpp. The expected facts (kinds, labels, where, boot fields, file lists, hashes of what is read) are
-// what the Python's volumes.volumes gives for the same inputs (state/work/typed-port/xbox-deferred/vol_golden*.py): the real Minecraft package from
+// the recorded answers for the same inputs: the real Minecraft package from
 // C:/Nexia360/Games when it is there (the test is silent when it is not), the FATX, Heavy Iron and ISO fixtures of formats/testdata, and
 // containers made here from the XDVDFS volume of gdf_test (a plain image, CSO, CCI, a Games-on-Demand package written by god::write_god
 // in both layouts, a package of bare parts, a flash, a PCK and XZP).
 //
-// DIVERGES from the Python: a damaged container is a cb::Error rather than a ValueError / struct.error; the `.ho` / FATX probes that the
-// Python ended with `except (OSError, ValueError, struct.error)` end on IoError / FormatError here; the header of a package whose
-// parts hold the whole disc (the volume at 0 and its descriptor at 0x10000) is a FormatError, as the Python's AssertionError.
+// Behaviour pinned here: a damaged container is a cb::Error; the `.ho` / FATX probes that meet a damaged or unreadable
+// file end on IoError / FormatError; the header of a package whose
+// parts hold the whole disc (the volume at 0 and its descriptor at 0x10000) is a FormatError.
 #include "cb/formats/xbox/volumes.hpp"
 
 #include <algorithm>

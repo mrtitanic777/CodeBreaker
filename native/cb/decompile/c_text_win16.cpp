@@ -159,7 +159,7 @@ Json w16_heading_json(const Heading& h) {
     return w;
 }
 
-// One function to be written: the Python's tuple (va, distance, model, seg, off, end, dgroup, known, by_selector, callee_pops, shared)
+// One function to be written: the tuple (va, distance, model, seg, off, end, dgroup, known, by_selector, callee_pops, shared)
 struct Item16 {
     Va va = 0;
     std::optional<std::string> distance, model;

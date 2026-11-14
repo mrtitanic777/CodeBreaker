@@ -14,7 +14,7 @@ namespace stdfs = std::filesystem;
 using vcxproj::FilterRule;
 using vcxproj::FilterRules;
 
-// The rules the small goldens were made with (gen_golden.py RULES).
+// The rules the small goldens were made with.
 const std::vector<FilterRule>& small_rules() {
     static const std::vector<FilterRule> rules = {
         {"^(Debug|HeapTrack)$", "Debug"}, {"^(stdafx|Common)$", "Runtime"}, {"^Block$", "Blocks\\Base"},
@@ -22,7 +22,7 @@ const std::vector<FilterRule>& small_rules() {
     return rules;
 }
 
-// The parent maps of gen_golden.py PMAPS.
+// The parent maps of the small goldens.
 std::map<std::string, std::string> parent_map(const std::string& name) {
     if (name == "chain") return {{"Fluid", "LiquidBlock"}, {"LiquidBlock", "Block"}};
     if (name == "cycle") return {{"X", "Y"}, {"Y", "Z"}, {"Z", "X"}};
@@ -57,7 +57,7 @@ CB_TEST("java.console.vcxproj.classify_matches_the_original", [] {
 });
 
 CB_TEST("java.console.vcxproj.the_real_profile_rules_classify_as_before", [] {
-    // the rules of the Minecraft Xbox 360 profile, as the Python held them: every pattern compiles here and sorts
+    // the rules of the Minecraft Xbox 360 profile: every pattern compiles here and sorts
     // the same names into the same folders (a long name list over every kind of parent map)
     std::vector<FilterRule> rules;
     const std::string golden_text = test::golden("vcx.rules.golden.tsv");
@@ -127,12 +127,10 @@ CB_TEST("java.console.vcxproj.title_id_matches_the_original", [] {
         got += std::format("{}: id={} note={}\n", tag, t.id ? *t.id : std::string("None"), kind);
     }
     std::string golden = test::golden("vcx.title.golden.txt");
-    // DIVERGES: the original raised AttributeError for a config that is JSON but not an object ([1,2], "str", null, 12);
-    // a note that it could not be read is what the caller gets now.
+    // a config that is JSON but not an object ([1,2], "str", null, 12) gives the caller a note that it could not be read.
     for (const char* t : {"t18", "t19", "t35", "t36"})
         golden = text::replace_all(golden, std::format("{}: EXC AttributeError", t), std::format("{}: id=None note=UNREADABLE", t));
-    // DIVERGES: a UTF-8 byte-order mark in front of the JSON was an error in the original (Python's json refuses it);
-    // editors write one, so it is accepted here.
+    // a UTF-8 byte-order mark in front of the JSON is accepted (editors write one).
     golden = text::replace_all(golden, "t20: id=None note=UNREADABLE", "t20: id=0000ABCD note=none");
     // (the generator printed a Title ID folder with no config as an empty note; the kinds above call that "none")
     golden = text::replace_all(golden, "t41: id=None note=\n", "t41: id=None note=none\n");
@@ -160,7 +158,7 @@ CB_TEST("java.console.vcxproj.parent_map_matches_the_original", [] {
     CB_CHECK_EQ(m.size(), std::size_t{2});
     CB_CHECK_EQ(m["A"], "B");
     CB_CHECK_EQ(m["D"], "E");
-    // DIVERGES: names are ASCII identifiers (the Python's \w also took accented letters, which no C++ class has)
+    // names are ASCII identifiers (accented letters are not allowed: no C++ class has them)
     std::map<std::string, std::string> unicode;
     vcxproj::add_class_bases("class \xC3\x9Cn : public Base {};\nclass Ok : public Base_9 {};\n", unicode);
     CB_CHECK_EQ(unicode.size(), std::size_t{1});
@@ -231,7 +229,7 @@ void run_elements(const stdfs::path& dir, const std::string& case_name, const vc
                   std::vector<std::string>& out) {
     out.push_back(std::format("run {} filters={}", case_name, filters ? "True" : "False"));
     std::string summary = r.summary() + "\n";
-    // (the wording of a JSON read error is the parser's; the golden has Python's)
+    // (the wording of a JSON read error is the parser's)
     const std::string phrase = "could not read platform.config.json (";
     if (const std::size_t paren = summary.find(phrase); paren != std::string::npos) {
         const std::size_t from = paren + phrase.size();

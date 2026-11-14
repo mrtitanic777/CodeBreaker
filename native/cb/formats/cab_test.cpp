@@ -25,7 +25,7 @@ std::uint32_t crc_of(const std::filesystem::path& p) { return crypto::crc32(fs::
 // ---- headers ---------------------------------------------------------------------------------------------
 
 CB_TEST("formats.cab.header_of_a_cabinet_in_a_set", [] {
-    // Built by the old writer: set 9, the first of two, one 100-byte file in one MSZIP folder.
+    // Built by the cabinet writer: set 9, the first of two, one 100-byte file in one MSZIP folder.
     const Cabinet c = read(testdata("set_a.cab"));
     CB_CHECK_EQ(c.set_id, 9);
     CB_CHECK_EQ(c.index, 0);
@@ -171,7 +171,7 @@ CB_TEST("formats.cab.extracts_mszip_files_and_makes_folders", [] {
     CB_CHECK_EQ(got[1].name, "b\\c.txt");
     CB_CHECK_EQ(got[2].name, "empty");
     CB_CHECK(got[1].path == dir.path() / "b" / "c.txt");
-    // sizes and CRC-32 of the contents, as the old tool extracted them
+    // sizes and CRC-32 of the contents, as the extracting tool gave them
     CB_CHECK_EQ(fs::file_size(got[0].path), 1800u);
     CB_CHECK_EQ(crc_of(got[0].path), 1687536614u);
     CB_CHECK_EQ(fs::file_size(got[1].path), 3u);
@@ -365,7 +365,7 @@ CB_TEST("formats.cab.build_is_deterministic_and_set_fields_round_trip", [] {
     CB_CHECK_EQ(c.prev->disk, "Disk 1");
     CB_CHECK_EQ(c.next->cabinet, "c.cab");
     CB_CHECK_EQ(c.next->disk, "Disk 3");
-    // the one header the Python writer made for the same (name, labels): w_chain.cab (101 bytes with a 1-byte file)
+    // the one header written for the same (name, labels): w_chain.cab (101 bytes with a 1-byte file)
     const Bytes one = {0x78};
     const SourceFile x{"x", one};
     const Bytes made = build(std::span<const SourceFile>(&x, 1), {.compression = Compression::MsZip, .set_id = 7, .index = 1,
@@ -373,7 +373,7 @@ CB_TEST("formats.cab.build_is_deterministic_and_set_fields_round_trip", [] {
                                                                    .timestamp = kStamp});
     const Bytes old = fs::read_file(testdata("w_chain.cab"));
     CB_CHECK_EQ(made.size(), old.size());
-    // everything up to the folder data (headers, set links, file table) is byte for byte what the old writer made
+    // everything up to the folder data (headers, set links, file table) is byte for byte what the recorded writer made
     CB_CHECK(Bytes(made.begin(), made.begin() + 88) == Bytes(old.begin(), old.begin() + 88));
 });
 

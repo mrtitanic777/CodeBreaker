@@ -2,12 +2,11 @@
 // the compiler of a module, the numbered exports' names, naming a function, the function store's stored reconstructions, the coverage ledger and what a
 // running sweep is doing, the command table, the source tree and what a file is.
 //
-// Each is a function of `Services`; the tools page, cut and combine the documents these make (mcp_tools.cpp). The documents are the ones the Python
-// modules made, so the same tool answers the same.
+// Each is a function of `Services`; the tools page, cut and combine the documents these make (mcp_tools.cpp). The documents are the ones the tools show.
 //
-// DIVERGES from ui/mcp_server.py:
-//   * the command table is the catalog of cb/app (a command's synopsis and summary), where the Python read each command's module docstring;
-//   * the version of the program is a fixed "2.0.0", where the Python asked its package metadata.
+// Design notes:
+//   * the command table is the catalog of cb/app (a command's synopsis and summary);
+//   * the version of the program is a fixed "2.0.0".
 #include <algorithm>
 #include <chrono>
 #include <format>

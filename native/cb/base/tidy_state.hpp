@@ -59,8 +59,7 @@ struct Part {
     std::uint64_t bytes = 0;
 };
 
-// The names at the top of state/ that CodeBreaker's code writes. The list is curated here (it was read from the
-// Python source before there was none to read), and a part that writes a new top-level folder adds its name; a name
+// The names at the top of state/ that CodeBreaker's code writes. The list is curated here , and a part that writes a new top-level folder adds its name; a name
 // that is a SQLite file's also covers its -wal, -shm and -journal.
 const std::set<std::string>& known_names();
 

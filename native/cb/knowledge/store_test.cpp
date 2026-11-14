@@ -8,12 +8,11 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from codebreaker/knowledge/store.py and the native engine's base it asked:
-//   * a value is a knowledge::Value (the one document model of the base), not bytes/text/JSON/pickle with a tag; the base
-//     is a file of its own (knowledge.v2.sqlite) and does not read the old one -- what it held is made again;
-//   * the digests of the name store and of a whole kind are hashes of the values' encodings, not of Python reprs;
-//   * `carry_bodies` (copying the bodies an older function store held) is gone with the old store;
-//   * a store is an object the caller owns, not one per process found by path.
+// Behaviour pinned here:
+//   * a value is a knowledge::Value (the one document model of the base); the base is a file of its own
+//     (knowledge.v2.sqlite) and does not read an older one -- what it held is made again;
+//   * the digests of the name store and of a whole kind are hashes of the values' encodings;
+//   * a store is an object the caller owns.
 
 using namespace cb;
 using namespace cb::knowledge;
@@ -115,7 +114,7 @@ CB_TEST("knowledge.store.ensure_makes_a_kind_again_only_when_the_stamp_changes",
     CB_CHECK_EQ(makes, 2);
     CB_CHECK_EQ(*again.find("A")->integer(), 2);
     CB_CHECK(again.contains("kept") && again.contains("learned"));   // only authored and derived rows are replaced
-    // a row the old make wrote and the new one does not is gone
+    // a row an earlier make wrote and the new one does not is gone
     const Rows empty = t.store.ensure(kind, "s3", [&] { return Rows(); }, "src", Origin::Derived);
     CB_CHECK(!empty.contains("A"));
     CB_CHECK(empty.contains("kept"));

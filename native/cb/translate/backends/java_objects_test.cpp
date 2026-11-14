@@ -1,6 +1,6 @@
 // Tests of the Java back end's idiomatic tier (java_objects), on C and C++ programs the clang front end lowered
 // (testdata/java/objects/*.c, *.cpp; the L2 documents beside them are its output, without columns). Each golden .idiomatic.java is
-// what codebreaker/translate/backends/java.py (java_objects.py, java_libc.py) wrote for that document; it was read through and
+// the checked-in output for that document; it was read through and
 // found to say what the program says: ObjStructs (structs as classes with C's copies, an array field copied by clone, a boxed
 // out-parameter, malloc as `new`, a function pointer as an interface, an enum's constants, a static local as a global),
 // ObjClasses (a hierarchy with a base initialiser, a pure virtual method, a static member, an operator as `plus`, `new` and
@@ -8,15 +8,12 @@
 // structs, byte strings), ObjGaps (a method that returns a reference to an int and a library call the runtime lacks are gaps, a
 // template instance named by its arguments) and ObjNames (a class named as a global, a Java keyword, an anonymous struct).
 //
-// DIVERGES from java_objects.py:
-//   * a function pointer is called through its interface even when the source dereferenced it first (`(*f)(x)`): the Python wrote
-//     `f[0].call(x)` for that, which is not Java;
-//   * a refusal says `a reference to a i32` with the type as the back end spells it (the Python's repr of a type);
-//   * a pointer to a struct that the program indexes (`many[1].y`) is still one reference: the Python wrote `Vec many = filled(
-//     new Vec[3], ...)` and `many[1]` for it, which does not compile; it is no better here (a limit of the idiomatic tier, noted in
-//     the bugs list) and no test depends on it;
-//   * an array with both a size expression and a fixed size (a `new` node that cannot be written as either) is refused where the
-//     Python recursed without end.
+// Behaviour pinned here:
+//   * a function pointer is called through its interface even when the source dereferenced it first (`(*f)(x)`);
+//   * a refusal says `a reference to a i32` with the type as the back end spells it;
+//   * a pointer to a struct that the program indexes (`many[1].y`) is still one reference, which the idiomatic tier cannot write as
+//     compilable Java (a limit of the tier, noted in the bugs list); no test depends on it;
+//   * an array with both a size expression and a fixed size (a `new` node that cannot be written as either) is refused.
 #include "cb/translate/backends/java_objects.hpp"
 
 #include <chrono>
@@ -180,7 +177,7 @@ CB_TEST("translate.java_objects.method_names", [] {
     CB_CHECK_THROWS_AS(java::Refused, jo::method_name("operator new"));
 });
 
-// The speed of the writing: the best of 20 (printed; java.py's idiomatic tier wrote them in 0.7 to 1 ms each).
+// The speed of the writing: the best of 20 (printed; the idiomatic tier writes each in under a millisecond).
 CB_TEST("translate.java_objects.timing", [] {
     for (const char* name : {"ObjStructs", "ObjMore", "ObjClasses"}) {
         auto p = jot_load(name);

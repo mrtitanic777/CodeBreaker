@@ -9,14 +9,13 @@ using namespace cb;
 using namespace cb::exact::emu;
 namespace stdfs = std::filesystem;
 
-// The arena is the one the Python executive kept in guest RAM (dos.py's _mcb_* functions), here over an `Engine`; the cases
-// are laid out by hand and read through for what DOS does with the chain. The files are the MemFS of dos.py. The executive
+// The arena is the one the executive keeps in guest RAM, here over an `Engine`; the cases
+// are laid out by hand and read through for what DOS does with the chain. The files are a MemFS. The executive
 // (native/dosexec) runs the way the verify lane runs it: set CB_CBDOS_DLL to run the cases that need cbdos.dll.
 //
-// DIVERGES from dos.py: the module's one process-wide cache of the tools' files is a `DiskCache` a session shares; a run that
-// the executive stops (the block cap, the time limit) is an EmulationError (the Python raised RuntimeError); the Python
-// executive that ran when the C++ one was off is not carried over (the C++ one is the executive); the `-` hooks
-// (instrument, instrument_when, driver) and a DPMI host object handed in by the caller have no counterpart - a run asks for
+// Design notes: the one process-wide cache of the tools' files is a `DiskCache` a session shares; a run that
+// the executive stops (the block cap, the time limit) is an EmulationError;
+// the `-` hooks (instrument, instrument_when, driver) and a DPMI host object handed in by the caller have no counterpart - a run asks for
 // the DPMI host with `RunSpec::dpmi`.
 
 namespace {

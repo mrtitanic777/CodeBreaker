@@ -1282,7 +1282,7 @@ std::map<Va, std::int64_t> results(const NeDescription& d) {
     }
     // (off unless the policy says so until Windows 95 Setup has been booted with it. With it on, USER's C once stopped
     // Setup -- "not enough memory to run Setup". That is now thought not a wrong result but what the C it lets USER have did
-    // to fixed segment 1: grown past the original's, the low memory Setup needs for its program was gone. build/module.py now
+    // to fixed segment 1: grown past the original's, the low memory Setup needs for its program was gone. the build now
     // keeps a fixed code segment at the original's size; the milestone boot, with the rule on and off, is to confirm it.
     // Narrowed meanwhile to a callee that hands back a DX of its own on every way -- see DxReturns)
     if (d.policy.caller_results && !d.images.empty()) {

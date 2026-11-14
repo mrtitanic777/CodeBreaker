@@ -7,7 +7,7 @@ using namespace cb;
 using namespace cb::exact;
 using readable::Place;
 
-// DIVERGES from the Python module (readable.py), on purpose:
+// Design notes:
 //   * \w and \b are ASCII: a name next to a non-ASCII byte is a name (in a Latin-1 source an accented letter is a byte
 //     above 127, never part of a C identifier)
 //   * `mapping` gives a sorted map (it is only looked up in), not a dict in SYMBOLS' order

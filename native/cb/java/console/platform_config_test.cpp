@@ -1,5 +1,4 @@
-// platform_config: the emitted files are checked against goldens written by the Python module and reviewed by hand
-// (testdata/gen_config_golden.py), the JSON file against the one Python writes, plus load/save/run behaviour.
+// platform_config: the emitted files are checked against goldens reviewed by hand, the JSON file against its golden, plus load/save/run behaviour.
 #include <map>
 #include <string>
 
@@ -20,7 +19,7 @@ std::string conf_golden(const std::string& case_name, const std::string& file) {
 
 bool conf_has(const std::string& text, std::string_view needle) { return text.find(needle) != std::string::npos; }
 
-// The configs the goldens were made from (see gen_config_golden.py).
+// The configs the goldens were made from.
 pcfg::Config conf_case(const std::string& name) {
     pcfg::Config c = pcfg::default_config();
     if (name == "legacy_southpaw_osk_rawhdd") {
@@ -46,7 +45,7 @@ pcfg::Config conf_case(const std::string& name) {
 
 const char* const kConfCases[] = {"default", "legacy_southpaw_osk_rawhdd", "stub_memory", "with_sdk"};
 
-CB_TEST("java.console.platform_config.emitted_files_match_the_python_goldens", [] {
+CB_TEST("java.console.platform_config.emitted_files_match_the_goldens", [] {
     for (const std::string name : kConfCases) {
         const pcfg::Config cfg = conf_case(name == "with_sdk" ? "default" : name);
         CB_CHECK_EQ(pcfg::controller_header(cfg), conf_golden(name, "ControllerConfig.h"));
@@ -78,11 +77,11 @@ CB_TEST("java.console.platform_config.emit_writes_the_four_files", [] {
     CB_CHECK(conf_has(fs::read_text(written[2]), "J2X-STUB[kernel-storage]"));
 });
 
-CB_TEST("java.console.platform_config.json_is_the_file_python_writes", [] {
+CB_TEST("java.console.platform_config.json_is_the_golden_file", [] {
     for (const std::string name : {"default", "legacy_southpaw_osk_rawhdd", "stub_memory"}) {
         fs::ScopedTempDir dir("cb-pcfg");
         pcfg::save_config(dir.path() / "platform.config.json", conf_case(name));
-        // DIVERGES: json.dump leaves no newline at the end of the file; cb::json::save adds one (the golden has it too)
+        // cb::json::save ends the file with a newline (the golden has it too)
         CB_CHECK_EQ(fs::read_text(dir.path() / "platform.config.json"), conf_golden(name, "platform.config.json"));
     }
 });

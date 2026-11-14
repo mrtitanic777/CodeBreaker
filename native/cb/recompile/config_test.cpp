@@ -11,14 +11,13 @@
 using namespace cb;
 namespace cfg = cb::recompile::config;
 
-// DIVERGES from the Python: the first line of the configuration names "recompile/config", not the .py file; an address of a switch
-// file past 32 bits is a ParseError (TOML allows any integer); a [[switch]] with no case labels, and an XenonAnalyse base not in the
-// code, are passed over (the Python raised, or read from the wrong end of the code).
+// The first line of the configuration names "recompile/config"; an address of a switch file past 32 bits is a ParseError (TOML
+// allows any integer); a [[switch]] with no case labels, and an XenonAnalyse base not in the code, are passed over.
 
 namespace {
 namespace cfgtest {
 
-constexpr std::uint32_t kCodeVa = 0x82100000;   // where the made program of config_code.bin loads (testdata/gen_config_golden.py)
+constexpr std::uint32_t kCodeVa = 0x82100000;   // where the made program of config_code.bin loads
 
 // What the generator wrote: the image's facts, then the reference's answers as "[name]" sections ("| "-led lines are text).
 struct Golden {
@@ -234,7 +233,7 @@ CB_TEST("recompile.config.make_names_the_xex_when_no_file_path_is_given", [] {
 // ---- the switch-table file ---------------------------------------------------------------------------------------------------
 
 CB_TEST("recompile.config.read_switch_tables", [] {
-    // what tomllib read of the same texts (gen_config_golden.py prints them): the finder's file, XenonAnalyse's format with
+    // what a TOML reader reads of the same texts: the finder's file, XenonAnalyse's format with
     // the spellings TOML allows, and a file with other tables in it
     const cfg::SwitchTables finder = cfg::read_switch_tables(testing::data_path("recompile/testdata/config_switches.toml"));
     CB_CHECK(finder == both_switches());   // (in the order of the file)
@@ -278,7 +277,7 @@ CB_TEST("recompile.config.read_switch_tables_errors", [] {
     CB_CHECK_THROWS_AS(ParseError, (void)cfg::parse_switch_entries("[[switch]]\nbase = 1\nlabels = [\"x\n"));
     CB_CHECK_THROWS_AS(ParseError, (void)cfg::parse_switch_entries("[[switch]]\nbase = 1\nlabels = [nonsense]\n"));
     CB_CHECK_THROWS_AS(ParseError, (void)cfg::parse_switch_entries("= 5\n"));
-    // DIVERGES: TOML allows any integer; an address here is 32 bits
+    // TOML allows any integer; an address here is 32 bits
     CB_CHECK_THROWS_AS(ParseError, (void)cfg::parse_switch_entries("[[switch]]\nbase = 0x1FFFFFFFF\nlabels = []\n"));
     CB_CHECK_THROWS_AS(ParseError, (void)cfg::parse_switch_entries("[[switch]]\nbase = 1\nlabels = [-1]\n"));
     try {
@@ -308,7 +307,7 @@ CB_TEST("recompile.config.xenon_analyse_tables_are_added_for_the_bctrs_the_finde
     CB_CHECK_EQ(merged.found, std::size_t{1});
     CB_CHECK_EQ(merged.added, std::size_t{1});
     CB_CHECK_EQ(merged.tables.size(), std::size_t{2});
-    // the file the Python wrote for the same two tables
+    // the golden file for the same two tables
     const auto& lines = g.sections.at("write_switch_tables");
     CB_CHECK_EQ(lines.front(), "counts 1 1");
     const std::vector<std::string> want(lines.begin() + 1, lines.end());

@@ -1,11 +1,11 @@
-// Tests of cb/formats/xbox/zar.hpp. The compressed archive below is what the Python's ZarWriter (zar.pack, zstd level 6) makes of a
-// folder of four files (state/work/typed-port/xbox-deferred/zar_golden.py): b.bin (768 bytes), Z-empty, data/a.txt (78000 bytes of repeated text,
-// two blocks) and data/sub/Deep.TXT (9 bytes); the Python's ZarReader lists them as below and reads the SHA-1s checked here. Reading it
+// Tests of cb/formats/xbox/zar.hpp. The compressed archive below is the output of a reference writer (zstd level 6) for a
+// folder of four files: b.bin (768 bytes), Z-empty, data/a.txt (78000 bytes of repeated text,
+// two blocks) and data/sub/Deep.TXT (9 bytes); the reader lists them as below and reads the SHA-1s checked here. Reading it
 // needs libzstd (found as zar::load_zstd does, or at the Git for Windows copy); where there is none, those checks are skipped. The
 // structure checks run on archives made by hand here, with raw (stored) blocks and a stand-in codec for the compressed kind.
 //
-// DIVERGES from the Python: the archive's SHA-256 is not checked on open (nor was it in the Python's reader: verify_integrity is its
-// own call, not carried over); a file tree that leads back into a folder is FormatError (the Python's walk never ended); reading a file
+// Behaviour pinned here: the archive's SHA-256 is not checked on open (verifying integrity is a call of its
+// own); a file tree that leads back into a folder is FormatError; reading a file
 // that runs past the archive's data is FormatError.
 #include "cb/formats/xbox/zar.hpp"
 
@@ -50,7 +50,7 @@ static std::shared_ptr<zar::ZstdCodec> zstd_if_there() {
     return zar::load_zstd();
 }
 
-CB_TEST("formats.xbox.zar.the_pythons_archive_reads_back", [] {
+CB_TEST("formats.xbox.zar.the_recorded_archive_reads_back", [] {
     const std::shared_ptr<zar::ZstdCodec> codec = zstd_if_there();
     if (!codec) return;   // (no libzstd on this machine)
     fs::ScopedTempDir dir("cb-zar");

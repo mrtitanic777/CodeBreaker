@@ -1,4 +1,4 @@
-// Tests of source/zx_writer on the Spectrum demo program tests/test_z80.py::test_spectrum_lane was written around (hand-written, kept in
+// Tests of source/zx_writer on the Spectrum demo program (hand-written, kept in
 // engine/testdata/lane_kit/zx_demo.asm): built with CodeBreaker's own flat Z80 assembler into a tape (a BASIC loader that calls USR 32768,
 // then the code block) and into a 48K snapshot stopped at its start; the program comes back as source that builds the same bytes, and the
 // source names the Spectrum's ULA port, ROM routines and system variables.

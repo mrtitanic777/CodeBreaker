@@ -8,8 +8,7 @@
 
 namespace x = cb::decompile::xenos;
 
-// DIVERGES from the Python module: the words are unsigned 32-bit (Python took any integer, including negative
-// and wider ones, and the old harness fed it those); error text and the `python -m` command line are not part of
+// Notes: the words are unsigned 32-bit; error text and the command line are not part of
 // the module (the command table of cb/app will own a `xenos` command).
 
 namespace {

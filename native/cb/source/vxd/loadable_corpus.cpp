@@ -58,13 +58,13 @@ nlohmann::ordered_json load_results(const stdfs::path& file) {
     return nlohmann::ordered_json::parse(fs::read_text(file));
 }
 
-// Laid out as the Python wrote it (indent 1, non-ASCII escaped), renamed over the old file whole.
+// Laid out with indent 1, non-ASCII escaped, renamed over the old file whole.
 void save_results(const stdfs::path& file, const nlohmann::ordered_json& results) {
     fs::make_dirs(file.parent_path().empty() ? stdfs::path(".") : file.parent_path());
     fs::write_file_atomic(file, as_bytes(results.dump(1, ' ', true)));
 }
 
-std::string python_bool(bool b) { return b ? "True" : "False"; }
+std::string capitalised_bool(bool b) { return b ? "True" : "False"; }
 
 void summarise(const nlohmann::ordered_json& results, double seconds) {
     std::size_t ok = 0, device_ok = 0, identity = 0;
@@ -134,7 +134,7 @@ int main(const Environment& env, std::span<const std::string> args) {
                     save_results(results_file, results);
                     if (r["ok"].get<bool>()) {
                         out("  {:<14} OK   objs={:<2} dev=0x{:04x} dev_ok={:<5} ident={:<5} res={:<4} [{:.1f}s]\n", t.key, r["objects"].get<std::size_t>(),
-                            r["device_id"].get<std::uint32_t>(), python_bool(r["device_id_ok"].get<bool>()), python_bool(r["identity"].get<bool>()),
+                            r["device_id"].get<std::uint32_t>(), capitalised_bool(r["device_id_ok"].get<bool>()), capitalised_bool(r["identity"].get<bool>()),
                             r["resource_len"].get<std::uint32_t>(), r["seconds"].get<double>());
                     } else {
                         std::string log = r.value("log", "");

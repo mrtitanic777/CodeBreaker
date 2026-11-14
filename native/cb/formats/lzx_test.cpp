@@ -442,7 +442,7 @@ CB_TEST("formats.lzx.decompress_xex_runs_the_whole_chain", [] {
 // ---- a real image, against the xex program's own decoder -------------------------------------------------------
 
 // Pac-Man Championship Edition (Xbox Live Arcade), a retail title: encrypted, LZX compressed. It is a game binary, so it
-// is not checked in; the test runs where the file is (the typed-port harness inputs, or CB_TEST_XEX) and is skipped
+// is not checked in; the test runs where the file is (a harness input folder, or CB_TEST_XEX) and is skipped
 // where it is not.
 std::filesystem::path real_xex() {
     if (const auto env = fs::get_env("CB_TEST_XEX")) return fs::from_text(*env);

@@ -142,7 +142,7 @@ CB_TEST("port.passes.whole_word_stores", [] {
         "void store(int16_t *q, intptr_t n, int m)\n{\n    intptr_t k;\n    *(intptr_t *)q = n;\n    *(int *)q = m;\n"
         "    *(intptr_t *)q = k;\n}\nvoid plain(int16_t *q, int n)\n{\n    *(int *)q = n;\n}\n");
     CB_CHECK(places(notes, "a word stored") == (std::vector<std::string>{"w.c:4", "w.c:6"}));
-    // a definition that never closes is read to the last line (it was an IndexError in the Python)
+    // a definition that never closes is read to the last line
     Notes open;
     CB_CHECK_EQ(whole_word_stores("void f(int16_t *q, intptr_t p)\n{\n    *(int *)q = p;\n", open, "a.c"),
                 "void f(int16_t *q, intptr_t p)\n{\n    *(intptr_t *)q = p;\n");

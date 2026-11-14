@@ -1,10 +1,10 @@
 // Tests of cb/source/dos_program: reading a built MZ file as it loads, and the loop's first round with no assembler to hand (the
 // rounds with OpenWatcom's wasm and wlink are what `codebreaker dos-source` runs; they are not run here).
 //
-// DIVERGES from codebreaker/source/dos_writer.py (_program, _load_module):
+// Design notes:
 //   * a build that is not an MZ file, a header that does not describe the file and a relocation table past the end are errors
-//     (FormatError / TruncatedError); the Python raised KeyError / struct.error;
-//   * the build description <stem>.build.json is written by nlohmann (indent 1, keys in the order the Python wrote them);
+//     (FormatError / TruncatedError);
+//   * the build description <stem>.build.json is written by nlohmann (indent 1, keys in a fixed order);
 //   * the layout of the original file around the linked program (packing, header data, overlay) is not done here.
 
 #include "cb/source/dos_program.hpp"

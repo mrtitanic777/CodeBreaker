@@ -1,12 +1,11 @@
 // Tests of the C++17 back end's client (cpp17), on real programs: the units the Java front end lowers (the cpp03 corpus's and this
-// module's own, as L2) written as a whole program, and a module of the Python front end (the semantics snippet of
-// tests/translate/test_python_frontend.py) written as header, source and function spans. The expected text is what the Python
-// module answered for the same units through the same library (testdata/cpp17); the back end itself is the L2 core library
+// module's own, as L2) written as a whole program, and a module of the Python front end (the semantics snippet) written as header, source and function spans. The expected text is the checked-in
+// goldens (testdata/cpp17); the back end itself is the L2 core library
 // (native/l2, cbl2.dll), so what these check is what this module adds: the units as documents, the modern forms lowered first,
 // the language a unit without one gets, the folders, the errors. They need the DLL (cmake --build native/l2/build --target
 // cbl2, or CB_L2_DLL naming it); without it they say so and pass.
 //
-// DIVERGES from cpp17.py: the decline is the library's Cpp17Declined (message as the library words it), not a Python class; the
+// The decline is the library's Cpp17Declined (message as the library words it); the
 // folders are found from the checkout the program belongs to, not from the source file's place.
 #include "cb/translate/backends/cpp17.hpp"
 
@@ -94,7 +93,7 @@ void check_declined(const std::string& name) {
         CB_CHECK_EQ(std::string(d.what()), want);
         return;
     }
-    fail(name + " was written, the Python declined it");
+    fail(name + " was written, but the golden declines it");
 }
 
 }  // namespace

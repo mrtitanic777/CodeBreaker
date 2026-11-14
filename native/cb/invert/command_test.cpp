@@ -1,10 +1,9 @@
-// Tests of `codebreaker invert` (invert/command): the tool table -- each tool answers as the Python's did on the same files, and says so where its compiler is not set up.
+// Tests of `codebreaker invert` (invert/command): the tool table -- each tool answers as expected on the same files, and says so where its compiler is not set up.
 //
 // The inputs are the folder's testdata (a quad file and its object, two objects) and three functions of the oracle harness's seed set written to a file
-// (an add, a max, a loop: the Python's answers for them are in early_c.golden.json).
+// (an add, a max, a loop: their answers are in early_c.golden.json).
 //
-// CB_INVERT_PROOF="<word>;<word>;..." runs the command with those words and prints what it said and how long it took, for comparing with the
-// translated Python's `invert` on the same words.
+// CB_INVERT_PROOF="<word>;<word>;..." runs the command with those words and prints what it said and how long it took, for timing the real compilers.
 #include "cb/invert/command.hpp"
 
 #include <chrono>
@@ -41,7 +40,7 @@ std::string seed_file(const fs::ScopedTempDir& dir) {
 
 }  // namespace
 
-CB_TEST("invert.command.the_table_has_every_tool_of_the_python", [] {
+CB_TEST("invert.command.the_table_has_every_recorded_tool", [] {
     const std::vector<std::string_view> want{"early-c", "early-c-check", "early-c-frame", "early-c-round-trip", "early-c-frame-probe", "early-c-order-probe",
                                              "early-c-forward", "quads", "quad-align", "omf", "msc6", "msc6-templates", "msc6-function", "msc6-registers",
                                              "msc6-walk", "msc6-idioms", "known-differences", "msvc2", "msvc2-forward"};
@@ -105,7 +104,7 @@ CB_TEST("invert.command.the_readers_of_a_compilers_files", [] {
 });
 
 CB_TEST("invert.command.the_small_readers_of_microsoft_c_6_are_native", [] {
-    // msc6-templates: the Python's answers for the same bytes (a leaf, a far call, a body that is none of the templates)
+    // msc6-templates: the answers for the same bytes (a leaf, a far call, a body that is none of the templates)
     {
         testing::CapturedStd cap;
         CB_CHECK_EQ(run_words({"--tool", "msc6-templates", "1e589045558bec1e8ed8b807004d4d8be51f5d4dca0400"}), 0);
@@ -122,7 +121,7 @@ CB_TEST("invert.command.the_small_readers_of_microsoft_c_6_are_native", [] {
         CB_CHECK_EQ(cap.out(), "DECLINED: body not a modeled leaf template (4 bytes: 90909090)\n");
     }
     {
-        testing::CapturedStd cap;   // the frame model against the compiler's own frames: the Python's line for it
+        testing::CapturedStd cap;   // the frame model against the compiler's own frames
         CB_CHECK_EQ(run_words({"--tool", "early-c-frame"}), 0);
         CB_CHECK_EQ(cap.out(), "framemodel self-test: 25/25 byte-exact frame layouts\n");
     }
@@ -150,7 +149,7 @@ CB_TEST("invert.command.the_small_readers_of_microsoft_c_6_are_native", [] {
         CB_CHECK_EQ(asked, 2);
     }
 
-    // the self-tests: the free idiom and the register tracker read the Python's functions; with no compiler they say what they read and that
+    // the self-tests: the free idiom and the register tracker read the functions above; with no compiler they say what they read and that
     {
         testing::CapturedStd cap;
         CB_CHECK_EQ(run_words({"--tool", "msc6-function"}), 2);
@@ -197,7 +196,7 @@ CB_TEST("invert.command.the_tools_that_need_a_compiler_say_so_without_one", [] {
     testing::CapturedStd cap;
     for (const char* tool : {"msc6", "msvc2", "msvc2-forward", "early-c-round-trip", "early-c-frame-probe", "early-c-order-probe"}) CB_CHECK_EQ(run_words({"--tool", tool}), 2);
     CB_CHECK(cap.err().find("is not set up") != std::string::npos);
-    CB_CHECK_EQ(run_words({"--tool", "msc6-idioms"}), 1);   // (the Python's: "oracle not configured")
+    CB_CHECK_EQ(run_words({"--tool", "msc6-idioms"}), 1);   // (answers "oracle not configured")
     CB_CHECK(cap.out().find("oracle not configured") != std::string::npos);
     CB_CHECK_EQ(run_words({"--tool", "early-c-check", data("PROBE.OBJ"), "0", "8"}), 2);
     CB_CHECK_EQ(run_words({"--check"}), 2);

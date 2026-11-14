@@ -7,7 +7,7 @@
 // `engine.lane_kit.proof` is the product check: with CB_LANE_KIT_PROOF set to a folder and CB_LANE_KIT_MODULES to the modules to run (corpus
 // names or paths, separated by ';'), it runs the new Reconstructor with the wired lanes on each module -- the decompiler, OpenWatcom, the
 // emulators, the judge -- and writes <folder>/<module>.json: {module, seconds, functions: {address: {name, verdict, reason, limits, detail}}},
-// the same document tools/lanekit_py.py writes of the Python's run (the Python is the reference: state/work/lanekit/run_py.py). It is slow
+// the same shape as the recorded <module>.python.json documents. It is slow
 // (minutes per module), so it is off unless asked for; CB_STATE should name a folder of its own.
 #include "cb/engine/lane_kit.hpp"
 
@@ -126,9 +126,9 @@ CB_TEST("engine.lane_kit.proof", [] {
         doc["functions"] = std::move(functions);
         fs::write_text(fs::from_text(*out) / (fs::to_text(path.filename()) + ".json"), doc.dump(1));
         std::cout << done.line() << "\n";
-        // against what the Python made of the same module (testdata/lane_kit/<module>.python.json, run_py.py): the same verdict, reason and limits of every function.
-        // Not compared: the coverage figure (the two draw their guessed inputs differently), and for a driver the number of paths (the Python writes the driver back
-        // with another writer, so it explores other instructions: DIVERGES, see the bugs list).
+        // against the recorded document of the same module (testdata/lane_kit/<module>.python.json): the same verdict, reason and limits of every function.
+        // Not compared: the coverage figure (the two draw their guessed inputs differently), and for a driver the number of paths (the recorded run wrote the driver back
+        // with another writer, so it explored other instructions).
         const stdfs::path golden = testing::data_path("engine/testdata/lane_kit/" + fs::to_text(path.filename()) + ".python.json");
         if (!stdfs::exists(golden)) continue;
         const nlohmann::ordered_json want = json::load(golden);
@@ -148,9 +148,9 @@ CB_TEST("engine.lane_kit.proof", [] {
             const bool alike = got != doc.at("functions").end() && (*got)["verdict"] == row["verdict"] && (*got)["reason"].get<std::string>() == row["reason"].get<std::string>() &&
                                normal((*got)["limits"].get<std::string>()) == normal(row["limits"].is_null() ? std::string() : row["limits"].get<std::string>());
             if (alike) ++same;
-            else std::cout << "  differs from the Python: " << addr << " " << row["name"].get<std::string>() << "\n";
+            else std::cout << "  differs from the recorded: " << addr << " " << row["name"].get<std::string>() << "\n";
         }
-        std::cout << "  " << same << " of " << want.at("functions").size() << " functions as the Python judged them\n";
+        std::cout << "  " << same << " of " << want.at("functions").size() << " functions as recorded\n";
         CB_CHECK_EQ(same, want.at("functions").size());
     }
 });

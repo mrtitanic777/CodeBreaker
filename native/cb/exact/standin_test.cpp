@@ -15,7 +15,7 @@ using namespace cb::exact;
 #define CB_CHECK_SAME(a, b) CB_CHECK((a) == (b))
 
 // The fixtures in testdata/standin were assembled by hand (the generator is described in each test) and the three
-// rebuilt objects are what the Python module this one replaced made of them; each was checked by reading the result
+// rebuilt objects are the recorded ones; each was checked by reading the result
 // back: the code, the lengths of the functions, the fix-ups the linker is left with, and the external names.
 //
 //   base.obj   MODA: _f1 at 0 (push bp; mov bp,sp; call _ext; pop bp; ret) with a self-relative fix-up to _ext,
@@ -203,7 +203,7 @@ CB_TEST("exact.standin.indexes", [] {
 });
 
 CB_TEST("exact.standin.a_fixup_location_is_four_bits", [] {
-    // (tests/test_exact_fixes.py) M=0, location 9 (a 32-bit offset), offset 4; fix data: frame method 5, target method 2
+    // M=0, location 9 (a 32-bit offset), offset 4; fix data: frame method 5, target method 2
     // (external), P=1; external 1. The location was masked to three bits, so 9 read as 1 (a low byte).
     const Bytes record = {static_cast<std::uint8_t>(0x80 | (9 << 2)), 0x04, (5 << 4) | 4 | 2, 0x01};
     standin::FixupThreads threads;

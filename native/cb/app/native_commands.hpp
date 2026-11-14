@@ -1,6 +1,4 @@
-// cb/app/native_commands.hpp -- the commands codebreaker.exe runs on native/cb directly, with no Python behind them
-// (the switch-over, docs/CPP_DESIGN.md 8). Each one moves here once its whole module chain is refactored; the rest are
-// still the translated Python's.
+// cb/app/native_commands.hpp -- the commands codebreaker.exe runs on native/cb directly.
 //
 //     codebreaker info <file-or-module|folder> ...     cb::formats::inspect
 //     codebreaker flat-thunk <module> ...              cb::build::flat_thunk

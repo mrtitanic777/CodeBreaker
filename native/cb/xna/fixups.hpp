@@ -12,7 +12,7 @@
 // of a constructor is what an initializer is (it runs before the body either way). What a rewrite cannot place with
 // certainty is left as it is and listed.
 //
-// These came from the Arcadecraft decompile (../Arcadecraft/tools/fix_*.py), where they made 65 000 lines of
+// These came from the Arcadecraft decompile (the Arcadecraft tools folder's fix scripts), where they made 65 000 lines of
 // decompiled C# compile again. Text is handled as bytes (the C# is UTF-8, the rewrites only look at ASCII), so the
 // bytes a rewrite does not touch, line endings included, come back exactly as they went in.
 #pragma once

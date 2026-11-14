@@ -1,6 +1,6 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of cb/source/vxd/from_source on the real drivers of formats/testdata (splitter.vxd: one object, 4096-byte pages; bios.vxd: four objects, 512-byte
-// pages). The expected values are the Python module's (the build of splitter came back byte for byte the original's, one object, device id 0x0498 and an
+// pages). The expected values are the recorded ones (the build of splitter came back byte for byte the original's, one object, device id 0x0498 and an
 // identity page map, a 512-byte version resource) or are worked out from the rules in the module's header. The assemblers are not given: the readable
 // source is then not compiled, and the file is the LE writer's, which is what ships either way.
 #include "cb/source/vxd/from_source.hpp"
@@ -125,7 +125,7 @@ CB_TEST("source.vxd.from_source.the_source_has_each_object_in_its_segment", [] {
 });
 
 CB_TEST("source.vxd.from_source.splitter_comes_back_as_the_original", [] {
-    // with no assembler the file is the LE writer's: the original, byte for byte (the Python module's result for it too)
+    // with no assembler the file is the LE writer's: the original, byte for byte
     const vx::DdkNames names = fsrc_names();
     const vx::masm::Toolchain no_tools;
     const fsrc::Environment env{names, no_tools, [](cb::ByteView, std::string_view, const std::filesystem::path&) { return vx::link::Linked{}; }};
@@ -188,7 +188,7 @@ CB_TEST("source.vxd.from_source.the_command_writes_the_file_and_says_what_it_mad
 
 CB_TEST("source.vxd.from_source.splitter_compiles_and_links_with_the_period_tools", [] {
     // only where the DDK (its includes, MASM 6.11d, LINK 2.60) and its names are set up (the settings, CB_CHECKOUT_ROOT): then the readable source is
-    // assembled and linked (the Python module's result on the corpus's splitter.vxd), and the file written is the LE writer's: the original's size and objects
+    // assembled and linked, and the file written is the LE writer's: the original's size and objects
     const cb::config::Config& config = cb::config::current();
     const std::filesystem::path tools_root = std::filesystem::is_directory(config.checkout_root() / "toolchains") ? config.checkout_root() : config.main_checkout();
     std::error_code ec;

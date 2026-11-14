@@ -3,13 +3,13 @@
 // are not part of the tests), and the .xnb converters are `Hooks` that answer a fixed record. What the real tools do is theirs; what
 // is tested is what run does with them: which files it hands them, what it makes of what they leave, and the project it records.
 //
-// Hand-checked against run.py: the project's folders (original/, assets/game, assets/content, src/<assembly>, reports/), the
+// Hand-checked: the project's folders (original/, assets/game, assets/content, src/<assembly>, reports/), the
 // decompile.json and content.json keys and order, the note line project.json carries, the `xna:` line of a failure and exit code 1.
 //
-// DIVERGES from run.py:
-//   * the reports are written with two-space indent (the Python wrote one): the layout json.load reads the same;
-//   * a failed tool is a ToolError (the Python's RuntimeError); a missing ILSpy is a NotFoundError;
-//   * a package with nothing in it to read is a UsageError (the Python's ValueError).
+// Behaviour pinned here:
+//   * the reports are written with two-space indent;
+//   * a failed tool is a ToolError; a missing ILSpy is a NotFoundError;
+//   * a package with nothing in it to read is a UsageError.
 #include "cb/xna/run.hpp"
 
 #include <fstream>

@@ -10,7 +10,7 @@ using namespace cb;
 using namespace cb::java::console;
 namespace stdfs = std::filesystem;
 
-// The golden's form of a detect() result (what the original module answered on the same headers).
+// The golden's form of a detect() result (the recorded answer on the same headers).
 std::string render(const std::string& heading, const xdk_scan::ScanResult& r, const stdfs::path& base) {
     std::string out = heading + "\n  include " + test::rel(r.include, base) + "\n";
     for (const auto& [name, header] : r.funcs) out += std::format("  func {} {}\n", name, header);
@@ -57,8 +57,7 @@ CB_TEST("java.console.xdk_scan.entry_points", [] {
     CB_CHECK_EQ(names("XFoo (1); XBar\t(2); XCrlf\r\n(3); XBaz\n\n  (4); XNoCall; XDecl;"), "XFoo XBar XCrlf XBaz");
     CB_CHECK_EQ(names("XFoo2(1) XFoo_3(2) X_Foo(3)"), "XFoo2 XFoo_3");   // digits and underscores are part of the name
     CB_CHECK_EQ(names("a.XFoo(1) b->XBar(2) ::XamBaz(3)"), "XFoo XBar XamBaz");   // member and scope syntax
-    // DIVERGES: an identifier is ASCII letters, digits and underscore; the Python's \w took any Unicode letter, so
-    // XFoo<e-acute>bar( was one name there. Here it ends at the first non-ASCII byte, and "bar(" is no entry point.
+    // an identifier is ASCII letters, digits and underscore, so XFoo<e-acute>bar( is not one name: it ends at the first non-ASCII byte, and "bar(" is no entry point.
     CB_CHECK_EQ(names("XFoo\xC3\xA9" "bar(1);"), "");
     CB_CHECK_EQ(names(""), "");
 });

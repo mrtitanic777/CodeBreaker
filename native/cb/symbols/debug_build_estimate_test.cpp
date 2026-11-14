@@ -5,8 +5,8 @@
 // instruction names are alike, not the same: Aligned, Probable, Guess), a function with no counterpart. Expected values were worked out by hand
 // from the listings and the tier rules.
 //
-// DIVERGES from the Python module, by design: the .MAP is read by debug_build::parse_map (by lines); the tier is an enum and the estimates are
-// keyed by (segment, offset); the modules are opened by the caller; difflib's closing zero-size block is not produced (nothing reads it).
+// The .MAP is read by debug_build::parse_map (by lines); the tier is an enum and the estimates are
+// keyed by (segment, offset); the modules are opened by the caller; the diff has no closing zero-size block (nothing reads it).
 #include "cb/symbols/debug_build_estimate.hpp"
 
 #include <format>
@@ -207,7 +207,7 @@ CB_TEST("symbols.debug_build_estimate.a_module_is_estimated_from_a_debug_build_o
     CB_CHECK_EQ(r.tiers.at({1, 0x90}).name, "DbgNinety");
     CB_CHECK_EQ(r.tiers.at({1, 0xC0}).name, "DbgSea");
     CB_CHECK_EQ(r.tiers.at({1, 0xA0}).name, "DbgAye");
-    // LZINIT's own signature matched exactly, so it is an anchor too (as the Python does): locked in as Exact, and an anchor is not scored
+    // LZINIT's own signature matched exactly, so it is an anchor too : locked in as Exact, and an anchor is not scored
     CB_CHECK(r.tiers.at({2, 0}).tier == est::Tier::Exact);
     CB_CHECK_EQ(r.tiers.at({2, 0}).name, "LZINIT");
     CB_CHECK_EQ(r.count(est::Tier::Exact), 5U);

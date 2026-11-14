@@ -5,8 +5,8 @@
 // --out writes, the tally of the verdicts (most common first), and the arguments (an address in hex; the file --out names is not one, whatever its name
 // is made of).
 //
-// DIVERGES from the Python: the source of a function whose proof fell over is "<kind>: <message>" (the Python's was a traceback); the toolchain whose
-// profile names no inverse model is a UsageError (the Python's was a KeyError).
+// Behaviour pinned here: the source of a function whose proof fell over is "<kind>: <message>"; the toolchain whose
+// profile names no inverse model is a UsageError.
 #include "cb/exact/bench.hpp"
 
 #include "cb/exact/real_projects.hpp"

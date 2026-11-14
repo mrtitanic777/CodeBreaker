@@ -1,11 +1,10 @@
 // cb/analyze/origin_test.cpp -- was a 16-bit function written in assembly, or made by a C compiler? Hand-assembled functions (each one a
 // thing C compilers of the period never emit, or the plain C frame), the summary and the report, and the verdicts on a real module.
 //
-// DIVERGES from the Python module:
-//  - module16() is not cached under the module's bytes and the source of origin.py/describe.py (the Python pickled the Result): it is
-//    worked out every time.
+// Notes:
+//  - module16() is not cached: it is worked out every time.
 //  - the verdict is a typed record (Language, vectors of evidence); the Result is ordered by address.
-//  - a REP prefix is found among the instruction's leading prefix bytes (the Python read Capstone's first prefix slot, the same byte).
+//  - a REP prefix is found among the instruction's leading prefix bytes.
 //  - `main` is split: the report is `report()`, the command line is the command layer's.
 #include "cb/analyze/origin.hpp"
 
@@ -195,7 +194,7 @@ CB_TEST("analyze.origin.verdicts_on_a_real_module", [] {
     CB_CHECK(report("lzexpand.dll", r, false).starts_with(std::format("lzexpand.dll: {} functions -- {} C, {} assembly\n", r.functions.size(), s.c, s.assembly)));
 });
 
-// tests/test_port_fixes.py::test_origin_notes_calls_to_compiler_helpers -- near and far calls to the C compiler's own helpers (named)
+// Calls to compiler helpers: near and far calls to the C compiler's own helpers (named)
 // are noted in the function's compiler notes; a call to any other function is not.
 CB_TEST("analyze.origin.a_call_to_a_compiler_helper_is_noted_near_or_far", [] {
     const std::int64_t base = dsc::address(1, 0);

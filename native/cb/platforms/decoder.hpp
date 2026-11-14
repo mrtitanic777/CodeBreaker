@@ -9,7 +9,7 @@
 //     for (const platforms::Insn& i : cs.disasm(code, 0x1000)) { ... i.mnemonic, i.op_str ... }
 //     cs.each(code, 0x1000, 0, [&](const cs_insn& c) { ...; return true; });   // Capstone's own records, for detail
 //
-// `disasm` stops at the first byte Capstone cannot decode, as the old generator did. Capstone's records (`cs_insn`) are
+// `disasm` stops at the first byte Capstone cannot decode. Capstone's records (`cs_insn`) are
 // only named here, not defined: a caller that reads them includes cb/core/capstone_api.hpp.
 #pragma once
 

@@ -3,11 +3,11 @@
 // its globals, structure, imports and a function that takes its argument in ECX; a PowerPC image; and a real 16-bit module (LZEXPAND.DLL,
 // described by the real describer) made compilable with every function "decompiled" by a stand-in.
 //
-// DIVERGES from the Python module (the old harness compared the whole text of 19 modules, which needs the native decompiler):
+// Notes (an old harness compared the whole text of 19 modules, which needs the native decompiler):
 //  - the environment switches CB_SELECTOR_STRUCTS, CB_CODE_DATA and CB_PROTOTYPES are the fields of Policy;
 //  - compilable16's result is not kept in the build cache, and `generation()` is the decompiler's own (nothing here is cached);
-//  - a function whose own selector structure has overlapping fields is left without a declaration (Python raised TypeError joining None);
-//  - a flag the back end reports that the module has no place for is an InternalError (Python: AttributeError);
+//  - a function whose own selector structure has overlapping fields is left without a declaration;
+//  - a flag the back end reports that the module has no place for is an InternalError;
 //  - sizes, addresses and offsets are fixed-width integers, and an address past what the 16-bit layout holds is not carried as a bignum.
 #include "cb/decompile/c_text.hpp"
 

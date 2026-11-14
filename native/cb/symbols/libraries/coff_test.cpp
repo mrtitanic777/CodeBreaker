@@ -1,15 +1,14 @@
 // Tests of cb/symbols/libraries/coff on real objects and archives: atof.obj (a Visual C++ x86 object from the Win32 SDK's
 // C runtime, one function with four fix-ups), xhttp.obj (an Xbox 360 XDK object of PowerPC: eight small functions each
 // ending in a `bl` the linker fills), lz32.lib (the SDK's import library, twelve thunks `jmp [__imp_X]`), and cap32.lib
-// (an import library whose functions are imported by number). The expected values were compared with the Python
-// module's reading of the same files once; the readers were also run over the whole XDK library folder (XAPOBase,
-// libcMT, xhttp, xboxkrnl ...) and the Win32 SDK and DDK libraries against the Python module, function for function.
+// (an import library whose functions are imported by number). The readers were also run over the whole XDK library folder
+// (XAPOBase, libcMT, xhttp, xboxkrnl ...) and the Win32 SDK and DDK libraries, and each function's name, bytes, mask and offset checked.
 // Archives of damaged or odd shapes are made in the test out of these objects.
 //
-// DIVERGES from the Python module, by design: a section whose raw data runs past the end of the file makes the object
-// damaged (the Python cut the section short and read what was there); a long symbol name whose string-table offset
-// lies beyond the data is empty and one that has no terminator runs to the end of the data (the Python took all but
-// its last byte); a symbol past the end of its section names no bytes instead of an empty slice.
+// Damaged input: a section whose raw data runs past the end of the file makes the object
+// damaged; a long symbol name whose string-table offset
+// lies beyond the data is empty and one that has no terminator runs to the end of the data; a symbol past the end of its section
+// names no bytes.
 #include "cb/symbols/libraries/coff.hpp"
 
 #include <algorithm>

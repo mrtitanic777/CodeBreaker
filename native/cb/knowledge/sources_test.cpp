@@ -7,13 +7,12 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from codebreaker/knowledge/sources.py and its port:
+// Behaviour pinned here:
 //   * a data file that cannot be read, is not JSON, or is not the shape its kind says empties the kind AND is logged;
-//     the Python swallowed OSError/ValueError silently and let an IndexError (a signature naming a library that is not
-//     listed) crash every ask -- listed in _bugs/LIST.md;
-//   * the catalogue is data (file, layout, part), not lambdas; the old `keyed` parameter of _part was never used;
-//   * `authored()` of a kind that is not authored is a UsageError, not a KeyError;
-//   * the data folders are passed in (DataFolders), not read from a module-level __file__.
+//     a signature naming a library that is not listed does not crash the ask;
+//   * the catalogue is data (file, layout, part);
+//   * `authored()` of a kind that is not authored is a UsageError;
+//   * the data folders are passed in (DataFolders).
 
 using namespace cb;
 using namespace cb::knowledge;

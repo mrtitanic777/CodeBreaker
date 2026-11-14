@@ -1,5 +1,5 @@
 // A timing of the asset readers on real and fixture files, for the speed record (docs/TYPED_CPP_SPEED.md); runs only with CB_XBOX_BENCH_DIR=<the proof folder>
-// and prints the milliseconds per operation, to compare with the same operations in the Python (testdata/assets/bench_assets.py, run from the checkout with the same files).
+// and prints the milliseconds per operation, to compare runs (testdata/assets/bench_assets, run from the checkout with the same files).
 #include <chrono>
 #include <cstdio>
 

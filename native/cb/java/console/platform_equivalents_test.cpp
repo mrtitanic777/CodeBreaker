@@ -9,7 +9,7 @@ namespace {
 using namespace cb::java::console::platform_equivalents;
 
 CB_TEST("java.console.platform_equivalents.table_shape", [] {
-    // The table as the Python module held it: ten subsystems, 45 entries (22 real, 18 stub, 5 dead).
+    // The table: ten subsystems, 45 entries (22 real, 18 stub, 5 dead).
     const auto subs = subsystems();
     CB_CHECK_EQ(subs.size(), std::size_t{10});
     CB_CHECK_EQ(subs[0].name, "video");

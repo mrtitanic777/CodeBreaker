@@ -9,7 +9,7 @@ using namespace cb::exact;
 namespace stdfs = std::filesystem;
 
 // testdata/pascal is a small program in pieces (MAIN, four procedures, one nested in P01010, a stack-check file); the
-// golden_*.pas texts are what the Python module this one replaced joined from it, read through for what the 1981
+// golden_*.pas texts are the recorded joins, read through for what the 1981
 // compiler is given: the used variables only, the others' headings as stubs, the stack-check metacommands.
 
 namespace {

@@ -16,17 +16,14 @@ using cb::Bytes;
 using cb::Json;
 using std::string;
 
-// DIVERGES from the Python module (its old harness, 1,848 place() cases built from a recorded decoder plus 7,000 calls of
-// its helpers, agreed on everything else; the expectations in testdata/asm_blocks_cases.jsonl were produced by the
-// original and read through by hand):
+// Notes (an old harness of 1,848 place() cases built from a recorded decoder plus 7,000 calls of
+// its helpers agreed on everything else; the expectations in testdata/asm_blocks_cases.jsonl were read through by hand):
 //  - a window that leaves no instruction in the block (the ends moved past each other) is reported ("the window leaves no
-//    instruction in the block") and nothing is placed; the original wrote an empty MachineFragment and reported a block
-//    "0020-0017" (or raised IndexError when an end went below the first instruction);
+//    instruction in the block") and nothing is placed;
 //  - statements of an else-part that the carry block swallows (the part is in the block's asm) are not looked at, so
 //    place() no longer reports blocks it found in a list that has already left the tree;
-//  - `[bp - 08]` (a decimal with a leading zero) names the place; the original raised ValueError (int("08", 0));
-//  - the tree is edited in place (the original copied it first); the Python's `name_at` and `seg` arguments, which it never
-//    read, are gone, and `fixups` is the set of offsets that carry a relocation;
+//  - `[bp - 08]` (a decimal with a leading zero) names the place;
+//  - the tree is edited in place, and `fixups` is the set of offsets that carry a relocation;
 //  - an operand's `size` and `access` come from Capstone as the Operand fields.
 
 namespace {
@@ -37,7 +34,7 @@ Bytes bytes_of(const string& hex) {
     return out;
 }
 
-// the document as Python's json.dumps(sort_keys=True) would write it: the comparison is by content, not by key order
+// the document with sorted keys: the comparison is by content, not by key order
 string canonical(const Json& j) { return nlohmann::json::parse(j.dump()).dump(); }
 
 std::vector<string> said_list(const nlohmann::json& j) {
@@ -181,7 +178,7 @@ CB_TEST("decompile.asm_blocks.name_frame_places", [] {
     CB_CHECK_EQ(ab::name_frame_places("[bp + 6", frame), "[bp + 6");
     CB_CHECK_EQ(ab::name_frame_places("[bp + 0x]", frame), "[bp + 0x]");
     CB_CHECK_EQ(ab::name_frame_places("[bp + 0x6]", frame), "hFile");
-    CB_CHECK_EQ(ab::name_frame_places("[bp - 04]", frame), "local");             // DIVERGES: Python raised
+    CB_CHECK_EQ(ab::name_frame_places("[bp - 04]", frame), "local");             
     CB_CHECK_EQ(ab::name_frame_places("[bx + 6] [bp + 6] [bp + 6]", frame), "[bx + 6] hFile hFile");
     CB_CHECK_EQ(ab::name_frame_places("", frame), "");
 });

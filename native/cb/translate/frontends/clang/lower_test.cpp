@@ -2,22 +2,18 @@
 //
 // The real inputs: testdata/clang_<program>.tree.json is what `clang -Xclang -ast-dump=json` wrote for a C or C++ program
 // (the repo's C and C++ corpus, the CodingTeacher lessons, generated programs; the file paths rewritten to C:\proj) and
-// testdata/clang_<program>.l2.json the L2 document the original lowering (codebreaker/translate/frontends/clang/lower.py)
-// made of it; clang_cases.json says how each is lowered (main file, language, own files). The lowering here must give the
-// same document. The helper cases (string and character literals, widths, spellings, layouts, type parsing) were run through
-// the original too and reviewed.
+// testdata/clang_<program>.l2.json the checked-in L2 document for it; clang_cases.json says how each is lowered (main file, language, own files). The lowering here must give the
+// same document. The helper cases (string and character literals, widths, spellings, layouts, type parsing) were reviewed.
 //
-// DIVERGES from the original:
+// Behaviour pinned here:
 //   * a tree that is not what clang writes (a member missing, a value of the wrong kind) is a ParseError inside, and the
-//     declaration or expression it was found in becomes an Unsupported with the reason as `raw`; the Python caught
-//     TypeError, KeyError, ValueError and IndexError at the same places;
+//     declaration or expression it was found in becomes an Unsupported with the reason as `raw`;
 //   * constants are int64: an unsigned 64-bit constant past INT64_MAX, or an intermediate result that leaves int64, is no
-//     constant (the Python's integers grew without end); sizeof/alignof above INT64_MAX is written as an unsigned Lit;
-//   * a typedef that names itself is a ParseError after 40 nested names (the Python reached its recursion limit);
-//   * a function-try-block constructor with member initialisers gets them in a Block before the try; the Python failed with
-//     an AttributeError;
-//   * `__attribute__((...))` in a type spelling is dropped whatever it nests (the Python's pattern allowed one level);
-//   * the dump is not changed: the Python wrote `_f`, `_l`, `_c` and `_rb` into every node of the tree it was given.
+//     constant; sizeof/alignof above INT64_MAX is written as an unsigned Lit;
+//   * a typedef that names itself is a ParseError after 40 nested names;
+//   * a function-try-block constructor with member initialisers gets them in a Block before the try;
+//   * `__attribute__((...))` in a type spelling is dropped whatever it nests;
+//   * the dump is not changed: no `_f`, `_l`, `_c` or `_rb` bookkeeping is written into the nodes of the tree it is given.
 #include "cb/translate/frontends/clang/lower.hpp"
 
 #include <map>

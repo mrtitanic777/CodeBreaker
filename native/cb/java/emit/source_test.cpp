@@ -66,8 +66,8 @@ std::string srct_events(const ledger::Ledger& l, bool has_init_statics) {
     return out;
 }
 
-// testdata/source/<case>.{cpp,events}.golden: what the original Python module made of each case of cases.json.
-CB_TEST("java.source.cases_match_python", [] {
+// testdata/source/<case>.{cpp,events}.golden: the recorded output for each case of cases.json.
+CB_TEST("java.source.cases_match_golden", [] {
     const Json cases = cb::json::load(srct_dir() / "cases.json");
     CB_CHECK_EQ(cases["cases"].size(), std::size_t{18});
     for (const Json& c : cases["cases"]) {

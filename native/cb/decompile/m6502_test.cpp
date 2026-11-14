@@ -10,14 +10,13 @@
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 
-// DIVERGES from the Python module (the old harness agreed on all else: 9342 cases, 4138 decodes, 5198 assemblies):
-//  - A number is `$hex`, decimal, or `0x` hex. Python's int(s, 0) also took `0b101`, `0o17`, `1_000`, digits of other
-//    scripts and rejected leading zeros (`012`); ca65 has none of those spellings except plain decimal, so the first
-//    four are errors now and `012` is decimal 12.
-//  - decode() takes an unsigned 32-bit address and an unsigned offset: a negative offset (Python indexed from the end)
+// Notes (an old harness agreed on all else: 9342 cases, 4138 decodes, 5198 assemblies):
+//  - A number is `$hex`, decimal, or `0x` hex. `0b101`, `0o17`, `1_000` and digits of other
+//    scripts are errors (ca65 has none of those spellings), and `012` is decimal 12.
+//  - decode() takes an unsigned 32-bit address and an unsigned offset: a negative offset
 //    or a negative / past-4G address is not representable.
-//  - Error text is not compared; every assembler failure is a cb::ParseError (Python: ValueError).
-//  - The tables are iterated in opcode order, not dict insertion order.
+//  - Error text is not compared; every assembler failure is a cb::ParseError.
+//  - The tables are iterated in opcode order.
 namespace m = cb::decompile::m6502;
 using cb::Bytes;
 

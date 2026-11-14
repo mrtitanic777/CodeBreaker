@@ -1,6 +1,6 @@
 // Tests of the Xbox 360 recompiler's commands (cb/recompile/command.hpp) on a real Xbox 360 program (LoganMinecraftTest.xex under
 // C:/Nexia360/Games: each test is skipped when it, the xex program, or -- for the Xbox 360 runtime -- the built XenonRecomp is not on this
-// machine), against what the translated Python wrote on the same program (testdata/command/):
+// machine), against the recorded output on the same program (testdata/command/):
 //
 //   recompile --at 0x82060088 --size 0x100        at_82060088.cpp
 //   recompile --all --limit 20                    all20.cpp (a5c4cd03...) and all20_init.cpp (52460ece...), by SHA-1
@@ -9,12 +9,11 @@
 //                                                 the CMakeLists name folders of this machine) and the XenonRecomp log
 //   xenon-recompile <config.toml>                 "38 files generated ... 12 warning lines" of the same configuration
 //
-// Whole-program output was also compared with the Python's file by file (the 8561 functions of `recompile --all`, the 1163 files of the rexglue
-// project, the 47 of the Xbox 360 one): identical but for the line ends (the Python's text mode wrote CRLF) and the provenance comment line
+// Whole-program output was also compared file by file with the reference run (the 8561 functions of `recompile --all`, the 1163 files of the rexglue
+// project, the 47 of the Xbox 360 one): identical but for the line ends (LF here) and the provenance comment line
 // of three files (CMakeLists.txt, src/logan.toml, src/module_info.cpp name the module that wrote them).
 //
-// DIVERGES from the Python: `--at` with an address outside the code is a usage error (the Python took a negative slice of the code and
-// translated whatever it found there).
+// `--at` with an address outside the code is a usage error.
 #include "cb/recompile/command.hpp"
 
 #include <algorithm>
@@ -85,7 +84,7 @@ std::string rc_golden(const char* name) { return fs::read_text(testing::data_pat
 
 }  // namespace
 
-CB_TEST("recompile.command.one_function_matches_the_python", [] {
+CB_TEST("recompile.command.one_function_matches_the_golden", [] {
     RcSetup setup;
     if (!setup.ok) return;
     const std::string out = fs::to_text(setup.dir.path()) + "/at.cpp";
@@ -95,7 +94,7 @@ CB_TEST("recompile.command.one_function_matches_the_python", [] {
     CB_CHECK_EQ(fs::read_text(fs::from_text(out)), rc_golden("at_82060088.cpp"));
 });
 
-CB_TEST("recompile.command.the_first_functions_match_the_python", [] {
+CB_TEST("recompile.command.the_first_functions_match_the_golden", [] {
     RcSetup setup;
     if (!setup.ok) return;
     const std::string out = fs::to_text(setup.dir.path()) + "/all20.cpp";
@@ -135,7 +134,7 @@ CB_TEST("recompile.command.misuse", [] {
     CB_CHECK_THROWS_AS(NotFoundError, rc_run(rcmd::recompile, setup.environment, {fs::to_text(setup.dir.path() / "missing.xex"), "--all"}));
 });
 
-CB_TEST("recompile.command.the_rexglue_project_matches_the_python", [] {
+CB_TEST("recompile.command.the_rexglue_project_matches_the_golden", [] {
     RcSetup setup;
     if (!setup.ok) return;
     const std::filesystem::path out = setup.dir.path() / "project";
@@ -149,7 +148,7 @@ CB_TEST("recompile.command.the_rexglue_project_matches_the_python", [] {
     CB_CHECK_EQ(rc_manifest(out, {"kernel/rex_kernel", "graphics/rex_dxbc"}), rc_golden("rex_manifest.txt"));
 });
 
-CB_TEST("recompile.command.the_xbox_360_project_matches_the_python", [] {
+CB_TEST("recompile.command.the_xbox_360_project_matches_the_golden", [] {
     // the program is XenonRecomp's: built from native/xenonrecomp (`xenon-recompile` builds it when it is not)
     const std::filesystem::path checkout = config::find_checkout();
     std::error_code ec;

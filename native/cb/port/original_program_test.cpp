@@ -1,5 +1,4 @@
-// Tests of cb/port/original_program (the program as its old compiler saw it) and cb/port/complaints. Expected values come
-// from the Python original on the same inputs (reviewed).
+// Tests of cb/port/original_program (the program as its old compiler saw it) and cb/port/complaints. Expected values were reviewed by hand.
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/port/complaints.hpp"

@@ -1,12 +1,11 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of cb/source/ne_asm/fixups on the real 16-bit module LZEXPAND.DLL (formats/testdata): the fix-up sites of its segments are
-// what the Python module gave, read back by hand against the relocation tables (the chain of a record visits every site that
+// the recorded ones, read back by hand against the relocation tables (the chain of a record visits every site that
 // holds the link to the next one); a few records are rewritten to reach the label kinds the module does not use; the listing is
 // made with a stand-in for objdump (a canned text), and with the real one when it is installed.
 //
-// DIVERGES from the Python module, by design: a segment that does not exist is a UsageError (the Python indexed the list: a wrong
-// index counted from the end, or an IndexError); a segment with no data in the file has no fix-up sites (the Python read the
-// start of the file as its bytes); a negative start or count is a UsageError of the command line; the temporary file objdump
+// Behaviour pinned here: a segment that does not exist is a UsageError (a wrong index is never counted from the end);
+// a segment with no data in the file has no fix-up sites; a negative start or count is a UsageError of the command line; the temporary file objdump
 // reads is in a folder of its own that is removed with it; the sites come sorted by offset.
 #include "cb/source/ne_asm/fixups.hpp"
 
@@ -75,7 +74,7 @@ CB_TEST("source.ne_asm.fixups.open_module_forms", [] {
 CB_TEST("source.ne_asm.fixups.sites_of_real_segments", [] {
     const ne::Module module = fx::open_module(lz_bytes());
     using Sites = std::map<std::uint32_t, std::string>;
-    // segment 1 imports from KERNEL only (the Python module's answer; each chain starts at the record's offset and follows the links)
+    // segment 1 imports from KERNEL only
     CB_CHECK(sites(module, 1) == (Sites{{37, "KERNEL.15"}, {88, "KERNEL.15"}, {117, "KERNEL.15"}, {141, "KERNEL.17"}, {164, "KERNEL.17"}, {205, "KERNEL.17"},
                                          {231, "KERNEL.17"}, {257, "KERNEL.17"}, {331, "KERNEL.83"}, {363, "KERNEL.85"}, {391, "KERNEL.84"}, {419, "KERNEL.84"},
                                          {439, "KERNEL.81"}}));

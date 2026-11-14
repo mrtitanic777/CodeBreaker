@@ -122,7 +122,7 @@ void m16_write(const std::filesystem::path& file, const std::map<std::uint32_t, 
     json::save(file, doc, json::Style::PythonCompatiblePretty);
 }
 
-// The first of the greatest: Python's max(items, key=...) over a list in its order.
+// The first of the greatest: the first maximum of a list, in its order.
 template <class T, class Key>
 const T& m16_first_greatest(const std::vector<T>& items, Key key) {
     const T* best = &items.front();

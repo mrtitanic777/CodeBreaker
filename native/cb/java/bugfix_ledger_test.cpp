@@ -13,10 +13,9 @@ stdfs::path fixture() { return cb::testing::data_path("java/testdata/bugfix_tree
 
 // testdata/bugfix_tree is a small tree exercising every rule of the scan (layers, the pruned data folders, caches,
 // the scanner's own file, meta references, a description borrowed from the next line, pipes, long text), and
-// testdata/bugfix_ledger.golden.md is what the Python module renders for it.
-// DIVERGES: the italic line under the title names the module `bugfix_ledger` and the `codebreaker java
-// bugfix-ledger` command; the Python named its .py file and `python -m codebreaker`, which no longer exist.
-CB_TEST("java.bugfix_ledger.render_matches_python", [] {
+// testdata/bugfix_ledger.golden.md is what is rendered for it.
+// The italic line under the title names the module `bugfix_ledger` and the `codebreaker java bugfix-ledger` command.
+CB_TEST("java.bugfix_ledger.render_matches_golden", [] {
     auto entries = collect(fixture());
     CB_CHECK_EQ(entries.size(), std::size_t{12});
     CB_CHECK_EQ(render(entries), cb::fs::read_text(cb::testing::data_path("java/testdata/bugfix_ledger.golden.md")));

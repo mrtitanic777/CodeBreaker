@@ -148,7 +148,7 @@ std::size_t skip_word(std::string_view s, std::size_t at) {
     return at;
 }
 
-// The lines of a file as Python's text mode reads them: \n, \r\n and a lone \r end a line.
+// The lines of a file as a text-mode read gives them: \n, \r\n and a lone \r end a line.
 std::vector<std::string> file_lines(const std::filesystem::path& path) {
     const std::string text = ds_text::from_latin1(fs::read_file(path));
     std::vector<std::string> lines;

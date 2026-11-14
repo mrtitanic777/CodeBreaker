@@ -1,10 +1,10 @@
 // Tests of cb/formats/xbox/nand.hpp on a small flash made by a recipe (a newer root block, an older one, a two-block file, a file whose
-// logical block is carried by another physical block, a directory name met twice). The Python's Flash reads the same recipe's bytes
-// (state/work/typed-port/xbox-deferred/vol_golden.py) as: root block 5, files one.bin (start 1, size 16584, time 333: the later of its two
+// logical block is carried by another physical block, a directory name met twice). A flash reads the same recipe's bytes
+// as: root block 5, files one.bin (start 1, size 16584, time 333: the later of its two
 // entries) and two.bin (start 3, size 50, time 222), and the SHA-1s below.
 //
-// DIVERGES from the Python: a flash whose file chain or pages lie outside the dump is FormatError (ValueError / a short slice), and a
-// directory name's non-ASCII byte becomes U+FFFD in UTF-8 as the Python's "replace" decoding does.
+// Behaviour pinned here: a flash whose file chain or pages lie outside the dump is FormatError, and a
+// directory name's non-ASCII byte becomes U+FFFD in UTF-8.
 #include "cb/formats/xbox/nand.hpp"
 
 #include "cb/core/crypto.hpp"
@@ -21,7 +21,7 @@ constexpr std::size_t kPageWithSpare = nand::kPage + nand::kSpare;
 
 static std::string sha1_hex(ByteView v) { return crypto::to_hex(crypto::sha1(v)); }
 
-// The recipe of vol_golden.py's make_flash.
+// The recipe of make_flash.
 static Bytes make_flash() {
     constexpr std::size_t blocks = 6;
     Bytes raw(blocks * nand::kPagesPerBlock * kPageWithSpare, 0xFF);
@@ -78,9 +78,9 @@ static Bytes make_flash() {
     return raw;
 }
 
-CB_TEST("formats.xbox.nand.the_flash_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.nand.the_flash_reads", [] {
     const Bytes raw = make_flash();
-    CB_CHECK_EQ(sha1_hex(raw), "daae5e1c90915c9a5c4ca826a9ba7f6c9ca801da");   // the recipe made the Python's bytes
+    CB_CHECK_EQ(sha1_hex(raw), "daae5e1c90915c9a5c4ca826a9ba7f6c9ca801da");   // the recipe is deterministic
     const nand::Flash flash = nand::Flash::parse(raw);
     CB_CHECK_EQ(flash.root_block(), 5u);
     CB_CHECK_EQ(flash.files().size(), 2u);

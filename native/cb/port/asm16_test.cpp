@@ -1,6 +1,6 @@
 // Tests of cb/port/asm16: reading assembler source (lines, operands, segments, the old assembler's listing), the C program's
-// types, the kinds of the registers (join, merge), and whole modules ported -- the text emitted, compared with what the Python
-// original made of the same module (testdata/asm16/golden, made by testdata/asm16/gen_golden.py and read before it was kept).
+// types, the kinds of the registers (join, merge), and whole modules ported -- the text emitted, compared with the checked-in
+// golden (testdata/asm16/golden, read before it was kept).
 // cb-unity: alone
 #include <algorithm>
 #include <set>
@@ -83,7 +83,7 @@ CB_TEST("port.asm16.number", [] {
         {"12", 12},         {"-3", std::nullopt},      {"1_0", std::nullopt}, {"h", std::nullopt}, {"0h", 0},   {"ffh", std::nullopt},
         {"fh", std::nullopt}, {"09h", 9}, {" 7 ", 7},  {"0x", std::nullopt}, {"1x2", std::nullopt}, {"0ffffh", 65535}};
     for (const auto& [text_in, want] : cases) CB_CHECK(number(text_in) == want);
-    CB_CHECK(!number("99999999999999999999"));   // (DIVERGES: the Python's integers are as big as the text; a count too big for 64 bits is no number here)
+    CB_CHECK(!number("99999999999999999999"));   // (a count too big for 64 bits is no number)
 });
 
 CB_TEST("port.asm16.operands", [] {
@@ -126,8 +126,7 @@ CB_TEST("port.asm16.operands", [] {
     CB_CHECK_EQ(op_text("q", &eq), "mem size=4 seg=- sym=q regs= disp=0");
     CB_CHECK_EQ(op_text("bad", &eq), "imm bad");   // (an equate, though its value is no number)
     CB_CHECK_EQ(op_text("offset foo+cnt", &eq), "off foo 5");
-    // DIVERGES: `offset x+zz` (a displacement that is no number) left the displacement out of the Python's operand (None, and
-    // the text written without it); it is an error here, so that an address is never written short.
+    // `offset x+zz` (a displacement that is no number) is an error, so that an address is never written short.
     CB_CHECK_THROWS_AS(Asm16Error, operand("offset x+zz"));
 });
 
@@ -168,7 +167,7 @@ CB_TEST("port.asm16.parse", [] {
     CB_CHECK(!lines[10].label);  // (`n::` is no label)
     CB_CHECK_EQ(lines[10].no, 11);
     CB_CHECK(parse("").size() == 1 && !parse("")[0].op);
-    CB_CHECK_THROWS_AS(Asm16Error, parse("rep"));   // (DIVERGES: an IndexError in the Python)
+    CB_CHECK_THROWS_AS(Asm16Error, parse("rep"));   // (an instruction with no operand where one is needed is an error)
     CB_CHECK_EQ(parse("foo EQU 3")[0].directive->name.value(), "foo");
     CB_CHECK_EQ(parse("@x: ret")[0].label.value(), "@x");
 });
@@ -516,7 +515,7 @@ J facts_of(const Port& m) {
     return f;
 }
 
-// Ports the module as the golden's Python did, and compares the text and the facts.
+// Ports the module and compares the text and the facts.
 void check_case(const std::string& id, Port& m, const std::set<std::string>& longret, const J& all_facts) {
     const J& want = all_facts.at(id);
     std::string text_out, error;
@@ -547,7 +546,7 @@ void check_case(const std::string& id, Port& m, const std::set<std::string>& lon
 
 }  // namespace
 
-CB_TEST("port.asm16.synthetic_modules_match_the_python", [] {
+CB_TEST("port.asm16.synthetic_modules_match_the_golden", [] {
     const std::vector<std::string> parts = split_synth();
     const J all_facts = J::parse(fs::read_text(test_data("golden/facts.json")));
     const std::string hdr = parts[5];
@@ -580,7 +579,7 @@ CB_TEST("port.asm16.synthetic_modules_match_the_python", [] {
     }
 });
 
-CB_TEST("port.asm16.old_library_modules_match_the_python", [] {
+CB_TEST("port.asm16.old_library_modules_match_the_golden", [] {
     const J all_facts = J::parse(fs::read_text(test_data("golden/facts.json")));
     const std::vector<std::string> empty = {""};
     const CTypes ct(empty, empty);
@@ -724,7 +723,7 @@ CB_TEST("port.asm16.damaged_source_is_an_asm16_error_or_a_port", [] {
 });
 
 CB_TEST("port.asm16.an_offset_with_a_displacement_keeps_it", [] {
-    // DIVERGES (a bug of the Python, fixed in both): `push offset v+4`, `add ax, offset v+2` and `cmp bx, offset v+6` wrote the
+    // `push offset v+4`, `add ax, offset v+2` and `cmp bx, offset v+6` wrote the
     // address of v without its displacement.
     const std::vector<std::string> empty = {""};
     const CTypes ct(empty, empty);

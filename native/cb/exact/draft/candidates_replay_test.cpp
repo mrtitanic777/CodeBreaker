@@ -1,5 +1,5 @@
 // Replays the cases of a recorded corpus through cb::exact::draft::candidates and compares each result, and the tables
-// the passes filled, with what the Python module (the original) answered. The corpus is a folder of
+// the passes filled, with the recorded answers. The corpus is a folder of
 //
 //     texts.txt   draft bodies, one a line (\\ \t \n \r escaped)
 //     cases.txt   op TAB text-index TAB context [TAB extra..]
@@ -8,7 +8,7 @@
 //     codes.txt   16-bit code, hex, a line each (for byte_fields)
 //     kit/        the fake kit (ctype.h, stdio.h)
 //
-// made by state/work/typed-port/exact.draft.candidates/expected.py. The environment variable
+// made by a recording harness. The environment variable
 // CB_CANDIDATES_REPLAY names the folder (the test is skipped without it); CB_CANDIDATES_REPLAY_FILTER keeps only the
 // cases whose op it names. native/cb/exact/testdata/draft_candidates.* is the part of that corpus checked in (see
 // candidates_test.cpp).
@@ -66,7 +66,7 @@ std::uint32_t replay_crc32(std::string_view s) {
     return c ^ 0xFFFFFFFFu;
 }
 
-// json.dumps(ensure_ascii=True) of a text of bytes.
+// A text of bytes as JSON with non-ASCII escaped.
 std::string replay_json(std::string_view s) {
     std::string out = "\"";
     for (const unsigned char c : s) {
@@ -91,7 +91,7 @@ std::string replay_json(const Strings& v) {
 
 std::string replay_opt(const std::optional<std::string>& v) { return v ? replay_json(*v) : "null"; }
 
-// ---- the recorded projects (expected.py's PRJS) ----------------------------------------------------------------
+// ---- the recorded projects ---------------------------------------------------------------------------------------
 
 Bytes replay_image() {
     Bytes img(0x40, 0);
@@ -274,7 +274,7 @@ cand::State replay_state(const ReplayContext& c, int ctx) {
     return s;
 }
 
-// ---- the tables as expected.py dumps them ----------------------------------------------------------------------
+// ---- the tables as the recording dumps them ----------------------------------------------------------------------
 
 std::string replay_tables(const cand::State& s) {
     const dt::FunctionFacts& f = s.facts;
@@ -371,7 +371,7 @@ std::string replay_tables(const cand::State& s) {
         for (const dt::Site& s2 : f.unsigned_sites) u.push_back(std::format("[{},{}]", replay_json(s2.pointer), s2.offset));
         for (const std::string& g : f.unsigned_globals) u.push_back(replay_json(g));
         std::ranges::sort(u);
-        add("u", replay_json(u));   // (each a JSON text: dumped twice, as expected.py does)
+        add("u", replay_json(u));   // (each a JSON text: dumped twice, as the recording does)
     }
     return "{" + ct::join(parts, ",") + "}";
 }
@@ -606,7 +606,7 @@ std::size_t replay_corpus(const std::filesystem::path& dir) {
 }  // namespace
 
 // The checked-in part of the corpus (native/cb/exact/testdata/draft_candidates): the smallest texts on which each pass
-// changes something, and a few it leaves alone, with what the Python module answered and the tables it filled.
+// changes something, and a few it leaves alone, with the recorded answers and the tables it filled.
 CB_TEST("exact.draft.candidates.checked_in_corpus", [] {
     CB_CHECK_EQ(replay_corpus(testing::data_path("exact/testdata/draft_candidates")), 0u);
 });

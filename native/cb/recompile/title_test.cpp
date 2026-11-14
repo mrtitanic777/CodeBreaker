@@ -181,7 +181,7 @@ CB_TEST("recompile.title.unpack_copies_a_folders_files_once", [] {
     CB_CHECK(fs::read_file(out / "media" / "deep" / "a.bin") == (Bytes{1, 2, 3}));
     CB_CHECK(fs::read_file(out / "default.xex") == xex());
     CB_CHECK_EQ(t->unpack(out), 0u);                                    // the marker says it is there
-    // the marker is the Python's layout: a JSON object with the source, the size and the format
+    // the marker is a JSON object with the source, the size and the format
     const std::string marker = fs::read_text(out / kMarkerName);
     CB_CHECK(marker.find("\"source\": ") != std::string::npos && marker.find("\"size\": 7") != std::string::npos && marker.find("\"format\": 2") != std::string::npos);
     // a changed source (another size) is unpacked again
@@ -268,7 +268,7 @@ CB_TEST("recompile.title.a_disc_image_plain_or_compressed_is_a_title_through_the
 
 CB_TEST("recompile.title.minecraft_from_the_nexia_library", [] {
     // The real titles (silent where they are not): a LIVE package of Minecraft: Story Mode inside a console's content folders, and
-    // Minecraft Xbox 360 Edition as a folder of files. The Python's title.locate gives the same names and the same default.xex.
+    // Minecraft Xbox 360 Edition as a folder of files. locate gives these names and this default.xex.
     const stdfs::path games = "C:/Nexia360/Games";
     std::error_code ec;
     if (stdfs::exists(games / "Minecraft Story Mode", ec)) {

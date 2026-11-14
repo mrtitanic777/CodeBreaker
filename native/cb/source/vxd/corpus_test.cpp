@@ -1,6 +1,6 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of cb/source/vxd/corpus and loadable_corpus: what is a driver of a folder, the resumable results files, and a run of the whole-driver build over a
-// folder of the real drivers of formats/testdata (SPLITTER.VXD, SRAMMTD.VXD). The expected records are the Python modules' on the same files.
+// folder of the real drivers of formats/testdata (SPLITTER.VXD, SRAMMTD.VXD). The expected records are the recorded ones on the same files.
 #include "cb/source/vxd/corpus.hpp"
 
 #include <nlohmann/json.hpp>
@@ -125,7 +125,7 @@ CB_TEST("source.vxd.loadable_corpus.splitter_and_srammtd_build", [] {
     CB_CHECK(said.find("== loadable corpus: 2/2 BUILD | 2 device-id-correct | 2 identity-map") != std::string::npos);
     const nlohmann::ordered_json results = corpus_load(dir.path() / "loadable.json");
     CB_CHECK_EQ(results.size(), std::size_t{2});
-    // the Python module's record of splitter
+    // the recorded entry for splitter
     const nlohmann::ordered_json& splitter = results["splitter"];
     CB_CHECK(splitter["ok"] == true);
     CB_CHECK(splitter["stage"].is_null());

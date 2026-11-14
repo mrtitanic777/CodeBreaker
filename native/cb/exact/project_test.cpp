@@ -13,17 +13,17 @@ namespace stdfs = std::filesystem;
 
 // testdata/project is a small real-mode program (an MZ file of two relocations, a 96-byte image) and the folders the
 // stages read of it: project.json, SYMBOLS, one-function files, whole files placed two ways, an "also" set of assembler
-// files. The expected values below are what the Python project.py gives for the same folder (read off its output, and
+// files. The expected values below were read off the project's output for the same folder, and
 // checked against the file by hand: the image is the file less its 64-byte header; both relocations hold the word 4,
 // so DGROUP is paragraph 4, offset 0x40).
 //
-// DIVERGES from the Python module (project.py), on purpose:
-//   * SYMBOLS lines "name ? address" (what save_symbols writes for a place of no kind) are read back as such; the Python
-//     skipped them, so a save lost every name whose kind was unsaid
-//   * a SYMBOLS or "starts" line whose address is not hexadecimal is a ParseError (the Python raised ValueError)
-//   * a "sources" match whose group 1 is not a number is left out (the Python raised ValueError)
-//   * the "data_pads" are in address order (the Python's were in the order of the key texts)
-//   * "code_segments" as any text but "relocs" is refused (the Python read the characters as numbers)
+// Design notes:
+//   * SYMBOLS lines "name ? address" (what save_symbols writes for a place of no kind) are read back as such, so
+//     a save does not lose a name whose kind was unsaid
+//   * a SYMBOLS or "starts" line whose address is not hexadecimal is a ParseError
+//   * a "sources" match whose group 1 is not a number is left out
+//   * the "data_pads" are in address order
+//   * "code_segments" as any text but "relocs" is refused
 
 namespace {
 
@@ -205,7 +205,7 @@ CB_TEST("exact.project.symbols", [] {
     CB_CHECK_EQ(s.begin()->first, "_main");                       // (and keeps its first position)
     CB_CHECK_EQ(s.begin()[5].first, "dup");
 
-    // SYMBOLS written back: by kind ('?', C, D, S), address, name -- what the Python wrote
+    // SYMBOLS written back: by kind ('?', C, D, S), address, name
     p->save_symbols(s);
     CB_CHECK_EQ(fs::read_text(p->path("SYMBOLS")),
                 "# name, C (code: image offset) or D (data: offset in the data segment), address\n"

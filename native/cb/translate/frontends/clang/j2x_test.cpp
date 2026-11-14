@@ -3,17 +3,16 @@
 //
 // The real inputs: the Java lane's C++ for six classes (Vec3D, MathHelper, AxisAlignedBB, Base, Sub, and the RoundTrip driver, whose
 // C++ holds every shape the pass maps: JavaString and JCat, JArray, System::out, j2xToInt, sequencing temporaries ...), read by clang
-// into L2 (testdata/j2x_<class>.pre.json). testdata/j2x_<class>.post.json is what the Python pass (codebreaker/translate/frontends/
-// clang/j2x.py) made of each unit; the pass here must give the same document. testdata/j2x_roundtrip_src is the Java of those classes:
+// into L2 (testdata/j2x_<class>.pre.json). testdata/j2x_<class>.post.json is the checked-in result for each unit; the pass must give the same document. testdata/j2x_roundtrip_src is the Java of those classes:
 // the whole round trip (the Java lane's C++, read back through this pass, the Java back end, javac and the JVM) is run natively with
-// the units read from the goldens, and must give the Python round trip's verdict (equivalent, idiomatic tier) and the same Java text
+// the units read from the goldens, and must give the expected verdict (equivalent, idiomatic tier) and the same Java text
 // (testdata/j2x_RoundTripped.java.txt).
 //
-// DIVERGES from j2x.py:
-//   * a symbol is lifted once and its uses keep sharing it (the Python made a new symbol for every use);
-//   * a class type keeps what the lowering knew of it beyond name and arguments (the Python rebuilt it from the two);
-//   * the types in a list (`implements`, `throws`, a catch's types, a call's type arguments) are lifted (the Python left them);
-//   * `new JArray(n)` of a type that is not an array is left as it is (the Python made an array creation with no element type).
+// Behaviour pinned here:
+//   * a symbol is lifted once and its uses keep sharing it;
+//   * a class type keeps what the lowering knew of it beyond name and arguments;
+//   * the types in a list (`implements`, `throws`, a catch's types, a call's type arguments) are lifted;
+//   * `new JArray(n)` of a type that is not an array is left as it is, not made an array creation with no element type.
 #include "cb/translate/frontends/clang/j2x.hpp"
 
 #include <algorithm>
@@ -87,7 +86,7 @@ Json j2xt_load(const std::string& name) { return cb::json::load(cb::testing::dat
 
 }  // namespace
 
-CB_TEST("translate.j2x.units_lift_to_what_the_python_pass_made", [] {
+CB_TEST("translate.j2x.units_lift_to_the_recorded_document", [] {
     std::size_t changed = 0;
     for (const char* cls : kJ2xClasses) {
         Arena arena;
@@ -129,7 +128,7 @@ CB_TEST("translate.j2x.the_driver_has_no_runtime_left", [] {
     CB_CHECK(concat > 0);
     CB_CHECK(println > 0);
     CB_CHECK(temps_before > 0);
-    CB_CHECK_EQ(count_temps(unit), std::size_t(10));   // (those whose use is not a comma of assignments stay, as the Python pass left them)
+    CB_CHECK_EQ(count_temps(unit), std::size_t(10));   // (those whose use is not a comma of assignments stay)
 });
 
 CB_TEST("translate.j2x.types", [] {
@@ -205,7 +204,7 @@ CB_TEST("translate.j2x.bind_sets_the_hook", [] {
     CB_CHECK_EQ(j2xt_difference(j2xt_normal(l2::to_json(*unit)), j2xt_normal(j2xt_load("j2x_Vec3D.post.json")), ""), std::string());
 });
 
-// The types in a list are lifted like the ones in a slot (tests/translate/test_j2x.py gives the Python pass the same case).
+// The types in a list are lifted like the ones in a slot.
 CB_TEST("translate.j2x.types_in_lists_are_lifted", [] {
     Arena arena;
     const ir::TypeP runtime_string = ir::class_type("JavaString"), string = ir::class_type("java.lang.String");
@@ -242,7 +241,7 @@ CB_TEST("translate.j2x.types_in_lists_are_lifted", [] {
 
 // The round trip, whole, with the hook the native judge needs: Java classes -> (the Java lane's C++, read by clang: the units come
 // from the goldens here) -> j2x -> the Java back end -> javac -> the JVM, judged against the original Java.
-CB_TEST("translate.j2x.the_native_round_trip_judge_gives_the_python_verdict", [] {
+CB_TEST("translate.j2x.the_native_round_trip_judge_gives_the_expected_verdict", [] {
     const stdfs::path jdk = "C:/Program Files/Java/jdk-21/bin";
     const std::string javac_text = cb::fs::get_env("CB_JAVAC").value_or((jdk / "javac.exe").string());
     const std::string java_text = cb::fs::get_env("CB_JAVA").value_or((jdk / "java.exe").string());
@@ -276,7 +275,7 @@ CB_TEST("translate.j2x.the_native_round_trip_judge_gives_the_python_verdict", []
     CB_CHECK(v.verdict == jj::Kind::Equivalent);
     CB_CHECK_EQ(v.tier.value_or(""), std::string("idiomatic"));
     CB_CHECK(v.notes.empty());
-    // and it is the Java the Python round trip wrote
+    // and it is the checked-in Java
     std::string golden = cb::fs::read_text(cb::testing::data_path(j2xt_data("j2x_RoundTripped.java.txt")));
     std::string wrote = v.java.value_or("");
     golden.erase(std::remove(golden.begin(), golden.end(), '\r'), golden.end());

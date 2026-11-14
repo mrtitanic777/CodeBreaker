@@ -5,12 +5,12 @@
 // that is not the DOS executive. With the real kit and executive (CB_KIT_MSPASCAL and CB_CBDOS_DLL name them) the 3.11 compiler compiles a
 // small program and its procedures come out named.
 //
-// Hand-checked against mspascal.py: the helpers' bytes, the order of emit_order for nested procedures, forward declarations, records and
+// Hand-checked: the helpers' bytes, the order of emit_order for nested procedures, forward declarations, records and
 // case blocks, the PUBDEF's layout (group 0, the segment's index, each name with its offset and a zero type), "(helper)", the command
 // lines `T,T,T,T;` (and `NAME,T,T,T;` for another file name), the 1500 characters of listing an error shows.
 //
-// DIVERGES from mspascal.py: an unterminated procedure heading ends the scan (the Python raised IndexError); passes run `fast` (no block
-// hook: the blocks are not used here); the 1.10 kit's zips are extracted by a hook (Hooks::extract_zip), the Python's zipfile.
+// Design notes: an unterminated procedure heading ends the scan; passes run `fast` (no block
+// hook: the blocks are not used here); the 1.10 kit's zips are extracted by a hook (Hooks::extract_zip).
 #include "cb/exact/mspascal.hpp"
 
 #include <nlohmann/json.hpp>
@@ -164,7 +164,7 @@ CB_TEST("exact.mspascal.the_order_procedures_are_emitted_in", [] {
     CB_CHECK(pas::emit_order("").empty());
     // a procedure declared external or extern has no code of its own
     CB_CHECK(pas::emit_order("procedure x; extern;\nprocedure y; external;\nprocedure z;\nbegin end;\n") == std::vector<std::string>{"Z"});
-    // a heading that never ends: the scan stops with what it found (the Python raised IndexError)
+    // a heading that never ends: the scan stops with what it found
     CB_CHECK(pas::emit_order("procedure a;\nbegin end;\nprocedure b(x: integer").size() == 1);
     // records and cases open `end`s that are not a procedure's
     CB_CHECK(pas::emit_order("procedure p;\ntype t = record a: integer end;\nbegin\n  case 1 of 1: ; end;\nend;\n") == std::vector<std::string>{"P"});

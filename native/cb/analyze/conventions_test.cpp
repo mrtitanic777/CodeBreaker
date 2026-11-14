@@ -1,12 +1,10 @@
 // Tests of the calling-convention pass: the facts it works out for the hand-assembled sample program (each read against the
 // machine code), the facts of fifteen real modules of the Windows 95 corpus against what the pass answered when it was
 // cbanalyze.dll's conventions.cc (every function's fact by a digest of its document, the counts, the report lines, the groups
-// of identical functions and the bridge layer; testdata/<module>.conventions.json, made by testdata/gen_conventions.py from the
-// live Python and DLL), the document a fact becomes, and the rows the fact table keeps of a report.
+// of identical functions and the bridge layer; testdata/<module>.conventions.json), the document a fact becomes, and the rows the fact table keeps of a report.
 //
-// DIVERGES from the engine it replaces:
-//   * A function whose returns pop different amounts, equally often, takes the smaller (the engine took the first in the order of
-//     a Python set of the amounts, which is an accident of hashing); none of the 15 modules has one.
+// Notes:
+//   * A function whose returns pop different amounts, equally often, takes the smaller; none of the 15 modules has one.
 //   * The names of the 16/32-bit bridge APIs, the callback names and the printf-like imports are matched by code, not by
 //     std::regex; the patterns are the same.
 #include "cb/analyze/conventions.hpp"
@@ -336,7 +334,7 @@ std::string counts_text(const cv::Counts& c) {
                        c.duplicate_functions, c.bridge_imports);
 }
 
-// The counts the Python reported, in the order of cv::Counts.
+// The counts reported, in the order of cv::Counts.
 std::string counts_text(const Json& j) {
     const char* keys[] = {"functions", "convention_known", "callee_removes_arguments", "caller_removes_arguments", "argument_count_known",
                           "argument_count_from_return", "argument_count_from_callers", "argument_count_from_frame", "register_arguments",

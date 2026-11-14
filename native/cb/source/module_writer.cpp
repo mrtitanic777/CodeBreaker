@@ -1,7 +1,7 @@
 // cb/source/module_writer.cpp -- one source file per module, every function labelled with what is known (module_writer.hpp).
 //
-// DIVERGES from the Python writer: the module is handed over prepared (the writer does not find it, reconstruct it or read its binary); a
-// function of the runtime library with no name or library in the store is written as `?`, where the Python wrote `None`; the status line of
+// Design notes: the module is handed over prepared (the writer does not find it, reconstruct it or read its binary); a
+// function of the runtime library with no name or library in the store is written as `?`; the status line of
 // each function is built as the back end's parts, not through an L2 tree of units (the tree's origins held an address the store spells as a
 // string).
 

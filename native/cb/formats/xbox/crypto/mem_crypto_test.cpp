@@ -1,11 +1,9 @@
-// Tests of cb/formats/xbox/crypto/mem_crypto.hpp against the values the Python module (MemCrypto.py) gives for the same inputs.
-// The expected values below were made by running the Python on a synthetic 0x40000-byte image (byte i = i*7 + (i>>8)*13) with the
-// keys 00..0f, 10..1f, 20..2f (state/work/typed-port/xbox-deferred/mem_golden.py in the work that wrote this), and the digest of the long ones.
+// Tests of cb/formats/xbox/crypto/mem_crypto.hpp against recorded values for the same inputs.
+// The expected values below were made on a synthetic 0x40000-byte image (byte i = i*7 + (i>>8)*13) with the
+// keys 00..0f, 10..1f, 20..2f, and the digest of the long ones.
 //
-// DIVERGES from the Python: the Python's tweak table is empty until its main() runs, so the module used as a library fails with an
-// IndexError (fixed in the Python too, which now builds the table at import); a key blob of a nonce that is not 20 bytes resized
-// the blob in the Python and is UsageError here (the Python now refuses it as well); an image shorter than the hashes read
-// was silently clamped by the Python's slices and is FormatError here (and in the Python now).
+// Behaviour pinned here: the tweak table is built up front, so the module works used as a library; a key blob of a nonce that is not 20 bytes
+// is UsageError; an image shorter than the hashes read is FormatError (a read is never silently clamped).
 #include "cb/formats/xbox/crypto/mem_crypto.hpp"
 
 #include "cb/core/crypto.hpp"
@@ -47,7 +45,7 @@ CB_TEST("formats.xbox.crypto.mem_crypto.the_tweak_table_and_fix_address", [] {
     CB_CHECK_EQ(MemoryCrypto::fix_address(0x40010), 0x40010u);
 });
 
-CB_TEST("formats.xbox.crypto.mem_crypto.tweaks_equal_the_pythons", [] {
+CB_TEST("formats.xbox.crypto.mem_crypto.tweaks_match_the_recorded_output", [] {
     const MemoryCrypto m = engine();
     CB_CHECK_EQ(hexed(m.tweak(0)), "405060708090a0b0c0d0e0f00860f890");
     CB_CHECK_EQ(hexed(m.tweak(0x10)), "405162738495a6b7c8d9eafb046df69f");

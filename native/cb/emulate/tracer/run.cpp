@@ -52,7 +52,7 @@ int add(Run *r, int type, void *callback, uint64_t begin, uint64_t end) {
 
 }  // namespace
 
-// The hooks in trace_function's order: the instruction (or block) hook, the memory hook (or the lean write hook below
+// The hooks in the order of the run: the instruction (or block) hook, the memory hook (or the lean write hook below
 // the stack), unmapped accesses, interrupts, the lean write hook above the stack, the branch log. Unicorn runs the same
 // with the same hooks.
 int attach(Run *r) {

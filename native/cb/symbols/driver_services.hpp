@@ -147,7 +147,7 @@ Table table_of(knowledge::Store& store);
 
 // `driver-services [--generate [INCLUDE_DIR]] [FILE ...]`: without --generate the size of the table and, for each file, how many of its
 // service calls the table names; with it the table is made again from the kit's include files. A file that is not found is said so
-// (exit 0, as the Python did); no include files: exit 1.
+// (exit 0); no include files: exit 1.
 cli::Command command(const Environment& environment);
 
 }  // namespace cb::symbols::driver_services

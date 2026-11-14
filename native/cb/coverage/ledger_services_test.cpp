@@ -1,7 +1,6 @@
-// Tests of coverage::ledger::services_over: the `coverage` command built over the corpus and the function store of a state folder, against what
-// `python -m codebreaker coverage ...` printed for the same three-module corpus and no function store yet (testdata/commands/*.txt, made by
-// state/work/cmdlayer/gen_coverage.sh; the folders are <STATE> and <CORPUS>). The Python's verifier settings (the tools of this machine) are
-// given to the services as the digests the Python printed.
+// Tests of coverage::ledger::services_over: the `coverage` command built over the corpus and the function store of a state folder, against the
+// recorded output of `codebreaker coverage ...` for the same three-module corpus and no function store yet (testdata/commands/*.txt; the folders
+// are <STATE> and <CORPUS>). The verifier settings (the tools of this machine) are given to the services as the digests the recording shows.
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -93,7 +92,7 @@ CB_TEST("coverage.services.are_the_state_folders_store", [] {
     CB_CHECK(s.verifier_profiles != nullptr);
 });
 
-CB_TEST("coverage.services.the_listing_matches_the_python", [] {
+CB_TEST("coverage.services.the_listing_matches_the_recording", [] {
     CoverageCommandWorld w;
     CB_CHECK_EQ(w.run({"--all"}), w.golden("all"));
     CB_CHECK_EQ(w.run({}), w.golden("default"));

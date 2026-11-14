@@ -7,8 +7,7 @@
 //     codebreaker facts <binary> <kind> [key] --make      made current first (the engine runs)
 //     codebreaker facts --databases               every database, its size, and the cap (db_max_gb)
 //
-// <binary> is a path or a corpus name. Nothing is made unless --make is given. The command answers itself: the Python's step of asking
-// a running service first (ui/serve) has no counterpart here, the engine being the program's own.
+// <binary> is a path or a corpus name. Nothing is made unless --make is given. The command answers itself, the engine being the program's own.
 //
 // What it needs of the rest of the program is the engine (with its steps declared) and how a corpus name finds its binary.
 #pragma once

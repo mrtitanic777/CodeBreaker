@@ -1,5 +1,5 @@
 // Tests of the C# -> C++03 pass (cs2cpp), on real C# programs: the units of the C# front end as L2 (testdata/cs2cpp/PROG/units/N.json) run
-// through ToJava, against what the Python pass answered for the same program (expected.json): every refusal (where, kind, why) in order,
+// through ToJava, against the recorded answer for the same program (expected.json): every refusal (where, kind, why) in order,
 // and the Java skeleton of every class that was kept. The programs are the repo's C# corpus (corpus, gen, top), the front end's own tool,
 // the Java runtime in C# (javart), the back end's generated programs (back), the shader checker, and `own`: CppOk (properties, foreach over
 // arrays, strings and lists, string switches, Console, Math, string and List calls, exceptions) and CppRefuse (one refused construct per
@@ -7,8 +7,8 @@
 // using, lock, goto, `throw;`, nullables, rectangular arrays, library calls, properties in expressions, foreach and switch forms).
 // CB_CS2CPP_DATA names a folder of further programs of the same shape (the XNA runtime and stubs).
 //
-// DIVERGES from cs2cpp.py:
-//   * a string comparison operator with other than two operands is refused (the Python failed with a ValueError);
+// Behaviour pinned here:
+//   * a string comparison operator with other than two operands is refused;
 //   * the nodes the pass shares between places (the iterated collection, the switched string, the property's object) are copied, so no
 //     node has two parents.
 #include "cb/translate/dotnet/cs2cpp.hpp"

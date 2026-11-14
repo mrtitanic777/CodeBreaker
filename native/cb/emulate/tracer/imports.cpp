@@ -2,7 +2,7 @@
 //
 // Reaching an import's sentinel (by `call [iat]` or `jmp [iat]`), or a landing pad a pretend
 // object's pointers aim at, returns to the caller as the import would: its arguments taken off
-// (as many as its signature says -- Python is asked, the one call back during a run -- else as
+// (as many as its signature says -- the host is asked, the one call back during a run -- else as
 // many as the call site pushed when its caller does not take them off), what it gives back
 // through a pointer given, EAX the stand-in's value; and the call is recorded with its arguments.
 #include <algorithm>
@@ -33,7 +33,7 @@ int stand_in(Run *r, uint64_t address, int64_t hit) {
             std::copy(known->second.begin(), known->second.end(), answer);
         } else {
             if (r->resolver(int32_t(hit), answer, 64)) {
-                r->hook_error = 1;             // Python raised: stop, and it raises after the run
+                r->hook_error = 1;             // the host failed: stop, and it reports after the run
                 r->stop();
                 return 2;
             }
@@ -57,7 +57,7 @@ int stand_in(Run *r, uint64_t address, int64_t hit) {
     uint64_t esp_now = reg(uc, UC_X86_REG_ESP);
     uint32_t ret_addr;
     if (!read32(uc, esp_now, ret_addr))
-        return 1;                              // (Python's except: on as if nothing was entered)
+        return 1;                              //
     set_reg(uc, UC_X86_REG_ESP, (esp_now + 4 + uint64_t(cleanup)) & 0xFFFFFFFFull);
     // every import entered, in order, with the arguments its signature says it takes
     r->api_calls_set = true;

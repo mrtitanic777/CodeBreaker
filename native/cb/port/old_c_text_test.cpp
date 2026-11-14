@@ -1,7 +1,6 @@
 // Tests of the text passes that rewrite one file at a time (old_c_text): widths, formats, mem_sizes, header_offsets,
-// struct_sizes, old_declarations, header_data. The expected values are what the Python original (pre_ansi.py) made of
-// the same text, read through by hand here; and for the real trees of MS C 3.00 every pass on every file, by CRC, from
-// testdata/views/make_views_cases.py.
+// struct_sizes, old_declarations, header_data. The expected values were read through by hand; for the real trees of MS C 3.00, every pass on every file, by CRC, is from
+// the recorded cases in testdata/views.
 #include <set>
 
 #include "cb/base/ctext.hpp"
@@ -89,8 +88,7 @@ CB_TEST("port.old_c_text.formats_give_a_long_arguments_the_cast_its_format_says"
 });
 
 CB_TEST("port.old_c_text.formats_read_the_text_they_are_given_not_an_earlier_reading_of_it", [] {
-    // DIVERGES: the Python was handed the code of the text as it was before the passes in between had changed it (offsets
-    // of a different text); the code is the text's own here. A pass that grew the line before the call put the old
+    // The code is the text's own, not that of the text before the passes in between changed it. A pass that grew the line before the call put the old
     // offsets inside the wrong argument.
     Notes notes;
     const std::string grown = "uint32_t x = 1; uint32_t y = 2;\nprintf(\"%ld\", x);\n";
@@ -170,7 +168,7 @@ CB_TEST("port.old_c_text.prefix_member_names_the_member_a_block_of_that_many_byt
 
 namespace {
 
-// Every pass on every file of a real tree, by CRC, as the Python answered them.
+// Every pass on every file of a real tree, by CRC, against the recorded answers.
 void check_real(const std::string& name) {
     const Case c = load(name);
     const Profile profile = profile_of(c);

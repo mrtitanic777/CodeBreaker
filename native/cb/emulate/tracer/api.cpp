@@ -1,4 +1,4 @@
-// api.cpp -- the C interface (cbtrace.h): set up, attach a run's hooks to Python's Unicorn
+// api.cpp -- the C interface (cbtrace.h): set up, attach a run's hooks to the host's Unicorn
 // engine, and hand its record back.
 #include <cstring>
 #include <memory>
@@ -82,9 +82,7 @@ CBT_API void *cbt_begin(const cbt_config *c) {
     r->mapped.insert(c->mapped, c->mapped + c->nmapped);
     r->saved_keys.insert(c->presaved, c->presaved + c->npresaved);
     for (int64_t i = 0; i < c->nsentinels; i++)
-        r->sentinels.emplace(c->sentinels[i], i);   // (a repeated address: the first place, as a dict
-                                                    //  built in this order would keep the last -- Python
-                                                    //  passes each address once)
+        r->sentinels.emplace(c->sentinels[i], i);   // (a repeated address: the first place, each address is passed once)
     r->resolver = c->resolver;
     r->shadow = static_cast<Shadow *>(c->shadow);
     uint32_t f = c->flags;

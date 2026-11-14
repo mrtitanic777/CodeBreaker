@@ -1,6 +1,5 @@
 // cb-unity: alone
-// The proof that a recovered effect behaves as the source it was compiled from (tests/test_xbox_effect.py::test_behaves_as_source, moved
-// here when that file went).
+// The proof that a recovered effect behaves as the source it was compiled from.
 //
 // The effects in tests/data/xbox_effects are our own HLSL, each with the Xbox 360 SDK's fxc output beside it (<name>.fxo). The .fxo is
 // recovered as HLSL (decompile/xbox_effect); the original .fx and the recovered one are both compiled by MonoGame's mgfxc and drawn by

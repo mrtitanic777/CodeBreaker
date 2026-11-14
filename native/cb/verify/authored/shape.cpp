@@ -209,7 +209,7 @@ std::optional<std::string_view> parameter_type_of(std::string_view head, std::st
 
 std::vector<Span> statements(std::string_view shadow, std::size_t lo, std::size_t hi) {
     std::vector<Span> out;
-    hi = std::min(hi, shadow.size());   // (the Python indexed past the end and raised IndexError)
+    hi = std::min(hi, shadow.size());   //
     std::size_t i = lo;
     while (i < hi) {
         i = std::min(skip_space(shadow.substr(0, hi), i), hi);

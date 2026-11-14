@@ -1,6 +1,5 @@
 // cb-unity: alone
-// cb/java/runtime_texts.cpp -- the verbatim C++ texts of the Java runtime (see runtime.hpp). Generated from the
-// text the Python module wrote; compiled as plain data.
+// cb/java/runtime_texts.cpp -- the verbatim C++ texts of the Java runtime (see runtime.hpp). Compiled as plain data.
 #include "cb/java/runtime_texts.hpp"
 
 namespace cb::java::runtime::verbatim {

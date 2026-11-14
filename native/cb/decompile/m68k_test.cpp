@@ -15,18 +15,18 @@ namespace m = cb::decompile::m68k;
 using cb::Bytes;
 using std::string;
 
-// DIVERGES from the Python module (the old harness: every one of the 65,536 opcode words decoded with random extension
+// Notes (an old harness: every one of the 65,536 opcode words decoded with random extension
 // words at 8 start addresses, 4,000 truncations, 3,000 assembler lines and 1,000 mutated ones, agreed on all else; the
-// expectations below came from the original and were read through by hand):
-//  - decode() takes an unsigned offset (Python indexed from the end of the code for a negative one);
-//  - the assembler refuses text the Python took and assembled to the wrong thing:
-//      `-(D3)`, `4(D0)`, `(D0,D1.W)`: a data register where an address register belongs (Python used the number as An);
-//      `BRA D0`, `BRA (A0)`: a branch to something that is not an address (Python branched to 0);
-//      `MOVE.B 300(A0,D0.W),D0`: a displacement that does not fit its field (Python cut it to the low 8 bits; for a 16-bit
-//        displacement the cut is to -32768..65535, so `$FFF0(A0)` still means -16);
-//      `BRA.L x` and an unknown size such as `.X`: Python read a branch's unknown size as `.W`;
-//  - a tab separates the mnemonic from the operands as a blank does (Python took "MOVE.L\tD0,D1" for a mnemonic);
-//  - a label with an empty name is no label, in an immediate as everywhere else (Python wrote `#` and nothing);
+// expectations below were recorded and read through by hand):
+//  - decode() takes an unsigned offset;
+//  - the assembler refuses text that would assemble to the wrong thing:
+//      `-(D3)`, `4(D0)`, `(D0,D1.W)`: a data register where an address register belongs;
+//      `BRA D0`, `BRA (A0)`: a branch to something that is not an address;
+//      `MOVE.B 300(A0,D0.W),D0`: a displacement that does not fit its field (for a 16-bit
+//        displacement the range is -32768..65535, so `$FFF0(A0)` still means -16);
+//      `BRA.L x` and an unknown size such as `.X`;
+//  - a tab separates the mnemonic from the operands as a blank does;
+//  - a label with an empty name is no label, in an immediate as everywhere else;
 //  - an Insn holds at most two operands and ten bytes (the 68000's maximum), not lists.
 
 namespace {
@@ -240,7 +240,7 @@ CB_TEST("decompile.m68k.assemble.errors", [] {
     // an unknown label is its own type, still a ParseError
     CB_CHECK_THROWS_AS(cb::decompile::z80::UnknownLabel, (void)m::assemble("MOVE.L X,D0", 0, name_labels()));
     CB_CHECK_THROWS_AS(cb::ParseError, (void)m::assemble("MOVE.L X,D0", 0, name_labels()));
-    // the text the Python assembled to the wrong thing (DIVERGES above)
+    // the text refused because it would assemble to the wrong thing (see the notes above)
     CB_CHECK_THROWS_AS(cb::ParseError, (void)m::assemble("MOVE.L -(D3),D0", 0, name_labels()));
     CB_CHECK_THROWS_AS(cb::ParseError, (void)m::assemble("MOVE.L 4(D0),D1", 0, name_labels()));
     CB_CHECK_THROWS_AS(cb::ParseError, (void)m::assemble("BRA D0", 0, name_labels()));

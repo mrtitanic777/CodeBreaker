@@ -24,7 +24,7 @@ constexpr std::size_t kCharParamBases = 4;       // (the first variants a value 
 constexpr std::size_t kAddressBases = 2;         // (the first variants a number that is a place in the data is tried in)
 constexpr std::size_t kUnsignedGlobalBases = 3;  // (the first localized sources a compared global is made unsigned in)
 
-// `-?(0x[0-9a-f]+|\d+)` as Python reads a number with base 0 (no octal): the value, or none.
+// `-?(0x[0-9a-f]+|\d+)`: a number read with base 0 (no octal): the value, or none.
 std::optional<std::int64_t> cand_number(sv s) {
     bool negative = false;
     if (s.starts_with("-")) {

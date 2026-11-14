@@ -1,14 +1,12 @@
 // Tests of the `classes` and `xdk-match` commands (cb/symbols/program_commands.hpp) on real Xbox 360 programs under C:/Nexia360/Games
-// (each test is skipped when the program, the xex program or the XDK's libraries are not on this machine), against what the translated
-// Python printed and wrote: testdata/program_commands/classes_minecraft.txt and xdk_match_logan.txt, and the SHA-1 of the JSON files
-// (`codebreaker classes ... -o`, `codebreaker xdk-match ... -o`) the Python made.
+// (each test is skipped when the program, the xex program or the XDK's libraries are not on this machine), against recorded output:
+// testdata/program_commands/classes_minecraft.txt and xdk_match_logan.txt, and the SHA-1 of the JSON files
+// (`codebreaker classes ... -o`, `codebreaker xdk-match ... -o`).
 //
 //   classes   "Minecraft Xbox 360 Edition/default.xex"  -> classes.json   2010d09ebbad3f5800f145733fb6811a6fa0ec24
 //   xdk-match LoganMinecraftTest/LoganMinecraftTest.xex -> names.json     ea6688af1f74a70a41805a8439c07b65c9453b0d
 //
-// DIVERGES from the Python, by design: the files have LF line ends (the Python's text mode wrote CRLF on Windows) and `classes -o` ends with a
-// newline. With those two normalised the files are the Python's byte for byte; the hashes below are of the C++ files, and the classes file was
-// also compared with the Python's by parsing both (every class, function and found function equal).
+// The files have LF line ends and `classes -o` ends with a newline; the hashes below are of those files.
 #include <string>
 
 #include "cb/core/crypto.hpp"
@@ -45,7 +43,7 @@ std::string sha1_of(const std::filesystem::path& file) { return crypto::to_hex(c
 
 }  // namespace
 
-CB_TEST("symbols.program_commands.classes_of_minecraft_match_the_python", [] {
+CB_TEST("symbols.program_commands.classes_of_minecraft_match_the_recorded_output", [] {
     const auto program = testing::game_file("Minecraft Xbox 360 Edition/default.xex");
     Setup setup;
     if (!program || !setup.ok) return;
@@ -76,7 +74,7 @@ CB_TEST("symbols.program_commands.classes_misuse_and_junk", [] {
     CB_CHECK_THROWS_AS(NotFoundError, pc::classes_of(dir.path() / "missing.exe", env));
 });
 
-CB_TEST("symbols.program_commands.xdk_match_logan_matches_the_python", [] {
+CB_TEST("symbols.program_commands.xdk_match_logan_matches_the_recorded_output", [] {
     const auto program = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
     Setup setup;
     const std::filesystem::path libs = "C:/Program Files (x86)/Microsoft Xbox 360 SDK/lib/xbox";

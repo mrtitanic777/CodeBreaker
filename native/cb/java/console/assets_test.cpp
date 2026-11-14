@@ -91,7 +91,7 @@ CB_TEST("java.console.assets.matches_the_original", [] {
     out.push_back(assets::render_coverage(c2, {"x.png", "y.png"}));
     out.push_back("strip: '" + text::replace_all(assets::strip_comments("a /* x */ b // c\nd \"/p//q.png\" e /* open"), "\n", "\\n") + "'");
 
-    // DIVERGES: a name that occurs twice in a jar is listed once; the original listed it twice
+    // a name that occurs twice in a jar is listed once
     std::string golden = test::golden("assets.golden.txt");
     golden = text::replace_all(golden, "jar assets: ['font/default.png', 'gui/gui.png', 'gui/gui.png',", "jar assets: ['font/default.png', 'gui/gui.png',");
     CB_CHECK_EQ(text::join(out, "\n") + "\n", golden);

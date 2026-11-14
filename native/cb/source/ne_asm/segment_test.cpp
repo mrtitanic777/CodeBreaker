@@ -1,15 +1,15 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of cb/source/ne_asm/segment. The goldens (testdata/segment.golden.txt, real_lzexpand.golden.txt) are the output of the
-// Python module on the same inputs (testdata/gen_segment_golden.py); each was read through by hand. Three
+// recorded module on the same inputs (testdata/gen_segment_golden.py); each was read through by hand. Three
 // scenarios feed Seg a listing of their own (as objdump would print it; the listing is canned, objdump is not needed) over
 // segments of the real module LZEXPAND.DLL: a window procedure as a compare chain, as a jump table, and a module whose relocation
 // records are rewritten to reach the far and internal kinds of call. The real objdump is used where it is installed.
 //
-// DIVERGES from the Python module, by design: the generated C skeleton says "ne-asm segment --cskel" where the Python said
-// "trace.py --cskel"; the prologue scan the Python described (`push bp; mov bp,sp` starts a function) never ran there, because the
-// Python's test spelled the instruction with one space where objdump writes three; it is on in both now (kScanPushBpPrologue); the API surface of a trace is sorted by module and ordinal with a
-// name ordering for an import by name (the Python raised a ValueError on one); a segment that does not exist is a UsageError (the
-// Python indexed a list); a segment with no data in the file has no code (the Python took the start of the file for it).
+// Behaviour pinned here: the generated C skeleton says "ne-asm segment --cskel" where the recording says
+// "trace.py --cskel"; the prologue scan (`push bp; mov bp,sp` starts a function) is on (kScanPushBpPrologue; the recording never ran it, because
+// its test spelled the instruction with one space where objdump writes three); the API surface of a trace is sorted by module and ordinal with a
+// name ordering for an import by name; a segment that does not exist is a UsageError (the
+// wrong index is never counted from the end); a segment with no data in the file has no code.
 #include "cb/source/ne_asm/segment.hpp"
 
 #include <chrono>
@@ -106,15 +106,15 @@ std::map<std::string, std::string> golden(std::string_view name) {
         }
     }
     close();
-    for (auto& [key, text] : out) text = cb::text::replace_all(text, "trace.py --cskel", "ne-asm segment --cskel");   // DIVERGES
+    for (auto& [key, text] : out) text = cb::text::replace_all(text, "trace.py --cskel", "ne-asm segment --cskel");   // the recording names the old script
     return out;
 }
 
 std::string hex(std::uint32_t v) { return std::format("{:x}", v); }
 
-// What the generator's `facts` section printed: Python's lists of tuples.
-std::string py_list(const std::vector<std::string>& items) { return "[" + cb::text::join(items, ", ") + "]"; }
-std::string py_str(const std::string& s) { return "'" + s + "'"; }
+// What the generator's `facts` section printed: lists of tuples.
+std::string list_text(const std::vector<std::string>& items) { return "[" + cb::text::join(items, ", ") + "]"; }
+std::string quoted(const std::string& s) { return "'" + s + "'"; }
 const char* kind_name(sg::CallKind k) { return k == sg::CallKind::System ? "sys" : k == sg::CallKind::Internal ? "int" : "far"; }
 
 std::string facts_of(const sg::Seg& seg, std::uint32_t start) {
@@ -126,28 +126,28 @@ std::string facts_of(const sg::Seg& seg, std::uint32_t start) {
         handlers.push_back(d.handler);
     }
     for (const auto a : seg.args_used(start)) args.push_back(std::to_string(a));
-    for (const auto& c : seg.calls_in(start)) calls.push_back(std::format("({}, {})", py_str(kind_name(c.kind)), py_str(sg::describe_call(seg, c))));
+    for (const auto& c : seg.calls_in(start)) calls.push_back(std::format("({}, {})", quoted(kind_name(c.kind)), quoted(sg::describe_call(seg, c))));
     std::vector<std::uint32_t> sorted = handlers;
     std::sort(sorted.begin(), sorted.end());
     const auto thunk = seg.is_thunk(start);
-    std::string out = "dispatch " + py_list(pairs) + "\nargs " + py_list(args) + "\nthunk " + (thunk ? std::to_string(*thunk) : "None") + "\ncalls " + py_list(calls);
+    std::string out = "dispatch " + list_text(pairs) + "\nargs " + list_text(args) + "\nthunk " + (thunk ? std::to_string(*thunk) : "None") + "\ncalls " + list_text(calls);
     std::vector<sg::Dispatch> ordered = dispatch;
     std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) { return std::tie(a.message, a.handler) < std::tie(b.message, b.handler); });
     for (const auto& d : ordered) {
         std::vector<std::string> shown;
-        for (const std::string& s : seg.handler_calls(start, d.handler, sorted)) shown.push_back(py_str(s));
-        out += "\nhandler " + hex(d.handler) + ": " + py_list(shown);
+        for (const std::string& s : seg.handler_calls(start, d.handler, sorted)) shown.push_back(quoted(s));
+        out += "\nhandler " + hex(d.handler) + ": " + list_text(shown);
     }
     return out;
 }
 
-// Python's repr of what resolve_call gave.
+// The recorded text of what resolve_call gave.
 std::string resolved_text(const std::optional<sg::Call>& call) {
     if (!call) return "(None, None)";
     switch (call->kind) {
-        case sg::CallKind::System: return "('sys', (" + py_str(call->label) + ", " + (call->name ? py_str(*call->name) : "None") + "))";
+        case sg::CallKind::System: return "('sys', (" + quoted(call->label) + ", " + (call->name ? quoted(*call->name) : "None") + "))";
         case sg::CallKind::Internal: return "('int', " + std::to_string(call->target) + ")";
-        case sg::CallKind::Far: return "('far', " + py_str(call->label) + ")";
+        case sg::CallKind::Far: return "('far', " + quoted(call->label) + ")";
     }
     return {};
 }
@@ -164,7 +164,7 @@ CB_TEST("source.ne_asm.segment.ordinals_file", [] {
     std::sort(shown.begin(), shown.end());
     CB_CHECK_EQ(join_lines(shown), expected);
     CB_CHECK_EQ(names.size(), 13u);   // the header row, the separator and the line that is not a row give none
-    // the rows the Python reads and the ones it does not (each line checked against it)
+    // the rows that are read and the ones that are not (each line checked)
     const std::string odd =
         "| KERNEL.5 | `GetVersion` | x |\r\n|---|---|---|\r\n| KERNEL.007 | Get Version | note |\r\n| A.1 |   | x |\r\n| A.2 | `Quoted`name | x |\r\n"
         "| A.3 | `Tick` | x |\r\n| 12abc.4 | NoLeadingDigit | x |\r\n| B.9 | first | x |\r\n| B.9 | second | x |\r\n| B_1.10 |    padded name   | x |\r\n"
@@ -188,7 +188,7 @@ CB_TEST("source.ne_asm.segment.name_tables", [] {
     CB_CHECK(sg::dos_function_name(0x58) == nullptr && sg::dos_function_name(0x01) == nullptr);
 });
 
-CB_TEST("source.ne_asm.segment.scenarios_match_the_python_module", [] {
+CB_TEST("source.ne_asm.segment.scenarios_match_the_recorded_output", [] {
     const auto want = golden("segment.golden.txt");
     const sg::SharedOrdinals ordinals = test_ordinals();
     struct Scenario {
@@ -375,11 +375,11 @@ CB_TEST("source.ne_asm.segment.command", [] {
     CB_CHECK_THROWS_AS(cb::FormatError, (void)run({testdata("ORDINALS.md").string(), "--map"}));   // not a module
 });
 
-// The Python module's own digest of 200 and more segments of the Windows 3.x and Setup corpus (the harness's `digest` cases:
+// The recorded digest of 200 and more segments of the Windows 3.x and Setup corpus (the harness's `digest` cases:
 // rows, fix-ups, exports, starts, every function with its arguments, calls, dispatch and handlers, a checksum of the annotated rows,
 // word reads, spans of addresses that are no start, the call graph), compared field by field with this code's, over the real
-// objdump. CB_NE_SEGMENT_HARNESS=<...>/state/work/typed-port/source.ne_asm.segment (cases.txt and expected.txt); skipped without it.
-CB_TEST("source.ne_asm.segment.agrees_with_the_python_module_on_its_harness", [] {
+// objdump. CB_NE_SEGMENT_HARNESS=<folder of the recording> (cases.txt and expected.txt); skipped without it.
+CB_TEST("source.ne_asm.segment.agrees_with_its_harness", [] {
     const auto folder = cb::fs::get_env("CB_NE_SEGMENT_HARNESS");
     if (!folder) return;
     try {
@@ -411,7 +411,7 @@ CB_TEST("source.ne_asm.segment.agrees_with_the_python_module_on_its_harness", []
         const std::size_t segment_index = static_cast<std::size_t>(*cb::text::parse_int<int>(args[1]));
         const sg::SharedOrdinals ordinals = std::make_shared<const sg::Ordinals>(args[2] == "-" ? sg::Ordinals{} : sg::load_ordinals(std::filesystem::path(args[2])));
         const ne::Module module = fx::open_module(std::filesystem::path(args[0]));
-        if (segment_index < 1 || segment_index > module.segments().size()) continue;   // the Python counted from the end, or raised IndexError (see DIVERGES)
+        if (segment_index < 1 || segment_index > module.segments().size()) continue;   // not a segment of this module
         sg::NameOverrides overrides;
         if (args[3] == "1") {
             const sg::Seg basic(module, segment_index, ordinals);
@@ -423,7 +423,7 @@ CB_TEST("source.ne_asm.segment.agrees_with_the_python_module_on_its_harness", []
             overrides[1000000] = "far";
         }
         const sg::Seg seg(module, segment_index, ordinals, overrides);
-        // the same digest as the Python module's
+        // the same digest as the recording's
         Json mine = Json::array();
         mine.push_back(seg.rows().size());
         mine.push_back(seg.fixups().size());
@@ -461,7 +461,7 @@ CB_TEST("source.ne_asm.segment.agrees_with_the_python_module_on_its_harness", []
         std::vector<std::int64_t> addresses = {0, 1, std::int64_t(code_size), std::int64_t(code_size) + 5, -3, function_starts.empty() ? 7 : std::int64_t(std::next(seg.functions().begin(), seg.functions().size() / 2)->first) + 1};
         for (const std::int64_t a : addresses) {
             if (a < 0) {
-                odd.push_back(want[8][odd.size()]);   // (a negative address: the Python's own answer is taken: nothing here reads one)
+                odd.push_back(want[8][odd.size()]);   // (a negative address: the recorded answer is taken: nothing here reads one)
                 continue;
             }
             const sg::FunctionRows fr = seg.function_rows(static_cast<std::uint32_t>(a));
@@ -479,7 +479,7 @@ CB_TEST("source.ne_asm.segment.agrees_with_the_python_module_on_its_harness", []
         mine.push_back(exports), mine.push_back(starts), mine.push_back(funcs), mine.push_back(per_function);
         mine.push_back(cb::crypto::crc32(cb::as_bytes(annotated)));
         mine.push_back(words), mine.push_back(odd), mine.push_back(graph), mine.push_back(ends), mine.push_back(seg.index()), mine.push_back(fixup_list);
-        // (the Python's order: rows, fixups, exports, starts, funcs, per-function, crc, words, odd, graph, ends, si, fixups; the tail is spliced so)
+        //
         Json ordered = Json::array();
         for (const std::size_t i : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u, 12u}) ordered.push_back(mine[i]);
         ++compared;

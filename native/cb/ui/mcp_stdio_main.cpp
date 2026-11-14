@@ -1,5 +1,5 @@
 // cb/ui/mcp_stdio_main.cpp -- the MCP server as a program of its own (cb_mcp_stdio): the `mcp` command (mcp_command.hpp) without the rest of the
-// command table, so the tools can be tried -- and compared with the Python server's answers -- on their own.
+// command table, so the tools can be tried -- on their own.
 //
 //     cb_mcp_stdio                                     serve over stdin and stdout
 //     cb_mcp_stdio --http PORT [--host H] [--allow-host NAME ...] [--public]

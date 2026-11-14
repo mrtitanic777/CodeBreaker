@@ -562,7 +562,7 @@ Result run(const Spec& spec) {
     };
     if (text_bytes.size() >= 4 && std::equal(std::begin(kGatePrefix), std::end(kGatePrefix), text_bytes.begin())) {
         // XENIX 2.3's other way in: the program's first bytes are a jump over a row of `jmp .`, and a system call is a
-        // far call to the one at 0002 (the number in AX as before); a far call to the one at 0004 asks for the stack to be
+        // far call to the one at 0002 (the number in AX); a far call to the one at 0004 asks for the stack to be
         // grown down to BX. The system catches both there; so does this.
         add_code_hook(cs * 16u + kGateSystemCall, cs * 16u + kGateLastByte,
                       [&](std::uint64_t address) { session.gate_call(static_cast<std::uint32_t>(address - cs * 16u)); });

@@ -1,5 +1,5 @@
 // toolrun: runs the commands the switch-over moves off the old `codebreaker_native` extension and the `crypto` tools, with the surroundings the
-// application's table will give them (the settings and the corpus), so each can be compared with the Python (codebreaker.exe) on real inputs and timed.
+// application's table will give them (the settings and the corpus), so each can be run on real inputs and timed.
 // Not built by default (`cmake --build <dir> --target cb_toolrun`).
 //
 //     toolrun [--checkout DIR] <crypto <tool> ... | xbox-disc ... | xex-basic ... | xenon-config ... | switch-tables ... | corpus-executables>

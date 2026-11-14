@@ -4,11 +4,11 @@
 // ends not mattering to it), the error for a kit that is not set up. With the kit (the CB_KIT_INTELPLM86 environment variable names its
 // folder) the real PL/M-86 compiles a small module, and rejects one with an error in it.
 //
-// Hand-checked against plm86.py: the key (sha1 of name + version + controls + "p2", 12 digits), the cache key's parts, the tail, the
+// Hand-checked: the key (sha1 of name + version + controls + "p2", 12 digits), the cache key's parts, the tail, the
 // "ok" rule (group 1 "0"), the 1500 characters of listing lines an error shows.
 //
-// DIVERGES from plm86.py: the include folders are not used either (as before); a profile that names no kit is a UsageError (KeyError in
-// the Python); the cache keeps what the Python kept under another key (the C++ cache is its own).
+// Design notes: the include folders are not used; a profile that names no kit is a UsageError;
+// the C++ cache is its own (it does not share keys with an older cache).
 #include "cb/exact/plm86.hpp"
 
 #include <nlohmann/json.hpp>

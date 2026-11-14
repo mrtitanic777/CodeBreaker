@@ -144,8 +144,7 @@ CB_TEST("recompile.switches.every_bctr_of_the_code_is_scanned_in_address_order",
 });
 
 CB_TEST("recompile.switches.code_before_the_image_reads_as_padding", [] {
-    // DIVERGES: the original raised a struct error when the scan reached below the start of the image, losing the
-    // whole scan; here the words there read as zero (padding), which ends every recogniser
+    // when the scan reaches below the start of the image the words there read as zero (padding), which ends every recogniser
     Mem m(kBase, 0x1000);
     m.code(kBase, {cmplwi(6, 11, 3), kBctrWord});
     const Found f = find(image_of(m, kBase, kBase + 8));

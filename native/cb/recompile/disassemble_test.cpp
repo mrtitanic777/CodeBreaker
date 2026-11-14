@@ -23,7 +23,7 @@ struct GoldenRow {
 
 Bytes slice() { return fs::read_file(testing::data_path("recompile/testdata/ppc_slice.bin")); }
 
-// ppc_slice.listing.txt: what the reference gives for the 16 KB of Minecraft code (see testdata/gen_ppc_slice.py).
+// ppc_slice.listing.txt: what the reference gives for the 16 KB of Minecraft code.
 std::vector<GoldenRow> golden() {
     std::vector<GoldenRow> rows;
     const std::string body = fs::read_text(testing::data_path("recompile/testdata/ppc_slice.listing.txt"));

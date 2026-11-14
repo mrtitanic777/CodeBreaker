@@ -1,7 +1,7 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of cb/source/vxd/owbuild: where the OpenWatcom tools are, the W3 bundle header, and what a build says when the tools are not there. A build
-// with the real tools runs where the settings name them (SPLITTER.VXD, which the Python module builds into a 1935-byte driver with one object); the
-// proof that the images are the same as the Python's is in the report of the change.
+// with the real tools runs where the settings name them (SPLITTER.VXD, which builds into a 1935-byte driver with one object); the
+// proof that the images are the recorded ones is in the report of the change.
 #include "cb/source/vxd/owbuild.hpp"
 
 #include <tuple>

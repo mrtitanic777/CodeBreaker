@@ -240,7 +240,7 @@ CB_TEST("analyze.globals.arrays_are_indexed_types_not_strings", [] {
 // ---- against what the engine it replaces answered on real modules ---------------------------------------------------
 //
 // testdata/<module>.globals.json is what cbanalyze.dll's globals.cc answered (variables and tables) for the fifteen
-// modules of golden_image.hpp, and the report the live Python made of them (made by testdata/gen_globals.py).
+// modules of golden_image.hpp, and the report recorded for them.
 
 #include <nlohmann/json.hpp>
 
@@ -277,7 +277,7 @@ bool same_variable(const globals::Variable& g, const cb::Json& row) {
 
 bool same_counts(const globals::Counts& n, const cb::Json& c) {
     auto v = [&](const char* k) { return c.at(k).get<std::int64_t>(); };
-    // (the live Python's `arrays` was always 0: see _bugs/LIST.md; it is not compared)
+    // (the recorded `arrays` was always 0; it is not compared)
     return n.globals == v("globals") && n.typed_beyond_size == v("typed_beyond_size") && n.pointers == v("pointers") &&
            n.function_pointers == v("function_pointers") && n.strings == v("strings") && n.counters == v("counters") &&
            n.flags == v("flags") && n.floats == v("floats") && n.results_of_system_calls == v("results_of_system_calls") &&

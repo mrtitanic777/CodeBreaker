@@ -1,13 +1,11 @@
-// The engine held to what the Python engine answered (tests/test_native_engine.py, tests/data/native_engine_golden.txt): the same small pipeline of steps, the same
+// The engine held to its recorded answers (testdata/engine_facts.golden.json): a small pipeline of steps, the same
 // asks and changes in the same order, and after each the value, how many facts of each kind were found current and how many made, which were made, and every
-// fact row as kept (kind, key, hash, tag, size, step, version, inputs, given). The Python engine is gone; its answers are testdata/engine_facts.golden.json
-// (the literal file converted to JSON, a bytes value as {"$b": latin-1 text}).
+// fact row as kept (kind, key, hash, tag, size, step, version, inputs, given). The golden is JSON, a bytes value as {"$b": latin-1 text}.
 //
 // The pipeline: n.words (the binary's words) -> n.word <i> -> n.upper <i> -> n.joined; n.len <i> (a number whose equal results cut off what reads them); n.batch
 // (one call for all the stale keys, one value unkept); n.side (a file beside the binary); n.bad (reads what it did not declare).
 //
-// DIVERGES from the Python: a refused read or a kind no step makes is an error of its own type here (the message names the step or the kind, as the Python's
-// did; its wording is not compared); the order of the inputs of a fact that read many at once is the order of the keys.
+// A refused read or a kind no step makes is an error of its own type (the message names the step or the kind; its wording is not compared); the order of the inputs of a fact that read many at once is the order of the keys.
 #include <algorithm>
 #include <mutex>
 #include <nlohmann/json.hpp>
@@ -141,7 +139,7 @@ struct EgWorld {
                 made_now("n.batch", joined);
                 std::map<std::string, StepResult> out;
                 for (Context* c : contexts) {
-                    // (the word is read twice, as the Python's step did: once to compare, once to keep)
+                    // (the word is read twice: once to compare, once to keep)
                     if (eg_text_of(c->need("n.word", c->key())) == "skip") out.emplace(c->key(), Unkept{Value(std::string("?"))});
                     else {
                         const std::string word = eg_text_of(c->need("n.word", c->key()));
@@ -157,7 +155,7 @@ struct EgWorld {
             const std::filesystem::path side = std::filesystem::path(path_of(ctx)).parent_path() / "side.txt";
             std::string out = fs::read_text(side);
             out += std::to_string(std::get<knowledge::Value>(ctx.need("n.words")).list()->size());
-            out += eg_text_of(ctx.file(std::filesystem::path(path_of(ctx)).parent_path() / "side.txt"));   // (the binary is read again, as the Python's step did)
+            out += eg_text_of(ctx.file(std::filesystem::path(path_of(ctx)).parent_path() / "side.txt"));   // (the binary is read again)
             return Value(out);
         });
         declare("n.bad", {"n.word"}, [](Context& ctx) -> StepResult { return ctx.need("n.words"); });   // (not declared)
@@ -183,7 +181,7 @@ struct EgWorld {
 
 }  // namespace
 
-CB_TEST("engine.engine_golden.the_same_facts_and_runs_as_the_python_engine", [] {
+CB_TEST("engine.engine_golden.the_same_facts_and_runs_as_recorded", [] {
     EgWorld w;
     const Jx golden = cb::json::load(testing::data_path("engine/testdata/engine_facts.golden.json"));
     const auto db = w.engine.open(w.binary, w.dir.path() / "db");
@@ -213,7 +211,7 @@ CB_TEST("engine.engine_golden.the_same_facts_and_runs_as_the_python_engine", [] 
         CB_CHECK(made == want_made);
         if (want.size() == 5) {
             // What depends on where it ran, or on the engine, is left out on both sides: the binary's size (it holds the binary's path), the place a file
-            // fact's key names (the Python wrote it "<d>"), and the version of the engine's own binary and file steps (a digest of the code).
+            // fact's key names (the golden has "<d>"), and the version of the engine's own binary and file steps (a digest of the code).
             Jx expected = want[4], got = w.record(*db);
             const std::string folder = std::filesystem::path(w.dir.path()).make_preferred().string();
             for (Jx& row : expected) {

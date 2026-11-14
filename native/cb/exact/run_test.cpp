@@ -1,8 +1,8 @@
-// Tests of the exact command: its arguments and what it answers to each -- no arguments, -h, --toolchains (against what the live Python's exact/run.py
-// listed of the profiles of the checkout: testdata/w5b3.golden.json), a project and a stage, no stage (the ledger), an unknown stage, a project that is
-// not there -- and the standard table of stages driven from a real project (the carve stage against the Python's text of it).
+// Tests of the exact command: its arguments and what it answers to each -- no arguments, -h, --toolchains (against the recorded
+// list of the profiles of the checkout: testdata/w5b3.golden.json), a project and a stage, no stage (the ledger), an unknown stage, a project that is
+// not there -- and the standard table of stages driven from a real project (the carve stage against its recorded text).
 //
-// DIVERGES from the Python: the stages are a table the caller gives (`Stages`), not a list of modules imported by name; --toolchains lists the profiles
+// Behaviour pinned here: the stages are a table the caller gives (`Stages`), not a list of modules imported by name; --toolchains lists the profiles
 // without loading their tools, so a plugin's profile is listed whether its plugin is registered or not.
 #include "cb/exact/run.hpp"
 

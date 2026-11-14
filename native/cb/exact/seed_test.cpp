@@ -1,11 +1,11 @@
 // Tests of seeding a program's functions from the sources of another version, on the real projects of the research (C 3.00's P1/P0/P2, LIB 2.40 after
-// 2.20, LINK 2.44 after 2.40) against what the live Python's exact/seed.py answered (testdata/seed.golden.json, made by testdata/gen_seed.py): the
+// 2.20, LINK 2.44 after 2.40) against the recorded answers (testdata/seed.golden.json): the
 // split of real C files into declarations and functions, the files each pair gives (count, address list and the SHA-1 of every file, two in full) and
 // the command with --write on a copy of a project; plus the shapes of C the splitter reads (K&R, remarks, static, a function met twice).
 //
-// DIVERGES from the Python: the "seeded from" comment names the source's path with '/' (the Python wrote the platform's separator); a file written
-// keeps the source's bytes (the Python decoded as latin-1 and encoded with the machine's code page); a pair whose function is in no source file is
-// left out where the Python raised TypeError (it cannot happen: a name found in a file is a function of it).
+// Behaviour pinned here: the "seeded from" comment names the source's path with '/'; a file written
+// keeps the source's bytes; a pair whose function is in no source file is
+// left out (it cannot happen: a name found in a file is a function of it).
 #include "cb/exact/seed.hpp"
 
 #include <nlohmann/json.hpp>
@@ -85,7 +85,7 @@ CB_TEST("exact.seed.split_keeps_the_later_text_of_a_name_met_twice_and_reads_no_
     CB_CHECK(seed::split("").funcs.empty());
 });
 
-CB_TEST("exact.seed.split_of_real_sources_is_the_pythons", [] {
+CB_TEST("exact.seed.split_of_real_sources_matches_the_recorded_output", [] {
     test::Real real;
     if (test::skipped(real, "seed split")) return;
     for (auto it = seed_golden().at("split").begin(); it != seed_golden().at("split").end(); ++it) {
@@ -126,7 +126,7 @@ CB_TEST("exact.seed.split_of_real_sources_is_the_pythons", [] {
     }
 });
 
-CB_TEST("exact.seed.the_files_each_pair_gives_are_the_pythons", [] {
+CB_TEST("exact.seed.the_files_each_pair_gives_match_the_recorded_output", [] {
     test::Real real;
     if (test::skipped(real, "seeds")) return;
     for (auto it = seed_golden().at("seeds").begin(); it != seed_golden().at("seeds").end(); ++it) {
@@ -179,7 +179,7 @@ CB_TEST("exact.seed.run_counts_and_writes_the_files_the_project_has_none_of", []
     for (const Json& f : want.at("new")) {
         const std::filesystem::path path = p->path(f.at(0).get<std::string>());
         test::check(std::filesystem::exists(path), f.at(0).get<std::string>() + " is written");
-        if (std::filesystem::exists(path)) test::check(sha1_bytes(fs::read_file(path)) == f.at(1).get<std::string>(), f.at(0).get<std::string>() + " is the Python's file");
+        if (std::filesystem::exists(path)) test::check(sha1_bytes(fs::read_file(path)) == f.at(1).get<std::string>(), f.at(0).get<std::string>() + " is the recorded file");
         ++written;
     }
     const std::size_t after = std::distance(std::filesystem::directory_iterator(p->src()), std::filesystem::directory_iterator());

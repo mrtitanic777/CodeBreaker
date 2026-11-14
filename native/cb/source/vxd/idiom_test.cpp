@@ -5,12 +5,12 @@
 // written in the header, not recorded from a run. The real driver goes through the module end to end (the source of the real thing is
 // checked by its structure: balanced procedures, CRLF line ends, the DDB macro of the driver's own fields).
 //
-// DIVERGES from the Python module, by design: a fix-up with no offset (a 16-bit selector) is no target, where the Python raised a
-// TypeError on `target & mask`; a service-table slot that is an import fix-up makes the table unrecoverable, where the Python raised a
-// KeyError on `f["obj"]`; the loadable emission no longer builds the deferred-macro list the Python cleared before ever reading it; the
-// header of a tree file is written as the Python wrote it, but the file's line ends are the text's own (CRLF), and a source that is
+// Behaviour pinned here: a fix-up with no offset (a 16-bit selector) is no target;
+// a service-table slot that is an import fix-up makes the table unrecoverable;
+// the loadable emission does not build a deferred-macro list it never reads; the
+// header of a tree file is written as before, but the file's line ends are the text's own (CRLF), and a source that is
 // verified is assembled by the toolchain given, not by DOS only; the volume of drivers `--verify` takes is the folder's *.vxd and
-// *.386 files (the Python also had a list of extra names).
+// *.386 files.
 #include "cb/source/vxd/idiom.hpp"
 
 #include <algorithm>
@@ -221,7 +221,7 @@ CB_TEST("source.vxd.idiom.the_size_of_the_ddb", [] {
     CHECK_SAME(id::ddb_size(hand.emission(), ddb), 0x50U);   // out of range
     put_u32(hand.parts.code[0], 0x140, 0x33);
     CHECK_SAME(id::ddb_size(hand.emission(), ddb), 0x50U);
-    // the Python matched b"Prev" and so never recognised a modern DDB: the bytes in that order do not count
+    // "Prev" in the other order was never recognised as a modern DDB: the bytes in that order do not count
     std::copy(std::rbegin(marker), std::rend(marker), hand.parts.code[0].begin() + 0x13C);
     CHECK_SAME(id::ddb_size(hand.emission(), ddb), 0x34U);
     // a DDB at the very end of the object: no room for the marker
@@ -311,7 +311,7 @@ CB_TEST("source.vxd.idiom.the_service_table_is_left_raw_when_it_cannot_be_truste
         put_u32(hand.parts.code[0], 0x184, 0x1234);
         CB_CHECK(!id::service_table(hand.emission(), both).has_value());
     }
-    {   // a slot that is an import fix-up (the Python raised a KeyError on it)
+    {   // a slot that is an import fix-up
         Hand hand = service_hand();
         hand.import_fixup(0x184);
         CB_CHECK(!id::service_table(hand.emission(), both).has_value());
@@ -403,7 +403,7 @@ CB_TEST("source.vxd.idiom.a_handler_shared_by_two_messages_is_kept", [] {
     const auto dispatch = id::control_dispatch(hand.emission(), places({{1, 0x50}}));
     CHECK_SAME(dispatch.handlers.size(), 2U);
     CHECK_SAME(dispatch.handlers.at(1).second, "sub_1_0050");
-    // with no range check to name the default stub, the old test applies: a handler that appears twice is dropped
+    // with no range check to name the default stub, a handler that appears twice is dropped
     Hand blind = jump_table_hand();
     blind.parts.instructions.erase({1, 0x46});
     blind.parts.jump_tables[{1, 0x90}] = {{1, 0x50}, {1, 0x70}, {1, 0x50}};

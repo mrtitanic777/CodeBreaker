@@ -1,4 +1,4 @@
-// cb/port/mend.hpp -- mending the port from the complaints of a compiler (the Python's pre_ansi `mend`).
+// cb/port/mend.hpp -- mending the port from the complaints of a compiler (the `mend` pass).
 //
 // The port's rewriting passes (old_c_passes.hpp and its siblings) make the old C as a compiler of today takes it
 // as far as reading it can tell. What is left, a compiler says: this argument is a pointer where an int is wanted,

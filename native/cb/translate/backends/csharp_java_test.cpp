@@ -1,16 +1,15 @@
 // Tests of the C# back end's Java library (csharp_java), on real Java programs: the javac front end's units as L2
-// (testdata/csharp_java/NAME.l2.json) written as C# by the C# back end with this library, against what the Python back end
-// (csharp.py with csharp_java.py) wrote for them (NAME.cs.txt, NAME.ledger.txt). The text of each was read through: the three
+// (testdata/csharp_java/NAME.l2.json) written as C# by the C# back end with this library, against the checked-in
+// goldens (NAME.cs.txt, NAME.ledger.txt). The text of each was read through: the three
 // corpus programs of tests/translate/corpus/java (calc, fixtures, modern: every one of them also judged equivalent to its Java
 // original by the kit), and programs written for this library -- `features` (dispatch, construction order, text), `calls`
 // (the API-mapping registry's templates), and one program for each thing the library declines.
 //
-// DIVERGES from csharp_java.py:
-//   * a UnaryOperator or BinaryOperator written raw (no type argument) is `Func<object, object>`; the Python indexed an empty
-//     list and failed;
+// Behaviour pinned here:
+//   * a UnaryOperator or BinaryOperator written raw (no type argument) is `Func<object, object>`;
 //   * the library keeps what it learns of a program (fields it moved, the class a local was made of) in itself, one library to
-//     a Program, not in attributes it hung on the Program;
-//   * `check_lambda` is given the lambda's type (the writer's own interface lacked it: the check could not be made).
+//     a Program;
+//   * `check_lambda` is given the lambda's type.
 #include "cb/translate/backends/csharp_java.hpp"
 
 #include <chrono>

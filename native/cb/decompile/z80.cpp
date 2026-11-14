@@ -566,7 +566,7 @@ Result<std::vector<Token>> tokenize(std::string_view expr, const NameLabels& lab
     return out;
 }
 
-// A recursive-descent evaluator over the tokens, with Python's integer operators and their precedence:
+// A recursive-descent evaluator over the tokens, with the integer operators and their precedence:
 // | then ^ then & then << >> then + - then * / (floor division) then unary + - ~.
 class Evaluator {
 public:

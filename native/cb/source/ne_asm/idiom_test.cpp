@@ -1,8 +1,8 @@
 // cb-unity: alone (test helpers named for this module)
 // Tests of cb/source/ne_asm/idiom: the cMacros source of a range (names, near and far, labels, extern references), the loop that pins what the assembler
 // will not encode, the two assemblers' wrappers (nasm as a process, ML as a DOS runner) and the command. The assembler is given by the test, over
-// LZEXPAND.DLL's first code segment with the listing of scenario_a (a canned objdump). The source of a real range, byte for byte against the Python
-// module and its ML, is in the report of the change.
+// LZEXPAND.DLL's first code segment with the listing of scenario_a (a canned objdump). The source of a real range, byte for byte against ML,
+// is in the report of the change.
 #include "cb/source/ne_asm/idiom.hpp"
 
 #include <format>

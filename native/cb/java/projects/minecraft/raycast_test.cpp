@@ -1,10 +1,9 @@
-// DIVERGES (checked against the Python on its 261 recorded cases; the old algorithm re-implemented in the one-off replay
-// reproduces all of them, so the differences below are the whole of it):
+// Checked against 261 recorded cases:
 //   * a definition-shaped text INSIDE a body that is being replaced (`void P::q() { void R::s(int) { gluPickMatrix(); } }`) is
-//     part of that body. The Python and the old port spliced the two overlapping edits and duplicated text (182 of the 261
-//     recorded cases contain such a nest, the fuzzed ones too).
-//   * a quote or apostrophe inside a comment of the body no longer starts a character literal (`// don't`): the old brace
-//     matching lost count and left the method alone, or took the wrong body.
+//     part of that body, so two overlapping edits are never spliced (182 of the 261 recorded cases contain such a nest, the
+//     fuzzed ones too).
+//   * a quote or apostrophe inside a comment of the body does not start a character literal (`// don't`), so the brace matching
+//     keeps count and finds the right body.
 
 #include <cstdint>
 #include <string>
@@ -28,7 +27,7 @@ const std::string kPlayer =
 std::string pick_with(std::string_view body) { return "void Minecraft::pick(float a) {" + std::string(body) + "}\n"; }
 
 CB_TEST("java.minecraft.raycast.templates_are_the_proven_ones", [] {
-    // Byte-for-byte the text of the Python module's templates (size and FNV-1a taken from it).
+    // Byte-for-byte the text of the templates (size and FNV-1a recorded).
     CB_CHECK_EQ(raycast_pick_body().size(), std::size_t{2326});
     CB_CHECK_EQ(fnv1a(raycast_pick_body()), 0x25fcbd581db271f6ULL);
     CB_CHECK_EQ(empty_pick_helper().size(), std::size_t{193});
@@ -118,7 +117,7 @@ CB_TEST("java.minecraft.raycast.nested_and_neighbouring_definitions", [] {
 
 CB_TEST("java.minecraft.raycast.utf8_text_passes_through", [] {
     // text with multi-byte characters around the idiom: the bytes outside the bodies are copied as they are, and a
-    // class or method name with a non-ASCII letter (Z, e-acute) is one name, as it was for the Python's \w
+    // class or method name with a non-ASCII letter (Z, e-acute) is one name
     const std::string text = "// caf\xC3\xA9 \xE4\xB8\xAD\nvoid \xC3\x89::f() {}\nvoid Z\xC3\xA9::g() { glPushName(1); } // \xF0\x9F\x98\x80\n"
                              "void C::pick(float a) { GL_SELECT; }\n";
     const std::string out = convert_gl_pick_to_raycast(text + kPlayer);
@@ -129,9 +128,8 @@ CB_TEST("java.minecraft.raycast.utf8_text_passes_through", [] {
     // (a name that STARTS with a non-ASCII letter is not an identifier here either: `\xC3\x89::f` is left alone)
 });
 
-// DIVERGES: an apostrophe or quote in a comment inside the body. The Python and the old port read it as the start
-// of a character literal, ran to the next quote, lost count of the braces and left the method (or took a wrong
-// body). Comments are now skipped, so the body is found and replaced.
+// An apostrophe or quote in a comment inside the body: comments are skipped (it is not the start of a character literal), so
+// the body is found and replaced.
 CB_TEST("java.minecraft.raycast.comments_with_quotes", [] {
     const std::string text = "void A::f() {\n // don't count this\n glPushName(1);\n}\nvoid B::g() { glPushName(2); }\n";
     const std::string h(empty_pick_helper());

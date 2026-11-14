@@ -146,7 +146,7 @@ struct DriverLaneSpec {
 class DriverLane final : public Kind {
 public:
     // What a verdict means; raise when run() or the inputs change. 4: inputs found path by path beyond the fixed ones. 5: the lane's own
-    // digest of what a run left in memory (the Python's repr text is not made any more).
+    // digest of what a run left in memory.
     static constexpr int kRev = 5;
 
     explicit DriverLane(DriverLaneSpec spec);

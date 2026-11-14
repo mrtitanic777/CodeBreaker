@@ -3,8 +3,8 @@
 // worked out from the rules, not recorded from a run), the merge of the two, the report, and the command on the real module
 // LZEXPAND.DLL with a listing of its own (canned, as objdump would print it: objdump is not needed).
 //
-// DIVERGES from the Python module, by design: the command line is CodeBreaker's (`--seg`, `--ords`, no argparse abbreviations or
-// wording); a segment that does not exist is a UsageError (the Python indexed a list); the regions carry a kind enum, and the
+// Behaviour pinned here: the command line is CodeBreaker's (`--seg`, `--ords`, no argparse abbreviations or
+// wording); a segment that does not exist is a UsageError; the regions carry a kind enum, and the
 // preview of a region that ends past the segment stops at the segment's end.
 #include "cb/source/ne_asm/datacode.hpp"
 

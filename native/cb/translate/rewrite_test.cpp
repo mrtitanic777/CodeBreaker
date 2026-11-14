@@ -2,8 +2,7 @@
 // and statement lists, rebuilding a subtree bottom-up, and the builders. Hand-built trees: the tools know nothing of a source
 // language.
 //
-// DIVERGES from rewrite.py: `methods` skips a unit's types that are not classes (the Python took a method or field there for a
-// class and failed with AttributeError); `replace` and `is_name`/`is_call` accept a null node (a null slot has no children and
+// `methods` skips a unit's types that are not classes; `replace` and `is_name`/`is_call` accept a null node (a null slot has no children and
 // matches nothing).
 #include "cb/translate/rewrite.hpp"
 

@@ -1,10 +1,10 @@
 // Tests of cb/formats/xbox/pck.hpp on a 286-byte container made for the purpose: a property, four entries (a PNG in a folder, a file with
 // a backslash in its name, an empty one, a last payload the file cuts one byte short) and the padding the format shows between payloads.
-// The Python's pck.parse / pck.payloads (state/work/typed-port/xbox-deferred/vol_golden.py) give: version 3, properties [(7, 'ver')], the entries
+// Parsing it gives: version 3, properties [(7, 'ver')], the entries
 // (33, 0, 'tex/a.png') (35, 1, 'b\\c.loc') (0, 2, 'empty') (40, 3, 'd.grf'), table_end 146; the payloads tex_a.png (33), b_c.loc (35) and
 // d.grf (39 of 40), reading stopping at 287 of 286 bytes.
 //
-// DIVERGES from the Python: a table that runs past the end of the file is TruncatedError (struct.error or a clamped name followed by one).
+// Behaviour pinned here: a table that runs past the end of the file is TruncatedError.
 #include "cb/formats/xbox/pck.hpp"
 
 #include "cb/core/crypto.hpp"
@@ -27,7 +27,7 @@ static Bytes sample() {
 
 static std::string sha1_hex(ByteView v) { return crypto::to_hex(crypto::sha1(v)); }
 
-CB_TEST("formats.xbox.pck.the_table_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.pck.the_table_reads", [] {
     const Bytes file = sample();
     CB_CHECK_EQ(file.size(), 286u);
     const pck::Archive a = pck::parse(file);

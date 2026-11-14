@@ -1,9 +1,8 @@
 // The Python front end's semantics snippet, as C++17 that runs: the checked-in text the back end wrote for it (testdata/cpp17/
 // semantics.golden.{hpp,cpp}) is built with the host's MSVC against the runtime in data/translate/runtime/cpp17, every run_* function is
 // called, and each answer is compared with what CPython gave for the same function (semantics.expected.txt, made by running the
-// snippet under CPython: one "name<TAB>json" line per function; an exception is {"error": its class}). This is what
-// tests/translate/test_python_frontend.py `test_semantics_compile_and_match` checked. Without `cl` on PATH (a build run from a plain
-// shell) the test says so and passes, as the Python test skipped without MSVC.
+// snippet under CPython: one "name<TAB>json" line per function; an exception is {"error": its class}). Without `cl` on PATH (a build run from a plain
+// shell) the test says so and passes.
 //
 // cb-unity: alone
 #include <algorithm>

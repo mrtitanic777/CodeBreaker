@@ -6,14 +6,12 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from verify/lanes/image_lane.py:
-//   * the profile digest is the first 12 hex digits of the SHA-1 of "<kind> rev <n> states [{a=0, ...}, ...]", not of
-//     Python's repr of a tuple of dicts: a store written by the Python lanes is rebuilt, as the design says (3.8);
+// Design notes:
+//   * the profile digest is the first 12 hex digits of the SHA-1 of "<kind> rev <n> states [{a=0, ...}, ...]";
 //   * the platform's writer is given to the lane (`ImageLaneSpec::writer`), not found through `platforms.of(kind)`;
 //   * two runs that differ only in how many places they show (a lane's fault) are a Divergent verdict with the reason
-//     "effects-differs"; the Python raised StopIteration out of `next()` there and the judge crashed;
-//   * the header and the signature are over the source file's bytes as they are (the Python read them as latin-1 and
-//     wrote them back, which is the same bytes).
+//     "effects-differs";
+//   * the header and the signature are over the source file's bytes as they are.
 
 using namespace cb;
 using namespace cb::verify;

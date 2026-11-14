@@ -2,8 +2,8 @@
 // implements it, with its verdict), the virtual tables of a PowerPC image, and the functions of a 32-bit module that only jump through an
 // import -- the last over a real file (testdata: lz32.dll).
 //
-// DIVERGES from the Python writer: a class with the shape of a COM interface says so ("has the shape of a COM interface"), where the
-// Python printed the value it held, "(True)".
+// Behaviour pinned here: a class with the shape of a COM interface says so ("has the shape of a COM interface"), where the
+// a boolean flag would print, "(True)".
 
 #include "cb/source/classes_writer.hpp"
 

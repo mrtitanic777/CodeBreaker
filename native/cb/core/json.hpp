@@ -17,8 +17,7 @@ namespace cb::json {
 enum class Style {
     Compact,   // no whitespace: caches, wire messages
     Pretty,    // 2-space indent, UTF-8 as is: files people read or diff (L2, reports, manifests)
-    // The layout the remaining Python wrote (", " and ": " separators, non-ASCII escaped as \uXXXX), for files
-    // the Python still reads during the transition. Removed with the Python.
+    // The wide layout (", " and ": " separators, non-ASCII escaped as \uXXXX), for files that keep this form on disk.
     PythonCompatible,
     PythonCompatiblePretty,   // the same with indent=2 (item separator "," at line ends)
 };

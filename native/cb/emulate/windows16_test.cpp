@@ -1,12 +1,8 @@
 // Tests of cb/emulate/windows16: the descriptors and the layout; real 16-bit Windows modules (LZEXPAND, VER, COMM.DRV) run through
-// the Runner and compared, case by case, with what the Python windows16 recorded for the same calls (testdata/windows16.golden.json,
-// made by running the Python on these files: native/cb/emulate/testdata/make_windows16_golden.py); the stand-ins, the heap, the errors.
+// the Runner and compared, case by case, with the recorded results of the same calls (testdata/windows16.golden.json); the stand-ins, the heap, the errors.
 //
-// DIVERGES: (a) the Python mutated the recorded call's `_code_bases` for the caller to read; here the table is the run's own.
-// (b) A relocation whose place lies outside its segment's 64K window raised Unicorn's error from the first run and was silently
-// dropped from every later one; here it is a FormatError at load. (c) A recorded call's `retf n` table was keyed by the recording's name
-// even when it had none, so unnamed recordings shared entries; here an unnamed recording is not remembered. None of the 132 recorded
-// runs below meets one of these.
+// Design notes: (a) the code-base table belongs to the run, not the recorded call. (b) A relocation whose place lies outside
+// its segment's 64K window is a FormatError at load. (c) An unnamed recording is not remembered (its `retf n` table has no key).
 #include "cb/emulate/windows16.hpp"
 
 #include <format>
@@ -33,7 +29,7 @@ using nlohmann::ordered_json;
 
 namespace {
 
-// FNV-1a over numbers, each as eight little-endian bytes: the checksum golden.py makes of the lists it does not store whole.
+// FNV-1a over numbers, each as eight little-endian bytes: the checksum the golden holds of the lists it does not store whole.
 std::uint64_t fold(const std::vector<std::uint64_t>& values) {
     std::uint64_t h = 0xCBF29CE484222325ULL;
     for (const std::uint64_t v : values) {
@@ -56,7 +52,7 @@ const ordered_json& golden() {
     return g;
 }
 
-// The bytes of arguments each import removes, as the Python's run found them: the Runner is told them the way the knowledge base would.
+// The bytes of arguments each import removes, as the recorded run found them: the Runner is told them the way the knowledge base would.
 std::map<std::string, std::uint32_t> argument_sizes() {
     std::map<std::string, std::uint32_t> sizes;
     for (const ordered_json& c : golden()["cases"]) {
@@ -67,7 +63,7 @@ std::map<std::string, std::uint32_t> argument_sizes() {
     return sizes;
 }
 
-// A model lookup over the three stand-ins the recorded runs met (what the knowledge base's win16 models give them): the Python's runs
+// A model lookup over the three stand-ins the recorded runs met (what the knowledge base's win16 models give them): the recorded runs
 // used the knowledge base itself; this checks the Runner against the same answers.
 ModelLookup real_models(knowledge::Knowledge& kb) { return models_of(kb); }
 
@@ -91,7 +87,7 @@ struct World {
 };
 
 void differ(const std::string& name, const std::string& what, const std::string& got, const std::string& want) {
-    testing::record_failure(__FILE__, __LINE__, std::format("{}: {} was {} but the Python recorded {}", name, what, got, want));
+    testing::record_failure(__FILE__, __LINE__, std::format("{}: {} was {} but expected {}", name, what, got, want));
 }
 template <class A, class B>
 void same(const std::string& name, const char* what, const A& got, const B& want) {
@@ -99,7 +95,7 @@ void same(const std::string& name, const char* what, const A& got, const B& want
     if (got != static_cast<A>(want)) differ(name, what, std::format("{}", got), std::format("{}", static_cast<A>(want)));
 }
 
-RecordedRegisters regs_of_python() {
+RecordedRegisters recorded_regs() {
     return {0x1111, 0x2222, 0x3333, 0x4444, 0x5555, 0x6666, 0x7777};
 }
 
@@ -122,7 +118,7 @@ RecordedCall context_without_memory() {
     c.ss = 0x4F;
     c.ds = std::uint16_t{0x57};
     c.es = std::uint16_t{0x5F};
-    c.regs = regs_of_python();
+    c.regs = recorded_regs();
     c.ldt[0x57] = {Bytes(100, 0x11), false};
     c.ldt[0x5F] = {Bytes(100, 0x22), true};
     c.data_selector = std::uint16_t{0x57};
@@ -137,7 +133,7 @@ RecordedCall context_with_memory() {
     c.ss = (1 << 3) | 7;
     c.ds = std::uint16_t{(3 << 3) | 7};
     c.es = std::uint16_t{(1 << 3) | 7};
-    c.regs = regs_of_python();
+    c.regs = recorded_regs();
     c.data_selector = std::uint16_t{(3 << 3) | 7};
     Bytes mem(0x6000);
     for (std::size_t i = 0; i < mem.size(); ++i) mem[i] = static_cast<std::uint8_t>((i * 7) & 0xFF);
@@ -154,7 +150,7 @@ RecordedCall context_with_memory() {
     return c;
 }
 
-// The options golden.py gave each of its calls, by the call's name.
+// The options of each call, by the call's name.
 std::optional<ProbeOptions> options_for(const std::string& name, const RecordedCall& ctx1, const RecordedCall& ctx2) {
     ProbeOptions o;
     auto ordinal_of = [&](const std::string& tail) {
@@ -405,7 +401,7 @@ CB_TEST("emulate.windows16.descriptors_and_selectors", [] {
     CB_CHECK_EQ(segment_base(12), 0x1C0000u);
 });
 
-CB_TEST("emulate.windows16.the_real_modules_run_as_the_python_recorded_them", [] {
+CB_TEST("emulate.windows16.the_real_modules_run_as_recorded", [] {
     World w;
     const ordered_json& g = golden();
     const RecordedCall ctx1 = context_without_memory(), ctx2 = context_with_memory();
@@ -598,7 +594,7 @@ CB_TEST("emulate.windows16.the_run_record_carries_what_the_judge_compares", [] {
     CB_CHECK(!b.steps.has_value());
 });
 
-// ---- the shadow only watches (tests/test_concolic.py: a_run_with_its_shadow_is_the_same_run) ------------------------------------------------
+// ---- the shadow only watches ------------------------------------------------
 
 namespace {
 

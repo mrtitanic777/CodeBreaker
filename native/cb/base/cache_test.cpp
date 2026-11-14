@@ -51,7 +51,7 @@ CB_TEST("base.cache.checksum_is_crc32c_in_hardware_and_in_tables", [] {
 // ---- keys ----------------------------------------------------------------------------------------------------
 
 // Reviewed against hashlib.sha1 over the length-prefixed parts ("1:a", "1:a2:b" ...): the algorithm is the one the
-// Python cache used, so keys of the same ingredients are the same.
+// earlier cache used, so keys of the same ingredients are the same.
 CB_TEST("base.cache.key_is_sha1_of_length_prefixed_parts", [] {
     CB_CHECK_EQ(cache::key({}), std::string("da39a3ee5e6b4b0d3255bfef95601890afd80709"));   // sha1 of nothing
     CB_CHECK_EQ(cache::key({""}), std::string("b44b82a4bc6c35f6ad5e9fceefef9509c17fba74"));  // sha1("0:")
@@ -482,11 +482,11 @@ CB_TEST("base.cache.workers_share_one_cache", [] {
     CB_CHECK_EQ(results, std::uint64_t{200});
 });
 
-// ---- the Python implementation's files -----------------------------------------------------------------------
+// ---- the earlier implementation's files -----------------------------------------------------------------------
 
-// A cache file as the Python implementation makes it: state/cache/<kind>/<generation>.sqlite, entry(k, v, used), in
+// A cache file as the earlier implementation makes it: state/cache/<kind>/<generation>.sqlite, entry(k, v, used), in
 // write-ahead mode, `rows` results of `size` bytes used at times first_used, first_used + 1, ...
-void make_python_file(const stdfs::path& file, int rows, std::size_t size, std::int64_t first_used) {
+void make_legacy_file(const stdfs::path& file, int rows, std::size_t size, std::int64_t first_used) {
     using cb::base::sqlite::Value;
     auto db = cb::base::sqlite::Database::open(file);
     db.exec("PRAGMA auto_vacuum=INCREMENTAL");
@@ -498,7 +498,7 @@ void make_python_file(const stdfs::path& file, int rows, std::size_t size, std::
                 {Value("k" + std::to_string(i)), Value(pattern(size, static_cast<std::uint32_t>(i))), Value(first_used + i)});
 }
 
-std::int64_t python_rows(const stdfs::path& file) {
+std::int64_t legacy_rows(const stdfs::path& file) {
     auto db = cb::base::sqlite::Database::open(file);
     return std::get<std::int64_t>(db.query("SELECT count(*) FROM entry")[0][0]);
 }
@@ -507,11 +507,11 @@ void set_age(const stdfs::path& p, int hours) {
     stdfs::last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
 }
 
-CB_TEST("base.cache.python_files_are_listed_and_counted", [] {
+CB_TEST("base.cache.legacy_files_are_listed_and_counted", [] {
     Sandbox sb;
     const stdfs::path kind = sb.config().state_dir / "decompiled";
-    make_python_file(kind / "g203d43271953.sqlite", 3, 500, 1000);
-    make_python_file(sb.config().state_dir / "exact" / "g0.sqlite", 5, 100, 1000);
+    make_legacy_file(kind / "g203d43271953.sqlite", 3, 500, 1000);
+    make_legacy_file(sb.config().state_dir / "exact" / "g0.sqlite", 5, 100, 1000);
     cache::Cache c(sb.config());
     const auto stats = c.stats();
     CB_CHECK_EQ(stats.size(), std::size_t{2});
@@ -526,37 +526,37 @@ CB_TEST("base.cache.python_files_are_listed_and_counted", [] {
     CB_CHECK(listing.find("g0*") != std::string::npos);
 });
 
-CB_TEST("base.cache.using_a_kind_leaves_the_pythons_file_of_it_alone", [] {
+CB_TEST("base.cache.using_a_kind_leaves_the_legacy_file_of_it_alone", [] {
     Sandbox sb;
     const stdfs::path file = sb.config().state_dir / "decompiled" / "g203d43271953.sqlite";
-    make_python_file(file, 3, 500, 1000);
+    make_legacy_file(file, 3, 500, 1000);
     set_age(file, 100);
     {
         cache::Cache c(sb.config());
         c.declare_kind("decompiled", {.generation = "rev 7"});
-        c.put("decompiled", "a", pattern(100, 1));                 // opens the kind: its other generations go -- but not the Python's
+        c.put("decompiled", "a", pattern(100, 1));                 // opens the kind: its other generations go -- but not the earlier implementation's
         CB_CHECK(c.get("decompiled", "a").has_value());
-        CB_CHECK(!c.get("decompiled", "k0").has_value());          // (the Python's results are not ours to read)
+        CB_CHECK(!c.get("decompiled", "k0").has_value());          // (the earlier implementation's results are not ours to read)
     }
     CB_CHECK(stdfs::exists(file));
-    CB_CHECK_EQ(python_rows(file), std::int64_t{3});
+    CB_CHECK_EQ(legacy_rows(file), std::int64_t{3});
     cache::Cache c(sb.config());
     c.declare_kind("decompiled", {.generation = "rev 7"});
     const auto stats = c.stats();
     CB_CHECK_EQ(stats.size(), std::size_t{1});
-    CB_CHECK_EQ(stats[0].generations.size(), std::size_t{2});     // ours and the Python's
+    CB_CHECK_EQ(stats[0].generations.size(), std::size_t{2});     // ours and the earlier implementation's
     CB_CHECK(stats[0].of_now[0] && stats[0].of_now[1]);          // each the one of now in its own format
 });
 
-CB_TEST("base.cache.prune_keeps_the_pythons_newest_generation", [] {
+CB_TEST("base.cache.prune_keeps_the_legacy_newest_generation", [] {
     Sandbox sb;
     const stdfs::path kind = sb.config().state_dir / "compilable16";
-    make_python_file(kind / "gaaaaaaaaaaaa.sqlite", 2, 100, 1000);
-    make_python_file(kind / "gbbbbbbbbbbbb.sqlite", 2, 100, 1000);
-    make_python_file(kind / "gcccccccccccc.sqlite", 2, 100, 1000);
+    make_legacy_file(kind / "gaaaaaaaaaaaa.sqlite", 2, 100, 1000);
+    make_legacy_file(kind / "gbbbbbbbbbbbb.sqlite", 2, 100, 1000);
+    make_legacy_file(kind / "gcccccccccccc.sqlite", 2, 100, 1000);
     set_age(kind / "gaaaaaaaaaaaa.sqlite", 500);
     set_age(kind / "gcccccccccccc.sqlite", 300);
-    cache::Cache c(sb.config());   // (no kind declared: nobody says which generation is the Python's of now)
+    cache::Cache c(sb.config());   // (no kind declared: nobody says which generation is the earlier implementation's of now)
     const auto dropped = c.prune();
     CB_CHECK_EQ(dropped.size(), std::size_t{1});
     CB_CHECK_EQ(dropped[0].kind, std::string("compilable16"));
@@ -565,17 +565,17 @@ CB_TEST("base.cache.prune_keeps_the_pythons_newest_generation", [] {
     CB_CHECK_EQ(dropped[0].generations[1], std::string("gcccccccccccc.sqlite"));
     CB_CHECK(stdfs::exists(kind / "gbbbbbbbbbbbb.sqlite"));
     CB_CHECK(!stdfs::exists(kind / "gaaaaaaaaaaaa.sqlite"));
-    CB_CHECK_EQ(python_rows(kind / "gbbbbbbbbbbbb.sqlite"), std::int64_t{2});
+    CB_CHECK_EQ(legacy_rows(kind / "gbbbbbbbbbbbb.sqlite"), std::int64_t{2});
     CB_CHECK(!stdfs::exists(sb.config().state_dir / "_dropped"));
     CB_CHECK(c.prune().empty());                                   // and again: nothing more
 });
 
-CB_TEST("base.cache.prune_drops_our_old_generation_and_keeps_the_pythons_newest_beside_ours", [] {
+CB_TEST("base.cache.prune_drops_our_old_generation_and_keeps_the_legacy_newest_beside_ours", [] {
     Sandbox sb;
     const stdfs::path kind = sb.config().state_dir / "fingerprints";
-    make_python_file(kind / "g1111.sqlite", 2, 100, 1000);
+    make_legacy_file(kind / "g1111.sqlite", 2, 100, 1000);
     set_age(kind / "g1111.sqlite", 400);
-    make_python_file(kind / "g2222.sqlite", 2, 100, 1000);
+    make_legacy_file(kind / "g2222.sqlite", 2, 100, 1000);
     {
         cache::Cache old(sb.config());
         old.declare_kind("fingerprints", {.generation = "rev 24"});
@@ -585,17 +585,17 @@ CB_TEST("base.cache.prune_drops_our_old_generation_and_keeps_the_pythons_newest_
     c.declare_kind("fingerprints", {.generation = "rev 25"});
     const auto dropped = c.prune();
     CB_CHECK_EQ(dropped.size(), std::size_t{1});
-    CB_CHECK_EQ(dropped[0].generations.size(), std::size_t{2});   // the Python's older generation, and ours of rev 24
+    CB_CHECK_EQ(dropped[0].generations.size(), std::size_t{2});   // the earlier implementation's older generation, and ours of rev 24
     CB_CHECK(stdfs::exists(kind / "g2222.sqlite"));
     CB_CHECK(!stdfs::exists(kind / "g1111.sqlite"));
 });
 
-CB_TEST("base.cache.hold_evicts_the_pythons_results_by_their_time_of_use", [] {
+CB_TEST("base.cache.hold_evicts_the_legacy_results_by_their_time_of_use", [] {
     Sandbox sb;
     cache::Config config = sb.config();
     config.max_bytes = 150 * 1000;
     const stdfs::path file = config.state_dir / "decompiled_fn" / "g203d43271953.sqlite";
-    make_python_file(file, 10, 20000, 5000);                     // 200 kB: k0 used first ... k9 last
+    make_legacy_file(file, 10, 20000, 5000);                     // 200 kB: k0 used first ... k9 last
     cache::Cache c(config);
     CB_CHECK(c.hold() > 0);
     auto db = cb::base::sqlite::Database::open(file);
@@ -609,9 +609,9 @@ CB_TEST("base.cache.hold_evicts_the_pythons_results_by_their_time_of_use", [] {
     CB_CHECK(total <= config.max_bytes);
 });
 
-CB_TEST("base.cache.clear_takes_the_pythons_files_too", [] {
+CB_TEST("base.cache.clear_takes_the_legacy_files_too", [] {
     Sandbox sb;
-    make_python_file(sb.config().state_dir / "exact" / "g0.sqlite", 4, 1000, 1000);
+    make_legacy_file(sb.config().state_dir / "exact" / "g0.sqlite", 4, 1000, 1000);
     cache::Cache c(sb.config());
     CB_CHECK(c.clear() > 4000);
     CB_CHECK(c.stats().empty());

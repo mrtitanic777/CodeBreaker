@@ -1,11 +1,10 @@
 // Tests of cb/symbols/libraries/omf. Two real libraries of the Windows 95 DDK (testdata: libvxd.lib, debug.lib: Microsoft C
 // object modules in a paged .LIB) give the functions and their offsets; the fix-up masks are checked on a hand-made
-// module whose records are written out below, so every byte of the expected mask can be read off its fix-ups (the
-// Python module's answer on the same bytes was compared once: same functions, bytes, masks and offsets). The readers were
-// also run over every DDK and Win32 SDK library of the reference folder against the Python module.
+// module whose records are written out below, so every byte of the expected mask can be read off its fix-ups. The readers were
+// also run over every DDK and Win32 SDK library of the reference folder.
 //
-// DIVERGES from the Python module, by design: a record that runs past its end (a name longer than its record, a field
-// cut short) leaves its module out whole, where the Python took the shorter name or the clamped slice; a data record
+// A record that runs past its end (a name longer than its record, a field
+// cut short) leaves its module out whole; a data record
 // that puts bytes beyond 64 MiB of one segment is refused (a 32-bit record can ask for 4 GiB) and likewise leaves its
 // module out.
 #include "cb/symbols/libraries/omf.hpp"

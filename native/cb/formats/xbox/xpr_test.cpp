@@ -1,9 +1,9 @@
-// Tests of cb/formats/xbox/xpr.hpp. test_xpr in tests/test_xbox_formats.py runs xpr._selfcheck: a 64x32 DXT1 surface (a recognisable ramp) wrapped in an XPR0
+// Tests of cb/formats/xbox/xpr.hpp. A 64x32 DXT1 surface (a recognisable ramp) wrapped in an XPR0
 // bundle, read back (format, dimensions, pixels), turned into a DDS whose last bytes are the pixels, and an XPR2 header with its two sizes. The same checks are
-// made here, with the expected lines the Python answers for those bundles (testdata/assets/make_asset_goldens.py).
+// made here, with the recorded expected lines for those bundles (testdata/assets/make_asset_goldens).
 //
-// DIVERGES from the Python: a bundle whose pixel data starts past the end of the file is FormatError (the Python sliced nothing); `--selftest` is these tests;
-// build_xpr0 of a size that is not a power of two is a UsageError (the Python took log2 of it and rounded down).
+// Behaviour pinned here: a bundle whose pixel data starts past the end of the file is FormatError; `--selftest` is these tests;
+// build_xpr0 of a size that is not a power of two is a UsageError.
 #include "cb/formats/xbox/xpr.hpp"
 
 #include "cb/core/error.hpp"
@@ -23,19 +23,19 @@ static Bytes ramp() {
     return pixels;
 }
 
-CB_TEST("formats.xbox.xpr.the_fixtures_read_as_the_pythons_do", [] {
+CB_TEST("formats.xbox.xpr.the_fixtures_read", [] {
     for (const char* name : {"xpr0.bin", "xpr2.bin"}) {
         const Bytes file = fs::read_file(fs::from_text(asset_dump::fixture(name)));
         const std::string diff = asset_dump::difference(asset_dump::golden(name), asset_dump::dump_xpr(name, file));
         CB_CHECK(diff.empty());
-        if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, std::string(name) + " differs from the Python:\n" + diff);
+        if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, std::string(name) + " differs from the recorded dump:\n" + diff);
     }
 });
 
 CB_TEST("formats.xbox.xpr.the_selfcheck", [] {
     const Bytes pixels = ramp();
     const Bytes blob = xpr::build_xpr0(pixels, 64, 32, 0x0C);
-    CB_CHECK(equal_bytes(blob, fs::read_file(fs::from_text(asset_dump::fixture("xpr0.bin")))));   // the bundle the Python builds
+    CB_CHECK(equal_bytes(blob, fs::read_file(fs::from_text(asset_dump::fixture("xpr0.bin")))));   // the recorded bundle
     const xpr::Bundle info = xpr::parse(blob);
     CB_CHECK(info.container == xpr::Container::Xpr0);
     CB_CHECK(info.dds_format.has_value() && *info.dds_format == texture::Format::Dxt1);

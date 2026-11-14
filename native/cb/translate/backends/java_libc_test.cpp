@@ -1,11 +1,11 @@
 // Tests of the C-library mapping for the Java back end (java_libc), on the real api_maps/libc.json and the programs the clang
-// front end lowered (testdata/java/CallsLib, LibCalls). LibCalls.faithful.java is what codebreaker/translate/backends/java.py
-// (with java_libc.py) wrote for LibCalls.c; it was read through: `puts("hello")` keeps its string literal, `printf` its variadic
+// front end lowered (testdata/java/CallsLib, LibCalls). LibCalls.faithful.java is the checked-in
+// output for LibCalls.c; it was read through: `puts("hello")` keeps its string literal, `printf` its variadic
 // arguments and a literal for the `char *` format, `sqrt` is the JDK's Math.sqrt, a comparator named in the call is a method
 // reference and one held in a variable goes through the function table (`Fn.at`), `strlen("hello")` a literal too, and the one
 // function the runtime does not have (`mystery`) gaps the function that calls it, not the program.
 //
-// DIVERGES from java_libc.py: the registry is the caller's (a Registry handed in), not a module-level cache; a call with no
+// The registry is the caller's (a Registry handed in), not a module-level cache; a call with no
 // symbol is written as one with no prototype rather than failing on the missing symbol.
 #include "cb/translate/backends/java_libc.hpp"
 

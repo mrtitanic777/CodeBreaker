@@ -1,5 +1,4 @@
-// Ports of the tests/java cases that had no native twin by name and whose behaviour the existing native tests did not check literally
-// (batch 8, before the Python Java world was deleted). Each test names the Python case it carries. Same inputs, same expectations.
+// Cases whose behaviour the other native tests do not check literally (batch 8).
 // cb-unity: alone
 #include <algorithm>
 #include <set>
@@ -44,7 +43,7 @@ CB_TEST("java.batch8.side_effect_in_branch_pure_and_nested_guards", [] {
     CB_CHECK(b8_fire("side-effect-in-branch", "R.cpp", "bool R::a() {\n  if (cond) {\n    return true;\n  }\n  return false;\n}\n").empty());
     // `if (flg & 4) { if (p > n) return -1; p += 2; }`: reducing `return -1;` must not leave an `if (...) ;` that reads as an impure call
     CB_CHECK(b8_fire("side-effect-in-branch", "R.cpp", "int R::a() {\n  if (flg & 4) { if (p > n) return -1; p += 2; }\n  return p;\n}\n").empty());
-    // the genuine one still flags (test_real_side_effect_assignment_flagged, with the Python's own text)
+    // the genuine one still flags (a real side-effect assignment is flagged)
     CB_CHECK_EQ(b8_fire("side-effect-in-branch", "R.cpp", "void R::a() {\n  if (isHit) {\n    this->hit = new HitResult(1);\n    return;\n  }\n}\n").size(),
                 static_cast<std::size_t>(1));
 });
@@ -174,8 +173,7 @@ CB_TEST("java.batch8.a_class_only_beta_has_still_detects_beta", [] {
     CB_CHECK(b8ed::detect_edition(idx) == b8ed::Edition::Beta);
 });
 
-// tests/test_port_fixes.py test_java_rules_findings_of_one_line_come_in_name_order: where several names of a set match one line, the findings
-// come in the sorted order of the names, not in a hash order (the Python's bug)
+// Where several names of a set match one line, the findings come in the sorted order of the names, not in a hash order.
 CB_TEST("java.batch8.findings_of_one_line_come_in_name_order", [] {
     const std::string header = "class Foo {\npublic:\n\tFoo();\n\tvirtual void zeta();\n\tvirtual void alpha();\n\tvirtual void mid();\n};\n";
     const auto v = b8_fire("virtual-call-in-ctor", "Foo.cpp", "Foo::Foo()\n{\n\tzeta();\n\talpha();\n\tmid();\n}\n", header);

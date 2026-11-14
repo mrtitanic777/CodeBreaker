@@ -2,11 +2,8 @@
 // pass 0) as the port has them after its constructor, run through every function of the module.
 //
 // testdata/<target>.state.json is the stored state of a Port after its constructor (parts 1-3 of pre_ansi, not yet
-// refactored) made by the Python original, with the profile file next to it; testdata/<target>.golden.tsv has, for each
-// call the harness makes (tag, key), the CRC-32 of the answer's canonical JSON. The goldens were made by this code and
-// are equal to what the Python original answers for the same calls: the old harness (state/work/typed-port/
-// port.pre_ansi.p4: expected.txt of the Python, compare.py) compared all 2,940 answers of the three trees by meaning,
-// no difference. lib-2.20 is run in full (every per-file call and the program-wide ones: layouts, sizes, allocators,
+// refactored) recorded from a reference run, with the profile file next to it; testdata/<target>.golden.tsv has, for each
+// call the harness makes (tag, key), the CRC-32 of the answer's canonical JSON. All 2,940 answers of the three trees were compared by meaning with the reference run, with no difference. lib-2.20 is run in full (every per-file call and the program-wide ones: layouts, sizes, allocators,
 // definitions, frames, finish, headers ...); MS C 3.00 only for the program-wide calls (its BSS list, aliases).
 #include <fstream>
 #include <map>

@@ -73,7 +73,7 @@ out of it. `addr` is an address (hex) or a name. Not built or judged, and not ne
 text the store holds (that was made by the measure that judged it: `function`). Says so when it
 takes longer than `wait` seconds: call again.)DOC", Kind::Reading,
          {{"module", ParamType::String, std::nullopt}, {"addr", ParamType::String, std::nullopt}, {"wait", ParamType::Integer, std::string_view(R"JSON(60)JSON")}}},
-        {"compare_versions", "compare_versions", R"DOC(Two builds of a module function by function (compare/versions.py): identical, changed (with
+        {"compare_versions", "compare_versions", R"DOC(Two builds of a module function by function: identical, changed (with
 a likeness score), added, removed, and the names the old build gives functions the new one
 leaves unnamed. Changed pairs come first. `status` keeps identical or changed pairs only.)DOC", Kind::Reading,
          {{"module_a", ParamType::String, std::nullopt}, {"module_b", ParamType::String, std::nullopt}, {"status", ParamType::String, std::string_view(R"JSON("")JSON")}, {"offset", ParamType::Integer, std::string_view(R"JSON(0)JSON")}, {"limit", ParamType::Integer, std::string_view(R"JSON(200)JSON")}, {"wait", ParamType::Integer, std::string_view(R"JSON(60)JSON")}}},

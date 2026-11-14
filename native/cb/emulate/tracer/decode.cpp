@@ -1,4 +1,4 @@
-// decode.cc -- Capstone, asked what emulator.py asks it (see decode.h).
+// decode.cc -- Capstone, asked the questions the recorder needs (see decode.h).
 #include "cb/emulate/tracer/decode.hpp"
 
 #include <cctype>

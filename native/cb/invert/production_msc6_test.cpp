@@ -1,4 +1,4 @@
-// The free idiom of LZEXPAND (segment 11), with its far calls and a long global: the Python's model reads it (the msc6 tool's "retail-free" line).
+// The free idiom of LZEXPAND (segment 11), with its far calls and a long global: the model reads it (the msc6 tool's "retail-free" line).
 #include <iostream>
 
 #include "cb/core/crypto.hpp"

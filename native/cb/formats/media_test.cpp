@@ -3,12 +3,12 @@
 // format themselves (a floppy, a hard-disk image with primary and logical partitions, a disc with an El Torito floppy, the
 // same disc in raw 2352-byte sectors).
 //
-// The numbers asserted for the real images are the ones the Python implementation gave on the same files
-// (state/work/typed-port/formats.media/expected.txt), each read against the file before it was written down here.
+// The numbers asserted for the real images were each read against the file
+// before they were written down here.
 //
-// DIVERGES from the Python reader (state/work/typed-port/_bugs/LIST.md): a volume number past the end is a UsageError
-// (Python counted negative numbers from the end); a volume whose size is not more than its own tables is not a FAT volume
-// (the Python went on with a negative cluster count); a file that is not a module bundle is not read whole when it is
+// Behaviour pinned here: a volume number past the end is a UsageError
+// a volume whose size is not more than its own tables is not a FAT volume;
+// a file that is not a module bundle is not read whole when it is
 // larger than 64 MB.
 #include "cb/formats/media.hpp"
 
@@ -40,7 +40,7 @@ std::uint32_t crc32(ByteView data) {
     return ~crc;
 }
 
-// "size/crc32" as the old harness printed it.
+// "size/crc32" as the recording printed it.
 std::string sig(ByteView data) { return std::format("{}/{:08x}", data.size(), crc32(data)); }
 
 std::unique_ptr<media::Volume> only_volume(const std::filesystem::path& image, bool long_names = true) {

@@ -57,10 +57,9 @@ void expect_result(const RunResult& r, const cb::Json& j) {
 // (EntityList), a no-arg one (TileEntity), files that reuse the factories (World.cpp: a base-class cast, a site no
 // factory fits, a plain site; Other.cpp already includes the header; NoIncludes.cpp has no include line), and an
 // untouched file; then a second run after Late.cpp is added, which must find the factories left by the first. Both
-// expected trees and result tables are what the Python module produced (reviewed by reading each file).
-// DIVERGES: the Python rewrote files with CRLF line ends (text mode on Windows); the C++ writes LF, and the expected
-// files were normalised to LF.
-CB_TEST("java.reflection_factory.run_matches_python", [] {
+// expected trees and result tables were reviewed by reading each file.
+// Files are rewritten with LF line ends, and the expected files are LF.
+CB_TEST("java.reflection_factory.run_matches_golden", [] {
     cb::fs::ScopedTempDir tmp("cbrefl");
     copy_into(data("in"), tmp.path());
     const Registrars registrars{{"addMapping", "addIdClassMapping"}};

@@ -1,10 +1,8 @@
 // Tests of cb/port/sanitize: the reports of AddressSanitizer (and of the bounds check) as it prints them, over small programs
 // written as the port writes them, and what each becomes (a rule of the port, and the note saying why).
 //
-// DIVERGES from codebreaker/port/sanitize.py: the port's duck-typed attributes are the explicit `Target`; the paths are
-// std::filesystem; a report line number the file does not have is no report (the Python raised IndexError); a table of
-// zero elements makes no room (the Python divided by zero); rules are `DeclRule`s with `${1}` templates, not Python's
-// `\g<1>`.
+// The program's facts are the explicit `Target`; paths are std::filesystem; a report line number the file does not have is no
+// report; a table of zero elements makes no room; rules are `DeclRule`s with `${1}` templates.
 
 #include "cb/port/sanitize.hpp"
 

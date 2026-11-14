@@ -3,11 +3,11 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from verify/sweep.py:
+// Design notes:
 //   * the command's pieces are `params`, `options_of` and `run` over `Services` (the corpus listing, the build tools check and the
 //     two output streams are given), not an argv walked by hand; `--only` takes the same two forms;
 //   * a module that fails outright is reported with the error's text, not "<TypeName>: text";
-//   * a file nothing reconstructs is reported as FAILED and counted, where the Python raised ValueError out of the loop.
+//   * a file nothing reconstructs is reported as FAILED and counted.
 
 using namespace cb;
 using namespace cb::verify;

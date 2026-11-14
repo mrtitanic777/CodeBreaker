@@ -12,17 +12,17 @@
 using namespace cb;
 using namespace cb::exact::habits::cmpp;
 
-// DIVERGES from the Python module (cmpp.py), on purpose:
+// Design notes:
 //   * the entry helper's data (the byte and word, or the word, behind its call) that are cut short by the end of the code
-//     are decoded as the ordinary bytes they then are; the Python raised struct.error out of walk and loose_bytes
-//   * an instruction with no operands is written "ret", not "ret " (the Python kept the blank)
-//   * loose_bytes does not read the entry data's first byte as an opcode: with that byte 0xE8 the Python left the two
-//     bytes after it out of the comparison as a call's displacement, hiding a difference in the frame size
-//   * the module-level HDRLEN and decoder are options of each call; main() is parse_request, compare and render
+//     are decoded as the ordinary bytes they then are (walk and loose_bytes do not fail on them)
+//   * an instruction with no operands is written "ret", not "ret "
+//   * loose_bytes does not read the entry data's first byte as an opcode: with that byte 0xE8 the two
+//     bytes after it would be left out of the comparison as a call's displacement, hiding a difference in the frame size
+//   * the header length and decoder are options of each call; main() is parse_request, compare and render
 //   * a ledger entry that is not an object with an unsigned "size", a ledger that lists no such address, or an image too
-//     short for the procedure is an error of its own type, not the TypeError/KeyError of the Python; the harness's
+//     short for the procedure is an error of its own type; the harness's
 //     cases of those kinds (error text compared by type only) were dropped as incidental
-//   * more than the first twelve same-size differences are not listed; as in the Python, the report then shows where the
+//   * more than the first twelve same-size differences are not listed; the report then shows where the
 //     listings stop lining up (kept)
 
 namespace {
@@ -50,8 +50,8 @@ const Json& golden() {
 
 }  // namespace
 
-CB_TEST("exact.habits.cmpp.walk_matches_the_pythons_listings", [] {
-    // 408 listings of random procedures, damaged ones and short ones, as the Python walked them
+CB_TEST("exact.habits.cmpp.walk_matches_the_recorded_listings", [] {
+    // 408 listings of random procedures, damaged ones and short ones
     std::size_t checked = 0;
     for (const Json& c : golden().at("walk")) {
         const Bytes code = unhex(c.at("hex").get<std::string>());
@@ -70,7 +70,7 @@ CB_TEST("exact.habits.cmpp.walk_matches_the_pythons_listings", [] {
     CB_CHECK(checked > 300);
 });
 
-CB_TEST("exact.habits.cmpp.loose_bytes_match_the_pythons", [] {
+CB_TEST("exact.habits.cmpp.loose_bytes_match_the_recorded_output", [] {
     std::size_t checked = 0;
     for (const Json& c : golden().at("loose")) {
         const Bytes code = unhex(c.at("hex").get<std::string>());
@@ -79,7 +79,7 @@ CB_TEST("exact.habits.cmpp.loose_bytes_match_the_pythons", [] {
         const std::set<std::uint32_t> got = loose_bytes(code, fixups, options_for(c.at("entry").get<int>()));
         std::set<std::uint32_t> want;
         for (const Json& w : c.at("loose")) want.insert(w.get<std::uint32_t>());
-        // (the one place the Python was wrong: see the DIVERGES block)
+        // (the entry data's first byte is not an opcode: see the design notes)
         const bool entry_byte_is_call = code.size() > 6 && code[0] == 0xE8 && code[3] == 0xE8;
         if (!entry_byte_is_call) CB_CHECK(got == want);
         ++checked;
@@ -145,8 +145,8 @@ public:
 
 }  // namespace
 
-CB_TEST("exact.habits.cmpp.the_pythons_reports", [] {
-    // 73 runs of the Python main with a fake compiler: its stdout and exit status are the golden
+CB_TEST("exact.habits.cmpp.the_recorded_reports", [] {
+    // 73 runs of main with a fake compiler: its stdout and exit status are the golden
     fs::ScopedTempDir dir;
     std::size_t identical = 0, differs = 0, no_code = 0, asm_only = 0;
     for (const Json& c : golden().at("main")) {
@@ -170,8 +170,8 @@ CB_TEST("exact.habits.cmpp.the_pythons_reports", [] {
         const std::string text = render(result);
         // (the compiler's blank lines and the instruction texts' trailing blanks aside)
         std::string want = c.at("stdout").get<std::string>();
-        // (The Python counted the two bytes after the entry data's first byte as not compared when that byte was 0xE8 -- see
-        // the DIVERGES block -- so the count in the IDENTICAL line is set aside for such a procedure.)
+        // (The recorded run counted the two bytes after the entry data's first byte as not compared when that byte was 0xE8 -- see
+        // the design notes -- so the count in the IDENTICAL line is set aside for such a procedure.)
         const auto without_count = [](const std::string& t) {
             const std::size_t open = t.find(" (");
             const std::size_t close = t.find(" not compared");

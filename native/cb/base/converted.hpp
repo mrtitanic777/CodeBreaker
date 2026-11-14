@@ -21,7 +21,7 @@
 // one file adds to one folder. Another file of the same name gets <name>_2. `Converted/` holds other people's code and
 // data: it is never committed (.gitignore).
 //
-// project.json keeps the layout the Python wrote (the old code reads the same files until it is retired): keys name, file,
+// project.json keeps a fixed layout: keys name, file,
 // source, sha1, size, kind, steps; indent 1; ASCII escapes. A key this module does not know (one a person added) is kept
 // as it was, behind the known ones, in `extra`.
 #pragma once

@@ -1,13 +1,13 @@
-// Tests of the 32-bit judge lane (win32), against what the Python lane (codebreaker/verify/lanes/win32.py) answered.
+// Tests of the 32-bit judge lane (win32), against recorded answers.
 //
 // The inputs: the fixed vectors and the confirm vectors, a member function's shaping, the names of imports a fingerprint compares, which
-// are noise, and the bits of a return value that are leftovers -- each compared with the Python's value (testdata/win32/inputs.json,
+// are noise, and the bits of a return value that are leftovers -- each compared with the recorded value (testdata/win32/inputs.json,
 // made by running the module's functions).
 //
 // The judge, on real modules: lz32.dll (19 flat-thunk stubs, imports of KERNEL32) and the Windows 95 version.dll (a flat thunk too, a larger
-// one). The Python lane decompiled and rebuilt each with OpenWatcom (the rebuilt DLL is testdata/win32/<module>/rebuilt.dll) and judged every
+// one). Each was decompiled and rebuilt with OpenWatcom (the rebuilt DLL is testdata/win32/<module>/rebuilt.dll) and judged every
 // function it built, 20 and 32 of them; this runs the C++ judge on the same original and the same rebuilt DLL and compares verdict, reason,
-// limits (coverage, paths=N / paths-all, argc-unknown) and the line saying what differed, function by function. What the Python asked of its
+// limits (coverage, paths=N / paths-all, argc-unknown) and the line saying what differed, function by function. What the lane asks of its
 // environment -- how many arguments each import takes, the headers' declaration of each import it stubbed, which functions are the thunk
 // compiler's stubs -- is recorded beside it (verdicts.json) and given here as answers: the lane's own work is what is compared. The fingerprint
 // cache is off on both sides.
@@ -15,12 +15,11 @@
 // They need the symbolic lifter (native/decompiler: pcodecheck.exe and its languages) and the emulator's libraries (unicorn, z3, cbtrace);
 // without the lifter they say so and pass.
 //
-// DIVERGES from win32.py:
-//   * the cache key of an original's fingerprint is made from text, not the Python's repr of a tuple (nothing reads the old keys: a C++ cache
-//     is rebuilt once);
+// Design notes:
+//   * the cache key of an original's fingerprint is made from text;
 //   * the profile's digest is made from this lane's own settings text (the revision, the comparer's, the inputs, the flags, the compiler's
-//     stamp), not the Python's JSON; results filed under the old digest are made again once;
-//   * a trace that fails is a fingerprint with `err` naming the error's kind (the Python's exception class name); a missing module goes on;
+//     stamp);
+//   * a trace that fails is a fingerprint with `err` naming the error's kind; a missing module goes on;
 //   * the thunk stubs of a module come from Services (the symbol tables' recognition of the thunk compiler's functions), not from a module-level
 //     table keyed by path.
 #include "cb/verify/lanes/win32.hpp"
@@ -226,7 +225,7 @@ public:
 
 std::string word_of(cb::verify::Verdict v) { return std::string(cb::verify::word(v)); }
 
-// One module: every function the Python lane judged, judged again here.
+// One module: every function recorded as judged, judged again here.
 void check_module(const std::string& folder, const stdfs::path& original) {
     const stdfs::path decompiler_bin = cb::testing::data_path("../decompiler/build/bin");
     const stdfs::path languages = cb::testing::data_path("../decompiler/languages");
@@ -346,7 +345,7 @@ CB_TEST("verify.win32.the_kind", [] {
     CB_CHECK(a.settings.find("[args 0 0 0 0 ret 0]") != std::string::npos);
 });
 
-// ---- the shadow and the path explorer on LZ32 (tests/test_concolic.py) ---------------------------------------------------------------------
+// ---- the shadow and the path explorer on LZ32 ---------------------------------------------------------------------
 //
 // The lifter is pcodecheck as the pcode tests find it (the environment's, else native/decompiler/build/bin of the checkout, a worktree's build being
 // in the main one); without it these say so and pass.
@@ -363,7 +362,7 @@ stdfs::path w32sh_pcodecheck() {
     return {};
 }
 
-// LZ32 as the judge has it: its lifter, the imports' argument counts and the thunk stubs the Python lane recorded.
+// LZ32 as the judge has it: its lifter, the imports' argument counts and the thunk stubs recorded for it.
 struct W32ShRig {
     cb::emulate::pcode::LifterSet lifters;
     NoDecompiler decompiler;

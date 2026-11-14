@@ -15,14 +15,13 @@ namespace z = cb::decompile::z80;
 using cb::Bytes;
 using std::string;
 
-// DIVERGES from the Python module (the old harness, 25,854 cases over every table entry, decode, text, assemble and
-// value, agreed on all else; the expectations below came from the original and were read through by hand):
-//  - value() is a parser, not eval(): the operators are + - * / (floor) & | ^ ~ << >> and parentheses. Python's `**`
+// Notes (an old harness, 25,854 cases over every table entry, decode, text, assemble and
+// value, agreed on all else; the expectations below were recorded and read through by hand):
+//  - value() is a parser, not eval(): the operators are + - * / (floor) & | ^ ~ << >> and parentheses. `**`
 //    and comparisons are not there; tokens that were silently dropped (`!`, `#`, `,`, `=`, a lone `%` or `'`) or glued
-//    together (`1 2` was 12, `%12` was 12) are a ParseError; a number with leading zeros (`007`) reads as decimal
-//    where Python raised SyntaxError; a result past 64 bits is a ParseError instead of a big integer;
-//  - an unknown label is a cb::decompile::z80::UnknownLabel (Python: KeyError), the rest of the failures are ParseError;
-//  - decode() takes an unsigned offset (Python indexed from the end for a negative one);
+//    together (`1 2` was 12, `%12` was 12) are a ParseError; a number with leading zeros (`007`) reads as decimal; a result past 64 bits is a ParseError instead of a big integer;
+//  - an unknown label is a cb::decompile::z80::UnknownLabel, the rest of the failures are ParseError;
+//  - decode() takes an unsigned offset;
 //  - an Insn holds at most two values and four bytes (the table's maximum), not lists.
 
 namespace {
@@ -305,7 +304,7 @@ CB_TEST("decompile.z80.value", [] {
     auto v = [](const char* e, std::uint32_t pc = 0) { return z::value(e, labels(), pc); };
     CB_CHECK_EQ(v("1+2*3"), 7);
     CB_CHECK_EQ(v("(1+2)*3"), 9);
-    CB_CHECK_EQ(v("-5/2"), -3);              // floor division, as Python's // had it
+    CB_CHECK_EQ(v("-5/2"), -3);              // floor division
     CB_CHECK_EQ(v("7/2"), 3);
     CB_CHECK_EQ(v("7/-2"), -4);
     CB_CHECK_EQ(v("1<<4|1"), 17);            // shifts bind tighter than |

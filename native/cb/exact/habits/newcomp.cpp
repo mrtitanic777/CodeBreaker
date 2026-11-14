@@ -389,7 +389,7 @@ private:
             wi_ += w;
             gi_ += g;
         };
-        if (rw && rg && bw[0] == bg[0] && !fxg) {   // a jump or a call: where it goes is checked at the end (a call's, by build.py)
+        if (rw && rg && bw[0] == bg[0] && !fxg) {   // a jump or a call: where it goes is checked at the end (a call's, by the build stage)
             if (bw[0] != kCall) jumps_.emplace_back(static_cast<std::int64_t>(ow + sw) + rw->displacement, static_cast<std::int64_t>(og + sg) + rg->displacement);
             else set_renaming(Renaming{}, ow);
             advance(1, 1);
@@ -411,7 +411,7 @@ private:
                 return std::nullopt;
             }
         }
-        if (tw == tg && tw.starts_with("table of")) {   // (build.py compares where the entries point)
+        if (tw == tg && tw.starts_with("table of")) {   // (the build stage compares where the entries point)
             advance(1, 1);
             return std::nullopt;
         }

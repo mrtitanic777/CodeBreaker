@@ -1,5 +1,4 @@
-// Tests of cb/build/msc6.hpp. The text passes are checked on the decompiler-shaped samples the original msc6.py was checked
-// on, with the outputs the original gave (read over by hand: the argument order, the far pointers, the folded temporaries).
+// Tests of cb/build/msc6.hpp. The text passes are checked on the decompiler-shaped samples with the recorded outputs (read over by hand: the argument order, the far pointers, the folded temporaries).
 // compile_many runs against a runner that stands in for DOSBox-X: it reads the C files the compile wrote and answers with
 // object files (or the compiler's complaint), so what is tested is the batching, the bisecting of a refused file and the cache.
 #include "cb/build/msc6.hpp"
@@ -81,11 +80,9 @@ CB_TEST("build.msc6.object_code_marks_what_the_linker_fills_in", [] {
     CB_CHECK(msc6::object_code({}).code.empty());
 });
 
-// DIVERGES: the original read a record that ran past the end of the file as far as the file went (a LEDATA's data cut short became
-// the code, the clamped slice answering for the rest) and raised an IndexError where its fix-up record ran out. A record that holds
-// data (LEDATA, FIXUPP) and does not fit the file is now a TruncatedError; any other record that does not fit ends the scan, and a
-// record of no length is passed over. The compiler's own objects are never damaged; 13 of the 400 fuzzed byte strings of the old
-// harness are answered differently for this reason.
+// A record that holds
+// data (LEDATA, FIXUPP) and does not fit the file is a TruncatedError; any other record that does not fit ends the scan, and a
+// record of no length is passed over.
 CB_TEST("build.msc6.object_code_of_a_damaged_object_is_an_error", [] {
     CB_CHECK_THROWS_AS(FormatError, msc6::object_code(to_bytes(std::string("\xA0\x05\x00\x01", 4))));   // a record longer than the file
     Bytes bad = obj1();

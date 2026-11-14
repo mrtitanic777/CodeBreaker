@@ -2,8 +2,8 @@
 // a PKLITE-packed one run in the emulator (EXTRACT.EXE), a device driver (ASPI2HLP.SYS), an EXE that carries a driver header
 // (SETVER.EXE), a .COM file, and a DOS stub in front of a 32-bit PE (XCOPY32.EXE).
 //
-// DIVERGES from the Python reader (see state/work/typed-port/_bugs/LIST.md): EXEPACK data that runs out (an index before the
-// start of the buffer) is a FormatError (the Python wrapped around to the end of the buffer); a relocation below the image in
+// Behaviour pinned here: EXEPACK data that runs out (an index before the
+// start of the buffer) is a FormatError; a relocation below the image in
 // `unpacked_file` is a FormatError.
 #include "cb/formats/dos.hpp"
 

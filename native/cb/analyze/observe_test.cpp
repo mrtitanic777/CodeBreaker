@@ -4,15 +4,14 @@
 //
 // The synthetic tests build run records by hand and read the observation against the rule that made it. The real tests run the
 // functions of two modules of the Windows 95 corpus (testdata/observe/crtdll.dll and lz32.dll, copied from WINDOWS\SYSTEM) in
-// the emulator and compare with what the live Python (codebreaker.analyze.observe) made of the same modules:
-// testdata/observe/observe.golden.json, made by testdata/gen_observe.py, holds for each module the functions the Python chose to run,
-// every observation, and its report. The import-argument resolver answers from the table the Python's runs recorded, and the
+// the emulator and compare with the recorded results for the same modules:
+// testdata/observe/observe.golden.json holds for each module the functions chosen to run,
+// every observation, and its report. The import-argument resolver answers from the table the recorded runs used, and the
 // emulator's "an import gives something back through a pointer" table is empty on both sides, so the two runs see the same machine.
 //
-// DIVERGES from the Python:
-//   * The lists `fields_confirmed` and `fields_added` of a structure_observed fact are in offset order (the Python sorted the
-//     "+%x" texts: +10 before +8); the tests compare them as sets.
-//   * The Python's worker could not run a function at all when the emulator raised; here the error types the emulator throws for a
+// Notes:
+//   * The lists `fields_confirmed` and `fields_added` of a structure_observed fact are in offset order; the tests compare them as sets.
+//   * When the emulator raises, the error types the emulator throws for a
 //     function it cannot lay out (FormatError, EmulationError) become the same fault observation.
 #include "cb/analyze/observe.hpp"
 
@@ -325,7 +324,7 @@ struct Module {
         found = structures::recover(image, graph, conventions::summary(facts));
     }
 
-    // The observer's setting: the imports' argument counts the Python's runs recorded, and nothing given back through pointers.
+    // The observer's setting: the imports' argument counts the recorded runs used, and nothing given back through pointers.
     ob::Setting setting(const Json& argc_table, std::optional<std::size_t> limit) const {
         ob::Setting s;
         s.module = path;
@@ -347,7 +346,7 @@ const Json& golden() {
 
 }  // namespace
 
-CB_TEST("analyze.observe.the_functions_chosen_are_the_ones_the_python_chose_in_its_order", [] {
+CB_TEST("analyze.observe.the_functions_chosen_are_the_recorded_ones", [] {
     for (const char* name : {"crtdll.dll", "lz32.dll"}) {
         Module m(name);
         const Json& g = golden().at(name);
@@ -423,7 +422,7 @@ Json obs_json(const ob::Observation& o) {
 
 }  // namespace
 
-CB_TEST("analyze.observe.running_a_module_shows_what_the_python_saw", [] {
+CB_TEST("analyze.observe.running_a_module_shows_the_recorded_observations", [] {
     for (const char* name : {"crtdll.dll", "lz32.dll"}) {
         Module m(name);
         const Json& g = golden().at(name);
@@ -446,7 +445,7 @@ CB_TEST("analyze.observe.running_a_module_shows_what_the_python_saw", [] {
 });
 
 CB_TEST("analyze.observe.the_idiom_battery_names_the_library_functions", [] {
-    // every function of crtdll.dll the battery was run on (the first 400 chosen), with what the Python's battery answered
+    // every function of crtdll.dll the battery was run on (the first 400 chosen), with the recorded battery answers
     Module m("crtdll.dll");
     const ob::Observer observer(m.setting(golden().at("argc"), std::nullopt));
     std::map<std::string, int> by_name;   // idiom -> how many functions it was found in
@@ -488,7 +487,7 @@ CB_TEST("analyze.observe.an_image_that_is_not_a_flat_32_bit_module_is_not_run", 
 
 // ---- the analysis -----------------------------------------------------------------------------------------------------------------
 
-CB_TEST("analyze.observe.the_analysis_is_the_pythons_report", [] {
+CB_TEST("analyze.observe.the_analysis_is_the_recorded_report", [] {
     for (const char* name : {"crtdll.dll", "lz32.dll"}) {
         Module m(name);
         const Json& g = golden().at(name);
@@ -528,7 +527,7 @@ CB_TEST("analyze.observe.the_analysis_is_the_pythons_report", [] {
                 });
                 expect(row != rows.end(), std::string(name) + ": a row for " + w.at("name").get<std::string>());
                 if (row == rows.end()) continue;
-                // (the offsets are compared as sets: DIVERGES, see the top of the file)
+                // (the offsets are compared as sets: see the notes at the top of the file)
                 for (const char* list : {"fields_confirmed", "fields_added"}) {
                     std::set<std::string> a, b;
                     for (const Value& x : *row->value.get(list)->list()) a.insert(*x.text());

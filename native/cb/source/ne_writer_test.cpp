@@ -1,7 +1,7 @@
 // Tests of the whole-file writer of 16-bit programs over a real one: lzexpand.dll (Windows 95's LZ decompressor, six code segments, 2242
 // instructions, relocation chains of every kind). The program is read and its code found without an assembler; written back it needs NASM
 // (settings: nasm, or CB_NASM) and those tests are skipped where there is none. The golden source (testdata/writers/ne_lzexpand.golden.asm)
-// is what the writer wrote when the Python writer's port was the reference; it was read through -- the head, a segment's functions, a
+// is what the writer wrote when it was recorded; it was read through -- the head, a segment's functions, a
 // relocation chain, the segment table, the relocation table -- and, more to the point, the test builds it again and holds it to the
 // original byte for byte.
 

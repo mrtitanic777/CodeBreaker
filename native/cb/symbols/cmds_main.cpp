@@ -3,7 +3,7 @@
 //     cb_cmds <command> [arguments]       classes | xdk-match | recompile | recompile-project | xenon-recompile | java | xna
 //
 // It builds each command's Environment from the configuration of the checkout (CB_CHECKOUT_ROOT, settings.json, CB_<KEY>) exactly as the
-// command table will, runs it, and prints its output, so what a command writes can be compared with what the translated Python wrote.
+// command table will, runs it, and prints its output, so what a command writes can be compared between builds.
 #include <algorithm>
 #include <string>
 #include <vector>

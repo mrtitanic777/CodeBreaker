@@ -1,5 +1,5 @@
 // cb/port/real_program.hpp -- test support: the part-4 functions run over a stored Port state (the files of a real
-// program as the port has them after its constructor, from a run of the Python original). Used by real_program_test.cpp
+// program as the port has them after its constructor, recorded from a reference run). Used by real_program_test.cpp
 // and by the harness driver outside the tree, so both run the same code.
 //
 // Each Case is (tag, key, value): the call made and what the refactored code answered, as JSON. A stored golden file
@@ -357,7 +357,7 @@ inline std::vector<Case> run_target(const J& st, const std::string& profile_dir)
                 return out;
             });
         std::map<std::string, std::string> outs;
-        for (const std::string& n : pnames) {   // (the Python's harness ran it twice for each file)
+        for (const std::string& n : pnames) {   // each file is preprocessed twice: once to checkpoint the call, once for its output
             cs.attempt("_preprocessor", J::array({jtarget, n}), [&] { return crc(preprocess(pfiles.at(n), n, profile, left_out, notes)); });
             outs[n] = preprocess(pfiles.at(n), n, profile, left_out, notes);
         }

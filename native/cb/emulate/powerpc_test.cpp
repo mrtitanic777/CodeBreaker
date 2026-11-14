@@ -3,15 +3,14 @@
 // a shadow) and the run record.
 //
 // Instruction words are encoded by hand below and every expected value is worked out by hand from the Power ISA (not
-// recorded from this code). The old harness (state/work/typed-port/emulate.powerpc: random single steps and programs made
-// by the Python module) is the reference for the rest.
+// recorded from this code). An old harness of random single steps and programs is the reference for the rest.
 //
-// DIVERGES from the Python module:
-//  - filled(kind, size) gives exactly `size` bytes; the Python gave whole words (size 5 gave 8 bytes).
-//  - A load that straddles 4 GB reports its "where" address wrapped to 32 bits (the Python gave a number past 2**32).
-//  - A run's path is in order of first arrival (the Python held a set).
+// Notes:
+//  - filled(kind, size) gives exactly `size` bytes.
+//  - A load that straddles 4 GB reports its "where" address wrapped to 32 bits.
+//  - A run's path is in order of first arrival.
 //  - Stop is cb::emulate::powerpc::Fault carrying a StopReason; a Machine that cannot hold its regions throws it from the
-//    constructor, as the Python raised Stop there.
+//    constructor.
 #include "cb/emulate/powerpc.hpp"
 
 #include <bit>

@@ -1,5 +1,5 @@
 // The test kit of the asset readers' tests (xbe, xdbf, xpr, xur, bink, chd): the same one-line-per-fact dump
-// testdata/assets/make_asset_goldens.py makes of the Python readers, made here of ours, so a test compares line by line.
+// testdata/assets/make_asset_goldens makes of the recorded readers, made here of ours, so a test compares line by line.
 #pragma once
 
 #include <format>
@@ -37,7 +37,7 @@ inline std::string esc(const std::string& s) {
 
 inline std::string fixture(std::string_view name) { return fs::to_text(testing::data_path(std::string("formats/xbox/testdata/assets/") + std::string(name))); }
 
-// The goldens of one fixture: the lines of python_goldens.txt that start with "<name>.".
+// The goldens of one fixture: the lines of python_goldens.txt (the recorded dump) that start with "<name>.".
 inline Lines golden(const std::string& name) {
     Lines out;
     const std::string body = fs::read_text(fs::from_text(fixture("python_goldens.txt")));
@@ -124,7 +124,7 @@ inline Lines dump_xpr(const std::string& n, ByteView data) {
     out.push_back(std::format("{}.pixels={},{}", n, b.pixels.size(), sha12(b.pixels)));
     try {
         if (b.container == xpr::Container::Xpr2) {
-            // the Python's untile answers only as much of the surface as the (short) pixel data reaches, ours the whole surface: compare the part both have
+            // the recorded untile answers only as much of the surface as the (short) pixel data reaches, ours the whole surface: compare the part both have
             const Bytes dds = xpr::to_dds(b, 64, 32);
             out.push_back(std::format("{}.dds_prefix={}", n, sha12(ByteView(dds).first(std::min<std::size_t>(dds.size(), 1408)))));
         } else {
@@ -156,8 +156,8 @@ inline Lines dump_xur(const std::string& n, ByteView data) {
     return out;
 }
 
-// Python's str() of a float that is whole prints "30.0".
-inline std::string python_float(double v) {
+// A float that is whole prints "30.0".
+inline std::string whole_float(double v) {
     std::string s = text::format_double(v);
     if (s.find('.') == std::string::npos) s += ".0";
     return s;
@@ -168,7 +168,7 @@ inline Lines dump_bink(const std::string& n, ByteView data) {
     return {std::format("{}.generation={}", n, h.generation), std::format("{}.codec={}", n, h.codec),
             std::format("{}.file_size={}", n, h.file_size),   std::format("{}.frames={}", n, h.frames),
             std::format("{}.largest_frame={}", n, h.largest_frame), std::format("{}.width={}", n, h.width),
-            std::format("{}.height={}", n, h.height),         std::format("{}.fps={}", n, python_float(h.fps)),
+            std::format("{}.height={}", n, h.height),         std::format("{}.fps={}", n, whole_float(h.fps)),
             std::format("{}.video_flags=0x{:08X}", n, h.video_flags), std::format("{}.audio_tracks={}", n, h.audio_tracks)};
 }
 
@@ -187,7 +187,7 @@ inline std::string difference(const Lines& expected, const Lines& got) {
     std::string out;
     for (std::size_t i = 0; i < std::max(expected.size(), got.size()); ++i) {
         const std::string a = i < expected.size() ? expected[i] : "(none)", b = i < got.size() ? got[i] : "(none)";
-        if (a != b) out += std::format("  python: {}\n  ours:   {}\n", a, b);
+        if (a != b) out += std::format("  want:   {}\n  ours:   {}\n", a, b);
     }
     return out;
 }

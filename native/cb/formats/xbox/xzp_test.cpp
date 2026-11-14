@@ -1,10 +1,10 @@
-// Tests of cb/formats/xbox/xzp.hpp on a v3 (dashboard) and a v1 (Minecraft) container made for the purpose; the Python's xzp.parse and
-// xzp.payloads (state/work/typed-port/xbox-deferred/vol_golden.py) give for the v3: version 3, size 135, base 93, table end 93, entries
+// Tests of cb/formats/xbox/xzp.hpp on a v3 (dashboard) and a v1 (Minecraft) container made for the purpose; parsing and
+// listing the payloads give for the v3: version 3, size 135, base 93, table end 93, entries
 // (18, 0, '..\\media\\a.png') (21, 18, 'skin\\b.xur') (2, 39, 'c:evil') (1, 41, '..\\..'), payloads media/a.png and skin/b.xur (the entry
 // with a colon and the one that is only `..` parts are dropped); for the v1: version 1, size 134, base 97, entries
 // (17, 0, 'media\\a.png') (20, 17, 'media\\de-DE\\s.xus').
 //
-// DIVERGES from the Python: a header cut short is FormatError (struct.error / IndexError).
+// Behaviour pinned here: a header cut short is FormatError.
 #include "cb/formats/xbox/xzp.hpp"
 
 #include "cb/core/crypto.hpp"
@@ -33,7 +33,7 @@ static Bytes v1_file() {
 
 static std::string sha1_hex(ByteView v) { return crypto::to_hex(crypto::sha1(v)); }
 
-CB_TEST("formats.xbox.xzp.a_v3_pack_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.xzp.a_v3_pack_reads", [] {
     const Bytes file = v3_file();
     const xzp::Pack pack = xzp::parse(file);
     CB_CHECK_EQ(pack.version, 3);
@@ -58,7 +58,7 @@ CB_TEST("formats.xbox.xzp.a_v3_pack_reads_as_the_pythons_does", [] {
     CB_CHECK_EQ(sha1_hex(ByteView(file).subspan(payloads[1].offset, payloads[1].size)), "619d126d92e557fbfd0f3d85b9df4d1fa189de3e");
 });
 
-CB_TEST("formats.xbox.xzp.a_v1_pack_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.xzp.a_v1_pack_reads", [] {
     const Bytes file = v1_file();
     const xzp::Pack pack = xzp::parse(file);
     CB_CHECK_EQ(pack.version, 1);
@@ -97,7 +97,7 @@ CB_TEST("formats.xbox.xzp.a_file_that_is_not_xuiz_or_is_cut_short", [] {
     CB_CHECK(xzp::parse(outside).entries.empty());
 });
 
-// A folder packed and read back (tests/test_xbox_formats.py::test_xzp_round_trip, moved here with the Python's writer): the entries are named
+// A folder packed and read back: the entries are named
 // by their paths with backslashes, sorted by lowercased name; the header is the template's but for the base and the size.
 CB_TEST("formats.xbox.xzp.a_folder_is_packed_and_reads_back", [] {
     Bytes tpl = to_bytes("XUIZ");

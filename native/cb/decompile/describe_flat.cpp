@@ -84,7 +84,7 @@ std::map<Va, std::string> function_names(const formats::pe::Image& image, std::s
 }
 
 // {address: linker name} for the functions a module exports under a name that is not a C name -- a C++ function's decorated
-// name. In the C text such a function is sub_<address>; this is the symbol it must be linked as, and symbols/demangle.py makes
+// name. In the C text such a function is sub_<address>; this is the symbol it must be linked as, and the demangler makes
 // it a declaration.
 std::map<Va, std::string> decorated_names(const formats::pe::Image& image) {
     std::map<Va, std::string> out;

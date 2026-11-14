@@ -51,13 +51,13 @@ std::string_view rtrim(std::string_view s);
 std::string_view trim(std::string_view s);
 std::string_view trim(std::string_view s, std::string_view chars);   // strip any of `chars` from both ends
 
-// Split at every separator (like Python's str.split(sep): empty pieces are kept, "" gives one empty piece).
+// Split at every separator (empty pieces are kept, "" gives one empty piece).
 // The pieces are views into `s`; keep `s` alive while using them.
 std::vector<std::string_view> split(std::string_view s, char sep);
 std::vector<std::string_view> split(std::string_view s, std::string_view sep);
 // At most `max_splits` splits; the rest of the text is the last piece.
 std::vector<std::string_view> split_n(std::string_view s, char sep, std::size_t max_splits);
-// Split at runs of whitespace; no empty pieces (like Python's str.split()).
+// Split at runs of whitespace; no empty pieces (like splitting a command line).
 std::vector<std::string_view> split_ws(std::string_view s);
 // Split at `sep` and trim each piece; empty pieces are kept.
 std::vector<std::string_view> split_trim(std::string_view s, char sep);
@@ -84,9 +84,9 @@ std::string replace_all(std::string_view s, std::string_view from, std::string_v
 std::string replace_first(std::string_view s, std::string_view from, std::string_view to);
 
 // ---- identifiers --------------------------------------------------------------------------------------
-// Every byte that is not [A-Za-z0-9_] becomes '_' (the old re.sub(r"\W", "_", s)).
+// Every byte that is not [A-Za-z0-9_] becomes '_'.
 std::string sanitize_identifier(std::string_view s);
-// [A-Za-z_][A-Za-z0-9_]* (the old re.fullmatch(r"[A-Za-z_]\w*", s)).
+// True for [A-Za-z_][A-Za-z0-9_]*.
 bool is_identifier(std::string_view s);
 
 // ---- numbers ------------------------------------------------------------------------------------------

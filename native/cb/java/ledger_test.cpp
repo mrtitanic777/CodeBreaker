@@ -67,7 +67,7 @@ CB_TEST("java.ledger.add_and_queries", [] {
 });
 
 CB_TEST("java.ledger.risk_table", [] {
-    // Python's file_risk_table for these events: Alpha 7 (stubbed MED + guessed HIGH), Zed 7 (error HIGH + warning
+    // the file risk table for these events: Alpha 7 (stubbed MED + guessed HIGH), Zed 7 (error HIGH + warning
     // MED), Beta 0 -- the tie broken by file name.
     Ledger l = sample();
     auto rows = l.file_risk_table();
@@ -100,9 +100,9 @@ CB_TEST("java.ledger.extend_and_empty", [] {
     CB_CHECK_EQ(b.totals_by_category()[static_cast<std::size_t>(Category::Error)], std::size_t{2});
 });
 
-// testdata/ledger.golden.json: Python's Ledger.to_json() for the same six events (reviewed: key order, the totals
+// testdata/ledger.golden.json: the ledger's JSON for the same six events (reviewed: key order, the totals
 // listing every category and severity, escapes of tab/quote/backslash).
-CB_TEST("java.ledger.to_json_matches_python", [] {
+CB_TEST("java.ledger.to_json_matches_golden", [] {
     CB_CHECK_EQ(sample().to_json() + "\n", cb::fs::read_text(cb::testing::data_path("java/testdata/ledger.golden.json")) + "\n");
 });
 

@@ -61,7 +61,7 @@ struct CompileResult {
     std::string console;                       // what the compiler said
 };
 
-// exact/toolchain, as modules reads it (that module is refactored later and implements this).
+// exact/toolchain, as modules reads it (that module implements this).
 class Toolchain {
 public:
     virtual ~Toolchain() = default;
@@ -70,7 +70,7 @@ public:
     virtual CompileResult compile(ByteView source, const CompileOptions& options) const = 0;
 };
 
-// exact/project, as modules reads it (that module is refactored later and implements this).
+// exact/project, as modules reads it (that module implements this).
 class Project {
 public:
     virtual ~Project() = default;

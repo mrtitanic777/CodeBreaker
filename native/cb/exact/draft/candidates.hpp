@@ -9,7 +9,7 @@
 // all of it and gives the sources in the order the prover tries them.
 //
 // What the passes learn of the function (which bytes are unsigned, which data are arrays, the longs ...) lives in a
-// `State` the caller holds for the function - the original's module-level tables are gone - and what the passes ask of
+// `State` the caller holds for the function (there are no module-level tables) - and what the passes ask of
 // the project and its toolchain's profile is a `Settings`.
 #pragma once
 

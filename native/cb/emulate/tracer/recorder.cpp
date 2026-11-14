@@ -1,6 +1,6 @@
 // recorder.cc -- the instruction side of a run: trace_function's hook_code (one instruction at a
 // time), hook_block (a whole straight run of the file's code at once, `fast`) and settle.
-// Each step is the Python's, in the same order, so the record and the run are the same.
+// Each step is made in the order of the run.
 #include <algorithm>
 #include <mutex>
 
@@ -81,7 +81,7 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
                         sh_after_call(r->shadow, uc, false, 0);
                     return;
                 }
-                r->zeros = 0;                  // (the read failed: as Python's except)
+                r->zeros = 0;                  // (the read failed)
                 resumed = true;
             }
             if (!resumed && r->zeros > 16) {
@@ -162,7 +162,7 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
             uint8_t buf[15];
             if (!raw) {
                 uc_err e = ucl().mem_read(uc, address, buf, n);
-                if (e != UC_ERR_OK) {          // (Python: the hook raises; the run stops on it)
+                if (e != UC_ERR_OK) {          //
                     r->hook_error = 2;
                     r->uc_err = e;
                     r->stop();

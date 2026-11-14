@@ -78,10 +78,10 @@ CB_TEST("decompile.xbox_effect.stock_effect_becomes_one_technique_per_shader_ind
     CB_CHECK(defs >= 2);   // the definition and a use
 });
 
-// The old harness of the Python module (state/work/typed-port/decompile.xbox_effect): 44 effects (the SDK's fxc output, the Block
+// An old harness: 44 effects (the SDK's fxc output, the Block
 // World's, and the XNA effects of the converted games) each cut at a number of lengths and named a few ways, 484 cases. The
-// outputs are the original's, and what is expected to be the same is the .fx text (but for the file's own name in its first
-// comment and the digits of a float state); a case the original refused is refused (a FormatError for a damaged file, the
+// outputs are the recorded ones, and what is expected to be the same is the .fx text (but for the file's own name in its first
+// comment and the digits of a float state); a case refused in the recording is refused (a FormatError for a damaged file, the
 // translator's Unsupported for what it does not do).
 CB_TEST("decompile.xbox_effect.old_harness_cases", [] {
     const std::string dir = "decompile/testdata/xbox_effect/";

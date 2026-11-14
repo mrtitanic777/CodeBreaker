@@ -1,9 +1,9 @@
-// Tests of cb/formats/xbox/crypto/keystore.hpp: the file names and checksums (the constants of the Python module), loading a key
+// Tests of cb/formats/xbox/crypto/keystore.hpp: the file names and checksums, loading a key
 // whose checksum is accepted, and refusing a file that is not the genuine one. The genuine keys are not in the repository, so the
 // tests make keys of their own and accept their checksums.
 //
-// DIVERGES from the Python (keystore.py): the key folder is the store's own (the settings are read by the caller that makes the
-// store), and a wrong checksum is a FormatError that names the file and both checksums (the Python asserted "Invalid key checksum!").
+// Behaviour pinned here: the key folder is the store's own (the settings are read by the caller that makes the
+// store), and a wrong checksum is a FormatError that names the file and both checksums.
 #include "cb/formats/xbox/crypto/keystore.hpp"
 
 #include "cb/core/crypto.hpp"

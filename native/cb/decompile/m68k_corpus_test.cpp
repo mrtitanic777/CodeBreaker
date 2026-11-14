@@ -1,6 +1,6 @@
-// The old harness of the Python module (state/work/typed-port/decompile.m68k: 130,000 calls, 30 MB of recorded results),
+// An old harness (130,000 calls, 30 MB of recorded results),
 // replayed against the C++ when CB_M68K_CORPUS names its folder (the file expected.txt in it). Not part of the normal run:
-// the corpus is generated state, not source. The intended differences are the DIVERGES list of m68k_test.cpp.
+// the corpus is generated state, not source. The intended differences are the notes of m68k_test.cpp.
 #include <algorithm>
 #include <format>
 #include <map>
@@ -35,7 +35,7 @@ cb::Bytes bytes_of(std::string_view h) {
     return b;
 }
 
-// The old harness's encoding of an operand, with what Python kept in `xsize` for kinds that do not use it left out.
+// The old harness's encoding of an operand, with what was kept in `xsize` for kinds that do not use it left out.
 string enc_op(const m::Op& o) {
     using K = m::OpKind;
     string xr = "N", xs = "-", sz = "N";
@@ -137,7 +137,7 @@ string asm_result(const string& line, std::uint32_t pc, const cb::decompile::Nam
 
 }  // namespace
 
-CB_TEST("decompile.m68k.python_corpus", [] {
+CB_TEST("decompile.m68k.recorded_corpus", [] {
     const auto dir = cb::fs::get_env("CB_M68K_CORPUS");
     if (!dir) return;
     const string all = cb::fs::read_text(std::filesystem::path(*dir) / "expected.txt");
@@ -171,7 +171,7 @@ CB_TEST("decompile.m68k.python_corpus", [] {
                 const string t = m::text(*insn, text_labels(string(head[3]), ints));
                 got = "T:" + hx(t) + " " + asm_result(t, pc, asm_labels(string(head[3]), ints));
             }
-            // an error of the Python carries its message for four kinds; the category is what is compared
+            // an error of the recording carries its message for four kinds; the category is what is compared
             string w = want;
             if (w.find(" E:ValueError:") != string::npos) w = w.substr(0, w.find(" E:ValueError:") + 14);
             if (got.find(" E:ValueError") != string::npos) got = got.substr(0, got.find(" E:ValueError") + 14);
@@ -185,8 +185,8 @@ CB_TEST("decompile.m68k.python_corpus", [] {
             const string got = asm_result(src, pc, asm_labels(string(head[3]), {}));
             string w = want;
             if (w.rfind("E:ValueError", 0) == 0) w = "E:ValueError";
-            const bool python_other_error = w.rfind("E:", 0) == 0 && w != "E:ValueError" && w != "E:KeyError";
-            const bool equal = got == w || (python_other_error && got.rfind("E:", 0) == 0);
+            const bool recorded_other_error = w.rfind("E:", 0) == 0 && w != "E:ValueError" && w != "E:KeyError";
+            const bool equal = got == w || (recorded_other_error && got.rfind("E:", 0) == 0);
             if (!equal) report(cmd, std::format("{} | {}", src, line), got);
         }
     }

@@ -37,7 +37,7 @@
 
 namespace cb::formats::xbox::crypto {
 
-// The names of every tool of the Python package, in the order it lists them.
+// The names of every tool, in the order they are listed.
 const std::vector<std::string_view>& tool_names();
 // Whether the tool is in the native command layer (every one is).
 bool tool_is_native(std::string_view name);

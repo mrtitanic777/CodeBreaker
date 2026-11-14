@@ -2,13 +2,12 @@
 // emitted headers written here, and the whole probe -- javac, the JVM, the C++ compiler, the linker -- on a class and a hand-written
 // translation of it, which runs only where those tools are installed.
 //
-// DIVERGES from the Python module:
-//  - The class index is in path order (the Python's came from os.walk's order, unspecified); a class name declared twice keeps the first.
+// Design notes:
+//  - The class index is in path order; a class name declared twice keeps the first.
 //  - The probe's settings (the C++ dialect, the libraries, the stand-ins) are a Toolchain handed down, not module variables.
 //  - A harness literal of a String input is made from the string's UTF-16 units (a character above U+FFFF is two \u escapes, as Java
-//    reads it; the Python wrote an invalid five-digit escape). The inputs are fixed and none is above U+FFFF.
-//  - A static method is looked for in the header as `static`, a type (word characters, <>*, spaces and tabs), then the name and `(`;
-//    the Python's pattern let `[\w<>* ]` run over any text of those characters, which is the same on emitted headers.
+//    reads it). The inputs are fixed and none is above U+FFFF.
+//  - A static method is looked for in the header as `static`, a type (word characters, <>*, spaces and tabs), then the name and `(`.
 #include "cb/java/probe.hpp"
 
 #include <string>
@@ -147,7 +146,7 @@ CB_TEST("java.probe.inputs", [] {
     // too many: a fixed spread, then every input of every parameter once more if it was missed
     const Cases wide = probe::cases({"int", "int"});
     // 225 combinations: the stride walk of 48 steps repeats after 15 (15 distinct rows), and ten more rows bring in the second
-    // parameter's inputs the walk skipped (it only reaches every third); the Python module gave the same 25
+    // parameter's inputs the walk skipped (it only reaches every third); it is still 25
     CB_CHECK_EQ(wide.size(), std::size_t{25});
     CB_CHECK(wide[0] == (std::vector<std::string>{"0", "1"}));
     CB_CHECK(wide[1] == (std::vector<std::string>{"1", "7"}));   // k-th parameter at stride 2k+1, offset k
@@ -278,7 +277,7 @@ CB_TEST("java.probe.clock_reads_reach_callers", [] {
     CB_CHECK(s.constructors);   // a field initialiser reading the clock reaches every constructor
 });
 
-// tests/java/test_probe_clock.py: FIXED BUG probe-clock-noise -- a method whose result depends on the clock is not compared, the constructor that reads it
+// A method whose result depends on the clock is not compared, the constructor that reads it
 // counts, and only the static pure method of such a class is probed.
 CB_TEST("java.probe.a_class_that_reads_the_clock_in_its_constructor_and_a_method", [] {
     constexpr std::string_view clocky = R"(public class Clocky {

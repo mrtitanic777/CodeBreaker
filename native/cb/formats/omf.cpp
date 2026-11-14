@@ -277,8 +277,8 @@ Object read(ByteView data) {
                 if (tm) {
                     if (!ti) throw FormatError(kReader, q, "fix-up target thread has no index");
                     if (*ti == 0) {
-                        // index 0 names nothing; the target stays Unknown (the Python reader took it for the last
-                        // segment / group / external defined, by a negative list index)
+                        // index 0 names nothing; the target stays Unknown (it is not read as the last
+                        // segment / group / external defined)
                     } else if ((*tm & 3) == 0) {
                         tgt.kind = Target::Kind::Segment;
                         tgt.name = indexed(segs, *ti, "segment");

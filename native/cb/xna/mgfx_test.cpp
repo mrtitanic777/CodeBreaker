@@ -428,21 +428,19 @@ CB_TEST("xna.mgfx.parameters_that_do_not_fit", [] {
 
 // ---- the reference implementation's own cases (optional: needs the harness folder) ---------------------------
 
-// state/work/typed-port/xna.mgfx holds 4.6 MB of calls recorded from the Python (cases.txt, one JSON call per line,
+// A harness folder holds 4.6 MB of calls recorded from the reference implementation (cases.txt, one JSON call per line,
 // bytes as hex; expected.txt, the results). Point CB_XNA_MGFX_HARNESS at that folder to replay the add_parameters
-// calls: every answer must be the same bytes, and every error must be an error here too -- except the cases listed as
-// DIVERGES below.
-//
-// DIVERGES (old behaviour -> now):
-//   * a name or semantic with invalid UTF-8 raised UnicodeDecodeError; here it is kept as the bytes it is.
+// calls: every answer must be the same bytes, and every error must be an error here too -- except the cases listed below,
+// where this module is stricter or more forgiving (reference behaviour -> now):
+//   * a name or semantic with invalid UTF-8 was an error in the reference; here it is kept as the bytes it is.
 //   * a string length that ran past the end was clamped (a shorter name, no error); here it is a TruncatedError.
 //   * a negative size or count that moved the cursor backwards (an endless or wrong read) is a FormatError.
-//   * a length varint of more than 5 bytes (a Python big integer) is a FormatError.
-//   * a number that overflowed a 32-bit float raised OverflowError; here too (UsageError); inf and NaN pass. (The replay
-//     writes Python's inf as the largest double, which is refused: 39 of the "only this raised" cases.)
+//   * a length varint of more than 5 bytes is a FormatError.
+//   * a number that overflows a 32-bit float is a UsageError; inf and NaN pass. (The replay
+//     writes the reference's inf as the largest double, which is refused: 39 of the "only this raised" cases.)
 //   * a skip that runs past the end of the data (a shader or constant-buffer size larger than the file) was not an
 //     error until something read after it; here it is a TruncatedError at the skip (54 cases).
-//   * a vector parameter without `columns` raised struct.error (None is not a byte); here it has 0 columns (31 cases).
+//   * a vector parameter without `columns` was an error in the reference; here it has 0 columns (31 cases).
 CB_TEST("xna.mgfx.replays_the_reference_cases", [] {
     const auto dir = cb::fs::get_env("CB_XNA_MGFX_HARNESS");
     if (!dir) return;
@@ -453,7 +451,7 @@ CB_TEST("xna.mgfx.replays_the_reference_cases", [] {
         for (char& c : m) if (c >= '0' && c <= '9') c = '#';
         return m.substr(0, m.find(':', m.find(':') + 1));
     };
-    std::size_t at_c = 0, at_e = 0, compared = 0, both_error = 0, mismatched = 0, py_only_error = 0, cpp_only_error = 0;
+    std::size_t at_c = 0, at_e = 0, compared = 0, both_error = 0, mismatched = 0, ref_only_error = 0, cpp_only_error = 0;
     auto next_line = [](const std::string& s, std::size_t& at) {
         const std::size_t e = s.find('\n', at);
         std::string line = s.substr(at, e == std::string::npos ? std::string::npos : e - at);
@@ -473,7 +471,7 @@ CB_TEST("xna.mgfx.replays_the_reference_cases", [] {
     };
     while (at_c < cases.size()) {
         std::string text = next_line(cases, at_c);
-        for (std::size_t p; (p = text.find("Infinity")) != std::string::npos;) text.replace(p, 8, "1.7976931348623157e308");   // (Python writes inf so; the largest double stands in, which the module refuses)
+        for (std::size_t p; (p = text.find("Infinity")) != std::string::npos;) text.replace(p, 8, "1.7976931348623157e308");   // (the reference writes inf so; the largest double stands in, which the module refuses)
         const nlohmann::json call = nlohmann::json::parse(text);
         const nlohmann::json want = nlohmann::json::parse(next_line(expected, at_e));
         if (call[0] != "add_parameters") continue;
@@ -481,7 +479,7 @@ CB_TEST("xna.mgfx.replays_the_reference_cases", [] {
         std::vector<Parameter> ps;
         for (const auto& j : call[1][1]) {
             nlohmann::json one = j;
-            for (const char* k : {"rows", "columns", "elements"})   // a count the python could not write (negative)
+            for (const char* k : {"rows", "columns", "elements"})   // a count the reference could not write (negative)
                 if (one.contains(k) && one[k].is_number() && one[k] < 0) one[k] = 4294967295.0;
             std::vector<Parameter> parsed = parse_parameters("[" + one.dump() + "]");
             ps.push_back(std::move(parsed[0]));
@@ -491,8 +489,8 @@ CB_TEST("xna.mgfx.replays_the_reference_cases", [] {
             const Bytes got = add_parameters(data, ps);
             if (want.is_string() && hex_of(got) == want.get<std::string>()) continue;
             if (want.is_object()) {
-                ++py_only_error;
-                ++kinds["python only: " + want["error"].get<std::string>()];
+                ++ref_only_error;
+                ++kinds["reference only: " + want["error"].get<std::string>()];
             } else {
                 ++mismatched;   // the bytes differ
             }
@@ -505,8 +503,8 @@ CB_TEST("xna.mgfx.replays_the_reference_cases", [] {
             }
         }
     }
-    std::fprintf(stderr, "replayed %zu calls: %zu errors on both sides, %zu only the python raised, %zu only this raised (see DIVERGES), %zu different bytes\n",
-                 compared, both_error, py_only_error, cpp_only_error, mismatched);
+    std::fprintf(stderr, "replayed %zu calls: %zu errors on both sides, %zu only the reference raised, %zu only this raised (see the list above), %zu different bytes\n",
+                 compared, both_error, ref_only_error, cpp_only_error, mismatched);
     for (const auto& [kind, n] : kinds) std::fprintf(stderr, "  %6zu  %s\n", n, kind.c_str());
     CB_CHECK_EQ(mismatched, std::size_t{0});
 });

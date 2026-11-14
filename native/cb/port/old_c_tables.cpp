@@ -51,8 +51,7 @@ std::optional<std::size_t> member_index(const StructLayout& layout, std::string_
 }
 
 // Where a table's initializer ends: the `}` that closes the `{` just before `begin`; its rows are what lies between. A
-// table that never closes has none. (The Python took the next `};` there was, or with none the file's last byte: the
-// rows of what came after a table written `}` and `;` apart were its rows.)
+// table that never closes has none.
 std::optional<std::size_t> initializer_end(std::string_view code, std::size_t begin) {
     int depth = 1;
     for (std::size_t i = begin; i < code.size(); ++i) {

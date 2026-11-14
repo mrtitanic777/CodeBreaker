@@ -1,5 +1,5 @@
 // Helpers for the tests of command layers (`cb::<area>::<module>::command(environment)`): run one command and capture what it prints
-// the way the golden files made from the Python have it, and list a folder of written files as "path size sha1" lines.
+// the way the golden files have it, and list a folder of written files as "path size sha1" lines.
 #pragma once
 
 #include <algorithm>

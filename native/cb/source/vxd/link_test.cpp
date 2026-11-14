@@ -5,10 +5,10 @@
 // nothing (so each stage's failure is reported). The overlay is tried on the original's own bytes with a few of the recovered ones damaged,
 // and on another driver's (which must be refused). The real linker's plumbing is checked with a batch file standing in for LINK.
 //
-// DIVERGES from the Python module, by design: the .DEF is written with the line ends the text has (the Python's text-mode write made CR CR LF);
+// Behaviour pinned here: the .DEF is written with the line ends the text has;
 // the percentage of an object match is kept as a number and rounded where it is shown; an assembled object that cannot be matched is a FormatError
-// (the Python's ValueError) carrying the same diagnosis; the loadable build assembles with the native ML or the period assembler of the
-// toolchain (the Python had the native ML only); the tools are given, not found from a root folder.
+// carrying the same diagnosis; the loadable build assembles with the native ML or the period assembler of the
+// toolchain; the tools are given, not found from a root folder.
 #include "cb/source/vxd/link.hpp"
 
 #include <algorithm>
@@ -134,7 +134,7 @@ CB_TEST("source.vxd.link.the_source_and_def_of_a_driver", [] {
                                           "        VXD_DDB @1"};
     CHECK_SAME(cb::text::lines(plain.def), def);
 
-    // an instruction forced raw is db; the rest is as before
+    // an instruction forced raw is db; the rest is unchanged
     const lk::SourceAndDef forced = lk::emit_source_and_def(code, "TEST", {{1, {1}}});
     CB_CHECK(forced.source.find("\r\n        db  08Bh, 0ECh\r\n") != std::string::npos);
     CB_CHECK(forced.source.find("mov    ebp, esp") == std::string::npos);

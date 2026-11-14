@@ -1,6 +1,6 @@
 // Tests of the `knowledge` command over the knowledge store (cb/knowledge/show.hpp's `command`, store.hpp's `environment`): the output
-// against what `python -m codebreaker knowledge ...` printed over the same authored files (testdata/commands/*.txt, made by running the
-// Python in a fresh state folder; the database's path, which is the one line that cannot agree, and the time a piece was made are left out).
+// against the recorded output of `codebreaker knowledge ...` over the same authored files (testdata/commands/*.txt, made in a fresh
+// state folder; the database's path, which is the one line that cannot agree, and the time a piece was made are left out).
 #include <string>
 #include <vector>
 
@@ -32,7 +32,7 @@ struct KnowledgeCommandWorld {
             for (char& c : l)
                 if (c == '\\') c = '/';
             if (l.ends_with("knowledge.v2.sqlite")) continue;
-            if (l.starts_with("made:") || l.starts_with("hash:")) continue;   // (the hash is of the base's own encoding of the value: not the Python base's)
+            if (l.starts_with("made:") || l.starts_with("hash:")) continue;   // (the hash is of the base's own encoding of the value)
             out += l + "\n";
         }
         return out + "exit=" + std::to_string(code) + "\n";
@@ -49,7 +49,7 @@ std::string golden_of(const char* name) {
 
 }  // namespace
 
-CB_TEST("knowledge.show_command.loads_and_lists_like_the_python", [] {
+CB_TEST("knowledge.show_command.loads_and_lists", [] {
     KnowledgeCommandWorld w;
     const std::string loaded = w.run({"--load", "vxd"});
     // (the kinds' sizes are those of the way each base keeps a value, so the listing is compared by what it says of each kind)

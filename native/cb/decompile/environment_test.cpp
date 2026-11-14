@@ -1,12 +1,12 @@
 // cb-unity: alone (helpers named for what they do here)
 // Tests of cb/decompile/environment.hpp on real modules (formats/testdata, symbols/testdata): LZ32.DLL (a 32-bit library that exports 12
-// functions by name, with 10 imports), LZEXPAND.DLL (a 16-bit library), and natalsu.exe (a PowerPC image). The expected values are what the
-// Python read from the same files (codebreaker.symbols.api_arguments, build.watcom, analyze, symbols.names, symbols.driver_services),
-// gathered by state/work/decompile-env/g1.py and g2.py when this was written.
+// functions by name, with 10 imports), LZEXPAND.DLL (a 16-bit library), and natalsu.exe (a PowerPC image). The expected values were
+// recorded from the same files (the argument tables, the OpenWatcom table, the analysis, the names and the driver services)
+// when this was written.
 //
 // The last test is the proof the module was written for: with the environment over the knowledge base, the Decompiler writes the C of five
-// real modules byte for byte as the Python did. It runs only where CB_PROOF_EXPECTED names the folder of the expected files
-// (<module>.c, from `python -m codebreaker decompile <module> --out`), and the checkout's own settings find the corpus and the programs.
+// real modules byte for byte as recorded. It runs only where CB_PROOF_EXPECTED names the folder of the expected files
+// (<module>.c, from `codebreaker decompile <module> --out`), and the checkout's own settings find the corpus and the programs.
 #include "cb/decompile/environment.hpp"
 
 #include <algorithm>
@@ -157,7 +157,7 @@ struct EnvOver {
     CorpusEnvironment environment{Sources{*world.corpus, unused_library(), win32, win16, ordinals, nullptr, modules}};
 };
 
-CB_TEST("decompile.environment.argument_sizes_as_the_python_read_them", [] {
+CB_TEST("decompile.environment.argument_sizes_as_recorded", [] {
     EnvOver o;
     // what LZ32.DLL's own code removes on return, export by export (api_arguments.stack_bytes)
     const std::pair<const char*, std::uint32_t> exports[] = {{"LZCopy", 8},   {"LZOpenFileA", 12}, {"LZInit", 4},         {"LZSeek", 12},
@@ -186,7 +186,7 @@ CB_TEST("decompile.environment.argument_sizes_as_the_python_read_them", [] {
     CB_CHECK(!o.environment.knowledge().win16_argument_bytes("not an api name").has_value());
 });
 
-CB_TEST("decompile.environment.a_module_as_the_python_read_it", [] {
+CB_TEST("decompile.environment.a_module_as_recorded", [] {
     EnvOver o;
     // imports by name: {C name: DLL}
     const std::map<std::string, std::string> imports = o.environment.import_dlls(o.world.lz32());
@@ -270,9 +270,9 @@ CB_TEST("decompile.environment.over_the_knowledge_base", [] {
     CB_CHECK(!driver_table(kb).messages().empty());
 });
 
-// ---- the proof against the Python ---------------------------------------------------------------------------------------------------------
+// ---- the proof against the recorded output ---------------------------------------------------------------------------------------------------------
 
-CB_TEST("decompile.environment.proof_decompile_as_the_python_wrote_it", [] {
+CB_TEST("decompile.environment.proof_decompile_as_recorded", [] {
     const std::optional<std::string> expected_dir = fs::get_env("CB_PROOF_EXPECTED");
     if (!expected_dir) return;   // (needs the real corpus and the native program: gated)
     const config::Config main = config::Config::load(config::current().main_checkout());

@@ -18,7 +18,7 @@ const Registry& real_registry() {
     return reg;
 }
 
-// testdata/apimap.golden.json: what the Python registry (without the legacy-equivalents bridge) answers for the same
+// testdata/apimap.golden.json: what the registry (without the legacy-equivalents bridge) answers for the same
 // folder -- every lookup key with every target language, `by_version` rows under every dialect, reverse lookups,
 // coverage, symbols_in, stats. Reviewed: counts and spot rows checked by hand against the JSON files.
 const cb::Json& golden() {
@@ -82,7 +82,7 @@ CB_TEST("java.apimap.loads_real_data", [] {
     CB_CHECK(reg.dialect_order("nonexistent-language").empty());
 });
 
-CB_TEST("java.apimap.resolve_matches_python", [] {
+CB_TEST("java.apimap.resolve_matches_golden", [] {
     const Registry& reg = real_registry();
     for (const cb::Json& row : golden()["resolve"]) {
         const std::string key = row[0].get<std::string>();
@@ -101,7 +101,7 @@ CB_TEST("java.apimap.qualified_and_unknown_names", [] {
     }
 });
 
-CB_TEST("java.apimap.reverse_matches_python", [] {
+CB_TEST("java.apimap.reverse_matches_golden", [] {
     const Registry& reg = real_registry();
     for (const cb::Json& row : golden()["reverse"]) {
         check_mapping(reg.reverse(row[0].get<std::string>(), row[1].get<std::string>(), row[2].get<std::string>()), row[3],
@@ -112,7 +112,7 @@ CB_TEST("java.apimap.reverse_matches_python", [] {
     }
 });
 
-CB_TEST("java.apimap.coverage_matches_python", [] {
+CB_TEST("java.apimap.coverage_matches_golden", [] {
     const Registry& reg = real_registry();
     const std::set<std::string> names = {"Math.sqrt", "GL11.glVertex3f", "ArrayList.get", "String.substring", "Nope.nothing",
                                          "System.out", "Foo.bar", "Display.create", "GL11.GL_TRIANGLES", "Thread.sleep"};
@@ -131,7 +131,7 @@ CB_TEST("java.apimap.coverage_matches_python", [] {
     }
 });
 
-CB_TEST("java.apimap.symbols_in_and_stats_match_python", [] {
+CB_TEST("java.apimap.symbols_in_and_stats_match_golden", [] {
     const Registry& reg = real_registry();
     for (const auto& [sub, rows] : golden()["symbols_in"].items()) {
         auto actual = reg.symbols_in(sub);
@@ -177,11 +177,11 @@ CB_TEST("java.apimap.lookup_keys_and_leaf", [] {
     CB_CHECK_EQ(target_leaf("sqrtf(float)"), "sqrtf");
     CB_CHECK_EQ(target_leaf("a.b"), "b");
     CB_CHECK_EQ(target_leaf("x:y"), "x:y");              // a single colon is not a separator
-    CB_CHECK_EQ(target_leaf("x::y.z(a.b)"), "b)");       // split first, then cut at '(' (as the Python did)
+    CB_CHECK_EQ(target_leaf("x::y.z(a.b)"), "b)");       // split first, then cut at '('
     CB_CHECK_EQ(target_leaf("plain"), "plain");
 });
 
-CB_TEST("java.apimap.extract_symbols_matches_python", [] {
+CB_TEST("java.apimap.extract_symbols_matches_golden", [] {
     const cb::Json expected = cb::json::load(cb::testing::data_path("java/testdata/extract_symbols.golden.json"));
     for (const cb::Json& row : expected) {
         std::set<std::string> want;

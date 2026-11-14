@@ -5,14 +5,12 @@
 // an argument, loop for ever, hit an invalid instruction, clobber a register it must keep, read memory the caller supplied, and call into
 // another module that is only there as an overlay. Every expectation is worked out from the assembly below, not recorded.
 //
-// DIVERGES from the Python module:
-//  - overlay imports ARE merged into the traced module's (the overlay's slots get landing places too): the Python's `dict(oimports,
-//    **imports)` raised a TypeError for any module that had imports of its own (int keys as keywords) and was swallowed, so an overlay's
-//    imports were only ever used when the traced module had none. (Listed in _bugs/LIST.md.)
-//  - the section a function's offsets are taken from is the section it is in; the Python took the first section of that NAME, which gave
-//    a second section of the same name the first one's functions.
+// Notes:
+//  - overlay imports are merged into the traced module's (the overlay's slots get landing places too), whether or not the traced module has
+//    imports of its own.
+//  - the section a function's offsets are taken from is the section it is in, so a second section of the same name has its own functions.
 //  - the trace is a typed record (cb/emulate/native_trace's TraceRecord inside Trace): mnemonics are keyed by address, not by "0x%x" text.
-//  - a text selector that is no number is a UsageError (the Python raised ValueError from int(text, 0)).
+//  - a text selector that is no number is a UsageError.
 #include "cb/emulate/emulator.hpp"
 
 #include <algorithm>
@@ -549,13 +547,12 @@ CB_TEST("emulate.emulator.the_real_lz32_dll_traces_the_same_fresh_and_kept", [] 
     CB_CHECK_EQ(traced, std::size_t{12});
 });
 
-// ---- the recorder's agreed records (tests/test_native_trace.py, tests/data/native_trace_golden.txt) ---------------------------------------------
+// ---- the recorder's agreed records ---------------------------------------------
 //
-// The Python test traced a small module made of three hand-assembled functions in each of eight configurations of the recorder and wanted, for each case,
-// the digest of the record the Python and the C++ recorders had agreed on (a hash of the Python's text of the record: it cannot be made here without
-// writing Python's repr). What the golden pins is also which cases gave the SAME record -- a run that stubs its imports and one that does not, when
-// the run meets none; a run and the same run under a cap it does not reach -- and that is what is checked here: the same module (the code bytes below
-// are the Python test's, but for the import slot's address), the same eight configurations and arguments, and every set of cases the golden gives one
+// A small module of three hand-assembled functions is traced in each of eight configurations of the recorder; the golden holds, for each case,
+// a digest of the agreed record (it cannot be recomputed here). What the golden pins is also which cases gave the SAME record -- a run that stubs its imports and one that does not, when
+// the run meets none; a run and the same run under a cap it does not reach -- and that is what is checked here: the same module (the code bytes below,
+// but for the import slot's address), the same eight configurations and arguments, and every set of cases the golden gives one
 // digest must give one record here, a record being its end, result, stack, instructions that ran, the imports entered and the branches taken. Beside
 // them the record of f is worked out from its code.
 //

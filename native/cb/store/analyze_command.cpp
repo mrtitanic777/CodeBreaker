@@ -61,8 +61,8 @@ public:
             const auto found = table->names.find(ordinal);
             return found == table->names.end() ? std::nullopt : std::optional<std::string>(found->second);
         };
-        // observe: the emulator finds the corpus's modules and the code says how many arguments an import pops (the headers' prototypes are not read: the
-        // Python's runs did not use them, and reading the SDK's headers costs more than the runs)
+        // observe: the emulator finds the corpus's modules and the code says how many arguments an import pops (the headers' prototypes are not read:
+        // the runs do not use them, and reading the SDK's headers costs more than the runs)
         e.emulator.resolve = [&corpus](std::string_view name) { return corpus.resolve(name); };
         e.import_argc = [this](const emulate::native_trace::ImportName& import) { return sizes_.argc(import.dll, import.name); };
         e.workers = workers_;

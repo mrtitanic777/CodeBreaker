@@ -57,7 +57,7 @@ std::vector<std::pair<Offset, Offset>> chain_swaps(std::span<const Copy> copies)
         if (incoming.contains(origin) || seen.contains(origin)) continue;
         Offset cur = origin;
         seen.insert(cur);
-        // walk to the sink; a chain that runs into a cycle ends where it would re-enter it (the Python looped forever)
+        // walk to the sink; a chain that runs into a cycle ends where it would re-enter it (it never loops)
         std::unordered_set<Offset> walked = {cur};
         for (auto it = next.find(cur); it != next.end() && !walked.contains(it->second); it = next.find(cur)) {
             cur = it->second;

@@ -1,5 +1,5 @@
-// c_text_consts.inc -- the C text constants of decompile/c_text.py (_TYPES, _HELPERS, HEADER, _POWERPC, SEG_PTR), as raw
-// string literals, char for char (generated once from the Python; included by c_text.cpp).
+// c_text_consts.inc -- the C text constants (types, helpers, header, PowerPC and segment-pointer text), as raw
+// string literals, char for char (included by c_text.cpp).
 static const char* const TYPES_TEXT =
 R"CBR(#pragma pack(1)
 typedef signed char int1; typedef short int2; typedef int int4; typedef long long int8;

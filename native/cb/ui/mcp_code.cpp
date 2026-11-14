@@ -1,13 +1,13 @@
 // cb/ui/mcp_code.cpp -- the code itself for the MCP server: disassembly, cross-references and where an address is stored in the file, over a module
 // as the analyses see it (analyze/image: a 32-bit module as it is, a 16-bit one as the decompiler lays it out).
 //
-// A module is read once and kept (an hour at most, as the Python kept it); its functions are the ones the file gives away (a 32-bit module's carve:
+// A module is read once and kept (an hour at most); its functions are the ones the file gives away (a 32-bit module's carve:
 // formats/pe_functions) plus those discovery adds. Each tool answers a document: `disasm` the listing of a function or of the instructions from an
 // address, `xrefs` what refers to an address or function and what a function calls. The listing lines read "address  [file offset]  bytes
 // instruction ; what the instruction refers to" (a function, an import by name, a string).
 //
-// DIVERGES from ui/mcp_server.py:
-//   * a driver (LE) is not read here yet: its tools say so (the Python read the VxD's description from its own working folder).
+// Design notes:
+//   * a driver (LE) is not read here yet: its tools say so.
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -268,7 +268,7 @@ CodeImage& CodeReader::image(const std::filesystem::path& path) {
     if (hit != kept_.end() && std::chrono::steady_clock::now() - hit->second->made < std::chrono::hours{1}) return *hit->second;
     const std::optional<base::Lane> lane = context_->corpus().lane(path);
     std::unique_ptr<CodeImage> made;
-    // (a module that cannot be read says what kind of failure it was, as the Python's remembered failure did)
+    // (a module that cannot be read says what kind of failure it was)
     try {
         if (lane == base::Lane::Pe) {
             made = code_read_pe(path);

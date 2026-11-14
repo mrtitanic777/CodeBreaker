@@ -1,6 +1,6 @@
 // cb-unity: alone (test helpers named for this module)
-// Tests of cb/source/vxd/tree on the real driver SPLITTER.VXD of formats/testdata. The golden tree (testdata/tree_splitter) is what the Python module
-// wrote for it (compared with the lines' CR left out: the Python wrote each CRLF as CR CR LF, which is a bug of its own, fixed in the Python too), read
+// Tests of cb/source/vxd/tree on the real driver SPLITTER.VXD of formats/testdata. The golden tree (testdata/tree_splitter) is what the module
+// wrote for it (compared with the lines' CR left out: a text-mode write turns each CRLF into CR CR LF), read
 // through the DDK's names; the tests with no DDK use the same names written by hand.
 #include "cb/source/vxd/tree.hpp"
 
@@ -78,7 +78,7 @@ CB_TEST("source.vxd.tree.the_entry_table_names_the_ddb", [] {
     CB_CHECK_EQ(static_cast<std::int64_t>(ddb->second), code.ddb()->rva);
 });
 
-CB_TEST("source.vxd.tree.splitter_tree_matches_the_python_module", [] {
+CB_TEST("source.vxd.tree.splitter_tree_matches_the_recorded_output", [] {
     const le::Module splitter = tree_driver("splitter.vxd");
     cb::fs::ScopedTempDir out("treetest");
     const vx::DdkNames names = tree_names();
@@ -86,7 +86,7 @@ CB_TEST("source.vxd.tree.splitter_tree_matches_the_python_module", [] {
     CB_CHECK(files == (std::vector<std::string>{"splitter_lcode_01.asm"}));   // one object, written whole
     CB_CHECK_EQ(tree_read(out.path() / "splitter" / "splitter_lcode_01.asm"), tree_golden("splitter_lcode_01.asm"));
     CB_CHECK_EQ(tree_read(out.path() / "splitter" / "splitter.txt"), tree_golden("splitter.txt"));
-    // CRLF line ends, written as they are (the Python's text mode doubled the CR)
+    // CRLF line ends, written as they are
     const std::string raw = cb::fs::read_text(out.path() / "splitter" / "splitter_lcode_01.asm");
     CB_CHECK(raw.find("\r\r") == std::string::npos);
     CB_CHECK(raw.find("\r\n") != std::string::npos);

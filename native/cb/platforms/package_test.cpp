@@ -8,15 +8,14 @@
 #include "cb/platforms/java.hpp"
 #include "cb/platforms/msx.hpp"
 
-// DIVERGES from codebreaker/platforms/__init__.py and its port:
-//   * a descriptor is data: the Refs (module and function names of other areas: the opener, the runner, the compiler,
-//     the writer ...) are not carried -- those layers key their own tables on platforms::Id. runners() answers the
-//     names of the platforms that run code (the old one answered the (module, function) pairs); lanes() the lane's
-//     name ("win32", not "codebreaker.verify.lanes.win32"); step_sets() an enum;
+// Behaviour pinned here:
+//   * a descriptor is data: other areas' pieces (the opener, the runner, the compiler, the writer ...) are not carried --
+//     those layers key their own tables on platforms::Id. runners() answers the names of the platforms that run code;
+//     lanes() the lane's name ("win32"); step_sets() an enum;
 //   * recognising a file asks the formats layer through Probes, wired once at start-up (an unwired probe is an
 //     InternalError); a probe that finds the file damaged or gone is "no" (IoError/FormatError), other errors surface;
-//   * zx is recognised by the formats probe alone (the port added an extension gate and a 16-byte fallback);
-//   * no module-level registry: a Registry object is built by the program and passed down.
+//   * zx is recognised by the formats probe alone;
+//   * there is no global registry: a Registry object is built by the program and passed down.
 
 using namespace cb;
 using namespace cb::platforms;
@@ -110,7 +109,7 @@ CB_TEST("platforms.package.registry_orders_and_finds", [] {
     Files files;
     Registry r = full_registry(files.probes());
     CB_CHECK(r.complete());
-    // harvested from the old harness (all()): [id, name] in the order platforms are tried
+    // recorded: [id, name] in the order platforms are tried
     const std::vector<std::pair<std::string, std::string>> expected = {
         {"java", "java"}, {"xbox360", "powerpc"}, {"xbox", "xbe"}, {"nes", "nes"}, {"sms", "sms"}, {"gb", "gb"}, {"genesis", "genesis"},
         {"zx", "zx"},     {"msx", "msx"},         {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"},   {"dos", "dos"}};
@@ -161,7 +160,7 @@ CB_TEST("platforms.package.lanes_runners_steps", [] {
 });
 
 CB_TEST("platforms.package.win32_descriptor", [] {
-    const Platform p = win32();   // harvested from the old harness, field by field
+    const Platform p = win32();   // recorded, field by field
     CB_CHECK_EQ(p.name, "pe");
     CB_CHECK_EQ(p.title, "32-bit Windows");
     CB_CHECK_EQ(p.family, "x86");

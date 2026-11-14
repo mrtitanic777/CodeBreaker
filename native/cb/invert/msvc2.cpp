@@ -37,7 +37,7 @@ typedef std::string ByteString;
 typedef std::optional<ByteString> OB;
 typedef std::optional<long long> OI;
 
-// ---- bytes, as Python's bytes([...]) and struct.pack build them ------------
+// ---- byte-string builders ------------
 ByteString bb(std::initializer_list<long long> xs) {
   ByteString o;
   for (long long x : xs) {
@@ -813,7 +813,7 @@ std::vector<MO> dis(const ByteString &code) {
   return out;
 }
 
-long long pint0(const std::string &s) {   // int(s, 0): Python strips whitespace first
+long long pint0(const std::string &s) {   // int(s, 0): whitespace is stripped first
   size_t a = s.find_first_not_of(" \t\n\r\f\v"), b = s.find_last_not_of(" \t\n\r\f\v");
   if (a == std::string::npos) return parse_number(s);
   return parse_number(s.substr(a, b - a + 1));

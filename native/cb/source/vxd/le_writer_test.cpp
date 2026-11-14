@@ -3,9 +3,9 @@
 // (formats/testdata): the file it writes from the driver's own recovery must read back as the same driver (objects, object bytes, names,
 // device id, fix-ups), which is what makes it loadable. The expected numbers are read off the original's header, not recorded from a run.
 //
-// DIVERGES from the Python module, by design: a header that is not where the writer assumes, a table that lies outside the file and a module that
-// is not in a container are FormatErrors (the Python raised struct.error, IndexError or TypeError); build_w3 takes no name (the Python's was unused);
-// the object bytes laid over the pages of a W3 module that run past the last page are dropped, as before, but a module whose object starts past the
+// Behaviour pinned here: a header that is not where the writer assumes, a table that lies outside the file and a module that
+// is not in a container are FormatErrors; build_w3 takes no name;
+// the object bytes laid over the pages of a W3 module that run past the last page are dropped, but a module whose object starts past the
 // end of the pages is grown to hold it instead of having the bytes appended in the wrong place.
 #include "cb/source/vxd/le_writer.hpp"
 

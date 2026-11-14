@@ -64,7 +64,7 @@ struct LedgerRow {
 
 inline constexpr std::string_view kIdentical = "identical";
 
-// What the command needs of a project (exact/project and exact/ledger, refactored later, implement it).
+// What the command needs of a project (exact/project and exact/ledger implement it).
 class Project {
 public:
     virtual ~Project() = default;

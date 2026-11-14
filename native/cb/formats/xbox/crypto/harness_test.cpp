@@ -1,12 +1,10 @@
 // Tests of cb/formats/xbox/crypto/harness.hpp over synthetic test data (byte i = i*29 + (i>>7)*3 + 7, 0x40010 bytes) and the xecrypt test
 // RSA key. The console's own test data is not in the repository, so the known answers do not match and every check of the symmetric
-// ciphers and the digests reports FAILED -- which is what the Python's harness.main prints for the same files
-// (state/work/typed-port/xbox-deferred/harness_golden.py in the work that wrote this): the report below is its output, line for line, and the values
-// each check computed are the ones the Python's XeCrypt gives for the same inputs.
+// ciphers and the digests reports FAILED; the report below is the expected output, line for line, and the values
+// each check computed are the ones the cipher implementations give for the same inputs.
 //
-// DIVERGES from the Python: the test data and the key come with the call rather than from `Data/` in the working folder, and the CPU key
-// of the key store is an input (the Python read it at import); a test-data file shorter than the checks read is UsageError (the Python
-// slices clamped and the checks failed or raised depending on the call).
+// Behaviour pinned here: the test data and the key come with the call rather than from `Data/` in the working folder, and the CPU key
+// of the key store is an input; a test-data file shorter than the checks read is UsageError.
 #include "cb/formats/xbox/crypto/harness.hpp"
 
 #include "cb/core/crypto.hpp"
@@ -116,13 +114,13 @@ Misc. FAILED!
 ERROR! One or more tests failed!
 )REPORT";
 
-CB_TEST("formats.xbox.crypto.harness.the_report_is_the_pythons", [] {
+CB_TEST("formats.xbox.crypto.harness.the_report_matches_the_recorded_output", [] {
     const harness::Result r = harness::run(inputs());
     CB_CHECK(!r.passed);
     CB_CHECK_EQ(r.text(), std::string(kReport));
 });
 
-CB_TEST("formats.xbox.crypto.harness.each_check_computes_what_the_pythons_xecrypt_does", [] {
+CB_TEST("formats.xbox.crypto.harness.each_check_computes_what_xecrypt_does", [] {
     const harness::Result r = harness::run(inputs());
     const struct {
         const char* label;

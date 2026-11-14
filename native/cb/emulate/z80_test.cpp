@@ -3,15 +3,15 @@
 // their undocumented halves, the block instructions, ports, the bus, running a function, and the run record.
 //
 // Every expected value is worked out by hand from the Zilog documentation and "The Undocumented Z80 Documented" (not
-// recorded from this code). The old harness (state/work/typed-port/emulate.z80: 11,680 cases made by the Python module)
+// recorded from this code). An old harness of 11,680 cases
 // agrees on all of them that the chip defines.
 //
-// DIVERGES from the Python module:
-//  - Registers are 8 and 16 bits wide types (Python's ints could hold more); the entry address is 16 bits.
-//  - A Bus takes exactly 64 KB; plain memory without ports is Bus::bare (the Python told a bytearray from a Bus by hasattr).
-//  - A run's `io` is what that run logged (the Python gave the bus's whole log, carried over a reused bus).
-//  - Port numbers reach a callback whole (16 bits, as the chip puts BC on the bus); the log keeps the low byte, as before.
-//  - A CPU that was told HALT, or cannot decode, returns a Fault from step() instead of raising.
+// Notes:
+//  - Registers are 8 and 16 bits wide types; the entry address is 16 bits.
+//  - A Bus takes exactly 64 KB; plain memory without ports is Bus::bare.
+//  - A run's `io` is what that run logged.
+//  - Port numbers reach a callback whole (16 bits, as the chip puts BC on the bus); the log keeps the low byte.
+//  - A CPU that was told HALT, or cannot decode, returns a Fault from step().
 #include "cb/emulate/z80.hpp"
 
 #include <format>

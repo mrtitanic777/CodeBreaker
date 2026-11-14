@@ -1,10 +1,10 @@
 // Tests of the `corpus-executables` command (cb/base/corpus_executables.hpp): the listing of a small corpus of the real binaries of
 // formats/testdata (their formats, the order by file name, a name's copies in path order), and the listing of the Windows 95 corpus the main
-// checkout's settings name against what the translated Python printed (`codebreaker.exe corpus-executables`: 1342 executables, 224 LE, 91 MZ,
+// checkout's settings name against the recorded listing (1342 executables, 224 LE, 91 MZ,
 // 388 NE, 638 PE, 1 W3; testdata/corpus_executables_golden.txt holds the count, the SHA-1 of the whole listing and its first and last lines), skipped
 // when that corpus is not on this machine.
 //
-// DIVERGES from the Python: a file whose format the detector does not name is "?" (the Python printed "None").
+// A file whose format the detector does not name is listed as "?".
 #include "cb/base/corpus_executables.hpp"
 
 #include <string>
@@ -76,9 +76,9 @@ CB_TEST("base.corpus_executables.lists_the_executables_of_a_corpus_by_file_name"
     CB_CHECK(out.find("PE\t") != std::string::npos);
 });
 
-CB_TEST("base.corpus_executables.lists_the_windows_95_corpus_as_the_python_does", [] {
+CB_TEST("base.corpus_executables.lists_the_windows_95_corpus_as_recorded", [] {
     // A proof against the live corpus (CB_CORPUS_EXECUTABLES_PROOF=1): it reads the main checkout's products, which a test build's
-    // surroundings do not always reach (it listed nothing there); the command itself was compared with the Python through the exe.
+    // surroundings do not always reach (it listed nothing there).
     if (!fs::get_env("CB_CORPUS_EXECUTABLES_PROOF")) return;
     const config::Config config = config::Config::load(config::Config::load(testing::data_path("../..")).main_checkout());
     const base::Products products = config.products();

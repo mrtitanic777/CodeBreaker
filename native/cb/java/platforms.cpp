@@ -60,7 +60,7 @@ constexpr std::string_view kCommonTypedefs = R"SDX(typedef unsigned char byte;
 #define null NULL
 )SDX";
 
-// ---- generated from the Python tables, then reviewed ----
+// ---- the platform table ----
 const std::vector<Platform>& table() {
     static const std::vector<Platform> kTable = {
         {PlatformId::Xbox360, "xbox360", "Xbox 360",

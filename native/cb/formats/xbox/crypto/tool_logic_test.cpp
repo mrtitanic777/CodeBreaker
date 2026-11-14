@@ -1,14 +1,14 @@
 // Tests of the logic of the small crypto tools (the signers, XSM3, the keyvault/fuse maker, the patch pipeline, the key tools, MemCrypto, the
-// LZX codec's loading, the .def maker) against the Python's functions called on fixed inputs: testdata/tools_fn_goldens.txt, made by
-// testdata/make_tools_fn_goldens.py. The Python's randomness (os.urandom, XeCryptRandom, randbytes) is replaced there by pattern(n, seed) for a request
+// LZX codec's loading, the .def maker) against recorded answers on fixed inputs: testdata/tools_fn_goldens.txt.
+// The recording's randomness (os.urandom, XeCryptRandom, randbytes) is replaced there by pattern(n, seed) for a request
 // of n bytes and the native code gets the same bytes from PatternRandom, so the results are equal byte for byte; the key store is replaced by a key
 // pair made for the tests (testdata/test_rsa_prv.bin and _pub.bin) and the 1BL key is pattern(16, 42).
 //
 // NOT run on real data (none is on this machine): the key store's own keys (SB_prv.bin, HVX_prv.bin, 1BL_key.bin), the Xbox 360 SDK's dumpbin, upstream's
 // bin/ (xenon-as, the LZX DLLs, HV_17559_Cleaned.bin). Those paths are tested with the test keys, canned dumpbin text and by their refusals.
 //
-// DIVERGES from the Python: the tools read the key store through the Environment's KeyStore (a missing key is a NotFoundError, a wrong checksum a
-// FormatError); HXPC/SIGC signing takes the CPU key as an option (the Python had it fixed to none, so those could never be signed).
+// Behaviour pinned here: the tools read the key store through the Environment's KeyStore (a missing key is a NotFoundError, a wrong checksum a
+// FormatError); HXPC/SIGC signing takes the CPU key as an option.
 #include <algorithm>
 #include <array>
 #include <format>
@@ -49,7 +49,7 @@ Bytes pattern(std::size_t n, int seed) {
     return out;
 }
 
-// pattern(n, seed) for each request of n bytes: the random source the goldens' Python was given.
+// pattern(n, seed) for each request of n bytes: the random source the goldens were recorded with.
 class PatternRandom : public xecrypt::RandomSource {
 public:
     explicit PatternRandom(int seed) : seed_(seed) {}
@@ -108,7 +108,7 @@ Bytes bl1_key() { return pattern(16, 42); }
 
 // ---- cpu_key ---------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.tool_logic.cpu_key_splits_the_bits_as_the_python_prints_them", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.cpu_key_splits_the_bits", [] {
     const std::string expected = text::join(section("cpu_key_report"), "\n") + "\n";
     CB_CHECK_EQ(xcrypto::cpu_key::report(pattern(16, 1)), expected);
     // a key the generator makes is valid, and the report's parts are 26 and 102 bits
@@ -123,7 +123,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.cpu_key_splits_the_bits_as_the_python_pr
 
 // ---- the signers -----------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.tool_logic.xekeys_signer_gives_the_pythons_payload", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.xekeys_signer_gives_the_recorded_payload", [] {
     const xecrypt::RsaKey key = test_key();
     for (const auto& [name, magic] : {std::pair{"devkit", xcrypto::xekeys_signer::PayloadMagic::Devkit}, std::pair{"retail", xcrypto::xekeys_signer::PayloadMagic::Retail}}) {
         PatternRandom random(41);
@@ -133,7 +133,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.xekeys_signer_gives_the_pythons_payload"
 });
 
 CB_TEST("formats.xbox.crypto.tool_logic.xekeys_signer_output_verifies_after_decrypting", [] {
-    // a check that does not need the Python: the output decrypts to a payload whose signature the public key verifies
+    // a check that does not need the recording: the output decrypts to a payload whose signature the public key verifies
     const xecrypt::RsaKey key = test_key();
     PatternRandom random(70);
     const Bytes payload = pattern(300, 71);
@@ -155,7 +155,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.xekeys_signer_output_verifies_after_decr
     CB_CHECK_THROWS_AS(UsageError, xcrypto::xekeys_signer::sign(key, Bytes(8, 0), payload, xcrypto::xekeys_signer::PayloadMagic::Devkit, random));
 });
 
-CB_TEST("formats.xbox.crypto.tool_logic.exp_signer_gives_the_pythons_expansions", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.exp_signer_gives_the_recorded_expansions", [] {
     namespace exp = xcrypto::exp_signer;
     const xecrypt::RsaKey key = test_key();
     const Bytes payload = pattern(70, 44);
@@ -193,7 +193,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.exp_signer_hxpc_and_sigc_take_a_cpu_key"
 
 // ---- XSM3 ------------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.tool_logic.xsm3_primitives_equal_the_pythons", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.xsm3_primitives_match_the_recorded_output", [] {
     namespace x = xcrypto::xsm3;
     const Bytes k = pattern(16, 50), data = pattern(32, 51);
     CB_CHECK_EQ(hex(x::crypt(k, data, x::CryptMode::Encrypt)), value("xsm3_primitives", "crypt_encrypt"));
@@ -205,7 +205,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.xsm3_primitives_equal_the_pythons", [] {
     CB_CHECK_EQ(hex(x::acr(k, pattern(8, 54), pattern(0x20, 55))), value("xsm3_primitives", "acr"));
 });
 
-CB_TEST("formats.xbox.crypto.tool_logic.xsm3_session_answers_the_challenge_the_way_the_python_does", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.xsm3_session_answers_the_challenge", [] {
     namespace x = xcrypto::xsm3;
     PatternRandom random(46);
     x::StaticKeys keys;
@@ -246,7 +246,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.xsm3_refuses_what_does_not_check", [] {
 
 // ---- kv_tool -----------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.tool_logic.kv_tool_makes_the_pythons_fuses_and_keyvault", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.kv_tool_makes_the_recorded_fuses_and_keyvault", [] {
     namespace kv = xcrypto::kv_tool;
     const Bytes cpu_key = hex_value("kv_tool", "cpu_key");
     const Bytes vault = pattern(0x4000, 61);
@@ -254,10 +254,10 @@ CB_TEST("formats.xbox.crypto.tool_logic.kv_tool_makes_the_pythons_fuses_and_keyv
     const kv::Output out = kv::make(vault, cpu_key, Bytes(16, 0), kv::ConsoleType::Devkit, random);
     CB_CHECK_EQ(hex(out.fuses), value("kv_tool", "fuses"));
     CB_CHECK_EQ(sha1_hex(out.keyvault), value("kv_tool", "kv_enc_sha1"));
-    // the file the Python wrote opens with the native decryption to the vault (with the DVD key zeroed at 0x100)
-    const Bytes python_sealed = testdata_file("kv_tool_enc.bin");
-    CB_CHECK_EQ(sha1_hex(python_sealed), value("kv_tool", "kv_enc_sha1"));
-    const Result<Bytes> opened = xecrypt::keyvault_decrypt(cpu_key, python_sealed);
+    // the recorded file opens with the native decryption to the vault (with the DVD key zeroed at 0x100)
+    const Bytes recorded_sealed = testdata_file("kv_tool_enc.bin");
+    CB_CHECK_EQ(sha1_hex(recorded_sealed), value("kv_tool", "kv_enc_sha1"));
+    const Result<Bytes> opened = xecrypt::keyvault_decrypt(cpu_key, recorded_sealed);
     CB_CHECK(opened.ok());
     Bytes expected = vault;
     std::fill_n(expected.begin() + 0x100, 0x10, std::uint8_t{0});
@@ -288,7 +288,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.kv_tool_command_writes_the_two_files_and
 
 // ---- the patch pipeline -------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.tool_logic.patch_dumper_writes_the_assembly_the_python_writes", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.patch_dumper_writes_the_assembly", [] {
     namespace pt = xcrypto::patch_tools;
     Bytes table;
     const auto record = [&table](std::uint32_t address, const std::vector<std::uint32_t>& words) {
@@ -301,7 +301,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.patch_dumper_writes_the_assembly_the_pyt
     record(0x80002000, {0x4E800020});
     for (int i = 0; i < 4; ++i) table.push_back(0xFF);
     const std::string got = pt::disassemble(table);
-    // the header differs (the Python's is a joke), the rest is its text
+    // the header differs, the rest is its text
     const std::string marker = "MAKEPATCH";
     const std::string body = got.substr(got.find(marker));
     std::string expected = text::join(section("patch_dumper"), "\n");
@@ -324,7 +324,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.patch_conflicts_count_touching_patches",
         table.resize(table.size() + words * 4, 0);
     };
     record(0x100, 4);    // 0x100..0x110
-    record(0x111, 1);    // 0x111..0x115: one byte after the first ends: counts, as the Python counts the byte after
+    record(0x111, 1);    // 0x111..0x115: one byte after the first ends: counts the byte after
     record(0x200, 1);
     for (int i = 0; i < 4; ++i) table.push_back(0xFF);
     const std::vector<pt::Conflict> conflicts = pt::find_conflicts(table);
@@ -394,7 +394,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.create_key_makes_a_pair_in_the_key_store
 
 // ---- MemCrypto ------------------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("formats.xbox.crypto.tool_logic.mem_crypto_tool_gives_the_pythons_digests", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.mem_crypto_tool_gives_the_recorded_digests", [] {
     const std::string report = xcrypto::mem_crypto_tool::calculate_report(pattern(0x40000, 62));
     const std::string w = "W: " + std::string(32, '5') + "\nA: " + std::string(32, '5') + "\nH: " + std::string(32, '5') + "\n\n";
     CB_CHECK_EQ(report, w + w + "Hash 1: " + value("memcrypto_calculate", "hash1") + "\n\nHash 2: " + value("memcrypto_calculate", "hash2") + "\n\nKey blob: " +
@@ -425,7 +425,7 @@ CB_TEST("formats.xbox.crypto.tool_logic.the_lzx_codec_is_absent_without_the_dlls
     CB_CHECK((fails_with<NotFoundError>(xcrypto::lzx_dll::command(dir.path()), {})));
 });
 
-CB_TEST("formats.xbox.crypto.tool_logic.xkelib_exports_reads_dumpbins_text_like_the_python", [] {
+CB_TEST("formats.xbox.crypto.tool_logic.xkelib_exports_reads_dumpbins_text", [] {
     namespace xk = xcrypto::xkelib_exports;
     const Bytes headers_bytes = hex_value("xkelib_exports", "headers");
     const std::string headers(as_text(headers_bytes));

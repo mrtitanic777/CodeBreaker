@@ -1,25 +1,19 @@
 // Tests of cb/port/old_c_data (the data passes of the port of pre-ANSI C) and cb/port/old_c_scan.
 //
-// The golden data in testdata/old_c/<case>/ is what the original Python (codebreaker.port.pre_ansi.Port) leaves on the
-// same program: each pass alone and the chain Port.modernize runs, as the digests of the files each changed, the note
-// lists, aliases, extra declarations and declaration rules (testdata/old_c/make_cases.py makes it, run with
-// PYTHONHASHSEED=0: the port's own passes iterate sets of names). Two real trees (the MS C 3.00 compiler's own sources,
+// The golden data in testdata/old_c/<case>/ is what the port leaves on the
+// same program: each pass alone and the whole chain, as the digests of the files each changed, the note
+// lists, aliases, extra declarations and declaration rules. Two real trees (the MS C 3.00 compiler's own sources,
 // ports msc-3.00-p0 and msc-3.00-p3) fire most passes; the hand-written `syn-*` cases fire the ones they do not
-// (array_bounds, fixed_allocators) and the edge shapes. The 16 trees of the ports folder that have a modern/ folder were
-// run through the same comparison while this was written (CB_P2_EXTRA names the folder make_cases.py wrote them to).
+// (array_bounds, fixed_allocators) and the edge shapes. CB_P2_EXTRA names a folder of further trees to run through the same comparison.
 //
-// DIVERGES:
-//   * A constant with a leading zero (`010`) is octal, as in C. The Python's int(x, 0) raised ValueError and ended the whole
-//     port; fixed there too (pre_ansi.c_int, test_octal_constant_in_a_pass). A constant that does not fit 64 bits is not
-//     edited (the Python's integers had no end).
-//   * A table's rows end at its own closing brace. The Python's ended at the next `};` of the file (the file's last byte when
-//     there was none), so a table written `}` and `;` apart took the rows of what came after it; fixed there too
-//     (pre_ansi.table_end, test_size_table_ends_at_its_own_brace). A table that never closes has no rows.
-//   * `\w \d \s` are ASCII (the Python's matched Unicode letters in the latin-1 text, which carries none in an identifier).
-//   * The pascal names a file calls in other letters are visited sorted (their notes); the Python's order was its string
-//     hash's.
-//   * add_missing_includes puts the headers at the top of a file that has no #include (Port.modernize cannot make one: the
-//     preprocessor always leaves port.h in every file).
+// Behaviour pinned here:
+//   * A constant with a leading zero (`010`) is octal, as in C. A constant that does not fit 64 bits is not edited.
+//   * A table's rows end at its own closing brace, so a table written `}` and `;` apart does not take the rows of what comes
+//     after it. A table that never closes has no rows.
+//   * `\w \d \s` are ASCII (the latin-1 text carries no other letters in an identifier).
+//   * The pascal names a file calls in other letters are visited sorted (their notes).
+//   * add_missing_includes puts the headers at the top of a file that has no #include (the
+//     preprocessor always leaves port.h in every file, so the whole chain never meets one).
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -84,7 +78,7 @@ struct Pass {
     const char* name;
     void (*run)(ProgramState&);
 };
-// In the order Port.modernize runs them.
+// In the order the port runs them.
 const Pass kChain[] = {{"word_copies", first_word_copies}, {"shared_blocks", shared_blocks}, {"byte_places", byte_places},
                        {"local_copies", local_copies},     {"pool_blocks", pool_blocks},     {"size_tables", size_tables},
                        {"numbered_tables", numbered_tables}, {"array_bounds", array_bounds}, {"word_stacks", word_stacks},
@@ -132,7 +126,7 @@ void check_record(const ProgramState& st, const Json& rec, const Files& before, 
         for (const auto& [n, h] : want)
             if (!changed.contains(n)) differing += " -" + n;
         CB_CHECK_EQ(differing, std::string());
-        if (const auto dump = fs::get_env("CB_P2_DUMP")) {   // (the actual files, to compare with the Python's)
+        if (const auto dump = fs::get_env("CB_P2_DUMP")) {   // (the actual files, to compare with the golden ones)
             for (const auto& [n, t] : st.files) {
                 const std::filesystem::path p = std::filesystem::path(*dump) / tag / n;
                 std::filesystem::create_directories(p.parent_path());
@@ -228,7 +222,7 @@ CB_TEST("port.old_c_data.a_size_table_ends_at_its_own_brace", [] { run_case("syn
 CB_TEST("port.old_c_data.a_table_that_never_closes_has_no_rows", [] { run_case("syn-tables3b"); });
 CB_TEST("port.old_c_data.the_agree_rules_can_be_turned_off", [] { run_case("syn-agree-rules-off"); });
 
-// (more trees, made by make_cases.py with P2_EXTRA, to try the passes on: CB_P2_EXTRA is their folder)
+// (more trees to try the passes on: CB_P2_EXTRA is their folder)
 CB_TEST("port.old_c_data.more_trees_in_the_folder_the_environment_names", [] {
     const auto extra = fs::get_env("CB_P2_EXTRA");
     if (!extra) return;

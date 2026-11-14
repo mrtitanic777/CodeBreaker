@@ -200,7 +200,7 @@ Match recover(const ne::Module& retail, const ne::Module& debug_build, std::stri
 }
 
 std::string to_json(const Names& names) {
-    std::map<std::string, std::string> by_text;   // sorted as text, as the Python's sort_keys did
+    std::map<std::string, std::string> by_text;   // sorted as text
     for (const auto& [key, name] : names) by_text[key.text()] = name;
     if (by_text.empty()) return "{}";
     std::string out = "{\n";

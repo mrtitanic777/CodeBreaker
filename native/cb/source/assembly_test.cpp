@@ -173,7 +173,7 @@ Bytes cat(Bytes a, const Bytes& b) {
 
 }  // namespace
 
-// The expectations below are what the reference (codebreaker/source/assembly.py culprits) answers for the same inputs.
+// The expectations below are what the reference answers for the same inputs.
 CB_TEST("source.assembly.culprits_blames_the_instruction_that_changed", [] {
     Bytes orig;
     for (int i = 0; i < 40; ++i) orig.push_back(static_cast<std::uint8_t>(i));

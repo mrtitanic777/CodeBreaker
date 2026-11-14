@@ -1,14 +1,14 @@
-// Tests of cb/source/vxd/services: include files written for the Python module's harness (testdata/inc_a, inc_dup:
+// Tests of cb/source/vxd/services: include files written for a recording harness (testdata/inc_a, inc_dup:
 // tables in every shape -- a second table of a device, a table with no services, a table with no end marker, names in
 // other cases, a file that is not an .INC) and DDK folder trees built in a temporary directory. The expected answers
-// are what the Python module gave on the same input; the real DDK's tables (37 devices, VMM's 0..., "Get_System_Time"
+// are the recorded ones; the real DDK's tables (37 devices, VMM's 0..., "Get_System_Time"
 // at 3Fh) gave the same names and counts.
 //
-// DIVERGES from the Python module, by design: the files of the include folder are read in the order of their names
-// (the Python took the order the operating system listed them in, which was the same on NTFS); the process keeps no
+// Behaviour pinned here: the files of the include folder are read in the order of their names
+//; the process keeps no
 // cache of the folders it has read (the caller holds the tables it loaded); devices are matched in capitals of ASCII
 // letters only; a `vmm.inc` in lower case is a VMM.INC
-// (the Python tested the file name with case but the folder name without, and so missed it).
+//.
 #include "cb/source/vxd/services.hpp"
 
 #include "cb/core/fs.hpp"
@@ -42,7 +42,7 @@ CB_TEST("source.vxd.services.tables_of_a_folder", [] {
     CB_CHECK(of(tables, "VPICD") == (Names{"VPICD_Get_Version", "VPICD_Virtualize_IRQ"}));                 // C.INC's empty table does not count
     CB_CHECK(of(tables, "SHELL") == (Names{"SHELL_Get_Version"}));                                        // E.inc: the extension in lower case
     CB_CHECK(of(tables, "CR") == (Names{"One", "Two", "Three"}));                                         // a lone \r ends a line
-    CB_CHECK(tables.names("CAFÉ") == nullptr);   // DIVERGES: I.INC names a device `café` and its services `cafÉ_Service`; the Python matched the letters of other cases, here only ASCII letters are told apart by case, so the table has no services
+    CB_CHECK(tables.names("CAFÉ") == nullptr);   // I.INC names a device `café` and its services `cafÉ_Service`; only ASCII letters are told apart by case, so the table has no services
     CB_CHECK(tables.names("café") == nullptr);
     CB_CHECK(tables.names("NOTHERE") == nullptr);                                                            // F.INC.txt is not an include
     CB_CHECK(tables.names("Y") == nullptr);

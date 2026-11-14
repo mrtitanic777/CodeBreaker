@@ -1,8 +1,8 @@
-// Tests of cb/formats/xbox/chd.hpp. test_identify in tests/test_xbox_formats.py gives a "MComprHD" header with version 5 to detect.identify (cb/formats/detect covers that);
-// the header reader itself has no test in the Python, so it is checked here against what the Python's chd.read_header answers for a v5 header made for the purpose
-// (testdata/assets/make_asset_goldens.py: zlib and lzma, 4.7 GB logical, 19584-byte hunks), and against the cases the Python raises for.
+// Tests of cb/formats/xbox/chd.hpp. detect.identify takes a "MComprHD" header with version 5 (cb/formats/detect covers that);
+// the header reader itself is checked here against the recorded answers for a v5 header made for the purpose
+// (testdata/assets/make_asset_goldens: zlib and lzma, 4.7 GB logical, 19584-byte hunks), and against the cases that are refused.
 //
-// DIVERGES from the Python: a version other than 5 is UnsupportedError and a bad magic FormatError (both ChdError); a header cut short is TruncatedError (struct.error);
+// Behaviour pinned here: a version other than 5 is UnsupportedError and a bad magic FormatError (both ChdError); a header cut short is TruncatedError;
 // the conversions take the chdman path from the caller (settings or PATH is the application's business).
 #include "cb/formats/xbox/chd.hpp"
 
@@ -32,12 +32,12 @@ static Bytes header(std::uint32_t version = 5, std::uint32_t c0 = 0x7A6C6962, st
     return w.take();
 }
 
-CB_TEST("formats.xbox.chd.the_fixture_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.chd.the_fixture_reads", [] {
     const Bytes file = fs::read_file(fs::from_text(asset_dump::fixture("t.chd")));
     CB_CHECK(equal_bytes(file, header()));
     const std::string diff = asset_dump::difference(asset_dump::golden("t.chd"), asset_dump::dump_chd("t.chd", file));
     CB_CHECK(diff.empty());
-    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the Python:\n" + diff);
+    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the recorded dump:\n" + diff);
 });
 
 CB_TEST("formats.xbox.chd.a_v5_header", [] {

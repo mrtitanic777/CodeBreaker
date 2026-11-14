@@ -1,13 +1,13 @@
 // Tests of the compiler models on the functions of two real 16-bit modules of Windows 95 -- LZEXPAND.DLL (every function its describer finds, 46) and
-// OLECLI.DLL (its first 150 framed functions): what each model says of a function, against what the Python's models said of the same bytes
-// (testdata/msc6_modules.json, made by state/work/typed-port/invert/gen_goldens.py, the Python run through its own API and read over for sense).
+// OLECLI.DLL (its first 150 framed functions): what each model says of a function, against the recorded answers for the same bytes
+// (testdata/msc6_modules.json, read over for sense).
 //
 //     msc6            the Microsoft C 6.0a model: the text, or the reason it declined, and the notes (calls, register variables, globals, near calls)
-//     early_c         recover and recover_cfg (the 1983-84 compiler's model, here run on code it was not written for: same answers as the Python's)
+//     early_c         recover and recover_cfg (the 1983-84 compiler's model, here run on code it was not written for)
 //     flow16          the blocks of the control-flow graph and the structure tree, with and without compare switches
 //     msc6_segment    the segments' parameters from how their functions are called, the thunks, the one-shape functions
 //
-// DIVERGES from the Python: a function a model failed on (an exception in the Python) is a decline here, with a reason in this module's words; the
+// A function a model fails on is a decline, with a reason in this module's words; the
 // registers a statement writes are listed in the model's fixed order.
 #include <nlohmann/json.hpp>
 
@@ -85,27 +85,27 @@ void check_msc6_function(const char* module, const Json& row, const std::map<std
         const std::string where = label(module, row) + " " + cfg;
         if (run.contains("exc")) {
             ++declined;
-            if (got.ok()) fail(where + ": the Python's model raised " + run.at("exc").get<std::string>() + "; this one read it");
+            if (got.ok()) fail(where + ": the golden expects the error " + run.at("exc").get<std::string>() + "; this one read it");
             continue;
         }
         if (run.contains("why")) {
             ++declined;
-            if (got.ok()) fail(where + ": read, where the Python declined: " + run.at("why").get<std::string>());
+            if (got.ok()) fail(where + ": read, where a decline is expected: " + run.at("why").get<std::string>());
             else if (std::string(got.error().what()) != run.at("why").get<std::string>())
-                fail(where + ": declined with '" + got.error().what() + "', the Python with '" + run.at("why").get<std::string>() + "'");
+                fail(where + ": declined with '" + got.error().what() + "', expected '" + run.at("why").get<std::string>() + "'");
             testing::count_check();
             continue;
         }
         ++read;
         if (!got.ok()) {
             ++failed;
-            fail(where + ": declined with '" + got.error().what() + "', where the Python read it");
+            fail(where + ": declined with '" + got.error().what() + "', where it should read");
             continue;
         }
         const m6::Reading& r = got.value();
         if (r.text != run.at("text").get<std::string>()) {
             ++failed;
-            fail(where + ": read differently:\n" + r.text + "\n--- the Python:\n" + run.at("text").get<std::string>());
+            fail(where + ": read differently:\n" + r.text + "\n--- expected:\n" + run.at("text").get<std::string>());
             continue;
         }
         const Json& meta = run.at("meta");
@@ -115,7 +115,7 @@ void check_msc6_function(const char* module, const Json& row, const std::map<std
         bool globals_same = same;
         for (const auto& [name, type] : r.notes.globals)
             if (globals_same && (!meta.at("globals").contains(name) || meta.at("globals").at(name).get<std::string>() != type)) globals_same = false;
-        if (!globals_same) fail(where + ": the notes differ from the Python's");
+        if (!globals_same) fail(where + ": the notes differ from the expected ones");
         testing::count_check();
     }
 }
@@ -128,7 +128,7 @@ std::map<std::uint32_t, std::string> near_map(const Json& pairs) {
 
 }  // namespace
 
-CB_TEST("invert.msc6.every_function_of_two_real_modules_reads_as_the_python_read_it", [] {
+CB_TEST("invert.msc6.every_function_of_two_real_modules_reads_as_recorded", [] {
     std::size_t read = 0, declined = 0, failed = 0;
     for (const Json& row : golden().at("lzexpand").at("rows")) {
         std::map<std::uint32_t, std::string> nears;
@@ -186,7 +186,7 @@ void check_early(const char* module, const Json& row, std::size_t& answered, std
         try {
             const ec::Recovered r = std::string(which) == "recover" ? ec::recover(code) : ec::recover_cfg(code);
             if (want.is_object()) {
-                fail(where + ": the Python raised " + want.at("exc").get<std::string>() + "; this one answered");
+                fail(where + ": the golden expects the error " + want.at("exc").get<std::string>() + "; this one answered");
                 ++failed;
             } else if (json_of(r) != want) {
                 fail(where + "\n  got      " + json_of(r).dump() + "\n  expected " + want.dump());
@@ -196,7 +196,7 @@ void check_early(const char* module, const Json& row, std::size_t& answered, std
             }
         } catch (const Error& e) {
             if (!want.is_object()) {
-                fail(where + ": threw " + e.what() + ", where the Python answered");
+                fail(where + ": threw " + e.what() + ", where an answer is expected");
                 ++failed;
             }
         }
@@ -206,7 +206,7 @@ void check_early(const char* module, const Json& row, std::size_t& answered, std
 
 }  // namespace
 
-CB_TEST("invert.early_c.every_function_of_two_real_modules_reads_as_the_python_read_it", [] {
+CB_TEST("invert.early_c.every_function_of_two_real_modules_reads_as_recorded", [] {
     std::size_t answered = 0, failed = 0;
     for (const char* module : {"lzexpand", "olecli"})
         for (const Json& row : golden().at(module).at("rows")) check_early(module, row, answered, failed);
@@ -289,7 +289,7 @@ Json blocks_json(const flow::Cfg& cfg) {
 
 }  // namespace
 
-CB_TEST("invert.flow16.blocks_and_structure_of_real_functions_as_the_python_built_them", [] {
+CB_TEST("invert.flow16.blocks_and_structure_of_real_functions_as_recorded", [] {
     platforms::DecoderSet decoders;
     const platforms::Decoder& cs = decoders.get(platforms::Arch::X86, 16);
     std::size_t checked = 0, with_loops = 0, with_switches = 0;
@@ -306,7 +306,7 @@ CB_TEST("invert.flow16.blocks_and_structure_of_real_functions_as_the_python_buil
                     options.compare_switches = compare_switches;
                     const flow::Cfg cfg = flow::build_cfg(insns, options);
                     if (want.contains("exc")) {
-                        fail(where + ": the Python raised " + want.at("exc").get<std::string>());
+                        fail(where + ": the golden expects the error " + want.at("exc").get<std::string>());
                         continue;
                     }
                     if (blocks_json(cfg) != want.at("blocks")) fail(where + ": the blocks differ:\n" + blocks_json(cfg).dump() + "\n" + want.at("blocks").dump());
@@ -340,7 +340,7 @@ CB_TEST("invert.flow16.errors", [] {
 
 // ---- msc6_segment -----------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("invert.msc6_segment.signatures_thunks_and_shapes_as_the_python_read_them", [] {
+CB_TEST("invert.msc6_segment.signatures_thunks_and_shapes_as_recorded", [] {
     std::size_t sigs_checked = 0, shapes_checked = 0;
     for (const char* module : {"lzexpand", "olecli"}) {
         const formats::ne::Module ne = formats::ne::Module::open_file(testing::data_path(std::string("invert/testdata/") + (std::string(module) == "lzexpand" ? "LZEXPAND.DLL" : "OLECLI.DLL")));
@@ -354,7 +354,7 @@ CB_TEST("invert.msc6_segment.signatures_thunks_and_shapes_as_the_python_read_the
             try {
                 const auto got = seg::infer_signatures(data);
                 if (want.contains("exc")) {
-                    fail(where + ": the Python raised " + want.at("exc").get<std::string>());
+                    fail(where + ": the golden expects the error " + want.at("exc").get<std::string>());
                     continue;
                 }
                 Json have = Json::array();
@@ -366,7 +366,7 @@ CB_TEST("invert.msc6_segment.signatures_thunks_and_shapes_as_the_python_read_the
                 if (have != want.at("sigs")) fail(where + ": signatures differ:\n" + have.dump() + "\n" + want.at("sigs").dump());
                 ++sigs_checked;
             } catch (const Error&) {
-                if (!want.contains("exc")) fail(where + ": threw where the Python answered");
+                if (!want.contains("exc")) fail(where + ": threw where an answer is expected");
             }
             testing::count_check();
         }
@@ -379,9 +379,9 @@ CB_TEST("invert.msc6_segment.signatures_thunks_and_shapes_as_the_python_read_the
             const Json& thunk_want = row.at("thunk");
             const auto thunk = seg::thunk(code);
             if (thunk_want.is_null()) {
-                if (thunk) fail(where + ": a thunk, where the Python found none");
+                if (thunk) fail(where + ": a thunk, where none is expected");
             } else if (!thunk) {
-                fail(where + ": no thunk, where the Python found one");
+                fail(where + ": no thunk, where one is expected");
             } else {
                 CB_CHECK_EQ(seg::thunk_assembly(*thunk, "T"), thunk_want.at("asm").get<std::string>());
                 CB_CHECK_EQ(thunk->kind() == seg::ThunkKind::Forwarder ? std::string("forwarder") : std::string("return-stub"), thunk_want.at("kind").get<std::string>());
@@ -399,7 +399,7 @@ CB_TEST("invert.msc6_segment.signatures_thunks_and_shapes_as_the_python_read_the
 
 // ---- the module pass ---------------------------------------------------------------------------------------------------------------------
 
-CB_TEST("invert.module_pass.every_function_is_read_as_the_python_pass_read_it", [] {
+CB_TEST("invert.module_pass.every_function_is_read_as_recorded", [] {
     namespace mp = cb::invert::module_pass;
     std::size_t recognised = 0, declined = 0, assembly = 0;
     for (const char* module : {"lzexpand", "olecli"}) {
@@ -416,11 +416,11 @@ CB_TEST("invert.module_pass.every_function_is_read_as_the_python_pass_read_it", 
             const mp::Reading got = mp::read_function(f);
             const std::string kind = want.at(0).get<std::string>();
             if (std::string(mp::to_text(got.verdict)) != kind) {
-                fail(where + ": " + std::string(mp::to_text(got.verdict)) + ", the Python said " + kind);
+                fail(where + ": " + std::string(mp::to_text(got.verdict)) + ", expected " + kind);
             } else if (got.text != want.at(1).get<std::string>()) {
-                fail(where + ": text differs:\n" + got.text + "\n--- the Python:\n" + want.at(1).get<std::string>());
+                fail(where + ": text differs:\n" + got.text + "\n--- expected:\n" + want.at(1).get<std::string>());
             } else if (kind != "assembly" && got.tries.size() != want.at(2).get<std::size_t>()) {
-                fail(where + ": " + std::to_string(got.tries.size()) + " texts to try, the Python had " + std::to_string(want.at(2).get<std::size_t>()));
+                fail(where + ": " + std::to_string(got.tries.size()) + " texts to try, expected " + std::to_string(want.at(2).get<std::size_t>()));
             }
             recognised += got.verdict == mp::Verdict::Recognised;
             declined += got.verdict == mp::Verdict::Declined;

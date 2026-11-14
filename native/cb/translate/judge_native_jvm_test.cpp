@@ -6,11 +6,9 @@
 // empty L2 unit made here, so the Java back end writes its real answer for it. Real processes are run (cmd, hostname) and a real timeout
 // is waited for; the real clang, javac and java are not needed.
 //
-// DIVERGES from the Python module, by design: a run that times out has no exit code (the Python's tuple had the word 'timeout' in the place
-// of an int); the bytes in a difference are shown quoted with C escapes, not as Python's repr; a front end that cannot read a file is a
-// ToolError (the Python's RuntimeError) and a clang that is not found is a failed build (the Python raised a TypeError on None); the cache
-// folder of the runtime is named from the JDK path and the sources' bytes in an order of its own, so a folder the Python made is not found
-// (the runtime is compiled once more); the error type of a Java -> C++ failure is not named in its reason.
+// Design notes: a run that times out has no exit code; the bytes in a difference are shown quoted with C escapes; a front end that
+// cannot read a file is a ToolError and a clang that is not found is a failed build; the cache folder of the runtime is named from
+// the JDK path and the sources' bytes; the error type of a Java -> C++ failure is not named in its reason.
 #include "cb/translate/judge_native_jvm.hpp"
 
 #include <format>
@@ -168,7 +166,7 @@ CB_TEST("translate.judge_native_jvm.running_a_program", [] {
     // the working folder is the one given
     const jj::Run where = jj::run_program({"cmd", "/c", "cd"}, {}, dir.path());
     CB_CHECK(cb::text::from_latin1(where.out).find(cb::fs::to_text(dir.path().filename())) != std::string::npos);
-    // a program that takes too long: no exit code, and the word the Python used for stderr
+    // a program that takes too long: no exit code, and a word for stderr
     const jj::Run slow = jj::run_program({"cmd", "/c", "ping -n 8 127.0.0.1 >nul"}, {}, dir.path(), std::chrono::seconds(1));
     CB_CHECK(slow.timed_out());
     CB_CHECK_EQ(cb::text::from_latin1(slow.err), "(timed out)");

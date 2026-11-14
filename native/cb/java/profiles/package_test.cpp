@@ -1,9 +1,8 @@
-// DIVERGES from the Python registry (java/profiles/__init__.py):
+// Design notes:
 //   * there is no process-wide registry: a ProfileSet is an object, and the loader that registers a project's profiles on demand
-//     is a function the owner sets (the Python called back into the project layer from get()).
-//   * `active()` is the profile registered under the active NAME: replacing that profile with add() is seen at once (the Python
-//     kept the old object active until use() was called again).
-//   * an unknown profile name is a UsageError that lists the known names (the Python raised KeyError).
+//     is a function the owner sets.
+//   * `active()` is the profile registered under the active NAME: replacing that profile with add() is seen at once.
+//   * an unknown profile name is a UsageError that lists the known names.
 //   * no on_change observers: whoever switches the active profile passes it to the stages that need it.
 
 #include "cb/core/error.hpp"

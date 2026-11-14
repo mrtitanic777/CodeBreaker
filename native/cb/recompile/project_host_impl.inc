@@ -1,6 +1,6 @@
 // cb/recompile/project_host_impl.inc -- HOST_IMPL: the host implementation of each tractable named import, as the statements of its
 // body in the recompiled ABI (args in ctx.r3, ctx.r4, ...; result in ctx.r3; guest memory is `base + guest_addr`). Included by
-// project.cpp only. Generated from the Python table (same order, same text).
+// project.cpp only.
 
 const std::map<std::string, std::vector<std::string>, std::less<>>& host_impl() {
     static const std::map<std::string, std::vector<std::string>, std::less<>> table = {

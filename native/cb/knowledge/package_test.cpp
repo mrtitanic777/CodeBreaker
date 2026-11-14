@@ -9,12 +9,12 @@
 #include "cb/knowledge/store.hpp"
 #include "cb/symbols/api_arguments.hpp"
 
-// DIVERGES from codebreaker/knowledge/__init__.py and its port:
-//   * the module-level functions (kb.prototype, kb.argument_bytes ...) are the methods of a `Knowledge` that owns what they
-//     used to reach for in process-wide state: the base (a `Store`), the header folders, the readers' tables;
-//   * argument_bytes, import_name and struct are not here: the readers they asked (symbols/api_arguments, ordinals,
-//     sdk_structs) are objects now, and `win32_memory()` / `win16_memory()` give them the base as their memory;
-//   * platform() of a number other than 16 and 32 is its text, as the Python's alias dict returned the key it was given.
+// Behaviour pinned here:
+//   * the queries (prototype, platform ...) are methods of a `Knowledge` that owns the base (a `Store`), the header folders
+//     and the readers' tables; there is no process-wide state;
+//   * argument_bytes, import_name and struct are not here: the readers they ask (symbols/api_arguments, ordinals,
+//     sdk_structs) are objects, and `win32_memory()` / `win16_memory()` give them the base as their memory;
+//   * platform() of a number other than 16 and 32 is its text.
 
 using namespace cb;
 using namespace cb::knowledge;

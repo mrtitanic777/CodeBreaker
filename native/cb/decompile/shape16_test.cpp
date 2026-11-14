@@ -13,8 +13,8 @@ using cb::Bytes;
 using cb::Json;
 using std::string;
 
-// DIVERGES from the Python module: none in behaviour (frame16_test.cpp runs the original's 450 documents through frame16
-// and shape16, with the original's answers). The tree is edited in place; the decoder is Capstone 5.0.7 through
+// Notes: no differences in behaviour (frame16_test.cpp runs 450 recorded documents through frame16
+// and shape16). The tree is edited in place; the decoder is Capstone 5.0.7 through
 // capstone.dll.
 
 namespace {

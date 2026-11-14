@@ -130,7 +130,7 @@ private:
                 Z3_ast a = terms_.term(cond->arg[0]);
                 Z3_ast b = terms_.term(cond->arg[1]);
                 Z3_ast one = z.Z3_mk_unsigned_int64(c, 1, z.Z3_get_sort(c, b));
-                // (`a == b` as z3's Python interface writes it: a numeral on the right goes first)
+                // (`a == b` as z3 writes it: a numeral on the right goes first)
                 const bool swap = cond->arg[1]->op == Op::Const && cond->arg[0]->op != Op::Const;
                 Z3_ast same = swap ? z.Z3_mk_eq(c, b, a) : z.Z3_mk_eq(c, a, b);
                 return {same, z.Z3_mk_eq(c, a, z.Z3_mk_bvadd(c, b, one)), z.Z3_mk_eq(c, a, z.Z3_mk_bvsub(c, b, one))};

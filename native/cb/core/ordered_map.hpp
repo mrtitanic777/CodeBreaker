@@ -3,7 +3,7 @@
 // For the maps whose *insertion order is the meaning*: a function's locals in declaration order, JSON written in
 // the order the producer chose, a build's steps. Lookup is O(1) through a hash index; iteration is over a plain
 // vector, so it is stable and cache-friendly; erase is O(n) (it renumbers the index) and rare by design.
-// Re-assigning an existing key keeps its original position (like an overwritten Python dict entry).
+// Re-assigning an existing key keeps its original position (like an overwritten dictionary entry).
 // See docs/CPP_DESIGN.md 3.5 for when to choose this over std::map / std::unordered_map.
 #pragma once
 

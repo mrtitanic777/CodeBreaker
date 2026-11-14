@@ -80,7 +80,7 @@ const std::vector<exepack::Fill> kSampleFills{{1024, 300, 0}, {1324, 40, 0x41}, 
 }  // namespace
 
 CB_TEST("build.exepack.pack_roundtrip_both_headers", [] {
-    // the program of tests/test_exepack.py: runs of 0, 'A' and FF written as iterated data
+    // a program with runs of 0, 'A' and FF written as iterated data
     const Bytes image = sample_image();
     const std::vector<std::uint32_t> relocs{0x10, 0x20, 0x1F0, 0x10005, 0x3FFFF};
     for (const unsigned words : {8u, 9u}) {
@@ -146,8 +146,7 @@ CB_TEST("build.exepack.long_runs_and_copies_split_at_64k", [] {
     const exepack::Layout l = exepack::layout(p.module, p.registers.cs, p.registers.ip);
     CB_CHECK(l.fills == fills);
 
-    // DIVERGES: a program with no fill was stored with no command at all, a stream the unpacker cannot end on;
-    // it is now copy commands alone, one per 64 KB at most.
+    // A program with no fill is stored as copy commands alone, one per 64 KB at most.
     Bytes plain(0x18000);
     for (std::size_t i = 0; i < plain.size(); ++i) plain[i] = static_cast<std::uint8_t>(i * 7 + (i >> 8));
     const exepack::Packed q = exepack::pack(plain, {}, {1, 2}, {3, 4}, {}, stub_code());

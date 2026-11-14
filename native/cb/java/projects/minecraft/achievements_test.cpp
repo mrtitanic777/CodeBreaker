@@ -1,13 +1,11 @@
-// DIVERGES from the Python (the fixture's expected/ files are what the Python module wrote for the same inputs and are
-// compared byte for byte, the PNG tiles pixel for pixel):
-//   * icons are keyed by the whole symbol ("Item::s_sign" and "Block::s_sign" are two icons); the Python keyed them by the
-//     bare symbol, so a block silently took the sprite of an item of the same name.
-//   * the profile is an enum (retail | arcade): an unknown name used to give retail limits in map_to_platform and then a
-//     KeyError in the report; the caller now has to say which one (parse_tier).
+// Behaviour pinned here (the fixture's expected/ files are compared byte for byte, the PNG tiles pixel for pixel):
+//   * icons are keyed by the whole symbol ("Item::s_sign" and "Block::s_sign" are two icons), so a block never takes the sprite of
+//     an item of the same name.
+//   * the profile is an enum (retail | arcade): the caller has to say which one (parse_tier), so there is no unknown name.
 //   * an atlas that is not a readable PNG leaves ITS entries unresolved, with the reason, instead of ending the whole run with
 //     an exception; the other atlas is still used.
-//   * an achievement id that does not fit 64 bits is skipped (the Python's int was unbounded).
-//   * Pillow clips a 16-bit grey to 255 when it converts to RGBA; the PNG reader keeps the high byte (rgba_png_test).
+//   * an achievement id that does not fit 64 bits is skipped.
+//   * a 16-bit grey keeps its high byte when converted to RGBA (rgba_png_test).
 //   * kept on purpose: a whole-number title_id in platform.config.json is read as its decimal digits and then as hexadecimal,
 //     the same rule the vcxproj writer uses -- the two must agree on the id.
 
@@ -30,7 +28,7 @@ using Scores = std::vector<std::int64_t>;
 
 // testdata/achievements: a converted tree in the style of the Alpha port (AchievementList.cpp, Item.cpp, Block.cpp,
 // BlockWorkbench.cpp, plus a Java file), a .lang file, and the two atlases (a grey ramp: pixel (x, y) is
-// ((x + y) & 255) with alpha 200). testdata/achievements/expected holds what the Python module wrote for the same
+// ((x + y) & 255) with alpha 200). testdata/achievements/expected holds the recorded output for the same
 // inputs (read and checked by hand); the PNG tiles compare by pixel, not by file bytes.
 stdfs::path fixture(const std::string& rel = "") { return testing::data_path("java/projects/minecraft/testdata/achievements/" + rel); }
 
@@ -47,7 +45,7 @@ const Achievement* find(const std::vector<Achievement>& all, std::string_view ke
 }
 
 CB_TEST("java.minecraft.achievements.normalize_title_id", [] {
-    // (every row checked against the Python module)
+    // (every row checked by hand)
     CB_CHECK((normalize_title_id("FFFE1234")) == (std::optional<std::string>("FFFE1234")));
     CB_CHECK((normalize_title_id("0xFFFE1234")) == (std::optional<std::string>("FFFE1234")));
     CB_CHECK((normalize_title_id("fffe1234")) == (std::optional<std::string>("FFFE1234")));
@@ -61,7 +59,7 @@ CB_TEST("java.minecraft.achievements.normalize_title_id", [] {
 });
 
 CB_TEST("java.minecraft.achievements.suggest_title_id", [] {
-    // the homebrew publisher and a CRC-32 derived title number (Python's zlib.crc32 & 0xFFFF)
+    // the homebrew publisher and a CRC-32 derived title number (the CRC-32 of the name, & 0xFFFF)
     CB_CHECK_EQ(suggest_title_id("Minecraft"), "FFFE5FA6");
     CB_CHECK_EQ(suggest_title_id("MinecraftAlpha"), "FFFE88C9");
     CB_CHECK_EQ(suggest_title_id("Caf\xC3\xA9"), "FFFE6DB1");     // the CRC is over the UTF-8 bytes
@@ -89,7 +87,7 @@ CB_TEST("java.minecraft.achievements.humanize_and_const_name", [] {
 });
 
 CB_TEST("java.minecraft.achievements.distribute_score", [] {
-    // steps of 5 that add up to the total exactly; the first few take the remainder (Python's results)
+    // steps of 5 that add up to the total exactly; the first few take the remainder
     CB_CHECK((distribute_score(7, 1000)) == ((Scores{145, 145, 145, 145, 140, 140, 140})));
     CB_CHECK((distribute_score(12, 200)) == ((Scores{20, 20, 20, 20, 15, 15, 15, 15, 15, 15, 15, 15})));
     CB_CHECK((distribute_score(13, 200)) == ((Scores{20, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15})));
@@ -218,7 +216,7 @@ CB_TEST("java.minecraft.achievements.resolve_icon_atlas_same_symbol", [] {
     CB_CHECK(icons.at("Block::s_sign").atlas == Atlas::Terrain && icons.at("Block::s_sign").col == 4);
 });
 
-// tests/java/test_achievements.py test_block_texture_resolver: a subclass constructor's literal, a subclass call's second int argument, and the base
+// The block texture resolver: a subclass constructor's literal, a subclass call's second int argument, and the base
 // Block(id, tex, mat).
 CB_TEST("java.minecraft.achievements.block_textures_come_from_a_subclass_literal_a_second_argument_or_the_base", [] {
     fs::ScopedTempDir tmp("cbach");
@@ -337,7 +335,7 @@ void check_tile(const stdfs::path& got, const stdfs::path& want) {
     CB_CHECK(a.rgba == b.rgba);
 }
 
-CB_TEST("java.minecraft.achievements.run_matches_the_python_module", [] {
+CB_TEST("java.minecraft.achievements.run_matches_the_golden", [] {
     fs::ScopedTempDir tmp("cbach");
     copy_fixture(tmp.path());
     RunOptions opt;
@@ -371,7 +369,7 @@ CB_TEST("java.minecraft.achievements.run_matches_the_python_module", [] {
 });
 
 CB_TEST("java.minecraft.achievements.tile_pixels_by_hand", [] {
-    // the wired tiles, checked against the atlas arithmetic rather than the Python's files: mineWood = Block::s_wood =
+    // the wired tiles, checked against the atlas arithmetic rather than the recorded files: mineWood = Block::s_wood =
     // terrain sprite (4, 0), cut at x 64..80, y 0..16 and scaled 4x. The atlas is a grey ramp v = (x + y) & 255 with
     // alpha 200; a locked tile is 40% of the grey (the luma of a grey is the grey itself).
     fs::ScopedTempDir tmp("cbach");

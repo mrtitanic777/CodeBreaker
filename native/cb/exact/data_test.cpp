@@ -15,18 +15,18 @@ using namespace cb;
 using namespace cb::exact;
 namespace stdfs = std::filesystem;
 
-// testdata/data/p0 is the program P0.EXE of the Microsoft C 3.00 sources the old exact.data was run on (the
+// testdata/data/p0 is the program P0.EXE of the Microsoft C 3.00 sources the data stage was recorded on (the
 // Microsoft-Assemblers-Compilers research, msc-3.0/recon/p0): its src folder (MODULES and the fADDR.c files), the image
 // and symbols and headers of the program (fixture.txt), and the answers the real MSC 3.00 gave when the module's
 // functions were compiled alone (c<N>.obj / c<N>.txt, looked up by the crc and length of the source, which proves the
-// source text that is handed to the compiler is the Python's). golden.json is what the Python module made of each row:
+// source text that is handed to the compiler is the right one). golden.json is the recorded result for each row:
 // the walk and the drafted files, each read through for what P0's data is (strings of its functions, the sccsid
 // stamps, the tables of flags and keywords, the g_ADDR names of what nothing names).
 //
-// DIVERGES: the draft of SVARSTCK.OBJ (a row for an object of the kit, which has code but no f files) raised IndexError;
-// here its data file is named after the module (SVARSTCK-data.c) as a module without functions's is. The headers are
-// read in name order, as the Python's dict and glob gave them on the machine it ran on. A struct a table names that no
-// header defines gets "{ 0 }" for its value (the Python raised KeyError).
+// The draft of SVARSTCK.OBJ (a row for an object of the kit, which has code but no f files):
+// its data file is named after the module (SVARSTCK-data.c) as a module without functions's is. The headers are
+// read in name order. A struct a table names that no
+// header defines gets "{ 0 }" for its value.
 
 namespace {
 
@@ -290,7 +290,7 @@ CB_TEST("exact.data.p0_the_data_files_drafted", [] {
     std::size_t files = 0;
     for (const modules::Row& row : modules::rows(p)) {
         const std::vector<data::DataFile> got = data::draft(p, row, types);
-        if (row.name == "SVARSTCK.OBJ") {   // DIVERGES: the Python raised IndexError here
+        if (row.name == "SVARSTCK.OBJ") {   // a module with code but no f files
             CB_CHECK_EQ(got.size(), std::size_t(1));
             CB_CHECK_EQ(got.at(0).name, "SVARSTCK-data.c");
             continue;

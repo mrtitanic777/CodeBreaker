@@ -130,7 +130,7 @@ string push_returns(string_view text) {
     std::size_t leaves = 0;
     const auto gives_reg = [&](const string& l) { return plain_value(l, reg).has_value(); };
 
-    // (the statements lines[lo:hi] end giving reg a value: [indexes of those assignments], or None)
+    // (the statements lines[lo:hi] end giving reg a value: [indexes of those assignments], or none)
     std::function<std::optional<std::vector<std::size_t>>(std::ptrdiff_t, std::ptrdiff_t)> tail =
         [&](std::ptrdiff_t lo, std::ptrdiff_t hi) -> std::optional<std::vector<std::size_t>> {
         std::ptrdiff_t k = hi - 1;

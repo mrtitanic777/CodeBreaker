@@ -223,7 +223,7 @@ public:
     // program that does not end has no exit code (its Result says so) - it is not an error.
     Result run(const RunSpec& spec) const;
 
-    // The summary line `dos.py` prints after the console: "[exit N, S basic blocks executed, D distinct]".
+    // The summary line printed after the console: "[exit N, S basic blocks executed, D distinct]".
     static std::string summary(const Result& result);
 
 private:

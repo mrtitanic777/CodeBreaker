@@ -18,13 +18,11 @@ namespace dt = cb::exact::draft::text;
 namespace txt = cb::text;
 using Json = nlohmann::json;
 
-// DIVERGES from the Python module (draft/shapes.py), on purpose:
-//   * a text that sends the Python store_joins past its last line (31 of the 11,900 drafts of the old harness; an
-//     IndexError there): the pass finds nothing to rewrite. The Python was fixed the same way (see the _bugs list of
-//     the refactor), so both give this answer
-//   * \w \s \b are ASCII (Python's were Unicode): a draft is ASCII, and a non-ASCII byte is not part of a name
+// Design notes:
+//   * a text that sends store_joins past its last line (31 of the 11,900 recorded drafts): the pass finds nothing to rewrite
+//   * \w \s \b are ASCII: a draft is ASCII, and a non-ASCII byte is not part of a name
 //   * a number written with more digits than fit in 64 bits (a case label, a field offset, a step's amount) is not read:
-//     the pass leaves that text alone (Python's integers had no end, and no draft has such a number)
+//     the pass leaves that text alone
 //   * the module's tables (UCHAR, PTRSIZE, LONGINFO, RANGES) are the FunctionFacts the caller passes
 
 namespace {
@@ -134,9 +132,9 @@ std::string unescape(std::string_view s) {
 
 }  // namespace
 
-// ---- the golden file: cases the Python module ran, with the results it gave -----------------------------------------
+// ---- the golden file: recorded cases, with the results they gave -------------------------------------------------
 
-CB_TEST("exact.draft.shapes.golden_cases_from_the_python_module", [] {
+CB_TEST("exact.draft.shapes.golden_cases", [] {
     const std::string file = fs::read_text(testing::data_path("exact/testdata/draft_shapes.cases"));
     std::set<std::string> ops_seen;
     std::size_t cases = 0;

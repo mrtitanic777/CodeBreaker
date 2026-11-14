@@ -1,10 +1,10 @@
-// Tests of cb/formats/xbox/xdbf.hpp. The inputs are the ones tests/test_xbox_formats.py builds (test_gpd_unlock); the expected lines are what the Python's
-// xdbf module (through formats.dll) answers for the same bytes (testdata/assets/make_asset_goldens.py makes them), and the file the test builds
-// itself is checked against what that Python test asserts.
+// Tests of cb/formats/xbox/xdbf.hpp. The inputs are built for the purpose (a gamer-profile unlock); the expected lines are the recorded
+// answers for the same bytes (testdata/assets/make_asset_goldens makes them), and the file the test builds
+// itself is checked against the facts it should have.
 //
-// DIVERGES from the Python: the strings of an achievement are split on 16-bit boundaries (the Python split on any two zero bytes, which cuts a
-// character whose low byte is zero followed by one whose high byte is zero); an entry outside the file is FormatError (the Python clamped it).
-// `payload` answers the current payload, edits included (the Python's answered the file's bytes).
+// Behaviour pinned here: the strings of an achievement are split on 16-bit boundaries (splitting on any two zero bytes would cut a
+// character whose low byte is zero followed by one whose high byte is zero); an entry outside the file is FormatError.
+// `payload` answers the current payload, edits included.
 #include "cb/formats/xbox/xdbf.hpp"
 
 #include "cb/core/error.hpp"
@@ -19,11 +19,11 @@ namespace xdbf_test {
 using namespace cb;
 using namespace cb::formats::xbox;
 
-// An achievement record as the Python test makes it.
+// An achievement record.
 static Bytes record(std::uint32_t id, std::uint32_t score, const std::string& name, const std::string& unlocked = "Unlocked",
                     const std::string& locked = "Locked") {
     io::ByteWriter w;
-    w.u32_be(0);   // the size field (the Python overwrites it with the body's length; nothing reads it)
+    w.u32_be(0);   // the size field
     w.u32_be(id);
     w.u32_be(5);
     w.u32_be(score);
@@ -45,11 +45,11 @@ static Bytes build_file(const std::vector<std::pair<std::uint64_t, Bytes>>& achi
     return db.build();
 }
 
-CB_TEST("formats.xbox.xdbf.the_fixture_reads_as_the_pythons_does", [] {
+CB_TEST("formats.xbox.xdbf.the_fixture_reads", [] {
     const Bytes file = fs::read_file(fs::from_text(asset_dump::fixture("gpd.bin")));
     const std::string diff = asset_dump::difference(asset_dump::golden("gpd.bin"), asset_dump::dump_xdbf("gpd.bin", file));
     CB_CHECK(diff.empty());
-    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the Python:\n" + diff);
+    if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, "differs from the recorded dump:\n" + diff);
 });
 
 CB_TEST("formats.xbox.xdbf.unlock_and_rebuild_as_test_gpd_unlock", [] {

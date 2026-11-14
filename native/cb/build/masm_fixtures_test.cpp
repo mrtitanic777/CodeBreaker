@@ -1,6 +1,5 @@
 // The assembler engine's MASM mode (native/nasm, `nasm --masm`): every fixture of native/nasm/test/masm/fixtures assembled flat (-f bin) must give the
-// bytes of its golden/<name>.hex, and the fixtures that declare a segment must give the same code in the object backends (-f obj, -f win32). This is
-// tests/test_assembler.py (which ran native/nasm/test/masm/run.py and run.py --objects) without Python: the fixtures and their golden bytes are read
+// bytes of its golden/<name>.hex, and the fixtures that declare a segment must give the same code in the object backends (-f obj, -f win32). The fixtures and their golden bytes are read
 // where they are kept. Skipped when the engine is not built (native/nasm/build/bin/nasm.exe of this checkout or the main one, or CB_NASM).
 #include <algorithm>
 #include <cstdint>
@@ -25,7 +24,7 @@ namespace {
 namespace mfx_fs = std::filesystem;
 
 // A fixture listed here fails today on the engine's current source, as on every build before it: it is reported, not counted as a regression
-// (the same list tests/test_assembler.py kept).
+// (the fixture list).
 const std::set<std::string> kMasmFixturesKnown = {"masm_paren_operand"};   // a parenthesised operand naming a later EQU: not yet
 
 std::optional<mfx_fs::path> masm_fixtures_nasm() {

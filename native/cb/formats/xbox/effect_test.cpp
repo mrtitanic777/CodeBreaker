@@ -21,7 +21,7 @@ const fxf::Parameter& param(const fxf::Effect& fx, std::string_view name) {
 
 }  // namespace
 
-// The expected values are what the SDK compiled (tests/data/xbox_effects/sprite.fx beside the .fxo) and the original reader
+// The expected values are what the SDK compiled (tests/data/xbox_effects/sprite.fx beside the .fxo) and the recorded reader output
 // read from it, checked against the .fx source.
 CB_TEST("formats.xbox.effect.sprite_effect_little_endian", [] {
     const fxf::Effect fx = fxf::read(effect_file("fxo_sprite.fxo"));

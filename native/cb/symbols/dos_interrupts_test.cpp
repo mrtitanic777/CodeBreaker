@@ -1,12 +1,10 @@
 // Tests of cb/symbols/dos_interrupts on the project's own table (testdata/dos_interrupts.json, a copy of
-// codebreaker/symbols/dos_interrupts.json). The expected names were checked against the documented interfaces
+// data/symbols/dos_interrupts.json). The expected names were checked against the documented interfaces
 // (Ralf Brown's list: INT 21h AH=3Dh open file, INT 2Fh AX=1600h Windows enhanced mode check, INT 33h mouse).
-// The Python module's whole harness (33,000 name, describe and annotate cases, state/work/typed-port) also gave the
-// same answers from this code for every number in 0..2^32.
+// A sweep of 33,000 name, describe and annotate cases also checked every number in 0..2^32.
 //
-// DIVERGES from the Python module, by design: annotate() treats a letter outside ASCII before `swi(` as a boundary
-// (Python's \b took a Latin-1 or CJK letter for part of a word), and an interrupt, AH or AL below 0 or above 2^32-1
-// cannot be asked (they were Python ints). The command reads a bad number as a usage error.
+// annotate() treats a letter outside ASCII before `swi(` as a boundary, and an interrupt, AH or AL below 0 or above 2^32-1
+// cannot be asked. The command reads a bad number as a usage error.
 #include "cb/symbols/dos_interrupts.hpp"
 
 #include "cb/core/error.hpp"

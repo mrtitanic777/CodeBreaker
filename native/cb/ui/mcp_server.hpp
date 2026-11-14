@@ -31,7 +31,7 @@
 //
 // What the tools read of the rest of the program comes in through `Services`: the corpus, the inspector, the ledger, the analyses, the
 // decompiler, the version comparison, the function store's names. `standard_services` fills every one from the program's own modules; a service
-// that is not given (a test's stand-in) makes its tool say so. The JSON the services answer is the document the Python modules answered, and the
+// that is not given (a test's stand-in) makes its tool say so. The JSON the services answer is the document the tools show, and the
 // tools page, cut and combine it.
 #pragma once
 
@@ -201,7 +201,7 @@ std::string token(const std::filesystem::path& state);
 
 // What one tool's answer becomes on the wire: `json.dumps(value, indent=2)` as the library writes it.
 std::string answer_text(const Json& value);
-// `value` as Python's json.dumps writes it without indent ("," and ": " separators, non-ASCII escaped): the length the cap is measured in.
+// `value` as json.dumps writes it without indent ("," and ": " separators, non-ASCII escaped): the length the cap is measured in.
 std::size_t compact_length(const Json& value);
 // `value`, or when its JSON is longer than `most` characters, a note saying it was cut and what it holds.
 Json fit(const Json& value, std::size_t most = kMost);

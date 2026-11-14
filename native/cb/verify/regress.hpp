@@ -1,6 +1,6 @@
 // cb/verify/regress.hpp -- Logan's milestone regression, run for real: `codebreaker regress <all15|setup|slow>`.
 //
-// What the quick gate does not cover, and what is run before a milestone (docs/PYTHON_RETIREMENT.md step 6):
+// What the quick gate does not cover, and what is run before a milestone:
 //
 //   all15   the 15 modules of Setup's MINI.CAB (KRNL386, GDI, USER, the drivers and DLLs) rebuilt from source, put on
 //           Setup's CD in place of the originals, and Windows 95 Setup booted in QEMU to its Welcome dialog and pressed

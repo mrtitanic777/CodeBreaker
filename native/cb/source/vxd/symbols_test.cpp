@@ -1,10 +1,10 @@
-// Tests of cb/source/vxd/symbols and ddk: the DDK folders written for the Python module's harness (testdata/ddk/<case>):
+// Tests of cb/source/vxd/symbols and ddk: the DDK folders written for a recording harness (testdata/ddk/<case>):
 // a VMM.INC and .SYM files built to hit every edge of the two readers (equate lines in all their forms, names at the
 // limits of the allowed length, records cut off by the end of the file, markers, duplicate offsets). The expected
-// answers are what the Python module gave on the same folders, each read and checked by hand; the real DDK
+// answers are the recorded ones on the same folders, each read and checked by hand; the real DDK
 // (Windows95 corpus: 37 control messages, SYS_CRITICAL_INIT to SYS_VM_TERMINATE2 and beyond) gave the same list.
 //
-// DIVERGES from the Python module, by design: a device named with wildcard characters (`V*`, `v?d`) is a name, not a
+// Behaviour pinned here: a device named with wildcard characters (`V*`, `v?d`) is a name, not a
 // glob pattern; a name with a non-ASCII letter is not looked up as the file `NAME.SYM` is not either way.
 #include "cb/source/vxd/symbols.hpp"
 

@@ -440,17 +440,17 @@ CB_TEST("exact.emu.xenix.programs_that_are_not_a_out_files", [] {
     CB_CHECK_THROWS_AS(UsageError, xenix::run(spec));
 });
 
-// What the Python this replaces did with 67 runs (programs that make every call there is, in many orders and with the
+// The recorded results of 67 runs (programs that make every call there is, in many orders and with the
 // calls failing, run on the file tree in testdata/xenix): the console, the exit status, the error, the calls, the work
 // folder afterwards, and what hooks saw.
-CB_TEST("exact.emu.xenix.runs_of_the_python_it_replaces", [] {
+CB_TEST("exact.emu.xenix.recorded_runs", [] {
     const stdfs::path data = testing::data_path("exact/emu/testdata/xenix");
     int cases = 0;
     const std::string all_cases = fs::read_text(data / "cases.jsonl");
     for (const std::string_view line : text::lines(all_cases)) {
         if (line.empty()) continue;
         const Json expected = json::parse(line);
-        // the work folder afresh: every file and folder with the modification time the Python's runs had
+        // the work folder afresh: every file and folder with the recorded modification time
         fs::ScopedTempDir temp("xenix_case");
         const stdfs::path work = temp.path() / "run";
         fs::copy_tree(data / "work0", work);

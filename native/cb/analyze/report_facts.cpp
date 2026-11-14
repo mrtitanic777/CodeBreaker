@@ -92,7 +92,7 @@ void strings_rows(Section& s, const strings::Report& r, ImageKind kind) {
     for (const strings::StackString& f : r.stack_strings)
         push_row(s, kind, f.function, "stack_string", {{"where", Value(f.where)}, {"text", Value(f.text)}, {"wide", Value(f.wide)}});
     for (const strings::FormatFact& f : r.formats) {
-        Value::Map m{{"site", address_value(f.site)}, {"function", Value(f.api)}, {"format", Value(f.format)}};   // (the routine that takes the format, as the Python's row names it)
+        Value::Map m{{"site", address_value(f.site)}, {"function", Value(f.api)}, {"format", Value(f.format)}};   // (the routine that takes the format)
         m.insert_or_assign("arguments", f.arguments ? text_list(*f.arguments) : Value());
         push_row(s, kind, f.function, "format", std::move(m));
     }
@@ -139,7 +139,7 @@ void structures_rows(Section& s, const structures::Report& r, ImageKind kind) {
 
 
 void dispatch_rows(Section& s, const dispatch::Report& r, ImageKind kind) {
-    const auto keyed = [](const std::vector<std::pair<Va, Va>>& items, const char* format) {   // value -> target, the value written as the Python did
+    const auto keyed = [](const std::vector<std::pair<Va, Va>>& items, const char* format) {   // value -> target, the value written in hex
         Value::Map map;
         for (const auto& [value, target] : items)
             map.insert_or_assign(std::string(format) == "hex" ? std::format("{:#x}", value) : std::to_string(value), address_value(target));

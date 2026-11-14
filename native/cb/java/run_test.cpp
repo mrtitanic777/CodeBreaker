@@ -1,13 +1,10 @@
 // Tests of cb/java/run.hpp, the Java transpiler's tool table: the declarations, the dispatch (including a tool provided from
 // outside and the choices validated before it runs), and the tools that run in this tree (apimap, bugfix-ledger, debug,
-// reflect-factories) on the lane's real data, with what the Python tools printed for the same inputs.
+// reflect-factories) on the lane's real data, with the recorded output for the same inputs.
 //
-// DIVERGES from the Python: usage and help text are cb::cli's, not argparse's (the options, their defaults and the exit codes
-// are the same); an option's bad choice is a UsageError (the app exits 2) where argparse exited 2 itself; error messages
-// ("ERROR: ...", "No symbols in subsystem ...") go to stderr, results stay on stdout; a tool whose module is not in this tree
-// and was not provided is an UnsupportedError naming it, where the Python imported the module and ran it; `apimap
-// subsystems` lacks the Python's twelfth, java.platform (the legacy per-class map the Python folds in from
-// console/platform_equivalents, which is not in this tree yet: the registry here loads the api_maps files only).
+// Usage and help text are cb::cli's; an option's bad choice is a UsageError (the app exits 2); error messages ("ERROR: ...",
+// "No symbols in subsystem ...") go to stderr, results stay on stdout; a tool whose module is not in this tree and was not
+// provided is an UnsupportedError naming it.
 #include "cb/java/run.hpp"
 
 #include <algorithm>
@@ -172,7 +169,7 @@ CB_TEST("java.run.apimap_tool", [] {
 
     const Ran subsystems = jrun({"apimap", "subsystems"});
     CB_CHECK(subsystems.out.starts_with("  csharp.bcl               (csharp)  C# / .NET base class library -> C++ and Java. The 'cpp' rows are demon\n"));
-    CB_CHECK_EQ(std::count(subsystems.out.begin(), subsystems.out.end(), '\n'), 12);   // (the twelfth is java.platform: the legacy class map, bridged in as the Python does)
+    CB_CHECK_EQ(std::count(subsystems.out.begin(), subsystems.out.end(), '\n'), 12);   // (the twelfth is java.platform: the legacy class map, bridged in)
     CB_CHECK(subsystems.out.find("  java.platform            (java)  Legacy per-class Java-platform -> Xbox 360 XDK intent map (bridged fro") != std::string::npos);
 
     const Ran list = jrun({"apimap", "list", "java.lang"});

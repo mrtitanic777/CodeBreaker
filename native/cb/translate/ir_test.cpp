@@ -4,10 +4,9 @@
 // in source order, rewired in place, cloned. Every kind of node is made by name and named back, which is how L2 documents
 // are read.
 //
-// DIVERGES from the Python model (translate/ir.py), by design: node slots are typed members, not a dict of whatever a
-// front end set (so an unknown slot is a compile error, not a TypeError at run time); the details of a type are fields of
-// its kind (a pointer's space, a function's parameters), not an `info` dict; a list slot that is empty is the same as one
-// that is absent; there is no `repr` (a type has `to_text`); the Python's integers are 64-bit.
+// Design notes: node slots are typed members (so an unknown slot is a compile error); the details of a type are fields of its
+// kind (a pointer's space, a function's parameters); a list slot that is empty is the same as one that is absent; a type is
+// written with `to_text`; integer constants are 64-bit.
 #include "cb/translate/ir.hpp"
 
 #include <unordered_set>

@@ -2,10 +2,9 @@
 // alone, on the real Windows 95 and 98 builds of compare/testdata/versions.
 //
 // The state folder is a temporary one (CB_STATE), so nothing of the checkout's state is read or written. The documents the command writes are the ones
-// the Python wrote for the same pairs (compare/testdata/versions/golden, made by the live Python), compared as documents.
+// recorded for the same pairs (compare/testdata/versions/golden), compared as documents.
 //
-// CB_VERSIONS_PROOF="<old file>;<new file>[;<json out>]" runs one pair and prints what the command says and how long it took (for comparing with the
-// translated Python's `versions` on the same files).
+// CB_VERSIONS_PROOF="<old file>;<new file>[;<json out>]" runs one pair and prints what the command says and how long it took.
 #include "cb/store/versions_command.hpp"
 
 #include <chrono>
@@ -33,7 +32,7 @@ struct Surrounding {
 
 }  // namespace
 
-CB_TEST("store.versions_command.two_files_as_the_python_compared_them", [] {
+CB_TEST("store.versions_command.two_files_as_recorded", [] {
     Surrounding s;
     fs::ScopedTempDir out("versions-command-out");
     for (const char* module : {"thinkjet.drv", "tracert.exe"}) {

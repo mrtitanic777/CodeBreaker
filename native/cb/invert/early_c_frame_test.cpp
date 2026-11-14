@@ -2,9 +2,8 @@
 // allocator probes of MC1/MC2: each function's temporaries and locals in declaration order, the `sub sp,N` the compiler
 // emitted and the frame offsets the code referenced), the copy-reversal model, and the declarations emitted from them.
 //
-// DIVERGES from the Python: a copy chain that runs into a cycle ends where it would re-enter it (the Python's
-// _chain_swaps looped forever); offsets are unsigned (the compiler allocates upward from bp, so they never are
-// negative); there is no str-keyed variant of the copy functions (the Python's tests used one, the model never did).
+// A copy chain that runs into a cycle ends where it would re-enter it; offsets are unsigned (the compiler allocates
+// upward from bp, so they never are negative).
 #include "cb/invert/early_c_frame.hpp"
 
 #include <set>

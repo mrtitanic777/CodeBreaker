@@ -1,4 +1,4 @@
-// complaints_table.inc -- generated from codebreaker/port/pre_ansi.py SAYS: the compilers' words (gcc's, clang's,
+// complaints_table.inc -- the compilers' words (gcc's, clang's,
 // MSVC's) for each kind of complaint, in the order they are tried. Included by complaints.cpp.
 static const std::vector<std::pair<Complaint, std::vector<std::string_view>>> kSays = {
     {Complaint::LibraryName,

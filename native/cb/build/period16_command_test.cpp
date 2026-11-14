@@ -1,4 +1,4 @@
-// The `build16` command: the LZEXPAND reconstruction (tests/fixtures/lzexpand) built in DOSBox-X by the Python's build16 is the
+// The `build16` command: the LZEXPAND reconstruction (tests/fixtures/lzexpand) built in DOSBox-X is the
 // golden (build/testdata/build16): the command writes the same file, with and without the original's DOS stub in front. Skipped when the
 // period tools are not set up (a machine without DOSBox-X, MS C 6 and VC++ 1.52).
 
@@ -45,7 +45,7 @@ int p16_run(const P16Setup& s, std::vector<std::string> args) {
 
 }  // namespace
 
-CB_TEST("build.period16.command_writes_the_dll_the_python_wrote", [] {
+CB_TEST("build.period16.command_writes_the_dll_as_recorded", [] {
     const P16Setup s = p16_setup();
     if (!s.ready) return;
     const fs::ScopedTempDir work("build16-test");

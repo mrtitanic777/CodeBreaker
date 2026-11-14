@@ -1,4 +1,4 @@
-// The tables of xsm3.cpp, copied from the Python tool (the S-box, the plain text the controller MAC covers and the sample packets).
+// The tables of xsm3.cpp (the S-box, the plain text the controller MAC covers and the sample packets).
 
 inline constexpr std::array<std::uint8_t, 256> kSbox = {
     0xB0, 0x3D, 0x9B, 0x70, 0xF3, 0xC7, 0x80, 0x60, 0x73, 0x9F, 0x6C, 0xC0,

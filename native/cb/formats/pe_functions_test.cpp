@@ -1,12 +1,11 @@
 // Tests of cb/formats/pe_functions.hpp on a real Windows 95 module (testdata/lz32.dll) and on small blobs of code.
 //
-// The numbers asserted for lz32.dll are the ones the Python implementation gave on the same file (state/work/typed-port/
-// formats.pe_functions/expected.txt), each read against the disassembly before it was written down here: 39 functions,
+// The numbers asserted for lz32.dll were each read against the disassembly before they were written down here: 39 functions,
 // 623 decoded instructions, 69 of them calls or jumps that resolve to a name, 11 functions that reference data.
 //
-// DIVERGES from the Python implementation (state/work/typed-port/_bugs/LIST.md): a PE32+ image is an UnsupportedError (the
-// Python decoded its bytes as 32-bit code); a section that would end past 4 GB is an UnsupportedError; a section named in
-// PeSeg that the module does not have, and a module with no executable section, are FormatErrors (ValueError before).
+// Behaviour pinned here: a PE32+ image is an UnsupportedError (its bytes are not 32-bit code);
+// a section that would end past 4 GB is an UnsupportedError; a section named in
+// PeSeg that the module does not have, and a module with no executable section, are FormatErrors.
 #include "cb/formats/pe_functions.hpp"
 
 #include <algorithm>

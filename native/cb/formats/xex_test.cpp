@@ -14,7 +14,7 @@ CB_TEST("formats.xex.optional_headers_of_a_real_title", [] {
     const Bytes data = pacman_header();
     OptionalHeaders table(data);
     CB_CHECK_EQ(table.count(), 15u);
-    // The entries as the old reader gave them for this file (offset, key, value): the table, in order.
+    // The recorded entries for this file (offset, key, value): the table, in order.
     const OptionalHeader want[] = {
         {24, 767, 1324},          {32, 1023, 1344},         {40, 65792, 2181436344u}, {48, 66049, 2181038080u},
         {56, 66559, 6724},        {64, 98306, 1380},        {72, 99327, 1388},        {80, 131327, 1404},

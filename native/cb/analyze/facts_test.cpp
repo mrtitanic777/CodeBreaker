@@ -97,7 +97,7 @@ CB_TEST("analyze.facts.values_of_every_kind_round_trip_through_the_table", [] {
     CB_CHECK_EQ(map->entries().front().first, std::string("a"));
 });
 
-CB_TEST("analyze.facts.stored_text_has_sorted_keys_and_python_style_separators", [] {
+CB_TEST("analyze.facts.stored_text_has_sorted_keys_and_the_usual_separators", [] {
     const Value v(Value::Map{{"b", Value(1)}, {"a", Value(Value::List{Value(2), Value(3)})}});
     CB_CHECK_EQ(facts::to_text(v), std::string(R"({"a": [2, 3], "b": 1})"));
     CB_CHECK_EQ(facts::to_text(Value()), std::string("null"));

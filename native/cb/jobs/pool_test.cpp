@@ -11,17 +11,15 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
-// DIVERGES from codebreaker/jobs/pool.py (and from the typed port):
-//   * run() keeps what a failed share had already finished (a dead worker PROCESS lost its whole share's results);
-//     the items that were not reached run again and the item that was on is retried alone, as before;
-//   * threads() starts every item even after one has failed, and rethrows the first failure in the items' order (the
-//     port stopped starting later items; the Python's executor ran them all);
-//   * the results come back in the items' order (a dict in completion order before); an item whose key an earlier one
-//     had replaces its result in that one's place;
+// Behaviour pinned here:
+//   * run() keeps what a failed share had already finished (a dead worker PROCESS does not lose its whole share's results);
+//     the items that were not reached run again and the item that was on is retried alone;
+//   * threads() starts every item even after one has failed, and rethrows the first failure in the items' order;
+//   * the results come back in the items' order; an item whose key an earlier one had replaces its result in that one's place;
 //   * there is no `context` (the work lambda captures it), no `processes` option (threads either way: a worker
-//     PROCESS is jobs/workers.hpp) and `isolated()` takes its argv up front (IsolatedItem) instead of calling argv_for;
-//   * a failed isolated item's "error" for a program that cannot start is the Error's kind (not Python's exception name);
-//     the state file keeps only "done" and "failed" (the Python kept any other top-level key it found).
+//     PROCESS is jobs/workers.hpp) and `isolated()` takes its argv up front (IsolatedItem);
+//   * a failed isolated item's "error" for a program that cannot start is the Error's kind;
+//     the state file keeps only "done" and "failed".
 
 using namespace cb;
 using namespace cb::jobs;

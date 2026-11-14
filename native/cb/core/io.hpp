@@ -1,6 +1,6 @@
 // cb/core/io.hpp -- bounds-checked reading and writing of binary data.
 //
-// ByteReader is a cursor over a ByteView; it replaces struct.unpack. Little-endian is the default (that is what
+// ByteReader is a cursor over a ByteView; it reads fixed-width fields. Little-endian is the default (that is what
 // PE, NE, LE, DOS and x86 use); the `_be` forms read big-endian (PowerPC, Xbox 360, ID3, network order). A read
 // past the end throws cb::TruncatedError with the reader's name, the offset and the size wanted. A reader that
 // must answer with less on damaged input uses the `try_` forms, which return std::optional instead.

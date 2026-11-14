@@ -1,5 +1,4 @@
-// The commands, by name, in the order `help` lists them: name, how it is written, what it does. Generated once from
-// the Python __main__ docstring (the two undocumented commands, score16 and exact, were added a line each).
+// The commands, by name, in the order `help` lists them: name, how it is written, what it does. Each entry is one line of `help`.
 // Every command is listed here, by name. Nothing is discovered by scanning folders.
     {"ui", "ui [module]", "CodeBreaker in the command prompt: the corpus, a module's functions, their C, assembly, calls and verdicts, jobs followed live"},
     {"module", "module <name> [--no-verify]", "reconstruct one module: decompile, build, judge, write its source"},
@@ -51,7 +50,7 @@
     {"xbox-disc", "xbox-disc files|read|unpack <image> ...", "an Xbox 360 disc image's files: listed, one read, all unpacked"},
     {"xex-basic", "xex-basic <file.xex> <out.xex>", "the unencrypted, basic-compressed form XenonRecomp reads"},
     {"xenon-config", "xenon-config <basic.xex> <out.toml>", "a module's XenonRecomp configuration (--out-dir, --switch-tables, --file-path)"},
-    {"switch-tables", "switch-tables <basic.xex> <out.toml>", "its switch tables (switches.py's, with XenonAnalyse's)"},
+    {"switch-tables", "switch-tables <basic.xex> <out.toml>", "its switch tables (with XenonAnalyse's)"},
     {"corpus-executables", "corpus-executables", "every corpus executable: its format, a tab, its path"},
     {"xex-edit", "xex-edit <op> <file.xex> ...", "change its privilege flags, or its code at an address (nop, bytes, asm, hook)"},
     {"ppc-calls", "ppc-calls <.xex or image> [-o F]", "what its calls show: argument counts, registers kept, variadic functions"},

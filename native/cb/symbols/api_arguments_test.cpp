@@ -1,11 +1,11 @@
 // Tests of cb/symbols/api_arguments. The stack scan runs over a real Windows 95 module (formats/testdata/lz32.dll: its twelve
-// exports each take a known number of argument bytes -- the values are what the Python module read from the same file) and
+// exports each take a known number of argument bytes) and
 // over small modules written out byte by byte, so that each rule of the walk (the depth the stack is at, jumps into other
 // functions, calls, imports, forwarded exports, the thunk compiler's stubs) can be checked by hand.
 //
-// DIVERGES from the Python module, by design:
+// Behaviour pinned here:
 //   * an operand the scan cannot read as a number (a constant that is hexadecimal digits without 0x) ends that path, or
-//     counts as an unknown change of the stack; the Python raised ValueError there, which gave up on the whole export;
+//     counts as an unknown change of the stack, and does not give up on the whole export;
 //   * a 16-bit export whose size is more than 32 bits is unknown; a name's ordinal beyond 32 bits is no ordinal.
 #include "cb/symbols/api_arguments.hpp"
 

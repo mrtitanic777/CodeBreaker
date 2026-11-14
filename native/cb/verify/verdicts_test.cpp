@@ -1,5 +1,5 @@
 // Tests of the verdict vocabulary: the words, the older spellings read as the words now, classification with
-// limits, and the provenance index. The expected words were checked against verify/verdicts.py by hand.
+// limits, and the provenance index.
 
 #include "cb/verify/verdicts.hpp"
 

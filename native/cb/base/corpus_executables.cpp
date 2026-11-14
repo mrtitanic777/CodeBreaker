@@ -18,7 +18,7 @@ cli::Command command(const Environment& environment) {
         [environment](const cli::Args&) {
             if (!environment.corpus) throw InternalError("corpus-executables: no corpus");
             std::vector<std::string> paths;
-            // (the paths as Windows writes them, as the Python printed them: they sort and print with backslashes)
+            // (the paths as Windows writes them: they sort and print with backslashes)
             for (const Corpus::Executable& e : environment.corpus->executables()) paths.push_back(std::filesystem::path(e.path).make_preferred().u8string());
             std::sort(paths.begin(), paths.end());
             paths.erase(std::unique(paths.begin(), paths.end()), paths.end());

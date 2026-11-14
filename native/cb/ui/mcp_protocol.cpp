@@ -43,7 +43,7 @@ constexpr std::string_view kPromptDescription = "Take a binary apart: what it is
 constexpr std::string_view kResourceDescription = "One function's reconstructed source, as the store holds it";
 constexpr std::string_view kPydanticDocs = "https://errors.pydantic.dev/2.12/v/";   // the version of the checks' wording
 
-// ---- Python's json.dumps, for what the wire shows and what lengths are measured in ---------------------------------------------------
+// ---- json.dumps-style text (", " and ": " separators, non-ASCII escaped), for what the wire shows and what lengths are measured in ---------------------------------------------------
 void escape_ascii(std::string_view s, std::string& out) {   // ensure_ascii: every character past 0x7E is \uXXXX (a pair past the plane 0)
     out += '"';
     for (std::size_t i = 0; i < s.size();) {
@@ -116,7 +116,7 @@ void py_dumps(const Json& v, std::string& out) {   // json.dumps(value): ", " an
     }
 }
 
-// Python's repr of the JSON-derived value, for the checks' messages.
+// The repr-style text of a JSON-derived value, for the checks' messages.
 std::string py_repr_of(const Json& v) {
     if (v.is_null()) return "None";
     if (v.is_boolean()) return v.get<bool>() ? "True" : "False";
@@ -388,7 +388,7 @@ Server::Server(service::Service& service, service::ServiceLink& link, Services s
         const std::string function(spec.function);
         service.add_call("mcp." + function, [impl, function, &spec](const Json& args, std::string_view owner) -> Json {
             const service::AnsweringFor answering(owner);
-            // (a client of the wire sends only the arguments it was given, as the Python's does: the rest are the tool's defaults)
+            // (a client of the wire sends only the arguments it was given: the rest are the tool's defaults)
             const ToolResult r = impl->call(function, bind_arguments(spec, args));
             if (r.image) throw UsageError("a picture does not go through JSON");
             return *r.document;
@@ -615,7 +615,7 @@ int Server::serve_stdio() {
         }
         workers.emplace_back([answer_one, message = std::move(message)] { answer_one(message); });
     }
-    // Every request read is answered before the server goes (as the Python's does): a worker uses this server, so none may outlive it.
+    // Every request read is answered before the server goes: a worker uses this server, so none may outlive it.
     for (std::thread& w : workers) w.join();
     impl_->link.stop_mine();   // only the jobs this server started
     return 0;

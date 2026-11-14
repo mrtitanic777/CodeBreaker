@@ -1,9 +1,9 @@
 // Tests of the standard services of the MCP server (mcp_standard.cpp and its parts): every service is filled, and the tools that read the code, the
-// names and the runtime libraries answer, on real modules (a 32-bit one, a 16-bit one, a DOS program), as the Python MCP server answered
-// (testdata/mcp_python.golden.json calls 17 and on, made by testdata/make_mcp_golden.py): the listing of a function, what refers to an address, the
+// names and the runtime libraries answer, on real modules (a 32-bit one, a 16-bit one, a DOS program), as recorded
+// (testdata/mcp_python.golden.json calls 17 and on): the listing of a function, what refers to an address, the
 // names of a module's functions, the functions a runtime library made, where an address is stored, one function of two builds side by side.
 //
-// DIVERGES from ui/mcp_server.py: the command table is cb/app's catalog (a command's synopsis and summary) where the Python read each command's
+// Design notes: the command table is cb/app's catalog (a command's synopsis and summary)
 // module docstring, so `commands` and `command_help` answer the catalog's words.
 #include <nlohmann/json.hpp>
 
@@ -62,7 +62,7 @@ CB_TEST("ui.mcp.standard_services_fill_every_service", [] {
     CB_CHECK_EQ(s.version(), "2.0.0");
 });
 
-CB_TEST("ui.mcp.the_code_is_read_as_the_python_did", [] {
+CB_TEST("ui.mcp.the_code_is_read_as_recorded", [] {
     SvcFixture f;
     const std::string lz32 = data("lz32.dll"), expand = data("lzexpand.dll"), find = data("find.exe");
     // a 32-bit function whole, and from an address for a number of instructions
@@ -91,7 +91,7 @@ CB_TEST("ui.mcp.the_code_is_read_as_the_python_did", [] {
     CB_CHECK(nowhere.first.find("no address or function named 'nosuchfunction' in lz32.dll") != std::string::npos);
 });
 
-CB_TEST("ui.mcp.the_names_and_the_runtime_libraries_are_read_as_the_python_did", [] {
+CB_TEST("ui.mcp.the_names_and_the_runtime_libraries_are_read_as_recorded", [] {
     SvcFixture f;
     const std::string lz32 = data("lz32.dll"), expand = data("lzexpand.dll");
     CB_CHECK_EQ(f.call("names", Json{{"module", lz32}, {"limit", 10}}).first, f.recorded("call 26 names"));
@@ -118,7 +118,7 @@ CB_TEST("ui.mcp.two_builds_are_compared_and_one_function_shown_side_by_side", []
     CB_CHECK_EQ(doc["rows"].size(), std::size_t{3});
 });
 
-CB_TEST("ui.mcp.one_function_is_decompiled_now_as_the_python_did", [] {
+CB_TEST("ui.mcp.one_function_is_decompiled_now_as_recorded", [] {
     SvcFixture f;
     // (the decompiler is the checkout's program: without it there is nothing to ask)
     if (!sfs::exists(f.config.path("decompiler_bin").value_or(sfs::path()) / "decompiler.exe")) return;

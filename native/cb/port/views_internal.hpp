@@ -37,7 +37,7 @@ inline Regex rx_tag(std::string_view pattern, std::string_view tag) {
 }
 
 // A map that keeps the order its keys were first given in, for keys that have no hash (a pair): re-assigning a key
-// keeps its place. (What a Python dict does; the passes that visit their entries in this order say so.)
+// keeps its place. (Like an insertion-ordered dictionary; the passes that visit their entries in this order say so.)
 template <class K, class V>
 class FirstSeenMap {
 public:

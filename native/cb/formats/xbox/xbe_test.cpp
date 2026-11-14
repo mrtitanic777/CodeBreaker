@@ -1,9 +1,9 @@
-// Tests of cb/formats/xbox/xbe.hpp. The inputs are the two XBEs the Python tests build (tests/test_xbe.py: a retail XBE with a code section that calls the kernel through
-// the thunk table, and tests/test_xbox_formats.py test_xbe: a header with no sections); the expected lines are what the Python's xbe module answers for them
-// (testdata/assets/make_asset_goldens.py), PE image included (its SHA-1), and the PE is also read back by cb/formats/pe.hpp.
+// Tests of cb/formats/xbox/xbe.hpp. The inputs are two XBEs built for the purpose (a retail XBE with a code section that calls the kernel through
+// the thunk table, and a header with no sections); the expected lines are the recorded answers for them
+// (testdata/assets/make_asset_goldens), PE image included (its SHA-1), and the PE is also read back by cb/formats/pe.hpp.
 //
-// DIVERGES from the Python: a table or name outside the file is FormatError (the Python's reads raised struct.error, or clamped a name); a section that starts
-// below the image base is FormatError (the Python wrapped it into the image from the end); an image over 1 GiB is FormatError.
+// Behaviour pinned here: a table or name outside the file is FormatError; a section that starts
+// below the image base is FormatError; an image over 1 GiB is FormatError.
 #include "cb/formats/xbox/xbe.hpp"
 
 #include <cstring>
@@ -22,7 +22,7 @@ using namespace cb::formats::xbox;
 
 constexpr std::uint32_t kBase = 0x10000, kText = 0x11000, kData = 0x12000;
 
-// The XBE tests/test_xbe.py builds: entry `push offset msg; call [DbgPrint]; add esp,4; xor eax,eax; ret`.
+// The retail XBE: entry `push offset msg; call [DbgPrint]; add esp,4; xor eax,eax; ret`.
 static Bytes make_xbe() {
     io::ByteWriter code;
     code.u8(0x68);
@@ -79,12 +79,12 @@ static Bytes make_xbe() {
     return file;
 }
 
-CB_TEST("formats.xbox.xbe.the_fixtures_read_as_the_pythons_do", [] {
+CB_TEST("formats.xbox.xbe.the_fixtures_read", [] {
     for (const char* name : {"xbe_small.bin", "xbe_demo.bin"}) {
         const Bytes file = fs::read_file(fs::from_text(asset_dump::fixture(name)));
         const std::string diff = asset_dump::difference(asset_dump::golden(name), asset_dump::dump_xbe(name, file));
         CB_CHECK(diff.empty());
-        if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, std::string(name) + " differs from the Python:\n" + diff);
+        if (!diff.empty()) cb::testing::record_failure(__FILE__, __LINE__, std::string(name) + " differs from the recorded dump:\n" + diff);
     }
 });
 
@@ -93,7 +93,7 @@ CB_TEST("formats.xbox.xbe.the_xbe_the_test_builds_is_the_fixture", [] {
 });
 
 CB_TEST("formats.xbox.xbe.header_certificate_and_keys", [] {
-    // test_xbox_formats.py test_xbe: a header with the entry scrambled with the retail key and a certificate naming "Halo"
+    // a header with the entry scrambled with the retail key and a certificate naming "Halo"
     const xbe::Xbe x = xbe::Xbe::parse(fs::read_file(fs::from_text(asset_dump::fixture("xbe_small.bin"))));
     CB_CHECK_EQ(x.title_name, "Halo");
     CB_CHECK_EQ(x.entry_point().address, 0x11030u);

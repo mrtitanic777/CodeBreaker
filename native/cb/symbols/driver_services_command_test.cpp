@@ -1,6 +1,6 @@
-// Tests of the `driver-services` command (cb/symbols/driver_services.hpp's `command`) against what `python -m codebreaker driver-services ...` printed
-// (testdata/commands/*.txt, made by state/work/cmdlayer/gen_driver_services.sh): the size of the table, how it does on four real drivers, a file that is
-// not there, and the table made again from the small driver kit in testdata/driver_kit (the Python's generate() into a file of its own over a corpus
+// Tests of the `driver-services` command (cb/symbols/driver_services.hpp's `command`) against recorded output
+// (testdata/commands/*.txt): the size of the table, how it does on four real drivers, a file that is
+// not there, and the table made again from the small driver kit in testdata/driver_kit (generate() into a file of its own over a corpus
 // with no drivers: testdata/commands/generated.json).
 #include <filesystem>
 #include <string>
@@ -59,7 +59,7 @@ struct DriverServicesCommandWorld {
 
 }  // namespace
 
-CB_TEST("symbols.driver_services_command.the_size_and_the_coverage_match_the_python", [] {
+CB_TEST("symbols.driver_services_command.the_size_and_the_coverage_match_the_recorded_output", [] {
     DriverServicesCommandWorld w;
     CB_CHECK_EQ(w.run({}), DriverServicesCommandWorld::golden("size.txt"));
     CB_CHECK_EQ(w.run({"bios.vxd", "splitter.vxd", "srammtd.vxd", "vmouse.vxd", "nosuch.vxd"}), DriverServicesCommandWorld::golden("files.txt"));

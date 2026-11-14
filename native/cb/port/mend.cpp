@@ -30,7 +30,7 @@ bool has(std::string_view s, std::string_view part) {
     return s.find(part) != std::string_view::npos;
 }
 
-// s[a:b] with Python's clamping: the pieces of a line the passes cut by offsets the compiler gave.
+// The substring [a, b) with both ends clamped to the line: the pieces of a line the passes cut by offsets the compiler gave.
 std::string slice(std::string_view s, std::size_t a, std::size_t b) {
     a = std::min(a, s.size());
     b = std::min(std::max(a, b), s.size());
@@ -92,7 +92,7 @@ std::size_t value_end(std::string_view l, std::size_t a, bool braces) {
     return b;
 }
 
-// the `find("=", from)` of the Python: the index of the first '=' at or after `from`, or npos
+// The index of the first '=' at or after `from`, or npos
 std::size_t find_eq(std::string_view l, std::size_t from) {
     return l.find('=', std::min(from, l.size()));
 }
@@ -271,7 +271,7 @@ struct Ctx {
     std::optional<RegexMatch> match;
 };
 
-// What is left of a complaint after its kind's handler: nothing (the Python's `continue`), or the tail that every
+// What is left of a complaint after its kind's handler: nothing, or the tail that every
 // complaint gets (a chain of assignments of 0, then the kinds that mend a line).
 enum class Flow { Done, Tail };
 

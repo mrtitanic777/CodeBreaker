@@ -1,9 +1,8 @@
 // Tests of cb/formats/xbox/crypto/format_key.hpp: the array source for keys of every size around the line width, and the
 // tool's files.
 //
-// DIVERGES from the Python: the guarded `typedef unsigned char BYTE` ends with a semicolon (the Python's text lacked it,
-// so the header did not compile where BYTE was not already a macro); a missing Output/Zero folder is created (the
-// Python raised FileNotFoundError); an empty key is a FormatError (IndexError there).
+// Behaviour pinned here: the guarded `typedef unsigned char BYTE` ends with a semicolon (so the header compiles
+// where BYTE is not already a macro); a missing Output/Zero folder is created; an empty key is a FormatError.
 #include "cb/formats/xbox/crypto/format_key.hpp"
 
 #include <algorithm>

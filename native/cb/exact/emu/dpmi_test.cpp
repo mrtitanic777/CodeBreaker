@@ -10,12 +10,11 @@
 using namespace cb;
 using namespace cb::exact::emu::dpmi;
 
-// DIVERGES from the Python module (dpmi.py), on purpose:
+// Design notes:
 //   * a descriptor request that would run past the 512-entry LDT is an error to the client (INT 31h 0000: AX=8011h with
-//     the carry flag) or an EmulationError (the host's own allocations); the Python wrote past the table
-//   * INT 31h 000Ch on a selector that is not an LDT one (or past the table) answers AX=8022h with the carry flag; the
-//     Python wrote the descriptor into the LDT at the GDT selector's index
-//   * a real-mode vector that was never set reads back as 0000:0000 (as the Python's dict.get default did)
+//     the carry flag) or an EmulationError (the host's own allocations)
+//   * INT 31h 000Ch on a selector that is not an LDT one (or past the table) answers AX=8022h with the carry flag
+//   * a real-mode vector that was never set reads back as 0000:0000
 
 namespace {
 

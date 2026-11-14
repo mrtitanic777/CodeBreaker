@@ -1,17 +1,12 @@
-// Tests of build/data: a module's initialised data as C. The real-module cases compare with what the Python
-// build/data.py wrote for the same files (testdata/make_data_golden.py made the goldens; their contents were read
-// through by hand: the object layouts, the pointers, the unresolved list). The rest is written: the text of an object,
+// Tests of build/data: a module's initialised data as C. The real-module cases compare with recorded goldens
+// (their contents were read through by hand: the object layouts, the pointers, the unresolved list). The rest is written: the text of an object,
 // the cut of pieces, the rewrites of a header and a function, the layout check, and damaged input.
 //
-// DIVERGES from the Python:
-//   * relocate_header: a constant of more than 64 bits is left alone and not listed in `lost` (the Python listed it as
-//   a
-//     number of any size; no real header has one).
-//   * a far-pointer relocation in the last two bytes of a segment cannot be written past the segment's end (the
-//   Python's
-//     slice assignment grew the segment by two bytes, which nothing could use): the bytes there are cleared and no
-//     more.
-//   * layout_holds is false for an object file that cannot be read (the Python's hand parser took what it could).
+// Notes:
+//   * relocate_header: a constant of more than 64 bits is left alone and not listed in `lost` (no real header has one).
+//   * a far-pointer relocation in the last two bytes of a segment cannot be written past the segment's end: the bytes there are
+//     cleared and no more.
+//   * layout_holds is false for an object file that cannot be read.
 #include "cb/build/data.hpp"
 
 #include <format>
@@ -353,7 +348,7 @@ CB_TEST("build.data.relocate_header_rules", [] {
                     place + ")\n#define H (*(*)" + place +
                     ")\n#define I (*(int *)0x01010)\r\n#define J (*(int *)0x1010)\r\nlast #define K (*(int *)0x10ff)");
     CHECK_SAME(r.lost,
-               (std::vector<std::uint64_t>{0x2000})); // (a constant past 64 bits is left alone, not listed: DIVERGES)
+               (std::vector<std::uint64_t>{0x2000})); // (a constant past 64 bits is left alone, not listed)
     CB_CHECK_EQ(relocate_header("", d).text, "DECL\n");
 });
 

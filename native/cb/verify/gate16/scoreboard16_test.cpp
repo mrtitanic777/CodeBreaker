@@ -120,7 +120,7 @@ CB_TEST("verify.scoreboard16.report", [] {
     CB_CHECK_EQ(lines[4], std::string("  bytes over the original's length, all together: 2"));
     // the patterns of the functions Microsoft C 8 does not match, the largest (by bytes off) first: MK_FP 37 (b 7 + c 30), CONCAT 7
     CB_CHECK_EQ(lines.size(), std::size_t{8});
-    // (Python's "%-24s %4d  %6d": the name to 24 columns, the counts right-aligned in 4 and 6)
+    //
     CB_CHECK_EQ(lines[6], "    MK_FP" + std::string(19, ' ') + " " + "   2" + "  " + "    37");
     CB_CHECK_EQ(lines[7], "    CONCAT" + std::string(18, ' ') + " " + "   1" + "  " + "     7");
 });

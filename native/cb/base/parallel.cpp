@@ -20,8 +20,7 @@ namespace {
 namespace core = ::cb::parallel;
 
 // One slot: a one-byte lock on a file of its own. The lock belongs to the process that took it, and the system lets
-// go of it when the process ends, even if it was killed. (A byte lock, like the Python's msvcrt.locking, so that
-// processes of either kind contend for the same slots.)
+// go of it when the process ends, even if it was killed. (A byte lock, so that processes of any kind contend for the same slots.)
 class Slot {
 public:
     Slot() = default;

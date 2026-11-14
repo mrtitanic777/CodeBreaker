@@ -208,7 +208,7 @@ struct Win16LaneSpec {
 class Win16Lane final : public Kind {
 public:
     // Bump when what is built or compared changes. 23: the branch-guided inputs found path by path; a fingerprint carries its path; paths= limits; what
-    // the deeper inputs showed of the judge itself. 24: the C++ lane's own digests and guessing (its random draws are not Python's).
+    // the deeper inputs showed of the judge itself. 24: the C++ lane's own digests and guessing.
     static constexpr int kRev = 24;
 
     explicit Win16Lane(Win16LaneSpec spec);

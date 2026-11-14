@@ -1,6 +1,6 @@
 // decode.h -- what the recorder asks Capstone: an instruction's text, a straight run's
 // instructions, the pushes before a call, and what a branch-log step needs to know of an
-// instruction.  Each is the C++ form of a helper in codebreaker/emulate/emulator.py, decoding
+// instruction.  Each decodes
 // with the same capstone.dll and the same options (32-bit, detail on), so the text is the same.
 #pragma once
 #include <cstdint>
@@ -19,7 +19,7 @@ struct InsnInfo {
     uint64_t target = 0;
 };
 
-// The first instruction in p[0..n) at `address`; false when nothing decodes (Python: "?").
+// The first instruction in p[0..n) at `address`; false when nothing decodes.
 bool decode_one(const uint8_t *p, size_t n, uint64_t address, InsnInfo &out);
 
 // _straight_run: the instructions of a block of the file's code; ok is false when they do not

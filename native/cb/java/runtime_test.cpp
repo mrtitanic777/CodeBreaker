@@ -29,7 +29,7 @@ std::string rt_digest(const std::string& text) {
     return cb::crypto::to_hex(cb::crypto::sha256(bytes));
 }
 
-// testdata/runtime.golden.txt: what the original Python module produced (codebreaker.java.runtime on this checkout), as
+// testdata/runtime.golden.txt: the runtime's recorded output, as
 //   file|<config>|<name>|<size>|<sha256 of the text>      the generated file set of each configuration
 //   members|<class>|<parent>|<method=type;...>            STUB_MEMBERS
 //   unwired|<canonical headers that are not wired>
@@ -69,7 +69,7 @@ runtime::GenerateOptions rt_options(const std::string& name) {
     return o;
 }
 
-CB_TEST("java.runtime.file_sets_match_python", [] {
+CB_TEST("java.runtime.file_sets_match_golden", [] {
     const RtGolden golden = rt_load_golden();
     CB_CHECK_EQ(golden.files.size(), std::size_t{9});
     for (const auto& [config, expected] : golden.files) {
@@ -90,7 +90,7 @@ CB_TEST("java.runtime.file_sets_match_python", [] {
     }
 });
 
-CB_TEST("java.runtime.stub_members_match_python", [] {
+CB_TEST("java.runtime.stub_members_match_golden", [] {
     const RtGolden golden = rt_load_golden();
     const auto& made = rt_runtime().stub_members();
     CB_CHECK_EQ(made.size(), golden.members.size());

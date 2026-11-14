@@ -14,13 +14,12 @@ namespace s = cb::decompile::sm83;
 using cb::Bytes;
 using std::string;
 
-// DIVERGES from the Python module (the old harness, 19,700 cases over the table, decode, text and assemble, agreed on
-// everything else; the expectations below were produced by the original and read through by hand):
-//  - an unknown label is a cb::decompile::z80::UnknownLabel (Python: KeyError), the other failures are ParseError
-//    (ValueError); the expression language is the Z80 module's (see z80_test: no `**`, no comparisons);
-//  - decode() takes an unsigned offset (Python indexed from the end for a negative one);
+// Notes (an old harness, 19,700 cases over the table, decode, text and assemble, agreed on
+// everything else; the expectations below were recorded and read through by hand):
+//  - an unknown label is a cb::decompile::z80::UnknownLabel, the other failures are ParseError; the expression language is the Z80 module's (see z80_test: no `**`, no comparisons);
+//  - decode() takes an unsigned offset;
 //  - an Insn holds at most one operand value and three bytes (the table's maximum), not lists;
-//  - a label with an empty name counts as no label (Python wrote the empty string).
+//  - a label with an empty name counts as no label.
 
 namespace {
 

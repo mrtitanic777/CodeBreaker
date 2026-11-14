@@ -108,7 +108,7 @@ CB_TEST("emulate.symbolic.concat_of_neighbours_is_the_whole", [] {
     CB_CHECK(joined->op == Op::Concat && joined->bits == 24);
     const Expr* c = p.concat(p.constant(0x12, 8), p.constant(0x34, 8));
     CB_CHECK(c->op == Op::Const && c->bits == 16 && c->value == 0x1234);
-    // DIVERGES: two constants whose width passes 64 bits stay a concatenation (the Python made one wider constant)
+    // Design notes: two constants whose width passes 64 bits stay a concatenation
     const Expr* wide = p.concat(p.constant(1, 40), p.constant(2, 40));
     CB_CHECK(wide->op == Op::Concat && wide->bits == 80);
 });

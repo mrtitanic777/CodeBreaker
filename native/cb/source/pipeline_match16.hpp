@@ -49,7 +49,7 @@ Match16Run run_match16(World& world, const std::filesystem::path& module, const 
 std::map<std::string, std::string> identify_run_time_library(std::vector<symbols::libraries::Function> routines,
                                                               std::span<const verify::authored::match16::Function> functions);
 
-// `match <16-bit module> ...`: runs it and prints what the Python prints.
+// `match <16-bit module> ...`: runs it and prints the result.
 int match16_command(World& world, const std::filesystem::path& module, const cli::Args& args);
 
 }  // namespace cb::source::pipeline

@@ -390,8 +390,7 @@ std::size_t object_before(std::string_view line, std::size_t at) {
                     break;
                 --k;
             }
-            // DIVERGES: an unbalanced bracket gave the Python an index of -1 and then indexed from the end of the
-            // line; here the object is taken to start at the line's start.
+            // An unbalanced bracket: the object is taken to start at the line's start.
             if (!balanced)
                 return 0;
             i = k;

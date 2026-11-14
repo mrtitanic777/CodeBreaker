@@ -185,7 +185,7 @@ CB_TEST("core.regex.for_each_match_and_find_all", [] {
 });
 
 CB_TEST("core.regex.replace", [] {
-    CB_CHECK_EQ(Regex(R"(\W)").replace_all("a-b c.d", "_"), "a_b_c_d");               // the old re.sub(r"\W", "_", s)
+    CB_CHECK_EQ(Regex(R"(\W)").replace_all("a-b c.d", "_"), "a_b_c_d");               // every non-word character becomes "_"
     CB_CHECK_EQ(Regex(R"(\s+)").replace_all("a  b\t\tc", " "), "a b c");
     CB_CHECK_EQ(Regex(R"((\w+)=(\w+))").replace_all("a=1, b=2", "$2=$1"), "1=a, 2=b");
     CB_CHECK_EQ(Regex(R"((?<k>\w+)=)").replace_all("a=1", "${k}:"), "a:1");

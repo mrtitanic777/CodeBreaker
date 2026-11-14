@@ -1,4 +1,4 @@
-// Tests of cb/base/cache_command: `codebreaker cache`, against what the Python command printed for an empty state folder (cache_max_gb 1.5),
+// Tests of cb/base/cache_command: `codebreaker cache`, against the text printed for an empty state folder (cache_max_gb 1.5),
 // and on a cache with something in it.
 #include "cb/base/cache_command.hpp"
 
@@ -31,10 +31,10 @@ int run_command(const cachecmd::CommandEnvironment& env, std::vector<std::string
 
 }  // namespace
 
-CB_TEST("base.cache_command.an_empty_cache_reads_as_the_python_printed_it", [] {
+CB_TEST("base.cache_command.an_empty_cache_reads_as_recorded", [] {
     cb::fs::ScopedTempDir dir("cbcachecmd");
     const cachecmd::CommandEnvironment env = environment_in(dir.path(), static_cast<std::uint64_t>(1.5 * static_cast<double>(cachecmd::kGiB)));
-    // (python -m codebreaker cache [--stats | --prune | --clear] with CB_STATE an empty folder and CB_CACHE_MAX_GB=1.5)
+    // (`cache [--stats | --prune | --clear]` with CB_STATE an empty folder and CB_CACHE_MAX_GB=1.5)
     const std::string listing =
         "kind                   size    results  generations (* = of now)\n"
         "all                  0.0 MB   (cap 1.50 GB: setting cache_max_gb)\n";
@@ -90,7 +90,7 @@ CB_TEST("base.cache_command.a_misused_command_line_is_a_usage_error", [] {
     const cachecmd::CommandEnvironment env = environment_in(dir.path(), cachecmd::kGiB);
     cb::testing::CapturedStd cap;
     cb::cli::Cli cli("codebreaker", {cachecmd::command(env)});
-    CB_CHECK_EQ(cli.run({"cache", "--bogus"}), cb::kExitUsage);       // (the Python printed its usage and exited 2)
+    CB_CHECK_EQ(cli.run({"cache", "--bogus"}), cb::kExitUsage);       // (usage, exit 2)
 });
 
 CB_TEST("base.cache_command.settings_give_the_folders_and_caps", [] {

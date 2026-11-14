@@ -1,5 +1,5 @@
 // Tests of ui::progress::store_reader: what `codebreaker progress` reads of the coverage ledger and the function store. With no store the line is
-// what `python -m codebreaker progress --once` printed over the same three-module corpus (its clock aside); with results in the store the reading says
+// the recorded output of `progress --once` over the same three-module corpus (its clock aside); with results in the store the reading says
 // how far the modules are, which was written last and how many results came lately.
 #include <chrono>
 #include <filesystem>
@@ -68,10 +68,10 @@ struct ProgressStoreWorld {
 
 }  // namespace
 
-CB_TEST("ui.progress_store.no_store_yet_reads_as_the_python_printed_it", [] {
+CB_TEST("ui.progress_store.no_store_yet_reads_as_recorded", [] {
     ProgressStoreWorld w;
     pg::Snapshot s = pg::snapshot(w.reader());
-    // (python -m codebreaker progress --once, the same three modules and no function store; the workers busy are the machine's)
+    // (`progress --once`, the same three modules and no function store; the workers busy are the machine's)
     CB_CHECK(!pg::line(s).empty());
     CB_CHECK_EQ(s.kinds.size(), std::size_t{5});   // the kinds with a verifier profile in force
     CB_CHECK_EQ(s.kinds[0].name, "32-bit");

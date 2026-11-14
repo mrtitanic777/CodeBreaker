@@ -1,5 +1,5 @@
 // The proof against real files: with CB_XBOX_PROOF_DIR=<folder> this reads every .xdbf / .xur / .xbe / .xpr / .bik / .chd file of the folder, dumps it as asset_dump_kit.hpp does, and compares
-// the lines with <folder>/python.txt -- what `python make_asset_goldens.py dump <folder>` prints for the same files (the Python readers, through formats.dll). Without the
+// the lines with <folder>/python.txt -- the recorded dump of the same files. Without the
 // variable the test does nothing: the files are on the owner's machine (the Minecraft title's SPA and XUR scenes, cut out of default.xex and its XUI package).
 #include <algorithm>
 #include <format>
@@ -15,11 +15,11 @@ namespace asset_proof_test {
 using namespace cb;
 using namespace cb::formats::xbox;
 
-CB_TEST("formats.xbox.assets.real_files_agree_with_the_python", [] {
+CB_TEST("formats.xbox.assets.real_files_match_the_recorded_output", [] {
     const std::optional<std::string> folder = fs::get_env("CB_XBOX_PROOF_DIR");
     if (!folder) return;
     const std::filesystem::path dir = fs::from_text(*folder);
-    const std::string python = fs::read_text(dir / "python.txt");
+    const std::string recorded = fs::read_text(dir / "python.txt");
     std::vector<std::filesystem::path> files;
     for (const auto& e : std::filesystem::directory_iterator(dir)) files.push_back(e.path());
     std::sort(files.begin(), files.end());
@@ -41,10 +41,10 @@ CB_TEST("formats.xbox.assets.real_files_agree_with_the_python", [] {
             continue;
         }
         asset_dump::Lines want;
-        for (const std::string_view line : text::lines(python)) {
+        for (const std::string_view line : text::lines(recorded)) {
             if (line.starts_with(name + ".")) want.emplace_back(line);
         }
-        // The one divergence from the Python that real files show: an SPA's namespace-1 entries are not all achievements, and the Python decodes each as one, splitting its
+        // The one difference that real files show: an SPA's namespace-1 entries are not all achievements, and the recording decodes each as one, splitting its
         // strings at any two zero bytes where we split on 16-bit boundaries. A line of such a record may differ, only when its payload has two zero bytes at an odd offset.
         std::vector<const xdbf::Entry*> records;
         xdbf::Database db;
@@ -74,7 +74,7 @@ CB_TEST("formats.xbox.assets.real_files_agree_with_the_python", [] {
         CB_CHECK(diff.empty());
         if (!diff.empty()) {
             ++differing;
-            cb::testing::record_failure(__FILE__, __LINE__, name + " differs from the Python:\n" + diff.substr(0, 2000));
+            cb::testing::record_failure(__FILE__, __LINE__, name + " differs from the recorded dump:\n" + diff.substr(0, 2000));
         }
     }
     log::info(std::format("proof: {} files compared, {} differ", compared, differing));

@@ -1,5 +1,5 @@
 // Tests of `match` on an Xbox 360 image (source/pipeline_ppc): the object reader, its bit-level masks, the comparison, and the original's code up to its
-// padding. The same four checks as tests/test_match_powerpc.py: small functions compiled with the Xbox 360 compiler the settings name (powerpc_tools),
+// padding. Four checks: small functions compiled with the Xbox 360 compiler the settings name (powerpc_tools),
 // which a machine without one skips.
 #include "cb/source/pipeline_ppc.hpp"
 
