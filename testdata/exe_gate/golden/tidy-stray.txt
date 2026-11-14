@@ -1,8 +1,8 @@
 exit: 0
 --- stdout
-state/ (<work>/state): 0.9 MB
+state/ (<work>/state): 1.1 MB
   driver_kit                       0.9 MB
-  db                               0.0 MB
+  db                               0.3 MB
 Converted/*/build/ (5): 270.8 MB
 --- files
 --- stderr (not compared)

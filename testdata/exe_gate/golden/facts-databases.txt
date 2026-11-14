@@ -1,5 +1,6 @@
 exit: 0
 --- stdout
-  all 0.0 KB (cap 4096.0 MB: setting db_max_gb)
+  knowledge.v2.sqlite                                                      281.5 KB  opened <time> PM
+  all 281.5 KB (cap 4096.0 MB: setting db_max_gb)
 --- files
 --- stderr (not compared)
