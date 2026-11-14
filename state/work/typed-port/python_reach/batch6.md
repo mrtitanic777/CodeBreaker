@@ -79,3 +79,13 @@ module_writer decision (`java_writer` is the only way in). `java/console/xdk_sca
 | golden generators | 1 | 66 |
 
 **37 modules, 22,807 lines** under `codebreaker/` (`git diff --stat` over the three commits), 4,000-odd more in tools, tests and generators. Python modules left: 249 under `codebreaker/` (286 before). New native: 2 tests (`translate.cpp17.the_python_semantics_snippet_runs_as_cpython_runs_it`, `exact.draft.candidates.localize_twice_*`) and `testdata/cpp17/semantics.expected.txt`.
+
+## What was run
+
+- `tools/check_imports.py` after each group, under plain python and in the translated exe: 249 modules, 0 failing, 0 dangling. `tools/tidy.py`: clean after `--apply` (it removed `decompile/ctree`, `invert/{flow16,native_invert}` and four unused definitions).
+- Native, area builds (CB_BUILD_JOBS=3): `area translate` 500 passed, 0 failed (4,303 checks), then the new run test alone (19 checks; with one expected answer changed it fails, naming the function: it has teeth); `area exact` 447 passed, 0 failed (26,675 checks) with the new candidates test.
+- Full `tools\build_cb.cmd` (the whole of `cb_tests`, jobs 3): **5,644 passed, 1 failed** (263,885 checks). The one failure, `ui.mcp.the_http_transport_checks_the_token_the_host_and_the_session`, passed alone straight after (17 checks): a socket test that lost its port to the other agents' runs.
+- Translated exe (`tools\build_codebreaker_exe.cmd fast`, `_CL_=/wd4702`, after `build_native.cmd pyengine pyrt l2 engine formats dosexec symbols invert analyze testkit`): `CB_EXE=... codebreaker.exe tests/run_all.py --quick --jobs 2 --no-build`: 31 of 33 suites ok, 2 failed, neither on a deleted module:
+  - `test_java.py`: 370 passed, 2 failed (`test_pc_platform::test_it_builds_and_runs`, `test_sound_saving_and_resources_work`: the generated PC platform program dies with `UnsupportedOperationException` at its static init). The same test, run with plain python against a `git archive` of the tree BEFORE this batch (5508880e2), fails the same way, so it is the machine (g++/SDL here), not the batch.
+  - `test_run_record.py::test_every_runner_returns_the_record`: needs `lzexpand.dll` and `lz32.dll` from the Win95 corpus (`corpus.retail`), which this worktree's state folder does not have, so only the PowerPC runner was checked (the test wants two).
+- Not run: `tools\gate.cmd` command cases (as in batches 4 and 5: no command case touches the deleted Python, the plain exe runs no Python).
