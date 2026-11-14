@@ -9,6 +9,7 @@
 #include <set>
 
 #include "cb/build/dos_tools.hpp"
+#include "cb/build/floppy.hpp"
 #include "cb/build/masm.hpp"
 #include "cb/build/module.hpp"
 #include "cb/build/msvc152.hpp"
@@ -474,6 +475,16 @@ Runner Production::dos_source() const {
 
 cli::Command Production::dos_build() const {
     return dos_build::command(dos_writer::options_for(impl_->open_watcom(), impl_->probes()));
+}
+
+cli::Command Production::boot_floppy() const {
+    build::floppy::Environment env;
+    env.corpus_root = impl_->corpus->root();
+    env.design_dir = impl_->design_dir().value_or(stdfs::path());
+    env.state = impl_->state();
+    if (const auto nasm = impl_->config.path("nasm")) env.nasm = *nasm;
+    env.writer = impl_->dos_options();
+    return build::floppy::command(env);
 }
 
 cli::Command Production::driver_judge() const {
