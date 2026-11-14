@@ -28,7 +28,6 @@ import sys
 
 from codebreaker.formats import native
 
-COMPRESSION = {0: "NONE", 1: "MSZIP", 2: "QUANTUM", 3: "LZX"}
 FROM_PREV, TO_NEXT, PREV_AND_NEXT = 0xFFFD, 0xFFFE, 0xFFFF
 
 # Blocks hold 32768 uncompressed bytes (all but the last of a folder). Microsoft's decoder

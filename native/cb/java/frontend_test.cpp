@@ -3,7 +3,7 @@
 // the Python lowering (codebreaker/translate/frontends/java/lower.py) made of it. Features.java (testdata/frontend/src) has one of each
 // construct the lowering handles (generics, an enum with a body, a record, lambdas, a method reference, an anonymous class, switch
 // expressions, try-with-resources with a multi-catch, an instanceof pattern, labelled loops, assert ...); EnumOS1, ICamera and MathHelper are
-// the transpiler's test fixtures (tests/java/fixtures/java).
+// the transpiler's test fixtures (testdata/tools_fixtures).
 //
 // The live test runs TreeDump on Features.java with the JDK on this machine (skipped when there is none) and checks that what it lowers is
 // the same document.

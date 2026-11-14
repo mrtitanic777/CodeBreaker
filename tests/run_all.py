@@ -18,7 +18,7 @@ them, so a codebreaker.exe older than any of them is rebuilt first (tools/build_
 incremental) unless --no-build.
 
 Side by side.  Suites run in parallel, up to the `workers` setting (CB_JOBS, --jobs override it); every job
-gets CB_JOBS=1, so `workers` processes are busy in all. tests/translate and tests/java (pytest folders) are
+gets CB_JOBS=1, so `workers` processes are busy in all. tests/translate (a pytest folder) is
 one job per test file, longest first (times of the last run: state/test-speed/times.json). Suites with a
 group name in SUITES share something (a state folder, the DOSBox-X emulator, a service's port) and run one
 after another within it.
@@ -58,13 +58,13 @@ SUITES = [("../tools/check_imports.py", False, ""), ("../tools/tidy.py", False, 
           ("test_vmx128.py", False, ""),
           ("test_assembler.py", False, ""), ("test_media.py", False, ""),
           ("test_port_fixes.py", False, ""),
-          ("test_readable.py", False, ""), ("test_java.py", False, ""),
+          ("test_readable.py", False, ""),
           ("test_translate.py", False, ""), ("test_concolic.py", False, ""), ("test_run_record.py", False, ""),
           ("test_native_trace.py", False, ""), ("test_native_engine.py", False, ""),
           ("test_frozen.py", False, ""), ("test_converted.py", False, ""), ("test_flat_thunk.py", False, ""), ("test_dpmi.py", False, ""),
           ("test_exepack.py", False, ""), ("test_pklite.py", False, ""),
           ("test_frozen_slow.py", True, ""), ("test_verification.py", True, "")]
-SHARDED = {"test_java.py": "java", "test_translate.py": "translate"}      # pytest folders run a file at a time
+SHARDED = {"test_translate.py": "translate"}      # pytest folders run a file at a time
 READS_EVERY_PY = ("../tools/check_imports.py", "../tools/tidy.py")
 
 

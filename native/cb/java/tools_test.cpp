@@ -1,4 +1,4 @@
-// Tests of `codebreaker java <tool>` complete (cb/java/tools.hpp) on the transpiler's own test fixtures (tests/java/fixtures/java: nine
+// Tests of `codebreaker java <tool>` complete (cb/java/tools.hpp) on the transpiler's own test fixtures (native/cb/java/testdata/tools_fixtures, from the Python suite: nine
 // classes), against what the translated Python printed and wrote for the same commands (testdata/tools/): the text of each tool, with the
 // folders it names replaced by <fixtures> and <out>, and for the trees a tool writes a manifest ("path size sha1") of its files.
 //
@@ -29,7 +29,7 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-stdfs::path jtt_fixtures() { return testing::data_path("../../tests/java/fixtures/java").lexically_normal(); }
+stdfs::path jtt_fixtures() { return testing::data_path("java/testdata/tools_fixtures").lexically_normal(); }
 std::string jtt_golden(std::string_view name) { return fs::read_text(testing::data_path("java/testdata/tools/" + std::string(name))); }
 
 // A tool's environment: the checkout (the lane's data), a state folder and the JDK of the machine.

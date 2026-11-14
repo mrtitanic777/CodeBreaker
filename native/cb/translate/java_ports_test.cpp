@@ -948,7 +948,7 @@ std::optional<jprobe::Toolchain> jpb_tools(bool with_libraries) {
             // (Keyboard.getKeyName) is a method of it, not a call javac could not resolve.
             if (!tools.libraries.empty()) {
                 jprobe::Toolchain with_shims = tools;
-                with_shims.shim_sources = java::JavaData(testing::data_path("../../codebreaker/java")).path({"probe_shims"});
+                with_shims.shim_sources = java::JavaData(testing::data_path("../../data/java")).path({"probe_shims"});
                 if (const auto shims = jprobe::compile_shims(jpo_front().state->path(), with_shims)) jpo_front().tools.classpath.push_back(*shims);
                 for (const stdfs::path& jar : tools.libraries) jpo_front().tools.classpath.push_back(jar);
             }

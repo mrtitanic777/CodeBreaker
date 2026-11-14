@@ -7,7 +7,6 @@ import pytest
 from codebreaker.translate import ir
 from codebreaker.translate.frontends import java as fj
 from codebreaker.translate.frontends.java import lower as L
-from codebreaker.verify.lanes import java
 
 SOURCE = '''import java.io.*;
 import java.util.*;
@@ -60,7 +59,7 @@ class Empty {
 }
 '''
 
-needs_jdk = pytest.mark.skipif(not java.jdk()[0], reason='needs a JDK')
+needs_jdk = pytest.mark.skipif(not fj.jdk()[0], reason='needs a JDK')
 
 
 @pytest.fixture(scope='module')
