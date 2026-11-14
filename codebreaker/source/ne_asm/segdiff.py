@@ -27,11 +27,6 @@ from codebreaker.compare import mask as masks
 from codebreaker.formats import omf
 
 
-def _segment():
-    from codebreaker.source.ne_asm import segment
-    return segment
-
-
 class _Corpus(object):
     """What the old target registry answered: where a module of the corpus is."""
     @staticmethod

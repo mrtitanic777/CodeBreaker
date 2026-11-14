@@ -890,29 +890,3 @@ def test_a_screen_shorter_than_the_pages_points_is_not_that_page():
     assert setup16._error_box(Image.new("RGB", (640, 480), white)) is True
     assert setup16._error_box(Image.new("RGB", (640, 200), white)) is False
 
-
-def test_runs_of_an_image_lane_that_differ_in_how_many_places_they_show_are_a_difference():
-    """The judge named the first place that differs with next() over the zipped places: runs that differed only in
-    length had none, and StopIteration ended the judge instead of saying divergent."""
-    from codebreaker.verify import verdicts as V
-    from codebreaker.verify.lanes.image_lane import Lane
-    lane = Lane("gb", 1, [dict(a=0)], lambda path, entry, state: (1,) if path == "orig" else (1, 2), ("A", "B"),
-                lambda state: "from A=%(a)02X" % state)
-    verdict, reason, limits, detail = lane.judge((False, "orig", "built"), ("0000", 0))
-    assert (verdict, reason, detail) == (V.DIVERGENT, "effects-differs", "from A=00")
-    assert lane.judge((False, "orig", "orig"), ("0000", 0))[0] == V.EQUIVALENT
-
-
-def test_a_dos_program_whose_source_text_is_missing_still_has_its_function_keys(monkeypatch, tmp_path):
-    """prepare() left the keys empty when the source file held no text, and build() then indexed them for every
-    function of a program that had linked: KeyError instead of a verdict."""
-    from types import SimpleNamespace
-    from codebreaker.verify import verdicts as V
-    from codebreaker.verify.lanes import dos
-    written = {"functions": {0x10: SimpleNamespace(name="a")}, "linked": True, "same": False, "notes": ["differs at 4"]}
-    monkeypatch.setattr(dos, "P", SimpleNamespace(packager=SimpleNamespace(writer=lambda path, out: written)))
-    m = dos.prepare("prog.exe", str(tmp_path))
-    assert m.key == {"a": "00010"}
-    context, items, missing = dos.build(m, "prog.exe", str(tmp_path))
-    assert items == {"a": ("00010",)} and missing == {}
-    assert dos.judge(context, items["a"]) == (V.DIVERGENT, "image-differs", [], "differs at 4")

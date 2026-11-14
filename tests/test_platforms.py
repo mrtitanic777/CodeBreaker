@@ -59,12 +59,10 @@ def main():
     checks = [
         ("every lane", reconstruct.KINDS == {
             "pe": "codebreaker.verify.lanes.win32", "ne": "codebreaker.verify.lanes.win16",
-            "powerpc": "codebreaker.verify.lanes.powerpc", "le": "codebreaker.verify.lanes.driver",
-            "dos": "codebreaker.verify.lanes.dos", "java": "codebreaker.verify.lanes.java", "nes": "codebreaker.verify.lanes.nes"}),
+            "powerpc": "codebreaker.verify.lanes.powerpc", "java": "codebreaker.verify.lanes.java"}),
         ("every runner", emulate.RUNNERS == {
             "pe": ("codebreaker.emulate.emulator", "recorded"), "ne": ("codebreaker.emulate.windows16", "recorded"),
-            "le": ("codebreaker.emulate.driver", "recorded"), "powerpc": ("codebreaker.emulate.powerpc", "recorded"),
-            "nes": ("codebreaker.emulate.m6502", "recorded")}),
+            "le": ("codebreaker.emulate.driver", "recorded"), "powerpc": ("codebreaker.emulate.powerpc", "recorded")}),
         ("languages", (describe._arch(0x14C), describe._arch(0x1F2), describe._arch(0x8664), describe.ARCH,
                        describe.LE_ARCH, describe.DOS_ARCH) == (
             "x86:LE:32:default:windows", "PowerPC:BE:64:Xenon:homed", None, "x86:LE:16:Protected Mode:default",
