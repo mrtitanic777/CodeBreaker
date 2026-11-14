@@ -406,8 +406,7 @@ over the whole package, the C++17 back end (C++: `native/l2/src/cpp17_python.cc`
 reads as written by hand -- int64_t, structs, py::list, C++'s own operators where the intervals
 prove them -- or it is left in Python with its reason; never a variant type.
 
-    python tools/py2cpp.py port codebreaker.formats.ne native/ported/ne/src
-    python tools/py2cpp.py coverage --compile        (and --checked)
+    (tools/py2cpp.py, which made these ports, was retired in batch 3 of the Python retirement; it is in git history)
 
 **Proved on one module: `native/ported/ne`** (codebreaker/formats/ne.py, the NE reader). 14 of its
 24 functions translate under the strict int policy; 19 with `--checked`. `gate.py` runs every file

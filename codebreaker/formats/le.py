@@ -148,20 +148,6 @@ def open_vxds(path):
     for a W3 container. The single entry point for feeding the disassembler."""
 
 
-# ================================================================================================
-# The rest of what an LE image holds: every header field, the loader's tables (page map, entry
-# table, names, every kind of fix-up record), the device descriptor block in full with its
-# service table and entry points, service calls, compressed containers -- and writing an image
-# back.
-#
-#     from codebreaker.formats import le
-#     for name, lf in le.members("vmm32.vxd"):         # any driver file; a container's members
-#         d = le.descriptor(lf)                         # every field of the descriptor block
-#         le.entry_points(lf)                           # {"control": (obj, off), "service_0": ...}
-#         le.service_calls(lf)                          # [(obj, off, device, service, is_jump)]
-#     image = le.read_image(lf); data = le.write_image(image)       # round trip
-# ================================================================================================
-HEADER_SIZE = 0xC4
 MODULE_STATIC, MODULE_DYNAMIC, MODULE_OLD = 0x28000, 0x38000, 0x8020     # module flags of a driver
 _FIELDS = (("byte_order", 0x02, "B"), ("word_order", 0x03, "B"), ("level", 0x04, "I"), ("cpu", 0x08, "H"),
            ("os", 0x0A, "H"), ("version", 0x0C, "I"), ("module_flags", 0x10, "I"), ("pages", 0x14, "I"),

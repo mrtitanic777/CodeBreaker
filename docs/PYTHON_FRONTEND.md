@@ -9,8 +9,9 @@ carry the mechanical part of moving CodeBreaker's own code to C++ (docs/NATIVE.m
 to the same rule as everything CodeBreaker makes: readable source that behaves as the original,
 proven by running both.
 
-    python tools/py2cpp.py port codebreaker.formats.ne native/ported/ne/src     one module
-    python tools/py2cpp.py coverage [--compile] [--checked]                     all of codebreaker/
+    (`tools/py2cpp.py`, the driver that ran this front end over a module or all of codebreaker/, was retired in batch 3 of the
+    Python retirement: nothing ran it any more, the ports it made are committed, and pyengine --dynamic is the translator now.
+    Its last version is in git history; the front end itself, `codebreaker/translate/frontends/python`, is still here.)
 
 ## How types are found
 

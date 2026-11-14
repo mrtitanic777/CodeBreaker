@@ -7,12 +7,16 @@ deleted = set(json.load(open(P + "deleted.json"))) if os.path.exists(P + "delete
 main_src = open("codebreaker/__main__.py", encoding="utf-8").read()
 cmd_mod = dict(re.findall(r'"([\w-]+)": \("(codebreaker\.[\w.]+)"', main_src))
 native_names = set(re.findall(r'"([\w-]+)"', re.search(r"NATIVE = \((.*?)\)", main_src, re.S).group(1)))
-live_cmds = ["names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "boot-floppy"]
+# batch 3 (2026-11-13): every command but `ui` is native, so no command module is a root; the roots are the UI, __main__ (corpus.take_option only)
+# and the tools/*.py still used
+live_cmds = []
 
 
 # `codebreaker.__main__` names every command's module as a string, but in the exe the NATIVE commands never reach their Python:
 # keep only the edges of the commands that still run Python there.
-graph["codebreaker.__main__"] = sorted({cmd_mod[c] for c in cmd_mod if c not in native_names and cmd_mod[c] in graph} | {"codebreaker.base.corpus"})
+graph["codebreaker.__main__"] = ["codebreaker.base.corpus"]
+# corpus.take_option is all `__main__` runs; the lazy imports of corpus (formats.detect, platforms) belong to its other callers
+graph["codebreaker.base.corpus"] = ["codebreaker", "codebreaker.base", "codebreaker.base.settings"]
 
 
 def closure(rs):
@@ -98,7 +102,7 @@ for dp, dn, fs in os.walk("native/cb"):
             gen_text[os.path.join(dp, f).replace("\\", "/")] = 1
 
 
-_roots = {m for m in graph if m.startswith("codebreaker.platforms")} | ui_cl | set().union(*cmd_cl.values())
+_roots = ui_cl | closure({"codebreaker.__main__"})
 _tool_roots = {m for m, fs in ext.items() if any(f.startswith("tools/") for f in fs)}
 # edges no AST sees: plugins named in toolchain JSON, the java project packages loaded by manifest name, the lanes platforms/__init__ names by
 # concatenation ("codebreaker.verify.lanes." + name)
@@ -174,7 +178,7 @@ tot_l = sum(r["lines"] for r in rows)
 del_l = sum(r["lines"] for r in rows if r["m"] in deleted)
 w("# Python reach inventory: who still reaches each codebreaker/ module")
 w("")
-w("Made 2026-11-13, re-run after batch 2 on master `0f231b2e5` (after batch 1 and the nine commands moved to native). Every row is")
+w("Made 2026-11-13, re-run after batch 3 (every command but `ui` native; batches 1, 2 and 3 deleted; the totals and rows below are the tree after batch 3). Every row is")
 w("computed (state/work/typed-port/python_reach/graph.py and report.py: AST import graph of every .py, lazy imports and dotted-name")
 w("strings included, plus tests/, tools/ and native/ generators); the batch-1 verdicts at the end were checked by hand; the batch-2 section corrects the batch-1 estimate of the deletable pool.")
 w("")
@@ -212,7 +216,8 @@ w("")
 w("")
 w(open(P + "batch1.md", encoding="utf-8").read())
 w(open(P + "batch2.md", encoding="utf-8").read())
-w("### Unreached after batch 2 (computed: not in the closure of any live root, tools included)")
+w(open(P + "batch3.md", encoding="utf-8").read())
+w("### Unreached after batch 3 (computed: not in the closure of the UI, __main__ or a tool still used; tests are NOT roots here)")
 w("")
 for m in sorted(graph):
     if m not in live_cl:

@@ -398,21 +398,6 @@ def test_run_folders_are_deleted():
         assert runs.results("test-tool").startswith(os.path.join(state, "test-tool", "shots"))
 
 
-def test_tidy_state_finds_the_stale():
-    import time
-    from codebreaker.base import tidy_state
-    with _State() as state:
-        for p in ("fingerprints.sqlite", os.path.join("phase3", "walk_x", "hd.img"),
-                  os.path.join("zz_scratch", "log.txt"), "results.sqlite"):
-            os.makedirs(os.path.dirname(os.path.join(state, p)), exist_ok=True)
-            open(os.path.join(state, p), "wb").close()
-        os.utime(os.path.join(state, "phase3", "walk_x"), (time.time() - 2 * 86400,) * 2)
-        found = {os.path.relpath(p, state).replace(os.sep, "/"): why for p, _s, why in tidy_state.stale()}
-        assert found.get("fingerprints.sqlite") == "old caches" and found.get("phase3/walk_x") == "runs", found
-        strays = [os.path.basename(p) for p, _s in tidy_state.stray()]
-        assert strays == ["zz_scratch"], strays                 # (results.sqlite, phase3: CodeBreaker's)
-
-
 def main():
     for fn in (test_decompiler_is_built, test_openwatcom,
                test_corpus_rank_prefers_installed_copy, test_corpus_retail, test_corpus_modules,
@@ -421,7 +406,7 @@ def main():
                test_throttle_is_safe, test_workers_scale_and_low_load_caps, test_processes_safe_reads_the_guard,
                test_fast_unicorn_reads_are_the_same, test_cache_drops_older_generations,
                test_cache_holds_its_cap_least_recently_used_first, test_fingerprints_are_kept_in_the_cache,
-               test_run_folders_are_deleted, test_tidy_state_finds_the_stale):
+               test_run_folders_are_deleted):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

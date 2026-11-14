@@ -111,32 +111,6 @@ def read_switch_tables(path):
     return {s["base"]: list(s["labels"]) for s in data.get("switch", [])}
 
 
-def write_switch_tables(path, xex_path, analysed=None):
-    """The title's switch-table file: switches.py's tables (it walks back from every bctr), with
-    XenonAnalyse's (`analysed`, its file's text) added for any bctr switches.py did not resolve.
-    -> (switches.py's count, XenonAnalyse's added)."""
-    import tomllib
-    from codebreaker.recompile import switches
-    found, _report = switches.find(xex_path)
-    have = {t["bctr"] for t in found}
-    img = discover._image(xex_path)
-    lo, hi = img.code
-    code = img.bytes_at(lo, hi - lo)
-    added = 0
-    for s in (tomllib.loads(analysed).get("switch", []) if analysed else []):
-        bctr = s["base"]                     # XenonAnalyse's base is the sequence's start: find its bctr
-        while bctr < hi and int.from_bytes(code[bctr - lo:bctr - lo + 4], "big") != 0x4E800420:
-            bctr += 4
-        if bctr in have or bctr >= hi:
-            continue
-        have.add(bctr)
-        found.append({"bctr": s["base"], "r": s["r"], "default": s.get("default", 0), "labels": s["labels"],
-                      "kind": "XenonAnalyse", "table": 0, "guard": 0, "inline": False})
-        added += 1
-    switches.write(path, found)
-    return len(found) - added, added
-
-
 def _end_of_run(code, lo, a):
     """The address after the first blr, bctr or plain branch at or after `a`."""
     for o in range(a - lo, len(code) - 3, 4):

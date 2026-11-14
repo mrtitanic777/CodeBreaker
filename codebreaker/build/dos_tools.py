@@ -70,12 +70,6 @@ def run(mounts, bat_lines, artifacts, timeout=90, files=None, cpu=None, dos=None
     return len(made) == len(artifacts), made, work
 
 
-def masm_root():
-    from codebreaker.base import settings
-    root = settings.get("masm") or ""
-    return root if root and os.path.isfile(os.path.join(root, "BIN", "MASM.EXE")) else ""
-
-
 def masm(source, stem="t", timeout=180, root=None):
     """Assemble `source` (build/masm.py). -> {"obj": bytes, "lst": text, "log": text, "work": folder};
     a part the assembler did not make is missing."""
