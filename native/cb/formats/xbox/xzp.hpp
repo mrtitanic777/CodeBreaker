@@ -3,6 +3,7 @@
 //
 //     xzp::Pack pack = xzp::parse(bytes);               the entry table
 //     for (const xzp::Payload& p : xzp::payloads(bytes)) ...   every stored file under a safe relative path
+//     Bytes made = xzp::build(folder, template_pack);   a folder packed as a v1 container
 //
 // Two layouts share the magic 'XUIZ', told apart by the version word at 0x04. Both put the payload base at 0x16 plus the word at
 // 0x10; entry offsets are from that base.
@@ -20,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -51,5 +53,11 @@ struct Payload {
     std::size_t size = 0;
 };
 std::vector<Payload> payloads(ByteView file);
+
+// Pack every file below `folder` as a v1 (Minecraft) container. Each is named by its path from `folder` with `\` between the parts (so
+// packing a folder `XZP` that holds `media/skin.xur` gives the entry `media\skin.xur` the game loads) and the entries are in the order of
+// those names lowercased. The first 0x17 bytes of `template_pack` are the header, so the fields no one has a name for are kept; the
+// payload base and the file size are made anew. FormatError when the template is not a XUIZ container.
+Bytes build(const std::filesystem::path& folder, ByteView template_pack);
 
 }  // namespace cb::formats::xbox::xzp

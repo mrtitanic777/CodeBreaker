@@ -1,5 +1,5 @@
 // shadercheck -- two compiled effects (.mgfxo) drawn the same way and compared pixel by pixel: the recovered HLSL of
-// an Xbox 360 effect against the HLSL it was compiled from (tests/test_xbox_effect.py).
+// an Xbox 360 effect against the HLSL it was compiled from (native/cb/xna/effect_proof_test.cpp).
 //
 //   shadercheck <a.mgfxo> <b.mgfxo> <out.json>
 //
