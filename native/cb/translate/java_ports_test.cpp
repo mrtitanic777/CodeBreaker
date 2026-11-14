@@ -8,6 +8,9 @@
 //   test_collection_out_params (5), test_build3_fixes (3 of 5), test_beta_fixes (3)   the whole-program passes on parsed classes
 //   test_review_fixes (6)   the platform layer's C++ (JavaString.h, JavaRT.h, Save360.reference.cpp, GL11.reference.cpp): read, and compiled by g++
 //   test_build3_fixes (2: arrays assigned null) and test_pc_platform (3) are in the last tests.
+//   test_cpp17_backend (2): Modern.java as a whole C++17 program run beside the JVM, and Tally.java through the transpiler as C++17 beside C++03,
+//       compiled with -fsyntax-only (the rest of that file is translate.cpp17.* / translate.jmodel.* / translate.desugar.*). They need a JDK and g++;
+//       the first also cbl2.dll (native/l2/build, or CB_L2_DLL).
 //
 // The Python converted with `profiles.use('minecraft_xbox360')` active between tests; a conversion here reads the profile it asks for (none).
 #include <algorithm>
@@ -32,6 +35,8 @@
 #include "cb/java/parse.hpp"
 #include "cb/java/probe.hpp"
 #include "cb/java/projects/minecraft/profiles/minecraft_xbox360.hpp"
+#include "cb/translate/backends/cpp17.hpp"
+#include "cb/translate/native_l2.hpp"
 #include "cb/verify/lanes/java.hpp"
 
 namespace stdfs = std::filesystem;
@@ -86,7 +91,8 @@ struct JpoConverted {
     std::unique_ptr<fs::ScopedTempDir> src;   // the Java files, kept for a run beside the JVM
 };
 
-JpoConverted jpo_convert(const std::map<std::string, std::string>& files, const std::string& edition = "", const std::string& platform = "") {
+JpoConverted jpo_convert(const std::map<std::string, std::string>& files, const std::string& edition = "", const std::string& platform = "",
+                        const std::string& cpp_std = "C++03") {
     JpoConverted done;
     done.src = std::make_unique<fs::ScopedTempDir>("cb-java-src");
     const fs::ScopedTempDir& src = *done.src;
@@ -97,6 +103,7 @@ JpoConverted jpo_convert(const std::map<std::string, std::string>& files, const 
     options.emit_debug = false;
     options.edition = edition;
     options.platform = platform;
+    options.cpp_std = cpp_std;
     jpo_front().assembly->convert(src.path(), done.out->path(), options);
     for (const auto& [name, text] : files) {
         if (!name.ends_with(".java")) continue;
@@ -1261,4 +1268,178 @@ CB_TEST("java.beside_the_jvm.codec_mus_compiles_against_the_stand_in", [] {
     spec.argv = {fs::to_text(tools->javac), "-cp", classpath, "-d", fs::to_text(work.path() / "out"), fs::to_text(src / "CodecMus.java")};
     const process::ProcessResult r = process::run(spec);
     CB_CHECK(r.ok());
+});
+
+// ================================================================================================================================================
+// test_cpp17_backend.py test_the_program_runs_as_the_jvm_runs_it: a modern Java program (records, a sealed interface and patterns, a switch expression
+// and a switch on strings, lambdas, streams, a map) lowered by the real front end, written as one C++17 program by the whole-program back end, built
+// with g++ and run beside the JVM: the output and the exit code must agree.
+namespace {
+
+const char* const jpo_modern = R"JAVA(import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+public class Modern {
+    record Point(int x, int y) {
+        int dist2() { return x * x + y * y; }
+    }
+
+    sealed interface Shape permits Sq, Circ {}
+    record Sq(int side) implements Shape {}
+    record Circ(int r) implements Shape {}
+
+    enum Color { RED, GREEN, BLUE }
+
+    static int area(Shape s) {
+        if (s instanceof Sq q) return q.side() * q.side();
+        if (s instanceof Circ c) return 3 * c.r() * c.r();
+        return 0;
+    }
+
+    static String name(Color c) {
+        return switch (c) {
+            case RED -> "r";
+            case GREEN -> "g";
+            default -> { String b = "b"; yield b + b; }
+        };
+    }
+
+    static int sum(List<Integer> xs) {
+        int s = 0;
+        for (int v : xs) s += v;
+        return s;
+    }
+
+    static int squares(int n) {
+        return IntStream.rangeClosed(1, Math.abs(n) % 50).map(x -> x * x).sum();
+    }
+
+    static String words(String s) {
+        return switch (s) { case "a", "b" -> "ab"; default -> "other"; };
+    }
+
+    public static void main(String[] args) {
+        List<Integer> xs = new ArrayList<>();
+        for (int i = 0; i < 6; i++) xs.add(i * i);
+        Function<Integer, Integer> twice = v -> v * 2;
+        System.out.println(sum(xs) + " " + twice.apply(21) + " " + squares(10));
+        System.out.println(new Point(3, 4) + " " + new Point(3, 4).dist2() + " " + new Point(1, 2).equals(new Point(1, 2)));
+        System.out.println(area(new Sq(4)) + " " + area(new Circ(2)) + " " + name(Color.BLUE) + " " + words("b"));
+        System.out.println(xs.stream().filter(v -> v % 2 == 0).map(String::valueOf).collect(Collectors.joining(",")));
+        Map<String, Integer> m = new HashMap<>();
+        for (String w : "x y x z y x".split(" ")) m.merge(w, 1, Integer::sum);
+        System.out.println(m);
+    }
+}
+)JAVA";
+
+const char* const jpo_tally = R"JAVA(import java.util.ArrayList;
+import java.util.List;
+
+public class Tally {
+	public static int total(int n) {
+		List<Integer> xs = new ArrayList<Integer>();
+		for (int i = 0; i < n % 20; i++) xs.add(i);
+		int s = 0;
+		for (int v : xs) s += v;
+		return s;
+	}
+
+	public static String kind(int k) {
+		return switch (k % 3) { case 0 -> "zero"; case 1 -> "one"; default -> "many"; };
+	}
+
+	public static int fresh(int k) {
+		Tally t = new Tally();
+		return t.twice(k);
+	}
+
+	public int twice(int k) {
+		return k * 2;
+	}
+}
+)JAVA";
+
+const translate::native_l2::Library* jpo_l2() {
+    static const std::optional<translate::native_l2::Library> lib = []() -> std::optional<translate::native_l2::Library> {
+        stdfs::path dll = testing::data_path("../l2/build/bin/cbl2.dll");
+        if (const auto env = fs::get_env("CB_L2_DLL")) dll = fs::from_text(*env);
+        std::error_code ec;
+        if (!stdfs::is_regular_file(dll, ec)) return std::nullopt;
+        return translate::native_l2::Library::load(dll);
+    }();
+    return lib ? &*lib : nullptr;
+}
+
+std::string jpo_text_of(const process::ProcessResult& r) {
+    std::string t(r.out.begin(), r.out.end());
+    std::erase(t, '\r');
+    return t;
+}
+
+}  // namespace
+
+CB_TEST("java.cpp17.the_program_runs_as_the_jvm_runs_it", [] {
+    if (!jpo_ready("cpp17-run") || !jpo_tool_runs("g++", "--version")) return;
+    const translate::native_l2::Library* lib = jpo_l2();
+    if (lib == nullptr) {
+        std::cerr << "cpp17-run: cbl2.dll is not built; skipped\n";
+        return;
+    }
+    fs::ScopedTempDir work("cb-java-modern");
+    const stdfs::path src = work.path() / "src";
+    fs::write_text(src / "Modern.java", jpo_modern);
+
+    Arena arena;
+    const std::vector<translate::ir::Node*> units = java::frontend::lower_program(arena, src, jpo_front().tools);
+    CB_CHECK_EQ(units.size(), std::size_t{1});
+    const std::string text = translate::backends::cpp17::program(*lib, arena, units);
+    // the idioms the back end is for: lambdas, range-for, a switch expression as a lambda, real constructors for a record
+    CB_CHECK(jpo_has(text, "jrt::fn<Function>(") && jpo_has(text, "jrt::each<int32_t>(xs)") && jpo_has(text, "[&]() -> ref<String> {") &&
+             jpo_has(text, "std::make_shared<Modern_Point>("));
+    fs::write_text(work.path() / "program.cpp", text);
+    std::vector<std::string> args(std::begin(translate::backends::cpp17::kFlags), std::end(translate::backends::cpp17::kFlags));
+    args.insert(args.end(), {"-I", fs::to_text(translate::backends::cpp17::runtime_dir()), "program.cpp", "-o", "program.exe"});
+    const std::string failed = jpo_gxx(args, work.path());
+    CB_CHECK_EQ(failed, std::string());
+    if (!failed.empty()) {
+        std::cerr << failed.substr(0, 2000) << "\n";
+        return;
+    }
+
+    process::ProcessSpec javac;
+    javac.argv = {fs::to_text(jpo_front().tools.javac), "-d", fs::to_text(work.path() / "classes"), fs::to_text(src / "Modern.java")};
+    CB_CHECK(process::run(javac).ok());
+    process::ProcessSpec jvm;
+    jvm.argv = {fs::to_text(jpo_front().tools.java), "-cp", fs::to_text(work.path() / "classes"), "Modern"};
+    jvm.timeout = std::chrono::seconds(120);
+    const process::ProcessResult want = process::run(jvm);
+    process::ProcessSpec native;
+    native.argv = {fs::to_text(work.path() / "program.exe")};
+    native.timeout = std::chrono::seconds(120);
+    const process::ProcessResult got = process::run(native);
+    CB_CHECK(jpo_has(jpo_text_of(want), "Point[x=3, y=4] 25 true"));   // (the JVM's own answer is what the native one is held to)
+    CB_CHECK_EQ(jpo_text_of(got), jpo_text_of(want));
+    CB_CHECK_EQ(got.exit_code, want.exit_code);
+});
+
+// test_cpp17_backend.py test_inside_the_transpiler_beside_cpp03: Tally.java converted by the transpiler for C++17 and for C++03: the C++17 text has a
+// range-for, the switch expression as a lambda and `auto*` for a new; neither has a gap; the C++17 text compiles (-fsyntax-only).
+CB_TEST("java.cpp17.inside_the_transpiler_beside_cpp03", [] {
+    if (!jpo_ready("cpp17-transpile")) return;
+    const std::map<std::string, std::string> files = {{"Tally.java", jpo_tally}};
+    const JpoConverted c17 = jpo_convert(files, "", "", "C++17");
+    const JpoConverted c03 = jpo_convert(files);
+    const std::string& t17 = c17.cpp.at("Tally");
+    const std::string& t03 = c03.cpp.at("Tally");
+    CB_CHECK(jpo_has(t17, ": xs)"));                  // a range-for
+    CB_CHECK(jpo_has(t17, "[&]() ->"));               // the switch expression
+    CB_CHECK(jpo_has(t17, "auto* t = new Tally"));
+    CB_CHECK(!jpo_has(t17, "J2X-GAP") && !jpo_has(t03, "J2X-GAP"));   // cpp03 has it too, desugared
+    if (!jpo_tool_runs("g++", "--version")) return;
+    const stdfs::path out = c17.out->path();
+    const std::string failed = jpo_gxx({"-std=c++17", "-fsyntax-only", "-w", "-iquote", fs::to_text(out), fs::to_text(out / "Tally.cpp")}, out);
+    CB_CHECK_EQ(failed, std::string());
+    if (!failed.empty()) std::cerr << failed.substr(0, 2000) << "\n";
 });

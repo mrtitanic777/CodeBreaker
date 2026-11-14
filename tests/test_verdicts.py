@@ -119,9 +119,8 @@ def test_the_module_writer_reads_a_verdict_by_provenance():
 
 
 def test_the_producers_speak_it():
-    from codebreaker.verify import compare, lane_common, reconstruct
+    from codebreaker.verify import compare, lane_common
     from codebreaker.verify.lanes import win16, win32
-    assert reconstruct.GOOD is V.GOOD and reconstruct.NOT_RUN is V.NOT_RUN
     assert win32.GOOD is V.GOOD and win16.NOT_RUN is V.NOT_RUN
     assert lane_common.judged(lambda info: (_ for _ in ()).throw(ValueError("x")))[0] == V.INCONCLUSIVE
     assert compare.__name__                      # (the match words: native verify.verdicts, compare.mask)

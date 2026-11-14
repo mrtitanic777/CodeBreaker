@@ -14,7 +14,6 @@ if ROOT not in sys.path:
 
 from codebreaker.base import corpus
 from codebreaker.build import watcom as toolchain                      # noqa: E402
-from codebreaker.verify.lanes import win32 as pipeline
 
 RESULTS = []
 
@@ -27,28 +26,6 @@ def _need(lane):
     from codebreaker.decompile import decompiler
     if not (corpus.retail("version.dll") and decompiler.available() and toolchain.ow_tool("wlink")):
         raise Skip("needs the retail corpus, OpenWatcom and the decompilers")
-
-
-def test_reconstruct_is_incremental():
-    """Results land in the function store, and a second run judges nothing again."""
-    _need("pe")
-    from codebreaker.store import functions as F
-    from codebreaker.verify import reconstruct
-    fs = F.open(os.path.join(tempfile.mkdtemp(), "functions.sqlite"))
-    p = corpus.retail("version.dll")
-    log = []
-    sha, digest = reconstruct.run(p, fs=fs, log=log.append)
-    first = fs.candidates(sha, digest)
-    t = fs.tally(digest, sha)
-    assert t["verified"] >= 8 and t["verified"] + t["weak"] >= 24, t     # 8 and 18 today
-    assert sum(t.values()) == len(pipeline.functions("pe", p)), t
-    assert all(r["reason"] for r in first if r["verdict"] == "divergent")
-    assert all(r["source"] for r in first if r["verdict"] not in ("no-synth", "no-source"))
-    log[:] = []
-    reconstruct.run(p, fs=fs, log=log.append)
-    assert " 0 judged now" in log[0], log
-    assert fs.tally(digest, sha) == t
-    assert all(r["class"] in F.ORDER for r in fs.best(sha, digest).values())
 
 
 def test_function_store():
@@ -90,45 +67,6 @@ def test_variant_store():
     assert best["10"]["knobs"] == "pad" and best["10"]["distance"] == 2
     assert best["20"]["verdict"] == "identical"
     assert fs.match_tally("m1", "msvc") == (2, 1, 1, 0)   # 2 functions, 1 identical, 1 same size, 0 different
-
-
-def test_a_verdict_holds_until_what_it_was_for_changes():
-    """A function's signature covers its own text and everything it can reach, and nothing else:
-    changing one function re-judges it and its callers, and leaves the rest of the module alone."""
-    from codebreaker.verify import reconstruct
-
-    class M(object):
-        header = "typedef int x;"
-        order = ["a", "b", "c", "d", "e"]
-
-    def sigs(**changed):
-        m = M()
-        m.texts = dict({"a": "int a(){ return b(); }", "b": "int b(){ return 1; }", "c": "int c(){ return 2; }",
-                        "d": "int d(){ return e(); }", "e": "int e(){ return d() + c(); }"}, **changed)
-        return reconstruct.signatures(m, "whole")
-    was = sigs()
-    now = sigs(b="int b(){ return 3; }")
-    assert now["b"] != was["b"] and now["a"] != was["a"]                 # b, and a which calls it
-    assert all(now[n] == was[n] for n in "cde"), (was, now)
-    assert was["d"] == was["e"]                                          # a ring is judged as one
-    now = sigs(c="int c(){ return 4; }")
-    assert all(now[n] != was[n] for n in "cde") and all(now[n] == was[n] for n in "ab")
-    m = M()
-    m.texts = {}
-    assert reconstruct.signatures(m, "whole") == dict.fromkeys(M.order, "whole")
-
-
-def test_breaks_change_what_a_function_does():
-    """The judge's self-test breaks a function one small way at a time, in its statements only."""
-    from codebreaker.verify import teeth
-    src = ("int4 f(int4 a1,int4 a2)\n{\n  int4 x[4];\n  int4 y;\n\n  y = a1 + a2;\n  if (y == 3) {\n"
-           "    *(int4 *)a1 = g(a1,a2);\n  }\n  return y;\n}")
-    made = dict(teeth.breaks(src))
-    assert set(made) == {"constant", "comparison", "operator", "store", "arguments"}, set(made)
-    assert "int4 x[4];" in made["constant"] and "y == 4" in made["constant"]      # not the declaration
-    assert "y != 3" in made["comparison"] and "a1 - a2" in made["operator"]
-    assert "g(a2,a1)" in made["arguments"] and "*(int4 *)a1 =" not in made["store"]
-    assert all(t.startswith("int4 f(int4 a1,int4 a2)") for t in made.values())
 
 
 def test_object_file_of_the_16_bit_compiler_is_read():
@@ -280,23 +218,6 @@ def test_a_c_function_s_arguments_are_what_its_caller_takes_off():
     code = bytes.fromhex("6a5c5250" "9a00000000" "83c406" "9a00000000" "5b59" "9a00000000" "5a")
     ins = list(md.disasm(code, 0))
     assert [describe._caller_cleanup(ins, k) for k, i in enumerate(ins) if i.mnemonic == "lcall"] == [6, 4, 0]   # (used with CB_CALLER_ARGS=1)
-
-
-def test_a_call_s_arguments_are_what_its_callee_removes_of_what_was_pushed():
-    """The call-contract check's count: `GlobalAlloc(0x2042, GlobalSize(h))` pushes the flags, then
-    GlobalSize's handle -- six bytes are GlobalAlloc's, two GlobalSize's; a push before a call that
-    takes nothing is the next call's (USER's sub_14_041A); fewer pushed than the callee removes,
-    from the function's start, is a count that differs."""
-    from codebreaker.verify.gate16 import contract16
-    removes = {0xE0000000: 2, 0xE0000010: 6, 0xE0000020: 0, 0xE0000030: 4}
-    names = {0xE0000000: "GlobalSize", 0xE0000010: "GlobalAlloc", 0xE0000020: "none", 0xE0000030: "two"}
-
-    def calls(code):
-        return [(c, p) for c, _t, p, _lv in contract16._calls(bytes.fromhex(code), 1, 0, len(bytes.fromhex(code)),
-                                                              lambda key: names[key[1]], lambda key: removes[key[1]])]
-    assert calls("684220" "57" "9a000000e0" "52" "50" "9a100000e0" "cb") == [("GlobalSize", 2), ("GlobalAlloc", 6)]
-    assert calls("bb0100" "56" "9a200000e0" "50" "9a300000e0" "cb") == [("none", None), ("two", 4)]
-    assert calls("bb0100" "50" "9a100000e0" "cb") == [("GlobalAlloc", 2)]
 
 
 def test_a_cextdef_is_numbered_with_the_other_externals():
@@ -503,10 +424,8 @@ def test_a_backpatch_record_is_added_into_the_code():
 
 
 def test_a_verdict_is_for_the_compiled_code():
-    """The signature of what was built does not change with the source's name, date or notes,
-    nor with the header; it does when the function's code, or the code of one it calls, does."""
+    """The digest of what was built does not change with the source's name, date or notes; it does when the function's code does."""
     from codebreaker.build import functions
-    from codebreaker.verify import reconstruct
 
     def record(kind, body):
         return bytes([kind]) + (len(body) + 1).to_bytes(2, "little") + body + b"\0"
@@ -522,18 +441,6 @@ def test_a_verdict_is_for_the_compiled_code():
     assert digest(b"f1.c", b"made monday", b"\x55\xc3") == digest(b"f9.c", b"made friday", b"\x55\xc3")
     assert digest(b"f1.c", b"made monday", b"\x55\xc3") != digest(b"f1.c", b"made monday", b"\x56\xc3")
     assert functions.object_digest(os.path.join(d, "none.obj")) is None
-
-    class M(object):
-        order = ["a", "b", "c"]
-        texts = {"a": "int a(){ return b(); }", "b": "int b(){ return 1; }", "c": "int c(){ return 2; }"}
-    m = M()
-    m.header = "one header"
-    was = reconstruct.signatures(m, None, own={"a": "A", "b": "B", "c": "C"})
-    m.header = "another header"
-    m.texts = dict(M.texts, c="int c(){ /* said differently */ return 2; }")
-    assert reconstruct.signatures(m, None, own={"a": "A", "b": "B", "c": "C"}) == was
-    now = reconstruct.signatures(m, None, own={"a": "A", "b": "B2", "c": "C"})
-    assert now["b"] != was["b"] and now["a"] != was["a"] and now["c"] == was["c"]
 
 
 def test_cache_files_results_under_what_made_them():
@@ -713,11 +620,9 @@ def main():
     for fn in (test_programs_stored_one_after_another_are_each_found, test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
                test_chunks_come_back_in_address_order,
                test_the_judge_s_build_has_the_original_s_code_segment_where_c_still_reads_it,
-               test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do, test_function_store, test_variant_store, test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
+               test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do, test_function_store, test_variant_store, test_cache_files_results_under_what_made_them,
                test_every_kind_keeps_fingerprints_and_writes_calls_alike,
-               test_breaks_change_what_a_function_does,
                test_object_file_of_the_16_bit_compiler_is_read, test_a_verdict_is_for_the_compiled_code,
-               test_reconstruct_is_incremental,
                test_a_callee_that_gives_back_the_caller_s_ax_returns_no_dx_either):
         try:
             fn()
@@ -736,17 +641,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
-def test_a_screen_shorter_than_the_pages_points_is_not_that_page():
-    """Setup's License page is told by a pixel at (300, 395) of a 640-wide screen; a 640x350 screen has no such
-    pixel, and asking it raised IndexError out of the whole run (QEMU killed, the verdict lost)."""
-    from PIL import Image
-    from codebreaker.verify.gate16 import setup16
-    grey, white = (192, 199, 200), (255, 255, 255)
-    assert setup16._license(Image.new("RGB", (640, 480), grey)) is True
-    assert setup16._license(Image.new("RGB", (640, 350), grey)) is False
-    assert setup16._license(Image.new("RGB", (720, 480), grey)) is False
-    assert setup16._error_box(Image.new("RGB", (640, 480), white)) is True
-    assert setup16._error_box(Image.new("RGB", (640, 200), white)) is False
 

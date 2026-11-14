@@ -197,7 +197,7 @@ class Emulator(Slot):
         run         the judge's runner: runs one function of the original or the rebuild and
                     returns the record verify/<kind>.py makes a fingerprint of
         call        (path, export) -> (how it ended, its result): one export of a module called
-                    with zero arguments (build/module.run's smoke test of a linked module)
+                    with zero arguments (the smoke test of a linked module)
         engine      what it is ("unicorn", or CodeBreaker's own interpreter)"""
     FIELDS = ("run", "call", "engine")
 
@@ -222,8 +222,6 @@ class Compiler(Slot):
 
 class Packager(Slot):
     """What makes the image of the rebuilt parts.
-        link        the whole module linked from its reconstruction (build/module's builder for
-                    the Windows lanes): (Built, path, prepared, folder) -> the image's path
         functions   the module the judge runs its functions in, built from their source
                     (build/functions.build16, build32 ...)
         writer      the module that writes a program's whole source and rebuilds it
@@ -232,7 +230,7 @@ class Packager(Slot):
         linker      () -> the linker's path
         assembler   () -> the assembler's path (what is kept as assembly, the helpers C calls)
         resources   () -> the resource compiler's path"""
-    FIELDS = ("link", "functions", "writer", "tools", "linker", "assembler", "resources")
+    FIELDS = ("functions", "writer", "tools", "linker", "assembler", "resources")
 
 
 _SLOT_CLASSES = {"loader": Loader, "cpu": Cpu, "convention": Convention, "emulator": Emulator,
@@ -245,8 +243,8 @@ class Platform(object):
                  packager=None, steps=None):
         self.name, self.title, self.family, self.source = name, title, family, source
         self.lane, self.machine = lane, machine
-        # (its steps on the engine: its own module, else the lanes' steps every lane of a binary has)
-        self.steps = steps or ("codebreaker.engine.lanes" if lane else None)
+        # (its steps on the engine: the module that declares them, if it has any)
+        self.steps = steps
         self._recognise = recognise
         self.id = None                                          # (set by all(): the descriptor's file)
         # the six slots; the older keywords (runner, open, container, a cpu string) fill theirs

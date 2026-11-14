@@ -24,7 +24,6 @@ from codebreaker.verify import verdicts as V
 
 KIND = "java"
 REV = 3                      # bump when what a verdict means changes (flags, the judge, the transpile call)
-SOURCE_REV = "java-%d" % REV  # who made the candidates: the transpiler, not the native decompiler
 LIBRARY = False              # no runtime-library functions to identify
 PER_FUNCTION = True          # a class's verdict depends on its text, the support headers and the classes it names
 STD = "c++03"

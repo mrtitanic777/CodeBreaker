@@ -17,7 +17,6 @@ os.environ["CB_FUNCTIONS_DB"] = os.path.join(TEMP, "functions.sqlite")      # be
 from codebreaker.base import corpus                          # noqa: E402
 from codebreaker.formats import pe                           # noqa: E402
 from codebreaker.store import functions as F                 # noqa: E402
-from codebreaker.verify import reconstruct                   # noqa: E402
 
 RESULTS = []
 
@@ -49,9 +48,7 @@ def _module(name):
 def _fill_store():
     """A store of our own holding version.dll with one function of each outcome."""
     path = _module("version.dll")
-    digest = reconstruct.digests()["pe"]
-    if not digest:
-        raise Skip("the verifier settings cannot be worked out here")
+    digest = "test-verifier-settings"          # (what the rows are filed under: the interface shows the store's rows whatever their settings)
     sha = corpus.sha(path)
     fs = F.open()
     if not fs.addresses(sha):

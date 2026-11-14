@@ -65,8 +65,6 @@ import re
 
 from codebreaker.java._paths import data_path
 
-KINDS = ('direct', 'signature-adapted', 'macro', 'constant', 'shim', 'd3d9-helper', 'unsupported')
-
 
 class Mapping(object):
     """One directed equivalence: source symbol (in src_lang) -> target (in dst_lang).
