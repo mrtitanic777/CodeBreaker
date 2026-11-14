@@ -6,13 +6,17 @@
 #include "cb/engine/lane_kit.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 
 #include "cb/build/m6502_asm.hpp"
 #include "cb/build/m68k_asm.hpp"
+#include "cb/build/sm83_asm.hpp"
+#include "cb/build/z80_asm.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/formats/zx.hpp"
 #include "cb/source/isa.hpp"
 #include "cb/verify/lanes/image_lane.hpp"
 
@@ -33,6 +37,9 @@ struct Sample {
     const char* file;
     std::uint32_t origin;   // the address of the file's first byte, as the program's own flow sees it
     std::uint32_t limit;    // only functions whose offset in the file is below this are edited
+    // A flat Z80 machine compares the program's block (what a rebuilt cartridge is) with the original's file: a snapshot's block is its RAM above the screen,
+    // which this gives from a snapshot's bytes. Empty: the file is the program.
+    std::function<Bytes(const Bytes&)> block_of = nullptr;
 };
 
 // One machine: the program as it was, a copy with a function's first byte changed (some function of the first few changes what the program does), and the
@@ -82,7 +89,12 @@ void machine_judges_a_program(const Sample& sample, const stdfs::path& original)
         const std::size_t at = offset_of(entry);
         if (entry < sample.origin || at >= bytes.size() || at >= sample.limit) continue;
         // (the two programs the lane runs: the original's and the file given as the rebuilt one; a flat Z80 machine's are laid out in files for it)
-        const auto compared = [&](const stdfs::path& rebuilt) {
+        const auto compared = [&](const stdfs::path& rebuilt_file) {
+            stdfs::path rebuilt = rebuilt_file;
+            if (sample.block_of) {
+                rebuilt = dir.path() / (std::string(sample.machine) + ".block");
+                fs::write_file(rebuilt, sample.block_of(fs::read_file(rebuilt_file)));
+            }
             verify::lanes::Written w = image.written;
             w.built = rebuilt;
             const auto [a, b] = lane->subjects_of(original, w);
@@ -157,4 +169,58 @@ CB_TEST("engine.lane_kit.machines.the_genesis_demo_cartridge_is_judged", [] {
     const stdfs::path cartridge = dir.path() / "demo.md";
     fs::write_file(cartridge, rom);
     machine_judges_a_program({"genesis", "demo.md", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
+});
+
+// The Spectrum demo (tests/test_z80.py::test_spectrum_lane's) as a 48K snapshot stopped at its start: the flat Z80 lane writes it back, rebuilds it as the
+// original, and judges an edited copy. (The snapshot's RAM from $4000 follows its 27-byte header: file offset = address - $3FE5.)
+CB_TEST("engine.lane_kit.machines.the_zx_demo_snapshot_is_judged", [] {
+    fs::ScopedTempDir dir("cb-lane-kit-zx-demo");
+    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
+    const auto flat = assembler.build_flat(fs::read_text(testing::data_path("engine/testdata/lane_kit/zx_demo.asm")));
+    Bytes mem(0x10000, 0);
+    std::copy(flat.bytes.begin(), flat.bytes.end(), mem.begin() + flat.start);
+    const std::uint32_t sp = 0xFF00;
+    mem[sp] = static_cast<std::uint8_t>(flat.start);   // the PC, which RETN pops
+    mem[sp + 1] = static_cast<std::uint8_t>(flat.start >> 8);
+    Bytes snapshot = {0x3F};
+    snapshot.resize(23, 0);
+    snapshot.push_back(static_cast<std::uint8_t>(sp));
+    snapshot.push_back(static_cast<std::uint8_t>(sp >> 8));
+    snapshot.push_back(1);   // interrupt mode
+    snapshot.push_back(7);   // border
+    snapshot.insert(snapshot.end(), mem.begin() + 0x4000, mem.end());
+    const stdfs::path file = dir.path() / "demo.sna";
+    fs::write_file(file, snapshot);
+    machine_judges_a_program({"zx", "demo.sna", 0x3FE5, static_cast<std::uint32_t>(snapshot.size()),
+                              [](const Bytes& file_bytes) { return formats::zx::parse(file_bytes, formats::zx::Format::Sna).image; }},
+                             file);
+});
+
+// The three other hand-written demos of the Z80 family (the Master System's in WLA-DX, the Game Boy's in RGBDS, the MSX cartridge's in sjasmplus: what
+// tests/test_z80.py's lane tests were written around), built with CodeBreaker's own assemblers and judged like the NES and Genesis demos above, so that
+// the machines are held to a program of the repository's own when the homebrew samples are not on the machine.
+CB_TEST("engine.lane_kit.machines.the_master_system_demo_cartridge_is_judged", [] {
+    fs::ScopedTempDir dir("cb-lane-kit-sms-demo");
+    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
+    const Bytes rom = assembler.build(fs::read_text(testing::data_path("engine/testdata/lane_kit/sms_demo.asm")));
+    const stdfs::path cartridge = dir.path() / "demo.sms";
+    fs::write_file(cartridge, rom);
+    machine_judges_a_program({"sms", "demo.sms", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
+});
+
+CB_TEST("engine.lane_kit.machines.the_game_boy_demo_cartridge_is_judged", [] {
+    fs::ScopedTempDir dir("cb-lane-kit-gb-demo");
+    const Bytes rom = build::sm83_asm::build(fs::read_text(testing::data_path("engine/testdata/lane_kit/gb_demo.asm")), 0x10000);
+    const stdfs::path cartridge = dir.path() / "demo.gb";
+    fs::write_file(cartridge, rom);
+    machine_judges_a_program({"gb", "demo.gb", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
+});
+
+CB_TEST("engine.lane_kit.machines.the_msx_demo_cartridge_is_judged", [] {
+    fs::ScopedTempDir dir("cb-lane-kit-msx-demo");
+    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
+    const auto flat = assembler.build_flat(fs::read_text(testing::data_path("engine/testdata/lane_kit/msx_demo.asm")));
+    const stdfs::path cartridge = dir.path() / "demo.rom";
+    fs::write_file(cartridge, flat.bytes);
+    machine_judges_a_program({"msx", "demo.rom", flat.start, static_cast<std::uint32_t>(flat.bytes.size())}, cartridge);
 });

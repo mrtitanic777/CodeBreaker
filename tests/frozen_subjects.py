@@ -104,13 +104,6 @@ def detect(path):
     return {"signature": plain(D.signature(path)), "format": plain(D.format_of(path)), "lane": plain(D.lane(path))}
 
 
-def inspect(path):
-    from codebreaker.formats import inspect as I
-    d = plain(I.describe(path))
-    d.pop("path", None)
-    return d
-
-
 def pe_functions(path):
     from codebreaker.formats import pe_functions as P
     return plain(P.function_spans(path))
@@ -205,7 +198,6 @@ SUBJECTS = [
     ("formats", "resources_lzexpand", lambda: _corpus("lzexpand.dll"), resources),
     ("formats", "detect_vmouse", lambda: _corpus("vmouse.vxd"), detect),
     ("formats", "detect_mode", lambda: _corpus("mode.com"), detect),
-    ("formats", "inspect_lzexpand", lambda: _corpus("lzexpand.dll"), inspect),
     ("formats", "pe_functions_lz32", lambda: _corpus("lz32.dll"), pe_functions),
     ("describe", "ne_lzexpand", lambda: _corpus("lzexpand.dll"), describe16),
     ("describe", "ne_keyboard", lambda: _corpus("keyboard.drv"), describe16),

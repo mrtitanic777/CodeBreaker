@@ -9,6 +9,7 @@
 
 #include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
 namespace xzp_test {
@@ -94,6 +95,40 @@ CB_TEST("formats.xbox.xzp.a_file_that_is_not_xuiz_or_is_cut_short", [] {
     Bytes outside = v1_file();
     outside[0x17 + 3] = 0x7F;
     CB_CHECK(xzp::parse(outside).entries.empty());
+});
+
+// A folder packed and read back (tests/test_xbox_formats.py::test_xzp_round_trip, moved here with the Python's writer): the entries are named
+// by their paths with backslashes, sorted by lowercased name; the header is the template's but for the base and the size.
+CB_TEST("formats.xbox.xzp.a_folder_is_packed_and_reads_back", [] {
+    Bytes tpl = to_bytes("XUIZ");
+    const Bytes rest = crypto::from_hex("0000000100000000000000010000000000000000" "00");   // version 1, size, ?=1, base, the count word and the skew byte
+    tpl.insert(tpl.end(), rest.begin(), rest.begin() + 19);
+    CB_CHECK_EQ(tpl.size(), std::size_t{0x17});
+    fs::ScopedTempDir dir("cb-xzp");
+    const Bytes png = crypto::from_hex("89504e470d0a1a0a00000000000000000000000000000000000000000000000000000000000000000000000000000000");
+    Bytes xyz;
+    for (int i = 0; i < 200; ++i) for (const char c : std::string("xyz")) xyz.push_back(static_cast<std::uint8_t>(c));
+    fs::write_file(dir.path() / "logo.png", png);
+    fs::write_file(dir.path() / "data.bin", xyz);
+    fs::make_dirs(dir.path() / "media" / "de-DE");
+    fs::write_file(dir.path() / "media" / "de-DE" / "s.xus", to_bytes("text"));
+    const Bytes made = xzp::build(dir.path(), tpl);
+
+    const xzp::Pack pack = xzp::parse(made);
+    CB_CHECK_EQ(pack.version, 1);
+    CB_CHECK_EQ(pack.file_size, static_cast<std::uint32_t>(made.size()));
+    CB_CHECK_EQ(pack.entries.size(), 3u);
+    CB_CHECK_EQ(pack.entries[0].name, "data.bin");
+    CB_CHECK_EQ(pack.entries[1].name, "logo.png");
+    CB_CHECK_EQ(pack.entries[2].name, "media\\de-DE\\s.xus");
+    const std::vector<xzp::Payload> files = xzp::payloads(made);
+    CB_CHECK_EQ(files.size(), 3u);
+    CB_CHECK_EQ(files[2].path, "media/de-DE/s.xus");
+    CB_CHECK(Bytes(made.begin() + files[0].offset, made.begin() + files[0].offset + files[0].size) == xyz);
+    CB_CHECK(Bytes(made.begin() + files[1].offset, made.begin() + files[1].offset + files[1].size) == png);
+    CB_CHECK_EQ(as_text(ByteView(made).subspan(files[2].offset, files[2].size)), "text");
+    CB_CHECK_EQ(as_text(ByteView(made).subspan(0, 4)), "XUIZ");
+    CB_CHECK_THROWS_AS(FormatError, (void)xzp::build(dir.path(), to_bytes("PIRS and more bytes than a header")));
 });
 
 }  // namespace xzp_test

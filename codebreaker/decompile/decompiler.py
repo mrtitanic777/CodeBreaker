@@ -809,8 +809,8 @@ def _is_x86(module_path):
 def as_c(path):
     """Any executable as C: (text, functions decompiled, functions found). Raises ValueError for
     a file that is not an executable this can read."""
-    from codebreaker.formats import detect, nes
-    kind = "nes" if nes.is_nes(path) else detect.kind(path)
+    from codebreaker.formats import detect
+    kind = detect.kind(path)
     if kind == "ne":
         texts, order, _by_va, d = decompile16(path)
         header, total = "", len(d.names)
@@ -822,11 +822,6 @@ def as_c(path):
         starts = describe.function_starts(path)
         texts, order, _by_va, _err = raw(path, starts, B._scratch("decompiler", os.path.basename(path).lower()))
         header, total = "", len(starts)
-    elif kind == "nes":                                      # the 6502, as the decompiler gives it
-        from codebreaker.build import watcom as B
-        description, by_va = describe.describe_nes(path, B._scratch("decompiler_nes", os.path.basename(path).lower()))
-        texts, order, _by_va, _err = run(description)
-        header, total = "", len(by_va)
     elif kind == "le":
         texts, order, header, total = {}, [], "", 0
         for member, out, names, d in decompile_le(path):

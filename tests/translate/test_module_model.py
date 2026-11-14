@@ -43,27 +43,6 @@ def test_the_assembly_back_end_writes_comments_and_declines_c():
         asm.module(l2.module([l2.function("f", "int f(void) { return 1; }")]))
 
 
-def test_emit_makes_each_function_a_fragment():
-    from codebreaker.source import image_writer as w
-
-    class Insn(object):
-        size = 1
-
-        def __init__(self, at):
-            self.at = at
-    image = bytes([0xC9, 0xAA, 0xC9])
-    code = {0: Insn(0), 2: Insn(2)}
-    functions = w.functions([0, 2], {0: "start"}, "sub_%04X")
-    out = w.lines(["; test"], "sjasmplus", "t.bin")
-    w.emit(out, 0, 3, image.__getitem__, lambda a: a, lambda a, addr: code.get(a), {0: "start", 2: "sub_0002"},
-           functions, lambda i: "RET", lambda data: w.data_lines(data, "DEFB", "DEFS %d,$%02X"))
-    doc = out.document()
-    _valid(doc)
-    assert [(u["name"], u["reason"]) for u in doc["units"]] == [("head", "head"), ("start", "function"),
-                                                                 ("sub_0002", "function")]
-    assert w.text(out) == "\n".join(out) == "; test\n\nstart:\n        RET\n        DEFB $AA\n\nsub_0002:\n        RET"
-
-
 def test_the_readable_pass_reads_the_module_tree():
     from codebreaker.source import readable
     doc = l2.module([l2.function("1000", "int4 sub_1000(void)\n{\n  return 1;\n}\n"),
@@ -124,19 +103,3 @@ def test_a_made_module_is_its_tree():
     m.add("c", "C", 0x30)
     assert m.order == ["a", "b", "c"] and pickle.loads(pickle.dumps(m)).texts["c"] == "C"
 
-
-def test_the_nasm_writers_make_each_function_a_fragment():
-    """The NE, PE and LE NASM writers each give every function a MachineFragment of its own (its
-    origin, its length to the next), the file's text unchanged: the fragments joined are the file."""
-    from codebreaker.base import corpus
-    from codebreaker.source import le_writer, ne_writer, pe_writer
-    for name, writer in (("lzexpand.dll", ne_writer), ("lz32.dll", pe_writer), ("splitter.vxd", le_writer)):
-        path = corpus.retail(name)
-        if not path:
-            pytest.skip("%s is not in the corpus" % name)
-        w = writer.Writer(path)
-        text, _lines = w.source()
-        _valid(w.l2)
-        funcs = [u for u in w.l2["units"] if u.get("reason") == "function"]
-        assert len(funcs) > 5 and all(u["length"] > 0 and u["origin"]["module"] == name for u in funcs), name
-        assert asm.module(w.l2) == text

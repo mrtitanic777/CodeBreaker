@@ -4,7 +4,8 @@ The six slots: the LE reader (formats/le.py; a W3 container's members, vmm32.vxd
 flat ring 0; a driver's register convention (arguments and results in registers, the carry and
 zero flags an answer too); the driver emulator (emulate/driver.py, on Unicorn); the kit's wasm
 (build/driver.tool: the one that knows the DDK's macros); the driver written back as assembly and
-linked as an LE by wlink (source/driver_writer.py, build/driver.py)."""
+linked as an LE by wlink (the native writer, cb/source/driver_writer, and its lane, cb/verify/lanes/driver;
+build/driver.py)."""
 from codebreaker.platforms import Compiler, Convention, Cpu, Emulator, Loader, Packager, Platform, Ref
 
 
@@ -28,7 +29,7 @@ def tools():
 
 PLATFORM = Platform(
     name="le", title="device drivers", family="x86", source="asm",
-    lane="codebreaker.verify.lanes.driver", recognise=_recognise,
+    lane=None, recognise=_recognise,
     loader=Loader(container="LE", open=Ref("codebreaker.formats.le", "members"), entries=Ref(__name__, "entries"),
                   parts=Ref("codebreaker.formats.le", "members")),
     cpu=Cpu("x86:LE:32:default:windows", bits=32, endian="little", decoder=("capstone", "x86", 32),
@@ -39,5 +40,4 @@ PLATFORM = Platform(
     emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.driver", "recorded")),
     compiler=Compiler(language="asm", toolchain="openwatcom wasm, the DDK's macros",
                       tool=Ref("codebreaker.build.driver", "tool", "wasm"), tools=Ref(__name__, "tools")),
-    packager=Packager(writer=Ref("codebreaker.source.driver_writer", "reconstruct"),
-                      functions=Ref("codebreaker.build.driver", "build"), tools=Ref(__name__, "tools")))
+    packager=Packager(functions=Ref("codebreaker.build.driver", "build"), tools=Ref(__name__, "tools")))

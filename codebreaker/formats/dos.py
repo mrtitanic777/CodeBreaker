@@ -241,50 +241,6 @@ def read(path, run_movers=True):
     run_movers False a program that moves itself is read as stored (see the top)."""
 
 
-EXEPACK_SEGMENT = 0x5000             # where the EXEPACK unpacker's code is read (it runs behind SYSINIT)
-
-
-def kernel_parts(path):
-    """IO.SYS as the programs it is made of, each where it runs. -> (parts, layout):
-    parts [(stem, Program)] -- the loader and the BIOS + DOS kernel, stored in the file as they
-    run; SYSINIT as the MZ program it is (unpacked: the file stores it as LINK /EXEPACK did);
-    and the EXEPACK unpacker's code -- and layout, how SYSINIT was packed (build/exepack.Layout).
-    The file is: loader, kernel, SYSINIT packed. The loader's first bytes are the MZ header that
-    describes the packed SYSINIT; to the loader they are data."""
-    from codebreaker.build import exepack
-    with open(path, "rb") as f:
-        data = f.read()
-    whole = read(path)
-    if whole.kind != "kernel":
-        raise ValueError("%s: not a kernel image" % whole.name)
-    h = _mz(data)
-    start, _first = _kernel_body(data, h)
-    out = []
-    for stem, segment, lo, hi, label in (("msload", LOADER_SEGMENT, 0, start, "loader"),
-                                         ("msdos", KERNEL_SEGMENT, start, h["header"], "bios and dos")):
-        p = Program(path, "kernel part")
-        p.name = "%s (the %s of %s)" % (stem, label, whole.name)
-        p.base = segment * 16
-        p.image = bytes(data[lo:hi])
-        p.spans = [(p.base, len(p.image), label)]
-        p.entries = [e for e in whole.entries if p.base <= e[0] < p.base + len(p.image)]
-        p.segments = {va: s for va, s in whole.segments.items() if p.base <= va < p.base + len(p.image)}
-        p.ds = whole.ds if segment == KERNEL_SEGMENT else segment
-        if segment == KERNEL_SEGMENT:
-            p.devices, p.device_segment = whole.devices, whole.device_segment
-        out.append((stem, p))
-    stored = bytes(data[h["header"]:h["size"]])
-    layout = exepack.layout(stored, h["cs"], h["ip"])
-    p = _program(path, native.call("dos.read_mz", data))
-    p.name = "sysinit (of %s)" % whole.name
-    p.in_kernel = True                                        # its file is IO.SYS: built into it, not a file of its own
-    if p.unpacked != "static":
-        raise ValueError("%s: SYSINIT is not stored as EXEPACK" % whole.name)
-    out.append(("sysinit", p))
-    out.append(("exepack", exepack_stub(path, layout)))
-    return out, layout
-
-
 @native.answered("dos.pklite_head", args_of=_nd_lower_name_args, result=_nd_program)
 def pklite_head(path, start):
     """PKLITE's entry code and decompressor (the first `start` bytes of the load module it
@@ -292,15 +248,3 @@ def pklite_head(path, start):
     segment, then copies its decompressor to the top of memory."""
 
 
-def exepack_stub(path, layout):
-    """The EXEPACK unpacker's code (build/exepack.Layout.stub_code) as a program of its own:
-    LINK put the same one behind every program it packed."""
-    stub = Program(path, "kernel part")
-    stub.name = "exepack (the unpacker LINK /EXEPACK put behind %s)" % os.path.basename(path).lower()
-    stub.base = EXEPACK_SEGMENT * 16 + 2 * layout.words       # its code follows the header words
-    stub.image = layout.stub_code
-    stub.spans = [(stub.base, len(stub.image), "exepack")]
-    stub.cs = stub.ds = EXEPACK_SEGMENT
-    stub.entries = [(stub.base, "unpack", "far")]
-    stub.segments = {stub.base: EXEPACK_SEGMENT}
-    return stub

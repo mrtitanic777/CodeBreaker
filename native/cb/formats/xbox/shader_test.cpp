@@ -1,5 +1,10 @@
 #include "cb/formats/xbox/shader.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <tuple>
+#include <vector>
+
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/formats/xbox/effect.hpp"
@@ -122,6 +127,56 @@ CB_TEST("formats.xbox.shader.loops_are_read_from_the_literal_records", [] {
     CB_CHECK_EQ(pixel.literals.size(), 4u);
     const shf::Shader vertex = shf::read(fx.objects.at(1));
     CB_CHECK(vertex.loop_literals.empty());
+});
+
+// The tables fxc's listing (/Fc /Xudsrd) gives for the SDK sample effect `skinned`: the vertex shader's inputs and exports, the constant
+// table and the compiler's literals; the pixel shader's interpolators. (From tests/test_xbox_effect.py::test_shader_tables.)
+CB_TEST("formats.xbox.shader.the_tables_of_the_skinned_effect_are_what_fxc_lists", [] {
+    const fxf::Effect fx = fxf::read(effect_file("fxo_skinned.fxo"));
+    std::vector<shf::Shader> vertex, pixel;
+    for (const auto& [id, bytes] : fx.objects) {
+        if (!shf::is_container(bytes)) continue;
+        shf::Shader s = shf::read(bytes);
+        (s.stage == shf::Stage::Vertex ? vertex : pixel).push_back(std::move(s));
+    }
+    CB_CHECK_EQ(vertex.size(), 1u);
+    CB_CHECK_EQ(pixel.size(), 1u);
+    const shf::Shader& vs = vertex[0];
+    const shf::Shader& ps = pixel[0];
+
+    const std::vector<std::tuple<std::uint32_t, std::string, std::uint32_t>> inputs = {
+        {5, "POSITION", 0}, {6, "NORMAL", 0}, {7, "TEXCOORD", 0}, {8, "TEXCOORD", 3}, {9, "COLOR", 1}, {10, "BLENDINDICES", 0}, {11, "BLENDWEIGHT", 0}};
+    CB_CHECK_EQ(vs.vertex_inputs.size(), inputs.size());
+    for (std::size_t i = 0; i < inputs.size() && i < vs.vertex_inputs.size(); ++i) {
+        CB_CHECK_EQ(vs.vertex_inputs[i].slot, std::get<0>(inputs[i]));
+        CB_CHECK_EQ(vs.vertex_inputs[i].usage, std::get<1>(inputs[i]));
+        CB_CHECK_EQ(vs.vertex_inputs[i].index, std::get<2>(inputs[i]));
+    }
+    const std::vector<std::tuple<std::uint32_t, std::string, std::uint32_t, std::uint32_t>> exports = {
+        {0, "TEXCOORD", 0, 3}, {1, "TEXCOORD", 1, 7}, {2, "TEXCOORD", 2, 1}, {3, "TEXCOORD", 5, 3}, {4, "COLOR", 0, 15}};
+    CB_CHECK_EQ(vs.outputs.size(), exports.size());
+    for (std::size_t i = 0; i < exports.size() && i < vs.outputs.size(); ++i) {
+        CB_CHECK_EQ(vs.outputs[i].reg, std::get<0>(exports[i]));
+        CB_CHECK_EQ(vs.outputs[i].usage, std::get<1>(exports[i]));
+        CB_CHECK_EQ(vs.outputs[i].index, std::get<2>(exports[i]));
+        CB_CHECK_EQ(vs.outputs[i].mask, std::get<3>(exports[i]));
+    }
+    std::vector<shf::Constant> table = vs.constants;
+    std::sort(table.begin(), table.end(), [](const shf::Constant& a, const shf::Constant& b) { return a.first_register < b.first_register; });
+    const std::vector<std::tuple<std::string, int, int>> constants = {{"World", 0, 4}, {"ViewProj", 4, 4}, {"Bones", 8, 60}, {"UseFog", 68, 1}};
+    CB_CHECK_EQ(table.size(), constants.size());
+    for (std::size_t i = 0; i < constants.size() && i < table.size(); ++i) {
+        CB_CHECK_EQ(table[i].name, std::get<0>(constants[i]));
+        CB_CHECK_EQ(static_cast<int>(table[i].first_register), std::get<1>(constants[i]));
+        CB_CHECK_EQ(static_cast<int>(table[i].count), std::get<2>(constants[i]));
+    }
+    CB_CHECK_EQ(vs.literals.at(255)[0], 3.0f);
+    CB_CHECK(std::abs(vs.literals.at(255)[2] - 0.01f) < 1e-7f);
+
+    CB_CHECK_EQ(ps.pixel_inputs.size(), 5u);
+    for (std::size_t i = 0; i < ps.pixel_inputs.size(); ++i) CB_CHECK_EQ(ps.pixel_inputs[i].reg, static_cast<std::uint32_t>(i));
+    CB_CHECK_EQ(ps.pixel_inputs[3].usage, "TEXCOORD");
+    CB_CHECK_EQ(ps.pixel_inputs[3].index, 5u);
 });
 
 CB_TEST("formats.xbox.shader.damaged_containers_are_format_errors", [] {

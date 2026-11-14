@@ -237,12 +237,9 @@ def retail(name):
 
 
 def _readable(path):
-    """The file the stages read: a container's image (a .xex: its basefile; an .xbe: its PE
-    image), else the file."""
+    """The file the stages read: a container's image (a .xex: its basefile), else the file."""
     from codebreaker import platforms
-    for name in ("powerpc", "xbe"):                  # (each opens only its own container)
-        path = platforms.named(name).readable(path)
-    return path
+    return platforms.named("powerpc").readable(path)
 
 
 def modules(want_lane=None, exts=(".dll", ".exe", ".drv", ".ocx", ".cpl")):
