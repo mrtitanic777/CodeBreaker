@@ -26,25 +26,10 @@ from codebreaker.build import msvc152 as cc16
 from codebreaker.compare import mask as masks
 from codebreaker.formats import omf
 
-# NE relocation source-type -> width in bytes of the relocated field
-def _masm():
-    from codebreaker.build import masm
-    return masm
-
-
-def _segdiff():
-    from codebreaker.source.ne_asm import segdiff
-    return segdiff
-
 
 def _segment():
     from codebreaker.source.ne_asm import segment
     return segment
-
-
-def _msvc152():
-    from codebreaker.build import msvc152
-    return msvc152
 
 
 class _Corpus(object):

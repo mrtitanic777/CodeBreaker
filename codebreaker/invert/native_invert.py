@@ -107,11 +107,6 @@ def msc6(code, imports, syms, rtype, params, nearmap, func_base):
     return (a["t"], a["m"]) if a["t"] is not None else (None, a["w"])
 
 
-def segment_sigs(segb):
-    """msc6_calls.infer_segment_sigs: {offset: [(name, kind), ...]}."""
-    return {off: [tuple(p) for p in ps] for off, ps in json.loads(_call(_load().cbinv_msc6_sigs, bytes(segb).hex()))}
-
-
 def thunk(fb, name="thunk", exact=True):
     """segment_thunk.verify (exact) or parse: None, or the parsed thunk with its MASM text."""
     p = ctypes.c_void_p()
@@ -147,13 +142,6 @@ def small(which, code, syms=None, callee="G"):
     return (a["t"], a["m"]) if a["t"] is not None else (None, a["w"])
 
 
-def msc6_registers(which, code, imports=None):
-    """0: msc6_registers.invert_reg, 1: invert_loop -> (text, meta) or (None, why)."""
-    rows = ["C\t" + bytes(code).hex()] + ["I\t%d\t%s" % (k, v) for k, v in (imports or {}).items()]
-    a = json.loads(_call(_load().cbinv_msc6reg, "\n".join(rows) + "\n", which))
-    return (a["t"], a["m"]) if a["t"] is not None else (None, a["w"])
-
-
 def _enc(x):
     """A model's value as pyval JSON (native/invert/pyval.h): a tuple an array, a list {"L": [..]},
     a dict {"D": [[key, value], ..]}."""
@@ -174,36 +162,6 @@ def _dec(x):
             return [_dec(v) for v in x["L"]]
         return {k: _dec(v) for k, v in x["D"]}
     return x
-
-
-def msvc2_invert(code, mask=None):
-    """msvc2.invert: {nargs, expr, c, node} or None."""
-    rows = ["C\t" + bytes(code).hex()]
-    if mask is not None:
-        rows.append("M\t" + ",".join(str(int(i)) for i in mask))
-    return _dec(json.loads(_call(_load().cbinv_msvc2, "\n".join(rows) + "\n", 0)))
-
-
-def msvc2_interp(code, nargs):
-    """msvc2_registers.interp: a list of seq nodes, or None."""
-    return _dec(json.loads(_call(_load().cbinv_msvc2, "C\t%s\nN\t%d\n" % (bytes(code).hex(), nargs), 1)))
-
-
-def msvc2_emit(node):
-    """msvc2_forward.emit: the bytes, or None."""
-    h = json.loads(_call(_load().cbinv_msvc2, json.dumps(_enc(node)), 2))
-    return None if h is None else bytes.fromhex(h)
-
-
-def msvc2_to_c(node):
-    """msvc2_forward.to_c."""
-    return json.loads(_call(_load().cbinv_msvc2, json.dumps(_enc(node)), 3))
-
-
-def msvc2_frame_layout(locals_):
-    """msvc2_forward.frame_layout: (framesize, {decl_index: ebp_offset})."""
-    cum, offs = json.loads(_call(_load().cbinv_msvc2, json.dumps(_enc(list(locals_))), 4))
-    return cum, {i: off for i, off in offs}
 
 
 def _target(kind, t):
@@ -275,7 +233,3 @@ def early_c(which, code, base, cxmap, flags, retval, last, switch, callinfo, cal
     return r["fs"], r["params"], r["stmts"], r["pt"], r["loc"]
 
 
-def early_c_text(which, args):
-    """early_c's text functions: 2 to_c, 3 _fold_ladders, 4 detect_copies (args: their arguments)."""
-    r = json.loads(_call(_load().cbinv_early_c, json.dumps(list(args), ensure_ascii=False), which, _HOOK(0)))
-    return [tuple(x) for x in r] if which == 4 else r

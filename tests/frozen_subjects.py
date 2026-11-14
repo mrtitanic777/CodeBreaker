@@ -94,11 +94,6 @@ def cab(path):
     return {"info": plain(c.info), "files": plain(c.files)}
 
 
-def fonts(path):
-    from codebreaker.formats import fonts as F
-    return [{"describe": f.describe(), "glyph_A": plain(f.glyph("A")), "font": plain(f)} for f in F.fonts_in(path)]
-
-
 def resources(path):
     from codebreaker.formats import resources as R
     return plain(R.read(path))
@@ -206,7 +201,6 @@ SUBJECTS = [
     ("formats", "le_vmouse", lambda: _corpus("vmouse.vxd"), le),
     ("formats", "dos_mode", lambda: _corpus("mode.com"), dos),
     ("formats", "cab_mini", lambda: _setup("MINI.CAB"), cab),
-    ("formats", "fonts_vgafix", lambda: _corpus("vgafix.fon"), fonts),
     ("formats", "resources_notepad", lambda: _corpus("notepad.exe"), resources),
     ("formats", "resources_lzexpand", lambda: _corpus("lzexpand.dll"), resources),
     ("formats", "detect_vmouse", lambda: _corpus("vmouse.vxd"), detect),
