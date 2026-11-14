@@ -498,8 +498,9 @@ Done on the branch `retire-pyengine` (to be merged when the Python batches are d
   the old layer; `CB_WITH_PYTHON`; `tools\build_cb.cmd shims`.
 - `tools\gate.cmd` is the one gate: `cb_tests`, `cb_exe_gate` on the real exe, then the UI's Python tests under real python. It builds
   and installs the exe when `--exe`/`CB_EXE` do not name one.
-- `tests/run_all.py` no longer runs suites inside the exe (there is no translated Python): it runs them under real python, with `CB_EXE`
-  set, and does not build anything. Nothing in the gate needs it. Keep it only while Python suites other than the UI's remain; delete
-  it with the last of them (its compile cache and `--changed` plan live in `native/testkit` and the Python import graph, both Python-world).
+- `tests/run_all.py` is deleted: it ran the Python suites inside the translated exe, which is gone, and with the Python reduced to the
+  terminal UI the only Python tests are `tests/test_ui.py` and `tests/test_ui_thin.py` (plus `test_verdicts.py`), which `tools\gate.cmd`
+  runs under real python. Its compile cache and `--changed` plan (`native/testkit`, `tools/check_imports.py`) served Python/Java suites that
+  are deleted; `native/testkit` can go with them.
 - Still there, on purpose: the `cbtrace` target (the Python `emulate/native_trace.py` loads it) and `native/{engine,formats,symbols,invert,analyze}`
   (step 7e, after the Python callers go).
