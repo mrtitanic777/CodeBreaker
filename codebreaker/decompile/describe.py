@@ -2150,29 +2150,3 @@ def describe_dos(module_path, outdir):
     d.lines = lines
     d.write()
     return d
-
-
-# NES -------------------------------------------------------------------------------------------
-def describe_nes(module_path, outdir):
-    """Write the description of a NES cartridge for the native program: the 6502, the program
-    ROM where the CPU sees it at power-on (formats/nes.py), and its functions -- the three
-    vectors' and every JSR target. -> (path of the description, {va: name})"""
-    from codebreaker import platforms
-    from codebreaker.formats import nes
-    rom = nes.read(module_path)
-    os.makedirs(outdir, exist_ok=True)
-    image = os.path.join(outdir, "cpu.bin")
-    with open(image, "wb") as f:
-        f.write(bytes(rom.memory()[0x8000:]))
-    names = {rom.vectors["reset"]: "reset"}
-    names.setdefault(rom.vectors["nmi"], "nmi")
-    names.setdefault(rom.vectors["irq"], "irq")
-    lines = ["arch\t%s" % platforms.named("nes").cpu, "bytes\t8000\t%s\t0\t8000" % os.path.abspath(image)]
-    by_va = {}
-    for va in rom.functions():
-        by_va[va] = names.get(va, "sub_%04X" % va)
-        lines.append("F\t%x\t%s\t-1" % (va, by_va[va]))
-    path = os.path.join(outdir, "description.txt")
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines) + "\n")
-    return path, by_va

@@ -38,7 +38,7 @@ which the engine's steps are filed under.
 import importlib
 import os
 
-ORDER = ("java", "xbox360", "nes", "win32", "win16", "vxd", "dos")
+ORDER = ("java", "xbox360", "win32", "win16", "vxd", "dos")
 SLOTS = ("loader", "cpu", "convention", "emulator", "compiler", "packager")
 
 
