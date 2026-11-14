@@ -198,7 +198,13 @@ Compilable32 compilable32(Services& services, const std::filesystem::path& modul
 
     std::map<std::string, std::string> declared;
     std::map<std::string, ModuleFacts> written_of;
-    const std::set<std::string> order_set(order.begin(), order.end());
+    // (the facts every function is given alike: held once, not copied into each one's)
+    auto shared = std::make_shared<FlatShared>();
+    shared->functions = std::set<std::string>(order.begin(), order.end());
+    shared->called_through = called_through;
+    shared->pointer_globals = pointers;
+    shared->takes = takes;
+    const std::shared_ptr<const FlatShared> shared_facts = shared;
     for (const std::string& n : order) {
         FunctionNotes none;
         FunctionNotes& facts = notes_of(n) != nullptr ? *notes_of(n) : none;
@@ -206,13 +212,10 @@ Compilable32 compilable32(Services& services, const std::filesystem::path& modul
         // and its part of the module's decisions)
         ModuleFacts written;
         written.path = ModuleFacts::Path::Flat32;
-        written.functions = order_set;
+        written.shared = shared_facts;
         written.struct_sizes = sizes_of_structs[n];
-        written.called_through = called_through;
         written.without_notes = true;
         if (const auto it = aliases.find(n); it != aliases.end()) written.aliases = it->second;
-        written.pointer_globals = pointers;
-        written.takes = takes;
         if (facts.l2 != nullptr) out.insert_or_assign(n, services.c_from_l2(out.at(n), facts, std::nullopt, &written).value_or(out.at(n)));
         if (facts.l2 != nullptr && !facts.from_l2) {
             // (a function the back end declines -- a node it does not write -- is one the decompiler could not make, as one whose

@@ -147,6 +147,9 @@ public:
     // the far pointers, when the decompiler's notes say; `facts`: what the function is written with, changed in place.
     std::string function(const Json& doc, std::span<const std::string> moved = {},
                          const std::optional<std::set<std::string>>& far = std::nullopt, Json* facts = nullptr) const;
+    // The same with the facts already written as the library's JSON text (decompiler's facts_text): nothing is built or copied for them.
+    // `left` (when given) receives what the library answered of them (the keys it wrote), not the facts as given.
+    std::string function_with_facts_text(const Json& doc, std::span<const std::string> moved, std::string_view facts_text, Json* left) const;
     // A Module document: its functions as C, and what stayed assembly.
     ModuleText module(const Json& doc, std::span<const std::string> moved) const;
     // A MachineFragment as the C of its module holds it.

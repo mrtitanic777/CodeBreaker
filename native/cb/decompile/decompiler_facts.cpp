@@ -132,13 +132,14 @@ Json facts_json(const ModuleFacts& m) {
         w["functions"] = facts_set_of_text(m.functions);
         return w;   // (the module's own plans are not given to it)
     } else {
-        w["functions"] = facts_set_of_text(m.functions);
+        const c_text::FlatShared* s = m.shared.get();
+        w["functions"] = facts_set_of_text(s ? s->functions : m.functions);
         w["struct_sizes"] = facts_text_to_number(m.struct_sizes);
-        w["called_through"] = facts_set_of_text(m.called_through);
+        w["called_through"] = facts_set_of_text(s ? s->called_through : m.called_through);
         w["without_notes"] = m.without_notes;
         w["aliases"] = facts_text_to_number(m.aliases);
-        w["pointer_globals"] = facts_set_of_text(m.pointer_globals);
-        w["takes"] = facts_text_to_number(m.takes);
+        w["pointer_globals"] = facts_set_of_text(s ? s->pointer_globals : m.pointer_globals);
+        w["takes"] = facts_text_to_number(s ? s->takes : m.takes);
         if (m.struct_fields) {
             Json structures = Json::object();
             for (const auto& [param, planned] : *m.struct_fields) {
@@ -153,6 +154,55 @@ Json facts_json(const ModuleFacts& m) {
     // (the plans the module carries from one pass to the next: the library's own documents, kept as text)
     for (const auto& [key, text] : m.plans) w[key] = json::parse(text);
     return w;
+}
+
+namespace {
+std::string wire_text(const Json& j) { return j.dump(-1, ' ', true); }   // (as native_l2 writes what it sends: ASCII only)
+}  // namespace
+
+std::string facts_text(const ModuleFacts& m) {
+    const c_text::FlatShared* s = m.shared.get();
+    if (m.path != ModuleFacts::Path::Flat32 || s == nullptr) return wire_text(facts_json(m));
+    std::call_once(s->text_once, [s] {
+        s->functions_text = wire_text(facts_set_of_text(s->functions));
+        s->called_through_text = wire_text(facts_set_of_text(s->called_through));
+        s->pointer_globals_text = wire_text(facts_set_of_text(s->pointer_globals));
+        s->takes_text = wire_text(facts_text_to_number(s->takes));
+    });
+    // (the members in the order facts_json puts them)
+    std::string out = "{\"functions\":";
+    out += s->functions_text;
+    out += ",\"struct_sizes\":";
+    out += wire_text(facts_text_to_number(m.struct_sizes));
+    out += ",\"called_through\":";
+    out += s->called_through_text;
+    out += ",\"without_notes\":";
+    out += m.without_notes ? "true" : "false";
+    out += ",\"aliases\":";
+    out += wire_text(facts_text_to_number(m.aliases));
+    out += ",\"pointer_globals\":";
+    out += s->pointer_globals_text;
+    out += ",\"takes\":";
+    out += s->takes_text;
+    if (m.struct_fields) {
+        Json structures = Json::object();
+        for (const auto& [param, planned] : *m.struct_fields) {
+            std::vector<std::pair<Json, Json>> fields;
+            for (const auto& [offset, field] : planned.fields)
+                fields.emplace_back(Json(offset), facts_tuple({Json(field.type), Json(field.size)}));
+            structures[param] = facts_tuple({Json(planned.structure), facts_dict_of(fields)});
+        }
+        out += ",\"struct_fields\":";
+        out += wire_text(structures);
+    }
+    for (const auto& [key, text] : m.plans) {
+        out += ',';
+        out += wire_text(Json(key));
+        out += ':';
+        out += wire_text(json::parse(text));
+    }
+    out += '}';
+    return out;
 }
 
 void apply_left(ModuleFacts& base, const Json& w) {

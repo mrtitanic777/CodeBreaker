@@ -307,6 +307,39 @@ CB_TEST("decompile.decompiler.facts_json", [] {
     CB_CHECK_EQ(p.dump(), R"({"lane":"powerpc","functions":{"$s":["main"]}})");   // (and no plans: the path has none)
 });
 
+CB_TEST("decompile.decompiler.facts_text", [] {
+    using cb::decompile::decompiler::internal::facts_json;
+    using cb::decompile::decompiler::internal::facts_text;
+    ct::ModuleFacts own;   // a 32-bit module's facts, each held in the function's own
+    own.path = ct::ModuleFacts::Path::Flat32;
+    own.functions = {"g", "h \"q\" caf\xC3\xA9"};
+    own.called_through = {"cRam00403020"};
+    own.pointer_globals = {"pcRam00403010"};
+    own.takes = {{"g", 2}};
+    own.struct_sizes = {{"struct_1", 12}};
+    own.aliases = {{"uRam00403000", "uRam00403000_1"}};
+    own.without_notes = true;
+    own.plans.insert_or_assign("frame", R"({"a": [1, 2]})");
+    CB_CHECK_EQ(facts_text(own), facts_json(own).dump(-1, ' ', true));
+    // the same facts with the module-wide parts shared: the same text, the second time from what the first wrote
+    auto shared = std::make_shared<ct::FlatShared>();
+    shared->functions = own.functions;
+    shared->called_through = own.called_through;
+    shared->pointer_globals = own.pointer_globals;
+    shared->takes = own.takes;
+    ct::ModuleFacts held = own;
+    held.functions.clear();
+    held.called_through.clear();
+    held.pointer_globals.clear();
+    held.takes.clear();
+    held.shared = shared;
+    CB_CHECK_EQ(facts_text(held), facts_text(own));
+    held.struct_sizes["struct_2"] = 4;
+    own.struct_sizes["struct_2"] = 4;
+    CB_CHECK_EQ(facts_text(held), facts_text(own));
+    CB_CHECK_EQ(facts_json(held).dump(), facts_json(own).dump());
+});
+
 CB_TEST("decompile.decompiler.apply_left", [] {
     using cb::decompile::decompiler::internal::apply_left;
     const Json left = Json::parse(R"json({

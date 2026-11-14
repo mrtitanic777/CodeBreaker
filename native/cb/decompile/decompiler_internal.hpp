@@ -35,6 +35,9 @@ std::vector<Placeholder> find_placeholders(std::string_view text);
 
 // The facts a function is written with, in the library's tagged JSON, and what the library left in them.
 Json facts_json(const c_text::ModuleFacts& facts);
+// The same facts as the text the library reads (facts_json(facts) written compactly, ASCII only). A 32-bit module's shared parts
+// (ModuleFacts::shared) are written once and reused.
+std::string facts_text(const c_text::ModuleFacts& facts);
 // What the back end reported of a function (in the facts it was given) put into the module's facts. The facts are the library's
 // own form: tuples as {"$t": [...]}, sets as {"$s": [...]}, dicts with keys that are not text as {"$d": [[key, value], ...]}.
 void apply_left(c_text::ModuleFacts& facts, const Json& left);

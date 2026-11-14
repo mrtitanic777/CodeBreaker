@@ -60,6 +60,18 @@ Json strings_json(std::span<const std::string> v) {
 // The text the library reads: ASCII only (every non-ASCII character escaped), as its own writer's.
 std::string wire(const Json& arguments) { return arguments.dump(-1, ' ', true); }
 
+// The arguments [doc] or [doc, text] written straight from the document (building an array of them copied the whole document first).
+std::string wire_doc(const Json& doc, const std::string* extra = nullptr) {
+    std::string text = "[";
+    text += wire(doc);
+    if (extra != nullptr) {
+        text += ',';
+        text += wire(Json(*extra));
+    }
+    text += ']';
+    return text;
+}
+
 }  // namespace
 
 struct Library::Impl {
@@ -143,6 +155,24 @@ std::string Library::function(const Json& doc, std::span<const std::string> move
     return text_of(items(r).at(0));
 }
 
+std::string Library::function_with_facts_text(const Json& doc, std::span<const std::string> moved, std::string_view facts_text, Json* left) const {
+    // [doc, moved, null, facts] as `function` writes it, the facts being text already
+    std::string text = "[";
+    text += wire(doc);
+    text += ',';
+    text += wire(strings_json(moved));
+    text += ",null,";
+    text.append(facts_text);
+    text += ']';
+    Json r = answer_of("function", call_raw("function", text), nullptr);
+    const Json::array_t& list = *items(r).get_ptr<const Json::array_t*>();
+    if (left != nullptr) {
+        if (list.size() > 1 && list[1].is_object()) *left = std::move(const_cast<Json&>(list[1]));   // (r is ours: its answer is moved out, not copied)
+        else *left = Json::object();
+    }
+    return text_of(list.at(0));
+}
+
 ModuleText Library::module(const Json& doc, std::span<const std::string> moved) const {
     const Json r = call("module", Json::array({doc, strings_json(moved)}));
     ModuleText out;
@@ -184,7 +214,7 @@ std::set<std::string> Library::flags(const Json& doc, const Json& facts) const {
     return string_set(call("flags", Json::array({doc, facts})));
 }
 
-std::string Library::signature(const Json& doc) const { return text_of(call("signature", Json::array({doc}))); }
+std::string Library::signature(const Json& doc) const { return text_of(answer_of("signature", call_raw("signature", wire_doc(doc)), nullptr)); }
 
 std::optional<std::int64_t> Library::takes32(std::string_view heading) const {
     const Json r = call("takes32", Json::array({std::string(heading)}));
@@ -193,7 +223,7 @@ std::optional<std::int64_t> Library::takes32(std::string_view heading) const {
 }
 
 ModuleNames Library::module_names32(const Json& doc) const {
-    const Json r = call("module_names32", Json::array({doc}));
+    const Json r = answer_of("module_names32", call_raw("module_names32", wire_doc(doc)), nullptr);
     ModuleNames out;
     out.names = string_set(r.at("names"));
     out.calls = string_set(r.at("calls"));
@@ -202,14 +232,15 @@ ModuleNames Library::module_names32(const Json& doc) const {
     return out;
 }
 
-std::set<std::string> Library::type_names(const Json& doc) const { return string_set(call("type_names", Json::array({doc}))); }
+std::set<std::string> Library::type_names(const Json& doc) const { return string_set(answer_of("type_names", call_raw("type_names", wire_doc(doc)), nullptr)); }
 
 std::vector<std::string> Library::parameter_names(const Json& doc) const {
-    return string_list(call("parameter_names", Json::array({doc})));
+    return string_list(answer_of("parameter_names", call_raw("parameter_names", wire_doc(doc)), nullptr));
 }
 
 std::vector<StructAccess> Library::struct_accesses(const Json& doc, std::string_view param) const {
-    const Json r = call("struct_accesses", Json::array({doc, std::string(param)}));
+    const std::string param_text(param);
+    const Json r = answer_of("struct_accesses", call_raw("struct_accesses", wire_doc(doc, &param_text)), nullptr);
     std::vector<StructAccess> out;
     for (const Json& t : items(r)) out.push_back({text_of(items(t).at(0)), text_of(items(t).at(1)), int_of(items(t).at(2))});
     return out;
@@ -270,7 +301,7 @@ std::optional<std::int64_t> Library::argument_words(std::string_view argument, c
 
 // ---- the L2 core ----------------------------------------------------------------------------------------------------
 
-std::string Library::roundtrip_text(const Json& doc) const { return text_of(call("roundtrip_text", Json::array({doc}))); }
+std::string Library::roundtrip_text(const Json& doc) const { return text_of(answer_of("roundtrip_text", call_raw("roundtrip_text", wire_doc(doc)), nullptr)); }
 
 Validation Library::validate(const Json& doc, std::string_view schema_text) const {
     bool told = false;
@@ -284,7 +315,7 @@ Validation Library::validate(const Json& doc, std::string_view schema_text) cons
         std::lock_guard hold(impl_->lock);
         impl_->schema = std::string(schema_text);
     }
-    const Json r = call("validate", Json::array({doc}));
+    const Json r = answer_of("validate", call_raw("validate", wire_doc(doc)), nullptr);
     const Json& pair = items(r);
     return {pair.at(0).is_boolean() ? pair.at(0).get<bool>() : !pair.at(0).is_null(), text_of(pair.at(1))};
 }
