@@ -1,5 +1,5 @@
 // The Python front end's semantics snippet, as C++17 that runs: the checked-in text the back end wrote for it (testdata/cpp17/
-// semantics.golden.{hpp,cpp}) is built with the host's MSVC against the runtime in native/ported/include, every run_* function is
+// semantics.golden.{hpp,cpp}) is built with the host's MSVC against the runtime in data/translate/runtime/cpp17, every run_* function is
 // called, and each answer is compared with what CPython gave for the same function (semantics.expected.txt, made by running the
 // snippet under CPython: one "name<TAB>json" line per function; an exception is {"error": its class}). This is what
 // tests/translate/test_python_frontend.py `test_semantics_compile_and_match` checked. Without `cl` on PATH (a build run from a plain
@@ -70,7 +70,7 @@ CB_TEST("translate.cpp17.the_python_semantics_snippet_runs_as_cpython_runs_it", 
     cb::fs::write_text(dir / "snip.cpp", main_text);
 
     cb::process::ProcessSpec build;
-    build.argv = {"cl", "/nologo", "/std:c++17", "/EHsc", "/utf-8", "/permissive-", "/I" + cb::testing::data_path("../ported/include").string(),
+    build.argv = {"cl", "/nologo", "/std:c++17", "/EHsc", "/utf-8", "/permissive-", "/I" + cb::testing::data_path("../../data/translate/runtime/cpp17").string(),
                   "/I" + dir.string(), "/Fe" + (dir / "snip.exe").string(), "/Fo" + dir.string() + "\\", "snip.cpp"};
     build.cwd = dir;
     build.err = cb::process::Capture::Merge;

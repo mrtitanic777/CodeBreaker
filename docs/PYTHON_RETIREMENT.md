@@ -213,7 +213,7 @@ wiring that keeps them alive, in `native/cb/CMakeLists.txt`:
 
 - lines 150-153, 175, 184-187: `/W3 /WX-` options for the shim tests;
 - lines 245-351: `cb_shim_check` (an OBJECT library of `compat/shim_check_*.cpp` plus ~60 `native/typed/cpp/codebreaker/**.cpp`
-  sources, with `native/ported/include`, `native/typed/cpp`, `native/l2/src` on its include path);
+  sources, with `data/translate/runtime/cpp17`, `native/typed/cpp`, `native/l2/src` on its include path);
 - lines 382-392: `cb_tests` adds the same include directories and compiles `native/pyengine/src/big.cc`
   (the pytypes shim test needs `Big`).
 
@@ -504,8 +504,9 @@ Done on the branch `retire-pyengine` (to be merged when the Python batches are d
   are deleted; `native/testkit` can go with them.
 - Still there, on purpose: the `cbtrace` target (the Python `emulate/native_trace.py` loads it) and `native/{engine,formats,symbols,invert,analyze}`
   (step 7e, after the Python callers go).
-- `native/ported` is not entirely gone: seven headers (`py.hpp`, `py_json.hpp`, `py_os.hpp`, `py_settings.hpp`, `py_stdlib.hpp`, `py_unicode.hpp`,
-  `py_unicode_print.hpp`) stay because `native/l2/src/pyre.cc` includes `py_unicode.hpp` and the cb_tests case for the L2 `python` cpp17 dialect compiles
-  against `py.hpp`. They go with that dialect (`native/l2/src/cpp17_python.cc`), not with the exe.
+- `native/ported` is gone (2026-11-14). Its seven headers (`py.hpp`, `py_json.hpp`, `py_os.hpp`, `py_settings.hpp`, `py_stdlib.hpp`,
+  `py_unicode.hpp`, `py_unicode_print.hpp`) were never CodeBreaker's own Python: they are the runtime the translator's Python front end
+  (`native/cb/translate/frontends/python`) writes C++17 against, as `jrt.hpp` is Java's, and they now live beside it in
+  `data/translate/runtime/cpp17/`.
 - A worktree gate run needs `settings.json`, `CB_CHECKOUT_ROOT`/`CB_CORPUS` and `native/{l2,dosexec,xex,decompiler}/build` beside it; with them
   (or in the main checkout) the 155 command cases pass.

@@ -1,4 +1,4 @@
-// py_unicode_print.hpp -- GENERATED from CPython's unicodedata (Unicode 16.0.0, Python 3.14.0) by native/ported/tools/gen_unicode_print.py.
+// py_unicode_print.hpp -- GENERATED from CPython's unicodedata (Unicode 16.0.0, Python 3.14.0) (by gen_unicode_print.py, retired with the Python; the table changes only with a new Unicode version).
 // The code points str.isprintable() is False for, as sorted inclusive ranges (Cc Cf Cs Co Cn Zl Zp Zs, the space excepted).
 #pragma once
 #include <cstddef>

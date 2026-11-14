@@ -401,7 +401,7 @@ Every step above can be written by hand. The engine is the other road: CodeBreak
 core idea -- reconstruct readable source and prove it behaves as the original -- turned on
 CodeBreaker. `codebreaker/translate/frontends/python` lowers Python into L2 with types it infers
 over the whole package, the C++17 back end (C++: `native/l2/src/cpp17_python.cc`, through the shim
-`backends/cpp17.py`) writes C++17 over `native/ported/include/py.hpp`
+`backends/cpp17.py`) writes C++17 over `data/translate/runtime/cpp17/py.hpp`
 (docs/PYTHON_FRONTEND.md says how, and what is refused). A function either becomes C++ that
 reads as written by hand -- int64_t, structs, py::list, C++'s own operators where the intervals
 prove them -- or it is left in Python with its reason; never a variant type.
@@ -601,7 +601,7 @@ links one driver and runs every module-level function on generated inputs beside
 comparing results and exception names; what does not compile or agree is refused through
 `native/pyengine/hints/refuse.json` with the judge's reason. Getting there was mostly back-end and
 runtime work the judge found: no C++ had existed for the extensions' library rows (now
-`native/ported/include/py_os.hpp`: open/files, os/os.path/shutil/time, hashlib, re over pyre,
+`data/translate/runtime/cpp17/py_os.hpp`: open/files, os/os.path/shutil/time, hashlib, re over pyre,
 generators, variants; `py_unicode.hpp`: Unicode's isalpha/isdigit/isnumeric), the engine's L2 had
 dropped class types' record/ref flags, `1 << 32` on a C++ int, `d.get(k)` not None when absent, NUL in
 string literals, CRT macros as names. Also new: getattr with a constant name (the attribute when it
@@ -1056,7 +1056,7 @@ immediately invoked ones, `std::make_shared`, `std::optional`), the source langu
 `Unit.lang`:
 
 - `cpp17_python.cc` -- 'python' (the Python front end; each unit now says `lang='python'`): a module's
-  header and source over `native/ported/include/py.hpp`, Python's own operations from py.hpp or the API
+  header and source over `data/translate/runtime/cpp17/py.hpp`, Python's own operations from py.hpp or the API
   map (codebreaker/java/api_maps, read by the C++ as apimap.py resolves it, dialect c++17);
 - `cpp17_java.cc` over `cpp17_jmodel.cc` (jmodel.py's object model in C++) -- 'java' or none: a whole
   program over `codebreaker/translate/runtime/cpp17/jrt.hpp`;

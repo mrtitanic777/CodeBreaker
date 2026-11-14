@@ -1,7 +1,7 @@
 // cpp17_python.cc -- the C++17 back end's Python rules (Unit.lang 'python'): a module the Python front
 // end lowered (codebreaker/translate/frontends/python, docs/PYTHON_FRONTEND.md) written whole -- a
 // header (records, classes, functions, the module's names) and a source with every body -- over the
-// support header native/ported/include/py.hpp.
+// support header data/translate/runtime/cpp17/py.hpp.
 //
 // The C++ reads as a person would write the same program: int64_t where Python had an int, value
 // structs for records, references (py::ref) where Python shared objects, py.hpp's types -- py::str,

@@ -3,7 +3,7 @@
 Design note, 2026-11-11. Logan's rule: CodeBreaker is a complete C++ rewrite, "as if the Python was never
 written" -- idiomatic C++, no code that mimics Python. About 365 modules (742 files, 168k lines) were
 machine-assisted-ported to typed C++ under `native/typed/cpp/codebreaker/` on top of an imitation of Python
-(`native/ported/include/py*.hpp`). Logan chose to **refactor those ports into idiomatic C++**: keep the
+(`data/translate/runtime/cpp17/py*.hpp`). Logan chose to **refactor those ports into idiomatic C++**: keep the
 algorithms, drop the imitation layer, and judge correctness by what CodeBreaker does -- the decompile, build and
 judge results, the files it writes -- not by matching the Python's incidental output.
 

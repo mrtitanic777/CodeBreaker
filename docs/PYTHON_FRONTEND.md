@@ -4,7 +4,7 @@
 language shares, `codebreaker/translate/ir.py`; each unit says `lang='python'`), and the translator's
 one C++17 back end -- C++ itself, native/l2/src/cpp17_python.cc, reached through the shim
 `codebreaker/translate/backends/cpp17.py` -- writes that tree as C++17 with its Python rules over one
-support header, `native/ported/include/py.hpp`. It exists to
+support header, `data/translate/runtime/cpp17/py.hpp`. It exists to
 carry the mechanical part of moving CodeBreaker's own code to C++ (docs/NATIVE.md), and it is held
 to the same rule as everything CodeBreaker makes: readable source that behaves as the original,
 proven by running both.
