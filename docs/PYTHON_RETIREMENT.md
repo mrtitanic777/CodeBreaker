@@ -462,3 +462,23 @@ in git history under tag `python-last`.
   session for its fate rows.
 - **Outside callers** (Dashboard, Windows95, Win95VM, XboxMCP) re-checked as in 3.4 before step 7b.
 - **The exe's `ui` launcher needs a Python**: found by setting `python` or PATH; document in README.
+
+## 8. The plain native program beside the old one (2026-11-13)
+
+`tools\build_codebreaker.cmd` builds target `cb_codebreaker` (`native/cb/app/codebreaker_main.cpp`, no pyengine) in the
+same tree as `tools\build_cb.cmd` (`state\cxx\cb`, objects shared) and installs it with unicorn/capstone/libz3 as
+`state\cxx\codebreaker\native\codebreaker.exe`. `state\cxx\codebreaker\build\codebreaker.exe` (the translated Python,
+`tools\build_codebreaker_exe.cmd`) is untouched. 25 MB (plus 35 MB of the three prebuilt DLLs) against 130 MB; start-up
+about 10 ms.
+
+- **`ui`** (and no command in a terminal) runs `python -m codebreaker.ui.terminal` in the console, with `CB_EXE` set to
+  the program itself and `PYTHONPATH` the checkout. Python is `CB_PYTHON`, the setting `python`, then `python`, then
+  `py -3` on the PATH (the first that runs `-c pass`); none: exit 2 with a message saying what to install. Textual's own
+  missing-package line comes from `terminal.py`. This is the only Python the program starts.
+- **One setting points everything at it**: `CB_EXE=<path to the exe>`. `codebreaker/ui/client.py` (`exe` setting or
+  `CB_EXE`), `tests/run_all.py`, `tools\gate.cmd` (default `--exe` is `CB_EXE`, else the old build) and `.mcp.json`
+  (`${CB_EXE:-<old build>}`) all read it. Unset, the old program is still the default.
+- Unknown words now get the table's usage and exit 2 (a listed command that is not native still says so); the goldens
+  `cli-help` and `cli-unknown` were re-recorded for the native wording (no `python -m`, the native catalog, usage on stderr).
+- The native program still loads the prebuilt `native/<lib>/build/bin` DLLs (`cbl2.dll` for decompile, the xex program,
+  ...): they must exist beside the checkout until those libraries are folded in.
