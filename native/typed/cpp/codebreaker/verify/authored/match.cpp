@@ -1,5 +1,6 @@
 // codebreaker/verify/authored/match.cpp -- typed C++ of codebreaker.verify.authored.match (see match.hpp).
 
+#include "py_difflib.hpp"
 #include "codebreaker/verify/authored/match.hpp"
 
 #ifndef NOMINMAX
@@ -427,55 +428,9 @@ const py::dict<py::str, Arch>& ARCH() {
 
 // ---- comparing -----------------------------------------------------------------------------------------------------------
 double sequence_ratio(const py::bytes& a, const py::bytes& b) {
-    // difflib.SequenceMatcher(None, a, b, autojunk=False): the matching blocks by the longest match, found as difflib finds it
-    const int64_t la = py::len(a), lb = py::len(b);
-    std::vector<std::vector<int64_t>> b2j(256);
-    for (int64_t j = 0; j < lb; j++) b2j[static_cast<size_t>(b[j])].push_back(j);
-    std::vector<int64_t> j2len(static_cast<size_t>(lb) + 1, 0), newj2len(static_cast<size_t>(lb) + 1, 0);
-    auto longest = [&](int64_t alo, int64_t ahi, int64_t blo, int64_t bhi) {
-        int64_t besti = alo, bestj = blo, bestsize = 0;
-        std::vector<int64_t> touched_old, touched_new;
-        std::fill(j2len.begin(), j2len.end(), 0);
-        for (int64_t i = alo; i < ahi; i++) {
-            touched_new.clear();
-            for (int64_t j : b2j[static_cast<size_t>(a[i])]) {
-                if (j < blo) continue;
-                if (j >= bhi) break;
-                int64_t k = (j > 0 ? j2len[static_cast<size_t>(j - 1)] : 0) + 1;   // j2lenget(j-1, 0) + 1
-                newj2len[static_cast<size_t>(j)] = k;
-                touched_new.push_back(j);
-                if (k > bestsize) {
-                    besti = i - k + 1;
-                    bestj = j - k + 1;
-                    bestsize = k;
-                }
-            }
-            for (int64_t j : touched_old) j2len[static_cast<size_t>(j)] = 0;
-            for (int64_t j : touched_new) j2len[static_cast<size_t>(j)] = newj2len[static_cast<size_t>(j)];
-            touched_old = touched_new;
-        }
-        while (besti > alo && bestj > blo && a[besti - 1] == b[bestj - 1]) {
-            besti -= 1;
-            bestj -= 1;
-            bestsize += 1;
-        }
-        while (besti + bestsize < ahi && bestj + bestsize < bhi && a[besti + bestsize] == b[bestj + bestsize]) bestsize += 1;
-        return std::make_tuple(besti, bestj, bestsize);
-    };
-    std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t>> queue{{0, la, 0, lb}};
-    int64_t matches = 0;
-    while (!queue.empty()) {
-        auto [alo, ahi, blo, bhi] = queue.back();
-        queue.pop_back();
-        auto [i, j, k] = longest(alo, ahi, blo, bhi);
-        if (k) {
-            matches += k;
-            if (alo < i && blo < j) queue.push_back({alo, i, blo, j});
-            if (i + k < ahi && j + k < bhi) queue.push_back({i + k, ahi, j + k, bhi});
-        }
-    }
-    int64_t length = la + lb;
-    return length ? 2.0 * static_cast<double>(matches) / static_cast<double>(length) : 1.0;
+    // difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
+    const std::vector<unsigned char> av(a.raw().begin(), a.raw().end()), bv(b.raw().begin(), b.raw().end());
+    return py::difflib::SequenceMatcher<unsigned char>(av, bv, nullptr, false).ratio();
 }
 
 std::tuple<py::str, double> compare(const ByteMasked& built, const ByteMasked& original) {

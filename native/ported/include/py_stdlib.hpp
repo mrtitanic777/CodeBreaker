@@ -6,11 +6,21 @@
 //   py::subprocess::list2cmdline      (running a program is py_subprocess.hpp: it needs <windows.h>)
 //   py::tempfile                      gettempdir, mkdtemp, TemporaryDirectory
 //   py::codecs                        utf-16-be decode / encode
+//   py::raise_named / translate_errors  a native reader's (kind, message) error as the Python exception of that name
+//   py::contextlib::redirect_stdout / redirect_stdout_null   standard output captured / dropped for a scope (RAII)
 //
 // (Included at the end of py.hpp.)
 #pragma once
 
+#include <fstream>
+#include <mutex>
 #include <random>
+#include <sstream>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <process.h>
+#endif
 
 #define PY_STDLIB_TEXT_CTOR(Name, Base) template <class S, class = decltype(std::declval<const S&>().utf8())> explicit Name(const S& m) : Base(m.utf8()) {}
 
@@ -417,6 +427,145 @@ inline bytes utf_16_be_encode(const str& s, const char* errors = "strict") {
     return bytes(out);
 }
 }  // namespace codecs
+
+
+// ------------------------------------------------------------------------------------------ native errors
+// raise_named("ValueError", message): the Python exception a native reader's failure stands for (its name as Python prints
+// it: "struct.error" for struct.error). An unknown name is RuntimeError.
+[[noreturn]] inline void raise_named(const std::string& kind, const std::string& m) {
+    if (kind == "struct.error") throw StructError(m);
+    if (kind == "ValueError") throw ValueError(m);
+    if (kind == "IndexError") throw IndexError(m);
+    if (kind == "KeyError") throw KeyError(m);
+    if (kind == "TypeError") throw TypeError(m);
+    if (kind == "OverflowError") throw OverflowError(m);
+    if (kind == "ZeroDivisionError") throw ZeroDivisionError(m);
+    if (kind == "MemoryError") throw MemoryError(m);
+    if (kind == "OSError") throw OSError(m);
+    if (kind == "FileNotFoundError") throw FileNotFoundError(m);
+    if (kind == "FileExistsError") throw FileExistsError(m);
+    if (kind == "PermissionError") throw PermissionError(m);
+    if (kind == "EOFError") throw EOFError(m);
+    if (kind == "StopIteration") throw StopIteration(m);
+    if (kind == "UnicodeDecodeError") throw UnicodeDecodeError(m);
+    if (kind == "UnicodeEncodeError") throw UnicodeEncodeError(m);
+    if (kind == "AttributeError") throw AttributeError(m);
+    if (kind == "AssertionError") throw AssertionError(m);
+    if (kind == "NotImplementedError") throw NotImplementedError(m);
+    throw RuntimeError(m);
+}
+// translate_errors<E>(f): f(), where an E (a native reader's error with .kind and .message: cbf::PyError) leaves as the
+// Python exception of that name, and a failed allocation as MemoryError
+template <class E, class F> auto translate_errors(F&& f) -> decltype(f()) {
+    try {
+        return memory_guard(f);
+    } catch (const E& e) {
+        raise_named(e.kind, e.message);
+    }
+}
+
+// ------------------------------------------------------------------------------------------ contextlib
+namespace contextlib {
+namespace detail_ {
+inline std::recursive_mutex& capture_mutex_() {
+    static std::recursive_mutex m;
+    return m;
+}
+inline std::mutex& silence_mutex_() {
+    static std::mutex m;
+    return m;
+}
+inline int& silence_depth_() {
+    static int n = 0;
+    return n;
+}
+inline int& silence_saved_() {
+    static int fd = -1;
+    return fd;
+}
+}  // namespace detail_
+// with contextlib.redirect_stdout(io.StringIO()) as buf: ... buf.getvalue()
+// File descriptor 1 goes to a temporary file for the scope, so everything written to standard output (print, std::cout, C stdio,
+// a child process) is caught. getvalue() ends the capture and gives the text (UTF-8, errors replaced); the destructor ends it
+// when it has not been asked for. Captures exclude one another (a recursive lock held for the scope).
+class redirect_stdout {
+  public:
+    redirect_stdout() : lock_(detail_::capture_mutex_()) {
+        std::fflush(stdout);
+        std::cout.flush();
+#ifdef _WIN32
+        static int serial = 0;
+        path_ = (std::filesystem::temp_directory_path() / ("cbc" + std::to_string(_getpid()) + "_" + std::to_string(serial++) + ".tmp")).string();
+        const int fd = _open(path_.c_str(), _O_RDWR | _O_BINARY | _O_CREAT | _O_TRUNC, 0600);
+        saved_ = _dup(1);
+        _dup2(fd, 1);
+        _close(fd);
+#endif
+    }
+    redirect_stdout(const redirect_stdout&) = delete;
+    redirect_stdout& operator=(const redirect_stdout&) = delete;
+    ~redirect_stdout() {
+        if (!done_) getvalue();
+    }
+    str getvalue() {
+        if (!done_) {
+#ifdef _WIN32
+            std::fflush(stdout);
+            std::cout.flush();
+            _dup2(saved_, 1);
+            _close(saved_);
+            std::ifstream f(path_, std::ios::binary);
+            std::stringstream ss;
+            ss << f.rdbuf();
+            std::string raw = ss.str();
+            for (size_t n = 0; (n = raw.find("\r\n", n)) != std::string::npos;) raw.erase(n, 1);   // (text mode wrote \n as \r\n)
+            text_ = raw;
+            f.close();
+            std::remove(path_.c_str());
+#endif
+            done_ = true;
+        }
+        return bytes(text_).decode("utf-8", "replace");
+    }
+
+  private:
+    std::lock_guard<std::recursive_mutex> lock_;
+    std::string path_, text_;
+    int saved_ = -1;
+    bool done_ = false;
+};
+// with contextlib.redirect_stdout(io.StringIO()): ...   (never read back): standard output goes to NUL for the scope; scopes
+// may nest or overlap across threads (the first in redirects, the last out restores)
+class redirect_stdout_null {
+  public:
+    redirect_stdout_null() {
+        std::lock_guard<std::mutex> g(detail_::silence_mutex_());
+        if (detail_::silence_depth_()++ == 0) {
+            std::fflush(stdout);
+            std::cout.flush();
+#ifdef _WIN32
+            detail_::silence_saved_() = _dup(1);
+            const int nul = _open("NUL", _O_WRONLY | _O_BINARY);
+            _dup2(nul, 1);
+            _close(nul);
+#endif
+        }
+    }
+    redirect_stdout_null(const redirect_stdout_null&) = delete;
+    redirect_stdout_null& operator=(const redirect_stdout_null&) = delete;
+    ~redirect_stdout_null() {
+        std::lock_guard<std::mutex> g(detail_::silence_mutex_());
+        if (--detail_::silence_depth_() == 0) {
+            std::fflush(stdout);
+            std::cout.flush();
+#ifdef _WIN32
+            _dup2(detail_::silence_saved_(), 1);
+            _close(detail_::silence_saved_());
+#endif
+        }
+    }
+};
+}  // namespace contextlib
 
 }  // namespace py
 #undef PY_STDLIB_TEXT_CTOR

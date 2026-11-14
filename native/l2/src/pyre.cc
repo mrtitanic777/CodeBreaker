@@ -93,7 +93,7 @@ struct Parser {
     std::vector<std::pair<std::string, int>> names;
     Parser(const std::string& pat, int f) : p(pat), flags(f) {}
 
-    [[noreturn]] void fail(const std::string& m) { py::raise("ValueError", "re: " + m + " in " + py::str_repr(p)); }
+    [[noreturn]] void fail(const std::string& m) { throw Error("PatternError", m); }   // (what the checker below lets through)
     bool more() const { return i < p.size(); }
     uint32_t next() { return py::decode_cp(p, i); }
 
@@ -673,7 +673,624 @@ static std::shared_ptr<Prog> compile_prog(const Node* root, int ngroups, int fla
     return p;
 }
 
+// ---------------------------------------------------------------------------------------- the errors of re.compile
+// A port of the error paths of CPython's Lib/re/_parser.py (3.14): the same checks in the same order, so a pattern CPython
+// refuses is refused here with its message and position (a code point index, "(line L, column C)" when the pattern has a newline),
+// as re.PatternError. It only validates; the Parser below builds the program for the patterns that pass.
+namespace {
+
+struct Checker {
+    std::u32string s;          // the pattern, by code point
+    size_t index = 0;
+    bool has = false;          // Tokenizer.next: None when !has
+    std::u32string nx;
+    std::vector<bool> closed{false};   // State.groupwidths[gid] is not None (group 0 never is)
+    std::vector<std::pair<std::u32string, int>> names;
+    int lookbehindgroups = -1;         // -1: None
+    std::vector<std::pair<int, size_t>> grouprefpos;
+    bool state_verbose = false;
+
+    static std::string u8(const std::u32string& u) {
+        std::string o;
+        for (char32_t c : u) {
+            if (c < 0x80) o += (char)c;
+            else if (c < 0x800) { o += (char)(0xC0 | (c >> 6)); o += (char)(0x80 | (c & 0x3F)); }
+            else if (c < 0x10000) { o += (char)(0xE0 | (c >> 12)); o += (char)(0x80 | ((c >> 6) & 0x3F)); o += (char)(0x80 | (c & 0x3F)); }
+            else { o += (char)(0xF0 | (c >> 18)); o += (char)(0x80 | ((c >> 12) & 0x3F)); o += (char)(0x80 | ((c >> 6) & 0x3F)); o += (char)(0x80 | (c & 0x3F)); }
+        }
+        return o;
+    }
+    [[noreturn]] void raise_at(const std::string& msg, long pos) {
+        std::string m = msg + " at position " + std::to_string(pos);
+        bool nl = false;
+        for (char32_t c : s) nl = nl || c == U'\n';
+        if (nl) {
+            long lineno = 1, last = -1;
+            for (long k = 0; k < pos && k < (long)s.size(); k++)
+                if (s[(size_t)k] == U'\n') {
+                    lineno++;
+                    last = k;
+                }
+            m += " (line " + std::to_string(lineno) + ", column " + std::to_string(pos - last) + ")";
+        }
+        throw Error("PatternError", m);
+    }
+    long tell() const { return (long)index - (has ? (long)nx.size() : 0); }
+    [[noreturn]] void err(const std::string& msg, long offset = 0) { raise_at(msg, tell() - offset); }
+
+    void advance() {   // Tokenizer.__next
+        if (index >= s.size()) {
+            has = false;
+            return;
+        }
+        std::u32string c(1, s[index]);
+        if (c[0] == U'\\') {
+            index++;
+            if (index >= s.size()) raise_at("bad escape (end of pattern)", (long)s.size() - 1);
+            c += s[index];
+        }
+        index++;
+        nx = c;
+        has = true;
+    }
+    bool is(char32_t c) const { return has && nx.size() == 1 && nx[0] == c; }
+    bool match(char32_t c) {
+        if (is(c)) {
+            advance();
+            return true;
+        }
+        return false;
+    }
+    // Tokenizer.get(): the token ("" with ok=false for None)
+    std::u32string get(bool& ok) {
+        ok = has;
+        std::u32string t = nx;
+        advance();
+        return t;
+    }
+    template <class P> std::u32string getwhile(int n, P in) {
+        std::u32string r;
+        for (int k = 0; k < n; k++) {
+            if (!has || nx.size() != 1 || !in(nx[0])) break;
+            r += nx;
+            advance();
+        }
+        return r;
+    }
+    static bool hexd(char32_t c) { return (c >= U'0' && c <= U'9') || (c >= U'a' && c <= U'f') || (c >= U'A' && c <= U'F'); }
+    static bool octd(char32_t c) { return c >= U'0' && c <= U'7'; }
+    static bool dig(char32_t c) { return c >= U'0' && c <= U'9'; }
+    static bool ascii_letter(char32_t c) { return (c >= U'a' && c <= U'z') || (c >= U'A' && c <= U'Z'); }
+    bool next_in(bool (*pred)(char32_t)) const { return has && nx.size() == 1 && pred(nx[0]); }
+
+    std::u32string getuntil(char32_t terminator, const std::string& name) {
+        std::u32string r;
+        while (true) {
+            bool ok;
+            const bool had = has;
+            std::u32string c = nx;
+            (void)ok;
+            advance();
+            if (!had) {
+                if (r.empty()) err("missing " + name);
+                err(std::string("missing ") + (char)terminator + ", unterminated name", (long)r.size());
+            }
+            if (c.size() == 1 && c[0] == terminator) {
+                if (r.empty()) err("missing " + name, 1);
+                break;
+            }
+            r += c;
+        }
+        return r;
+    }
+    static bool identifier(const std::u32string& n) {
+        if (n.empty()) return false;
+        for (size_t k = 0; k < n.size(); k++) {
+            char32_t c = n[k];
+            bool letter = ascii_letter(c) || c == U'_' || c >= 0x80;
+            if (!(letter || (k && dig(c)))) return false;
+        }
+        return true;
+    }
+    void checkgroupname(const std::u32string& name, long offset) {
+        if (!identifier(name)) err("bad character in group name " + py::str_repr(u8(name)), (long)name.size() + offset);
+    }
+    int groups() const { return (int)closed.size(); }
+    bool checkgroup(int gid) const { return gid < groups() && closed[(size_t)gid]; }
+    void checklookbehindgroup(int gid) {
+        if (lookbehindgroups >= 0) {
+            if (!checkgroup(gid)) err("cannot refer to an open group");
+            if (gid >= lookbehindgroups) err("cannot refer to group defined in the same lookbehind subpattern");
+        }
+    }
+
+    // _class_escape / _escape: the kind of what the escape is (true: a single character, for the range check)
+    enum Kind { LITERAL, IN, AT, GROUPREF };
+    char32_t val = 0;   // the value of the last LITERAL escape
+    Kind escape_common(std::u32string esc, bool in_class) {
+        // (the caller has tried the tables)
+        char32_t c = esc.size() > 1 ? esc[1] : 0;
+        const long len0 = (long)esc.size();
+        if (c == U'x') {
+            esc += getwhile(2, hexd);
+            if (esc.size() != 4) err("incomplete escape " + u8(esc), (long)esc.size());
+            val = (char32_t)std::stoul(u8(esc.substr(2)), nullptr, 16);
+            return LITERAL;
+        } else if (c == U'u') {
+            esc += getwhile(4, hexd);
+            if (esc.size() != 6) err("incomplete escape " + u8(esc), (long)esc.size());
+            val = (char32_t)std::stoul(u8(esc.substr(2)), nullptr, 16);
+            return LITERAL;
+        } else if (c == U'U') {
+            esc += getwhile(8, hexd);
+            if (esc.size() != 10) err("incomplete escape " + u8(esc), (long)esc.size());
+            unsigned long v = std::stoul(u8(esc.substr(2)), nullptr, 16);
+            if (v > 0x10FFFF) err("bad escape " + u8(esc), (long)esc.size());   // chr(c) raises ValueError: falls to "bad escape"
+            val = (char32_t)v;
+            return LITERAL;
+        } else if (c == U'N') {
+            if (!match(U'{')) err("missing {");
+            std::u32string name = getuntil(U'}', "character name");
+            // (no Unicode name table here: every name is taken as defined)
+            (void)name;
+            val = 0;
+            return LITERAL;
+        } else if (in_class ? octd(c) : c == U'0') {
+            esc += getwhile(2, octd);
+            if (in_class) {
+                unsigned long v = std::stoul(u8(esc.substr(1)), nullptr, 8);
+                if (v > 0377) err("octal escape value " + u8(esc) + " outside of range 0-0o377", (long)esc.size());
+                val = (char32_t)v;
+            } else {
+                val = (char32_t)std::stoul(u8(esc.substr(1)), nullptr, 8);
+            }
+            return LITERAL;
+        } else if (!in_class && dig(c)) {
+            if (next_in(dig)) {
+                bool ok;
+                esc += get(ok);
+                if (octd(esc[1]) && octd(esc[2]) && next_in(octd)) {
+                    esc += get(ok);
+                    unsigned long v = std::stoul(u8(esc.substr(1)), nullptr, 8);
+                    if (v > 0377) err("octal escape value " + u8(esc) + " outside of range 0-0o377", (long)esc.size());
+                    val = (char32_t)v;
+                    return LITERAL;
+                }
+            }
+            long group = std::stol(u8(esc.substr(1)));
+            if (group < groups()) {
+                if (!checkgroup((int)group)) err("cannot refer to an open group", (long)esc.size());
+                checklookbehindgroup((int)group);
+                return GROUPREF;
+            }
+            err("invalid group reference " + std::to_string(group), (long)esc.size() - 1);
+        } else if (in_class && dig(c)) {
+            err("bad escape " + u8(esc), (long)esc.size());   // (\8, \9)
+        }
+        (void)len0;
+        if (esc.size() == 2) {
+            if (ascii_letter(c)) err("bad escape " + u8(esc), (long)esc.size());
+            val = c;
+            return LITERAL;
+        }
+        err("bad escape " + u8(esc), (long)esc.size());
+    }
+    Kind class_escape(const std::u32string& esc) {
+        if (esc.size() == 2 && std::u32string(U"abfnrtv\\").find(esc[1]) != std::u32string::npos) {
+            val = literal_value(esc);
+            return LITERAL;
+        }
+        if (esc == U"\\d" || esc == U"\\D" || esc == U"\\s" || esc == U"\\S" || esc == U"\\w" || esc == U"\\W") return IN;
+        return escape_common(esc, true);
+    }
+    Kind expr_escape(const std::u32string& esc) {
+        if (esc == U"\\A" || esc == U"\\b" || esc == U"\\B" || esc == U"\\z" || esc == U"\\Z") return AT;
+        if (esc == U"\\d" || esc == U"\\D" || esc == U"\\s" || esc == U"\\S" || esc == U"\\w" || esc == U"\\W") return IN;
+        if (esc.size() == 2 && std::u32string(U"afnrtv\\").find(esc[1]) != std::u32string::npos) return LITERAL;
+        return escape_common(esc, false);
+    }
+
+    enum Item { OTHER, ITEM_AT, ITEM_REP };
+
+    void parse_sub(bool verbose, int nested) {
+        bool first_item = true;
+        while (true) {
+            parse(verbose, nested + 1, !nested && first_item);
+            first_item = false;
+            if (!match(U'|')) break;
+            if (!nested) verbose = state_verbose;
+        }
+    }
+
+    // returns the flags as (global?, add, del)
+    static bool flagchar(char32_t c) { return c == U'i' || c == U'L' || c == U'm' || c == U's' || c == U'x' || c == U'a' || c == U'u'; }
+    static bool typeflag(char32_t c) { return c == U'a' || c == U'u' || c == U'L'; }
+    static bool alpha(char32_t c) { return ascii_letter(c) || (c >= 0x80 && c != 0x85 && c != 0xA0); }
+    // _parse_flags: true when the flags are global ((?i)), else scoped; adds sets the verbose bits
+    bool parse_flags(char32_t ch, bool& add_x, bool& del_x) {
+        std::u32string add, del;
+        bool ok;
+        char32_t c = ch;
+        bool endc = false;   // (char is None)
+        if (c != U'-') {
+            while (true) {
+                if (c == U'L') err("bad inline flags: cannot use 'L' flag with a str pattern");
+                add += c;
+                if (typeflag(c)) {
+                    for (char32_t a : add)
+                        if (typeflag(a) && a != c) err("bad inline flags: flags 'a', 'u' and 'L' are incompatible");
+                }
+                std::u32string t = get(ok);
+                if (!ok) err("missing -, : or )");
+                if (t.size() == 1 && (t[0] == U')' || t[0] == U'-' || t[0] == U':')) {
+                    c = t[0];
+                    break;
+                }
+                if (!(t.size() == 1 && flagchar(t[0]))) err(t.size() == 1 && alpha(t[0]) ? "unknown flag" : "missing -, : or )", (long)t.size());
+                c = t[0];
+            }
+        }
+        (void)endc;
+        if (c == U')') {
+            for (char32_t a : add)
+                if (a == U'x') state_verbose = true;
+            return true;
+        }
+        if (c == U'-') {
+            std::u32string t = get(ok);
+            if (!ok) err("missing flag");
+            if (!(t.size() == 1 && flagchar(t[0]))) err(t.size() == 1 && alpha(t[0]) ? "unknown flag" : "missing flag", (long)t.size());
+            while (true) {
+                char32_t f = t[0];
+                if (typeflag(f)) err("bad inline flags: cannot turn off flags 'a', 'u' and 'L'");
+                del += f;
+                t = get(ok);
+                if (!ok) err("missing :");
+                if (t.size() == 1 && t[0] == U':') break;
+                if (!(t.size() == 1 && flagchar(t[0]))) err(t.size() == 1 && alpha(t[0]) ? "unknown flag" : "missing :", (long)t.size());
+            }
+        }
+        for (char32_t a : add)
+            for (char32_t d : del)
+                if (a == d) err("bad inline flags: flag turned on and off", 1);
+        for (char32_t a : add) add_x = add_x || a == U'x';
+        for (char32_t d : del) del_x = del_x || d == U'x';
+        return false;
+    }
+
+    void parse(bool verbose, int nested, bool first) {
+        std::vector<Item> sub;
+        while (true) {
+            if (!has) break;
+            if (nx.size() == 1 && (nx[0] == U'|' || nx[0] == U')')) break;
+            bool ok;
+            std::u32string tok = get(ok);
+            if (verbose) {
+                if (tok.size() == 1 && (tok[0] == U' ' || tok[0] == U'\t' || tok[0] == U'\n' || tok[0] == U'\r' || tok[0] == U'\v' || tok[0] == U'\f')) continue;
+                if (tok.size() == 1 && tok[0] == U'#') {
+                    while (true) {
+                        std::u32string t = get(ok);
+                        if (!ok || (t.size() == 1 && t[0] == U'\n')) break;
+                    }
+                    continue;
+                }
+            }
+            if (tok[0] == U'\\') {
+                Kind k = expr_escape(tok);
+                sub.push_back(k == AT ? ITEM_AT : OTHER);
+                continue;
+            }
+            const char32_t t = tok[0];
+            if (!(t == U'.' || t == U'\\' || t == U'[' || t == U'{' || t == U'(' || t == U'*' || t == U'+' || t == U'?' || t == U'^' || t == U'$' ||
+                  t == U'|' || t == U')')) {
+                sub.push_back(OTHER);
+            } else if (t == U'[') {
+                const long here = tell() - 1;
+                bool negate = match(U'^');
+                (void)negate;
+                size_t nset = 0;
+                while (true) {
+                    std::u32string th = get(ok);
+                    if (!ok) err("unterminated character set", tell() - here);
+                    Kind code1 = LITERAL;
+                    char32_t v1 = th[0];
+                    if (th.size() == 1 && th[0] == U']' && nset) break;
+                    else if (th[0] == U'\\') {
+                        code1 = class_escape(th);
+                        v1 = val;
+                    }
+                    if (match(U'-')) {
+                        std::u32string that = get(ok);
+                        if (!ok) err("unterminated character set", tell() - here);
+                        if (that.size() == 1 && that[0] == U']') break;
+                        Kind code2 = LITERAL;
+                        char32_t v2 = that[0];
+                        if (that[0] == U'\\') {
+                            code2 = class_escape(that);
+                            v2 = val;
+                        }
+                        if (code1 != LITERAL || code2 != LITERAL)
+                            err("bad character range " + u8(th) + "-" + u8(that), (long)th.size() + 1 + (long)that.size());
+                        char32_t lo = v1, hi = v2;
+                        if (hi < lo) err("bad character range " + u8(th) + "-" + u8(that), (long)th.size() + 1 + (long)that.size());
+                        nset++;
+                    } else {
+                        nset++;
+                    }
+                }
+                sub.push_back(OTHER);
+            } else if (t == U'*' || t == U'+' || t == U'?' || t == U'{') {
+                const long here = tell();
+                if (t == U'{') {
+                    if (is(U'}')) {
+                        sub.push_back(OTHER);   // (a literal '{'; the '}' is read as an ordinary character next)
+                        continue;
+                    }
+                    std::string lo, hi;
+                    while (next_in(dig)) {
+                        lo += (char)nx[0];
+                        advance();
+                    }
+                    if (match(U',')) {
+                        while (next_in(dig)) {
+                            hi += (char)nx[0];
+                            advance();
+                        }
+                    } else
+                        hi = lo;
+                    if (!match(U'}')) {
+                        sub.push_back(OTHER);
+                        index = (size_t)here;   // source.seek(here)
+                        advance();
+                        continue;
+                    }
+                    const unsigned long long MAXREPEAT = 4294967295ULL;
+                    unsigned long long mn = 0, mx = MAXREPEAT;
+                    auto big = [&](const std::string& d) { return d.size() > 10 || std::stoull(d) >= MAXREPEAT; };
+                    if (!lo.empty()) {
+                        if (big(lo)) throw Error("OverflowError", "the repetition number is too large");
+                        mn = std::stoull(lo);
+                    }
+                    if (!hi.empty()) {
+                        if (big(hi)) throw Error("OverflowError", "the repetition number is too large");
+                        mx = std::stoull(hi);
+                        if (mx < mn) err("min repeat greater than max repeat", tell() - here);
+                    }
+                }
+                if (sub.empty() || sub.back() == ITEM_AT) err("nothing to repeat", tell() - here + 1);
+                if (sub.back() == ITEM_REP) err("multiple repeat", tell() - here + 1);
+                if (!match(U'?')) match(U'+');
+                sub.back() = ITEM_REP;
+            } else if (t == U'.') {
+                sub.push_back(OTHER);
+            } else if (t == U'(') {
+                group(verbose, nested, first, sub);
+            } else if (t == U'^' || t == U'$') {
+                sub.push_back(ITEM_AT);
+            }
+        }
+    }
+    char32_t literal_value(const std::u32string& esc) {   // a class escape that is a single character, by value
+        if (esc.size() == 2) {
+            switch (esc[1]) {
+                case U'a': return 7;
+                case U'b': return 8;
+                case U'f': return 12;
+                case U'n': return 10;
+                case U'r': return 13;
+                case U't': return 9;
+                case U'v': return 11;
+                default: return esc[1];
+            }
+        }
+        // (\x.. \u.... \U........ \ooo: the digits were consumed as part of the token text only for the escapes' own reads;
+        // their value is not needed for an error except the range order, read back from what the tokenizer took)
+        return 0;
+    }
+
+    void group(bool& verbose, int nested, bool first, std::vector<Item>& sub) {
+        const long start = tell() - 1;
+        bool capture = true;
+        std::u32string name;
+        bool has_name = false;
+        bool add_x = false, del_x = false;
+        if (match(U'?')) {
+            bool ok;
+            std::u32string ch = get(ok);
+            if (!ok) err("unexpected end of pattern");
+            const char32_t c = ch[0];
+            const bool one = ch.size() == 1;
+            if (one && c == U'P') {
+                if (match(U'<')) {
+                    name = getuntil(U'>', "group name");
+                    has_name = true;
+                    checkgroupname(name, 1);
+                } else if (match(U'=')) {
+                    std::u32string nm = getuntil(U')', "group name");
+                    checkgroupname(nm, 1);
+                    int gid = -1;
+                    for (auto& kv : names)
+                        if (kv.first == nm) gid = kv.second;
+                    if (gid < 0) err("unknown group name " + py::str_repr(u8(nm)), (long)nm.size() + 1);
+                    if (!checkgroup(gid)) err("cannot refer to an open group", (long)nm.size() + 1);
+                    checklookbehindgroup(gid);
+                    sub.push_back(OTHER);
+                    return;
+                } else {
+                    std::u32string c2 = get(ok);
+                    if (!ok) err("unexpected end of pattern");
+                    err("unknown extension ?P" + u8(c2), (long)c2.size() + 2);
+                }
+            } else if (one && c == U':') {
+                capture = false;
+            } else if (one && c == U'#') {
+                while (true) {
+                    if (!has) err("missing ), unterminated comment", tell() - start);
+                    bool ok2;
+                    std::u32string t = get(ok2);
+                    if (t.size() == 1 && t[0] == U')') break;
+                }
+                return;
+            } else if (one && (c == U'=' || c == U'!' || c == U'<')) {
+                bool behind = false;
+                char32_t kind = c;
+                int saved = lookbehindgroups;
+                if (c == U'<') {
+                    std::u32string c2 = get(ok);
+                    if (!ok) err("unexpected end of pattern");
+                    if (!(c2.size() == 1 && (c2[0] == U'=' || c2[0] == U'!'))) err("unknown extension ?<" + u8(c2), (long)c2.size() + 2);
+                    kind = c2[0];
+                    behind = true;
+                    if (lookbehindgroups < 0) lookbehindgroups = groups();
+                }
+                parse_sub(verbose, nested + 1);
+                if (behind && saved < 0) lookbehindgroups = -1;
+                if (!match(U')')) err("missing ), unterminated subpattern", tell() - start);
+                (void)kind;
+                sub.push_back(OTHER);
+                return;
+            } else if (one && c == U'(') {
+                std::u32string cond = getuntil(U')', "group name");
+                bool decimal = !cond.empty();
+                for (char32_t d : cond) decimal = decimal && dig(d);
+                int condgroup;
+                if (!decimal) {
+                    checkgroupname(cond, 1);
+                    condgroup = -1;
+                    for (auto& kv : names)
+                        if (kv.first == cond) condgroup = kv.second;
+                    if (condgroup < 0) err("unknown group name " + py::str_repr(u8(cond)), (long)cond.size() + 1);
+                } else {
+                    unsigned long long g = cond.size() > 9 ? 4294967295ULL : std::stoull(u8(cond));
+                    if (!g) err("bad group number", (long)cond.size() + 1);
+                    if (g >= 1073741824ULL) err("invalid group reference " + std::to_string(g), (long)cond.size() + 1);
+                    condgroup = (int)g;
+                    bool seen = false;
+                    for (auto& kv : grouprefpos) seen = seen || kv.first == condgroup;
+                    if (!seen) grouprefpos.push_back({condgroup, (size_t)(tell() - (long)cond.size() - 1)});
+                }
+                checklookbehindgroup(condgroup);
+                parse(verbose, nested + 1, false);
+                if (match(U'|')) {
+                    parse(verbose, nested + 1, false);
+                    if (is(U'|')) err("conditional backref with more than two branches");
+                }
+                if (!match(U')')) err("missing ), unterminated subpattern", tell() - start);
+                sub.push_back(OTHER);
+                return;
+            } else if (one && c == U'>') {
+                capture = false;
+            } else if (one && (flagchar(c) || c == U'-')) {
+                bool glob = parse_flags(c, add_x, del_x);
+                if (glob) {
+                    if (!first || !sub.empty()) err("global flags not at the start of the expression", tell() - start);
+                    verbose = state_verbose;
+                    return;
+                }
+                capture = false;
+            } else {
+                err("unknown extension ?" + u8(ch), (long)ch.size() + 1);
+            }
+        }
+        int gid = -1;
+        if (capture) {
+            gid = groups();
+            closed.push_back(false);
+            if (has_name) {
+                for (auto& kv : names)
+                    if (kv.first == name)
+                        err("redefinition of group name " + py::str_repr(u8(name)) + " as group " + std::to_string(gid) + "; was group " +
+                                std::to_string(kv.second),
+                            (long)name.size() + 1);
+                names.push_back({name, gid});
+            }
+        }
+        const bool sub_verbose = (verbose || add_x) && !del_x;
+        parse_sub(sub_verbose, nested + 1);
+        if (!match(U')')) err("missing ), unterminated subpattern", tell() - start);
+        if (gid >= 0) closed[(size_t)gid] = true;
+        sub.push_back(OTHER);
+    }
+
+
+    // parse_template's errors (Lib/re/_parser.py): the replacement is read whole, before any match
+    void check_template(const std::vector<std::pair<std::string, int>>& group_names, int ngroups) {
+        advance();
+        while (true) {
+            bool ok;
+            std::u32string t = get(ok);
+            if (!ok) break;
+            if (t[0] != U'\\') continue;
+            const char32_t c = t[1];
+            if (c == U'g') {
+                if (!match(U'<')) err("missing <");
+                std::u32string name = getuntil(U'>', "group name");
+                bool dec = !name.empty();
+                for (char32_t d : name) dec = dec && dig(d);
+                long long index;
+                if (!dec) {
+                    checkgroupname(name, 1);
+                    index = -1;
+                    const std::string key = u8(name);
+                    for (auto& kv : group_names)
+                        if (kv.first == key) index = kv.second;
+                    if (index < 0) throw Error("IndexError", "unknown group name " + py::str_repr(key));
+                } else {
+                    index = name.size() > 10 ? 4294967295LL : std::stoll(u8(name));
+                    if (index >= 1073741824LL) err("invalid group reference " + std::to_string(index), (long)name.size() + 1);
+                }
+                if (index > ngroups) err("invalid group reference " + std::to_string(index), (long)name.size() + 1);
+            } else if (c == U'0') {
+                if (next_in(octd)) {
+                    get(ok);
+                    if (next_in(octd)) get(ok);
+                }
+            } else if (dig(c)) {
+                bool isoctal = false;
+                if (next_in(dig)) {
+                    t += get(ok);
+                    if (octd(c) && octd(t[2]) && next_in(octd)) {
+                        t += get(ok);
+                        isoctal = true;
+                        if (std::stoul(u8(t.substr(1)), nullptr, 8) > 0377)
+                            err("octal escape value " + u8(t) + " outside of range 0-0o377", (long)t.size());
+                    }
+                }
+                if (!isoctal) {
+                    long long index = std::stoll(u8(t.substr(1)));
+                    if (index > ngroups) err("invalid group reference " + std::to_string(index), (long)t.size() - 1);
+                }
+            } else if (ascii_letter(c) && std::u32string(U"abfnrtv").find(c) == std::u32string::npos) {
+                err("bad escape " + u8(t), (long)t.size());
+            }
+        }
+    }
+    void run(int flags) {
+        state_verbose = (flags & 64) != 0;
+        advance();
+        parse_sub(state_verbose, 0);
+        if (has) err("unbalanced parenthesis");
+        for (auto& kv : grouprefpos)
+            if (kv.first >= groups()) raise_at("invalid group reference " + std::to_string(kv.first), (long)kv.second);
+    }
+};
+
+void check_pattern(const std::string& pattern, int flags) {
+    Checker c;
+    for (size_t i = 0; i < pattern.size();) c.s.push_back((char32_t)py::decode_cp(pattern, i));
+    c.run(flags);
+}
+
+void check_template_text(const std::string& repl, const std::vector<std::pair<std::string, int>>& names, int ngroups) {
+    Checker c;
+    for (size_t i = 0; i < repl.size();) c.s.push_back((char32_t)py::decode_cp(repl, i));
+    c.check_template(names, ngroups);
+}
+
+}  // namespace
+
 Regex::Regex(const std::string& pattern, int flags) : pattern_(pattern) {
+    check_pattern(pattern, flags);   // (CPython's errors, before the program is built)
     Parser ps(pattern, flags);
     root_ = ps.alt();
     if (ps.more()) ps.fail("unbalanced parenthesis");
@@ -1322,6 +1939,7 @@ std::string Regex::sub_fn(const std::function<std::string(const Match&)>& fn, co
 std::string Regex::sub(const std::string& repl, const std::string& s, int count) const { return sub_in(repl, subject_of(s), count); }
 
 std::string Regex::sub_in(const std::string& repl, const Subject& subj, int count, int* nsubs) const {
+    if (repl.find('\\') != std::string::npos) check_template_text(repl, names_, ngroups_);   // (CPython's errors first)
     // the template: \1 .. \99, \g<n>, \g<name>, and the character escapes
     struct Piece {
         std::string text;
