@@ -1,0 +1,1684 @@
+{
+ "node": "Unit",
+ "package": "",
+ "path": "c:\\users\\mrtit\\documents\\github\\codebreaker\\.claude\\worktrees\\agent-a266aa9dbab93f9e2\\state\\work\\j2x-proof\\w\\cpp\\axisalignedbb.cpp",
+ "target": {
+  "char_signed": true,
+  "language": "c++",
+  "long": 4,
+  "pointer": 8,
+  "std": "c++14",
+  "triple": "x86_64-pc-windows-msvc",
+  "wchar": 2
+ },
+ "types": [
+  {
+   "col": 7,
+   "kind": "class",
+   "line": 12,
+   "members": [
+    {
+     "body": {
+      "col": 16,
+      "line": 9,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "minX",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "implicit": true,
+          "line": 9,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 16,
+           "line": 9,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "minY",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "implicit": true,
+          "line": 9,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 16,
+           "line": 9,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "minZ",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "implicit": true,
+          "line": 9,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 16,
+           "line": 9,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "maxX",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "implicit": true,
+          "line": 9,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 16,
+           "line": 9,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "maxY",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "implicit": true,
+          "line": 9,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 16,
+           "line": 9,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "maxZ",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "implicit": true,
+          "line": 9,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 16,
+           "line": 9,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "minX",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "line": 9,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var1",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "minY",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "line": 9,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var3",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "minZ",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "line": 9,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var5",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "maxX",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "line": 9,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var7",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "maxY",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "line": 9,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var9",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 16,
+        "expr": {
+         "col": 16,
+         "line": 9,
+         "node": "Assign",
+         "target": {
+          "col": 16,
+          "line": 9,
+          "node": "Select",
+          "obj": {
+           "col": 16,
+           "line": 9,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "AxisAlignedBB"
+           },
+           "x": {
+            "col": 16,
+            "line": 9,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "AxisAlignedBB"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "maxZ",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 16,
+          "line": 9,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var11",
+           "owner": "AxisAlignedBB",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 9,
+        "node": "ExprStmt"
+       }
+      ]
+     },
+     "col": 16,
+     "kind": "ctor",
+     "line": 9,
+     "mods": [
+      "public"
+     ],
+     "name": "AxisAlignedBB",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 37,
+       "line": 9,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "AxisAlignedBB",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "col": 50,
+       "line": 9,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var3",
+        "owner": "AxisAlignedBB",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "col": 63,
+       "line": 9,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var5",
+        "owner": "AxisAlignedBB",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "col": 76,
+       "line": 9,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var7",
+        "owner": "AxisAlignedBB",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "col": 89,
+       "line": 9,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var9",
+        "owner": "AxisAlignedBB",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "col": 102,
+       "line": 9,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var11",
+        "owner": "AxisAlignedBB",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "ctor",
+      "name": "AxisAlignedBB",
+      "owner": "AxisAlignedBB",
+      "params": [
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "col": 9,
+     "line": 17,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "minX",
+      "owner": "AxisAlignedBB",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 9,
+     "line": 18,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "minY",
+      "owner": "AxisAlignedBB",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 9,
+     "line": 19,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "minZ",
+      "owner": "AxisAlignedBB",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 9,
+     "line": 20,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "maxX",
+      "owner": "AxisAlignedBB",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 9,
+     "line": 21,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "maxY",
+      "owner": "AxisAlignedBB",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 9,
+     "line": 22,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "maxZ",
+      "owner": "AxisAlignedBB",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "body": {
+      "col": 21,
+      "line": 29,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 21,
+        "cond": {
+         "col": 21,
+         "left": {
+          "col": 21,
+          "left": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "Name",
+             "sym": {
+              "kind": "param",
+              "name": "var1",
+              "owner": "intersectsWith",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "AxisAlignedBB"
+               }
+              }
+             },
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "maxX",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "line": 29,
+          "node": "Binary",
+          "op": "<=",
+          "right": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "This",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "minX",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "bool"
+          }
+         },
+         "line": 29,
+         "node": "Binary",
+         "op": "||",
+         "right": {
+          "col": 21,
+          "left": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "Name",
+             "sym": {
+              "kind": "param",
+              "name": "var1",
+              "owner": "intersectsWith",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "AxisAlignedBB"
+               }
+              }
+             },
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "minX",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "line": 29,
+          "node": "Binary",
+          "op": ">=",
+          "right": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "This",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "maxX",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "bool"
+          }
+         },
+         "type": {
+          "kind": "bool"
+         }
+        },
+        "line": 29,
+        "node": "If",
+        "then": {
+         "col": 21,
+         "line": 29,
+         "node": "Block",
+         "stmts": [
+          {
+           "col": 21,
+           "expr": {
+            "col": 21,
+            "line": 29,
+            "node": "Lit",
+            "type": {
+             "kind": "bool"
+            },
+            "value": false
+           },
+           "line": 29,
+           "node": "Return"
+          }
+         ]
+        }
+       },
+       {
+        "col": 21,
+        "expr": {
+         "col": 21,
+         "left": {
+          "col": 21,
+          "left": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "Name",
+             "sym": {
+              "kind": "param",
+              "name": "var1",
+              "owner": "intersectsWith",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "AxisAlignedBB"
+               }
+              }
+             },
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "maxY",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "line": 29,
+          "node": "Binary",
+          "op": ">",
+          "right": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "This",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "minY",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "bool"
+          }
+         },
+         "line": 29,
+         "node": "Binary",
+         "op": "&&",
+         "right": {
+          "col": 21,
+          "left": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "Name",
+             "sym": {
+              "kind": "param",
+              "name": "var1",
+              "owner": "intersectsWith",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "AxisAlignedBB"
+               }
+              }
+             },
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "minY",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "line": 29,
+          "node": "Binary",
+          "op": "<",
+          "right": {
+           "col": 21,
+           "line": 29,
+           "node": "Select",
+           "obj": {
+            "col": 21,
+            "line": 29,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "AxisAlignedBB"
+            },
+            "x": {
+             "col": 21,
+             "line": 29,
+             "node": "This",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "AxisAlignedBB"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "maxY",
+            "owner": "AxisAlignedBB",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "bool"
+          }
+         },
+         "type": {
+          "kind": "bool"
+         }
+        },
+        "line": 29,
+        "node": "Return"
+       }
+      ]
+     },
+     "col": 21,
+     "kind": "method",
+     "line": 29,
+     "mods": [
+      "public",
+      "virtual"
+     ],
+     "name": "intersectsWith",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 51,
+       "line": 29,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "intersectsWith",
+        "type": {
+         "kind": "ptr",
+         "space": "flat",
+         "to": {
+          "kind": "class",
+          "name": "AxisAlignedBB"
+         }
+        }
+       },
+       "type": {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "AxisAlignedBB"
+        }
+       }
+      }
+     ],
+     "ret": {
+      "kind": "bool"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "intersectsWith",
+      "owner": "AxisAlignedBB",
+      "params": [
+       {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "AxisAlignedBB"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "bool"
+      }
+     }
+    },
+    {
+     "body": {
+      "col": 21,
+      "line": 37,
+      "node": "Block",
+      "stmts": []
+     },
+     "col": 21,
+     "kind": "static_init",
+     "line": 37,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "name": "initStatics",
+     "node": "MethodDecl",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "initStatics",
+      "owner": "AxisAlignedBB",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "static": true
+     }
+    }
+   ],
+   "mods": [
+    "polymorphic"
+   ],
+   "name": "AxisAlignedBB",
+   "node": "ClassDecl",
+   "qname": "AxisAlignedBB"
+  }
+ ]
+}

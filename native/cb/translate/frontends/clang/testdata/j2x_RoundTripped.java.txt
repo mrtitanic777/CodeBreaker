@@ -1,0 +1,186 @@
+// RoundTripped.java -- translated from C++ by CodeBreaker (idiomatic tier: structs as classes, pointers as references).
+import crt.*;
+
+import static crt.LibC.*;
+
+public final class RoundTripped {
+
+    /** class AxisAlignedBB */
+    static class AxisAlignedBB {
+        double minX;
+        double minY;
+        double minZ;
+        double maxX;
+        double maxY;
+        double maxZ;
+
+        AxisAlignedBB(double var1, double var3, double var5, double var7, double var9, double var11) {
+            minX = var1;
+            minY = var3;
+            minZ = var5;
+            maxX = var7;
+            maxY = var9;
+            maxZ = var11;
+        }
+
+        boolean intersectsWith(AxisAlignedBB var1) {
+            if (var1.maxX <= minX || var1.minX >= maxX) {
+                return false;
+            }
+            return var1.maxY > minY && var1.minY < maxY;
+        }
+
+    }
+
+    /** class Base */
+    static class Base {
+        int size;
+        int scale;
+
+        Base(int var1) {
+            scale = 2;
+            size = var1 * scale;
+        }
+
+        Base(int var1, int var2) {
+            scale = 2;
+            {
+                int j2xD0_var1 = var1;
+                size = j2xD0_var1 * scale;
+            }
+            scale += var2;
+        }
+
+    }
+
+    /** class MathHelper */
+    static class MathHelper {
+        static float[] SIN_TABLE = new float[65536];
+
+        static float sqrt_float(float var0) {
+            return (float) Math.sqrt((double) var0);
+        }
+
+        static int floor_double(double var0) {
+            int var2 = (int) var0;
+            return (var0 < (double) var2 ? var2 - 1 : var2);
+        }
+
+        static {
+            for (int var0 = 0; var0 < 65536; ++var0) {
+                SIN_TABLE[var0] = (float) Math.sin((double) var0 * 3.141592653589793 * 2.0 / 65536.0);
+            }
+        }
+    }
+
+    /** class RoundTrip */
+    static class RoundTrip {
+
+        static int fib(int n) {
+            int a = 0;
+            int b = 1;
+            for (int i = 0; i < n; ++i) {
+                int t = a + b;
+                a = b;
+                b = t;
+            }
+            return a;
+        }
+
+        static long mix(long x, int y) {
+            long v = x ^ ((long) y << 3);
+            while (v > 1000L) {
+                v = v >>> 2;
+            }
+            return v >>> 1;
+        }
+
+        static void main(String[] args) {
+            int total = 0;
+            for (int i = 0; i < 12; ++i) {
+                total += fib(i);
+                int j2xo1 = i;
+                int j2xo2 = fib(i);
+                long j2xo3 = mix(123456789L * (long) i, i);
+                System.out.println(new String("" + "fib " + j2xo1 + " = " + j2xo2 + " mix " + j2xo3));
+            }
+            System.out.println(new String("" + "total " + total));
+            Vec3D a = new Vec3D(1.0, 2.0, 3.0);
+            Vec3D b = new Vec3D(4.5, -1.0, 0.25);
+            Vec3D d = a.subtract(b);
+            System.out.println(new String("" + "subtract " + d.xCoord + " " + d.yCoord + " " + d.zCoord));
+            Vec3D m = a.getIntermediateWithXValue(b, 2.0);
+            System.out.println(new String("" + "intermediate " + (m == null ? "null" : "" + m.xCoord + " " + m.yCoord)));
+            Vec3D n = a.getIntermediateWithXValue(a, 2.0);
+            System.out.println(new String("" + "intermediate " + (n == null ? "null" : "set")));
+            for (int i_2 = -3; i_2 <= 3; ++i_2) {
+                double x = (double) i_2 * 1.75;
+                double j2xo4 = x;
+                int j2xo5 = MathHelper.floor_double(x);
+                float j2xo6 = MathHelper.sqrt_float((float) (i_2 * i_2));
+                System.out.println(new String("" + "floor " + j2xo4 + " = " + j2xo5 + " sqrt " + j2xo6));
+            }
+            AxisAlignedBB box1 = new AxisAlignedBB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+            AxisAlignedBB box2 = new AxisAlignedBB(0.5, 0.5, 0.5, 2.0, 2.0, 2.0);
+            AxisAlignedBB box3 = new AxisAlignedBB(1.5, 0.0, 0.0, 2.0, 1.0, 1.0);
+            boolean j2xo7 = box1.intersectsWith(box2);
+            boolean j2xo8 = box1.intersectsWith(box3);
+            System.out.println(new String("" + "intersects " + j2xo7 + " " + j2xo8));
+            Base base = new Base(5, 3);
+            System.out.println(new String("" + "base " + base.size + " " + base.scale));
+            int j2xo9 = Sub.build(4);
+            int j2xo10 = Sub.build(-2);
+            System.out.println(new String("" + "sub " + j2xo9 + " " + j2xo10));
+        }
+
+    }
+
+    /** class Vec3D */
+    static class Vec3D {
+        double xCoord;
+        double yCoord;
+        double zCoord;
+        static int nextVector = 0;
+        static Vec3D[] vectorList = new Vec3D[256];
+
+        Vec3D(double var1, double var3, double var5) {
+            xCoord = var1;
+            yCoord = var3;
+            zCoord = var5;
+        }
+
+        Vec3D subtract(Vec3D var1) {
+            return new Vec3D(var1.xCoord - xCoord, var1.yCoord - yCoord, var1.zCoord - zCoord);
+        }
+
+        Vec3D getIntermediateWithXValue(Vec3D var1, double var2) {
+            double var4 = var1.xCoord - xCoord;
+            if (var4 * var4 < 1.0e-07) {
+                return null;
+            }
+            return new Vec3D(var2, yCoord, zCoord);
+        }
+
+    }
+
+    /** class Sub */
+    static class Sub extends Base {
+        int extra;
+
+        Sub(int var1) {
+            super(var1 + 1);
+            extra = 7;
+            extra += this.size;
+        }
+
+        static int build(int var0) {
+            Sub var1 = new Sub(var0);
+            return var1.extra * 3 + var1.size;
+        }
+
+    }
+
+    public static void main(String[] args) {
+        RoundTrip.main(args);
+    }
+}

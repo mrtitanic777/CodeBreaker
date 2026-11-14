@@ -1,0 +1,1600 @@
+{
+ "node": "Unit",
+ "package": "",
+ "path": "c:\\users\\mrtit\\documents\\github\\codebreaker\\.claude\\worktrees\\agent-a266aa9dbab93f9e2\\state\\work\\j2x-proof\\w\\cpp\\vec3d.cpp",
+ "target": {
+  "char_signed": true,
+  "language": "c++",
+  "long": 4,
+  "pointer": 8,
+  "std": "c++14",
+  "triple": "x86_64-pc-windows-msvc",
+  "wchar": 2
+ },
+ "types": [
+  {
+   "col": 7,
+   "kind": "class",
+   "line": 12,
+   "members": [
+    {
+     "body": {
+      "col": 8,
+      "line": 12,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 8,
+        "expr": {
+         "col": 8,
+         "line": 12,
+         "node": "Assign",
+         "target": {
+          "col": 8,
+          "line": 12,
+          "node": "Select",
+          "obj": {
+           "col": 8,
+           "line": 12,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 8,
+            "line": 12,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "xCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 8,
+          "implicit": true,
+          "line": 12,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 8,
+           "line": 12,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 12,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 8,
+        "expr": {
+         "col": 8,
+         "line": 12,
+         "node": "Assign",
+         "target": {
+          "col": 8,
+          "line": 12,
+          "node": "Select",
+          "obj": {
+           "col": 8,
+           "line": 12,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 8,
+            "line": 12,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "yCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 8,
+          "implicit": true,
+          "line": 12,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 8,
+           "line": 12,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 12,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 8,
+        "expr": {
+         "col": 8,
+         "line": 12,
+         "node": "Assign",
+         "target": {
+          "col": 8,
+          "line": 12,
+          "node": "Select",
+          "obj": {
+           "col": 8,
+           "line": 12,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 8,
+            "line": 12,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "zCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 8,
+          "implicit": true,
+          "line": 12,
+          "node": "Cast",
+          "type": {
+           "kind": "f64"
+          },
+          "x": {
+           "col": 8,
+           "line": 12,
+           "node": "Lit",
+           "type": {
+            "kind": "i32"
+           },
+           "value": 0
+          }
+         }
+        },
+        "line": 12,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 8,
+        "expr": {
+         "col": 8,
+         "line": 12,
+         "node": "Assign",
+         "target": {
+          "col": 8,
+          "line": 12,
+          "node": "Select",
+          "obj": {
+           "col": 8,
+           "line": 12,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 8,
+            "line": 12,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "xCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 8,
+          "line": 12,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var1",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 12,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 8,
+        "expr": {
+         "col": 8,
+         "line": 12,
+         "node": "Assign",
+         "target": {
+          "col": 8,
+          "line": 12,
+          "node": "Select",
+          "obj": {
+           "col": 8,
+           "line": 12,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 8,
+            "line": 12,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "yCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 8,
+          "line": 12,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var3",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 12,
+        "node": "ExprStmt"
+       },
+       {
+        "col": 8,
+        "expr": {
+         "col": 8,
+         "line": 12,
+         "node": "Assign",
+         "target": {
+          "col": 8,
+          "line": 12,
+          "node": "Select",
+          "obj": {
+           "col": 8,
+           "line": 12,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 8,
+            "line": 12,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "zCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         },
+         "value": {
+          "col": 8,
+          "line": 12,
+          "node": "Name",
+          "sym": {
+           "kind": "param",
+           "name": "var5",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         }
+        },
+        "line": 12,
+        "node": "ExprStmt"
+       }
+      ]
+     },
+     "col": 8,
+     "kind": "ctor",
+     "line": 12,
+     "mods": [
+      "public"
+     ],
+     "name": "Vec3D",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 21,
+       "line": 12,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "Vec3D",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "col": 34,
+       "line": 12,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var3",
+        "owner": "Vec3D",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      },
+      {
+       "col": 47,
+       "line": 12,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var5",
+        "owner": "Vec3D",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "ctor",
+      "name": "Vec3D",
+      "owner": "Vec3D",
+      "params": [
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       },
+       {
+        "kind": "f64"
+       }
+      ],
+      "ret": {
+       "kind": "void"
+      }
+     }
+    },
+    {
+     "col": 9,
+     "line": 17,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "xCoord",
+      "owner": "Vec3D",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 9,
+     "line": 18,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "yCoord",
+      "owner": "Vec3D",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 9,
+     "line": 19,
+     "mods": [
+      "public"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "zCoord",
+      "owner": "Vec3D",
+      "type": {
+       "kind": "f64"
+      }
+     },
+     "type": {
+      "kind": "f64"
+     }
+    },
+    {
+     "col": 13,
+     "init": {
+      "col": 12,
+      "line": 9,
+      "node": "Lit",
+      "type": {
+       "kind": "i32"
+      },
+      "value": 0
+     },
+     "line": 20,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "nextVector",
+      "owner": "Vec3D",
+      "static": true,
+      "type": {
+       "kind": "i32"
+      }
+     },
+     "type": {
+      "kind": "i32"
+     }
+    },
+    {
+     "col": 25,
+     "init": {
+      "col": 24,
+      "dims": [
+       {
+        "col": 24,
+        "line": 10,
+        "node": "Lit",
+        "type": {
+         "kind": "i32"
+        },
+        "value": 256
+       }
+      ],
+      "elem": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "class",
+        "name": "Vec3D"
+       }
+      },
+      "line": 10,
+      "node": "NewArray",
+      "type": {
+       "elem": {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "Vec3D"
+        }
+       },
+       "kind": "array"
+      }
+     },
+     "line": 21,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "node": "FieldDecl",
+     "sym": {
+      "kind": "field",
+      "name": "vectorList",
+      "owner": "Vec3D",
+      "static": true,
+      "type": {
+       "elem": {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "Vec3D"
+        }
+       },
+       "kind": "array"
+      }
+     },
+     "type": {
+      "elem": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "class",
+        "name": "Vec3D"
+       }
+      },
+      "kind": "array"
+     }
+    },
+    {
+     "body": {
+      "col": 15,
+      "line": 26,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 15,
+        "expr": {
+         "args": [
+          {
+           "col": 15,
+           "left": {
+            "col": 15,
+            "line": 26,
+            "node": "Select",
+            "obj": {
+             "col": 15,
+             "line": 26,
+             "node": "Unary",
+             "op": "*",
+             "postfix": false,
+             "type": {
+              "kind": "class",
+              "name": "Vec3D"
+             },
+             "x": {
+              "col": 15,
+              "line": 26,
+              "node": "Name",
+              "sym": {
+               "kind": "param",
+               "name": "var1",
+               "owner": "subtract",
+               "type": {
+                "kind": "ptr",
+                "space": "flat",
+                "to": {
+                 "kind": "class",
+                 "name": "Vec3D"
+                }
+               }
+              },
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Vec3D"
+               }
+              }
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "xCoord",
+             "owner": "Vec3D",
+             "type": {
+              "kind": "f64"
+             }
+            },
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "line": 26,
+           "node": "Binary",
+           "op": "-",
+           "right": {
+            "col": 15,
+            "line": 26,
+            "node": "Select",
+            "obj": {
+             "col": 15,
+             "line": 26,
+             "node": "Unary",
+             "op": "*",
+             "postfix": false,
+             "type": {
+              "kind": "class",
+              "name": "Vec3D"
+             },
+             "x": {
+              "col": 15,
+              "line": 26,
+              "node": "This",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Vec3D"
+               }
+              }
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "xCoord",
+             "owner": "Vec3D",
+             "type": {
+              "kind": "f64"
+             }
+            },
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          {
+           "col": 15,
+           "left": {
+            "col": 15,
+            "line": 26,
+            "node": "Select",
+            "obj": {
+             "col": 15,
+             "line": 26,
+             "node": "Unary",
+             "op": "*",
+             "postfix": false,
+             "type": {
+              "kind": "class",
+              "name": "Vec3D"
+             },
+             "x": {
+              "col": 15,
+              "line": 26,
+              "node": "Name",
+              "sym": {
+               "kind": "param",
+               "name": "var1",
+               "owner": "subtract",
+               "type": {
+                "kind": "ptr",
+                "space": "flat",
+                "to": {
+                 "kind": "class",
+                 "name": "Vec3D"
+                }
+               }
+              },
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Vec3D"
+               }
+              }
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "yCoord",
+             "owner": "Vec3D",
+             "type": {
+              "kind": "f64"
+             }
+            },
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "line": 26,
+           "node": "Binary",
+           "op": "-",
+           "right": {
+            "col": 15,
+            "line": 26,
+            "node": "Select",
+            "obj": {
+             "col": 15,
+             "line": 26,
+             "node": "Unary",
+             "op": "*",
+             "postfix": false,
+             "type": {
+              "kind": "class",
+              "name": "Vec3D"
+             },
+             "x": {
+              "col": 15,
+              "line": 26,
+              "node": "This",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Vec3D"
+               }
+              }
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "yCoord",
+             "owner": "Vec3D",
+             "type": {
+              "kind": "f64"
+             }
+            },
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          {
+           "col": 15,
+           "left": {
+            "col": 15,
+            "line": 26,
+            "node": "Select",
+            "obj": {
+             "col": 15,
+             "line": 26,
+             "node": "Unary",
+             "op": "*",
+             "postfix": false,
+             "type": {
+              "kind": "class",
+              "name": "Vec3D"
+             },
+             "x": {
+              "col": 15,
+              "line": 26,
+              "node": "Name",
+              "sym": {
+               "kind": "param",
+               "name": "var1",
+               "owner": "subtract",
+               "type": {
+                "kind": "ptr",
+                "space": "flat",
+                "to": {
+                 "kind": "class",
+                 "name": "Vec3D"
+                }
+               }
+              },
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Vec3D"
+               }
+              }
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "zCoord",
+             "owner": "Vec3D",
+             "type": {
+              "kind": "f64"
+             }
+            },
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "line": 26,
+           "node": "Binary",
+           "op": "-",
+           "right": {
+            "col": 15,
+            "line": 26,
+            "node": "Select",
+            "obj": {
+             "col": 15,
+             "line": 26,
+             "node": "Unary",
+             "op": "*",
+             "postfix": false,
+             "type": {
+              "kind": "class",
+              "name": "Vec3D"
+             },
+             "x": {
+              "col": 15,
+              "line": 26,
+              "node": "This",
+              "type": {
+               "kind": "ptr",
+               "space": "flat",
+               "to": {
+                "kind": "class",
+                "name": "Vec3D"
+               }
+              }
+             }
+            },
+            "sym": {
+             "kind": "field",
+             "name": "zCoord",
+             "owner": "Vec3D",
+             "type": {
+              "kind": "f64"
+             }
+            },
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          }
+         ],
+         "col": 15,
+         "line": 26,
+         "memory": "manual",
+         "node": "New",
+         "sym": {
+          "kind": "ctor",
+          "name": "Vec3D",
+          "owner": "Vec3D",
+          "params": [
+           {
+            "kind": "f64"
+           },
+           {
+            "kind": "f64"
+           },
+           {
+            "kind": "f64"
+           }
+          ],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Vec3D"
+          }
+         }
+        },
+        "line": 26,
+        "node": "Return"
+       }
+      ]
+     },
+     "col": 15,
+     "kind": "method",
+     "line": 26,
+     "mods": [
+      "public",
+      "virtual"
+     ],
+     "name": "subtract",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 31,
+       "line": 26,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "subtract",
+        "type": {
+         "kind": "ptr",
+         "space": "flat",
+         "to": {
+          "kind": "class",
+          "name": "Vec3D"
+         }
+        }
+       },
+       "type": {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "Vec3D"
+        }
+       }
+      }
+     ],
+     "ret": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "class",
+       "name": "Vec3D"
+      }
+     },
+     "sym": {
+      "kind": "method",
+      "name": "subtract",
+      "owner": "Vec3D",
+      "params": [
+       {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "Vec3D"
+        }
+       }
+      ],
+      "ret": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "class",
+        "name": "Vec3D"
+       }
+      }
+     }
+    },
+    {
+     "body": {
+      "col": 15,
+      "line": 31,
+      "node": "Block",
+      "stmts": [
+       {
+        "col": 9,
+        "init": {
+         "col": 9,
+         "left": {
+          "col": 9,
+          "line": 33,
+          "node": "Select",
+          "obj": {
+           "col": 9,
+           "line": 33,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 9,
+            "line": 33,
+            "node": "Name",
+            "sym": {
+             "kind": "param",
+             "name": "var1",
+             "owner": "getIntermediateWithXValue",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "Vec3D"
+              }
+             }
+            },
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "xCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "line": 33,
+         "node": "Binary",
+         "op": "-",
+         "right": {
+          "col": 9,
+          "line": 33,
+          "node": "Select",
+          "obj": {
+           "col": 9,
+           "line": 33,
+           "node": "Unary",
+           "op": "*",
+           "postfix": false,
+           "type": {
+            "kind": "class",
+            "name": "Vec3D"
+           },
+           "x": {
+            "col": 9,
+            "line": 33,
+            "node": "This",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            }
+           }
+          },
+          "sym": {
+           "kind": "field",
+           "name": "xCoord",
+           "owner": "Vec3D",
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "type": {
+          "kind": "f64"
+         }
+        },
+        "line": 33,
+        "node": "Local",
+        "sym": {
+         "kind": "local",
+         "name": "var4",
+         "owner": "getIntermediateWithXValue",
+         "type": {
+          "kind": "f64"
+         }
+        },
+        "type": {
+         "kind": "f64"
+        }
+       },
+       {
+        "col": 15,
+        "cond": {
+         "col": 15,
+         "left": {
+          "col": 15,
+          "left": {
+           "col": 15,
+           "line": 31,
+           "node": "Name",
+           "sym": {
+            "kind": "local",
+            "name": "var4",
+            "owner": "getIntermediateWithXValue",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "line": 31,
+          "node": "Binary",
+          "op": "*",
+          "right": {
+           "col": 15,
+           "line": 31,
+           "node": "Name",
+           "sym": {
+            "kind": "local",
+            "name": "var4",
+            "owner": "getIntermediateWithXValue",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          "type": {
+           "kind": "f64"
+          }
+         },
+         "line": 31,
+         "node": "Binary",
+         "op": "<",
+         "right": {
+          "col": 15,
+          "line": 31,
+          "node": "Lit",
+          "type": {
+           "kind": "f64"
+          },
+          "value": 1e-07
+         },
+         "type": {
+          "kind": "bool"
+         }
+        },
+        "line": 31,
+        "node": "If",
+        "then": {
+         "col": 15,
+         "line": 31,
+         "node": "Block",
+         "stmts": [
+          {
+           "col": 15,
+           "expr": {
+            "col": 15,
+            "implicit": true,
+            "line": 31,
+            "node": "Cast",
+            "type": {
+             "kind": "ptr",
+             "space": "flat",
+             "to": {
+              "kind": "class",
+              "name": "Vec3D"
+             }
+            },
+            "x": {
+             "col": 15,
+             "line": 31,
+             "node": "Lit",
+             "type": {
+              "kind": "i32"
+             },
+             "value": 0
+            }
+           },
+           "line": 31,
+           "node": "Return"
+          }
+         ]
+        }
+       },
+       {
+        "col": 15,
+        "expr": {
+         "args": [
+          {
+           "col": 15,
+           "line": 31,
+           "node": "Name",
+           "sym": {
+            "kind": "param",
+            "name": "var2",
+            "owner": "getIntermediateWithXValue",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          {
+           "col": 15,
+           "line": 31,
+           "node": "Select",
+           "obj": {
+            "col": 15,
+            "line": 31,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "Vec3D"
+            },
+            "x": {
+             "col": 15,
+             "line": 31,
+             "node": "This",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "Vec3D"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "yCoord",
+            "owner": "Vec3D",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          },
+          {
+           "col": 15,
+           "line": 31,
+           "node": "Select",
+           "obj": {
+            "col": 15,
+            "line": 31,
+            "node": "Unary",
+            "op": "*",
+            "postfix": false,
+            "type": {
+             "kind": "class",
+             "name": "Vec3D"
+            },
+            "x": {
+             "col": 15,
+             "line": 31,
+             "node": "This",
+             "type": {
+              "kind": "ptr",
+              "space": "flat",
+              "to": {
+               "kind": "class",
+               "name": "Vec3D"
+              }
+             }
+            }
+           },
+           "sym": {
+            "kind": "field",
+            "name": "zCoord",
+            "owner": "Vec3D",
+            "type": {
+             "kind": "f64"
+            }
+           },
+           "type": {
+            "kind": "f64"
+           }
+          }
+         ],
+         "col": 15,
+         "line": 31,
+         "memory": "manual",
+         "node": "New",
+         "sym": {
+          "kind": "ctor",
+          "name": "Vec3D",
+          "owner": "Vec3D",
+          "params": [
+           {
+            "kind": "f64"
+           },
+           {
+            "kind": "f64"
+           },
+           {
+            "kind": "f64"
+           }
+          ],
+          "ret": {
+           "kind": "void"
+          }
+         },
+         "type": {
+          "kind": "ptr",
+          "space": "flat",
+          "to": {
+           "kind": "class",
+           "name": "Vec3D"
+          }
+         }
+        },
+        "line": 31,
+        "node": "Return"
+       }
+      ]
+     },
+     "col": 15,
+     "kind": "method",
+     "line": 31,
+     "mods": [
+      "public",
+      "virtual"
+     ],
+     "name": "getIntermediateWithXValue",
+     "node": "MethodDecl",
+     "params": [
+      {
+       "col": 48,
+       "line": 31,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var1",
+        "owner": "getIntermediateWithXValue",
+        "type": {
+         "kind": "ptr",
+         "space": "flat",
+         "to": {
+          "kind": "class",
+          "name": "Vec3D"
+         }
+        }
+       },
+       "type": {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "Vec3D"
+        }
+       }
+      },
+      {
+       "col": 61,
+       "line": 31,
+       "node": "Param",
+       "sym": {
+        "kind": "param",
+        "name": "var2",
+        "owner": "getIntermediateWithXValue",
+        "type": {
+         "kind": "f64"
+        }
+       },
+       "type": {
+        "kind": "f64"
+       }
+      }
+     ],
+     "ret": {
+      "kind": "ptr",
+      "space": "flat",
+      "to": {
+       "kind": "class",
+       "name": "Vec3D"
+      }
+     },
+     "sym": {
+      "kind": "method",
+      "name": "getIntermediateWithXValue",
+      "owner": "Vec3D",
+      "params": [
+       {
+        "kind": "ptr",
+        "space": "flat",
+        "to": {
+         "kind": "class",
+         "name": "Vec3D"
+        }
+       },
+       {
+        "kind": "f64"
+       }
+      ],
+      "ret": {
+       "kind": "ptr",
+       "space": "flat",
+       "to": {
+        "kind": "class",
+        "name": "Vec3D"
+       }
+      }
+     }
+    },
+    {
+     "body": {
+      "col": 13,
+      "line": 40,
+      "node": "Block",
+      "stmts": []
+     },
+     "col": 13,
+     "kind": "static_init",
+     "line": 40,
+     "mods": [
+      "public",
+      "static"
+     ],
+     "name": "initStatics",
+     "node": "MethodDecl",
+     "params": [],
+     "ret": {
+      "kind": "void"
+     },
+     "sym": {
+      "kind": "method",
+      "name": "initStatics",
+      "owner": "Vec3D",
+      "params": [],
+      "ret": {
+       "kind": "void"
+      },
+      "static": true
+     }
+    }
+   ],
+   "mods": [
+    "polymorphic"
+   ],
+   "name": "Vec3D",
+   "node": "ClassDecl",
+   "qname": "Vec3D"
+  }
+ ]
+}
