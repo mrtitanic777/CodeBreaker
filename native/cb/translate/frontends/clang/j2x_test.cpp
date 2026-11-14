@@ -205,6 +205,41 @@ CB_TEST("translate.j2x.bind_sets_the_hook", [] {
     CB_CHECK_EQ(j2xt_difference(j2xt_normal(l2::to_json(*unit)), j2xt_normal(j2xt_load("j2x_Vec3D.post.json")), ""), std::string());
 });
 
+// The types in a list are lifted like the ones in a slot (tests/translate/test_j2x.py gives the Python pass the same case).
+CB_TEST("translate.j2x.types_in_lists_are_lifted", [] {
+    Arena arena;
+    const ir::TypeP runtime_string = ir::class_type("JavaString"), string = ir::class_type("java.lang.String");
+    ir::MethodDecl method;
+    method.name = "m";
+    method.kind = "method";
+    method.throws = {runtime_string};
+    ir::Catch handler;
+    handler.types = {runtime_string};
+    ir::Call call;
+    call.typeargs = {runtime_string};
+    ir::Node* call_node = ir::make(arena, std::move(call));
+    handler.body = ir::make(arena, ir::Block{});
+    method.body = ir::make(arena, ir::Block{.stmts = {ir::make(arena, std::move(handler)), ir::make(arena, ir::ExprStmt{.expr = call_node})}});
+    ir::ClassDecl cls;
+    cls.name = "C";
+    cls.qname = "C";
+    cls.implements = {runtime_string};
+    cls.members = {ir::make(arena, std::move(method))};
+    ir::Unit unit;
+    unit.types = {ir::make(arena, std::move(cls))};
+    ir::Node* node = ir::make(arena, std::move(unit));
+    ir::Node* units[] = {node};
+    j2x::lift(arena, units);
+    const auto* c = ir::get<ir::ClassDecl>(ir::get<ir::Unit>(node)->types[0]);
+    CB_CHECK(c->implements.size() == 1 && c->implements[0] == string);
+    const auto* m = ir::get<ir::MethodDecl>(c->members[0]);
+    CB_CHECK(m->throws.size() == 1 && m->throws[0] == string);
+    const auto* body = ir::get<ir::Block>(std::get<ir::Node*>(m->body));
+    CB_CHECK(ir::get<ir::Catch>(body->stmts[0])->types[0] == string);
+    const auto* lifted_call = ir::get<ir::Call>(ir::get<ir::ExprStmt>(body->stmts[1])->expr);
+    CB_CHECK(std::get<ir::TypeP>(lifted_call->typeargs[0]) == string);
+});
+
 // The round trip, whole, with the hook the native judge needs: Java classes -> (the Java lane's C++, read by clang: the units come
 // from the goldens here) -> j2x -> the Java back end -> javac -> the JVM, judged against the original Java.
 CB_TEST("translate.j2x.the_native_round_trip_judge_gives_the_python_verdict", [] {
