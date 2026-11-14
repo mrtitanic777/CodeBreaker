@@ -7,6 +7,7 @@
 
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
+#include "cb/formats/command_test_kit.hpp"
 
 using namespace cb;
 namespace detect = cb::formats::detect;
@@ -118,6 +119,18 @@ CB_TEST("formats.detect.identify_by_magic", [] {
     Bytes java = with_magic("\xca\xfe\xba\xbe");
     put(java, 4, 0x34000000u, 4);  // major version 52
     CB_CHECK_EQ(only(java).format, "Java class file");
+    // XACT banks: the Xbox 360 writes "DNBW" / "KBDS" with big-endian fields (Minecraft's resident.xwb and minecraft.xsb), the PC and the first Xbox "WBND" / "SDBK"
+    CB_CHECK_EQ(only(with_magic("DNBW")).format, "XACT wave bank (XWB, big-endian)");
+    CB_CHECK_EQ(only(with_magic("DNBW")).family, "xbox360");
+    CB_CHECK_EQ(only(with_magic("WBND")).format, "XACT wave bank (XWB, little-endian)");
+    CB_CHECK_EQ(only(with_magic("WBND")).family, "xbox");
+    CB_CHECK_EQ(only(with_magic("KBDS")).format, "XACT sound bank (XSB, big-endian)");
+    CB_CHECK_EQ(only(with_magic("SDBK")).family, "xbox");
+    if (const auto real = testing::game_file("Minecraft Xbox 360 Edition/res/audio/resident.xwb")) {   // a real console bank (skipped where the game is not)
+        const auto found = detect::identify(fs::read_file(*real), "resident.xwb");
+        CB_CHECK_EQ(found.size(), std::size_t{1});
+        if (!found.empty()) CB_CHECK_EQ(found[0].family, "xbox360");
+    }
     // an XDVDFS volume descriptor
     Bytes disc(0x10000 + 0x40, 0);
     std::string_view vol = "MICROSOFT*XBOX*MEDIA";
