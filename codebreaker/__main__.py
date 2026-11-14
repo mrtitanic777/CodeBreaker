@@ -103,13 +103,9 @@ import importlib.util
 import sys
 
 COMMANDS = {
-    "module": ("codebreaker.source.module_writer", []),
-    "scoreboard": ("codebreaker.source.module_writer", ["--scoreboard"]),
     "place": ("codebreaker.source.placement", []),
-    "teeth": ("codebreaker.verify.teeth", []),
     "flat-thunk": ("codebreaker.build.flat_thunk", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
-    "names": ("codebreaker.symbols.names", []),
     "identify": ("codebreaker.symbols.runtime_library", []),
     "demangle": ("codebreaker.symbols.demangle", []),
     "dos-functions": ("codebreaker.analyze.dos_functions", []),
@@ -117,7 +113,6 @@ COMMANDS = {
     "driver-services": ("codebreaker.symbols.driver_services", []),
     "origin": ("codebreaker.analyze.origin", []),
     "driver-build": ("codebreaker.build.driver", []),
-    "build": ("codebreaker.build.module", []),
     "resources": ("codebreaker.build.resources", []),
     "cab": ("codebreaker.formats.cab", []),
     "xex": ("codebreaker.formats.xex", []),

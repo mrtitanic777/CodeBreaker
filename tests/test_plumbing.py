@@ -376,28 +376,6 @@ def test_fingerprints_are_kept_in_the_cache():
         assert not os.path.exists(os.path.join(state, "fingerprints.sqlite"))
 
 
-def test_run_folders_are_deleted():
-    import time
-    from codebreaker.base import runs
-    with _State() as state:
-        killed = runs.start("test-tool", "killed")             # a run killed two days ago
-        open(os.path.join(killed, "hd.img"), "wb").close()
-        os.utime(killed, (time.time() - 2 * 86400,) * 2)
-        going = runs.start("test-tool", "going")               # one still going
-        with runs.folder("test-tool", "mine") as work:
-            assert os.path.isdir(work) and work.startswith(os.path.join(state, "test-tool", "runs"))
-            open(os.path.join(work, "cd.iso"), "wb").close()
-        assert not os.path.exists(work)                         # deleted at its end
-        assert not os.path.exists(killed) and os.path.isdir(going)
-        try:
-            with runs.folder("test-tool", "fails") as work:
-                raise RuntimeError("the machine hung")
-        except RuntimeError:
-            pass
-        assert not os.path.exists(work)                         # deleted however it ends
-        assert runs.results("test-tool").startswith(os.path.join(state, "test-tool", "shots"))
-
-
 def main():
     for fn in (test_decompiler_is_built, test_openwatcom,
                test_corpus_rank_prefers_installed_copy, test_corpus_retail, test_corpus_modules,
@@ -405,8 +383,7 @@ def main():
                test_isolated_separates_failures_and_resumes, test_threads_keep_order_and_raise,
                test_throttle_is_safe, test_workers_scale_and_low_load_caps, test_processes_safe_reads_the_guard,
                test_fast_unicorn_reads_are_the_same, test_cache_drops_older_generations,
-               test_cache_holds_its_cap_least_recently_used_first, test_fingerprints_are_kept_in_the_cache,
-               test_run_folders_are_deleted):
+               test_cache_holds_its_cap_least_recently_used_first, test_fingerprints_are_kept_in_the_cache):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

@@ -363,12 +363,6 @@ def _load16():
     return _cache
 
 
-def sizes16():
-    """The table of sizes found so far for this product and reading, as bytes (sorted JSON): what a
-    cache of the checker's verdicts is keyed by, since the checker answers calls by it."""
-    return json.dumps(_load16(), sort_keys=True).encode("utf-8")
-
-
 def _module(name):
     """(NEFile, {ordinal: entry}) of the module that exports under `name`, or None."""
     name = name.upper()

@@ -41,6 +41,24 @@ def _ident(name):
     return re.sub(r"\W", "_", name)
 
 
+def powerpc_names(module_path):
+    """{address: (name, source)} for a PowerPC image: an image of the console exports nothing and
+    carries no symbols, so what names a function for certain is its run-time type information
+    (formats/powerpc_image.py) -- a virtual function of a named class -- and the entry point."""
+    from codebreaker.formats import powerpc_image
+    img = powerpc_image.read(module_path)
+    out = {}
+    if img.entry:
+        out[img.entry] = ("entry", "entry point")
+    taken = {"entry"}
+    for address, (cls, slot) in sorted(powerpc_image.virtual_methods(img).items()):
+        name = "%s_vf%d" % (re.sub(r"\W+", "_", cls), slot)
+        if address not in out and name not in taken:
+            taken.add(name)
+            out[address] = (name, "run-time type information (%s, virtual function %d)" % (cls, slot))
+    return out
+
+
 def function_names(module_path, funcs):
     """{va: name} -- an export's own name, else sub_<rva>. A name also used by an import of this
     module stays with the import (the call has to bind to it)."""
@@ -53,30 +71,6 @@ def function_names(module_path, funcs):
         if re.fullmatch(r"[A-Za-z_]\w*", nm) and nm not in imported:
             by_rva.setdefault(rva, nm)
     return {va: by_rva.get(va - pe.image_base, "sub_%06X" % (va - pe.image_base)) for va in funcs}
-
-
-def decorated_names(module_path):
-    """{address: linker name} for the functions a module exports under a name that is not a C
-    name -- a C++ function's decorated name. In the C text such a function is sub_<address>;
-    this is the symbol it must be linked as, and symbols/demangle.py makes it a declaration.
-    Addresses are as in the description (16-bit: address(segment, offset))."""
-    from codebreaker.base import corpus
-    plain = re.compile(r"[A-Za-z_]\w*\Z")
-    out = {}
-    if corpus.lane(module_path) == "ne":
-        from codebreaker.formats.ne import NEFile
-        nef = NEFile(module_path)
-        entries = {e["ordinal"]: e for e in nef.entries() if e.get("kind") in ("FIXED", "MOVEABLE")}
-        for nm, ordv in nef.resident_names()[1:] + nef.nonresident_names()[1:]:
-            if ordv in entries and not plain.match(nm):
-                out.setdefault(address(entries[ordv]["seg"], entries[ordv]["offset"]), nm)
-    else:
-        from codebreaker.formats.pe import open_pe
-        pe = open_pe(module_path)
-        for nm, rva in sorted(pe.export_addrs().items()):
-            if not plain.match(nm):
-                out.setdefault(pe.image_base + rva, nm)
-    return out
 
 
 def import_names16(nef):
@@ -208,8 +202,7 @@ def describe32(module_path, funcs, outdir):
     if x86:
         names = function_names(module_path, funcs)
     else:                                       # PowerPC: what run-time type information names
-        from codebreaker.symbols import names as known
-        own = known.powerpc_names(module_path)
+        own = powerpc_names(module_path)
         names = {va: own[va][0] if va in own else "sub_%08X" % va for va in funcs}
     lines = ["arch\t%s" % arch]
     if not x86:
@@ -449,7 +442,6 @@ def decoder16(detail=False):
     return platforms.decoder(16, detail=detail)
 
 
-
 def _one(code, at):
     """The 16-bit instruction at `at` in `code` (as `next(md.disasm(code[at:at + 16], at))`), or None."""
     held = _DECODED.get(id(code))
@@ -518,19 +510,6 @@ def _calls_followed(code, start, limit=20000):
                 break
             at += ins.size
     return calls
-
-
-def hidden_functions(nef, known):
-    """The guard: entry sequences after an end that are not among `known` {(segment, offset)} --
-    functions the description does not have, so that the build would take them for the tail of
-    the function before. [(segment, offset)]"""
-    out = []
-    for s in nef.segments():
-        if s["kind"] != "CODE" or not s["file_off"]:
-            continue
-        code = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
-        out += [(s["idx"], o) for o in prologues_after_ends(code) if (s["idx"], o) not in known]
-    return out
 
 
 def _far_pointer_targets(nef, s, code, segs):
@@ -706,33 +685,6 @@ def returns(code, off, limit=600, want=None):
             work.append(target)
         work.append(ins.address + ins.size)
     return None, -1
-
-
-def callers_say(d):
-    """{(seg, off): "callee" | "caller"} -- who removes a function's arguments, as the original's
-    own calls to it show: every call that pushed something before it and is followed by
-    `add sp, n` says the caller does; every one that is not says the callee does. Only a function
-    whose calls (two at least) all say the same is in it. The callers are the original program's
-    own word on how each callee is called -- the callee's instructions can hide it (arguments
-    taken off by hand, a shared epilogue)."""
-    md = decoder16()
-    votes = {}
-    for seg, img in d.images.items():
-        ins = list(md.disasm(bytes(img), 0))
-        for k, i in enumerate(ins[:-1]):
-            if i.mnemonic == "call" and i.op_str.startswith("0x") and "," not in i.op_str:
-                target = (seg, int(i.op_str, 16) & 0xFFFF)
-            elif i.mnemonic == "lcall" and "," in i.op_str and i.op_str.startswith("0x"):
-                s, o = (int(x, 16) for x in i.op_str.split(", "))
-                target = where((s << 16) | o) if s < 0xE000 else None
-            else:
-                continue
-            if target is None or k == 0 or ins[k - 1].mnemonic != "push":
-                continue                                     # (nothing pushed just before: says nothing)
-            nxt = ins[k + 1]
-            who = "caller" if nxt.mnemonic == "add" and nxt.op_str.startswith("sp, ") else "callee"
-            votes.setdefault(target, []).append(who)
-    return {t: v[0] for t, v in votes.items() if len(v) >= 2 and len(set(v)) == 1}
 
 
 class _Into(object):

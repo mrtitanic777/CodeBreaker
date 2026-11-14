@@ -16,7 +16,7 @@ if ROOT not in sys.path:
 from codebreaker.base import corpus                                   # noqa: E402
 from codebreaker.build import watcom                                  # noqa: E402
 from codebreaker.store import functions as F                          # noqa: E402
-from codebreaker.symbols import demangle, names, ordinals, prototypes, runtime_library   # noqa: E402
+from codebreaker.symbols import demangle, ordinals, prototypes, runtime_library   # noqa: E402
 from codebreaker.symbols import libraries   # noqa: E402
 from codebreaker.compare import mask   # noqa: E402
 
@@ -233,37 +233,9 @@ def test_store_identified_and_bodies():
     assert fs.shared_bodies() == (6, 4, 2, 4)
 
 
-def test_names_of_a_module():
-    (lz,) = _corpus("lzexpand.dll")
-    fs = F.open(os.path.join(tempfile.mkdtemp(), "functions.sqlite"))
-    got = names.of_module(lz, fs)
-    sources = {s.split(" (")[0] for _a, _k, _n, s in got["functions"]}
-    assert "export" in sources and len(got["functions"]) >= 10
-    assert any(n.upper() == "LZOPENFILE" for _a, _k, n, _s in got["functions"])
-    assert got["imports"] and all(name and "KERNEL." not in name for m, _o, name, _s in got["imports"] if m == "KERNEL")
-    bodies = names.bodies(lz)
-    assert bodies and fs.bodies(corpus.sha(lz))                         # recorded on first use
-    address = sorted(bodies)[0]
-    digest = names.set_name(lz, address, "FirstBody", fs)
-    assert digest == bodies[address]
-    again = {a: (n, s) for a, _k, n, s in names.of_module(lz, fs)["functions"]}
-    assert again[address][0] in ("FirstBody",) or again[address][1] == "export", again[address]
-    assert names.key(lz, address).count(":") == 1
-
-
-def test_source_files_from_symbol_files():
-    (gdi,) = _corpus("gdi.exe")
-    named, files = names.debug_names(gdi), names.source_files(gdi)
-    if not named:
-        raise Skip("no symbol file for this build of gdi.exe")
-    assert files and set(files) <= set(named)                           # only where the symbols are for this build
-    assert all(f == f.lower() and not f.startswith("_") for f in files.values())
-
-
 def main():
     for fn in (test_demangle, test_definition_file_and_library, test_ordinals, test_prototypes, test_signatures,
-               test_coff_long_symbol_names, test_wine16_reads_the_folder_once, test_identify, test_store_identified_and_bodies, test_names_of_a_module,
-               test_source_files_from_symbol_files):
+               test_coff_long_symbol_names, test_wine16_reads_the_folder_once, test_identify, test_store_identified_and_bodies):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))

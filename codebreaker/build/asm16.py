@@ -646,21 +646,6 @@ class Function(object):
                       lambda mm: mm.group(0) if mm.group(2) in defined else "%s0%sh" % (mm.group(1), mm.group(3)), text)
 
 
-def check_piece(obj, f, lo, hi):
-    """A piece of a frame (see Function.write) against the original. -> "" or what differs."""
-    from codebreaker.build import msc6
-    code, mask = msc6.object_code(obj)
-    if len(code) != hi - lo:
-        return "%d bytes, the original %d" % (len(code), hi - lo)
-    start, end = f.start, f.end
-    f.start, f.end = lo, hi
-    try:
-        bad = differences(code, mask, f)
-    finally:
-        f.start, f.end = start, end
-    return ("differs at %04x" % bad[0]) if bad else ""
-
-
 def check(obj, f):
     """The assembled object against the original: every byte the same but those the loader or
     the linker sets. -> "" or where they differ."""
