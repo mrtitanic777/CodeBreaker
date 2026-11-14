@@ -1,6 +1,6 @@
 """The C# front end, step one: Roslyn's bound tree as JSON.
 
-CsTreeDump.cs (beside this file) runs the C# compiler of the installed .NET SDK over a set of files --
+CsTreeDump.cs (data/translate/frontends/csharp) runs the C# compiler of the installed .NET SDK over a set of files --
 parse and bind, no assembly written -- and writes each file's declarations, and every body and
 initialiser as Roslyn's IOperation tree, with what the compiler resolved: each expression's type, the
 symbol each name, call and `new` refers to (the overload chosen, its arguments in parameter order), each
@@ -26,7 +26,7 @@ import shutil
 import subprocess
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_SOURCE = os.path.join(_HERE, 'CsTreeDump.cs')
+_SOURCE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))), 'data', 'translate', 'frontends', 'csharp', 'CsTreeDump.cs')
 _ROSLYN = ('Microsoft.CodeAnalysis.dll', 'Microsoft.CodeAnalysis.CSharp.dll')
 TIMEOUT = 900
 
