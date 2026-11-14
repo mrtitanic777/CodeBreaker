@@ -13,6 +13,7 @@
 #include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/ui/mcp_server.hpp"
+#include "cb/ui/mcp_wiring.hpp"
 
 using namespace cb;
 using namespace cb::ui;
@@ -154,4 +155,15 @@ CB_TEST("ui.mcp.what_a_file_is_and_where_its_source_goes", [] {
     const Json tree = Json::parse(f.call("source_tree", Json{{"module", data("lz32.dll")}}).first);
     CB_CHECK(!tree["relative"].get<std::string>().empty());
     CB_CHECK(tree.contains("decided"));
+});
+
+// A fresh state folder (what a new user has: no functions.sqlite) still has the verifier settings in force: they come from the lanes, not the
+// store, and asking for them creates nothing in the state folder.
+CB_TEST("ui.mcp.verifier_settings_in_force_need_no_function_store", [] {
+    SvcFixture f;
+    CB_CHECK(!sfs::exists(f.config.state() / "functions.sqlite"));
+    const auto settings = wiring::verifier_profiles(f.config)();
+    CB_CHECK(settings.at("pe").has_value() && !settings.at("pe")->empty());
+    CB_CHECK(settings.at("ne").has_value() && !settings.at("ne")->empty());
+    CB_CHECK(!sfs::exists(f.config.state() / "functions.sqlite"));
 });

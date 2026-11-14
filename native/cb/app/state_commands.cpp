@@ -38,8 +38,6 @@ namespace stdfs = std::filesystem;
 struct MigrateProfiles {
     std::unique_ptr<engine::LaneKit> kit;
     verify::reconstruct::Kinds kinds;
-    std::unique_ptr<engine::FunctionStore> store;
-    std::unique_ptr<verify::reconstruct::Reconstructor> reconstructor;
 };
 
 }  // namespace
@@ -69,9 +67,14 @@ std::vector<cli::Command> state_commands(const config::Config& config, const std
             explicit Facts(const stdfs::path& root)
                 : databases(engine::facts::Config{.root = root, .max_bytes = 4 * engine::facts::kGiB}), engine(steps, databases, digests, 2) {}
         };
-        const auto facts = std::make_shared<Facts>(config.state() / "db");
+        // (made when `facts` first asks: the databases folder is not made by the other commands)
+        const auto facts = std::make_shared<std::unique_ptr<Facts>>();
+        const stdfs::path root = config.state() / "db";
         out.push_back(engine::show::command(engine::show::Environment{
-            .engine = [facts]() -> engine::Engine& { return facts->engine; },
+            .engine = [facts, root]() -> engine::Engine& {
+                if (!*facts) *facts = std::make_unique<Facts>(root);
+                return (*facts)->engine;
+            },
             .retail = [corpus](std::string_view name) { return corpus->retail(name); }}));
     }
 
@@ -110,12 +113,11 @@ std::vector<cli::Command> state_commands(const config::Config& config, const std
         const config::Config* settings = &config;
         services.verifier_profiles = [mine, settings]() -> std::map<std::string, store::migrate::Verifier> {
             std::map<std::string, store::migrate::Verifier> result;
-            mine->store = store::functions::open(settings->state(), std::nullopt, true);
-            if (!mine->store) return result;
-            mine->kit = std::make_unique<engine::LaneKit>(*settings);
-            mine->kit->add_lanes(mine->kinds);
-            mine->reconstructor = std::make_unique<verify::reconstruct::Reconstructor>(mine->kit->reconstruct_services(mine->kinds, *mine->store));
-            for (const auto& [kind, profile] : mine->reconstructor->profiles()) result[kind] = {profile.digest, profile.settings};
+            if (!mine->kit) {
+                mine->kit = std::make_unique<engine::LaneKit>(*settings);
+                mine->kit->add_lanes(mine->kinds);
+            }
+            for (const auto& [kind, profile] : verify::reconstruct::profiles_of(mine->kinds)) result[kind] = {profile.digest, profile.settings};
             return result;
         };
         out.push_back(store::migrate::command(services));

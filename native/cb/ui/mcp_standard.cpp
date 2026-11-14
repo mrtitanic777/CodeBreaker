@@ -74,13 +74,12 @@ struct StdProfiles {
     std::mutex lock;
     std::unique_ptr<engine::LaneKit> kit;
     verify::reconstruct::Kinds kinds;
-    std::unique_ptr<engine::FunctionStore> store;
-    std::unique_ptr<verify::reconstruct::Reconstructor> reconstructor;
+    bool made = false;
 };
 
 }  // namespace
 
-// Made when the ledger first asks; a machine whose function store is not there yet has none (the settings the store used last stand in).
+// Made when the ledger first asks, from the lanes alone (a machine with no function store yet has the same settings in force).
 // CB_MCP_STORED_PROFILES=1 asks for none always: the ledger then reads the results as the store last filed them, whichever verifier made them
 // (the proof against the Python server's answers uses it: the two verifiers' settings digests differ, so the results the Python judged are not
 // "under the settings in force" of this one until it judges them again).
@@ -93,14 +92,12 @@ std::function<std::map<std::string, std::optional<std::string>>()> verifier_prof
         for (const char* kind : {"pe", "ne", "le", "dos", "java", "powerpc", "nes", "sms", "gb", "genesis", "zx", "msx"}) out[kind] = std::nullopt;
         if (const std::optional<std::string> stored = fs::get_env("CB_MCP_STORED_PROFILES"); stored && !stored->empty() && *stored != "0") return out;
         std::lock_guard hold(profiles->lock);
-        if (!profiles->reconstructor) {
-            profiles->store = store::functions::open(settings->state(), std::nullopt, true);
-            if (!profiles->store) return out;
+        if (!profiles->made) {
             profiles->kit = std::make_unique<engine::LaneKit>(*settings);
             profiles->kit->add_lanes(profiles->kinds);
-            profiles->reconstructor = std::make_unique<verify::reconstruct::Reconstructor>(profiles->kit->reconstruct_services(profiles->kinds, *profiles->store));
+            profiles->made = true;
         }
-        for (auto& [kind, digest] : profiles->reconstructor->digests()) out[kind] = std::move(digest);
+        for (auto& [kind, digest] : verify::reconstruct::digests_of(profiles->kinds)) out[kind] = std::move(digest);
         return out;
     };
 }
