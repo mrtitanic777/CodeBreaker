@@ -504,3 +504,8 @@ Done on the branch `retire-pyengine` (to be merged when the Python batches are d
   are deleted; `native/testkit` can go with them.
 - Still there, on purpose: the `cbtrace` target (the Python `emulate/native_trace.py` loads it) and `native/{engine,formats,symbols,invert,analyze}`
   (step 7e, after the Python callers go).
+- `native/ported` is not entirely gone: seven headers (`py.hpp`, `py_json.hpp`, `py_os.hpp`, `py_settings.hpp`, `py_stdlib.hpp`, `py_unicode.hpp`,
+  `py_unicode_print.hpp`) stay because `native/l2/src/pyre.cc` includes `py_unicode.hpp` and the cb_tests case for the L2 `python` cpp17 dialect compiles
+  against `py.hpp`. They go with that dialect (`native/l2/src/cpp17_python.cc`), not with the exe.
+- A worktree gate run needs `settings.json`, `CB_CHECKOUT_ROOT`/`CB_CORPUS` and `native/{l2,dosexec,xex,decompiler}/build` beside it; with them
+  (or in the main checkout) the 155 command cases pass.
