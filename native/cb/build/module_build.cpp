@@ -146,10 +146,21 @@ std::vector<std::pair<std::string, Built>> ModuleBuilder::build_many(const std::
     std::vector<std::pair<std::string, Built>> out;
     BuildOptions options;
     options.call = call;
+    // (a module whose build throws -- a file it could not write, a tool that died -- is that module's failure: its Built says so, the rest are built)
+    const auto isolated = [&](const std::string& m, const std::function<Built()>& make) -> Built {
+        try {
+            return make();
+        } catch (const std::exception& e) {
+            const std::optional<stdfs::path> found = s.retail ? s.retail(m) : std::nullopt;
+            Built b(found && !found->empty() ? *found : stdfs::path(m), std::nullopt);
+            b.error = e.what();
+            return b;
+        }
+    };
     if (procs == 1) {
         for (const std::string& m : modules) {
             options.outdir = outdir(m);
-            out.emplace_back(m, build(m, options));
+            out.emplace_back(m, isolated(m, [&] { return build(m, options); }));
         }
         return out;
     }
@@ -164,6 +175,7 @@ std::vector<std::pair<std::string, Built>> ModuleBuilder::build_many(const std::
     std::mutex log_lock;
     parallel::ThreadPool pool(procs);
     const std::vector<Built> made = parallel::parallel_map(pool, by_size, [&](const std::string& m) -> Built {
+        return isolated(m, [&]() -> Built {
         {
             std::lock_guard<std::mutex> lock(log_lock);
             say(s.log, std::format("{}: building (one of {} at once)", stdfs::path(m).filename().string(), procs));
@@ -176,6 +188,7 @@ std::vector<std::pair<std::string, Built>> ModuleBuilder::build_many(const std::
         one.outdir = outdir(m);
         one.log = [](std::string_view) {};
         return build(m, one);
+        });
     });
     std::map<std::string, const Built*> by_name;
     for (std::size_t i = 0; i < by_size.size(); ++i) by_name[by_size[i]] = &made[i];

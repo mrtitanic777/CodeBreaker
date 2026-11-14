@@ -4,7 +4,9 @@
 #include "cb/verify/regress.hpp"
 
 #include <atomic>
+#include <thread>
 
+#include "cb/core/file_lock.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 
@@ -34,6 +36,7 @@ struct RegressFake {
         s.mini_original = dir.path() / "mini";
         s.setup_original = dir.path() / "setup";
         s.free_gb = [this] { return free; };
+        s.lock_dir = dir.path() / "locks";
         s.build = [this](const std::vector<std::string>& names, const rsfs::path&, const rsfs::path& outdir, bool all_assembly) {
             all_assembly_seen.push_back(all_assembly);
             std::vector<Built> out;
@@ -241,4 +244,70 @@ CB_TEST("verify.regress.a_failed_install_fails_the_run_and_says_where", [] {
 CB_TEST("verify.regress.the_install_tier_has_its_name", [] {
     CB_CHECK(tier_named("install").has_value());
     CB_CHECK_EQ(std::string(word(Tier::Install)), "install");
+});
+
+CB_TEST("verify.regress.a_run_waits_for_the_build_lock_another_run_holds", [] {
+    RegressFake f;
+    Services s = f.services();
+    auto other = file_lock::try_acquire(s.lock_dir / "build.lock", "pid 5150");   // (another regress run is building)
+    CB_CHECK(other.has_value());
+    std::atomic<bool> done{false};
+    Report r;
+    std::thread runner([&] {
+        r = run(Tier::All15, s, {.runs = 1, .only = {"VER.DLL"}});
+        done = true;
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+    CB_CHECK(!done.load());
+    CB_CHECK(f.built_names.empty());   // (nothing built while the other run has the folders)
+    other->release();
+    runner.join();
+    CB_CHECK(r.pass);
+    CB_CHECK_EQ(f.built_names.size(), std::size_t{1});
+});
+
+CB_TEST("verify.regress.a_lock_left_by_a_killed_run_does_not_hold_the_next", [] {
+    RegressFake f;
+    Services s = f.services();
+    fs::write_text(s.lock_dir / "build.lock", "pid 99999999");   // (the file of a run that died: no lock on it)
+    fs::write_text(s.lock_dir / "boot-regress-all15-1.lock", "pid 99999999");
+    const Report r = run(Tier::All15, s, {.runs = 1, .only = {"VER.DLL"}});
+    CB_CHECK(r.pass);
+});
+
+CB_TEST("verify.regress.the_locks_are_let_go_before_the_boots_and_at_the_end", [] {
+    RegressFake f;
+    Services s = f.services();
+    bool build_free_during_boot = false;
+    const auto inner = s.boot;
+    s.boot = [&](const setup16::Replace& replace, const std::string& tag) {
+        auto got = file_lock::try_acquire(s.lock_dir / "build.lock");   // a second run can build while this one boots
+        build_free_during_boot = got.has_value();
+        CB_CHECK(!file_lock::try_acquire(s.lock_dir / ("boot-" + tag + ".lock")).has_value());   // but not boot the same machine
+        return inner(replace, tag);
+    };
+    const Report r = run(Tier::All15, s, {.runs = 1, .only = {"VER.DLL"}});
+    CB_CHECK(r.pass);
+    CB_CHECK(build_free_during_boot);
+    CB_CHECK(file_lock::try_acquire(s.lock_dir / "boot-regress-all15-1.lock").has_value());
+});
+
+CB_TEST("verify.regress.each_module_reports_its_own_build_error", [] {
+    RegressFake f;
+    Services s = f.services();
+    s.build = [](const std::vector<std::string>& names, const rsfs::path&, const rsfs::path&, bool) {
+        std::vector<Built> out;
+        for (const std::string& n : names) {
+            Built b;
+            b.name = n;
+            b.error = n == "USER.EXE" ? "cannot open for writing" : "did not link: " + n;
+            out.push_back(b);
+        }
+        return out;
+    };
+    const Report r = run(Tier::All15, s, {.runs = 1});
+    CB_CHECK(!r.pass);
+    std::size_t with_write_error = 0;
+    for (const Built& b : r.built) with_write_error += b.error.find("cannot open for writing") != std::string::npos ? 1 : 0;
+    CB_CHECK_EQ(with_write_error, std::size_t{1});
 });

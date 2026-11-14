@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <process.h>
 #include <stdlib.h>
 
 #include <nlohmann/json.hpp>
@@ -13,6 +14,7 @@
 #include "cb/base/runs.hpp"
 #include "cb/build/module.hpp"
 #include "cb/core/error.hpp"
+#include "cb/core/file_lock.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/json.hpp"
 #include "cb/core/log.hpp"
@@ -75,6 +77,15 @@ struct Expected {
     std::size_t c, gated;
 };
 constexpr Expected kStatusNumbers[] = {{"USER.EXE", 509, 61}, {"GDI.EXE", 118, 24}};
+
+// The lock a part of the run needs, when the services name a folder for locks: waits for another regress run that has it, saying so.
+file_lock::FileLock hold(const Services& s, const std::string& name, const std::string& what) {
+    if (s.lock_dir.empty()) return {};
+    std::optional<file_lock::FileLock> got = file_lock::acquire(s.lock_dir / (name + ".lock"), [&](const std::string& holder) {
+        cb::out("regress: waiting for regress run {} ({})\n", holder, what);
+    });
+    return std::move(*got);
+}
 
 }  // namespace
 
@@ -199,14 +210,16 @@ Report run(Tier tier, const Services& s, const Options& o) {
 
     // the run's own folder (built images); removed however the run ends
     stdfs::create_directories(s.work);
-    const stdfs::path folder = s.work / std::format("{}-{}-{}", o.tag, word(tier), std::chrono::duration_cast<std::chrono::seconds>(Clock::now().time_since_epoch()).count());
+    const stdfs::path folder = s.work / std::format("{}-{}-{}-{}", o.tag, word(tier), std::chrono::duration_cast<std::chrono::seconds>(Clock::now().time_since_epoch()).count(), _getpid());
     stdfs::create_directories(folder);
     struct Cleanup {
         stdfs::path folder;
         ~Cleanup() { base::runs::remove(folder); }
     } cleanup{folder};
 
-    // build
+    // build: the working folders of a module (state/build/<name>) are one for the checkout, so one regress run builds at a time; the
+    // lock is let go before the boots (they use this run's own copies of the images)
+    file_lock::FileLock build_lock = hold(s, "build", "its build folders are in use");
     setup16::Replace replace;
     bool all_linked = true;
     const auto build_set = [&](const std::vector<std::string>& names, const stdfs::path& originals, bool all_assembly) {
@@ -237,6 +250,7 @@ Report run(Tier tier, const Services& s, const Options& o) {
         stdfs::create_directories(*o.keep_built, ec);
         for (const auto& [name, image] : replace) stdfs::copy_file(image, *o.keep_built / (name), stdfs::copy_options::overwrite_existing, ec);
     }
+    build_lock.release();
     if (!all_linked) {
         r.notes.push_back("a module did not link: nothing was booted");
         r.took = since(start);
@@ -254,6 +268,8 @@ Report run(Tier tier, const Services& s, const Options& o) {
                 b.tag = tag;
                 const Clock::time_point t0 = Clock::now();
                 try {
+                    // (a boot's disk, CD and screenshots are named by its tag: two runs with one tag take turns)
+                    const file_lock::FileLock machine = hold(s, "boot-" + tag, "its machine " + tag + " is in use");
                     if (tier == Tier::Install) {
                         const install16::Outcome out = s.install(replace, tag);
                         b.verdict = std::string(install16::word(out.verdict));
@@ -310,6 +326,7 @@ Services production_services(const config::Config& config) {
     const stdfs::path qemu = config.path("qemu").value_or(stdfs::path("C:/Program Files/qemu/qemu-system-i386.exe"));
     const std::optional<stdfs::path> iso = config.path("win95_setup_iso");
     s.work = state / "work" / "regress";
+    s.lock_dir = s.work / "locks";
     s.mini_original = state / "mini" / "original";
     s.setup_original = state / "setup" / "original";
     auto kit = std::make_shared<engine::LaneKit>(config);
