@@ -8,7 +8,7 @@ Two ways a Java program reaches native code, and a judge for each:
     the JVM and natively.        judge_tree(src, work, backend)
 
   * whole programs from L2 (declarations and bodies), with a runtime of their own: backends/cpp17.program (native)
-    and backends/c_java.Program. Judged per program: every static method with primitive or String
+    (C: the native judge). Judged per program: every static method with primitive or String
     parameters and a primitive or String result is run on probe.py's inputs in the JVM and natively,
     and the program's main is run on both sides and its output compared.   judge_program(src, work, backend)
 
@@ -207,7 +207,7 @@ def _stage(src, dest):
 
 def judge_program(src, work, backend='cpp17', log=print):
     """A whole Java program (a folder of sources, default package) beside the JVM, translated by a
-    whole-program back end ('cpp17' or 'c'). -> dict(verdict, methods, cases, differs, main, why)"""
+    whole-program back end ('cpp17'). -> dict(verdict, methods, cases, differs, main, why)"""
     from codebreaker.java import probe
     javac, java = java_tools()
     res = dict(verdict=NOT_RUN, methods=0, cases=0, differs=[], main=None, why='', backend=backend)
@@ -293,9 +293,6 @@ def build(units, work, backend):
             first = next((l for l in err.splitlines() if 'error' in l), err[:300])
             return None, 'does not compile: ' + first[:400]
         return exe, ''
-    if backend == 'c':
-        from codebreaker.translate.backends import c_java
-        return c_java.build(units, out)
     raise ValueError('no whole-program back end %r' % backend)
 
 
