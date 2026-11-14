@@ -252,7 +252,8 @@ void serve_connection(Server& server, const std::shared_ptr<HttpState>& st, SOCK
 
 }  // namespace
 
-int Server::serve_http(std::uint16_t port, const std::string& host, const std::vector<std::string>& hosts, bool is_public, std::stop_token stop) {
+int Server::serve_http(std::uint16_t port, const std::string& host, const std::vector<std::string>& hosts, bool is_public, std::stop_token stop,
+                       const std::function<void(std::uint16_t)>& listening) {
     WSADATA d;
     WSAStartup(MAKEWORD(2, 2), &d);
     auto st = std::make_shared<HttpState>();
@@ -272,7 +273,14 @@ int Server::serve_http(std::uint16_t port, const std::string& host, const std::v
     if (bind(listener, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 || listen(listener, 64) != 0) {
         std::fprintf(stderr, "cannot listen on %s:%u\n", host.c_str(), static_cast<unsigned>(port));
         closesocket(listener);
+        if (listening) listening(0);   // (0: it is not listening)
         return 1;
+    }
+    if (listening) {
+        sockaddr_in bound{};
+        int size = sizeof bound;
+        getsockname(listener, reinterpret_cast<sockaddr*>(&bound), &size);
+        listening(ntohs(bound.sin_port));
     }
     while (!stop.stop_requested()) {
         fd_set ready;

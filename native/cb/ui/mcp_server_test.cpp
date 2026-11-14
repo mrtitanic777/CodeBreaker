@@ -15,6 +15,7 @@
 #include <ws2tcpip.h>
 
 #include <format>
+#include <future>
 #include <nlohmann/json.hpp>
 #include <thread>
 
@@ -527,9 +528,22 @@ CB_TEST("ui.mcp.the_http_transport_checks_the_token_the_host_and_the_session", [
     const std::string secret = token(f.services.state);
     CB_CHECK(!secret.empty());
     CB_CHECK_EQ(token(f.services.state), secret);   // made once and kept
-    const int port = 20000 + static_cast<int>(GetTickCount() % 20000);
+    // Any free port, told to us once the socket is listening: a port guessed from the clock was the same in two test processes started
+    // together (the sharded gate), and a client that connected to the other one's server met its token and its sessions.
+    std::promise<std::uint16_t> listening;
     std::stop_source stop;
-    std::thread server([&] { f.server.serve_http(static_cast<std::uint16_t>(port), "127.0.0.1", {}, false, stop.get_token()); });
+    std::thread server([&] {
+        f.server.serve_http(0, "127.0.0.1", {}, false, stop.get_token(), [&](std::uint16_t bound) { listening.set_value(bound); });
+    });
+    std::future<std::uint16_t> ready = listening.get_future();
+    const bool started = ready.wait_for(std::chrono::seconds(30)) == std::future_status::ready;
+    const int port = started ? ready.get() : 0;
+    CB_CHECK(port != 0);
+    if (port == 0) {
+        stop.request_stop();
+        server.join();
+        return;
+    }
     const std::string host = "127.0.0.1:" + std::to_string(port);
     const std::string init = R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}})";
     {   // no token: 401
