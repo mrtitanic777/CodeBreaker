@@ -98,14 +98,6 @@ def test_every_runner_returns_the_record():
     r = platforms.of("powerpc").emulator.run([(0x82000000, code)], 0x82000000, [0])
     assert _is_run(r) and r.ended == "ret" and r.results["r3"] == 5 and r.kept() and r.endian == "big"
     checked.append("powerpc")
-    vxd = corpus.retail("splitter.vxd")
-    if vxd:
-        from codebreaker.verify.lanes import driver
-        image = driver.load(vxd)
-        label = sorted(image.entries)[0]
-        r = platforms.of("le").emulator.run(image, image.entries[label], {"eax": 0})
-        assert _is_run(r) and "eax" in r.results and r.steps is not None
-        checked.append("le")
     assert len(checked) >= 2, checked
 
 

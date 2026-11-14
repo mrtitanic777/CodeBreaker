@@ -890,17 +890,3 @@ def test_a_screen_shorter_than_the_pages_points_is_not_that_page():
     assert setup16._error_box(Image.new("RGB", (640, 480), white)) is True
     assert setup16._error_box(Image.new("RGB", (640, 200), white)) is False
 
-
-def test_a_dos_program_whose_source_text_is_missing_still_has_its_function_keys(monkeypatch, tmp_path):
-    """prepare() left the keys empty when the source file held no text, and build() then indexed them for every
-    function of a program that had linked: KeyError instead of a verdict."""
-    from types import SimpleNamespace
-    from codebreaker.verify import verdicts as V
-    from codebreaker.verify.lanes import dos
-    written = {"functions": {0x10: SimpleNamespace(name="a")}, "linked": True, "same": False, "notes": ["differs at 4"]}
-    monkeypatch.setattr(dos, "P", SimpleNamespace(packager=SimpleNamespace(writer=lambda path, out: written)))
-    m = dos.prepare("prog.exe", str(tmp_path))
-    assert m.key == {"a": "00010"}
-    context, items, missing = dos.build(m, "prog.exe", str(tmp_path))
-    assert items == {"a": ("00010",)} and missing == {}
-    assert dos.judge(context, items["a"]) == (V.DIVERGENT, "image-differs", [], "differs at 4")

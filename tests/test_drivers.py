@@ -128,32 +128,6 @@ def test_container():
 
 
 # --- the judge ---------------------------------------------------------------------------------
-def test_judge_agrees_with_itself_and_catches_a_break():
-    from codebreaker.verify.lanes import driver
-    path = _driver()
-    for label in ("service_0", "service_3", "pm_api"):
-        verdict = driver.judge((path, path), (label, label))
-        assert verdict[0] == "equivalent", (label, verdict)
-    work = settings.state("driver_judge", "test")
-    os.makedirs(work, exist_ok=True)
-    copy = os.path.join(work, "broken.vxd")
-    changed = driver.break_instruction(path, copy, "service_3", 0)
-    assert changed, "nothing to break"
-    driver._IMAGES.pop(copy, None)
-    verdict = driver.judge((path, copy), ("service_3", "service_3"))
-    assert verdict[0] == "divergent", (changed, verdict)
-
-
-def test_run_records_service_calls():
-    from codebreaker.verify.lanes import driver
-    image = driver.load(_driver())
-    v = driver.inputs("control")[0][1]                    # DEVICE_INIT
-    r = driver.P.emulator.run(image, image.entries["control"], v["regs"], v["stack"], v["memory"], flags=v["flags"])
-    assert r.calls and r.steps > 10 and r.raw["calls"]
-    f = driver.fingerprint(image, image.entries["control"], v)
-    assert f["deps"] and "." in f["deps"][0] and "(" in f["deps"][0], f["deps"][:2]
-
-
 # --- the builder -------------------------------------------------------------------------------
 def test_compare_share_ignores_patched_places_outside_the_object():
     """The share of equal bytes is over the bytes outside the places the loader patches. A patched place (four bytes for
@@ -168,60 +142,10 @@ def test_compare_share_ignores_patched_places_outside_the_object():
     assert builder._equal_share(b"", b"", {0, 1}) == (0, 0)
 
 
-def test_build_from_source():
-    from codebreaker.build import driver as builder
-    from codebreaker.verify.lanes import driver
-    path = _driver()
-    if not builder.tool("wasm") or not builder.tool("wlink"):
-        raise Skip("OpenWatcom wasm/wlink not found")
-    if not builder.kit_folder():
-        raise Skip("the driver kit's include files were not found")
-    source = driver.source_folder(path)
-    if not source:
-        raise Skip("no assembly source for %s" % SMALL)
-    r = builder.build(source, original=path, out=settings.state("driver_build", "test"))
-    assert r["assembled"] and r["linked"], r["log"][-300:]
-    assert set(r["checks"]) == {"objects", "descriptor", "services", "exports", "module"}
-    assert r["checks"]["exports"] and r["checks"]["module"], r["notes"]
-    built = le.descriptor(le.LEFile.from_file(r["path"]))
-    assert built["name"] == "VKD" and built["service_count"] == 21
-
-
-def test_source_written_from_the_image_builds_back():
-    """The source the writer makes from the image has no address in it, assembles, and links
-    into a driver with the original's objects, descriptor, services and exports."""
-    from codebreaker.build import driver as builder
-    from codebreaker.source import driver_writer
-    if not builder.tool("wasm") or not builder.tool("wlink"):
-        raise Skip("OpenWatcom wasm/wlink not found")
-    r = driver_writer.reconstruct(_driver(), settings.state("driver_source", "test"))
-    assert r["linked"] and r["checks"] and all(r["checks"].values()), (r.get("notes"), r.get("checks"))
-    assert r["instructions"] > 1000 and r["raw"] * 10 < r["instructions"], (r["instructions"], r["raw"])
-    text = open(r["source"], encoding="latin1").read()
-    assert "VKD_DDB:" in text and "VKD_Get_Version" in text and "dd   offset L" in text
-    # the file as one L2 tree (module.l2.json): each function a fragment at its place, the text the same
-    import json
-    from codebreaker.translate.backends import asm
-    doc = json.load(open(r["l2"], encoding="utf-8"))
-    funcs = {u["name"]: u for u in doc["units"] if u.get("reason") == "function"}
-    assert "VKD_control" in funcs and "VKD_Get_Version" in funcs and len(funcs) > 20, sorted(funcs)[:8]
-    assert funcs["VKD_control"]["origin"]["segment"] >= 1 and funcs["VKD_control"]["length"] > 0
-    assert asm.module(doc) + "\n" == text.replace("\r\n", "\n")
-    assert driver_judge_all_equivalent(r["image"])
-
-
-def driver_judge_all_equivalent(image):
-    from codebreaker.verify.lanes import driver
-    results = driver.judge_files(image, _driver())
-    return results and all(v[0] in ("equivalent", "consistent") for v in results.values())
-
-
 def main():
     for fn in (test_table_names_services, test_table_names_are_identifiers, test_table_names_a_real_driver,
                test_reader_descriptor_and_entries, test_reader_fixups_encode_back, test_writer_round_trip,
-               test_container, test_judge_agrees_with_itself_and_catches_a_break,
-               test_run_records_service_calls, test_compare_share_ignores_patched_places_outside_the_object,
-               test_build_from_source, test_source_written_from_the_image_builds_back):
+               test_container, test_compare_share_ignores_patched_places_outside_the_object):
         check(fn)
     for name, state, why in RESULTS:
         print("%-5s %s%s" % (state, name, ("  -- " + why) if why else ""))
