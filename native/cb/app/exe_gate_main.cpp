@@ -165,7 +165,12 @@ struct Normaliser {
     std::vector<std::pair<std::string, std::string>> paths;   // lower-cased forward-slash path -> name
     std::vector<Regex> masks;
     static const Regex& timestamp() {
-        static const Regex re(R"(\d{4}-\d\d-\d\d[T ]\d\d:\d\d(:\d\d(\.\d+)?)?Z?)");
+        static const Regex re(R"(\d{4}-\d\d-\d\d[T ]\d\d?:\d\d(:\d\d(\.\d+)?)?Z?( ?[AP]M)?)");
+        return re;
+    }
+    // A bare date (a generated file's header: "generated 2026-11-14 by CodeBreaker"): the day a case runs is not content.
+    static const Regex& date() {
+        static const Regex re(R"(\b\d{4}-\d\d-\d\d\b)");
         return re;
     }
 
@@ -196,6 +201,7 @@ struct Normaliser {
             if (!hit) out += s[i++];
         }
         out = timestamp().replace_all(out, "<time>");
+        out = date().replace_all(out, "<date>");
         for (const Regex& m : masks) out = m.replace_all(out, "<~>");
         // Line ends are not content: a command's output is compared with \n.
         return text::replace_all(out, "\r\n", "\n");
