@@ -212,6 +212,20 @@ CB_TEST("verify.gate16.install16.the_desktop_is_teal_with_a_taskbar", [] {
     CB_CHECK(!is_desktop(partly));
 });
 
+CB_TEST("verify.gate16.install16.fault_box", [] {
+    const Rgb navy{0, 0, 168};
+    Picture fault = solid(640, 480, kGrey);
+    paint(fault, 92, 160, 548, 166, navy);                     // (the system-modal frame: top edge, then the sides)
+    paint(fault, 92, 160, 98, 320, navy);
+    paint(fault, 542, 160, 548, 320, navy);
+    CB_CHECK(is_fault_box(fault));
+    Picture message = solid(640, 480, kGrey);
+    paint(message, 92, 160, 548, 162, Rgb{255, 255, 255});     // (a message box: no navy frame)
+    paint(message, 120, 165, 520, 185, navy);                  // (and its dark-blue title bar)
+    CB_CHECK(!is_fault_box(message));
+    CB_CHECK(!is_fault_box(solid(720, 400, navy)));            // (a text screen)
+});
+
 CB_TEST("verify.gate16.install16.text_colours", [] {
     CB_CHECK(has_text_colour(text_screen(12, kGreen), TextColour::BrightGreen));
     CB_CHECK(!has_text_colour(text_screen(12, kGreen), TextColour::BrightYellow));

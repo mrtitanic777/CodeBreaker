@@ -284,6 +284,12 @@ bool Driver::restart_into_dos() {
         }
         // Setup sees the disk in the drive and asks for it out ("Setup detected a disk in your floppy disk drive... Click OK to restart"):
         // the disk is the one meant to be there, OK restarts all the same. A screen that waits this long is that box.
+        // (the box this waits for is Setup's own; a General Protection Fault box is USER failing, and no answer to it is a pass)
+        if (is_fault_box(*p)) {
+            c_.keep("finish-box");
+            fail(Verdict::FailErrorBox, "finish", "an Application Error box at Finish (a fault in the rebuilt modules), not Setup's floppy-disk box");
+            return false;
+        }
         if (before && still(*before, *p)) {
             if (c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(seconds(20))) && oks < 3) {
                 c_.keep("finish-box");
@@ -463,6 +469,21 @@ bool is_copy_from_box(const Picture& screen) {
     // the box's "Copy files from" field holds its text selected: dark blue (not the bright blue of the desktop's pattern) at three points
     const auto navy = [](const std::optional<Rgb>& p) { return p && p->r < 48 && p->g < 48 && p->b >= 100 && p->b <= 200; };
     return navy(screen.at(135, 265)) && navy(screen.at(250, 265)) && navy(screen.at(310, 265));
+}
+
+bool is_fault_box(const Picture& screen) {
+    if (screen.width() != kGraphicsWidth) return false;
+    // the system-modal frame is (0, 0, 168) and six pixels thick all round: its sides are navy columns more than a hundred rows tall. (A message
+    // box's title bar is navy too -- Setup's floppy-disk box -- but a bar, sixteen rows; the backdrop's pattern has no long runs at all.)
+    const auto frame = [](const std::optional<Rgb>& p) { return p && p->r < 40 && p->g < 40 && p->b >= 150 && p->b <= 190; };
+    for (std::uint32_t x = 0; x < screen.width(); ++x) {
+        std::uint32_t run = 0;
+        for (std::uint32_t y = 0; y < screen.height(); ++y) {
+            run = frame(screen.at(x, y)) ? run + 1 : 0;
+            if (run >= 100) return true;
+        }
+    }
+    return false;
 }
 
 bool has_text_colour(const Picture& screen, TextColour colour) {

@@ -242,6 +242,9 @@ CB_TEST("decompile.describe.the_small_readers", [] {
     // push bp / mov bp, sp / push ax: reads AX before it writes it
     CB_CHECK(dsc::register_arguments(code_of({0x55, 0x8B, 0xEC, 0x50, 0xC3}), 0));
     CB_CHECK(!dsc::register_arguments(code_of({0x33, 0xC0, 0xC3}), 0));   // xor ax, ax first
+    // mov cl, 5 / test ax, 0x1b1 (the skip idiom: the immediate is the next entry's mov cl, 1) / mov ax, seg / push bp / mov bp, sp / mov bx, [bp+8]:
+    // USER's GetWindowLong entries read no register -- their arguments are on the stack
+    CB_CHECK(!dsc::register_arguments(code_of({0xB1, 0x05, 0xA9, 0xB1, 0x01, 0xB8, 0x29, 0x08, 0x55, 0x8B, 0xEC, 0x8B, 0x5E, 0x08, 0xC3}), 0));
     // push bp / mov bp, sp / mov ax, [bp+6] / mov dx, [bp+8] / pop bp / ret: two words of arguments past a near frame's 4
     const dsc::Code16 frame = code_of({0x55, 0x8B, 0xEC, 0x8B, 0x46, 0x06, 0x8B, 0x56, 0x08, 0x5D, 0xC3});
     CB_CHECK_EQ(dsc::args_read(frame, 0, 11, dsc::Distance::Near).value_or(-1), 6);

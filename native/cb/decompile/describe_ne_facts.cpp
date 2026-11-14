@@ -814,6 +814,9 @@ bool register_arguments(const Code16& code, std::int64_t off) {
     for (const Insn& i : code.decode(off, off + 64, true)) {
         if (i.in_group(kGroupJump) || i.in_group(kGroupCall) || i.in_group(kGroupRet) || eq_any(i.mn, {"int", "iret", "retf"})) return false;
         if (!i.regs_ok) return false;
+        // (USER's GetWindowLong family enters at `mov cl, 5 / test ax, imm16 / mov cl, 1 ...`: the `test ax` (A9) is the skip idiom, its
+        // immediate the next entry's `mov cl, imm8` -- it reads nothing, and the arguments are on the stack, a pascal frame's)
+        if (i.bytes.size() == 3 && i.bytes[0] == 0xA9 && (i.bytes[1] & 0xF8) == 0xB0) continue;
         const std::vector<std::string> ops = split_strip_commas(i.op_str);
         const bool same = eq_any(i.mn, {"xor", "sub", "sbb"}) && ops.size() == 2 && ops[0] == ops[1];
         if (!same) {

@@ -63,6 +63,9 @@ enum class TextColour { BrightGreen, BrightYellow, Red };
 bool has_text_colour(const Picture& screen, TextColour colour);
 // The share (0..1) of the pictures' pixels, on a 160x120 copy of each, that differ by more than a few levels; 1 for pictures of two sizes.
 double changed_share(const Picture& before, const Picture& after);
+// Windows' "Application Error" box (a General Protection Fault, a stack fault ...): the system-modal box's thick dark-blue frame, a run of
+// it across the screen. A message box -- Setup's own "remove the disks from the floppy drives" one at Finish -- has no such frame.
+bool is_fault_box(const Picture& screen);
 
 // ---- the machine as the driver sees it ---------------------------------------------------------------------------------
 
