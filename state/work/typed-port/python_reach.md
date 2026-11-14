@@ -4,7 +4,7 @@ Made 2026-11-13, re-run after batch 3 (every command but `ui` native; batches 1,
 computed (state/work/typed-port/python_reach/graph.py and report.py: AST import graph of every .py, lazy imports and dotted-name
 strings included, plus tests/, tools/ and native/ generators); the batch-1 verdicts at the end were checked by hand; the batch-2 section corrects the batch-1 estimate of the deletable pool.
 
-387 modules / 124461 lines under codebreaker/ (ui is listed too, it is the kept terminal).
+320 modules / 109750 lines under codebreaker/ (ui is listed too, it is the kept terminal).
 
 ## How to read it
 
@@ -312,62 +312,21 @@ The tools that still hold modules alive are listed in section (1); retiring `too
 ### Unreached after batch 3 (computed: not in the closure of the UI, __main__ or a tool still used; tests are NOT roots here)
 
 - `build.m6502_asm` (147 lines)
-- `build.m68k_asm` (123 lines)
 - `build.msvc152` (79 lines)
 - `build.mzfile` (50 lines)
 - `build.period` (250 lines)
 - `build.pklite` (380 lines)
-- `build.sm83_asm` (117 lines)
 - `build.stubjoin` (122 lines)
 - `build.vxdfile` (63 lines)
-- `build.z80_asm` (284 lines)
 - `decompile.vmx128` (374 lines)
-- `decompile.xbox_effect` (217 lines)
-- `decompile.xenos_hlsl` (918 lines)
 - `engine.win16` (568 lines)
-- `formats.gfx` (223 lines)
-- `formats.inspect` (807 lines)
-- `formats.media` (256 lines)
-- `formats.msx` (66 lines)
-- `formats.xbox` (119 lines)
-- `formats.xbox.bink` (92 lines)
-- `formats.xbox.chd` (124 lines)
-- `formats.xbox.ciso` (123 lines)
-- `formats.xbox.effect` (334 lines)
-- `formats.xbox.fatx` (760 lines)
-- `formats.xbox.gdf` (134 lines)
-- `formats.xbox.god` (207 lines)
-- `formats.xbox.heavyiron` (400 lines)
-- `formats.xbox.nand` (97 lines)
-- `formats.xbox.pck` (126 lines)
-- `formats.xbox.shader` (152 lines)
-- `formats.xbox.stfs` (530 lines)
-- `formats.xbox.texture` (100 lines)
-- `formats.xbox.volumes` (199 lines)
-- `formats.xbox.xbe` (129 lines)
-- `formats.xbox.xdbf` (188 lines)
-- `formats.xbox.xma` (120 lines)
-- `formats.xbox.xpr` (135 lines)
-- `formats.xbox.xsb` (21 lines)
-- `formats.xbox.xur` (148 lines)
-- `formats.xbox.xwb` (153 lines)
-- `formats.xbox.xzp` (145 lines)
-- `formats.xbox.zar` (1034 lines)
-- `formats.xnb` (232 lines)
-- `formats.zx` (53 lines)
 - `platforms.dos` (33 lines)
-- `platforms.gb` (19 lines)
-- `platforms.genesis` (19 lines)
 - `platforms.java` (25 lines)
-- `platforms.msx` (19 lines)
 - `platforms.nes` (19 lines)
-- `platforms.sms` (19 lines)
 - `platforms.vxd` (43 lines)
 - `platforms.win16` (72 lines)
 - `platforms.win32` (58 lines)
-- `platforms.xbox` (22 lines)
 - `platforms.xbox360` (45 lines)
-- `platforms.zx` (19 lines)
 - `recompile` (17 lines)
 - `recompile.builders` (0 lines)
 - `recompile.builders.arith` (269 lines)
@@ -385,11 +344,8 @@ The tools that still hold modules alive are listed in section (1); retiring `too
 - `recompile.xenon` (243 lines)
 - `source.dos_writer` (1005 lines)
 - `source.driver_writer` (625 lines)
-- `source.gb_writer` (135 lines)
-- `source.genesis_writer` (148 lines)
 - `source.image_writer` (345 lines)
 - `source.le_writer` (518 lines)
-- `source.msx_writer` (43 lines)
 - `source.ne_asm` (0 lines)
 - `source.ne_asm.fixups` (133 lines)
 - `source.ne_asm.segdiff` (217 lines)
@@ -397,9 +353,6 @@ The tools that still hold modules alive are listed in section (1); retiring `too
 - `source.ne_writer` (458 lines)
 - `source.nes_writer` (160 lines)
 - `source.pe_writer` (529 lines)
-- `source.sms_writer` (133 lines)
-- `source.z80_writer` (94 lines)
-- `source.zx_writer` (41 lines)
 - `translate.backends.c_java` (1792 lines)
 - `translate.backends.csharp` (1566 lines)
 - `translate.backends.csharp_java` (631 lines)
@@ -426,11 +379,6 @@ The tools that still hold modules alive are listed in section (1); retiring `too
 - `verify.authored.shape` (210 lines)
 - `verify.gate16.runtime16` (62 lines)
 - `verify.gate16.scoreboard16` (203 lines)
-- `xna` (3 lines)
-- `xna.fixups` (170 lines)
-- `xna.mgfx` (162 lines)
-- `xna.port` (811 lines)
-- `xna.run` (212 lines)
 
 Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze.call_graph`, `analyze.classes`, `analyze.conventions`, `analyze.dispatch`, `analyze.dos_functions`, `analyze.globals`, `analyze.image`, `analyze.native`, `analyze.origin`, `analyze.strings`, `analyze.structures`, `base.cache`, `base.converted`, `base.ctext`, `base.parallel`, `base.runs`, `build`, `build.asm16`, `build.data`, `build.definitions`, `build.dos_sessions`, `build.dos_tools`, `build.driver`, `build.exepack`, `build.flat_thunk`, `build.functions`, `build.masm`, `build.module`, `build.msc6`, `build.native_dos`, `build.resources`, `build.watcom`, `compare`, `compare.mask`, `decompile`, `decompile.asm_blocks`, `decompile.c_text`, `decompile.ctree`, `decompile.decompiler`, `decompile.describe`, `decompile.frame16`, `decompile.inline_asm`, `decompile.jar`, `decompile.m6502`, `decompile.shape16`, `decompile.struct_text`, `emulate`, `emulate.emulator`, `emulate.fast_uc`, `emulate.m6502`, `emulate.native_shadow`, `emulate.native_trace`, `emulate.native_win16`, `emulate.pcode`, `emulate.ports16`, `emulate.powerpc`, `emulate.run`, `emulate.shadow`, `emulate.symbolic`, `emulate.windows16`, `engine`, `engine.engine`, `engine.facts`, `engine.lanes`, `engine.native_engine`, `exact`, `exact.aim`, `exact.aout`, `exact.batch`, `exact.carve`, `exact.compare`, `exact.data`, `exact.draft`, `exact.draft.candidates`, `exact.draft.forms`, `exact.draft.prove`, `exact.draft.shapes`, `exact.draft.text`, `exact.emu`, `exact.emu.dos`, `exact.emu.dpmi`, `exact.emu.native_dosexec`, `exact.library`, `exact.modules`, `exact.toolchain`, `exact.x86`, `formats`, `formats.cab`, `formats.detect`, `formats.dos`, `formats.le`, `formats.native`, `formats.ne`, `formats.nes`, `formats.omf`, `formats.pe`, `formats.pe_functions`, `formats.powerpc_image`, `formats.resources`, `formats.xex`, `invert`, `invert.flow16`, `invert.native_invert`, `java`, `java._paths`, `java.apimap`, `java.bugfix_ledger`, `java.cmake`, `java.console`, `java.console.platform_equivalents`, `java.console.platform_refs`, `java.console.sdk`, `java.debug`, `java.emit`, `java.emit.header`, `java.emit.naming`, `java.emit.ownership`, `java.emit.source`, `java.emit.std_transforms`, `java.ir`, `java.ledger`, `java.overlays`, `java.parse`, `java.platforms`, `java.probe`, `java.profiles`, `java.projects`, `java.reflection_factory`, `java.report`, `java.rules`, `java.runtime`, `java.stubs`, `java.textutil`, `java.transpile`, `java.twophase`, `java.typemap`, `java.types`, `jobs`, `jobs.pool`, `knowledge`, `knowledge.reads`, `knowledge.sources`, `knowledge.store`, `platforms`, `source`, `source.assembly`, `source.classes_writer`, `source.java_writer`, `source.module_writer`, `source.placement`, `source.readable`, `store`, `store.functions`, `symbols`, `symbols.api_arguments`, `symbols.demangle`, `symbols.dos_interrupts`, `symbols.driver_services`, `symbols.libraries`, `symbols.libraries.coff`, `symbols.libraries.omf`, `symbols.names`, `symbols.native`, `symbols.ordinals`, `symbols.prototypes`, `symbols.runtime_library`, `symbols.sdk_structs`, `symbols.wine16`, `symbols.xdk_libraries`, `translate`, `translate.backends`, `translate.backends.asm`, `translate.backends.c`, `translate.backends.cpp03`, `translate.backends.cpp17`, `translate.backends.java`, `translate.backends.java_libc`, `translate.backends.java_objects`, `translate.backends.module_file`, `translate.desugar`, `translate.frontends`, `translate.frontends.clang`, `translate.frontends.clang.ctypes`, `translate.frontends.clang.j2x`, `translate.frontends.clang.lower`, `translate.frontends.java`, `translate.frontends.java.lower`, `translate.ir`, `translate.judge_native_jvm`, `translate.l2`, `translate.native_l2`, `verify`, `verify.compare`, `verify.concolic`, `verify.gate16`, `verify.gate16.contract16`, `verify.gate16.isolated16`, `verify.gate16.setup16`, `verify.guided`, `verify.lane_common`, `verify.lanes`, `verify.lanes.java`, `verify.lanes.win16`, `verify.lanes.win32`, `verify.reconstruct`, `verify.teeth`, `verify.verdicts`
 
@@ -439,29 +387,28 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 | package | modules | lines | reached by a live cmd | UI | tests only | tools too | nothing/native-text only | YYGYY |
 |---|---|---|---|---|---|---|---|---|
 | (root) | 1 | 23 | 1 | 1 | 0 | 0 | 0 | 0 |
-| codebreaker.__main__ | 1 | 191 | 0 | 0 | 0 | 1 | 0 | 0 |
+| codebreaker.__main__ | 1 | 186 | 0 | 0 | 0 | 1 | 0 | 0 |
 | codebreaker.analyze | 12 | 3609 | 12 | 0 | 0 | 0 | 0 | 0 |
-| codebreaker.base | 8 | 1761 | 7 | 3 | 0 | 1 | 0 | 0 |
-| codebreaker.build | 26 | 10070 | 24 | 0 | 2 | 0 | 0 | 0 |
+| codebreaker.base | 8 | 1758 | 7 | 3 | 0 | 1 | 0 | 0 |
+| codebreaker.build | 23 | 9546 | 21 | 0 | 2 | 0 | 0 | 0 |
 | codebreaker.compare | 2 | 90 | 2 | 0 | 0 | 0 | 0 | 0 |
-| codebreaker.decompile | 18 | 9034 | 14 | 0 | 3 | 1 | 0 | 1 |
-| codebreaker.emulate | 19 | 7394 | 19 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.decompile | 13 | 6407 | 11 | 0 | 1 | 1 | 0 | 1 |
+| codebreaker.emulate | 16 | 5672 | 16 | 0 | 0 | 0 | 0 | 0 |
 | codebreaker.engine | 6 | 2526 | 6 | 0 | 0 | 0 | 0 | 0 |
 | codebreaker.exact | 27 | 12172 | 6 | 0 | 4 | 3 | 14 | 0 |
-| codebreaker.formats | 47 | 10357 | 39 | 0 | 8 | 0 | 0 | 0 |
+| codebreaker.formats | 14 | 2780 | 13 | 0 | 1 | 0 | 0 | 0 |
 | codebreaker.invert | 3 | 345 | 0 | 0 | 0 | 0 | 3 | 0 |
 | codebreaker.java | 56 | 14659 | 34 | 0 | 10 | 0 | 12 | 4 |
 | codebreaker.jobs | 2 | 287 | 2 | 0 | 0 | 0 | 0 | 0 |
 | codebreaker.knowledge | 4 | 535 | 4 | 0 | 0 | 0 | 0 | 0 |
-| codebreaker.platforms | 14 | 801 | 0 | 0 | 1 | 0 | 13 | 0 |
+| codebreaker.platforms | 8 | 684 | 0 | 0 | 1 | 0 | 7 | 0 |
 | codebreaker.recompile | 15 | 5510 | 0 | 0 | 7 | 0 | 8 | 14 |
-| codebreaker.source | 24 | 6941 | 17 | 0 | 5 | 0 | 2 | 3 |
+| codebreaker.source | 18 | 6347 | 11 | 0 | 5 | 0 | 2 | 3 |
 | codebreaker.store | 2 | 126 | 2 | 0 | 0 | 0 | 0 | 0 |
 | codebreaker.symbols | 16 | 3353 | 16 | 0 | 0 | 0 | 0 | 0 |
 | codebreaker.translate | 41 | 23730 | 14 | 0 | 16 | 1 | 10 | 4 |
 | codebreaker.ui | 3 | 1277 | 0 | 3 | 0 | 0 | 0 | 0 |
-| codebreaker.verify | 35 | 8312 | 18 | 0 | 14 | 1 | 2 | 0 |
-| codebreaker.xna | 5 | 1358 | 0 | 0 | 5 | 0 | 0 | 0 |
+| codebreaker.verify | 29 | 8128 | 18 | 0 | 9 | 1 | 1 | 0 |
 
 ## Every module
 
@@ -469,13 +416,13 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| (package) | 23 | UI; platforms registry; tests: n_subjects,ll,+121; tools: carve,causes,copy_walk; native gens: 27 | none found | NNGNN |
+| (package) | 23 | UI; platforms registry; tests: n_subjects,ll,+114; tools: carve,causes,copy_walk; native gens: 25 | none found | NNGNN |
 
 ### codebreaker.__main__
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| __main__ | 191 | tools: carve,unreachable | none found | NN-NY |
+| __main__ | 186 | tools: carve,unreachable | none found | NN-NY |
 
 ### codebreaker.analyze
 
@@ -498,20 +445,20 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| base | 0 | UI; platforms registry; tests: n_subjects,ll,analysis+22; tools: copy_walk,failures,freeze_tests; native gens: 7 | cb/base/(base/ package) | YYGNN |
+| base | 0 | UI; platforms registry; tests: n_subjects,ll,analysis+21; tools: copy_walk,failures,freeze_tests; native gens: 7 | cb/base/(base/ package) | YYGNN |
 | base.cache | 591 | platforms registry; tests: plumbing,verification | cb/base/cache.cpp +4 | YY-NN |
 | base.converted | 188 | platforms registry; tests: converted | cb/base/converted.cpp +1 | YY-NN |
-| base.corpus | 295 | UI; platforms registry; tests: n_subjects,analysis,concolic+16; tools: failures,freeze_tests,l2c; native gens: 2 | cb/base/corpus.cpp +3 | YYGNN |
+| base.corpus | 292 | UI; platforms registry; tests: n_subjects,analysis,concolic+16; tools: failures,freeze_tests,l2c; native gens: 2 | cb/base/corpus.cpp +3 | YYGNN |
 | base.ctext | 51 | platforms registry | cb/base/ctext.cpp +1 | YY-NY |
 | base.parallel | 268 | platforms registry; tests: ll,plumbing,verification | cb/base/parallel.cpp +1 | YY-NN |
 | base.runs | 82 | tests: plumbing; tools: copy_walk,record | cb/base/runs.cpp +1 | YY-NN |
-| base.settings | 286 | UI; platforms registry; tests: assembler,csharp_kit,dos+4; tools: copy_walk,golden,judge_c_java; native gens: 6 | cb/base/settings.cpp +1 | YYGNN |
+| base.settings | 286 | UI; platforms registry; tests: assembler,csharp_kit,dos+3; tools: copy_walk,golden,judge_c_java; native gens: 6 | cb/base/settings.cpp +1 | YYGNN |
 
 ### codebreaker.build
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| build | 0 | platforms registry; tests: ,c_backend,dos+18; tools: make_api_table,oss_bench,trace16 | cb/build/(build/ package) | YN-NN |
+| build | 0 | platforms registry; tests: ,c_backend,dos+16; tools: make_api_table,oss_bench,trace16 | cb/build/(build/ package) | YN-NN |
 | build.asm16 | 689 | platforms registry; tests: verification | none found | NN-NN |
 | build.data | 530 | platforms registry; tests: whole_module | none found | NN-NN |
 | build.definitions | 208 | platforms registry; tests: whole_module | none found | NN-NN |
@@ -522,7 +469,6 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 | build.flat_thunk | 1085 | platforms registry; tests: flat_thunk,whole_module | none found | NN-NN |
 | build.functions | 678 | platforms registry; tests: engine,match_powerpc,platforms+4 | none found | NN-NN |
 | build.m6502_asm | 147 | platforms registry; tests: nes | none found | NN-NY |
-| build.m68k_asm | 123 | platforms registry; tests: m68k | none found | NN-NY |
 | build.masm | 442 | platforms registry; tests: dos | none found | NN-NN |
 | build.module | 2162 | platforms registry; tests: c_backend,platforms,whole_module | none found | NN-NN |
 | build.msc6 | 935 | platforms registry; tests: ,dos,verification | none found | NN-NN |
@@ -532,11 +478,9 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 | build.period | 250 | tests: verification | none found | NN-YY |
 | build.pklite | 380 | platforms registry; tests: pklite | none found | NN-NY |
 | build.resources | 658 | platforms registry; tests: whole_module | none found | NN-NN |
-| build.sm83_asm | 117 | platforms registry; tests: z80 | none found | NN-NY |
 | build.stubjoin | 122 | platforms registry | none found | NN-NY |
 | build.vxdfile | 63 | platforms registry | none found | NN-NY |
 | build.watcom | 160 | platforms registry; tests: ,plumbing,readable+3; tools: make_api_table,oss_bench,trace16 | none found | NN-NN |
-| build.z80_asm | 284 | platforms registry; tests: port_fixes,z80 | none found | NN-NY |
 
 ### codebreaker.compare
 
@@ -549,35 +493,29 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| decompile | 0 | platforms registry; tests: n_subjects,asm_blocks,c_backend+15; tools: freeze_tests,golden,goto_report; native gens: 1 | cb/decompile/(decompile/ package) | YYGNN |
+| decompile | 0 | platforms registry; tests: n_subjects,asm_blocks,c_backend+11; tools: freeze_tests,golden,goto_report; native gens: 1 | cb/decompile/(decompile/ package) | YYGNN |
 | decompile.asm_blocks | 267 | platforms registry; tests: asm_blocks,c_backend | cb/decompile/asm_blocks.cpp +1 | YY-NN |
 | decompile.c_text | 1428 | platforms registry; tests: n_subjects,c_backend,frozen+1; tools: freeze_tests | cb/decompile/c_text.hpp +5 | YY-NN |
 | decompile.ctree | 241 | tools: goto_report,oss_bench | cb/decompile/ctree.cpp +1 | YY-NY |
-| decompile.decompiler | 898 | platforms registry; tests: c_backend,dos,frozen+6; tools: freeze_tests,golden,goto_report | cb/decompile/decompiler.cpp +5 | YY-NN |
+| decompile.decompiler | 898 | platforms registry; tests: c_backend,dos,frozen+5; tools: freeze_tests,golden,goto_report | cb/decompile/decompiler.cpp +5 | YY-NN |
 | decompile.describe | 2178 | platforms registry; tests: n_subjects,dos,platforms+2; tools: golden,trace16 | cb/decompile/describe.cpp +6 | YY-NN |
 | decompile.frame16 | 236 | platforms registry; tests: frame16 | cb/decompile/frame16.cpp +1 | YY-NN |
 | decompile.inline_asm | 191 | platforms registry | cb/decompile/inline_asm.cpp +1 | YY-NN |
 | decompile.jar | 188 | platforms registry | cb/decompile/jar.cpp +1 | YY-NN |
 | decompile.m6502 | 181 | platforms registry; tests: nes; tools: sleigh_verify_6502 | cb/decompile/m6502.cpp +1 | YY-NN |
-| decompile.m68k | 751 | platforms registry; tests: m68k | cb/decompile/m68k.cpp +1 | YY-NY |
 | decompile.shape16 | 111 | platforms registry; tests: frame16 | cb/decompile/shape16.cpp +1 | YY-NN |
-| decompile.sm83 | 270 | platforms registry; tests: z80 | cb/decompile/sm83.cpp +1 | YY-NY |
 | decompile.struct_text | 114 | platforms registry; tests: c_backend | cb/decompile/struct_text.cpp +1 | YY-NN |
 | decompile.vmx128 | 374 | tests: vmx128; native gens: 1 | cb/decompile/vmx128.cpp +1 | YYGYY |
-| decompile.xbox_effect | 217 | tests: xbox_effect | cb/decompile/xbox_effect.cpp +1 | YY-YY |
-| decompile.xenos_hlsl | 918 | tests: xbox_effect | cb/decompile/xenos.cpp +3 | YY-YY |
-| decompile.z80 | 471 | platforms registry; tests: z80 | cb/decompile/z80.cpp +1 | YY-NY |
 
 ### codebreaker.emulate
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| emulate | 45 | platforms registry; tests: concolic,knowledge,m68k+8; tools: gate_teeth16,sleigh_verify_6502,sleigh_verify_ppc; native gens: 2 | cb/emulate/(emulate/ package) | YYGNN |
+| emulate | 45 | platforms registry; tests: concolic,knowledge,native_trace+6; tools: gate_teeth16,sleigh_verify_6502,sleigh_verify_ppc; native gens: 2 | cb/emulate/(emulate/ package) | YYGNN |
 | emulate.driver | 217 | platforms registry; tests: knowledge,native_trace,platforms; native gens: 1 | cb/emulate/driver.cpp +1 | YYGNY |
 | emulate.emulator | 616 | platforms registry; tests: concolic,native_trace,platforms+1; native gens: 1 | cb/emulate/emulator.cpp +1 | YYGNN |
 | emulate.fast_uc | 69 | platforms registry; tests: plumbing | none found | NN-NN |
 | emulate.m6502 | 314 | platforms registry; tests: nes,platforms,run_record; tools: sleigh_verify_6502 | cb/emulate/m6502.cpp +1 | YY-NY |
-| emulate.m68k | 715 | platforms registry; tests: m68k,platforms,run_record | cb/emulate/m68k.cpp +1 | YY-NY |
 | emulate.native_driver | 204 | platforms registry | cb/emulate/native_driver.cpp +1 | YY-NY |
 | emulate.native_shadow | 239 | platforms registry | cb/emulate/native_shadow.cpp +1 | YY-NN |
 | emulate.native_trace | 390 | platforms registry; tests: native_trace | cb/emulate/native_trace.cpp +1 | YY-NN |
@@ -587,10 +525,8 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 | emulate.powerpc | 916 | platforms registry; tests: concolic,platforms,powerpc; tools: sleigh_verify_ppc | cb/emulate/powerpc.cpp +1 | YY-NN |
 | emulate.run | 76 | platforms registry; tests: run_record | cb/emulate/run.cpp +1 | YY-NN |
 | emulate.shadow | 681 | platforms registry; tests: concolic,native_trace | cb/emulate/shadow.cpp +1 | YY-NN |
-| emulate.sm83 | 355 | platforms registry; tests: platforms,run_record,z80 | cb/emulate/sm83.cpp +1 | YY-NY |
 | emulate.symbolic | 193 | platforms registry; tests: concolic | cb/emulate/symbolic.cpp +1 | YY-NN |
 | emulate.windows16 | 1161 | platforms registry; tests: concolic,knowledge,native_trace+3; tools: gate_teeth16,trace16; native gens: 1 | cb/emulate/windows16.cpp +1 | YYGNN |
-| emulate.z80 | 652 | platforms registry; tests: platforms,run_record,z80 | cb/emulate/z80.cpp +1 | YY-NY |
 
 ### codebreaker.engine
 
@@ -639,53 +575,20 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| formats | 0 | platforms registry; tests: n_subjects,concolic,dos+23; tools: gate_teeth16,golden,memmap16; native gens: 5 | cb/formats/(formats/ package) | YYGNN |
+| formats | 0 | platforms registry; tests: n_subjects,concolic,dos+17; tools: gate_teeth16,golden,memmap16; native gens: 3 | cb/formats/(formats/ package) | YYGNN |
 | formats.cab | 178 | tests: n_subjects,media | cb/formats/cab.cpp +1 | YY-YN |
-| formats.detect | 88 | platforms registry; tests: n_subjects,plumbing,xbox_formats; native gens: 1 | cb/formats/detect.cpp +1 | YYGNN |
+| formats.detect | 88 | platforms registry; tests: n_subjects,plumbing | cb/formats/detect.cpp +1 | YY-NN |
 | formats.dos | 306 | platforms registry; tests: n_subjects,dos,exepack+2; native gens: 1 | cb/formats/dos.cpp +2 | YYGNN |
-| formats.gb | 113 | platforms registry | cb/formats/gb.cpp +1 | YY-NY |
-| formats.genesis | 128 | platforms registry | cb/formats/genesis.cpp +1 | YY-NY |
-| formats.gfx | 223 | tests: xbox_formats | cb/formats/gfx.cpp +2 | YY-YY |
-| formats.inspect | 807 | tests: n_subjects,inspect_render,ui+1 | cb/formats/inspect.cpp +2 | YY-YY |
 | formats.le | 397 | platforms registry; tests: n_subjects,drivers; tools: golden; native gens: 1 | cb/formats/le.cpp +4 | YYGNN |
-| formats.media | 256 | platforms registry; tests: dos,media,xbox_formats | cb/formats/media.cpp +2 | YY-NY |
-| formats.msx | 66 | platforms registry | cb/formats/msx.cpp +1 | YY-NY |
 | formats.native | 223 | platforms registry; tests: native_formats; native gens: 1 | none found | NNGNN |
 | formats.ne | 163 | platforms registry; tests: n_subjects,concolic,native_trace+3; tools: gate_teeth16,memmap16,record; native gens: 1 | cb/formats/ne.cpp +3 | YYGNN |
 | formats.nes | 138 | platforms registry; tests: nes | cb/formats/nes.cpp +1 | YY-NN |
 | formats.omf | 248 | platforms registry; tests: verification; native gens: 1 | cb/formats/omf.cpp +1 | YYGNN |
-| formats.pe | 176 | platforms registry; tests: n_subjects,concolic,run_record+2; tools: sleigh_verify,sleigh_verify_ppc; native gens: 1 | cb/formats/pe.cpp +3 | YYGNN |
+| formats.pe | 176 | platforms registry; tests: n_subjects,concolic,run_record+1; tools: sleigh_verify,sleigh_verify_ppc; native gens: 1 | cb/formats/pe.cpp +3 | YYGNN |
 | formats.pe_functions | 366 | platforms registry; tests: n_subjects,versions | cb/formats/pe_functions.cpp +1 | YY-NN |
 | formats.powerpc_image | 128 | platforms registry; tests: powerpc,vmx128; native gens: 2 | cb/formats/powerpc_image.cpp +1 | YYGNN |
 | formats.resources | 196 | platforms registry; tests: n_subjects,whole_module | cb/formats/resources.cpp +1 | YY-NN |
-| formats.sms | 129 | platforms registry | cb/formats/sms.cpp +1 | YY-NY |
-| formats.xbox | 119 | platforms registry; tests: xbe,xbox_effect,xbox_formats+1; native gens: 2 | cb/formats/xbox/(formats/xbox/ package) | YYGNY |
-| formats.xbox.bink | 92 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/bink.cpp +1 | YYGNY |
-| formats.xbox.chd | 124 | platforms registry; native gens: 2 | cb/formats/xbox/chd.cpp +1 | YYGNY |
-| formats.xbox.ciso | 123 | platforms registry | cb/formats/xbox/ciso.cpp +1 | YY-NY |
-| formats.xbox.effect | 334 | tests: xbox_effect | cb/formats/xbox/effect.cpp +1 | YY-YY |
-| formats.xbox.fatx | 760 | platforms registry; tests: xbox_formats | cb/formats/xbox/fatx.cpp +1 | YY-NY |
-| formats.xbox.gdf | 134 | platforms registry; tests: xbox_formats | cb/formats/xbox/gdf.cpp +1 | YY-NY |
-| formats.xbox.god | 207 | platforms registry; tests: xbox_formats | cb/formats/xbox/god.cpp +1 | YY-NY |
-| formats.xbox.heavyiron | 400 | platforms registry; tests: xbox_formats | cb/formats/xbox/heavyiron.cpp +1 | YY-NY |
-| formats.xbox.nand | 97 | platforms registry; tests: xbox_formats | cb/formats/xbox/nand.cpp +1 | YY-NY |
-| formats.xbox.pck | 126 | platforms registry | cb/formats/xbox/pck.cpp +1 | YY-NY |
-| formats.xbox.shader | 152 | tests: xbox_effect | cb/formats/xbox/shader.cpp +1 | YY-YY |
-| formats.xbox.stfs | 530 | platforms registry; tests: xbox_formats | cb/formats/xbox/stfs.cpp +1 | YY-NY |
-| formats.xbox.texture | 100 | platforms registry; tests: xbox_formats,xna | cb/formats/xbox/texture.cpp +1 | YY-NY |
-| formats.xbox.volumes | 199 | platforms registry | cb/formats/xbox/volumes.cpp +1 | YY-NY |
-| formats.xbox.xbe | 129 | platforms registry; tests: xbe,xbox_formats; native gens: 2 | cb/formats/xbox/xbe.cpp +1 | YYGNY |
-| formats.xbox.xdbf | 188 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xdbf.cpp +1 | YYGNY |
-| formats.xbox.xma | 120 | tests: xbox_formats | none found | NN-YY |
-| formats.xbox.xpr | 135 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xpr.cpp +1 | YYGNY |
-| formats.xbox.xsb | 21 | tests: xna | none found | NN-YY |
-| formats.xbox.xur | 148 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xur.cpp +1 | YYGNY |
-| formats.xbox.xwb | 153 | platforms registry; tests: xbox_formats | none found | NN-NY |
-| formats.xbox.xzp | 145 | platforms registry; tests: xbox_formats; native gens: 1 | cb/formats/xbox/xzp.cpp +1 | YYGNY |
-| formats.xbox.zar | 1034 | platforms registry | cb/formats/xbox/zar.cpp +1 | YY-NY |
 | formats.xex | 173 | platforms registry; tests: vmx128,x360,xex; native gens: 2 | cb/formats/xex.cpp +3 | YYGNN |
-| formats.xnb | 232 | tests: xbox_effect,xna | none found | NN-YY |
-| formats.zx | 53 | platforms registry; tests: z80 | cb/formats/zx.cpp +1 | YY-NY |
 
 ### codebreaker.invert
 
@@ -776,20 +679,14 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| platforms | 389 | tests: m68k,nes,platforms+4 | cb/platforms/(platforms/ package) | YY-YN |
+| platforms | 389 | tests: nes,platforms,port_fixes+1 | cb/platforms/(platforms/ package) | YY-YN |
 | platforms.dos | 33 | nothing | cb/platforms/dos.cpp +1 | YN-YY |
-| platforms.gb | 19 | nothing | cb/platforms/gb.cpp +1 | YN-YY |
-| platforms.genesis | 19 | nothing | cb/platforms/genesis.cpp +1 | YN-YY |
 | platforms.java | 25 | nothing | cb/platforms/java.cpp +1 | YN-YY |
-| platforms.msx | 19 | nothing | cb/platforms/msx.cpp +1 | YN-YY |
 | platforms.nes | 19 | nothing | cb/platforms/nes.cpp +1 | YN-YY |
-| platforms.sms | 19 | nothing | cb/platforms/sms.cpp +1 | YN-YY |
 | platforms.vxd | 43 | named in native text only | cb/platforms/vxd.cpp +1 | YY-YY |
 | platforms.win16 | 72 | named in native text only | cb/platforms/win16.cpp +1 | YY-YY |
 | platforms.win32 | 58 | nothing | none found | NN-YY |
-| platforms.xbox | 22 | nothing | none found | NN-YY |
 | platforms.xbox360 | 45 | nothing | none found | NN-YY |
-| platforms.zx | 19 | nothing | none found | NN-YY |
 
 ### codebreaker.recompile
 
@@ -815,18 +712,15 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| source | 0 | platforms registry; tests: drivers,kind,m68k+5; native gens: 1 | cb/source/(source/ package) | YYGNN |
+| source | 0 | platforms registry; tests: drivers,kind,module_model+3; native gens: 1 | cb/source/(source/ package) | YYGNN |
 | source.assembly | 232 | platforms registry | cb/source/assembly.cpp +1 | YY-NN |
 | source.classes_writer | 162 | platforms registry | cb/source/classes_writer.cpp +1 | YY-NN |
 | source.dos_writer | 1005 | platforms registry | cb/source/dos_writer.cpp +1 | YY-NY |
 | source.driver_writer | 625 | platforms registry; tests: drivers | cb/source/driver_writer.cpp +1 | YY-NY |
-| source.gb_writer | 135 | platforms registry; tests: z80 | cb/source/gb_writer.cpp +1 | YY-NY |
-| source.genesis_writer | 148 | platforms registry; tests: m68k | cb/source/genesis_writer.cpp +1 | YY-NY |
 | source.image_writer | 345 | platforms registry; tests: module_model | cb/source/image_writer.cpp +1 | YY-NY |
 | source.java_writer | 60 | platforms registry | cb/source/java_writer.cpp +1 | YY-NN |
 | source.le_writer | 518 | tests: module_model | cb/source/le_writer.cpp +1 | YY-YY |
 | source.module_writer | 435 | platforms registry; tests: kind | cb/source/module_writer.cpp +1 | YY-NN |
-| source.msx_writer | 43 | platforms registry; tests: z80 | cb/source/msx_writer.cpp +1 | YY-NY |
 | source.ne_asm | 0 | tests: port_fixes; native gens: 1 | cb/source/ne_asm/(source/ne_asm/ package) | YYGYY |
 | source.ne_asm.fixups | 133 | native gens: 1 | cb/source/ne_asm/fixups.cpp +1 | YYGYY |
 | source.ne_asm.segdiff | 217 | tests: port_fixes | cb/source/ne_asm/segdiff.cpp +1 | YY-YY |
@@ -836,9 +730,6 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 | source.pe_writer | 529 | tests: module_model,port_fixes | cb/source/pe_writer.cpp +1 | YY-YY |
 | source.placement | 121 | platforms registry | cb/source/placement.cpp +1 | YY-NN |
 | source.readable | 644 | platforms registry; tests: module_model,readable | cb/source/readable.cpp +1 | YY-NN |
-| source.sms_writer | 133 | platforms registry; tests: port_fixes,z80 | cb/source/sms_writer.cpp +1 | YY-NY |
-| source.z80_writer | 94 | platforms registry | cb/source/z80_writer.cpp +1 | YY-NY |
-| source.zx_writer | 41 | platforms registry; tests: z80 | cb/source/zx_writer.cpp +1 | YN-NY |
 
 ### codebreaker.store
 
@@ -851,7 +742,7 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| symbols | 0 | platforms registry; tests: dos,drivers,knowledge_reads+3; tools: struct_report; native gens: 1 | cb/symbols/(symbols/ package) | YYGNN |
+| symbols | 0 | platforms registry; tests: dos,drivers,knowledge_reads+2; tools: struct_report; native gens: 1 | cb/symbols/(symbols/ package) | YYGNN |
 | symbols.api_arguments | 434 | platforms registry; tests: knowledge_reads; native gens: 1 | cb/symbols/api_arguments.cpp +1 | YYGNN |
 | symbols.demangle | 107 | platforms registry; tests: symbols | cb/symbols/demangle.cpp +1 | YY-NN |
 | symbols.dos_interrupts | 101 | platforms registry; tests: dos | cb/symbols/dos_interrupts.cpp +1 | YY-NN |
@@ -861,7 +752,7 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 | symbols.libraries.omf | 152 | platforms registry | cb/symbols/libraries/omf.cpp +1 | YY-NN |
 | symbols.names | 547 | platforms registry; tests: symbols | cb/symbols/names.cpp +4 | YY-NN |
 | symbols.native | 70 | platforms registry | none found | NN-NN |
-| symbols.ordinals | 377 | platforms registry; tests: symbols,xbe | cb/symbols/ordinals.cpp +1 | YY-NN |
+| symbols.ordinals | 377 | platforms registry; tests: symbols | cb/symbols/ordinals.cpp +1 | YY-NN |
 | symbols.prototypes | 124 | platforms registry; tests: knowledge_reads,symbols; tools: struct_report | cb/symbols/prototypes.cpp +1 | YY-NN |
 | symbols.runtime_library | 386 | platforms registry; tests: symbols | cb/symbols/runtime_library.cpp +1 | YY-NN |
 | symbols.sdk_structs | 265 | platforms registry; tools: struct_report | cb/symbols/sdk_structs.cpp +1 | YY-NN |
@@ -926,7 +817,7 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| verify | 12 | platforms registry; tests: n_subjects,authored_rewrites,bytes+40; tools: causes,copy_walk,failures; native gens: 4 | cb/verify/(verify/ package) | YYGNN |
+| verify | 12 | platforms registry; tests: n_subjects,authored_rewrites,bytes+39; tools: causes,copy_walk,failures; native gens: 4 | cb/verify/(verify/ package) | YYGNN |
 | verify.authored | 2 | tests: authored_rewrites,c_backend,match_powerpc+3 | cb/verify/authored/(verify/authored/ package) | YY-YN |
 | verify.authored.match | 674 | tests: c_backend,match_powerpc,recompile+2 | cb/verify/authored/match16.cpp +1 | YY-YN |
 | verify.authored.match16 | 281 | tests: verification | cb/verify/authored/match16.cpp +1 | YY-YN |
@@ -946,29 +837,13 @@ Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze
 | verify.lanes | 4 | platforms registry; tests: n_subjects,bytes,concolic+31; tools: gate_teeth16,trace16; native gens: 3 | cb/verify/lanes/(verify/lanes/ package) | YYGNN |
 | verify.lanes.dos | 75 | platforms registry; tests: platforms,verification | cb/verify/lanes/dos.cpp +1 | YY-NY |
 | verify.lanes.driver | 567 | platforms registry; tests: drivers,platforms,run_record; native gens: 1 | cb/verify/lanes/driver.cpp +1 | YYGNY |
-| verify.lanes.gb | 41 | tests: platforms | none found | NN-YY |
-| verify.lanes.genesis | 40 | tests: platforms | none found | NN-YY |
 | verify.lanes.image_lane | 108 | tests: verification | cb/verify/lanes/image_lane.cpp +1 | YY-YY |
 | verify.lanes.java | 225 | platforms registry; tests: bytes,console_patches,cpp03_bodies+23 | cb/verify/lanes/java.cpp +1 | YY-NN |
-| verify.lanes.msx | 6 | tests: platforms | cb/verify/lanes/msx.hpp | YN-YY |
 | verify.lanes.nes | 38 | tests: nes,platforms | none found | NN-YY |
 | verify.lanes.powerpc | 393 | platforms registry; tests: platforms | cb/verify/lanes/powerpc.cpp +1 | YY-NN |
-| verify.lanes.sms | 39 | tests: platforms | none found | NN-YY |
 | verify.lanes.win16 | 727 | platforms registry; tests: platforms,run_record,verdicts+1; tools: gate_teeth16,trace16; native gens: 2 | cb/verify/lanes/win16.cpp +1 | YYGNN |
 | verify.lanes.win32 | 917 | platforms registry; tests: n_subjects,concolic,native_trace+4 | cb/verify/lanes/win32.cpp +5 | YY-NN |
-| verify.lanes.z80_flat | 52 | closure (lazy imports of live modules) | none found | NN-YY |
-| verify.lanes.zx | 6 | tests: platforms | cb/verify/lanes/zx.hpp | YN-YY |
-| verify.reconstruct | 305 | platforms registry; tests: kind,platforms,ui+3; tools: causes,failures,oss_bench; native gens: 1 | cb/verify/reconstruct.cpp +1 | YYGNN |
+| verify.reconstruct | 305 | platforms registry; tests: kind,platforms,ui+2; tools: causes,failures,oss_bench; native gens: 1 | cb/verify/reconstruct.cpp +1 | YYGNN |
 | verify.teeth | 256 | platforms registry; tests: verification; tools: gate_teeth16 | cb/verify/teeth.cpp +1 | YY-NY |
 | verify.verdicts | 215 | platforms registry; tests: native_engine,verdicts,verification; tools: gate_teeth16,replay,verdict_diff | cb/verify/verdicts.cpp +1 | YY-NN |
-
-### codebreaker.xna
-
-| module | lines | reached by | native replacement | 1-5 |
-|---|---|---|---|---|
-| xna | 3 | tests: xbox_effect,xna | cb/xna/(xna/ package) | YY-YY |
-| xna.fixups | 170 | tests: xna | cb/xna/fixups.cpp +1 | YY-YY |
-| xna.mgfx | 162 | tests: xbox_effect | cb/xna/mgfx.cpp +1 | YY-YY |
-| xna.port | 811 | tests: xna | cb/xna/port.cpp +1 | YY-YY |
-| xna.run | 212 | tests: xna | cb/xna/run.cpp +1 | YY-YY |
 
