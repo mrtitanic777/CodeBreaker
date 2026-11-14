@@ -1,2 +1,3 @@
 native/cb/decompile/c_text_consts.inc text eol=lf
 native/cb/**/testdata/** -text
+data/translate/judge_c_java/** text eol=lf
