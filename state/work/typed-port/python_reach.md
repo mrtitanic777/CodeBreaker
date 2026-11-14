@@ -1,10 +1,10 @@
 # Python reach inventory: who still reaches each codebreaker/ module
 
-Made 2026-11-13, re-run after batch 2 on master `0f231b2e5` (after batch 1 and the nine commands moved to native). Every row is
+Made 2026-11-13, re-run after batch 3 (every command but `ui` native; batches 1, 2 and 3 deleted; the totals and rows below are the tree after batch 3). Every row is
 computed (state/work/typed-port/python_reach/graph.py and report.py: AST import graph of every .py, lazy imports and dotted-name
 strings included, plus tests/, tools/ and native/ generators); the batch-1 verdicts at the end were checked by hand; the batch-2 section corrects the batch-1 estimate of the deletable pool.
 
-460 modules / 141557 lines under codebreaker/ (ui is listed too, it is the kept terminal).
+387 modules / 124461 lines under codebreaker/ (ui is listed too, it is the kept terminal).
 
 ## How to read it
 
@@ -199,53 +199,176 @@ every condition holds and whose tests could be given a native fate.
 - Single modules with no native test beside them: `source.dos_build`, `invert.msvc2_registers`, `build.{disc_image,period16,ppc_asm}`, `formats.xex_edit` (these
   have native code but their tests are by name only), left until a hand check shows the native test.
 
-### Unreached after batch 2 (computed: not in the closure of any live root, tools included)
+## Batch 3: 73 modules, 16,964 lines; two tools retired (and what the roots are now that every command but `ui` is native)
 
-- `analyze.ppc_calls` (268 lines)
-- `base.commands` (33 lines)
-- `base.tidy_state` (206 lines)
-- `build.disc_image` (289 lines)
+Deleted: **73 modules, 16,964 lines** (`wc -l`), leaving 387 modules and 124,461 lines under `codebreaker/` (460 / 141,557 after batch 2); plus 16 dead definitions of surviving modules that `tools/tidy.py --apply` removed (their only callers were deleted: 111 lines), and
+`tools/py2cpp.py` (300 lines; `tools/judge_c_java.py` was NOT retired, see (2)). Twenty-four `COMMANDS` rows are gone from `codebreaker/__main__.py`: `invert vxd ne-asm dos-build
+boot-floppy disc versions fonts coverage reach mcp progress facts knowledge recompile-project xex-imports ppc-calls xex-edit tidy-state build16` (the
+module of each is deleted) and the stale `crypto` row of batch 1. All 24 are in `NATIVE`, so `codebreaker.exe` never ran those modules.
+
+### (1) The live roots, computed again (scripts: `python_reach/graph.py`, `live3.py`, `pool3.py`, `solve3.py`; the old `report.py` is updated to the same roots)
+
+With `NATIVE` naming every command but `ui`, the Python that the translated exe (or `python -m codebreaker`) can reach from a command line is:
+
+- `codebreaker/__init__.py` and `codebreaker/ui/{__init__,client,terminal}.py` (+ `terminal.tcss`): the terminal interface. `tests/test_ui_thin.py` runs it with only those
+  files in front of it, so they import nothing else: `codebreaker/base/settings.py` at most.
+- `codebreaker/__main__.py`: `main()` runs `corpus.take_option` and dispatches. Its only import of ours is `codebreaker.base.corpus` (module level: `base.settings`). The lazy
+  imports inside corpus.py (`formats.detect`, `formats.ne`, `platforms`) belong to its other callers (tests, tools), not to what `__main__` runs.
+- `native/typed/*.json`: only `codebreaker.compare.image` (the Python file was deleted earlier; the typed C++ answers for it in the exe, which is why plain `python tools/check_imports.py`
+  lists the `compare.image` dangling imports of `source/*_writer.py`: they pass in `codebreaker.exe`, as they did before this batch). The compat shims under `native/cb/compat/` call native code only.
+- So from commands, the UI and `__main__`: **8 modules, 2,093 lines.** Everything else under `codebreaker/` is alive only because a `tools/*.py` imports it, a Python test imports it, or
+  a module that one of those reaches does (lazy imports and dotted-name strings included in the graph, so this over-counts rather than under-counts).
+- `tools/*.py` still used (by a suite, a cmd file or another tool): `check_imports`, `tidy` (both are SUITES rows), `freeze_tests` / `golden` / `l2c` / `sleigh_verify_6502` (imported by
+  `tests/test_frozen.py`, `test_native_trace.py`, `translate/test_c_backend.py`, `test_nes.py`), `carve`, `merge`, `move`, `prune`, `unreachable`, `make_api_table`, `failures`, `causes`
+  (the `tidy` family and the dev reports). Not used by anything but themselves: `bench_re, cache_tidy_proof, cb_order, chart, gate_teeth16, ghidra_fork, goto_report, l2check, oss_bench, sample, sleigh_verify_ppc, struct_report,
+  trace16, verdict_diff`, `tools/record16/*`, `tools/cb_shim/sample_*_cases.py`. Their closure reaches 200 modules / 67,612 lines (verify.gate16, verify.reconstruct, decompile.decompiler, exact.draft ...):
+  **retiring those dev scripts is the next lever** (they are not part of any gate and none is a caller of a command), but it was not asked for here and some are Logan's
+  analysis helpers, so they stay and are named.
+
+### (2) The two tools
+
+**`tools/py2cpp.py` is deleted** (300 lines). Nothing runs it: no suite, cmd file, tool, native source or other repository (Dashboard, Windows95, Win95VM, XboxMCP, LoganOS:
+searched) names it except docs, a comment in `native/ported/ne/CMakeLists.txt`, a work-folder path in `tests/translate/test_python_frontend.py` and a comment in pyengine. The ports it made are
+committed and `pyengine --dynamic` is the translator since 2026-11-05. docs/PYTHON_FRONTEND.md and NATIVE.md, which showed its command lines, now say it is retired and in git history. Its
+modules (the Python front end, `cpp17`, ...) are held by `tests/translate/*` now, not by a tool.
+
+**`tools/judge_c_java.py` is KEPT, on purpose.** I deleted it first; `tidy.py --apply` then found `judge_native_jvm.roundtrip` and `translate/frontends/clang/j2x.py` (302 lines) unreached, because
+the tool's `roundtrip` mode (Java -> C++ -> Java, TRANSLATOR_DESIGN.md phase 5) was their only caller. `j2x.py` is the pass that maps the Java runtime written in C++ (`JavaString`, `JArray<T>`, `JCat()`, `System::out`)
+back onto Java's library; **it has no native counterpart**: `native/cb/translate/judge_native_jvm.hpp` has the `roundtrip` function but takes the pass as a host hook (`lift_java_runtime`) that
+no native host binds. Deleting the tool would delete the only working Java round-trip judge. So the tool, `roundtrip` and `j2x.py` are restored (and the docs/manifest lines about the tool put back).
+The native gap to close first: port `j2x.py` as the native `lift_java_runtime`; then retire the tool (it keeps `translate.judge_native_jvm`, the clang front end and the Java back end reachable from a tool:
+8 modules, 5,680 lines, which are also held by `test_clang_frontend` / `test_java_backend`).
+
+### (3) What was deleted, and the five conditions
+
+| package | modules | lines | native replacement | tests removed (and their native fate) |
+|---|---|---|---|---|
+| `source/vxd` (boot coalesce corpus disassembly from_source idiom le_writer link loadable_corpus masm owbuild run services symbols tree, `__init__`) | 16 | 5,186 | `native/cb/source/vxd/*` | `tests/test_drivers.py`: 5 of 17 cases cut (`kit_macro_source` -> `source.vxd.idiom.the_ddb_as_a_macro`, `a_service_call_as_a_macro`, `a_control_procedure_with_a_jump_table`; `kit_macro_source_builds_back` -> `source.vxd.from_source.splitter_comes_back_as_the_original`, `splitter_compiles_and_links_with_the_period_tools`; `boot_disk_injection` -> `source.vxd.boot.where_each_driver_goes_on_the_disk`; `boot_screens` -> `what_a_screen_shows`; `boot_bisect` -> `bisection_finds_the_units_that_fail_alone`). The other 12 stay |
+| `invert` (compilers early_c early_c_check early_c_forward early_c_frame early_c_frame_probe early_c_order_probe early_c_round_trip grammars known_differences msc6 msc6_{calls,function,idioms,registers,templates,walk} msvc2 msvc2_forward msvc2_registers quad_align quad_dump run segment_thunk whole_function) | 25 | 2,105 | `native/cb/invert/*` (`early_c*`, `msc6*`, `msvc2*`, `command`, `module_pass`, `production`, `quad_*`, `grammars`, `known_differences`; the name heuristic of report.py finds no same-name file for 12 of them: checked by hand, they are inside `msc6_small`, `msc6_segment`, `module_pass`, `production`, `msvc2_battery`) | `tests/test_invert.py` deleted whole (15 cases, all `[C]` in test_port_map.md: `invert.early_c.golden_cases`, `early_c_frame.ground_truth_frames`, `msc6_small`/`production_msc6`, `msvc2_test`, `known_differences`, `command.the_table_has_every_tool_of_the_python`, `modules_test` (`module_pass`), `quad_align.functions_of_real_objects`, `grammars`, `source.ne_asm.*`, `symbols.debug_build.*`); `invert/flow16.py`, `native_invert.py` stay (a tool and `exact.draft` hold them) |
+| `source/ne_asm` (datacode idiom reachability recon run sweep) | 6 | 1,524 | `native/cb/source/ne_asm/*` | same `test_invert.py` (`16bit_assembly_source` -> `source.ne_asm.idiom.the_source_of_a_range`, `...nasm_is_run_on_the_source_and_its_words_are_kept`); `ne_asm/{__init__,fixups,segment,segdiff}.py` stay (`test_port_fixes.py`, not mapped) |
+| `symbols/{debug_build,debug_build_estimate}` | 2 | 364 | `native/cb/symbols/debug_build*.cpp` | `test_invert.py::debug_build_names` -> `symbols.debug_build.*` (`a_signature_masks_what_depends_on_the_offset`, `debug_build_estimate_test`) |
+| `recompile/{gpu,project,title,x360project}` | 4 | 2,266 | `native/cb/recompile/{gpu,project,title,x360project}.*` | none imported them (the `recompile-project` command only); native `gpu_test project_test title_test x360project_test` |
+| `ui/{mcp_server,service,progress}` | 3 | 1,916 | `native/cb/ui/{mcp_*,service*,progress*,serve*}` | `tests/test_mcp.py` deleted whole (13 cases, `[C]` in test_port_map.md: `ui.mcp.*`, `mcp_server_test`, `mcp_services_test`; it needed `pip install mcp` and an in-process client, so it skipped in the exe anyway); `tests/test_ui.py`: `ledger_agrees_with_the_store`, `ledger_reads_without_writing`, `progress_reading`, `service_reads_the_store` cut (-> `coverage.ledger.counts_come_from_the_store_by_the_best_candidates_class`, `the_json_and_the_csv`, `engine.function_store.read_only_stores_read_and_never_write`, `ui.progress.snapshot_rate_and_eta`, `line`, `ui.progress_store.results_in_the_store_are_the_progress`, `ui.service.a_functions_answer_is_the_page_document`, `a_call_by_name_is_answered_and_its_failures_are_said`); the inspector cases and `test_terminal_interface` stay |
+| `coverage/{__init__,ledger,reach}` (the package, folder removed) | 3 | 716 | `native/cb/coverage/{ledger*,reach*}` | `tests/test_platforms.py`: `reach: platforms, gaps and data told apart` cut (-> `coverage.reach.describe_by_platform_gap_or_nothing`, `gap_of_names_platforms_without_a_lane`, `reach_command_test`); test_ui's ledger cases above |
+| `compare/versions` | 1 | 871 | `native/cb/compare/versions*.cpp` | `tests/test_versions.py`: `a_module_against_itself`, `dos_program_and_shared`, `two_products_32bit`, `two_products_16bit` cut (-> `compare.versions.a_build_is_identical_to_itself`, `functions_shared_by_programs`, `windows_95_against_windows_98_is_what_the_original_wrote`, `names_and_reconstructions_carry_across_builds`, `a_whole_product`); the corpus, boot-image and carved-span cases stay |
+| `formats/fonts` | 1 | 115 | `native/cb/formats/fonts.*` | `test_versions.py::fonts` cut (-> `formats.fonts.glyphs_are_drawn_from_the_bitmaps`, `a_fon_lists_its_fonts`); the frozen subject `fonts_vgafix` and `tests/fixtures/frozen/formats/fonts_vgafix.json` removed (-> `formats.fonts.a_fon_lists_its_fonts`, already `[C]` in the map) |
+| `analyze/ppc_calls`, `formats/xex_imports` | 2 | 354 | `native/cb/analyze/ppc_calls*`, `native/cb/formats/xex_imports*` | `tests/test_ppc_calls.py` deleted whole (3 cases -> `analyze.ppc_calls.what_an_instruction_writes`, `consensus_of_call_sites`, `analyze.ppc_calls_command.a_module_is_analysed_like_the_python_did`; the third needs `Converted/Minecraft`, which was cleared, and skipped) |
+| `build/{ppc_asm,period16,disc_image,floppy}`, `formats/xex_edit` | 5 | 1,125 | `native/cb/build/{ppc_asm,period16,disc_image,floppy,xex_edit}.*` | `tests/test_xex_edit.py` deleted whole (4 cases -> `build.ppc_asm.encodings`, `branches`, `errors`; `build.xex_edit.privileges_are_read_set_and_cleared_where_they_stand`, `code_edits_write_the_same_images_as_the_python`); `test_media.py`: the three disc-image cases cut (-> `build.disc_image.the_images_are_the_pythons`, `names_are_cut_to_level_one`, `an_image_is_listed_and_extracted_through_the_media_readers`); `test_whole_module.py`: `16bit_dll_with_the_period_tools` cut (-> `build.period16.build_compiles_each_module_and_links`, `segments_and_compare`, `period16_command_test`) |
+| `base/{tidy_state,commands}` | 2 | 239 | `native/cb/base/{tidy_state,commands}.*` | `tests/test_plumbing.py::tidy_state_finds_the_stale` cut (-> `tidy_state_test`: stale old caches, run folders, strays) |
+| `engine/show`, `knowledge/show`, `source/dos_build` | 3 | 183 | `native/cb/engine/show*`, `native/cb/knowledge/show*`, `native/cb/source/dos_build*` | none imported them (commands only) |
+
+Run-all rows removed: `test_mcp.py`, `test_ppc_calls.py`, `test_invert.py`, `test_xex_edit.py`. The golden generators under native testdata did not import any of these modules
+(searched; nothing to delete there).
+
+**The five conditions**
+
+1. **C++ committed**: the files above, checked by hand one by one (the table), and `native/typed/cpp/codebreaker/**` (untouched, `cb_shim_check`).
+2. **Own tests and every suite that exercised it pass as C++**: the native tests named above pass in this tree's checks (area builds and the gate below); every Python test that imported a
+   deleted module was deleted or cut, and every other suite is in the gate run below.
+3. **Judge / agreement**: these packages hold no per-body verdicts; the agreement evidence is the goldens the Python made, compared by the native tests above (`*_the_pythons*`, `golden_cases`,
+   `the_images_are_the_pythons`, `code_edits_write_the_same_images_as_the_python`, `a_module_is_analysed_like_the_python_did` ...), and the 114 java-less test_port_map rows.
+4. **Every caller through the exe**: none of the 73 is in the closure of the UI or `__main__`, of any tool still used, or of a surviving module (the solver keeps a module when anything
+   that stays imports it); Dashboard, Windows95, Win95VM, XboxMCP and LoganOS have no hit for the module names or `python -m codebreaker <command>` of these; the 24 `COMMANDS` rows
+   went with their modules. One dynamic edge is left dangling on purpose and is unreachable: `exact/draft/__init__.py::run` does `importlib.import_module("codebreaker.invert." + model)`; it
+   runs only for `codebreaker exact ... draft`, a native command (`native/cb/exact/draft/*`), and the Python module is itself held only by `tools/cb_shim/sample_*_cases.py`.
+   `native/pyengine/hints/stubs/*.pyi` and `islands.json` still name some deleted modules (hints for the translator; harmless; the same was true after batches 1 and 2).
+5. **All-15 boot**: none of the 73 is in the Python closure of `verify/gate16/*` or `source/module_writer` (the `boot` flag of report.py is false for every one; `verify.authored.*`, `verify.lanes.powerpc`
+   and `verify.gate16.{runtime16,scoreboard16}` are the ones that are, and they stay), and `regress` is native. `codebreaker regress all15 --runs 2` was NOT run in this worktree (as instructed):
+   the integrator runs it on master after the merge.
+
+### What was verified here
+
+- `tools\build_codebreaker_exe.cmd fast` (after `build_native.cmd pyengine pyrt` and the other libraries; first build in this worktree needed `_CL_=/wd4702`, as before) builds; rebuilt after the last edit.
+- `codebreaker.exe tools/check_imports.py`: **387 modules import, 0 dangling imports** (plain `python tools/check_imports.py` lists the 43 `compare.image` failures it listed before: that module is the typed manifest, see (1)).
+- `codebreaker.exe tools/tidy.py`: clean. It found 16 definitions of surviving modules whose only callers were deleted here (`build.dos_tools.masm_root`, `formats.le.HEADER_SIZE`, 7 functions of
+  `invert.native_invert`, `recompile.config.write_switch_tables`, 3 of `source.ne_asm.segdiff`, `translate.backends.cpp17.header_path`) and `--apply` removed them. It also wanted to remove `translate/frontends/clang/j2x.py` and
+  `judge_native_jvm.roundtrip` when I had retired `judge_c_java.py`: that is what stopped me retiring it, see (2).
+- **`codebreaker.exe tests/run_all.py --quick --jobs 2 --no-build`: ALL SUITES PASSED, 42 suites in 1,479 s** (test_java 374 passed, test_translate 190, test_recompile 7 in 1,025 s -- `native/xex` is built here, which is what makes
+  `test_whole_image` run -- test_ui 5 passed 1 skipped, test_drivers 12, test_versions 4, test_media 9, test_whole_module 14, test_plumbing 16, ...). The suites that were removed or cut are listed in (3).
+- `tools\gate.cmd`: **`cb_tests`: 5,595 passed, 0 failed (8 shards)**, built from this tree. UI tests (`python tests\test_ui.py --only test_terminal_interface`, `python tests\test_ui_thin.py`): **pass** (the first run found a bug of
+  mine: test_ui's `_fill_store` called `ledger.profiles()`; now `reconstruct.digests()["pe"]`). The 155 `cb_exe_gate` command cases: 144 pass here. **The 11 that fail are the worktree's environment, not the batch** -- none of those commands runs
+  Python at all (they are all in `NATIVE`), and the same harness with the main checkout's pre-change exe fails 5 of 155 in this worktree: `dos-build`, `driver-build`, `facts-binary`, `facts-make`, `settings` (their goldens are Logan's machine: relative `settings.json`
+  paths, `state` sizes). With the corpus found (`CB_CORPUS_ROOT`; the native corpus looks for `Windows95` beside the checkout root, which is three levels up from a worktree) and `decompiler.exe` copied in from the main checkout, this tree's exe
+  fails those same five plus `tidy-dry`, `tidy-stray` (golden "Converted/*/build/ (5): 270.8 MB"), `scoreboard`, `module-pe` (a hash of text the local decompiler made), `vxd-masm` (symbolic=500 in the golden, 0 here: the driver kit includes) and
+  `xenon-recompile-missing` (builds XenonRecomp first): state and tools a worktree does not have. They need to be run on master after the merge together with condition 5.
+- Environment notes for the integrator: a gate in a worktree needs `settings.json` with absolute paths, `CB_CORPUS_ROOT`, `native/decompiler/build/bin` and the other `native/*/build` libraries (`tools\build_native.cmd`), `native/xex` built, and
+  `state\cxx\cb\bin\cbtrace.dll` (`build_native.cmd cb`); a first run without the libraries fails ~30 suites with "formats.dll is required: not built".
+
+### What is left, and what blocks it (the pool after batch 3: 179 modules / 54,888 lines unreached by the UI, `__main__` and the tools; every one of them is held by a Python test)
+
+| group | modules | lines | blocked by |
+|---|---|---|---|
+| one connected tangle: `recompile/{powerpc,builders/*,config,discover,disassemble,jumptable,switches,xenon}`, `source/*_writer`, `build/{*_asm,msvc152,period,mzfile,pklite,stubjoin,vxdfile}`, `decompile/{m68k,sm83,z80,vmx128}`, `emulate/{m68k,sm83,z80,driver,native_driver}`, `formats/{gb,genesis,msx,sms,zx}`, the `platforms/*` registry and `verify/lanes/*` (loaded by name), `verify/authored/*` and `verify/gate16/*` (the boot closure) | 93 | 27,498 | 21 test files with no native mapping yet (`test_port_fixes, test_recompile, test_x360, test_verification, test_verdicts, test_run_record, test_vmx128, test_z80, test_module_model, test_c_backend, test_authored_rewrites, test_pytypes, test_python_frontend ...`); the registry and lanes are `importlib`-named, so they can go only together; `verify.authored*` and `verify.gate16.*` are in the boot closure (condition 5 needs the real boot on a tree without them) |
+| `formats/xbox/*` (24), `formats/{xnb,gfx,inspect,media}`, `decompile/{xbox_effect,xenos_hlsl}`, `xna/*`, `platforms.xbox` | 36 | 9,603 | **native gaps**: `formats.xnb`, `formats.xbox.{xma,xsb,xwb}` have no native counterpart; tests `test_xna, test_xbox_effect, test_xbox_formats, test_xbe` unmapped (the other formats have natives under `native/cb/formats/xbox/`) |
+| `java/projects/minecraft/*` (+ profiles), `java.console.xdk_scan`, `translate.rewrite` | 23 | 3,458 | loaded by name (`java.projects.load`, `java.profiles.get`) from `java.transpile`, which 23 tests/java files use through a profile name; the natives exist (`native/cb/java/projects/minecraft/*`) and tests/java is mapped, but cutting those files one by one has to go with `java.transpile` and `java.profiles` (the whole Python java front end) |
+| C# kit: `translate/{backends/csharp,backends/csharp_java,dotnet/*,frontends/csharp/*}` | 8 | 4,828 | **native gap**: the Roslyn driver of `CsTreeDump.cs` (`frontends/csharp/__init__.py`) and the judged pairs (`dotnet/pairs.py`) have no native counterpart (native has only `lower.cpp` over dumps); `test_csharp_kit, test_csharp_lower_trees, test_dotnet_toolchain` |
+| clang front end + Java back end: `translate/{backends/java*,frontends/clang/*,judge_native_jvm}` | 8 | 5,680 | `test_clang_frontend`, `test_java_backend` unmapped; `clang.j2x` and `clang.ctypes` have no same-name native; also held by `tools/judge_c_java.py` (kept, see (2)) |
+| `translate/{backends/c_java,backends/jmodel,javajudge}` | 3 | 2,610 | `test_cpp17_backend` tests the live cpp17 back end beside jmodel (cases must be cut one by one); `test_java_as_c` |
+| `exact/{emu/isis,emu/xenix,plm86,xenix_c,mspascal,hooks_lattice}` | 6 | 1,150 | named as `"plugin"` in `data/exact/toolchains/*.json` and imported by `exact.toolchain`, which `tools/cb_shim/sample_shapes_cases.py` keeps alive through `exact.draft`; no test of their own; native twins `native/cb/exact/*` exist. Free once `tools/cb_shim/sample_*_cases.py` are retired |
+
+The tools that still hold modules alive are listed in section (1); retiring `tools/cb_shim/sample_*_cases.py` and the other un-called dev scripts would free `exact.*`, the
+`verify.gate16`/`verify.reconstruct` Python and the decompile reports from the tool side, so they would then only be held by tests.
+
+### Unreached after batch 3 (computed: not in the closure of the UI, __main__ or a tool still used; tests are NOT roots here)
+
+- `build.m6502_asm` (147 lines)
+- `build.m68k_asm` (123 lines)
 - `build.msvc152` (79 lines)
+- `build.mzfile` (50 lines)
 - `build.period` (250 lines)
-- `build.period16` (212 lines)
-- `build.ppc_asm` (246 lines)
+- `build.pklite` (380 lines)
+- `build.sm83_asm` (117 lines)
+- `build.stubjoin` (122 lines)
+- `build.vxdfile` (63 lines)
+- `build.z80_asm` (284 lines)
 - `decompile.vmx128` (374 lines)
 - `decompile.xbox_effect` (217 lines)
 - `decompile.xenos_hlsl` (918 lines)
-- `formats.fonts` (115 lines)
+- `engine.win16` (568 lines)
 - `formats.gfx` (223 lines)
+- `formats.inspect` (807 lines)
+- `formats.media` (256 lines)
+- `formats.msx` (66 lines)
+- `formats.xbox` (119 lines)
+- `formats.xbox.bink` (92 lines)
+- `formats.xbox.chd` (124 lines)
+- `formats.xbox.ciso` (123 lines)
 - `formats.xbox.effect` (334 lines)
+- `formats.xbox.fatx` (760 lines)
+- `formats.xbox.gdf` (134 lines)
+- `formats.xbox.god` (207 lines)
+- `formats.xbox.heavyiron` (400 lines)
+- `formats.xbox.nand` (97 lines)
+- `formats.xbox.pck` (126 lines)
 - `formats.xbox.shader` (152 lines)
+- `formats.xbox.stfs` (530 lines)
+- `formats.xbox.texture` (100 lines)
+- `formats.xbox.volumes` (199 lines)
+- `formats.xbox.xbe` (129 lines)
+- `formats.xbox.xdbf` (188 lines)
 - `formats.xbox.xma` (120 lines)
+- `formats.xbox.xpr` (135 lines)
 - `formats.xbox.xsb` (21 lines)
-- `formats.xex_edit` (159 lines)
-- `formats.xex_imports` (86 lines)
+- `formats.xbox.xur` (148 lines)
+- `formats.xbox.xwb` (153 lines)
+- `formats.xbox.xzp` (145 lines)
+- `formats.xbox.zar` (1034 lines)
 - `formats.xnb` (232 lines)
-- `invert.compilers` (101 lines)
-- `invert.early_c` (97 lines)
-- `invert.early_c_check` (112 lines)
-- `invert.early_c_forward` (172 lines)
-- `invert.early_c_frame` (175 lines)
-- `invert.early_c_frame_probe` (61 lines)
-- `invert.early_c_order_probe` (38 lines)
-- `invert.early_c_round_trip` (74 lines)
-- `invert.grammars` (56 lines)
-- `invert.known_differences` (78 lines)
-- `invert.msc6` (77 lines)
-- `invert.msc6_calls` (18 lines)
-- `invert.msc6_function` (41 lines)
-- `invert.msc6_idioms` (94 lines)
-- `invert.msc6_registers` (42 lines)
-- `invert.msc6_templates` (37 lines)
-- `invert.msc6_walk` (29 lines)
-- `invert.msvc2` (64 lines)
-- `invert.msvc2_forward` (243 lines)
-- `invert.msvc2_registers` (18 lines)
-- `invert.quad_align` (76 lines)
-- `invert.quad_dump` (67 lines)
-- `invert.run` (258 lines)
-- `invert.segment_thunk` (49 lines)
-- `invert.whole_function` (28 lines)
+- `formats.zx` (53 lines)
+- `platforms.dos` (33 lines)
+- `platforms.gb` (19 lines)
+- `platforms.genesis` (19 lines)
+- `platforms.java` (25 lines)
+- `platforms.msx` (19 lines)
+- `platforms.nes` (19 lines)
+- `platforms.sms` (19 lines)
+- `platforms.vxd` (43 lines)
+- `platforms.win16` (72 lines)
+- `platforms.win32` (58 lines)
+- `platforms.xbox` (22 lines)
+- `platforms.xbox360` (45 lines)
+- `platforms.zx` (19 lines)
+- `recompile` (17 lines)
 - `recompile.builders` (0 lines)
 - `recompile.builders.arith` (269 lines)
 - `recompile.builders.floating` (172 lines)
@@ -253,48 +376,30 @@ every condition holds and whose tests could be given a native fate.
 - `recompile.builders.memory` (492 lines)
 - `recompile.builders.system` (384 lines)
 - `recompile.builders.vector` (989 lines)
-- `recompile.config` (260 lines)
+- `recompile.config` (234 lines)
 - `recompile.disassemble` (158 lines)
 - `recompile.discover` (181 lines)
-- `recompile.gpu` (1044 lines)
 - `recompile.jumptable` (364 lines)
 - `recompile.powerpc` (1168 lines)
-- `recompile.project` (876 lines)
 - `recompile.switches` (553 lines)
-- `recompile.title` (148 lines)
-- `recompile.x360project` (198 lines)
-- `source.dos_build` (21 lines)
+- `recompile.xenon` (243 lines)
+- `source.dos_writer` (1005 lines)
+- `source.driver_writer` (625 lines)
+- `source.gb_writer` (135 lines)
+- `source.genesis_writer` (148 lines)
+- `source.image_writer` (345 lines)
 - `source.le_writer` (518 lines)
+- `source.msx_writer` (43 lines)
 - `source.ne_asm` (0 lines)
-- `source.ne_asm.datacode` (126 lines)
 - `source.ne_asm.fixups` (133 lines)
-- `source.ne_asm.idiom` (530 lines)
-- `source.ne_asm.reachability` (175 lines)
-- `source.ne_asm.recon` (473 lines)
-- `source.ne_asm.run` (44 lines)
-- `source.ne_asm.segdiff` (232 lines)
+- `source.ne_asm.segdiff` (217 lines)
 - `source.ne_asm.segment` (703 lines)
-- `source.ne_asm.sweep` (176 lines)
 - `source.ne_writer` (458 lines)
+- `source.nes_writer` (160 lines)
 - `source.pe_writer` (529 lines)
-- `source.vxd` (0 lines)
-- `source.vxd.boot` (338 lines)
-- `source.vxd.coalesce` (234 lines)
-- `source.vxd.corpus` (125 lines)
-- `source.vxd.disassembly` (780 lines)
-- `source.vxd.from_source` (355 lines)
-- `source.vxd.idiom` (1118 lines)
-- `source.vxd.le_writer` (286 lines)
-- `source.vxd.link` (534 lines)
-- `source.vxd.loadable_corpus` (114 lines)
-- `source.vxd.masm` (667 lines)
-- `source.vxd.owbuild` (186 lines)
-- `source.vxd.run` (45 lines)
-- `source.vxd.services` (115 lines)
-- `source.vxd.symbols` (95 lines)
-- `source.vxd.tree` (194 lines)
-- `symbols.debug_build` (168 lines)
-- `symbols.debug_build_estimate` (196 lines)
+- `source.sms_writer` (133 lines)
+- `source.z80_writer` (94 lines)
+- `source.zx_writer` (41 lines)
 - `translate.backends.c_java` (1792 lines)
 - `translate.backends.csharp` (1566 lines)
 - `translate.backends.csharp_java` (631 lines)
@@ -305,6 +410,13 @@ every condition holds and whose tests could be given a native fate.
 - `translate.dotnet.pairs` (114 lines)
 - `translate.frontends.csharp` (142 lines)
 - `translate.frontends.csharp.lower` (1233 lines)
+- `translate.frontends.python` (319 lines)
+- `translate.frontends.python.infer` (1955 lines)
+- `translate.frontends.python.lower` (1816 lines)
+- `translate.frontends.python.methods` (749 lines)
+- `translate.frontends.python.program` (874 lines)
+- `translate.frontends.python.pytypes` (308 lines)
+- `translate.frontends.python.structfmt` (55 lines)
 - `translate.javajudge` (307 lines)
 - `verify.authored` (2 lines)
 - `verify.authored.match` (674 lines)
@@ -320,36 +432,35 @@ every condition holds and whose tests could be given a native fate.
 - `xna.port` (811 lines)
 - `xna.run` (212 lines)
 
-Kept alive by `tools/*.py` alone (39 modules, 22423 lines): `base.runs`, `decompile.ctree`, `exact.aim`, `exact.batch`, `exact.carve`, `exact.compare`, `exact.data`, `exact.draft`, `exact.draft.candidates`, `exact.draft.forms`, `exact.draft.prove`, `exact.draft.shapes`, `exact.draft.text`, `exact.library`, `exact.modules`, `exact.toolchain`, `exact.x86`, `formats.cab`, `invert`, `invert.flow16`, `invert.native_invert`, `recompile`, `recompile.xenon`, `translate.backends.java`, `translate.backends.java_libc`, `translate.backends.java_objects`, `translate.frontends.clang`, `translate.frontends.clang.ctypes`, `translate.frontends.clang.j2x`, `translate.frontends.clang.lower`, `translate.frontends.python`, `translate.frontends.python.infer`, `translate.frontends.python.lower`, `translate.frontends.python.methods`, `translate.frontends.python.program`, `translate.frontends.python.pytypes`, `translate.frontends.python.structfmt`, `translate.judge_native_jvm`, `verify.gate16.setup16`
+Kept alive by `tools/*.py` alone (208 modules, 73222 lines): `analyze`, `analyze.call_graph`, `analyze.classes`, `analyze.conventions`, `analyze.dispatch`, `analyze.dos_functions`, `analyze.globals`, `analyze.image`, `analyze.native`, `analyze.origin`, `analyze.strings`, `analyze.structures`, `base.cache`, `base.converted`, `base.ctext`, `base.parallel`, `base.runs`, `build`, `build.asm16`, `build.data`, `build.definitions`, `build.dos_sessions`, `build.dos_tools`, `build.driver`, `build.exepack`, `build.flat_thunk`, `build.functions`, `build.masm`, `build.module`, `build.msc6`, `build.native_dos`, `build.resources`, `build.watcom`, `compare`, `compare.mask`, `decompile`, `decompile.asm_blocks`, `decompile.c_text`, `decompile.ctree`, `decompile.decompiler`, `decompile.describe`, `decompile.frame16`, `decompile.inline_asm`, `decompile.jar`, `decompile.m6502`, `decompile.shape16`, `decompile.struct_text`, `emulate`, `emulate.emulator`, `emulate.fast_uc`, `emulate.m6502`, `emulate.native_shadow`, `emulate.native_trace`, `emulate.native_win16`, `emulate.pcode`, `emulate.ports16`, `emulate.powerpc`, `emulate.run`, `emulate.shadow`, `emulate.symbolic`, `emulate.windows16`, `engine`, `engine.engine`, `engine.facts`, `engine.lanes`, `engine.native_engine`, `exact`, `exact.aim`, `exact.aout`, `exact.batch`, `exact.carve`, `exact.compare`, `exact.data`, `exact.draft`, `exact.draft.candidates`, `exact.draft.forms`, `exact.draft.prove`, `exact.draft.shapes`, `exact.draft.text`, `exact.emu`, `exact.emu.dos`, `exact.emu.dpmi`, `exact.emu.native_dosexec`, `exact.library`, `exact.modules`, `exact.toolchain`, `exact.x86`, `formats`, `formats.cab`, `formats.detect`, `formats.dos`, `formats.le`, `formats.native`, `formats.ne`, `formats.nes`, `formats.omf`, `formats.pe`, `formats.pe_functions`, `formats.powerpc_image`, `formats.resources`, `formats.xex`, `invert`, `invert.flow16`, `invert.native_invert`, `java`, `java._paths`, `java.apimap`, `java.bugfix_ledger`, `java.cmake`, `java.console`, `java.console.platform_equivalents`, `java.console.platform_refs`, `java.console.sdk`, `java.debug`, `java.emit`, `java.emit.header`, `java.emit.naming`, `java.emit.ownership`, `java.emit.source`, `java.emit.std_transforms`, `java.ir`, `java.ledger`, `java.overlays`, `java.parse`, `java.platforms`, `java.probe`, `java.profiles`, `java.projects`, `java.reflection_factory`, `java.report`, `java.rules`, `java.runtime`, `java.stubs`, `java.textutil`, `java.transpile`, `java.twophase`, `java.typemap`, `java.types`, `jobs`, `jobs.pool`, `knowledge`, `knowledge.reads`, `knowledge.sources`, `knowledge.store`, `platforms`, `source`, `source.assembly`, `source.classes_writer`, `source.java_writer`, `source.module_writer`, `source.placement`, `source.readable`, `store`, `store.functions`, `symbols`, `symbols.api_arguments`, `symbols.demangle`, `symbols.dos_interrupts`, `symbols.driver_services`, `symbols.libraries`, `symbols.libraries.coff`, `symbols.libraries.omf`, `symbols.names`, `symbols.native`, `symbols.ordinals`, `symbols.prototypes`, `symbols.runtime_library`, `symbols.sdk_structs`, `symbols.wine16`, `symbols.xdk_libraries`, `translate`, `translate.backends`, `translate.backends.asm`, `translate.backends.c`, `translate.backends.cpp03`, `translate.backends.cpp17`, `translate.backends.java`, `translate.backends.java_libc`, `translate.backends.java_objects`, `translate.backends.module_file`, `translate.desugar`, `translate.frontends`, `translate.frontends.clang`, `translate.frontends.clang.ctypes`, `translate.frontends.clang.j2x`, `translate.frontends.clang.lower`, `translate.frontends.java`, `translate.frontends.java.lower`, `translate.ir`, `translate.judge_native_jvm`, `translate.l2`, `translate.native_l2`, `verify`, `verify.compare`, `verify.concolic`, `verify.gate16`, `verify.gate16.contract16`, `verify.gate16.isolated16`, `verify.gate16.setup16`, `verify.guided`, `verify.lane_common`, `verify.lanes`, `verify.lanes.java`, `verify.lanes.win16`, `verify.lanes.win32`, `verify.reconstruct`, `verify.teeth`, `verify.verdicts`
 
 ## Totals by package
 
 | package | modules | lines | reached by a live cmd | UI | tests only | tools too | nothing/native-text only | YYGYY |
 |---|---|---|---|---|---|---|---|---|
 | (root) | 1 | 23 | 1 | 1 | 0 | 0 | 0 | 0 |
-| codebreaker.__main__ | 1 | 212 | 1 | 0 | 0 | 0 | 0 | 0 |
-| codebreaker.analyze | 13 | 3877 | 12 | 12 | 1 | 0 | 0 | 0 |
-| codebreaker.base | 10 | 2000 | 7 | 6 | 1 | 1 | 1 | 0 |
-| codebreaker.build | 30 | 11042 | 25 | 16 | 5 | 0 | 0 | 0 |
-| codebreaker.compare | 3 | 961 | 3 | 2 | 0 | 0 | 0 | 0 |
-| codebreaker.coverage | 3 | 716 | 3 | 0 | 0 | 0 | 0 | 0 |
-| codebreaker.decompile | 18 | 9034 | 14 | 11 | 3 | 1 | 0 | 1 |
-| codebreaker.emulate | 19 | 7394 | 19 | 13 | 0 | 0 | 0 | 0 |
-| codebreaker.engine | 7 | 2638 | 7 | 5 | 0 | 0 | 0 | 0 |
-| codebreaker.exact | 27 | 12172 | 6 | 6 | 4 | 3 | 14 | 0 |
-| codebreaker.formats | 50 | 10731 | 40 | 13 | 9 | 0 | 1 | 0 |
-| codebreaker.invert | 28 | 2496 | 0 | 0 | 13 | 0 | 15 | 0 |
-| codebreaker.java | 56 | 14659 | 34 | 34 | 10 | 0 | 12 | 4 |
-| codebreaker.jobs | 2 | 287 | 2 | 2 | 0 | 0 | 0 | 0 |
-| codebreaker.knowledge | 5 | 585 | 5 | 4 | 0 | 0 | 0 | 0 |
-| codebreaker.platforms | 14 | 801 | 14 | 1 | 0 | 0 | 0 | 0 |
-| codebreaker.recompile | 19 | 7802 | 0 | 0 | 5 | 2 | 12 | 13 |
-| codebreaker.source | 47 | 13687 | 17 | 7 | 13 | 0 | 17 | 3 |
-| codebreaker.store | 2 | 126 | 2 | 2 | 0 | 0 | 0 | 0 |
-| codebreaker.symbols | 18 | 3717 | 16 | 16 | 1 | 0 | 1 | 0 |
-| codebreaker.translate | 41 | 23734 | 14 | 14 | 15 | 2 | 10 | 4 |
-| codebreaker.ui | 6 | 3193 | 6 | 3 | 0 | 0 | 0 | 0 |
-| codebreaker.verify | 35 | 8312 | 18 | 14 | 14 | 1 | 2 | 0 |
+| codebreaker.__main__ | 1 | 191 | 0 | 0 | 0 | 1 | 0 | 0 |
+| codebreaker.analyze | 12 | 3609 | 12 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.base | 8 | 1761 | 7 | 3 | 0 | 1 | 0 | 0 |
+| codebreaker.build | 26 | 10070 | 24 | 0 | 2 | 0 | 0 | 0 |
+| codebreaker.compare | 2 | 90 | 2 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.decompile | 18 | 9034 | 14 | 0 | 3 | 1 | 0 | 1 |
+| codebreaker.emulate | 19 | 7394 | 19 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.engine | 6 | 2526 | 6 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.exact | 27 | 12172 | 6 | 0 | 4 | 3 | 14 | 0 |
+| codebreaker.formats | 47 | 10357 | 39 | 0 | 8 | 0 | 0 | 0 |
+| codebreaker.invert | 3 | 345 | 0 | 0 | 0 | 0 | 3 | 0 |
+| codebreaker.java | 56 | 14659 | 34 | 0 | 10 | 0 | 12 | 4 |
+| codebreaker.jobs | 2 | 287 | 2 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.knowledge | 4 | 535 | 4 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.platforms | 14 | 801 | 0 | 0 | 1 | 0 | 13 | 0 |
+| codebreaker.recompile | 15 | 5510 | 0 | 0 | 7 | 0 | 8 | 14 |
+| codebreaker.source | 24 | 6941 | 17 | 0 | 5 | 0 | 2 | 3 |
+| codebreaker.store | 2 | 126 | 2 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.symbols | 16 | 3353 | 16 | 0 | 0 | 0 | 0 | 0 |
+| codebreaker.translate | 41 | 23730 | 14 | 0 | 16 | 1 | 10 | 4 |
+| codebreaker.ui | 3 | 1277 | 0 | 3 | 0 | 0 | 0 | 0 |
+| codebreaker.verify | 35 | 8312 | 18 | 0 | 14 | 1 | 2 | 0 |
 | codebreaker.xna | 5 | 1358 | 0 | 0 | 5 | 0 | 0 | 0 |
 
 ## Every module
@@ -358,164 +469,147 @@ Kept alive by `tools/*.py` alone (39 modules, 22423 lines): `base.runs`, `decomp
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| (package) | 23 | live cmds: all 8; UI; tests: n_subjects,ll,+125; tools: carve,causes,copy_walk; native gens: 27 | none found | NNGNN |
+| (package) | 23 | UI; platforms registry; tests: n_subjects,ll,+121; tools: carve,causes,copy_walk; native gens: 27 | none found | NNGNN |
 
 ### codebreaker.__main__
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| __main__ | 212 | live cmds: facts; tools: carve,unreachable | none found | NN-NY |
+| __main__ | 191 | tools: carve,unreachable | none found | NN-NY |
 
 ### codebreaker.analyze
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| analyze | 23 | live cmds: all 8; UI; tests: analysis,c_backend,dos+2; native gens: 3 | cb/analyze/(analyze/ package) | YYGNN |
-| analyze.call_graph | 110 | live cmds: all 8; UI; tests: analysis | cb/analyze/call_graph.cpp +1 | YY-NN |
-| analyze.classes | 533 | live cmds: all 8; UI; tests: analysis | cb/analyze/classes.cpp +1 | YY-NN |
-| analyze.conventions | 136 | live cmds: all 8; UI; tests: analysis; native gens: 1 | cb/analyze/conventions.cpp +1 | YYGNN |
-| analyze.dispatch | 404 | live cmds: all 8; UI; tests: analysis | cb/analyze/dispatch.cpp +1 | YY-NN |
-| analyze.dos_functions | 516 | live cmds: all 8; UI; tests: dos | cb/analyze/dos_functions.cpp +1 | YY-NN |
-| analyze.globals | 105 | live cmds: all 8; UI; tests: analysis; native gens: 1 | cb/analyze/globals.cpp +1 | YYGNN |
-| analyze.image | 524 | live cmds: all 8; UI; tests: analysis,c_backend; native gens: 2 | cb/analyze/image.cpp +1 | YYGNN |
-| analyze.native | 157 | live cmds: all 8; UI | cb/analyze/native.cpp +1 | YY-NN |
-| analyze.origin | 489 | live cmds: all 8; UI; tests: port_fixes | cb/analyze/origin.cpp +1 | YY-NN |
-| analyze.ppc_calls | 268 | tests: ppc_calls | cb/analyze/ppc_calls.cpp +2 | YY-YY |
-| analyze.strings | 191 | live cmds: all 8; UI; tests: analysis; native gens: 2 | cb/analyze/strings.cpp +1 | YYGNN |
-| analyze.structures | 421 | live cmds: all 8; UI; tests: analysis,c_backend | cb/analyze/structures.cpp +1 | YY-NN |
+| analyze | 23 | platforms registry; tests: analysis,c_backend,dos+1; native gens: 3 | cb/analyze/(analyze/ package) | YYGNN |
+| analyze.call_graph | 110 | platforms registry; tests: analysis | cb/analyze/call_graph.cpp +1 | YY-NN |
+| analyze.classes | 533 | platforms registry; tests: analysis | cb/analyze/classes.cpp +1 | YY-NN |
+| analyze.conventions | 136 | platforms registry; tests: analysis; native gens: 1 | cb/analyze/conventions.cpp +1 | YYGNN |
+| analyze.dispatch | 404 | platforms registry; tests: analysis | cb/analyze/dispatch.cpp +1 | YY-NN |
+| analyze.dos_functions | 516 | platforms registry; tests: dos | cb/analyze/dos_functions.cpp +1 | YY-NN |
+| analyze.globals | 105 | platforms registry; tests: analysis; native gens: 1 | cb/analyze/globals.cpp +1 | YYGNN |
+| analyze.image | 524 | platforms registry; tests: analysis,c_backend; native gens: 2 | cb/analyze/image.cpp +1 | YYGNN |
+| analyze.native | 157 | platforms registry | cb/analyze/native.cpp +1 | YY-NN |
+| analyze.origin | 489 | platforms registry; tests: port_fixes | cb/analyze/origin.cpp +1 | YY-NN |
+| analyze.strings | 191 | platforms registry; tests: analysis; native gens: 2 | cb/analyze/strings.cpp +1 | YYGNN |
+| analyze.structures | 421 | platforms registry; tests: analysis,c_backend | cb/analyze/structures.cpp +1 | YY-NN |
 
 ### codebreaker.base
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| base | 0 | live cmds: all 8; UI; tests: n_subjects,ll,analysis+24; tools: copy_walk,failures,freeze_tests; native gens: 7 | cb/base/(base/ package) | YYGNN |
-| base.cache | 591 | live cmds: all 8; UI; tests: plumbing,verification | cb/base/cache.cpp +4 | YY-NN |
-| base.commands | 33 | nothing | cb/base/commands.cpp +1 | YY-YY |
-| base.converted | 188 | live cmds: all 8; UI; tests: converted | cb/base/converted.cpp +1 | YY-NN |
-| base.corpus | 295 | live cmds: all 8; UI; tests: n_subjects,analysis,concolic+18; tools: failures,freeze_tests,l2c; native gens: 2 | cb/base/corpus.cpp +3 | YYGNN |
-| base.ctext | 51 | live cmds: all 8 | cb/base/ctext.cpp +1 | YY-NY |
-| base.parallel | 268 | live cmds: all 8; UI; tests: ll,plumbing,verification | cb/base/parallel.cpp +1 | YY-NN |
+| base | 0 | UI; platforms registry; tests: n_subjects,ll,analysis+22; tools: copy_walk,failures,freeze_tests; native gens: 7 | cb/base/(base/ package) | YYGNN |
+| base.cache | 591 | platforms registry; tests: plumbing,verification | cb/base/cache.cpp +4 | YY-NN |
+| base.converted | 188 | platforms registry; tests: converted | cb/base/converted.cpp +1 | YY-NN |
+| base.corpus | 295 | UI; platforms registry; tests: n_subjects,analysis,concolic+16; tools: failures,freeze_tests,l2c; native gens: 2 | cb/base/corpus.cpp +3 | YYGNN |
+| base.ctext | 51 | platforms registry | cb/base/ctext.cpp +1 | YY-NY |
+| base.parallel | 268 | platforms registry; tests: ll,plumbing,verification | cb/base/parallel.cpp +1 | YY-NN |
 | base.runs | 82 | tests: plumbing; tools: copy_walk,record | cb/base/runs.cpp +1 | YY-NN |
-| base.settings | 286 | live cmds: all 8; UI; tests: assembler,csharp_kit,dos+6; tools: copy_walk,golden,judge_c_java; native gens: 6 | cb/base/settings.cpp +1 | YYGNN |
-| base.tidy_state | 206 | tests: plumbing | cb/base/tidy_state.cpp +3 | YY-YY |
+| base.settings | 286 | UI; platforms registry; tests: assembler,csharp_kit,dos+4; tools: copy_walk,golden,judge_c_java; native gens: 6 | cb/base/settings.cpp +1 | YYGNN |
 
 ### codebreaker.build
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| build | 0 | live cmds: all 8; UI; tests: ,c_backend,dos+21; tools: make_api_table,oss_bench,trace16 | cb/build/(build/ package) | YN-NN |
-| build.asm16 | 689 | live cmds: all 8; UI; tests: verification | none found | NN-NN |
-| build.data | 530 | live cmds: all 8; UI; tests: whole_module | none found | NN-NN |
-| build.definitions | 208 | live cmds: all 8; UI; tests: whole_module | none found | NN-NN |
-| build.disc_image | 289 | tests: media | none found | NN-YY |
-| build.dos_sessions | 185 | live cmds: all 8; UI | none found | NN-NN |
-| build.dos_tools | 83 | live cmds: all 8; UI; tests: dos,drivers,invert | none found | NN-NN |
-| build.driver | 332 | live cmds: all 8; UI; tests: drivers | none found | NN-NN |
-| build.exepack | 107 | live cmds: all 8; UI; tests: exepack | none found | NN-NN |
-| build.flat_thunk | 1085 | live cmds: all 8; UI; tests: flat_thunk,whole_module | none found | NN-NN |
-| build.floppy | 219 | live cmds: facts,boot-floppy | none found | NN-NY |
-| build.functions | 678 | live cmds: all 8; UI; tests: engine,match_powerpc,platforms+4 | none found | NN-NN |
-| build.m6502_asm | 147 | live cmds: all 8; tests: nes | none found | NN-NY |
-| build.m68k_asm | 123 | live cmds: all 8; tests: m68k | none found | NN-NY |
-| build.masm | 442 | live cmds: all 8; UI; tests: dos | none found | NN-NN |
-| build.module | 2162 | live cmds: all 8; UI; tests: c_backend,platforms,whole_module | none found | NN-NN |
-| build.msc6 | 935 | live cmds: all 8; UI; tests: ,dos,verification+1 | none found | NN-NN |
+| build | 0 | platforms registry; tests: ,c_backend,dos+18; tools: make_api_table,oss_bench,trace16 | cb/build/(build/ package) | YN-NN |
+| build.asm16 | 689 | platforms registry; tests: verification | none found | NN-NN |
+| build.data | 530 | platforms registry; tests: whole_module | none found | NN-NN |
+| build.definitions | 208 | platforms registry; tests: whole_module | none found | NN-NN |
+| build.dos_sessions | 185 | platforms registry | none found | NN-NN |
+| build.dos_tools | 77 | platforms registry; tests: dos | none found | NN-NN |
+| build.driver | 332 | platforms registry; tests: drivers | none found | NN-NN |
+| build.exepack | 107 | platforms registry; tests: exepack | none found | NN-NN |
+| build.flat_thunk | 1085 | platforms registry; tests: flat_thunk,whole_module | none found | NN-NN |
+| build.functions | 678 | platforms registry; tests: engine,match_powerpc,platforms+4 | none found | NN-NN |
+| build.m6502_asm | 147 | platforms registry; tests: nes | none found | NN-NY |
+| build.m68k_asm | 123 | platforms registry; tests: m68k | none found | NN-NY |
+| build.masm | 442 | platforms registry; tests: dos | none found | NN-NN |
+| build.module | 2162 | platforms registry; tests: c_backend,platforms,whole_module | none found | NN-NN |
+| build.msc6 | 935 | platforms registry; tests: ,dos,verification | none found | NN-NN |
 | build.msvc152 | 79 | tests: port_fixes | none found | NN-YY |
-| build.mzfile | 50 | live cmds: all 8 | none found | NN-NY |
-| build.native_dos | 207 | live cmds: all 8; UI; tests: dos | none found | NN-NN |
+| build.mzfile | 50 | platforms registry | none found | NN-NY |
+| build.native_dos | 207 | platforms registry; tests: dos | none found | NN-NN |
 | build.period | 250 | tests: verification | none found | NN-YY |
-| build.period16 | 212 | tests: whole_module | none found | NN-YY |
-| build.pklite | 380 | live cmds: all 8; tests: pklite | none found | NN-NY |
-| build.ppc_asm | 246 | tests: xex_edit | none found | NN-YY |
-| build.resources | 658 | live cmds: all 8; UI; tests: whole_module | none found | NN-NN |
-| build.sm83_asm | 117 | live cmds: all 8; tests: z80 | none found | NN-NY |
-| build.stubjoin | 122 | live cmds: all 8 | none found | NN-NY |
-| build.vxdfile | 63 | live cmds: all 8 | none found | NN-NY |
-| build.watcom | 160 | live cmds: all 8; UI; tests: ,plumbing,readable+3; tools: make_api_table,oss_bench,trace16 | none found | NN-NN |
-| build.z80_asm | 284 | live cmds: all 8; tests: port_fixes,z80 | none found | NN-NY |
+| build.pklite | 380 | platforms registry; tests: pklite | none found | NN-NY |
+| build.resources | 658 | platforms registry; tests: whole_module | none found | NN-NN |
+| build.sm83_asm | 117 | platforms registry; tests: z80 | none found | NN-NY |
+| build.stubjoin | 122 | platforms registry | none found | NN-NY |
+| build.vxdfile | 63 | platforms registry | none found | NN-NY |
+| build.watcom | 160 | platforms registry; tests: ,plumbing,readable+3; tools: make_api_table,oss_bench,trace16 | none found | NN-NN |
+| build.z80_asm | 284 | platforms registry; tests: port_fixes,z80 | none found | NN-NY |
 
 ### codebreaker.compare
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| compare | 0 | live cmds: all 8; UI; tests: symbols,versions | cb/compare/(compare/ package) | YY-NN |
-| compare.mask | 90 | live cmds: all 8; UI; tests: symbols | cb/compare/mask.cpp +1 | YY-NN |
-| compare.versions | 871 | live cmds: facts; tests: versions | cb/compare/versions.cpp +3 | YY-NY |
-
-### codebreaker.coverage
-
-| module | lines | reached by | native replacement | 1-5 |
-|---|---|---|---|---|
-| coverage | 0 | live cmds: progress,facts; tests: platforms,ui | cb/coverage/(coverage/ package) | YY-NY |
-| coverage.ledger | 341 | live cmds: coverage,progress,facts; tests: ui | cb/coverage/ledger.cpp +3 | YY-NY |
-| coverage.reach | 375 | live cmds: facts; tests: platforms | cb/coverage/reach.cpp +3 | YY-NY |
+| compare | 0 | platforms registry; tests: symbols | cb/compare/(compare/ package) | YY-NN |
+| compare.mask | 90 | platforms registry; tests: symbols | cb/compare/mask.cpp +1 | YY-NN |
 
 ### codebreaker.decompile
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| decompile | 0 | live cmds: all 8; UI; tests: n_subjects,asm_blocks,c_backend+15; tools: freeze_tests,golden,goto_report; native gens: 1 | cb/decompile/(decompile/ package) | YYGNN |
-| decompile.asm_blocks | 267 | live cmds: all 8; UI; tests: asm_blocks,c_backend | cb/decompile/asm_blocks.cpp +1 | YY-NN |
-| decompile.c_text | 1428 | live cmds: all 8; UI; tests: n_subjects,c_backend,frozen+1; tools: freeze_tests | cb/decompile/c_text.hpp +5 | YY-NN |
+| decompile | 0 | platforms registry; tests: n_subjects,asm_blocks,c_backend+15; tools: freeze_tests,golden,goto_report; native gens: 1 | cb/decompile/(decompile/ package) | YYGNN |
+| decompile.asm_blocks | 267 | platforms registry; tests: asm_blocks,c_backend | cb/decompile/asm_blocks.cpp +1 | YY-NN |
+| decompile.c_text | 1428 | platforms registry; tests: n_subjects,c_backend,frozen+1; tools: freeze_tests | cb/decompile/c_text.hpp +5 | YY-NN |
 | decompile.ctree | 241 | tools: goto_report,oss_bench | cb/decompile/ctree.cpp +1 | YY-NY |
-| decompile.decompiler | 898 | live cmds: all 8; UI; tests: c_backend,dos,frozen+6; tools: freeze_tests,golden,goto_report | cb/decompile/decompiler.cpp +5 | YY-NN |
-| decompile.describe | 2178 | live cmds: all 8; UI; tests: n_subjects,dos,platforms+2; tools: golden,trace16 | cb/decompile/describe.cpp +6 | YY-NN |
-| decompile.frame16 | 236 | live cmds: all 8; UI; tests: frame16 | cb/decompile/frame16.cpp +1 | YY-NN |
-| decompile.inline_asm | 191 | live cmds: all 8; UI | cb/decompile/inline_asm.cpp +1 | YY-NN |
-| decompile.jar | 188 | live cmds: all 8; UI | cb/decompile/jar.cpp +1 | YY-NN |
-| decompile.m6502 | 181 | live cmds: all 8; UI; tests: nes; tools: sleigh_verify_6502 | cb/decompile/m6502.cpp +1 | YY-NN |
-| decompile.m68k | 751 | live cmds: all 8; tests: m68k | cb/decompile/m68k.cpp +1 | YY-NY |
-| decompile.shape16 | 111 | live cmds: all 8; UI; tests: frame16 | cb/decompile/shape16.cpp +1 | YY-NN |
-| decompile.sm83 | 270 | live cmds: all 8; tests: z80 | cb/decompile/sm83.cpp +1 | YY-NY |
-| decompile.struct_text | 114 | live cmds: all 8; UI; tests: c_backend | cb/decompile/struct_text.cpp +1 | YY-NN |
+| decompile.decompiler | 898 | platforms registry; tests: c_backend,dos,frozen+6; tools: freeze_tests,golden,goto_report | cb/decompile/decompiler.cpp +5 | YY-NN |
+| decompile.describe | 2178 | platforms registry; tests: n_subjects,dos,platforms+2; tools: golden,trace16 | cb/decompile/describe.cpp +6 | YY-NN |
+| decompile.frame16 | 236 | platforms registry; tests: frame16 | cb/decompile/frame16.cpp +1 | YY-NN |
+| decompile.inline_asm | 191 | platforms registry | cb/decompile/inline_asm.cpp +1 | YY-NN |
+| decompile.jar | 188 | platforms registry | cb/decompile/jar.cpp +1 | YY-NN |
+| decompile.m6502 | 181 | platforms registry; tests: nes; tools: sleigh_verify_6502 | cb/decompile/m6502.cpp +1 | YY-NN |
+| decompile.m68k | 751 | platforms registry; tests: m68k | cb/decompile/m68k.cpp +1 | YY-NY |
+| decompile.shape16 | 111 | platforms registry; tests: frame16 | cb/decompile/shape16.cpp +1 | YY-NN |
+| decompile.sm83 | 270 | platforms registry; tests: z80 | cb/decompile/sm83.cpp +1 | YY-NY |
+| decompile.struct_text | 114 | platforms registry; tests: c_backend | cb/decompile/struct_text.cpp +1 | YY-NN |
 | decompile.vmx128 | 374 | tests: vmx128; native gens: 1 | cb/decompile/vmx128.cpp +1 | YYGYY |
 | decompile.xbox_effect | 217 | tests: xbox_effect | cb/decompile/xbox_effect.cpp +1 | YY-YY |
 | decompile.xenos_hlsl | 918 | tests: xbox_effect | cb/decompile/xenos.cpp +3 | YY-YY |
-| decompile.z80 | 471 | live cmds: all 8; tests: z80 | cb/decompile/z80.cpp +1 | YY-NY |
+| decompile.z80 | 471 | platforms registry; tests: z80 | cb/decompile/z80.cpp +1 | YY-NY |
 
 ### codebreaker.emulate
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| emulate | 45 | live cmds: all 8; UI; tests: concolic,knowledge,m68k+8; tools: gate_teeth16,sleigh_verify_6502,sleigh_verify_ppc; native gens: 2 | cb/emulate/(emulate/ package) | YYGNN |
-| emulate.driver | 217 | live cmds: all 8; tests: knowledge,native_trace,platforms; native gens: 1 | cb/emulate/driver.cpp +1 | YYGNY |
-| emulate.emulator | 616 | live cmds: all 8; UI; tests: concolic,native_trace,platforms+1; native gens: 1 | cb/emulate/emulator.cpp +1 | YYGNN |
-| emulate.fast_uc | 69 | live cmds: all 8; UI; tests: plumbing | none found | NN-NN |
-| emulate.m6502 | 314 | live cmds: all 8; tests: nes,platforms,run_record; tools: sleigh_verify_6502 | cb/emulate/m6502.cpp +1 | YY-NY |
-| emulate.m68k | 715 | live cmds: all 8; tests: m68k,platforms,run_record | cb/emulate/m68k.cpp +1 | YY-NY |
-| emulate.native_driver | 204 | live cmds: all 8 | cb/emulate/native_driver.cpp +1 | YY-NY |
-| emulate.native_shadow | 239 | live cmds: all 8; UI | cb/emulate/native_shadow.cpp +1 | YY-NN |
-| emulate.native_trace | 390 | live cmds: all 8; UI; tests: native_trace | cb/emulate/native_trace.cpp +1 | YY-NN |
-| emulate.native_win16 | 209 | live cmds: all 8; UI | cb/emulate/native_win16.cpp +1 | YY-NN |
-| emulate.pcode | 147 | live cmds: all 8; UI; tests: concolic,native_trace | cb/emulate/pcode.cpp +1 | YY-NN |
-| emulate.ports16 | 195 | live cmds: all 8; UI; tests: verification | cb/emulate/ports16.cpp +1 | YY-NN |
-| emulate.powerpc | 916 | live cmds: all 8; UI; tests: concolic,platforms,powerpc; tools: sleigh_verify_ppc | cb/emulate/powerpc.cpp +1 | YY-NN |
-| emulate.run | 76 | live cmds: all 8; UI; tests: run_record | cb/emulate/run.cpp +1 | YY-NN |
-| emulate.shadow | 681 | live cmds: all 8; UI; tests: concolic,native_trace | cb/emulate/shadow.cpp +1 | YY-NN |
-| emulate.sm83 | 355 | live cmds: all 8; tests: platforms,run_record,z80 | cb/emulate/sm83.cpp +1 | YY-NY |
-| emulate.symbolic | 193 | live cmds: all 8; UI; tests: concolic | cb/emulate/symbolic.cpp +1 | YY-NN |
-| emulate.windows16 | 1161 | live cmds: all 8; UI; tests: concolic,knowledge,native_trace+3; tools: gate_teeth16,trace16; native gens: 1 | cb/emulate/windows16.cpp +1 | YYGNN |
-| emulate.z80 | 652 | live cmds: all 8; tests: platforms,run_record,z80 | cb/emulate/z80.cpp +1 | YY-NY |
+| emulate | 45 | platforms registry; tests: concolic,knowledge,m68k+8; tools: gate_teeth16,sleigh_verify_6502,sleigh_verify_ppc; native gens: 2 | cb/emulate/(emulate/ package) | YYGNN |
+| emulate.driver | 217 | platforms registry; tests: knowledge,native_trace,platforms; native gens: 1 | cb/emulate/driver.cpp +1 | YYGNY |
+| emulate.emulator | 616 | platforms registry; tests: concolic,native_trace,platforms+1; native gens: 1 | cb/emulate/emulator.cpp +1 | YYGNN |
+| emulate.fast_uc | 69 | platforms registry; tests: plumbing | none found | NN-NN |
+| emulate.m6502 | 314 | platforms registry; tests: nes,platforms,run_record; tools: sleigh_verify_6502 | cb/emulate/m6502.cpp +1 | YY-NY |
+| emulate.m68k | 715 | platforms registry; tests: m68k,platforms,run_record | cb/emulate/m68k.cpp +1 | YY-NY |
+| emulate.native_driver | 204 | platforms registry | cb/emulate/native_driver.cpp +1 | YY-NY |
+| emulate.native_shadow | 239 | platforms registry | cb/emulate/native_shadow.cpp +1 | YY-NN |
+| emulate.native_trace | 390 | platforms registry; tests: native_trace | cb/emulate/native_trace.cpp +1 | YY-NN |
+| emulate.native_win16 | 209 | platforms registry | cb/emulate/native_win16.cpp +1 | YY-NN |
+| emulate.pcode | 147 | platforms registry; tests: concolic,native_trace | cb/emulate/pcode.cpp +1 | YY-NN |
+| emulate.ports16 | 195 | platforms registry; tests: verification | cb/emulate/ports16.cpp +1 | YY-NN |
+| emulate.powerpc | 916 | platforms registry; tests: concolic,platforms,powerpc; tools: sleigh_verify_ppc | cb/emulate/powerpc.cpp +1 | YY-NN |
+| emulate.run | 76 | platforms registry; tests: run_record | cb/emulate/run.cpp +1 | YY-NN |
+| emulate.shadow | 681 | platforms registry; tests: concolic,native_trace | cb/emulate/shadow.cpp +1 | YY-NN |
+| emulate.sm83 | 355 | platforms registry; tests: platforms,run_record,z80 | cb/emulate/sm83.cpp +1 | YY-NY |
+| emulate.symbolic | 193 | platforms registry; tests: concolic | cb/emulate/symbolic.cpp +1 | YY-NN |
+| emulate.windows16 | 1161 | platforms registry; tests: concolic,knowledge,native_trace+3; tools: gate_teeth16,trace16; native gens: 1 | cb/emulate/windows16.cpp +1 | YYGNN |
+| emulate.z80 | 652 | platforms registry; tests: platforms,run_record,z80 | cb/emulate/z80.cpp +1 | YY-NY |
 
 ### codebreaker.engine
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| engine | 17 | live cmds: all 8; UI; tests: engine,knowledge,knowledge_reads+4; native gens: 2 | cb/engine/engine.cpp +1 | YYGNN |
-| engine.engine | 268 | live cmds: all 8; UI; tests: engine,knowledge_reads,native_engine; native gens: 2 | cb/engine/engine.cpp +1 | YYGNN |
-| engine.facts | 182 | live cmds: all 8; UI; tests: engine,knowledge,native_engine+1 | cb/engine/facts.cpp +1 | YY-NN |
-| engine.lanes | 443 | live cmds: all 8; UI; tests: engine,platforms | cb/engine/lanes.cpp +3 | YY-NN |
-| engine.native_engine | 1048 | live cmds: all 8; UI; tests: native_engine | none found | NN-NN |
-| engine.show | 112 | live cmds: facts | cb/engine/show.cpp +1 | YY-NY |
-| engine.win16 | 568 | live cmds: all 8; tests: platforms; native gens: 1 | cb/engine/win16.cpp +1 | YYGNY |
+| engine | 17 | platforms registry; tests: engine,knowledge,knowledge_reads+4; native gens: 2 | cb/engine/engine.cpp +1 | YYGNN |
+| engine.engine | 268 | platforms registry; tests: engine,knowledge_reads,native_engine; native gens: 2 | cb/engine/engine.cpp +1 | YYGNN |
+| engine.facts | 182 | platforms registry; tests: engine,knowledge,native_engine+1 | cb/engine/facts.cpp +1 | YY-NN |
+| engine.lanes | 443 | platforms registry; tests: engine,platforms | cb/engine/lanes.cpp +3 | YY-NN |
+| engine.native_engine | 1048 | platforms registry; tests: native_engine | none found | NN-NN |
+| engine.win16 | 568 | platforms registry; tests: platforms; native gens: 1 | cb/engine/win16.cpp +1 | YYGNY |
 
 ### codebreaker.exact
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| exact | 0 | live cmds: all 8; UI; tests: dos,dpmi,exact_fixes+1; tools: sample_shapes_cases | cb/exact/(exact/ package) | YY-NN |
+| exact | 0 | platforms registry; tests: dos,dpmi,exact_fixes+1; tools: sample_shapes_cases | cb/exact/(exact/ package) | YY-NN |
 | exact.aim | 135 | tests: exact_fixes | cb/exact/aim.cpp +1 | YY-YY |
-| exact.aout | 82 | live cmds: all 8; UI | cb/exact/aout.cpp +1 | YY-NN |
+| exact.aout | 82 | platforms registry | cb/exact/aout.cpp +1 | YY-NN |
 | exact.batch | 115 | closure (lazy imports of live modules) | cb/exact/batch.cpp +1 | YY-YY |
 | exact.carve | 156 | closure (lazy imports of live modules) | cb/exact/carve.cpp +1 | YY-YY |
 | exact.compare | 185 | closure (lazy imports of live modules) | cb/exact/compare.cpp +1 | YY-YY |
@@ -526,11 +620,11 @@ Kept alive by `tools/*.py` alone (39 modules, 22423 lines): `base.runs`, `decomp
 | exact.draft.prove | 561 | closure (lazy imports of live modules) | cb/exact/draft/prove.cpp +1 | YY-YY |
 | exact.draft.shapes | 2211 | tests: port_fixes; tools: sample_shapes_cases | cb/exact/draft/shapes.hpp +8 | YY-NY |
 | exact.draft.text | 345 | tests: port_fixes; tools: sample_shapes_cases | cb/exact/draft/text.cpp +1 | YY-NY |
-| exact.emu | 0 | live cmds: all 8; UI; tests: dos,dpmi,port_fixes | cb/exact/emu/(exact/emu/ package) | YY-NN |
-| exact.emu.dos | 803 | live cmds: all 8; UI; tests: dos | cb/exact/emu/dos.cpp +1 | YY-NN |
-| exact.emu.dpmi | 736 | live cmds: all 8; UI; tests: dpmi | cb/exact/emu/dpmi.cpp +1 | YY-NN |
+| exact.emu | 0 | platforms registry; tests: dos,dpmi,port_fixes | cb/exact/emu/(exact/emu/ package) | YY-NN |
+| exact.emu.dos | 803 | platforms registry; tests: dos | cb/exact/emu/dos.cpp +1 | YY-NN |
+| exact.emu.dpmi | 736 | platforms registry; tests: dpmi | cb/exact/emu/dpmi.cpp +1 | YY-NN |
 | exact.emu.isis | 294 | closure (lazy imports of live modules) | cb/exact/emu/isis.cpp +1 | YY-YY |
-| exact.emu.native_dosexec | 163 | live cmds: all 8; UI; tests: port_fixes | cb/exact/emu/native_dosexec.cpp +1 | YY-NN |
+| exact.emu.native_dosexec | 163 | platforms registry; tests: port_fixes | cb/exact/emu/native_dosexec.cpp +1 | YY-NN |
 | exact.emu.xenix | 175 | closure (lazy imports of live modules) | cb/exact/emu/xenix.cpp +1 | YY-YY |
 | exact.hooks_lattice | 14 | named in native text only | cb/exact/hooks_lattice.cpp +1 | YY-YY |
 | exact.library | 722 | closure (lazy imports of live modules) | cb/exact/library.cpp +1 | YY-YY |
@@ -545,119 +639,91 @@ Kept alive by `tools/*.py` alone (39 modules, 22423 lines): `base.runs`, `decomp
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| formats | 0 | live cmds: all 8; UI; tests: n_subjects,concolic,dos+25; tools: gate_teeth16,golden,memmap16; native gens: 5 | cb/formats/(formats/ package) | YYGNN |
+| formats | 0 | platforms registry; tests: n_subjects,concolic,dos+23; tools: gate_teeth16,golden,memmap16; native gens: 5 | cb/formats/(formats/ package) | YYGNN |
 | formats.cab | 178 | tests: n_subjects,media | cb/formats/cab.cpp +1 | YY-YN |
-| formats.detect | 88 | live cmds: all 8; UI; tests: n_subjects,plumbing,xbox_formats; native gens: 1 | cb/formats/detect.cpp +1 | YYGNN |
-| formats.dos | 306 | live cmds: all 8; UI; tests: n_subjects,dos,exepack+2; native gens: 1 | cb/formats/dos.cpp +2 | YYGNN |
-| formats.fonts | 115 | tests: n_subjects,versions | cb/formats/fonts.cpp +1 | YY-YY |
-| formats.gb | 113 | live cmds: all 8 | cb/formats/gb.cpp +1 | YY-NY |
-| formats.genesis | 128 | live cmds: all 8 | cb/formats/genesis.cpp +1 | YY-NY |
+| formats.detect | 88 | platforms registry; tests: n_subjects,plumbing,xbox_formats; native gens: 1 | cb/formats/detect.cpp +1 | YYGNN |
+| formats.dos | 306 | platforms registry; tests: n_subjects,dos,exepack+2; native gens: 1 | cb/formats/dos.cpp +2 | YYGNN |
+| formats.gb | 113 | platforms registry | cb/formats/gb.cpp +1 | YY-NY |
+| formats.genesis | 128 | platforms registry | cb/formats/genesis.cpp +1 | YY-NY |
 | formats.gfx | 223 | tests: xbox_formats | cb/formats/gfx.cpp +2 | YY-YY |
-| formats.inspect | 807 | live cmds: coverage,progress,facts; tests: n_subjects,inspect_render,ui+1 | cb/formats/inspect.cpp +2 | YY-NY |
-| formats.le | 411 | live cmds: all 8; UI; tests: n_subjects,drivers; tools: golden; native gens: 1 | cb/formats/le.cpp +4 | YYGNN |
-| formats.media | 256 | live cmds: all 8; tests: dos,drivers,media+1 | cb/formats/media.cpp +2 | YY-NY |
-| formats.msx | 66 | live cmds: all 8 | cb/formats/msx.cpp +1 | YY-NY |
-| formats.native | 223 | live cmds: all 8; UI; tests: native_formats; native gens: 1 | none found | NNGNN |
-| formats.ne | 163 | live cmds: all 8; UI; tests: n_subjects,concolic,invert+4; tools: gate_teeth16,memmap16,record; native gens: 1 | cb/formats/ne.cpp +3 | YYGNN |
-| formats.nes | 138 | live cmds: all 8; UI; tests: nes | cb/formats/nes.cpp +1 | YY-NN |
-| formats.omf | 248 | live cmds: all 8; UI; tests: invert,verification; native gens: 1 | cb/formats/omf.cpp +1 | YYGNN |
-| formats.pe | 176 | live cmds: all 8; UI; tests: n_subjects,concolic,run_record+2; tools: sleigh_verify,sleigh_verify_ppc; native gens: 1 | cb/formats/pe.cpp +3 | YYGNN |
-| formats.pe_functions | 366 | live cmds: all 8; UI; tests: n_subjects,versions | cb/formats/pe_functions.cpp +1 | YY-NN |
-| formats.powerpc_image | 128 | live cmds: all 8; UI; tests: powerpc,vmx128; native gens: 2 | cb/formats/powerpc_image.cpp +1 | YYGNN |
-| formats.resources | 196 | live cmds: all 8; UI; tests: n_subjects,whole_module | cb/formats/resources.cpp +1 | YY-NN |
-| formats.sms | 129 | live cmds: all 8 | cb/formats/sms.cpp +1 | YY-NY |
-| formats.xbox | 119 | live cmds: all 8; tests: xbe,xbox_effect,xbox_formats+1; native gens: 2 | cb/formats/xbox/(formats/xbox/ package) | YYGNY |
-| formats.xbox.bink | 92 | live cmds: all 8; tests: xbox_formats; native gens: 2 | cb/formats/xbox/bink.cpp +1 | YYGNY |
-| formats.xbox.chd | 124 | live cmds: all 8; native gens: 2 | cb/formats/xbox/chd.cpp +1 | YYGNY |
-| formats.xbox.ciso | 123 | live cmds: all 8 | cb/formats/xbox/ciso.cpp +1 | YY-NY |
+| formats.inspect | 807 | tests: n_subjects,inspect_render,ui+1 | cb/formats/inspect.cpp +2 | YY-YY |
+| formats.le | 397 | platforms registry; tests: n_subjects,drivers; tools: golden; native gens: 1 | cb/formats/le.cpp +4 | YYGNN |
+| formats.media | 256 | platforms registry; tests: dos,media,xbox_formats | cb/formats/media.cpp +2 | YY-NY |
+| formats.msx | 66 | platforms registry | cb/formats/msx.cpp +1 | YY-NY |
+| formats.native | 223 | platforms registry; tests: native_formats; native gens: 1 | none found | NNGNN |
+| formats.ne | 163 | platforms registry; tests: n_subjects,concolic,native_trace+3; tools: gate_teeth16,memmap16,record; native gens: 1 | cb/formats/ne.cpp +3 | YYGNN |
+| formats.nes | 138 | platforms registry; tests: nes | cb/formats/nes.cpp +1 | YY-NN |
+| formats.omf | 248 | platforms registry; tests: verification; native gens: 1 | cb/formats/omf.cpp +1 | YYGNN |
+| formats.pe | 176 | platforms registry; tests: n_subjects,concolic,run_record+2; tools: sleigh_verify,sleigh_verify_ppc; native gens: 1 | cb/formats/pe.cpp +3 | YYGNN |
+| formats.pe_functions | 366 | platforms registry; tests: n_subjects,versions | cb/formats/pe_functions.cpp +1 | YY-NN |
+| formats.powerpc_image | 128 | platforms registry; tests: powerpc,vmx128; native gens: 2 | cb/formats/powerpc_image.cpp +1 | YYGNN |
+| formats.resources | 196 | platforms registry; tests: n_subjects,whole_module | cb/formats/resources.cpp +1 | YY-NN |
+| formats.sms | 129 | platforms registry | cb/formats/sms.cpp +1 | YY-NY |
+| formats.xbox | 119 | platforms registry; tests: xbe,xbox_effect,xbox_formats+1; native gens: 2 | cb/formats/xbox/(formats/xbox/ package) | YYGNY |
+| formats.xbox.bink | 92 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/bink.cpp +1 | YYGNY |
+| formats.xbox.chd | 124 | platforms registry; native gens: 2 | cb/formats/xbox/chd.cpp +1 | YYGNY |
+| formats.xbox.ciso | 123 | platforms registry | cb/formats/xbox/ciso.cpp +1 | YY-NY |
 | formats.xbox.effect | 334 | tests: xbox_effect | cb/formats/xbox/effect.cpp +1 | YY-YY |
-| formats.xbox.fatx | 760 | live cmds: all 8; tests: xbox_formats | cb/formats/xbox/fatx.cpp +1 | YY-NY |
-| formats.xbox.gdf | 134 | live cmds: all 8; tests: xbox_formats | cb/formats/xbox/gdf.cpp +1 | YY-NY |
-| formats.xbox.god | 207 | live cmds: all 8; tests: xbox_formats | cb/formats/xbox/god.cpp +1 | YY-NY |
-| formats.xbox.heavyiron | 400 | live cmds: all 8; tests: xbox_formats | cb/formats/xbox/heavyiron.cpp +1 | YY-NY |
-| formats.xbox.nand | 97 | live cmds: all 8; tests: xbox_formats | cb/formats/xbox/nand.cpp +1 | YY-NY |
-| formats.xbox.pck | 126 | live cmds: all 8 | cb/formats/xbox/pck.cpp +1 | YY-NY |
+| formats.xbox.fatx | 760 | platforms registry; tests: xbox_formats | cb/formats/xbox/fatx.cpp +1 | YY-NY |
+| formats.xbox.gdf | 134 | platforms registry; tests: xbox_formats | cb/formats/xbox/gdf.cpp +1 | YY-NY |
+| formats.xbox.god | 207 | platforms registry; tests: xbox_formats | cb/formats/xbox/god.cpp +1 | YY-NY |
+| formats.xbox.heavyiron | 400 | platforms registry; tests: xbox_formats | cb/formats/xbox/heavyiron.cpp +1 | YY-NY |
+| formats.xbox.nand | 97 | platforms registry; tests: xbox_formats | cb/formats/xbox/nand.cpp +1 | YY-NY |
+| formats.xbox.pck | 126 | platforms registry | cb/formats/xbox/pck.cpp +1 | YY-NY |
 | formats.xbox.shader | 152 | tests: xbox_effect | cb/formats/xbox/shader.cpp +1 | YY-YY |
-| formats.xbox.stfs | 530 | live cmds: all 8; tests: xbox_formats | cb/formats/xbox/stfs.cpp +1 | YY-NY |
-| formats.xbox.texture | 100 | live cmds: all 8; tests: xbox_formats,xna | cb/formats/xbox/texture.cpp +1 | YY-NY |
-| formats.xbox.volumes | 199 | live cmds: all 8 | cb/formats/xbox/volumes.cpp +1 | YY-NY |
-| formats.xbox.xbe | 129 | live cmds: all 8; tests: xbe,xbox_formats; native gens: 2 | cb/formats/xbox/xbe.cpp +1 | YYGNY |
-| formats.xbox.xdbf | 188 | live cmds: all 8; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xdbf.cpp +1 | YYGNY |
+| formats.xbox.stfs | 530 | platforms registry; tests: xbox_formats | cb/formats/xbox/stfs.cpp +1 | YY-NY |
+| formats.xbox.texture | 100 | platforms registry; tests: xbox_formats,xna | cb/formats/xbox/texture.cpp +1 | YY-NY |
+| formats.xbox.volumes | 199 | platforms registry | cb/formats/xbox/volumes.cpp +1 | YY-NY |
+| formats.xbox.xbe | 129 | platforms registry; tests: xbe,xbox_formats; native gens: 2 | cb/formats/xbox/xbe.cpp +1 | YYGNY |
+| formats.xbox.xdbf | 188 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xdbf.cpp +1 | YYGNY |
 | formats.xbox.xma | 120 | tests: xbox_formats | none found | NN-YY |
-| formats.xbox.xpr | 135 | live cmds: all 8; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xpr.cpp +1 | YYGNY |
+| formats.xbox.xpr | 135 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xpr.cpp +1 | YYGNY |
 | formats.xbox.xsb | 21 | tests: xna | none found | NN-YY |
-| formats.xbox.xur | 148 | live cmds: all 8; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xur.cpp +1 | YYGNY |
-| formats.xbox.xwb | 153 | live cmds: all 8; tests: xbox_formats | none found | NN-NY |
-| formats.xbox.xzp | 145 | live cmds: all 8; tests: xbox_formats; native gens: 1 | cb/formats/xbox/xzp.cpp +1 | YYGNY |
-| formats.xbox.zar | 1034 | live cmds: all 8 | cb/formats/xbox/zar.cpp +1 | YY-NY |
-| formats.xex | 173 | live cmds: all 8; UI; tests: vmx128,x360,xex+1; native gens: 2 | cb/formats/xex.cpp +3 | YYGNN |
-| formats.xex_edit | 159 | tests: xex_edit | none found | NN-YY |
-| formats.xex_imports | 86 | nothing | cb/formats/xex_imports.cpp +1 | YY-YY |
+| formats.xbox.xur | 148 | platforms registry; tests: xbox_formats; native gens: 2 | cb/formats/xbox/xur.cpp +1 | YYGNY |
+| formats.xbox.xwb | 153 | platforms registry; tests: xbox_formats | none found | NN-NY |
+| formats.xbox.xzp | 145 | platforms registry; tests: xbox_formats; native gens: 1 | cb/formats/xbox/xzp.cpp +1 | YYGNY |
+| formats.xbox.zar | 1034 | platforms registry | cb/formats/xbox/zar.cpp +1 | YY-NY |
+| formats.xex | 173 | platforms registry; tests: vmx128,x360,xex; native gens: 2 | cb/formats/xex.cpp +3 | YYGNN |
 | formats.xnb | 232 | tests: xbox_effect,xna | none found | NN-YY |
-| formats.zx | 53 | live cmds: all 8; tests: z80 | cb/formats/zx.cpp +1 | YY-NY |
+| formats.zx | 53 | platforms registry; tests: z80 | cb/formats/zx.cpp +1 | YY-NY |
 
 ### codebreaker.invert
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| invert | 0 | tests: invert | cb/invert/(invert/ package) | YY-YY |
-| invert.compilers | 101 | tests: invert | none found | NN-YY |
-| invert.early_c | 97 | tests: invert | cb/invert/early_c.cpp +10 | YY-YY |
-| invert.early_c_check | 112 | tests: invert | cb/invert/early_c.cpp +1 | YN-YY |
-| invert.early_c_forward | 172 | nothing | cb/invert/early_c.cpp +3 | YY-YY |
-| invert.early_c_frame | 175 | tests: invert | cb/invert/early_c.cpp +3 | YY-YY |
-| invert.early_c_frame_probe | 61 | nothing | cb/invert/early_c.cpp +3 | YN-YY |
-| invert.early_c_order_probe | 38 | nothing | cb/invert/early_c.cpp +1 | YN-YY |
-| invert.early_c_round_trip | 74 | nothing | cb/invert/early_c.cpp +1 | YN-YY |
-| invert.flow16 | 110 | tests: invert | cb/invert/flow16.cpp +1 | YN-YY |
-| invert.grammars | 56 | tests: invert | cb/invert/grammars.cpp +1 | YY-YY |
-| invert.known_differences | 78 | tests: invert | cb/invert/known_differences.cpp +1 | YY-YY |
-| invert.msc6 | 77 | tests: invert | cb/invert/msc6.cpp +5 | YY-YY |
-| invert.msc6_calls | 18 | nothing | none found | NN-YY |
-| invert.msc6_function | 41 | nothing | none found | NN-YY |
-| invert.msc6_idioms | 94 | nothing | none found | NN-YY |
-| invert.msc6_registers | 42 | tests: invert | none found | NN-YY |
-| invert.msc6_templates | 37 | nothing | none found | NN-YY |
-| invert.msc6_walk | 29 | nothing | none found | NN-YY |
-| invert.msvc2 | 64 | tests: invert | cb/invert/msvc2.cpp +3 | YY-YY |
-| invert.msvc2_forward | 243 | nothing | cb/invert/msvc2.cpp +1 | YN-YY |
-| invert.msvc2_registers | 18 | nothing | cb/invert/msvc2.cpp +1 | YN-YY |
-| invert.native_invert | 281 | closure (lazy imports of live modules) | none found | NN-YY |
-| invert.quad_align | 76 | nothing | cb/invert/quad_align.cpp +1 | YY-YY |
-| invert.quad_dump | 67 | nothing | cb/invert/quad_dump.cpp +1 | YY-YY |
-| invert.run | 258 | tests: invert | none found | NN-YY |
-| invert.segment_thunk | 49 | tests: invert | none found | NN-YY |
-| invert.whole_function | 28 | nothing | none found | NN-YY |
+| invert | 0 | closure (lazy imports of live modules) | cb/invert/(invert/ package) | YY-YY |
+| invert.flow16 | 110 | closure (lazy imports of live modules) | cb/invert/flow16.cpp +1 | YN-YY |
+| invert.native_invert | 235 | closure (lazy imports of live modules) | none found | NN-YY |
 
 ### codebreaker.java
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| java | 21 | live cmds: all 8; UI; tests: achievements,apimap,applet_ping+52; native gens: 1 | cb/java/(java/ package) | YYGNN |
-| java._paths | 15 | live cmds: all 8; UI | cb/java/paths.cpp +1 | YY-NN |
-| java.apimap | 399 | live cmds: all 8; UI; tests: apimap | cb/java/apimap.cpp +1 | YY-NN |
-| java.bugfix_ledger | 166 | live cmds: all 8; UI | cb/java/bugfix_ledger.cpp +1 | YY-NN |
-| java.cmake | 53 | live cmds: all 8; UI | cb/java/cmake.cpp +1 | YY-NN |
-| java.console | 2 | live cmds: all 8; UI; tests: platform_refs,runnable_entry | cb/java/console/(java/console/ package) | YY-NN |
-| java.console.platform_equivalents | 213 | live cmds: all 8; UI | cb/java/console/platform_equivalents.cpp +1 | YY-NN |
-| java.console.platform_refs | 501 | live cmds: all 8; UI; tests: platform_refs,runnable_entry | cb/java/console/platform_refs.cpp +1 | YY-NN |
-| java.console.sdk | 192 | live cmds: all 8; UI | cb/java/console/sdk.cpp +1 | YY-NN |
+| java | 21 | platforms registry; tests: achievements,apimap,applet_ping+52; native gens: 1 | cb/java/(java/ package) | YYGNN |
+| java._paths | 15 | platforms registry | cb/java/paths.cpp +1 | YY-NN |
+| java.apimap | 399 | platforms registry; tests: apimap | cb/java/apimap.cpp +1 | YY-NN |
+| java.bugfix_ledger | 166 | platforms registry | cb/java/bugfix_ledger.cpp +1 | YY-NN |
+| java.cmake | 53 | platforms registry | cb/java/cmake.cpp +1 | YY-NN |
+| java.console | 2 | platforms registry; tests: platform_refs,runnable_entry | cb/java/console/(java/console/ package) | YY-NN |
+| java.console.platform_equivalents | 213 | platforms registry | cb/java/console/platform_equivalents.cpp +1 | YY-NN |
+| java.console.platform_refs | 501 | platforms registry; tests: platform_refs,runnable_entry | cb/java/console/platform_refs.cpp +1 | YY-NN |
+| java.console.sdk | 192 | platforms registry | cb/java/console/sdk.cpp +1 | YY-NN |
 | java.console.xdk_scan | 118 | closure (lazy imports of live modules) | cb/java/console/xdk_scan.cpp +1 | YY-YY |
-| java.debug | 321 | live cmds: all 8; UI; tests: ui_mark | cb/java/debug.cpp +1 | YY-NN |
-| java.emit | 21 | live cmds: all 8; UI; tests: beta_fixes,collection_out_params,emit+2 | cb/java/emit/(java/emit/ package) | YY-NN |
-| java.emit.header | 335 | live cmds: all 8; UI; tests: beta_fixes,emit,emit_source+1 | cb/java/emit/header.cpp +1 | YY-NN |
-| java.emit.naming | 47 | live cmds: all 8; UI | cb/java/emit/naming.cpp +1 | YY-NN |
-| java.emit.ownership | 353 | live cmds: all 8; UI; tests: beta_fixes,collection_out_params | cb/java/emit/ownership.cpp +1 | YY-NN |
-| java.emit.source | 556 | live cmds: all 8; UI; tests: beta_fixes,emit_source | cb/java/emit/source.cpp +2 | YY-NN |
-| java.emit.std_transforms | 95 | live cmds: all 8; UI | cb/java/emit/std_transforms.cpp +1 | YY-NN |
-| java.ir | 225 | live cmds: all 8; UI; tests: beta_fixes,collection_out_params,emit+7 | cb/java/ir.cpp +1 | YY-NN |
-| java.ledger | 156 | live cmds: all 8; UI; tests: beta_fixes,emit,emit_source | cb/java/ledger.cpp +1 | YY-NN |
-| java.overlays | 79 | live cmds: all 8; UI | cb/java/overlays.cpp +1 | YY-NN |
-| java.parse | 444 | live cmds: all 8; UI; tests: beta_fixes,build3_fixes,bytes+19 | cb/java/parse.cpp +1 | YY-NN |
-| java.platforms | 405 | live cmds: all 8; UI | cb/java/platforms.cpp +1 | YY-NN |
-| java.probe | 859 | live cmds: all 8; UI; tests: bytes,cpp03_bodies,finally+12 | cb/java/probe.cpp +1 | YY-NN |
-| java.profiles | 105 | live cmds: all 8; UI; tests: beta_fixes,build3_fixes,call_arg_cast+10 | cb/java/profiles/(java/profiles/ package) | YY-NN |
-| java.projects | 113 | live cmds: all 8; UI; tests: achievements,applet_ping,console_patches+10; native gens: 1 | cb/java/projects/(java/projects/ package) | YYGNN |
+| java.debug | 321 | platforms registry; tests: ui_mark | cb/java/debug.cpp +1 | YY-NN |
+| java.emit | 21 | platforms registry; tests: beta_fixes,collection_out_params,emit+2 | cb/java/emit/(java/emit/ package) | YY-NN |
+| java.emit.header | 335 | platforms registry; tests: beta_fixes,emit,emit_source+1 | cb/java/emit/header.cpp +1 | YY-NN |
+| java.emit.naming | 47 | platforms registry | cb/java/emit/naming.cpp +1 | YY-NN |
+| java.emit.ownership | 353 | platforms registry; tests: beta_fixes,collection_out_params | cb/java/emit/ownership.cpp +1 | YY-NN |
+| java.emit.source | 556 | platforms registry; tests: beta_fixes,emit_source | cb/java/emit/source.cpp +2 | YY-NN |
+| java.emit.std_transforms | 95 | platforms registry | cb/java/emit/std_transforms.cpp +1 | YY-NN |
+| java.ir | 225 | platforms registry; tests: beta_fixes,collection_out_params,emit+7 | cb/java/ir.cpp +1 | YY-NN |
+| java.ledger | 156 | platforms registry; tests: beta_fixes,emit,emit_source | cb/java/ledger.cpp +1 | YY-NN |
+| java.overlays | 79 | platforms registry | cb/java/overlays.cpp +1 | YY-NN |
+| java.parse | 444 | platforms registry; tests: beta_fixes,build3_fixes,bytes+19 | cb/java/parse.cpp +1 | YY-NN |
+| java.platforms | 405 | platforms registry | cb/java/platforms.cpp +1 | YY-NN |
+| java.probe | 859 | platforms registry; tests: bytes,cpp03_bodies,finally+12 | cb/java/probe.cpp +1 | YY-NN |
+| java.profiles | 105 | platforms registry; tests: beta_fixes,build3_fixes,call_arg_cast+10 | cb/java/profiles/(java/profiles/ package) | YY-NN |
+| java.projects | 113 | platforms registry; tests: achievements,applet_ping,console_patches+10; native gens: 1 | cb/java/projects/(java/projects/ package) | YYGNN |
 | java.projects.minecraft | 120 | tests: achievements,applet_ping,console_patches+9; native gens: 1 | cb/java/projects/minecraft/(java/projects/minecraft/ package) | YYGYY |
 | java.projects.minecraft.achievements | 548 | tests: achievements | cb/java/projects/minecraft/achievements.cpp +1 | YY-YY |
 | java.projects.minecraft.applet_ping | 130 | tests: applet_ping,console_patches; native gens: 1 | cb/java/projects/minecraft/applet_ping.cpp +1 | YYGYY |
@@ -679,58 +745,57 @@ Kept alive by `tools/*.py` alone (39 modules, 22423 lines): `base.runs`, `decomp
 | java.projects.minecraft.render_fix | 261 | tests: console_patches,render_fix; native gens: 1 | cb/java/projects/minecraft/render_fix.cpp +1 | YYGYY |
 | java.projects.minecraft.sound_fix | 217 | tests: console_patches; native gens: 1 | cb/java/projects/minecraft/sound_fix.cpp +1 | YYGYY |
 | java.projects.minecraft.ui_mark | 153 | tests: ui_mark | cb/java/projects/minecraft/ui_mark.cpp +1 | YY-YY |
-| java.reflection_factory | 290 | live cmds: all 8; UI; tests: reflection_factory | cb/java/reflection_factory.cpp +1 | YY-NN |
-| java.report | 149 | live cmds: all 8; UI | cb/java/report.cpp +1 | YY-NN |
-| java.rules | 1046 | live cmds: all 8; UI; tests: beta_fixes,port_fixes,profiles_selection+1 | cb/java/rules.cpp +1 | YY-NN |
-| java.runtime | 1789 | live cmds: all 8; UI; tests: awt_stubs,beta_fixes,runnable_entry+1 | cb/java/runtime.cpp +5 | YY-NN |
-| java.stubs | 168 | live cmds: all 8; UI | cb/java/stubs.cpp +1 | YY-NN |
-| java.textutil | 39 | live cmds: all 8; UI | cb/java/textutil.cpp +1 | YY-NN |
-| java.transpile | 1513 | live cmds: all 8; UI; tests: beta_fixes,build3_fixes,bytes+27 | cb/java/transpile.cpp +1 | YY-NN |
-| java.twophase | 179 | live cmds: all 8; UI; tests: two_phase | cb/java/twophase.cpp +1 | YY-NN |
-| java.typemap | 256 | live cmds: all 8; UI; tests: awt_stubs,beta_fixes,emit+2 | cb/java/typemap.cpp +1 | YY-NN |
-| java.types | 210 | live cmds: all 8; UI; tests: emit,emit_source,pipeline+1 | cb/java/types.cpp +1 | YY-NN |
+| java.reflection_factory | 290 | platforms registry; tests: reflection_factory | cb/java/reflection_factory.cpp +1 | YY-NN |
+| java.report | 149 | platforms registry | cb/java/report.cpp +1 | YY-NN |
+| java.rules | 1046 | platforms registry; tests: beta_fixes,port_fixes,profiles_selection+1 | cb/java/rules.cpp +1 | YY-NN |
+| java.runtime | 1789 | platforms registry; tests: awt_stubs,beta_fixes,runnable_entry+1 | cb/java/runtime.cpp +5 | YY-NN |
+| java.stubs | 168 | platforms registry | cb/java/stubs.cpp +1 | YY-NN |
+| java.textutil | 39 | platforms registry | cb/java/textutil.cpp +1 | YY-NN |
+| java.transpile | 1513 | platforms registry; tests: beta_fixes,build3_fixes,bytes+27 | cb/java/transpile.cpp +1 | YY-NN |
+| java.twophase | 179 | platforms registry; tests: two_phase | cb/java/twophase.cpp +1 | YY-NN |
+| java.typemap | 256 | platforms registry; tests: awt_stubs,beta_fixes,emit+2 | cb/java/typemap.cpp +1 | YY-NN |
+| java.types | 210 | platforms registry; tests: emit,emit_source,pipeline+1 | cb/java/types.cpp +1 | YY-NN |
 
 ### codebreaker.jobs
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| jobs | 0 | live cmds: all 8; UI; tests: knowledge_reads,plumbing | cb/jobs/(jobs/ package) | YY-NN |
-| jobs.pool | 287 | live cmds: all 8; UI; tests: knowledge_reads,plumbing | cb/jobs/pool.cpp +1 | YY-NN |
+| jobs | 0 | platforms registry; tests: knowledge_reads,plumbing | cb/jobs/(jobs/ package) | YY-NN |
+| jobs.pool | 287 | platforms registry; tests: knowledge_reads,plumbing | cb/jobs/pool.cpp +1 | YY-NN |
 
 ### codebreaker.knowledge
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| knowledge | 173 | live cmds: all 8; UI; tests: knowledge,knowledge_reads,native_engine | cb/knowledge/(knowledge/ package) | YY-NN |
-| knowledge.reads | 174 | live cmds: all 8; UI; tests: knowledge_reads | cb/knowledge/reads.cpp +1 | YY-NN |
-| knowledge.show | 50 | live cmds: knowledge,facts | cb/knowledge/show.cpp +1 | YY-NY |
-| knowledge.sources | 116 | live cmds: all 8; UI; tests: knowledge | cb/knowledge/sources.cpp +1 | YY-NN |
-| knowledge.store | 72 | live cmds: all 8; UI; tests: knowledge,knowledge_reads,native_engine | cb/knowledge/store.cpp +1 | YY-NN |
+| knowledge | 173 | platforms registry; tests: knowledge,knowledge_reads,native_engine | cb/knowledge/(knowledge/ package) | YY-NN |
+| knowledge.reads | 174 | platforms registry; tests: knowledge_reads | cb/knowledge/reads.cpp +1 | YY-NN |
+| knowledge.sources | 116 | platforms registry; tests: knowledge | cb/knowledge/sources.cpp +1 | YY-NN |
+| knowledge.store | 72 | platforms registry; tests: knowledge,knowledge_reads,native_engine | cb/knowledge/store.cpp +1 | YY-NN |
 
 ### codebreaker.platforms
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| platforms | 389 | live cmds: all 8; UI; tests: m68k,nes,platforms+4 | cb/platforms/(platforms/ package) | YY-NN |
-| platforms.dos | 33 | live cmds: all 8 | cb/platforms/dos.cpp +1 | YN-NY |
-| platforms.gb | 19 | live cmds: all 8 | cb/platforms/gb.cpp +1 | YN-NY |
-| platforms.genesis | 19 | live cmds: all 8 | cb/platforms/genesis.cpp +1 | YN-NY |
-| platforms.java | 25 | live cmds: all 8 | cb/platforms/java.cpp +1 | YN-NY |
-| platforms.msx | 19 | live cmds: all 8 | cb/platforms/msx.cpp +1 | YN-NY |
-| platforms.nes | 19 | live cmds: all 8 | cb/platforms/nes.cpp +1 | YN-NY |
-| platforms.sms | 19 | live cmds: all 8 | cb/platforms/sms.cpp +1 | YN-NY |
-| platforms.vxd | 43 | live cmds: all 8 | cb/platforms/vxd.cpp +1 | YY-NY |
-| platforms.win16 | 72 | live cmds: all 8 | cb/platforms/win16.cpp +1 | YY-NY |
-| platforms.win32 | 58 | live cmds: all 8 | none found | NN-NY |
-| platforms.xbox | 22 | live cmds: all 8 | none found | NN-NY |
-| platforms.xbox360 | 45 | live cmds: all 8 | none found | NN-NY |
-| platforms.zx | 19 | live cmds: all 8 | none found | NN-NY |
+| platforms | 389 | tests: m68k,nes,platforms+4 | cb/platforms/(platforms/ package) | YY-YN |
+| platforms.dos | 33 | nothing | cb/platforms/dos.cpp +1 | YN-YY |
+| platforms.gb | 19 | nothing | cb/platforms/gb.cpp +1 | YN-YY |
+| platforms.genesis | 19 | nothing | cb/platforms/genesis.cpp +1 | YN-YY |
+| platforms.java | 25 | nothing | cb/platforms/java.cpp +1 | YN-YY |
+| platforms.msx | 19 | nothing | cb/platforms/msx.cpp +1 | YN-YY |
+| platforms.nes | 19 | nothing | cb/platforms/nes.cpp +1 | YN-YY |
+| platforms.sms | 19 | nothing | cb/platforms/sms.cpp +1 | YN-YY |
+| platforms.vxd | 43 | named in native text only | cb/platforms/vxd.cpp +1 | YY-YY |
+| platforms.win16 | 72 | named in native text only | cb/platforms/win16.cpp +1 | YY-YY |
+| platforms.win32 | 58 | nothing | none found | NN-YY |
+| platforms.xbox | 22 | nothing | none found | NN-YY |
+| platforms.xbox360 | 45 | nothing | none found | NN-YY |
+| platforms.zx | 19 | nothing | none found | NN-YY |
 
 ### codebreaker.recompile
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| recompile | 17 | tests: python_frontend,recompile,x360; tools: py2cpp; native gens: 7 | cb/recompile/(recompile/ package) | YYGNY |
+| recompile | 17 | tests: python_frontend,recompile,x360; native gens: 7 | cb/recompile/(recompile/ package) | YYGYY |
 | recompile.builders | 0 | native gens: 2 | cb/recompile/builders/(recompile/builders/ package) | YYGYY |
 | recompile.builders.arith | 269 | native gens: 1 | cb/recompile/builders/arith.cpp +1 | YYGYY |
 | recompile.builders.floating | 172 | native gens: 2 | cb/recompile/builders/floating.cpp +1 | YYGYY |
@@ -738,196 +803,164 @@ Kept alive by `tools/*.py` alone (39 modules, 22423 lines): `base.runs`, `decomp
 | recompile.builders.memory | 492 | native gens: 1 | cb/recompile/builders/memory.cpp +1 | YYGYY |
 | recompile.builders.system | 384 | native gens: 1 | cb/recompile/builders/system.cpp +1 | YYGYY |
 | recompile.builders.vector | 989 | native gens: 1 | cb/recompile/builders/vector.cpp +1 | YYGYY |
-| recompile.config | 260 | tests: x360; native gens: 1 | cb/recompile/config.cpp +1 | YYGYY |
+| recompile.config | 234 | tests: x360; native gens: 1 | cb/recompile/config.cpp +1 | YYGYY |
 | recompile.disassemble | 158 | tests: recompile; native gens: 2 | cb/recompile/disassemble.cpp +1 | YYGYY |
 | recompile.discover | 181 | tests: recompile,x360; native gens: 3 | cb/recompile/discover.cpp +1 | YYGYY |
-| recompile.gpu | 1044 | named in native text only | cb/recompile/gpu.cpp +1 | YY-YY |
 | recompile.jumptable | 364 | native gens: 1 | cb/recompile/jumptable.cpp +1 | YYGYY |
 | recompile.powerpc | 1168 | tests: recompile; native gens: 2 | cb/recompile/powerpc.cpp +1 | YYGYY |
-| recompile.project | 876 | nothing | cb/recompile/project.cpp +1 | YY-YY |
 | recompile.switches | 553 | tests: x360; native gens: 2 | cb/recompile/switches.cpp +1 | YYGYY |
-| recompile.title | 148 | nothing | cb/recompile/title.cpp +1 | YY-YY |
-| recompile.x360project | 198 | nothing | cb/recompile/x360project.cpp +1 | YY-YY |
-| recompile.xenon | 243 | tests: python_frontend,x360; tools: py2cpp | cb/recompile/xenon.cpp +3 | YY-NY |
+| recompile.xenon | 243 | tests: python_frontend,x360 | cb/recompile/xenon.cpp +3 | YY-YY |
 
 ### codebreaker.source
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| source | 0 | live cmds: all 8; UI; tests: drivers,invert,kind+6; native gens: 1 | cb/source/(source/ package) | YYGNN |
-| source.assembly | 232 | live cmds: all 8; UI | cb/source/assembly.cpp +1 | YY-NN |
-| source.classes_writer | 162 | live cmds: all 8; UI | cb/source/classes_writer.cpp +1 | YY-NN |
-| source.dos_build | 21 | nothing | cb/source/dos_build.cpp +1 | YN-YY |
-| source.dos_writer | 1005 | live cmds: all 8 | cb/source/dos_writer.cpp +1 | YY-NY |
-| source.driver_writer | 625 | live cmds: all 8; tests: drivers | cb/source/driver_writer.cpp +1 | YY-NY |
-| source.gb_writer | 135 | live cmds: all 8; tests: z80 | cb/source/gb_writer.cpp +1 | YY-NY |
-| source.genesis_writer | 148 | live cmds: all 8; tests: m68k | cb/source/genesis_writer.cpp +1 | YY-NY |
-| source.image_writer | 345 | live cmds: all 8; tests: module_model | cb/source/image_writer.cpp +1 | YY-NY |
-| source.java_writer | 60 | live cmds: all 8; UI | cb/source/java_writer.cpp +1 | YY-NN |
+| source | 0 | platforms registry; tests: drivers,kind,m68k+5; native gens: 1 | cb/source/(source/ package) | YYGNN |
+| source.assembly | 232 | platforms registry | cb/source/assembly.cpp +1 | YY-NN |
+| source.classes_writer | 162 | platforms registry | cb/source/classes_writer.cpp +1 | YY-NN |
+| source.dos_writer | 1005 | platforms registry | cb/source/dos_writer.cpp +1 | YY-NY |
+| source.driver_writer | 625 | platforms registry; tests: drivers | cb/source/driver_writer.cpp +1 | YY-NY |
+| source.gb_writer | 135 | platforms registry; tests: z80 | cb/source/gb_writer.cpp +1 | YY-NY |
+| source.genesis_writer | 148 | platforms registry; tests: m68k | cb/source/genesis_writer.cpp +1 | YY-NY |
+| source.image_writer | 345 | platforms registry; tests: module_model | cb/source/image_writer.cpp +1 | YY-NY |
+| source.java_writer | 60 | platforms registry | cb/source/java_writer.cpp +1 | YY-NN |
 | source.le_writer | 518 | tests: module_model | cb/source/le_writer.cpp +1 | YY-YY |
-| source.module_writer | 435 | live cmds: all 8; UI; tests: kind | cb/source/module_writer.cpp +1 | YY-NN |
-| source.msx_writer | 43 | live cmds: all 8; tests: z80 | cb/source/msx_writer.cpp +1 | YY-NY |
-| source.ne_asm | 0 | tests: invert,port_fixes; native gens: 1 | cb/source/ne_asm/(source/ne_asm/ package) | YYGYY |
-| source.ne_asm.datacode | 126 | nothing | cb/source/ne_asm/datacode.cpp +1 | YY-YY |
+| source.module_writer | 435 | platforms registry; tests: kind | cb/source/module_writer.cpp +1 | YY-NN |
+| source.msx_writer | 43 | platforms registry; tests: z80 | cb/source/msx_writer.cpp +1 | YY-NY |
+| source.ne_asm | 0 | tests: port_fixes; native gens: 1 | cb/source/ne_asm/(source/ne_asm/ package) | YYGYY |
 | source.ne_asm.fixups | 133 | native gens: 1 | cb/source/ne_asm/fixups.cpp +1 | YYGYY |
-| source.ne_asm.idiom | 530 | tests: invert | cb/source/ne_asm/idiom.cpp +1 | YY-YY |
-| source.ne_asm.reachability | 175 | nothing | cb/source/ne_asm/reachability.cpp +1 | YY-YY |
-| source.ne_asm.recon | 473 | nothing | cb/source/ne_asm/recon.cpp +1 | YY-YY |
-| source.ne_asm.run | 44 | nothing | cb/source/ne_asm/run.cpp +1 | YY-YY |
-| source.ne_asm.segdiff | 232 | tests: port_fixes | cb/source/ne_asm/segdiff.cpp +1 | YY-YY |
-| source.ne_asm.segment | 703 | tests: invert; native gens: 1 | cb/source/ne_asm/segment.cpp +1 | YYGYY |
-| source.ne_asm.sweep | 176 | nothing | cb/source/ne_asm/sweep.cpp +1 | YY-YY |
+| source.ne_asm.segdiff | 217 | tests: port_fixes | cb/source/ne_asm/segdiff.cpp +1 | YY-YY |
+| source.ne_asm.segment | 703 | native gens: 1 | cb/source/ne_asm/segment.cpp +1 | YYGYY |
 | source.ne_writer | 458 | tests: module_model | cb/source/ne_writer.cpp +1 | YY-YY |
-| source.nes_writer | 160 | live cmds: all 8; tests: nes | cb/source/nes_writer.cpp +1 | YY-NY |
+| source.nes_writer | 160 | platforms registry; tests: nes | cb/source/nes_writer.cpp +1 | YY-NY |
 | source.pe_writer | 529 | tests: module_model,port_fixes | cb/source/pe_writer.cpp +1 | YY-YY |
-| source.placement | 121 | live cmds: all 8; UI | cb/source/placement.cpp +1 | YY-NN |
-| source.readable | 644 | live cmds: all 8; UI; tests: module_model,readable | cb/source/readable.cpp +1 | YY-NN |
-| source.sms_writer | 133 | live cmds: all 8; tests: port_fixes,z80 | cb/source/sms_writer.cpp +1 | YY-NY |
-| source.vxd | 0 | tests: drivers | cb/source/vxd/(source/vxd/ package) | YY-YY |
-| source.vxd.boot | 338 | tests: drivers | cb/source/vxd/boot.cpp +1 | YY-YY |
-| source.vxd.coalesce | 234 | nothing | cb/source/vxd/coalesce.cpp +1 | YY-YY |
-| source.vxd.corpus | 125 | nothing | cb/source/vxd/corpus.cpp +1 | YY-YY |
-| source.vxd.disassembly | 780 | tests: drivers | cb/source/vxd/disassembly.cpp +2 | YY-YY |
-| source.vxd.from_source | 355 | tests: drivers | cb/source/vxd/from_source.cpp +1 | YY-YY |
-| source.vxd.idiom | 1118 | tests: drivers | cb/source/vxd/idiom.cpp +1 | YY-YY |
-| source.vxd.le_writer | 286 | nothing | cb/source/vxd/le_writer.cpp +1 | YY-YY |
-| source.vxd.link | 534 | nothing | cb/source/vxd/link.cpp +1 | YY-YY |
-| source.vxd.loadable_corpus | 114 | nothing | cb/source/vxd/loadable_corpus.cpp +1 | YN-YY |
-| source.vxd.masm | 667 | nothing | cb/source/vxd/masm.cpp +1 | YY-YY |
-| source.vxd.owbuild | 186 | nothing | cb/source/vxd/owbuild.cpp +1 | YY-YY |
-| source.vxd.run | 45 | tests: drivers | cb/source/vxd/run.cpp +1 | YY-YY |
-| source.vxd.services | 115 | nothing | cb/source/vxd/services.cpp +1 | YY-YY |
-| source.vxd.symbols | 95 | nothing | cb/source/vxd/symbols.cpp +1 | YY-YY |
-| source.vxd.tree | 194 | nothing | cb/source/vxd/tree.cpp +1 | YY-YY |
-| source.z80_writer | 94 | live cmds: all 8 | cb/source/z80_writer.cpp +1 | YY-NY |
-| source.zx_writer | 41 | live cmds: all 8; tests: z80 | cb/source/zx_writer.cpp +1 | YN-NY |
+| source.placement | 121 | platforms registry | cb/source/placement.cpp +1 | YY-NN |
+| source.readable | 644 | platforms registry; tests: module_model,readable | cb/source/readable.cpp +1 | YY-NN |
+| source.sms_writer | 133 | platforms registry; tests: port_fixes,z80 | cb/source/sms_writer.cpp +1 | YY-NY |
+| source.z80_writer | 94 | platforms registry | cb/source/z80_writer.cpp +1 | YY-NY |
+| source.zx_writer | 41 | platforms registry; tests: z80 | cb/source/zx_writer.cpp +1 | YN-NY |
 
 ### codebreaker.store
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| store | 0 | live cmds: all 8; UI; tests: kind,knowledge,native_engine+6; tools: causes,failures,oss_bench; native gens: 1 | cb/store/(store/ package) | YYGNN |
-| store.functions | 126 | live cmds: all 8; UI; tests: kind,knowledge,native_engine+5; tools: causes,failures,oss_bench; native gens: 1 | cb/store/functions.cpp +1 | YYGNN |
+| store | 0 | platforms registry; tests: kind,knowledge,native_engine+6; tools: causes,failures,oss_bench; native gens: 1 | cb/store/(store/ package) | YYGNN |
+| store.functions | 126 | platforms registry; tests: kind,knowledge,native_engine+5; tools: causes,failures,oss_bench; native gens: 1 | cb/store/functions.cpp +1 | YYGNN |
 
 ### codebreaker.symbols
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| symbols | 0 | live cmds: all 8; UI; tests: dos,drivers,invert+4; tools: struct_report; native gens: 1 | cb/symbols/(symbols/ package) | YYGNN |
-| symbols.api_arguments | 434 | live cmds: all 8; UI; tests: knowledge_reads; native gens: 1 | cb/symbols/api_arguments.cpp +1 | YYGNN |
-| symbols.debug_build | 168 | tests: invert | cb/symbols/debug_build.cpp +3 | YY-YY |
-| symbols.debug_build_estimate | 196 | nothing | cb/symbols/debug_build.cpp +3 | YY-YY |
-| symbols.demangle | 107 | live cmds: all 8; UI; tests: symbols | cb/symbols/demangle.cpp +1 | YY-NN |
-| symbols.dos_interrupts | 101 | live cmds: all 8; UI; tests: dos | cb/symbols/dos_interrupts.cpp +1 | YY-NN |
-| symbols.driver_services | 280 | live cmds: all 8; UI; tests: drivers | cb/symbols/driver_services.cpp +2 | YY-NN |
-| symbols.libraries | 104 | live cmds: all 8; UI; tests: symbols,verification | cb/symbols/libraries/(symbols/libraries/ package) | YY-NN |
-| symbols.libraries.coff | 166 | live cmds: all 8; UI; tests: symbols | cb/symbols/libraries/coff.cpp +1 | YY-NN |
-| symbols.libraries.omf | 152 | live cmds: all 8; UI | cb/symbols/libraries/omf.cpp +1 | YY-NN |
-| symbols.names | 547 | live cmds: all 8; UI; tests: symbols | cb/symbols/names.cpp +4 | YY-NN |
-| symbols.native | 70 | live cmds: all 8; UI | none found | NN-NN |
-| symbols.ordinals | 377 | live cmds: all 8; UI; tests: symbols,xbe | cb/symbols/ordinals.cpp +1 | YY-NN |
-| symbols.prototypes | 124 | live cmds: all 8; UI; tests: knowledge_reads,symbols; tools: struct_report | cb/symbols/prototypes.cpp +1 | YY-NN |
-| symbols.runtime_library | 386 | live cmds: all 8; UI; tests: symbols | cb/symbols/runtime_library.cpp +1 | YY-NN |
-| symbols.sdk_structs | 265 | live cmds: all 8; UI; tools: struct_report | cb/symbols/sdk_structs.cpp +1 | YY-NN |
-| symbols.wine16 | 89 | live cmds: all 8; UI; tests: symbols,verification | cb/symbols/wine16.cpp +1 | YY-NN |
-| symbols.xdk_libraries | 151 | live cmds: all 8; UI | cb/symbols/xdk_libraries.cpp +1 | YY-NN |
+| symbols | 0 | platforms registry; tests: dos,drivers,knowledge_reads+3; tools: struct_report; native gens: 1 | cb/symbols/(symbols/ package) | YYGNN |
+| symbols.api_arguments | 434 | platforms registry; tests: knowledge_reads; native gens: 1 | cb/symbols/api_arguments.cpp +1 | YYGNN |
+| symbols.demangle | 107 | platforms registry; tests: symbols | cb/symbols/demangle.cpp +1 | YY-NN |
+| symbols.dos_interrupts | 101 | platforms registry; tests: dos | cb/symbols/dos_interrupts.cpp +1 | YY-NN |
+| symbols.driver_services | 280 | platforms registry; tests: drivers | cb/symbols/driver_services.cpp +2 | YY-NN |
+| symbols.libraries | 104 | platforms registry; tests: symbols,verification | cb/symbols/libraries/(symbols/libraries/ package) | YY-NN |
+| symbols.libraries.coff | 166 | platforms registry; tests: symbols | cb/symbols/libraries/coff.cpp +1 | YY-NN |
+| symbols.libraries.omf | 152 | platforms registry | cb/symbols/libraries/omf.cpp +1 | YY-NN |
+| symbols.names | 547 | platforms registry; tests: symbols | cb/symbols/names.cpp +4 | YY-NN |
+| symbols.native | 70 | platforms registry | none found | NN-NN |
+| symbols.ordinals | 377 | platforms registry; tests: symbols,xbe | cb/symbols/ordinals.cpp +1 | YY-NN |
+| symbols.prototypes | 124 | platforms registry; tests: knowledge_reads,symbols; tools: struct_report | cb/symbols/prototypes.cpp +1 | YY-NN |
+| symbols.runtime_library | 386 | platforms registry; tests: symbols | cb/symbols/runtime_library.cpp +1 | YY-NN |
+| symbols.sdk_structs | 265 | platforms registry; tools: struct_report | cb/symbols/sdk_structs.cpp +1 | YY-NN |
+| symbols.wine16 | 89 | platforms registry; tests: symbols,verification | cb/symbols/wine16.cpp +1 | YY-NN |
+| symbols.xdk_libraries | 151 | platforms registry | cb/symbols/xdk_libraries.cpp +1 | YY-NN |
 
 ### codebreaker.translate
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| translate | 6 | live cmds: all 8; UI; tests: c_backend,clang_frontend,console_patches+21; tools: judge_c_java,l2c,l2check; native gens: 3 | cb/translate/(translate/ package) | YYGNN |
-| translate.backends | 1 | live cmds: all 8; UI; tests: c_backend,console_patches,cpp03_bodies+10; tools: l2c,py2cpp; native gens: 3 | cb/translate/backends/(translate/backends/ package) | YYGNN |
-| translate.backends.asm | 71 | live cmds: all 8; UI; tests: drivers,module_model | cb/translate/backends/asm.cpp +1 | YY-NN |
-| translate.backends.c | 96 | live cmds: all 8; UI; tests: c_backend,frame16,l2_survives; tools: l2c | cb/translate/backends/c.cpp +31 | YY-NN |
+| translate | 6 | platforms registry; tests: c_backend,clang_frontend,console_patches+21; tools: judge_c_java,l2c,l2check; native gens: 3 | cb/translate/(translate/ package) | YYGNN |
+| translate.backends | 1 | platforms registry; tests: c_backend,console_patches,cpp03_bodies+10; tools: l2c; native gens: 3 | cb/translate/backends/(translate/backends/ package) | YYGNN |
+| translate.backends.asm | 71 | platforms registry; tests: drivers,module_model | cb/translate/backends/asm.cpp +1 | YY-NN |
+| translate.backends.c | 96 | platforms registry; tests: c_backend,frame16,l2_survives; tools: l2c | cb/translate/backends/c.cpp +31 | YY-NN |
 | translate.backends.c_java | 1792 | tests: java_as_c | cb/translate/backends/c_java.cpp +9 | YY-YY |
-| translate.backends.cpp03 | 1857 | live cmds: all 8; UI; tests: console_patches,cpp03_bodies,projects | cb/translate/backends/cpp03.cpp +13 | YY-NN |
-| translate.backends.cpp17 | 71 | live cmds: all 8; UI; tests: cpp17_backend,python_frontend; tools: py2cpp | cb/translate/backends/cpp17.cpp +1 | YY-NN |
+| translate.backends.cpp03 | 1857 | platforms registry; tests: console_patches,cpp03_bodies,projects | cb/translate/backends/cpp03.cpp +13 | YY-NN |
+| translate.backends.cpp17 | 67 | platforms registry; tests: cpp17_backend,python_frontend | cb/translate/backends/cpp17.cpp +1 | YY-NN |
 | translate.backends.csharp | 1566 | tests: csharp_kit; native gens: 1 | cb/translate/backends/csharp.cpp +3 | YYGYY |
 | translate.backends.csharp_java | 631 | nothing | cb/translate/backends/csharp.cpp +3 | YY-YY |
 | translate.backends.java | 1978 | tests: java_backend; native gens: 2 | cb/translate/backends/java.cpp +6 | YYGYY |
 | translate.backends.java_libc | 80 | closure (lazy imports of live modules) | cb/translate/backends/java_libc.cpp +1 | YY-YY |
 | translate.backends.java_objects | 1036 | closure (lazy imports of live modules) | cb/translate/backends/java_objects.cpp +1 | YY-YY |
 | translate.backends.jmodel | 511 | tests: cpp17_backend | cb/translate/backends/jmodel.cpp +1 | YY-YY |
-| translate.backends.module_file | 127 | live cmds: all 8; UI; tests: module_model | cb/translate/backends/module_file.cpp +1 | YY-NN |
-| translate.desugar | 453 | live cmds: all 8; UI; tests: cpp17_backend,desugar | cb/translate/desugar.cpp +1 | YY-NN |
+| translate.backends.module_file | 127 | platforms registry; tests: module_model | cb/translate/backends/module_file.cpp +1 | YY-NN |
+| translate.desugar | 453 | platforms registry; tests: cpp17_backend,desugar | cb/translate/desugar.cpp +1 | YY-NN |
 | translate.dotnet | 149 | tests: csharp_kit,dotnet_toolchain; native gens: 1 | cb/translate/dotnet/(translate/dotnet/ package) | YYGYY |
 | translate.dotnet.cs2cpp | 844 | tests: csharp_kit | cb/translate/dotnet/cs2cpp.cpp +6 | YY-YY |
 | translate.dotnet.judge | 149 | tests: csharp_kit | cb/translate/dotnet/judge.cpp +1 | YY-YY |
 | translate.dotnet.pairs | 114 | tests: csharp_kit; native gens: 1 | none found | NNGYY |
-| translate.frontends | 2 | live cmds: all 8; UI; tests: clang_frontend,csharp_kit,csharp_lower_trees+6; tools: py2cpp; native gens: 2 | cb/translate/frontends/(translate/frontends/ package) | YNGNN |
+| translate.frontends | 2 | platforms registry; tests: clang_frontend,csharp_kit,csharp_lower_trees+6; native gens: 2 | cb/translate/frontends/(translate/frontends/ package) | YNGNN |
 | translate.frontends.clang | 129 | tests: clang_frontend,java_backend; native gens: 2 | cb/translate/frontends/clang/(translate/frontends/clang/ package) | YYGYY |
 | translate.frontends.clang.ctypes | 387 | tests: clang_frontend | cb/translate/frontends/clang/ctypes.cpp +1 | YN-YY |
 | translate.frontends.clang.j2x | 302 | closure (lazy imports of live modules) | none found | NN-YY |
 | translate.frontends.clang.lower | 1505 | closure (lazy imports of live modules) | cb/translate/frontends/clang/lower.hpp +6 | YY-YY |
 | translate.frontends.csharp | 142 | tests: csharp_kit,csharp_lower_trees | cb/translate/frontends/csharp/(translate/frontends/csharp/ package) | YY-YY |
 | translate.frontends.csharp.lower | 1233 | tests: csharp_lower_trees | cb/translate/frontends/csharp/lower.cpp +1 | YY-YY |
-| translate.frontends.java | 108 | live cmds: all 8; UI; tests: java_frontend,java_lower,l2 | none found | NN-NN |
-| translate.frontends.java.lower | 543 | live cmds: all 8; UI; tests: java_lower,l2 | none found | NN-NN |
-| translate.frontends.python | 319 | tests: python_frontend,pytypes; tools: py2cpp | cb/translate/frontends/python/(translate/frontends/python/ package) | YY-NY |
-| translate.frontends.python.infer | 1955 | closure (lazy imports of live modules) | cb/translate/frontends/python/infer.hpp +9 | YY-YY |
-| translate.frontends.python.lower | 1816 | closure (lazy imports of live modules) | cb/translate/frontends/python/lower.cpp +10 | YY-YY |
-| translate.frontends.python.methods | 749 | closure (lazy imports of live modules) | cb/translate/frontends/python/methods.cpp +1 | YY-YY |
-| translate.frontends.python.program | 874 | closure (lazy imports of live modules) | cb/translate/frontends/python/program.cpp +1 | YY-YY |
+| translate.frontends.java | 108 | platforms registry; tests: java_frontend,java_lower,l2 | none found | NN-NN |
+| translate.frontends.java.lower | 543 | platforms registry; tests: java_lower,l2 | none found | NN-NN |
+| translate.frontends.python | 319 | tests: python_frontend,pytypes | cb/translate/frontends/python/(translate/frontends/python/ package) | YY-YY |
+| translate.frontends.python.infer | 1955 | nothing | cb/translate/frontends/python/infer.hpp +9 | YY-YY |
+| translate.frontends.python.lower | 1816 | nothing | cb/translate/frontends/python/lower.cpp +10 | YY-YY |
+| translate.frontends.python.methods | 749 | nothing | cb/translate/frontends/python/methods.cpp +1 | YY-YY |
+| translate.frontends.python.program | 874 | nothing | cb/translate/frontends/python/program.cpp +1 | YY-YY |
 | translate.frontends.python.pytypes | 308 | tests: pytypes | cb/translate/frontends/python/pytypes.cpp +1 | YY-YY |
 | translate.frontends.python.structfmt | 55 | tests: pytypes | cb/translate/frontends/python/structfmt.cpp +1 | YY-YY |
-| translate.ir | 320 | live cmds: all 8; UI; tests: clang_frontend,console_patches,cpp17_backend+5 | cb/translate/ir.cpp +1 | YY-NN |
+| translate.ir | 320 | platforms registry; tests: clang_frontend,console_patches,cpp17_backend+5 | cb/translate/ir.cpp +1 | YY-NN |
 | translate.javajudge | 307 | tests: cpp17_backend,java_as_c | cb/translate/javajudge.cpp +3 | YY-YY |
 | translate.judge_native_jvm | 263 | tests: java_backend; tools: judge_c_java | cb/translate/judge_native_jvm.cpp +1 | YY-NY |
-| translate.l2 | 431 | live cmds: all 8; UI; tests: c_backend,clang_frontend,csharp_kit+10; tools: l2check; native gens: 3 | cb/translate/l2.cpp +1 | YYGNN |
-| translate.native_l2 | 340 | live cmds: all 8; UI; tests: native_l2_core | cb/translate/native_l2.cpp +1 | YY-NN |
+| translate.l2 | 431 | platforms registry; tests: c_backend,clang_frontend,csharp_kit+10; tools: l2check; native gens: 3 | cb/translate/l2.cpp +1 | YYGNN |
+| translate.native_l2 | 340 | platforms registry; tests: native_l2_core | cb/translate/native_l2.cpp +1 | YY-NN |
 | translate.rewrite | 114 | closure (lazy imports of live modules) | cb/translate/rewrite.cpp +1 | YY-YY |
 
 ### codebreaker.ui
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| ui | 0 | live cmds: facts; UI; tests: mcp,service,ui+2 | cb/ui/(ui/ package) | YY-NY |
-| ui.client | 294 | live cmds: facts; UI; tests: service,ui,ui_thin | none found | NN-NY |
-| ui.mcp_server | 1271 | live cmds: facts; tests: mcp | cb/ui/mcp_server.hpp | YY-NY |
-| ui.progress | 137 | live cmds: progress,facts; tests: ui | cb/ui/progress.cpp +3 | YY-NY |
-| ui.service | 508 | live cmds: facts; tests: ui | cb/ui/service.cpp +3 | YY-NY |
-| ui.terminal | 983 | live cmds: facts; UI; tests: ui,ui_thin,verdicts | none found | NN-NY |
+| ui | 0 | UI; tests: service,ui,ui_thin+1 | cb/ui/(ui/ package) | YY-NY |
+| ui.client | 294 | UI; tests: service,ui,ui_thin | none found | NN-NY |
+| ui.terminal | 983 | UI; tests: ui,ui_thin,verdicts | none found | NN-NY |
 
 ### codebreaker.verify
 
 | module | lines | reached by | native replacement | 1-5 |
 |---|---|---|---|---|
-| verify | 12 | live cmds: all 8; UI; tests: n_subjects,authored_rewrites,bytes+39; tools: causes,copy_walk,failures; native gens: 4 | cb/verify/(verify/ package) | YYGNN |
+| verify | 12 | platforms registry; tests: n_subjects,authored_rewrites,bytes+40; tools: causes,copy_walk,failures; native gens: 4 | cb/verify/(verify/ package) | YYGNN |
 | verify.authored | 2 | tests: authored_rewrites,c_backend,match_powerpc+3 | cb/verify/authored/(verify/authored/ package) | YY-YN |
 | verify.authored.match | 674 | tests: c_backend,match_powerpc,recompile+2 | cb/verify/authored/match16.cpp +1 | YY-YN |
 | verify.authored.match16 | 281 | tests: verification | cb/verify/authored/match16.cpp +1 | YY-YN |
 | verify.authored.repair | 587 | tests: verification | cb/verify/authored/repair.cpp +1 | YY-YY |
 | verify.authored.search16 | 212 | tests: authored_rewrites,verification | cb/verify/authored/search16.cpp +1 | YY-YN |
 | verify.authored.shape | 210 | tests: authored_rewrites | cb/verify/authored/shape.cpp +1 | YY-YY |
-| verify.compare | 228 | live cmds: all 8; UI; tests: plumbing,verdicts,verification | cb/verify/compare.cpp +1 | YY-NN |
-| verify.concolic | 229 | live cmds: all 8; UI; tests: concolic | cb/verify/concolic.cpp +1 | YY-NN |
-| verify.gate16 | 2 | live cmds: all 8; UI; tests: verification; tools: copy_walk,gate_teeth16,record; native gens: 1 | cb/verify/gate16/(verify/gate16/ package) | YYGNN |
-| verify.gate16.contract16 | 385 | live cmds: all 8; UI; tests: verification | cb/verify/gate16/contract16.cpp +1 | YY-NN |
-| verify.gate16.isolated16 | 470 | live cmds: all 8; UI; tools: gate_teeth16,record,replay; native gens: 1 | cb/verify/gate16/isolated16.cpp +1 | YYGNN |
+| verify.compare | 228 | platforms registry; tests: plumbing,verdicts,verification | cb/verify/compare.cpp +1 | YY-NN |
+| verify.concolic | 229 | platforms registry; tests: concolic | cb/verify/concolic.cpp +1 | YY-NN |
+| verify.gate16 | 2 | platforms registry; tests: verification; tools: copy_walk,gate_teeth16,record; native gens: 1 | cb/verify/gate16/(verify/gate16/ package) | YYGNN |
+| verify.gate16.contract16 | 385 | platforms registry; tests: verification | cb/verify/gate16/contract16.cpp +1 | YY-NN |
+| verify.gate16.isolated16 | 470 | platforms registry; tools: gate_teeth16,record,replay; native gens: 1 | cb/verify/gate16/isolated16.cpp +1 | YYGNN |
 | verify.gate16.runtime16 | 62 | tests: verification | none found | NN-YN |
 | verify.gate16.scoreboard16 | 203 | nothing | cb/verify/gate16/scoreboard16.cpp +1 | YY-YN |
 | verify.gate16.setup16 | 255 | tests: verification; tools: copy_walk,record | cb/verify/gate16/setup16.cpp +1 | YY-NN |
-| verify.guided | 222 | live cmds: all 8; UI | cb/verify/guided.cpp +1 | YY-NN |
-| verify.lane_common | 264 | live cmds: all 8; UI; tests: run_record,verdicts,verification | cb/verify/lane_common.cpp +1 | YY-NN |
-| verify.lanes | 4 | live cmds: all 8; UI; tests: n_subjects,bytes,concolic+31; tools: gate_teeth16,trace16; native gens: 3 | cb/verify/lanes/(verify/lanes/ package) | YYGNN |
-| verify.lanes.dos | 75 | live cmds: all 8; tests: platforms,verification | cb/verify/lanes/dos.cpp +1 | YY-NY |
-| verify.lanes.driver | 567 | live cmds: all 8; tests: drivers,platforms,run_record; native gens: 1 | cb/verify/lanes/driver.cpp +1 | YYGNY |
+| verify.guided | 222 | platforms registry | cb/verify/guided.cpp +1 | YY-NN |
+| verify.lane_common | 264 | platforms registry; tests: run_record,verdicts,verification | cb/verify/lane_common.cpp +1 | YY-NN |
+| verify.lanes | 4 | platforms registry; tests: n_subjects,bytes,concolic+31; tools: gate_teeth16,trace16; native gens: 3 | cb/verify/lanes/(verify/lanes/ package) | YYGNN |
+| verify.lanes.dos | 75 | platforms registry; tests: platforms,verification | cb/verify/lanes/dos.cpp +1 | YY-NY |
+| verify.lanes.driver | 567 | platforms registry; tests: drivers,platforms,run_record; native gens: 1 | cb/verify/lanes/driver.cpp +1 | YYGNY |
 | verify.lanes.gb | 41 | tests: platforms | none found | NN-YY |
 | verify.lanes.genesis | 40 | tests: platforms | none found | NN-YY |
 | verify.lanes.image_lane | 108 | tests: verification | cb/verify/lanes/image_lane.cpp +1 | YY-YY |
-| verify.lanes.java | 225 | live cmds: all 8; UI; tests: bytes,console_patches,cpp03_bodies+23 | cb/verify/lanes/java.cpp +1 | YY-NN |
+| verify.lanes.java | 225 | platforms registry; tests: bytes,console_patches,cpp03_bodies+23 | cb/verify/lanes/java.cpp +1 | YY-NN |
 | verify.lanes.msx | 6 | tests: platforms | cb/verify/lanes/msx.hpp | YN-YY |
 | verify.lanes.nes | 38 | tests: nes,platforms | none found | NN-YY |
-| verify.lanes.powerpc | 393 | live cmds: all 8; tests: platforms | cb/verify/lanes/powerpc.cpp +1 | YY-NN |
+| verify.lanes.powerpc | 393 | platforms registry; tests: platforms | cb/verify/lanes/powerpc.cpp +1 | YY-NN |
 | verify.lanes.sms | 39 | tests: platforms | none found | NN-YY |
-| verify.lanes.win16 | 727 | live cmds: all 8; UI; tests: platforms,run_record,verdicts+1; tools: gate_teeth16,trace16; native gens: 2 | cb/verify/lanes/win16.cpp +1 | YYGNN |
-| verify.lanes.win32 | 917 | live cmds: all 8; UI; tests: n_subjects,concolic,native_trace+4 | cb/verify/lanes/win32.cpp +5 | YY-NN |
+| verify.lanes.win16 | 727 | platforms registry; tests: platforms,run_record,verdicts+1; tools: gate_teeth16,trace16; native gens: 2 | cb/verify/lanes/win16.cpp +1 | YYGNN |
+| verify.lanes.win32 | 917 | platforms registry; tests: n_subjects,concolic,native_trace+4 | cb/verify/lanes/win32.cpp +5 | YY-NN |
 | verify.lanes.z80_flat | 52 | closure (lazy imports of live modules) | none found | NN-YY |
 | verify.lanes.zx | 6 | tests: platforms | cb/verify/lanes/zx.hpp | YN-YY |
-| verify.reconstruct | 305 | live cmds: all 8; UI; tests: kind,platforms,verdicts+2; tools: causes,failures,oss_bench; native gens: 1 | cb/verify/reconstruct.cpp +1 | YYGNN |
-| verify.teeth | 256 | live cmds: all 8; tests: verification; tools: gate_teeth16 | cb/verify/teeth.cpp +1 | YY-NY |
-| verify.verdicts | 215 | live cmds: all 8; UI; tests: native_engine,verdicts,verification; tools: gate_teeth16,replay,verdict_diff | cb/verify/verdicts.cpp +1 | YY-NN |
+| verify.reconstruct | 305 | platforms registry; tests: kind,platforms,ui+3; tools: causes,failures,oss_bench; native gens: 1 | cb/verify/reconstruct.cpp +1 | YYGNN |
+| verify.teeth | 256 | platforms registry; tests: verification; tools: gate_teeth16 | cb/verify/teeth.cpp +1 | YY-NY |
+| verify.verdicts | 215 | platforms registry; tests: native_engine,verdicts,verification; tools: gate_teeth16,replay,verdict_diff | cb/verify/verdicts.cpp +1 | YY-NN |
 
 ### codebreaker.xna
 

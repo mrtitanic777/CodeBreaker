@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Tests for more than one product: the plural corpus, what Windows 1.x executables need of the
-16-bit reader, raster fonts, and matching the functions of two builds of a module.
+"""Tests for more than one product: the plural corpus and what Windows 1.x executables need of the
+16-bit reader.
 Run:  python tests/test_versions.py     (exit code 0 = all passed)
 
 Checks that need a product's binaries are SKIPPED when that product is not on this machine."""
@@ -13,8 +13,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from codebreaker.base import corpus, settings          # noqa: E402
-from codebreaker.compare import versions               # noqa: E402
-from codebreaker.formats import fonts, ne              # noqa: E402
+from codebreaker.formats import ne                     # noqa: E402
 
 RESULTS = []
 
@@ -103,54 +102,6 @@ def test_boot_image_modules():
         assert p and corpus.lane(p) == "ne" and any(os.path.basename(m) == "gdi.exe" for m in corpus.modules("ne"))
 
 
-def test_fonts():
-    _need("win1.0", "win3.1")
-    with corpus.selected("win1.0"):
-        old = fonts.fonts_in(corpus.retail("helva.fon"))
-        stroke = fonts.fonts_in(corpus.retail("roman.fon"))
-    assert old and old[0].version == 0x0100 and old[0].name == "Helv" and old[0].kind == "proportional"
-    rows = old[0].glyph("W")
-    assert len(rows) == old[0].height and any("#" in r for r in rows) and len(rows[0]) == old[0].widths[ord("W")]
-    assert stroke and stroke[0].vector
-    with corpus.selected("win3.1"):
-        new = fonts.fonts_in(corpus.retail("sserife.fon"))
-    assert new and new[0].version == 0x0200 and new[0].name == "MS Sans Serif"
-    assert any("#" in r for r in new[0].glyph("W")) and not any("#" in r for r in new[0].glyph(" "))
-
-
-# --- two builds of a module ----------------------------------------------------------------------
-def test_a_module_against_itself():
-    path = corpus.retail("version.dll")
-    if not path:
-        raise Skip("no version.dll")
-    c = versions.compare(path, path)
-    n = c.counts()
-    assert n["identical"] == len(c.a.order) > 20 and not (n["changed"] or n["added"] or n["removed"])
-    assert all(p["from"] == p["to"] for p in c.pairs)               # each function found itself
-
-
-def test_dos_program_and_shared():
-    """A real-mode program compares against itself, and --shared finds every function of any
-    size in two copies of one program (and nothing in a program alone)."""
-    path = corpus.retail("find.exe")
-    if not path:
-        raise Skip("no find.exe")
-    c = versions.compare(path, path)
-    n = c.counts()
-    assert n["identical"] == len(c.a.order) > 5 and not (n["changed"] or n["added"] or n["removed"])
-    side = versions.load(path)
-    big = sum(1 for f in side.functions.values() if len(f.text) >= 8)
-    found = versions.shared([path, path])                        # one name: both copies under it
-    assert found == [] and big > 0
-    import shutil
-    import tempfile
-    other = os.path.join(tempfile.mkdtemp(prefix="cb_shared_"), "find2.exe")
-    shutil.copy(path, other)
-    found = versions.shared([path, other])
-    assert len(found) <= big and sum(len(w["find.exe"]) for _n, w in found) == big
-    assert all(set(w) == {"find.exe", "find2.exe"} for _n, w in found)
-
-
 def test_function_spans_are_the_carved_functions():
     from codebreaker.formats import pe_functions
     path = corpus.retail("version.dll")
@@ -160,44 +111,9 @@ def test_function_spans_are_the_carved_functions():
     assert pe_functions.function_spans(path) == {va: (f["end"], f["name"]) for va, f in carved.items()}
 
 
-def test_two_products_32bit():
-    _need("win98")
-    old = corpus.retail("version.dll")
-    with corpus.selected("win98"):
-        new = corpus.retail("version.dll")
-    if not old or not new:
-        raise Skip("no version.dll")
-    c = versions.compare(old, new)
-    n = c.counts()
-    assert n["identical"] >= 30 and n["identical"] + n["changed"] + n["added"] == len(c.b.order)
-    by_name = {p["from_name"]: p for p in c.pairs}
-    assert by_name["GetFileVersionInfoA"]["to_name"] == "GetFileVersionInfoA"
-    assert set(c.a.functions) >= {p["from"] for p in c.pairs}        # keyed as the store keys them
-    data = c.as_json()
-    assert data["from"]["corpus"] == settings.get("target") and data["to"]["corpus"] == "win98"
-    changed = [p for p in data["pairs"] if p["status"] == "changed"]
-    assert all(p["from"] in data["listings"]["from"] and p["ops"] for p in changed)
-    assert data["code"]["identical"] + data["code"]["changed"] + data["code"]["added"] == data["code"]["to_bytes"]
-
-
-def test_two_products_16bit():
-    _need("win3.1")
-    with corpus.selected("win3.1"):
-        old = corpus.retail("lzexpand.dll")
-    new = next((p for p in corpus.candidates("lzexpand.dll") if os.path.getsize(p) > 20000), None)
-    if not old or not new:
-        raise Skip("no lzexpand.dll in both")
-    c = versions.compare(old, new)
-    names = {p["from_name"]: p["to_name"] for p in c.pairs if c.a.functions[p["from"]].named}
-    assert names.get("LZOPENFILE") == "LZOPENFILE" and len(c.pairs) >= 20
-    assert all(":" in k for k in c.a.order)                          # segment:offset
-
-
 def main():
     for fn in (test_default_product_is_untouched, test_selecting_a_product, test_boot_image_modules,
-               test_fonts, test_a_module_against_itself, test_dos_program_and_shared,
-               test_function_spans_are_the_carved_functions,
-               test_two_products_32bit, test_two_products_16bit):
+               test_function_spans_are_the_carved_functions):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

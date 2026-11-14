@@ -31,10 +31,6 @@ class Decline(Exception):
     """The C++17 back end does not write this unit (the reason says why)."""
 
 
-def header_path(module):
-    return module.replace('.', '/') + '.hpp'
-
-
 def source_path(module):
     return module.replace('.', '/') + '.cpp'
 

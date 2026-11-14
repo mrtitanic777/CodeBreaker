@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Tests for installation media: cabinet files (formats/cab.py) and CD images
-(build/disc_image.py). Run:  python tests/test_media.py     (exit code 0 = all passed)
+"""Tests for installation media: cabinet files (formats/cab.py) and disk images
+(formats/media.py). Run:  python tests/test_media.py     (exit code 0 = all passed)
 
 The checks against real cabinets are SKIPPED when the original disc contents (a folder
 `disc/src/WIN95` beside the corpus folder) or the corpus itself are not present."""
@@ -10,14 +10,12 @@ import struct
 import subprocess
 import sys
 import tempfile
-import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from codebreaker.base import corpus                 # noqa: E402
-from codebreaker.build import disc_image            # noqa: E402
 from codebreaker.formats import media                # noqa: E402
 from codebreaker.formats import cab                 # noqa: E402
 
@@ -205,82 +203,6 @@ def test_real_quantum_cabinet():
 
 
 # --- CD images -------------------------------------------------------------------------------
-def _make_tree():
-    """A folder to put on a disc. Returns (scratch folder, source folder, {name on disc: bytes})."""
-    d = tempfile.mkdtemp()
-    src = os.path.join(d, "src")
-    rnd = random.Random(3)
-    tree = [("ReadMe.txt", "README.TXT", b"read me\r\n" * 30),
-            ("a long file name.text", "A_LONG_F.TEX", b"long name, cut to 8.3"),
-            ("noext", "NOEXT", b"no extension"),
-            ("System/kernel.bin", "SYSTEM/KERNEL.BIN",
-             bytes(rnd.getrandbits(8) for _ in range(150000))),
-            ("System/empty.dat", "SYSTEM/EMPTY.DAT", b""),
-            ("System/Deep/z.z", "SYSTEM/DEEP/Z.Z", zlib.compress(b"deep" * 999))]
-    for i in range(120):                              # a directory longer than one sector
-        tree.append(("many/f%04d.dat" % i, "MANY/F%04d.DAT" % i, b"%d" % i * i))
-    for on_disk, _name, data in tree:
-        path = os.path.join(src, *on_disk.split("/"))
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(data)
-    return d, src, {name: data for _on_disk, name, data in tree}
-
-
-def test_disc_image_round_trip():
-    d, src, made = _make_tree()
-    iso = os.path.join(d, "t.iso")
-    size = disc_image.write(src, iso, volume_id="my disc")
-    assert size == os.path.getsize(iso) and size % disc_image.SECTOR == 0
-    v, = media.volumes(iso)
-    listing = {e.path.upper(): e for e in v.files()}
-    files = {n for n, e in listing.items() if not e.is_dir}
-    assert files == set(made), files ^ set(made)
-    assert {n for n, e in listing.items() if e.is_dir} == {"SYSTEM", "SYSTEM/DEEP", "MANY"}
-    for name, data in made.items():
-        assert listing[name].size == len(data)
-        assert v.read(listing[name]) == data, name
-    assert v.label == "MY_DISC" and v.boot_image() is None
-    out = os.path.join(d, "out")
-    assert media.extract(iso, out) == len(made)
-    with open(os.path.join(out, "SYSTEM", "DEEP", "Z.Z"), "rb") as f:
-        assert f.read() == made["SYSTEM/DEEP/Z.Z"]
-
-
-def test_disc_image_bootable():
-    d, src, made = _make_tree()
-    boot = os.path.join(d, "boot.img")
-    image = bytes(random.Random(5).getrandbits(8) for _ in range(4096)) * 360     # 1474560
-    with open(boot, "wb") as f:
-        f.write(image)
-    iso = os.path.join(d, "b.iso")
-    disc_image.write(src, iso, boot_image=boot)
-    vols = media.volumes(iso)
-    offset, size, kind = vols[0].boot_image()
-    assert kind == 2 and size == len(image), (kind, size)                 # a 1.44 MB floppy
-    with open(iso, "rb") as f:
-        f.seek(17 * disc_image.SECTOR)
-        assert f.read(30)[7:] == b"EL TORITO SPECIFICATION"
-        f.seek(offset)
-        assert f.read(len(image)) == image
-    listing = {e.path.upper(): e for e in vols[0].files()}
-    assert vols[0].read(listing["SYSTEM/KERNEL.BIN"]) == made["SYSTEM/KERNEL.BIN"]
-
-
-def test_disc_image_reports_name_clashes():
-    d, src, _made = _make_tree()
-    for name in ("longname_one.txt", "longname_two.txt"):
-        with open(os.path.join(src, name), "wb") as f:
-            f.write(b"x")
-    try:
-        disc_image.write(src, os.path.join(d, "c.iso"))
-    except disc_image.DiscError as e:
-        assert "longname_one.txt" in str(e) and "LONGNAME.TXT" in str(e)
-        return
-    raise AssertionError("two files with one 8.3 name were written")
-
-
-# --- writing into a FAT volume ---------------------------------------------------------------
 def _blank_fat(path, bits):
     """An empty FAT volume made by hand: a FAT16 one inside a partition table (as an installed
     hard disk has it, the partition at sector 63) or a bare FAT32 one."""
@@ -360,8 +282,7 @@ def main():
                test_cabinet_accepted_by_windows_expand,
                test_cabinet_rejects_what_it_cannot_do, test_checksum_matches_known_block,
                test_real_mszip_cabinet, test_real_quantum_cabinet,
-               test_disc_image_round_trip, test_disc_image_bootable,
-               test_disc_image_reports_name_clashes, test_fat16_put_in_partition, test_fat32_put):
+               test_fat16_put_in_partition, test_fat32_put):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
