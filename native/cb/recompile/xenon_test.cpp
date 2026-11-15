@@ -78,7 +78,7 @@ struct FakeTools {
                 // "building" makes the programs new (the world put stand-in files there)
                 const stdfs::path b = fs::from_text(a.at(1));
                 for (const stdfs::path& p : {b / "XenonRecomp" / "XenonRecomp.exe", b / "XenonAnalyse" / "XenonAnalyse.exe"}) {
-                    if (stdfs::exists(p)) stdfs::last_write_time(p, stdfs::file_time_type::clock::now());
+                    if (stdfs::exists(p)) cb::fs::set_last_write_time(p, stdfs::file_time_type::clock::now());
                 }
                 return result(0, "[1/1] Linking\n");
             }
@@ -209,7 +209,7 @@ struct World {
         for (const char* name : {"XenonRecomp", "XenonAnalyse"}) {
             const stdfs::path exe = src / "build" / name / (std::string(name) + ".exe");
             fs::write_text(exe, "");
-            stdfs::last_write_time(exe, stdfs::file_time_type::clock::now() - std::chrono::hours(2));
+            cb::fs::set_last_write_time(exe, stdfs::file_time_type::clock::now() - std::chrono::hours(2));
         }
     }
 
@@ -228,7 +228,7 @@ struct World {
 };
 
 // make `p` newer than everything else in the world
-void touch_newer(const stdfs::path& p) { stdfs::last_write_time(p, stdfs::file_time_type::clock::now() + std::chrono::hours(1)); }
+void touch_newer(const stdfs::path& p) { cb::fs::set_last_write_time(p, stdfs::file_time_type::clock::now() + std::chrono::hours(1)); }
 
 // a configuration `work/<name>` for the fake XenonRecomp (the lines after the first three say what it should do)
 stdfs::path write_config(const World& w, std::string_view extra, std::string_view name = "cfg.toml") {
@@ -339,7 +339,7 @@ CB_TEST("recompile.xenon.build_configures_and_builds_once_per_change", [] {
     log = w.tools.joined();
     CB_CHECK(has(log, "cmake --build|"));
     CB_CHECK(!has(log, "cmake -S|"));
-    stdfs::last_write_time(x.source_dir() / "XenonRecomp" / "sub" / "b.cpp", stdfs::file_time_type::clock::now() - std::chrono::hours(1));
+    cb::fs::set_last_write_time(x.source_dir() / "XenonRecomp" / "sub" / "b.cpp", stdfs::file_time_type::clock::now() - std::chrono::hours(1));
 
     // a hidden file is not a source
     w.tools.clear();
@@ -435,12 +435,12 @@ CB_TEST("recompile.xenon.recompile_synced_changes_only_what_changed", [] {
     CB_CHECK_EQ(entries, 1u);                                       // only ppc/: the scratch folder is gone
 
     // the same output again: nothing changed, and the files keep their times
-    stdfs::last_write_time(out / "a.cpp", stdfs::file_time_type::clock::now() - std::chrono::hours(5));
-    const auto before = stdfs::last_write_time(out / "a.cpp");
+    cb::fs::set_last_write_time(out / "a.cpp", stdfs::file_time_type::clock::now() - std::chrono::hours(5));
+    const auto before = cb::fs::last_write_time(out / "a.cpp");
     r = x.recompile_synced(cfg);
     CB_CHECK_EQ(r.generated, 2u);
     CB_CHECK_EQ(r.changed, 0u);
-    CB_CHECK(stdfs::last_write_time(out / "a.cpp") == before);
+    CB_CHECK(cb::fs::last_write_time(out / "a.cpp") == before);
 
     // every file's content changes
     const stdfs::path cfg2 = write_config(w, "fake_tag = 2\nfake_files = a.cpp,b.cpp\n");

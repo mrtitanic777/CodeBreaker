@@ -10,10 +10,12 @@
 
 #include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
 #include "cb/decompile/decompiler.hpp"
 #include "cb/formats/pe_functions.hpp"
 #include "cb/verify/lanes/win32_internal.hpp"
+#include "cb/verify/stage_timer.hpp"
 
 namespace cb::verify::lanes {
 
@@ -28,7 +30,7 @@ std::string file_stamp(const stdfs::path& file) {
     std::error_code ec;
     const auto size = stdfs::file_size(file, ec);
     if (ec) return "";
-    const auto time = stdfs::last_write_time(file, ec);
+    const auto time = cb::fs::last_write_time(file, ec);
     return std::format("{}:{}:{}", file.filename().string(), size, ec ? 0 : time.time_since_epoch().count());
 }
 
@@ -192,6 +194,7 @@ Built Win32Lane::build(const Prepared& prepared, const stdfs::path& module_path,
 // ---- one function ----------------------------------------------------------------------------------------------------------------
 
 Judgement Win32Lane::judge_function(const Context& context, const Item& item) {
+    const StageTimer total("judge.function (total)");
     const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
         const Shape shape = item.regs == 2 ? Shape(&Win32Lane::in_ecx_edx) : item.regs == 1 ? Shape(&Win32Lane::in_ecx) : Shape();
         const auto shaped = [&](const Vector& v) { return shape ? shape(v) : v; };

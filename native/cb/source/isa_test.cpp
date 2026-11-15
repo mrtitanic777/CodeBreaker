@@ -90,6 +90,35 @@ CB_TEST("source.isa.the_68000_says_how_control_leaves", [] {
     CB_CHECK(trap && trap->flow == formats::Flow::Branch);
 });
 
+// The R3000A, read at the address it runs at, in the 2 MB the cartridge formats scan: a jump, return and indirect jump end the flow (after
+// their delay slot, which a scan does not follow); a JAL is a call, a JALR a call with no known target, a conditional branch a branch.
+CB_TEST("source.isa.the_r3000a_says_how_control_leaves", [] {
+    const std::uint32_t pc = 0x1000;
+    const auto little = [](std::uint32_t w) { return Bytes{static_cast<std::uint8_t>(w), static_cast<std::uint8_t>(w >> 8), static_cast<std::uint8_t>(w >> 16), static_cast<std::uint8_t>(w >> 24)}; };
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x27BDFFE0), 4, formats::Flow::Next, std::nullopt);                          // addiu $sp, $sp, -32
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x03E00008), 4, formats::Flow::Return, std::nullopt);                        // jr $ra
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x01000008), 4, formats::Flow::Indirect, std::nullopt);                      // jr $t0
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x0C004040), 4, formats::Flow::Call, std::optional<std::uint32_t>(0x10100));  // jal $10100
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x0100F809), 4, formats::Flow::Call, std::nullopt);                          // jalr $t0
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x08004040), 4, formats::Flow::Jump, std::optional<std::uint32_t>(0x10100));  // j $10100
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x10800003), 4, formats::Flow::Branch, std::optional<std::uint32_t>(0x1010));  // beq $a0, $zero, +3
+    CB_CHECK_FLOW(mips_decoder(), pc, little(0x1000FFFF), 4, formats::Flow::Jump, std::optional<std::uint32_t>(0x1000));   // b (to itself)
+    CB_CHECK(!decode_with(mips_decoder(), pc, little(0xFFFFFFFF)));                                                        // not an instruction
+});
+
+CB_TEST("source.isa.the_r3000a_encoder", [] {
+    const build::Encoder& m = mips_encoder();
+    const build::Labels none;
+    const Result<Bytes> unknown = m.assemble("jal foo", 0x80010000, none);
+    CB_CHECK(!unknown.ok() && build::is_undefined(unknown.error()));
+    const build::Labels foo = {{"foo", 0x80010100}};
+    const Result<Bytes> known = m.assemble("jal foo", 0x80010000, foo);
+    CB_CHECK(known.ok() && known.value() == (Bytes{0x40, 0x40, 0x00, 0x0C}));   // 0x0C004040, little-endian
+    CB_CHECK(!m.assemble("NOT AN INSTRUCTION", 0, none).ok());
+    CB_CHECK(m.value("foo + 4", foo, 0).value() == 0x80010104);
+    CB_CHECK(!m.value("bar", foo, 0).ok() && build::is_undefined(m.value("bar", foo, 0).error()));
+});
+
 CB_TEST("source.isa.an_encoder_tells_a_name_with_no_value_from_text_that_is_not_an_instruction", [] {
     const build::Encoder& z = z80_encoder();
     build::Labels none;

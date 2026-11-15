@@ -3,7 +3,7 @@
 `codebreaker mcp` (native/cb/ui/mcp_*.cpp) is CodeBreaker as an MCP server, so an
 assistant such as Claude Code can take binaries apart with CodeBreaker's own tools: what a file
 is, its headers, its code instruction by instruction, what refers to what, the reconstructed C and
-its verdict, and two builds side by side. 32 tools, one resource and one prompt. Tests:
+its verdict, and two builds side by side. 34 tools, one resource and one prompt. Tests:
 native/cb/ui/mcp_server_test.cpp and mcp_services_test.cpp.
 
 ## Connecting
@@ -34,7 +34,7 @@ one). `--host H` listens somewhere other than 127.0.0.1; `--allow-host NAME` ans
 Host name, such as a tunnel's.
 
 **On the internet (claude.ai).** Add `--public`: the server then offers the reading tools only (no
-run_command, stop_job or name_function, so nothing from outside can start a process or change the
+run_command, stop_job, name_function or propose_name, so nothing from outside can start a process or change the
 store), and also takes the token as the URL's first segment, `/<token>/mcp`, for clients that
 cannot send a header. It still needs a public HTTPS address in front of it, from a tunnel, and the
 tunnel's name passed with `--allow-host`:
@@ -109,7 +109,8 @@ copy, says how old it is, and works out a fresh one.
 | --- | --- |
 | `disasm(module, addr, count?)` | At a function's start, the whole function as the analyses decode it; anywhere else (or with `count`), that many instructions straight on. Each line: address, file offset, bytes, instruction, and a note naming what it refers to: a function, an import (through its thunk: `sub_001424 (thunk: KERNEL32!ThunkInitLSF)`), a string, even one in a code section. |
 | `xrefs(module, addr)` | What refers to an address or function: call and jump sites (tail jumps included), code that reads, writes or takes it, data that holds it, the export it is, "entered from outside" for exports; for a function, every call it makes. For an import, the code that calls it, directly or through a `jmp [slot]` thunk. |
-| `names(module, find?, offset?, limit?)` | Every function and import with its best name and where the name came from. |
+| `names(module, find?, offset?, limit?)` | Every function and import with its best name and where the name came from. An unnamed function that has a proposal carries it as `proposed` (it is not its name). |
+| `proposals(module, state?)` | The names proposed for the unnamed functions, each with a one-line description, the rule or assistant that proposed it, its confidence in percent and its evidence; `state` keeps proposed, accepted or rejected ones ([NAMING.md](NAMING.md)). |
 | `identify(module)` | Functions a runtime library or a tool made, by signature, and what built the module. |
 | `demangle(decorated)` | Microsoft C++ and stdcall decorated names as declarations. |
 
@@ -141,6 +142,7 @@ copy, says how old it is, and works out a fresh one.
 | `jobs()`, `job(job_id, offset?, tail?)`, `job_file(job_id, offset?, length?)` | This server's jobs, a job's state and output, the file it wrote. |
 | `stop_job(job_id)` | Stops a job this server started (that process only). |
 | `name_function(module, addr, name)` | Names a function's body in the store, so every module holding the same code gets the name. |
+| `propose_name(module, addr, name, description?, confidence?)` | Stores a proposed name for an unnamed function, apart from the names: it is a name only when a person accepts it (`names MODULE --accept ADDR`). The evidence packet for an assistant is `run_command names MODULE --packets --c`. |
 
 Slow answers (decompile_function, compare_versions, diff_function, the ledger) are worked out in the
 background: when one takes longer than `wait` seconds the tool says so, and calling again picks it

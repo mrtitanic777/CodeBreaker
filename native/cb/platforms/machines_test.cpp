@@ -1,6 +1,7 @@
-// Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis. Each is checked against the values below.
+// Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis, ps1. Each is checked against the values below.
 #include "cb/platforms/gb.hpp"
 #include "cb/platforms/genesis.hpp"
+#include "cb/platforms/ps1.hpp"
 #include "cb/platforms/nes.hpp"
 #include "cb/platforms/sms.hpp"
 
@@ -93,14 +94,31 @@ CB_TEST("platforms.genesis.descriptor", [] {
     CB_CHECK_EQ(p.compiler.toolchain, "CodeBreaker's own assembler");
 });
 
+CB_TEST("platforms.ps1.descriptor", [] {
+    const Platform p = ps1();
+    check_machine(p, Id::Ps1, "ps1", "PlayStation", "mips", "PS-X EXE (.exe, .psx)");
+    CB_CHECK_EQ(p.cpu.language, "MIPS:LE:32:default");
+    CB_CHECK_EQ(*p.cpu.bits, 32u);
+    CB_CHECK(*p.cpu.endian == Endian::Little);
+    CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::Mips);
+    CB_CHECK_EQ(p.cpu.registers.size(), 16u);   // V0 V1 S0..S7 GP SP FP RA HI LO
+    CB_CHECK_EQ(p.cpu.registers[0], "V0");
+    CB_CHECK_EQ(p.cpu.registers[13], "RA");
+    CB_CHECK_EQ(p.cpu.stack, "SP");
+    CB_CHECK((p.convention.results == p.cpu.registers));
+    CB_CHECK_EQ(p.compiler.toolchain, "CodeBreaker's own assembler, or GNU as");
+});
+
 CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
     Probes probes;
     probes.is_nes = [](const std::filesystem::path& p) { return p.extension() == ".nes"; };
     probes.is_sms = [](const std::filesystem::path& p) { return p.extension() == ".sms"; };
     probes.is_gb = [](const std::filesystem::path& p) { return p.extension() == ".gb"; };
     probes.is_genesis = [](const std::filesystem::path& p) { return p.extension() == ".md"; };
+    probes.is_ps1 = [](const std::filesystem::path& p) { return p.extension() == ".psx"; };
     Registry registry(probes);
     registry.add(genesis());
+    registry.add(ps1());
     registry.add(gb());
     registry.add(sms());
     registry.add(nes());
@@ -108,7 +126,8 @@ CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
     CB_CHECK_EQ(registry.identify("g.sms")->name, "sms");
     CB_CHECK_EQ(registry.identify("g.gb")->name, "gb");
     CB_CHECK_EQ(registry.identify("g.md")->name, "genesis");
+    CB_CHECK_EQ(registry.identify("g.psx")->name, "ps1");
     CB_CHECK(registry.identify("g.bin") == nullptr);
     CB_CHECK_EQ(registry.all().front().name, "nes");
-    CB_CHECK_EQ(registry.runners().size(), 4u);
+    CB_CHECK_EQ(registry.runners().size(), 5u);
 });

@@ -52,7 +52,7 @@ struct Node {
 Stamp stamp_of(const stdfs::path& path) {
     using namespace std::chrono;
     std::error_code ec;
-    const auto modified = stdfs::last_write_time(path, ec);
+    const auto modified = cb::fs::last_write_time(path, ec);
     if (ec) throw IoError(path, ec.value(), "cannot read its time");
     const auto seconds = floor<std::chrono::seconds>(clock_cast<system_clock>(modified));
     const auto days = floor<std::chrono::days>(seconds);

@@ -1,6 +1,5 @@
 #include "cb/base/corpus.hpp"
 
-#include <windows.h>
 
 #include <algorithm>
 #include <tuple>
@@ -25,11 +24,7 @@ constexpr std::string_view kBareNameExtensions[] = {".dll", ".exe", ".drv", ".oc
                                                     ".386", ".sys", ".com", ".acm", ".ax"};
 
 void set_env(std::string_view name, const std::optional<std::string>& value) {
-    const std::wstring wname = win::to_wide(name);
-    if (value)
-        SetEnvironmentVariableW(wname.c_str(), win::to_wide(*value).c_str());
-    else
-        SetEnvironmentVariableW(wname.c_str(), nullptr);
+    fs::set_env(name, value ? std::optional<std::string_view>(*value) : std::nullopt);
 }
 
 std::optional<std::string> non_empty_env(std::string_view name) {
@@ -321,7 +316,7 @@ std::optional<stdfs::path> Corpus::retail(std::string_view name) const {
 
 stdfs::path Corpus::resolve(std::string_view name) const {
     if (auto found = retail(name)) return *found;
-    throw NotFoundError(fs::from_text(name), ERROR_FILE_NOT_FOUND, "no such module in the corpus");
+    throw NotFoundError(fs::from_text(name), 2, "no such module in the corpus");
 }
 
 std::vector<stdfs::path> Corpus::modules(std::optional<Lane> only, const std::vector<std::string>& extensions) const {
@@ -356,7 +351,7 @@ std::optional<std::string> Corpus::sha(const stdfs::path& path) const {
     std::error_code ec;
     const auto size = stdfs::file_size(path, ec);
     if (ec) return std::nullopt;
-    const auto written = stdfs::last_write_time(path, ec);
+    const auto written = cb::fs::last_write_time(path, ec);
     if (ec) return std::nullopt;
     const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(written.time_since_epoch()).count();
     const std::string key = fs::to_text(path) + '\n' + std::to_string(seconds) + '\n' + std::to_string(size);

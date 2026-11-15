@@ -63,8 +63,8 @@ CB_TEST("base.runs.sweep_removes_only_old_run_folders", [] {
     fs::make_dirs(runs_dir / "fresh_run");
     fs::write_text(runs_dir / "old_run" / "copy.img", "x");
     fs::write_text(runs_dir / "stray.txt", "a file, not a run folder");
-    stdfs::last_write_time(runs_dir / "old_run", stdfs::file_time_type::clock::now() - std::chrono::hours(30));
-    stdfs::last_write_time(runs_dir / "stray.txt", stdfs::file_time_type::clock::now() - std::chrono::hours(30));
+    cb::fs::set_last_write_time(runs_dir / "old_run", stdfs::file_time_type::clock::now() - std::chrono::hours(30));
+    cb::fs::set_last_write_time(runs_dir / "stray.txt", stdfs::file_time_type::clock::now() - std::chrono::hours(30));
     const auto gone = runs::sweep(state.path(), "vxdboot");
     CB_CHECK_EQ(gone.size(), 1u);
     CB_CHECK_EQ(gone[0].filename().string(), "old_run");
@@ -79,7 +79,7 @@ CB_TEST("base.runs.start_sweeps_the_killed_runs_first", [] {
     fs::ScopedTempDir state("cbruns");
     const stdfs::path old_run = state.path() / "phase3" / "runs" / "killed_run";
     fs::make_dirs(old_run);
-    stdfs::last_write_time(old_run, stdfs::file_time_type::clock::now() - std::chrono::hours(48));
+    cb::fs::set_last_write_time(old_run, stdfs::file_time_type::clock::now() - std::chrono::hours(48));
     const stdfs::path fresh = runs::start(state.path(), "phase3");
     CB_CHECK(!stdfs::exists(old_run));
     CB_CHECK(stdfs::exists(fresh));

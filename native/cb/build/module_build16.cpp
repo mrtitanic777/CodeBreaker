@@ -541,7 +541,7 @@ private:
             std::sort(files.begin(), files.end());   // (the order of the names)
             for (const stdfs::path& p : files) {
                 const std::uintmax_t size = stdfs::file_size(p, ec);
-                const auto time = stdfs::last_write_time(p, ec);
+                const auto time = cb::fs::last_write_time(p, ec);
                 Read& r = read_[p.string()];
                 if (r.size != size || r.time != time || r.text.empty()) r = {size, time, read_text_lossy(p)};
                 parts.push_back(r.text);

@@ -81,7 +81,7 @@ struct ToolSpec {
     Kind kind;
     std::vector<Param> params;
 };
-// Every tool, reading tools first, then run_command, stop_job and name_function.
+// Every tool, reading tools first, then run_command, stop_job, name_function and propose_name.
 std::span<const ToolSpec> tool_specs();
 
 // ---- what the tools need of the rest of the program ----------------------------------------------------------------------------
@@ -133,6 +133,11 @@ struct Services {
     // Gives the function at `address` a name on its body: the body's digest, or empty when there is none; the modules holding that body.
     std::function<std::string(const std::filesystem::path&, std::int64_t address, std::string_view name)> set_name;
     std::function<Json(std::string_view body_digest)> modules_with_body;
+    // The proposed names of a module [{addr, key, name, description, rule, confidence, evidence, state, source}], of one state (proposed, accepted,
+    // rejected) or all (empty). Proposals are not names: nothing that reads names sees them until a person accepts them.
+    std::function<Json(const std::filesystem::path&, std::string_view state)> proposals;
+    // Store a proposed name for the function at `address` (rule "assistant"): the record stored.
+    std::function<Json(const std::filesystem::path&, std::int64_t address, std::string_view name, std::string_view description, std::int64_t confidence)> propose_name;
     // The command table: its usage text, the commands (name -> module name and fixed arguments) and one command's description.
     std::function<std::string()> usage;
     std::function<std::vector<std::string>()> command_names;

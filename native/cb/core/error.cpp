@@ -6,7 +6,11 @@
 
 namespace cb {
 
+#ifdef _WIN32
 std::string path_text(const std::filesystem::path& p) { return win::from_wide(p.generic_wstring()); }
+#else
+std::string path_text(const std::filesystem::path& p) { return p.generic_string(); }
+#endif
 
 std::string FormatError::hex(std::uint64_t v) { return std::format("0x{:x}", v); }
 

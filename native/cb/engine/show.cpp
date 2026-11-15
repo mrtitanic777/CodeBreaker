@@ -8,6 +8,7 @@
 #include <format>
 
 #include "cb/core/error.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
@@ -126,7 +127,7 @@ std::string when_text(double seconds_since_1970) {
     if (seconds_since_1970 == 0) return "-";
     const std::time_t t = static_cast<std::time_t>(seconds_since_1970);
     std::tm local{};
-    localtime_s(&local, &t);
+    local = cb::sys::local_tm(t);
     char buffer[40];
     std::strftime(buffer, sizeof buffer, "%Y-%m-%d %I:%M:%S %p", &local);
     return buffer;

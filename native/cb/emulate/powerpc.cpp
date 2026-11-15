@@ -9,7 +9,11 @@
 #include <limits>
 #include <mutex>
 
+#if defined(_MSC_VER)
 #include <intrin.h>
+#else
+#include <x86intrin.h>   // _addcarry_u64
+#endif
 #include <stdlib.h>
 
 namespace cb::emulate::powerpc {
@@ -21,6 +25,22 @@ constexpr std::uint64_t kM32 = 0xFFFFFFFFull;
 constexpr std::uint64_t kQuietNan = 0x7FF8000000000000ull;   // a quiet NaN
 
 constexpr std::int64_t s64(std::uint64_t v) { return static_cast<std::int64_t>(v); }
+
+// The high 64 bits of a 64x64-bit product (mulhdu, mulhd): MSVC's intrinsics, or the 128-bit integers GCC and Clang have.
+inline std::uint64_t mul_high(std::uint64_t a, std::uint64_t b) {
+#if defined(_MSC_VER) && !defined(__clang__)
+    return __umulh(a, b);
+#else
+    return static_cast<std::uint64_t>((static_cast<unsigned __int128>(a) * b) >> 64);
+#endif
+}
+inline std::int64_t mul_high(std::int64_t a, std::int64_t b) {
+#if defined(_MSC_VER) && !defined(__clang__)
+    return __mulh(a, b);
+#else
+    return static_cast<std::int64_t>((static_cast<__int128>(a) * b) >> 64);
+#endif
+}
 constexpr std::int64_t s32(std::uint64_t v) { return static_cast<std::int32_t>(static_cast<std::uint32_t>(v)); }
 
 double nan_value() { return to_double(kQuietNan); }
@@ -96,7 +116,8 @@ std::pair<std::uint64_t, bool> add_with_carry(std::uint64_t a, std::uint64_t b, 
 
 // The low `size` bytes of v (2 or 4) in the other order.
 std::uint64_t swap_bytes(std::uint64_t v, unsigned size) {
-    return size == 4 ? _byteswap_ulong(static_cast<unsigned long>(v)) : _byteswap_ushort(static_cast<unsigned short>(v));
+    const auto b = [v](unsigned i) { return (v >> (8 * i)) & 0xFF; };
+    return size == 4 ? (b(0) << 24 | b(1) << 16 | b(2) << 8 | b(3)) : (b(0) << 8 | b(1));
 }
 
 // ---- the load / store / logic tables of the opcode groups ----------------------------------------------------------
@@ -308,8 +329,8 @@ void arithmetic(Machine& m, unsigned xo, unsigned rt, unsigned ra, unsigned rb, 
         case 75: v = static_cast<std::uint64_t>((s32(a) * s32(b)) >> 32) & kM32; break;           // mulhw
         case 11: v = ((a & kM32) * (b & kM32)) >> 32; break;                                       // mulhwu
         case 233: v = static_cast<std::uint64_t>(s64(a) * s64(b)); break;                          // mulld (the low 64 bits)
-        case 73: v = static_cast<std::uint64_t>(__mulh(s64(a), s64(b))); break;                    // mulhd
-        case 9: v = __umulh(a, b); break;                                                          // mulhdu
+        case 73: v = static_cast<std::uint64_t>(mul_high(s64(a), s64(b))); break;                    // mulhd
+        case 9: v = mul_high(a, b); break;                                                          // mulhdu
         case 491: {                                                                                // divw
             const std::int64_t x = s32(a), y = s32(b);
             v = (y == 0 || (x == -0x80000000ll && y == -1)) ? 0 : static_cast<std::uint64_t>(x / y) & kM32;

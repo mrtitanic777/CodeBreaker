@@ -57,7 +57,8 @@ public:
     // Transpile the Java source in the first folder into the second, as this kind asks (C++03, no platform).
     using Convert = std::function<java::transpile::Summary(const std::filesystem::path& java_dir, const std::filesystem::path& out_dir)>;
 
-    JavaLane(ToolsFn tools, Convert convert, Options options = {})
+    JavaLane(ToolsFn tools, Convert convert) : tools_(std::move(tools)), convert_(std::move(convert)) {}
+    JavaLane(ToolsFn tools, Convert convert, Options options)
         : tools_(std::move(tools)), convert_(std::move(convert)), options_(std::move(options)) {}
 
     const std::string& name() const override;

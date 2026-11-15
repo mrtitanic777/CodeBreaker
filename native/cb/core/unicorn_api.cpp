@@ -19,7 +19,9 @@ struct Loaded {
 };
 
 const Loaded& loaded() {
-    static const Loaded instance;
+    // (never destroyed: thread-local objects of other threads and of main may close their handles through it after
+    // the static destructors have run, on the standard libraries that order them so)
+    static const Loaded& instance = *new Loaded;
     return instance;
 }
 

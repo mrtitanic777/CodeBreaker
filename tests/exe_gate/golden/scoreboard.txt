@@ -2,5 +2,5 @@ exit: 0
 --- stdout
 wrote <work>/out/SCOREBOARD.md (0 modules)
 --- files
-SCOREBOARD.md 1165 98f0ed78119eb3a708e0c066c844be477fecb25924cbb7467da6a058f075ad5e
+SCOREBOARD.md 882 c02f1de03c1748b134f932fa9d66935909ad7884a3463e0951a45e6936c8cda3
 --- stderr (not compared)

@@ -5,6 +5,30 @@
 using namespace cb;
 namespace stdfs = std::filesystem;
 
+namespace {
+
+#ifdef _WIN32
+constexpr bool kWindows = true;
+// Windows names are case-insensitive and either slash separates; a path may be spelled past MAX_PATH with the \\?\ prefix.
+void check_path_spelling() {
+    CB_CHECK(fs::same_path("C:/Windows/System32", "c:\\windows\\system32\\"));
+    CB_CHECK(fs::same_path("C:/a/../b", "C:/B"));
+    CB_CHECK(!fs::same_path("C:/a", "C:/b"));
+    CB_CHECK(fs::long_path("C:/x/y").native().starts_with(L"\\\\?\\C:\\"));
+    CB_CHECK(fs::long_path(L"\\\\?\\C:\\already").native() == L"\\\\?\\C:\\already");
+}
+#else
+constexpr bool kWindows = false;
+void check_path_spelling() {
+    CB_CHECK(fs::same_path("/usr/lib/../bin", "/usr/bin/"));
+    CB_CHECK(!fs::same_path("/usr/bin", "/USR/bin"));   // (names differ by case on POSIX)
+    CB_CHECK(!fs::same_path("/a", "/b"));
+    CB_CHECK_EQ(fs::long_path("/x/y/../z").generic_string(), "/x/z");
+}
+#endif
+
+}  // namespace
+
 CB_TEST("core.fs.write_read_roundtrip", [] {
     fs::ScopedTempDir dir("cbfs");
     const stdfs::path file = dir.path() / "sub" / "deeper" / "data.bin";   // parents are created
@@ -116,15 +140,11 @@ CB_TEST("core.fs.unicode_paths", [] {
     fs::write_text(p, "u");
     CB_CHECK_EQ(fs::read_text(p), "u");
     CB_CHECK(fs::to_text(p).find("caf\xC3\xA9 \xE4\xBD\xA0.txt") != std::string::npos);
-    CB_CHECK_EQ(fs::to_text(fs::from_text("a/b\\c")), "a/b/c");
+    if (kWindows) CB_CHECK_EQ(fs::to_text(fs::from_text("a/b\\c")), "a/b/c");   // (a backslash separates on Windows only)
 });
 
 CB_TEST("core.fs.same_path_and_long_path", [] {
-    CB_CHECK(fs::same_path("C:/Windows/System32", "c:\\windows\\system32\\"));
-    CB_CHECK(fs::same_path("C:/a/../b", "C:/B"));
-    CB_CHECK(!fs::same_path("C:/a", "C:/b"));
-    CB_CHECK(fs::long_path("C:/x/y").native().starts_with(L"\\\\?\\C:\\"));
-    CB_CHECK(fs::long_path(L"\\\\?\\C:\\already").native() == L"\\\\?\\C:\\already");
+    check_path_spelling();
     // A path past MAX_PATH is readable and writable.
     fs::ScopedTempDir dir("cbfs");
     stdfs::path deep = dir.path();

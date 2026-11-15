@@ -330,6 +330,13 @@ struct Namer::Impl {
         if (s.bodies && s.bodies->bodies(sha_text).empty()) index(module, own_found);
         const std::map<Address, runtime_library::Identified> library = s.runtime_library ? s.runtime_library(module) : std::map<Address, runtime_library::Identified>{};
         const std::map<std::string, store::SharedName> from_bodies = s.bodies ? s.bodies->names_from_bodies(sha_text) : std::map<std::string, store::SharedName>{};
+        std::map<std::string, store::Proposal> accepted_here, proposed_here;   // by function key: the proposals of this module not carried by a body
+        if (s.proposals) {
+            for (store::Proposal& p : s.proposals->of_module(sha_text)) {
+                if (p.state == store::ProposalState::Accepted && !p.digest) accepted_here[p.key] = std::move(p);
+                else if (p.state == store::ProposalState::Proposed) proposed_here[p.key] = std::move(p);
+            }
+        }
 
         ModuleNames result;
         const base::Lane lane_of = lane_or_dos(module);
@@ -344,6 +351,9 @@ struct Namer::Impl {
             } else if (shared != from_bodies.end() && !shared->second.source.starts_with("the same body")) {
                 f.name = shared->second.name;
                 f.source = "named body (" + shared->second.source + ")";
+            } else if (const auto local = accepted_here.find(key); local != accepted_here.end()) {
+                f.name = local->second.name;
+                f.source = local->second.source;
             } else if (mine != own_found.end()) {
                 f.name = mine->second.name;
                 f.source = mine->second.source;
@@ -356,6 +366,8 @@ struct Namer::Impl {
             } else {
                 f.name = "sub_" + text::replace_all(key, ":", "_");
                 f.source = "(none)";
+                if (const auto proposal = proposed_here.find(key); proposal != proposed_here.end())
+                    f.proposed = ProposedName{proposal->second.name, proposal->second.description, proposal->second.rule, proposal->second.confidence};
             }
             result.functions.push_back(std::move(f));
         }
@@ -428,20 +440,21 @@ Named Namer::powerpc_names(const std::filesystem::path& module) { return impl_->
 std::size_t Namer::index(const std::filesystem::path& module, const std::optional<Named>& own) { return impl_->index(module, own); }
 ModuleNames Namer::of_module(const std::filesystem::path& module) { return impl_->of_module(module); }
 
-std::optional<std::string> Namer::set_name(const std::filesystem::path& module, Address address, std::string_view name) {
+std::string Namer::module_sha(const std::filesystem::path& module) const { return impl_->sha(module); }
+std::string Namer::key_of(const std::filesystem::path& module, Address address) const { return function_key(impl_->lane_or_dos(module), address); }
+
+std::optional<std::string> Namer::set_name(const std::filesystem::path& module, Address address, std::string_view name, std::string_view source) {
     if (!impl_->s.bodies) throw UsageError("there is no body store to name a body in");
     const std::string sha = impl_->sha(module);
     if (impl_->s.bodies->bodies(sha).empty()) impl_->index(module, std::nullopt);
     const auto rows = impl_->s.bodies->bodies(sha);
     const auto row = rows.find(function_key(impl_->lane_or_dos(module), address));
     if (row == rows.end()) return std::nullopt;
-    impl_->s.bodies->name_body(row->second.digest, name);
+    impl_->s.bodies->name_body(row->second.digest, name, source);
     return row->second.digest;
 }
 
 // ---- the command -----------------------------------------------------------------------------------------------------------------
-
-namespace {
 
 // The address a person writes: "segment:offset" (decimal segment, hex offset) of a 16-bit module, or the address in hex.
 std::optional<Address> parse_address(std::string_view text_in) {
@@ -452,6 +465,8 @@ std::optional<Address> parse_address(std::string_view text_in) {
     if (!segment || !offset) return std::nullopt;
     return static_cast<Address>(describe::address(*segment, *offset));
 }
+
+namespace {
 
 // "name count, name count" with the counts as they were met, the largest first (ties keep the order they were met in).
 using Counts = std::vector<std::pair<std::string, std::size_t>>;
@@ -478,6 +493,17 @@ cli::Command declare_command(std::function<int(const cli::Args&)> run) {
         {cli::Option{"--shared", "", "how many bodies the indexed modules share", cli::Arg::Flag},
          cli::Option{"--ordinals", "", "remake the table of names for numbered exports from definition files and import libraries (the arguments)",
                      cli::Arg::Flag},
+         cli::Option{"--propose", "", "run the naming rules over the module and store what they propose (nothing is named until it is accepted)", cli::Arg::Flag},
+         cli::Option{"--packets", "", "for each unnamed function, the evidence an assistant needs to propose a name (JSON, a line each); --c adds its C, --limit N stops after N", cli::Arg::Flag},
+         cli::Option{"--proposals", "", "the module's proposed, accepted and rejected names", cli::Arg::Flag},
+         cli::Option{"--suggest", "", "store an assistant's proposal for the function at ADDRESS; the name is the second argument, with --describe and --confidence", cli::Arg::Value, "ADDRESS"},
+         cli::Option{"--describe", "", "the one-line description of a suggested name", cli::Arg::Value, "TEXT"},
+         cli::Option{"--confidence", "", "how sure a suggestion is, in percent (default 50)", cli::Arg::Value, "PERCENT"},
+         cli::Option{"--accept", "", "make the proposal for ADDRESS its function's name; `all` takes every proposal of at least --min-confidence percent (default 80)", cli::Arg::Value, "ADDRESS"},
+         cli::Option{"--min-confidence", "", "with --accept all: the lowest confidence taken, in percent", cli::Arg::Value, "PERCENT"},
+         cli::Option{"--reject", "", "turn down the proposal for ADDRESS (it is not proposed again)", cli::Arg::Value, "ADDRESS"},
+         cli::Option{"--c", "", "with --packets: include each function's decompiled C", cli::Arg::Flag},
+         cli::Option{"--limit", "", "with --packets: at most this many functions", cli::Arg::Value, "N"},
          cli::Option{"--set", "", "name the body of the function at ADDRESS (hex, or segment:offset); the name is the second argument", cli::Arg::Value,
                      "ADDRESS"},
          cli::Positional{"arguments", "MODULE [NAME], or FILE... with --ordinals", false, true}},
@@ -500,6 +526,11 @@ int Namer::execute(const cli::Args& a) {
         cb::out("{} bodies recorded, {} distinct; {} bodies are in two or more modules ({} functions are such copies)\n", c.recorded, c.distinct,
                 c.in_several, c.copies);
         return 0;
+    }
+    for (const char* option : {"--propose", "--packets", "--proposals", "--suggest", "--accept", "--reject"}) {
+        if (!a.flag(option)) continue;
+        if (!self.s.proposals_command) throw UsageError("proposed names are not available here");
+        return self.s.proposals_command(a);
     }
     if (arguments.empty()) throw UsageError("names needs a module, --shared or --ordinals");
     const auto found = self.s.corpus.retail(arguments[0]);

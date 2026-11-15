@@ -189,7 +189,7 @@ std::optional<std::vector<OmfRecord>> omf_records(ByteView obj) {
 // (time, date) as DOS keeps them, of a file's modification (OpenWatcom's dependency record).
 std::optional<std::pair<std::uint16_t, std::uint16_t>> dos_stamp(const stdfs::path& p) {
     std::error_code ec;
-    const auto written = stdfs::last_write_time(p, ec);
+    const auto written = cb::fs::last_write_time(p, ec);
     if (ec) return std::nullopt;
     // (OpenWatcom's C library: with no TZ, its local time is UTC)
     const auto when = std::chrono::floor<std::chrono::seconds>(std::chrono::clock_cast<std::chrono::system_clock>(written));

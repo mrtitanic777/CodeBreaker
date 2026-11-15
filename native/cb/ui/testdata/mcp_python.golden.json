@@ -916,6 +916,31 @@
      "annotations": {
       "readOnlyHint": true
      },
+     "description": "The names proposed for the unnamed functions of a module, with a one-line description, the rule or\nassistant that proposed each, its confidence in percent and its evidence. A proposal is not a name: `names`\nshows the function unnamed until a person accepts it (`codebreaker names MODULE --accept`). `state` keeps\nproposed, accepted or rejected ones.",
+     "inputSchema": {
+      "properties": {
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "state": {
+        "default": "",
+        "title": "State",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module"
+      ],
+      "title": "proposalsArguments",
+      "type": "object"
+     },
+     "name": "proposals"
+    },
+    {
+     "annotations": {
+      "readOnlyHint": true
+     },
      "description": "Functions of a module that belong to a runtime library (by signature), and what built it.",
      "inputSchema": {
       "properties": {
@@ -1474,6 +1499,48 @@
       "type": "object"
      },
      "name": "name_function"
+    },
+    {
+     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": false
+     },
+     "description": "Propose a name for the unnamed function at `addr`, with a one-line `description` of what it does\nand a `confidence` in percent (0 to 100), from what `disasm`, `xrefs`, `strings` and `decompile_function`\nshow. It is stored as a proposal, apart from the names: nothing is named until a person accepts it. A name\nis letters, digits, _ and ::, and no other function of the module has it.",
+     "inputSchema": {
+      "properties": {
+       "addr": {
+        "title": "Addr",
+        "type": "string"
+       },
+       "confidence": {
+        "default": 50,
+        "title": "Confidence",
+        "type": "integer"
+       },
+       "description": {
+        "default": "",
+        "title": "Description",
+        "type": "string"
+       },
+       "module": {
+        "title": "Module",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       }
+      },
+      "required": [
+       "module",
+       "addr",
+       "name"
+      ],
+      "title": "propose_nameArguments",
+      "type": "object"
+     },
+     "name": "propose_name"
     }
    ]
   }

@@ -17,7 +17,6 @@
 #include "cb/core/text.hpp"
 #include "cb/port/tool_build.hpp"
 
-#pragma comment(lib, "psapi.lib")
 
 namespace cb::port::tool {
 

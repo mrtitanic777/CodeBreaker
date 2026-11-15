@@ -1,3 +1,5 @@
+// The Windows implementation of cb/core/random_file.hpp (positioned reads and writes through OVERLAPPED offsets).
+#ifdef _WIN32
 #include "cb/core/random_file.hpp"
 
 #include <windows.h>
@@ -102,3 +104,5 @@ void RandomFile::flush() {
 }
 
 }  // namespace cb::fs
+
+#endif  // _WIN32

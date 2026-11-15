@@ -163,9 +163,9 @@ CB_TEST("formats.xbox.xbe.to_pe_writes_the_image_once_named_by_its_contents", []
     CB_CHECK(out.filename().string().starts_with("default-"));
     CB_CHECK_EQ(out.filename().string().size(), std::string("default-").size() + 12 + 4);
     CB_CHECK(equal_bytes(fs::read_file(out), xbe::Xbe::parse(make_xbe()).pe_image()));
-    const auto written = std::filesystem::last_write_time(out);
+    const auto written = cb::fs::last_write_time(out);
     CB_CHECK(xbe::to_pe(dir.path() / "Default.XBE", dir.path() / "unpacked") == out);   // a second call finds it
-    CB_CHECK(std::filesystem::last_write_time(out) == written);
+    CB_CHECK(cb::fs::last_write_time(out) == written);
 });
 
 CB_TEST("formats.xbox.xbe.damaged_input_is_a_format_error", [] {

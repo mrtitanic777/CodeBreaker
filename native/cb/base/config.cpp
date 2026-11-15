@@ -1,7 +1,6 @@
 // cb/base/config.cpp -- see config.hpp.
 #include "cb/base/config.hpp"
 
-#include <windows.h>
 
 #include <algorithm>
 #include <array>
@@ -93,18 +92,7 @@ std::optional<stdfs::path> checkout_at_or_above(stdfs::path dir) {
     }
 }
 
-stdfs::path running_executable() {
-    std::wstring buf(MAX_PATH, L'\0');
-    for (;;) {
-        const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
-        if (n == 0) return {};
-        if (n < buf.size()) {
-            buf.resize(n);
-            return stdfs::path(buf);
-        }
-        buf.resize(buf.size() * 2);
-    }
-}
+stdfs::path running_executable() { return fs::executable_path(); }
 
 }  // namespace
 

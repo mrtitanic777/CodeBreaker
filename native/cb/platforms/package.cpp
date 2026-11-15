@@ -14,7 +14,7 @@ namespace {
 constexpr std::uint16_t kMachine386 = 0x014C;
 constexpr std::uint16_t kMachineXenon = 0x01F2;
 
-constexpr std::array<std::string_view, 13> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis",
+constexpr std::array<std::string_view, 14> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1",
                                                        "zx",   "msx",     "win32", "win16", "vxd", "dos"};
 static_assert(kIdNames.size() == kOrder.size());
 
@@ -210,6 +210,7 @@ bool Registry::recognises(const Platform& platform, const std::filesystem::path&
             case Id::Sms: return need(pr.is_sms, "is_sms")(path);
             case Id::Gb: return need(pr.is_gb, "is_gb")(path);
             case Id::Genesis: return need(pr.is_genesis, "is_genesis")(path);
+            case Id::Ps1: return need(pr.is_ps1, "is_ps1")(path);
             case Id::Zx: return need(pr.is_zx, "is_zx")(path);
             case Id::Msx: return need(pr.is_msx, "is_msx")(path);
             case Id::Win32: {

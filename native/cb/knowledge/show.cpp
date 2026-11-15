@@ -1,5 +1,6 @@
 // cb-unity: alone (helpers named for what they do here)
 #include "cb/knowledge/show.hpp"
+#include "cb/core/sys.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -80,7 +81,7 @@ std::string dump(const Stored& value) {
 std::string local_time_text(double epoch_seconds) {
     const std::time_t t = static_cast<std::time_t>(std::floor(epoch_seconds));
     std::tm local{};
-    localtime_s(&local, &t);
+    local = cb::sys::local_tm(t);
     char buf[64];
     std::strftime(buf, sizeof buf, "%Y-%m-%d %I:%M %p", &local);
     return buf;

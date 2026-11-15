@@ -1,7 +1,8 @@
-# Build CodeBreaker and run its unit tests on every push and pull request.
+# Build CodeBreaker with every compiler it supports and run its unit tests, on every push and pull request.
+# MSVC builds everything (the engines too) and runs the unit tests against them; Clang (clang-cl) and GCC (MinGW-w64)
+# build the program and its tests and run the tests (a test whose engine or input is not there skips itself).
 # The command cases and the milestone regression need the period toolchains and the original binaries
-# (docs/NOT_IN_REPO.md), so they stay on the developer's machine (tools\gate.cmd, codebreaker regress);
-# unit tests whose inputs are not here skip themselves.
+# (docs/NOT_IN_REPO.md), so they stay on the developer's machine (tools\gate.cmd, codebreaker regress).
 name: build
 
 on:
@@ -15,26 +16,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  msvc:
     runs-on: windows-latest
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
-
+      - uses: actions/setup-java@v4   # the Java lane's front end reads JDK 21's trees
+        with:
+          distribution: temurin
+          java-version: '21'
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-
       - name: Engines (decompiler, L2, formats, DOS, XEX, NASM, ...)
         shell: cmd
         run: tools\build_native.cmd
-
       - name: codebreaker.exe and the unit tests
         shell: cmd
         run: |
           cmake -S native -B state\cxx\cb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
           cmake --build state\cxx\cb --target codebreaker cb_tests -j 4 || exit /b 1
-
       - name: Unit tests
         shell: cmd
         run: state\cxx\cb\bin\cb_tests.exe
+
+  clang:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4   # the Java lane's front end reads JDK 21's trees
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: codebreaker.exe and the unit tests (clang-cl)
+        shell: cmd
+        run: |
+          cmake -S native -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl || exit /b 1
+          cmake --build build-clang --target codebreaker cb_tests -j 4 || exit /b 1
+      - name: Unit tests
+        shell: cmd
+        run: build-clang\bin\cb_tests.exe
+
+  gcc:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4   # the Java lane's front end reads JDK 21's trees
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          path-type: inherit   # (Windows' PATH too: the JDK, and the Windows tools the tests start)
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+      - name: codebreaker.exe and the unit tests (GCC, MinGW-w64)
+        run: |
+          cmake -S native -B build-gcc -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build-gcc --target codebreaker cb_tests -j 4
+      - name: Unit tests
+        run: ./build-gcc/bin/cb_tests.exe

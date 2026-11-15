@@ -85,6 +85,7 @@ struct Server::Impl {
     Json functions(const Json& a);
     Json function(const Json& a);
     Json names(const Json& a);
+    Json proposals(const Json& a);
     Json identify(const Json& a);
     Json demangle(const Json& a);
     Json commands(const Json& a);
@@ -106,6 +107,7 @@ struct Server::Impl {
     Json job_file(const Json& a);
     Json stop_job(const Json& a);
     Json name_function(const Json& a);
+    Json propose_name(const Json& a);
 };
 
 // Text helpers of the tools (characters are code points, as the tools count them).

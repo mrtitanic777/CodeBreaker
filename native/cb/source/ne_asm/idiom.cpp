@@ -81,7 +81,7 @@ recon::Assemble nasm_assembler(stdfs::path nasm, stdfs::path include_folder) {
         for (int level = 0; level < 4 && !folder.empty(); ++level, folder = folder.parent_path()) {
             const stdfs::path shim = folder / "test" / "masm" / "cmacros_shim.inc";
             if (!stdfs::exists(shim, ec)) continue;
-            if (!stdfs::exists(copy, ec) || stdfs::last_write_time(shim, ec) > stdfs::last_write_time(copy, ec))
+            if (!stdfs::exists(copy, ec) || cb::fs::last_write_time(shim, ec) > cb::fs::last_write_time(copy, ec))
                 stdfs::copy_file(shim, copy, stdfs::copy_options::overwrite_existing, ec);
             break;
         }

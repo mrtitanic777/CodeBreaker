@@ -1,7 +1,5 @@
 #include "cb/base/parallel.hpp"
 
-#include <windows.h>
-
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -11,7 +9,8 @@
 
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
-#include "cb/core/win.hpp"
+#include "cb/core/file_lock.hpp"
+#include "cb/core/sys.hpp"
 
 namespace cb::base::budget {
 
@@ -26,38 +25,24 @@ public:
     Slot() = default;
     Slot(const Slot&) = delete;
     Slot& operator=(const Slot&) = delete;
-    Slot(Slot&& o) noexcept : file_(o.file_) { o.file_ = INVALID_HANDLE_VALUE; }
-    ~Slot() { give_back(); }
+    Slot(Slot&&) noexcept = default;
+    Slot& operator=(Slot&&) noexcept = default;
 
     bool take(const std::filesystem::path& path) {
-        HANDLE h = CreateFileW(win::to_wide(fs::to_text(path)).c_str(), GENERIC_READ | GENERIC_WRITE,
-                               FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (h == INVALID_HANDLE_VALUE) return false;
-        if (!LockFile(h, 0, 0, 1, 0)) {
-            CloseHandle(h);
-            return false;
-        }
-        file_ = h;
-        return true;
+        lock_ = file_lock::try_acquire(path, "slot");
+        return lock_.has_value();
     }
 
-    void give_back() {
-        if (file_ == INVALID_HANDLE_VALUE) return;
-        UnlockFile(file_, 0, 0, 1, 0);
-        CloseHandle(file_);
-        file_ = INVALID_HANDLE_VALUE;
-    }
+    void give_back() { lock_.reset(); }
 
 private:
-    HANDLE file_ = INVALID_HANDLE_VALUE;
+    std::optional<file_lock::FileLock> lock_;
 };
 
 std::uint64_t cpu_ticks_idle_and_total(std::uint64_t& total) {
-    FILETIME idle{}, kernel{}, user{};
-    GetSystemTimes(&idle, &kernel, &user);
-    const auto value = [](const FILETIME& f) { return (static_cast<std::uint64_t>(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
-    total = value(kernel) + value(user);   // (kernel time includes idle)
-    return value(idle);
+    std::uint64_t idle = 0;
+    if (!sys::cpu_times(idle, total)) total = 0;
+    return idle;
 }
 
 }  // namespace
@@ -86,11 +71,7 @@ std::chrono::milliseconds wait_for_memory(const Limits& limits, std::string_view
     }
 }
 
-std::optional<double> total_gb() {
-    ULONGLONG kilobytes = 0;
-    if (!GetPhysicallyInstalledSystemMemory(&kilobytes)) return std::nullopt;
-    return static_cast<double>(kilobytes) / (1024.0 * 1024.0);
-}
+std::optional<double> total_gb() { return sys::total_memory_gb(); }
 
 double reserve_gb(const Limits& limits) {
     const double need = min_free_gb(limits);

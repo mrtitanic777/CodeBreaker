@@ -97,11 +97,9 @@ CB_TEST("translate.cs2cpp.javart", [] { cs2_check(cb::testing::data_path("transl
 CB_TEST("translate.cs2cpp.shadercheck", [] { cs2_check(cb::testing::data_path("translate/testdata/cs2cpp/shadercheck")); });
 
 CB_TEST("translate.cs2cpp.big", [] {
-    char* root = nullptr;
-    std::size_t size = 0;
-    if (_dupenv_s(&root, &size, "CB_CS2CPP_DATA") != 0 || root == nullptr) return;
-    const std::string data_root(root);
-    std::free(root);
+    const auto root = cb::fs::get_env("CB_CS2CPP_DATA");
+    if (!root) return;
+    const std::string data_root = *root;
     for (const auto& e : std::filesystem::directory_iterator(data_root)) {
         if (e.is_directory()) cs2_check(e.path());
     }

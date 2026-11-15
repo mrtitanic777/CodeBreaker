@@ -4,6 +4,8 @@
 //     codebreaker names comctl32.dll --set 7fe0183a StrChrHelper
 //     codebreaker names --shared                             how many bodies the indexed modules share
 //     codebreaker names --ordinals FILE...                   remake the table of names for numbered exports
+//     codebreaker names lz32.dll --propose | --packets | --proposals | --accept ADDR | --reject ADDR | --suggest ADDR NAME
+//                                                            proposed names, kept apart from names until accepted (proposals.hpp, docs/NAMING.md)
 //
 //     Namer namer(services);
 //     ModuleNames n = namer.of_module(path);                 {functions: [address, key, name, source], imports: [module, ordinal, name, source]}
@@ -57,6 +59,7 @@
 #include "cb/formats/pe_functions.hpp"
 #include "cb/platforms/decoder.hpp"
 #include "cb/store/bodies.hpp"
+#include "cb/store/proposals.hpp"
 #include "cb/symbols/environment.hpp"
 #include "cb/symbols/ordinals.hpp"
 #include "cb/symbols/runtime_library.hpp"
@@ -75,10 +78,16 @@ struct NameSource {
 };
 using Named = std::map<Address, NameSource>;
 
+// What is proposed for a function nothing names (store/proposals.hpp, symbols/proposals.hpp). It is not the function's name.
+struct ProposedName {
+    std::string name, description, rule;
+    int confidence = 0;   // percent
+};
 struct FunctionName {
     Address address = 0;
     std::string key;     // the function store's text for the address
     std::string name, source;
+    std::optional<ProposedName> proposed;   // only for a function with no name and a proposal nobody has decided
 };
 struct ImportName {
     std::string module;
@@ -90,7 +99,10 @@ struct ModuleNames {
     std::vector<ImportName> imports;
 };
 
-// The function store's text for an address: "segment:offset" (the offset in four hex digits) for a 16-bit module, the address in hex for any other.
+// The address a person writes: "segment:offset" (decimal segment, hex offset) of a 16-bit module, or the address in hex; nullopt for anything else.
+std::optional<Address> parse_address(std::string_view text);
+
+// The function store's text for an address:"segment:offset" (the offset in four hex digits) for a 16-bit module, the address in hex for any other.
 std::string function_key(base::Lane lane, Address address);
 
 // ---- bodies -----------------------------------------------------------------------------------------------------------------------
@@ -153,6 +165,11 @@ public:
         // `names --ordinals FILE...`: make the table of names for numbered exports from definition files and import libraries (ordinals::collect and
         // where it is saved are the caller's: they need the whole corpus).
         std::function<void(std::span<const std::filesystem::path>)> collect_ordinals = {};
+        // Proposed names (store/proposals.hpp): an accepted one names a function too small to have a body, and an undecided one is shown beside
+        // the function it is for. None given: no function has either.
+        store::ProposalStore* proposals = nullptr;   // not owned
+        // `names MODULE --propose|--packets|--suggest|--proposals|--accept|--reject` (symbols/proposals.hpp); none given: those options say so.
+        std::function<int(const cli::Args&)> proposals_command = {};
     };
 
     explicit Namer(Services services);
@@ -181,7 +198,12 @@ public:
     std::size_t index(const std::filesystem::path& module, const std::optional<Named>& own = std::nullopt);
     // Name the body of the function at `address`; every module holding that body then has the name. -> the body's digest, or nullopt when the function
     // has no body worth naming. UsageError without a body store.
-    std::optional<std::string> set_name(const std::filesystem::path& module, Address address, std::string_view name);
+    // `source` is where the name is from, as `names` shows it ("named body (<source>)"): by hand, or an accepted proposal.
+    std::optional<std::string> set_name(const std::filesystem::path& module, Address address, std::string_view name, std::string_view source = "named by hand");
+    // The module's content hash as the body store and the proposals know it ("" for a file the corpus does not know), and the store's key for a
+    // function of it.
+    std::string module_sha(const std::filesystem::path& module) const;
+    std::string key_of(const std::filesystem::path& module, Address address) const;
 
     // Every function and import of a module with its best name and where the name is from.
     ModuleNames of_module(const std::filesystem::path& module);

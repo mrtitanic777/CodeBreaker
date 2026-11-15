@@ -14,7 +14,7 @@ using Rule = tidy_state::Rule;
 namespace {
 
 void age(const stdfs::path& p, int hours) {
-    stdfs::last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
+    cb::fs::set_last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
 }
 
 void make_file(const stdfs::path& p, std::size_t size) {

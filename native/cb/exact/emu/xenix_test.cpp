@@ -294,7 +294,7 @@ CB_TEST("exact.emu.xenix.stat_of_a_file_and_of_the_console", [] {
     fs::write_file(file, as_bytes("0123456789ABCDE"));
     // a modification time of 1000000000: 2001-09-09
     std::error_code ec;
-    stdfs::last_write_time(file, std::chrono::clock_cast<std::chrono::file_clock>(std::chrono::sys_seconds{std::chrono::seconds{1000000000}}), ec);
+    cb::fs::set_last_write_time(file, std::chrono::clock_cast<std::chrono::file_clock>(std::chrono::sys_seconds{std::chrono::seconds{1000000000}}), ec);
     Program p;
     const std::uint16_t name = p.put("etc/s.txt"), st = p.alloc(32);
     p.text = cat({sysc(18, name, st), sysc(4, 1, st, 30), sysc(28, 1, st), sysc(4, 1, st, 30), sysc(1, 0)});
@@ -458,7 +458,7 @@ CB_TEST("exact.emu.xenix.recorded_runs", [] {
         const auto fixed = std::chrono::clock_cast<std::chrono::file_clock>(std::chrono::sys_seconds{std::chrono::seconds{1000000000}});
         for (const auto& e : stdfs::recursive_directory_iterator(work)) {
             std::error_code ec;
-            stdfs::last_write_time(e.path(), fixed, ec);
+            cb::fs::set_last_write_time(e.path(), fixed, ec);
         }
         // (the root is used where it is; its files are only read)
         const std::string kind = expected["kind"];

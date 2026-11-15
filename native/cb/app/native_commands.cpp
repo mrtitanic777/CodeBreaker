@@ -18,6 +18,7 @@
 #include "cb/verify/regress.hpp"
 #include "cb/app/state_commands.hpp"
 #include "cb/translate/judge_c_java_command.hpp"
+#include "cb/translate/judge_cs_cpp_command.hpp"
 #include "cb/analyze/ppc_calls.hpp"
 #include "cb/build/disc_image.hpp"
 #include "cb/build/period16.hpp"
@@ -73,7 +74,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java"});   // (counted by the compiler)
+constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java", "judge-cs-cpp"});   // (counted by the compiler)
 
 // The console's ordinal names (data/symbols/console_ordinals.json, {library: {ordinal: name}}), read the first time a name is asked for.
 formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config& config) {
@@ -476,6 +477,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // names, knowledge, coverage, progress, facts, origin, driver-services, migrate-state: over the state folder (state_commands.hpp)
     for (cli::Command& c : state_commands(config, corpus)) table.set(std::move(c));
     table.set(translate::judge_c_java::command(translate::judge_c_java::Environment{config}));
+    table.set(translate::judge_cs_cpp::command(translate::judge_cs_cpp::Environment{config}));
 
     // heavyiron <archive> ...: Heavy Iron Studios' .HO/.HIP archives
     table.set("heavyiron", [](std::span<const std::string> args) -> int {

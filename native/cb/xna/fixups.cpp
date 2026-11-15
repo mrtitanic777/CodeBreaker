@@ -275,11 +275,16 @@ Rewritten data_holders(std::string_view text) {
 
 Report apply(const std::filesystem::path& folder) {
     namespace stdfs = std::filesystem;
-    if (!stdfs::is_directory(fs::long_path(folder))) throw NotFoundError(folder, 0, "not a folder");
+    const stdfs::path base = fs::long_path(folder);
+    if (!stdfs::is_directory(base)) throw NotFoundError(folder, 0, "not a folder");
     std::vector<std::pair<std::string, stdfs::path>> files;   // (path relative to the folder, path), sorted
-    for (const stdfs::directory_entry& e : stdfs::recursive_directory_iterator(fs::long_path(folder))) {
+    for (const stdfs::directory_entry& e : stdfs::recursive_directory_iterator(base)) {
         if (!e.is_regular_file() || e.path().extension() != ".cs") continue;
-        files.emplace_back(fs::to_text(stdfs::relative(e.path(), fs::long_path(folder))), e.path());
+        // (the entry's path starts with the folder's, spelled the same: cut it off; relative() would resolve the prefixed form)
+        std::wstring_view below = e.path().native();
+        below.remove_prefix(base.native().size());
+        while (!below.empty() && (below.front() == L'\\' || below.front() == L'/')) below.remove_prefix(1);
+        files.emplace_back(fs::to_text(stdfs::path(below)), e.path());
     }
     std::sort(files.begin(), files.end());
 

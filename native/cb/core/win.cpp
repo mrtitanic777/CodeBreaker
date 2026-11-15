@@ -1,3 +1,5 @@
+// The Windows-only text and error conversions: the one place a wide string exists (see win.hpp).
+#ifdef _WIN32
 #include "cb/core/win.hpp"
 
 #include <windows.h>
@@ -47,3 +49,5 @@ void use_utf8_console() {
 }
 
 }  // namespace cb::win
+
+#endif  // _WIN32

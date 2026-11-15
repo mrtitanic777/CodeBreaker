@@ -148,7 +148,7 @@ CB_TEST("ui.mcp.the_reading_tools_only_when_there_are_no_writes", [] {
     Server reading(f.service, f.link, f.services, Options{.writes = false});
     auto ask = [&](const Json& message) { return reading.handle(message); };
     const Json tools = ask(Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}})["result"]["tools"];
-    CB_CHECK_EQ(tools.size(), std::size_t{29});
+    CB_CHECK_EQ(tools.size(), std::size_t{30});
     for (const Json& t : tools) CB_CHECK(t["annotations"]["readOnlyHint"].get<bool>());
     const Json called = ask(Json{{"jsonrpc", "2.0"}, {"id", 2}, {"method", "tools/call"}, {"params", Json{{"name", "run_command"}, {"arguments", Json{{"command", "decompile"}}}}}});
     CB_CHECK(called["result"]["isError"].get<bool>());

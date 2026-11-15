@@ -278,6 +278,12 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         if (0 < n && n < 30) return one("Mach-O universal binary", std::format("{} architectures", n), "apple", "");
         return one("Java class file", "", "java", "java");
     }
+    if (starts_with(head, 0, "PS-X EXE") && size >= 0x800) {   // a PlayStation executable: the header says where it starts and loads
+        return one("PlayStation executable (PS-X EXE)",
+                   std::format("entry 0x{:08X}, program at 0x{:08X}, {} bytes", get<std::uint32_t>(file, 0x10, "detect"),
+                               get<std::uint32_t>(file, 0x18, "detect"), size - 0x800),
+                   "playstation", "reach");
+    }
     for (const Magic& m : kMagic) {
         if (starts_with(head, 0, m.magic)) {
             std::string detail;

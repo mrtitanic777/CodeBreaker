@@ -633,7 +633,8 @@ CB_TEST("emulate.emulator.cases_the_recorder_agreed_gave_one_record_give_one_rec
     };
     // the golden: key -> digest, for the cases of this module (f with two argument lists, g, h)
     std::map<std::string, std::string> digest_of;
-    for (const std::string_view line : text::split(fs::read_text(testing::data_path("emulate/testdata/native_trace_golden.txt")), '\n')) {
+    const std::string golden_text = fs::read_text(testing::data_path("emulate/testdata/native_trace_golden.txt"));   // (the lines are views into it)
+    for (const std::string_view line : text::split(golden_text, '\n')) {
         const std::size_t cut = line.rfind(' ');
         if (cut == std::string_view::npos) continue;
         const std::string key(line.substr(0, cut));

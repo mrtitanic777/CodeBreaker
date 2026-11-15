@@ -24,11 +24,10 @@
 namespace {
 
 std::string env(const char* name) {
-    char* v = nullptr;
-    std::size_t size = 0;
-    if (_dupenv_s(&v, &size, name) != 0 || v == nullptr) return "";
-    std::string out(v);
-    std::free(v);
+    const DWORD need = GetEnvironmentVariableA(name, nullptr, 0);   // (the Win32 call: every Windows compiler's CRT has it)
+    if (need == 0) return {};
+    std::string out(need, '\0');
+    out.resize(GetEnvironmentVariableA(name, out.data(), need));
     return out;
 }
 

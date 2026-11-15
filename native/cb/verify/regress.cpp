@@ -6,8 +6,6 @@
 #include <memory>
 #include <mutex>
 #include <set>
-#include <process.h>
-#include <windows.h>
 #include <stdlib.h>
 
 #include <nlohmann/json.hpp>
@@ -212,7 +210,7 @@ Report run(Tier tier, const Services& s, const Options& o) {
 
     // the run's own folder (built images); removed however the run ends
     stdfs::create_directories(s.work);
-    const stdfs::path folder = s.work / std::format("{}-{}-{}-{}", o.tag, word(tier), std::chrono::duration_cast<std::chrono::seconds>(Clock::now().time_since_epoch()).count(), _getpid());
+    const stdfs::path folder = s.work / std::format("{}-{}-{}-{}", o.tag, word(tier), std::chrono::duration_cast<std::chrono::seconds>(Clock::now().time_since_epoch()).count(), fs::process_id());
     stdfs::create_directories(folder);
     struct Cleanup {
         stdfs::path folder;
@@ -309,9 +307,9 @@ class ScopedEnv {
 public:
     ScopedEnv(std::string name, const char* value) : name_(std::move(name)) {
         if (const std::optional<std::string> old = fs::get_env(name_)) old_ = *old;
-        _putenv_s(name_.c_str(), value);
+        fs::set_env(name_, std::string_view(value));
     }
-    ~ScopedEnv() { _putenv_s(name_.c_str(), old_ ? old_->c_str() : ""); }
+    ~ScopedEnv() { fs::set_env(name_, old_ ? std::optional<std::string_view>(*old_) : std::nullopt); }
     ScopedEnv(const ScopedEnv&) = delete;
     ScopedEnv& operator=(const ScopedEnv&) = delete;
 
@@ -461,9 +459,7 @@ cli::Command command(const config::Config& config) {
         o.cases = args.value("cases") ? fs::from_text(*args.value("cases")) : config.checkout_root() / "tests" / "regress" / "slow.json";
         if (const auto v = args.value("exe")) o.exe = fs::from_text(*v);
         else {                                                                       // this program
-            std::wstring self(32768, L'\0');
-            self.resize(GetModuleFileNameW(nullptr, self.data(), static_cast<DWORD>(self.size())));
-            if (!self.empty()) o.exe = stdfs::path(self);
+            if (const stdfs::path self = fs::executable_path(); !self.empty()) o.exe = self;
         }
         const Report r = run(*tier, production_services(config), o);
         cb::out("{}", r.text());

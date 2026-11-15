@@ -171,8 +171,9 @@ tables it reads, with no tests. Unzip it, add its `bin` folder to `PATH`, and ru
 
 **Or build from source:**
 
-**Requirements:** Windows 10 or 11 (x64), Visual Studio 2026 with the C++ workload (MSVC, CMake and
-Ninja), and Git. For the terminal interface: Python 3.10+ with `pip install textual`. The individual
+**Requirements:** Windows 10 or 11 (x64), CMake and Ninja, Git, and a C++20 compiler. CodeBreaker builds with
+MSVC (Visual Studio 2022 or 2026), Clang (`clang-cl`) and GCC (MinGW-w64), and CI builds it with all three on every
+push; the build scripts use MSVC, and the engines' NASM is built with MinGW-w64 GCC. The Java lane needs JDK 21. For the terminal interface: Python 3.10+ with `pip install textual`. The individual
 lanes use their own tools (OpenWatcom, DOSBox-X, the period compilers, an Xbox 360 SDK); `codebreaker
 settings` lists every one and whether it was found.
 

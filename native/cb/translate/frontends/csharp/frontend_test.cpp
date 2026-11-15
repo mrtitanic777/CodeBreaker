@@ -79,9 +79,9 @@ CB_TEST("translate.csharp.frontend.the_tool_is_compiled_once_and_kept", [] {
     const cs::Frontend frontend = csf_frontend_of(*sdk);
     const stdfs::path dll = frontend.tool();
     CB_CHECK(stdfs::is_regular_file(dll));
-    const auto time = stdfs::last_write_time(dll);
+    const auto time = cb::fs::last_write_time(dll);
     CB_CHECK(frontend.tool() == dll);
-    CB_CHECK(stdfs::last_write_time(dll) == time);   // not compiled again
+    CB_CHECK(cb::fs::last_write_time(dll) == time);   // not compiled again
     CB_CHECK(dll.parent_path().filename().string().starts_with("csdump-"));
 });
 

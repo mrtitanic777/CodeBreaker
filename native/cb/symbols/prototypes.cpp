@@ -487,7 +487,7 @@ std::string stamp(const HeaderFolders& folders) {
             for (const auto& entry : std::filesystem::directory_iterator(d, ec)) {
                 if (text::iends_with(fs::to_text(entry.path().filename()), ".h")) ++count;
             }
-            const auto mtime = std::filesystem::last_write_time(d, ec);
+            const auto mtime = cb::fs::last_write_time(d, ec);
             const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(mtime.time_since_epoch()).count();
             parts.push_back(std::format("{}:{}:{}", fs::to_text(d), count, seconds));
         }

@@ -12,7 +12,7 @@ namespace stdfs = std::filesystem;
 namespace tidy = cb::base::tidy_state;
 
 void age_of(const stdfs::path& p, int hours) {
-    stdfs::last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
+    cb::fs::set_last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
 }
 
 // state/cache/<kind>/<generation>.sqlite as the earlier implementation writes it.

@@ -16,6 +16,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/verify/lanes/win32_internal.hpp"
+#include "cb/verify/stage_timer.hpp"
 
 namespace cb::verify::lanes {
 
@@ -435,6 +436,7 @@ std::vector<std::string> call_sequence(const emulate::Run& run, const std::vecto
 // observation).
 compare::Fingerprint trace_fingerprint(const Context& context, const stdfs::path& module, std::uint64_t func, const Vector& spec,
                                        const std::optional<stdfs::path>& rebuilt_of) {
+    const StageTimer timer(rebuilt_of ? "run.rebuilt (uncached)" : "run.original (uncached)");
     emulate::Run run;
     try {
         auto lease = context.tracers.acquire();
@@ -492,6 +494,7 @@ compare::Fingerprint fingerprint(const Context& context, const stdfs::path& modu
 }
 
 std::optional<emulate::Run> observed_run(const Context& context, std::uint64_t func, const Vector& spec, emulate::native_shadow::Shadow* shadow) {
+    const StageTimer timer("run.observed (branch log)");
     emulate::Run run;
     try {
         auto lease = context.tracers.acquire();

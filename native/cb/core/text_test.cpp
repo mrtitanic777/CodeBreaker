@@ -1,7 +1,10 @@
 #include "cb/core/text.hpp"
 
 #include "cb/core/testing.hpp"
+#include "cb/core/sys.hpp"
+#ifdef _WIN32
 #include "cb/core/win.hpp"
+#endif
 
 using namespace cb;
 namespace t = cb::text;
@@ -195,6 +198,7 @@ CB_TEST("core.text.display_width", [] {
     CB_CHECK_EQ(t::utf8_prefix("abc", 0), "");
 });
 
+#ifdef _WIN32
 CB_TEST("core.win.wide_boundary", [] {
     const std::string u = "C:/caf\xC3\xA9/\xF0\x9F\x98\x80.txt";
     std::wstring w = win::to_wide(u);
@@ -204,4 +208,14 @@ CB_TEST("core.win.wide_boundary", [] {
     CB_CHECK_EQ(win::to_wide("a\xFF").size(), 2u);   // an invalid byte becomes U+FFFD, not a failure
     CB_CHECK(!win::error_message(2).empty());
     CB_CHECK(win::error_message(2).find('\n') == std::string::npos);
+});
+#endif
+
+CB_TEST("core.sys.error_message_and_local_time", [] {
+    CB_CHECK(!sys::error_message(2).empty());
+    CB_CHECK(sys::error_message(2).find('\n') == std::string::npos);
+    const sys::LocalTime t = sys::local_time();
+    CB_CHECK(t.year >= 2024 && t.month >= 1 && t.month <= 12 && t.day >= 1 && t.day <= 31);
+    CB_CHECK(t.hour >= 0 && t.hour < 24 && t.minute < 60 && t.second < 62 && t.millisecond < 1000);
+    CB_CHECK(sys::available_memory_gb() != 0.0);
 });

@@ -41,7 +41,7 @@ std::optional<LedgerLane> ledger_lane_of(std::string_view kind) {
 // (size, whole seconds since 1970 of the last write) of a file, as the memo remembers them.
 std::pair<std::int64_t, std::int64_t> ledger_stat(const stdfs::path& path) {
     const auto size = static_cast<std::int64_t>(stdfs::file_size(path));
-    const auto time = stdfs::last_write_time(path);
+    const auto time = cb::fs::last_write_time(path);
     const auto since = std::chrono::clock_cast<std::chrono::system_clock>(time).time_since_epoch();
     return {size, std::chrono::duration_cast<std::chrono::seconds>(since).count()};
 }

@@ -603,11 +603,24 @@ Json Server::Impl::names(const Json& a) {
         r["key"] = row[1];
         r["name"] = row[2];
         r["source"] = row[3];
+        if (row.size() > 4 && !row[4].is_null()) r["proposed"] = row[4];   // (a proposal is not the name)
         fns.push_back(std::move(r));
     }
     Json out = page(fns, int_of(a, "offset"), int_of(a, "limit"));
     const Json imports = member(got, "imports");
     out["imports"] = imports.is_array() ? imports.size() : 0;
+    return out;
+}
+
+Json Server::Impl::proposals(const Json& a) {
+    const sfs::path p = path_of(str_of(a, "module"));
+    const std::string state = lowered(str_of(a, "state"));
+    if (!state.empty() && state != "proposed" && state != "accepted" && state != "rejected") throw UsageError("state is proposed, accepted or rejected");
+    Json rows = need(s.proposals, "the proposed names")(p, state);
+    Json out = Json::object();
+    out["count"] = rows.size();
+    out["proposals"] = std::move(rows);
+    out["next"] = "names MODULE --accept ADDR (a person decides); propose_name adds one";
     return out;
 }
 
@@ -1137,6 +1150,17 @@ Json Server::Impl::name_function(const Json& a) {
     return out;
 }
 
+Json Server::Impl::propose_name(const Json& a) {
+    const std::string name = str_of(a, "name");
+    const sfs::path p = path_of(str_of(a, "module"));
+    const std::string addr = str_of(a, "addr");
+    const std::string number = normalize_address(addr);
+    const std::string last(text::split(number, ':').back());
+    const std::optional<std::int64_t> address = text::parse_int<std::int64_t>(last, 16);
+    if (!address) throw UsageError(std::format("invalid literal for int() with base 16: {}", py_repr(last)));
+    return need(s.propose_name, "proposing a name")(p, *address, name, str_of(a, "description"), int_of(a, "confidence"));
+}
+
 // ---- the dispatch ---------------------------------------------------------------------------------------------------------------------
 
 ToolResult Server::Impl::call(std::string_view function, const Json& a) {
@@ -1154,6 +1178,7 @@ ToolResult Server::Impl::call(std::string_view function, const Json& a) {
         {"functions", &Server::Impl::functions},
         {"function", &Server::Impl::function},
         {"names", &Server::Impl::names},
+        {"proposals", &Server::Impl::proposals},
         {"identify", &Server::Impl::identify},
         {"demangle", &Server::Impl::demangle},
         {"commands", &Server::Impl::commands},
@@ -1175,6 +1200,7 @@ ToolResult Server::Impl::call(std::string_view function, const Json& a) {
         {"run_command", &Server::Impl::run_command},
         {"stop_job", &Server::Impl::stop_job},
         {"name_function", &Server::Impl::name_function},
+        {"propose_name", &Server::Impl::propose_name},
     };
     const auto it = methods.find(function);
     if (it == methods.end()) throw UsageError(std::format("Unknown tool: {}", function));

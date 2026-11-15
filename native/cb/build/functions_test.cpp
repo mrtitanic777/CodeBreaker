@@ -215,7 +215,7 @@ Parsed parse_object(const Bytes& obj) {
 void set_utc_time(const stdfs::path& p, int y, unsigned m, unsigned d, int h, int min, int s) {
     using namespace std::chrono;
     const sys_seconds when = sys_days{year{y} / month{m} / day{d}} + hours{h} + minutes{min} + seconds{s};
-    stdfs::last_write_time(p, clock_cast<stdfs::file_time_type::clock>(when));
+    cb::fs::set_last_write_time(p, clock_cast<stdfs::file_time_type::clock>(when));
 }
 
 }  // namespace

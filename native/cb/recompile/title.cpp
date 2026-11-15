@@ -94,7 +94,7 @@ void copy_with_time(const stdfs::path& from, const stdfs::path& to) {
     fs::make_dirs(to.parent_path());
     stdfs::copy_file(from, to, stdfs::copy_options::overwrite_existing);
     std::error_code ec;
-    stdfs::last_write_time(to, stdfs::last_write_time(from, ec), ec);   // (best effort: a copy without its time is still the copy)
+    cb::fs::set_last_write_time(to, cb::fs::last_write_time(from, ec), ec);   // (best effort: a copy without its time is still the copy)
 }
 
 // The label a volume's boot facts give the title: its "display name", when it has one.

@@ -55,7 +55,7 @@ stdfs::file_time_type newest_source(const stdfs::path& source) {
     stdfs::file_time_type newest = stdfs::file_time_type::min();
     auto note = [&](const stdfs::path& p) {
         std::error_code ec;
-        const auto t = stdfs::last_write_time(p, ec);
+        const auto t = cb::fs::last_write_time(p, ec);
         if (!ec) newest = std::max(newest, t);
     };
     for (const char* sub : {"XenonRecomp", "XenonUtils", "XenonAnalyse", "CMakeLists.txt"}) {
@@ -192,7 +192,7 @@ stdfs::path Xenon::build(bool force) {
     const stdfs::path recomp = recomp_exe();
     std::error_code ec;
     if (!force && stdfs::is_regular_file(recomp, ec) && stdfs::is_regular_file(analyse_exe(), ec)) {
-        const auto oldest = std::min(stdfs::last_write_time(recomp, ec), stdfs::last_write_time(analyse_exe(), ec));
+        const auto oldest = std::min(cb::fs::last_write_time(recomp, ec), cb::fs::last_write_time(analyse_exe(), ec));
         if (oldest >= newest_source(source_dir())) return recomp;
     }
     const Environment& env = msvc_env();
@@ -270,7 +270,7 @@ SyncResult Xenon::recompile_synced(const stdfs::path& config_toml, const ReportF
         const stdfs::path src = fresh / name;
         if (!stdfs::exists(dst) || !same_content(src, dst)) {
             stdfs::copy_file(src, dst, stdfs::copy_options::overwrite_existing);
-            stdfs::last_write_time(dst, stdfs::last_write_time(src));   // (as shutil.copy2: the copy keeps the time)
+            cb::fs::set_last_write_time(dst, cb::fs::last_write_time(src));   // (as shutil.copy2: the copy keeps the time)
             ++result.changed;
         }
     }

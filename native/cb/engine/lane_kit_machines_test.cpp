@@ -11,6 +11,7 @@
 
 #include "cb/build/m6502_asm.hpp"
 #include "cb/build/m68k_asm.hpp"
+#include "cb/build/mips_asm.hpp"
 #include "cb/build/sm83_asm.hpp"
 #include "cb/build/z80_asm.hpp"
 #include "cb/core/error.hpp"
@@ -133,7 +134,7 @@ CB_TEST("engine.lane_kit.machines.a_known_machine_has_a_lane_and_another_name_ha
     fs::ScopedTempDir state("cb-lane-kit-names");
     const fs::ScopedEnv scoped("CB_STATE", fs::to_text(state.path()));
     LaneKit kit(config::Config::load(config->checkout_root()));
-    for (const char* name : {"nes", "sms", "gb", "genesis", "zx", "msx"}) {
+    for (const char* name : {"nes", "sms", "gb", "genesis", "ps1", "zx", "msx"}) {
         CB_CHECK(kit.machine_lane(name) != nullptr);
         CB_CHECK(kit.machine_lane(name) == kit.machine_lane(name));
         CB_CHECK(kit.lane_named(name) == kit.machine_lane(name));
@@ -146,6 +147,7 @@ CB_TEST("engine.lane_kit.machines.game_boy_edited_program", [] { machine_judges_
 CB_TEST("engine.lane_kit.machines.master_system_edited_program", [] { machine_judges_an_edited_program({"sms", "sms-peterlemon/HelloWorld.sms", 0, 0x4000}); });
 CB_TEST("engine.lane_kit.machines.genesis_edited_program", [] { machine_judges_an_edited_program({"genesis", "genesis-2048/rom.bin", 0, 0x100000}); });
 CB_TEST("engine.lane_kit.machines.msx_edited_program", [] { machine_judges_an_edited_program({"msx", "msx-nohzdyve/nohzdyve.rom", 0x4000, 0x10000}); });
+CB_TEST("engine.lane_kit.machines.ps1_edited_program", [] { machine_judges_an_edited_program({"ps1", "ps1/ps1-tests/cpu/cop/cop.exe", 0x8000F800, 0x4000}); });   // (the program follows the 2048-byte header at $80010000)
 
 // The programs NES and Genesis lane tests are built around, hand-written for the lanes and kept in testdata
 // (no corpus needed): built with CodeBreaker's own assemblers, written back as source by the lane, rebuilt as the original, and judged beside an
@@ -169,6 +171,18 @@ CB_TEST("engine.lane_kit.machines.the_genesis_demo_cartridge_is_judged", [] {
     const stdfs::path cartridge = dir.path() / "demo.md";
     fs::write_file(cartridge, rom);
     machine_judges_a_program({"genesis", "demo.md", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
+});
+
+// The PlayStation demo executable, hand-written for the lane (GNU as syntax, built with CodeBreaker's own assembler): written back as source,
+// rebuilt as the original, and judged beside an edited copy. (The program is at $80010000 after the 2048-byte header: file offset = address -
+// $8000F800.)
+CB_TEST("engine.lane_kit.machines.the_ps1_demo_executable_is_judged", [] {
+    fs::ScopedTempDir dir("cb-lane-kit-ps1-demo");
+    const build::mips_asm::Assembler assembler(source::isa::mips_encoder());
+    const Bytes exe = assembler.build(fs::read_text(testing::data_path("engine/testdata/lane_kit/ps1_demo.s")));
+    const stdfs::path file = dir.path() / "demo.exe";
+    fs::write_file(file, exe);
+    machine_judges_a_program({"ps1", "demo.exe", 0x8000F800, static_cast<std::uint32_t>(exe.size())}, file);
 });
 
 // The Spectrum demo as a 48K snapshot stopped at its start: the flat Z80 lane writes it back, rebuilds it as the

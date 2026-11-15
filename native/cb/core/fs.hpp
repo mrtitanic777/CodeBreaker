@@ -7,7 +7,9 @@
 // See docs/CPP_DESIGN.md 3.9.
 #pragma once
 
+#include <chrono>
 #include <filesystem>
+#include <system_error>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,6 +28,10 @@ stdfs::path from_text(std::string_view utf8);
 // Prefix an absolute path with \\?\ so that it may exceed MAX_PATH (260 characters). A path that already has
 // the prefix, or is relative, is returned made absolute first.
 stdfs::path long_path(const stdfs::path& p);
+
+// An existing path with its 8.3 short names spelled out (C:/Users/RUNNER~1 becomes C:/Users/runneradmin), as Windows
+// itself names it; a path that does not exist is returned as it is. The temporary folder is often given short.
+stdfs::path full_names(const stdfs::path& p);
 
 // Windows path equality: case-insensitive, either separator, redundant parts normalised.
 bool same_path(const stdfs::path& a, const stdfs::path& b);
@@ -48,6 +54,14 @@ void write_file_atomic(const stdfs::path& p, ByteView data);
 void make_dirs(const stdfs::path& p);
 // Size of a regular file in bytes.
 std::uint64_t file_size(const stdfs::path& p);
+
+// A file's or directory's last-write time, to the 100 ns the file system keeps (the standard library may round it
+// to a second, or refuse to set a directory's time). The getter gives the minimum time with ec set on failure;
+// the throwing setter raises IoError.
+stdfs::file_time_type last_write_time(const stdfs::path& p, std::error_code& ec) noexcept;
+stdfs::file_time_type last_write_time(const stdfs::path& p);
+void set_last_write_time(const stdfs::path& p, stdfs::file_time_type when, std::error_code& ec) noexcept;
+void set_last_write_time(const stdfs::path& p, stdfs::file_time_type when);
 
 // Copy a directory tree (files overwritten). The destination is created.
 void copy_tree(const stdfs::path& from, const stdfs::path& to);
@@ -110,5 +124,19 @@ private:
 
 // The value of an environment variable, if set.
 std::optional<std::string> get_env(std::string_view name);
+
+// Set (or, with nullopt, unset) an environment variable of this process: what children inherit and what getenv sees.
+void set_env(std::string_view name, std::optional<std::string_view> value);
+
+// The operating system's number for this process.
+std::uint32_t process_id();
+// A counter of the finest resolution the system has, for names and timing (the unit is the system's; only differences mean something).
+std::uint64_t monotonic_ticks();
+// A name part that no other call, in this process or another, makes: <pid>-<ticks>-<n>, in hex.
+std::string unique_suffix();
+// The running program's file (empty if the system will not say).
+stdfs::path executable_path();
+// Set or clear the read-only attribute of a file (on POSIX: the owner's write permission).
+void set_read_only(const stdfs::path& p, bool read_only);
 
 }  // namespace cb::fs

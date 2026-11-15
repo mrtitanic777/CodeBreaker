@@ -8,9 +8,12 @@
 #include <set>
 #include <tuple>
 
+#if defined(_MSC_VER)
 #include <intrin.h>
+#else
+#include <cpuid.h>
+#endif
 #include <nmmintrin.h>
-#include <process.h>
 
 #include "cb/base/sqlite.hpp"
 #include "cb/core/crypto.hpp"
@@ -49,7 +52,7 @@ std::int64_t now_seconds() {
 }
 
 std::int64_t mtime_seconds(const stdfs::path& p, std::error_code& ec) {
-    const auto t = stdfs::last_write_time(p, ec);
+    const auto t = cb::fs::last_write_time(p, ec);
     if (ec) return 0;
     return std::chrono::duration_cast<std::chrono::seconds>(
                std::chrono::clock_cast<std::chrono::system_clock>(t).time_since_epoch())
@@ -128,7 +131,7 @@ void move_aside_unless(const stdfs::path& state_dir, const stdfs::path& kind_dir
     for (const stdfs::path& entry : entries) {
         if (keep(fs::to_text(entry.filename()))) continue;
         const stdfs::path aside =
-            state_dir / kDropped / std::format("{}-{}-{}", _getpid(), now_seconds(), counter.fetch_add(1));
+            state_dir / kDropped / std::format("{}-{}-{}", fs::process_id(), now_seconds(), counter.fetch_add(1));
         std::error_code e2;
         stdfs::create_directories(aside.parent_path(), e2);
         stdfs::rename(entry, aside, e2);
@@ -164,13 +167,11 @@ std::uint32_t entry_checksum_portable(ByteView data) {
     return ~crc;
 }
 
-std::uint32_t entry_checksum(ByteView data) {
-    static const bool hardware = [] {
-        int info[4];
-        __cpuid(info, 1);
-        return (info[2] & (1 << 20)) != 0;   // SSE4.2
-    }();
-    if (!hardware) return entry_checksum_portable(data);
+// The crc32 instruction's loop. GCC and Clang compile SSE4.2 code only in a function marked for it; MSVC in any.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((target("sse4.2")))
+#endif
+static std::uint32_t entry_checksum_sse42(ByteView data) {
     std::uint64_t crc = 0xFFFFFFFFu;
     std::size_t i = 0;
     for (; i + 8 <= data.size(); i += 8) {
@@ -180,6 +181,20 @@ std::uint32_t entry_checksum(ByteView data) {
     }
     for (; i < data.size(); ++i) crc = _mm_crc32_u8(static_cast<std::uint32_t>(crc), data[i]);
     return ~static_cast<std::uint32_t>(crc);
+}
+
+std::uint32_t entry_checksum(ByteView data) {
+    static const bool hardware = [] {
+#if defined(_MSC_VER)
+        int info[4];
+        __cpuid(info, 1);
+        return (info[2] & (1 << 20)) != 0;   // SSE4.2
+#else
+        unsigned a = 0, b = 0, c = 0, d = 0;
+        return __get_cpuid(1, &a, &b, &c, &d) != 0 && (c & bit_SSE4_2) != 0;
+#endif
+    }();
+    return hardware ? entry_checksum_sse42(data) : entry_checksum_portable(data);
 }
 
 namespace {
@@ -445,7 +460,7 @@ std::string Cache::tool_bytes_id(const stdfs::path& tool) {
     std::error_code ec;
     if (!stdfs::is_regular_file(tool, ec)) return name + ":missing";
     const std::uint64_t size = stdfs::file_size(tool, ec);
-    const std::int64_t mtime = stdfs::last_write_time(tool, ec).time_since_epoch().count();
+    const std::int64_t mtime = cb::fs::last_write_time(tool, ec).time_since_epoch().count();
     if (ec) return name + ":missing";
     const auto memo_key = std::make_tuple(text::lower(fs::to_text(stdfs::absolute(tool).lexically_normal())), size, mtime);
     {

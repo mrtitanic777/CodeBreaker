@@ -30,6 +30,7 @@
 // What is compared: exit code, stdout, the files under {out} (text with paths normalised, else bytes), and stderr if
 // asked. Absolute paths (the repo, the program's checkout, the corpus, the scratch folder, the home folder) and
 // ISO timestamps are replaced by fixed names so a golden is the same on any checkout.
+#include <windows.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -85,11 +86,10 @@ struct Env {
 };
 
 std::string env_var(const char* name) {
-    char* value = nullptr;
-    std::size_t n = 0;
-    std::string out;
-    if (_dupenv_s(&value, &n, name) == 0 && value) out = value;
-    std::free(value);
+    const DWORD need = GetEnvironmentVariableA(name, nullptr, 0);   // (the Win32 call: every Windows compiler's CRT has it)
+    if (need == 0) return {};
+    std::string out(need, '\0');
+    out.resize(GetEnvironmentVariableA(name, out.data(), need));
     return out;
 }
 

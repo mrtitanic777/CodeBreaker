@@ -9,6 +9,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,6 +27,8 @@ public:
     static DynLib load_beside_exe(std::string_view file_name);
     // Load a DLL by full path.
     static DynLib load(const std::filesystem::path& path);
+    // The platform's file name for a library named by its stem ("capstone": capstone.dll, libcapstone.so).
+    static std::string file_name_for(std::string_view stem);
 
     DynLib(DynLib&&) noexcept;
     DynLib& operator=(DynLib&&) noexcept;
@@ -46,6 +49,8 @@ public:
     static std::vector<std::filesystem::path> search_dirs();
 
 private:
+    // The system's own copy of the library (POSIX: found by the dynamic linker; Windows: none).
+    static std::optional<DynLib> load_from_system(std::string_view stem);
     DynLib(void* module, std::filesystem::path path) : module_(module), path_(std::move(path)) {}
     void* address(const char* name) const;
     void* module_ = nullptr;

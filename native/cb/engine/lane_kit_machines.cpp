@@ -1,7 +1,7 @@
 // cb/engine/lane_kit_machines.cpp -- the real-mode program lane and the lanes of the cartridge machines, wired (see lane_kit.hpp).
 //
-// "dos" is the real-mode lane: the program written back as assembly, built, compared as a whole. "nes", "sms", "gb", "genesis", "zx" and "msx" are
-// each one verify/lanes/image_lane: the cartridge (or snapshot, or tape) written back by its platform's writer and rebuilt; a program that comes back
+// "dos" is the real-mode lane: the program written back as assembly, built, compared as a whole. "nes", "sms", "gb", "genesis", "ps1", "zx" and "msx" are
+// each one verify/lanes/image_lane: the cartridge (or executable, snapshot, or tape) written back by its platform's writer and rebuilt; a program that comes back
 // identical is the original, an edited one has each function run beside the original's in CodeBreaker's own interpreter of the machine's processor,
 // from the same starting states, and what each did (how it ended, the registers, the memory it left, the hardware it touched) is compared. What is
 // particular to a machine -- its starting states, its memory map, what answers its hardware -- is this file's one function per machine.
@@ -14,11 +14,14 @@
 #include "cb/core/fs.hpp"
 #include "cb/emulate/m6502.hpp"
 #include "cb/emulate/m68k.hpp"
+#include "cb/emulate/mips.hpp"
 #include "cb/emulate/sm83.hpp"
 #include "cb/emulate/z80.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
+#include "cb/engine/machine_lanes.hpp"
 #include "cb/formats/gb.hpp"
 #include "cb/formats/genesis.hpp"
+#include "cb/formats/psx.hpp"
 #include "cb/formats/msx.hpp"
 #include "cb/formats/nes.hpp"
 #include "cb/formats/sms.hpp"
@@ -27,6 +30,7 @@
 #include "cb/source/gb_writer.hpp"
 #include "cb/source/genesis_writer.hpp"
 #include "cb/source/msx_writer.hpp"
+#include "cb/source/ps1_writer.hpp"
 #include "cb/source/nes_writer.hpp"
 #include "cb/source/sms_writer.hpp"
 #include "cb/source/zx_writer.hpp"
@@ -205,6 +209,56 @@ lanes::Effects genesis_effects(const stdfs::path& path, std::uint32_t entry, con
     }
     return {lanes::Effect(run.exit()), lanes::Effect(std::move(dregs)), lanes::Effect(std::move(aregs)), number(run.sr & 0x1F),
             bytes_of(ByteView(bus.memory().data() + 0xFF0000, 0x10000)), lanes::Effect(std::move(io))};
+}
+
+// ---- the PlayStation ---------------------------------------------------------------------------------------------------------------
+
+// The RAM a run may be handed pointers into: seeded from `fill` and well past any program's text.
+constexpr std::uint32_t kPsWork = 0x801C0000;
+constexpr std::size_t kPsWorkBytes = 0x20000;
+
+lanes::State ps1_state(std::uint32_t a0, std::uint32_t a1, std::uint32_t a2, std::uint32_t a3, std::uint32_t s0, int fill) {
+    return {{"a0", a0}, {"a1", a1}, {"a2", a2}, {"a3", a3}, {"s0", s0}, {"fill", fill}};
+}
+
+lanes::Effects ps1_effects(const stdfs::path& path, std::uint32_t entry, const lanes::State& state) {
+    Bytes ram = formats::psx::read(path).memory();
+    const std::int64_t seed = at(state, "fill");
+    const std::size_t work = kPsWork & formats::psx::kRamMask;
+    if (seed != 0)
+        for (std::size_t i = 0; i < kPsWorkBytes; ++i) ram[work + i] = machine_fill(i, seed);
+    const Bytes before = ram;
+    emulate::mips::Bus bus{ByteView(ram)};
+    bus.map(0x1F801814, 0x1F801817, [](std::uint32_t, unsigned) -> std::uint32_t { return 0x1C000000; });   // GPUSTAT: ready for commands, DMA and VRAM
+    bus.map(0x1F801070, 0x1F801073, [](std::uint32_t, unsigned) -> std::uint32_t { return 1; });            // I_STAT: the vertical blank is pending
+    emulate::mips::RunOptions options;
+    options.max_steps = kSteps;
+    options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
+                 static_cast<std::uint32_t>(at(state, "a3"))};
+    options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
+    const emulate::mips::RunResult run = emulate::mips::run(bus, entry, options);
+    // what the run changed (the program lives in this memory: an edited byte the function does not write is the source's difference, not the function's)
+    std::vector<std::string> changed;
+    const ByteView after = bus.memory();
+    for (std::size_t i = 0; i < before.size() && changed.size() < kIoShown; ++i)
+        if (before[i] != after[i]) changed.push_back(std::format("{:06x}={:02x}", i, after[i]));
+    Bytes saved;
+    for (std::size_t i = 16; i < 24; ++i)
+        for (int shift = 0; shift < 32; shift += 8) saved.push_back(static_cast<std::uint8_t>(run.r[i] >> shift));
+    Bytes gte;   // (the GTE's registers: what a function that only computes leaves behind)
+    for (const auto* bank : {&run.gte_data, &run.gte_control})
+        for (const std::uint32_t v : *bank)
+            for (int shift = 0; shift < 32; shift += 8) gte.push_back(static_cast<std::uint8_t>(v >> shift));
+    std::vector<std::string> io;
+    for (const emulate::mips::BusAccess& x : run.io) {
+        io.push_back(io_line(x.text(), x.address, x.value));
+        if (io.size() == kIoShown) break;
+    }
+    std::vector<std::string> bios;
+    for (const emulate::mips::BiosCall& c : run.bios) bios.push_back(c.text());
+    return {lanes::Effect(run.exit()), number(run.r[2]), number(run.r[3]), lanes::Effect(std::move(saved)), number(run.r[29]), number(run.hi), number(run.lo),
+            lanes::Effect(std::move(gte)),
+            lanes::Effect(std::move(changed)), lanes::Effect(std::move(io)), lanes::Effect(std::move(bios))};
 }
 
 // ---- the flat Z80 programs: the ZX Spectrum and the MSX ----------------------------------------------------------------------------------
@@ -404,6 +458,16 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.start = [](const lanes::State& s) { return std::format("from D0={:08X} A0={:06X}", at(s, "d0"), at(s, "a0")); };
         spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::genesis_writer::reconstruct(m, out)); };
         spec.key_digits = 6;
+    } else if (name == "ps1") {
+        spec.kind = "ps1";
+        spec.rev = 1;
+        spec.states = {ps1_state(0, 0, 0, 0, 0, 0), ps1_state(kPsWork, kPsWork + 0x1000, 5, 0x10, 0, 1),
+                       ps1_state(kPsWork + 0x2000, 0xFFFFFFFF, 0x7F, 0x80000000, 3, 2), ps1_state(2, 3, kPsWork + 0x100, kPsWork + 0x200, 7, 3)};
+        spec.effects = ps1_effects;
+        spec.what = {"end", "V0", "V1", "S registers", "SP", "HI", "LO", "GTE registers", "RAM changes", "hardware accesses", "BIOS calls"};
+        spec.start = [](const lanes::State& s) { return std::format("from A0={:08X} A1={:08X} A2={:X}", at(s, "a0"), at(s, "a1"), at(s, "a2")); };
+        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::ps1_writer::reconstruct(m, out)); };
+        spec.key_digits = 8;
     } else if (name == "zx") {
         spec = flat_spec(FlatMachine{
             std::string(lanes::zx::kKind), lanes::zx::kRev, {lanes::zx::kRomLow, lanes::zx::kRomHigh},
@@ -420,6 +484,8 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
                 const formats::msx::Program p = formats::msx::read(m);
                 return std::make_tuple(p.origin, p.image, Bytes());
             }});
+    } else if (const std::shared_ptr<const MachineLane> registered = machine_lanes().find(name)) {   // a platform added without editing this file (machine_lanes.hpp)
+        spec = registered->make_spec();
     } else {
         return nullptr;
     }
@@ -434,9 +500,10 @@ std::string kit_detail::machine_of_file(const stdfs::path& path) {
     if (formats::sms::probe(path)) return "sms";
     if (formats::gb::probe(path)) return "gb";
     if (formats::genesis::probe(path)) return "genesis";
+    if (formats::psx::probe(path)) return "ps1";
     if (formats::zx::probe(path)) return "zx";
     if (formats::msx::probe(path)) return "msx";
-    return {};
+    return machine_lanes().name_of_file(path);   // (a registered machine: machine_lanes.hpp)
 }
 
 }  // namespace cb::engine

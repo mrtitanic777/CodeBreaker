@@ -1,33 +1,16 @@
 #include "cb/core/log.hpp"
 
-#include <windows.h>
 
 #include "cb/core/fs.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/testing.hpp"
 
 using namespace cb;
 
 namespace {
 
-// Redirect stdout or stderr to a file for the life of the object.
-class Redirect {
-public:
-    Redirect(DWORD which, const std::filesystem::path& file) : which_(which), saved_(GetStdHandle(which)) {
-        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-        h_ = CreateFileW(file.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        SetStdHandle(which_, h_);
-    }
-    ~Redirect() {
-        flush_out();
-        SetStdHandle(which_, saved_);
-        CloseHandle(h_);
-    }
-
-private:
-    DWORD which_;
-    HANDLE saved_;
-    HANDLE h_;
-};
+// Redirect stderr to a file for the life of the object.
+using Redirect = sys::StreamRedirect;
 
 }  // namespace
 
@@ -35,7 +18,7 @@ CB_TEST("core.log.levels_filter", [] {
     fs::ScopedTempDir dir("cblog");
     const auto saved = log::level();
     {
-        Redirect r(STD_ERROR_HANDLE, dir.path() / "err.txt");
+        Redirect r(sys::Stream::Err, dir.path() / "err.txt");
         log::set_level(log::Level::Warn);
         log::error("boom");
         log::warn("careful");
@@ -70,7 +53,7 @@ CB_TEST("core.log.file_and_timestamps", [] {
     log::init_from_env();
     CB_CHECK(log::level() == log::Level::Info);
     {
-        Redirect r(STD_ERROR_HANDLE, dir.path() / "err.txt");
+        Redirect r(sys::Stream::Err, dir.path() / "err.txt");
         log::set_file(dir.path() / "log" / "run.log");
         log::info("to both");
         log::set_file({});

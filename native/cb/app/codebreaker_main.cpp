@@ -8,6 +8,7 @@
 //
 // The terminal interface is the one thing that stays Python (codebreaker/ui/terminal.py, Textual): it runs under a real python found by
 // find_python() and talks to this program's `serve` (CB_EXE is set to this program for it; ui/client.py starts the service with it).
+#include <windows.h>
 #include <process.h>
 #include <stdlib.h>
 
@@ -32,11 +33,10 @@ namespace {
 bool is_help(std::string_view w) { return w == "-h" || w == "--help" || w == "help"; }
 
 std::string env_text(const char* name) {
-    char* value = nullptr;
-    std::size_t n = 0;
-    std::string out;
-    if (_dupenv_s(&value, &n, name) == 0 && value) out = value;
-    std::free(value);
+    const DWORD need = GetEnvironmentVariableA(name, nullptr, 0);   // (the Win32 call: every Windows compiler's CRT has it)
+    if (need == 0) return {};
+    std::string out(need, '\0');
+    out.resize(GetEnvironmentVariableA(name, out.data(), need));
     return out;
 }
 
@@ -93,10 +93,11 @@ int run_terminal_interface(const std::vector<std::string>& args) {
     // CB_EXE: the program the client starts as the service. PYTHONPATH: the checkout, so `codebreaker.ui` imports from anywhere.
     _wputenv_s(L"CB_EXE", self_path().c_str());
     std::wstring path = root.wstring();
-    wchar_t* old = nullptr;
-    std::size_t old_size = 0;
-    if (_wdupenv_s(&old, &old_size, L"PYTHONPATH") == 0 && old && *old) path += L";" + std::wstring(old);
-    std::free(old);
+    if (const DWORD need = GetEnvironmentVariableW(L"PYTHONPATH", nullptr, 0); need > 1) {
+        std::wstring old(need, L'\0');
+        old.resize(GetEnvironmentVariableW(L"PYTHONPATH", old.data(), need));
+        path += L";" + old;
+    }
     _wputenv_s(L"PYTHONPATH", path.c_str());
     const intptr_t rc = _wspawnvp(_P_WAIT, argv[0], argv.data());
     if (rc == -1) {

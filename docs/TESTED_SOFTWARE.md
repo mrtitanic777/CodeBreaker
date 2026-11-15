@@ -28,6 +28,75 @@ repositories (kept outside the repository, in `GitHub/homebrew-samples/`).
 | nohzdyve | MSX (8 KB) | plainspooky/nohzdyve (v1.0) | see its repository | 99 | rebuilds identical, verified |
 | Icarus | ZX Spectrum (tape) | MmmPT/icarus-zx-spectrum | see its ASSET-LICENSE | 95 | rebuilds identical, verified |
 
+## PlayStation homebrew (the PS1 lane)
+
+Open-source PS-X EXEs with published source, downloaded 2026-11-14 as binaries from the authors' own repositories (kept outside
+the repository, in `GitHub/homebrew-samples/ps1/`): JaCzekanski/ps1-tests (MIT; the `tests.zip` of release build-158: C++ built with
+GCC and PSn00bSDK) and PeterLemon/PSX (no licence stated; hand-written MIPS assembly with its data). Nothing downloaded was run.
+Each is written as GNU as source by `source/ps1_writer` and built again by CodeBreaker's own MIPS assembler; `reach --judge` then judged every function (rebuilt identical, so each is the original: 58 programs, 6107 functions, 100% verified). *Functions* are the
+function starts found (the entry point, what it calls, what begins after another function's end and reads as a function, what a `lui`/`addiu` pair or a table points at).
+
+| Program | Platform | Author / source | License | Functions | Result |
+|---|---|---|---|---|---|
+| CPUADD.exe | PlayStation | PeterLemon/PSX (CPUTest/CPU/ADD) | none stated | 50 | rebuilds identical, verified |
+| CPUDIV.exe | PlayStation | PeterLemon/PSX (CPUTest/CPU/DIV) | none stated | 71 | rebuilds identical, verified |
+| CPULW.exe | PlayStation | PeterLemon/PSX (CPUTest/CPU/LOADSTORE/LW) | none stated | 116 | rebuilds identical, verified |
+| CPUMULT.exe | PlayStation | PeterLemon/PSX (CPUTest/CPU/MULT) | none stated | 71 | rebuilds identical, verified |
+| Cube.exe | PlayStation | PeterLemon/PSX (Cube) | none stated | 1 | rebuilds identical, verified |
+| GTEAVSZ.exe | PlayStation | PeterLemon/PSX (CPUTest/GTE/AVSZ) | none stated | 31 | rebuilds identical, verified |
+| GTENCLIP.exe | PlayStation | PeterLemon/PSX (CPUTest/GTE/NCLIP) | none stated | 31 | rebuilds identical, verified |
+| LZ77Decode.exe | PlayStation | PeterLemon/PSX (Compress/LZ77/LZ77Decode) | none stated | 3 | rebuilds identical, verified |
+| PRINTGPU.exe | PlayStation | PeterLemon/PSX (Demo/printgpu) | none stated | 23 | rebuilds identical, verified |
+| VBLANK.exe | PlayStation | PeterLemon/PSX (Demo/vblank) | none stated | 8 | rebuilds identical, verified |
+| disc-swap.exe | PlayStation | JaCzekanski/ps1-tests (cdrom/disc-swap) | MIT | 101 | rebuilds identical, verified |
+| getloc.exe | PlayStation | JaCzekanski/ps1-tests (cdrom/getloc) | MIT | 129 | rebuilds identical, verified |
+| terminal.exe | PlayStation | JaCzekanski/ps1-tests (cdrom/terminal) | MIT | 435 | rebuilds identical, verified |
+| timing.exe | PlayStation | JaCzekanski/ps1-tests (cdrom/timing) | MIT | 102 | rebuilds identical, verified |
+| access-time.exe | PlayStation | JaCzekanski/ps1-tests (cpu/access-time) | MIT | 88 | rebuilds identical, verified |
+| code-in-io.exe | PlayStation | JaCzekanski/ps1-tests (cpu/code-in-io) | MIT | 107 | rebuilds identical, verified |
+| cop.exe | PlayStation | JaCzekanski/ps1-tests (cpu/cop) | MIT | 92 | rebuilds identical, verified |
+| io-access-bitwidth.exe | PlayStation | JaCzekanski/ps1-tests (cpu/io-access-bitwidth) | MIT | 178 | rebuilds identical, verified |
+| chain-looping.exe | PlayStation | JaCzekanski/ps1-tests (dma/chain-looping) | MIT | 87 | rebuilds identical, verified |
+| chopping.exe | PlayStation | JaCzekanski/ps1-tests (dma/chopping) | MIT | 88 | rebuilds identical, verified |
+| dpcr.exe | PlayStation | JaCzekanski/ps1-tests (dma/dpcr) | MIT | 103 | rebuilds identical, verified |
+| otc-test.exe | PlayStation | JaCzekanski/ps1-tests (dma/otc-test) | MIT | 145 | rebuilds identical, verified |
+| animated-triangle.exe | PlayStation | JaCzekanski/ps1-tests (gpu/animated-triangle) | MIT | 114 | rebuilds identical, verified |
+| bandwidth.exe | PlayStation | JaCzekanski/ps1-tests (gpu/bandwidth) | MIT | 94 | rebuilds identical, verified |
+| benchmark.exe | PlayStation | JaCzekanski/ps1-tests (gpu/benchmark) | MIT | 309 | rebuilds identical, verified |
+| clipping.exe | PlayStation | JaCzekanski/ps1-tests (gpu/clipping) | MIT | 74 | rebuilds identical, verified |
+| clut-cache.exe | PlayStation | JaCzekanski/ps1-tests (gpu/clut-cache) | MIT | 86 | rebuilds identical, verified |
+| gp0-e1.exe | PlayStation | JaCzekanski/ps1-tests (gpu/gp0-e1) | MIT | 94 | rebuilds identical, verified |
+| lines.exe | PlayStation | JaCzekanski/ps1-tests (gpu/lines) | MIT | 71 | rebuilds identical, verified |
+| mask-bit.exe | PlayStation | JaCzekanski/ps1-tests (gpu/mask-bit) | MIT | 87 | rebuilds identical, verified |
+| quad.exe | PlayStation | JaCzekanski/ps1-tests (gpu/quad) | MIT | 69 | rebuilds identical, verified |
+| rectangles.exe | PlayStation | JaCzekanski/ps1-tests (gpu/rectangles) | MIT | 75 | rebuilds identical, verified |
+| texture-flip.exe | PlayStation | JaCzekanski/ps1-tests (gpu/texture-flip) | MIT | 71 | rebuilds identical, verified |
+| texture-overflow.exe | PlayStation | JaCzekanski/ps1-tests (gpu/texture-overflow) | MIT | 72 | rebuilds identical, verified |
+| transparency.exe | PlayStation | JaCzekanski/ps1-tests (gpu/transparency) | MIT | 69 | rebuilds identical, verified |
+| triangle.exe | PlayStation | JaCzekanski/ps1-tests (gpu/triangle) | MIT | 68 | rebuilds identical, verified |
+| uv-interpolation.exe | PlayStation | JaCzekanski/ps1-tests (gpu/uv-interpolation) | MIT | 71 | rebuilds identical, verified |
+| version-detect.exe | PlayStation | JaCzekanski/ps1-tests (gpu/version-detect) | MIT | 65 | rebuilds identical, verified |
+| vram-to-vram-overlap.exe | PlayStation | JaCzekanski/ps1-tests (gpu/vram-to-vram-overlap) | MIT | 280 | rebuilds identical, verified |
+| gte-fuzz.exe | PlayStation | JaCzekanski/ps1-tests (gte-fuzz) | MIT | 305 | rebuilds identical, verified |
+| test-all.exe | PlayStation | JaCzekanski/ps1-tests (gte/test-all) | MIT | 203 | rebuilds identical, verified |
+| pad.exe | PlayStation | JaCzekanski/ps1-tests (input/pad) | MIT | 64 | rebuilds identical, verified |
+| 4bit.exe | PlayStation | JaCzekanski/ps1-tests (mdec/4bit) | MIT | 88 | rebuilds identical, verified |
+| 8bit.exe | PlayStation | JaCzekanski/ps1-tests (mdec/8bit) | MIT | 88 | rebuilds identical, verified |
+| frame-15bit-dma.exe | PlayStation | JaCzekanski/ps1-tests (mdec/frame) | MIT | 85 | rebuilds identical, verified |
+| frame-15bit.exe | PlayStation | JaCzekanski/ps1-tests (mdec/frame) | MIT | 86 | rebuilds identical, verified |
+| frame-24bit-dma.exe | PlayStation | JaCzekanski/ps1-tests (mdec/frame) | MIT | 85 | rebuilds identical, verified |
+| frame-24bit.exe | PlayStation | JaCzekanski/ps1-tests (mdec/frame) | MIT | 86 | rebuilds identical, verified |
+| movie-15bit.exe | PlayStation | JaCzekanski/ps1-tests (mdec/movie) | MIT | 90 | rebuilds identical, verified |
+| movie-24bit.exe | PlayStation | JaCzekanski/ps1-tests (mdec/movie) | MIT | 90 | rebuilds identical, verified |
+| step-by-step-log.exe | PlayStation | JaCzekanski/ps1-tests (mdec/step-by-step-log) | MIT | 95 | rebuilds identical, verified |
+| memory-transfer.exe | PlayStation | JaCzekanski/ps1-tests (spu/memory-transfer) | MIT | 188 | rebuilds identical, verified |
+| ram-sandbox.exe | PlayStation | JaCzekanski/ps1-tests (spu/ram-sandbox) | MIT | 125 | rebuilds identical, verified |
+| stereo.exe | PlayStation | JaCzekanski/ps1-tests (spu/stereo) | MIT | 72 | rebuilds identical, verified |
+| test.exe | PlayStation | JaCzekanski/ps1-tests (spu/test) | MIT | 69 | rebuilds identical, verified |
+| toolbox.exe | PlayStation | JaCzekanski/ps1-tests (spu/toolbox) | MIT | 294 | rebuilds identical, verified |
+| timer-dump.exe | PlayStation | JaCzekanski/ps1-tests (timer-dump) | MIT | 76 | rebuilds identical, verified |
+| timers.exe | PlayStation | JaCzekanski/ps1-tests (timers) | MIT | 89 | rebuilds identical, verified |
+
 ## Xbox 360 titles (recompile lane)
 
 Logan's own copies (`C:\Nexia360\Games`), through `recompile-project <title> --check`. All are in

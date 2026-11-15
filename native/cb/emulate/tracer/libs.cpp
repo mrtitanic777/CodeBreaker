@@ -4,7 +4,9 @@
 #include <cstdio>
 #include <mutex>
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 namespace cb::emulate::tracer {
 
@@ -13,12 +15,14 @@ namespace {
 detail::Tables g_tables;
 std::mutex g_set_lock;
 
+#ifdef _WIN32
 template <typename T>
 bool get(HMODULE m, const char* name, T& slot, char* err, std::size_t errlen) {
     slot = reinterpret_cast<T>(GetProcAddress(m, name));
     if (!slot) snprintf(err, errlen, "no %s in the DLL", name);
     return slot != nullptr;
 }
+#endif
 
 }  // namespace
 
@@ -41,6 +45,7 @@ const Tables& init_tables() {
 
 }  // namespace detail
 
+#ifdef _WIN32
 bool use_libraries(const wchar_t* unicorn_dll, const wchar_t* capstone_dll, char* err, std::size_t errlen) {
     std::lock_guard<std::mutex> hold(g_set_lock);
     if (detail::in_force.load(std::memory_order_acquire) != nullptr) return true;   // the first call counts
@@ -70,5 +75,12 @@ bool use_libraries(const wchar_t* unicorn_dll, const wchar_t* capstone_dll, char
     detail::in_force.store(&g_tables, std::memory_order_release);
     return true;
 }
+#else
+// (the caller's own Unicorn is a Windows arrangement of the cbtrace DLL: elsewhere the tables are always cb/core's)
+bool use_libraries(const wchar_t*, const wchar_t*, char* err, std::size_t errlen) {
+    snprintf(err, errlen, "use_libraries is only for the Windows cbtrace.dll");
+    return false;
+}
+#endif
 
 }  // namespace cb::emulate::tracer

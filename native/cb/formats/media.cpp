@@ -1,4 +1,5 @@
 #include "cb/formats/media.hpp"
+#include "cb/core/sys.hpp"
 
 #include <algorithm>
 #include <array>
@@ -893,7 +894,7 @@ std::vector<PutResult> put(const std::filesystem::path& image, std::span<const N
 
     const std::time_t now = std::time(nullptr);
     std::tm t{};
-    localtime_s(&t, &now);
+    t = cb::sys::local_tm(now);
     const auto time = static_cast<std::uint16_t>((t.tm_hour << 11) | (t.tm_min << 5) | (t.tm_sec / 2));
     const auto date = static_cast<std::uint16_t>(((t.tm_year + 1900 - 1980) << 9) | ((t.tm_mon + 1) << 5) | t.tm_mday);
 

@@ -134,7 +134,7 @@ private:
         }
         write(ByteView(raw, sizeof(T)));
     }
-    template <class F> auto at_offset(std::uint64_t offset, F&& action) {
+    template <class F> std::invoke_result_t<F&> at_offset(std::uint64_t offset, F&& action) {
         struct Restore {
             std::uint64_t& position;
             std::uint64_t saved;

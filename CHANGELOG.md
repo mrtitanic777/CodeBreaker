@@ -5,6 +5,12 @@ release is made. Each entry lists what a user notices: new commands and lanes, f
 
 ## Unreleased
 
+### Added
+- The PlayStation lane (MIPS R3000A): `info` and `reach` take a PS-X EXE; the program comes back as GNU as source (every function, the
+  header field by field, strings, tables and hardware registers by name) that CodeBreaker's own MIPS assembler builds back into the
+  same executable, byte for byte, and its functions are judged in CodeBreaker's own R3000A interpreter (delay slots, the BIOS calls,
+  the GTE's registers and its commands that need no division). 58 open-source PS1 programs rebuild identical (docs/TESTED_SOFTWARE.md).
+
 ### Fixed
 - A fresh clone builds and passes the gate: `tools\build_native.cmd` builds every engine the program calls (the
   decompiler, XEX and NASM included); tests that need copyrighted or out-of-repo inputs find them in
@@ -14,6 +20,10 @@ release is made. Each entry lists what a user notices: new commands and lanes, f
 - `tidy-state` knows the `origin`, `oss` and `setup` folders as CodeBreaker's own.
 
 ### Changed
+- CodeBreaker builds with any modern compiler on Windows: MSVC 2022 and 2026, Clang (clang-cl) and GCC (MinGW-w64).
+  Compiler flags are chosen per compiler, Windows libraries are linked by name, MSVC-only intrinsics and CRT calls
+  have portable forms, and CI builds and tests with all three compilers.
+- Builds need no Python: the engines take Capstone's and Unicorn's headers from `native/third_party/include`.
 - Python-era design notes moved to `docs/history/`; the current docs give `codebreaker <command>` and the native
   source paths.
 

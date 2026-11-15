@@ -12,9 +12,13 @@
 #pragma once
 
 // Third-party header: warnings are theirs, not ours (the one justified #pragma warning of the core).
+#ifdef _MSC_VER
 #pragma warning(push, 0)
+#endif
 #include <unicorn/unicorn.h>
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
 #include <string_view>
 

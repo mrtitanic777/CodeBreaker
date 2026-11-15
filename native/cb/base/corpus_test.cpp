@@ -320,10 +320,10 @@ CB_TEST("base.corpus.boot_images_are_unpacked_once_into_the_state_folder", [] {
     CB_CHECK(dos.at(0).parent_path().parent_path() == t.dir.path() / "state" / "unpacked");
     CB_CHECK_EQ(reads, 1);
     // a second corpus finds the files written and does not rewrite them
-    const auto written = stdfs::last_write_time(kernel.at(0));
+    const auto written = cb::fs::last_write_time(kernel.at(0));
     Corpus again(t.products(), probes);
     CB_CHECK_EQ(again.candidates("kernel.exe").size(), 1u);
-    CB_CHECK(stdfs::last_write_time(kernel.at(0)) == written);
+    CB_CHECK(cb::fs::last_write_time(kernel.at(0)) == written);
 });
 
 CB_TEST("base.corpus.a_bin_that_is_not_a_boot_image_is_left_alone", [] {

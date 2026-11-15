@@ -34,6 +34,11 @@ its address (hex, with or without 0x) or its name.)DOC", Kind::Reading,
         {"names", "names", R"DOC(Every function and import of a module with its best name and where the name came from
 (exports, debug symbols, runtime libraries, bodies named in other modules).)DOC", Kind::Reading,
          {{"module", ParamType::String, std::nullopt}, {"find", ParamType::String, std::string_view(R"JSON("")JSON")}, {"offset", ParamType::Integer, std::string_view(R"JSON(0)JSON")}, {"limit", ParamType::Integer, std::string_view(R"JSON(300)JSON")}}},
+        {"proposals", "proposals", R"DOC(The names proposed for the unnamed functions of a module, with a one-line description, the rule or
+assistant that proposed each, its confidence in percent and its evidence. A proposal is not a name: `names`
+shows the function unnamed until a person accepts it (`codebreaker names MODULE --accept`). `state` keeps
+proposed, accepted or rejected ones.)DOC", Kind::Reading,
+         {{"module", ParamType::String, std::nullopt}, {"state", ParamType::String, std::string_view(R"JSON("")JSON")}}},
         {"identify", "identify", R"DOC(Functions of a module that belong to a runtime library (by signature), and what built it.)DOC", Kind::Reading,
          {{"module", ParamType::String, std::nullopt}}},
         {"demangle", "demangle", R"DOC(Decorated linker names (Microsoft C++ ?Foo@@..., _Bar@8) as readable declarations.)DOC", Kind::Reading,
@@ -107,3 +112,8 @@ time and only one measure.)DOC", Kind::Job,
         {"name_function", "name_function", R"DOC(Give the function at `addr` a name in the function store. The name goes on its body, so
 every module holding the same code gets it too (the next module write uses it).)DOC", Kind::Writing,
          {{"module", ParamType::String, std::nullopt}, {"addr", ParamType::String, std::nullopt}, {"name", ParamType::String, std::nullopt}}},
+        {"propose_name", "propose_name", R"DOC(Propose a name for the unnamed function at `addr`, with a one-line `description` of what it does
+and a `confidence` in percent (0 to 100), from what `disasm`, `xrefs`, `strings` and `decompile_function`
+show. It is stored as a proposal, apart from the names: nothing is named until a person accepts it. A name
+is letters, digits, _ and ::, and no other function of the module has it.)DOC", Kind::Writing,
+         {{"module", ParamType::String, std::nullopt}, {"addr", ParamType::String, std::nullopt}, {"name", ParamType::String, std::nullopt}, {"description", ParamType::String, std::string_view(R"JSON("")JSON")}, {"confidence", ParamType::Integer, std::string_view(R"JSON(50)JSON")}}},

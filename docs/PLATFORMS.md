@@ -38,7 +38,8 @@ line and nothing above it.
 | 16/32-bit | 68000 | Genesis / Mega Drive | yes (.md .bin .gen .smd; header, vectors) | own table (every 68000 instruction) | own 68000 interpreter | yes (Motorola-syntax source) |
 | 8/16-bit | 6502, 65816, Z80, 68000, SPC700 | Atari, SNES, Neo Geo, C64, Apple II, arcade | no | 6502, Z80, 68000 yes | 6502, Z80, 68000 yes | no |
 | x86, console | Pentium III | original Xbox (XBE) | yes (as a PE image; kernel imports named) | yes | Unicorn (the 32-bit lane) | yes |
-| MIPS, SuperH | R3000, R4300, R5900, SH-2, SH-4 | PS1, N64, PS2, Saturn, Dreamcast, arcade | no | no | no | no |
+| 32-bit | MIPS R3000A (MIPS I, little-endian; GTE decoded) | PlayStation | yes (PS-X EXE; header, load address, entry) | own table (every MIPS I instruction, COP0, the GTE's commands) | own R3000A interpreter (delay slots, load delay, BIOS calls and devices logged; the GTE's registers, not its commands) | yes (GNU as source) |
+| MIPS, SuperH | R4300, R5900, SH-2, SH-4 | N64, PS2, Saturn, Dreamcast, arcade | no | no | no | no |
 | PowerPC, Cell | Gekko, Broadway, Cell PPU/SPU | GameCube, Wii, PS3 (the Xbox 360 is the PowerPC row above) | no | PPU yes, SPU no | no | no |
 | x86-64, ARM | x86-64, ARM7/9, ARMv7, AArch64 | PC 64-bit, GBA, DS, 3DS, Xbox One, PS4/5, phones, Switch | no | no | no | no |
 | Firmware | 8051, AVR, PIC, ARM Cortex-M, Xtensa | microcontrollers, BIOS/UEFI, device firmware | no | no | no | no |
@@ -59,7 +60,7 @@ line and nothing above it.
 4. **Xbox and Xbox 360 completed**: XEX (native/xex, docs/XEX.md) + the PowerPC already here; the
    original Xbox is x86 already handled -- only the XBE reader and the kernel's imports are new.
 5. **64-bit and ARM**: x86-64 PE/ELF, AArch64 ELF/Mach-O; then Android (Dalvik) and iOS.
-6. **The rest of the consoles**, family by family: MIPS (PS1, N64, PS2), SuperH (Saturn,
+6. **The rest of the consoles**, family by family: MIPS (PS1 done: R3000A; N64, PS2), SuperH (Saturn,
    Dreamcast), Cell (PS3), x86-64 consoles.
 
 Each step is judged the same way as everything else: rebuilt, run beside the original, the same

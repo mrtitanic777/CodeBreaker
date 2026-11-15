@@ -202,3 +202,16 @@ CB_TEST("formats.detect.dos_header", [] {
     CB_CHECK_EQ(small->relocation_entries[0].offset, 0x10);
     CB_CHECK(!detect::dos_header(Bytes{'M', 'Z'}).has_value());
 });
+
+CB_TEST("formats.detect.identify_a_playstation_executable", [] {
+    Bytes exe = with_magic("PS-X EXE", 0x800 + 0x40);
+    put(exe, 0x10, 0x80010010, 4);   // pc0
+    put(exe, 0x18, 0x80010000, 4);   // t_addr
+    const detect::Detected d = only(exe, "game.exe");
+    CB_CHECK_EQ(d.format, "PlayStation executable (PS-X EXE)");
+    CB_CHECK_EQ(d.detail, "entry 0x80010010, program at 0x80010000, 64 bytes");
+    CB_CHECK_EQ(d.family, "playstation");
+    CB_CHECK_EQ(d.command, "reach");
+    // a header cut short is not one
+    CB_CHECK(detect::identify(with_magic("PS-X EXE", 0x100), "game.exe").empty());
+});

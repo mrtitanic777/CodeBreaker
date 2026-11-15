@@ -34,7 +34,7 @@ F	10300000	MAPVIRTUALKEY	8	__stdcall16far	2
 F	10300013	MAPVIRTUALKEYEX	8	__stdcall16far	2
 F	10380000	GETKEYNAMETEXT	10	__stdcall16far	2
 F	1040002e	GETBIOSKEYPROC	0	__cdecl16far	4
-F	10400367	sub_9_0367	0	__fastcall16near	2
+F	10400367	sub_9_0367	0	__cdecl16near	2
 F	10400430	sub_9_0430	0	__fastcall16near	2
 F	1040048e	sub_9_048E	0	__cdecl16far	4
 F	104004b4	sub_9_04B4	0	__fastcall16far	2

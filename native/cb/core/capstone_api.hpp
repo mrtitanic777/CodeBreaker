@@ -10,9 +10,13 @@
 //     cb::disasm::capstone::check(cs.cs_open(CS_ARCH_X86, CS_MODE_32, &handle), "cs_open");
 #pragma once
 
+#ifdef _MSC_VER
 #pragma warning(push, 0)
+#endif
 #include <capstone/capstone.h>
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
 #include <string>
 #include <string_view>

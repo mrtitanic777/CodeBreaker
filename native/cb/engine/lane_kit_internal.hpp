@@ -98,7 +98,7 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-// The machine a cartridge, snapshot or tape is made for ("nes", "sms", "gb", "genesis", "zx", "msx"); empty when the file is none (lane_kit_machines).
+// The machine a cartridge, snapshot or tape is made for ("nes", "sms", "gb", "genesis", "ps1", "zx", "msx"); empty when the file is none (lane_kit_machines).
 std::string machine_of_file(const std::filesystem::path& path);
 
 }  // namespace cb::engine::kit_detail
@@ -131,7 +131,7 @@ struct LaneKit::Impl {
     std::optional<jobs::WorkerLauncher> launcher;
     std::unique_ptr<emulate::pcode::LifterSet> lifters_;
     std::shared_ptr<const verify::lanes::Kind> win32_, win16_, driver_, java_, powerpc_, dos_;
-    std::map<std::string, std::shared_ptr<const verify::lanes::Kind>> machines_;   // "nes", "sms", "gb", "genesis", "zx", "msx"
+    std::map<std::string, std::shared_ptr<const verify::lanes::Kind>> machines_;   // "nes", "sms", "gb", "genesis", "ps1", "zx", "msx"
     std::shared_ptr<const symbols::driver_services::Table> driver_tables_;   // what the driver lane's spec points at
 };
 

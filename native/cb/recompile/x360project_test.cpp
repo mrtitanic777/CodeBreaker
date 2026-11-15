@@ -86,12 +86,12 @@ CB_TEST("recompile.x360project.sync_rewrites_only_what_changed", [] {
     fs::write_text(dst / "changed.cpp", "old");
     fs::write_text(dst / "stale.cpp", "stale");
     const auto old_time = stdfs::file_time_type::clock::now() - std::chrono::hours(48);
-    stdfs::last_write_time(dst / "same.cpp", old_time);
+    cb::fs::set_last_write_time(dst / "same.cpp", old_time);
     sync_folder(src, dst);
     CB_CHECK_EQ(fs::read_text(dst / "changed.cpp"), "new");
     CB_CHECK_EQ(fs::read_text(dst / "added.cpp"), "added");
     CB_CHECK(!stdfs::exists(dst / "stale.cpp"));
-    CB_CHECK(stdfs::last_write_time(dst / "same.cpp") == old_time);   // not rewritten: a rebuild does not recompile it
+    CB_CHECK(cb::fs::last_write_time(dst / "same.cpp") == old_time);   // not rewritten: a rebuild does not recompile it
     // into a folder that is not there yet
     sync_folder(src, dir.path() / "made");
     CB_CHECK(stdfs::exists(dir.path() / "made" / "same.cpp"));
@@ -147,7 +147,7 @@ CB_TEST("recompile.x360project.a_second_scaffold_rewrites_only_the_changed_code"
     (void)scaffold(fake.rc, fake.xex(), out, "My Title");
     const stdfs::path kept = out / "src" / "ppc" / "ppc_recomp.0.cpp";
     const auto old_time = stdfs::file_time_type::clock::now() - std::chrono::hours(24);
-    stdfs::last_write_time(kept, old_time);
+    cb::fs::set_last_write_time(kept, old_time);
     // the recompiler now writes an extra file and gives the same one as before
     fake.recomp_body += "";
     fs::write_text(fake.dir.path() / "recomp.bat",
@@ -155,7 +155,7 @@ CB_TEST("recompile.x360project.a_second_scaffold_rewrites_only_the_changed_code"
     const ScaffoldInfo again = scaffold(fake.rc, fake.xex(), out, "My Title");
     CB_CHECK_EQ(again.name, "My_Title");
     CB_CHECK_EQ(again.unimplemented, 0u);
-    CB_CHECK(stdfs::last_write_time(kept) == old_time);
+    CB_CHECK(cb::fs::last_write_time(kept) == old_time);
     CB_CHECK(stdfs::exists(out / "src" / "ppc" / "ppc_recomp.1.cpp"));
 });
 

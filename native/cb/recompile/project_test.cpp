@@ -250,10 +250,10 @@ CB_TEST("recompile.project.write_if_changed_leaves_a_same_file_alone", [] {
     const std::string text = "hello";
     const cb::ByteView data(reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
     CB_CHECK(pj::write_if_changed(f, data));   // made, with its folder
-    const auto first = stdfs::last_write_time(f);
+    const auto first = cb::fs::last_write_time(f);
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     CB_CHECK(!pj::write_if_changed(f, data));
-    CB_CHECK(stdfs::last_write_time(f) == first);   // not touched
+    CB_CHECK(cb::fs::last_write_time(f) == first);   // not touched
     const std::string other = "hello!";
     CB_CHECK(pj::write_if_changed(f, cb::ByteView(reinterpret_cast<const std::uint8_t*>(other.data()), other.size())));
     CB_CHECK_EQ(cb::fs::read_text(f), "hello!");
@@ -311,10 +311,10 @@ CB_TEST("recompile.project.scaffold_writes_the_whole_tree", [] {
     // the stub is not recompiled
     CB_CHECK(cb::fs::read_text(out / "src" / "Sample_0000.cpp").starts_with("#include \"Sample.h\"\n\n"));
     // a second run leaves every unchanged file alone, so a rebuild recompiles nothing
-    const auto before = stdfs::last_write_time(out / "src" / "Sample_0000.cpp");
+    const auto before = cb::fs::last_write_time(out / "src" / "Sample_0000.cpp");
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     (void)pj::scaffold(env, tmp.path() / "Sample_XENON.exe", out, 1u);
-    CB_CHECK(stdfs::last_write_time(out / "src" / "Sample_0000.cpp") == before);
+    CB_CHECK(cb::fs::last_write_time(out / "src" / "Sample_0000.cpp") == before);
 });
 
 CB_TEST("recompile.project.the_title_of_a_xex_gets_its_libraries_and_a_copy", [] {

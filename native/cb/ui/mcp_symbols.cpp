@@ -27,6 +27,8 @@
 #include "cb/platforms/package.hpp"
 #include "cb/source/placement.hpp"
 #include "cb/store/functions.hpp"
+#include "cb/store/proposals.hpp"
+#include "cb/symbols/proposals.hpp"
 #include "cb/ui/mcp_wiring.hpp"
 #include "cb/ui/progress.hpp"
 
@@ -105,6 +107,12 @@ Json sy_progress_json(const progress::Snapshot& s) {
     return out;
 }
 
+// A proposal as the tools show it.
+Json sy_proposal_json(const store::Proposal& p) {
+    return Json{{"addr", p.key}, {"key", p.key}, {"name", p.name}, {"description", p.description}, {"rule", p.rule}, {"confidence", p.confidence},
+                {"evidence", p.evidence}, {"state", std::string(store::state_name(p.state))}, {"source", p.source}};
+}
+
 }  // namespace
 
 void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
@@ -113,7 +121,11 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
         std::lock_guard hold(context->lock());
         const sym::names::ModuleNames got = context->bench().namer().of_module(p);
         Json functions = Json::array(), imports = Json::array();
-        for (const sym::names::FunctionName& f : got.functions) functions.push_back(Json::array({f.address, f.key, f.name, f.source}));
+        for (const sym::names::FunctionName& f : got.functions) {
+            Json row = Json::array({f.address, f.key, f.name, f.source});
+            if (f.proposed) row.push_back(Json{{"name", f.proposed->name}, {"description", f.proposed->description}, {"rule", f.proposed->rule}, {"confidence", f.proposed->confidence}});
+            functions.push_back(std::move(row));
+        }
         for (const sym::names::ImportName& i : got.imports)
             imports.push_back(Json::array({i.module, i.ordinal ? Json(*i.ordinal) : Json(nullptr), i.name, i.source}));
         return Json{{"functions", std::move(functions)}, {"imports", std::move(imports)}};
@@ -149,6 +161,21 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
         std::lock_guard hold(context->lock());
         const std::optional<std::string> digest = context->bench().namer().set_name(p, static_cast<sym::names::Address>(address), name);
         return digest ? *digest : std::string();
+    };
+    // proposed names: listed, and one stored for a function (not names until a person accepts them)
+    services.proposals = [context](const std::filesystem::path& p, std::string_view state) -> Json {
+        std::lock_guard hold(context->lock());
+        Json rows = Json::array();
+        for (const store::Proposal& proposal : context->bench().proposer().list(p)) {
+            if (!state.empty() && store::state_name(proposal.state) != state) continue;
+            rows.push_back(sy_proposal_json(proposal));
+        }
+        return rows;
+    };
+    services.propose_name = [context](const std::filesystem::path& p, std::int64_t address, std::string_view name, std::string_view description, std::int64_t confidence) -> Json {
+        std::lock_guard hold(context->lock());
+        const store::Proposal stored = context->bench().proposer().suggest(p, static_cast<sym::names::Address>(address), name, description, static_cast<int>(confidence));
+        return sy_proposal_json(stored);
     };
     services.modules_with_body = [context](std::string_view digest) -> Json {
         std::lock_guard hold(context->lock());

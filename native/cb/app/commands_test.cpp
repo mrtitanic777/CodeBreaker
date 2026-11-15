@@ -79,6 +79,7 @@ CB_TEST("app.commands.catalog_lists_every_command", [] {
                               "regress",
                               "migrate-state",
                               "judge-c-java",
+                              "judge-cs-cpp",
                               "recompile",
                               "recompile-project",
                               "xenon-recompile",
@@ -104,7 +105,7 @@ CB_TEST("app.commands.catalog_lists_every_command", [] {
         CB_CHECK(!d.synopsis.empty());
         CB_CHECK(d.synopsis.starts_with(d.name)); // a synopsis begins with the command's name
     }
-    CB_CHECK_EQ(have.size(), std::size_t{75});
+    CB_CHECK_EQ(have.size(), std::size_t{76});
     for (const char* n : expected)
         CB_CHECK(have.count(n) == 1);
     const CommandDoc* d = find_command_doc("flat-thunk");

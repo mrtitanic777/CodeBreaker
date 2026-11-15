@@ -479,6 +479,69 @@ the C++ standard library (iostream, string, containers); multiple inheritance; l
 faithful tier; a C++ program that needs the faithful tier; argument evaluation order follows Java's
 left-to-right where C leaves it open.
 
+## C# -> C++17
+
+C# programs go in through the Roslyn front end (`translate/frontends/csharp`, IR with `Unit.lang = "csharp"`) and come out as one C++17
+translation unit written by `translate/backends/csharp_cpp17` against the runtime `data/translate/runtime/cpp17/csrt.hpp`. (The shared L2
+core's C++17 emitter, `backends/cpp17`, still declines C# units; this back end works on the C++ IR directly and carries C#'s rules itself.)
+
+**Object model.** A class is a struct held through `cs::Ref<T>` (`std::shared_ptr`) and derives virtually from `cs::Object`, so interfaces
+are structs too and `is`/`as`/casts are `dynamic_pointer_cast` (`cs::is`, `cs::as`, `cs::cast`: an invalid cast throws
+`InvalidCastException`). A struct is a C++ value, an enum an `enum class` with a generated `cs_enum_name` (so it prints its name), a
+delegate or `Func`/`Action` a `std::function`, `T?` of a value type a `std::optional<T>`, a record a class with value `Equals`,
+`==`, `GetHashCode` and `ToString` made from its primary constructor. A property is a backing field plus `get_X`/`set_X` (virtual,
+abstract or overriding as the C# says), an indexer `get_Item`/`set_Item`, a generic class or method a template (member bodies out of line,
+after every class, so classes may refer to each other in any order). Static state is defined after the classes and a static
+constructor runs before `Main`. Locals a lambda captures are held through a `shared_ptr` so the lambda and the function share one
+variable, as C# closures do (the analysis is per function).
+
+**Semantics the runtime carries.** `string` is UTF-16 (`cs::String`, null kept apart from empty) written out as UTF-8; `int` arithmetic
+wraps (the program is built with `-fwrapv`), shifts mask their count (`cs::shl/shr/ushr`), `/` and `%` throw `DivideByZeroException`,
+`checked` arithmetic and conversions throw `OverflowException`, a double converts to an integer as .NET does (truncating, saturating, NaN
+0); a double prints as .NET prints it (shortest round-trip, `1E+20`); a string concatenation and two operands that both do something are
+evaluated left to right, which C++ leaves open (`cs::Cat() << a << b`, `cs::LR<A, B>{l, r}.then(f)`); `try/catch/finally`, `using` and
+`lock` are C++ exceptions (`cs::Thrown`) and scope guards (`cs::finally`); an uncaught exception ends the program with .NET's exit code.
+The library the corpus uses is in the runtime: `Console`, `Math`, `Char`, `String` (instance and statics, `Join`, `Format`), `StringBuilder`,
+`List<T>`, `Dictionary<K,V>`, arrays (one and two dimensions), the exception classes, and LINQ over eager sequences (`Select`, `Where`,
+`OrderBy[Descending]`, `Sum`, `Count`, `Any`, `All`, `First`, `ToList`, `ToArray`, `Range`, `Min`, `Max`, `Contains`).
+
+**Declined, with the reason (never guessed):** a library type or member the runtime does not have yet, events, anonymous classes, inner
+classes, `await`/iterators/tuples/local functions (the front end's own refusals), labeled `break`/`continue`, a multi-type `catch`,
+arrays of three or more dimensions, static fields of a generic class, `break` inside a section of a `switch` on a string. A
+declined program is not written at all and the judge says what and where.
+
+**Known departures** (C# behaviour the translation does not reproduce, none met by the corpus): a virtual call in a constructor reaches the
+base's method, not the override (C++ builds bases first); field initialisers run after the base constructor, not before it; a cycle of
+references is never freed; dereferencing a null reference is undefined, not `NullReferenceException`; `string` comparison and
+`ToUpper` are ordinal/ASCII-case, not culture-sensitive; evaluation order of the arguments of a call is C++'s, not C#'s.
+
+**The judge.** `codebreaker judge-cs-cpp [--cxx gcc|clang|msvc|PATH] [--keep] [--l2] [--work DIR] [FILE.cs|DIR ...]` (default: the C# corpus,
+`tests/translate/corpus/csharp`, one program per file) lowers each program, writes it, compiles it with the host compiler, runs it beside the
+C# program (csc and the installed runtime) and compares standard output and exit code. `--keep` leaves the working folder (Roslyn dumps,
+`cpp/<Program>.cpp`, both runs' output); `--l2` writes the IR. Its tests are `translate.judge_cs_cpp.*` (`native/cb/translate/judge_cs_cpp_command_test.cpp`).
+
+**Scoreboard** (2026-11-14; `lowers` = no Unsupported node, `writes` = the back end declined nothing, `compiles` = built with `-std=c++17`
+(g++ 15, clang 22 of Visual Studio, MSVC 14.51), `agrees` = same output and exit code as the C# on .NET 9):
+
+| program | what it exercises | before | after: lowers | writes | compiles | agrees |
+|---|---|---|---|---|---|---|
+| Accounts | inheritance, abstract/override properties, custom exception, try/catch/finally, switch on string and int, char arithmetic, wrapping | not written | yes | yes | yes | yes |
+| Bank | enum, struct with value semantics, `using`/IDisposable, rethrow, `ToString("D2")`, `GetType().Name` | not written | yes | yes | yes | yes |
+| Generics | generic class with constraint, generic method, `Func`/`Action`, declared delegate, closures, method group, indexer, `Dictionary` | not written | yes | yes | yes | yes |
+| Inventory | top-level statements, interface default member, operators, implicit conversion, extension method, `ref`/`out`, `lock` | not written | yes | yes | yes | yes |
+| Linq | `Where/Select/OrderBy/Sum/Count/Any/First/Range/ToList/ToArray`, query syntax, object and collection initialisers | not written | yes | yes | yes | yes |
+| Numbers | wrapping, `checked`, shifts, unsigned, narrowing, division of negatives, float-to-int, compound assignment, evaluation order | not written | yes | yes | yes | yes |
+| Records | positional records (`==`, `Equals`, `ToString`), type/property/relational patterns, switch expression, `int?`, `??`, `?.`, `as` | not written | yes | yes | yes | yes |
+| Shapes | classes, interface, abstract and virtual members, static counter, `List<T>`, `foreach`, interpolation | not written | yes | yes | yes | yes |
+| Sieve | arrays (1-D, jagged, rectangular), recursion, `goto`, static constructor, nested class, constants | not written | yes | yes | yes | yes |
+| Text | `StringBuilder`, string methods, `char` tests, `Dictionary<char,int>`, `string.Format`, `CompareOrdinal` | not written | yes | yes | yes | yes |
+| Collections (`tests/translate/corpus/csharp_cpp`, written for this back end) | binary tree, `Dictionary` iteration, struct arrays, enum switch, number formatting, `Array.Sort`, `Sum/Min/Max` | not written | yes | yes | yes | yes |
+| Misc (same folder) | abstract classes, generic class with indexer, `out` variables, type pattern, failed cast, `IndexOutOfRangeException` | not written | yes | yes | yes | yes |
+
+Before (2026-11-14 morning): all ten lowered to IR; none had a C++17 back end (the L2 emitter declines `csharp`), and the older C#
+-> C++03 path (`dotnet/cs2cpp`) wrote Shapes and refused the rest. Now 10 of 10 (and the two extra programs) agree on all three compilers. What the front end still refuses (so no program with it reaches
+the back end): interpolation with a format or alignment (`{x:F2}`), `yield`, `decimal`, `await`, tuples, local functions, events.
+
 ## Still open
 
 0. **L2's segment and pointer types** are agreed with the "Windows 95" session (decompiler phase 2)

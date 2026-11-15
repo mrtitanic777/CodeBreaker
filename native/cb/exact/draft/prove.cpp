@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
-#include <process.h>
 
 #include <nlohmann/json.hpp>
 
@@ -361,7 +360,7 @@ void Priors::learn(const std::vector<std::string>& kinds, std::string_view refin
     }
     try {
         fs::make_dirs(file_.parent_path());
-        const std::filesystem::path temp = file_.string() + "." + std::to_string(_getpid()) + ".tmp";
+        const std::filesystem::path temp = file_.string() + "." + std::to_string(fs::process_id()) + ".tmp";
         json::save(temp, out, json::Style::Compact);
         std::error_code ec;
         std::filesystem::rename(temp, file_, ec);   // (a replace: the old file is gone only when the new one is whole)

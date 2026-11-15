@@ -10,6 +10,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/emulate/native_shadow.hpp"
 #include "cb/verify/lanes/win32_internal.hpp"
+#include "cb/verify/stage_timer.hpp"
 
 namespace cb::verify::lanes::win32 {
 
@@ -285,16 +286,22 @@ std::pair<std::vector<Vector>, std::shared_ptr<concolic::Stats>> explore_vectors
 
 std::vector<Vector> directed_and_guided(const Context& context, std::uint64_t func, const std::set<std::int64_t>& reached, const Shape& shape,
                                         std::shared_ptr<concolic::Stats>* found) {
-    std::vector<Vector> d = directed_vectors(context, func, reached, shape);
+    std::vector<Vector> d;
+    {
+        const StageTimer timer("judge.directed");
+        d = directed_vectors(context, func, reached, shape);
+    }
     std::vector<Vector> seeds = Win32Lane::vectors();
     for (Vector& v : Win32Lane::confirm_vectors()) seeds.push_back(std::move(v));
     seeds.insert(seeds.end(), d.begin(), d.end());
     if (lane_common::guided_on() && lane_common::concolic_on() && context.lifter != nullptr) {
+        const StageTimer timer("judge.explore (concolic)");
         auto [kept, got] = explore_vectors(context, func, std::move(seeds), shape);
         if (found != nullptr) *found = got;
         d.insert(d.end(), kept.begin(), kept.end());
         return d;
     }
+    const StageTimer timer("judge.guided");
     const std::vector<Vector> guessed = guided_vectors(context, func, seeds, shape);
     d.insert(d.end(), guessed.begin(), guessed.end());
     return d;

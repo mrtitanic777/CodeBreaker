@@ -53,7 +53,7 @@ CB_TEST("engine.lane_kit.the_kit_is_made_of_the_settings_and_says_which_lanes_it
     // the lanes that can be wired are filed under the corpus's names for them; the Java lane is wired when a host C++ compiler is set up, and says what it needs when not
     for (const std::string& name : names)
         CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc" || name == "dos" || name == "nes" || name == "sms" || name == "gb" ||
-                 name == "genesis" || name == "zx" || name == "msx" || name == "java");
+                 name == "genesis" || name == "ps1" || name == "zx" || name == "msx" || name == "java");
     CB_CHECK(std::find(names.begin(), names.end(), "gb") != names.end());   // (the machines need no tools but CodeBreaker's own)
     CB_CHECK(!LaneKit::java_missing().empty());
     // a lane made again is the same lane: one decompiler, one builder, one knowledge base

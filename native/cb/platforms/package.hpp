@@ -38,10 +38,10 @@
 namespace cb::platforms {
 
 // ---- the descriptors' vocabulary --------------------------------------------------------------------------------
-enum class Id { Java, Xbox360, Xbox, Nes, Sms, Gb, Genesis, Zx, Msx, Win32, Win16, Vxd, Dos };
+enum class Id { Java, Xbox360, Xbox, Nes, Sms, Gb, Genesis, Ps1, Zx, Msx, Win32, Win16, Vxd, Dos };
 
 // The order platforms are tried in.
-inline constexpr std::array<Id, 13> kOrder = {Id::Java, Id::Xbox360, Id::Xbox, Id::Nes,   Id::Sms,   Id::Gb, Id::Genesis,
+inline constexpr std::array<Id, 14> kOrder = {Id::Java, Id::Xbox360, Id::Xbox, Id::Nes,   Id::Sms,   Id::Gb, Id::Genesis, Id::Ps1,
                                               Id::Zx,   Id::Msx,     Id::Win32, Id::Win16, Id::Vxd, Id::Dos};
 
 // The descriptor's name ("win32", "xbox360", ...), and back.
@@ -54,7 +54,7 @@ enum class SourceLanguage { C, Asm, CorAsm, JavaToCxx };
 std::string_view source_text(SourceLanguage s);   // "c", "asm", "c or asm", "java -> c++"
 
 // Own decoders (CodeBreaker's, not Capstone's): the decompiler's module for the processor.
-enum class OwnDecoder { Z80, Sm83, M6502, M68k, Jar, PowerPc };
+enum class OwnDecoder { Z80, Sm83, M6502, M68k, Mips, Jar, PowerPc };
 struct CapstoneDecoder {
     Arch arch = Arch::X86;
     unsigned bits = 16;
@@ -145,7 +145,7 @@ struct MachineSpec {
 };
 Platform machine(const MachineSpec& spec);
 
-// The descriptors this module holds (the others are in their own files: dos, msx, java, win16, vxd, nes, sms, gb, genesis).
+// The descriptors this module holds (the others are in their own files: dos, msx, java, win16, vxd, nes, sms, gb, genesis, ps1).
 Platform xbox360();   // PowerPC code (Xenon) in a big-endian PE image inside a XEX2 container
 Platform xbe();       // the original Xbox: x86 code in an XBE (it goes down the 32-bit Windows lane as a PE image)
 Platform win32();     // PE images for the 386 and later (machine type 0x14C)
@@ -164,7 +164,7 @@ struct Probes {
     std::function<std::optional<ExeKind>(const Path&)> kind;                // that, and DOS for a headerless .COM or driver
     std::function<std::optional<std::uint16_t>(const Path&)> pe_machine;    // a PE image's machine type
     std::function<bool(const Path&)> holds_drivers;                         // an LE/LX image, or a W3 bundle (vmm32.vxd)
-    std::function<bool(const Path&)> is_xex, is_nes, is_sms, is_gb, is_genesis, is_msx, is_zx;
+    std::function<bool(const Path&)> is_xex, is_nes, is_sms, is_gb, is_genesis, is_ps1, is_msx, is_zx;
     std::function<bool(const Path&)> is_java_module;                        // a folder or .java file the Java lane takes
     std::function<Path(const Path&)> xex_basefile;                          // the image a XEX2 container holds
     std::function<Path(const Path&)> xbe_to_pe;                            // the PE image an XBE becomes

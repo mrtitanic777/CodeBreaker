@@ -183,7 +183,7 @@ CB_TEST("formats.cab.file_times_come_from_the_cabinet", [] {
     fs::ScopedTempDir dir("cab-test");
     const auto got = extract(testdata("set_a.cab"), dir.path());
     // date 23915 = 2026-11-11, time 6860 = 03:22:24 (local time, the DOS way)
-    const auto sys = std::chrono::clock_cast<std::chrono::system_clock>(std::filesystem::last_write_time(got[0].path));
+    const auto sys = std::chrono::clock_cast<std::chrono::system_clock>(cb::fs::last_write_time(got[0].path));
     const std::time_t t = std::chrono::system_clock::to_time_t(sys);
     std::tm tm{};
     localtime_s(&tm, &t);

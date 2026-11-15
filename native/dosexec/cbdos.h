@@ -16,7 +16,11 @@
 extern "C" {
 #endif
 
+#ifdef _WIN32
 #define CBD_API __declspec(dllexport)
+#else
+#define CBD_API __attribute__((visibility("default")))
+#endif
 
 /* why a run raised (dos.run's exception, by the Python class it would have been) */
 enum {

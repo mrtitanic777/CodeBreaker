@@ -15,10 +15,12 @@
 #include "cb/knowledge/package.hpp"
 #include "cb/knowledge/store.hpp"
 #include "cb/store/knowledge_bodies.hpp"
+#include "cb/store/knowledge_proposals.hpp"
 #include "cb/symbols/environment.hpp"
 #include "cb/symbols/identify.hpp"
 #include "cb/symbols/names.hpp"
 #include "cb/symbols/ordinals.hpp"
+#include "cb/symbols/proposals.hpp"
 
 namespace cb::symbols {
 
@@ -35,6 +37,8 @@ public:
     const ordinals::Ordinals& ordinals();
     identify::Identifier& identifier();
     store::BodyStore& bodies();
+    store::ProposalStore& proposal_store();
+    proposals::Proposals& proposer();
     names::Namer& namer();
 
 private:

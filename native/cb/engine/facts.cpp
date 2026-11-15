@@ -139,7 +139,7 @@ Database::Database(stdfs::path path) : path_(std::move(path)), impl_(std::make_u
     for (const auto statement : text::split(kSchema, ';'))
         if (!text::trim(statement).empty()) impl_->conn.exec(statement);
     std::error_code ec;
-    stdfs::last_write_time(path_, stdfs::file_time_type::clock::now(), ec);   // when it was last opened: the cap goes by it
+    cb::fs::set_last_write_time(path_, stdfs::file_time_type::clock::now(), ec);   // when it was last opened: the cap goes by it
 }
 
 Database::~Database() = default;
@@ -314,7 +314,7 @@ std::string Databases::sha_of(const stdfs::path& binary) {
     std::error_code ec;
     const std::uint64_t size = stdfs::file_size(binary, ec);
     if (ec) throw NotFoundError(binary, ec.value(), "cannot stat");
-    const stdfs::file_time_type mtime = stdfs::last_write_time(binary, ec);
+    const stdfs::file_time_type mtime = cb::fs::last_write_time(binary, ec);
     const auto seen = std::make_tuple(norm(binary), size, static_cast<std::int64_t>(mtime.time_since_epoch().count()));
     {
         const std::lock_guard<std::mutex> g(mutex_);
@@ -392,7 +392,7 @@ std::vector<DatabaseFile> Databases::databases(const std::optional<stdfs::path>&
         const std::string name = e.path().filename().string();
         if (!name.ends_with(".sqlite") || name == "knowledge.sqlite") continue;
         std::error_code tec;
-        const auto mtime = stdfs::last_write_time(e.path(), tec);
+        const auto mtime = cb::fs::last_write_time(e.path(), tec);
         if (tec) continue;
         out.push_back({e.path(), size_with_sidecars(e.path()), to_seconds(mtime)});
     }

@@ -81,7 +81,8 @@ public:
         std::chrono::milliseconds banner_timeout{2000};    // how long to listen for what the monitor says first
     };
 
-    explicit Monitor(std::uint16_t port, Pacing pacing = {}) : port_(port), pacing_(pacing) {}
+    explicit Monitor(std::uint16_t port) : port_(port) {}
+    Monitor(std::uint16_t port, Pacing pacing) : port_(port), pacing_(pacing) {}
     std::uint16_t port() const { return port_; }
 
     // Connect, hear what the monitor says first, send each command (a line) and wait after it. False when the monitor

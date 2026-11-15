@@ -124,7 +124,8 @@ build::definitions::Interface kit_interface_of(const stdfs::path& file, bool six
 verify::gate16::IsolatedTables kit_tables_of(const decompile::c_text::Module16& m) {
     verify::gate16::IsolatedTables out;
     if (m.description) {
-        for (const std::string_view line : text::lines(fs::read_text(m.description->path))) {
+        const std::string description = fs::read_text(m.description->path);   // (the lines are views into it)
+        for (const std::string_view line : text::lines(description)) {
             const std::vector<std::string_view> p = text::split(line, '\t');
             if (p.size() > 4 && p[0] == "F") {
                 const std::string_view pop = p[3];

@@ -5,6 +5,7 @@
 //
 // Design notes: the command table is cb/app's catalog (a command's synopsis and summary)
 // module docstring, so `commands` and `command_help` answer the catalog's words.
+#include <cstdio>
 #include <nlohmann/json.hpp>
 
 #include "cb/base/config.hpp"
@@ -37,6 +38,12 @@ struct SvcFixture {
     service::ServiceLink link{service, {.mode = service::Mode::Off, .start = false, .local = true, .owner = "pid-test"}};
     Server server{service, link, standard_services(config, *corpus)};
 
+    // The recorded answers name imports from the Windows 95 corpus: a machine without it skips them.
+    bool has_corpus() const {
+        const bool here = sfs::is_directory(config.path("corpus").value_or(sfs::path()));
+        if (!here) std::fprintf(stderr, "  (the corpus is not here: not run)\n");
+        return here;
+    }
     std::pair<std::string, bool> call(const char* tool, Json arguments) {
         const Json r = server.handle(Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"}, {"params", Json{{"name", tool}, {"arguments", std::move(arguments)}}}});
         return {r["result"]["content"][0]["text"].get<std::string>(), r["result"]["isError"].get<bool>()};
@@ -64,6 +71,7 @@ CB_TEST("ui.mcp.standard_services_fill_every_service", [] {
 
 CB_TEST("ui.mcp.the_code_is_read_as_recorded", [] {
     SvcFixture f;
+    if (!f.has_corpus()) return;   // (the 16-bit modules' names come from the corpus's KERNEL, USER and GDI)
     const std::string lz32 = data("lz32.dll"), expand = data("lzexpand.dll"), find = data("find.exe");
     // a 32-bit function whole, and from an address for a number of instructions
     CB_CHECK_EQ(f.call("disasm", Json{{"module", lz32}, {"addr", "bfea1000"}}).first, f.recorded("call 17 disasm"));
@@ -122,6 +130,7 @@ CB_TEST("ui.mcp.one_function_is_decompiled_now_as_recorded", [] {
     SvcFixture f;
     // (the decompiler is the checkout's program: without it there is nothing to ask)
     if (!sfs::exists(f.config.path("decompiler_bin").value_or(sfs::path()) / "decompiler.exe")) return;
+    if (!f.has_corpus()) return;
     const std::string lz32 = data("lz32.dll"), expand = data("lzexpand.dll");
     CB_CHECK_EQ(f.call("decompile_function", Json{{"module", lz32}, {"addr", "bfea1000"}}).first, f.recorded("call 34 decompile_function"));   // a 32-bit function by itself
     CB_CHECK_EQ(f.call("decompile_function", Json{{"module", expand}, {"addr", "1:0000"}}).first, f.recorded("call 35 decompile_function"));   // cut out of its module's C

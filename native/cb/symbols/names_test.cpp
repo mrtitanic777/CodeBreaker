@@ -7,8 +7,15 @@
 // Namer; the .SYM files of a name are tried in the order of their paths; a damaged .SYM or CodeView block gives no names.
 #include "cb/symbols/names.hpp"
 
+#include "cb/analyze/function_evidence.hpp"
+#include "cb/knowledge/store.hpp"
+#include "cb/store/knowledge_bodies.hpp"
+#include "cb/store/knowledge_proposals.hpp"
+#include "cb/symbols/proposals.hpp"
+
 #include <algorithm>
 #include <format>
+#include <set>
 
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -734,4 +741,165 @@ CB_TEST("symbols.names.the_command_refuses_what_it_cannot_do", [] {
     CB_CHECK_EQ(with.run(std::vector<std::string>{"--ordinals", "a.def", "b.lib"}), 0);
     CB_CHECK_EQ(got.size(), 2U);
     CB_CHECK(got[1] == stdfs::path("b.lib"));
+});
+
+// ---- proposed names ---------------------------------------------------------------------------------------------------------------------------
+
+namespace {
+
+// The knowledge base's body store and proposal store over a folder of their own, and the real facts of a module (analyze/function_evidence).
+struct ProposingWorld {
+    World w;
+    cb::knowledge::Store kb{w.dir.path() / "db" / "knowledge.v2.sqlite", cb::knowledge::DataFolders::under(stdfs::path(CB_SOURCE_DIR).parent_path())};
+    cb::store::KnowledgeBodies bodies{kb};
+    cb::store::KnowledgeProposals proposals{kb};
+
+    nm::Namer::Services services(bool shared = true) {
+        nm::Namer::Services s = w.services(false);
+        if (shared) {
+            s.bodies = &bodies;
+            s.proposals = &proposals;
+        }
+        return s;
+    }
+    static std::vector<cb::symbols::FunctionEvidence> evidence(const stdfs::path& module) {
+        cb::analyze::report::Environment environment;
+        return cb::analyze::function_evidence::of_module(module, environment);
+    }
+    cb::symbols::proposals::Proposals::Services proposing(nm::Namer& namer) {
+        return {namer, proposals, *w.corpus, [](const stdfs::path& module) { return evidence(module); }};
+    }
+};
+
+std::set<std::string> names_of(const nm::ModuleNames& m) {
+    std::set<std::string> out;
+    for (const nm::FunctionName& f : m.functions) out.insert(f.name);
+    return out;
+}
+
+}  // namespace
+
+CB_TEST("symbols.names.proposals_over_the_real_modules_are_valid_unique_and_not_names", [] {
+    ProposingWorld p;
+    nm::Namer namer(p.services());
+    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    for (const stdfs::path& module : {p.w.lz16, p.w.lz32}) {
+        const nm::ModuleNames before = namer.of_module(module);
+        const auto made = proposing.propose(module);
+        std::set<std::string> seen;
+        for (const auto& proposal : made) {
+            CB_CHECK(cb::symbols::proposals::valid_name(proposal.name));
+            CB_CHECK(seen.insert(proposal.name).second);              // one name to a function
+            CB_CHECK(!names_of(before).contains(proposal.name));      // and not one a function has
+            CB_CHECK_EQ(proposal.source, "proposal");
+            CB_CHECK(!proposal.description.empty());
+            CB_CHECK(!proposal.evidence.empty());
+            CB_CHECK(proposal.confidence >= 0 && proposal.confidence <= 100);
+        }
+        // not names: the listing is the same but for what it says is proposed
+        const nm::ModuleNames after = namer.of_module(module);
+        CB_CHECK_EQ(after.functions.size(), before.functions.size());
+        std::size_t shown = 0;
+        for (std::size_t i = 0; i < after.functions.size(); ++i) {
+            CB_CHECK_EQ(after.functions[i].name, before.functions[i].name);
+            CB_CHECK_EQ(after.functions[i].source, before.functions[i].source);
+            shown += after.functions[i].proposed.has_value() ? 1 : 0;
+        }
+        CB_CHECK_EQ(shown, made.size());
+        CB_CHECK_EQ(proposing.propose(module).size(), made.size());   // proposing again finds the same
+    }
+});
+
+CB_TEST("symbols.names.accepting_a_name_changes_what_names_shows_and_nothing_the_judge_reads", [] {
+    ProposingWorld p;
+    nm::Namer namer(p.services());
+    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    // What the judge's side reads: the decompiler's namer has no body store (decompile/environment.cpp), and the facts the analyses read of the code.
+    nm::Namer decompilers(p.services(false));
+    for (const stdfs::path& module : {p.w.lz16, p.w.lz32}) {
+        const nm::ModuleNames judge_before = decompilers.of_module(module);
+        const auto evidence_before = ProposingWorld::evidence(module);
+        const auto bodies_before = namer.bodies(module);
+        const nm::ModuleNames shown_before = namer.of_module(module);
+
+        const auto made = proposing.propose(module);
+        const std::size_t taken = proposing.accept_all(module, 0);   // every one, whatever its confidence
+        CB_CHECK_EQ(taken, made.size());
+
+        // unchanged: the bytes' digests, the facts the analyses read, the decompiler's names
+        CB_CHECK(bodies_before == namer.bodies(module));
+        CB_CHECK(evidence_before == ProposingWorld::evidence(module));
+        const nm::ModuleNames judge_after = decompilers.of_module(module);
+        CB_CHECK_EQ(judge_before.functions.size(), judge_after.functions.size());
+        for (std::size_t i = 0; i < judge_before.functions.size(); ++i) {
+            CB_CHECK_EQ(judge_before.functions[i].name, judge_after.functions[i].name);
+            CB_CHECK_EQ(judge_before.functions[i].source, judge_after.functions[i].source);
+        }
+
+        // changed: the names of exactly the functions that were proposed a name, and where they come from
+        const nm::ModuleNames shown_after = namer.of_module(module);
+        std::set<std::string> proposed_keys;
+        for (const auto& proposal : made) proposed_keys.insert(proposal.key);
+        std::size_t renamed = 0;
+        for (std::size_t i = 0; i < shown_after.functions.size(); ++i) {
+            const nm::FunctionName& was = shown_before.functions[i];
+            const nm::FunctionName& is = shown_after.functions[i];
+            if (!proposed_keys.contains(is.key)) {
+                CB_CHECK_EQ(is.name, was.name);
+                continue;
+            }
+            ++renamed;
+            CB_CHECK(is.name != was.name);
+            CB_CHECK(is.source.find("accepted proposal") != std::string::npos);
+            CB_CHECK(!is.proposed.has_value());
+        }
+        CB_CHECK_EQ(renamed, made.size());
+    }
+});
+
+CB_TEST("symbols.names.a_rejected_proposal_stays_rejected_and_is_not_made_again", [] {
+    ProposingWorld p;
+    nm::Namer namer(p.services());
+    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    const auto made = proposing.propose(p.w.lz32);
+    CB_CHECK(!made.empty());
+    const std::string key = made.front().key;
+    const auto address = *nm::parse_address(key);
+    CB_CHECK(proposing.reject(p.w.lz32, address));
+    CB_CHECK(!proposing.reject(p.w.lz32, address));   // (once)
+    CB_CHECK(!proposing.accept(p.w.lz32, address));
+    CB_CHECK_EQ(proposing.propose(p.w.lz32).size(), made.size() - 1);
+    CB_CHECK(p.proposals.get(namer.module_sha(p.w.lz32), key)->state == cb::store::ProposalState::Rejected);
+});
+
+CB_TEST("symbols.names.an_assistants_suggestion_is_stored_apart_and_checked", [] {
+    ProposingWorld p;
+    nm::Namer namer(p.services());
+    cb::symbols::proposals::Proposals proposing(p.proposing(namer));
+    // a function nothing names (LZEXPAND's 1:0000)
+    const auto address = static_cast<nm::Address>(cb::decompile::describe::address(1, 0));
+    const auto stored = proposing.suggest(p.w.lz16, address, "InitHeader", "Reads the file header.", 70);
+    CB_CHECK_EQ(stored.rule, "assistant");
+    CB_CHECK_EQ(stored.confidence, 70);
+    CB_CHECK(stored.state == cb::store::ProposalState::Proposed);
+    CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, address, "bad name", "", 70));
+    CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, address, "Fine", "", 101));
+    // an exported function has its name already
+    const auto exported = static_cast<nm::Address>(cb::decompile::describe::address(2, 0));
+    CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, exported, "Other", "", 50));
+    // a name another function has
+    const auto second = static_cast<nm::Address>(cb::decompile::describe::address(1, 0xb2));
+    CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, second, "InitHeader", "", 50));
+    // the rules leave an assistant's proposal alone
+    (void)proposing.propose(p.w.lz16);
+    CB_CHECK_EQ(p.proposals.get(namer.module_sha(p.w.lz16), namer.key_of(p.w.lz16, address))->rule, "assistant");
+    CB_CHECK(proposing.accept(p.w.lz16, address));
+    CB_CHECK_EQ(namer.of_module(p.w.lz16).functions.front().name, "InitHeader");
+});
+
+CB_TEST("symbols.names.the_proposal_options_need_what_they_are_given", [] {
+    World w;
+    nm::Namer namer(w.services());
+    cb::testing::CapturedStd out;
+    CB_CHECK_THROWS_AS(cb::UsageError, (void)namer.run(std::vector<std::string>{"lzexpand.dll", "--propose"}));
 });

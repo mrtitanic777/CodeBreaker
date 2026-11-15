@@ -193,7 +193,7 @@ Bytes dos_read_when_free(const stdfs::path& path) {
 
 Bytes DiskCache::read(const stdfs::path& path) {
     std::error_code ec;
-    const auto modified = stdfs::last_write_time(path, ec);
+    const auto modified = cb::fs::last_write_time(path, ec);
     const std::uint64_t size = ec ? 0 : stdfs::file_size(path, ec);
     if (ec) throw NotFoundError(path, 2, "not found");
     const std::string key = MemFS::key(path);

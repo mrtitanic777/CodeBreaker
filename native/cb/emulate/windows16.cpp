@@ -792,7 +792,7 @@ struct Runner::Impl {
         std::error_code ec;
         const std::uint64_t size = std::filesystem::file_size(path, ec);
         if (ec) throw NotFoundError(path, ec.value());
-        const std::int64_t stamp = std::filesystem::last_write_time(path, ec).time_since_epoch().count();
+        const std::int64_t stamp = cb::fs::last_write_time(path, ec).time_since_epoch().count();
         if (ec) throw NotFoundError(path, ec.value());
         const auto key = std::make_tuple(path.lexically_normal().generic_string(), size, stamp);
         {

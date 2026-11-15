@@ -186,7 +186,7 @@ CB_TEST("engine.facts.databases_are_per_binary_and_one_open_per_file", [] {
     const auto binary = dir.path() / "prog.exe";
     fs::write_file(binary, as_bytes("MZ not really a program"));
     std::error_code ec;
-    std::filesystem::last_write_time(binary, std::filesystem::file_time_type::clock::now() - std::chrono::hours(1), ec);
+    cb::fs::set_last_write_time(binary, std::filesystem::file_time_type::clock::now() - std::chrono::hours(1), ec);
     // (the SHA-256 of those 23 bytes)
     const std::string sha = dbs.sha_of(binary);
     CB_CHECK_EQ(sha, crypto::to_hex(crypto::sha256(as_bytes("MZ not really a program"))));
@@ -219,7 +219,7 @@ CB_TEST("engine.facts.the_cap_removes_the_oldest_closed_database", [] {
             db->write("k", "1", payload, "s", "v", {});
         }
         std::error_code ec;
-        std::filesystem::last_write_time(dir.path() / name, std::filesystem::file_time_type::clock::now() - std::chrono::hours(hours_ago), ec);
+        cb::fs::set_last_write_time(dir.path() / name, std::filesystem::file_time_type::clock::now() - std::chrono::hours(hours_ago), ec);
     };
     make("old.sqlite", 30);
     make("middle.sqlite", 20);

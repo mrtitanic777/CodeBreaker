@@ -131,7 +131,7 @@ void digest(const emu::Trace* run, Observation& out) {
     for (const auto& c : rec.calls) {   // a call through a register or a table that ended up in the module's own code
         if (!c.indirect() || !c.resolved_target || *c.resolved_target == 0 || c.external) continue;
         const Indirect found{static_cast<Va>(c.pc), static_cast<Va>(*c.resolved_target)};
-        if (std::find(out.indirect.begin(), out.indirect.end(), found) == out.indirect.end()) out.indirect.push_back(found);
+        if (std::none_of(out.indirect.begin(), out.indirect.end(), [&](const auto& i) { return i == found; })) out.indirect.push_back(found);
     }
     if (rec.api_calls) {
         for (const emulate::native_trace::ApiCall& call : *rec.api_calls) {

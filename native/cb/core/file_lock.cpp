@@ -1,3 +1,5 @@
+// The Windows implementation of cb/core/file_lock.hpp (LockFileEx on a byte far past the holder text).
+#ifdef _WIN32
 #include "cb/core/file_lock.hpp"
 
 #include <format>
@@ -93,3 +95,5 @@ std::optional<FileLock> acquire(const std::filesystem::path& file, const std::fu
 }
 
 }  // namespace cb::file_lock
+
+#endif  // _WIN32

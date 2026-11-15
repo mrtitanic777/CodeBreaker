@@ -135,7 +135,7 @@ place-usage: place
 # --- the verdicts: module, measure, match, repair, teeth, score16, versions, sweep -----------------------------------------------
 module-pe: module {fmt}/lz32.dll --out {out} @timeout=300 @mask="\(\d+s: [^)]*\)" @mask="verifier settings [0-9a-f]{12}"
 module-usage: module --help
-scoreboard: scoreboard --out {out} @mask="verifier settings [0-9a-f]{12}"
+scoreboard: scoreboard --out {out} @mask="(?m)^Generated .*$"
 measure-pe: measure {fmt}/lz32.dll @timeout=300 @mask="\(\d+s: [^)]*\)"
 measure-usage: measure --help
 match-pe: match {fmt}/lz32.dll

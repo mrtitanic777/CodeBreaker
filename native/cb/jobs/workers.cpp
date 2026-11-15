@@ -8,7 +8,6 @@
 #include "cb/core/text.hpp"
 #include "cb/core/win.hpp"
 
-#include <windows.h>
 
 namespace cb::jobs {
 
@@ -63,16 +62,7 @@ WorkerLauncher::WorkerLauncher(std::filesystem::path exe) : exe_(std::move(exe))
 }
 
 WorkerLauncher WorkerLauncher::for_this_program() {
-    std::wstring buf(MAX_PATH, L'\0');
-    for (;;) {
-        const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
-        if (n == 0) return WorkerLauncher({});
-        if (n < buf.size()) {
-            buf.resize(n);
-            return WorkerLauncher(std::filesystem::path(buf));
-        }
-        buf.resize(buf.size() * 2);   // truncated: a long path
-    }
+    return WorkerLauncher(fs::executable_path());
 }
 
 std::vector<std::string> WorkerLauncher::command(std::string_view kind, const Args& args) const {

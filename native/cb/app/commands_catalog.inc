@@ -72,6 +72,7 @@
     {"regress", "regress <all15|setup|slow> [--runs N] [--vms N]", "the milestone regression: the 15 MINI.CAB modules rebuilt and booted to Setup's License page, the Setup chain, the slow cases"},
     {"migrate-state", "migrate-state [--dry]", "carry what the Python-driven program kept (judged results, the knowledge base) to where this program reads it"},
     {"judge-c-java", "judge-c-java roundtrip [--keep] [--work DIR] [--main CLASS] [FILE.java ...]", "Java -> C++ -> Java on the JVM: the Java lane's C++ read back by clang, mapped back onto Java's library, written as Java, original against round-tripped"},
+    {"judge-cs-cpp", "judge-cs-cpp [--cxx gcc|clang|msvc|PATH] [--keep] [--work DIR] [--l2] [FILE.cs|DIR ...]", "C# -> C++17 judged by running both: each program (default: the C# corpus) lowered by the Roslyn front end, written by the C++17 back end, compiled by the host C++ compiler and run beside the C# program; a score table (lowers, writes, compiles, agrees)"},
     {"java", "java <tool> ...", "the Java transpiler: a Java program as C++03 (convert, decompile, worklist, ...; `java --help` lists them)"},
     {"score16", "score16 [options]", "the 16-bit gate's scoreboard: each 16-bit module's C beside its own assembly"},
     {"exact", "exact <module> ...", "exact recovery: a module's functions rebuilt to the original's bytes"},

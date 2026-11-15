@@ -12,12 +12,15 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <format>
 #include <functional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
+
+#include "cb/core/sys.hpp"
 
 namespace cb::testing {
 
@@ -62,10 +65,7 @@ public:
 
 private:
     std::filesystem::path dir_;
-    void* saved_out_ = nullptr;
-    void* saved_err_ = nullptr;
-    void* out_ = nullptr;
-    void* err_ = nullptr;
+    std::unique_ptr<sys::StreamRedirect> out_, err_;
 };
 
 // Run the registered tests; returns the process exit code. `main` of cb_tests calls this.

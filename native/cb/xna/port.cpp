@@ -116,11 +116,11 @@ void copy_over(const fs::path& src, const fs::path& dst) {
         } else if (e.is_regular_file() && name != "overlay.json") {
             const fs::path to = dst / name;
             if (fs::is_regular_file(to, ec) && fs::file_size(to) == fs::file_size(e.path())) {
-                const auto secs = [](const fs::path& p) { return std::chrono::duration_cast<std::chrono::seconds>(fs::last_write_time(p).time_since_epoch()).count(); };
+                const auto secs = [](const fs::path& p) { return std::chrono::duration_cast<std::chrono::seconds>(cb::fs::last_write_time(p).time_since_epoch()).count(); };
                 if (secs(to) == secs(e.path())) continue;
             }
             fs::copy_file(e.path(), to, fs::copy_options::overwrite_existing);
-            fs::last_write_time(to, fs::last_write_time(e.path()));
+            cb::fs::set_last_write_time(to, cb::fs::last_write_time(e.path()));
         }
     }
 }
@@ -277,9 +277,9 @@ fs::path stub_tool(const Tools& tools) {
     fs::create_directories(out);
     const fs::path exe = out / "apistubs.exe";
     fs::file_time_type newest{};
-    for (const char* f : {"Program.cs", "apistubs.csproj"}) newest = std::max(newest, fs::last_write_time(tools.apistubs_dir / f));
+    for (const char* f : {"Program.cs", "apistubs.csproj"}) newest = std::max(newest, cb::fs::last_write_time(tools.apistubs_dir / f));
     std::error_code ec;
-    if (!fs::is_regular_file(exe, ec) || fs::last_write_time(exe) < newest) {
+    if (!fs::is_regular_file(exe, ec) || cb::fs::last_write_time(exe) < newest) {
         const process::ProcessResult r = process::run({.argv = {"dotnet", "build", tools.apistubs_dir.string(), "-c", "Release", "-o", out.string(), "--nologo", "-v", "q"},
                                                        .env = dotnet_env(),
                                                        .err = process::Capture::Merge});

@@ -122,9 +122,9 @@ CB_TEST("java.analyze.newest_build_log_picks_the_most_recent", [] {
     cb::fs::write_text(tmp.path() / "other.log", "x");
     cb::fs::write_text(tmp.path() / "build_alpha_x.txt", "x");
     const auto now = std::filesystem::file_time_type::clock::now();
-    std::filesystem::last_write_time(tmp.path() / "build_alpha_old.log", now - std::chrono::hours(2));
-    std::filesystem::last_write_time(tmp.path() / "build_alpha_new.log", now - std::chrono::hours(1));
-    std::filesystem::last_write_time(tmp.path() / "other.log", now);   // newer, but not a build_alpha log
+    cb::fs::set_last_write_time(tmp.path() / "build_alpha_old.log", now - std::chrono::hours(2));
+    cb::fs::set_last_write_time(tmp.path() / "build_alpha_new.log", now - std::chrono::hours(1));
+    cb::fs::set_last_write_time(tmp.path() / "other.log", now);   // newer, but not a build_alpha log
     const auto newest = an::newest_build_log(tmp.path());
     CB_CHECK(newest && newest->filename() == "build_alpha_new.log");
 });

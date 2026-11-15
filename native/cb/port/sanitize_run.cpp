@@ -54,7 +54,7 @@ std::string sanitize_key(const stdfs::path& out, const stdfs::path& cases, const
                 if (!port.empty() && stdfs::is_regular_file(p, ec)) {
                     parts.emplace_back(name);
                     parts.emplace_back(static_cast<std::uint64_t>(stdfs::file_size(p, ec)));
-                    parts.emplace_back(static_cast<std::int64_t>(stdfs::last_write_time(p, ec).time_since_epoch().count()));
+                    parts.emplace_back(static_cast<std::int64_t>(cb::fs::last_write_time(p, ec).time_since_epoch().count()));
                 }
             }
         }

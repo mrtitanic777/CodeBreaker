@@ -1,6 +1,5 @@
 #include "cb/jobs/pool.hpp"
 
-#include <windows.h>
 
 #include <nlohmann/json.hpp>
 
@@ -13,6 +12,7 @@
 #include "cb/core/json.hpp"
 #include "cb/core/parallel.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/sys.hpp"
 
 namespace cb::jobs {
 
@@ -53,7 +53,7 @@ TaskRun run_tasks(int jobs, std::size_t n, const std::function<void()>& init, bo
     const std::size_t threads = std::min<std::size_t>(static_cast<std::size_t>(std::max(1, jobs)), n);
     shared.live = threads;
     auto worker = [&] {
-        if (below_normal) SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);   // the thread, not the process
+        if (below_normal) cb::sys::lower_thread_priority();   // the thread, not the process
         bool ok = true;
         if (init) {
             try {

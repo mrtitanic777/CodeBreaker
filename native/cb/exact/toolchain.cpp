@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cctype>
 #include <format>
-#include <process.h>
 
 #include <nlohmann/json.hpp>
 
@@ -626,7 +625,7 @@ Compiled Toolchain::compile_uncached(ByteView source_in, const modules::CompileO
 
     const stdfs::path w = stage();
     const std::uint64_t counter = context_.tags ? ++*context_.tags : ++local_tags_;
-    const std::string tag = std::format("T{:05}", (static_cast<std::uint64_t>(_getpid()) * 7 + counter) % 100000);
+    const std::string tag = std::format("T{:05}", (static_cast<std::uint64_t>(fs::process_id()) * 7 + counter) % 100000);
     const stdfs::path ix = w / "INCX";
     Bytes body = toolchain_crlf([&] {
         Bytes no_eof;

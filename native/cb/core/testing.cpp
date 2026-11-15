@@ -1,10 +1,9 @@
 #include "cb/core/testing.hpp"
 
-#include <windows.h>
 
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
-#include "cb/core/win.hpp"
+#include "cb/core/sys.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -71,30 +70,17 @@ void count_check() {
 }
 
 CapturedStd::CapturedStd() {
-    dir_ = fs::stdfs::temp_directory_path() /
-           fs::from_text("cbtest-capture-" + std::to_string(GetCurrentProcessId()) + "-" +
-                         std::to_string(GetTickCount64()) + "-" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
+    dir_ = fs::full_names(fs::stdfs::temp_directory_path()) / fs::from_text("cbtest-capture-" + fs::unique_suffix());
     fs::make_dirs(dir_);
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    auto open = [&](const char* name) {
-        return CreateFileW((dir_ / name).c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
-                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    };
-    out_ = open("out.txt");
-    err_ = open("err.txt");
     flush_out();
-    saved_out_ = GetStdHandle(STD_OUTPUT_HANDLE);
-    saved_err_ = GetStdHandle(STD_ERROR_HANDLE);
-    SetStdHandle(STD_OUTPUT_HANDLE, out_);
-    SetStdHandle(STD_ERROR_HANDLE, err_);
+    out_ = std::make_unique<sys::StreamRedirect>(sys::Stream::Out, dir_ / "out.txt");
+    err_ = std::make_unique<sys::StreamRedirect>(sys::Stream::Err, dir_ / "err.txt");
 }
 
 CapturedStd::~CapturedStd() {
     flush_out();
-    SetStdHandle(STD_OUTPUT_HANDLE, saved_out_);
-    SetStdHandle(STD_ERROR_HANDLE, saved_err_);
-    CloseHandle(out_);
-    CloseHandle(err_);
+    err_.reset();
+    out_.reset();
     std::error_code ec;
     std::filesystem::remove_all(dir_, ec);
 }
@@ -107,17 +93,17 @@ std::string CapturedStd::out() {
 std::string CapturedStd::err() { return fs::read_text(dir_ / "err.txt"); }
 
 std::filesystem::path data_path(std::string_view relative) {
-    return std::filesystem::path(CB_SOURCE_DIR) / "cb" / std::filesystem::path(win::to_wide(relative));
+    return std::filesystem::path(CB_SOURCE_DIR) / "cb" / fs::from_text(relative);
 }
 
 std::filesystem::path local_input(std::string_view relative) {
     const std::filesystem::path checkout = std::filesystem::path(CB_SOURCE_DIR).parent_path();
-    return (checkout / "binaries" / "test-inputs" / std::filesystem::path(win::to_wide(relative))).lexically_normal();
+    return (checkout / "binaries" / "test-inputs" / fs::from_text(relative)).lexically_normal();
 }
 
 std::filesystem::path beside_checkout(std::string_view relative) {
     const std::filesystem::path parent = std::filesystem::path(CB_SOURCE_DIR).parent_path().parent_path();
-    return (parent / std::filesystem::path(win::to_wide(relative))).lexically_normal();
+    return (parent / fs::from_text(relative)).lexically_normal();
 }
 
 int run_all(int argc, char** argv) {

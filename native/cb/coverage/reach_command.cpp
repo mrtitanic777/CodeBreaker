@@ -8,6 +8,7 @@
 #include "cb/formats/detect.hpp"
 #include "cb/formats/gb.hpp"
 #include "cb/formats/genesis.hpp"
+#include "cb/formats/psx.hpp"
 #include "cb/formats/msx.hpp"
 #include "cb/formats/nes.hpp"
 #include "cb/formats/pe.hpp"
@@ -17,6 +18,7 @@
 #include "cb/platforms/dos.hpp"
 #include "cb/platforms/gb.hpp"
 #include "cb/platforms/genesis.hpp"
+#include "cb/platforms/ps1.hpp"
 #include "cb/platforms/java.hpp"
 #include "cb/platforms/msx.hpp"
 #include "cb/platforms/nes.hpp"
@@ -85,6 +87,7 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_sms = [](const std::filesystem::path& p) { return formats::sms::probe(p); };
     probes.is_gb = [](const std::filesystem::path& p) { return formats::gb::probe(p); };
     probes.is_genesis = [](const std::filesystem::path& p) { return formats::genesis::probe(p); };
+    probes.is_ps1 = [](const std::filesystem::path& p) { return formats::psx::probe(p); };
     probes.is_msx = [](const std::filesystem::path& p) { return formats::msx::probe(p); };
     probes.is_zx = [](const std::filesystem::path& p) { return formats::zx::probe(p); };
     probes.is_java_module = [](const std::filesystem::path& p) { return verify::lanes::JavaLane::is_module(p); };
@@ -98,6 +101,7 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::msx());
     registry->add(platforms::zx());
     registry->add(platforms::genesis());
+    registry->add(platforms::ps1());
     registry->add(platforms::gb());
     registry->add(platforms::sms());
     registry->add(platforms::nes());

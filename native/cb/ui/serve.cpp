@@ -147,7 +147,7 @@ double epoch_seconds() { return std::chrono::duration<double>(std::chrono::syste
 CodeStamp code_stamp(const stdfs::path& program, const stdfs::path& settings_file) {
     const auto stamp = [](const stdfs::path& p) {
         std::error_code ec;
-        const auto time = stdfs::last_write_time(p, ec);
+        const auto time = cb::fs::last_write_time(p, ec);
         return ec ? std::int64_t{0} : static_cast<std::int64_t>(time.time_since_epoch().count());
     };
     CodeStamp out;

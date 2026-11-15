@@ -24,7 +24,7 @@ std::string preferred(stdfs::path p) { return p.make_preferred().string(); }
 // Copy a file, keeping its modification time (a rebuild goes by them).
 void copy_keeping_time(const stdfs::path& from, const stdfs::path& to) {
     stdfs::copy_file(from, to, stdfs::copy_options::overwrite_existing);
-    stdfs::last_write_time(to, stdfs::last_write_time(from));
+    cb::fs::set_last_write_time(to, cb::fs::last_write_time(from));
 }
 
 void copy_tree_keeping_times(const stdfs::path& from, const stdfs::path& to) {

@@ -504,7 +504,7 @@ std::int64_t legacy_rows(const stdfs::path& file) {
 }
 
 void set_age(const stdfs::path& p, int hours) {
-    stdfs::last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
+    cb::fs::set_last_write_time(p, stdfs::file_time_type::clock::now() - std::chrono::hours(hours));
 }
 
 CB_TEST("base.cache.legacy_files_are_listed_and_counted", [] {

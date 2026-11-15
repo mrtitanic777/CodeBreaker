@@ -1,7 +1,6 @@
 // cb/java/probe.cpp -- see probe.hpp.
 #include "cb/java/probe.hpp"
 
-#include <process.h>
 
 #include <algorithm>
 #include <cctype>
@@ -235,7 +234,7 @@ struct UnitResult {
 UnitResult compile_unit(const Toolchain& tools, const stdfs::path& cpp_dir, const stdfs::path& unit, const stdfs::path& obj) {
     std::error_code ec;
     if (stdfs::is_regular_file(obj, ec)) return {true, false, ""};
-    const stdfs::path tmp = obj.string() + "." + std::to_string(_getpid()) + ".tmp";
+    const stdfs::path tmp = obj.string() + "." + std::to_string(fs::process_id()) + ".tmp";
     std::vector<std::string> argv = {path_arg(tools.cxx), "-std=" + tools.cxx_std, "-w", "-O0", "-iquote", path_arg(cpp_dir)};
     if (tools.prefix) {
         argv.push_back("-include");
@@ -822,7 +821,7 @@ std::optional<stdfs::path> library(const Toolchain& tools, const stdfs::path& cp
         return r.ok ? std::optional(obj) : std::nullopt;
     });
     // (absolute: ar runs in the objects' folder, where a path relative to the caller's does not reach)
-    const stdfs::path tmp = stdfs::absolute(lib).string() + "." + std::to_string(_getpid()) + ".tmp";
+    const stdfs::path tmp = stdfs::absolute(lib).string() + "." + std::to_string(fs::process_id()) + ".tmp";
     // the member list in a file: the command line would be too long for Windows
     const stdfs::path listing = tmp.string() + ".rsp";
     std::string members;

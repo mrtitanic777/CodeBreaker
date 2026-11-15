@@ -1,33 +1,17 @@
 #include "cb/core/log.hpp"
 
-#include <windows.h>
-
 #include <atomic>
 #include <chrono>
+#include <format>
 #include <mutex>
 
 #include "cb/core/fs.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/text.hpp"
 
 namespace cb {
 
 namespace {
-
-// Write all bytes to a handle; true on success.
-bool write_handle(HANDLE h, std::string_view data) {
-    while (!data.empty()) {
-        DWORD wrote = 0;
-        const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(data.size(), 1u << 20));
-        if (!WriteFile(h, data.data(), chunk, &wrote, nullptr) || wrote == 0) return false;
-        data.remove_prefix(wrote);
-    }
-    return true;
-}
-
-bool is_console(HANDLE h) {
-    DWORD mode = 0;
-    return GetConsoleMode(h, &mode) != 0;
-}
 
 // The buffered stdout. A function-local static: constructed on first use, flushed when the program exits.
 class StdoutSink {
@@ -35,8 +19,8 @@ public:
     void write(std::string_view text) {
         std::lock_guard lock(mutex_);
         buffer_.append(text);
-        // (the handle is looked up each time: a test, or a parent, may have redirected stdout)
-        if (buffer_.size() >= kLimit || is_console(GetStdHandle(STD_OUTPUT_HANDLE))) flush_locked();
+        // (the stream is asked each time: a test, or a parent, may have redirected stdout)
+        if (buffer_.size() >= kLimit || sys::is_terminal(sys::Stream::Out)) flush_locked();
     }
     void flush() {
         std::lock_guard lock(mutex_);
@@ -48,8 +32,7 @@ private:
     static constexpr std::size_t kLimit = 1 << 16;
     void flush_locked() {
         if (buffer_.empty()) return;
-        HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-        if (h != INVALID_HANDLE_VALUE && h != nullptr) write_handle(h, buffer_);
+        sys::write_stream(sys::Stream::Out, buffer_);
         buffer_.clear();
     }
     std::mutex mutex_;
@@ -69,8 +52,7 @@ void flush_out() { stdout_sink().flush(); }
 void err_text(std::string_view text) {
     // Order with stdout: whatever is buffered for stdout was written before this message.
     flush_out();
-    HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
-    if (h != INVALID_HANDLE_VALUE && h != nullptr) write_handle(h, text);
+    sys::write_stream(sys::Stream::Err, text);
 }
 
 }  // namespace cb
@@ -102,9 +84,8 @@ const char* label(Level l) {
 }
 
 std::string timestamp() {
-    SYSTEMTIME t;
-    GetLocalTime(&t);
-    return std::format("{:02}:{:02}:{:02}.{:03} ", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+    const sys::LocalTime t = sys::local_time();
+    return std::format("{:02}:{:02}:{:02}.{:03} ", t.hour, t.minute, t.second, t.millisecond);
 }
 
 }  // namespace

@@ -12,6 +12,7 @@
 #include "zlib.h"
 
 #include "cb/core/error.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/intmath.hpp"
 #include "cb/core/io.hpp"
@@ -494,7 +495,7 @@ void set_file_time(const std::filesystem::path& target, const FileEntry& e) {
     const std::time_t stamp = std::mktime(&tm);
     if (stamp == static_cast<std::time_t>(-1)) return;   // not a representable time: the file keeps its own
     std::error_code ec;
-    std::filesystem::last_write_time(
+    cb::fs::set_last_write_time(
         target, std::chrono::clock_cast<std::filesystem::file_time_type::clock>(std::chrono::system_clock::from_time_t(stamp)), ec);
 }
 
@@ -600,7 +601,7 @@ void put_link(io::ByteWriter& w, const std::optional<SetLink>& link) {
 DosTimestamp dos_timestamp_now() {
     const std::time_t now = std::time(nullptr);
     std::tm st{};
-    localtime_s(&st, &now);
+    st = cb::sys::local_tm(now);
     DosTimestamp t;
     t.date = static_cast<std::uint16_t>(((st.tm_year + 1900 - 1980) << 9) | ((st.tm_mon + 1) << 5) | st.tm_mday);
     t.time = static_cast<std::uint16_t>((st.tm_hour << 11) | (st.tm_min << 5) | (st.tm_sec / 2));

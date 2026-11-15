@@ -20,7 +20,7 @@ Profile DosLane::profile(const std::filesystem::path&) const {
         const std::uintmax_t size = std::filesystem::file_size(exe, ec);
         std::filesystem::file_time_type written;
         if (!ec)
-            written = std::filesystem::last_write_time(exe, ec);
+            written = cb::fs::last_write_time(exe, ec);
         if (ec)
             tools += std::format(" {}:missing", tool);
         else

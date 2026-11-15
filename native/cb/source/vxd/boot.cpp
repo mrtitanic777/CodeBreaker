@@ -30,7 +30,7 @@ namespace {
 
 constexpr std::array<Rgb, 2> kGreys = {Rgb{192, 192, 192}, Rgb{192, 199, 200}};   // the taskbar: the palette's grey, and on QEMU's VGA
 
-bool is_grey(const Rgb& p) { return std::find(kGreys.begin(), kGreys.end(), p) != kGreys.end(); }
+bool is_grey(const Rgb& p) { return std::any_of(kGreys.begin(), kGreys.end(), [&](const Rgb& g) { return g == p; }); }
 
 // Windows 95's desktop colour: (0, 128, 128) in the palette, (87, 168, 168) on QEMU's VGA.
 bool is_teal(const Rgb& p) {

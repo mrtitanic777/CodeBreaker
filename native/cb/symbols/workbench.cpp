@@ -26,6 +26,8 @@ struct Workbench::Parts {
     std::unique_ptr<ordinals::Ordinals> ordinals;
     std::unique_ptr<identify::Identifier> identifier;
     std::unique_ptr<store::KnowledgeBodies> bodies;
+    std::unique_ptr<store::KnowledgeProposals> proposals;
+    std::unique_ptr<proposals::Proposals> proposer;
     std::unique_ptr<names::Namer> namer;
 };
 
@@ -75,6 +77,20 @@ identify::Identifier& Workbench::identifier() {
 store::BodyStore& Workbench::bodies() {
     if (!parts_->bodies) parts_->bodies = std::make_unique<store::KnowledgeBodies>(store());
     return *parts_->bodies;
+}
+
+store::ProposalStore& Workbench::proposal_store() {
+    if (!parts_->proposals) parts_->proposals = std::make_unique<store::KnowledgeProposals>(store());
+    return *parts_->proposals;
+}
+
+proposals::Proposals& Workbench::proposer() {
+    if (!parts_->proposer) {
+        proposals::Proposals::Services services{namer(), proposal_store(), *environment_.corpus, environment_.evidence, environment_.decompile};
+        if (!services.evidence) services.evidence = [](const std::filesystem::path&) -> std::vector<FunctionEvidence> { throw UsageError("the facts that name a function are not available here"); };
+        parts_->proposer = std::make_unique<proposals::Proposals>(std::move(services));
+    }
+    return *parts_->proposer;
 }
 
 namespace {
@@ -128,6 +144,8 @@ names::Namer& Workbench::namer() {
             const std::string text = ordinals::format_shipped(tables);
             fs::write_file(file, ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
         };
+        services.proposals = &proposal_store();
+        services.proposals_command = [this](const cli::Args& args) { return proposer().execute(args); };
         parts_->namer = std::make_unique<names::Namer>(std::move(services));
     }
     return *parts_->namer;

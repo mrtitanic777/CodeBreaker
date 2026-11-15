@@ -2,6 +2,8 @@
 // small real job, so a wrong header/DLL pairing fails here and not in the middle of an emulation.
 #include "cb/core/dynlib.hpp"
 
+#include <cstdio>
+
 #include "cb/core/capstone_api.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/testing.hpp"
@@ -9,6 +11,50 @@
 #include "cb/core/z3_api.hpp"
 
 using namespace cb;
+
+namespace {
+
+// A machine without the engine library skips the test that needs it, where the library is not shipped with the program
+// (Linux: libunicorn.so and libcapstone.so come from the machine's packages or a build of them); on Windows the DLL is
+// always beside the executable, so a missing one is a failure.
+bool library_here(const char* stem) {
+#ifdef _WIN32
+    (void)stem;
+    return true;
+#else
+    try {
+        (void)DynLib::load_beside_exe(std::string(stem) + ".dll");
+        return true;
+    } catch (const NotFoundError&) {
+        std::fprintf(stderr, "  (lib%s.so is not here: not run)\n", stem);
+        return false;
+    }
+#endif
+}
+
+// A system library loads and its functions are found by name; a library's file name is made from its stem.
+void check_system_library() {
+#ifdef _WIN32
+    DynLib system = DynLib::load("kernel32.dll");
+    using GetTick = unsigned long (__stdcall*)();
+    const char* const first = "GetTickCount";
+    const char* const second = "GetTickCount64";
+    CB_CHECK_EQ(DynLib::file_name_for("capstone"), "capstone.dll");
+#else
+    DynLib system = DynLib::load("libc.so.6");
+    using GetTick = int (*)();
+    const char* const first = "getpid";
+    const char* const second = "getppid";
+    CB_CHECK_EQ(DynLib::file_name_for("capstone"), "libcapstone.so");
+    CB_CHECK_EQ(DynLib::file_name_for("libz3"), "libz3.so");
+#endif
+    CB_CHECK(system.function<GetTick>(first) != nullptr);
+    CB_CHECK_THROWS_AS(NotFoundError, system.function<GetTick>("NoSuchFunctionAtAll"));
+    DynLib moved = std::move(system);   // ownership moves; the old object is empty
+    CB_CHECK(moved.function<GetTick>(second) != nullptr);
+}
+
+}  // namespace
 
 CB_TEST("core.dynlib.search_dirs_and_errors", [] {
     CB_CHECK(!DynLib::search_dirs().empty());
@@ -19,16 +65,11 @@ CB_TEST("core.dynlib.search_dirs_and_errors", [] {
     } catch (const NotFoundError& e) {
         CB_CHECK(std::string(e.what()).find("looked in") != std::string::npos);
     }
-    // a system DLL loads and its functions are found by name
-    DynLib k32 = DynLib::load("kernel32.dll");
-    using GetTick = unsigned long (__stdcall*)();
-    CB_CHECK(k32.function<GetTick>("GetTickCount") != nullptr);
-    CB_CHECK_THROWS_AS(NotFoundError, k32.function<GetTick>("NoSuchFunctionAtAll"));
-    DynLib moved = std::move(k32);   // ownership moves; the old object is empty
-    CB_CHECK(moved.function<GetTick>("GetTickCount64") != nullptr);
+    check_system_library();
 });
 
 CB_TEST("core.unicorn.runs_x86_code", [] {
+    if (!library_here("unicorn")) return;
     const auto& uc = emu::unicorn::api();
     CB_CHECK(!emu::unicorn::version_string().empty());
     CB_CHECK(uc.uc_arch_supported(UC_ARCH_X86));
@@ -49,6 +90,7 @@ CB_TEST("core.unicorn.runs_x86_code", [] {
 });
 
 CB_TEST("core.capstone.disassembles_x86", [] {
+    if (!library_here("capstone")) return;
     const auto& cs = disasm::capstone::api();
     CB_CHECK(!disasm::capstone::version_string().empty());
     csh handle = 0;

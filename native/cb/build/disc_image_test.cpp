@@ -30,8 +30,8 @@ std::string disc_golden(const char* name) { return fs::read_text(testing::data_p
 void disc_fix_times(const std::filesystem::path& root) {
     using namespace std::chrono;
     const auto when = clock_cast<std::filesystem::file_time_type::clock>(sys_days{year{2026} / 1 / 2} + hours{3} + minutes{4} + seconds{5});
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) std::filesystem::last_write_time(entry.path(), when);
-    std::filesystem::last_write_time(root, when);
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) cb::fs::set_last_write_time(entry.path(), when);
+    cb::fs::set_last_write_time(root, when);
 }
 
 struct DiscWorld {

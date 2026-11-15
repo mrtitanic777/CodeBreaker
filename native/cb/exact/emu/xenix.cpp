@@ -425,7 +425,7 @@ class Session {
         std::error_code ec;
         const bool directory = stdfs::is_directory(host, ec);
         const std::uint64_t size = directory ? 0 : stdfs::file_size(host, ec);
-        const auto written = std::chrono::clock_cast<std::chrono::system_clock>(stdfs::last_write_time(host, ec));
+        const auto written = std::chrono::clock_cast<std::chrono::system_clock>(cb::fs::last_write_time(host, ec));
         const auto seconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(written.time_since_epoch()).count());
         Bytes out;
         for (const std::uint32_t w : {1u, 2u, (directory ? 040000u : 0100000u) | 0644u, 1u, 0u, 0u, 0u}) put_word(out, w);

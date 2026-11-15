@@ -7,9 +7,13 @@
 // a module's public header. A function not on the list is reachable through `library().function<Fn>(name)`.
 #pragma once
 
+#ifdef _MSC_VER
 #pragma warning(push, 0)
+#endif
 #include <z3/z3.h>
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
 #include <string>
 #include <string_view>

@@ -39,7 +39,7 @@ struct Files {
     std::map<std::string, ExeKind> classes;       // by MZ header
     std::map<std::string, ExeKind> kinds;         // that, and headerless DOS
     std::map<std::string, std::uint16_t> machines;
-    std::set<std::string> nes, sms, gb, genesis, msx, zx, xex, drivers, java_modules;
+    std::set<std::string> nes, sms, gb, genesis, ps1, msx, zx, xex, drivers, java_modules;
 
     Probes probes() const {
         auto in = [](const std::set<std::string>& s) {
@@ -64,6 +64,7 @@ struct Files {
         pr.is_sms = in(sms);
         pr.is_gb = in(gb);
         pr.is_genesis = in(genesis);
+        pr.is_ps1 = in(ps1);
         pr.is_msx = in(msx);
         pr.is_zx = in(zx);
         pr.is_java_module = in(java_modules);
@@ -83,6 +84,7 @@ Registry full_registry(const Probes& probes) {
     r.add(msx());
     r.add(zx());
     r.add(stand_in(Id::Genesis, "genesis", std::nullopt, true));
+    r.add(stand_in(Id::Ps1, "ps1", std::nullopt, true));
     r.add(stand_in(Id::Gb, "gb", std::nullopt, true));
     r.add(stand_in(Id::Sms, "sms", std::nullopt, true));
     r.add(stand_in(Id::Nes, "nes", std::nullopt, true));
@@ -95,7 +97,7 @@ Registry full_registry(const Probes& probes) {
 }  // namespace
 
 CB_TEST("platforms.package.ids", [] {
-    const std::vector<std::string> expected = {"java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "zx", "msx", "win32", "win16", "vxd", "dos"};
+    const std::vector<std::string> expected = {"java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "ps1", "zx", "msx", "win32", "win16", "vxd", "dos"};
     CB_CHECK_EQ(kOrder.size(), expected.size());
     for (std::size_t i = 0; i < kOrder.size(); ++i) {
         CB_CHECK_EQ(std::string(id_text(kOrder[i])), expected[i]);
@@ -111,7 +113,7 @@ CB_TEST("platforms.package.registry_orders_and_finds", [] {
     CB_CHECK(r.complete());
     // recorded: [id, name] in the order platforms are tried
     const std::vector<std::pair<std::string, std::string>> expected = {
-        {"java", "java"}, {"xbox360", "powerpc"}, {"xbox", "xbe"}, {"nes", "nes"}, {"sms", "sms"}, {"gb", "gb"}, {"genesis", "genesis"},
+        {"java", "java"}, {"xbox360", "powerpc"}, {"xbox", "xbe"}, {"nes", "nes"}, {"sms", "sms"}, {"gb", "gb"}, {"genesis", "genesis"}, {"ps1", "ps1"},
         {"zx", "zx"},     {"msx", "msx"},         {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"},   {"dos", "dos"}};
     CB_CHECK_EQ(r.all().size(), expected.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {
@@ -142,10 +144,10 @@ CB_TEST("platforms.package.lanes_runners_steps", [] {
     Files files;
     Registry r = full_registry(files.probes());
     const auto lanes = r.lanes();
-    CB_CHECK_EQ(lanes.size(), 12u);                         // xbe has no lane: it is handed the PE image
+    CB_CHECK_EQ(lanes.size(), 13u);                         // xbe has no lane: it is handed the PE image
     CB_CHECK(lanes[0] == (std::pair<std::string, std::string>{"java", "java"}));
     CB_CHECK(lanes[1] == (std::pair<std::string, std::string>{"powerpc", "powerpc"}));
-    CB_CHECK(lanes[8] == (std::pair<std::string, std::string>{"pe", "win32"}));
+    CB_CHECK(lanes[9] == (std::pair<std::string, std::string>{"pe", "win32"}));
     const std::vector<std::string> runners = r.runners();
     // (win32 and powerpc run; the stand-ins above say who else does)
     CB_CHECK(std::find(runners.begin(), runners.end(), "powerpc") != runners.end());
@@ -155,7 +157,7 @@ CB_TEST("platforms.package.lanes_runners_steps", [] {
     CB_CHECK(std::find(runners.begin(), runners.end(), "java") == runners.end());   // the JVM runs it, not us
     CB_CHECK(std::find(runners.begin(), runners.end(), "xbe") == runners.end());
     const auto steps = r.step_sets();
-    CB_CHECK_EQ(steps.size(), 12u);
+    CB_CHECK_EQ(steps.size(), 13u);
     for (const auto& [id, s] : steps) CB_CHECK(s == Steps::Lanes);
 });
 
@@ -289,6 +291,7 @@ CB_TEST("platforms.package.identify_by_probes", [] {
     files.sms = {"game.sms"};
     files.gb = {"game.gb"};
     files.genesis = {"game.md"};
+    files.ps1 = {"game.psx"};
     files.msx = {"game.rom"};
     files.zx = {"snap.sna"};
     files.xex = {"game.xex"};
@@ -303,6 +306,7 @@ CB_TEST("platforms.package.identify_by_probes", [] {
     CB_CHECK_EQ(who("game.sms"), "sms");
     CB_CHECK_EQ(who("game.gb"), "gb");
     CB_CHECK_EQ(who("game.md"), "genesis");
+    CB_CHECK_EQ(who("game.psx"), "ps1");
     CB_CHECK_EQ(who("game.rom"), "msx");
     CB_CHECK_EQ(who("snap.sna"), "zx");
     CB_CHECK_EQ(who("game.xex"), "powerpc");

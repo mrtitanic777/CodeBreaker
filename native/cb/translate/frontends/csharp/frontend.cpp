@@ -22,7 +22,7 @@ constexpr std::chrono::minutes kToolCompileTimeout{5};
 void add_file_identity(Bytes& key, const stdfs::path& p) {
     std::error_code ec;
     const auto size = stdfs::file_size(p, ec);
-    const auto time = stdfs::last_write_time(p, ec).time_since_epoch().count();
+    const auto time = cb::fs::last_write_time(p, ec).time_since_epoch().count();
     const std::string text = std::format("{}|{}|{}\n", fs::to_text(p.filename()), size, time);
     key.insert(key.end(), text.begin(), text.end());
 }

@@ -301,11 +301,9 @@ CB_TEST("translate.cpp03.textstats", [] { c3_check_program(cb::testing::data_pat
 
 // The big programs (not checked in): CB_CPP03_DATA=<folder of PROG/ folders>.
 CB_TEST("translate.cpp03.big", [] {
-    char* root = nullptr;
-    std::size_t root_size = 0;
-    if (_dupenv_s(&root, &root_size, "CB_CPP03_DATA") != 0 || root == nullptr) return;
-    const std::string data_root(root);
-    std::free(root);
+    const auto root = cb::fs::get_env("CB_CPP03_DATA");
+    if (!root) return;
+    const std::string data_root = *root;
     for (const auto& e : std::filesystem::directory_iterator(data_root)) {
         if (!e.is_directory()) continue;
         const auto t0 = std::chrono::steady_clock::now();

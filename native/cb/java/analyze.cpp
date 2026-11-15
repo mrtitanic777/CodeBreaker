@@ -198,7 +198,7 @@ std::optional<stdfs::path> newest_build_log(const stdfs::path& root) {
         const std::string name = fs::to_text(it->path().filename());
         if (!name.starts_with("build_alpha") || !name.ends_with(".log")) continue;
         std::error_code time_ec;
-        const stdfs::file_time_type t = stdfs::last_write_time(it->path(), time_ec);
+        const stdfs::file_time_type t = cb::fs::last_write_time(it->path(), time_ec);
         if (time_ec) continue;
         if (!newest || t > newest_time) {
             newest = it->path();

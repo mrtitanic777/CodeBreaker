@@ -140,7 +140,7 @@ CB_TEST("ui.progress.busy_workers", [] {
     write(dir.path() / "other" / "w0" / "e.cur", "item");           // not the runner's folder
     write(dir.path() / ".cbjobs3" / "w0" / "f.cur", "item");        // hidden
     write(dir.path() / "cbjobs4" / "w0" / "old.cur", "item 1");     // a worker that is gone: the note is a day old
-    std::filesystem::last_write_time(dir.path() / "cbjobs4" / "w0" / "old.cur",
+    cb::fs::set_last_write_time(dir.path() / "cbjobs4" / "w0" / "old.cur",
                                      std::filesystem::file_time_type::clock::now() - std::chrono::hours(24));
     CB_CHECK_EQ(pr::busy_workers(dir.path(), now), std::uint64_t{2});
     CB_CHECK_EQ(pr::busy_workers(dir.path() / "missing", now), std::uint64_t{0});

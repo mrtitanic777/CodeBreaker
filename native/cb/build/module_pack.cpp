@@ -67,7 +67,18 @@ void note_assembled(Built& b, const std::string& name, std::map<std::string, std
         b.assembled.insert_or_assign(name, "written in assembly: " + text::join(evidence, "; "));
     } else {
         const std::string* why = b.rejected.find(name);
-        b.assembled.insert_or_assign(name, "its C does not compile: " + (why != nullptr ? *why : std::string()));
+        if (why != nullptr) {
+            b.assembled.insert_or_assign(name, "its C does not compile: " + *why);
+        } else {
+            // (C the build did not trust -- the gate, a check of its calls, a run of the whole module -- and the evidence it recorded: kept as
+            // its instructions, and said why)
+            std::string evidence;
+            if (origin != b.origins.end()) {
+                const std::vector<std::string>& all = origin->second.evidence;
+                evidence = text::join(std::vector<std::string>(all.begin(), all.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(2, all.size()))), "; ");
+            }
+            b.assembled.insert_or_assign(name, "its C is not used: " + evidence);
+        }
     }
     b.rejected.erase(name);
 }

@@ -1,10 +1,10 @@
 #include "cb/core/parallel.hpp"
 
-#include <windows.h>
 
 #include <algorithm>
 
 #include "cb/core/fs.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/text.hpp"
 
 namespace cb::parallel {
@@ -32,22 +32,12 @@ int workers(const WorkerPolicy& policy) {
     return low ? std::min(n, kLowLoad) : n;
 }
 
-double available_gb() {
-    MEMORYSTATUSEX m{};
-    m.dwLength = sizeof(m);
-    if (!GlobalMemoryStatusEx(&m)) return -1.0;
-    return static_cast<double>(std::min(m.ullAvailPhys, m.ullAvailPageFile)) / static_cast<double>(1ull << 30);
-}
+double available_gb() { return sys::available_memory_gb(); }
 
 bool throttle(int cores, bool below_normal) {
-    HANDLE self = GetCurrentProcess();
     bool ok = true;
-    if (below_normal) ok = SetPriorityClass(self, BELOW_NORMAL_PRIORITY_CLASS) != 0 && ok;
-    if (cores > 0) {
-        const int n = std::min(cores, cpu_count());
-        const DWORD_PTR mask = n >= 64 ? ~DWORD_PTR{0} : (DWORD_PTR{1} << n) - 1;
-        ok = SetProcessAffinityMask(self, mask) != 0 && ok;
-    }
+    if (below_normal) ok = sys::lower_priority() && ok;
+    if (cores > 0) ok = sys::limit_cores(cores) && ok;
     return ok;
 }
 

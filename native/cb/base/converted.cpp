@@ -1,4 +1,5 @@
 #include "cb/base/converted.hpp"
+#include "cb/core/sys.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -249,7 +250,7 @@ std::string sha1_of(const stdfs::path& file) {
 std::string local_time_now() {
     const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::tm parts{};
-    localtime_s(&parts, &now);
+    parts = cb::sys::local_tm(now);
     char buffer[32];
     std::strftime(buffer, sizeof buffer, "%Y-%m-%dT%H:%M:%S", &parts);
     return buffer;

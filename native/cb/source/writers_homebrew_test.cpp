@@ -6,6 +6,7 @@
 #include "cb/core/testing.hpp"
 #include "cb/source/gb_writer.hpp"
 #include "cb/source/genesis_writer.hpp"
+#include "cb/source/ps1_writer.hpp"
 #include "cb/source/sms_writer.hpp"
 #include "cb/source/zx_writer.hpp"
 
@@ -43,6 +44,17 @@ CB_TEST("source.writers.homebrew.game_boy_color", [] { rebuild("gb-ucity/ucity.g
 CB_TEST("source.writers.homebrew.zx_spectrum", [] { rebuild("zx-icarus/Icarus.tap", 50, zx_writer::reconstruct); });
 
 CB_TEST("source.writers.homebrew.genesis", [] { rebuild("genesis-2048/rom.bin", 38, genesis_writer::reconstruct); });
+
+// (the PlayStation's: PS-X EXEs built with GCC and PSn00bSDK, and hand-written assembly with its data, each rebuilt from its source)
+CB_TEST("source.writers.homebrew.playstation", [] {
+    rebuild("ps1/ps1-tests/cdrom/getloc/getloc.exe", 50, ps1_writer::reconstruct);
+    rebuild("ps1/ps1-tests/gpu/triangle/triangle.exe", 30, ps1_writer::reconstruct);
+    rebuild("ps1/ps1-tests/gte/test-all/test-all.exe", 30, ps1_writer::reconstruct);
+    rebuild("ps1/ps1-tests/spu/toolbox/toolbox.exe", 50, ps1_writer::reconstruct);
+    rebuild("ps1/peterlemon/PRINTGPU.exe", 8, ps1_writer::reconstruct);
+    rebuild("ps1/peterlemon/VBLANK.exe", 4, ps1_writer::reconstruct);
+    rebuild("ps1/peterlemon/Cube.exe", 1, ps1_writer::reconstruct);
+});
 
 }  // namespace
 }  // namespace cb::source

@@ -6,9 +6,15 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
+#include <map>
+#include <span>
+#include <string>
+#include <vector>
 
 #include "cb/base/config.hpp"
 #include "cb/base/corpus.hpp"
+#include "cb/symbols/evidence.hpp"
 
 namespace cb::symbols {
 
@@ -21,6 +27,10 @@ struct Environment {
     std::filesystem::path ordinal_file;
     // The knowledge base; empty: the one of the state folder (CB_KNOWLEDGE_DB overrides, as everywhere).
     std::filesystem::path knowledge_file;
+    // What proposing names reads of a module beyond the namer (the facts that could name each function, and the C of some): the program fills them in
+    // from the analyses and the decompiler (app/state_commands.cpp). None given: `names --propose` and `--packets` say they are not available.
+    std::function<std::vector<FunctionEvidence>(const std::filesystem::path&)> evidence;
+    std::function<std::map<std::uint64_t, std::string>(const std::filesystem::path&, std::span<const std::uint64_t>)> decompile;
 };
 
 }  // namespace cb::symbols

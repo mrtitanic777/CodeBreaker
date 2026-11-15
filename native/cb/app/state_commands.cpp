@@ -2,14 +2,19 @@
 #include "cb/app/state_commands.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
+#include "cb/analyze/function_evidence.hpp"
 #include "cb/analyze/origin.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
+#include "cb/decompile/decompiler.hpp"
 #include "cb/coverage/ledger.hpp"
 #include "cb/engine/engine.hpp"
 #include "cb/engine/facts.hpp"
@@ -17,6 +22,7 @@
 #include "cb/engine/show.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/inspect.hpp"
+#include "cb/formats/pe.hpp"
 #include "cb/knowledge/store.hpp"
 #include "cb/store/functions.hpp"
 #include "cb/store/migrate_state.hpp"
@@ -40,13 +46,91 @@ struct MigrateProfiles {
     verify::reconstruct::Kinds kinds;
 };
 
+// What proposing names reads of a module: the facts that could name each function (the analyses), and the decompiler's C for some. The kit that
+// holds the decompiler is made when the first of them is asked.
+class NameFacts {
+public:
+    NameFacts(const config::Config& config, std::shared_ptr<base::Corpus> corpus) : config_(config), corpus_(std::move(corpus)) {}
+
+    std::vector<symbols::FunctionEvidence> evidence(const stdfs::path& module) {
+        analyze::report::Environment e;
+        base::Corpus& corpus = *corpus_;
+        e.retail = [&corpus](std::string_view name) -> std::optional<stdfs::path> { return corpus.retail(name); };
+        e.sha = [&corpus](const stdfs::path& path) { return corpus.sha(path); };
+        e.state = config_.state();
+        e.knowledge = &kit().decompiler().context().environment->knowledge();
+        return analyze::function_evidence::of_module(module, e);
+    }
+
+    std::map<std::uint64_t, std::string> decompile(const stdfs::path& module, std::span<const std::uint64_t> starts) {
+        decompile::decompiler::Decompiler& decompiler = kit().decompiler();
+        std::map<std::uint64_t, std::string> out;
+        const bool x86 = corpus_->lane(module) == base::Lane::Pe && formats::pe::Image::open(module).header().machine == formats::pe::kMachineI386;
+        if (x86) {
+            const std::vector<decompile::decompiler::Va> vas(starts.begin(), starts.end());
+            const decompile::c_text::Compilable32 made = decompiler.compilable32(module, vas);
+            for (const std::uint64_t start : starts) {
+                const auto name = made.by_va.find(static_cast<decompile::decompiler::Va>(start));
+                if (name != made.by_va.end() && made.texts.contains(name->second)) out[start] = made.texts.at(name->second);
+            }
+            return out;
+        }
+        const std::string whole = decompiler.as_c(module).text;   // (the whole module's C, a function cut out of it by its header)
+        for (const std::uint64_t start : starts)
+            if (std::string cut = function_in(whole, symbols::names::function_key(base::Lane::Ne, start)); !cut.empty()) out[start] = std::move(cut);
+        return out;
+    }
+
+private:
+    engine::LaneKit& kit() {
+        if (!kit_) kit_ = std::make_unique<engine::LaneKit>(config_, corpus_);
+        return *kit_;
+    }
+
+    // The function whose header names `key` ("1:0116" is sub_1_0116): its lines up to the closing brace at the margin.
+    static std::string function_in(const std::string& text, const std::string& key) {
+        // (the decompiler writes the offset in capitals: sub_1_00B2; a name in lower case is looked for too)
+        std::string token = "sub_", upper = "sub_";
+        for (const char c : key) {
+            token += c == ':' ? '_' : c;
+            upper += c == ':' ? '_' : static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        }
+        token += '(';
+        upper += '(';
+        std::size_t at = 0;
+        while (at < text.size()) {
+            std::size_t end = text.find('\n', at);
+            if (end == std::string::npos) end = text.size();
+            const std::string_view line(text.data() + at, end - at);
+            const bool header = !line.empty() && line.front() != ' ' && line.front() != '\t' && line.front() != '}' && line.front() != '/' && line.front() != '#' &&
+                                (line.find(token) != std::string_view::npos || line.find(upper) != std::string_view::npos);
+            if (header) {
+                const std::size_t close = text.find("\n}", at);
+                return text.substr(at, close == std::string::npos ? std::string::npos : close + 2 - at);
+            }
+            at = end + 1;
+        }
+        return {};
+    }
+
+    config::Config config_;
+    std::shared_ptr<base::Corpus> corpus_;
+    std::unique_ptr<engine::LaneKit> kit_;
+};
+
 }  // namespace
 
 std::vector<cli::Command> state_commands(const config::Config& config, const std::shared_ptr<base::Corpus>& corpus) {
     std::vector<cli::Command> out;
 
     // names <module> ...
-    out.push_back(symbols::names::command(symbols::Environment{corpus.get(), &config}));
+    {
+        const auto facts = std::make_shared<NameFacts>(config, corpus);
+        symbols::Environment names_environment{corpus.get(), &config};
+        names_environment.evidence = [facts](const stdfs::path& module) { return facts->evidence(module); };
+        names_environment.decompile = [facts](const stdfs::path& module, std::span<const std::uint64_t> starts) { return facts->decompile(module, starts); };
+        out.push_back(symbols::names::command(names_environment));
+    }
 
     // knowledge [platform [kind [key]]]
     out.push_back(knowledge::show::command(knowledge::environment(config.state())));

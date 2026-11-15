@@ -42,11 +42,11 @@ std::map<std::string, std::string> roll_forward() { return {{"DOTNET_ROLL_FORWAR
 
 stdfs::path newest_source(const stdfs::path& dir) {
     stdfs::path newest;
-    stdfs::file_time_type when{};
+    stdfs::file_time_type when = stdfs::file_time_type::min();
     for (const char* name : {"Program.cs", "shadercheck.csproj"}) {
         const stdfs::path p = dir / name;
-        if (stdfs::last_write_time(p) > when) {
-            when = stdfs::last_write_time(p);
+        if (cb::fs::last_write_time(p) > when) {
+            when = cb::fs::last_write_time(p);
             newest = p;
         }
     }
@@ -62,7 +62,7 @@ CB_TEST("xna.proof.recovered_hlsl_behaves_as_the_source", [] {
     const stdfs::path source = testing::data_path("../../data/xna/shadercheck");
     const stdfs::path built = testing::data_path("../../state/xna/shadercheck");
     const stdfs::path exe = built / "shadercheck.exe";
-    if (!stdfs::exists(exe) || stdfs::last_write_time(exe) < stdfs::last_write_time(newest_source(source))) {
+    if (!stdfs::exists(exe) || cb::fs::last_write_time(exe) < cb::fs::last_write_time(newest_source(source))) {
         stdfs::create_directories(built);
         const process::ProcessResult r = process::run({.argv = {"dotnet", "build", (source / "shadercheck.csproj").string(), "-c", "Release", "-o",
                                                                 built.string(), "--nologo", "-v", "q"},

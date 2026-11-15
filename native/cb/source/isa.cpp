@@ -4,6 +4,7 @@
 
 #include "cb/decompile/m6502.hpp"
 #include "cb/decompile/m68k.hpp"
+#include "cb/decompile/mips.hpp"
 #include "cb/decompile/sm83.hpp"
 #include "cb/decompile/z80.hpp"
 
@@ -81,6 +82,25 @@ std::optional<DecodedInsn> decode_68k(ByteView mem, std::uint32_t pc) {
     return out;
 }
 
+// The R3000A: `pc` is the address the code runs at, so a jump's target is in the same 256 MB region. A jump, a return and an indirect jump
+// end the flow after their delay slot (which a code scan does not follow: it does not need to); a JALR is a call with no known target.
+std::optional<DecodedInsn> decode_mips(ByteView mem, std::uint32_t pc) {
+    const std::optional<decompile::mips::Insn> insn = decompile::mips::decode(mem, pc, pc);
+    if (!insn) return std::nullopt;
+    DecodedInsn out;
+    out.size = 4;
+    if (insn->target) out.target = *insn->target;
+    switch (insn->flow) {
+        case dz::Flow::Jump: out.flow = formats::Flow::Jump; break;
+        case dz::Flow::Branch: out.flow = formats::Flow::Branch; break;
+        case dz::Flow::Call: out.flow = formats::Flow::Call; break;
+        case dz::Flow::Return: out.flow = formats::Flow::Return; break;
+        case dz::Flow::Indirect: out.flow = formats::Flow::Indirect; break;
+        default: break;
+    }
+    return out;
+}
+
 // ---- encoders ---------------------------------------------------------------------------------------------------
 
 // The failure the directive layer expects of a name that has no value yet.
@@ -130,6 +150,28 @@ public:
     }
 };
 
+class MipsSyntax final : public build::Encoder {
+public:
+    Result<std::int64_t> value(std::string_view expr, const build::Labels& labels, std::int64_t pc) const override {
+        try {
+            return decompile::mips::value(expr, labels, static_cast<std::uint32_t>(pc));
+        } catch (const dz::UnknownLabel& e) {
+            return unknown(e);
+        } catch (const ParseError& e) {
+            return Failure(e.clone());
+        }
+    }
+    Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
+        try {
+            return decompile::mips::assemble(line, static_cast<std::uint32_t>(pc), labels);
+        } catch (const dz::UnknownLabel& e) {
+            return unknown(e);
+        } catch (const ParseError& e) {
+            return Failure(e.clone());
+        }
+    }
+};
+
 // The 6502's assembler says an unknown name as a ParseError ("unknown label or number NAME (line)"): the name is read out of it.
 class M6502Syntax final : public build::m6502_asm::Encoder6502 {
 public:
@@ -162,6 +204,10 @@ const formats::Decoder& sm83_decoder() {
     static const formats::Decoder decoder = decode_sm83;
     return decoder;
 }
+const formats::Decoder& mips_decoder() {
+    static const formats::Decoder decoder = decode_mips;
+    return decoder;
+}
 const formats::Decoder& m68k_decoder() {
     static const formats::Decoder decoder = decode_68k;
     return decoder;
@@ -169,6 +215,10 @@ const formats::Decoder& m68k_decoder() {
 
 const build::Encoder& z80_encoder() {
     static const Z80Syntax syntax;
+    return syntax;
+}
+const build::Encoder& mips_encoder() {
+    static const MipsSyntax syntax;
     return syntax;
 }
 const build::Encoder& m68k_encoder() {

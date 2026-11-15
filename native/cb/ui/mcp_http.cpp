@@ -19,7 +19,6 @@
 #include "cb/core/text.hpp"
 #include "cb/ui/mcp_impl.hpp"
 
-#pragma comment(lib, "ws2_32.lib")
 
 namespace cb::ui::mcp {
 

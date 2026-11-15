@@ -1,6 +1,6 @@
 #include "cb/base/runs.hpp"
+#include "cb/core/sys.hpp"
 
-#include <process.h>
 
 #include <ctime>
 #include <format>
@@ -48,7 +48,7 @@ std::string clean_tag(std::string_view tag) {
 std::string timestamp() {
     const std::time_t now = std::time(nullptr);
     std::tm local{};
-    localtime_s(&local, &now);
+    local = cb::sys::local_tm(now);
     char buf[32];
     std::strftime(buf, sizeof buf, "%Y%m%d-%H%M%S", &local);
     return buf;
@@ -56,7 +56,7 @@ std::string timestamp() {
 
 bool older_than(const stdfs::path& p, std::chrono::seconds age) {
     std::error_code ec;
-    const auto written = stdfs::last_write_time(p, ec);
+    const auto written = cb::fs::last_write_time(p, ec);
     if (ec) return false;
     const auto written_at = std::chrono::clock_cast<std::chrono::system_clock>(written);
     return std::chrono::system_clock::now() - written_at > age;
@@ -97,7 +97,7 @@ std::vector<stdfs::path> sweep(const stdfs::path& state, std::string_view tool, 
 
 stdfs::path start(const stdfs::path& state, std::string_view tool, std::string_view tag) {
     (void)sweep(state, tool);
-    const std::string name = std::format("{}_{}_{}", clean_tag(tag), timestamp(), _getpid());
+    const std::string name = std::format("{}_{}_{}", clean_tag(tag), timestamp(), fs::process_id());
     const stdfs::path base = runs_folder(state, tool);
     stdfs::path path = base / name;
     for (int n = 1; stdfs::exists(path); ++n) path = base / std::format("{}_{}", name, n);

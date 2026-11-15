@@ -12,9 +12,11 @@
 #include "cb/analyze/strings.hpp"
 #include "cb/analyze/structures.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/regex.hpp"
 #include "cb/core/text.hpp"
+#include "cb/engine/machine_lanes.hpp"
 #include "cb/formats/ne.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/formats/powerpc_image.hpp"
@@ -42,7 +44,7 @@ namespace {
 std::string local_time(const char* format) {
     const std::time_t now = std::time(nullptr);
     std::tm local{};
-    localtime_s(&local, &now);
+    local = cb::sys::local_tm(now);
     char buffer[64];
     std::strftime(buffer, sizeof buffer, format, &local);
     return buffer;
@@ -80,7 +82,8 @@ bool made_by_us(const stdfs::path& file) {
 
 // A module written as its assembly file: a driver, a real-mode program, a cartridge, a snapshot or a tape.
 bool written_as_assembly(std::string_view kind) {
-    return kind == "le" || kind == "dos" || kind == "nes" || kind == "sms" || kind == "gb" || kind == "genesis" || kind == "zx" || kind == "msx";
+    return kind == "le" || kind == "dos" || kind == "nes" || kind == "sms" || kind == "gb" || kind == "genesis" || kind == "ps1" || kind == "zx" || kind == "msx" ||
+           engine::machine_lanes().find(kind) != nullptr;   // (a platform registered without editing this list: engine/machine_lanes.hpp)
 }
 
 mf::Lane lane_of_kind(std::string_view kind) {

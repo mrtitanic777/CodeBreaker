@@ -7,14 +7,54 @@ cmake_policy(SET CMP0091 NEW)        # MSVC_RUNTIME_LIBRARY is honoured (static 
 get_filename_component(CB_NATIVE_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 set(CB_THIRD_PARTY "${CB_NATIVE_ROOT}/third_party")
 
+# What differs by platform: the libraries sockets and process queries come from, the manifest a Windows executable carries,
+# and the prebuilt engine libraries that go next to every executable (native/third_party/README.md).
+if(WIN32)
+  set(CB_SOCKET_LIBS ws2_32)
+  set(CB_PROCESS_LIBS psapi)
+  set(CB_MANIFEST cb.manifest)
+  set(CB_PREBUILT_LIBS "${CB_THIRD_PARTY}/bin/unicorn.dll" "${CB_THIRD_PARTY}/bin/capstone.dll" "${CB_THIRD_PARTY}/bin/libz3.dll")
+else()
+  set(CB_SOCKET_LIBS "")
+  set(CB_PROCESS_LIBS "")
+  set(CB_MANIFEST "")
+  set(CB_PREBUILT_LIBS "")
+  foreach(lib libunicorn.so libcapstone.so libz3.so)
+    if(EXISTS "${CB_THIRD_PARTY}/bin/${lib}")
+      list(APPEND CB_PREBUILT_LIBS "${CB_THIRD_PARTY}/bin/${lib}")
+    endif()
+  endforeach()
+endif()
+
+# Compiler flags per compiler family (docs/CPP_DESIGN.md 3.1). MSVC and clang-cl take cl's flags, GCC and Clang the GNU
+# ones. Warnings are errors only under MSVC, the compiler whose warnings the code is held to; the others show theirs.
+if(MSVC)
+  set(CB_FLAGS_STRICT /permissive- /utf-8 /EHsc /W4 /Zc:__cplusplus /Zc:char8_t- /bigobj)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    list(APPEND CB_FLAGS_STRICT /WX)
+  endif()
+  set(CB_FLAGS_LIB /permissive- /utf-8 /EHsc /W3)
+  set(CB_FLAGS_QUIET /W0)
+else()
+  set(CB_FLAGS_STRICT -finput-charset=UTF-8 -fexec-charset=UTF-8 -Wall -Wextra -fno-char8_t)
+  set(CB_FLAGS_LIB -finput-charset=UTF-8 -fexec-charset=UTF-8)
+  set(CB_FLAGS_QUIET -w)
+  if(MINGW)
+    list(APPEND CB_FLAGS_STRICT -Wa,-mbig-obj)   # (as /bigobj: more sections than COFF's default allows)
+    list(APPEND CB_FLAGS_LIB -Wa,-mbig-obj)
+  endif()
+endif()
+
 # The flags of docs/CPP_DESIGN.md 3.1, applied to every cb_* target.
 function(cb_apply_flags target)
   target_compile_features(${target} PUBLIC cxx_std_20)
   set_target_properties(${target} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   target_include_directories(${target} PUBLIC "${CB_NATIVE_ROOT}" "${CB_THIRD_PARTY}" "${CB_THIRD_PARTY}/include")
-  target_compile_definitions(${target} PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
-  target_compile_options(${target} PRIVATE /permissive- /utf-8 /EHsc /W4 /WX /Zc:__cplusplus /Zc:char8_t- /bigobj)
+  if(WIN32)
+    target_compile_definitions(${target} PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  endif()
+  target_compile_options(${target} PRIVATE ${CB_FLAGS_STRICT})
   if(CB_ASAN)
     target_compile_options(${target} PRIVATE /fsanitize=address /Z7)   # /Z7: debug info in each object, so the shared precompiled header works
     target_link_options(${target} PUBLIC /INCREMENTAL:NO /DEBUG)   # /DEBUG: a .pdb, so the sanitizer names the functions in its stacks
@@ -83,7 +123,7 @@ include("${CB_NATIVE_ROOT}/xex/reader.cmake")
 add_library(cb_xex_reader STATIC ${XEX_READER_SOURCES})
 set_target_properties(cb_xex_reader PROPERTIES CXX_STANDARD 20 MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_include_directories(cb_xex_reader PUBLIC "${XEX_READER_INCLUDE_DIR}")
-target_compile_options(cb_xex_reader PRIVATE /utf-8 /EHsc /W3)
+target_compile_options(cb_xex_reader PRIVATE ${CB_FLAGS_LIB})
 if(CB_ASAN)
   target_compile_options(cb_xex_reader PRIVATE /fsanitize=address /Zi)
 endif()
@@ -95,11 +135,16 @@ file(GLOB CB_ZLIB_SOURCES CONFIGURE_DEPENDS "${CB_NATIVE_ROOT}/decompiler/core/z
 add_library(cb_zlib STATIC ${CB_ZLIB_SOURCES} "${CB_NATIVE_ROOT}/formats/core/zcrc32.c")
 set_target_properties(cb_zlib PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_include_directories(cb_zlib PUBLIC "${CB_NATIVE_ROOT}/decompiler/core/zlib")
-target_compile_options(cb_zlib PRIVATE /O2 /W0)
+target_compile_options(cb_zlib PRIVATE ${CB_FLAGS_QUIET})
 target_compile_definitions(cb_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
 
 cb_area(core)
-target_link_libraries(cb_core PUBLIC bcrypt)
+if(WIN32)
+  target_link_libraries(cb_core PUBLIC bcrypt ws2_32)
+else()
+  find_package(Threads REQUIRED)
+  target_link_libraries(cb_core PUBLIC Threads::Threads ${CMAKE_DL_LIBS})   # (std::thread; dlopen for the engine libraries)
+endif()
 # core16_types.hpp: the records of the core16 cycle (header only; its test sits beside it, not in an area)
 get_property(CB_TESTS_BEFORE_CORE16 GLOBAL PROPERTY CB_TEST_SOURCES)
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_TESTS_BEFORE_CORE16} "${CMAKE_CURRENT_LIST_DIR}/core16_types_test.cpp")
@@ -109,7 +154,7 @@ set(CB_SQLITE_DIR "${CB_NATIVE_ROOT}/engine/third_party/sqlite")
 add_library(cb_sqlite3 STATIC "${CB_SQLITE_DIR}/sqlite3.c")
 target_include_directories(cb_sqlite3 PUBLIC "${CB_SQLITE_DIR}")
 target_compile_definitions(cb_sqlite3 PRIVATE SQLITE_THREADSAFE=1 _CRT_SECURE_NO_WARNINGS)
-target_compile_options(cb_sqlite3 PRIVATE /W0 /O2)
+target_compile_options(cb_sqlite3 PRIVATE ${CB_FLAGS_QUIET})
 set_target_properties(cb_sqlite3 PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 cb_area(base)
@@ -196,7 +241,7 @@ add_library(cb_pyfront STATIC
 set_target_properties(cb_pyfront PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_include_directories(cb_pyfront PUBLIC "${CB_NATIVE_ROOT}/pyfront/include")
-target_compile_options(cb_pyfront PRIVATE /permissive- /utf-8 /EHsc /W3 /O2)
+target_compile_options(cb_pyfront PRIVATE ${CB_FLAGS_LIB})
 if(CB_ASAN)
   target_compile_options(cb_pyfront PRIVATE /fsanitize=address /Zi)
 endif()
@@ -206,7 +251,7 @@ target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java cb_verify) 
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
-target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ws2_32)
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ${CB_SOCKET_LIBS})
 
 # The native program the decompiler's tests start in place of decompiler.exe (decompile/fake_decompiler_main.cpp), built beside cb_tests.
 add_executable(cb_fake_decompiler decompile/fake_decompiler_main.cpp)
@@ -215,7 +260,7 @@ cb_apply_flags(cb_fake_decompiler)
 # The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
 add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
-target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
+target_link_libraries(cb_fake_qemu PRIVATE ${CB_SOCKET_LIBS})
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
@@ -225,8 +270,8 @@ target_link_libraries(cb_store PUBLIC cb_core cb_base cb_engine cb_verify cb_com
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate cb_build cb_decompile cb_compare cb_engine cb_verify cb_exact)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
-target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage cb_symbols cb_analyze cb_decompile cb_compare cb_store cb_knowledge cb_app cb_platforms cb_source cb_java cb_formats ws2_32)   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client; cb_symbols: the demangler and the names of the MCP server; cb_analyze: its disassembly; cb_decompile, cb_engine: its decompiler; cb_compare, cb_store: the version comparison; cb_app: the command table; cb_platforms, cb_java: what a file is; cb_source: the source tree -- static libraries may be cyclic)
-target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ws2_32)   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
+target_link_libraries(cb_ui PUBLIC cb_core cb_base cb_engine cb_verify cb_coverage cb_symbols cb_analyze cb_decompile cb_compare cb_store cb_knowledge cb_app cb_platforms cb_source cb_java cb_formats ${CB_SOCKET_LIBS})   # (the ledger, the function store and the verdict vocabulary the service answers from; ws2_32: its client; cb_symbols: the demangler and the names of the MCP server; cb_analyze: its disassembly; cb_decompile, cb_engine: its decompiler; cb_compare, cb_store: the version comparison; cb_app: the command table; cb_platforms, cb_java: what a file is; cb_source: the source tree -- static libraries may be cyclic)
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile cb_engine PRIVATE cb_zlib ${CB_SOCKET_LIBS})   # (cb_engine: the function store reconstruct fills -- static libraries may be cyclic)
 
 
 # where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
@@ -234,10 +279,12 @@ target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms c
 set_source_files_properties(core/dynlib.cpp PROPERTIES COMPILE_DEFINITIONS CB_THIRD_PARTY_BIN="${CB_THIRD_PARTY}/bin")
 
 # The prebuilt unicorn/capstone/libz3 DLLs go next to every executable that loads them.
-set(CB_PREBUILT_DLLS "${CB_THIRD_PARTY}/bin/unicorn.dll" "${CB_THIRD_PARTY}/bin/capstone.dll" "${CB_THIRD_PARTY}/bin/libz3.dll")
 function(cb_copy_prebuilt_dlls target)
+  if(NOT CB_PREBUILT_LIBS)
+    return()
+  endif()
   add_custom_command(TARGET ${target} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CB_PREBUILT_DLLS} "$<TARGET_FILE_DIR:${target}>")
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CB_PREBUILT_LIBS} "$<TARGET_FILE_DIR:${target}>")
 endfunction()
 
 # ---- cbtrace.dll: the recorder's C interface (emulate/tracer/cbtrace.h), for the callers that still reach it through
@@ -254,7 +301,7 @@ endif()
 # ---- the test executable: every area's tests, compiled straight into it (a static library would let the
 # linker drop test objects nothing references) -------------------------------------------------------------
 get_property(CB_ALL_TESTS GLOBAL PROPERTY CB_TEST_SOURCES)
-add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} cb.manifest)
+add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} ${CB_MANIFEST})
 cb_apply_flags(cb_tests)
 target_compile_definitions(cb_tests PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 # Every area library (cb_area records it in CB_AREAS), so a new area needs no edit here.
@@ -301,7 +348,7 @@ cb_copy_prebuilt_dlls(cb_cmdrun)
 
 # codebreaker: THE program (tools/build_codebreaker_exe.cmd installs it as state/cxx/codebreaker/build/codebreaker.exe, the path every tool
 # uses). main is cb::app's command table; it hosts its own workers (app/host_hook.cpp); `ui` starts the Python terminal under real python.
-add_executable(codebreaker app/codebreaker_main.cpp app/allocator_main.cpp cb.manifest)
+add_executable(codebreaker app/codebreaker_main.cpp app/allocator_main.cpp ${CB_MANIFEST})
 cb_apply_flags(codebreaker)
 target_link_libraries(codebreaker PRIVATE cb_app cb_core)
 cb_copy_prebuilt_dlls(codebreaker)
@@ -362,7 +409,7 @@ foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
   if(NOT area_tests)
     continue()
   endif()
-  add_executable(cb_tests_${area} EXCLUDE_FROM_ALL core/testing_main.cpp ${area_tests} cb.manifest)
+  add_executable(cb_tests_${area} EXCLUDE_FROM_ALL core/testing_main.cpp ${area_tests} ${CB_MANIFEST})
   cb_apply_flags(cb_tests_${area})
   target_compile_definitions(cb_tests_${area} PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
   target_link_libraries(cb_tests_${area} PRIVATE ${lib} cb_core)
@@ -379,3 +426,7 @@ foreach(lib IN LISTS CB_AREAS_FOR_AREA_TESTS)
     add_dependencies(cb_tests_${area} cb_fake_decompiler)
   endif()
 endforeach()
+
+# Windows libraries, linked by name so that every compiler links them (MSVC's #pragma comment(lib) is MSVC's alone).
+target_link_libraries(cb_port PUBLIC ${CB_PROCESS_LIBS})
+target_link_libraries(cb_ui PUBLIC ${CB_SOCKET_LIBS})
