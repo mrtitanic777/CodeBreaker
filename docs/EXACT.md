@@ -15,14 +15,14 @@ times over. `exact` is those ideas once, with what differs between toolchains mo
     toolchain profile   what a compiler/linker does, as data (+ named hooks where code is needed)
     project             what one program is: a directory of plain-text descriptions
     stages              generic engines that fill in the project, each checked by the bytes
-    driver              python -m codebreaker exact <project> [stage]
+    driver              codebreaker exact <project> [stage]
 
 A stage never writes what it cannot prove: everything it emits is compiled or linked by the
 period tool and compared. What it cannot settle it leaves as a stand-in (the original's bytes in
 an object of their own) and reports, so a program always relinks and the report says how much of
 it is source.
 
-## Toolchain profiles (codebreaker/exact/toolchains/*.json)
+## Toolchain profiles (data/exact/toolchains/*.json)
 
 One per compiler/assembler/linker version. Facts that were scattered through scripts:
 
@@ -94,21 +94,21 @@ Then the engine is pointed at programs nobody has rebuilt.
 
 ## State (2026-10-15)
 
-    python -m codebreaker exact --toolchains
-    python -m codebreaker exact PROJECT ledger|library|carve|bss|data|draft|modules|link [options]
+    codebreaker exact --toolchains
+    codebreaker exact PROJECT ledger|library|carve|bss|data|draft|modules|link [options]
 
-Toolchains (profiles in `codebreaker/exact/toolchains/`; plug-ins where running the tool is code):
+Toolchains (profiles in `data/exact/toolchains/`; plug-ins where running the tool is code):
 
 | profile | what | the programs that prove it (functions identical through the engine) |
 |---|---|---|
 | msc300 (+ msc30016, msc400) | Microsoft C 3.00 (3.00.16, 4.00) | MSC CL P0 P1 P2 P3 = the hand ledgers; MASM 4.00 319/331 = the hand ledger, per compiler |
 | msc500 | Microsoft C 5.0 | MASM 5.10: its 374 C files = the hand ledger |
-| xenixc (plug-in `xenix_c.py`, a.out `aout.py`) | XENIX C for the 8086, Microsoft's revision | LINK 2.40/2.44, LIB 2.20/2.40: 543/543 |
-| plm86, asm86 (plug-in `plm86.py`, ISIS-II) | Intel PL/M-86, ASM86 | LINK 1.02 1.08 1.10 2.00 2.01, LIB 1.02: every procedure and assembler module |
+| xenixc (plug-in `xenix_c.cpp`, a.out `aout.cpp`) | XENIX C for the 8086, Microsoft's revision | LINK 2.40/2.44, LIB 2.20/2.40: 543/543 |
+| plm86, asm86 (plug-in `plm86.cpp`, ISIS-II) | Intel PL/M-86, ASM86 | LINK 1.02 1.08 1.10 2.00 2.01, LIB 1.02: every procedure and assembler module |
 | msc103, msc104, msc203 | Lattice-lineage MS C 1.03/1.04/2.03 | MC1 MC2 LC1 LC2 (1.0x), MC1 MC2 (2.03): 970/970 |
 | masm100 | Macro Assembler 1.00 | the XENIX-C programs' assembler modules: all |
 | masm510 | Macro Assembler 5.10 | MASM 5.10's own assembler modules: 24/24 |
-| mspascal (plug-in `mspascal.py`, compilands joined by `pascal_join.py`, habits in `habits/`) | MS-Pascal 1.10 pre-release (1981) to 3.11 | M.EXE 344/344; M86 324 + 18 by another compiler state's habits; MASM 1.10 251 + 73; MASM 3.00 298 + 6; C86 75/75; CREF 1.00 64 + 14 - all = the hand ledgers, and stricter (it found six procedures the hand check passed with a wrong constant) |
+| mspascal (plug-in `mspascal.cpp`, compilands joined by `pascal_join.cpp`, habits in `habits/`) | MS-Pascal 1.10 pre-release (1981) to 3.11 | M.EXE 344/344; M86 324 + 18 by another compiler state's habits; MASM 1.10 251 + 73; MASM 3.00 298 + 6; C86 75/75; CREF 1.00 64 + 14 - all = the hand ledgers, and stricter (it found six procedures the hand check passed with a wrong constant) |
 
 Stages and what they reproduce of the hand work, run with no project-specific code:
 
@@ -126,8 +126,8 @@ Further stages (2026-10-16):
 
 - **link** for every toolchain: 23 programs relinked as by hand - 15 file-identical (MS C 3.00's six, MASM 5.10
   packed, the four XENIX-C programs by `linkemu.link24`, LINK 1.02/1.10/2.00, MC1/MC2 1.04), 8 identical but for
-  documented linker leftovers (project `link.accept`). `linkwhole.py` (programs of whole source files),
-  `linkemu.py`, `exepack.py`, `recut.py`
+  documented linker leftovers (project `link.accept`). `linkwhole.cpp` (programs of whole source files),
+  `linkemu.cpp`, `exepack.cpp`, `recut.cpp`
 - **repair** - uniformly shifted immediates mended in the source, kept when the compiler proves them
 - **names --from OTHER** - a version named after another (masked code, calls, call signatures); blind on MS C
   1.0x/2.03: 455 named, all right

@@ -467,7 +467,7 @@ CB_TEST("formats.cab.what_we_write_expand_reads", [] {
 });
 
 std::filesystem::path real_cabinet(std::string_view name) {
-    return std::filesystem::path("C:/Users/mrtit/Documents/GitHub/CodeBreaker/state/work/typed-port/formats.cab/real") / std::string(name);
+    return cb::testing::local_input("cab") / std::string(name);
 }
 
 CB_TEST("formats.cab.real_windows_95_mini_cab_against_expand", [] {

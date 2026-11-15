@@ -29,7 +29,7 @@ strings included, plus tests/, tools/ and native/ generators); the batch-1 verdi
 4. every caller runs through codebreaker.exe: N when a live command, the UI, the platforms registry or a tool still imports it.
 5. the all-15 boot passes with the exe: N when the module is in the Python closure of the boot drivers (verify/gate16/*,
    source/module_writer); Y means the boot never reaches it, so it cannot change the boot. There is no committed native driver for
-   the real boot run, so for N rows this condition cannot be shown until step 6 of docs/PYTHON_RETIREMENT.md.
+   the real boot run, so for N rows this condition cannot be shown until step 6 of docs/history/PYTHON_RETIREMENT.md.
 
 A module is deletable only with `YYGYY`, plus the by-hand checks in the batch section. The letters are heuristics: rows were computed on the
 tree before the batch-1 deletion; 9 rows read YYGYY (the port and crypto ones, and some translate ones) and the translate ones fail the by-hand
@@ -45,7 +45,7 @@ Deleted in the deletion commit: **49 modules, 18,639 lines** (and 9 test/generat
 | `codebreaker/port` | 9 (`__init__`, `__main__`, arith16, asm16, asmdata, oldlayout, pre_ansi, sanitize, verify) | 10,494 | `native/cb/port/` (arith16, asm16*, asmdata, oldlayout, old_c_*, sanitize*, tool_*, mend*, csource ...; tests: `cb_tests_port`) |
 | `codebreaker/formats/xbox/crypto` | 40 (XeCrypt, MemCrypto, StreamIO, 37 tool modules and `__init__`) | 8,145 | `native/cb/formats/xbox/crypto/` (xecrypt*, mem_crypto, stream_io, tools.cpp dispatch, one .cpp per tool); the `crypto` command is in `NATIVE`, so `codebreaker.exe crypto` never ran these |
 
-Kept on purpose: `codebreaker/port/{compilers.json,platform/,runtimes/}` (data native/cb/port reads at run time: docs/PYTHON_RETIREMENT.md 4.4)
+Kept on purpose: `codebreaker/port/{compilers.json,platform/,runtimes/}` (data native/cb/port reads at run time: docs/history/PYTHON_RETIREMENT.md 4.4)
 and `codebreaker/formats/xbox/crypto/{LICENSE,ATTRIBUTION.md}` (the BSD licence of the vendored upstream code).
 
 ### The five conditions, shown for both packages
@@ -79,7 +79,7 @@ and `codebreaker/formats/xbox/crypto/{LICENSE,ATTRIBUTION.md}` (the BSD licence 
    `NATIVE`, so the exe never imports it (the line belongs to the plain-python fallback that does not exist for native commands; it goes with
    `__main__`, which this batch does not touch). Outside callers: grep of Dashboard, Windows95, Win95VM and XboxMCP finds no `codebreaker.port` or
    `xbox.crypto` use (only a scratch copy of CodeBreaker inside Dashboard's `_scratchpad-rescue`, not a caller).
-5. **The all-15 boot passes with the exe.** Not re-run: there is no committed native driver for the real boot run (docs/PYTHON_RETIREMENT.md step 6) and
+5. **The all-15 boot passes with the exe.** Not re-run: there is no committed native driver for the real boot run (docs/history/PYTHON_RETIREMENT.md step 6) and
    the rule is milestone-only regressions. It holds by non-reach: neither package is in the Python closure of `verify/gate16/*` or `source/module_writer`
    (report column 5 = Y for every deleted row), and nothing the boot imports changed.
 
@@ -112,7 +112,7 @@ Python); the cut is in report.py, `__main__` itself is untouched.
   filename heuristics), and 7 of them sit in the boot closure, where condition 5 cannot be shown yet.
 - Why batch 1 stopped at two packages: they were the ones where every condition could be shown with evidence in hand (a native test tree that passed and
   goldens made from the Python, no importer anywhere, tests with named native coverage). The translator packages need their pytest folders' fate rows
-  (docs/PYTHON_RETIREMENT.md 5.2) and `tools/py2cpp.py`/`judge_c_java.py` still import part of them; `exact`/`recompile`/`java` are loaded by name through
+  (docs/history/PYTHON_RETIREMENT.md 5.2) and `tools/py2cpp.py`/`judge_c_java.py` still import part of them; `exact`/`recompile`/`java` are loaded by name through
   importlib tables and toolchain JSON (`exact/toolchain.py`, `exact/bench.py`, `engine/engine.py`), which the import graph can only see as strings.
 
 ## Batch 2: 44 modules, 9,360 lines (and what the first estimate of the pool got wrong)
@@ -229,7 +229,7 @@ With `NATIVE` naming every command but `ui`, the Python that the translated exe 
 
 **`tools/py2cpp.py` is deleted** (300 lines). Nothing runs it: no suite, cmd file, tool, native source or other repository (Dashboard, Windows95, Win95VM, XboxMCP, LoganOS:
 searched) names it except docs, a comment in `native/ported/ne/CMakeLists.txt`, a work-folder path in `tests/translate/test_python_frontend.py` and a comment in pyengine. The ports it made are
-committed and `pyengine --dynamic` is the translator since 2026-11-05. docs/PYTHON_FRONTEND.md and NATIVE.md, which showed its command lines, now say it is retired and in git history. Its
+committed and `pyengine --dynamic` is the translator since 2026-11-05. docs/history/PYTHON_FRONTEND.md and NATIVE.md, which showed its command lines, now say it is retired and in git history. Its
 modules (the Python front end, `cpp17`, ...) are held by `tests/translate/*` now, not by a tool.
 
 **`tools/judge_c_java.py` is KEPT, on purpose.** I deleted it first; `tidy.py --apply` then found `judge_native_jvm.roundtrip` and `translate/frontends/clang/j2x.py` (302 lines) unreached, because

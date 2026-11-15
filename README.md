@@ -185,10 +185,15 @@ cd CodeBreaker
 ```
 
 ```bash
+tools\build_native.cmd
+```
+
+```bash
 tools\build_codebreaker_exe.cmd
 ```
 
-The program is installed as `state\cxx\codebreaker\build\codebreaker.exe` (add that folder to `PATH`). Copy
+The first builds the engines the program calls (the decompiler, L2, the format and DOS libraries, XEX,
+NASM); the second builds the program. The program is installed as `state\cxx\codebreaker\build\codebreaker.exe` (add that folder to `PATH`). Copy
 `settings.example.json` to `settings.json` and point it at your corpus and tools, then:
 
 ```bash
@@ -283,7 +288,7 @@ The milestone regression adds the end-to-end proofs: `codebreaker regress all15`
 | [RECOMPILE.md](docs/RECOMPILE.md) | Xbox 360 titles recompiled to C++ |
 | [VXD.md](docs/VXD.md), [WIN16_LESSONS.md](docs/WIN16_LESSONS.md) | the Windows 9x driver and 16-bit lanes |
 | [MCP.md](docs/MCP.md) | driving CodeBreaker from an AI assistant |
-| [PYTHON_RETIREMENT.md](docs/PYTHON_RETIREMENT.md) | how the program moved from Python to native C++ |
+| [PYTHON_RETIREMENT.md](docs/history/PYTHON_RETIREMENT.md) | how the program moved from Python to native C++ |
 
 ---
 

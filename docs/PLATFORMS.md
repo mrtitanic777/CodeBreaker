@@ -50,7 +50,7 @@ line and nothing above it.
    explicit: a platform descriptor (CPU spec, container reader, OS/SDK names, build profile,
    platform model) that every stage asks, so the next platform adds a descriptor, not branches.
 2. **One small 8-bit platform end to end** -- the proof that the seams hold: 6502 (NES or Apple II,
-   with homebrew and open-source programs as ground truth, as `tools/oss_bench.py` does for C).
+   with homebrew and open-source programs as ground truth, as the OSS benchmark does for C).
    Its source is assembly that rebuilds (ca65), as for DOS and drivers; C only for cc65-built
    programs. Unicorn has no 6502, Z80 or SuperH, so the platform model comes from an open-source
    emulator core, driven the way `emulate/` drives Unicorn.

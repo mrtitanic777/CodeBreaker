@@ -1,5 +1,9 @@
 # One IR, in layers: the decompiler and the translator share a hub
 
+> Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
+> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> `codebreaker <command>`. The design stands; see README.md for the current layout.
+
 Design note, 2026-10-19. Applies to docs/TRANSLATOR_DESIGN.md (branch `design-multilang`) and
 docs/CORE_ROADMAP.md Track 2. Nothing here is built; it is a decision to make **before translator
 phase 1 fixes the IR's shape**.

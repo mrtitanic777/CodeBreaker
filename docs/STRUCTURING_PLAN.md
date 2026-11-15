@@ -1,5 +1,9 @@
 # Fewer gotos: the structuring plan
 
+> Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
+> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> `codebreaker <command>`. The design stands; see README.md for the current layout.
+
 docs/CORE_ROADMAP.md, Track 1 item D. C13-C18 (docs/GHIDRA_FORK.md) took the golden corpus from
 6,923 gotos to 5,034. About 1,980 remain outside COMMAND.COM (hand-written assembly: its C is never
 the deliverable). They are no longer near-misses of a shape the structurer knows. They are flows

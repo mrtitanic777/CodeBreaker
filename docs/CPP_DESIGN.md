@@ -1,5 +1,9 @@
 # CodeBreaker in C++: the design every refactor agent follows
 
+> Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
+> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> `codebreaker <command>`. The design stands; see README.md for the current layout.
+
 Design note, 2026-11-11. Logan's rule: CodeBreaker is a complete C++ rewrite, "as if the Python was never
 written" -- idiomatic C++, no code that mimics Python. About 365 modules (742 files, 168k lines) were
 machine-assisted-ported to typed C++ under `native/typed/cpp/codebreaker/` on top of an imitation of Python
@@ -642,7 +646,7 @@ worktree, never kill a process you did not start, one build at a time on the sha
    for readers.
 7. **Shim** at the old header path (6.3); the old `.cpp` is deleted in the same change (the shim is header-only).
 8. **Build** `cb_tests` (+ASan) and the exe; run the module's tests, then the product checks section 7.2 lists
-   for its area; time it against the old port (`docs/TYPED_CPP_SPEED.md`): not slower beyond noise.
+   for its area; time it against the old port (`docs/history/TYPED_CPP_SPEED.md`): not slower beyond noise.
 9. **Report** in the commit message: what changed in behaviour on purpose (if anything), which old harness cases
    were dropped as incidental (with the reason), COMPAT lines left, timings.
 10. **Review** (Claude, per the standing rule): header read first; the idiom checklist (appendix); rerun the
@@ -715,7 +719,7 @@ suites, sweeps) runs at milestones only (a finished wave), not per module -- the
   line, expected stdout/exit code/file hashes, run by `cb_tests --e2e`). Until a suite is ported it keeps running
   as the exe gate (`codebreaker.exe tests\run_all.py --quick`) -- it is the regression net for the transition and
   retires with the Python.
-- `docs/TYPED_CPP_SPEED.md` continues as the speed record: each refactor appends its before/after.
+- `docs/history/TYPED_CPP_SPEED.md` continues as the speed record: each refactor appends its before/after.
 - Sanitizer and warnings: the `cb_tests` ASan run and `/W4 /WX` replace what the dynamic runtime's checks (IndexError,
   KeyError, overflow) caught: those were the only memory-safety net, and the explicit bounds checks plus ASan are
   the replacement.

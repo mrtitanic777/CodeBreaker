@@ -15,7 +15,7 @@
 // assign them, `__init__` first), its names and functions. A function that reads a module name that could not be lowered is
 // refused with it (calls-refused). The units of the modules a unit names are made too.
 //
-// docs/PYTHON_FRONTEND.md says how types are found and what is refused.
+// docs/history/PYTHON_FRONTEND.md says how types are found and what is refused.
 #pragma once
 
 #include <filesystem>

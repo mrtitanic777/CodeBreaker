@@ -1,11 +1,11 @@
 # Virtual device drivers (VxDs)
 
-`python -m codebreaker vxd <tool>` holds the tools for Windows 95's virtual device drivers:
+`codebreaker vxd <tool>` holds the tools for Windows 95's virtual device drivers:
 the LE files in `WINDOWS\SYSTEM` (and `IOSUBSYS`) and the W3 bundle `VMM32.VXD`
-(`codebreaker/source/vxd/`; `python -m codebreaker vxd` lists them). The source side writes a
+(`native/cb/source/vxd/`; `codebreaker vxd` lists them). The source side writes a
 driver in the driver kit's macro form (`idiom`, `tree`), assembles and links it (`masm`, `link`,
 `from-source`, `owbuild`); `le_writer.build_le` / `build_w3` write a loadable driver straight from
-the recovered disassembly, through `formats/le.py`'s `write_image`.
+the recovered disassembly, through `native/cb/formats/le.cpp`'s `write_image`.
 
 ## Does Windows start with it? `vxd boot`
 
@@ -13,10 +13,10 @@ The test a rebuilt driver has to pass in the end is the machine: Windows 95 load
 reaching its desktop.
 
 ```
-python -m codebreaker vxd boot --drivers vtd,vpicd --vmm32       rebuilt: build_le / build_w3
-python -m codebreaker vxd boot --drivers vtd,vpicd --vmm32 --retail   the corpus originals (baseline)
-python -m codebreaker vxd boot ... --bisect                      on a failure, find the drivers that fail
-python -m codebreaker vxd boot                                   the disk as it is (BootLog on)
+codebreaker vxd boot --drivers vtd,vpicd --vmm32       rebuilt: build_le / build_w3
+codebreaker vxd boot --drivers vtd,vpicd --vmm32 --retail   the corpus originals (baseline)
+codebreaker vxd boot ... --bisect                      on a failure, find the drivers that fail
+codebreaker vxd boot                                   the disk as it is (BootLog on)
     [--disk IMAGE] [--wait SECONDS (300)] [--tag NAME]
 ```
 
@@ -25,7 +25,7 @@ What a run does:
 1. Builds each named driver (a corpus file name, extension optional) with `build_le`, and with
    `--vmm32` the corpus `VMM32.VXD` (VMM alone, a W3) with `build_w3`. `--retail` takes the corpus
    files as they are.
-2. Copies the installed disk into a run folder of its own (`state/vxdboot/runs/<tag>_*`, base/runs.py;
+2. Copies the installed disk into a run folder of its own (`state/vxdboot/runs/<tag>_*`, native/cb/base/runs.cpp;
    a killed run's is swept by the next run once a day old) and writes
    the files into the copy with `formats/media.put` (FAT16/FAT32 in Python: no WSL, no mtools):
    - a driver the corpus keeps in `WINDOWS\SYSTEM` goes to `WINDOWS\SYSTEM\VMM32\NAME.VXD` --

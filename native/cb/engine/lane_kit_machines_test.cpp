@@ -27,7 +27,7 @@ namespace stdfs = std::filesystem;
 namespace {
 
 stdfs::path machines_sample(const char* relative) {
-    stdfs::path root = "C:/Users/mrtit/Documents/GitHub/homebrew-samples";
+    stdfs::path root = cb::testing::beside_checkout("homebrew-samples");
     if (const auto given = fs::get_env("CB_HOMEBREW_SAMPLES")) root = fs::from_text(*given);
     return root / relative;
 }

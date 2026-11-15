@@ -8,15 +8,15 @@ imports come from are named in the header rather than in the image. CodeBreaker'
 ## On CodeBreaker's path
 
 Any command takes a `.xex` where it takes a module: `corpus.retail` / `corpus.resolve` hand every
-stage the basefile instead (`codebreaker/formats/xex.py`), extracted once under
+stage the basefile instead (`native/cb/formats/xex.cpp`), extracted once under
 `state/unpacked/xex/<name>-<hash>.exe` with the header beside it (`.json`). From there it is a
-PowerPC image like any other (`verify/lanes/powerpc.py`): decompiled, rebuilt, run beside the original.
+PowerPC image like any other (`native/cb/verify/lanes/powerpc.cpp`): decompiled, rebuilt, run beside the original.
 
 What the header adds over the basefile alone:
 
 - **Import libraries.** The image numbers its imports by library (`import0_ord_16`); the header
   says which library each number is. `codebreaker module` names the calls from it
-  (`source/module_writer.py`, `symbols/console_ordinals.json`) instead of assuming
+  (`native/cb/source/module_writer.cpp`, `symbols/console_ordinals.json`) instead of assuming
   kernel-then-system-library.
 - **Static libraries.** What the image was built with, with versions (D3D9, LIBCMT, XAPILIB, the
   linker): the SDK and toolchain, for identifying runtime and SDK code.

@@ -1,5 +1,9 @@
 # The translator: any language in, any language out
 
+> Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
+> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> `codebreaker <command>`. The design stands; see README.md for the current layout.
+
 The request (2026-10-19): "I want to be able to convert all kinds of code", then: "I wanna be able to
 convert back-and-forth universally. C to Java, Java to C, C++ to Java, Java to C++, etc." Every
 suggestion of the first draft was accepted: a garbage collector on the PC, modern Java, C#, the

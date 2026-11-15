@@ -110,6 +110,16 @@ std::filesystem::path data_path(std::string_view relative) {
     return std::filesystem::path(CB_SOURCE_DIR) / "cb" / std::filesystem::path(win::to_wide(relative));
 }
 
+std::filesystem::path local_input(std::string_view relative) {
+    const std::filesystem::path checkout = std::filesystem::path(CB_SOURCE_DIR).parent_path();
+    return (checkout / "binaries" / "test-inputs" / std::filesystem::path(win::to_wide(relative))).lexically_normal();
+}
+
+std::filesystem::path beside_checkout(std::string_view relative) {
+    const std::filesystem::path parent = std::filesystem::path(CB_SOURCE_DIR).parent_path().parent_path();
+    return (parent / std::filesystem::path(win::to_wide(relative))).lexically_normal();
+}
+
 int run_all(int argc, char** argv) {
     std::string filter;
     std::string xml_path;

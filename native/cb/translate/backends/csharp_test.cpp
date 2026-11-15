@@ -998,7 +998,7 @@ std::string first_difference(const std::string& expected, const std::string& act
 
 }  // namespace
 
-// The programs of state/work/typed-port/translate.backends.csharp (the translator's C# corpus, the front end's own tools, the XNA
+// The programs of binaries/test-inputs/csharp-harness (the translator's C# corpus, the front end's own tools, the XNA
 // runtime, programs written for this back end) lowered to L2, with the recorded answer for each: run
 // when CB_CSHARP_HARNESS names the folder holding them; a run without it has nothing to compare and passes.
 CB_TEST("translate.csharp.harness.recorded_programs_agree", [] {

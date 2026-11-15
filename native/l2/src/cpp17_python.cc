@@ -1,5 +1,5 @@
 // cpp17_python.cc -- the C++17 back end's Python rules (Unit.lang 'python'): a module the Python front
-// end lowered (codebreaker/translate/frontends/python, docs/PYTHON_FRONTEND.md) written whole -- a
+// end lowered (codebreaker/translate/frontends/python, docs/history/PYTHON_FRONTEND.md) written whole -- a
 // header (records, classes, functions, the module's names) and a source with every body -- over the
 // support header data/translate/runtime/cpp17/py.hpp.
 //

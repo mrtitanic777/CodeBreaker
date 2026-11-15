@@ -64,7 +64,7 @@ Bytes floppy_pattern(std::size_t size, std::uint8_t seed) {
 std::optional<Bytes> floppy_corpus_image() {
     std::vector<std::filesystem::path> candidates;
     if (const auto env = fs::get_env("CB_CORPUS")) candidates.push_back(fs::from_text(*env) / "setup" / "media" / "boot.img");
-    candidates.push_back("C:/Users/mrtit/Documents/GitHub/Windows95/design/corpus/files/setup/media/boot.img");
+    candidates.push_back(cb::testing::beside_checkout("Windows95/design/corpus/files/setup/media/boot.img"));
     for (const auto& path : candidates) {
         std::error_code ec;
         if (std::filesystem::is_regular_file(path, ec)) return fs::read_file(path);

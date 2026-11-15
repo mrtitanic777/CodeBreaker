@@ -6,13 +6,13 @@ builds and runs on another machine. The output is not readable source. It keeps 
 behaviour at the level of registers and memory. Today it covers Xbox 360 titles.
 
 ```bash
-python -m codebreaker recompile-project "C:\Games\PAC-MAN CE" --check
+codebreaker recompile-project "C:\Games\PAC-MAN CE" --check
 Converted\Pac-Man_C.E\Play-Pac_Man_C_E.bat
 ```
 
 The title is given as it comes -- a LIVE/CON package (Xbox LIVE Arcade titles, installs), a disc
 image, a Games-on-Demand folder, a folder of its files, or a folder holding any of those (a
-console's `<title id>/000D0000/<package>`): `codebreaker/recompile/title.py` finds the volume whose
+console's `<title id>/000D0000/<package>`): `native/cb/recompile/title.cpp` finds the volume whose
 top holds `default.xex` (leaving title updates and DLC beside it alone) and unpacks it into the
 project's `assets/` once. The project is `Converted/<title's name>/`. `--build` builds the program
 (four compiles at a time; `CB_BUILD_JOBS` in `Build-<name>.bat`), and `--check [seconds]` also runs
@@ -35,18 +35,18 @@ Two tools were merged, each giving what it does best:
   translates. Each guest instruction becomes one C++ statement on a `PPCContext`; guest memory
   is one flat big-endian 4 GB space; every function takes the whole context, so any branch
   target can be a function and a branch to it a tail call; a `bctr` through a table becomes a
-  `switch`. `codebreaker/recompile/xenon.py` builds it (clang-cl, Ninja; setting
+  `switch`. `native/cb/recompile/xenon.cpp` builds it (clang-cl, Ninja; setting
   `visual_studio`) and runs it.
-- **CodeBreaker's analysis** configures it (`codebreaker/recompile/config.py`): what
+- **CodeBreaker's analysis** configures it (`native/cb/recompile/config.cpp`): what
   XenonRecomp cannot find by itself.
-  - Every function `.pdata` leaves out, sized (`discover.py`): call targets, code addresses
+  - Every function `.pdata` leaves out, sized (`discover.cpp`): call targets, code addresses
     stored in the data, addresses the code builds (`lis` + `addi`/`ori`), and leaf functions that
     start right after another one ends. A switch's case labels are never starts (an absolute
     table is data holding code addresses), and the function holding a switch runs to the end of
     its last case.
   - The register save/restore runs (`__savegprlr_14` ... `__restvmx_64`, found by their code)
     and the CRT's `setjmp`/`longjmp` (found by the jump buffer they use).
-  - The switch tables (`switches.py`, which walks back from every `bctr` and evaluates CTR
+  - The switch tables (`switches.cpp`, which walks back from every `bctr` and evaluates CTR
     symbolically; XenonAnalyse's tables are added for any it leaves unresolved).
   - The register settings: which registers are locals of each function. The non-volatile ones
     stay in the context: a compiler-generated `__finally` block is called with `bl` and reads its
@@ -60,11 +60,11 @@ Two tools were merged, each giving what it does best:
   host code at single instructions.
 - **XEX**: the runtime loads any XEX (encrypted or not, basic or LZX) through CodeBreaker's one
   XEX reader (`native/xex/reader.cmake`); XenonRecomp reads only unencrypted, basic-compressed
-  files, and `codebreaker.formats.xex.basic` rewrites any XEX that way.
+  files, and `codebreaker xex` (native/cb/formats/xex.cpp) rewrites any XEX that way.
 
 The rexglue SDK's kernel core (`native/rexglue`) and CodeBreaker's own per-instruction
-translator (`powerpc.py`, its builders derived from rexglue's code generator) remain:
-`recompile` translates functions on their own (and `tests/test_recompile.py` runs them), and
+translator (`powerpc.cpp`, its builders derived from rexglue's code generator) remain:
+`recompile` translates functions on their own (and the `native/cb/recompile` unit tests run them), and
 `recompile-project --runtime rexglue` still makes the earlier project form.
 
 ## Checking the translation

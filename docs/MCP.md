@@ -1,10 +1,10 @@
 # CodeBreaker as an MCP server
 
-`python -m codebreaker mcp` (codebreaker/ui/mcp_server.py) is CodeBreaker as an MCP server, so an
+`codebreaker mcp` (native/cb/ui/mcp_*.cpp) is CodeBreaker as an MCP server, so an
 assistant such as Claude Code can take binaries apart with CodeBreaker's own tools: what a file
 is, its headers, its code instruction by instruction, what refers to what, the reconstructed C and
 its verdict, and two builds side by side. 32 tools, one resource and one prompt. Tests:
-tests/test_mcp.py.
+native/cb/ui/mcp_server_test.cpp and mcp_services_test.cpp.
 
 ## Connecting
 
@@ -15,19 +15,19 @@ Code starts the server itself, over stdio, one copy per session.
 - Everywhere else, register it for the user (it is in `~/.claude.json` already on Logan's machine):
 
   ```
-  claude mcp add --scope user codebreaker -- C:/Python314/python.exe -m codebreaker mcp
+  claude mcp add --scope user codebreaker -- C:/path/to/CodeBreaker/state/cxx/codebreaker/build/codebreaker.exe mcp
   ```
 
-  This works from any folder because the `codebreaker` package is installed from this checkout;
-  it finds the corpus, Converted/ and state/ from there.
+  This works from any folder: `codebreaker.exe` finds the corpus, Converted/ and state/ from the
+  checkout it was built in.
 
-A session keeps the server it started with: after changing mcp_server.py, start a new session (or
+A session keeps the server it started with: after changing the MCP server, start a new session (or
 reconnect the server) to get the new code.
 
 Claude Code's Connectors settings are not needed for this. They are for servers on the internet,
 for claude.ai on the web and the phone.
 
-**Over HTTP.** `python -m codebreaker mcp --http PORT` serves the same tools over streamable HTTP at
+**Over HTTP.** `codebreaker mcp --http PORT` serves the same tools over streamable HTTP at
 `http://127.0.0.1:PORT/mcp`. Every request must carry `Authorization: Bearer <token>`; the token
 is CB_MCP_TOKEN, or one made once and kept in `state/mcp/http_token.txt` (delete the file for a new
 one). `--host H` listens somewhere other than 127.0.0.1; `--allow-host NAME` answers to another
@@ -40,7 +40,7 @@ cannot send a header. It still needs a public HTTPS address in front of it, from
 tunnel's name passed with `--allow-host`:
 
 ```
-python -m codebreaker mcp --http 8765 --public --allow-host <name>.trycloudflare.com
+codebreaker mcp --http 8765 --public --allow-host <name>.trycloudflare.com
 cloudflared tunnel --url http://127.0.0.1:8765
 ```
 
@@ -136,7 +136,7 @@ copy, says how old it is, and works out a fresh one.
 
 | Tool | What it does |
 | --- | --- |
-| `commands()`, `command_help(command)` | Every `python -m codebreaker` command, and one in full. |
+| `commands()`, `command_help(command)` | Every `codebreaker` command, and one in full. |
 | `run_command(command, args?)` | Starts a command as a background job and returns its id: decompile, measure, reach --judge, pe-source, recompile-project, xna, java, ... At most two jobs at a time, one measure. |
 | `jobs()`, `job(job_id, offset?, tail?)`, `job_file(job_id, offset?, length?)` | This server's jobs, a job's state and output, the file it wrote. |
 | `stop_job(job_id)` | Stops a job this server started (that process only). |

@@ -43,6 +43,12 @@ void count_check();
 // `testdata/` folders next to the `_test.cpp` that uses them; `data_path("formats/testdata/x.bin")`.
 std::filesystem::path data_path(std::string_view relative);
 
+// Inputs that are not in the repository (retail binaries, other checkouts): used where they exist, skipped where
+// they do not. `local_input("cab/MINI.CAB")`: <checkout>/binaries/test-inputs/cab/MINI.CAB, the git-ignored folder
+// for copyrighted test inputs. `beside_checkout("Windows95")`: a checkout next to this one (<checkout>/../Windows95).
+std::filesystem::path local_input(std::string_view relative);
+std::filesystem::path beside_checkout(std::string_view relative);
+
 // Captures what the code under test writes to stdout and stderr (through cb::out/cb::err/cb::log or the C
 // runtime's handles) for the life of the object; the originals are restored afterwards.
 class CapturedStd {

@@ -18,7 +18,7 @@
 //       or a past run made and the headers cannot make again moves over: the bodies of each module and the names given to bodies (the
 //       name store) and the rows of learned kinds whose keys mean the same on both sides. Authored rows are made again from their files and
 //       derived rows from the headers, so they are not moved.
-//   (c) Everything else was checked and needs nothing: see docs/STATE_MIGRATION.md.
+//   (c) Everything else was checked and needs nothing: see docs/history/STATE_MIGRATION.md.
 //
 // What the verifier settings in force are is not this module's to know (the lanes are the verifier's): the program says (Services).
 #pragma once

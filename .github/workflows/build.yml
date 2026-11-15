@@ -1,0 +1,40 @@
+# Build CodeBreaker and run its unit tests on every push and pull request.
+# The command cases and the milestone regression need the period toolchains and the original binaries
+# (docs/NOT_IN_REPO.md), so they stay on the developer's machine (tools\gate.cmd, codebreaker regress);
+# unit tests whose inputs are not here skip themselves.
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Engines (decompiler, L2, formats, DOS, XEX, NASM, ...)
+        shell: cmd
+        run: tools\build_native.cmd
+
+      - name: codebreaker.exe and the unit tests
+        shell: cmd
+        run: |
+          cmake -S native -B state\cxx\cb -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+          cmake --build state\cxx\cb --target codebreaker cb_tests -j 4 || exit /b 1
+
+      - name: Unit tests
+        shell: cmd
+        run: state\cxx\cb\bin\cb_tests.exe

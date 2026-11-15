@@ -12,7 +12,7 @@ J2CTool, the deterministic Java -> C++03 transpiler, is `codebreaker/java` since
 | `docs/platform/{canonical,reference,companions,assets}` | `codebreaker/java/platform/` |
 | `docs/platform/notes`, the XDK index | `docs/java/platform-notes`, `docs/java/xdk` |
 | `apimap/` | `codebreaker/java/api_maps/` |
-| `python -m j2ctool <tool>` | `python -m codebreaker java <tool>` |
+| `python -m j2ctool <tool>` | `codebreaker java <tool>` |
 | the PySide6 window | the terminal interface (`ui`): `java <tool>` from its command palette |
 | its Build button | `codebreaker java build SLN` (settings.json `msbuild`) |
 | environment variables and fixed paths (XEDK, JAVA_HOME, J2X_CC, ...) | settings.json: `xbox360_sdk`, `java`, `retromcp`, `host_cxx`, `msbuild`, `java_overlays` |
@@ -36,7 +36,7 @@ every CodeBreaker job does.
 
 ## The tools
 
-`python -m codebreaker java <tool>`; `--help` on each gives its options.
+`codebreaker java <tool>`; `--help` on each gives its options.
 
 | Tool | What it does |
 |---|---|

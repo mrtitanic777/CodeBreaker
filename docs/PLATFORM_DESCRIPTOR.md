@@ -1,5 +1,9 @@
 # One description per platform
 
+> Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
+> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> `codebreaker <command>`. The design stands; see README.md for the current layout.
+
 The roadmap (PLATFORMS.md) says: make the platform explicit, so the next platform adds a
 description, not branches. This is that design, and the first platform it brings in.
 

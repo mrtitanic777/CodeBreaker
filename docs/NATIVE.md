@@ -1,5 +1,9 @@
 # CodeBreaker in C++: the plan
 
+> Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
+> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> `codebreaker <command>`. The design stands; see README.md for the current layout.
+
 Decided by Logan, 2026-10-30: CodeBreaker's own code is C++ wherever it can be. This reverses
 ARCHITECTURE.md's "Python stays the language of the engine and the steps". Python keeps what
 only glues -- the command line, the terminal UI, the MCP server, small scripts -- and anything
@@ -402,7 +406,7 @@ core idea -- reconstruct readable source and prove it behaves as the original --
 CodeBreaker. `codebreaker/translate/frontends/python` lowers Python into L2 with types it infers
 over the whole package, the C++17 back end (C++: `native/l2/src/cpp17_python.cc`, through the shim
 `backends/cpp17.py`) writes C++17 over `data/translate/runtime/cpp17/py.hpp`
-(docs/PYTHON_FRONTEND.md says how, and what is refused). A function either becomes C++ that
+(docs/history/PYTHON_FRONTEND.md says how, and what is refused). A function either becomes C++ that
 reads as written by hand -- int64_t, structs, py::list, C++'s own operators where the intervals
 prove them -- or it is left in Python with its reason; never a variant type.
 
@@ -1503,7 +1507,7 @@ what changed since a git revision and says which suites reach it (the import gra
 run loaded, plus the data files a suite reads; anything it cannot place runs everything). `testkit lookup` / `store`
 are the compile cache for g++ and javac (keyed on the compiler's bytes, the flags, the preprocessed source or the
 sources and class path; only runs that succeeded and printed nothing are kept), and `prune` keeps the cache under
-its size limit. Built by `tools\build_native.cmd testkit`; see the head of native/testkit/main.cc and the docstring
+its size limit. (native/testkit was deleted with the Python test runner, 2026-11-14.) It was described by the head of native/testkit/main.cc and the docstring
 of tests/run_all.py.
 
 ## HANDOFF: module build speed (2026-11-05)

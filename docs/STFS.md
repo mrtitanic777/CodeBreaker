@@ -4,7 +4,7 @@ This documents **exactly** how an Xbox 360 STFS `CON ` package is signed by a
 console, where the signing material lives inside a decrypted keyvault
 (`KV_dec.bin`), and how the scheme was reverse-engineered and verified
 byte-exact against genuine hardware-signed packages. It is the reference for
-`codebreaker/formats/xbox/stfs.py`'s `resign` command.
+`native/cb/formats/xbox/stfs.cpp`'s `resign` function.
 
 Everything here was derived empirically from real data you own (a KV extracted
 with J-Runner + real console-signed saves), not copied from any GPL tool.
@@ -179,7 +179,7 @@ d[0x32C:0x340] = hashlib.sha1(d[0x344:first_hash]).digest()
 This definition is **identical** for a normal STFS package and for a GoD/SVOD CON
 header (a GoD header is 0xB000 bytes; header size 0xAD0E rounds up to first_hash
 0xB000, so the hash covers `0x344 .. 0xB000` = 0xACBC bytes — exactly what
-`god.py` writes). That's why `stfs resign` works on GoD headers too.
+`god.cpp` writes). That's why `resign` works on GoD headers too.
 
 ---
 
@@ -245,9 +245,9 @@ because the cert modulus, like the key, is BnQw-encoded — `_bn(modulus)`, not
 
 ---
 
-## 5. What `stfs resign` does
+## 5. What `resign` does
 
-`codebreaker/formats/xbox/stfs.py :: resign(package, kv, out=None, bind_console=False)`:
+`native/cb/formats/xbox/stfs.cpp :: resign_file(package, keyvault, out_path, ResignOptions{bind_console})`:
 
 1. Accept `CON `, `LIVE`, or `PIRS`. If not already CON, **convert to CON**:
    flip the magic to `CON ` and reset the license descriptor at 0x22C to a single
@@ -266,11 +266,12 @@ because the cert modulus, like the key, is BnQw-encoded — `_bn(modulus)`, not
 6. Self-check: verify the new signature against the cert's own (BnQw) modulus;
    raise if it fails. Write in place unless an `out` path is given.
 
-```bash
-# resign a CON save/profile:
-python -m codebreaker.formats.xbox.stfs resign MySave.bin KV_dec.bin
-# convert a LIVE/PIRS package (DLC, title update, GoD header) to console CON:
-python -m codebreaker.formats.xbox.stfs resign SomeDLC KV_dec.bin out.con --bind
+```cpp
+// resign a CON save/profile (stfs.hpp):
+resign_file("MySave.bin", "KV_dec.bin");  // in place
+// convert a LIVE/PIRS package (DLC, title update, GoD header) to console CON:
+ResignOptions o; o.bind_console = true;
+Bytes con = resign(package_bytes, keyvault_bytes, o);
 ```
 
 ### 5.1 Why LIVE/PIRS "signing" == LIVE→CON conversion
@@ -306,7 +307,7 @@ sign region 0x22C+0x118, `EMSA3(SHA-1)` = PKCS#1 v1.5, 8-byte-swapped signature)
 
 ## 6. Files
 
-- `codebreaker/formats/xbox/stfs.py` — reader + `pack` + **`resign`** (this document's subject).
+- `native/cb/formats/xbox/stfs.cpp` — reader + `pack` + **`resign`** (this document's subject).
 - XeCrypt (Xbox-360-Crypto, GoobyCorp, BSD-3) — source of the `XECRYPT_KEYVAULT` / `XECRYPT_RSAPRV_1024`
   struct definitions (BSD-3, GoobyCorp). Used here only for offsets; the signing
-  is reimplemented dependency-free in `stfs.py`.
+  is reimplemented dependency-free in `stfs.cpp`.

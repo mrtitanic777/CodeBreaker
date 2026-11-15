@@ -60,7 +60,8 @@ Made link(const Tools& tools, std::span<const std::string> lines, const stdfs::p
     script.replace_extension(".lnk");
     std::string body;
     for (const std::string& line : lines) body += line + "\r\n";
-    body += "name " + fs::to_text(target) + "\r\n";
+    // (the linker runs in `dir`: a target there is named by its file name, so the script is the same on every machine)
+    body += "name " + fs::to_text(target.parent_path() == dir ? target.filename() : target) + "\r\n";
     fs::write_text(script, body);
     std::error_code ec;
     stdfs::remove(target, ec);

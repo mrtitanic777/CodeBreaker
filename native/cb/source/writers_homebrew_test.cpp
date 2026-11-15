@@ -13,7 +13,7 @@ namespace cb::source {
 namespace {
 
 std::optional<std::filesystem::path> sample(std::string_view relative) {
-    std::filesystem::path root = "C:/Users/mrtit/Documents/GitHub/homebrew-samples";
+    std::filesystem::path root = cb::testing::beside_checkout("homebrew-samples");
     if (const auto env = fs::get_env("CB_HOMEBREW_SAMPLES"); env && !env->empty()) root = fs::from_text(*env);
     const std::filesystem::path file = root / std::string(relative);
     if (!std::filesystem::is_regular_file(file)) return std::nullopt;

@@ -1,5 +1,9 @@
 # CodeBreaker's next architecture: one program database, kept current by an engine, served
 
+> Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
+> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> `codebreaker <command>`. The design stands; see README.md for the current layout.
+
 Design note, 2026-10-29 (adopted by Logan: all seven parts). It gathers what CORE_ROADMAP.md's
 Track 2, IR_UNIFICATION.md and PLATFORM_DESCRIPTOR.md each began into one shape, and fixes the
 order they are built in. What hurt on 2026-10-28 is the reason for each part: a cold rebuild of
@@ -63,7 +67,7 @@ F. **Path-exploring judge** (6): concolic execution on the emulators, judging a 
 ## Built: phase A (2026-10-29)
 
 The database and the engine are `codebreaker/engine/`, and the 16-bit module build runs on them
-behind a switch: `python -m codebreaker build <module> --engine`, or `CB_ENGINE=1` (module.build
+behind a switch: `codebreaker build <module> --engine`, or `CB_ENGINE=1` (module.build
 then hands a 16-bit module to the engine). (Since 2026-10-31 the engine is the default and
 `CB_ENGINE=0` is the fallback -- "Built: the engine is the default" below.)
 
@@ -100,11 +104,11 @@ or true for base/parallel.workers()); a `batch` step is given its stale keys in 
 gate shares them out over its own four processes). `always` steps run once per run (a file's
 hash: `ctx.file(path)`), and `Unkept(value)` is used and not kept (a verdict not reached).
 
-    python -m codebreaker facts <binary>                 the kinds, counts, sizes, who made them
-    python -m codebreaker facts <binary> <kind>          each fact: key, hash, size, made, version state
-    python -m codebreaker facts <binary> <kind> <key>    one fact's value and what it was made from
-    python -m codebreaker facts <binary> <kind> [key] --make      made current first
-    python -m codebreaker facts --databases              every database and the cap
+    codebreaker facts <binary>                 the kinds, counts, sizes, who made them
+    codebreaker facts <binary> <kind>          each fact: key, hash, size, made, version state
+    codebreaker facts <binary> <kind> <key>    one fact's value and what it was made from
+    codebreaker facts <binary> <kind> [key] --make      made current first
+    codebreaker facts --databases              every database and the cap
 
 **The 16-bit module build on it** (engine/win16.py). The stages are module.build's own, called
 as they are; the steps only say what each is made from:
@@ -534,7 +538,7 @@ as fingerprints would save about a quarter of lz32's original runs again.
 
 ## Built: phase B (2026-10-29)
 
-The service is `python -m codebreaker serve` (codebreaker/ui/serve.py): one process per checkout
+The service is `codebreaker serve` (native/cb/ui/serve.cpp): one process per checkout
 (per state folder) that the terminal interface, every MCP server and the command line's queries
 ask. ui/service.py is its client and the query layer under all of them.
 
@@ -562,7 +566,7 @@ worked out once per process (Step.code -- in a long-lived process this is also t
 version: the code that runs is the code loaded); binaries' SHA-256 by path, size and time
 (facts.sha); the MCP server's slow answers (mcp_server.SLOW: the ledger, decompiles,
 version comparisons, an hour); the jobs (service.JOBS: the ui/service JOBS role, moved into it --
-each job still a `python -m codebreaker ...` process below normal priority, now the service's
+each job still a `codebreaker ...` process below normal priority, now the service's
 child, with an owner: the client that started it).
 
 **Lifetime.** A watchdog thread, every second: no call answered for `service_idle_minutes`
@@ -581,7 +585,7 @@ function either way, so the in-process path is the old one. Which:
 
     CB_SERVICE=0     always in process (the old path)
     CB_SERVICE=1     the service, started when not running
-    unset            an interface (ui/terminal.py, ui/mcp_server.py: service.START) starts it on
+    unset            an interface (the terminal interface, the MCP server: service.START) starts it on
                      demand -- in the background as it opens; anything else (`facts`, tests) uses
                      it when it runs and answers in process when not
     in the service   (service.LOCAL) everything answered there
@@ -733,7 +737,7 @@ module, with the name the module gives it) and `body_name` (a name given to a bo
     kb.struct("win32", "RECT")    kb.api_model("win16", "GLOBALLOCK")    kb.api_model("vxd", ...)
     kb.table(platform, kind)    kb.known(...)    kb.learn(platform, kind, key, value, source)
 
-    python -m codebreaker knowledge [platform [kind [key]]]     what it holds and where from (--load)
+    codebreaker knowledge [platform [kind [key]]]     what it holds and where from (--load)
 
 **What moved onto it.** Kept as the authored inputs, now read through it: ordinal_names.json
 (windows ordinal_names), win32_arguments.json (win32 argument_bytes.header),

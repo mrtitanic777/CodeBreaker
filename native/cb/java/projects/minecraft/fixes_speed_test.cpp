@@ -1,5 +1,5 @@
 // The fix passes and the coverage scanners over a few MB of converted-looking C++ text (the fixtures repeated): a loose
-// bound that catches an accidental quadratic, and the timings docs/TYPED_CPP_SPEED.md records (printed to stderr).
+// bound that catches an accidental quadratic, and the timings docs/history/TYPED_CPP_SPEED.md records (printed to stderr).
 #include <chrono>
 #include <cstdio>
 #include <string>

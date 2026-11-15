@@ -1,5 +1,5 @@
 @echo off
-rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--update] [--filter TEXT] -- THE gate (docs/PYTHON_RETIREMENT.md 5.2): cb_tests, every command
+rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--update] [--filter TEXT] -- THE gate (docs/history/PYTHON_RETIREMENT.md 5.2): cb_tests, every command
 rem case of cb_exe_gate against the real codebreaker.exe, and the terminal interface's Python tests. tests\run_all.py is not part of it.
 rem
 rem     tools\gate.cmd                 build native/cb and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run

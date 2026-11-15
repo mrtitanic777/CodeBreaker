@@ -29,7 +29,7 @@ namespace {
 
 stdfs::path kit_dir() {
     if (const auto env = fs::get_env("CB_KIT_MSC300")) return fs::from_text(*env);
-    return "C:/Users/mrtit/Documents/GitHub/Microsoft-Assemblers-Compilers/MicrosoftC3.0/corpus";
+    return cb::testing::beside_checkout("Microsoft-Assemblers-Compilers/MicrosoftC3.0/corpus");
 }
 
 struct Settings {

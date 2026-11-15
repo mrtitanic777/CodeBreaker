@@ -58,14 +58,14 @@ modules (KRNL386, USER, GDI, ...) boot together to Setup's Wizard and install Wi
 desktop (2026-10-30, master af5ffb910: rebuilt from source, Setup's License page reached twice
 each with the caller-results rule off, on, and on with fixed segments allowed to grow; the
 milestone sweep of that day -- the smallest 95 32-bit and 90 each of 16-bit, VxD and DOS modules
--- is in docs/STATUS.md); the 7 Setup programs; 212 of 215 VxDs build, 40 boot-set VxDs load in the running system.
+-- is in docs/history/STATUS.md); the 7 Setup programs; 212 of 215 VxDs build, 40 boot-set VxDs load in the running system.
 `vxd boot` (2026-10-28, docs/VXD.md): VMM32.VXD (build_w3) and DOSMGR, IFSMGR, SHELL, VDMAD, VFAT,
 VMPOLL, VPICD, VTD, VTDAPI, VXDLDR (build_le), each loaded and started, boot an installed Windows 95
 to the desktop; DRVSPACX and VDHCP rebuilt too but not loaded on that machine.
 
 ## Open-source C (ground truth for the C lanes)
 
-Compiled with OpenWatcom and taken back to C by `tools/oss_bench.py`, their own source the
+Compiled with OpenWatcom and taken back to C by the OSS benchmark, their own source the
 answer: cJSON, zlib, sds, tiny-AES-c, inih, Lua, miniz.
 
 ## XNA / C# (.NET lane)
@@ -82,4 +82,4 @@ Minecraft (alpha, PC): its classes as C++03 through the Java lane, built and run
 Minecraft Alpha (decompiled source), as C#: NoiseGenerator, NoiseGeneratorPerlin, NoiseGeneratorOctaves and
 MathHelper through the javac front end and the C# back end (translator phase 7), judged beside the JVM with a
 driver of seeded world-generation calls: the same output, java.util.Random and Java's text for doubles included
-(tests/translate/test_csharp_kit.py).
+(the C# kit's tests under tests/translate).

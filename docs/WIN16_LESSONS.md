@@ -16,13 +16,13 @@ build notices and reports it; **manual** -- found only by someone booting and di
 | # | Symptom | Real cause | Now | Still manual / next |
 |---|---|---|---|---|
 | 1.1 | GDI crash "Invalid DPMI return" at boot | OpenWatcom's default convention is its own register one: an unnamed `typedef int code();` passed every indirect call's arguments in registers | **automatic**: every emitted prototype/typedef names `__cdecl`/`__stdcall` (`c_text.py`) | a lint that refuses C text with an unnamed convention |
-| 1.2 | Caller's stack off after a call | how many argument bytes a callee removes was guessed from the C, not the instructions | **automatic**: `describe.py` reads `retf N`, hand-popped arguments (pop return, pop args, push return; also through a helper `call; jmp bx`), argument-inserting thunks (`forwards`), `callers_say` consensus; `contract16` compares the caller's cleanup after each call with the original's | -- |
+| 1.2 | Caller's stack off after a call | how many argument bytes a callee removes was guessed from the C, not the instructions | **automatic**: `describe.cpp` reads `retf N`, hand-popped arguments (pop return, pop args, push return; also through a helper `call; jmp bx`), argument-inserting thunks (`forwards`), `callers_say` consensus; `contract16` compares the caller's cleanup after each call with the original's | -- |
 | 1.3 | Results cut to 16 bits | DX:AX results where DX is set from a segment register before AX | **automatic**: `describe._segment_in_dx`, result sizes locked from the instructions | -- |
 | 1.4 | Arguments shifted in far calls | callers decompiled before a callee was found | **automatic**: callers re-decompiled when new functions appear | -- |
 | 1.5 | Wrong far reads | `*MK_FP(seg, p+2)` typed by a near cast | **automatic**: typed by the pointer's element type (`_far_addresses`) | -- |
 | 1.6 | Stack records (CBT_CREATEWND, WNDCLASS, BITMAP, PAINTSTRUCT) split or half-filled | a structure passed by address was seen as separate locals; Ghidra's alias cut-off at level 0; `mov [bp-x], ss` stores dropped | **automatic**: `_buffer_fields` folds an escaped array up to the next one; `varmap.cc` skips the cut-off at alias level 0; `_stack_segment_stores` puts the SS store back | -- |
-| 1.7 | Boot dies inside KERNEL's instruction decoder | functions with a fault-range table (`start,end,resume` words naming inner instruction offsets: IsBadStringPtr's `__GP` chain) | **automatic**: `origin.py` keeps such functions in assembly | -- |
-| 1.8 | Random DS after a call | "DS keepers": `push ds .. call .. pop ds` without loading DS -- the callee may change DS, C cannot promise to keep it | **automatic**: kept in assembly (`origin.py`) | -- |
+| 1.7 | Boot dies inside KERNEL's instruction decoder | functions with a fault-range table (`start,end,resume` words naming inner instruction offsets: IsBadStringPtr's `__GP` chain) | **automatic**: `origin.cpp` keeps such functions in assembly | -- |
+| 1.8 | Random DS after a call | "DS keepers": `push ds .. call .. pop ds` without loading DS -- the callee may change DS, C cannot promise to keep it | **automatic**: kept in assembly (`origin.cpp`) | -- |
 | 1.9 | Registers clobbered across calls | Watcom used FS/GS as scratch | **automatic**: `-zfp -zgp` | -- |
 | 1.10 | `__loadds` too late | the DS load came after the frame setup | **automatic** | -- |
 | 1.11 | "Call to Undefined Dynalink" in KRNL386 | a self-loading module (KRNL386: its MZ part covers the whole file) got extra `CODE<n>X` segments | **automatic**: none for self-loaders; stub verbatim, file alignment, chained selector fix-ups (`STUBVERBATIM`, `SELECTORFIXUPS`) | -- |
@@ -85,7 +85,7 @@ can look like "Setup's graphical screen"; the VM runs without paging (CR0 = 11h)
 physical.
 
 **Next:** these are scratch scripts today (`gdbwatch`, `gdbdiv`, `walkbp`, `trymini` in the
-session scratchpad). They belong in `codebreaker/verify/live16.py` as commands:
+session scratchpad). They belong in `native/cb/verify` as commands:
 `watch`, `catch`, `trace`, plus the snapshot gate (3.4).
 
 ## 5. How we worked
@@ -102,8 +102,8 @@ session scratchpad). They belong in `codebreaker/verify/live16.py` as commands:
 
 ## Where each fix lives
 
-- Function facts: `codebreaker/decompile/describe.py` (pops, thunks, result sizes, `callers_say`)
-- Origin (asm or C): `codebreaker/analyze/origin.py`
-- C text: `codebreaker/decompile/c_text.py`; Ghidra core: `native/decompiler/core/cpp/varmap.cc`
-- Frames: `codebreaker/build/asm16.py`; link order, gates, caches: `codebreaker/build/module.py`
-- Checks: `codebreaker/verify/gate16/isolated16.py`, `contract16.py`, `setup16.py`
+- Function facts: `native/cb/decompile/describe.cpp` (pops, thunks, result sizes, `callers_say`)
+- Origin (asm or C): `native/cb/analyze/origin.cpp`
+- C text: `native/cb/decompile/c_text_*.cpp`; Ghidra core: `native/decompiler/core/cpp/varmap.cc`
+- Frames: `native/cb/build/asm16.cpp`; link order, gates, caches: `native/cb/build` (the module build)
+- Checks: `native/cb/verify/gate16/isolated16.cpp`, `contract16.cpp`, `setup16.cpp`

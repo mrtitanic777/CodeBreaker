@@ -7,7 +7,7 @@ Scripts: `python_reach/{graph,live3,pool3,report,list4,cand4}.py` (`list4.py` pr
 
 Deleted: **36 modules, 9,603 lines** (`wc -l`): `xna/{__init__,fixups,mgfx,port,run}`, `formats/xnb`, `formats/xbox/*` (bink chd ciso effect fatx gdf god heavyiron nand pck shader stfs texture volumes xbe xdbf xma xpr xsb xur xwb xzp zar, `__init__`),
 `formats/{gfx,inspect,media}`, `decompile/{xbox_effect,xenos_hlsl}`, `platforms/xbox` (the original Xbox's descriptor). Kept on purpose: `formats/xbox/{empty_live.bin,THIRD_PARTY.txt,crypto/{LICENSE,ATTRIBUTION.md}}`
-(data and licences; docs/PYTHON_RETIREMENT.md 4.4 lists them) and `data/xna/*` (the C# the native code builds). Also deleted: the two golden generators under `native/cb/formats/xbox/testdata/assets`
+(data and licences; docs/history/PYTHON_RETIREMENT.md 4.4 lists them) and `data/xna/*` (the C# the native code builds). Also deleted: the two golden generators under `native/cb/formats/xbox/testdata/assets`
 (`make_asset_goldens.py`, `bench_assets.py`: they imported the deleted readers; the goldens they made are checked in).
 
 Wiring changed: `COMMANDS` rows `media info heavyiron gfx xna` (all in `NATIVE`), `platforms.ORDER` loses `"xbox"`, `corpus._readable` no longer opens an `.xbe` (the native `corpus` does: `platforms.package.identify_xbe_reads_the_magic`,

@@ -22,7 +22,7 @@ setting for one run.
 | Microsoft C 2.03 (MC1, MC2) | `binaries/latticec/oracle16` | `kits`: `msc203` |
 | MASM (BIN, INC, LIB) | `toolchains/masmroot` | `masm` |
 | A MASM-compatible NASM | built from `native/nasm` (default `native/nasm/build/bin/nasm.exe`) | `nasm` |
-| The XENIX C compiler of Microsoft's 1984 tools (its files; the LINK/LIB reconstruction it is compared with: `xcc.py`'s folder) | | `kits`: `xenix86`; `xenix_c` |
+| The XENIX C compiler of Microsoft's 1984 tools (its files; the LINK/LIB reconstruction it is compared with: the `xenix_c` kit's folder) | | `kits`: `xenix86`; `xenix_c` |
 | PowerPC compiler, linker and runtime | | `powerpc_tools`, `powerpc_lib` |
 | A C++ compiler for judging transpiled Java (g++) | `C:/msys64/mingw64/bin/g++.exe` (or g++ on PATH) | `host_cxx` |
 | Java (a JDK 8+: java and javac), to decompile a jar and to run classes beside their translation | `JAVA_HOME`, or `java` on PATH | `java` |
@@ -33,12 +33,12 @@ setting for one run.
 | MSBuild, to build a transpiled game's Visual Studio project | | `msbuild` |
 | Per-project hand fixes laid over transpiled Java | `state/java/overlays` | `java_overlays` |
 | The 12 Xbox 360 PowerPC images the store has judged (`*.basefile`) | `../powerpc-samples/images` (moved out of the old `src/xbox/samples` on 2026-10-17; its README says what else was kept) | (the store's module paths) |
-| Real Xbox 360 files the format tests read when present (an STFS theme, a dashboard XZP, a Minecraft PCK) | `../xbox-samples` | (tests/test_xbox_formats.py) |
+| Real Xbox 360 files the format tests read when present (an STFS theme, a dashboard XZP, a Minecraft PCK) | `../xbox-samples` | (the xbox format unit tests) |
 | The Xbox 360 key store the `crypto` tools read (1BL_pub.bin, SB_prv.bin, ...) | `Keys/` in the current folder | `xbox360_keys` |
 | The `crypto` tools' binaries: LZX libraries, the Free60 xenon-as / xenon-objcopy, hypervisor images | | `xbox360_crypto_bin` |
 | ILSpy's command line (the `xna` lane's decompiler) | `dotnet tool install -g ilspycmd` | `ilspycmd` |
 | MonoGame's effect compiler (the `xna` port compiles each recovered effect's HLSL) | `dotnet tool install -g dotnet-mgfxc --version 3.8.1.303` | `mgfxc` on PATH |
-| The Xbox 360 SDK's fxc (tests only: tests/test_xbox_effect.py recompiles its .fxo fixtures with it when it is there) | the XDK's `bin/win32/fxc.exe` | `XEDK` |
+| The Xbox 360 SDK's fxc (tests only: the xbox effect unit tests recompile its .fxo fixtures with it when it is there) | the XDK's `bin/win32/fxc.exe` | `XEDK` |
 | de4dot (the `xna` lane's deobfuscator: an obfuscated assembly is cleaned before it is decompiled) | built from its source (github.com/de4dot/de4dot) for net8, beside the checkout at `../_tools/de4dot/Release/net8.0/de4dot.exe` | `de4dot` (or PATH, or that build) |
 | XNA Game Studio 4.0 (its GamerServices, Net, Storage and Avatar assemblies: `xna port` generates its stubs from their metadata) | the Windows GAC | |
 | MonoGame DesktopGL 3.8.1 and the .NET 8 SDK (`xna port` builds against them) | NuGet's cache | |
@@ -69,7 +69,7 @@ by its SHA-1, so every command run on one file adds to one folder.
 The rest -- the function store, caches, scratch builds, scoreboards -- goes under `state/`
 (setting `state`). Delete it to start over; nothing in it is source. It holds its own size: the
 caches stay under `cache_max_gb` (default 2) and keep only the generation of the code of now; boot
-runs delete their disk copies; `python -m codebreaker tidy-state` shows it part by part and clears
+runs delete their disk copies; `codebreaker tidy-state` shows it part by part and clears
 what is stale (README: What is kept, and how big it gets). The reconstructed Windows 95
 source is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
 

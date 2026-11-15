@@ -745,7 +745,7 @@ cli::Command command(const Services& services) {
     c.description =
         "One-time and safe to run again: it files the verdicts judged under an older program's profile digests under the digest of the same verifier\n"
         "settings now, and copies the Python's knowledge base (the bodies and their names, the learned rows) into the one this program keeps.\n"
-        "Every old file stays as it is and nothing this program already holds is replaced. See docs/STATE_MIGRATION.md.";
+        "Every old file stays as it is and nothing this program already holds is replaced. See docs/history/STATE_MIGRATION.md.";
     c.params = {
         cli::Option{"--dry", "", "say what would be carried; write nothing", cli::Arg::Flag},
         cli::Option{"--state", "", "the state folder (the configured one by default)", cli::Arg::Value, "DIR"},

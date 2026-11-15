@@ -23,12 +23,12 @@ namespace cb::exact::test {
 
 inline std::filesystem::path research_root() {
     if (const auto env = fs::get_env("CB_RESEARCH")) return fs::from_text(*env);
-    return "C:/Users/mrtit/Documents/GitHub/Microsoft-Assemblers-Compilers/research";
+    return cb::testing::beside_checkout("Microsoft-Assemblers-Compilers/research");
 }
 
 inline std::filesystem::path main_checkout() {
     if (const auto env = fs::get_env("CB_MAIN_CHECKOUT")) return fs::from_text(*env);
-    return "C:/Users/mrtit/Documents/GitHub/CodeBreaker";
+    return (cb::testing::data_path("") / ".." / "..").lexically_normal();   // this checkout
 }
 
 inline const Json& golden() {

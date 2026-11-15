@@ -28,7 +28,7 @@ With `NATIVE` naming every command but `ui`, the Python that the translated exe 
 
 **`tools/py2cpp.py` is deleted** (300 lines). Nothing runs it: no suite, cmd file, tool, native source or other repository (Dashboard, Windows95, Win95VM, XboxMCP, LoganOS:
 searched) names it except docs, a comment in `native/ported/ne/CMakeLists.txt`, a work-folder path in `tests/translate/test_python_frontend.py` and a comment in pyengine. The ports it made are
-committed and `pyengine --dynamic` is the translator since 2026-11-05. docs/PYTHON_FRONTEND.md and NATIVE.md, which showed its command lines, now say it is retired and in git history. Its
+committed and `pyengine --dynamic` is the translator since 2026-11-05. docs/history/PYTHON_FRONTEND.md and NATIVE.md, which showed its command lines, now say it is retired and in git history. Its
 modules (the Python front end, `cpp17`, ...) are held by `tests/translate/*` now, not by a tool.
 
 **`tools/judge_c_java.py` is KEPT, on purpose.** I deleted it first; `tidy.py --apply` then found `judge_native_jvm.roundtrip` and `translate/frontends/clang/j2x.py` (302 lines) unreached, because
