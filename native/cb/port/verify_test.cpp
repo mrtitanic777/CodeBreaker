@@ -261,6 +261,7 @@ CB_TEST("port.verify.config_errors", [] {
 // ---- running the port ---------------------------------------------------------------------------------------------
 
 CB_TEST("port.verify.run_port", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     cb::fs::ScopedTempDir dir("cb-verify-port");
     const auto run = [&](std::string_view cmd, std::string_view in = "", const std::map<std::string, std::string>& env = {},
                          std::chrono::milliseconds timeout = std::chrono::seconds(20)) {
@@ -289,6 +290,7 @@ CB_TEST("port.verify.run_port", [] {
 // ---- comparing ------------------------------------------------------------------------------------------------------
 
 CB_TEST("port.verify.compare_same_console_and_files", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([
         {"name":"hello","cmd":"/c echo hi"},
@@ -311,6 +313,7 @@ CB_TEST("port.verify.compare_same_console_and_files", [] {
 });
 
 CB_TEST("port.verify.compare_names_every_kind_of_difference", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([
         {"name":"console","cmd":"/c echo hi"},
@@ -356,6 +359,7 @@ CB_TEST("port.verify.compare_names_every_kind_of_difference", [] {
 });
 
 CB_TEST("port.verify.compare_runs_a_case_and_what_follows_in_the_same_folders", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([
         {"name":"write","cmd":"/c echo kept> OUT.TXT","then":[
@@ -391,6 +395,7 @@ CB_TEST("port.verify.compare_runs_a_case_and_what_follows_in_the_same_folders", 
 });
 
 CB_TEST("port.verify.compare_masks_what_depends_on_the_machine", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([{"name":"t","cmd":"/c echo time 34> T.TXT & echo time 56"},
                                            {"name":"u","cmd":"/c echo time 34> U.DAT"}])",
@@ -410,6 +415,7 @@ CB_TEST("port.verify.compare_masks_what_depends_on_the_machine", [] {
 });
 
 CB_TEST("port.verify.compare_a_port_that_does_not_end", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([{"name":"hang","cmd":"/c ping -n 30 127.0.0.1"}])");
     const FakeOriginal original([](const stdfs::path&, const stdfs::path&, std::string_view, cb::ByteView) { return shown("", 0); });
@@ -422,6 +428,7 @@ CB_TEST("port.verify.compare_a_port_that_does_not_end", [] {
 });
 
 CB_TEST("port.verify.compare_another_program_of_the_set", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([{"name":"one","cmd":"/c echo one"},{"name":"two","program":"second","cmd":"/c echo two"}])",
                                        std::format(R"("programs":{{"second":{{"original":"orig2.exe","port":"{}"}}}})", cmd_exe_text()));
@@ -434,6 +441,7 @@ CB_TEST("port.verify.compare_another_program_of_the_set", [] {
 });
 
 CB_TEST("port.verify.report_text", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([{"name":"hello","cmd":"/c echo hi"},{"name":"bare","cmd":""},{"name":"bad","cmd":"/c echo hi> OUT.TXT"}])");
     const FakeOriginal original([](const stdfs::path&, const stdfs::path& folder, std::string_view cmd, cb::ByteView) {
@@ -457,6 +465,7 @@ CB_TEST("port.verify.compare_needs_an_emulator", [] {
 // ---- the port alone -----------------------------------------------------------------------------------------------------
 
 CB_TEST("port.verify.run_cases", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const v::Config config = f.config(R"([
         {"name":"hello","cmd":"/c echo hi","then":[{"name":"after","cmd":"/c type OUT.TXT"}]},
@@ -558,6 +567,7 @@ CB_TEST("port.verify.files_of_names_files_in_upper_case", [] {
 // ---- the command --------------------------------------------------------------------------------------------------------
 
 CB_TEST("port.verify.command", [] {
+    CB_WINDOWS_ONLY("it runs cmd.exe batch files as the ported programs");
     const Fixture f;
     const std::string cases = R"([{"name":"hello","cmd":"/c echo hi"}])";
     cb::fs::write_text(f.base() / "good.json", std::format(R"({{"original":"orig.exe","port":"{}","cases":{}}})", cmd_exe_text(), cases));

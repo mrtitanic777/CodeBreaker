@@ -247,3 +247,57 @@ The 54 entries again (`--check 120`, one project at a time, deleted after), with
 - **Extra modules** (Terraria, L4D2, Forza 4): `recompile-project` would need one XenonRecomp configuration per XEX/DLL (with the function
   suffix the config has), a `module_info` and registration for each in `x360.cmake`, and `XexLoadImage` loading a linked module by name
   and calling its entry; not started.
+
+## Round 4 (2026-11-15, night)
+
+Items 1-6 of the round. Measured with `--check 120` (one project at a time, deleted after) for the titles the round touched and a regression
+set; the rest of the 54 entries were not rerun (Happy Wars alone is a 40-minute build; see "Left").
+
+| Title | Round 3 | Round 4 |
+|---|---|---|
+| Terraria | 0 frames, `XexLoadImage(HostLoader.dll)` not translated | 0 frames: HostLoader.dll, RuntimeHost.xex and NetCFUserMode.dll load by name and run their entries; stops at `KeCreateUserMode` / `KeEnterUserMode` (the .NET Compact Framework's JIT, below) |
+| Forza Motorsport 4 | 0 frames (no frame for 20 s) | 1 frame: XMediaFacade_default.xex and SpeechFacade_default.xex translated and linked, XMediaFacade loads and answers; stops at `NtQueryInformationFile` class 26 (`media\ui\textures.zip`) |
+| Left 4 Dead 2 Demo | 0 frames (`tier0_360.dll`) | 21 modules translated (112,000 functions); the first build failed to link (`__imp__vstdlib_360_Ordinal_<n>`; fixed in `gen_import_stubs.py`, not rebuilt: a 40-minute build) |
+| Top Spin 2 Wimbledon Demo | 1 frame, loader thread stalls after frame 266 | 6000 frames, no stop |
+| Monopoly Plus | no frame for 20 s after frame 233 | 1800 frames (the "stall" is a burst of shader compiles) |
+| Small Arms | 12 frames, stall after 239 | past frame 236, then FXC compiles of 2.3 s each (94 s in 110 s): a cold shader cache, not a stall |
+| Catherine Demo | 2400 frames | 1800 frames, no stop (the same compile cost) |
+| Heavy Weapon | 1 frame, null read at 0x70 | unchanged (see 4) |
+| Regression set | | Hexic HD 6600, UNO 6600, Cloning Clyde 2400, Vigilante 8 6600, Lumines 6000, SF2 HD 6600, Rock Band Blitz 6600, WALL-E 5400, Minecraft 6600, Zuma 6600, PAC-MAN 6600, the EA title 6600, Geometry Wars 6600 |
+
+1. **Extra modules.** `recompile-project` translates every XEX in the title's folder that is a PowerPC program (code and `.pdata`, not a CLR
+   image, more than the 18 KB resource stub every .NET assembly and `.nlp` table of Terraria carries): one configuration, switch tables and
+   `module_info.cpp` each in `src/modules/<key>/`, symbols suffixed `_<key>` (`symbol_suffix`, `suffix_function_names`), the module's image in
+   `assets/` replaced by its basic form; a module that fails to translate is left out and reported (`reports/modules.txt`). `x360.cmake` builds each
+   as a library and links it; the title's `module_info.cpp` lists them (`RecompiledModule::extras`, `path`). The runtime's `XexLoadImage` loads a
+   listed module by name (any path, any case), binds its imports (an import of another module's export loads that one first; calls go through the
+   `<library>_Ordinal_<n>` stub to the export), runs `DllMain(DLL_PROCESS_ATTACH)`, and `XexGetProcedureAddress` finds its exports. Also: an
+   export is a function root for the discovery (Forza's XMediaFacade has leaf exports no `.pdata` lists and nothing calls); an executable section
+   counts as code in XenonRecomp even without the code flag (NetCFUserMode.dll's `.text`); exports the runtime implements as imports are found by
+   their ordinal name (`gen_ordinal_names.py`; `XamIsUIActive` 748 for Terraria); `NtSignalAndWaitForSingleObjectEx`; a 10-bit front buffer
+   (`k_2_10_10_10_AS_16_16_16_16`, identity ramp; Forza); and a relaunch loop closed: a title that asks to go back to the dashboard before any
+   frame, in a process that is itself a relaunch, no longer starts itself again without end (Terraria spawned a hundred processes).
+   Terraria cannot go further statically: the Compact Framework JIT-compiles managed code to PowerPC at run time (`KeCreateUserMode`,
+   `KeEnterUserMode`, a user-mode window at `BF8A....`), code no recompiler has seen.
+2. **The stalls** are not stalls. Catherine, Small Arms and Monopoly Plus recover on their own: each new scene brings 50-60 shaders, FXC takes 1-3 s
+   for each on the command processor's thread (`dxcompiler.dll` is not on this machine), so a 20 s watchdog fires and the check's clock runs out
+   in a cold shader cache. A second run reads `shader_cache/` and the manifest queues its shaders at start-up. FXC optimisation level 1 and
+   queuing a draw's two shaders side by side were tried and did not shorten it (the translated HLSL is large); neither is kept.
+3. **Happy Wars `k_16_16_FLOAT`**: texture formats `k_16_16_FLOAT` and `k_16_FLOAT` (halves to floats, `kUntileHalf2`), in the CPU reference and the
+   random-texture test (400 random textures, 1451 levels, 0 differ). Happy Wars itself was not rerun.
+4. **Top Spin 2**: `ObOpenObjectByName` answered "not found" for every name, so a title that creates an event by name and opens it by name never
+   found its own; it now looks the name up among the named objects (`NtCreateEvent` and the others register them). The console's own names
+   (`kConsoleNamedObjects`) are created on first open: `XNAGSVEN<40 hex>`, the XNA game-services event Terraria's HostLoader opens before it starts
+   the managed runtime (signalled). Top Spin 2: 1 to 6000 frames. **Heavy Weapon** is in its game loop (polls `NetDll_recvfrom` and
+   `XNotifyGetNext`, reads profile settings of user FFFE07D1 five times) when it reads the unset field; the call that should have set it is
+   not found yet.
+5. **Texture3D**: `CB_SHADER_TEST=1|2` (it was no longer wired into `main.cpp`) runs the GPU harness; it now has 7 volumes (tiled and linear, 1, 2
+   and 4 bytes a texel, sizes that are not tile multiples) laid out by `ReferenceVolumeOffset` and untiled by the GPU pass, read back slice by
+   slice: 0 differ; and a check that the 32 x 32 x 4 tiling is a bijection of the padded volume over 18 shapes. The formula is the untiler's own,
+   verified as a permutation and through the GPU path; no title with a real volume texture has run yet (the three that fetch a volume use 2D
+   constants).
+6. `CB_KERNEL_TEST=2`: all passed (on Top Spin 2's program). `CB_SHADER_TEST=2`: 0 failures (present pass with the 10-bit buffer, random
+   textures, volumes, sampling).
+
+Left: Happy Wars (rerun), L4D2 (rebuild with the stub fix and run), Forza past class 26, Heavy Weapon's field, Terraria's JIT, the full
+54-entry table.

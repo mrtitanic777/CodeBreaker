@@ -12,7 +12,9 @@
 #include "cb/build/a64_asm.hpp"
 #include "cb/build/asm_text.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/core/parallel.hpp"
 #include "cb/decompile/a64.hpp"
+#include "cb/verify/stage_timer.hpp"
 #include "cb/emulate/a64.hpp"
 
 namespace cb::source::switch_writer {
@@ -264,6 +266,8 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     const ByteView flat = program.flat;
     const SwitchFlow flow(flat, program);
     const std::uint32_t size = static_cast<std::uint32_t>(flat.size());
+    std::optional<verify::StageTimer> stage;   // (CB_PROFILE: where the writer's time goes)
+    stage.emplace("switch.walk");
 
     // where flow starts: the entry, the symbols, and the code the relocation tables say is pointed at
     std::set<std::uint32_t> entry_set = {static_cast<std::uint32_t>(program.entry)};
@@ -283,6 +287,7 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     std::vector<std::uint32_t> entries(entry_set.begin(), entry_set.end());
     iw::Walked<da::Insn> walked = iw::walk<da::Insn>(flow, entries);
     // past those: the stretches of the text segment that nothing reaches but that begin like a function
+    stage.emplace("switch.rounds");
     for (unsigned round = 0; round < 6; ++round) {
         std::vector<std::uint32_t> fresh;
         for (const nro::Segment& s : program.segments) {
@@ -292,8 +297,8 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
                 if (walked.code.contains(a)) continue;
                 const std::optional<da::Insn> insn = flow.decode(a);
                 if (!insn || !prologue(*insn)) continue;
-                const iw::Walked<da::Insn> trial = iw::walk<da::Insn>(flow, std::vector<std::uint32_t>{a});
-                if (trial.code.size() < 6) continue;
+                const iw::Beyond<da::Insn> trial = iw::walk_beyond<da::Insn>(flow, walked.code, a, 6);   // (what is already found is not walked again)
+                if (trial.reached < 6) continue;
                 fresh.push_back(a);
                 for (const auto& [at, i] : trial.code) walked.code.insert_or_assign(at, i);   // (so the next candidates are past it)
                 for (const std::uint32_t t : trial.targets) walked.targets.insert(t);
@@ -309,6 +314,7 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     walked.starts.erase(std::unique(walked.starts.begin(), walked.starts.end()), walked.starts.end());
     const std::map<std::uint32_t, da::Insn>& code = walked.code;
 
+    stage.emplace("switch.names");
     iw::Names names;
     names.try_emplace(static_cast<std::uint32_t>(program.entry), "entry");
     for (const auto& [at, name] : start_names) names.try_emplace(at, name);
@@ -322,10 +328,11 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
             if (!seen.insert(name).second) name = std::format("{}_{:06X}", name, at);
     }
     const iw::Functions functions = iw::name_functions(walked.starts, names, kSub);
-    const std::set<std::uint32_t> inside_insn = iw::covered(code, flow);
+    stage.emplace("switch.blocked");
+    const iw::ByteMarks inside_insn = iw::covered_marks(code, flow, size);
 
     // the places a source line cannot begin: inside a special line (the header, MOD0, an 8-byte pointer, a relocation entry, the assets)
-    std::set<std::uint32_t> blocked;
+    iw::ByteMarks blocked(size);
     if (program.kind == nro::Kind::Nro) {
         for (std::uint32_t a = 5; a < 0x80 && a < size; ++a) blocked.insert(a);
         if (program.mod_offset != 0)
@@ -345,6 +352,7 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     iw::Names labels = iw::make_labels(walked.targets, names, line_start, kLocal);
 
     // the words the relocations patch
+    stage.emplace("switch.relocs");
     std::map<std::uint32_t, std::string> words;   // word offset -> the operand of its `.quad`
     std::map<std::uint32_t, std::uint32_t> equates;
     const auto name_of = [&](std::uint64_t target) -> std::string {
@@ -380,6 +388,7 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     }
 
     // constants the code builds with adrp and an add or a load: the address of something
+    stage.emplace("switch.pairs");
     std::vector<Pair> pairs;
     {
         struct Pending {
@@ -425,8 +434,16 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     for (const auto& [a, v] : equates) name_values[kBss(a)] = v;
 
     // each instruction as text, or as a word when the text would not assemble back to it
+    stage.emplace("switch.text");
+    // (each instruction on its own, from tables nothing changes: the lines are made side by side and filed in address order)
     std::map<std::uint32_t, std::string> instruction_text;
-    for (const auto& [at, insn] : code) {
+    std::vector<const std::pair<const std::uint32_t, da::Insn>*> to_write;
+    to_write.reserve(code.size());
+    for (const auto& entry : code) to_write.push_back(&entry);
+    std::vector<std::string> written_lines(to_write.size());
+    parallel::parallel_for(to_write.size(), [&](std::size_t item) {
+        const std::uint32_t at = to_write[item]->first;
+        const da::Insn& insn = to_write[item]->second;
         const auto same_word = [&](const std::string& t) {
             try {
                 return da::assemble_word(t, at, name_values) == insn.word;
@@ -453,8 +470,9 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
             const std::string_view svc = emulate::a64::svc_name((insn.word >> 5) & 0xFFFF);
             if (!svc.empty()) line += std::format("  // svc{}", svc);
         }
-        instruction_text[at] = std::move(line);
-    }
+        written_lines[item] = std::move(line);
+    });
+    for (std::size_t item = 0; item < to_write.size(); ++item) instruction_text.emplace_hint(instruction_text.end(), to_write[item]->first, std::move(written_lines[item]));
 
     std::vector<std::string> head = {std::format("// {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      std::format("// Nintendo Switch {}, {} bytes, entry 0x{:06X}; AArch64, loaded at 0 (position independent)",
@@ -464,6 +482,7 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     if (!program.note.empty()) head.push_back("// " + program.note);
     for (const auto& [a, v] : equates) head.push_back(std::format("        .equ {}, 0x{:X}", kBss(a), v));
     if (!equates.empty()) head.push_back("");
+    stage.emplace("switch.emit");
     translate::l2::Assembly out(head, "gnu-as", std::string(file_name));
     out.part("image", "segment", std::nullopt, size);
 
@@ -471,7 +490,9 @@ iw::Written write(const nro::Program& program, std::string_view file_name, const
     iw::emit<da::Insn>(out, 0, size, labels, functions, listing);
     out.append("");
 
+    stage.emplace("switch.join");
     const std::string source = iw::text(out) + "\n";
+    stage.emplace("switch.assemble");
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), size);
     const char* extension = program.kind == nro::Kind::Nro ? ".built.nro" : ".built.bin";
     iw::assembled(

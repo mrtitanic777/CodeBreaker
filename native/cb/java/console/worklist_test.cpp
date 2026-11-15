@@ -17,6 +17,7 @@ worklist::Options fake_compiler() {
 }
 
 CB_TEST("java.console.worklist.matches_the_original", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     const stdfs::path out = test::data("worklist/out");
     const worklist::Worklist w = worklist::check(out, fake_compiler());
     CB_CHECK_EQ(w.total, std::size_t{7});     // the .cpp files in the folder; header.h is not compiled
@@ -33,6 +34,7 @@ CB_TEST("java.console.worklist.matches_the_original", [] {
 });
 
 CB_TEST("java.console.worklist.order_and_jobs", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     const stdfs::path out = test::data("worklist/out");
     worklist::Options options = fake_compiler();
     options.jobs = 4;   // the same answer however many compiles run at once
@@ -64,6 +66,7 @@ CB_TEST("java.console.worklist.categories", [] {
 });
 
 CB_TEST("java.console.worklist.run_writes_the_file", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     fs::ScopedTempDir tmp("cbwl");
     fs::write_text(tmp.path() / "out" / "bad.cpp", "bad.cpp:1: error: boom\n");
     fs::write_text(tmp.path() / "out" / "good.cpp", "fine\n");

@@ -42,3 +42,4 @@ native/cb/**/testdata/**/__pycache__/
 # build and run output, not source
 codebreaker/xna/bin/
 out_sw/
+native/*/build-linux/

@@ -112,6 +112,7 @@ Header parse_header(ByteView xex) {
     }
     h.base = x.image_base();
     h.entry = x.entry_point();
+    if (x.security().export_table != 0) h.export_table = x.security().export_table;
     for (const ::xex::ImportLibrary& lib : x.import_libraries()) {
         if (std::optional<std::string> n = plain_name(lib.name)) h.imports.push_back(std::move(*n));
     }

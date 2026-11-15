@@ -112,3 +112,50 @@ Not done: opportunity 3 (cache the decompile of an unchanged module). The decomp
 (names and prototypes that propagate), so a cache key of the module hash and the decompiler revision is not enough,
 and a key that is enough needs the knowledge base's own version; left until that exists. Opportunities 4 and 5 are
 open. The 1-2.5 s warm re-run (decompile only) is the remaining cost of an unchanged module.
+
+## Phase 3: the console-lane source writers (2026-11-15)
+
+`codebreaker reach --judge` on a console program is `codebreaker measure` of it, and for the console lanes that is the source writer:
+discover the code, write the assembly, assemble it again, compare with the original. `CB_PROFILE=1` now times the stages of the 3DS,
+Switch and MIPS (PSP, PS2) writers (`n3ds.*`, `switch.*`, `mips.*` in native/cb/source). The proof harness is
+`cb_tests_source --filter source.writers_speed` with `CB_WRITER_SPEED_FILES=a;b` and `CB_WRITER_SPEED_OUT=<folder>`: one line per
+file with the writer's seconds and the SHA-256 of the source and of the rebuilt file, to diff before and after.
+
+Hot spots found, each in shared code:
+
+1. The first pass of the ARM, MIPS and 68000 assemblers (`size_guess`) copied the whole label table (an unordered_map of every label of
+   the program) for every instruction that names a label defined further on: quadratic in the program. Now
+   `assemble_with_guesses` (build/asm_text.hpp) adds the guesses to the table and takes them out again; same answer, no copy. This
+   was 98% of the writer time for the 3DS (arm), the PSP (mips, DOSBox 185 s of 185 s) and is the same code for the DS, GBA, N64, PS1,
+   PS2, Genesis, CD-i, Jaguar, Neo Geo and Sega CD writers.
+2. The Switch writer's search for functions nothing calls walked, for each candidate, everything the candidate reaches including all
+   code already found (511 candidates re-walked 2.4 million instructions in ftpd.nro; 24 s of NX-Shell's 44 s). `image_writer::walk_beyond`
+   walks only code not yet found and stops following found code once the six instructions the test asks for are counted: the same
+   accept/reject decision and the same code, targets and starts (a unit test checks it against `walk` for every entry of a toy program).
+3. The per-instruction "does this text assemble back to its word" check of the Switch and 3DS writers is independent per instruction:
+   it now runs on `parallel::parallel_for` (workers(): CB_JOBS and low_load apply) and is filed in address order.
+4. Memory: the Switch writer held a 48-byte tree node per byte of the asset section and per byte inside an instruction;
+   `image_writer::ByteMarks` is one bit per byte.
+
+Timings, writer wall seconds, cold, one process, CB_JOBS=4, the machine shared with other agents (so good to about +-20%).
+Rebuilt files and sources are byte-identical before and after (same SHA-256 for every file below).
+
+| Program | Before | After | Peak memory before / after |
+|---|---|---|---|
+| PSP dosbox/EBOOT.PBP (3 MB, 14,975 fns) | 185 s (reported 25+ min earlier) | 3.4 s | 208 / 203 MB |
+| 3DS Universal-Updater.3dsx (3 MB, 5,629 fns) | 102 s | 3.2 s | 308 / 319 MB |
+| 3DS FBI.3dsx (1.2 MB, 4,221 fns) | 25 s | 1.5 s | 158 / 163 MB |
+| Switch NX-Shell.nro (8.4 MB, 14,580 fns) | 44 s | 10.4 s | 1,297 / 1,342 MB (before ByteMarks) |
+| Switch ftpd.nro (1.5 MB, 2,357 fns) | 3.0 s | 1.5 s | -- |
+| Wii U SuDokuL.rpx (3.5 MB, 6,645 fns; `measure`) | 528 s | 5.5 s | -- / 374 MB |
+
+`reach --judge --per-platform 10 --max-size 16384` over homebrew-samples, one fresh state folder per column, wall time per platform
+(the Wii U / GameCube / Wii writer assembles with the MIPS assembler's code, so it had the same copy): Switch (3 files) 26 s -> 14 s,
+3DS (4 files, one an ELF of 5 MB) 358 s -> 12 s, Wii U (3 files) 697 s -> 10 s, Saturn (3 files) 1 s -> 1 s. The four result tables
+(`state/reach/r_<platform>.json` as printed) are identical before and after, line for line. (The `after` run used the exe built before the
+parallel text check and ByteMarks, the two smaller changes.)
+
+What is left in the writers (NX-Shell, 10.4 s): the a64 assembler 5.6 s (two serial passes, about 4 us per instruction in
+`assemble_word`: the pass-2 instructions are independent and could run side by side), text check 1.4 s, listing 1.3 s.
+
+Not done: item 3 of the first list (decompile cache). Its key problem (the knowledge base's version) is unchanged and this phase did not touch it.

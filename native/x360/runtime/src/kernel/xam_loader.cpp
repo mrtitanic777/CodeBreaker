@@ -1,6 +1,7 @@
 // XAM loader exports: launch data passed between titles (by the dashboard, invites, or the previous title).
 // A fresh boot has no launch data.
 
+#include "gpu/gpu.h"
 #include "kernel/stfs_mount.h"
 #include "kernel/kernel.h"
 #include "live/client.h"
@@ -160,11 +161,26 @@ void kernel::RebootToDash(const std::vector<uint8_t>& request)
 
 // The dashboard starts again as a new process with the launch data (`launchData`, else what XamLoaderSetLaunchData
 // set), the sign-ins kept (signed_in.txt); this one exits. XamLoaderLaunchTitleEx(NULL) and signin.xex's network test.
+namespace
+{
+    const uint64_t g_processStart = GetTickCount64();
+}
+
 [[noreturn]] void kernel::RelaunchDashboard(const std::vector<uint8_t>* launchData)
 {
     // TODO: the launch data for the host dashboard (it goes home).
     if (HostDashboard() && kernel::TitleId() != 0xFFFE07D1)
         ReturnToHostDashboard("XamLoaderLaunchTitleEx(the dashboard)");
+    // A title program that is itself a relaunch and ends again within seconds (a title that cannot start here asks to go
+    // back to the dashboard at once, before any frame) would start itself again without end, a new process every moment: it
+    // stops instead.
+    if (const char* relaunched = std::getenv("XBOX360RECOMP_DASH_RELAUNCH");
+        relaunched && relaunched[0] == '1' && GetTickCount64() - g_processStart < 15000 && gpu::SwapCount() == 0)
+    {
+        Log("Loader: the relaunched program ended again within seconds: not relaunching it again");
+        logging::Flush();
+        ExitProcess(1);
+    }
     {
         std::lock_guard lock(g_mutex);
         if (launchData)

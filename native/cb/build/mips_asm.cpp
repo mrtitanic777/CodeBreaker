@@ -245,7 +245,7 @@ private:
     void instruction(std::string_view text) {
         if (pc_ % 4 != 0) fail(std::format("an instruction at ${:X}, which is not a multiple of four", pc_));
         Result<Bytes> r = isa_.assemble(text, pc_, labels_);
-        if (!r.ok() && is_undefined(r.error()) && !final_) r = size_guess(isa_, text, pc_, labels_);
+        if (!r.ok() && is_undefined(r.error()) && !final_) r = assemble_with_guesses(isa_, text, pc_, labels_, pc_ + kGuessDistance);   // (size_guess's answer, without a copy of the labels)
         if (!r.ok()) fail(r.error().what());
         const Bytes& code = r.value();
         if (!final_) {

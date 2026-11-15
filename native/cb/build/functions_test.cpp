@@ -262,6 +262,7 @@ CB_TEST("build.functions.options_a_text_asks_for", [] {
 // ---- objects ----------------------------------------------------------------------------------------------------------
 
 CB_TEST("build.functions.an_object_kept_from_another_folder_is_rewritten_for_this_one", [] {
+    CB_WINDOWS_ONLY("it rewrites the DOS-form paths inside an OMF object");
     Kit k;
     const stdfs::path was = k.work("the_old_folder"), now = k.work("now");
     fs::write_text(now / "m.h", "header");
@@ -287,6 +288,7 @@ CB_TEST("build.functions.an_object_kept_from_another_folder_is_rewritten_for_thi
 });
 
 CB_TEST("build.functions.an_object_that_cannot_be_rewritten_is_not_guessed_at", [] {
+    CB_WINDOWS_ONLY("it rewrites the DOS-form paths inside an OMF object");
     Kit k;
     const stdfs::path was = k.work("was"), now = k.work("now");
     const Bytes kept = make_object(was, "f0000");
@@ -348,6 +350,7 @@ CB_TEST("build.functions.an_objects_digest_is_what_it_is_not_where_or_when_it_wa
 // ---- the compiler -----------------------------------------------------------------------------------------------------
 
 CB_TEST("build.functions.run_compile_makes_the_object_or_names_the_error", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     const stdfs::path dir = k.work("out");
     const std::vector<std::string> flags = {"-zq", "-w0"};
@@ -375,6 +378,7 @@ CB_TEST("build.functions.run_compile_makes_the_object_or_names_the_error", [] {
 });
 
 CB_TEST("build.functions.a_compiler_that_runs_too_long_is_stopped_and_the_function_rejected", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     const stdfs::path dir = k.work("out");
     const auto start = std::chrono::steady_clock::now();
@@ -385,6 +389,7 @@ CB_TEST("build.functions.a_compiler_that_runs_too_long_is_stopped_and_the_functi
 });
 
 CB_TEST("build.functions.run_never_set_lists_each_variable_once_sorted", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     const stdfs::path dir = k.work("out");
     const std::vector<std::string> flags = {"-zq", "-w0", "-bt=windows"};
@@ -398,6 +403,7 @@ CB_TEST("build.functions.run_never_set_lists_each_variable_once_sorted", [] {
 });
 
 CB_TEST("build.functions.a_compile_is_made_once_and_remembered", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     MemoryCache cache;
     FunctionBuilder builder({.cache = &cache});
@@ -430,6 +436,7 @@ CB_TEST("build.functions.a_compile_is_made_once_and_remembered", [] {
 });
 
 CB_TEST("build.functions.a_rejection_is_remembered_but_a_compiler_that_fell_over_is_not", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     MemoryCache cache;
     FunctionBuilder builder({.cache = &cache});
@@ -454,6 +461,7 @@ CB_TEST("build.functions.a_rejection_is_remembered_but_a_compiler_that_fell_over
 });
 
 CB_TEST("build.functions.without_a_header_key_or_a_cache_everything_is_compiled", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     MemoryCache cache;
     FunctionBuilder with_cache({.cache = &cache});
@@ -473,6 +481,7 @@ CB_TEST("build.functions.without_a_header_key_or_a_cache_everything_is_compiled"
 });
 
 CB_TEST("build.functions.flow_checks_are_kept_too", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     MemoryCache cache;
     FunctionBuilder builder({.cache = &cache});
@@ -491,6 +500,7 @@ CB_TEST("build.functions.flow_checks_are_kept_too", [] {
 });
 
 CB_TEST("build.functions.what_the_engine_served_answers_before_the_compiler", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     FunctionBuilder builder({});
     const stdfs::path dir = k.work("out");
@@ -531,6 +541,7 @@ CB_TEST("build.functions.what_the_engine_served_answers_before_the_compiler", []
 });
 
 CB_TEST("build.functions.every_function_is_compiled_and_a_rejected_one_is_stood_in_for", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     FunctionBuilder builder({.workers = {.workers = 3}});
     const stdfs::path dir = k.work("out");
@@ -558,6 +569,7 @@ CB_TEST("build.functions.every_function_is_compiled_and_a_rejected_one_is_stood_
 });
 
 CB_TEST("build.functions.groups_share_a_pool_and_keep_their_own_folders_and_options", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     FunctionBuilder builder({});
     const stdfs::path a = k.work("seg1"), b = k.work("seg2");
@@ -597,6 +609,7 @@ Tools16 tools16(Kit& k) {
 }  // namespace
 
 CB_TEST("build.functions.build16_links_and_says_where_each_function_is", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     k.flag("map.txt");
     fs::write_text(k.dir.path() / "map.txt",
@@ -657,6 +670,7 @@ CB_TEST("build.functions.build16_links_and_says_where_each_function_is", [] {
 });
 
 CB_TEST("build.functions.build16_failing_to_link_blames_every_function_that_was_built", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     k.flag("nolink.txt");
     FunctionBuilder builder({});
@@ -675,6 +689,7 @@ CB_TEST("build.functions.build16_failing_to_link_blames_every_function_that_was_
 });
 
 CB_TEST("build.functions.build16_stands_in_for_a_function_that_reaches_near_across_segments", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     k.flag("fail_near.txt");
     k.flag("map.txt");
@@ -692,6 +707,7 @@ CB_TEST("build.functions.build16_stands_in_for_a_function_that_reaches_near_acro
 });
 
 CB_TEST("build.functions.build16_drops_the_largest_functions_of_a_segment_over_64k", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     k.flag("fail_64k.txt");
     k.flag("map.txt");
@@ -712,6 +728,7 @@ CB_TEST("build.functions.build16_drops_the_largest_functions_of_a_segment_over_6
 });
 
 CB_TEST("build.functions.build32_exports_what_it_built_and_jumps_to_the_original_for_what_it_lacks", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     k.flag("undefined.txt");
     FunctionBuilder builder({});
@@ -768,6 +785,7 @@ CB_TEST("build.functions.build32_exports_what_it_built_and_jumps_to_the_original
 });
 
 CB_TEST("build.functions.build_powerpc_compiles_links_at_a_base_and_reads_the_map", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     k.flag("map.txt");
     fs::write_text(k.dir.path() / "map.txt",
@@ -805,6 +823,7 @@ CB_TEST("build.functions.build_powerpc_compiles_links_at_a_base_and_reads_the_ma
 });
 
 CB_TEST("build.functions.a_cache_is_not_needed_to_build", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;
     FunctionBuilder builder({});
     const stdfs::path dir = k.work("out");

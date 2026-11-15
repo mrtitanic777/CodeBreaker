@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <fstream>
 #include <set>
 
 #include "cb/core/error.hpp"
@@ -42,26 +43,46 @@ bool same_content(const stdfs::path& a, const stdfs::path& b) {
     return fs::read_file(a) == fs::read_file(b);
 }
 
-std::string module_info_source(std::uint32_t savegprlr_14) {
-    std::string text = R"(// The recompiled title described to the runtime (modules.h), built with its own generated ppc_config.h.
+// One module's description for the runtime. The title's carries the list of its extra modules (`extras`: the keys of the
+// modules `translate_modules` made), and every extra module its file name and the path it is found at (relative to the title
+// folder, '/' separated); an extra module's library is built with its own ppc_config.h and its fixed symbols carry `suffix`.
+std::string module_info_source(std::uint32_t savegprlr_14, std::string_view file_name, std::string_view variable, std::string_view suffix,
+                               std::string_view path, const std::vector<std::string>& extras) {
+    std::string text = R"(// @WHAT@ described to the runtime (modules.h), built with its own generated ppc_config.h.
 // Written by CodeBreaker (cb/recompile/x360project.cpp).
 #include "ppc_config.h"
 #include "ppc_context.h"
 
 #include "modules.h"
 
-extern PPCFuncMapping PPCFuncMappings[];
-
-extern const modules::RecompiledModule g_titleModule = {
-    "default.xex",
+extern PPCFuncMapping PPCFuncMappings@SUFFIX@[];
+@EXTERN@
+extern const modules::RecompiledModule @VARIABLE@ = {
+    "@FILE@",
     uint32_t(PPC_IMAGE_BASE),
     uint32_t(PPC_IMAGE_SIZE),
     uint32_t(PPC_CODE_BASE),
     uint32_t(PPC_CODE_SIZE),
-    PPCFuncMappings,
-    @ADDRESS@, // __savegprlr_14
+    PPCFuncMappings@SUFFIX@,
+    @ADDRESS@, // __savegprlr_14@TAIL@
 };
 )";
+    std::string externs, list;
+    for (const std::string& key : extras) {
+        externs += std::format("extern const modules::RecompiledModule g_module_{};\n", key);
+        list += std::format("&g_module_{}, ", key);
+    }
+    if (!extras.empty()) externs = std::format("{}static const modules::RecompiledModule* const kExtraModules[] = {{ {}nullptr }};\n", externs, list);
+    text = text::replace_first(text, "@EXTERN@", externs);
+    // the path and the list of extra modules follow the address only when there is one (a title without them is as it was)
+    std::string tail;
+    if (!path.empty() || !extras.empty())
+        tail = std::format("\n    {},\n    {},", path.empty() ? "nullptr" : std::format("\"{}\"", path), extras.empty() ? "nullptr" : "kExtraModules");
+    text = text::replace_first(text, "@TAIL@", tail);
+    text = text::replace_first(text, "@WHAT@", variable == "g_titleModule" ? "The recompiled title" : "A recompiled module of the title");
+    text = text::replace_first(text, "@FILE@", file_name);
+    text = text::replace_first(text, "@VARIABLE@", variable);
+    text = text::replace_all(text, "@SUFFIX@", suffix);
     return text::replace_first(text, "@ADDRESS@", std::format("0x{:08X}", savegprlr_14));
 }
 
@@ -111,6 +132,73 @@ std::optional<std::size_t> number_at(std::string_view text, std::size_t at, std:
     return text::parse_int<std::size_t>(text.substr(at, j - at));
 }
 
+
+struct Translated {
+    std::size_t functions = 0, switches = 0, unimplemented = 0;
+    std::string log;
+};
+
+// XenonRecomp over `basic` (a module in basic form) inside `work` (the configuration `<name>.toml`, the switch tables, and
+// the C++ synced into work/ppc). `suffix` (empty for the title) goes on the module's fixed symbols and function names, so that
+// several modules link into one program. The tool's output goes to `log_file`. ToolError when XenonRecomp fails or leaves no function
+// mapping.
+Translated translate(const Recompiler& rc, const stdfs::path& basic, const stdfs::path& work, const std::string& name, const std::string& suffix,
+                     const stdfs::path& log_file) {
+    // switch tables: the finder's, with XenonAnalyse's for any bctr it leaves unresolved
+    rc.ensure_built();
+    const stdfs::path analysed = work / "switch_tables.analysed.toml";
+    try {   // optional: the finder locates nearly all of them by itself
+        process::run({.argv = {fs::to_text(rc.analyse), fs::to_text(basic), fs::to_text(analysed)}, .out = process::Capture::Discard, .err = process::Capture::Discard});
+    } catch (const ToolError& e) {
+        log::warn(std::format("XenonAnalyse did not run: {}; switch tables from the finder alone", e.what()));
+    }
+    std::error_code ec;
+    const std::optional<std::string> with_analysed = stdfs::is_regular_file(analysed, ec) ? std::optional<std::string>(fs::read_text(analysed)) : std::nullopt;
+    const Recompiler::SwitchTables tables = rc.write_switch_tables(work / "switch_tables.toml", basic, with_analysed);
+
+    // the configuration, then XenonRecomp into a fresh folder, synced into work/ppc
+    const stdfs::path cfg = work / (name + ".toml");
+    std::string config = rc.make_config(basic, "ppc.new", "switch_tables.toml", fs::to_text(basic.filename()));
+    if (!suffix.empty()) {
+        const std::string head = "[main]\n";
+        const std::size_t at = config.find(head);
+        if (at != std::string::npos) config.insert(at + head.size(), std::format("symbol_suffix = \"{0}\"\nsuffix_function_names = true\n", suffix));
+    }
+    fs::write_text(cfg, config);
+    const stdfs::path fresh = work / "ppc.new";
+    stdfs::remove_all(fresh, ec);
+    fs::make_dirs(fresh);
+    const process::ProcessResult r = process::run({.argv = {fs::to_text(rc.recomp), fs::to_text(cfg), fs::to_text(rc.source / "XenonUtils" / "ppc_context.h")}, .cwd = work});
+    Translated out;
+    out.log = output_text(r.out) + output_text(r.err);
+    fs::write_text(log_file, out.log);   // also when it failed: the log says why
+    if (r.exit_code != 0 || !stdfs::is_regular_file(fresh / "ppc_func_mapping.cpp", ec)) {
+        throw ToolError("XenonRecomp", r.exit_code, out.log.size() > 3000 ? out.log.substr(out.log.size() - 3000) : out.log);
+    }
+    sync_folder(fresh, work / "ppc");
+    stdfs::remove_all(fresh, ec);
+    const std::string mapping = fs::read_text(work / "ppc" / "ppc_func_mapping.cpp");
+    out.functions = count_of(mapping, "{ 0x");
+    out.switches = tables.found + tables.added;
+    out.unimplemented = count_of(out.log, "unimplemented");
+    return out;
+}
+
+bool is_xex_file(const stdfs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    char magic[4] = {};
+    return in.read(magic, 4) && std::string_view(magic, 4) == "XEX2";
+}
+
+// A name for a module's target symbols and folder: its path under the title folder as letters, digits and underscores.
+std::string module_key(const std::string& relative) {
+    std::string key = text::lower(relative);
+    for (char& c : key) {
+        if (!is_alnum(c)) c = '_';
+    }
+    return key;
+}
+
 }  // namespace
 
 std::string default_name(const stdfs::path& xex_path) {
@@ -152,6 +240,56 @@ void sync_folder(const stdfs::path& src, const stdfs::path& dst) {
     for (const stdfs::path& p : stale) stdfs::remove_all(p);
 }
 
+namespace {
+
+// Every module the title ships besides default.xex (an XEX file in its folder, any depth) that is a PowerPC program, translated
+// into recomp/modules/<key>/ with its own configuration and symbol suffix; the module's image in `game` is replaced by its basic
+// form (what the runtime loads). Returns the keys; the module_info of each is written here, the title's by the caller.
+std::vector<std::string> translate_modules(const Recompiler& rc, const stdfs::path& recomp, const stdfs::path& game, const stdfs::path& reports,
+                                           std::string& report) {
+    std::vector<std::string> keys;
+    if (!rc.has_native_code) return keys;
+    std::vector<stdfs::path> files;
+    for (const auto& entry : stdfs::recursive_directory_iterator(game)) {
+        if (!entry.is_regular_file() || !is_xex_file(entry.path())) continue;
+        const std::string relative = fs::to_text(stdfs::relative(entry.path(), game).generic_string());
+        if (text::iequals(relative, "default.xex")) continue;
+        files.push_back(entry.path());
+    }
+    std::sort(files.begin(), files.end());
+    const stdfs::path modules = recomp / "modules";
+    std::error_code ec;
+    stdfs::remove_all(modules, ec);   // a module the title no longer ships leaves no stale library behind
+    for (const stdfs::path& file : files) {
+        const std::string relative = fs::to_text(stdfs::relative(file, game).generic_string());
+        const std::string key = module_key(relative);
+        const stdfs::path work = modules / key;
+        fs::make_dirs(work);
+        const stdfs::path basic = work / "image.xex";
+        try {
+            rc.write_basic(file, basic);
+            if (!rc.has_native_code(basic)) {
+                stdfs::remove_all(work, ec);
+                report += std::format("module {}: not a PowerPC program (data or managed code), left as it is\n", relative);
+                continue;
+            }
+            const Translated t = translate(rc, basic, work, key, "_" + key, reports / ("recompile." + key + ".log"));
+            fs::write_text(work / "module_info.cpp",
+                           module_info_source(rc.savegprlr_14_address(basic), fs::to_text(file.filename()), "g_module_" + key, "_" + key, relative, {}));
+            copy_keeping_time(basic, file);
+            keys.push_back(key);
+            report += std::format("module {}: {} functions, {} switch tables\n", relative, t.functions, t.switches);
+        } catch (const Error& e) {
+            stdfs::remove_all(work, ec);
+            report += std::format("module {}: not translated ({})\n", relative, std::string(e.what()).substr(0, 300));
+            log::warn(std::format("module {} was not translated: {}", relative, e.what()));
+        }
+    }
+    return keys;
+}
+
+}  // namespace
+
 ScaffoldInfo scaffold(const Recompiler& rc, const stdfs::path& xex_path, const stdfs::path& out_dir_in, const std::string& name_in,
                       const std::optional<stdfs::path>& title_files) {
     const std::string name = target_name(name_in.empty() ? default_name(xex_path) : name_in);
@@ -161,35 +299,9 @@ ScaffoldInfo scaffold(const Recompiler& rc, const stdfs::path& xex_path, const s
     const stdfs::path basic = recomp / "default.xex";
     rc.write_basic(xex_path, basic);
 
-    // switch tables: the finder's, with XenonAnalyse's for any bctr it leaves unresolved
     rc.ensure_built();
-    const stdfs::path analysed = recomp / "switch_tables.analysed.toml";
-    try {   // optional: the finder locates nearly all of them by itself
-        process::run({.argv = {fs::to_text(rc.analyse), fs::to_text(basic), fs::to_text(analysed)}, .out = process::Capture::Discard, .err = process::Capture::Discard});
-    } catch (const ToolError& e) {
-        log::warn(std::format("XenonAnalyse did not run: {}; switch tables from the finder alone", e.what()));
-    }
-    std::error_code ec;
-    const std::optional<std::string> with_analysed = stdfs::is_regular_file(analysed, ec) ? std::optional<std::string>(fs::read_text(analysed)) : std::nullopt;
-    const Recompiler::SwitchTables tables = rc.write_switch_tables(recomp / "switch_tables.toml", basic, with_analysed);
+    const Translated main = translate(rc, basic, recomp, name, "", reports / "recompile.log");
 
-    // the configuration, then XenonRecomp into a fresh folder, synced into recomp/ppc
-    const stdfs::path cfg = recomp / (name + ".toml");
-    fs::write_text(cfg, rc.make_config(basic, "ppc.new", "switch_tables.toml", "default.xex"));
-    const stdfs::path fresh = recomp / "ppc.new";
-    stdfs::remove_all(fresh, ec);
-    fs::make_dirs(fresh);
-    rc.ensure_built();
-    const process::ProcessResult r = process::run({.argv = {fs::to_text(rc.recomp), fs::to_text(cfg), fs::to_text(rc.source / "XenonUtils" / "ppc_context.h")}, .cwd = recomp});
-    const std::string log = output_text(r.out) + output_text(r.err);
-    fs::write_text(reports / "recompile.log", log);
-    if (r.exit_code != 0 || !stdfs::is_regular_file(fresh / "ppc_func_mapping.cpp", ec)) {
-        throw ToolError("XenonRecomp", r.exit_code, log.size() > 3000 ? log.substr(log.size() - 3000) : log);
-    }
-    sync_folder(fresh, recomp / "ppc");
-    stdfs::remove_all(fresh, ec);
-
-    fs::write_text(recomp / "module_info.cpp", module_info_source(rc.savegprlr_14_address(basic)));
     fs::write_text(out_dir / "CMakeLists.txt", cmake_source(name, rc.runtime_cmake));
     fs::write_text(out_dir / ("Build-" + name + ".bat"), build_script(name, rc.visual_studio));
     fs::write_text(out_dir / ("Play-" + name + ".bat"), play_script(name));
@@ -205,8 +317,12 @@ ScaffoldInfo scaffold(const Recompiler& rc, const stdfs::path& xex_path, const s
     }
     copy_keeping_time(basic, game / "default.xex");
 
-    const std::string mapping = fs::read_text(recomp / "ppc" / "ppc_func_mapping.cpp");
-    return {name, out_dir, count_of(mapping, "{ 0x"), tables.found + tables.added, count_of(log, "unimplemented")};
+    // the other modules the title ships (HostLoader.dll, tier0_360.dll, ...): each one translated, linked and named
+    std::string report;
+    const std::vector<std::string> extras = translate_modules(rc, recomp, game, reports, report);
+    if (!report.empty()) fs::write_text(reports / "modules.txt", report);
+    fs::write_text(recomp / "module_info.cpp", module_info_source(rc.savegprlr_14_address(basic), "default.xex", "g_titleModule", "", "", extras));
+    return {name, out_dir, main.functions, main.switches, main.unimplemented, extras.size()};
 }
 
 BuildResult build(const stdfs::path& out_dir, std::string_view name, unsigned jobs) {

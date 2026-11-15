@@ -111,6 +111,7 @@ Tools fake_tools(const fs::ScopedTempDir& dir, bool working) {
 }
 
 CB_TEST("formats.xex.basefile_is_extracted_once_and_named_by_contents", [] {
+    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
     fs::ScopedTempDir dir("xex-test");
     const std::filesystem::path xex = dir.path() / "Pac-Man CE.XEX";
     fs::write_file(xex, pacman_header());
@@ -138,6 +139,7 @@ CB_TEST("formats.xex.basefile_is_extracted_once_and_named_by_contents", [] {
 });
 
 CB_TEST("formats.xex.basefile_failures", [] {
+    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
     fs::ScopedTempDir dir("xex-test");
     const std::filesystem::path xex = dir.path() / "a.xex";
     fs::write_file(xex, pacman_header());
@@ -166,6 +168,7 @@ CB_TEST("formats.xex.import_libraries_of_an_image_without_a_sidecar", [] {
 });
 
 CB_TEST("formats.xex.write_basic_puts_the_image_in_one_block", [] {
+    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
     fs::ScopedTempDir dir("xex-test");
     const std::filesystem::path xex = dir.path() / "a.xex";
     Bytes file = pacman_header();
@@ -210,6 +213,7 @@ CB_TEST("formats.xex.write_basic_errors", [] {
 });
 
 CB_TEST("formats.xex.run_passes_the_arguments", [] {
+    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
     fs::ScopedTempDir dir("xex-test");
     fs::write_text(dir.path() / "prog.cmd", "@echo off\r\nexit /b %1\r\n");
     const Tools tools{dir.path() / "prog.cmd", dir.path() / "u"};

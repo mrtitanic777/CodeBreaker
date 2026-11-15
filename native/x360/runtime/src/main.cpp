@@ -11,6 +11,7 @@
 #include "gpu/gpu.h"
 #include "gpu/presenter.h"
 #include "gpu/renderer.h"
+#include "gpu/shader_tests.h"
 #include "input.h"
 #include "kernel/kernel.h"
 #include "kernel/users.h"
@@ -156,6 +157,7 @@ int main(int argc, char** argv)
 
     const modules::LoadedModule& loaded = modules::Load((folder / "default.xex").string(), g_titleModule);
     const xex::Module& title = loaded.xex;
+    kernel::SetTitleModules(g_titleModule.extras);   // the title's other modules, loaded by XexLoadImage by name
     kernel::SetExecutable(loaded.handle, loaded.xexHeader, title.titleId, title.tls.slotCount, title.tls.dataSize,
         title.tls.rawDataAddress, title.tls.rawDataSize);
     Log("Title {:08X}: entry {:08X}, stack {:X}, TLS {} slots, {:X} bytes of data ({:X} initialised at {:08X})",
@@ -205,6 +207,17 @@ int main(int argc, char** argv)
         const char* frames = std::getenv("CB_REPLAY_FRAMES");
         gpu::ReplayTrace(trace, frames ? std::strtoull(frames, nullptr, 10) : 0);
         TerminateProcess(GetCurrentProcess(), 0);
+    }
+    // CB_SHADER_TEST=1: the GPU's verification instead of the title (gpu/shader_tests.cpp: the shader translator, the
+    // output merger and resolves; gpu/renderer.cpp SelfTest: the display gamma and present pass, then the texture untile
+    // pass, volumes included, and sampling); 2 runs the renderer's part only. The exit code is the number of failures.
+    if (const char* test = std::getenv("CB_SHADER_TEST"); test && (test[0] == '1' || test[0] == '2'))
+    {
+        int failures = test[0] == '1' ? gpu::RunShaderTests() : 0;
+        failures += gpu::RunRendererTests();
+        Log("GPU tests: {} failures", failures);
+        logging::PauseIfOwnConsole();
+        TerminateProcess(GetCurrentProcess(), UINT(failures));
     }
     // CB_KERNEL_TEST=2 (kernel/kernel_tests.cpp): the kernel checks a title's program can run (1 is the dashboard's
     // whole set) run instead of the title; the exit code is the number of failed checks (the results are in CB_LOG).

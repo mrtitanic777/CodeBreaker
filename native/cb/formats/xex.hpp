@@ -77,6 +77,7 @@ struct Header {
     std::optional<std::uint32_t> entry;       // its entry point
     std::vector<std::string> imports;         // library names in the order the image's import stubs number them
     std::vector<Library> libraries;           // what it was built with
+    std::optional<std::uint32_t> export_table; // where the export table sits in the image (security info), if the image exports
 };
 
 // FormatError if the data is not a parseable XEX2 file.

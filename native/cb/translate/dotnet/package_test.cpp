@@ -121,6 +121,7 @@ CB_TEST("translate.dotnet.discovery_gaps", [] {
 });
 
 CB_TEST("translate.dotnet.find_uses_cb_dotnet", [] {
+    CB_WINDOWS_ONLY("it finds dotnet.exe through a ';'-separated PATH");
     cb::fs::ScopedTempDir dir("cb-dotnet");
     const auto exe = make_install(dir.path() / "dotnet");
     {

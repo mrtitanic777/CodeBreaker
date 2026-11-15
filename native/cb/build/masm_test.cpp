@@ -453,6 +453,7 @@ CB_TEST("build.masm.options_come_from_the_environment_with_the_defaults_when_it_
 });
 
 CB_TEST("build.masm.tools_come_from_the_settings_and_the_environment", [] {
+    CB_WINDOWS_ONLY("it names Windows drive paths");
     fs::ScopedTempDir dir("masm");
     fs::write_text(dir.path() / "settings.json", "{\"masm\": \"M:/masm\", \"dosbox_x\": \"D:/dosbox.exe\"}");
     const auto config = config::Config::load(dir.path());

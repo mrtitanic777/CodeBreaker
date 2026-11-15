@@ -1000,7 +1000,10 @@ std::set<SegOff> callers_read_dx(const NeDescription& d, std::vector<std::pair<S
             if (d.segment_bytes.contains(target->seg) && register_arguments(d.loaded(target->seg), target->off)) continue;
             for (std::size_t q = k + 1; q < std::min(ins.size(), k + 8); ++q) {
                 const Insn& s = ins[q];
-                if (s.in_group(kGroupJump) || s.in_group(kGroupCall) || s.in_group(kGroupRet) || eq_any(s.mn, {"int", "iret", "leave"})) break;
+                // (under dx_unspecified a conditional jump is gone through, on the way that falls on: GDI's 1:5FC1 `call 1268 / cmp / je / les / mov
+                // es:[bx], ax / mov es:[bx+2], dx` reads the DX on one way only)
+                const bool conditional = d.policy.dx_unspecified && s.in_group(kGroupJump) && s.mn != "jmp" && s.mn != "ljmp" && s.mn.starts_with('j');
+                if ((s.in_group(kGroupJump) && !conditional) || s.in_group(kGroupCall) || s.in_group(kGroupRet) || eq_any(s.mn, {"int", "iret", "leave"})) break;
                 if (!s.regs_ok) break;
                 if ((s.mn == "xor" || s.mn == "sub") && s.op_str == "dx, dx") break;   // (cleared: written, not read)
                 if (hits_dx(s.regs_read)) {
@@ -1079,7 +1082,7 @@ bool gives_back_ax(const DxReturns::Impl::Func& f, const std::vector<const Insn*
 
 }  // namespace
 
-bool DxReturns::every_way(const SegOff& place, const std::set<SegOff>& four) {
+bool DxReturns::every_way(const SegOff& place, const std::set<SegOff>& four, bool any_way) {
     const NeDescription& d = *impl_->d;
     std::shared_ptr<Impl::Func> f;
     const auto cached = impl_->code.find(place);
@@ -1241,42 +1244,55 @@ bool DxReturns::every_way(const SegOff& place, const std::set<SegOff>& four) {
     if (ends.empty() && !jumped_on) return false;
     if (f->saves_ax && gives_back_ax(*f, ends)) return false;   // (no result at all: AX as it came)
     // work items: an address, or "not seen" (nullopt)
-    std::vector<std::optional<std::int64_t>> work;
-    std::set<std::int64_t> seen;
-    for (const Insn* r : ends) {
+    const auto preds_of = [&](const Insn* r, std::vector<std::optional<std::int64_t>>& work) {
         const std::vector<std::int64_t> in = into_of(r->address);
         if (in.empty()) work.push_back(std::nullopt);
         else for (std::int64_t x : in) work.push_back(x);
-    }
-    while (!work.empty()) {
-        const std::optional<std::int64_t> w = work.back();
-        work.pop_back();
-        if (!w || !f->at.count(*w)) return false;   // (reached from what is not seen: DX unknown)
-        const std::int64_t a = *w;
-        if (seen.count(a)) continue;
-        seen.insert(a);
-        const Insn& p = ins[f->at.at(a)];
-        bool transparent = false;
-        if (p.in_group(kGroupCall)) {
-            if (handed_on(p)) continue;
-            // (a near callee that never writes DX -- GDI's 1:522D, `mov bx, ..; sub bx, ..` -- hands DX back as it was before the call)
-            if (!keeps_dx(p)) return false;   // (a two-byte callee: DX as it was)
-            transparent = true;
-        }
-        if (!transparent) {
-            if (p.mn == "int" || p.mn == "into") continue;
-            if (!p.regs_ok) return false;
-            if (hits_dx(p.regs_write)) {
-                if (p.mn == "pop" && f->saves_dx) return false;   // (DX given back as it came)
-                continue;
+    };
+    // (does DX come back set -- by its own instructions or a callee's -- on every way from the returns in `work`)
+    const auto sets_dx = [&](std::vector<std::optional<std::int64_t>> work) {
+        std::set<std::int64_t> seen;
+        while (!work.empty()) {
+            const std::optional<std::int64_t> w = work.back();
+            work.pop_back();
+            if (!w || !f->at.count(*w)) return false;   // (reached from what is not seen: DX unknown)
+            const std::int64_t a = *w;
+            if (seen.count(a)) continue;
+            seen.insert(a);
+            const Insn& p = ins[f->at.at(a)];
+            bool transparent = false;
+            if (p.in_group(kGroupCall)) {
+                if (handed_on(p)) continue;
+                // (a near callee that never writes DX -- GDI's 1:522D, `mov bx, ..; sub bx, ..` -- hands DX back as it was before the call)
+                if (!keeps_dx(p)) return false;   // (a two-byte callee: DX as it was)
+                transparent = true;
             }
+            if (!transparent) {
+                if (p.mn == "int" || p.mn == "into") continue;
+                if (!p.regs_ok) return false;
+                if (hits_dx(p.regs_write)) {
+                    if (p.mn == "pop" && f->saves_dx) return false;   // (DX given back as it came)
+                    continue;
+                }
+            }
+            if (a == off) return false;   // (DX as the caller had it)
+            const std::vector<std::int64_t> in = into_of(a);
+            if (in.empty()) work.push_back(std::nullopt);
+            else for (std::int64_t x : in) work.push_back(x);
         }
-        if (a == off) return false;   // (DX as the caller had it)
-        const std::vector<std::int64_t> in = into_of(a);
-        if (in.empty()) work.push_back(std::nullopt);
-        else for (std::int64_t x : in) work.push_back(x);
+        return true;
+    };
+    if (any_way) {   // (some way of its own sets DX: the others leave it unspecified, which no caller reads)
+        for (const Insn* r : ends) {
+            std::vector<std::optional<std::int64_t>> one;
+            preds_of(r, one);
+            if (sets_dx(std::move(one))) return true;
+        }
+        return false;
     }
-    return true;
+    std::vector<std::optional<std::int64_t>> work;
+    for (const Insn* r : ends) preds_of(r, work);
+    return sets_dx(std::move(work));
 }
 
 // {address: bytes it returns} for every function described: its own (result_bytes), or for one that passes on a callee's
@@ -1376,9 +1392,9 @@ std::map<Va, std::int64_t> results(const NeDescription& d) {
             four.insert(made.begin(), made.end());
             std::set<SegOff> keep;
             for (const SegOff& p : read)
-                if (own_dx.every_way(p, four)) keep.insert(p);
+                if (own_dx.every_way(p, four, d.policy.dx_unspecified)) keep.insert(p);
             for (const auto& [caller, callee] : edges)
-                if (four.count(caller) && handed.count(callee) && own_dx.every_way(callee, four)) keep.insert(callee);
+                if (four.count(caller) && handed.count(callee) && own_dx.every_way(callee, four, d.policy.dx_unspecified)) keep.insert(callee);
             std::set<SegOff> kept;
             for (const SegOff& x : keep)
                 if (made.count(x)) kept.insert(x);

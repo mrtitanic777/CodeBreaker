@@ -3,6 +3,7 @@
 // scalar floating point, system registers, kernel calls, and the stops (what is not run says why). Programs are written in the assembler's own syntax.
 #include "cb/emulate/a64.hpp"
 
+#include <cmath>
 #include <bit>
 #include <string>
 

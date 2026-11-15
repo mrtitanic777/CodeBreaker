@@ -100,6 +100,10 @@ PS2 and PSP (track 9): done 2026-11-15, see docs/LANES.md (the R5900 and Allegre
 
    Done (2026-11-15): Nintendo 3DS (ARM11: `.3dsx` and devkitARM ELF) PS Vita (Cortex-A9: unencrypted SELF and ELF) and PS3 (Cell PPU: ELF64 and unencrypted SELF, proved on test-built ELFs).
 
+   Done (2026-11-15): PlayStation 4 and PlayStation 5 (x86-64: ELF, OpenOrbis fake SELF; real GPL homebrew rebuilds identical and is judged) and Xbox One / Series (the PE32+ of a dev-mode UWP package; a real GPL app rebuilds identical and is judged).
+
+   Done (2026-11-15): Nintendo Switch (Cortex-A57: AArch64 core with its own decoder, assembler and interpreter; homebrew `.nro`, `.nso` and ELF; `reach --judge` verifies every function of three real NROs).
+
 Each lane is proven like the PlayStation's: open-source homebrew for that console rebuilds identical and its functions
 are judged, recorded in docs/TESTED_SOFTWARE.md.
 

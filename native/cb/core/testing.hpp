@@ -104,6 +104,14 @@ bool equal(const A& a, const B& b) {
     return a == b;
 }
 
+// CB_CHECK_EQ's comparison, as a call so that the temporaries the two sides make (a Bytes whose view the actual is) live until it has
+// compared and shown them: a copy of a view made before the call would outlive what it looks at.
+template <class A, class B>
+void check_eq(const char* file, int line, const char* actual_text, const char* expected_text, const A& a, const B& e) {
+    if (!equal(a, e))
+        record_failure(file, line, std::format("CB_CHECK_EQ failed: {} == {}\n    actual:   {}\n    expected: {}", actual_text, expected_text, show(a), show(e)));
+}
+
 }  // namespace cb::testing
 
 #define CB_TEST_CAT2_(a, b) a##b
@@ -120,15 +128,10 @@ bool equal(const A& a, const B& b) {
             ::cb::testing::record_failure(__FILE__, __LINE__, "CB_CHECK failed: " #__VA_ARGS__);    \
     } while (false)
 
-#define CB_CHECK_EQ(actual, expected)                                                               \
+#define CB_CHECK_EQ(actual, expected)                                                            \
     do {                                                                                            \
-        ::cb::testing::count_check();                                                               \
-        const auto cb_a_ = (actual);   /* by value: the actual may be a reference into a temporary */                                                               \
-        const auto cb_e_ = (expected);                                                             \
-        if (!::cb::testing::equal(cb_a_, cb_e_))                                                    \
-            ::cb::testing::record_failure(__FILE__, __LINE__,                                       \
-                std::format("CB_CHECK_EQ failed: {} == {}\n    actual:   {}\n    expected: {}",      \
-                            #actual, #expected, ::cb::testing::show(cb_a_), ::cb::testing::show(cb_e_))); \
+        ::cb::testing::count_check();                                                             \
+        ::cb::testing::check_eq(__FILE__, __LINE__, #actual, #expected, (actual), (expected));      \
     } while (false)
 
 #define CB_CHECK_NE(a, b)                                                                           \

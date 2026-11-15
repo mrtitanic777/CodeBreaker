@@ -14,6 +14,9 @@
 //       src/ppc/              XenonRecomp's C++ (one statement per guest instruction), regenerated: only changed files are
 //                             rewritten, so a rebuild recompiles only those
 //       src/module_info.cpp   the title described to the runtime (modules.h: g_titleModule)
+//       src/modules/<key>/    each other PowerPC module the title ships (HostLoader.dll, tier0_360.dll): its configuration, switch
+//                             tables, ppc/ and module_info.cpp, with symbols suffixed _<key>; linked into the program, loaded by
+//                             XexLoadImage by name
 //       assets/               the title folder the program runs: its files (--title-files) and default.xex in basic form;
 //                             it is the title's game: device
 //       build/                the CMake build: build/<name>.exe
@@ -62,6 +65,9 @@ struct Recompiler {
         make_config;
     // The address of __savegprlr_14 in the image, 0 when it has none.
     std::function<std::uint32_t(const std::filesystem::path& basic)> savegprlr_14_address;
+    // Whether a module in basic form is a PowerPC program (code sections, not managed code or data). Without it a title's
+    // other modules are not translated.
+    std::function<bool(const std::filesystem::path& basic)> has_native_code;
 };
 
 // The program's, target's and scripts' name from a .xex path: its stem in lower case with every character that is not a
@@ -82,6 +88,7 @@ struct ScaffoldInfo {
     std::size_t functions = 0;              // entries of ppc_func_mapping.cpp
     std::size_t switches = 0;               // switch tables found and added
     std::size_t unimplemented = 0;          // "unimplemented" in what XenonRecomp said
+    std::size_t modules = 0;                // the title's other modules translated and linked (src/modules/<key>/)
 };
 
 // Writes the project. `name` is taken from the .xex when empty; `title_files` is copied into assets/. ToolError when

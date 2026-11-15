@@ -61,6 +61,31 @@ public:
     virtual Result<Bytes> assemble(std::string_view line, std::int64_t pc, const Labels& labels) const = 0;
 };
 
+inline bool is_undefined(const Error& error);
+
+// `line` assembled on the first pass of an assembler, when it names labels that are defined further on: each name the encoder asks for that `labels` lacks is
+// put in `labels` standing for `guess`, and the line is assembled again, until it assembles or fails for another reason. The names put in are taken out again
+// before it returns, so `labels` is what it was; this is the same answer as assembling against a copy of the table with the guesses added, without copying
+// the table (a program of ten thousand labels paid that copy for every forward reference).
+inline Result<Bytes> assemble_with_guesses(const Encoder& encoder, std::string_view line, std::int64_t pc, Labels& labels, std::int64_t guess) {
+    std::vector<std::string> added;
+    struct Undo {
+        Labels& labels;
+        std::vector<std::string>& added;
+        ~Undo() {
+            for (const std::string& name : added) labels.erase(name);
+        }
+    } undo{labels, added};
+    for (;;) {
+        Result<Bytes> r = encoder.assemble(line, pc, labels);
+        if (r.ok() || !is_undefined(r.error())) return r;
+        const std::string name = static_cast<const UndefinedSymbolError&>(r.error()).name();
+        if (labels.contains(name)) return r;   // (it asked again for a name it was given)
+        labels[name] = guess;
+        added.push_back(name);
+    }
+}
+
 // The part of `line` before a `;` that is not inside a double-quoted string. Not trimmed.
 std::string_view strip_comment(std::string_view line);
 

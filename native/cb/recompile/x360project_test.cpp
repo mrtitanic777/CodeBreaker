@@ -98,6 +98,7 @@ CB_TEST("recompile.x360project.sync_rewrites_only_what_changed", [] {
 });
 
 CB_TEST("recompile.x360project.scaffold_writes_the_project", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     const stdfs::path title = fake.dir.path() / "title files";
     fs::write_text(title / "media" / "a.bin", "a");
@@ -141,7 +142,67 @@ CB_TEST("recompile.x360project.scaffold_writes_the_project", [] {
     CB_CHECK_EQ(fs::read_text(out / "assets" / "default.xex"), "XEX2 fake");
 });
 
+CB_TEST("recompile.x360project.the_other_modules_of_a_title_are_translated_and_listed", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
+    Fake fake;
+    const stdfs::path title = fake.dir.path() / "title files";
+    fs::write_text(title / "bin" / "Tier0_360.dll", "XEX2 program");
+    fs::write_text(title / "bin" / "data.xex", "XEX2 resources");        // a module with no program in it
+    fs::write_text(title / "bin" / "notes.dll", "not an xex at all");    // not an XEX
+    fs::write_text(title / "DEFAULT.XEX", "must not replace the basic one");
+    fake.rc.has_native_code = [](const stdfs::path& basic) { return fs::read_text(basic) == "XEX2 program"; };
+    // the title's own configuration has no suffix; a module's names its symbols
+    fake.rc.make_config = [](const stdfs::path&, std::string_view out_dir, std::string_view tables, std::string_view file_path) {
+        return "[main]\nout = \"" + std::string(out_dir) + "\"\ntables = \"" + std::string(tables) + "\"\nfile = \"" + std::string(file_path) + "\"\n";
+    };
+    const stdfs::path out = fake.dir.path() / "project";
+    const ScaffoldInfo info = scaffold(fake.rc, fake.xex(), out, {}, title);
+    CB_CHECK_EQ(info.modules, 1u);
+    CB_CHECK_EQ(info.functions, 2u);   // the title's own
+
+    const stdfs::path module = out / "src" / "modules" / "bin_tier0_360_dll";
+    CB_CHECK(stdfs::exists(module / "ppc" / "ppc_func_mapping.cpp"));
+    CB_CHECK(!stdfs::exists(out / "src" / "modules" / "bin_data_xex"));
+    CB_CHECK(!stdfs::exists(out / "src" / "modules" / "bin_notes_dll"));
+    const std::string config = fs::read_text(module / "bin_tier0_360_dll.toml");
+    CB_CHECK(has(config, "[main]\nsymbol_suffix = \"_bin_tier0_360_dll\"\nsuffix_function_names = true\n"));
+    CB_CHECK(has(config, "file = \"image.xex\""));
+    CB_CHECK(!has(fs::read_text(out / "src" / "pac_man_c_e.toml"), "symbol_suffix"));
+
+    const std::string module_cpp = fs::read_text(module / "module_info.cpp");
+    CB_CHECK(has(module_cpp, "extern PPCFuncMapping PPCFuncMappings_bin_tier0_360_dll[];"));
+    CB_CHECK(has(module_cpp, "extern const modules::RecompiledModule g_module_bin_tier0_360_dll = {\n    \"Tier0_360.dll\","));
+    CB_CHECK(has(module_cpp, "    PPCFuncMappings_bin_tier0_360_dll,\n    0x82ABCDEF, // __savegprlr_14\n    \"bin/Tier0_360.dll\",\n    nullptr,\n};"));
+    const std::string title_cpp = fs::read_text(out / "src" / "module_info.cpp");
+    CB_CHECK(has(title_cpp, "extern const modules::RecompiledModule g_module_bin_tier0_360_dll;\n"));
+    CB_CHECK(has(title_cpp, "kExtraModules[] = { &g_module_bin_tier0_360_dll, nullptr };"));
+    CB_CHECK(has(title_cpp, "    0x82ABCDEF, // __savegprlr_14\n    nullptr,\n    kExtraModules,\n};"));
+
+    // the program the runtime loads is the module in basic form; the others are as they were
+    CB_CHECK_EQ(fs::read_text(out / "assets" / "bin" / "Tier0_360.dll"), "XEX2 program");
+    CB_CHECK_EQ(fs::read_text(out / "assets" / "bin" / "data.xex"), "XEX2 resources");
+    CB_CHECK(has(fs::read_text(out / "reports" / "modules.txt"), "module bin/Tier0_360.dll: 2 functions, 7 switch tables\n"));
+    CB_CHECK(has(fs::read_text(out / "reports" / "modules.txt"), "module bin/data.xex: not a PowerPC program"));
+});
+
+CB_TEST("recompile.x360project.a_module_that_fails_to_translate_is_left_out_not_fatal", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
+    Fake fake;
+    const stdfs::path title = fake.dir.path() / "title files";
+    fs::write_text(title / "engine.dll", "XEX2 program");
+    fake.rc.has_native_code = [](const stdfs::path&) { return true; };
+    // the recompiler works for the title (a config naming default.xex) and fails for the module (image.xex)
+    fs::write_text(fake.dir.path() / "recomp.bat",
+                   "@echo off\r\nfindstr /c:image.xex %1 >nul && (echo cannot translate & exit /b 4)\r\n" + fake.recomp_body.substr(fake.recomp_body.find("mkdir")));
+    const ScaffoldInfo info = scaffold(fake.rc, fake.xex(), fake.dir.path() / "project", {}, title);
+    CB_CHECK_EQ(info.modules, 0u);
+    CB_CHECK_EQ(info.functions, 2u);
+    CB_CHECK(!stdfs::exists(fake.dir.path() / "project" / "src" / "modules" / "engine_dll"));
+    CB_CHECK(has(fs::read_text(fake.dir.path() / "project" / "reports" / "modules.txt"), "module engine.dll: not translated"));
+});
+
 CB_TEST("recompile.x360project.a_second_scaffold_rewrites_only_the_changed_code", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     const stdfs::path out = fake.dir.path() / "project";
     (void)scaffold(fake.rc, fake.xex(), out, "My Title");
@@ -160,12 +221,14 @@ CB_TEST("recompile.x360project.a_second_scaffold_rewrites_only_the_changed_code"
 });
 
 CB_TEST("recompile.x360project.default_is_not_a_target_name", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     fs::write_text(fake.dir.path() / "default.xex", "XEX2");
     CB_CHECK_EQ(scaffold(fake.rc, fake.dir.path() / "default.xex", fake.dir.path() / "p", {}).name, "title");
 });
 
 CB_TEST("recompile.x360project.a_failed_recompile_is_a_tool_error_with_its_log", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     fs::write_text(fake.dir.path() / "recomp.bat", "@echo off\r\necho cannot read config\r\nexit /b 3\r\n");
     try {
@@ -182,6 +245,7 @@ CB_TEST("recompile.x360project.a_failed_recompile_is_a_tool_error_with_its_log",
 });
 
 CB_TEST("recompile.x360project.build_reports_errors_first", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     fs::ScopedTempDir dir{"cbbuild"};
     fs::write_text(dir.path() / "Build-t.bat", "@echo off\r\necho jobs=%CB_BUILD_JOBS%\r\necho compiling\r\necho a.cpp(3): error C2065: x\r\nexit /b 1\r\n");
     const BuildResult bad = build(dir.path(), "t", 3);
@@ -217,6 +281,7 @@ CB_TEST("recompile.x360project.the_log_says_how_far_the_title_got", [] {
 });
 
 CB_TEST("recompile.x360project.check_runs_the_title_and_reads_its_log", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     fs::ScopedTempDir dir{"cbcheck"};
     fs::make_dirs(dir.path() / "assets");
     fs::make_dirs(dir.path() / "build");

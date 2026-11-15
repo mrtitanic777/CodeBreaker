@@ -60,8 +60,9 @@ void each(const char* console, const verify::lanes::ImageLaneSpec& spec, bool (*
     if (!std::filesystem::is_directory(root)) return;   // (not on this machine)
     for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
         if (entry.is_regular_file() && probe(entry.path())) {
-            // (a 3 MB stripped module takes the writer's analysis over twenty minutes: CB_PS2_PSP_ALL takes it too)
-            if (entry.file_size() > 2500000 && !fs::get_env("CB_PS2_PSP_ALL")) continue;
+            // (a 3 MB stripped module (DOSBox) is written and built in about 3 s now; the assembler's per-reference copy of every label was what took twenty
+            // minutes. Anything beyond 8 MB is still left to CB_PS2_PSP_ALL.)
+            if (entry.file_size() > 8000000 && !fs::get_env("CB_PS2_PSP_ALL")) continue;
             judge(spec, entry.path());
         }
 }

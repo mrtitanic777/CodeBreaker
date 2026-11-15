@@ -30,7 +30,15 @@ include("${X360_ROOT}/system/transition/transition.cmake")
 include("${X360_ROOT}/system/pads/pads.cmake")
 # the XEX reader, shared with the xex engine (native/xex): xex.cpp loads modules through it
 include("${X360_ROOT}/../xex/reader.cmake")
-add_library(x360_runtime STATIC ${runtime_sources} ${X360_XUI_SOURCES} ${X360_LIVE_SOURCES} ${X360_STFS_SOURCES}
+# the console's export names by ordinal (kernel::OrdinalName), from the repository's symbol data
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(ordinal_names "${CMAKE_CURRENT_BINARY_DIR}/ordinal_names.cpp")
+set(ordinal_json "${X360_ROOT}/../../data/symbols/console_ordinals.json")
+add_custom_command(OUTPUT "${ordinal_names}"
+    COMMAND Python3::Interpreter -I "${X360_ROOT}/tools/gen_ordinal_names.py" "${ordinal_json}" "${ordinal_names}"
+    DEPENDS "${X360_ROOT}/tools/gen_ordinal_names.py" "${ordinal_json}"
+    COMMENT "The console's export names by ordinal")
+add_library(x360_runtime STATIC ${runtime_sources} "${ordinal_names}" ${X360_XUI_SOURCES} ${X360_LIVE_SOURCES} ${X360_STFS_SOURCES}
     ${X360_GUIDE_SOURCES} ${X360_TRANSITION_SOURCES} ${X360_PADS_SOURCES} ${XEX_READER_SOURCES})
 target_include_directories(x360_runtime PRIVATE "${X360_RUNTIME}/src" "${X360_PPC_SHARED}" "${X360_SETTINGS_DIR}"
     "${X360_XENON}/XenonUtils" "${X360_XENON}/thirdparty/simde" "${X360_XUI_INCLUDE_DIR}" ${X360_LIVE_INCLUDE_DIRS}

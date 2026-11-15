@@ -1,4 +1,5 @@
 // cb/emulate/capstone_x86_test.cpp -- the per-thread x86 engines decode in the width asked for.
+#include "cb/core/dynlib.hpp"
 #include "cb/emulate/capstone_x86.hpp"
 
 #include <string>
@@ -78,5 +79,5 @@ CB_TEST("emulate.capstone_x86.rejects_other_widths", [] {
 
 CB_TEST("emulate.capstone_x86.names_its_dll", [] {
     CB_CHECK(!capstone_x86::dll_path().empty());
-    CB_CHECK_EQ(capstone_x86::dll_path().filename().string(), "capstone.dll");
+    CB_CHECK_EQ(capstone_x86::dll_path().filename().string(), cb::DynLib::file_name_for("capstone"));   // (capstone.dll, libcapstone.so)
 });

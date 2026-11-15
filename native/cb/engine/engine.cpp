@@ -19,12 +19,13 @@ double clock_now() {
     return duration_cast<duration<double>>(system_clock::now().time_since_epoch()).count();
 }
 
-// The path as Windows spells it (the binary fact has always been recorded that way).
+// The path as the machine spells it: on Windows with backslashes (the binary fact has always been recorded that way), elsewhere
+// as it is (a backslash there is a letter of a name, not a separator, and the lanes read this text back as a path).
 std::string native_text(const std::filesystem::path& p) {
     std::error_code ec;
     const std::filesystem::path abs = std::filesystem::absolute(p, ec);
     std::string s = fs::to_text((ec ? p : abs).lexically_normal());
-    std::replace(s.begin(), s.end(), '/', '\\');
+    if (std::filesystem::path::preferred_separator == '\\') std::replace(s.begin(), s.end(), '/', '\\');
     return s;
 }
 

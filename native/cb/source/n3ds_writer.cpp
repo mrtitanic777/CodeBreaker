@@ -11,8 +11,10 @@
 
 #include "cb/build/arm_asm.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/core/parallel.hpp"
 #include "cb/decompile/arm.hpp"
 #include "cb/source/isa.hpp"
+#include "cb/verify/stage_timer.hpp"
 
 namespace cb::source::n3ds_writer {
 
@@ -175,6 +177,8 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
     const std::string stem = std::filesystem::path(file_name).stem().string();
     const ByteView file = program.file;
     const N3dsFlow flow(file, program);
+    std::optional<verify::StageTimer> stage;   // (CB_PROFILE: where the writer's time goes)
+    stage.emplace("n3ds.entries");
 
     // where flow starts: the entry, the symbols, and (a 3DSX) the code the relocation table says is pointed at
     std::set<std::uint32_t> entry_set = {program.entry};
@@ -192,7 +196,9 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
         if (program.in_code(*t) && (v & 3) == 0) entry_set.insert(*t);
     }
     const std::vector<std::uint32_t> entries(entry_set.begin(), entry_set.end());
+    stage.emplace("n3ds.walk");
     const iw::Walked<da::Insn> walked = iw::walk<da::Insn>(flow, entries);
+    stage.emplace("n3ds.names");
     const std::map<std::uint32_t, da::Insn>& code = walked.code;
 
     iw::Names names;
@@ -209,7 +215,8 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
             if (!seen.insert(name).second) name = std::format("{}_{:06X}", name, at);
     }
     const iw::Functions functions = iw::name_functions(walked.starts, names, kSub);
-    const std::set<std::uint32_t> inside_insn = iw::covered(code, flow);
+    stage.emplace("n3ds.labels");
+    const iw::ByteMarks inside_insn = iw::covered_marks(code, flow, file.size());
     const auto line_start = [&](std::uint32_t a) { return a < file.size() && !inside_insn.contains(a); };
     iw::Names labels = iw::make_labels(walked.targets, names, line_start, kLocal);
 
@@ -248,6 +255,7 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
         }
     }
 
+    stage.emplace("n3ds.text");
     decompile::AddressLabels address_labels;
     decompile::NameLabels name_values;
     for (const auto& [a, n] : labels) {
@@ -255,8 +263,15 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
         name_values[n] = a;
     }
     for (const auto& [n, v] : equates) name_values[n] = v;
+    // (each instruction on its own, from tables nothing changes: the lines are made side by side and filed in address order)
     std::map<std::uint32_t, std::string> instruction_text;
-    for (const auto& [at, insn] : code) {
+    std::vector<const std::pair<const std::uint32_t, da::Insn>*> to_write;
+    to_write.reserve(code.size());
+    for (const auto& entry : code) to_write.push_back(&entry);
+    std::vector<std::string> written_lines(to_write.size());
+    parallel::parallel_for(to_write.size(), [&](std::size_t item) {
+        const std::uint32_t at = to_write[item]->first;
+        const da::Insn& insn = to_write[item]->second;
         std::string t = da::text(insn, address_labels);
         bool same = false;
         try {
@@ -269,8 +284,9 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
             const std::string_view svc = svc_name(insn.imm);
             if (!svc.empty()) line += std::format("  @ svc{}", svc);
         }
-        instruction_text[at] = std::move(line);
-    }
+        written_lines[item] = std::move(line);
+    });
+    for (std::size_t item = 0; item < to_write.size(); ++item) instruction_text.emplace_hint(instruction_text.end(), to_write[item]->first, std::move(written_lines[item]));
 
     std::vector<std::string> head = {std::format("@ {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      std::format("@ Nintendo 3DS {}, {} bytes, entry 0x{:06X}; the processor is the ARM11 (ARMv6K, VFP), loaded at 0x00100000",
@@ -282,6 +298,7 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
                                      ""};
     for (const auto& [name, value] : equates) head.push_back(std::format("        .equ {}, 0x{:08X}", name, value));
     if (!equates.empty()) head.push_back("");
+    stage.emplace("n3ds.emit");
     translate::l2::Assembly out(head, "gnu-as", std::string(file_name));
     out.part("image", "segment", std::nullopt, file.size());
 
@@ -289,7 +306,9 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
     iw::emit<da::Insn>(out, 0, static_cast<std::uint32_t>(file.size()), labels, functions, listing);
     out.append("");
 
+    stage.emplace("n3ds.join");
     const std::string source = iw::text(out) + "\n";
+    stage.emplace("n3ds.assemble");
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), file.size());
     const build::arm_asm::Assembler assembler(isa::arm11_encoder());
     const char* extension = program.kind == formats::n3ds::Kind::X3dsx ? ".built.3dsx" : ".built.elf";

@@ -473,6 +473,7 @@ void write_fake_dotnet(const stdfs::path& folder, const stdfs::path& error_file)
 }
 
 CB_TEST("xna.port.build_fixes_and_builds_again", [] {
+    CB_WINDOWS_ONLY("its stand-in build tools are .cmd files");
     PortProject p;
     const stdfs::path util = p.root() / "build" / "port" / "src" / "Tetris" / "Util.cs";
     const stdfs::path bin = p.dir.path() / "bin";
@@ -498,6 +499,7 @@ CB_TEST("xna.port.build_fixes_and_builds_again", [] {
 });
 
 CB_TEST("xna.port.build_that_cannot_be_fixed_lists_the_errors", [] {
+    CB_WINDOWS_ONLY("its stand-in build tools are .cmd files");
     PortProject p;
     const stdfs::path bin = p.dir.path() / "bin";
     cfs::write_text(bin / "dotnet.cmd",
@@ -523,6 +525,7 @@ CB_TEST("xna.port.build_that_cannot_be_fixed_lists_the_errors", [] {
 });
 
 CB_TEST("xna.port.main_prints_what_happened", [] {
+    CB_WINDOWS_ONLY("its stand-in build tools are .cmd files");
     PortProject p;
     const stdfs::path bin = p.dir.path() / "bin";
     cfs::write_text(bin / "dotnet.cmd", "@echo off\r\necho C:\\p\\A.cs(1,1): error CS0103: The name 'x' does not exist [x.csproj]\r\nexit /b 1\r\n");
@@ -552,6 +555,7 @@ CB_TEST("xna.port.main_prints_what_happened", [] {
 });
 
 CB_TEST("xna.port.run_for_ends_a_program_that_does_not_stop", [] {
+    CB_WINDOWS_ONLY("its stand-in build tools are .cmd files");
     cfs::ScopedTempDir dir("cbxnaport");
     cfs::write_text(dir.path() / "quick.cmd", "@echo off\r\necho started\r\necho written> xnaport.log\r\nexit /b 3\r\n");
     const port::RunResult quick = port::run_for(dir.path() / "quick.cmd", std::chrono::seconds(30));
@@ -567,6 +571,7 @@ CB_TEST("xna.port.run_for_ends_a_program_that_does_not_stop", [] {
 });
 
 CB_TEST("xna.port.check_content_reads_what_the_program_wrote", [] {
+    CB_WINDOWS_ONLY("its stand-in build tools are .cmd files");
     cfs::ScopedTempDir dir("cbxnaport");
     cfs::write_text(dir.path() / "game.cmd",
                     "@echo off\r\nif \"%XNAPORT_CHECK_CONTENT%\"==\"1\" echo {\"a.xnb\": \"Texture2D\", \"b.xnb\": \"error: boom\"}> content_check.json\r\nexit /b 0\r\n");

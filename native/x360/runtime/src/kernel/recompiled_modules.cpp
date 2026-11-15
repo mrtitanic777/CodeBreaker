@@ -6,6 +6,7 @@
 #include "kernel/kernel.h"
 #include "modules.h"
 #include "settings.h"
+#include "vfs.h"
 
 #include <cctype>
 #include <deque>
@@ -134,5 +135,100 @@ namespace kernel
         }
         modules::Unload(*loaded);
         return true;
+    }
+}
+
+namespace
+{
+    // The title's other recompiled modules (modules.h: the title's module_info lists them).
+    const modules::RecompiledModule* const* g_titleModules = nullptr;
+    std::recursive_mutex g_titleModulesMutex;   // a module's loading loads its dependencies, on the same thread
+    thread_local PPCContext* g_loadContext = nullptr;
+
+    std::string FileName(const std::string& name)
+    {
+        const size_t slash = name.find_last_of("\\/:");
+        return slash == std::string::npos ? name : name.substr(slash + 1);
+    }
+
+    std::string Stem(const std::string& file)
+    {
+        const size_t dot = file.find_last_of('.');
+        return dot == std::string::npos ? file : file.substr(0, dot);
+    }
+}
+
+namespace kernel
+{
+    void SetTitleModules(const modules::RecompiledModule* const* list)
+    {
+        g_titleModules = list;
+    }
+
+    const modules::RecompiledModule* FindTitleModule(const std::string& name)
+    {
+        if (!g_titleModules)
+            return nullptr;
+        const std::string file = Lower(FileName(name));
+        for (const modules::RecompiledModule* const* m = g_titleModules; *m; m++)
+            if (Lower((*m)->name) == file || Lower(Stem((*m)->name)) == file)
+                return *m;
+        return nullptr;
+    }
+
+    const modules::LoadedModule* LoadRecompiledTitleModule(const std::string& name, PPCContext& ctx)
+    {
+        const modules::RecompiledModule* described = FindTitleModule(name);
+        if (!described)
+            return nullptr;
+        std::lock_guard lock(g_titleModulesMutex);
+        if (const modules::LoadedModule* loaded = modules::FindByName(described->name))
+            return loaded;
+        std::string guestPath = "game:\\";
+        for (const char* c = described->path ? described->path : described->name; *c; c++)
+            guestPath += *c == '/' ? '\\' : *c;
+        const auto resolved = vfs::Resolve(guestPath);
+        std::error_code ec;
+        if (!resolved || !std::filesystem::exists(resolved->host, ec))
+            Fatal("{}: the title's module {} is missing", guestPath, described->name);
+        // Its imports of other title modules load those first (modules.cpp asks through LoadTitleDependency).
+        PPCContext* outer = g_loadContext;
+        g_loadContext = &ctx;
+        const modules::LoadedModule& loaded = modules::Load(resolved->host.string(), *described);
+        g_loadContext = outer;
+        if (const uint32_t entry = loaded.xex.entryPoint)
+        {
+            Log("XexLoadImage(\"{}\"): title module {} loaded, DllMain at {:08X}", name, described->name, entry);
+            PPCContext call = ctx;
+            call.r3.u64 = loaded.handle;
+            call.r4.u64 = 1; // DLL_PROCESS_ATTACH
+            call.r5.u64 = 0;
+            CallGuest(call, entry);
+            Log("XexLoadImage(\"{}\"): DllMain of {} returned {:08X}", name, described->name, call.r3.u32);
+        }
+        return &loaded;
+    }
+
+    const modules::LoadedModule* LoadTitleDependency(const std::string& library)
+    {
+        PPCContext* ctx = g_loadContext;
+        if (!ctx)
+            if (const GuestThread* thread = CurrentThread())
+                ctx = thread->context;
+        if (!ctx)
+            Fatal("{}: a title module is imported while no guest thread loads", library);
+        return LoadRecompiledTitleModule(library, *ctx);
+    }
+
+    void CallModuleExport(const char* library, uint16_t ordinal, PPCContext& ctx, uint8_t* base)
+    {
+        const modules::LoadedModule* module = LoadRecompiledTitleModule(library, ctx);
+        const uint32_t address = module ? modules::ExportAddress(*module, ordinal) : 0;
+        if (address == 0)
+            Fatal("{} has no export of ordinal {} (called from {:08X})", library, ordinal, uint32_t(ctx.lr));
+        PPCFunc* func = PPC_LOOKUP_FUNC(base, address);
+        if (func == nullptr)
+            Fatal("{} ordinal {} at {:08X}: no recompiled function starts there", library, ordinal, address);
+        func(ctx, base);
     }
 }

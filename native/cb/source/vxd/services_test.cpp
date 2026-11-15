@@ -112,6 +112,7 @@ CB_TEST("source.vxd.services.the_inc_folder_among_the_candidates", [] {
 });
 
 CB_TEST("source.vxd.services.the_bounded_walk", [] {
+    CB_WINDOWS_ONLY("the walk depends on case-insensitive file names");
     const auto walk = [](const std::function<void(const std::filesystem::path&)>& build) -> std::optional<std::string> {
         cb::fs::ScopedTempDir tmp("cb-svc");
         const auto design = tmp.path() / "design";

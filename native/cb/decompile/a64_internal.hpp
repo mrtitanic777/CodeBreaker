@@ -51,7 +51,7 @@ enum class K : std::uint8_t {
     // field (b h s d), FZW twice as wide; VEL / VEL2 a vector element (index from imm5, or the second index from imm4); RG a general register by imm5; BYEL / BYELF the
     // by-element operand; SHL / SHR the shift-immediate amounts; VMA / VMI the arrangement and the immediate of a modified-immediate instruction; SLIST / TLIST register lists
     // and SPOST the post-index of a structure load; VD1 the upper half `v<n>.d[1]`
-    V, VF, VB, VW, VPL, VT, VSH, VSHW, FZ, FZW, VEL, VEL2, RG, RGQ, BYEL, BYELF, SHL, SHR, SHLL, VMA, VMI, SLIST, TLIST, SPOST, SLANE, RLIST, VD1,
+    V, VF, VB, VW, VX, VXW, VPL, VT, VSH, VSHW, FZ, FZW, VEL, VEL2, RG, RGQ, BYEL, BYELF, SHL, SHR, SHLL, VMA, VMI, SLIST, TLIST, SPOST, SLANE, RLIST, VD1,
 };
 
 struct Operand {

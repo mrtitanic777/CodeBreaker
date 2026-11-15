@@ -187,6 +187,7 @@ CB_TEST("source.vxd.from_source.the_command_writes_the_file_and_says_what_it_mad
 });
 
 CB_TEST("source.vxd.from_source.splitter_compiles_and_links_with_the_period_tools", [] {
+    CB_WINDOWS_ONLY("it runs the period compiler and linker (Windows programs)");
     // only where the DDK (its includes, MASM 6.11d, LINK 2.60) and its names are set up (the settings, CB_CHECKOUT_ROOT): then the readable source is
     // assembled and linked, and the file written is the LE writer's: the original's size and objects
     const cb::config::Config& config = cb::config::current();

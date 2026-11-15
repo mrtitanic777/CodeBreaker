@@ -369,12 +369,58 @@ was put behind a switch (`CB_DS_OWN_CALLERS=<one name>`, default off) and run on
 So the DS reading is right for four and the two others break for a reason of their own (their C, unlocked, is wrong in a way the gate
 does not see; not found). They are listed in data/build/kept_as_asm.txt (the whole-run-showed-wrong list). The rule is then on by default
 (`CB_NO_DS_OWN=1` turns it off). `regress all15 --runs 2` with the switch on for all 13 callers and the two kept: PASS, PASS, USER C 574 / gated 40;
-default (no switch), rebuilt exe: PASS, PASS (5m23s), USER C 574 / gated 40 (+5 over 569), GDI unchanged. `regress install` of this exe: see below.
+default (no switch), rebuilt exe: PASS, PASS (5m23s), USER C 574 / gated 40 (+5 over 569), GDI unchanged. `regress install --runs 1` of this exe (`win95track-install-ds`): **PASS**, 1h27m, Setup to the desktop on all 22 modules; screen state/phase3/shots/win95track-install-ds-install-1.png.
 
 Also noted: regress has no option for a private state folder (its builds go to state/build/<module> and state/work/regress), so concurrent runs
 by two sessions can collide; run them one at a time.
 
-Not converted (the GDI `in_DX` shared-body entries; they need `DxReturns` read by hand, see item 12):
+### 16. The GDI shared-body `in_DX` entries (1:1260 / 1:1268): read by hand, still refused, switch left default off
+
+`DxReturns::every_way` now has two default-off extensions (`Policy::dx_shared_bodies`, `CB_DX_SHARED=1`; unit tests of the policy pass): it follows a
+`jmp` out of the function's range into the code it lands in (1:1268 jumps to 1:52D6 and 1:5281, which `xchg` DX and return DX:AX), and a call to a
+near function that never writes DX (1:522D) is transparent. With `CB_DX_SHARED=1` GDI's build did not change (C 130, 10 never-set): by
+hand, 1:1268 has a path that sets no DX of its own -- `mov ax, cx / push bx / push ax / call far 1:..24FD (sub_20_24FD) / pop bx / cmp .. / jmp L_12CA /
+pop di / pop ds / leave / retf 6`: the far callee returns a word, so DX is whatever it left. That is an error path whose DX no caller can
+depend on (a caller stores it through `lpPoint` only when AX is non-zero). So `every_way`'s "DX set on every way" is the right strictness for
+a *defined* DX:AX; what these entries need is the same decision as the `in_AX` one (item 13): a four-byte result whose DX is *unspecified* on
+the paths that set none, written as 0 by the back end, the gate then deciding per function. Not done: it widens `caller_results`
+(which once stopped Setup) and needs the all15 and install proofs as that one had.
+
+### 17. The unspecified-DX rule for GDI (default off: `CB_DX_SHARED=1 CB_DX_UNSPECIFIED=1`)
+
+Three pieces, all behind the two switches (`Policy::dx_shared_bodies`, `Policy::dx_unspecified`; defaults unit-tested):
+
+1. `DxReturns::every_way` follows a `jmp` that leaves a function into the code it lands in, and treats a call to a near function that never writes
+   DX as transparent (item 16).
+2. `DxReturns::every_way(.., any_way)`: a callee whose callers read DX is four bytes when at least one way sets DX, the other ways leaving it
+   unspecified (the same decision as `in_AX`, item 13).
+3. `callers_read_dx` goes through a conditional jump, on the way that falls on, when looking for the caller's read of DX (GDI's 1:5FC1:
+   `call 1268 / cmp / je / les / mov es:[bx], ax / mov es:[bx+2], dx` reads it on one way only).
+
+Result with both on: GDI C 130 -> 132, never-set 10 -> 8; `regress all15 --runs 2`: PASS, PASS (USER 574 / gated 40, GDI 132 / 16, others
+unchanged). `regress install --runs 1` with both on: started (log kept in the session's scratch); the switches stay default off until it passes.
+The description of sub_1_1268 itself still says a two-byte result (it is the callee's own: rebuilt from instructions); what changed is the
+callers that read its DX.
+
+### 18. BEAR306 and sub_25_0429: what the gate does not see (read, not fixed)
+
+Both are USER window procedures (`a4` = message, a switch of ~30 cases). Each passes the gate and each breaks the boot once it is C.
+The gate (verify/gate16, isolated16) runs the function on its own beside the original and answers every call out alike on both sides: the callees
+are stand-ins. Two things follow that a window procedure falls through:
+
+- A callee's *side effect through a pointer argument* is not run. BEAR306's WM_PAINT case passes the address of a local array to
+  `sub_1_0110` (BeginPaint) and `sub_1_76C3` (EndPaint) -- `(int2)aiStack_26, unaff_SS` -- and reads fields of what they fill; with the callees stubbed the
+  filled buffer is never there, so C and original compare equal on an input that does not exercise the real thing.
+- Which locals sit where. The decompiler turned BEAR306's frame into one array `aiStack_26[18]` with the pointer local at `(uint1 *)aiStack_26 + 0x20`
+  (a 32-byte PAINTSTRUCT then a word): C that names a local through another local's address depends on the compiler laying the frame out as
+  the original did, which OpenWatcom does not promise.
+
+The change that would close the gate itself, not the two functions: run the callees that take a pointer to the function's own frame as
+their own model (a table of the Windows calls that fill a structure: BeginPaint, GetClientRect, GetWindowRect, GetMessage, ... which are known from
+the SDK headers) so the buffer is filled on both sides; and refuse (keep as instructions) any C that addresses a local at an offset from another local's
+address past that local's own size. Neither is built; the two functions stay in data/build/kept_as_asm.txt.
+
+Not converted (superseded by item 16):
 
 
 Next (item 3 of the lead's list, not started): GDI's remaining recorded reasons (16 gated, 10 never-set shared-body entries,

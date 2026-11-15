@@ -255,6 +255,7 @@ CB_TEST("coverage.reach.programs_walks_folders_and_opens_containers", [] {
 });
 
 CB_TEST("coverage.reach.judge_reports_what_the_measure_did", [] {
+    CB_WINDOWS_ONLY("its measure is a .cmd stand-in");
     fs::ScopedTempDir tmp("reach-judge");
     r::Services s = services_in(tmp.path() / "state");
     s.tally = [](const stdfs::path&) { return r::Tally{{"verified", 3}, {"weak", 1}}; };
@@ -291,6 +292,7 @@ CB_TEST("coverage.reach.judge_reports_what_the_measure_did", [] {
 });
 
 CB_TEST("coverage.reach.judge_stops_a_measure_at_its_time_limit", [] {
+    CB_WINDOWS_ONLY("its measure is a .cmd stand-in");
     fs::ScopedTempDir tmp("reach-timeout");
     r::Services s = services_in(tmp.path() / "state");
     s.tally = [](const stdfs::path&) { return r::Tally{}; };

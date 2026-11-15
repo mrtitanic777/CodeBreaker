@@ -101,6 +101,21 @@ namespace modules
             std::string missing; // every variable import the runtime has no value for, reported together
             for (const auto& imp : m.xex.imports)
             {
+                // An import from another module the title ships: that module is loaded first; a data import is its
+                // export's address, a function's slot too (the thunk forwards calls, kernel/thread.cpp UnimplementedImport).
+                if (kernel::FindTitleModule(imp.library))
+                {
+                    const LoadedModule* dependency = kernel::LoadTitleDependency(imp.library);
+                    const uint32_t address = dependency ? ExportAddress(*dependency, imp.ordinal) : 0;
+                    if (address == 0)
+                    {
+                        missing += std::format("{}{} {}", missing.empty() ? "" : ", ", imp.library, imp.ordinal);
+                        continue;
+                    }
+                    mem.Write32(imp.slot, address);
+                    (imp.thunk ? functions : variables)++;
+                    continue;
+                }
                 if (imp.thunk)
                 {
                     // The slot holds the function's address; point it at the thunk, which the recompiler mapped to the

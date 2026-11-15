@@ -5,7 +5,7 @@
 // host texture, and a CPU reference of all of it for the tests.
 //
 // Implemented (05b §6.1): 2D textures of k_8, k_8_8, k_8_8_8_8 and k_16_16, the packed 16-bit formats, DXT,
-// k_24_8 (the depth, as a float) and k_32(_32(_32_32))_FLOAT (the words as they are), linear or 2D tiled, every mip level
+// k_24_8 (the depth, as a float), k_16_FLOAT / k_16_16_FLOAT / k_16_16_16_16_FLOAT (halves to floats) and k_32(_32(_32_32))_FLOAT (the words as they are), linear or 2D tiled, every mip level
 // with the per-level stride rules (05b §2.4) and the packed mip tail (05b §2.5, also when the base level is in it),
 // all four endian modes (applied to each 32-bit word of memory, 05b §1.5), unsigned / signed / bias signs as
 // fractions and every sign as integers. Anything else is reported by DecodeTextureFetch and stops the renderer.
@@ -74,7 +74,8 @@ namespace gpu
     // How the untile shader reads the format: one component per 8 or 16 bits; a packed 16-bit texel (its components'
     // widths: TexturePackedWidths, a nibble each, X first) expanded to 8 bits each; or a DXT block decoded.
     enum : uint32_t { kUntilePlain = 0, kUntilePacked16 = 1, kUntileDxt1 = 2, kUntileDxt2_3 = 3, kUntileDxt4_5 = 4,
-                      kUntileDepth24 = 5, kUntileFloat32 = 6, kUntileDepth24Float = 7, kUntileHalf4 = 8, kUntileDxn = 9, kUntile2_10_10_10 = 10 };
+                      kUntileDepth24 = 5, kUntileFloat32 = 6, kUntileDepth24Float = 7, kUntileHalf4 = 8, kUntileDxn = 9, kUntile2_10_10_10 = 10,
+                      kUntileHalf2 = 11 };
     uint32_t TextureUntileKind(uint32_t format);
     uint32_t TexturePackedWidths(uint32_t format);
 
@@ -123,6 +124,12 @@ namespace gpu
     // Host bytes of every level, tightly packed rows, in the host texture's format (UINT components of 1 or 2 bytes
     // for fractions; 4 floats for integers). Levels that are not present are empty. `memory` = physical memory.
     // `reads` (optional) receives every byte range [start, end) read, one per texel.
+    // The byte offset of texel (x, y, z) in a tiled volume: `pitchBlocks` texels a row (a multiple of 32), `height` rows a
+    // slice, the volume tiled in 32 x 32 x 4 macro tiles. The CPU twin of the untile pass's `xe_un_tiled3d`; the tests check
+    // it is a bijection of the padded volume onto the dense range of its bytes, and read volumes laid out by it through
+    // the GPU pass.
+    uint32_t ReferenceVolumeOffset(uint32_t x, uint32_t y, uint32_t z, uint32_t pitchBlocks, uint32_t height, uint32_t bytesLog2);
+
     void ReferenceTexture(const uint32_t dwords[6], const uint8_t* memory, std::vector<std::vector<uint8_t>>& levels,
                           std::vector<std::pair<uint32_t, uint32_t>>* reads = nullptr);
 }

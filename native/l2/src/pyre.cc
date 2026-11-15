@@ -57,7 +57,7 @@ static bool is_digit_cp(uint32_t c, bool ascii = false) {
 
 static uint32_t fold(uint32_t c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
 
-static bool is_space_ascii(uint32_t c) { return c == ' ' || (c >= '	' && c <= ''); }
+static bool is_space_ascii(uint32_t c) { return c == ' ' || (c >= '\t' && c <= '\r'); }
 
 static bool cat_has(char cat, uint32_t c, bool ascii) {
     switch (cat) {

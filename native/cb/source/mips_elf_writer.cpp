@@ -15,6 +15,7 @@
 #include "cb/build/mips_asm.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
+#include "cb/verify/stage_timer.hpp"
 
 namespace cb::source::mips_elf_writer {
 
@@ -359,6 +360,8 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
     fs::make_dirs(folder);
     const std::string stem = std::filesystem::path(file_name).stem().string();
     const std::string base_name = std::filesystem::path(file_name).filename().string();
+    std::optional<verify::StageTimer> stage;   // (CB_PROFILE: where the writer's time goes)
+    stage.emplace("mips.pieces");
     const std::vector<Piece> pieces = plan_pieces(file, elf, base);
     const Space space(file, pieces, machine.variant);
     const dm::Variant variant = machine.variant;
@@ -376,6 +379,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
     for (const auto& [a, n] : machine.names)
         if (space.inside(a)) entries.insert(a);
 
+    stage.emplace("mips.pointer-values");
     std::vector<std::uint32_t> pointer_values;   // words of data (and of code that no instruction reads) that hold an address of the program
     for (const Piece& p : pieces) {
         if (!p.mapped || (p.role != Role::Code && p.role != Role::Data)) continue;
@@ -391,12 +395,15 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
     std::vector<Use> uses;
     std::set<std::uint32_t> function_starts;
     for (unsigned round = 0; round < kRounds; ++round) {
+        stage.emplace("mips.round.walk");
         std::set<std::uint32_t> roots = entries;
         roots.insert(blocks.begin(), blocks.end());
         walked = walk(space, roots);
         function_starts = entries;
         for (const std::uint32_t c : walked.calls) function_starts.insert(c);
+        stage.emplace("mips.round.pairs");
         uses = address_pairs(walked.code, function_starts);
+        stage.emplace("mips.round.pointed");
         std::set<std::uint32_t> pointed(pointer_values.begin(), pointer_values.end());
         for (const Use& u : uses) pointed.insert(u.address);
         bool added = false;
@@ -410,6 +417,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
             }
         }
         // code that begins as a function does after another one's end (a jump and its delay slot)
+        stage.emplace("mips.round.after-end");
         for (const Piece& p : pieces) {
             if (p.role != Role::Code || !p.mapped) continue;
             for (std::size_t off = 8; off + 4 <= p.size; off += 4) {
@@ -422,6 +430,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         }
         if (!added) break;
     }
+    stage.emplace("mips.final-walk");
     {
         std::set<std::uint32_t> roots = entries;
         roots.insert(blocks.begin(), blocks.end());
@@ -430,6 +439,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         for (const std::uint32_t c : walked.calls) function_starts.insert(c);
         uses = address_pairs(walked.code, function_starts);
     }
+    stage.emplace("mips.labels");
     std::erase_if(function_starts, [&](std::uint32_t a) { return !walked.code.contains(a); });
     const std::map<std::uint32_t, dm::Insn>& code = walked.code;
     const auto line_start = [&](std::uint32_t a) { return space.find(a) != nullptr && (a % 4 == 0 || !code.contains(a & ~3u)); };
@@ -481,6 +491,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
     }
     for (const auto& [pc, high] : high_half) immediate[pc] = high.expression;
 
+    stage.emplace("mips.pointer-words");
     std::unordered_set<std::uint32_t> pointer_words;
     for (const Piece& p : pieces) {
         if (!p.mapped || (p.role != Role::Code && p.role != Role::Data)) continue;
@@ -495,6 +506,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
     }
 
     // each instruction's text, kept only if it assembles back to its word
+    stage.emplace("mips.symbols");
     build::Labels symbols;
     for (const auto& [a, n] : labels) symbols[n] = a;
     for (const auto& [n, a] : equates) symbols[n] = a;
@@ -553,6 +565,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         }
     };
 
+    stage.emplace("mips.emit");
     for (const Piece& p : pieces) {
         const ByteView bytes = file.subspan(p.offset, p.size);
         if (p.role == Role::Header) {
@@ -638,8 +651,10 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         }
     }
 
+    stage.emplace("mips.join");
     const std::string source = iw::text(out) + "\n";
-    iw::Written w = iw::finish(folder, stem + ".s", source, functions, code.size() * 4, file.size());
+    stage.emplace("mips.assemble");
+    iw::Written w =iw::finish(folder, stem + ".s", source, functions, code.size() * 4, file.size());
     const build::mips_asm::Assembler assembler(*machine.encoder);
     iw::assembled(w, [&] { return assembler.build(source); }, file, folder / (stem + ".built" + machine.extension), "program");
     return w;

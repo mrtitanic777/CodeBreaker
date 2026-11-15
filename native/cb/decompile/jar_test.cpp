@@ -206,6 +206,7 @@ CB_TEST("decompile.jar.repair_tree", [] {
 });
 
 CB_TEST("decompile.jar.find_java", [] {
+    CB_WINDOWS_ONLY("it runs java.exe stand-ins written as .cmd files");
     fs::ScopedTempDir tmp("cb_jar_test");
     const path& d = tmp.path();
     put(d, "home/bin/java.exe", "x");
@@ -266,6 +267,7 @@ CB_TEST("decompile.jar.find_java", [] {
 });
 
 CB_TEST("decompile.jar.run_java", [] {
+    CB_WINDOWS_ONLY("it runs java.exe stand-ins written as .cmd files");
     FakeBackend fake;
     fs::make_dirs(fake.workspace());
     fs::ScopedEnv mode("FAKE_MODE", "ok");
@@ -306,6 +308,7 @@ CB_TEST("decompile.jar.run_java", [] {
 });
 
 CB_TEST("decompile.jar.decompile_flow", [] {
+    CB_WINDOWS_ONLY("it runs java.exe stand-ins written as .cmd files");
     FakeBackend fake;
     fs::ScopedEnv mode("FAKE_MODE", "ok");
     fs::ScopedEnv payload("FAKE_PAYLOAD", fs::to_text(fake.payload()));
@@ -344,6 +347,7 @@ CB_TEST("decompile.jar.decompile_flow", [] {
 });
 
 CB_TEST("decompile.jar.decompile_failures", [] {
+    CB_WINDOWS_ONLY("it runs java.exe stand-ins written as .cmd files");
     FakeBackend fake;
     jar::DecompileOptions options;
     options.settings = fake.settings();

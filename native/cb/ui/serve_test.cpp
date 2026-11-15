@@ -51,6 +51,7 @@ struct RunningHost {
 }  // namespace
 
 CB_TEST("ui.serve.a_state_folder_has_one_fixed_port_as_recorded", [] {
+    CB_WINDOWS_ONLY("the recorded port is worked out from a Windows path");
     // worked out as the UI client does: 20000 + crc32(normcase(abspath(state))) % 20000
     CB_CHECK_EQ(serve::fixed_port("C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\state", std::nullopt), 37249);
     CB_CHECK_EQ(serve::fixed_port("C:\\Temp\\Some State", std::nullopt), 29767);

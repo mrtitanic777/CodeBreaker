@@ -261,6 +261,7 @@ CB_TEST("symbols.driver_services.the_kits_main_list_names_a_shared_number", [] {
 });
 
 CB_TEST("symbols.driver_services.finds_the_include_folder", [] {
+    CB_WINDOWS_ONLY("the folder search depends on case-insensitive file names");
     cb::fs::ScopedTempDir dir("ds-ref");
     const std::filesystem::path kit = dir.path() / "win95ddk" / "INC32";
     cb::fs::write_text(kit / "VMM.INC", "x\n");

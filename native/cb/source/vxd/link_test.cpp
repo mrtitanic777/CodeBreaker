@@ -393,6 +393,7 @@ CB_TEST("source.vxd.link.the_loadable_build_refuses_what_it_cannot_overlay", [] 
 });
 
 CB_TEST("source.vxd.link.the_linkers_run_where_they_are_told", [] {
+    CB_WINDOWS_ONLY("its linker stand-ins are .cmd files");
     cb::fs::ScopedTempDir dir("cblink");
     const std::filesystem::path script = dir.path() / "linker.cmd";
     cb::fs::write_text(script, "@copy /y m.obj m.vxd >nul\r\n@echo linked with %*\r\n");

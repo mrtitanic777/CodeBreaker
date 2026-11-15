@@ -27,6 +27,7 @@
 #include "cb/engine/machine_vita.hpp"
 #include "cb/engine/machine_ps3.hpp"
 #include "cb/engine/machine_switch.hpp"
+#include "cb/engine/machine_x64.hpp"
 #include "cb/engine/machine_m68k.hpp"
 #include "cb/engine/machine_dreamcast.hpp"
 #include "cb/engine/machine_threedo.hpp"
@@ -157,6 +158,9 @@ void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
     register_vita_lane();   // (the PlayStation Vita lane, likewise)
     register_ps3_lane();    // (the PlayStation 3 lane, likewise)
     register_switch_lane(); // (the Nintendo Switch lane, likewise)
+    register_ps4_lane();    // (the PlayStation 4, PlayStation 5 and Xbox One lanes, likewise)
+    register_ps5_lane();
+    register_xboxone_lane();
     register_n64_lane();   // (the Nintendo 64 lane, likewise)
     register_gekko_lanes();   // (the GameCube, Wii and Wii U lanes, likewise)
     register_sh2_lanes();   // (the Sega 32X and Saturn lanes, likewise)

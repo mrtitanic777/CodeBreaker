@@ -268,6 +268,7 @@ struct FakeTools {
 }  // namespace
 
 CB_TEST("source.assembly.the_assembler_is_run_and_its_object_found", [] {
+    CB_WINDOWS_ONLY("its assembler and linker stand-ins are .cmd files");
     FakeTools fake;
     fake.canned({bytes_of({0x90})});
     fs::write_text(fake.dir.path() / "a.asm", "nop\n");
@@ -295,6 +296,7 @@ CB_TEST("source.assembly.the_assembler_is_run_and_its_object_found", [] {
 });
 
 CB_TEST("source.assembly.the_linker_gets_its_directives_in_a_script", [] {
+    CB_WINDOWS_ONLY("its assembler and linker stand-ins are .cmd files");
     FakeTools fake;
     const std::vector<std::string> lines = {"system nt", "file a.obj"};
     const Made made = link(fake.tools, lines, fake.dir.path() / "out.dll", fake.dir.path());
@@ -310,6 +312,7 @@ CB_TEST("source.assembly.the_linker_gets_its_directives_in_a_script", [] {
 });
 
 CB_TEST("source.assembly.probe_says_which_texts_assemble_back", [] {
+    CB_WINDOWS_ONLY("its assembler and linker stand-ins are .cmd files");
     FakeTools fake;
     const stdfs::path known_file = fake.dir.path() / "state" / "assembly_probes.json";
     // candidates sort by text: BADINSN, "mov ax, 1", nop -- slots 0, 1, 2
@@ -347,6 +350,7 @@ CB_TEST("source.assembly.probe_says_which_texts_assemble_back", [] {
 });
 
 CB_TEST("source.assembly.probe_compares_only_the_bytes_outside_patched_fields", [] {
+    CB_WINDOWS_ONLY("its assembler and linker stand-ins are .cmd files");
     FakeTools fake;
     // mov eax, label: B8 + four patched bytes. The assembler wrote zeros there; the original has the loader's value.
     fake.canned({bytes_of({0xB8, 0, 0, 0, 0}), bytes_of({0xB8, 0, 0, 0, 0})});

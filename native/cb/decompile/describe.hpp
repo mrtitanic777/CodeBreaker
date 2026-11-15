@@ -112,6 +112,7 @@ class NoKnowledge : public Knowledge {};
 // The switches of the 16-bit describer (each was an environment variable; `from_environment` reads them).
 struct Policy {
     bool caller_args = true;       // a call's arguments from the cleanup after it (CB_CALLER_ARGS=0 turns off)
+    bool dx_unspecified = false;      // a callee whose callers read DX is four bytes when some way sets DX, the others unspecified (CB_DX_UNSPECIFIED=1; under test)
     bool dx_shared_bodies = false;   // DxReturns follows jumps into other functions' code and calls that never write DX (CB_DX_SHARED=1; under test)
     bool caller_results = false;   // a callee's four-byte result from its callers' reads of DX (CB_CALLER_RESULTS=1)
     bool fastcall = true;          // _fastcall functions (CB_FASTCALL=0 turns off)
@@ -337,7 +338,8 @@ class DxReturns {
 public:
     explicit DxReturns(const NeDescription& d);
     ~DxReturns();
-    bool every_way(const SegOff& place, const std::set<SegOff>& four);
+    // any_way: DX set on at least one way (the others leave it unspecified) instead of on every way
+    bool every_way(const SegOff& place, const std::set<SegOff>& four, bool any_way = false);
 
     struct Impl;   // (the decoded functions it keeps; defined in describe_ne_facts.cpp)
 

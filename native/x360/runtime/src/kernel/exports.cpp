@@ -29,6 +29,26 @@ namespace kernel
         Registry()[{ library, ordinal }] = func;
     }
 
+    namespace
+    {
+        std::map<std::string, PPCFunc*>& Imports()
+        {
+            static std::map<std::string, PPCFunc*> imports;
+            return imports;
+        }
+    }
+
+    void RegisterImport(const char* name, PPCFunc* func)
+    {
+        Imports()[name] = func;
+    }
+
+    PPCFunc* FindImport(const std::string& name)
+    {
+        const auto it = Imports().find(name);
+        return it == Imports().end() ? nullptr : it->second;
+    }
+
     uint32_t BindDynamicExport(const std::string& library, uint16_t ordinal)
     {
         const Key key{ library, ordinal };

@@ -94,6 +94,7 @@ struct Fixture {
 }  // namespace
 
 CB_TEST("build.period16.build_compiles_each_module_and_links", [] {
+    CB_WINDOWS_ONLY("it names the period tools by Windows paths");
     Fixture f;
     f.tools.libentry_fallback = f.dir.path() / "ddk";
     fs::write_file(f.dir.path() / "ddk" / "LIBENTRY.OBJ", Bytes{3});

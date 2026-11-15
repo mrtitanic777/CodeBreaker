@@ -137,6 +137,7 @@ std::optional<Bytes> mfx_coff_code(const Bytes& data) {
 }  // namespace
 
 CB_TEST("build.masm_fixtures.every_fixture_assembles_to_its_golden_bytes", [] {
+    CB_WINDOWS_ONLY("it runs the period assembler");
     const auto nasm = masm_fixtures_nasm();
     if (!nasm) {
         std::cout << "SKIP the assembler engine is not built (native/nasm/CMakeLists.txt)\n";
@@ -167,6 +168,7 @@ CB_TEST("build.masm_fixtures.every_fixture_assembles_to_its_golden_bytes", [] {
 });
 
 CB_TEST("build.masm_fixtures.segment_fixtures_give_the_same_code_in_the_object_backends", [] {
+    CB_WINDOWS_ONLY("it runs the period assembler");
     const auto nasm = masm_fixtures_nasm();
     if (!nasm) {
         std::cout << "SKIP the assembler engine is not built (native/nasm/CMakeLists.txt)\n";

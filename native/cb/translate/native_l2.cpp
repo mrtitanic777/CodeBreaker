@@ -97,8 +97,10 @@ Library Library::load(const std::filesystem::path& dll) {
 }
 
 std::filesystem::path Library::default_dll(const std::filesystem::path& checkout, const std::filesystem::path& folder) {
-    if (!folder.empty()) return folder / "cbl2.dll";
-    return checkout / "native" / "l2" / "build" / "bin" / "cbl2.dll";
+    const std::string name = DynLib::file_name_for("cbl2");   // cbl2.dll, libcbl2.so
+    if (!folder.empty()) return folder / name;
+    // (Windows builds in native/l2/build, Linux in native/l2/build-linux: the two caches are not the same folder's)
+    return checkout / "native" / "l2" / (std::filesystem::path::preferred_separator == '\\' ? "build" : "build-linux") / "bin" / name;
 }
 
 std::pair<int, std::string> Library::call_raw(std::string_view name, std::string_view arguments_json) const {

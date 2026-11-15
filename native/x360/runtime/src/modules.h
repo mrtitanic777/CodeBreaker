@@ -26,6 +26,11 @@ namespace modules
         uint32_t codeSize;
         const PPCFuncMapping* mappings; // terminated by a null host function
         uint32_t saveGprLr14;      // __savegprlr_14 (exception unwinding finds saved LRs through it); 0 if none
+        // A title's other module (recompile-project: HostLoader.dll, tier0_360.dll): where its file is under the title
+        // folder ('/' separated). Null for the title itself and for system modules.
+        const char* path = nullptr;
+        // The title's module_info lists its other modules here (a null-terminated array); null for any other module.
+        const RecompiledModule* const* extras = nullptr;
     };
 
     struct LoadedModule

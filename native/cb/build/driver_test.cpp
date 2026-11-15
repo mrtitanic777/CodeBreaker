@@ -72,6 +72,7 @@ CB_TEST("build.driver.source_of", [] {
 });
 
 CB_TEST("build.driver.original_of", [] {
+    CB_WINDOWS_ONLY("it compares against a Windows corpus path");
     const std::vector<stdfs::path> corpus{"C:\\w95\\SYSTEM\\vmm.vxd", "C:\\w95\\SYSTEM\\VKD.VXD",
                                           "C:\\w95\\other\\vkd.386", "C:\\w95\\vpicd.vxd"};
     CB_CHECK(original_of("vkd.asm", corpus) ==

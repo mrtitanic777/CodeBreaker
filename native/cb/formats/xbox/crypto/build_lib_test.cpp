@@ -363,6 +363,7 @@ CB_TEST("formats.xbox.crypto.build_lib.assembling_without_the_tools_is_a_tool_er
 });
 
 CB_TEST("formats.xbox.crypto.build_lib.a_command_gives_its_exit_code_and_its_output", [] {
+    CB_WINDOWS_ONLY("it runs where.exe");
     const std::string where = fs::to_text(stdfs::path(fs::get_env("SystemRoot").value_or("C:/Windows")) / "System32" / "where.exe");
     const std::vector<std::string> found = {"cmd.exe"};
     const bl::CommandResult ok = bl::run_command(where, found);

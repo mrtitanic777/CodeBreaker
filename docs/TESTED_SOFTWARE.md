@@ -391,3 +391,38 @@ signed. The lane is therefore proved on PowerPC64 ELF files that `engine/machine
 from PSL1GHT's `make` or an unencrypted SELF of an open-source project is put in `GitHub/homebrew-samples/ps3/` the same writer and lane take it; nothing is claimed for real
 programs yet.
 
+## Nintendo Switch homebrew (the switch lane)
+
+Open-source homebrew with published source, binaries only (GitHub releases), kept in `GitHub/homebrew-samples/switch/` (never run on this machine, never committed). Each is read by `formats/nro`, written as GNU as source by `source/switch_writer` and built again by CodeBreaker's own assembler; the first 300 functions are run in the interpreter, in the original and in the rebuilt file (`cb_tests --filter machine_switch.homebrew`; it skips programs that are not on the machine), and `codebreaker reach --judge` verifies them all.
+
+| Program | Console | Source | Licence | Functions | Result |
+|---|---|---|---|---|---|
+| ftpd-classic.nro (v3.2.1, 519 KB) | Switch | https://github.com/mtheall/ftpd | GPL-3.0 | 956 | rebuilds identical; 956 verified; 600 of 600 runs equal |
+| ftpd.nro (v3.2.1, 1.5 MB) | Switch | https://github.com/mtheall/ftpd | GPL-3.0 | 2,357 | rebuilds identical; 2,357 verified; 600 of 600 runs equal |
+| NX-Shell.nro (4.01, 8.4 MB) | Switch | https://github.com/joel16/NX-Shell | GPL-2.0 | 14,580 | rebuilds identical (36 s); 14,580 verified; 600 of 600 runs equal |
+
+Only what flow reaches (calls, branches, relocation targets, and stretches that begin with a function prologue) is code; jump tables are not followed. Most sampled runs end at a data abort, because a function is called with made-up pointers.
+
+## PlayStation 4, PlayStation 5 and Xbox One / Series homebrew (the ps4, ps5 and xboxone lanes)
+
+Open-source homebrew with published source and a stated licence, binaries only (GitHub releases), kept in `GitHub/homebrew-samples/{ps4,ps5,xboxone}/` (never run on this machine,
+never committed). Each is read by `formats/orbis` or `formats/xboxone`, written as NASM source by `source/orbis_writer` or `source/xboxone_writer` (over `source/x64_writer`) and built
+again with NASM; the functions are then run in Unicorn's x86-64 engine in the original and in a copy with its first byte turned over
+(`cb_tests --filter engine.x64.homebrew`; it skips programs that are not on the machine). No retail game, firmware, key or decrypted file is used: encrypted formats are recognised and refused.
+
+| Program | Console | Source | Licence | Functions | Result |
+|---|---|---|---|---|---|
+| hello_world.elf (OpenOrbis sample, 1.7 MB ELF, named imports) | PS4 | OpenOrbis/OpenOrbis-PS4-Toolchain (release v0.5.3, samples-elf-llvm-18) | GPL-3.0 | 4,916 | rebuilds identical; 10 of 10 judged agree with themselves and 8 diverge when their first byte is turned over |
+| hello_world-eboot.bin (the same program through OpenOrbis's own create-fself: an Orbis ELF, imports by NID, in a fake SELF, 1.2 MB) | PS4 | OpenOrbis/create-fself (built from source) over the sample above | GPL-3.0 | 2,949 | rebuilds identical (the ELF the SELF holds); 10 judged, 8 diverge |
+| ftpsrv-ps4.elf (v0.22, 147 KB payload) | PS4 | ps5-payload-dev/ftpsrv | GPL-3.0 | 185 | rebuilds identical; 10 judged, 10 diverge |
+| ftpsrv-ps5.elf (v0.22, 192 KB payload) | PS5 | ps5-payload-dev/ftpsrv | GPL-3.0 | 488 | rebuilds identical; 10 judged, 9 diverge |
+| klogsrv-ps5.elf (v0.9, 136 KB payload) | PS5 | ps5-payload-dev/klogsrv | GPL-3.0 | 387 | rebuilds identical; 10 judged, 9 diverge |
+| elfldr-ps5.elf (v0.27, 395 KB payload) | PS5 | ps5-payload-dev/elfldr | GPL-3.0 | 78 | rebuilds identical; 10 judged, 10 diverge |
+| moonlight-xbox-dx.exe (3.2 MB PE32+, from the x64 package of moonlight-xbox-dx_1.19.0.0_x64.msixbundle) | Xbox One / Series | TheElixZammuto/moonlight-xbox (release 1.19.0) | GPL-3.0 | 8,771 | rebuilds identical (1 min 40 s); 10 judged, 8 diverge |
+| brotlidec.dll (51 KB PE32+, from the same package) | Xbox One / Series | TheElixZammuto/moonlight-xbox (package; Brotli is MIT) | GPL-3.0 package, MIT library | 140 | rebuilds identical; 10 judged, 10 diverge |
+
+`codebreaker reach <folder> --judge` over the same files (`--max-size 20000` for the 13 MB package): every function of every program is verified, because the rebuild is the original (PS4: 12,029 functions of five programs and OELFs in `ps4/fself`, 185 of ftpsrv-ps4; PS5: 953 of three payloads; Xbox One / Series: 8,771 of the package's executable, 1 min 16 s).
+
+A plain payload ELF does not say which console it is for (the PS5 payload SDK links one ELF for both and the PS5 runs PS4 programs), so the console is told by the file name; both
+lanes are the same model. The fake SELFs were made on this machine with OpenOrbis's own `create-fself` (built from its GPL-3.0 source), from the sample ELFs above: no signed or
+retail SELF is read. Only what flow reaches is code (calls, the entry, symbols, initialisers, and the code addresses relocations store in data); vtables are `db` rows, not labels.

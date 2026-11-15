@@ -35,6 +35,35 @@ namespace gpu
                    (((((y & 8) >> 2) + (x >> 3)) & 3) << 6);
         }
 
+        // An IEEE half float as a float (zero and denormals scaled, infinity and NaN kept).
+        float HalfToFloat(uint32_t h)
+        {
+            const uint32_t sign = (h & 0x8000) << 16, exponent = (h >> 10) & 31, mantissa = h & 0x3FF;
+            uint32_t bits;
+            if (exponent == 0)
+            {
+                if (mantissa == 0)
+                    bits = sign;
+                else
+                {
+                    uint32_t e = 127 - 15 + 1, m = mantissa;
+                    while (!(m & 0x400))
+                    {
+                        m <<= 1;
+                        e--;
+                    }
+                    bits = sign | e << 23 | (m & 0x3FF) << 13;
+                }
+            }
+            else if (exponent == 31)
+                bits = sign | 0x7F800000u | mantissa << 13;
+            else
+                bits = sign | (exponent + 127 - 15) << 23 | mantissa << 13;
+            float f;
+            std::memcpy(&f, &bits, 4);
+            return f;
+        }
+
         uint32_t Swap(uint32_t v, uint32_t endian)
         {
             uint8_t b[4];
@@ -54,10 +83,31 @@ namespace gpu
         }
     }
 
+    uint32_t ReferenceVolumeOffset(uint32_t x, uint32_t y, uint32_t z, uint32_t pitchBlocks, uint32_t height, uint32_t bytesLog2)
+    {
+        height = RoundUp(height, 32);
+        const uint32_t macroOuter = ((y >> 4) + (z >> 2) * (height >> 4)) * (pitchBlocks >> 5);
+        const uint32_t macro = ((((x >> 5) + macroOuter) << (bytesLog2 + 6)) & 0xFFFFFFF) << 1;
+        const uint32_t micro = (((x & 7) + ((y & 6) << 2)) << (bytesLog2 + 6)) >> 6;
+        const uint32_t offsetOuter = ((y >> 3) + (z >> 2)) & 1;
+        const uint32_t offset1 = offsetOuter + ((((x >> 3) + (offsetOuter << 1)) & 3) << 1);
+        const uint32_t offset2 = ((macro + (micro & ~15u)) << 1) + (micro & 15) + ((z & 3) << (bytesLog2 + 6)) + ((y & 1) << 4);
+        uint32_t address = (offset1 & 1) << 3;
+        address += (offset2 >> 6) & 7;
+        address <<= 3;
+        address += offset1 & ~1u;
+        address <<= 2;
+        address += offset2 & ~511u;
+        address <<= 3;
+        address += offset2 & 63;
+        return address;
+    }
+
     void ReferenceTexture(const uint32_t d[6], const uint8_t* memory, std::vector<std::vector<uint8_t>>& levels,
                           std::vector<std::pair<uint32_t, uint32_t>>* reads)
     {
         const uint32_t format = d[1] & 0x3F;
+        const bool half = format == 31;   // k_16_16_FLOAT: two half floats a texel, read as floats (r, g, g, g)
         const uint32_t bytes = format == 2 ? 1 : format == 10 ? 2 : 4;
         const uint32_t components = format == 2 ? 1 : format == 6 ? 4 : 2;
         const uint32_t componentBits = format == 25 ? 16 : 8;
@@ -123,7 +173,7 @@ namespace gpu
                 else
                     (lw > lh ? ox : oy) = (1u << ((lw > lh ? lw : lh) - tail)) >> (p - 2);
             }
-            const uint32_t hostBytes = integer ? 16 : bytes;
+            const uint32_t hostBytes = integer || half ? 16 : bytes;
             std::vector<uint8_t>& out = levels[level];
             out.resize(size_t(w) * h * hostBytes);
             for (uint32_t y = 0; y < h; y++)
@@ -140,6 +190,15 @@ namespace gpu
                     uint8_t wordBytes[4];
                     std::memcpy(wordBytes, &word, 4);
                     uint8_t* dst = out.data() + (size_t(y) * w + x) * hostBytes;
+                    if (half)
+                    {
+                        uint32_t texel;
+                        std::memcpy(&texel, wordBytes, 4);
+                        const float x = HalfToFloat(texel & 0xFFFF), y = HalfToFloat(texel >> 16);
+                        const float values[4] = { x, y, y, y };
+                        std::memcpy(dst, values, 16);
+                        continue;
+                    }
                     if (!integer)
                     {
                         std::memcpy(dst, wordBytes + (address & 3), bytes);

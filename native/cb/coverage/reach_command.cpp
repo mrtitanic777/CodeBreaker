@@ -75,12 +75,17 @@
 #include "cb/platforms/n3ds.hpp"
 #include "cb/platforms/nswitch.hpp"
 #include "cb/platforms/ps3.hpp"
+#include "cb/platforms/ps4.hpp"
+#include "cb/platforms/ps5.hpp"
+#include "cb/platforms/xboxone.hpp"
 #include "cb/platforms/vita.hpp"
 #include "cb/platforms/psp.hpp"
 #include "cb/formats/ps2.hpp"
 #include "cb/formats/n3ds.hpp"
 #include "cb/formats/nro.hpp"
 #include "cb/formats/ps3.hpp"
+#include "cb/formats/orbis.hpp"
+#include "cb/formats/xboxone.hpp"
 #include "cb/formats/vita.hpp"
 #include "cb/formats/psp.hpp"
 #include "cb/platforms/saturn.hpp"
@@ -188,6 +193,9 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_vita = [](const std::filesystem::path& p) { return formats::vita::probe(p); };
     probes.is_ps3 = [](const std::filesystem::path& p) { return formats::ps3::probe(p); };
     probes.is_switch = [](const std::filesystem::path& p) { return formats::nro::probe(p); };
+    probes.is_ps4 = [](const std::filesystem::path& p) { return formats::orbis::probe(p, formats::orbis::Console::Ps4); };
+    probes.is_ps5 = [](const std::filesystem::path& p) { return formats::orbis::probe(p, formats::orbis::Console::Ps5); };
+    probes.is_xboxone = [](const std::filesystem::path& p) { return formats::xboxone::probe(p); };
     probes.is_dreamcast = [](const std::filesystem::path& p) { return formats::dreamcast::probe(p); };
     probes.is_gamecube = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::GameCube); };
     probes.is_wii = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::Wii); };
@@ -234,6 +242,9 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::vita());
     registry->add(platforms::ps3());
     registry->add(platforms::nswitch());
+    registry->add(platforms::ps4());
+    registry->add(platforms::ps5());
+    registry->add(platforms::xboxone());
     registry->add(platforms::zx());
     registry->add(platforms::genesis());
     registry->add(platforms::ps1());

@@ -111,6 +111,7 @@ typedef struct _IMAGE_SECTION_HEADER {
 } IMAGE_SECTION_HEADER, * PIMAGE_SECTION_HEADER;
 
 #define IMAGE_SCN_CNT_CODE                   0x00000020
+#define IMAGE_SCN_MEM_EXECUTE                0x20000000
 
 #endif
 
@@ -284,7 +285,10 @@ Image Xex2LoadImage(const uint8_t* data, size_t dataSize)
         const auto& section = sections[i];
         uint8_t flags{};
 
-        if (section.Characteristics & IMAGE_SCN_CNT_CODE)
+        // Code is what the section's flags say is executable too: NetCFUserMode.dll (the .NET Compact Framework's user-mode
+        // runtime) has its program in a .text that is executable and readable but not marked as code, beside a small .xedata
+        // that is.
+        if (section.Characteristics & (IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE))
         {
             flags |= SectionFlags_Code;
         }

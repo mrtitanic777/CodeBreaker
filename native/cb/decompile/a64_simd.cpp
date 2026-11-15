@@ -126,7 +126,7 @@ std::string modimm_value(unsigned param, std::uint32_t w) {
 
 K simd_kind_by_name(std::string_view name) {
     static const std::pair<std::string_view, K> kinds[] = {
-        {"V", K::V}, {"VF", K::VF}, {"VB", K::VB}, {"VW", K::VW}, {"VPL", K::VPL}, {"VT", K::VT}, {"VSH", K::VSH}, {"VSHW", K::VSHW}, {"FZ", K::FZ}, {"FZW", K::FZW},
+        {"V", K::V}, {"VF", K::VF}, {"VB", K::VB}, {"VW", K::VW}, {"VX", K::VX}, {"VXW", K::VXW}, {"VPL", K::VPL}, {"VT", K::VT}, {"VSH", K::VSH}, {"VSHW", K::VSHW}, {"FZ", K::FZ}, {"FZW", K::FZW},
         {"VEL", K::VEL}, {"VELI", K::VEL2}, {"RG", K::RG}, {"RGQ", K::RGQ}, {"BYEL", K::BYEL}, {"BYELF", K::BYELF}, {"SHL", K::SHL}, {"SHR", K::SHR}, {"SHLL", K::SHLL}, {"VMA", K::VMA},
         {"VMI", K::VMI}, {"SLIST", K::SLIST}, {"TLIST", K::TLIST}, {"SPOST", K::SPOST}, {"SLANE", K::SLANE}, {"RLIST", K::RLIST}, {"VTOP", K::VD1}};
     for (const auto& [n, k] : kinds)
@@ -143,6 +143,8 @@ std::string print_simd_operand(const Row& row, const Operand& o, std::uint32_t w
             if (o.param == 1) return vname(field, bits(w, 22, 1) ? "2d" : "2s");
             return vname(field, bits(w, 22, 1) ? (q ? "2d" : "1d") : (q ? "4s" : "2s"));
         case K::VB: return vname(field, q ? "16b" : "8b");
+        case K::VX: return vname(field, vq(bits(w, 22, 1) + 1, q));   // the narrow side of fcvtn / fcvtl: h or s elements by sz
+        case K::VXW: return vname(field, bits(w, 22, 1) ? "2d" : "4s");
         case K::VW: {
             static const char* const wide[4] = {"8h", "4s", "2d", "?"};
             return vname(field, wide[size_of(w) & 3]);
@@ -338,6 +340,27 @@ bool parse_simd_operand(const Row& row, const Operand& o, const std::vector<std:
     if (!more()) return fail("an operand is missing");
     const std::string_view tok = tokens[at];
     switch (o.kind) {
+        case K::VX:
+        case K::VXW: {
+            const std::optional<VReg> r = parse_v(tok);
+            if (!r || r->arr.empty()) return fail("a vector register with an arrangement is expected");
+            ++at;
+            put(o.pos, 5, r->n);
+            unsigned sz;
+            if (o.kind == K::VXW) {
+                sz = r->arr == "4s" ? 0 : r->arr == "2d" ? 1 : 9;
+            } else {
+                const auto a = arrangement(r->arr);
+                if (!a || (a->first != 1 && a->first != 2)) return fail("a half or single arrangement is expected");
+                sz = a->first - 1;
+                put(30, 1, a->second);
+            }
+            if (sz == 9) return fail("4s or 2d is expected");
+            if (arr_set) return bits(word, 22, 1) == sz;
+            put(22, 1, sz);
+            arr_set = true;
+            return true;
+        }
         case K::V: case K::VF: case K::VB: case K::VW: case K::VPL: case K::VT: case K::VSH: case K::VSHW: case K::VMA: {
             const std::optional<VReg> r = parse_v(tok);
             if (!r || r->arr.empty()) return fail("a vector register with an arrangement is expected");
@@ -917,6 +940,10 @@ void add_simd_rows(Builder& b) {
         b.add(f.name, Op::SimdTwoMisc, "0 q " + bin(f.u, 1) + " 01110 " + bin(f.a, 1) + " z 10000 " + bin(f.opcode, 5) + " 10 nnnnn ddddd", f.spec, Flow::None, fp_ok);
 
     // ---- across lanes ----
+    for (unsigned q = 0; q < 2; ++q) {   // floating-point precision conversion: the narrow and the wide side
+        b.add(std::string("fcvtn") + (q ? "2" : ""), Op::SimdTwoMisc, "0 " + bin(q, 1) + " 0 01110 0 z 10000 10110 10 nnnnn ddddd", "VXd,VXWn");
+        b.add(std::string("fcvtl") + (q ? "2" : ""), Op::SimdTwoMisc, "0 " + bin(q, 1) + " 0 01110 0 z 10000 10111 10 nnnnn ddddd", "VXWd,VXn");
+    }
     const struct {
         const char* name;
         unsigned u, opcode;

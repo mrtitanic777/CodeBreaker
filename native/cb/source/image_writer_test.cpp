@@ -108,6 +108,48 @@ CB_TEST("source.image_writer.covered_is_what_lies_inside_an_instruction", [] {
     CB_CHECK((covered(w.code, flow) == std::set<std::uint32_t>{1, 3, 5}));
 });
 
+CB_TEST("source.image_writer.byte_marks_are_covered_without_a_node_per_byte", [] {
+    const ToyFlow flow(kFlowProgram, false);
+    const std::uint32_t entries[] = {0};
+    const Walked<Toy> w = walk<Toy>(flow, entries);
+    const ByteMarks inside = covered_marks(w.code, flow, kFlowProgram.size());
+    std::set<std::uint32_t> marked;
+    for (std::uint32_t a = 0; a < 40; ++a)
+        if (inside.contains(a)) marked.insert(a);
+    CB_CHECK((marked == covered(w.code, flow)));   // the same positions as covered(), and none past the image
+    ByteMarks grown;
+    CB_CHECK(!grown.contains(100));
+    grown.insert(100);   // (a mark past the size given grows the table)
+    CB_CHECK(grown.contains(100));
+    CB_CHECK(!grown.contains(99));
+    CB_CHECK(!grown.contains(101));
+});
+
+// What walk_beyond finds, merged into what was known, is what walk() finds from the entry alone, for every entry of the program and every amount asked for.
+CB_TEST("source.image_writer.walk_beyond_adds_to_known_code_what_walk_would_find", [] {
+    for (const bool find_functions : {false, true}) {
+        const ToyFlow flow(kFlowProgram, find_functions);
+        const std::uint32_t first[] = {8};
+        for (std::uint32_t entry = 0; entry < kFlowProgram.size(); ++entry) {
+            const Walked<Toy> known = walk<Toy>(flow, first);   // (8: N R)
+            const std::uint32_t one[] = {entry};
+            const Walked<Toy> whole = walk<Toy>(flow, one);
+            for (const std::size_t enough : {1u, 2u, 3u, 6u, 100u}) {
+                const Beyond<Toy> b = walk_beyond<Toy>(flow, known.code, entry, enough);
+                std::map<std::uint32_t, Toy> merged = known.code;
+                for (const auto& [at, insn] : b.code) merged.insert_or_assign(at, insn);
+                std::map<std::uint32_t, Toy> expected = known.code;
+                for (const auto& [at, insn] : whole.code) expected.insert_or_assign(at, insn);
+                CB_CHECK_EQ(merged.size(), expected.size());
+                CB_CHECK_EQ(b.reached >= enough, whole.code.size() >= enough);   // the decision is the same
+                if (whole.code.size() < enough) CB_CHECK_EQ(b.reached, whole.code.size());
+                for (const std::uint32_t t : b.targets) CB_CHECK(whole.targets.contains(t));
+                for (const std::uint32_t s : b.starts) CB_CHECK(std::ranges::find(whole.starts, s) != whole.starts.end());
+            }
+        }
+    }
+});
+
 CB_TEST("source.image_writer.spelling", [] {
     CB_CHECK_EQ((Spelling{"sub_", 4})(0x1234), "sub_1234");
     CB_CHECK_EQ((Spelling{"L_", 6})(0x2F), "L_00002F");

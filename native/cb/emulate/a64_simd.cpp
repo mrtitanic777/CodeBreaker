@@ -678,6 +678,27 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                     }
                     return std::nullopt;
                 }
+                case 22: case 23: {   // fcvtn / fcvtl between single and double (half precision is not run)
+                    if (u || !fp_size) return unsupported("half-precision conversion");
+                    const unsigned count = 2;
+                    for (unsigned i = 0; i < count; ++i) {
+                        if (opcode == 22) {
+                            const float v = static_cast<float>(std::bit_cast<double>(get(n, 8, i)));
+                            put(out, 4, f.q() ? i + 2 : i, std::bit_cast<u32>(v));
+                        } else {
+                            const double v = std::bit_cast<float>(static_cast<u32>(get(n, 4, f.q() ? i + 2 : i)));
+                            put(out, 8, i, std::bit_cast<u64>(v));
+                        }
+                    }
+                    if (opcode == 22 && f.q()) {
+                        B16 x = d;
+                        for (unsigned i = 0; i < 8; ++i) x[8 + i] = out[8 + i];
+                        R.v[rd] = from_b(x);
+                    } else {
+                        R.v[rd] = from_b(out);
+                    }
+                    return std::nullopt;
+                }
                 case 19: {   // shll
                     if (size > 2) return unsupported("reserved");
                     const unsigned wb = 2 * eb, count = 8 / eb;

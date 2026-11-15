@@ -4,6 +4,7 @@
 
 #include <windows.h>
 
+#include <cstring>
 #include <functional>
 #include <thread>
 #include <vector>
@@ -383,6 +384,44 @@ GUEST_IMPORT(NtWaitForSingleObjectEx)
     ctx.r3.u64 = AfterWait(ctx, WaitForObjects(&object, 1, false, ctx.r6.u32, alertable));
 }
 
+// NTSTATUS NtSignalAndWaitForSingleObjectEx(HANDLE SignalHandle, HANDLE WaitHandle, KPROCESSOR_MODE WaitMode, BOOLEAN Alertable,
+//                                           PLARGE_INTEGER Timeout): signals an event (set), a semaphore (released once) or a mutant
+// (released), then waits on the other object, as one call (the console's handover of a lock: Forza Motorsport 4's worker
+// threads). Not atomic here: the signal, then the wait.
+GUEST_IMPORT(NtSignalAndWaitForSingleObjectEx)
+{
+    const uint32_t signal = LookupHandle(ctx.r3.u32), object = LookupHandle(ctx.r4.u32);
+    if (signal == 0 || object == 0)
+    {
+        ctx.r3.u64 = kStatusInvalidHandle;
+        return;
+    }
+    if (HasType(signal, { kObjectEventNotification, kObjectEventSynchronization }))
+        SetEvent(signal);
+    else if (HasType(signal, { kObjectSemaphore }) || HasType(signal, { kObjectMutant }))
+    {
+        PPCContext release = ctx;
+        release.r4.u64 = 1; // one count
+        release.r5.u64 = 0; // previous count not wanted
+        if (HasType(signal, { kObjectSemaphore }))
+            __imp__NtReleaseSemaphore(release, base);
+        else
+            __imp__NtReleaseMutant(release, base);
+        if (release.r3.u32 != kStatusSuccess)
+        {
+            ctx.r3.u64 = release.r3.u32;
+            return;
+        }
+    }
+    else
+    {
+        ctx.r3.u64 = kStatusObjectTypeMismatch;
+        return;
+    }
+    const bool alertable = ctx.r5.u32 == kUserMode && (ctx.r6.u32 & 0xFF) != 0;
+    ctx.r3.u64 = AfterWait(ctx, WaitForObjects(&object, 1, false, ctx.r7.u32, alertable));
+}
+
 // NTSTATUS NtWaitForMultipleObjectsEx(ULONG Count, PHANDLE Handles, WAIT_TYPE WaitType, KPROCESSOR_MODE WaitMode,
 //                                     BOOLEAN Alertable, PLARGE_INTEGER Timeout)
 GUEST_IMPORT(NtWaitForMultipleObjectsEx)
@@ -753,15 +792,68 @@ GUEST_IMPORT(ObOpenObjectByPointer)
     ctx.r3.u64 = kStatusSuccess;
 }
 
+// The named objects the console's system software provides to every title. A title opens one by name (XAPI's OpenEvent and
+// the like, through ObOpenObjectByName) and gets a handle to the system's object; on the console another process created it
+// at boot, here the first open does (the same object for every later open or create of that name). Each entry is a name, or
+// a name prefix (the part after it is the title's or framework's own tag), the object's kind and its initial state.
+namespace
+{
+struct ConsoleNamedObject
+{
+    const char* name;
+    bool prefix;
+    bool signaled;
+};
+constexpr ConsoleNamedObject kConsoleNamedObjects[] = {
+    // XNA Framework's game-services start-up event ("XNAGSVEN" + 40 hex digits): HostLoader.dll of every XNA title (Terraria)
+    // opens it before it starts the managed runtime and goes back to the dashboard when it is not there. The system's XNA
+    // services are already up when a title runs, so it is signalled (a notification event: it stays signalled).
+    { "XNAGSVEN", true, true },
+};
+
+    // The system's event for `name` when the console provides one (created now, registered like any named object); 0 if not.
+    uint32_t ConsoleProvidedObject(const std::string& name)
+    {
+        std::string bare = name;   // the name as the title wrote it, without a directory in front
+        if (const size_t slash = bare.find_last_of('\\'); slash != std::string::npos)
+            bare = bare.substr(slash + 1);
+        for (const ConsoleNamedObject& known : kConsoleNamedObjects)
+        {
+            const size_t length = std::strlen(known.name);
+            if (known.prefix ? bare.compare(0, length, known.name) != 0 : bare != known.name)
+                continue;
+            const uint32_t object = CreateOwnedObject(kKEventSize);
+            InitializeDispatcherHeader(object, kObjectEventNotification, known.signaled ? 1 : 0);
+            RegisterNamedObject(name, object);
+            Log("ObOpenObjectByName(\"{}\"): created the console's named event ({})", name,
+                known.signaled ? "signalled" : "not signalled");
+            return object;
+        }
+        return 0;
+    }
+}
+
 // NTSTATUS ObOpenObjectByName(POBJECT_ATTRIBUTES ObjectAttributes, POBJECT_TYPE ObjectType, PVOID ParseContext,
-//                             PHANDLE Handle): opens a named kernel object. Titles' XAPI wrappers (OpenEvent and the like,
-// Top Spin 2's worker start-up) ask for objects another process would have created by name; none exists here, so the
-// answer is STATUS_OBJECT_NAME_NOT_FOUND with a null handle.
+//                             PHANDLE Handle): opens a named kernel object that exists: one a title created, or one the
+// console provides (above). Any other name is STATUS_OBJECT_NAME_NOT_FOUND with a null handle (an object another process
+// of the console would have created).
 GUEST_IMPORT(ObOpenObjectByName)
 {
+    const std::string name = ReadObjectName(ctx.r3.u32);
+    uint32_t object = name.empty() ? 0 : LookupNamedObject(name);
+    if (object == 0 && !name.empty())
+        object = ConsoleProvidedObject(name);
+    if (object == 0)
+    {
+        Log("ObOpenObjectByName(\"{}\"): no such object", name);
+        if (ctx.r6.u32)
+            guest::g_memory.Write32(ctx.r6.u32, 0);
+        ctx.r3.u64 = 0xC0000034;
+        return;
+    }
     if (ctx.r6.u32)
-        guest::g_memory.Write32(ctx.r6.u32, 0);
-    ctx.r3.u64 = 0xC0000034;
+        guest::g_memory.Write32(ctx.r6.u32, CreateHandle(object));
+    ctx.r3.u64 = kStatusSuccess;
 }
 
 // NTSTATUS ObLookupThreadByThreadId(ULONG ThreadId, PKTHREAD* Thread): the thread, referenced (the caller

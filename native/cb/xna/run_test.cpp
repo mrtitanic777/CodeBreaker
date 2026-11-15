@@ -148,6 +148,7 @@ CB_TEST("xna.run.the_tools_are_found", [] {
 });
 
 CB_TEST("xna.run.deobfuscation", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     JrtTools t(true);
     const stdfs::path asm_path = t.dir.path() / "Game.exe";
     jrt_write_bytes(asm_path, jrt_pe(true));
@@ -168,6 +169,7 @@ CB_TEST("xna.run.deobfuscation", [] {
 });
 
 CB_TEST("xna.run.decompile_runs_ilspy_and_reports_its_failure", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     JrtTools t(false);
     const stdfs::path out = t.dir.path() / "out";
     run::decompile(t.dir.path() / "Game.exe", out, t.tools);
@@ -185,6 +187,7 @@ CB_TEST("xna.run.decompile_runs_ilspy_and_reports_its_failure", [] {
 });
 
 CB_TEST("xna.run.convert_a_game_folder", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     JrtTools t(true);
     cb::fs::ScopedTempDir game("cbxnagame");
     jrt_make_game(game.path());
@@ -228,6 +231,7 @@ CB_TEST("xna.run.convert_a_game_folder", [] {
 });
 
 CB_TEST("xna.run.without_content_and_run_again", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     JrtTools t(false);
     cb::fs::ScopedTempDir game("cbxnagame");
     jrt_make_game(game.path());
@@ -247,6 +251,7 @@ CB_TEST("xna.run.without_content_and_run_again", [] {
 });
 
 CB_TEST("xna.run.what_cannot_be_converted_is_said", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     JrtTools t(false);
     run::Environment env{.tools = t.tools, .store = converted::Store(t.dir.path() / "Converted")};
     // a folder with no .NET assembly in it
@@ -260,6 +265,7 @@ CB_TEST("xna.run.what_cannot_be_converted_is_said", [] {
 });
 
 CB_TEST("xna.run.main_prints_the_report", [] {
+    CB_WINDOWS_ONLY("it runs .cmd stand-ins");
     JrtTools t(false);
     cb::fs::ScopedTempDir game("cbxnagame");
     jrt_make_game(game.path());

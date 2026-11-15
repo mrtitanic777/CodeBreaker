@@ -173,7 +173,7 @@ CB_TEST("decompile.a64.vector_forms_read_and_write", [] {
                                  "uaddw v3.8h, v1.8h, v2.8b",     "smull2 v17.2d, v17.4s, v19.4s", "xtn v3.8b, v3.8h",               "sqdmulh v28.4h, v24.4h, v0.h[3]",
                                  "tbl v0.8b, {v0.16b}, v7.8b",    "ext v3.8b, v0.8b, v2.8b, #6",   "zip1 v1.8b, v0.8b, v2.8b",       "addv h10, v6.8h",
                                  "scvtf s2, s2",                  "fcvtzs v0.4s, v0.4s",           "addp d1, v1.2d",                 "mvni v7.4s, #0",
-                                 "ld1 {v0.16b}, [x1], x2",        "cmeq v0.16b, v2.16b, #0",       "mov v0.16b, v1.16b",             "uxtl v3.8h, v0.8b"};
+                                 "ld1 {v0.16b}, [x1], x2",        "cmeq v0.16b, v2.16b, #0",       "mov v0.16b, v1.16b",             "uxtl v3.8h, v0.8b",              "fcvtn v0.2s, v0.2d",             "fcvtl2 v0.2d, v1.4s"};
     for (const char* line : lines) {
         const std::uint32_t w = asm1(line);
         const std::string back = dis(w);

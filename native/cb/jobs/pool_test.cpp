@@ -269,6 +269,7 @@ std::vector<IsolatedItem> sweep(const std::filesystem::path& script, std::initia
 }  // namespace
 
 CB_TEST("jobs.pool.isolated_separates_failures_and_resumes", [] {
+    CB_WINDOWS_ONLY("its child process is a .cmd file");
     const fs::ScopedTempDir dir("cbpool");
     const std::filesystem::path script = dir.path() / "child.cmd";
     fs::write_file(script, as_bytes(kChild));
@@ -323,6 +324,7 @@ CB_TEST("jobs.pool.isolated_separates_failures_and_resumes", [] {
 });
 
 CB_TEST("jobs.pool.isolated_without_a_state_file_and_odd_outputs", [] {
+    CB_WINDOWS_ONLY("its child process is a .cmd file");
     const fs::ScopedTempDir dir("cbpool");
     const std::filesystem::path script = dir.path() / "child.cmd";
     fs::write_file(script, as_bytes(kChild));

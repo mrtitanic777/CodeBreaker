@@ -154,6 +154,17 @@ namespace kernel
     bool RecompiledXam();
     // A linked recompiled system module loaded on request (kernel/recompiled_modules.cpp; XexLoadImage).
     const modules::LoadedModule* LoadRecompiledSystemModule(const std::string& name, PPCContext& ctx);
+    // The title's other recompiled modules (recompile-project: the module_info of default.xex lists them), set once at start.
+    void SetTitleModules(const modules::RecompiledModule* const* list);
+    // The title's module with that file name or library name ("tier0_360.dll", "tier0_360", a path to one), null if it has none.
+    const modules::RecompiledModule* FindTitleModule(const std::string& name);
+    // The loaded title module for `name`, loading it first when it is not (its file read from the title folder, its imports bound,
+    // its dependencies loaded, DllMain(handle, DLL_PROCESS_ATTACH, 0) run). Null if the title has no such module.
+    const modules::LoadedModule* LoadRecompiledTitleModule(const std::string& name, PPCContext& ctx);
+    // The loaded module for a library a title module imports (loading it first); Fatal when it cannot be loaded.
+    const modules::LoadedModule* LoadTitleDependency(const std::string& library);
+    // A call of an export of a title module through an import thunk (`__imp__<library>_Ordinal_<n>` of the importing module).
+    void CallModuleExport(const char* library, uint16_t ordinal, PPCContext& ctx, uint8_t* base);
     // Whether a linked recompiled system module has that file name (and its converted file is there).
     bool HasRecompiledSystemModule(const std::string& name);
     // The linked recompiled module with that file name (an older dashboard: "dash_6719.xex"), null if none.
@@ -188,6 +199,20 @@ namespace kernel
     void LoadRecompiledXam(const std::string& path);
 }
 
+namespace kernel
+{
+    // Every GUEST_IMPORT by name (the host function of `__imp__<name>`), for the exports a title looks up by ordinal at run
+    // time and the runtime implements as an import (OrdinalName gives the name; xboxkrnl_modules.cpp XexGetProcedureAddress).
+    void RegisterImport(const char* name, PPCFunc* func);
+    PPCFunc* FindImport(const std::string& name);
+    struct ImportRegistrar
+    {
+        ImportRegistrar(const char* name, PPCFunc* func) { RegisterImport(name, func); }
+    };
+    // The console's name of export `ordinal` of "xam.xex" or "xboxkrnl.exe" (generated from console_ordinals.json), empty if none.
+    const char* OrdinalName(const std::string& library, uint16_t ordinal);
+}
+
 #define GUEST_IMPORT(name)                                                     \
     static void name##_impl(PPCContext& __restrict ctx, uint8_t* base);        \
     PPC_FUNC(__imp__##name)                                                    \
@@ -198,7 +223,7 @@ namespace kernel
         kernel::TraceImport(#name, ctx);                                       \
         name##_impl(ctx, base);                                                \
     }                                                                          \
-    static void name##_impl([[maybe_unused]] PPCContext& __restrict ctx, [[maybe_unused]] uint8_t* base)
+    static kernel::ImportRegistrar name##_import_registrar(#name, __imp__##name);                    static void name##_impl([[maybe_unused]] PPCContext& __restrict ctx, [[maybe_unused]] uint8_t* base)
 
 // An export reachable only through XexGetProcedureAddress (the title does not import it).
 #define GUEST_EXPORT(library, ordinal, name)                                   \

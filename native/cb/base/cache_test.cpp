@@ -112,6 +112,7 @@ CB_TEST("base.cache.tools_and_folders_by_content", [] {
     const stdfs::path both1[] = {h1}, both2[] = {h2};
     CB_CHECK_EQ(c.files_bytes_id(both1), c.files_bytes_id(both2));
     cb::fs::write_file(h2 / "sub" / "c.h", pattern(20, 6));
+    cb::fs::set_last_write_time(h2 / "sub" / "c.h", cb::fs::last_write_time(h2 / "sub" / "c.h") + std::chrono::seconds(2));   // (same size: as above)
     CB_CHECK_NE(c.files_bytes_id(both1), c.files_bytes_id(both2));
     CB_CHECK_NE(c.files_bytes_id({}), c.files_bytes_id(both1));
     const stdfs::path missing[] = {dir.path() / "nope"};

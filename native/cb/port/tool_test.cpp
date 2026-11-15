@@ -156,6 +156,7 @@ CB_TEST("port.tool.finding_a_compiler", [] {
 });
 
 CB_TEST("port.tool.a_command_runs_with_the_compilers_folder_on_the_path", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     fs::ScopedTempDir tmp("cb-tool");
     const Compiler c = type_compiler();
     fs::write_text(tmp.path() / "t.txt", "hello\n");
@@ -384,6 +385,7 @@ CB_TEST("port.tool.changed_files_are_the_changed_and_those_that_reach_a_changed_
 });
 
 CB_TEST("port.tool.a_check_is_kept_by_what_it_depended_on", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     fs::ScopedTempDir tmp("cb-tool");
     cache::Cache cache = tool_test_cache(tmp.path());
     const Compiler spec = type_compiler();
@@ -408,6 +410,7 @@ CB_TEST("port.tool.a_check_is_kept_by_what_it_depended_on", [] {
 });
 
 CB_TEST("port.tool.a_build_with_one_command", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     fs::ScopedTempDir tmp("cb-tool");
     cache::Cache cache = tool_test_cache(tmp.path());
     const Compiler spec = type_compiler();
@@ -480,6 +483,7 @@ struct RoundsPort {
 }  // namespace
 
 CB_TEST("port.tool.check_rounds_go_until_the_compiler_has_nothing_to_say", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     fs::ScopedTempDir tmp("cb-tool");
     cache::Cache cache = tool_test_cache(tmp.path());
     const Compiler spec = type_compiler();
@@ -498,6 +502,7 @@ CB_TEST("port.tool.check_rounds_go_until_the_compiler_has_nothing_to_say", [] {
 });
 
 CB_TEST("port.tool.check_rounds_stop_when_the_rules_have_nothing_more", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     fs::ScopedTempDir tmp("cb-tool");
     cache::Cache cache = tool_test_cache(tmp.path());
     const Compiler spec = type_compiler();
@@ -517,6 +522,7 @@ CB_TEST("port.tool.check_rounds_stop_when_the_rules_have_nothing_more", [] {
 });
 
 CB_TEST("port.tool.a_second_compilers_errors_only_count", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     fs::ScopedTempDir tmp("cb-tool");
     cache::Cache cache = tool_test_cache(tmp.path());
     const Compiler spec = type_compiler();
@@ -532,6 +538,7 @@ CB_TEST("port.tool.a_second_compilers_errors_only_count", [] {
 // ---- the command ----------------------------------------------------------------------------------------------------------------------
 
 CB_TEST("port.tool.options", [] {
+    CB_WINDOWS_ONLY("it names Windows drive paths");
     const Options o = parse_options({"C:/src/prog", "C:/out/port", "--compiler", "clang", "--cases", "cases.json", "--asm16", "masm.exe"});
     CB_CHECK_EQ(o.compiler, "clang");
     CB_CHECK_EQ(o.runtime, "dos_c_early");

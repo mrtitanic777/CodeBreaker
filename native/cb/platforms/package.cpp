@@ -14,8 +14,8 @@ namespace {
 constexpr std::uint16_t kMachine386 = 0x014C;
 constexpr std::uint16_t kMachineXenon = 0x01F2;
 
-constexpr std::array<std::string_view, 49> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1", "gba", "nds", "n64",
-                                                       "zx",   "msx",     "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "switch", "vb", "intv", "o2", "chf", "ngp", "win32", "win16", "vxd", "dos"};
+constexpr std::array<std::string_view, 52> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1", "gba", "nds", "n64",
+                                                       "zx",   "msx",     "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "switch", "vb", "intv", "o2", "chf", "ngp", "ps4", "ps5", "xboxone", "win32", "win16", "vxd", "dos"};
 static_assert(kIdNames.size() == kOrder.size());
 
 std::size_t order_index(Id id) {
@@ -248,6 +248,9 @@ bool Registry::recognises(const Platform& platform, const std::filesystem::path&
             case Id::N3ds: return need(pr.is_n3ds, "is_n3ds")(path);
             case Id::Vita: return need(pr.is_vita, "is_vita")(path);
             case Id::Ps3: return need(pr.is_ps3, "is_ps3")(path);
+            case Id::Ps4: return need(pr.is_ps4, "is_ps4")(path);
+            case Id::Ps5: return need(pr.is_ps5, "is_ps5")(path);
+            case Id::XboxOne: return need(pr.is_xboxone, "is_xboxone")(path);
             case Id::Win32: {
                 if (need(pr.executable_class, "executable_class")(path) != ExeKind::Pe) return false;
                 const std::optional<std::uint16_t> m = need(pr.pe_machine, "pe_machine")(path);

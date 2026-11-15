@@ -267,7 +267,7 @@ private:
         const std::int64_t at = thumb_ ? pc_ | 1 : pc_;   // (the lowest bit of the address is the state: build/arm_asm.hpp)
         Result<Bytes> r = active_->assemble(text, at, labels_);
         if (!r.ok() && is_undefined(r.error()) && !final_) {
-            r = size_guess(*active_, text, at, labels_);
+            r = assemble_with_guesses(*active_, text, at, labels_, ((at & ~std::int64_t{1}) & ~std::int64_t{3}) + kGuessDistance);   // (size_guess's answer, without a copy of the labels)
             if (!r.ok() && !is_undefined(r.error())) r = Bytes(nominal_size(text), 0);   // (the first pass only needs how long it is)
         }
         if (!r.ok()) fail(r.error().what());

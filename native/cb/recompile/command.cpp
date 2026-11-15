@@ -1,6 +1,7 @@
 // cb/recompile/command.cpp -- see command.hpp.
 #include "cb/recompile/command.hpp"
 
+#include <algorithm>
 #include <memory>
 
 #include <nlohmann/json.hpp>
@@ -85,6 +86,33 @@ project::TitleImage read_title(const stdfs::path& file, const Environment& envir
 
 stdfs::path rexglue_root(const cb::config::Config& config) { return config.checkout_root() / "native" / "rexglue"; }
 
+// The functions a module exports (its XEX security info's export table: {+0x20 high half of the addresses, +0x24 count, +0x28
+// ordinal base, +0x2C offsets}, an address being (high << 16) + offset, 0 for none). Other modules call them through pointers the
+// export lookup hands out, so nothing in the image need call them, and a leaf function has no .pdata entry either.
+std::vector<std::uint32_t> exported_functions(const stdfs::path& basic, const pi::Image& image) {
+    std::vector<std::uint32_t> out;
+    if (!formats::xex::probe(basic)) return out;
+    try {
+        const std::optional<std::uint32_t> table = formats::xex::read_header(basic).export_table;
+        if (!table) return out;
+        const auto word = [&image](std::uint32_t at) -> std::optional<std::uint32_t> {
+            const ByteView b = image.bytes_at(at, 4);
+            if (b.size() < 4) return std::nullopt;
+            return (static_cast<std::uint32_t>(b[0]) << 24) | (static_cast<std::uint32_t>(b[1]) << 16) | (static_cast<std::uint32_t>(b[2]) << 8) | b[3];
+        };
+        const std::optional<std::uint32_t> high = word(*table + 0x20), count = word(*table + 0x24);
+        if (!high || !count || *count > 0x10000) return out;
+        for (std::uint32_t i = 0; i < *count; ++i) {
+            const std::optional<std::uint32_t> offset = word(*table + 0x2C + i * 4);
+            if (!offset || *offset == 0 || (*offset & 3) != 0) continue;
+            const std::uint32_t address = (*high << 16) + *offset;
+            if (address >= image.code_begin() && address < image.code_end()) out.push_back(address);   // a data export is no function
+        }
+    } catch (const Error&) {   // a module without a readable export table has no exports to add
+    }
+    return out;
+}
+
 // XenonRecomp's tool chain for a title's project.
 x360project::Recompiler make_recompiler(const Environment& environment, xenon::Xenon& tool) {
     const cb::config::Config& config = environment.config;
@@ -109,11 +137,13 @@ x360project::Recompiler make_recompiler(const Environment& environment, xenon::X
     r.make_config = [&environment](const stdfs::path& basic, std::string_view out_dir, std::string_view switch_tables, std::string_view file_path) {
         const pi::Image image = read_image(basic, environment);
         disassemble::Disassembler dis(vector_decoder());
+        rcfg::Title title = config_title(image);
+        title.seeds = exported_functions(basic, image);
         rcfg::MakeOptions options;
         options.out_dir = std::string(out_dir);
         options.switch_tables = std::string(switch_tables);
         options.file_path = std::string(file_path);
-        return rcfg::make(config_title(image), dis, basic, options);
+        return rcfg::make(title, dis, basic, options);
     };
     r.savegprlr_14_address = [&environment](const stdfs::path& basic) -> std::uint32_t {
         const pi::Image image = read_image(basic, environment);
@@ -121,6 +151,29 @@ x360project::Recompiler make_recompiler(const Environment& environment, xenon::X
         const rcfg::Addresses helpers = rcfg::helpers(config_title(image), dis);
         const auto at = helpers.find("savegprlr_14_address");
         return at == helpers.end() ? 0 : at->second;
+    };
+    // A module the title ships is a program to translate when its image has code and an exception table (.pdata: the runtime and
+    // the recompiler's function finder both need one), is not managed code (an IL assembly: its PE has a CLR header, data
+    // directory 14, and its "code" is not PowerPC) and is more than a resource stub.
+    r.has_native_code = [&environment](const stdfs::path& basic) {
+        try {
+            const pi::Image image = read_image(basic, environment);
+            if (!image.has_code() || image.extents().empty()) return false;
+            // The resource modules of a managed title (every .NET assembly and .nlp table of Terraria is one) carry the same small
+            // native stub: nothing in it to translate or to export. A real program is larger or exports something.
+            constexpr std::uint32_t kStubCode = 32 * 1024;
+            const bool exports = std::ranges::any_of(image.sections(), [](const pi::Section& s) { return s.name == ".edata"; });
+            if (image.code_end() - image.code_begin() < kStubCode && !exports) return false;
+            const ByteView dos = image.bytes_at(image.base(), 0x40);
+            if (dos.size() < 0x40) return true;
+            const auto le32 = [](ByteView b, std::size_t at) { return static_cast<std::uint32_t>(b[at]) | (static_cast<std::uint32_t>(b[at + 1]) << 8) | (static_cast<std::uint32_t>(b[at + 2]) << 16) | (static_cast<std::uint32_t>(b[at + 3]) << 24); };
+            const ByteView pe = image.bytes_at(image.base() + le32(dos, 0x3C), 0x18 + 0x60 + 15 * 8);
+            // PE signature, 20-byte file header, optional header: 96 bytes of fields (PE32), then the data directories
+            constexpr std::size_t kClrDirectory = 0x18 + 0x60 + 14 * 8;
+            return !(pe.size() >= kClrDirectory + 8 && le32(pe, kClrDirectory) != 0);
+        } catch (const Error&) {
+            return false;
+        }
     };
     return r;
 }

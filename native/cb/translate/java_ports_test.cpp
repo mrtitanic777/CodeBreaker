@@ -1362,7 +1362,7 @@ public class Tally {
 
 const translate::native_l2::Library* jpo_l2() {
     static const std::optional<translate::native_l2::Library> lib = []() -> std::optional<translate::native_l2::Library> {
-        stdfs::path dll = testing::data_path("../l2/build/bin/cbl2.dll");
+        stdfs::path dll = translate::native_l2::Library::default_dll(testing::data_path("../.."));
         if (const auto env = fs::get_env("CB_L2_DLL")) dll = fs::from_text(*env);
         std::error_code ec;
         if (!stdfs::is_regular_file(dll, ec)) return std::nullopt;

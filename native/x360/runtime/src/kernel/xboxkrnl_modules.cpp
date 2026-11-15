@@ -165,6 +165,10 @@ GUEST_IMPORT(XexLoadImage)
     if (handle == 0 && kernel::RecompiledXam())
         if (const modules::LoadedModule* module = kernel::LoadRecompiledSystemModule(name, ctx))
             handle = module->handle;
+    // Another module the title ships (recompile-project translated it): loaded now, its entry point run.
+    if (handle == 0)
+        if (const modules::LoadedModule* module = kernel::LoadRecompiledTitleModule(name, ctx))
+            handle = module->handle;
     if (handle == 0)
     {
         // A module file that is not there (xam.xex's per-console security module, <serial>_secexp.xex, which LIVE
@@ -306,6 +310,19 @@ GUEST_IMPORT(XexGetProcedureAddress)
         address = kernel::ResolveVariable(library, uint16_t(ordinal));
     if (address == 0)
         address = kernel::BindDynamicExport(library, uint16_t(ordinal));
+    // An export the runtime implements as an import of that name (XamIsUIActive, ordinal 748, which a title looks up instead
+    // of importing): the console's name of the ordinal finds it, and it is bound like any dynamic export.
+    // (Not the ones the title tolerates missing, below: those stay absent, as they were.)
+    const bool tolerated = (library == "xam.xex" && kernel::IsAbsentXamExport(uint16_t(ordinal))) ||
+                           (library == "xboxkrnl.exe" && ordinal >= 642 && ordinal <= 649);
+    if (address == 0 && !tolerated)
+        if (const std::string name = kernel::OrdinalName(library, uint16_t(ordinal)); !name.empty())
+            if (PPCFunc* func = kernel::FindImport(name))
+            {
+                kernel::RegisterDynamicExport(library == "xam.xex" ? "xam.xex" : "xboxkrnl.exe", uint16_t(ordinal), func);
+                address = kernel::BindDynamicExport(library, uint16_t(ordinal));
+                Log("XexGetProcedureAddress({}, ordinal {}): the runtime's {}", library, ordinal, name);
+            }
     // xboxkrnl 642-649 (rexglue: XInputdFFGetDeviceInfo ... XInputdFFSetRumble, the force feedback driver), looked up by
     // the same XInput start-up code as the XAM ordinals 442 and 520 (Vigilante 8 Arcade, Monopoly Plus, Forza 4): optional,
     // with a fallback (the plain rumble of XInputSetState) when they are not found.

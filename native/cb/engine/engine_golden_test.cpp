@@ -214,12 +214,16 @@ CB_TEST("engine.engine_golden.the_same_facts_and_runs_as_recorded", [] {
             // fact's key names (the golden has "<d>"), and the version of the engine's own binary and file steps (a digest of the code).
             Jx expected = want[4], got = w.record(*db);
             const std::string folder = std::filesystem::path(w.dir.path()).make_preferred().string();
+            const auto here = [](std::string text) {   // (the golden spells its paths the Windows way; the rest of a path is this machine's)
+                if (std::filesystem::path::preferred_separator == '/') std::replace(text.begin(), text.end(), '\\', '/');
+                return text;
+            };
             for (Jx& row : expected) {
                 if (row[0] == "binary") row[4] = nullptr;
-                if (row[0] == "file") row[1] = folder + row[1].get<std::string>().substr(3);
+                if (row[0] == "file") row[1] = folder + here(row[1].get<std::string>().substr(3));
                 if (row[0] == "binary" || row[0] == "file") row[6] = "";
                 for (Jx& input : row[7])
-                    if (input[0] == "file") input[1] = folder + input[1].get<std::string>().substr(3);
+                    if (input[0] == "file") input[1] = folder + here(input[1].get<std::string>().substr(3));
             }
             for (Jx& row : got)
                 if (row[0] == "binary" || row[0] == "file") row[6] = "";

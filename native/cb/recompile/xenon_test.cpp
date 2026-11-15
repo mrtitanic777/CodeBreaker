@@ -305,6 +305,7 @@ CB_TEST("recompile.xenon.msvc_env_is_what_vcvars_sets_and_is_read_once", [] {
 });
 
 CB_TEST("recompile.xenon.msvc_env_through_the_real_cmd", [] {
+    CB_WINDOWS_ONLY("it runs the real cmd.exe and vcvars64.bat");
     // no stand-in: the real cmd.exe runs the real batch file (in a folder with a space) and its `set` is parsed
     World w;
     fs::write_text(w.vs / "VC" / "Auxiliary" / "Build" / "vcvars64.bat", "@echo off\r\nset CB_XENON_TEST=from the batch file\r\nset CB_XENON_EQ=a=b\r\n");

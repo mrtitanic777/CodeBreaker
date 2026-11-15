@@ -161,6 +161,7 @@ CB_TEST("exact.toolchain.the_digest_ignores_a_listing_switch_and_nothing_else", 
 });
 
 CB_TEST("exact.toolchain.kits_are_found_by_setting_environment_or_name", [] {
+    CB_WINDOWS_ONLY("it keeps a drive-lettered path as the kit's own");
     Fixture f;
     CB_CHECK(fs::same_path(f.locations.kit("k1"), f.dir.path() / "kits" / "k1"));   // relative: against the checkout
     CB_CHECK_THROWS_AS(UsageError, (void)f.locations.kit("k2"));

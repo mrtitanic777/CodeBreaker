@@ -112,7 +112,8 @@ CB_TEST("exact.standin.no_title_keeps_the_modules_names", [] {
     const auto records = formats::omf::records(got.object);
     CB_CHECK_EQ(records.at(0).type, 0x80);
     CB_CHECK_EQ(std::string(as_text(records.at(0).payload.subspan(1))), "MODA");
-    const auto renamed = formats::omf::records(golden("standins.obj"));
+    const Bytes standins = golden("standins.obj");   // (the records are views of it: it has to live as long as they are read)
+    const auto renamed = formats::omf::records(standins);
     CB_CHECK_EQ(std::string(as_text(renamed.at(0).payload.subspan(1))), "MODX");
 });
 

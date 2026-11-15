@@ -237,7 +237,7 @@ private:
     void instruction(std::string_view text) {
         Result<Bytes> r = isa_.assemble(text, pc_, labels_);
         if (!r.ok() && is_undefined(r.error()) && !final_)
-            r = size_guess(isa_, text, pc_, labels_);
+            r = assemble_with_guesses(isa_, text, pc_, labels_, pc_ + kGuessDistance);   // (size_guess's answer, without a copy of the labels)
         if (!r.ok())
             fail(r.error().what());
         const Bytes& code = r.value();

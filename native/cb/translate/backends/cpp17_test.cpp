@@ -27,7 +27,7 @@ using cb::Json;
 
 const nl::Library* library() {
     static const std::optional<nl::Library> lib = []() -> std::optional<nl::Library> {
-        std::filesystem::path dll = cb::testing::data_path("../l2/build/bin/cbl2.dll");
+        std::filesystem::path dll = cb::translate::native_l2::Library::default_dll(cb::testing::data_path("../.."));
         if (const auto env = cb::fs::get_env("CB_L2_DLL")) dll = cb::fs::from_text(*env);
         std::error_code ec;
         if (!std::filesystem::is_regular_file(dll, ec)) {

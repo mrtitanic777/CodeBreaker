@@ -44,13 +44,35 @@ function(x360_title target library_dir module_info)
     target_compile_options(${target}_title PRIVATE "/FI${X360_PPC_SHARED}/ppc_lookup.h" -fno-strict-aliasing
         -march=${X360_MARCH} /fp:strict -Wno-unused-label -Wno-unused-variable)
 
+    # the title's other modules (recompile-project: src/modules/<key>/ppc, module_info.cpp): one library each, built with its own
+    # ppc_config.h; their symbols carry the module's suffix, and the title's module_info lists them (modules.h: extras)
+    get_filename_component(modules_root "${library_dir}/../modules" ABSOLUTE)
+    set(module_libraries "")
+    set(module_mappings "")
+    file(GLOB module_dirs LIST_DIRECTORIES true CONFIGURE_DEPENDS "${modules_root}/*")
+    foreach (module_dir IN LISTS module_dirs)
+        if (NOT EXISTS "${module_dir}/ppc/ppc_func_mapping.cpp")
+            continue()
+        endif()
+        get_filename_component(module_key "${module_dir}" NAME)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${module_dir}/ppc/ppc_config.h")
+        file(GLOB module_sources CONFIGURE_DEPENDS "${module_dir}/ppc/ppc_*.cpp")
+        add_library(${target}_mod_${module_key} STATIC ${module_sources} "${module_dir}/module_info.cpp")
+        target_include_directories(${target}_mod_${module_key} PRIVATE "${module_dir}/ppc" "${X360_PPC_SHARED}" "${X360_RUNTIME}/src"
+            "${X360_XENON}/thirdparty/simde" "${settings_dir}")
+        target_compile_options(${target}_mod_${module_key} PRIVATE "/FI${X360_PPC_SHARED}/ppc_lookup.h" -fno-strict-aliasing
+            -march=${X360_MARCH} /fp:strict -Wno-unused-label -Wno-unused-variable)
+        list(APPEND module_libraries ${target}_mod_${module_key})
+        list(APPEND module_mappings "${module_dir}/ppc/ppc_func_mapping.cpp")
+    endforeach()
+
     # stubs for the imports the runtime does not implement
     file(GLOB_RECURSE kernel_sources CONFIGURE_DEPENDS "${X360_RUNTIME}/src/kernel/*.cpp")
     set(stubs "${CMAKE_CURRENT_BINARY_DIR}/${target}_imports_unimplemented.cpp")
     add_custom_command(OUTPUT "${stubs}"
         COMMAND Python3::Interpreter -I "${X360_ROOT}/tools/gen_import_stubs.py" "${X360_RUNTIME}/src/kernel" "${stubs}"
-            "${library_dir}/ppc_func_mapping.cpp"
-        DEPENDS "${X360_ROOT}/tools/gen_import_stubs.py" "${library_dir}/ppc_func_mapping.cpp" ${kernel_sources}
+            "${library_dir}/ppc_func_mapping.cpp" ${module_mappings}
+        DEPENDS "${X360_ROOT}/tools/gen_import_stubs.py" "${library_dir}/ppc_func_mapping.cpp" ${module_mappings} ${kernel_sources}
         COMMENT "Stubs for the kernel/XAM imports the runtime does not implement")
     # no system modules are linked into a title's program
     set(linked "${CMAKE_CURRENT_BINARY_DIR}/${target}_linked_modules.cpp")
@@ -93,7 +115,7 @@ namespace kernel
         "${X360_XENON}/XenonUtils" "${X360_XENON}/thirdparty/simde")
     # the whole library: objects nothing names directly (static registrations) must still be linked
     target_link_options(${target} PRIVATE "/WHOLEARCHIVE:${runtime_lib}")
-    target_link_libraries(${target} PRIVATE ${target}_title "${runtime_lib}" winmm xinput bcrypt d3d12 dxgi d3dcompiler ole32 ws2_32)
+    target_link_libraries(${target} PRIVATE ${target}_title ${module_libraries} "${runtime_lib}" winmm xinput bcrypt d3d12 dxgi d3dcompiler ole32 ws2_32)
     target_compile_options(${target} PRIVATE -fno-strict-aliasing -march=${X360_MARCH} /fp:strict /Z7)
     target_compile_definitions(${target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     # a Windows program: the log is <program>.log beside the title's files; a fatal error shows a box

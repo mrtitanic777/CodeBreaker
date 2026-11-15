@@ -579,7 +579,7 @@ std::string make(const Title& title, disassemble::Disassembler& dis, const std::
         std::error_code ec;
         if (std::filesystem::is_regular_file(beside, ec)) tables = read_switch_tables(beside);
     }
-    const discover::Discovery discovery = discover::discover(title.image, dis);
+    const discover::Discovery discovery = discover::discover(title.image, dis, {.pointer_scan = true, .seeds = title.seeds});
     const std::vector<ExtraFunction> extra = extra_functions(title, discovery.functions, dis, tables);
     out += std::format("\n# functions .pdata leaves out ({})\nfunctions = [\n", extra.size());
     for (const ExtraFunction& f : extra) out += std::format("    {{ address = 0x{:08X}, size = 0x{:X} }},\n", f.address, f.size);

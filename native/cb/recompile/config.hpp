@@ -65,6 +65,7 @@ using RunNames = std::map<std::uint32_t, std::string>;
 struct Title {
     discover::Image image;       // the code, the .pdata functions, the imported ones
     RunNames run_names;
+    std::vector<std::uint32_t> seeds;   // functions other modules call through the export table: found even where nothing in the image calls them
 };
 
 // {table base (the bctr): [case labels]}, in the order the file gives them; that order is how the function holding a switch

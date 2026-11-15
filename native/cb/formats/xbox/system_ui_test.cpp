@@ -59,6 +59,7 @@ system_ui::Environment sysui_fake(const fs::ScopedTempDir& dir) {
 }  // namespace
 
 CB_TEST("formats.xbox.system_ui.a_system_update_gives_its_fonts_and_the_xui_packages_of_its_modules", [] {
+    CB_WINDOWS_ONLY("its stand-in tool is a .cmd file");
     const fs::ScopedTempDir dir{"cb-sysui"};
     const system_ui::Environment env = sysui_fake(dir);   // (the modules of the update are junk: the stand-in answers for all of them)
     const std::filesystem::path package = sysui_data("su_full.bin");

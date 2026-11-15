@@ -105,6 +105,7 @@ namespace gpu
         case 10: case 3: case 4: case 15: return 2;      // k_8_8, k_1_5_5_5, k_5_6_5, k_4_4_4_4
         case 18: case 51: return 8;                      // DXT1: per 4x4 block
         case 19: case 20: case 52: case 53: case 49: return 16; // DXT2_3, DXT4_5, DXN: per 4x4 block
+        case 30: return 2;                               // k_16_FLOAT
         case 37: case 29: case 32: return 8;             // k_32_32_FLOAT, k_16_16_16_16_EXPAND / _FLOAT (four halves)
         case 38: return 16;                              // k_32_32_32_32_FLOAT
         default: return 4;
@@ -141,6 +142,7 @@ namespace gpu
         case 23: return kUntileDepth24Float;
         case 36: case 37: case 38: return kUntileFloat32;
         case 29: case 32: return kUntileHalf4;
+        case 30: case 31: return kUntileHalf2;
         case 49: return kUntileDxn;
         case 7: case 54: return kUntile2_10_10_10;
         default: return kUntilePlain;
@@ -202,6 +204,7 @@ namespace gpu
         case 22: case 23:                                                    // 24-bit depth (unorm or 20e4 float), 8-bit stencil
         case 36: case 37: case 38:                                           // 32-bit floats
         case 29: case 32:                                                    // four 16-bit floats (EXPAND is the same data)
+        case 30: case 31:                                                    // one or two 16-bit floats
             break;
         default:
             return std::format("format k_{}", TextureFormatName(f.format));
@@ -305,7 +308,8 @@ namespace gpu
         else
             f.numbers = anySigned ? TextureNumbers::kSigned : TextureNumbers::kUnsigned;
         if (TextureUntileKind(f.format) == kUntileFloat32 || TextureUntileKind(f.format) == kUntileDepth24Float ||
-            TextureUntileKind(f.format) == kUntileHalf4 || TextureUntileKind(f.format) == kUntile2_10_10_10)
+            TextureUntileKind(f.format) == kUntileHalf4 || TextureUntileKind(f.format) == kUntileHalf2 ||
+            TextureUntileKind(f.format) == kUntile2_10_10_10)
             f.numbers = TextureNumbers::kInteger; // floats are what they are: no sign or number format applies
                                                   // (a float depth texture's fetch constant has the integer bit set)
         else if (TextureUntileKind(f.format) != kUntilePlain && f.numbers != TextureNumbers::kUnsigned)
@@ -655,6 +659,15 @@ void main(uint3 id : SV_DispatchThreadID)
         uint w1 = xe_un_swap(xe_memory.Load((address + 4u) & ~3u), xe_un_layout.w);
         xe_untile_dest[uint3(id.xy, zslice)] = float4(f16tof32(word & 0xFFFFu), f16tof32(word >> 16),
                                                   f16tof32(w1 & 0xFFFFu), f16tof32(w1 >> 16));
+        return;
+    }
+    if (kind == 11u)
+    {
+        // k_16_16_FLOAT (two half floats in a word, the first in the low half) or k_16_FLOAT (one): components the format lacks
+        // repeat its last
+        float x = f16tof32(texel & 0xFFFFu);
+        float y = bytesLog2 == 2u ? f16tof32(word >> 16) : x;
+        xe_untile_dest[uint3(id.xy, zslice)] = float4(x, y, y, y);
         return;
     }
     if (kind == 6u)

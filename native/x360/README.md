@@ -24,11 +24,12 @@ recompiled and linked in.
   messages, parties, against a server of one's own), `pads/` (other controllers), `transition/`.
   Their assets are the user's own (extracted from a system update), never stored here.
 - `x360.cmake` — `x360_title(<target> <recompiled dir> <module_info.cpp>)` builds a title's program.
+- `tools/gen_ordinal_names.py` — the console's export names by ordinal (from `data/symbols/console_ordinals.json`), so an export a title looks up by ordinal and the runtime implements as an import is found.
 - `tools/gen_import_stubs.py` — a stub that reports the call, for each import the runtime does not
   implement yet.
 
 Switches (environment): `CB_HEADLESS=1` (no window), `CB_LOG=<file>`, `CB_WATCHDOG=<s>` (dump the
-threads when no frame comes), `CB_TRACE_IMPORTS=1` or `=<names>`, `CB_CONTINUE_UNIMPLEMENTED=1`
+threads when no frame comes), `CB_TRACE_IMPORTS=1` or `=<names>`, `CB_SHADER_TEST=1|2` (the GPU's verification instead of the title: 1 the shader translator, output merger and resolves too, 2 the renderer's part: present pass, textures, volumes, sampling; exit code = failures), `CB_CONTINUE_UNIMPLEMENTED=1`
 (an unimplemented import returns 0 instead of stopping), `CB_PRESENT_DUMP=<frames>` (BMPs of those
 frames), `CB_GPU_TRACE`, `CB_PM4_LOG`, `CB_TEXTURE_DUMP`, `CB_SHADER_CACHE=0`, `CB_D3D12_DEBUG=1`.
 

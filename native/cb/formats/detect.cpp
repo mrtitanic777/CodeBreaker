@@ -26,6 +26,8 @@
 #include "cb/formats/chf.hpp"
 #include "cb/formats/o2.hpp"
 #include "cb/formats/ngp.hpp"
+#include "cb/formats/orbis.hpp"
+#include "cb/formats/xboxone.hpp"
 #include "cb/formats/intv.hpp"
 #include "cb/formats/wonderswan.hpp"
 
@@ -275,6 +277,8 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
                 const ByteView m = clamped(file, e + 4, 2);
                 const std::uint32_t machine = m.size() == 2 ? get<std::uint16_t>(m, 0, "detect") : 0;
                 const char* cpu = coff_name(machine);
+                if (machine == 0x8664 && try_get<std::uint16_t>(file, e + 24).value_or(0) == 0x20B && (try_get<std::uint16_t>(file, e + 24 + 70).value_or(0) & 0x1000) != 0)   // an x64 PE32+ built for the app sandbox: a UWP app's, the Xbox One / Series dev-mode kind
+                    return one("Xbox One / Series executable (PE32+, UWP)", std::format("x86-64, {} bytes, runs in the app container", size), "xboxone", "reach");
                 return one("PE executable", cpu ? std::string(cpu) : std::format("machine 0x{:04X}", machine),
                            machine == 0x01F2 ? "xbox360" : "windows", "info");
             }
@@ -351,6 +355,31 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         if (encrypted) return one("PlayStation 3 SELF (encrypted)", "not handled: the segments are encrypted", "ps3", "gap");
         return one("PlayStation 3 SELF", std::format("Cell PPU, {} bytes", size), "ps3", "reach");
     }
+    if (const auto kind = orbis::kind_of(head); kind != orbis::Kind::None && size >= 64) {   // the PlayStation 4 and 5: an x86-64 ELF, OpenOrbis's fake SELF, a PS5 SELF or a package
+        if (kind == orbis::Kind::Ps5Self) return one("PlayStation 5 SELF", "not handled: signed and encrypted, CodeBreaker does not decrypt", "ps5", "gap");
+        if (kind == orbis::Kind::Pkg) return one("PlayStation 4 package (.pkg)", "not handled: recognised only", "ps4", "gap");
+        if (size <= (64u << 20)) {
+            try {
+                const orbis::Program program = orbis::parse(file);
+                if (kind == orbis::Kind::Fself || orbis::is_playstation(program)) {
+                    const bool ps5 = orbis::console_of(std::filesystem::path(std::string(name)), program) == orbis::Console::Ps5;
+                    return one(std::format("PlayStation {} {}", ps5 ? 5 : 4, kind == orbis::Kind::Fself ? "SELF (fake-signed)" : program.orbis ? "executable (Orbis ELF)" : "executable (ELF)"),
+                               std::format("{}, {} bytes, {} imports", ps5 ? "AMD Zen 2 x86-64" : "AMD Jaguar x86-64", size, program.imports.size()), ps5 ? "ps5" : "ps4", "reach");
+                }
+            } catch (const FormatError&) {
+                if (kind == orbis::Kind::Fself) return one("PlayStation 4 SELF (encrypted)", "not handled: signed or encrypted, CodeBreaker does not decrypt", "ps4", "gap");
+            }
+        }
+    }
+    if (starts_with(head, 0, "PK") && name_ends_with(name, {".appx", ".msix", ".appxbundle", ".msixbundle"})) {   // an Xbox One / Series dev-mode package: a zip with an x64 PE32+ in it
+        try {
+            const xboxone::Program program = xboxone::parse(file, std::string(name));
+            return one(std::format("Xbox One / Series {}", program.container), std::format("{} {}, {}, {} bytes", program.identity, program.version, program.member, size), "xboxone", "reach");
+        } catch (const Error&) {
+        }
+    }
+    if (name_ends_with(name, {".xvc", ".msixvc", ".eappx", ".eappxbundle"}))   // a retail package: encrypted with the console's keys
+        return one("Xbox One / Series package (encrypted)", "not handled: CodeBreaker does not decrypt", "xboxone", "gap");
     if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE ", 4)) && get<std::uint32_t>(file, 4, "detect") == 3) {   // a Vita SELF: the segments' table says whether they are encrypted
         const std::uint64_t info = get<std::uint32_t>(file, 0x58, "detect");
         const bool encrypted = info + 32 <= size && get<std::uint32_t>(file, static_cast<std::size_t>(info) + 24, "detect") == 1;

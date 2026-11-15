@@ -1631,10 +1631,13 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             for (uint32_t level : readback.present)
             {
                 const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& f = readback.footprints[level];
+                // A volume's level has Depth slices, each Height rows of RowPitch bytes after the last (slices follow each other).
                 const size_t row = size_t(f.Footprint.Width) * readback.bytes;
-                levels[level].resize(row * f.Footprint.Height);
-                for (UINT y = 0; y < f.Footprint.Height; y++)
-                    std::memcpy(levels[level].data() + y * row, mapped + f.Offset + size_t(y) * f.Footprint.RowPitch, row);
+                levels[level].resize(row * f.Footprint.Height * f.Footprint.Depth);
+                for (UINT z = 0; z < f.Footprint.Depth; z++)
+                    for (UINT y = 0; y < f.Footprint.Height; y++)
+                        std::memcpy(levels[level].data() + (size_t(z) * f.Footprint.Height + y) * row,
+                                    mapped + f.Offset + (size_t(z) * f.Footprint.Height + y) * f.Footprint.RowPitch, row);
             }
             readback.buffer->Unmap(0, nullptr);
             return levels;
@@ -3890,9 +3893,10 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                   ReadRegister(reg::kDcLutRwIndex) == 0x80, "gamma: PWL data, masking and index wrap");
             TestWriteRegister(reg::kDcLutRwMode, 0);
 
-            struct PresentCase { uint32_t width, height, pitch; bool tiled; uint32_t endian; };
+            struct PresentCase { uint32_t width, height, pitch; bool tiled; uint32_t endian; bool tenBit = false; };
             const PresentCase cases[] = { { 1280, 720, 1280, true, 0 }, { 200, 100, 224, false, 2 }, { 100, 50, 128, true, 1 },
-                                          { 64, 40, 64, true, 3 }, { 33, 7, 64, false, 0 } };
+                                          { 64, 40, 64, true, 3 }, { 33, 7, 64, false, 0 },
+                                          { 1280, 720, 1280, true, 0, true }, { 70, 9, 96, false, 2, true } };
             constexpr uint32_t kFront = 0x00700000;
             for (const PresentCase& pc : cases)
             {
@@ -3905,7 +3909,7 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                 for (uint32_t& t : table.table)
                     t = next() & 0x3FFFFFFFu;
                 SetRegister(0x4800, 2u | (pc.pitch / 32) << 22 | (pc.tiled ? 1u : 0u) << 31);
-                SetRegister(0x4801, kFront | pc.endian << 6 | 6u);
+                SetRegister(0x4801, kFront | pc.endian << 6 | (pc.tenBit ? 54u : 6u));
                 SetRegister(0x4802, (pc.width - 1) | (pc.height - 1) << 13);
                 SetRegister(0x4803, (2u | 1u << 3 | 0u << 6 | 5u << 9) << 1);
                 SetRegister(0x4804, 0);
@@ -3917,8 +3921,9 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                 uint32_t bad = 0;
                 for (size_t i = 0; i < got.size(); i++)
                     bad += got[i] != expected[i];
-                check(bad == 0, std::format("present {}x{} pitch {} {} endian {}: {} of {} pixels differ", pc.width,
-                                            pc.height, pc.pitch, pc.tiled ? "tiled" : "linear", pc.endian, bad, got.size()));
+                check(bad == 0, std::format("present {}x{} pitch {} {} endian {}{}: {} of {} pixels differ", pc.width,
+                                            pc.height, pc.pitch, pc.tiled ? "tiled" : "linear", pc.endian,
+                                            pc.tenBit ? " 10-bit" : "", bad, got.size()));
             }
             Log("Renderer test: display gamma registers and present pass: {} failures", failures - before);
             failures += TextureTests();
@@ -3968,12 +3973,12 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                     const uint32_t v = next();
                     std::memcpy(physical + kArea + i, &v, 4);
                 }
-                const uint32_t formats[4] = { 2, 6, 10, 25 };
+                const uint32_t formats[5] = { 2, 6, 10, 25, 31 };
                 uint32_t tested = 0, levelsCompared = 0, bad = 0;
                 std::map<std::string, uint32_t> skipped;
                 for (int attempt = 0; attempt < 600 && tested < 400; attempt++)
                 {
-                    const uint32_t format = formats[range(0, 3)];
+                    const uint32_t format = formats[range(0, 4)];
                     const uint32_t bucket = range(0, 9);
                     auto dimension = [&] { return bucket < 4 ? range(1, 20) : bucket < 8 ? range(1, 120) : range(1, 700); };
                     const uint32_t width = dimension(), height = dimension();
@@ -4054,7 +4059,23 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                         if (expected[level].empty() && got[level].empty())
                             continue;
                         levelsCompared++;
-                        if (got[level] != expected[level])
+                        // Float textures: a NaN is a NaN whatever its payload (the host's half to float conversion and the
+                        // reference's keep or quiet it differently); every other value must be the same bits.
+                        auto canonical = [&](std::vector<uint8_t> texels) {
+                            if (format == 31)
+                                for (size_t k = 0; k + 4 <= texels.size(); k += 4)
+                                {
+                                    uint32_t word;
+                                    std::memcpy(&word, &texels[k], 4);
+                                    if ((word & 0x7F800000u) == 0x7F800000u && (word & 0x7FFFFFu) != 0)
+                                    {
+                                        word = 0x7FC00000u;
+                                        std::memcpy(&texels[k], &word, 4);
+                                    }
+                                }
+                            return texels;
+                        };
+                        if (canonical(got[level]) != canonical(expected[level]))
                         {
                             size_t differ = 0;
                             for (size_t k = 0; k < std::min(got[level].size(), expected[level].size()); k++)
@@ -4213,6 +4234,96 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                         levelsCompared, bad, badReference);
                     check(cases == count, std::format("{} of {} XDK cases ran", cases, count));
                 }
+            }
+
+            // 3: volumes (Texture3D): the tiling is a bijection of the padded volume, and volumes laid out by it (and linear
+            //    ones) come out of the GPU untile pass as the source texels, slice by slice.
+            {
+                // the offsets of every texel of a padded volume are all different and fill the dense range of its bytes
+                for (uint32_t bytesLog2 = 0; bytesLog2 <= 2; bytesLog2++)
+                    for (const uint32_t pitch : { 32u, 64u, 96u })
+                        for (const uint32_t height : { 32u, 64u })
+                        {
+                            const uint32_t depth = 8, total = pitch * height * depth << bytesLog2;
+                            std::vector<uint8_t> seen(total >> bytesLog2, 0);
+                            bool bijective = true;
+                            for (uint32_t z = 0; z < depth && bijective; z++)
+                                for (uint32_t y = 0; y < height && bijective; y++)
+                                    for (uint32_t x = 0; x < pitch; x++)
+                                    {
+                                        const uint32_t offset = ReferenceVolumeOffset(x, y, z, pitch, height, bytesLog2);
+                                        if ((offset & ((1u << bytesLog2) - 1)) || offset >= total || seen[offset >> bytesLog2]++)
+                                        {
+                                            bijective = false;
+                                            break;
+                                        }
+                                    }
+                            check(bijective, std::format("volume tiling {}x{}x{} at {} bytes a texel is not a bijection", pitch, height, depth,
+                                                         1u << bytesLog2));
+                        }
+                struct VolumeCase
+                {
+                    uint32_t format, width, height, depth;
+                    bool tiled;
+                };
+                const VolumeCase cases[] = { { 6, 32, 32, 4, true }, { 6, 40, 36, 6, true }, { 2, 70, 20, 5, true },
+                                             { 10, 33, 17, 3, true }, { 6, 16, 16, 16, true }, { 6, 20, 12, 7, false },
+                                             { 10, 64, 8, 4, false } };
+                uint32_t volumes = 0, bad = 0;
+                for (const VolumeCase& c : cases)
+                {
+                    const uint32_t bytes = TextureBytesPerTexel(c.format), bytesLog2 = std::countr_zero(bytes);
+                    const uint32_t pitch = (c.width + 31) / 32 * 32, rows = (c.height + 31) / 32 * 32;
+                    const uint32_t slices = (c.depth + 3) / 4 * 4;
+                    const uint32_t total = pitch * rows * slices * bytes;
+                    std::memset(physical + kArea, 0xCD, total);
+                    std::vector<uint8_t> source(size_t(c.width) * c.height * c.depth * bytes);
+                    for (uint8_t& b : source)
+                        b = uint8_t(next());
+                    for (uint32_t z = 0; z < c.depth; z++)
+                        for (uint32_t y = 0; y < c.height; y++)
+                            for (uint32_t x = 0; x < c.width; x++)
+                            {
+                                const uint32_t offset = c.tiled ? ReferenceVolumeOffset(x, y, z, pitch, c.height, bytesLog2)
+                                                                : ((z * rows + y) * pitch + x) * bytes;
+                                std::memcpy(physical + kArea + offset, source.data() + ((size_t(z) * c.height + y) * c.width + x) * bytes, bytes);
+                            }
+                    uint32_t d[6];
+                    d[0] = 2u | (pitch / 32) << 22 | (c.tiled ? 1u : 0u) << 31;
+                    d[1] = c.format | (kArea >> 12) << 12;
+                    d[2] = (c.width - 1) | (c.height - 1) << 11 | (c.depth - 1) << 22;
+                    d[3] = (0u | 1u << 3 | 2u << 6 | 3u << 9) << 1;
+                    d[4] = 0;
+                    d[5] = 2u << 9;   // dimension 2: 3D
+                    const std::string what = std::format("volume {} {}x{}x{} {}", TextureFormatName(c.format), c.width, c.height, c.depth,
+                                                         c.tiled ? "tiled" : "linear");
+                    TextureFetch fetch;
+                    const std::string problem = DecodeTextureFetch(d, fetch);
+                    if (!problem.empty())
+                    {
+                        check(false, what + ": " + problem);
+                        continue;
+                    }
+                    check(fetch.volume && fetch.depth == c.depth, what + ": decoded as a volume of its depth");
+                    setFetch(5, d);
+                    frame_++;
+                    BeginRecording();
+                    const Texture& texture = TextureFor(5);
+                    const std::vector<std::vector<uint8_t>> got = readLevels(texture);
+                    volumes++;
+                    if (got.empty() || got[0] != source)
+                    {
+                        bad++;
+                        size_t differ = 0;
+                        if (!got.empty())
+                            for (size_t k = 0; k < std::min(got[0].size(), source.size()); k++)
+                                differ += got[0][k] != source[k];
+                        check(false, std::format("{}: the untiled volume differs ({} of {} bytes; {} bytes read back)", what, differ,
+                                                 source.size(), got.empty() ? 0 : got[0].size()));
+                    }
+                }
+                Log("Texture test: {} volumes untiled by the GPU: {} differ from the texels laid out", volumes, bad);
+                check(volumes == std::size(cases), "every volume case ran");
             }
 
             failures += TextureSamplingTests();

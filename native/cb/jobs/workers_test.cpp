@@ -133,6 +133,7 @@ CB_TEST("jobs.workers.real_process_handover", [] {
 });
 
 CB_TEST("jobs.workers.a_crashing_worker_is_an_exit_code", [] {
+    CB_WINDOWS_ONLY("it expects the Windows exit code of an access violation");
     // The guest crashed the worker: the parent sees the code and goes on (a sibling is unaffected).
     const WorkerLauncher l = probe();
     const WorkerResult crashed = l.run("crash", {});

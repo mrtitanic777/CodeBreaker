@@ -129,6 +129,59 @@ Walked<Insn> walk(const CodeModel<Insn>& model, std::span<const std::uint32_t> e
     return out;
 }
 
+// What flow reaches from one place beyond code already found.
+template <class Insn>
+struct Beyond {
+    std::map<std::uint32_t, Insn> code;    // by key: the instructions reached that `known` does not hold
+    std::set<std::uint32_t> targets;       // the places a jump goes, among those looked at
+    std::vector<std::uint32_t> starts;     // the entry, and with finds_functions() every called target looked at, ascending
+    std::size_t reached = 0;               // the instructions looked at, known or not
+};
+
+// walk() from `entry` alone, for a caller that holds the code found so far in `known` (closed under flow: what flow reaches from a known instruction is
+// known too) and asks whether `entry` leads to at least `enough` instructions. Known code is followed only until `enough` instructions are counted, then not
+// at all, so the cost is that of the new code and not of everything the new code calls. Merged into `known`, `code` is the same as what walk(model, {entry})
+// finds; `reached` is that walk's code.size() when it is below `enough` (and at least `enough` when that is). `starts` and `targets` leave out what only
+// known code names, which the caller already holds. (Instructions are counted by place, so a model whose key() is not the place counts by place too.)
+template <class Insn>
+Beyond<Insn> walk_beyond(const CodeModel<Insn>& model, const std::map<std::uint32_t, Insn>& known, std::uint32_t entry, std::size_t enough) {
+    Beyond<Insn> out;
+    std::set<std::uint32_t> found = {entry};
+    std::vector<std::uint32_t> todo = {entry};
+    std::set<std::uint32_t> seen;
+    while (!todo.empty()) {
+        std::uint32_t pc = todo.back();
+        todo.pop_back();
+        while (model.inside(pc) && !seen.contains(pc)) {
+            seen.insert(pc);
+            const auto old = known.find(model.key(pc));
+            std::optional<Insn> insn;
+            if (old != known.end()) {
+                if (out.reached >= enough) break;   // (what known code reaches is known: not looked at again)
+                insn = old->second;
+            } else {
+                insn = model.decode(pc);
+                if (!insn || !model.fits(pc, *insn)) break;
+            }
+            const std::optional<std::uint32_t> to = model.target(*insn);
+            if (to && model.follows(*insn)) {
+                out.targets.insert(*to);
+                todo.push_back(*to);
+                if (model.finds_functions() && model.starts_function(*insn)) found.insert(*to);
+            }
+            const bool stop = model.stops(*insn);
+            const std::uint32_t size = model.size(*insn);
+            ++out.reached;
+            if (old == known.end()) out.code.insert_or_assign(model.key(pc), std::move(*insn));
+            if (stop) break;
+            pc += size;
+        }
+    }
+    if (model.finds_functions()) out.starts.assign(found.begin(), found.end());
+    else out.starts.push_back(entry);
+    return out;
+}
+
 // The positions inside an instruction, past its first byte: no line starts there.
 template <class Insn>
 std::set<std::uint32_t> covered(const std::map<std::uint32_t, Insn>& code, const CodeModel<Insn>& model) {
@@ -136,6 +189,32 @@ std::set<std::uint32_t> covered(const std::map<std::uint32_t, Insn>& code, const
     for (const auto& [at, insn] : code) {
         const std::uint32_t size = model.size(insn);
         for (std::uint32_t a = at + 1; a < at + size; ++a) inside.insert(a);
+    }
+    return inside;
+}
+
+// A set of positions in an image, one bit each: the std::set<uint32_t> of covered() and of a writer's "no line starts here" marks held a tree node (48 bytes)
+// for every byte, which for the last megabytes of a large program was most of the writer's memory. contains() is false past what was marked.
+class ByteMarks {
+public:
+    explicit ByteMarks(std::size_t size = 0) : bits_(size, false) {}
+    void insert(std::uint32_t at) {
+        if (at >= bits_.size()) bits_.resize(static_cast<std::size_t>(at) + 1, false);
+        bits_[at] = true;
+    }
+    bool contains(std::uint32_t at) const { return at < bits_.size() && bits_[at]; }
+
+private:
+    std::vector<bool> bits_;
+};
+
+// covered() as ByteMarks, for an image of `size` bytes.
+template <class Insn>
+ByteMarks covered_marks(const std::map<std::uint32_t, Insn>& code, const CodeModel<Insn>& model, std::size_t size) {
+    ByteMarks inside(size);
+    for (const auto& [at, insn] : code) {
+        const std::uint32_t length = model.size(insn);
+        for (std::uint32_t a = at + 1; a < at + length; ++a) inside.insert(a);
     }
     return inside;
 }

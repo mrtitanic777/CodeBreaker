@@ -35,9 +35,14 @@ namespace gpu
         if (type != 2 || dimension != 1 || stacked || border)
             Fatal("GPU: swap: front-buffer fetch constant is not a plain 2D texture (type {}, dimension {}, stacked {}, "
                   "border {}; {})", type, dimension, int(stacked), int(border), fetch);
-        if (format == 54)
-            Fatal("GPU: swap: 10-bit front buffer (k_2_10_10_10_AS_16_16_16_16, PWL gamma) is not implemented ({})", fetch);
-        if (format != 6)
+        // k_2_10_10_10_AS_16_16_16_16 (a 10-bit front buffer, Forza Motorsport 4): A2R10G10B10 in a dword, shown through the
+        // same swizzle; the display's piecewise-linear gamma ramp applies, which only the identity is implemented of (nothing
+        // written to it).
+        const bool tenBit = format == 54;
+        if (tenBit && gamma.pwlWrites != 0)
+            Fatal("GPU: swap: a 10-bit front buffer with a piecewise-linear gamma ramp written ({} entries' components) is not "
+                  "implemented ({})", gamma.pwlWrites, fetch);
+        if (format != 6 && !tenBit)
             Fatal("GPU: swap: front-buffer format {} is not implemented ({})", format, fetch);
         // Red, green, blue from data components Z, Y, X (LE_X8R8G8B8: memory bytes B, G, R, X); alpha is not displayed.
         if ((swizzle & 0x1FF) != (2u | 1u << 3 | 0u << 6))
@@ -49,7 +54,7 @@ namespace gpu
             Fatal("GPU: swap: front-buffer pitch {} is smaller than its width {} ({})", pitch, width, fetch);
 
         const uint32_t lutControl = Reg(reg::kDcLutaControl);
-        if (lutControl != 0)
+        if (lutControl != 0 && !tenBit)
             Fatal("GPU: swap: DC_LUTA_CONTROL {:08X} with an 8:8:8:8 front buffer is not implemented", lutControl);
         for (uint32_t r = reg::kDcLutaBlackOffsetBlue; r < reg::kDcLutaBlackOffsetBlue + 6; r++)
             if (Reg(r) != 0)
@@ -60,6 +65,7 @@ namespace gpu
         c.pitch = pitch;
         c.tiled = tiled ? 1 : 0;
         c.endian = (d[1] >> 6) & 3;
+        c.tenBit = tenBit ? 1 : 0;
         c.width = width;
         c.height = height;
         std::memcpy(c.table, gamma.table, sizeof(c.table));
@@ -73,8 +79,8 @@ namespace gpu
     std::string DescribePresent(const PresentConstants& c)
     {
         static const char* const kEndian[] = { "none", "8in16", "8in32", "16in32" };
-        return std::format("swap: front buffer {:08X} {}x{} k_8_8_8_8 {} pitch {} endian {}; fetch 0: {:08X} {:08X} {:08X} "
-                           "{:08X} {:08X} {:08X}", c.base, c.width, c.height, c.tiled ? "tiled" : "linear", c.pitch,
+        return std::format("swap: front buffer {:08X} {}x{} {} {} pitch {} endian {}; fetch 0: {:08X} {:08X} {:08X} "
+                           "{:08X} {:08X} {:08X}", c.base, c.width, c.height, c.tenBit ? "k_2_10_10_10" : "k_8_8_8_8", c.tiled ? "tiled" : "linear", c.pitch,
                            kEndian[c.endian & 3], Reg(0x4800), Reg(0x4801), Reg(0x4802), Reg(0x4803), Reg(0x4804),
                            Reg(0x4805));
     }
@@ -135,7 +141,7 @@ namespace gpu
 cbuffer PresentConstants : register(b0)
 {
     uint4 xe_pr_layout;    // base, pitch (texels), tiled, endian
-    uint4 xe_pr_size;      // width, height, overlay
+    uint4 xe_pr_size;      // width, height, overlay, 10-bit front buffer
     uint4 xe_pr_ov_layout; // XAM's overlay: base, pitch, tiled, endian
     uint4 xe_pr_ov_size;   // texture width, height
     uint4 xe_pr_ov_rect;   // source rectangle x1, y1, x2, y2
@@ -201,6 +207,18 @@ void main(uint3 id : SV_DispatchThreadID)
     // k_8_8_8_8 shown through the swizzle (Z, Y, X): red = bits 16-23, green = 8-15, blue = 0-7; each channel's
     // 8-bit value indexes the table and takes that channel's 10-bit entry.
     uint3 c = uint3((v >> 16) & 0xFFu, (v >> 8) & 0xFFu, v & 0xFFu);
+    if (xe_pr_size.w != 0u)
+    {
+        // A2R10G10B10 (the same swizzle): the 10-bit channels pass through the identity ramp; an overlay is 8-bit, scaled up
+        uint3 t = uint3((v >> 20) & 0x3FFu, (v >> 10) & 0x3FFu, v & 0x3FFu);
+        if (xe_pr_size.z != 0u)
+        {
+            uint4 o = xe_pr_size.z == 2u ? xe_pr_ov_sample(id.xy) : xe_overlay.Load(int3(id.xy, 0));
+            t = min((o.rgb << 2) + (t * (255u - o.a) + 127u) / 255u, 1023u);
+        }
+        xe_output[id.xy] = uint4(t, 3u);
+        return;
+    }
     if (xe_pr_size.z != 0u)
     {
         uint4 o = xe_pr_size.z == 2u ? xe_pr_ov_sample(id.xy) : xe_overlay.Load(int3(id.xy, 0));
@@ -272,6 +290,20 @@ void main(uint3 id : SV_DispatchThreadID)
                 case 2: v = __builtin_bswap32(v); break;
                 case 3: v = (v << 16) | (v >> 16); break;
                 default: break;
+                }
+                if (c.tenBit)
+                {
+                    uint32_t t[3] = { (v >> 20) & 0x3FF, (v >> 10) & 0x3FF, v & 0x3FF };
+                    uint8_t o[4] = {};
+                    if (c.overlay == 2)
+                        SampleGuestOverlay(c, memory, x, y, o);
+                    else if (c.overlay && overlay)
+                        std::memcpy(o, overlay + (size_t(y) * c.width + x) * 4, 4);
+                    if (c.overlay == 2 || (c.overlay && overlay))
+                        for (uint32_t& channel : t)
+                            channel = std::min(1023u, (o[&channel - t] << 2) + (channel * (255u - o[3]) + 127) / 255);
+                    out[size_t(y) * c.width + x] = t[0] | t[1] << 10 | t[2] << 20 | 3u << 30;
+                    continue;
                 }
                 uint32_t red = (v >> 16) & 0xFF, green = (v >> 8) & 0xFF, blue = v & 0xFF;
                 uint8_t sampled[4];

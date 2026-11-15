@@ -219,6 +219,14 @@ namespace kernel
                     CallGuest(ctx, address);
                     return;
                 }
+        // An import from another module of the title ("tier0_360_Ordinal_<n>": recompile-project translates every module the
+        // title ships, and a module's imports of another's exports come here): that module's export, loaded on first use.
+        if (const char* marker = std::strstr(name, "_Ordinal_"))
+            if (kernel::FindTitleModule(std::string(name, marker)))
+            {
+                CallModuleExport(std::string(name, marker).c_str(), uint16_t(std::atoi(marker + 9)), ctx, guest::g_memory.base);
+                return;
+            }
         Log("UNIMPLEMENTED IMPORT {}(r3={:08X} r4={:08X} r5={:08X} r6={:08X} r7={:08X} r8={:08X}) called from {:08X} on thread {} (stack {})",
             name, ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, ctx.r8.u32, uint32_t(ctx.lr),
             CurrentThread() ? CurrentThread()->id : 0, GuestBacktrace(ctx));

@@ -34,8 +34,10 @@ def main():
     # Recompiled functions (__imp__sub_XXXXXXXX, or a module's own function_prefix: signup_XXXXXXXX; with
     # suffix_function_names also the module's suffix: sub_XXXXXXXX_dash_7258) and the fixed symbols (helpers,
     # _xstart, with their module suffix) are not imports.
+    # (`<library>_Ordinal_<n>`, an import of another module's export, looks like `sub_<hex>_<suffix>` to this pattern but is one:
+    # its stub forwards to that module's export, kernel/thread.cpp UnimplementedImport.)
     imports = sorted(n for n in imports
-                     if not re.match(r'([a-z]+_[0-9A-F]+(_\w+)?|__(save|rest)\w+|_xstart\w*)$', n))
+                     if re.search(r'_Ordinal_\d+$', n) or not re.match(r'([a-z]+_[0-9A-F]+(_\w+)?|__(save|rest)\w+|_xstart\w*)$', n))
     implemented = set()
     for root, _, files in os.walk(kernel_dir):
         for name in files:

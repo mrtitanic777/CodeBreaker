@@ -91,6 +91,7 @@ CB_TEST("exact.command.proof", [] {
 });
 
 CB_TEST("exact.command.draft_proves_the_first_functions_of_a_real_program", [] {
+    CB_WINDOWS_ONLY("it runs the period compiler");
     test::Real real;
     if (test::skipped(real, "command draft")) return;
     Surrounding s;

@@ -153,6 +153,7 @@ CB_TEST("translate.judge_native_jvm.two_runs_compared", [] {
 });
 
 CB_TEST("translate.judge_native_jvm.running_a_program", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     cb::fs::ScopedTempDir dir("cbrun");
     const jj::Run done = jj::run_program({"cmd", "/c", "echo hello&exit /b 3"}, {}, dir.path());
     const std::string done_out = cb::text::from_latin1(done.out);   // (trim views its argument: keep the text alive)
@@ -176,6 +177,7 @@ CB_TEST("translate.judge_native_jvm.running_a_program", [] {
 });
 
 CB_TEST("translate.judge_native_jvm.the_original_is_built_with_clang", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     World world;
     const std::vector<stdfs::path> files = {world.file("prog.c")};
     const jj::Compiled built = jj::build_native(world.host, files, world.file("prog.exe"), "c", std::nullopt, {}, {});
@@ -194,6 +196,7 @@ CB_TEST("translate.judge_native_jvm.the_original_is_built_with_clang", [] {
 });
 
 CB_TEST("translate.judge_native_jvm.the_runtime_is_compiled_once", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     World world;
     const stdfs::path first = jj::runtime_classes(world.host);
     CB_CHECK(stdfs::exists(first / "crt" / "LibC.class"));
@@ -211,6 +214,7 @@ CB_TEST("translate.judge_native_jvm.the_runtime_is_compiled_once", [] {
 });
 
 CB_TEST("translate.judge_native_jvm.a_program_that_does_not_build_has_no_original", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     World world(0, "@hostname", false);
     const std::vector<stdfs::path> files = {world.file("prog.c")};
     const jj::Verdict v = jj::judge(world.host, files, world.dir.path() / "work");
@@ -222,6 +226,7 @@ CB_TEST("translate.judge_native_jvm.a_program_that_does_not_build_has_no_origina
 });
 
 CB_TEST("translate.judge_native_jvm.a_front_end_that_declines_refuses_the_program", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     World world;
     world.refuses_to_lower = true;
     const std::vector<stdfs::path> files = {world.file("prog.c")};
@@ -241,6 +246,7 @@ CB_TEST("translate.judge_native_jvm.a_front_end_that_declines_refuses_the_progra
 });
 
 CB_TEST("translate.judge_native_jvm.a_program_javac_rejects_is_no_compile", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     World world(1);   // javac fails for the runtime too: the judge cannot get that far
     const std::vector<stdfs::path> files = {world.file("prog.c")};
     CB_CHECK_THROWS_AS(cb::ToolError, (void)jj::judge(world.host, files, world.dir.path() / "work"));
@@ -253,6 +259,7 @@ CB_TEST("translate.judge_native_jvm.a_program_javac_rejects_is_no_compile", [] {
 });
 
 CB_TEST("translate.judge_native_jvm.the_judge_compares_the_two_runs", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     // the program prints the host's name; so does the stand-in java: equivalent
     {
         World world;
@@ -298,6 +305,7 @@ CB_TEST("translate.judge_native_jvm.the_judge_compares_the_two_runs", [] {
 });
 
 CB_TEST("translate.judge_native_jvm.the_round_trip_stops_where_a_stage_does", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     // the original Java does not compile: no original
     {
         World world(1);

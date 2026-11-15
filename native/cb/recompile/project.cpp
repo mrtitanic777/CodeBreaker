@@ -524,6 +524,7 @@ int run_command(const CommandHooks& hooks, std::span<const std::string> args, co
                                      info.functions, info.name, info.name));
         }
         say(std::format("{}: {} functions, {} switch tables, {} unimplemented instructions", info.name, info.functions, info.switches, info.unimplemented));
+        if (info.modules != 0) say(std::format("  {} other modules translated and linked (reports/modules.txt)", info.modules));
         say("  -> " + native_text(info.dir));
         say("  build: " + native_text(info.dir / ("Build-" + info.name + ".bat")));
         say("  play:  " + native_text(info.dir / ("Play-" + info.name + ".bat")));

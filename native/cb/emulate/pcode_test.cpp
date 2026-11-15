@@ -36,7 +36,8 @@ sfs::path languages() { return sfs::path(CB_SOURCE_DIR) / "decompiler" / "langua
 
 PcodeConfig config() { return PcodeConfig{find_exe(), languages()}; }
 
-bool available() { return !find_exe().empty() && sfs::exists(languages() / "x86.sla"); }
+// (the lifting program is a Windows executable: off Windows there is none to start)
+bool available() { return std::filesystem::path::preferred_separator == '\\' && !find_exe().empty() && sfs::exists(languages() / "x86.sla"); }
 
 const Op* find_op(const Lifted& l, std::string_view opcode) {
     for (const Op& op : l.ops) {
