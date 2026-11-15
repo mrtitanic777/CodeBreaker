@@ -41,3 +41,23 @@ std::string_view mnemonic(int row);
 bool conditional(int row);
 
 }  // namespace cb::decompile::arm::ext
+
+// ARMv7-A Thumb: the 32-bit instructions (a first halfword of $E800 or more) and the 16-bit ones Thumb-1 does not have. The branches decode into the ordinary
+// `Op::B` / `Op::Bl` / `Op::Blx` (so flow, the interpreter and the writers need nothing new); IT, CBZ / CBNZ, the hints, the byte-reversal and extension
+// instructions and the VFP's Thumb encodings (the ARM rows, their condition 1110) are `Op::Ext`; every other 32-bit instruction is decoded for its length and
+// its text only (Capstone's disassembly of it), and an interpreter stops at it as not run.
+namespace cb::decompile::arm::t2 {
+
+inline constexpr int kIt = 1000, kCbz = 1001, kCbnz = 1002, kHint = 1010, kExtend = 1020, kMovt = 1030, kUbfx = 1031, kSbfx = 1032, kBfi = 1033, kExtend32 = 1040, kOpaque = 1100;
+
+bool is_32bit(std::uint16_t first);
+// The instruction at `a` (and `b` for a 32-bit one) running at `pc`, or nullopt where Thumb-1 decoding is what is wanted.
+std::optional<Insn> decode(std::uint16_t a, std::uint16_t b, std::uint32_t pc, Arch arch);
+// The text of an `Op::Ext` Thumb instruction.
+std::string text(const Insn& insn, const AddressLabels& labels);
+// The bytes of a line that is one of the 16-bit rows (IT, CBZ, `nop.n`, `uxtb r0, r1` ...); nullopt for another mnemonic.
+std::optional<Bytes> assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels);
+// The condition (0-14) that applies to the instruction the `it` at its position leaves `index` instructions before (0 first), or 14 outside a block.
+unsigned it_condition(std::uint8_t first_condition, std::uint8_t mask, unsigned index);
+
+}  // namespace cb::decompile::arm::t2

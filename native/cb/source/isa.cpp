@@ -94,6 +94,8 @@ std::optional<DecodedInsn> decode_arm_as(ByteView mem, std::uint32_t pc, decompi
 std::optional<DecodedInsn> decode_arm(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V4T); }
 // The ARM946E-S (ARMv5TE): the same, with BLX (a call whose target has the other state), CLZ and the rest of the ARMv5TE instructions.
 std::optional<DecodedInsn> decode_arm9(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V5TE); }
+// The ARM11 (ARMv6K, the 3DS): ARMv5TE and the ARMv6 and VFP rows.
+std::optional<DecodedInsn> decode_arm11(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V6K); }
 
 // The 68000: a TRAP is a branch to its handler (formats/code_scan: not a function start); a halt ends the flow.
 std::optional<DecodedInsn> decode_68k(ByteView mem, std::uint32_t pc) {
@@ -268,6 +270,10 @@ const formats::Decoder& arm9_decoder() {
     static const formats::Decoder decoder = decode_arm9;
     return decoder;
 }
+const formats::Decoder& arm11_decoder() {
+    static const formats::Decoder decoder = decode_arm11;
+    return decoder;
+}
 const formats::Decoder& m68k_decoder() {
     static const formats::Decoder decoder = decode_68k;
     return decoder;
@@ -287,6 +293,14 @@ const build::Encoder& arm_encoder() {
 }
 const build::Encoder& arm9_encoder() {
     static const ArmSyntax syntax(decompile::arm::Arch::V5TE);
+    return syntax;
+}
+const build::Encoder& arm11_encoder() {
+    static const ArmSyntax syntax(decompile::arm::Arch::V6K);
+    return syntax;
+}
+const build::Encoder& armv7_encoder() {
+    static const ArmSyntax syntax(decompile::arm::Arch::V7A);
     return syntax;
 }
 const build::Encoder& m68k_encoder() {

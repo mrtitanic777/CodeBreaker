@@ -79,22 +79,32 @@ by code, no `cmd`: go through the interface above, or put the code in a `_win.cp
 
 ## 3. State
 
-2026-11-14, Ubuntu 24.04 (WSL), GCC 13, `cmake -S native -B state/work/linux-build -G Ninja`:
+2026-11-15, Ubuntu 24.04 (WSL), GCC 13, packages `libssl-dev libcapstone-dev libunicorn-dev`:
 
-- **`cb_core` and its tests: 139 of 139 pass** (`cmake --build state/work/linux-build --target cb_tests_core`, then
-  `state/work/linux-build/bin/cb_tests_core`). The Capstone and Unicorn tests are skipped on a machine that has no
-  `libcapstone.so`/`libunicorn.so` (Z3 is found: the system's `libz3.so.4`). On Windows the same tests, MSVC: 140 of 140;
-  GCC and clang-cl keep building.
-- **Compile on Linux with `core` portable** (static libraries `cb_base cb_jobs cb_knowledge cb_platforms cb_symbols
-  cb_compare cb_analyze cb_emulate cb_engine`): all but six files. What stops each:
-  - `formats/xbox/crypto/xecrypt.cpp`, `xecrypt_rsa.cpp`, `stfs.cpp`: BCrypt AES, RSA and signatures. They need portable
-    implementations or OpenSSL; this machine has `libcrypto.so.3` but not its headers.
-  - `verify/gate16/setup16.cpp`: Winsock (move onto `core/socket.hpp`).
-  - `translate/frontends/python/wide.cpp`: `<intrin.h>` (`_umul128` and the like).
-  - `verify/regress.cpp`: moved onto `fs::set_env`, `fs::process_id`, `fs::executable_path` (not yet rebuilt on Linux).
-- Needed for the tests that run engines: `libunicorn.so` and `libcapstone.so` (build them from the sources the prebuilt
-  DLLs came from, or install `libcapstone-dev` and a Unicorn 2 package) and, for the DOS engine, a Linux build of
-  `native/dosexec` (its C interface takes `wchar_t` paths: 32-bit on Linux).
+    cmake -S native -B state/work/linux-build -G Ninja && cmake --build state/work/linux-build -j4
 
-Next, in order: `socket` into `ui`, `verify` and `java`; the xbox crypto; the engines as shared libraries (roadmap track 8,
-phase 3); `tools/` shell equivalents.
+- **Everything compiles and links**: `codebreaker`, `cb_tests`, the area test programs and the helper programs the tests start
+  (`cb_worker_probe.exe`, `cb_fake_qemu.exe`, `cb_fake_decompiler.exe`, `cb_lane_worker.exe`, `cb_observe_worker.exe`: on Linux
+  they are ELF files that keep the `.exe` name the tests give them). `codebreaker --help`, `identify` and the other commands run.
+  The state folder has to be on a Linux file system (`CB_STATE=/tmp/...`): SQLite's WAL needs shared memory, which the `/mnt/c`
+  mount does not give.
+- **What moved off the Windows API in this phase**: sockets (`ui/serve`, `ui/mcp_http`, `ui/service_client`, `verify/gate16`, and
+  their tests) onto `core/socket.hpp` (send timeouts, `Socket::timed_out()`, `connect(..., timed_out)`); the service's
+  jobs and its detached launch onto `core/process.hpp` (`Capture::ToFile(path, append)`, `ProcessSpec::terminal`,
+  `Process::pid()`, `start_detached`); `StreamRedirect` on Windows now redirects the C runtime's descriptor as the POSIX
+  one does; random bytes, AES/DES/3DES and RSA (key generation, PKCS#1 SHA-1 sign and verify) onto `core/crypto.hpp`
+  (CNG in `crypto_cipher_win.cpp`, OpenSSL's libcrypto in `crypto_cipher_posix.cpp`); `localtime_s`/`gmtime_s`, `_subborrow_u64`,
+  the DOS engine's wide paths (UTF-32 `wchar_t` on Linux) and `codebreaker`'s Python terminal launch (no allocator on Linux:
+  `app/allocator_main.cpp` is only on the Windows source line) are portable. The static libraries reach into one another in a
+  cycle, so on Linux the executables are linked with `--start-group`.
+- **Engines**: `libunicorn.so.2` loads through `dynlib`. The system's `libcapstone.so.4` does **not** serve: the headers in
+  `native/third_party/include/capstone` are Capstone **5.0** (the prebuilt `capstone.dll`), whose records are laid out
+  differently from 4.0's, so `core/capstone_api.cpp` now refuses a library of another major version (a clear error, not a
+  crash). Tests that decode x86 fail on Linux until a Capstone 5 `libcapstone.so` is built or installed (an Ubuntu without a
+  Capstone 5 package: build `capstone-engine` 5.0.x from source into `native/third_party/bin`). The DOS engine
+  (`native/dosexec`) has no Linux build yet (phase 3).
+- **Tests**: see the counts in the next paragraph; the failures left are tests that start Windows tools (`.cmd` fakes,
+  `powershell`, drive paths) and tests that need Capstone 5. Run them in shards: `cb_tests --shard K/4`.
+
+Next, in order: Capstone 5 for Linux; the Windows-tool tests onto neutral spellings (or skip on Linux); the DOS engine and the
+other DLL engines as shared libraries (roadmap track 8, phase 3); `tools/` shell equivalents.

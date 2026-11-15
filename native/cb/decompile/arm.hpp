@@ -55,7 +55,7 @@ using Flow = z80::Flow;
 enum class Isa : std::uint8_t { Arm, Thumb };
 
 // The architecture revision: the ARM7TDMI's ARMv4T (default), or the ARM946E-S's ARMv5TE.
-enum class Arch : std::uint8_t { V4T, V5TE };
+enum class Arch : std::uint8_t { V4T, V5TE, V6K, V7A };   // (V6K: the 3DS's ARM11, V7A: the Vita's Cortex-A9; each includes the ones before; decompile/arm_ext has their additions)
 
 // What an instruction does. The first sixteen are the data-processing opcode field, in order.
 enum class Op : std::uint8_t {
@@ -65,6 +65,8 @@ enum class Op : std::uint8_t {
     B, Bl, Bx, Swi, Mrs, Msr,
     // ARMv5TE
     Blx, Clz, Qadd, Qsub, Qdadd, Qdsub, Smla, Smlaw, Smulw, Smlalxy, Smul, Pld, Mcr, Mrc, Bkpt,
+    // ARMv6, ARMv7-A and the VFP: a row of decompile/arm_ext (`Insn::ext`)
+    Ext,
 };
 
 enum class Shift : std::uint8_t { Lsl, Lsr, Asr, Ror };
@@ -104,6 +106,8 @@ struct Insn {
     // ARMv5TE: SMLAxy and the like pick the top (bit set) or bottom half of rm (bit 0) and rs (bit 1); MCR and MRC name the coprocessor
     std::uint8_t xy = 0;
     std::uint8_t cp = 0, opc1 = 0, opc2 = 0, crn = 0, crm = 0;   // MCR, MRC: rd is the ARM register
+    bool v6 = false;                       // decoded or assembled for ARMv6 or later (a Thumb `mov` between two low registers is one there)
+    std::int16_t ext = -1;                 // Op::Ext: the row of decompile/arm_ext
     std::optional<std::uint32_t> target;   // where a branch or call goes (bit 0 set: Thumb)
     Flow flow = Flow::None;
 

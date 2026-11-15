@@ -130,6 +130,8 @@ bool segment_number_fixups(const formats::ne::Module& ne);
 // Whether a function's instructions load DS and do not put it back (`own_data_loads`: the `mov ax, imm` instructions that are fixed to the
 // module's own data segment, whose `mov ds, ax` changes nothing for a caller that has it already).
 bool leaves_ds(const std::vector<decompile::describe::Insn>& ins, const std::set<std::int64_t>& own_data_loads = {});
+// Whether DS was loaded from the module's own data segment before instruction `k` (see leaves_ds).
+bool loads_own_ds_before(const std::vector<decompile::describe::Insn>& ins, std::size_t k, const std::set<std::int64_t>& own_data_loads);
 // Where a self-loading KERNEL cuts its own code segment after start-up: GlobalReAlloc of CS to `mov cx, size`.
 std::optional<std::uint32_t> resident_limit_of(ByteView code);
 // Functions whose C cannot say what the original passes or returns in a register: {name: why}.

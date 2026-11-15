@@ -27,17 +27,21 @@ constexpr std::uint32_t kPtLoad = 1;
 
 }  // namespace
 
-bool probe_header(ByteView head) {
-    return head.size() >= kHeaderSize && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && le16(head, 18) == kMachineMips;
+bool probe_header(ByteView head, std::uint16_t machine) {
+    return head.size() >= kHeaderSize && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && le16(head, 18) == machine;
 }
+
+bool probe_header(ByteView head) { return probe_header(head, kMachineMips); }
 
 std::uint32_t machine_of(std::uint32_t flags) {
     const std::uint32_t m = flags & kMachineMask;
     return m == kMach5900 || m == kMachAllegrex ? m : 0;
 }
 
-Elf parse(ByteView data) {
-    if (!probe_header(data)) throw FormatError(kReader, 0, "not a 32-bit little-endian MIPS ELF file");
+Elf parse(ByteView data) { return parse(data, kMachineMips); }
+
+Elf parse(ByteView data, std::uint16_t machine) {
+    if (!probe_header(data, machine)) throw FormatError(kReader, 0, machine == kMachineMips ? "not a 32-bit little-endian MIPS ELF file" : "not a 32-bit little-endian ELF file of the machine asked for");
     Elf elf;
     elf.data.assign(data.begin(), data.end());
     elf.type = le16(data, 16);

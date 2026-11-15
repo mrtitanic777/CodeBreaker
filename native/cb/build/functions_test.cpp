@@ -198,6 +198,10 @@ Parsed parse_object(const Bytes& obj) {
     std::size_t i = 0;
     while (i + 3 <= obj.size()) {
         const std::size_t size = obj[i + 1] | (obj[i + 2] << 8);
+        if (i + 3 + size > obj.size()) {   // (a record that runs past the end: not an object)
+            p.checksums_ok = false;
+            break;
+        }
         std::uint8_t sum = 0;
         for (std::size_t k = i; k < i + 3 + size; ++k) sum = static_cast<std::uint8_t>(sum + obj[k]);
         if (sum != 0) p.checksums_ok = false;

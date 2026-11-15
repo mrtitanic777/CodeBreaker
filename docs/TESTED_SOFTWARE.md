@@ -55,6 +55,10 @@ repositories (kept outside the repository, in `GitHub/homebrew-samples/`).
 | yarc.cof (128 KB COFF) and yarc.j64 (1 MB cartridge) | Atari Jaguar | 42Bastian/JaguarDemos (yarc/) | Unlicense (public domain) | 8 each | rebuilds identical, verified (8 judged, 8 and 7 diverge when their first byte is turned over) |
 | (none) | WonderSwan / WonderSwan Color | no open-source WonderSwan program with a stated licence and a published binary was found: Wondersnake (tslanina/Retro-WonderSwanColor-Wondersnake, GPL-3.0) is source only and needs Borland TASM; the Wonderful toolchain's examples (CC0) ship no ROMs | | | the lane is tested with cartridges built in the tests (the footer layout is checked against what Wondersnake's `com2ws` writes); the rebuilt source needs NASM |
 | CDI_FROG (the CD-RTOS module of the game, 20,642 bytes, built from the C and assembly in `src/`) | Philips CD-i (a module file) | gameblabla/superquartet-cdi (src/Disk/) | MIT | 4 | rebuilds identical, verified (all 4 judged functions diverge when their first byte is turned over; `TRAP #0` system calls named and logged; the header read as the format says: sync, size, name, type, parity, execution offset) |
+| E-SRG 1.1.1 (e-srg-1.1.1e.bin, e-srg-1.1.1v.bin; 32 KB each) | Vectrex | emmulator/vectrex-e-srg (v1.1.1 release) | GPL-3.0 | 45 each | rebuilds identical, verified (12 judged functions each, all diverge when their first byte is turned over; BIOS calls and VIA registers by name) |
+| bouncer6.bin, dt2.bin (tutorial cartridges) | Vectrex | JoakimLarsson/VectrexTutorial (bin/) | GPL-3.0 | 7, 1 | rebuilds identical, verified (all judged functions diverge) |
+| Capitan Sevilla 3D Public Demo.vb (2 MB), SPONG Demo (2019-06-20).vb (2 MB), Flash.Cart.Test.Program.HyperBoy.vb (512 KB), Multi Color Demo.vb (512 KB) | Virtual Boy | VUEngine release builds (the projects' released ROMs, as downloaded to homebrew-samples/vb; repository URLs still to be filled in) | MIT (licences checked when downloaded) | 167, 130, 121, 104 | rebuilds identical, verified (12 judged functions each, all diverge when their first byte is turned over; VIP, VSU and hardware registers by name) |
+| spaceversus.rom (32 KB, three segments) | Intellivision | marcomarrero/SpaceVersus-IntyBASIC | MIT | 54 | rebuilds identical, verified (12 judged functions, all diverge when their first word is changed; STIC and PSG registers by name; the segment CRCs are the computed ones) |
 | (none) | 3DO (Opera disc, AIF LaunchMe) | no open-source 3DO program with a stated licence and a published binary was found (trapexit/3do-devkit states none; gameblabla/exp3DOsdk's ISOs link the 3DO SDK's libraries, which are not under its MIT licence) | | | the lane is tested with discs and AIF executables built in the tests; the AIF header layout (big-endian words, entry as the BL at word 3) was checked against the first 384 bytes of a published LaunchMe, read and not kept |
 
 Not done for these four: the real WonderSwan and 3DO programs above are missing (nothing to put through `reach --judge` but the tests' own cartridges); the Jaguar's
@@ -346,3 +350,18 @@ wLaunchELF (AFL-3.0, AFL-2.0) are not listed: a packed ELF is a decompression st
 | EBOOT.PBP (psplink) | PSP | pspdev/psplinkusb (v3.2.1) | BSD-3-Clause | 322 | rebuilds identical (the whole package); 120 of 120 runs equal |
 | EBOOT.PBP (llama2psp) | PSP | sixf0ur/llama2psp (1.0) | MIT | 528 | rebuilds identical; 120 of 120 runs equal |
 | EBOOT.PBP (DOSBox 0.72 for the PSP, 3 MB) | PSP | PSP-Archive/dosbox_psp (0.72-psp-0.0.5) | GPL-2.0 | not finished | the writer's analysis of this 3 MB stripped module takes over 25 minutes (backlog: the function search re-reads every pointer-like word); skipped by the test unless `CB_PS2_PSP_ALL` is set |
+
+## Nintendo 3DS homebrew (the n3ds lane)
+
+Open-source homebrew with published source, binaries only, kept in `GitHub/homebrew-samples/3ds/` (never run on this machine, never committed). Each is written as GNU as
+source by `source/n3ds_writer` and built again by CodeBreaker's own assembler; its functions (the first 400, in order) are then run in the interpreter, in the original and
+in the rebuilt file (`cb_tests --filter machine_n3ds.homebrew`; it skips programs that are not on the machine).
+
+| Program | Console | Source | Licence | Functions | Result |
+|---|---|---|---|---|---|
+| FBI.3dsx (1.2 MB) | 3DS | Steveice10/FBI (2.6.1) | MIT | 4221 | rebuilds identical (write and build 21 s); 800 of 800 runs equal |
+| Anemone3DS.3dsx (1.7 MB) | 3DS | astronautlevel2/Anemone3DS (v3.0.1) | GPL-3.0 | 4399 | rebuilds identical (32 s); 800 of 800 runs equal |
+| Anemone3DS.elf (5.3 MB, with debug information) | 3DS (ELF) | astronautlevel2/Anemone3DS (v3.0.1) | GPL-3.0 | 3686 | rebuilds identical (57 s); 800 of 800 runs equal |
+| Universal-Updater.3dsx (3 MB) | 3DS | Universal-Team/Universal-Updater (v3.4.1) | GPL-3.0 | 5629 | rebuilds identical (136 s); 800 of 800 runs equal |
+
+`codebreaker reach --judge` on the folder: 14249 functions of the three `.3dsx` files, all verified.

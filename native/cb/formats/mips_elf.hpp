@@ -71,8 +71,11 @@ struct Elf {
 
 // FormatError if the bytes are not a 32-bit little-endian ELF of machine MIPS with its tables inside the file.
 Elf parse(ByteView data);
+// The same for a 32-bit little-endian ELF of another machine (the 3DS's and the Vita's ARM, 40): the tables are the ELF format's, not MIPS's.
+Elf parse(ByteView data, std::uint16_t machine);
 // The file begins as one: ELF magic, 32-bit, little-endian, machine MIPS (the flags are the caller's to read).
 bool probe_header(ByteView head);
+bool probe_header(ByteView head, std::uint16_t machine);
 // The flags' MIPS machine ($00920000 R5900, $00A20000 Allegrex, 0 other).
 std::uint32_t machine_of(std::uint32_t flags);
 

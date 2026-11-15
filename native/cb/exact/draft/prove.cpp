@@ -1,6 +1,7 @@
 #include "cb/exact/draft/prove.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <format>
 
@@ -210,7 +211,8 @@ std::vector<std::string> compile_fixes(std::string_view source, std::string_view
     }
     if (pointer) {
         const bool bytes = byte_pointers.contains(*pointer);   // (read a byte at a time: char)
-        for (const char* type : bytes ? std::initializer_list<const char*>{"char", "int"} : std::initializer_list<const char*>{"int", "char"})
+        const std::array<const char*, 2> types = bytes ? std::array<const char*, 2>{"char", "int"} : std::array<const char*, 2>{"int", "char"};   // (an initializer_list from each arm would outlive its backing array)
+        for (const char* type : types)
             if (auto d = text::declare_pointer(source, *pointer, type)) out.push_back(std::move(*d));
         if (illegal && !bytes) {   // (or a word through a cast in place: the variable stays an int)
             std::string fixed;

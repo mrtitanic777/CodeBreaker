@@ -21,6 +21,9 @@
 #include "cb/formats/segacd.hpp"
 #include "cb/formats/snes.hpp"
 #include "cb/formats/threedo.hpp"
+#include "cb/formats/vectrex.hpp"
+#include "cb/formats/vb.hpp"
+#include "cb/formats/intv.hpp"
 #include "cb/formats/wonderswan.hpp"
 
 namespace cb::formats::detect {
@@ -313,6 +316,27 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         if ((flags & 0x00FF0000u) == 0x00A20000u)
             return one((head[16] | head[17] << 8) == 0xFFA0 ? "PSP module (PRX)" : "PSP executable (ELF)", std::format("Allegrex, entry 0x{:08X}, {} bytes", entry, size), "psp", "reach");
     }
+    if (size >= 32 && head.size() >= 32 && starts_with(head, 0, "3DSX")) {   // a 3DS homebrew executable: the header gives the segment sizes
+        return one("Nintendo 3DS homebrew executable (3DSX)",
+                   std::format("ARM11, code {} bytes, rodata {} bytes, data {} bytes, bss {} bytes", get<std::uint32_t>(file, 16, "detect"), get<std::uint32_t>(file, 20, "detect"),
+                               get<std::uint32_t>(file, 24, "detect") - get<std::uint32_t>(file, 28, "detect"), get<std::uint32_t>(file, 28, "detect")),
+                   "n3ds", "reach");
+    }
+    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 40 &&
+        (head[16] | head[17] << 8) == 2) {   // an ARM ELF whose entry is in the 3DS homebrew's range ($00100000 up): devkitARM's output
+        const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
+        if (entry >= 0x00100000u && entry < 0x01000000u) return one("Nintendo 3DS executable (ELF)", std::format("ARM11, entry 0x{:08X}, {} bytes", entry, size), "n3ds", "reach");
+    }
+    if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE ", 4)) && get<std::uint32_t>(file, 4, "detect") == 3) {   // a Vita SELF: the segments' table says whether they are encrypted
+        const std::uint64_t info = get<std::uint32_t>(file, 0x58, "detect");
+        const bool encrypted = info + 32 <= size && get<std::uint32_t>(file, static_cast<std::size_t>(info) + 24, "detect") == 1;
+        if (encrypted) return one("PlayStation Vita SELF (encrypted)", "not handled: the segments are encrypted", "vita", "gap");
+        return one("PlayStation Vita SELF", std::format("ARMv7-A Thumb-2, {} bytes", size), "vita", "reach");
+    }
+    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 40 &&
+        (head[16] | head[17] << 8) >= 0xFE00 && (head[16] | head[17] << 8) <= 0xFE04)   // an ARM ELF of a Sony type: VitaSDK's .velf
+        return one("PlayStation Vita executable (ELF)", std::format("ARMv7-A Thumb-2, entry field 0x{:08X}, {} bytes", get<std::uint32_t>(file, 24, "detect"), size), "vita", "reach");
+    if (size >= 0x104 && head.size() >= 0x104 && starts_with(head, 0x100, "NCSD")) return one("Nintendo 3DS cartridge image (NCSD)", "not handled: the contents are encrypted", "n3ds", "gap");
     if (size >= 40 && head.size() >= 40 && starts_with(head, 0, std::string_view(" PBP", 4))) {   // an EBOOT.PBP: its DATA.PSP is an ELF, or an encrypted ~PSP module (recorded, not handled)
         const std::uint32_t at = get<std::uint32_t>(file, 8 + 4 * 6, "detect");
         if (at + 4 <= size && starts_with(file, at, "~PSP")) return one("PSP EBOOT.PBP (encrypted ~PSP module)", "not handled: the module is encrypted", "psp", "gap");
@@ -400,6 +424,28 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
                 return one(program.disc ? "Philips CD-i disc" : "CD-RTOS module file", std::format("{} CD-RTOS module(s), {} executable", program.modules.size(), program.placed().size()), "cdi", "reach");
             } catch (const FormatError&) {
             }
+        }
+    }
+    if (name_ends_with(name, {".vec", ".bin", ".gam"}) && starts_with(head, 0, "g GCE")) {   // a Vectrex cartridge: the header the BIOS reads starts `g GCE`
+        try {
+            const formats::vectrex::Rom rom = formats::vectrex::parse(file);
+            return one("Vectrex cartridge", std::format("\"{}\", {} bytes, program at ${:04X}{}", rom.copyright, size, rom.entry, rom.title.empty() ? std::string() : ", \"" + rom.title.front().text + "\""), "vectrex", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".rom", ".int"}) && size >= 519) {   // an Intellivision cartridge: an Intellicart .rom ($A8, N, ~N and the segments) or a raw .int
+        try {
+            const formats::intv::Rom rom = formats::intv::parse(file, !name_ends_with(name, {".rom"}));
+            return one(rom.raw ? "Intellivision cartridge (raw words)" : "Intellivision cartridge (Intellicart .rom)",
+                       std::format("CP1610, {} segment(s), {} words, \"{}\"{}", rom.segments.size(), rom.word_count(), rom.title(), rom.entry() ? std::format(", program at ${:04X}", *rom.entry()) : std::string()), "intv", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".vb", ".vboy"}) && size >= 0x4000 && (size & (size - 1)) == 0) {   // a Virtual Boy cartridge: a power-of-two ROM whose reset slot (the last 16 bytes) holds code
+        try {
+            const formats::vb::Rom rom = formats::vb::parse(file);
+            return one("Virtual Boy cartridge", std::format("V810, \"{}\", {} bytes, reset at 0x{:08X}", rom.header.title, size, rom.reset_address()), "vb", "reach");
+        } catch (const FormatError&) {
         }
     }
     if (head.size() >= 0x108 && (starts_with(head, 0x100, "NEO-GEO") || starts_with(head, 0x100, "EN-OEG"))) {   // a Neo Geo P-ROM: "NEO-GEO" at $100, or with its words swapped

@@ -7,6 +7,7 @@
 #include <format>
 
 #include "cb/core/error.hpp"
+#include "cb/decompile/arm_ext.hpp"
 
 namespace cb::emulate::arm {
 
@@ -38,7 +39,9 @@ Sum add_with_carry(std::uint32_t x, std::uint32_t y, bool carry_in) {
 
 std::string BusAccess::text() const { return std::format("{}{}", kind == Kind::Read ? 'r' : 'w', size); }
 
-std::string BiosCall::text() const { return std::format("SWI:{:02X}({:X},{:X},{:X},{:X})", function, args[0], args[1], args[2], args[3]); }
+std::string BiosCall::text() const {
+    if (!name.empty()) return std::format("{}({:x},{:x},{:x},{:x})", name, args[0], args[1], args[2], args[3]);
+    return std::format("SWI:{:02X}({:X},{:X},{:X},{:X})", function, args[0], args[1], args[2], args[3]); }
 
 std::string Fault::text() const {
     switch (kind) {
@@ -54,13 +57,13 @@ std::string Fault::text() const {
 
 Bus::Bus(System system)
     : system_(system),
-      ewram_(system == System::Gba ? kEwramSize : kNdsMainSize, 0),
-      iwram_(system == System::Gba ? kIwramSize : kNdsSharedSize, 0),
-      io_(system == System::Gba ? kIoSize : kNdsIoSize, 0),
-      palette_(system == System::Gba ? kPaletteSize : 0x800, 0),
-      vram_(system == System::Gba ? kVramSize : kNdsVramSize, 0),
-      oam_(system == System::Gba ? kOamSize : 0x800, 0),
-      sram_(system == System::Gba ? kSramSize : 0, 0xFF) {
+      ewram_(system >= System::N3ds ? 0 : system == System::Gba ? kEwramSize : kNdsMainSize, 0),
+      iwram_(system >= System::N3ds ? 0 : system == System::Gba ? kIwramSize : kNdsSharedSize, 0),
+      io_(system >= System::N3ds ? 0 : system == System::Gba ? kIoSize : kNdsIoSize, 0),
+      palette_(system >= System::N3ds ? 0 : system == System::Gba ? kPaletteSize : 0x800, 0),
+      vram_(system >= System::N3ds ? 0 : system == System::Gba ? kVramSize : kNdsVramSize, 0),
+      oam_(system >= System::N3ds ? 0 : system == System::Gba ? kOamSize : 0x800, 0),
+      sram_(system >= System::N3ds ? 0 : system == System::Gba ? kSramSize : 0, 0xFF) {
     if (system == System::Nds9) {
         itcm_.assign(kNdsItcmSize, 0);
         dtcm_.assign(kNdsDtcmSize, 0);
@@ -70,6 +73,10 @@ Bus::Bus(System system)
 }
 
 void Bus::load(std::uint32_t address, ByteView data) {
+    if (paged()) {
+        for (std::size_t i = 0; i < data.size(); ++i) paged_.write(address + static_cast<std::uint32_t>(i), 1, data[i]);
+        return;
+    }
     for (std::size_t i = 0; i < data.size(); ++i) {
         std::size_t room = 0;
         if (std::uint8_t* to = place(address + static_cast<std::uint32_t>(i), room)) *to = data[i];
@@ -108,6 +115,7 @@ std::uint8_t* Bus::place(std::uint32_t a, std::size_t& room) {
         room = memory.size() - offset;
         return memory.data() + offset;
     };
+    if (paged()) return nullptr;
     if (system_ != System::Gba) {
         if (system_ == System::Nds9) {
             if (a - dtcm_base_ < dtcm_size_) return at(dtcm_, (a - dtcm_base_) & (kNdsDtcmSize - 1));   // (over the main RAM it lies in)
@@ -154,6 +162,7 @@ std::uint8_t* Bus::place(std::uint32_t a, std::size_t& room) {
 
 bool Bus::mapped(std::uint32_t address) const {
     if (range_of(address)) return true;
+    if (paged()) return system_ == System::N3ds ? address >= 0x00100000 && address < 0x20000000 : address >= 0x81000000;
     if (system_ != System::Gba) {
         std::size_t room = 0;
         return const_cast<Bus*>(this)->place(address, room) != nullptr;   // (place only finds where; it changes nothing)
@@ -183,6 +192,7 @@ std::uint32_t Bus::read(std::uint32_t address, unsigned size) {
         }
         return v;
     }
+    if (paged()) return static_cast<std::uint32_t>(paged_.read(address, size));
     std::size_t room = 0;
     if (big_endian_ && size < 4) address ^= 4 - size;   // (a byte is at address ^ 3 of the reversed word, a halfword at address ^ 2)
     const std::uint8_t* from = place(address, room);
@@ -206,6 +216,10 @@ void Bus::write(std::uint32_t address, unsigned size, std::uint32_t value) {
         value = (value & 0xFF) * 0x0101;
         address &= ~1u;
         size = 2;
+    }
+    if (paged()) {
+        paged_.write(address, size, value);
+        return;
     }
     std::size_t room = 0;
     if (big_endian_ && size < 4) address ^= 4 - size;
@@ -354,18 +368,27 @@ std::optional<Fault> Cpu::step() {
     std::optional<da::Insn> insn;
     if (thumb()) {
         const std::uint32_t a = bus_->read(pc & ~1u, 2);
-        const std::uint32_t b = (a >> 11) == 0x1E ? bus_->read((pc & ~1u) + 2, 2) : 0;
+        const std::uint32_t b = (a >> 11) == 0x1E || (bus_->arch() >= da::Arch::V7A && a >= 0xE800) ? bus_->read((pc & ~1u) + 2, 2) : 0;
         insn = da::decode_thumb(static_cast<std::uint16_t>(a), static_cast<std::uint16_t>(b), pc | 1, bus_->arch());
     } else {
         insn = da::decode_arm(bus_->read(pc & ~3u, 4), pc, bus_->arch());
     }
     if (!insn) return Fault{Fault::Kind::NoInstruction, pc, 0, {}, 0};
     branched_ = false;
-    if (!condition(insn->cond)) {
+    const bool is_it = insn->op == da::Op::Ext && insn->thumb() && insn->ext == da::t2::kIt;
+    const bool in_it = it_left_ > 0 && !is_it;
+    const unsigned cond = in_it ? da::t2::it_condition(it_first_, it_mask_, it_index_) : insn->cond;
+    if (in_it) {
+        ++it_index_;
+        --it_left_;
+    }
+    if (!condition(cond)) {
         r[15] = pc + insn->length;
         ++steps;
         return std::nullopt;
     }
+    if (in_it && insn->length == 2 && (static_cast<unsigned>(insn->op) < 16 || insn->op == da::Op::Mul) && insn->op != da::Op::Tst && insn->op != da::Op::Teq && insn->op != da::Op::Cmp && insn->op != da::Op::Cmn)
+        insn->s = false;   // (the 16-bit data-processing instructions do not set the flags inside an IT block)
     const std::optional<Fault> fault = execute(*insn);
     if (fault && fault->kind != Fault::Kind::Swi) return fault;
     if (!branched_) r[15] = pc + insn->length;
@@ -601,6 +624,7 @@ std::optional<Fault> Cpu::execute(const da::Insn& i) {
             }
             return std::nullopt;
         }
+        case da::Op::Ext: return i.thumb() ? execute_thumb_ext(i, at) : execute_ext(i, at);
         case da::Op::Bkpt: return Fault{Fault::Kind::NotRun, at, 0, "bkpt", 0};
         case da::Op::Swi: return Fault{Fault::Kind::Swi, at, 0, {}, i.imm};
         case da::Op::Mrs: r[i.rd] = i.spsr ? spsr() : cpsr; return std::nullopt;
@@ -621,6 +645,320 @@ std::optional<Fault> Cpu::execute(const da::Insn& i) {
         }
         default: return Fault{Fault::Kind::NoInstruction, at, 0, {}, 0};
     }
+}
+
+// The ARMv6 and later instructions of decompile/arm_ext that this interpreter runs; the others stop the run as not run (the VFP, the parallel arithmetic).
+std::optional<Fault> Cpu::execute_ext(const da::Insn& i, std::uint32_t at) {
+    namespace ex = da::ext;
+    const std::uint32_t w = i.word;
+    const unsigned rd12 = (w >> 12) & 15, rn16 = (w >> 16) & 15, rm0 = w & 15, rs8 = (w >> 8) & 15;
+    const auto rotated = [&](std::uint32_t v) { return da::rotate_right(v, 8 * ((w >> 10) & 3)); };
+    const auto sext8 = [](std::uint32_t v) { return static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(v))); };
+    const auto sext16 = [](std::uint32_t v) { return static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(v))); };
+    const auto swap32 = [](std::uint32_t v) { return v >> 24 | (v >> 8 & 0xFF00u) | (v << 8 & 0xFF0000u) | v << 24; };
+    const auto half = [](std::uint32_t v, bool top) { return static_cast<std::int32_t>(static_cast<std::int16_t>(top ? v >> 16 : v)); };
+    const auto load = [&](unsigned size, std::uint32_t address, std::uint32_t& out) -> std::optional<Fault> {
+        if (!bus_->mapped(address)) return Fault{Fault::Kind::BusError, at, address, {}, 0};
+        out = bus_->read(address & ~(size - 1), size);
+        return std::nullopt;
+    };
+    switch (ex::semantics(i.ext)) {
+        case ex::Sem::Rev: r[rd12] = swap32(r[rm0]); return std::nullopt;
+        case ex::Sem::Rev16: r[rd12] = (r[rm0] & 0x00FF00FFu) << 8 | (r[rm0] >> 8 & 0x00FF00FFu); return std::nullopt;
+        case ex::Sem::Revsh: r[rd12] = sext16(swap32(r[rm0]) >> 16); return std::nullopt;
+        case ex::Sem::Sxtb: r[rd12] = sext8(rotated(r[rm0])); return std::nullopt;
+        case ex::Sem::Sxth: r[rd12] = sext16(rotated(r[rm0])); return std::nullopt;
+        case ex::Sem::Uxtb: r[rd12] = rotated(r[rm0]) & 0xFF; return std::nullopt;
+        case ex::Sem::Uxth: r[rd12] = rotated(r[rm0]) & 0xFFFF; return std::nullopt;
+        case ex::Sem::Sxtab: r[rd12] = r[rn16] + sext8(rotated(r[rm0])); return std::nullopt;
+        case ex::Sem::Sxtah: r[rd12] = r[rn16] + sext16(rotated(r[rm0])); return std::nullopt;
+        case ex::Sem::Uxtab: r[rd12] = r[rn16] + (rotated(r[rm0]) & 0xFF); return std::nullopt;
+        case ex::Sem::Uxtah: r[rd12] = r[rn16] + (rotated(r[rm0]) & 0xFFFF); return std::nullopt;
+        case ex::Sem::Ldrex: case ex::Sem::Ldrexb: case ex::Sem::Ldrexh: {
+            const unsigned size = ex::semantics(i.ext) == ex::Sem::Ldrex ? 4 : ex::semantics(i.ext) == ex::Sem::Ldrexb ? 1 : 2;
+            std::uint32_t v = 0;
+            if (const auto fault = load(size, r[rn16], v)) return fault;
+            r[rd12] = v;
+            return std::nullopt;
+        }
+        case ex::Sem::Strex: case ex::Sem::Strexb: case ex::Sem::Strexh: {
+            const unsigned size = ex::semantics(i.ext) == ex::Sem::Strex ? 4 : ex::semantics(i.ext) == ex::Sem::Strexb ? 1 : 2;
+            if (!bus_->mapped(r[rn16])) return Fault{Fault::Kind::BusError, at, r[rn16], {}, 0};
+            bus_->write(r[rn16] & ~(size - 1), size, r[rm0]);
+            r[rd12] = 0;   // (the exclusive monitor always succeeds: one processor runs)
+            return std::nullopt;
+        }
+        case ex::Sem::Clrex: case ex::Sem::Hint: return std::nullopt;
+        case ex::Sem::Umaal: {
+            const std::uint64_t sum = static_cast<std::uint64_t>(r[rm0]) * r[rs8] + r[rd12] + r[rn16];
+            r[rd12] = static_cast<std::uint32_t>(sum);
+            r[rn16] = static_cast<std::uint32_t>(sum >> 32);
+            return std::nullopt;
+        }
+        case ex::Sem::Smmul: case ex::Sem::Smmla: case ex::Sem::Smmls: {
+            const std::int64_t product = static_cast<std::int64_t>(static_cast<std::int32_t>(r[rm0])) * static_cast<std::int32_t>(r[rs8]);
+            const std::int64_t accumulator = static_cast<std::int64_t>(static_cast<std::uint64_t>(r[rd12]) << 32);
+            const auto kind = ex::semantics(i.ext);
+            const std::int64_t total = kind == ex::Sem::Smmul ? product : kind == ex::Sem::Smmla ? accumulator + product : accumulator - product;
+            r[rn16] = static_cast<std::uint32_t>(static_cast<std::uint64_t>(total) >> 32);
+            return std::nullopt;
+        }
+        case ex::Sem::Ssat: case ex::Sem::Usat: {
+            const bool is_signed = ex::semantics(i.ext) == ex::Sem::Ssat;
+            const unsigned bits = ((w >> 16) & 31) + (is_signed ? 1 : 0);
+            unsigned amount = (w >> 7) & 31;
+            std::int64_t v = static_cast<std::int32_t>(r[rm0]);
+            if ((w >> 6) & 1) v = amount == 0 ? (v < 0 ? -1 : 0) : v >> amount;
+            else v = static_cast<std::int32_t>(r[rm0] << amount);
+            const std::int64_t high = is_signed ? (std::int64_t{1} << (bits - 1)) - 1 : (std::int64_t{1} << bits) - 1;
+            const std::int64_t low = is_signed ? -(std::int64_t{1} << (bits - 1)) : 0;
+            std::int64_t out = v;
+            if (v > high) out = high;
+            if (v < low) out = low;
+            if (out != v) cpsr |= 0x08000000u;
+            r[rd12] = static_cast<std::uint32_t>(out);
+            return std::nullopt;
+        }
+        case ex::Sem::Pkhbt: r[rd12] = (r[rn16] & 0xFFFFu) | ((r[rm0] << ((w >> 7) & 31)) & 0xFFFF0000u); return std::nullopt;
+        case ex::Sem::Pkhtb: {
+            const unsigned amount = (w >> 7) & 31;
+            const std::int32_t shifted = amount == 0 ? (static_cast<std::int32_t>(r[rm0]) < 0 ? -1 : 0) : static_cast<std::int32_t>(r[rm0]) >> amount;
+            r[rd12] = (r[rn16] & 0xFFFF0000u) | (static_cast<std::uint32_t>(shifted) & 0xFFFFu);
+            return std::nullopt;
+        }
+        case ex::Sem::Usad8: case ex::Sem::Usada8: {
+            std::uint32_t sum = ex::semantics(i.ext) == ex::Sem::Usada8 ? r[rd12] : 0;
+            for (unsigned k = 0; k < 32; k += 8) {
+                const std::int32_t a = static_cast<std::int32_t>(r[rm0] >> k & 0xFF), b = static_cast<std::int32_t>(r[rs8] >> k & 0xFF);
+                sum += static_cast<std::uint32_t>(a > b ? a - b : b - a);
+            }
+            r[rn16] = sum;
+            return std::nullopt;
+        }
+        case ex::Sem::Smuad: case ex::Sem::Smlad: case ex::Sem::Smusd: case ex::Sem::Smlsd: {
+            const auto kind = ex::semantics(i.ext);
+            const std::int64_t low = static_cast<std::int64_t>(half(r[rm0], false)) * half(r[rs8], false);
+            const std::int64_t high = static_cast<std::int64_t>(half(r[rm0], true)) * half(r[rs8], true);
+            std::int64_t total = (kind == ex::Sem::Smuad || kind == ex::Sem::Smlad) ? low + high : low - high;
+            if (kind == ex::Sem::Smlad || kind == ex::Sem::Smlsd) total += static_cast<std::int32_t>(r[rd12]);
+            if (total != static_cast<std::int32_t>(total)) cpsr |= 0x08000000u;
+            r[rn16] = static_cast<std::uint32_t>(total);
+            return std::nullopt;
+        }
+        default: return execute_vfp(i, at);
+    }
+}
+
+// The VFP rows that move data and do the single- and double-precision arithmetic on the host floats (rounding mode and exception flags are not modelled).
+std::optional<Fault> Cpu::execute_vfp(const da::Insn& i, std::uint32_t at) {
+    namespace ex = da::ext;
+    const std::uint32_t w = i.word;
+    const std::string_view name = ex::mnemonic(i.ext);
+    const bool dbl = (w >> 8) & 1;
+    const unsigned rn = (w >> 16) & 15, rt = (w >> 12) & 15, rt2 = (w >> 16) & 15;
+    // register indices in vfp_ (a double d is the pair of singles 2d, 2d+1)
+    const unsigned d_dest = dbl ? (((w >> 12) & 15) | ((w >> 22) & 1) << 4) * 2 : ((w >> 12) & 15) << 1 | ((w >> 22) & 1);
+    const unsigned d_m = dbl ? ((w & 15) | ((w >> 5) & 1) << 4) * 2 : (w & 15) << 1 | ((w >> 5) & 1);
+    const unsigned d_n = dbl ? (((w >> 16) & 15) | ((w >> 7) & 1) << 4) * 2 : ((w >> 16) & 15) << 1 | ((w >> 7) & 1);
+    const auto get_f = [&](unsigned k) { return std::bit_cast<float>(vfp_[k]); };
+    const auto set_f = [&](unsigned k, float v) { vfp_[k] = std::bit_cast<std::uint32_t>(v); };
+    const auto get_d = [&](unsigned k) { return std::bit_cast<double>(static_cast<std::uint64_t>(vfp_[k + 1]) << 32 | vfp_[k]); };
+    const auto set_d = [&](unsigned k, double v) {
+        const auto bits = std::bit_cast<std::uint64_t>(v);
+        vfp_[k] = static_cast<std::uint32_t>(bits);
+        vfp_[k + 1] = static_cast<std::uint32_t>(bits >> 32);
+    };
+    const std::string_view base_name = name.substr(0, name.find('.'));
+    const auto word_address = [&](std::uint32_t reg) { return reg == 15 ? (r[15] + (i.thumb() ? 4u : 8u)) & ~3u : r[reg]; };
+    const auto bad = [&](std::uint32_t address) { return !bus_->mapped(address); };
+    if (base_name == "vldr" || base_name == "vstr") {
+        const std::uint32_t offset = (w & 0xFF) * 4;
+        const std::uint32_t address = ((w >> 23) & 1) ? word_address(rn) + offset : word_address(rn) - offset;
+        for (unsigned k = 0; k < (dbl ? 2u : 1u); ++k) {
+            const std::uint32_t a = address + 4 * k;
+            if (bad(a)) return Fault{Fault::Kind::BusError, at, a, {}, 0};
+            if (base_name == "vldr") vfp_[d_dest + k] = bus_->read(a, 4);
+            else bus_->write(a, 4, vfp_[d_dest + k]);
+        }
+        return std::nullopt;
+    }
+    if (base_name == "vpush" || base_name == "vpop" || base_name == "vldmia" || base_name == "vstmia" || base_name == "vldmdb" || base_name == "vstmdb") {
+        const unsigned count = w & 0xFF;   // words
+        const bool load = base_name == "vpop" || base_name == "vldmia" || base_name == "vldmdb";
+        const bool down = base_name == "vpush" || base_name == "vldmdb" || base_name == "vstmdb";
+        const unsigned base_reg = (base_name == "vpush" || base_name == "vpop") ? 13 : rn;
+        std::uint32_t address = down ? r[base_reg] - 4 * count : r[base_reg];
+        const std::uint32_t start = address;
+        for (unsigned k = 0; k < count; ++k, address += 4) {
+            if (bad(address)) return Fault{Fault::Kind::BusError, at, address, {}, 0};
+            if (load) vfp_[(d_dest + k) & 63] = bus_->read(address, 4);
+            else bus_->write(address, 4, vfp_[(d_dest + k) & 63]);
+        }
+        if (base_name == "vpush" || base_name == "vpop" || ((w >> 21) & 1)) r[base_reg] = down ? start : r[base_reg] + 4 * count;
+        return std::nullopt;
+    }
+    if (base_name == "vmov" && name.size() == 4) {   // between the core registers and the VFP
+        if ((w & 0x0FE00FD0) == 0x0C400B10) {   // two core registers and a double
+            const unsigned m = ((w & 15) | ((w >> 5) & 1) << 4) * 2;
+            if ((w >> 20) & 1) {
+                r[rt] = vfp_[m];
+                r[rt2] = vfp_[m + 1];
+            } else {
+                vfp_[m] = r[rt];
+                vfp_[m + 1] = r[rt2];
+            }
+            return std::nullopt;
+        }
+        const unsigned n = ((w >> 16) & 15) << 1 | ((w >> 7) & 1);
+        if ((w >> 20) & 1) r[rt] = vfp_[n];
+        else vfp_[n] = r[rt];
+        return std::nullopt;
+    }
+    if (base_name == "vmrs" || base_name == "vmsr") {
+        if (base_name == "vmsr") fpscr_ = r[rt];
+        else if (rt == 15) cpsr = (cpsr & 0x0FFFFFFFu) | (fpscr_ & 0xF0000000u);
+        else r[rt] = fpscr_;
+        return std::nullopt;
+    }
+    if (name.starts_with("vmov.")) {
+        if (dbl) set_d(d_dest, get_d(d_m));
+        else vfp_[d_dest] = vfp_[d_m];
+        return std::nullopt;
+    }
+    if (base_name == "vabs") {
+        if (dbl) set_d(d_dest, std::fabs(get_d(d_m)));
+        else vfp_[d_dest] = vfp_[d_m] & 0x7FFFFFFFu;
+        return std::nullopt;
+    }
+    if (base_name == "vneg") {
+        if (dbl) set_d(d_dest, -get_d(d_m));
+        else vfp_[d_dest] = vfp_[d_m] ^ 0x80000000u;
+        return std::nullopt;
+    }
+    if (base_name == "vsqrt") {
+        if (dbl) set_d(d_dest, std::sqrt(get_d(d_m)));
+        else set_f(d_dest, std::sqrt(get_f(d_m)));
+        return std::nullopt;
+    }
+    if (base_name == "vadd" || base_name == "vsub" || base_name == "vmul" || base_name == "vdiv" || base_name == "vnmul" || base_name == "vmla" || base_name == "vmls" ||
+        base_name == "vnmla" || base_name == "vnmls") {
+        const auto apply = [&](auto a, auto b, auto d) {
+            if (base_name == "vadd") return a + b;
+            if (base_name == "vsub") return a - b;
+            if (base_name == "vmul") return a * b;
+            if (base_name == "vdiv") return a / b;
+            if (base_name == "vnmul") return -(a * b);
+            if (base_name == "vmla") return d + a * b;
+            if (base_name == "vmls") return d - a * b;
+            if (base_name == "vnmla") return -d - a * b;
+            return -d + a * b;
+        };
+        if (dbl) set_d(d_dest, apply(get_d(d_n), get_d(d_m), get_d(d_dest)));
+        else set_f(d_dest, apply(get_f(d_n), get_f(d_m), get_f(d_dest)));
+        return std::nullopt;
+    }
+    if (base_name == "vcmp" || base_name == "vcmpe") {
+        const bool zero = ((w >> 16) & 15) == 5;
+        const double a = dbl ? get_d(d_dest) : get_f(d_dest), b = zero ? 0.0 : dbl ? get_d(d_m) : get_f(d_m);
+        std::uint32_t flags = 0x30000000u;   // unordered: C and V
+        if (a == b) flags = 0x60000000u;
+        else if (a < b) flags = 0x80000000u;
+        else if (a > b) flags = 0x20000000u;
+        fpscr_ = (fpscr_ & 0x0FFFFFFFu) | flags;
+        return std::nullopt;
+    }
+    if (name == "vcvt.f64.f32") {
+        set_d(d_dest, static_cast<double>(get_f(((w & 15) << 1) | ((w >> 5) & 1))));
+        return std::nullopt;
+    }
+    if (name == "vcvt.f32.f64") {
+        set_f(((w >> 12) & 15) << 1 | ((w >> 22) & 1), static_cast<float>(get_d(((w & 15) | ((w >> 5) & 1) << 4) * 2)));
+        return std::nullopt;
+    }
+    if (base_name == "vcvt" || base_name == "vcvtr") {
+        const bool to_float = name.starts_with("vcvt.f");
+        const bool is_signed = name.find(".s32") != std::string_view::npos;
+        if (to_float) {
+            const std::uint32_t src = vfp_[((w & 15) << 1) | ((w >> 5) & 1)];
+            const double v = is_signed ? static_cast<double>(static_cast<std::int32_t>(src)) : static_cast<double>(src);
+            if (dbl) set_d(d_dest, v);
+            else set_f(d_dest, static_cast<float>(v));
+        } else {
+            const double v = dbl ? get_d(d_m) : static_cast<double>(get_f(d_m));
+            const unsigned dest = ((w >> 12) & 15) << 1 | ((w >> 22) & 1);
+            if (std::isnan(v)) vfp_[dest] = 0;
+            else if (is_signed) vfp_[dest] = static_cast<std::uint32_t>(v >= 2147483647.0 ? INT32_MAX : v <= -2147483648.0 ? INT32_MIN : static_cast<std::int32_t>(v));
+            else vfp_[dest] = v <= 0 ? 0u : v >= 4294967295.0 ? 0xFFFFFFFFu : static_cast<std::uint32_t>(v);
+        }
+        return std::nullopt;
+    }
+    return Fault{Fault::Kind::NotRun, at, 0, std::string(name), 0};
+}
+
+
+// The Thumb additions: IT, CBZ and CBNZ, the hints, the 16-bit extensions and byte reversals, and the VFP's Thumb words (the ARM rows with their halves swapped).
+std::optional<Fault> Cpu::execute_thumb_ext(const da::Insn& i, std::uint32_t at) {
+    namespace t2 = da::t2;
+    if (i.ext == t2::kIt) {
+        it_first_ = static_cast<std::uint8_t>(i.rs);
+        it_mask_ = static_cast<std::uint8_t>(i.list);
+        it_index_ = 0;
+        it_left_ = static_cast<std::uint8_t>(4 - std::countr_zero(static_cast<unsigned>(i.list)));
+        return std::nullopt;
+    }
+    if (i.ext == t2::kCbz || i.ext == t2::kCbnz) {
+        if ((r[i.rn] == 0) == (i.ext == t2::kCbz)) branch(*i.target & ~1u);
+        return std::nullopt;
+    }
+    if (i.ext >= t2::kHint && i.ext < t2::kHint + 5) return std::nullopt;
+    if (i.ext >= t2::kExtend && i.ext < t2::kExtend + 7) {
+        const std::uint32_t v = r[i.rm];
+        const auto swap32 = [](std::uint32_t x) { return x >> 24 | (x >> 8 & 0xFF00u) | (x << 8 & 0xFF0000u) | x << 24; };
+        switch (i.ext - t2::kExtend) {
+            case 0: r[i.rd] = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(v))); break;
+            case 1: r[i.rd] = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(v))); break;
+            case 2: r[i.rd] = v & 0xFFFF; break;
+            case 3: r[i.rd] = v & 0xFF; break;
+            case 4: r[i.rd] = swap32(v); break;
+            case 5: r[i.rd] = (v & 0x00FF00FFu) << 8 | (v >> 8 & 0x00FF00FFu); break;
+            default: r[i.rd] = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(swap32(v) >> 16))); break;
+        }
+        return std::nullopt;
+    }
+    if (i.ext == t2::kMovt) {
+        r[i.rd] = (r[i.rd] & 0xFFFFu) | i.imm << 16;
+        return std::nullopt;
+    }
+    if (i.ext == t2::kUbfx || i.ext == t2::kSbfx) {   // lsb in imm, width in rs
+        const std::uint32_t mask = i.rs == 32 ? 0xFFFFFFFFu : (1u << i.rs) - 1u;
+        std::uint32_t v = (r[i.rn] >> i.imm) & mask;
+        if (i.ext == t2::kSbfx && i.rs < 32 && (v >> (i.rs - 1)) & 1) v |= ~mask;
+        r[i.rd] = v;
+        return std::nullopt;
+    }
+    if (i.ext == t2::kBfi) {   // lsb in imm, width in rs; Rn = pc means BFC
+        const std::uint32_t mask = (i.rs == 32 ? 0xFFFFFFFFu : (1u << i.rs) - 1u) << i.imm;
+        const std::uint32_t source = i.rn == 15 ? 0 : r[i.rn] << i.imm;
+        r[i.rd] = (r[i.rd] & ~mask) | (source & mask);
+        return std::nullopt;
+    }
+    if (i.ext >= t2::kExtend32 && i.ext < t2::kExtend32 + 4) {
+        const std::uint32_t v = da::rotate_right(r[i.rm], i.amount);
+        switch (i.ext - t2::kExtend32) {
+            case 0: r[i.rd] = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(v))); break;
+            case 1: r[i.rd] = v & 0xFFFF; break;
+            case 2: r[i.rd] = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(v))); break;
+            default: r[i.rd] = v & 0xFF; break;
+        }
+        return std::nullopt;
+    }
+    if (i.ext >= 0 && i.ext < 1000) {
+        da::Insn arm_form = i;
+        arm_form.word = (i.word << 16) | (i.word >> 16);
+        return execute_ext(arm_form, at);
+    }
+    const std::string text = da::text(i);
+    return Fault{Fault::Kind::NotRun, at, 0, "thumb2 " + text.substr(0, text.find(' ')), 0};
 }
 
 // ---- running a function ------------------------------------------------------------------------------------------------
@@ -691,23 +1029,49 @@ RunResult run(Bus& bus, std::uint32_t entry, const RunOptions& options) {
     for (unsigned i = 0; i < 4; ++i) cpu.r[i] = options.a[i];
     for (unsigned i = 0; i < 8; ++i) cpu.r[4 + i] = options.s[i];
     cpu.r[13] = options.sp;
-    cpu.r[14] = kReturnAddress;
+    cpu.r[14] = options.return_address;
     cpu.jump_to(entry);
     const std::size_t log_from = bus.log().size();
 
     RunResult out;
     while (cpu.steps < options.max_steps) {
-        if ((cpu.r[15] & ~1u) == kReturnAddress) {
+        if ((cpu.r[15] & ~1u) == options.return_address) {
             out.end = End::Return;
             break;
+        }
+        if (!options.imports.empty()) {
+            if (const auto it = options.imports.find(cpu.r[15] & ~1u); it != options.imports.end()) {   // a call into an imported function
+                BiosCall call;
+                call.name = it->second;
+                for (unsigned i = 0; i < 4; ++i) call.args[i] = cpu.r[i];
+                out.bios.push_back(call);
+                if (std::find(options.ending_imports.begin(), options.ending_imports.end(), it->second) != options.ending_imports.end()) {
+                    out.end = End::Stopped;
+                    out.fault = Fault{Fault::Kind::NotRun, cpu.r[15], 0, "import " + it->second, 0};
+                    break;
+                }
+                cpu.r[0] = 0;
+                cpu.jump_to(cpu.r[14]);
+                ++cpu.steps;
+                continue;
+            }
         }
         const std::optional<Fault> fault = cpu.step();
         if (!fault) continue;
         if (fault->kind == Fault::Kind::Swi) {   // a BIOS call: logged and answered
             BiosCall call;
-            call.function = cpu.thumb() ? fault->code & 0xFF : (fault->code >> 16) & 0xFF;
+            call.function = bus.paged() ? fault->code & 0xFFFF : cpu.thumb() ? fault->code & 0xFF : (fault->code >> 16) & 0xFF;
             for (unsigned i = 0; i < 4; ++i) call.args[i] = cpu.r[i];
             out.bios.push_back(call);
+            if (std::find(options.ending.begin(), options.ending.end(), call.function) != options.ending.end()) {
+                out.end = End::Stopped;
+                out.fault = Fault{Fault::Kind::NotRun, fault->pc, 0, std::format("svc {:02X}", call.function), call.function};
+                break;
+            }
+            if (bus.paged()) {   // (a kernel call: logged, answered with success)
+                cpu.r[0] = 0;
+                continue;
+            }
             bios_call(cpu, call.function);
             continue;
         }
@@ -738,7 +1102,7 @@ cb::emulate::Run record(const RunResult& result) {
     }
     for (const BiosCall& call : result.bios) {
         cb::emulate::Call c;
-        c.name = std::format("SWI:{:02X}", call.function);
+        c.name = call.name.empty() ? std::format("SWI:{:02X}", call.function) : call.name;
         c.args = std::vector<std::int64_t>(call.args.begin(), call.args.end());
         run.calls.push_back(std::move(c));
     }

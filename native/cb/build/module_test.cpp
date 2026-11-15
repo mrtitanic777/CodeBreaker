@@ -447,3 +447,16 @@ CB_TEST("build.module.leaves_ds_is_a_ds_load_that_nothing_puts_back", [] {
     // mov dx, ds / mov ds, ax(from elsewhere) / mov ds, dx / retf: a copy taken and put back
     CB_CHECK(!leaves_ds(decode({0x8C, 0xDA, 0x8E, 0xD8, 0x8E, 0xDA, 0xCB})));
 });
+
+CB_TEST("build.module.loads_own_ds_before_says_the_caller_had_its_own_data_in_ds_at_a_call", [] {
+    using namespace internal;
+    namespace desc = decompile::describe;
+    // mov ax, imm(own) / mov ds, ax / call 0 / retf: the call is instruction 2
+    const std::vector<desc::Insn> mine = desc::decode16(ByteView(Bytes{0xB8, 0x00, 0x00, 0x8E, 0xD8, 0xE8, 0x00, 0x00, 0xCB}), 0, false);
+    CB_CHECK(loads_own_ds_before(mine, 2, {0}));
+    CB_CHECK(!loads_own_ds_before(mine, 2, {}));      // (not said to be the module's own)
+    CB_CHECK(!loads_own_ds_before(mine, 1, {0}));     // (not loaded yet)
+    // mov ax, imm(own) / mov ax, 5 / mov ds, ax / call: AX was not the own data any more
+    const std::vector<desc::Insn> other = desc::decode16(ByteView(Bytes{0xB8, 0x00, 0x00, 0xB8, 0x05, 0x00, 0x8E, 0xD8, 0xE8, 0x00, 0x00, 0xCB}), 0, false);
+    CB_CHECK(!loads_own_ds_before(other, 4, {0}));
+});

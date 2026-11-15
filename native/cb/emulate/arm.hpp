@@ -47,12 +47,13 @@
 
 #include "cb/core/bytes.hpp"
 #include "cb/decompile/arm.hpp"
+#include "cb/emulate/paged_memory.hpp"
 #include "cb/emulate/run.hpp"
 
 namespace cb::emulate::arm {
 
 // Which machine the memory map and the instruction set are of.
-enum class System : std::uint8_t { Gba, Nds9, Nds7 };
+enum class System : std::uint8_t { Gba, Nds9, Nds7, N3ds, Vita };
 
 inline constexpr std::uint64_t kMaxSteps = 200000;
 inline constexpr std::uint32_t kBiosBase = 0x00000000, kBiosSize = 0x4000;
@@ -84,6 +85,7 @@ struct BusAccess {
 // A call into the BIOS: `function` is the number of the software interrupt.
 struct BiosCall {
     std::uint32_t function = 0;
+    std::string name;   // an imported function's name (the Vita lane): the call is by name, not by number
     std::array<std::uint32_t, 4> args{};
     std::string text() const;   // "SWI:06(1,2,3,4)"
 };
@@ -98,7 +100,20 @@ public:
     explicit Bus(System system = System::Gba);
 
     System system() const { return system_; }
-    decompile::arm::Arch arch() const { return system_ == System::Nds9 ? decompile::arm::Arch::V5TE : decompile::arm::Arch::V4T; }
+    decompile::arm::Arch arch() const {
+        switch (system_) {
+            case System::Nds9: return decompile::arm::Arch::V5TE;
+            case System::N3ds: return decompile::arm::Arch::V6K;
+            case System::Vita: return decompile::arm::Arch::V7A;
+            default: return decompile::arm::Arch::V4T;
+        }
+    }
+    // The 3DS and the Vita have a whole address space of paged memory (emulate/paged_memory) instead of the handheld maps above: the program's loaded
+    // segments are shared, ranges mapped with map() are the logged hardware, and the rest of the process's addresses are RAM.
+    bool paged() const { return system_ == System::N3ds || system_ == System::Vita; }
+    void set_regions(paged_memory::Regions regions) { paged_ = paged_memory::Memory(std::move(regions)); }
+    paged_memory::Memory& memory() { return paged_; }
+    const paged_memory::Memory& memory() const { return paged_; }
 
     // The cartridge ROM, seen at $08000000 (up to 32 MB). The bytes are borrowed and must outlive the bus.
     void set_rom(ByteView rom) { rom_ = rom; }
@@ -149,6 +164,7 @@ private:
     Bytes ewram_, iwram_, io_, palette_, vram_, oam_, sram_;
     Bytes itcm_, dtcm_, wram7_;                      // the DS's
     std::uint32_t dtcm_base_ = kNdsDtcmBase, dtcm_size_ = kNdsDtcmSize;
+    paged_memory::Memory paged_;
     std::map<std::uint32_t, std::uint32_t> cp15_;
     bool big_endian_ = false;
     std::vector<Range> ranges_;
@@ -217,11 +233,17 @@ private:
     void restore_from_spsr();
     static unsigned bank_of(std::uint32_t mode);
     bool condition(unsigned cond) const;
-    bool v5() const { return bus_->arch() == decompile::arm::Arch::V5TE; }
+    bool v5() const { return bus_->arch() >= decompile::arm::Arch::V5TE; }
+    std::optional<Fault> execute_ext(const decompile::arm::Insn& insn, std::uint32_t at);
+    std::optional<Fault> execute_thumb_ext(const decompile::arm::Insn& insn, std::uint32_t at);   // IT, CBZ, the 16-bit extensions and the Thumb VFP words
+    std::optional<Fault> execute_vfp(const decompile::arm::Insn& insn, std::uint32_t at);   // ... and the VFP rows   // the ARMv6 rows of decompile/arm_ext
     void branch_interworking(std::uint32_t address);   // a load into the pc: ARMv5 takes the state from bit 0
     std::uint32_t saturate(std::int64_t value);       // to 32 bits, setting the Q flag when it clipped
 
     Bus* bus_;
+    std::array<std::uint32_t, 64> vfp_{};   // the VFP registers s0-s63 (a double is a pair; d0-d31)
+    std::uint32_t fpscr_ = 0;
+    std::uint8_t it_first_ = 0, it_mask_ = 0, it_index_ = 0, it_left_ = 0;   // the IT block in progress
     bool branched_ = false;                 // this instruction changed the pc
     std::array<Bank, 6> banks_{};           // user/system, FIQ, IRQ, supervisor, abort, undefined
     std::array<std::uint32_t, 5> fiq_high_{};   // r8-r12 of FIQ mode while another mode is current
@@ -235,6 +257,10 @@ struct RunOptions {
     std::array<std::uint32_t, 4> a{};
     std::array<std::uint32_t, 8> s{};   // r4-r11
     std::uint32_t sp = 0x03007F00;
+    std::uint32_t return_address = kReturnAddress;   // reaching it ends the run (the 3DS and Vita lanes pick one below their images)
+    std::map<std::uint32_t, std::string> imports;    // the stubs of imported functions by address: a call is logged by name and returns 0
+    std::vector<std::string> ending_imports;         // ... the names of the ones that end the run
+    std::vector<std::uint32_t> ending;               // software interrupt numbers that end the run instead of returning 0 (ExitProcess ...)
 };
 
 enum class End : std::uint8_t { Return, Stopped, Limit };

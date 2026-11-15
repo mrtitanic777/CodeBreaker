@@ -284,7 +284,7 @@ private:
     std::size_t nominal_size(std::string_view text) const {
         if (!thumb_) return 4;
         const std::string mnemonic = text::lower(split_word(text).head);
-        return mnemonic == "bl" ? 4 : 2;
+        return mnemonic == "bl" || mnemonic.ends_with(".w") ? 4 : 2;
     }
 
 

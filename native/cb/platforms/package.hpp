@@ -38,11 +38,11 @@
 namespace cb::platforms {
 
 // ---- the descriptors' vocabulary --------------------------------------------------------------------------------
-enum class Id { Java, Xbox360, Xbox, Nes, Sms, Gb, Genesis, Ps1, Gba, Nds, N64, Zx, Msx, Coleco, Cpc, Atari5200, Atari2600, Atari7800, Lynx, Pce, Snes, NeoGeo, SegaCd, Sega32x, Saturn, Dreamcast, ThreeDo, Jaguar, WonderSwan, CdI, GameCube, Wii, WiiU, Ps2, Psp, Win32, Win16, Vxd, Dos };
+enum class Id { Java, Xbox360, Xbox, Nes, Sms, Gb, Genesis, Ps1, Gba, Nds, N64, Zx, Msx, Coleco, Cpc, Atari5200, Atari2600, Atari7800, Lynx, Pce, Snes, NeoGeo, SegaCd, Sega32x, Saturn, Dreamcast, ThreeDo, Jaguar, WonderSwan, CdI, Vectrex, GameCube, Wii, WiiU, Ps2, Psp, N3ds, Vita, Vb, Intv, Win32, Win16, Vxd, Dos };
 
 // The order platforms are tried in.
-inline constexpr std::array<Id, 39> kOrder = {Id::Java, Id::Xbox360, Id::Xbox, Id::Nes,   Id::Sms,   Id::Gb, Id::Genesis, Id::Ps1, Id::Gba, Id::Nds, Id::N64,
-                                              Id::Zx,   Id::Msx,   Id::Coleco, Id::Cpc, Id::Atari5200, Id::Atari2600, Id::Atari7800, Id::Lynx, Id::Pce, Id::Snes, Id::NeoGeo, Id::SegaCd, Id::Sega32x, Id::Saturn, Id::Dreamcast, Id::ThreeDo, Id::Jaguar, Id::WonderSwan, Id::CdI, Id::GameCube, Id::Wii, Id::WiiU, Id::Ps2, Id::Psp, Id::Win32, Id::Win16, Id::Vxd, Id::Dos};
+inline constexpr std::array<Id, 44> kOrder = {Id::Java, Id::Xbox360, Id::Xbox, Id::Nes,   Id::Sms,   Id::Gb, Id::Genesis, Id::Ps1, Id::Gba, Id::Nds, Id::N64,
+                                              Id::Zx,   Id::Msx,   Id::Coleco, Id::Cpc, Id::Atari5200, Id::Atari2600, Id::Atari7800, Id::Lynx, Id::Pce, Id::Snes, Id::NeoGeo, Id::SegaCd, Id::Sega32x, Id::Saturn, Id::Dreamcast, Id::ThreeDo, Id::Jaguar, Id::WonderSwan, Id::CdI, Id::Vectrex, Id::GameCube, Id::Wii, Id::WiiU, Id::Ps2, Id::Psp, Id::N3ds, Id::Vita, Id::Vb, Id::Intv, Id::Win32, Id::Win16, Id::Vxd, Id::Dos};
 
 // The descriptor's name ("win32", "xbox360", ...), and back.
 std::string_view id_text(Id id);
@@ -54,7 +54,7 @@ enum class SourceLanguage { C, Asm, CorAsm, JavaToCxx };
 std::string_view source_text(SourceLanguage s);   // "c", "asm", "c or asm", "java -> c++"
 
 // Own decoders (CodeBreaker's, not Capstone's): the decompiler's module for the processor.
-enum class OwnDecoder { Z80, Sm83, M6502, M68k, Mips, Arm, Jar, PowerPc, Huc6280, W65816, Sh2, Sh4 };
+enum class OwnDecoder { Z80, Sm83, M6502, M68k, Mips, Arm, Jar, PowerPc, Huc6280, W65816, Sh2, Sh4, M6809, V810, Cp1610 };
 struct CapstoneDecoder {
     Arch arch = Arch::X86;
     unsigned bits = 16;
@@ -164,7 +164,7 @@ struct Probes {
     std::function<std::optional<ExeKind>(const Path&)> kind;                // that, and DOS for a headerless .COM or driver
     std::function<std::optional<std::uint16_t>(const Path&)> pe_machine;    // a PE image's machine type
     std::function<bool(const Path&)> holds_drivers;                         // an LE/LX image, or a W3 bundle (vmm32.vxd)
-    std::function<bool(const Path&)> is_xex, is_nes, is_sms, is_gb, is_genesis, is_ps1, is_gba, is_nds, is_n64, is_msx, is_zx, is_coleco, is_cpc, is_atari5200, is_atari2600, is_atari7800, is_lynx, is_threedo, is_jaguar, is_wonderswan, is_cdi, is_pce, is_snes, is_neogeo, is_segacd, is_sega32x, is_saturn, is_dreamcast, is_gamecube, is_wii, is_wiiu, is_ps2, is_psp;
+    std::function<bool(const Path&)> is_xex, is_nes, is_sms, is_gb, is_genesis, is_ps1, is_gba, is_nds, is_n64, is_msx, is_zx, is_coleco, is_cpc, is_atari5200, is_atari2600, is_atari7800, is_lynx, is_threedo, is_jaguar, is_wonderswan, is_cdi, is_vectrex, is_intv, is_vb, is_pce, is_snes, is_neogeo, is_segacd, is_sega32x, is_saturn, is_dreamcast, is_gamecube, is_wii, is_wiiu, is_ps2, is_psp, is_n3ds, is_vita;
     std::function<bool(const Path&)> is_java_module;                        // a folder or .java file the Java lane takes
     std::function<Path(const Path&)> xex_basefile;                          // the image a XEX2 container holds
     std::function<Path(const Path&)> xbe_to_pe;                            // the PE image an XBE becomes

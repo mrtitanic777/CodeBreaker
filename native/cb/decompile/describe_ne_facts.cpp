@@ -1103,6 +1103,26 @@ bool DxReturns::every_way(const SegOff& place, const std::set<SegOff>& four) {
                 end = !later.empty() ? later[0] : img.size();
                 ins = img.decode(off, end, true);
             }
+            // (a jump out of its range into the middle of other code in the segment -- GDI's 1:1268, a body shared by several entries, jumps to
+            // 1:52D6 and 1:5281, which set DX and return: that code is its ways too, to the end of the function it lies in)
+            if (const auto st = impl_->starts.find(sg); d.policy.dx_shared_bodies && st != impl_->starts.end()) {
+                std::set<std::int64_t> taken;
+                for (std::size_t n = 0; n < ins.size() && taken.size() < 8; ++n) {
+                    const Insn& j = ins[n];
+                    if (!(j.mn == "jmp" && j.imm_first())) continue;
+                    const std::int64_t target = j.first_imm() & 0xFFFF;
+                    if (target >= off && target < end) continue;
+                    if (std::any_of(ins.begin(), ins.end(), [&](const Insn& x) { return x.address == target; })) continue;
+                    if (!taken.insert(target).second) continue;
+                    std::int64_t stop = img.size();
+                    for (std::int64_t o : st->second)
+                        if (o > target) {
+                            stop = o;
+                            break;
+                        }
+                    for (const Insn& x : img.decode(target, stop, true)) ins.push_back(x);
+                }
+            }
             f = std::make_shared<Impl::Func>();
             for (std::size_t k = 0; k < ins.size(); ++k) f->at[ins[k].address] = k;
             for (std::size_t k = 0; k < ins.size(); ++k) {
@@ -1154,6 +1174,33 @@ bool DxReturns::every_way(const SegOff& place, const std::set<SegOff>& four) {
         const Target t = target_of(i);
         return t.kind == Kind::Out || t.kind == Kind::None || four.contains(t.place);
     };
+    // (a call to a near function of this segment whose short body never writes DX, makes no call and has no way out but a return)
+    const auto keeps_dx = [&](const Insn& i) {
+        const Target t = target_of(i);
+        if (!d.policy.dx_shared_bodies || i.mn != "call" || t.kind != Kind::Place || t.place.seg != sg || !d.images.contains(sg)) return false;
+        const auto st = impl_->starts.find(sg);
+        if (st == impl_->starts.end()) return false;
+        const Code16& img = d.relocated(sg);
+        std::int64_t stop = img.size();
+        for (std::int64_t o : st->second)
+            if (o > t.place.off) {
+                stop = o;
+                break;
+            }
+        const std::vector<Insn> body = img.decode(t.place.off, std::min<std::int64_t>(stop, t.place.off + 96), true);
+        if (body.empty()) return false;
+        bool returns = false;
+        for (const Insn& x : body) {
+            if (!x.regs_ok || hits_dx(x.regs_write) || x.in_group(kGroupCall) || x.mn == "int" || x.mn == "into" || x.mn == "lcall" || x.mn == "ljmp") return false;
+            if (x.in_group(kGroupJump) && !x.imm_first()) return false;
+            if (x.mn == "ret") {
+                returns = true;
+                break;
+            }
+            if (x.mn == "retf") return false;
+        }
+        return returns;
+    };
     // (the instructions reached from its start -- what lies past a jump on, a jump to an import (GETTICKCOUNT: `jmp far
     // KERNEL`), is not its; through a jump table everything may be)
     std::set<std::int64_t> reach;
@@ -1184,7 +1231,8 @@ bool DxReturns::every_way(const SegOff& place, const std::set<SegOff>& four) {
         if (!reach.count(i.address)) continue;
         if (i.mn == "jmp" || i.mn == "ljmp") {
             const Target t = target_of(i);
-            if (t.kind == Kind::Out || (t.kind == Kind::Place && t.place != place && !(t.place.seg == sg && off <= t.place.off && t.place.off < end))) {
+            if (t.kind == Kind::Out || (t.kind == Kind::Place && t.place != place && !(t.place.seg == sg && off <= t.place.off && t.place.off < end) &&
+                                        !(t.place.seg == sg && f->at.count(t.place.off)))) {
                 if (!handed_on(i)) return false;
                 jumped_on = true;
             }
@@ -1208,15 +1256,20 @@ bool DxReturns::every_way(const SegOff& place, const std::set<SegOff>& four) {
         if (seen.count(a)) continue;
         seen.insert(a);
         const Insn& p = ins[f->at.at(a)];
+        bool transparent = false;
         if (p.in_group(kGroupCall)) {
             if (handed_on(p)) continue;
-            return false;   // (a two-byte callee: DX as it was)
+            // (a near callee that never writes DX -- GDI's 1:522D, `mov bx, ..; sub bx, ..` -- hands DX back as it was before the call)
+            if (!keeps_dx(p)) return false;   // (a two-byte callee: DX as it was)
+            transparent = true;
         }
-        if (p.mn == "int" || p.mn == "into") continue;
-        if (!p.regs_ok) return false;
-        if (hits_dx(p.regs_write)) {
-            if (p.mn == "pop" && f->saves_dx) return false;   // (DX given back as it came)
-            continue;
+        if (!transparent) {
+            if (p.mn == "int" || p.mn == "into") continue;
+            if (!p.regs_ok) return false;
+            if (hits_dx(p.regs_write)) {
+                if (p.mn == "pop" && f->saves_dx) return false;   // (DX given back as it came)
+                continue;
+            }
         }
         if (a == off) return false;   // (DX as the caller had it)
         const std::vector<std::int64_t> in = into_of(a);

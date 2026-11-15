@@ -158,9 +158,12 @@ Owned<EVP_PKEY> rsa_key(ByteView e, ByteView n, ByteView p, ByteView q) {
     if (!bn_ctx || !build) return {};
     const Owned<BIGNUM> bn_e = big(e), bn_n = big(n);
     if (!OSSL_PARAM_BLD_push_BN(build.get(), OSSL_PKEY_PARAM_RSA_N, bn_n.get()) || !OSSL_PARAM_BLD_push_BN(build.get(), OSSL_PKEY_PARAM_RSA_E, bn_e.get())) return {};
+    // (OSSL_PARAM_BLD_push_BN keeps the pointer, not a copy, until OSSL_PARAM_BLD_to_param: the numbers live to the end)
+    const Owned<BIGNUM> bn_p = p.empty() ? Owned<BIGNUM>() : big(p), bn_q = p.empty() ? Owned<BIGNUM>() : big(q);
+    Owned<BIGNUM> p1, q1, phi(BN_new()), d(BN_new()), dp(BN_new()), dq(BN_new()), u(BN_new());
     if (!p.empty()) {
-        const Owned<BIGNUM> bn_p = big(p), bn_q = big(q);
-        Owned<BIGNUM> p1(BN_dup(bn_p.get())), q1(BN_dup(bn_q.get())), phi(BN_new()), d(BN_new()), dp(BN_new()), dq(BN_new()), u(BN_new());
+        p1.reset(BN_dup(bn_p.get()));
+        q1.reset(BN_dup(bn_q.get()));
         if (!p1 || !q1 || !phi || !d || !dp || !dq || !u) return {};
         BN_sub_word(p1.get(), 1);
         BN_sub_word(q1.get(), 1);

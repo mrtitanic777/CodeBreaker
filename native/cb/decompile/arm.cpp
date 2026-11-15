@@ -9,6 +9,7 @@
 #include <format>
 
 #include "cb/core/text.hpp"
+#include "cb/decompile/arm_ext.hpp"
 
 namespace cb::decompile::arm {
 
@@ -137,7 +138,7 @@ bool arm_halfword(Insn& i, std::uint32_t w, Arch arch) {
     if (!pre && wb) return false;
     if (!immediate && ((w >> 8) & 15) != 0) return false;
     const bool pair = !load && kind >= 2;   // LDRD (S=1, H=0) and STRD (S=1, H=1): ARMv5TE
-    if (!load && kind != 1 && !(pair && arch == Arch::V5TE)) return false;
+    if (!load && kind != 1 && !(pair && arch >= Arch::V5TE)) return false;
     if (pair && (((w >> 12) & 1) || ((w >> 12) & 15) == 14)) return false;   // (an odd or lr first register is undefined)
     i.op = (load || kind == 2) ? Op::Ldr : Op::Str;
     if (pair) {
@@ -160,7 +161,7 @@ bool arm_halfword(Insn& i, std::uint32_t w, Arch arch) {
 }
 
 bool arm_misc(Insn& i, std::uint32_t w, bool immediate, Arch arch) {
-    if (!immediate && arch == Arch::V5TE) {
+    if (!immediate && arch >= Arch::V5TE) {
         if ((w & 0x0FFFFFF0) == 0x012FFF30) {   // BLX rm
             i.op = Op::Blx;
             i.rm = w & 15;
@@ -291,7 +292,27 @@ std::optional<Insn> decode_unconditional(std::uint32_t w, std::uint32_t pc) {
 
 std::optional<Insn> decode_arm(std::uint32_t w, std::uint32_t pc, Arch arch) {
     const unsigned cond = w >> 28;
-    if (cond == 15) return arch == Arch::V5TE ? decode_unconditional(w, pc) : std::nullopt;
+    // the ARMv6 and later rows (ARM state): found first for the conditional words that no core table says, below, and for the unconditional space here
+    const auto from_ext = [&](std::uint32_t word) -> std::optional<Insn> {
+        if (arch < Arch::V6K) return std::nullopt;
+        const int row = ext::find_arm(word, arch);
+        if (row < 0) return std::nullopt;
+        Insn e;
+        e.word = word;
+        e.pc = pc & ~3u;
+        e.isa = Isa::Arm;
+        e.length = 4;
+        e.op = Op::Ext;
+        e.ext = static_cast<std::int16_t>(row);
+        e.cond = ext::conditional(row) ? static_cast<std::uint8_t>(word >> 28) : kAlways;
+        fill_raw(e);
+        return e;
+    };
+    if (cond == 15) {
+        if (auto e = from_ext(w)) return e;
+        return arch >= Arch::V5TE ? decode_unconditional(w, pc) : std::nullopt;
+    }
+    if (auto e = from_ext(w)) return e;   // (the rows fix every bit that tells an instruction apart, so they come before the core tables)
     Insn i;
     i.word = w;
     i.pc = pc & ~3u;
@@ -329,7 +350,7 @@ std::optional<Insn> decode_arm(std::uint32_t w, std::uint32_t pc, Arch arch) {
                 i.op = Op::Swi;
                 i.imm = w & 0xFFFFFF;
                 ok = true;
-            } else if (arch == Arch::V5TE && ((w >> 24) & 15) == 14 && (w & 0x10)) {   // MCR, MRC (CDP is not one)
+            } else if (arch >= Arch::V5TE && ((w >> 24) & 15) == 14 && (w & 0x10)) {   // MCR, MRC (CDP is not one)
                 i.op = ((w >> 20) & 1) ? Op::Mrc : Op::Mcr;
                 i.opc1 = (w >> 21) & 7;
                 i.crn = (w >> 16) & 15;
@@ -347,9 +368,260 @@ std::optional<Insn> decode_arm(std::uint32_t w, std::uint32_t pc, Arch arch) {
     return i;
 }
 
+// ---- decoding: Thumb-2 32-bit integer instructions ----------------------------------------------------------------------------
+
+// The value of a Thumb modified immediate (imm12 = i:imm3:imm8), nullopt for the encodings that are unpredictable.
+std::optional<std::uint32_t> thumb_expand(std::uint32_t imm12) {
+    const std::uint32_t imm8 = imm12 & 0xFF;
+    if ((imm12 >> 10) == 0) {
+        switch ((imm12 >> 8) & 3) {
+            case 0: return imm8;
+            case 1: return imm8 == 0 ? std::nullopt : std::optional<std::uint32_t>(imm8 << 16 | imm8);
+            case 2: return imm8 == 0 ? std::nullopt : std::optional<std::uint32_t>(imm8 << 24 | imm8 << 8);
+            default: return imm8 == 0 ? std::nullopt : std::optional<std::uint32_t>(imm8 * 0x01010101u);
+        }
+    }
+    return rotate_right(0x80 | (imm12 & 0x7F), (imm12 >> 7) & 31);
+}
+
+// The 32-bit Thumb instructions the interpreter runs as the fields they mean (data processing, loads and stores, block transfers, multiplies, shifts); their text is
+// the disassembler's (`ext` = t2::kOpaque), and the few that need more than the common fields are `Op::Ext` rows of t2 (MOVT, bit fields, extensions).
+std::optional<Insn> decode_thumb32_int(std::uint16_t a, std::uint16_t b, std::uint32_t pc_tagged) {
+    Insn i;
+    i.word = static_cast<std::uint32_t>(a) | static_cast<std::uint32_t>(b) << 16;
+    i.pc = pc_tagged & ~1u;
+    i.isa = Isa::Thumb;
+    i.length = 4;
+    i.cond = kAlways;
+    i.v6 = true;
+    i.ext = t2::kOpaque;
+    fill_raw(i);
+    const unsigned rn = a & 15, rd = (b >> 8) & 15, rt = (b >> 12) & 15;
+    const auto shifted = [&]() {
+        i.rm = b & 15;
+        i.shift = static_cast<Shift>((b >> 4) & 3);
+        const unsigned amount = ((b >> 12) & 7) << 2 | ((b >> 6) & 3);
+        i.amount = static_cast<std::uint8_t>(amount);
+        if (amount == 0 && i.shift != Shift::Lsl) {
+            if (i.shift == Shift::Ror) i.rrx = true;
+            else i.amount = 32;
+        }
+    };
+    const auto data_op = [&](unsigned op4, bool s, unsigned n, unsigned d) -> bool {
+        static constexpr int map[16] = {static_cast<int>(Op::And), static_cast<int>(Op::Bic), static_cast<int>(Op::Orr), -1, static_cast<int>(Op::Eor), -1, -1, -1,
+                                        static_cast<int>(Op::Add), -1, static_cast<int>(Op::Adc), static_cast<int>(Op::Sbc), -1, static_cast<int>(Op::Sub), static_cast<int>(Op::Rsb), -1};
+        if (op4 == 3 && n == 15) {   // ORN with no first operand is MVN
+            i.op = Op::Mvn;
+            i.s = s;
+            i.rn = 0;
+            i.rd = static_cast<std::uint8_t>(d);
+            return d != 15;
+        }
+        if (map[op4] < 0) return false;
+        i.op = static_cast<Op>(map[op4]);
+        i.s = s;
+        i.rn = static_cast<std::uint8_t>(n);
+        i.rd = static_cast<std::uint8_t>(d);
+        if (d == 15 && s) {   // the test forms
+            if (i.op == Op::And) i.op = Op::Tst;
+            else if (i.op == Op::Eor) i.op = Op::Teq;
+            else if (i.op == Op::Add) i.op = Op::Cmn;
+            else if (i.op == Op::Sub) i.op = Op::Cmp;
+            else return false;
+            i.rd = 0;
+        } else if (n == 15 && i.op == Op::Orr) {   // ORR with no first operand is MOV
+            i.op = Op::Mov;
+            i.rn = 0;
+        } else if (d == 15 || n == 15) {
+            return false;   // (the pc as an operand is not run)
+        }
+        return true;
+    };
+    // data processing, modified immediate
+    if ((a & 0xFA00) == 0xF000 && !(b & 0x8000)) {
+        const std::uint32_t imm12 = ((a >> 10) & 1u) << 11 | ((b >> 12) & 7u) << 8 | (b & 0xFFu);
+        const auto value = thumb_expand(imm12);
+        if (!value || !data_op((a >> 5) & 15, (a >> 4) & 1, rn, rd)) return std::nullopt;
+        i.imm_form = true;
+        i.imm = *value;
+        i.rot = (imm12 >> 10) != 0 ? 1 : 0;
+        return i;
+    }
+    if ((a & 0xFFF0) == 0xF3C0 || (a & 0xFFF0) == 0xF340 || (a & 0xFFF0) == 0xF360) {   // UBFX, SBFX, BFI, BFC
+        if ((b & 0x8000) || rd == 15 || rd == 13) return std::nullopt;
+        const unsigned lsb = ((b >> 12) & 7) << 2 | ((b >> 6) & 3), field = b & 31;
+        i.op = Op::Ext;
+        i.rd = static_cast<std::uint8_t>(rd);
+        i.rn = static_cast<std::uint8_t>(rn);
+        i.imm = lsb;
+        if ((a & 0xFFF0) == 0xF360) {
+            if (field < lsb) return std::nullopt;
+            i.ext = t2::kBfi;
+            i.rs = static_cast<std::uint8_t>(field - lsb + 1);   // the width
+            return i;
+        }
+        if (rn == 15 || rn == 13 || lsb + field + 1 > 32) return std::nullopt;
+        i.ext = (a & 0xFFF0) == 0xF3C0 ? t2::kUbfx : t2::kSbfx;
+        i.rs = static_cast<std::uint8_t>(field + 1);
+        return i;
+    }
+    // plain binary immediate: ADDW, SUBW, MOVW, MOVT
+    if ((a & 0xFA00) == 0xF200 && !(b & 0x8000)) {
+        const unsigned op5 = (a >> 4) & 31;
+        const std::uint32_t imm12 = ((a >> 10) & 1u) << 11 | ((b >> 12) & 7u) << 8 | (b & 0xFFu);
+        if ((op5 == 0x00 || op5 == 0x0A) && rn != 15 && rd != 15) {
+            i.op = op5 == 0 ? Op::Add : Op::Sub;
+            i.rn = static_cast<std::uint8_t>(rn);
+            i.rd = static_cast<std::uint8_t>(rd);
+            i.imm_form = true;
+            i.imm = imm12;
+            return i;
+        }
+        if (op5 == 0x04 && rd != 15 && rd != 13) {   // MOVW
+            i.op = Op::Mov;
+            i.rd = static_cast<std::uint8_t>(rd);
+            i.imm_form = true;
+            i.imm = rn << 12 | imm12;
+            return i;
+        }
+        if (op5 == 0x0C && rd != 15 && rd != 13) {   // MOVT
+            i.op = Op::Ext;
+            i.ext = t2::kMovt;
+            i.rd = static_cast<std::uint8_t>(rd);
+            i.imm = rn << 12 | imm12;
+            return i;
+        }
+        return std::nullopt;
+    }
+    // data processing, shifted register
+    if ((a & 0xFE00) == 0xEA00 && !(b & 0x8000)) {
+        if (!data_op((a >> 5) & 15, (a >> 4) & 1, rn, rd)) return std::nullopt;
+        shifted();
+        if (i.rm == 15 || i.rm == 13) return std::nullopt;
+        return i;
+    }
+    // load and store, one register
+    if ((a >> 9) == 0x7C) {
+        const bool sign = (a >> 8) & 1, imm12 = (a >> 7) & 1, load = (a >> 4) & 1;
+        const unsigned size = (a >> 5) & 3;
+        if (size == 3 || (!load && sign) || (rt == 15 && !load) || rt == 13) return std::nullopt;
+        if (rt == 15 && size != 2) return std::nullopt;   // (PLD, PLI)
+        i.op = load ? Op::Ldr : Op::Str;
+        i.size = static_cast<std::uint8_t>(size == 0 ? 1 : size == 1 ? 2 : 4);
+        i.sign = sign;
+        i.rd = static_cast<std::uint8_t>(rt);
+        i.rn = static_cast<std::uint8_t>(rn);
+        if (rn == 15) {   // a literal load of a word
+            if (!load || sign || size != 2) return std::nullopt;
+            i.imm_form = true;
+            i.pre = true;
+            i.up = imm12;   // (the U bit takes bit 7's place)
+            i.imm = b & 0xFFF;
+            set_flow(i);
+            return i;
+        }
+        if (imm12) {
+            i.imm_form = true;
+            i.pre = true;
+            i.up = true;
+            i.imm = b & 0xFFF;
+        } else if ((b & 0x0800) != 0) {
+            const bool p = (b >> 10) & 1, u = (b >> 9) & 1, wback = (b >> 8) & 1;
+            if ((p && u && !wback) || (!p && !wback)) return std::nullopt;   // (LDRT and STRT, undefined)
+            i.imm_form = true;
+            i.pre = p;
+            i.up = u;
+            i.wb = wback;
+            i.imm = b & 0xFF;
+        } else if ((b & 0x0FC0) == 0) {
+            i.imm_form = false;
+            i.pre = true;
+            i.up = true;
+            i.rm = b & 15;
+            i.shift = Shift::Lsl;
+            i.amount = static_cast<std::uint8_t>((b >> 4) & 3);
+            if (i.rm == 15 || i.rm == 13) return std::nullopt;
+        } else {
+            return std::nullopt;
+        }
+        set_flow(i);
+        return i;
+    }
+    // block transfers: LDM, STM (POP.W and PUSH.W are the ones on the stack pointer)
+    if ((a >> 9) == 0x74 && !((a >> 6) & 1) && (((a >> 7) & 3) == 1 || ((a >> 7) & 3) == 2)) {
+        const bool load = (a >> 4) & 1, down = ((a >> 7) & 3) == 2;
+        i.op = load ? Op::Ldm : Op::Stm;
+        i.pre = down;
+        i.up = !down;
+        i.wb = (a >> 5) & 1;
+        i.rn = static_cast<std::uint8_t>(rn);
+        i.list = b;
+        if (rn == 15 || b == 0 || (b & 0x2000) || (!load && (b & 0x8000))) return std::nullopt;
+        set_flow(i);
+        return i;
+    }
+    // multiplies
+    if ((a & 0xFFF0) == 0xFB00 && (b & 0x00F0) == 0) {
+        const bool accumulate = (b >> 12) != 15;
+        i.op = accumulate ? Op::Mla : Op::Mul;
+        i.rd = static_cast<std::uint8_t>(rd);
+        i.rm = b & 15;
+        i.rs = static_cast<std::uint8_t>(rn);
+        i.rn = static_cast<std::uint8_t>(accumulate ? rt : 0);
+        if (rd == 15 || rd == 13 || i.rm == 15 || i.rm == 13 || rn == 15 || rn == 13) return std::nullopt;
+        return i;
+    }
+    if (((a & 0xFFF0) == 0xFBA0 || (a & 0xFFF0) == 0xFB80 || (a & 0xFFF0) == 0xFBE0 || (a & 0xFFF0) == 0xFBC0) && (b & 0x00F0) == 0) {
+        const unsigned kind = (a >> 4) & 15;   // 0xA umull, 0x8 smull, 0xE umlal, 0xC smlal
+        i.op = kind == 0xA ? Op::Umull : kind == 0x8 ? Op::Smull : kind == 0xE ? Op::Umlal : Op::Smlal;
+        i.rd = static_cast<std::uint8_t>(rt);   // RdLo
+        i.rn = static_cast<std::uint8_t>(rd);   // RdHi
+        i.rm = b & 15;
+        i.rs = static_cast<std::uint8_t>(rn);
+        if (rt == 15 || rd == 15 || rt == 13 || rd == 13 || rt == rd || i.rm == 15 || rn == 15) return std::nullopt;
+        return i;
+    }
+    // shifts by a register
+    if ((a & 0xFF80) == 0xFA00 && (b & 0xF0F0) == 0xF000) {
+        i.op = Op::Mov;
+        i.s = (a >> 4) & 1;
+        i.rd = static_cast<std::uint8_t>(rd);
+        i.rm = static_cast<std::uint8_t>(rn);
+        i.rs = b & 15;
+        i.shift = static_cast<Shift>((a >> 5) & 3);
+        i.shift_by_reg = true;
+        if (rd == 15 || rd == 13 || rn == 15 || rn == 13 || i.rs == 15 || i.rs == 13) return std::nullopt;
+        return i;
+    }
+    // sign and zero extension with a rotate, CLZ
+    if (a == 0xFA0F || a == 0xFA1F || a == 0xFA4F || a == 0xFA5F) {
+        if ((b & 0xF0C0) != 0xF080 || rd == 15 || rd == 13 || (b & 15) == 15 || (b & 15) == 13) return std::nullopt;
+        i.op = Op::Ext;
+        i.ext = static_cast<std::int16_t>(t2::kExtend32 + (a == 0xFA0F ? 0 : a == 0xFA1F ? 1 : a == 0xFA4F ? 2 : 3));
+        i.rd = static_cast<std::uint8_t>(rd);
+        i.rm = b & 15;
+        i.amount = static_cast<std::uint8_t>(8 * ((b >> 4) & 3));
+        return i;
+    }
+    if ((a & 0xFFF0) == 0xFAB0 && (b & 0xF0F0) == 0xF080 && (b & 15) == (a & 15)) {
+        i.op = Op::Clz;
+        i.rd = static_cast<std::uint8_t>(rd);
+        i.rm = a & 15;
+        if (rd == 15 || rd == 13 || i.rm == 15 || i.rm == 13) return std::nullopt;
+        return i;
+    }
+    return std::nullopt;
+}
+
 // ---- decoding: Thumb ----------------------------------------------------------------------------------------------------------
 
 std::optional<Insn> decode_thumb(std::uint16_t a, std::uint16_t b, std::uint32_t pc_tagged, Arch arch) {
+    if (arch >= Arch::V7A && a >= 0xE800) {
+        if (auto t = decode_thumb32_int(a, b, pc_tagged)) return t;
+    }
+    if (arch >= Arch::V6K) {   // the ARMv6 and ARMv7-A additions (decompile/arm_ext: t2)
+        if (auto t = t2::decode(a, b, pc_tagged, arch)) return t;
+    }
     const std::uint32_t pc = pc_tagged & ~1u;
     Insn i;
     i.word = a;
@@ -438,11 +710,12 @@ std::optional<Insn> decode_thumb(std::uint16_t a, std::uint16_t b, std::uint32_t
         const unsigned op = (a >> 8) & 3, h1 = (a >> 7) & 1, h2 = (a >> 6) & 1;
         const std::uint8_t hs = static_cast<std::uint8_t>((h2 << 3) | mid3), hd = static_cast<std::uint8_t>((h1 << 3) | low3);
         if (op == 3) {
-            if (low3 != 0 || (h1 && arch != Arch::V5TE)) return std::nullopt;
+            if (low3 != 0 || (h1 && arch < Arch::V5TE)) return std::nullopt;
             i.op = h1 ? Op::Blx : Op::Bx;   // (BLX rm: ARMv5)
             i.rm = hs;
         } else {
-            if (!h1 && !h2) return std::nullopt;   // two low registers: undefined on the ARM7TDMI
+            if (!h1 && !h2 && (op != 2 || arch < Arch::V6K)) return std::nullopt;   // two low registers: undefined on the ARM7TDMI (a `mov` is fine from ARMv6)
+            i.v6 = arch >= Arch::V6K;
             i.op = op == 0 ? Op::Add : op == 1 ? Op::Cmp : Op::Mov;
             i.s = op == 1;
             if (op == 1) i.rn = hd;
@@ -537,7 +810,7 @@ std::optional<Insn> decode_thumb(std::uint16_t a, std::uint16_t b, std::uint32_t
         set_target(sext(a & 0x7FF, 11) * 2);
     } else if ((a >> 12) == 0xF) {   // 19: long branch with link
         if (((a >> 11) & 1)) return std::nullopt;
-        const bool blx = arch == Arch::V5TE && (b >> 11) == 0x1D && (b & 1) == 0;   // the second halfword 11101: BLX, to ARM state
+        const bool blx = arch >= Arch::V5TE && (b >> 11) == 0x1D && (b & 1) == 0;   // the second halfword 11101: BLX, to ARM state
         if ((b >> 11) != 0x1F && !blx) return std::nullopt;
         i.op = blx ? Op::Blx : Op::Bl;
         i.length = 4;
@@ -561,7 +834,7 @@ std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, Arch
         if (at + 2 > code.size()) return std::nullopt;
         const std::uint16_t a = static_cast<std::uint16_t>(code[at] | code[at + 1] << 8);
         std::uint16_t b = 0;
-        if ((a >> 11) == 0x1E) {
+        if ((a >> 11) == 0x1E || (arch >= Arch::V7A && a >= 0xE800)) {
             if (at + 4 > code.size()) return std::nullopt;
             b = static_cast<std::uint16_t>(code[at + 2] | code[at + 3] << 8);
         }
@@ -774,7 +1047,7 @@ std::string thumb_text(const Insn& i, const AddressLabels& labels) {
             if (i.rn == 13 && i.wb && ((!load && i.pre && !i.up) || (load && !i.pre && i.up))) return std::format("{} {}", load ? "pop" : "push", list_text(i.list));
             return std::format("{}ia {}{}, {}", load ? "ldm" : "stm", reg(i.rn), i.wb ? "!" : "", list_text(i.list));
         }
-        case Op::B: return std::format("b{} {}", condition_suffix(i.cond), target_text(*i.target, labels));
+        case Op::B: return std::format("b{}{} {}", condition_suffix(i.cond), i.length == 4 ? ".w" : "", target_text(*i.target, labels));
         case Op::Bl: return std::format("bl {}", target_text(*i.target, labels));
         case Op::Bx: return std::format("bx {}", reg(i.rm));
         case Op::Blx: return i.target ? std::format("blx {}", target_text(*i.target, labels)) : std::format("blx {}", reg(i.rm));
@@ -785,7 +1058,11 @@ std::string thumb_text(const Insn& i, const AddressLabels& labels) {
 
 }  // namespace
 
-std::string text(const Insn& insn, const AddressLabels& labels) { return insn.thumb() ? thumb_text(insn, labels) : arm_text(insn, labels); }
+std::string text(const Insn& insn, const AddressLabels& labels) {
+    if (insn.thumb() && insn.length == 4 && insn.ext == t2::kOpaque) return t2::text(insn, labels);   // (a 32-bit instruction the interpreter runs, written as the disassembler does)
+    if (insn.op == Op::Ext) return insn.thumb() ? t2::text(insn, labels) : ext::text(insn.ext, insn.word, insn.pc, labels);
+    return insn.thumb() ? thumb_text(insn, labels) : arm_text(insn, labels);
+}
 
 // ---- expressions --------------------------------------------------------------------------------------------------------------
 
@@ -1111,7 +1388,7 @@ Bytes encode_thumb(const Insn& i) {
                 return alu(code, i.rd, i.rs);
             }
             if (plain && !i.s) {
-                need(!low(i.rd) || !low(i.rm), "a Thumb `mov` between low registers sets the flags (`movs`)");
+                need(!low(i.rd) || !low(i.rm) || i.v6, "a Thumb `mov` between low registers sets the flags (`movs`)");
                 return hi_register(2, i.rd, i.rm);
             }
             need(i.s && low(i.rd) && low(i.rm) && !i.rrx && i.shift != Shift::Ror, "a Thumb shift takes low registers, sets the flags, and is LSL, LSR or ASR");
@@ -1205,6 +1482,22 @@ Bytes encode_thumb(const Insn& i) {
             if (!i.target) refuse(i, "a branch without a target");
             const std::int64_t distance = static_cast<std::int64_t>(*i.target & ~1u) - (static_cast<std::int64_t>(i.pc) + 4);
             need(distance % 2 == 0, "a branch target is not a halfword");
+            if (i.length == 4) {   // B.W and B<cond>.W (ARMv7-A)
+                const std::uint32_t d = static_cast<std::uint32_t>(distance);
+                if (i.cond == kAlways) {
+                    need(distance >= -(1 << 24) && distance < (1 << 24), "the branch is out of reach");
+                    const unsigned s = (d >> 24) & 1, j1 = (~((d >> 23) ^ s)) & 1, j2 = (~((d >> 22) ^ s)) & 1;
+                    Bytes out = two(0xF000 | s << 10 | ((d >> 12) & 0x3FF));
+                    const Bytes second = two(0x9000 | j1 << 13 | j2 << 11 | ((d >> 1) & 0x7FF));
+                    out.insert(out.end(), second.begin(), second.end());
+                    return out;
+                }
+                need(distance >= -(1 << 20) && distance < (1 << 20), "the conditional branch is out of reach");
+                Bytes out = two(0xF000 | ((d >> 20) & 1) << 10 | static_cast<unsigned>(i.cond) << 6 | ((d >> 12) & 0x3F));
+                const Bytes second = two(0x8000 | ((d >> 18) & 1) << 13 | ((d >> 19) & 1) << 11 | ((d >> 1) & 0x7FF));
+                out.insert(out.end(), second.begin(), second.end());
+                return out;
+            }
             if (i.cond == kAlways) {
                 need(distance >= -2048 && distance <= 2046, "the branch is out of reach");
                 return two(0xE000 | ((static_cast<std::uint32_t>(distance) >> 1) & 0x7FF));
@@ -1216,10 +1509,11 @@ Bytes encode_thumb(const Insn& i) {
             if (!i.target) refuse(i, "a branch without a target");
             const std::int64_t distance = static_cast<std::int64_t>(*i.target & ~1u) - (static_cast<std::int64_t>(i.pc) + 4);
             need(distance % 2 == 0, "a branch target is not a halfword");
-            need(distance >= -(1 << 22) && distance < (1 << 22), "the call is out of reach");
+            need(distance >= -(1 << 24) && distance < (1 << 24), "the call is out of reach");
             const std::uint32_t d = static_cast<std::uint32_t>(distance);
-            Bytes out = two(0xF000 | ((d >> 12) & 0x7FF));
-            const Bytes second = two(0xF800 | ((d >> 1) & 0x7FF));
+            const unsigned sign = (d >> 24) & 1, j1 = (~((d >> 23) ^ sign)) & 1, j2 = (~((d >> 22) ^ sign)) & 1;   // (the same bits as the pair of the ARMv4T within 4 MB)
+            Bytes out = two(0xF000 | sign << 10 | ((d >> 12) & 0x3FF));
+            const Bytes second = two(0xD000 | j1 << 13 | j2 << 11 | ((d >> 1) & 0x7FF));
             out.insert(out.end(), second.begin(), second.end());
             return out;
         }
@@ -1245,7 +1539,10 @@ Bytes encode_thumb(const Insn& i) {
 
 }  // namespace
 
-Bytes encode(const Insn& insn) { return insn.thumb() ? encode_thumb(insn) : bytes_of(encode_arm(insn), 4); }
+Bytes encode(const Insn& insn) {
+    if (insn.op == Op::Ext) return bytes_of(insn.word, insn.length);
+    return insn.thumb() ? encode_thumb(insn) : bytes_of(encode_arm(insn), 4);
+}
 
 // ---- assembling ---------------------------------------------------------------------------------------------------------------
 
@@ -1575,7 +1872,7 @@ Insn parse(const Context& c) {
     const Base* base = nullptr;
     Suffix suffix;
     for (const Base& b : kBases) {
-        if ((b.v5 && c.arch != Arch::V5TE) || !mnemonic.starts_with(b.name) || (base && b.name.size() <= base->name.size())) continue;
+        if ((b.v5 && c.arch < Arch::V5TE) || !mnemonic.starts_with(b.name) || (base && b.name.size() <= base->name.size())) continue;
         if (const auto s = parse_suffix(b.kind, std::string_view(mnemonic).substr(b.name.size()))) {
             base = &b;
             suffix = *s;
@@ -1584,6 +1881,7 @@ Insn parse(const Context& c) {
     if (!base) refuse(line, "not an instruction");
 
     Insn i;
+    i.v6 = c.arch >= Arch::V6K;
     i.pc = c.pc;
     i.isa = c.isa;
     i.length = c.isa == Isa::Thumb ? 2 : 4;
@@ -1690,7 +1988,7 @@ Insn parse(const Context& c) {
                 pair_text = pair_text.substr(pair_text.find(',') + 1);
             }
             const std::string& size = suffix.size;
-            if (size == "d" && c.arch != Arch::V5TE) refuse(line, "LDRD and STRD are ARMv5TE");
+            if (size == "d" && c.arch < Arch::V5TE) refuse(line, "LDRD and STRD are ARMv5TE");
             i.size = size == "d" ? 8 : size == "b" || size == "bt" || size == "sb" ? 1 : size == "h" || size == "sh" ? 2 : 4;
             i.sign = size == "sb" || size == "sh";
             i.user = size == "t" || size == "bt";
@@ -1868,6 +2166,26 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     const Context c{line, (pc & 1) ? Isa::Thumb : Isa::Arm, pc & ~1u, labels, arch};
     const unsigned alignment = c.isa == Isa::Thumb ? 2 : 4;
     if (c.pc % alignment != 0) refuse(line, "an instruction is not at a multiple of its size");
+    if (c.isa == Isa::Arm && arch >= Arch::V6K) {
+        if (const std::optional<std::uint32_t> w = ext::assemble(line, c.pc, labels, arch)) return bytes_of(*w, 4);
+    }
+    if (c.isa == Isa::Thumb && arch >= Arch::V6K) {
+        if (const std::optional<Bytes> b = t2::assemble(line, c.pc, labels)) return *b;
+        // B.W and B<cond>.W: the same line without the `.w`, written in the wide encoding
+        std::size_t split = 0;
+        while (split < line.size() && !text::is_space(line[split])) ++split;
+        const std::string head = text::lower(line.substr(0, split));
+        if (arch >= Arch::V7A && head.size() >= 3 && head.ends_with(".w") && head[0] == 'b' && head != "bl.w" && head != "bx.w") {
+            const std::string narrow = head.substr(0, head.size() - 2);
+            if (narrow == "b" || (narrow.size() == 3 && std::any_of(kConditions.begin(), kConditions.end(), [&](std::string_view k) { return !k.empty() && k == std::string_view(narrow).substr(1); }))) {
+                const std::string rewritten = narrow + std::string(line.substr(split));
+                const Context wide{rewritten, c.isa, c.pc, labels, arch};
+                Insn i = parse(wide);
+                i.length = 4;
+                return encode(i);
+            }
+        }
+    }
     return encode(parse(c));
 }
 

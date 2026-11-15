@@ -1,6 +1,8 @@
 // cb-unity: alone
 // `info` on the Atari 5200, Jaguar, WonderSwan and 3DO files: what formats::detect says of small files of each.
 #include "cb/core/testing.hpp"
+#include "cb/formats/vb_test_image.hpp"
+#include "cb/formats/intv_test_image.hpp"
 #include "cb/formats/detect.hpp"
 
 namespace cb::formats::detect {
@@ -68,6 +70,29 @@ CB_TEST("formats.detect.cdi_disc", [] {
     const Detected d = first(disc, "game.iso");
     CB_CHECK_EQ(d.family, "cdi");
     CB_CHECK_EQ(d.format, "Philips CD-i disc");
+});
+
+CB_TEST("formats.detect.vectrex_cartridge", [] {
+    Bytes rom(0x40, 0xFF);
+    const Bytes header = {'g', ' ', 'G', 'C', 'E', ' ', '1', '9', '8', '2', 0x80, 0xFD, 0x0D, 0xF8, 0x50, 0x20, 0xD0, 'T', 'E', 'S', 'T', 0x80, 0x00};
+    std::copy(header.begin(), header.end(), rom.begin());
+    const Detected d = first(rom, "game.vec");
+    CB_CHECK_EQ(d.family, "vectrex");
+    CB_CHECK_EQ(d.format, "Vectrex cartridge");
+});
+
+CB_TEST("formats.detect.virtual_boy_cartridge", [] {
+    const Detected d = first(vb::test_image::cartridge(), "game.vb");
+    CB_CHECK_EQ(d.family, "vb");
+    CB_CHECK_EQ(d.format, "Virtual Boy cartridge");
+    CB_CHECK_EQ(first(vb::test_image::cartridge(), "game.bin").family == "vb", false);
+});
+
+CB_TEST("formats.detect.intellivision_cartridge", [] {
+    const Detected d = first(intv::test_image::file(), "game.rom");
+    CB_CHECK_EQ(d.family, "intv");
+    CB_CHECK_EQ(d.format, "Intellivision cartridge (Intellicart .rom)");
+    CB_CHECK_EQ(first(intv::test_image::file(), "game.bin").family == "intv", false);
 });
 
 }  // namespace cb::formats::detect

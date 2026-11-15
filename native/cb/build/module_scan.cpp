@@ -6,6 +6,7 @@
 #include <set>
 
 #include "cb/build/module_internal.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/core/regex.hpp"
 #include "cb/core/text.hpp"
 #include "cb/decompile/describe.hpp"
@@ -238,9 +239,9 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
             setdefault(n, "it leaves DS changed for its caller");
             // (A callee that leaves only the module's own data segment, for a caller that has loaded it itself before the call, changes
             // nothing -- `leaves_ds(ins, own_loads)` and `loads_own_ds_before` say so, and are tested -- but USER's callers of sub_1_5D4F
-            // rebuilt as C on that reading fail the all-15 boot (FAIL(dos)) while with all 13 of them as assembly it passes, so
-            // no caller is excused until the one that breaks is found: `leaving_own` stays empty.)
-            (void)own_loads;
+            // rebuilt as C on that reading fail the all-15 boot (FAIL(dos)). So no caller is excused unless CB_DS_OWN_CALLERS names it
+            // (a comma list), for finding the one that breaks.)
+            if (!leaves_ds(ins, own_loads)) leaving_own.insert(n);
         }
         for (std::size_t k = 0; k < ins.size(); ++k) {
             const desc::Insn& i = ins[k];
@@ -313,11 +314,16 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
     }
     // (a caller of one that leaves DS changed: the original puts its own DS back after it -- KERNEL's sub_2_2437 `push ds; call 0170 ...
     // pop ds`; its C kept the kernel's DS and the caller after it faulted, "Invalid DPMI return from 0367:2BC3")
+    std::set<std::string> excused_callers;
+    const std::string excused_text = fs::get_env("CB_DS_OWN_CALLERS").value_or("");
+    for (std::string_view x : text::split(excused_text, ',')) {
+        if (!x.empty()) excused_callers.emplace(x);
+    }
     for (const std::string& callee : leaving_ds) {
         const auto it = calls_of.find(callee);
         if (it == calls_of.end()) continue;
         for (const std::string& caller : it->second) {
-            if (leaving_own.contains(callee) && own_ds_ready.contains({callee, caller})) continue;
+            if (leaving_own.contains(callee) && own_ds_ready.contains({callee, caller}) && excused_callers.contains(caller)) continue;
             setdefault(caller, "it calls " + callee + ", which leaves DS changed");
         }
     }
