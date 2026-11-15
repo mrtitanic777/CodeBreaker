@@ -59,6 +59,9 @@ enum class Op : std::uint8_t {
     I7,
     RsRb,      // one register that stands in both rS and rB (mr, not)
     BiCr,      // the condition register field of a branch's BI (bits 11-13), left out of the text when cr0
+    MemDS,     // d(rA) of the 64-bit loads and stores: a 14-bit displacement in words (its low two bits are the opcode's)
+    Sh64,      // the 6-bit shift amount of the 64-bit rotates: bits 16-20 and bit 30
+    Mb64,      // the 6-bit mask begin or end: bits 21-26, the low bit first
 };
 
 constexpr std::uint32_t mask_of(Op op) {
@@ -85,6 +88,9 @@ constexpr std::uint32_t mask_of(Op op) {
         case Op::W10: return 0x00000400;
         case Op::I7: return 0x00000380;
         case Op::RsRb: return 0x03E0F800;
+        case Op::MemDS: return 0x001FFFFC;
+        case Op::Sh64: return 0x0000F802;
+        case Op::Mb64: return 0x000007E0;
     }
     return 0;
 }
@@ -109,6 +115,7 @@ struct Row {
     std::uint8_t count = 0;
     std::uint8_t flags = 0;
     Kind kind = Kind::Other;
+    bool wide = false;           // a 64-bit instruction: decoded and assembled only when asked for
 };
 
 constexpr std::uint32_t flag_bits(std::uint8_t flags) {
@@ -170,6 +177,7 @@ private:
         r.pattern = pattern;
         r.flags = flags;
         r.kind = kind;
+        r.wide = wide_;
         r.vary = flag_bits(flags);
         for (const Op op : ops) {
             r.ops[r.count++] = op;
@@ -432,8 +440,51 @@ private:
         add("psq_lux", (4u << 26) | (38u << 1), {FT, RA, RB, W10, I7});
         add("psq_stux", (4u << 26) | (39u << 1), {FT, RA, RB, W10, I7});
         add("dcbz_l", (4u << 26) | (1014u << 1), {RA, RB});
+        // the 64-bit instructions of the Cell's PPU (and the Xbox 360's Xenon): decoded and assembled only when asked for (`wide`)
+        wide_ = true;
+        add("ld", (58u << 26) | 0, {RT, MemDS});
+        add("ldu", (58u << 26) | 1, {RT, MemDS});
+        add("lwa", (58u << 26) | 2, {RT, MemDS});
+        add("std", (62u << 26) | 0, {RT, MemDS});
+        add("stdu", (62u << 26) | 1, {RT, MemDS});
+        add("rldicl", (30u << 26) | (0u << 2), {RA, RT, Sh64, Mb64}, kRc);
+        add("rldicr", (30u << 26) | (1u << 2), {RA, RT, Sh64, Mb64}, kRc);
+        add("rldic", (30u << 26) | (2u << 2), {RA, RT, Sh64, Mb64}, kRc);
+        add("rldimi", (30u << 26) | (3u << 2), {RA, RT, Sh64, Mb64}, kRc);
+        add("rldcl", (30u << 26) | (8u << 1), {RA, RT, RB, Mb64}, kRc);
+        add("rldcr", (30u << 26) | (9u << 1), {RA, RT, RB, Mb64}, kRc);
+        add("cmpdi", (11u << 26) | (1u << 21), {CrfDOpt, RA, Simm});
+        add("cmpldi", (10u << 26) | (1u << 21), {CrfDOpt, RA, Uimm});
+        add("cmpd", (31u << 26) | (1u << 21) | (0u << 1), {CrfDOpt, RA, RB});
+        add("cmpld", (31u << 26) | (1u << 21) | (32u << 1), {CrfDOpt, RA, RB});
+        d_form(2, "tdi", {To, RA, Simm});
+        x31("td", 68, {To, RA, RB});
+        x31("ldx", 21, {RT, RA, RB});
+        x31("ldux", 53, {RT, RA, RB});
+        x31("lwax", 341, {RT, RA, RB});
+        x31("lwaux", 373, {RT, RA, RB});
+        x31("stdx", 149, {RT, RA, RB});
+        x31("stdux", 181, {RT, RA, RB});
+        x31("ldarx", 84, {RT, RA, RB});
+        add("stdcx.", (31u << 26) | (214u << 1) | 1, {RT, RA, RB});
+        x31("sld", 27, {RA, RT, RB}, kRc);
+        x31("srd", 539, {RA, RT, RB}, kRc);
+        x31("srad", 794, {RA, RT, RB}, kRc);
+        add("sradi", (31u << 26) | (413u << 2), {RA, RT, Sh64}, kRc);
+        x31("cntlzd", 58, {RA, RT}, kRc);
+        x31("extsw", 986, {RA, RT}, kRc);
+        x31("mulld", 233, {RT, RA, RB}, kOe | kRc);
+        x31("mulhd", 73, {RT, RA, RB}, kRc);
+        x31("mulhdu", 9, {RT, RA, RB}, kRc);
+        x31("divd", 489, {RT, RA, RB}, kOe | kRc);
+        x31("divdu", 457, {RT, RA, RB}, kOe | kRc);
+        add("fcfid", (63u << 26) | (846u << 1), {FT, FB}, kRc);
+        add("fctid", (63u << 26) | (814u << 1), {FT, FB}, kRc);
+        add("fctidz", (63u << 26) | (815u << 1), {FT, FB}, kRc);
+        wide_ = false;
     }
 
+    bool wide_ = false;
     std::vector<Row> rows_;
     std::array<std::vector<std::uint16_t>, 64> by_opcode_;
     std::unordered_map<std::string, Spelling> names_;
@@ -493,6 +544,9 @@ std::string operand_text(const Insn& insn, const Row& row, unsigned index, const
             return std::format("{}(r{})", d, field(w, 0x001F0000));
         }
         case Op::MemQ: return std::format("{}(r{})", sign_extend(w & 0xFFF, 12), field(w, 0x001F0000));
+        case Op::MemDS: return std::format("{}(r{})", sign_extend(w & 0xFFFC, 16), field(w, 0x001F0000));
+        case Op::Sh64: return std::to_string(((w >> 11) & 31) | (((w >> 1) & 1) << 5));
+        case Op::Mb64: return std::to_string(((w >> 6) & 31) | (((w >> 5) & 1) << 5));
         case Op::CrfD: return std::format("cr{}", field(w, mask_of(op)));
         case Op::CrfDOpt: return field(w, mask_of(op)) == 0 ? "" : std::format("cr{}", field(w, mask_of(op)));
         case Op::CrfS: return std::format("cr{}", field(w, mask_of(op)));
@@ -511,10 +565,11 @@ std::string operand_text(const Insn& insn, const Row& row, unsigned index, const
 
 // ---- decoding ---------------------------------------------------------------------------------------------------
 
-std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc) {
+std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, bool wide) {
     const Table& t = table();
     for (const std::uint16_t i : t.with_opcode(word >> 26)) {
         const Row& row = t.rows()[i];
+        if (row.wide && !wide) continue;
         if (!matches(row, word)) continue;
         Insn insn;
         insn.word = word;
@@ -551,10 +606,10 @@ std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc) {
     return std::nullopt;
 }
 
-std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc) {
+std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, bool wide) {
     if (at + 4 > code.size()) return std::nullopt;
     const std::uint32_t word = static_cast<std::uint32_t>(code[at]) << 24 | static_cast<std::uint32_t>(code[at + 1]) << 16 | static_cast<std::uint32_t>(code[at + 2]) << 8 | code[at + 3];
-    return decode_word(word, pc);
+    return decode_word(word, pc, wide);
 }
 
 bool has_immediate(const Insn& insn) {
@@ -772,14 +827,14 @@ bool split_memory(std::string_view operand, std::string_view& displacement, std:
 
 }  // namespace
 
-Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels) {
+Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels, bool wide) {
     line = text::trim(line);
     std::size_t split = 0;
     while (split < line.size() && !text::is_space(line[split])) ++split;
     const std::string name = text::lower(line.substr(0, split));
     const Table& t = table();
     const Table::Spelling* spelling = t.find(name);
-    if (!spelling) refuse(line, "unknown instruction '" + name + "'");
+    if (!spelling || (t.rows()[spelling->row].wide && !wide)) refuse(line, "unknown instruction '" + name + "'");
     const Row& row = t.rows()[spelling->row];
     const std::vector<std::string> tokens = z80::split_operands(line.substr(split));
 
@@ -811,6 +866,25 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
                 if (op == Op::Mem) word |= (range(line, d, -32768, 65535, "the displacement") & 0xFFFF);
                 else word |= range(line, d, -2048, 4095, "the displacement") & 0xFFF;
                 word |= place(register_number(line, base, "r"), 0x001F0000);
+                break;
+            }
+            case Op::MemDS: {
+                std::string_view displacement, base;
+                if (!split_memory(token, displacement, base)) refuse(line, "'" + token + "' is not offset(register)");
+                const std::int64_t d = displacement.empty() ? 0 : number(std::string(displacement));
+                if (d % 4 != 0) refuse(line, "the displacement is not a multiple of four");
+                word |= (range(line, d, -32768, 32764, "the displacement") & 0xFFFC);
+                word |= place(register_number(line, base, "r"), 0x001F0000);
+                break;
+            }
+            case Op::Sh64: {
+                const std::uint32_t v = range(line, number(token), 0, 63, "the shift");
+                word |= (v & 31) << 11 | (v >> 5) << 1;
+                break;
+            }
+            case Op::Mb64: {
+                const std::uint32_t v = range(line, number(token), 0, 63, "the mask bit");
+                word |= (v & 31) << 6 | (v >> 5) << 5;
                 break;
             }
             case Op::CrfD: case Op::CrfDOpt: case Op::CrfS: case Op::BiCr: word |= place(register_number(line, token, "cr"), mask_of(op)); break;

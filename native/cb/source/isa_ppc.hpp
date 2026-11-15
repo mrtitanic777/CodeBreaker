@@ -8,5 +8,7 @@
 namespace cb::source::isa {
 
 const build::Encoder& ppc_encoder();
+// ... and with the 64-bit instructions of the Cell's PPU.
+const build::Encoder& ppc64_encoder();
 
 }  // namespace cb::source::isa

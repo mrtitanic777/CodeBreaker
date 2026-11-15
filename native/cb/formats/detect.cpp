@@ -23,6 +23,9 @@
 #include "cb/formats/threedo.hpp"
 #include "cb/formats/vectrex.hpp"
 #include "cb/formats/vb.hpp"
+#include "cb/formats/chf.hpp"
+#include "cb/formats/o2.hpp"
+#include "cb/formats/ngp.hpp"
 #include "cb/formats/intv.hpp"
 #include "cb/formats/wonderswan.hpp"
 
@@ -327,6 +330,16 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
         if (entry >= 0x00100000u && entry < 0x01000000u) return one("Nintendo 3DS executable (ELF)", std::format("ARM11, entry 0x{:08X}, {} bytes", entry, size), "n3ds", "reach");
     }
+    if (size >= 64 && head.size() >= 64 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 2 && head[5] == 2 && (head[18] << 8 | head[19]) == 21) {   // a 64-bit big-endian PowerPC ELF: PSL1GHT's output
+        const std::uint64_t entry = static_cast<std::uint64_t>(be32_or_zero(head, 24)) << 32 | be32_or_zero(head, 28);
+        return one("PlayStation 3 executable (ELF)", std::format("Cell PPU, entry descriptor 0x{:X}, {} bytes", entry, size), "ps3", "reach");
+    }
+    if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE ", 4)) && be32_or_zero(head, 4) == 2) {   // a PS3 SELF: the segment table says whether they are encrypted
+        const std::uint64_t info = static_cast<std::uint64_t>(be32_or_zero(head, 0x48)) << 32 | be32_or_zero(head, 0x4C);
+        const bool encrypted = info + 32 <= size && info + 32 <= head.size() ? be32_or_zero(head, static_cast<std::size_t>(info) + 28) == 1 : true;
+        if (encrypted) return one("PlayStation 3 SELF (encrypted)", "not handled: the segments are encrypted", "ps3", "gap");
+        return one("PlayStation 3 SELF", std::format("Cell PPU, {} bytes", size), "ps3", "reach");
+    }
     if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE ", 4)) && get<std::uint32_t>(file, 4, "detect") == 3) {   // a Vita SELF: the segments' table says whether they are encrypted
         const std::uint64_t info = get<std::uint32_t>(file, 0x58, "detect");
         const bool encrypted = info + 32 <= size && get<std::uint32_t>(file, static_cast<std::size_t>(info) + 24, "detect") == 1;
@@ -438,6 +451,28 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
             const formats::intv::Rom rom = formats::intv::parse(file, !name_ends_with(name, {".rom"}));
             return one(rom.raw ? "Intellivision cartridge (raw words)" : "Intellivision cartridge (Intellicart .rom)",
                        std::format("CP1610, {} segment(s), {} words, \"{}\"{}", rom.segments.size(), rom.word_count(), rom.title(), rom.entry() ? std::format(", program at ${:04X}", *rom.entry()) : std::string()), "intv", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".ngp", ".ngc", ".npc"}) && size >= 64) {   // a Neo Geo Pocket cartridge: the SNK licence text, then the start address; recognised, not yet handled (no TLCS-900/H core)
+        try {
+            const formats::ngp::Rom rom = formats::ngp::parse(file);
+            return one(rom.header.colour ? "Neo Geo Pocket Color cartridge" : "Neo Geo Pocket cartridge",
+                       std::format("TLCS-900/H, \"{}\", {} bytes, start at 0x{:06X}", rom.header.title, size, rom.header.start), "ngp", "gap");
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".o2"}) && size >= 256 && size <= formats::o2::kMaxSize && size % 256 == 0) {   // an Odyssey 2 cartridge: no header; the file name and a whole number of pages up to 3 KB
+        try {
+            const formats::o2::Rom rom = formats::o2::parse(file);
+            return one("Odyssey 2 cartridge", std::format("8048, {} bytes at $0400", rom.data.size()), "o2", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if ((name_ends_with(name, {".chf"}) || (name_ends_with(name, {".bin"}) && starts_with(head, 0, std::string_view("U+", 2)))) && size >= 256 && size <= formats::chf::kMaxSize && size % 256 == 0) {   // a Channel F cartridge: no header; `.chf`, or a `.bin` that starts $55 $2B
+        try {
+            const formats::chf::Rom rom = formats::chf::parse(file);
+            return one("Channel F cartridge", std::format("F8, {} bytes at $0800", rom.data.size()), "chf", "reach");
         } catch (const FormatError&) {
         }
     }

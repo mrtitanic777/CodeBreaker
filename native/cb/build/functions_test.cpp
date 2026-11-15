@@ -205,8 +205,8 @@ Parsed parse_object(const Bytes& obj) {
         std::uint8_t sum = 0;
         for (std::size_t k = i; k < i + 3 + size; ++k) sum = static_cast<std::uint8_t>(sum + obj[k]);
         if (sum != 0) p.checksums_ok = false;
-        if (obj[i] == 0x80) p.theadr.assign(obj.begin() + static_cast<std::ptrdiff_t>(i) + 4, obj.begin() + static_cast<std::ptrdiff_t>(i) + 4 + obj[i + 3]);
-        if (obj[i] == 0x88 && obj[i + 4] == 0xE9) {
+        if (obj[i] == 0x80 && size >= 2 && 4 + std::size_t{obj[i + 3]} <= 3 + size) p.theadr.assign(obj.begin() + static_cast<std::ptrdiff_t>(i) + 4, obj.begin() + static_cast<std::ptrdiff_t>(i) + 4 + obj[i + 3]);
+        if (obj[i] == 0x88 && size >= 9 && obj[i + 4] == 0xE9 && 10 + std::size_t{obj[i + 9]} <= 3 + size) {
             p.dep_time = static_cast<std::uint16_t>(obj[i + 5] | (obj[i + 6] << 8));
             p.dep_date = static_cast<std::uint16_t>(obj[i + 7] | (obj[i + 8] << 8));
             p.dep.assign(obj.begin() + static_cast<std::ptrdiff_t>(i) + 10, obj.begin() + static_cast<std::ptrdiff_t>(i) + 10 + obj[i + 9]);

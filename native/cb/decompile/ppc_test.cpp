@@ -280,6 +280,33 @@ CB_TEST("decompile.ppc.every_row_round_trips", [] {
     CB_CHECK(decoded > 1000);
 });
 
+// The 64-bit rows (the Cell's PPU): words worked out by hand, each row's words round-trip, and the 750 family does not read them as instructions.
+CB_TEST("decompile.ppc.the_64_bit_rows", [] {
+    const Case cases[] = {{0xE8610008, "ld r3,8(r1)"},       {0xF8210001, "stdu r1,0(r1)"}, {0xF8610008, "std r3,8(r1)"}, {0x78630020, "rldicl r3,r3,0,32"},
+                          {0x7C6307B4, "extsw r3,r3"},       {0x7C6429D2, "mulld r3,r4,r5"}, {0x2C230000, "cmpdi r3,0"}};
+    for (const Case& c : cases) {
+        const auto insn = p::decode_word(c.word, kBase, true);
+        CB_CHECK(insn.has_value());
+        if (!insn) continue;
+        CB_CHECK_EQ(p::text(*insn), string(c.text));
+        CB_CHECK_EQ(word_of(p::assemble(c.text, kBase, {}, true)), c.word);
+    }
+    CB_CHECK(!p::decode_word(0xE8610008, kBase).has_value());
+    std::size_t decoded = 0;
+    for (std::size_t row = 0; row < p::row_count(); ++row) {
+        const std::uint32_t pattern = p::row_pattern(row), vary = p::row_variable_bits(row);
+        for (const std::uint32_t seed : {0x00000000u, 0xFFFFFFFFu, 0x12345678u, 0xA5A5A5A5u, 0x5A5A5A5Au, 0x0F0F0F0Fu, 0xDEADBEEFu, 0x01234567u}) {
+            const std::uint32_t word = pattern | (seed & vary);
+            const auto insn = p::decode_word(word, kBase, true);
+            if (!insn) continue;
+            ++decoded;
+            const string line = p::text(*insn);
+            CB_CHECK_EQ(std::format("{:08X} {}", word_of(p::assemble(line, kBase, {}, true)), line), std::format("{:08X} {}", word, line));
+        }
+    }
+    CB_CHECK(decoded > 1000);
+});
+
 // A word that decodes is exactly one row's: no word of the whole 750 set is read two ways, and the text of a decoded word is the same
 // whichever pc it runs at (only a branch's target moves with it).
 CB_TEST("decompile.ppc.text_is_independent_of_pc", [] {

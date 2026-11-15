@@ -60,9 +60,10 @@ struct Insn {
 };
 
 // The instruction at code[at:], which runs at address `pc`, or nullopt when the bytes are not one (or are fewer than four).
-std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc);
+// `wide`: also the 64-bit instructions of the Cell's PPU (the 750 family has none: those words are not instructions for it).
+std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, bool wide = false);
 // The same from the word.
-std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc);
+std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, bool wide = false);
 
 // The instruction as source. `labels` names branch targets; an empty name counts as no label.
 std::string text(const Insn& insn, const AddressLabels& labels = {});
@@ -79,7 +80,7 @@ std::int64_t value(std::string_view expr, const NameLabels& labels, std::uint32_
 // The big-endian bytes of one instruction line. `labels` resolves names; `pc` is where the instruction will be. ParseError for text
 // that is not an instruction or one whose operand is out of reach (a branch too far, an immediate that does not fit its field);
 // z80::UnknownLabel for a label that is not there.
-Bytes assemble(std::string_view line, std::uint32_t pc = 0, const NameLabels& labels = {});
+Bytes assemble(std::string_view line, std::uint32_t pc = 0, const NameLabels& labels = {}, bool wide = false);
 
 // The number of instruction rows in the table (tests walk them).
 std::size_t row_count();

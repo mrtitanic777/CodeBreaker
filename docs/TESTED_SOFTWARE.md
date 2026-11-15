@@ -59,6 +59,8 @@ repositories (kept outside the repository, in `GitHub/homebrew-samples/`).
 | bouncer6.bin, dt2.bin (tutorial cartridges) | Vectrex | JoakimLarsson/VectrexTutorial (bin/) | GPL-3.0 | 7, 1 | rebuilds identical, verified (all judged functions diverge) |
 | Capitan Sevilla 3D Public Demo.vb (2 MB), SPONG Demo (2019-06-20).vb (2 MB), Flash.Cart.Test.Program.HyperBoy.vb (512 KB), Multi Color Demo.vb (512 KB) | Virtual Boy | VUEngine release builds (the projects' released ROMs, as downloaded to homebrew-samples/vb; repository URLs still to be filled in) | MIT (licences checked when downloaded) | 167, 130, 121, 104 | rebuilds identical, verified (12 judged functions each, all diverge when their first byte is turned over; VIP, VSU and hardware registers by name) |
 | spaceversus.rom (32 KB, three segments) | Intellivision | marcomarrero/SpaceVersus-IntyBASIC | MIT | 54 | rebuilds identical, verified (12 judged functions, all diverge when their first word is changed; STIC and PSG registers by name; the segment CRCs are the computed ones) |
+| asteroids-neo.ngp (26 KB) | Neo Geo Pocket Color | underscore42/ngpc-asteroids-neo | MIT | - | `info` reads its header (title ASTEROIDS, start 0x202AF0); no lane yet |
+| (hand-made test cartridges, tests/ only) | Odyssey 2, Channel F | written for the tests | - | 2, 2 | rebuild identical, verified; no open-source homebrew ROM for either console was found to add here |
 | (none) | 3DO (Opera disc, AIF LaunchMe) | no open-source 3DO program with a stated licence and a published binary was found (trapexit/3do-devkit states none; gameblabla/exp3DOsdk's ISOs link the 3DO SDK's libraries, which are not under its MIT licence) | | | the lane is tested with discs and AIF executables built in the tests; the AIF header layout (big-endian words, entry as the BL at word 3) was checked against the first 384 bytes of a published LaunchMe, read and not kept |
 
 Not done for these four: the real WonderSwan and 3DO programs above are missing (nothing to put through `reach --judge` but the tests' own cartridges); the Jaguar's
@@ -365,3 +367,27 @@ in the rebuilt file (`cb_tests --filter machine_n3ds.homebrew`; it skips program
 | Universal-Updater.3dsx (3 MB) | 3DS | Universal-Team/Universal-Updater (v3.4.1) | GPL-3.0 | 5629 | rebuilds identical (136 s); 800 of 800 runs equal |
 
 `codebreaker reach --judge` on the folder: 14249 functions of the three `.3dsx` files, all verified.
+
+## PlayStation Vita homebrew (the vita lane)
+
+Open-source homebrew with published source, binaries only, kept in `GitHub/homebrew-samples/vita/` (never run on this machine, never committed): the SELF files with
+unencrypted, zlib-compressed segments that VitaSDK's tools make. Each is read by `formats/vita` (the segments inflated), written as GNU as Thumb source by
+`source/vita_writer` and built again by CodeBreaker's own assembler; its functions (the first 400) are then run in the interpreter, in the original and in the rebuilt file
+(`cb_tests --filter machine_vita.homebrew`; it skips programs that are not on the machine).
+
+| Program | Console | Source | Licence | Functions | Result |
+|---|---|---|---|---|---|
+| eboot_safe.bin (lpp-vita, 3.7 MB) | Vita (fixed-address SELF) | Rinnegatamante/lpp-vita | GPL-3.0 | 84 | rebuilds identical; 168 of 168 runs equal |
+| eboot.bin of VitaShell.vpk (1.8 MB, relocatable) | Vita | TheOfficialFloW/VitaShell | GPL-3.0 | 439 | rebuilds identical; 800 of 800 runs equal |
+
+Only the functions the flow reaches by calls are found (callbacks and functions called through pointers are data for now), and many runs end at a 32-bit Thumb-2 instruction the interpreter does not run (ldrd, strd, pld, tbb, NEON).
+
+## PlayStation 3 (the ps3 lane)
+
+No open-source PS3 homebrew binary with readable segments was found: the releases that were looked at (bucanero/ps3loadx v1.1 `EBOOT.BIN`, MIT; jjolano/openps3ftp `openps3ftp.sprx`,
+GPL-3.0) are SELF files whose segments are compressed and encrypted, which CodeBreaker refuses (it does not decrypt), and the projects that publish PSL1GHT output publish it
+signed. The lane is therefore proved on PowerPC64 ELF files that `engine/machine_ps3_test` builds word by word (the PSL1GHT layout: text at $10000, a function descriptor
+`{code, TOC, 0}` in the data at $10000000): they rebuild identical, a descriptor finds its function, an unedited copy judges equal and an edited one diverges. When a plain `.elf`
+from PSL1GHT's `make` or an unencrypted SELF of an open-source project is put in `GitHub/homebrew-samples/ps3/` the same writer and lane take it; nothing is claimed for real
+programs yet.
+
