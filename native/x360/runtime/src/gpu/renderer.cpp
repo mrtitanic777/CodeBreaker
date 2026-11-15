@@ -529,7 +529,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             // Destination ranges resolves wrote in the work recorded since the last Sync: guest memory as the CPU sees
             // it is stale there until the GPU has finished, so texture hashes cannot be taken there.
             std::vector<std::pair<uint32_t, uint32_t>> pendingResolves_;
-            ComPtr<ID3D12PipelineState> untilePipelines_[2]; // fractions (UINT view), integers (float view)
+            ComPtr<ID3D12PipelineState> untilePipelines_[4]; // fractions (UINT view), integers (float view); +2: volumes (3D destination)
             std::vector<TextureReadback> pendingDumps_;
             ComPtr<ID3D12Heap> memoryHeap_;
             // memory_ is what shaders read and resolves write: guest physical memory itself (a placed buffer over the
@@ -819,12 +819,14 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                         "CreateComputePipelineState (present)");
             }
             // The texture untile pass (texture.h) has the same bindings as the present pass.
-            for (int integer = 0; integer < 2; integer++)
+            for (int integer = 0; integer < 4; integer++)
             {
                 std::vector<uint8_t> bytecode;
                 std::string errors;
-                const std::string source = std::string(integer ? "#define XE_UNTILE_FLOAT\n" : "") + kTextureUntileHlsl;
-                if (!CompileHlsl(source, "cs_5_1", integer ? "texture_untile_float" : "texture_untile", bytecode, errors))
+                const std::string source = std::string(integer & 1 ? "#define XE_UNTILE_FLOAT\n" : "") +
+                                           (integer & 2 ? "#define XE_UNTILE_3D\n" : "") + kTextureUntileHlsl;
+                if (!CompileHlsl(source, "cs_5_1", integer & 2 ? (integer & 1 ? "texture_untile_3d_float" : "texture_untile_3d")
+                                                               : integer & 1 ? "texture_untile_float" : "texture_untile", bytecode, errors))
                     Fatal("GPU: texture untile shader failed to compile: {}", errors);
                 D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {};
                 desc.pRootSignature = presentRootSignature_.Get();
@@ -1438,9 +1440,10 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             SetMemoryState(kShaderResource);
             Transition(texture.resource.Get(), texture.state, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             list_->SetComputeRootSignature(presentRootSignature_.Get());
-            list_->SetPipelineState(untilePipelines_[texture.fetch.numbers == TextureNumbers::kInteger ||
-                                                    TextureUntileKind(texture.fetch.format) == kUntileDepth24 ||
-                                                    TextureUntileKind(texture.fetch.format) == kUntileDepth24Float].Get());
+            list_->SetPipelineState(untilePipelines_[(texture.fetch.numbers == TextureNumbers::kInteger ||
+                                                      TextureUntileKind(texture.fetch.format) == kUntileDepth24 ||
+                                                      TextureUntileKind(texture.fetch.format) == kUntileDepth24Float ? 1 : 0) +
+                                                     (texture.fetch.volume ? 2 : 0)].Get());
             list_->SetComputeRootDescriptorTable(1, SrvGpu(0));
             for (uint32_t level = 0; level < texture.layout.levelCount; level++)
                 for (uint32_t face = 0; face < texture.fetch.faces; face++)
@@ -1450,17 +1453,27 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                         continue;
                     D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
                     uav.Format = host.uav;
-                    uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;   // one slice: the face (a 2D texture: 0)
-                    uav.Texture2DArray.MipSlice = level;
-                    uav.Texture2DArray.FirstArraySlice = face;
-                    uav.Texture2DArray.ArraySize = 1;
+                    if (texture.fetch.volume)
+                    {
+                        uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+                        uav.Texture3D.MipSlice = level;
+                        uav.Texture3D.FirstWSlice = 0;
+                        uav.Texture3D.WSize = texture.fetch.depth;
+                    }
+                    else
+                    {
+                        uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;   // one slice: the face (a 2D texture: 0)
+                        uav.Texture2DArray.MipSlice = level;
+                        uav.Texture2DArray.FirstArraySlice = face;
+                        uav.Texture2DArray.ArraySize = 1;
+                    }
                     const UINT index = srvNext_++;
                     device_->CreateUnorderedAccessView(texture.resource.Get(), nullptr, &uav, SrvCpu(index));
                     TextureUntileConstants constants = UntileConstants(texture.fetch, source);
                     constants.storage += face * source.faceStride;
                     list_->SetComputeRootConstantBufferView(0, UploadData(&constants, sizeof(constants)));
                     list_->SetComputeRootDescriptorTable(2, SrvGpu(index));
-                    list_->Dispatch((source.width + 7) / 8, (source.height + 7) / 8, 1);
+                    list_->Dispatch((source.width + 7) / 8, (source.height + 7) / 8, texture.fetch.volume ? texture.fetch.depth : 1);
                 }
             texture.state = kShaderResource;
             Transition(texture.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, texture.state);
@@ -1514,17 +1527,23 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                         Fatal("GPU: texture {:08X}-{:08X} is outside physical memory ({})", start, end, DescribeTextureTuple(d));
                 const HostTextureFormat host = HostFormatOf(fetch);
                 D3D12_HEAP_PROPERTIES heap = { D3D12_HEAP_TYPE_DEFAULT };
-                D3D12_RESOURCE_DESC desc = { D3D12_RESOURCE_DIMENSION_TEXTURE2D, 0, fetch.width, fetch.height,
-                                             UINT16(fetch.faces), UINT16(texture.layout.levelCount), host.resource,
+                D3D12_RESOURCE_DESC desc = { fetch.volume ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D, 0,
+                                             fetch.width, fetch.height,
+                                             UINT16(fetch.volume ? fetch.depth : fetch.faces), UINT16(texture.layout.levelCount), host.resource,
                                              { 1, 0 }, D3D12_TEXTURE_LAYOUT_UNKNOWN,
                                              D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
                 CheckHr(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON,
                                                          nullptr, IID_PPV_ARGS(&texture.resource)), "texture");
                 texture.state = D3D12_RESOURCE_STATE_COMMON;
                 texture.uavFormat = host.uav;
-                texture.srv.Format = host.srv;
+                texture.srv.Format = fetch.gamma && host.srv == DXGI_FORMAT_R8G8B8A8_UNORM ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : host.srv;
                 texture.srv.Shader4ComponentMapping = host.mapping;
-                if (fetch.faces == 6)
+                if (fetch.volume)
+                {
+                    texture.srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+                    texture.srv.Texture3D.MipLevels = texture.layout.levelCount;
+                }
+                else if (fetch.faces == 6)
                 {
                     texture.srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
                     texture.srv.TextureCube.MipLevels = texture.layout.levelCount;
@@ -1674,6 +1693,9 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                     continue;
                 }
                 textures[i] = &TextureFor(shader.textures[i].fetchConstant);
+                if ((shader.textures[i].dimension == 2) != textures[i]->fetch.volume)
+                    Fatal("GPU: tf{} is fetched as {} but its fetch constant is {}", shader.textures[i].fetchConstant,
+                          shader.textures[i].dimension == 2 ? "3D" : "not 3D", textures[i]->fetch.volume ? "3D" : "not 3D");
                 if ((shader.textures[i].dimension == 3) != (textures[i]->fetch.faces == 6))
                     Fatal("GPU: tf{} is fetched as {} but its fetch constant is {}", shader.textures[i].fetchConstant,
                           shader.textures[i].dimension == 3 ? "a cube" : "2D", textures[i]->fetch.faces == 6 ? "a cube" : "2D");
@@ -2571,6 +2593,8 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                     uint32_t format = (info >> 16) & 0xF;
                     if (format == 12) // 2_10_10_10_FLOAT_AS_16_16_16_16: the same EDRAM bits as 2_10_10_10_FLOAT
                         format = 3;
+                    if (format == 10) // 2_10_10_10_AS_10_10_10_10: the same bits as 2_10_10_10
+                        format = 2;
                     if (!OutputMergerSupportsColorFormat(format))
                         Fatal("GPU: render target {} format {} ({}) is not implemented by the EDRAM output merger", rt,
                               format, EdramColorFormatName(format));
@@ -2611,6 +2635,15 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
             TranslationOptions vsOptions;
             vsOptions.registerCount = (program & 0x3F) + 1;
             vsOptions.domain = tessellated ? 1 : 0;
+            // tfetch3D of a constant that is not a volume reads a 2D texture (shader_translator.h volumeAs2D).
+            auto volumeAs2D = [&](const Shader& shader) {
+                uint32_t mask = 0;
+                for (uint32_t tf : shader.analysis.volumeFetchConstants)
+                    if ((Reg(0x4800 + tf * 6) & 3) != 2 || ((Reg(0x4800 + tf * 6 + 5) >> 9) & 3) != 2)
+                        mask |= 1u << tf;
+                return mask;
+            };
+            vsOptions.volumeAs2D = volumeAs2D(*vs);
             const HostShader* hostVsReady = TryCompiledShader(*vs, vsOptions);
             if (!hostVsReady)
             {
@@ -2781,6 +2814,7 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                 else if (msaa != 0 && sampleControl == 2)
                     psOptions.centroidInterpolators = ~(interpolators >> 16) & 0xFFFF;
                 psOptions.pointSprite = pointList;
+                psOptions.volumeAs2D = volumeAs2D(*ps);
                 psOptions.useOutputMerger = !host;
                 if (host)
                     psOptions.alphaTest = om.alphaTest;
@@ -2849,6 +2883,9 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
             output.polyOffsetFrontOffset = RegFloat(0x2381);
             output.polyOffsetBackScale = RegFloat(0x2382);
             output.polyOffsetBackOffset = RegFloat(0x2383);
+            // A 64-bit colour surface has tiles of 40 pixels: twice the tiles per row (output_merger.cpp, xe_om_poly_back.y).
+            const uint32_t pitchTiles64 = (pitch * (msaa == 2 ? 2 : 1) * 2 + 79) / 80;
+            std::memcpy(&output.pad[0], &pitchTiles64, 4);
 
             // Record. A draw needs at most two texture and two sampler tables plus one untile view per texture level;
             // when the descriptor rings cannot hold them, the recorded work is finished first (the rings restart once
@@ -2876,7 +2913,8 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                 // The ROV reads and writes these tiles: targets over them go back to the EDRAM first.
                 for (uint32_t rt = 0; rt < 4; rt++)
                     if (om.colorFormat[rt] != kRtDisabled)
-                        StoreOverlapping(Reg(kColorInfo[rt]) & 0x7FF, rovSpan, nullptr);
+                        StoreOverlapping(Reg(kColorInfo[rt]) & 0x7FF,
+                                         om.colorFormat[rt] == 7 ? std::min<uint32_t>(pitchTiles64 * rows, 2048) : rovSpan, nullptr);
                 if (om.depthControl)
                     StoreOverlapping(depthBase0, rovSpan, nullptr);
             }

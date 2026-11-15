@@ -550,7 +550,7 @@ namespace gpu
 
         void Translator::EmitTextureFetch(uint32_t opcode, uint32_t w0, uint32_t w1, uint32_t w2)
         {
-            const uint32_t dimension = Bits(w2, 14, 2);
+            uint32_t dimension = Bits(w2, 14, 2);
             if (opcode == kFetchSetTextureLod)
             {
                 // setTexLOD: the register LOD = src.x (first selected component), used by later fetches with
@@ -583,15 +583,15 @@ namespace gpu
                 Line("}}");
                 return;
             }
-            if (opcode != 1)
+            if (opcode != 1 && opcode != 17)
                 Unsupported(std::format("texture instruction {}", opcode));
-            if (dimension == 2)
-                Unsupported("tfetch3D");
             if (Bits(w2, 0, 1))
                 Unsupported("register gradients (setGradientH/V)");
             if (options_.computeHarness)
                 Unsupported("texture fetch in the compute harness");
             const uint32_t tf = Bits(w0, 20, 5);
+            if (dimension == 2 && ((options_.volumeAs2D >> tf) & 1))
+                dimension = 1;
             const uint32_t texture = TextureBindingIndex(tf, dimension);
             const uint32_t sampler = SamplerBindingIndex({ tf, Bits(w1, 12, 2), Bits(w1, 14, 2), Bits(w1, 16, 2), Bits(w1, 18, 3) });
 
@@ -610,6 +610,14 @@ namespace gpu
                 // coordinate is U and the middle of the row.
                 Line("float2 tu = float2({}.{}, 0.5);", src, kComponents[swz & 3]);
                 Line("float2 tsize = float2(float((td2 & 0xFFFFFFu) + 1u), 1.0);");
+            }
+            else if (dimension == 2)
+            {
+                // 3D: the three coordinates are normalized (the size dword has 11, 11 and 10 bits).
+                Line("float3 tu = float3({}.{}, {}.{}, {}.{});", src, kComponents[swz & 3], src, kComponents[(swz >> 2) & 3], src,
+                     kComponents[(swz >> 4) & 3]);
+                Line("float3 tsize = float3(float((td2 & 0x7FFu) + 1u), float(((td2 >> 11) & 0x7FFu) + 1u), "
+                     "float(((td2 >> 22) & 0x3FFu) + 1u));");
             }
             else if (dimension == 3)
             {
@@ -632,6 +640,8 @@ namespace gpu
             // sampler setup must check.
             if (Bits(w0, 25, 1) && dimension != 3)
                 Line("tu /= tsize;");
+            if (dimension == 2 && (SignExtend(Bits(w2, 16, 5), 5) || SignExtend(Bits(w2, 21, 5), 5)))
+                Unsupported("tfetch3D with offsets");
             // Offsets are in half texels, applied at the base level as Xenia does (03b §3.5).
             const int32_t ox = SignExtend(Bits(w2, 16, 5), 5), oy = SignExtend(Bits(w2, 21, 5), 5);
             if ((ox || oy) && dimension != 3)
@@ -648,6 +658,18 @@ namespace gpu
                 Line("tbias += s.regLod;");
             const std::string object = std::format("xe_texture_{}", texture);
             const std::string samplerName = std::format("xe_sampler_{}", sampler);
+            if (opcode == 17)
+            {
+                // getCompTexLOD: the level of detail the hardware would pick for these coordinates, in every component.
+                if (vertex_)
+                    Unsupported("getCompTexLOD in a vertex shader");
+                Line("float tl = {}.CalculateLevelOfDetailUnclamped({}, tu);", object, samplerName);
+                Line("float4 tf = float4(tl, tl, tl, tl);");
+                EmitFetchDestination(w0, w1, "tf");
+                indent_--;
+                Line("}}");
+                return;
+            }
             if (!vertex_ && Bits(w1, 28, 1))
                 Line("float4 tv = {}.SampleBias({}, tu, tbias);", object, samplerName);
             else
@@ -840,7 +862,8 @@ namespace gpu
             std::string text;
             for (uint32_t i = 0; i < result_.textures.size(); i++)
                 text += std::format("{} xe_texture_{} : register(t{}, space1);\n",
-                                    result_.textures[i].dimension == 3 ? "TextureCube<float4>" : "Texture2D<float4>", i, i);
+                                    result_.textures[i].dimension == 3 ? "TextureCube<float4>" :
+                                    result_.textures[i].dimension == 2 ? "Texture3D<float4>" : "Texture2D<float4>", i, i);
             for (uint32_t i = 0; i < result_.samplers.size(); i++)
                 text += std::format("SamplerState xe_sampler_{} : register(s{});\n", i, i);
             text += R"(

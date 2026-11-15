@@ -184,6 +184,7 @@ std::uint32_t Bus::read(std::uint32_t address, unsigned size) {
         return v;
     }
     std::size_t room = 0;
+    if (big_endian_ && size < 4) address ^= 4 - size;   // (a byte is at address ^ 3 of the reversed word, a halfword at address ^ 2)
     const std::uint8_t* from = place(address, room);
     for (unsigned i = 0; from && i < size && i < room; ++i) v |= static_cast<std::uint32_t>(from[i]) << (8 * i);
     if (region == 0x04 && from) log_.push_back({BusAccess::Kind::Read, static_cast<std::uint8_t>(size), address, v});
@@ -207,6 +208,7 @@ void Bus::write(std::uint32_t address, unsigned size, std::uint32_t value) {
         size = 2;
     }
     std::size_t room = 0;
+    if (big_endian_ && size < 4) address ^= 4 - size;
     std::uint8_t* to = place(address, room);
     for (unsigned i = 0; to && i < size && i < room; ++i) to[i] = static_cast<std::uint8_t>(value >> (8 * i));
     if (region == 0x04 && to) log_.push_back({BusAccess::Kind::Write, static_cast<std::uint8_t>(size), address, mask_to(value, size)});

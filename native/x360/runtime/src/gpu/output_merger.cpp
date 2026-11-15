@@ -206,6 +206,41 @@ float4 xe_om_range_14(float4 c)
 }
 uint xe_om_encode_14(float4 c) { return asuint(c.x); }
 )HLSL";
+            case 2:
+                return R"HLSL(
+// 2_10_10_10: R, G, B 10-bit unorm (bits 0-9, 10-19, 20-29), A 2-bit unorm (bits 30-31).
+float4 xe_om_decode_2(uint v)
+{
+    precise float4 r = float4(uint4(v & 0x3FFu, (v >> 10) & 0x3FFu, (v >> 20) & 0x3FFu, v >> 30)) *
+                       float4(asfloat(0x3A802008u), asfloat(0x3A802008u), asfloat(0x3A802008u), asfloat(0x3EAAAAABu)); // 1/1023, 1/3
+    return r;
+}
+float4 xe_om_range_2(float4 c) { return saturate(c); }
+uint xe_om_encode_2(float4 c)
+{
+    precise float4 t = c * float4(1023.0, 1023.0, 1023.0, 3.0) + 0.5;
+    uint4 n = uint4(floor(t));
+    return n.x | (n.y << 10) | (n.z << 20) | (n.w << 30);
+}
+)HLSL";
+            case 7:
+                return R"HLSL(
+// 16_16_16_16_FLOAT: 64 bits, two EDRAM dwords: R, G (low, high half) then B, A.
+float4 xe_om_decode_7(uint2 v)
+{
+    return float4(f16tof32(v.x & 0xFFFFu), f16tof32(v.x >> 16), f16tof32(v.y & 0xFFFFu), f16tof32(v.y >> 16));
+}
+float4 xe_om_range_7(float4 c)
+{
+    uint4 u = asuint(c);
+    float4 r = xe_select4((u & 0x7FFFFFFFu) > 0x7F800000u, 0.0, c);   // NaN -> 0
+    return xe_min4(xe_max4(r, -65504.0), 65504.0);
+}
+uint2 xe_om_encode_7(float4 c)
+{
+    return uint2(f32tof16(c.x) | (f32tof16(c.y) << 16), f32tof16(c.z) | (f32tof16(c.w) << 16));
+}
+)HLSL";
             default:
                 Fatal("GPU: render target format {} ({}) is not implemented by the EDRAM output merger", format,
                       EdramColorFormatName(format));
@@ -219,7 +254,7 @@ uint xe_om_encode_14(float4 c) { return asuint(c.x); }
                 return channel == 0 ? 0x0000FFFFu : channel == 1 ? 0xFFFF0000u : 0u;
             if (format == 14)
                 return channel == 0 ? 0xFFFFFFFFu : 0u;
-            if (format == 3)
+            if (format == 3 || format == 2)
                 return channel == 0 ? 0x000003FFu : channel == 1 ? 0x000FFC00u : channel == 2 ? 0x3FF00000u : 0xC0000000u;
             return 0xFFu << (8 * channel);
         }
@@ -273,7 +308,7 @@ uint xe_om_encode_14(float4 c) { return asuint(c.x); }
 
     bool OutputMergerSupportsColorFormat(uint32_t format)
     {
-        return format == 0 || format == 3 || format == 4 || format == 14;
+        return format == 0 || format == 2 || format == 3 || format == 4 || format == 7 || format == 14;
     }
 
     const char* EdramColorFormatName(uint32_t format)
@@ -356,6 +391,39 @@ float3 xe_om_mul(float3 a, float3 b) { precise float3 r = a * b; return r; }
             for (uint32_t c = 0; c < 4; c++)
                 if ((key.colorMask[rt] >> c) & 1)
                     keep &= ~ChannelBits(format, c);
+            const bool wide = format == 7;
+            if (wide)
+            {
+                // 64 bits per pixel: the old and new values are two dwords, the masks per half.
+                uint32_t keepLo = 0xFFFFFFFFu, keepHi = 0xFFFFFFFFu;
+                for (uint32_t c = 0; c < 4; c++)
+                    if ((key.colorMask[rt] >> c) & 1)
+                        (c < 2 ? keepLo : keepHi) &= ~(0xFFFFu << (16 * (c & 1)));
+                text += std::format("\nuint2 xe_om_color_{}(float4 color, uint2 old)\n{{\n", rt);
+                if (key.expBias[rt] != 0)
+                {
+                    text += std::format("    precise float4 biased = color * asfloat(0x{:08X}u);\n",
+                                        uint32_t(key.expBias[rt] + 127) << 23);
+                    text += "    float4 src = xe_om_range_7(biased);\n";
+                }
+                else
+                    text += "    float4 src = xe_om_range_7(color);\n";
+                if (opaque)
+                    text += "    float4 r = src;\n";
+                else
+                {
+                    text += "    float4 dst = xe_om_decode_7(old);\n";
+                    text += "    float4 k = xe_om_range_7(xe_om_blend_constant);\n";
+                    text += "    float4 r = src;\n";
+                    text += BlendGroup(srcColor, opColor, dstColor, false, format);
+                    text += BlendGroup(srcAlpha, opAlpha, dstAlpha, true, format);
+                    text += "    r = xe_om_range_7(r);\n";
+                }
+                text += "    uint2 packed = xe_om_encode_7(r);\n";
+                text += std::format("    return (old & uint2(0x{:08X}u, 0x{:08X}u)) | (packed & uint2(0x{:08X}u, 0x{:08X}u));\n}}\n",
+                                    keepLo, keepHi, ~keepLo, ~keepHi);
+                continue;
+            }
             const bool needsOld = !opaque || keep != 0;
             text += std::format("\nuint xe_om_color_{}(float4 color, uint old)\n{{\n", rt);
             if (key.expBias[rt] != 0)
@@ -537,6 +605,17 @@ uint xe_om_depth_encode(float z)
                 {
                     if (key.colorFormat[rt] == kRtDisabled)
                         continue;
+                    if (key.colorFormat[rt] == 7)
+                    {
+                        // 64 bits per pixel: x doubles, the pixel's two dwords are adjacent, tiles are 40 pixels wide.
+                        text += std::format("            uint a{} = xe_edram_address(xe_om_color_base.{}, asuint(xe_om_poly_back.y), uint2(q.x * 2u, q.y), false);\n",
+                                            rt, kComponents[rt]);
+                        text += std::format("            uint2 n{} = xe_om_color_{}(colors[{}], uint2(xe_edram.Load(a{}), xe_edram.Load(a{} + 4u)));\n",
+                                            rt, rt, rt, rt, rt);
+                        text += std::format("            xe_edram.Store(a{}, n{}.x);\n            xe_edram.Store(a{} + 4u, n{}.y);\n",
+                                            rt, rt, rt, rt);
+                        continue;
+                    }
                     text += std::format("            uint a{} = xe_edram_address(xe_om_color_base.{}, pitch, q, false);\n",
                                         rt, kComponents[rt]);
                     text += std::format("            xe_edram.Store(a{}, xe_om_color_{}(colors[{}], xe_edram.Load(a{})));\n",

@@ -54,6 +54,9 @@ namespace gpu
         uint32_t signs = 0;           // 4 x 2 bits, data components X..W (fetch dword 0 bits 2-9)
         uint32_t faces = 1;           // 6 for a cube texture (faces +X, -X, +Y, -Y, +Z, -Z, each level's in turn)
         TextureNumbers numbers = TextureNumbers::kUnsigned;
+        bool volume = false;          // a 3D texture (fetch dimension 2): base level only, depth slices below
+        uint32_t depth = 1;           // 3D: slices
+        bool gamma = false;           // red, green, blue read through sRGB (fetch signs gamma) on an 8-bit RGBA host texture
 
         auto operator<=>(const TextureFetch&) const = default;
     };
@@ -71,7 +74,7 @@ namespace gpu
     // How the untile shader reads the format: one component per 8 or 16 bits; a packed 16-bit texel (its components'
     // widths: TexturePackedWidths, a nibble each, X first) expanded to 8 bits each; or a DXT block decoded.
     enum : uint32_t { kUntilePlain = 0, kUntilePacked16 = 1, kUntileDxt1 = 2, kUntileDxt2_3 = 3, kUntileDxt4_5 = 4,
-                      kUntileDepth24 = 5, kUntileFloat32 = 6, kUntileDepth24Float = 7, kUntileHalf4 = 8 };
+                      kUntileDepth24 = 5, kUntileFloat32 = 6, kUntileDepth24Float = 7, kUntileHalf4 = 8, kUntileDxn = 9 };
     uint32_t TextureUntileKind(uint32_t format);
     uint32_t TexturePackedWidths(uint32_t format);
 
@@ -103,7 +106,7 @@ namespace gpu
         uint32_t storage, pitch, tiled, endian;   // pitch: tiled = blocks, linear = row bytes
         uint32_t offsetX, offsetY, width, height;
         uint32_t bytesLog2, components, numbers, signs;
-        uint32_t kind, packedWidths, pad0, pad1;  // TextureUntileKind, TexturePackedWidths
+        uint32_t kind, packedWidths, zStride, depth; // TextureUntileKind, TexturePackedWidths; 3D: linear bytes between slices, slices
     };
     static_assert(sizeof(TextureUntileConstants) == 64);
 

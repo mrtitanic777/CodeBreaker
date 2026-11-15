@@ -3,10 +3,6 @@
 // the port a state folder gets, the idle and stale exits -- and the declared commands `serve` and `mcp`.
 #include "cb/ui/serve.hpp"
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
-
 #include <atomic>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -72,7 +68,7 @@ CB_TEST("ui.serve.the_wire_matches_the_recorded_one", [] {
     for (const char* key : {"pid", "port", "root", "state", "started", "idle_minutes", "idle_for", "calls", "busy", "jobs", "stale"})
         CB_CHECK(ping.contains(key));
     CB_CHECK_EQ(ping.at("port").get<int>(), running.host.port());
-    CB_CHECK_EQ(ping.at("pid").get<unsigned>(), GetCurrentProcessId());
+    CB_CHECK_EQ(ping.at("pid").get<unsigned>(), fs::process_id());
     CB_CHECK(!ping.at("stale").get<bool>());
     CB_CHECK_EQ(ping.at("jobs").get<int>(), 0);
     CB_CHECK(fs::same_path(fs::from_text(client.ping().state), tmp.path()));

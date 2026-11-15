@@ -70,6 +70,7 @@ namespace gpu
             uint32_t bits[4], shift[4];
             bool float32;   // k_32_FLOAT: the dword is R's float bits
             bool half4;     // k_16_16_16_16_FLOAT: 64 bits per pixel, four half floats (R, G in the first dword)
+            bool byte1;     // k_8: one byte per pixel (R)
         };
 
         bool DestLayout(uint32_t format, PackLayout& layout)
@@ -97,6 +98,9 @@ namespace gpu
                 return true;
             case 32: // k_16_16_16_16_FLOAT
                 layout.half4 = true;
+                return true;
+            case 2: // k_8
+                layout = { { 8, 0, 0, 0 }, { 0, 0, 0, 0 }, false, false, true };
                 return true;
             default:
                 return false;
@@ -166,11 +170,13 @@ namespace gpu
 
     void ResolveExtent(const ResolveConstants& c, uint32_t& start, uint32_t& end, uint32_t bytesLog2)
     {
-        // 4 bytes per pixel: one 32x32 macro tile is 4 KiB (8 bytes: 8 KiB).
+        // 4 bytes per pixel: one 32x32 macro tile is 4 KiB (8 bytes: 8 KiB; 1 byte: 0xA00, the span the texture
+        // layout uses for it, texture.cpp).
         const uint32_t x1 = c.x0 + c.width, y1 = c.y0 + c.height;
+        const uint32_t tile = bytesLog2 == 0 ? 0xA00u : 0x400u << bytesLog2;
         start = c.destBase + TiledOffset2D(c.x0 & ~31u, c.y0 & ~31u, c.destPitchMacro, bytesLog2);
         end = c.destBase + TiledOffset2D((x1 - 1) & ~31u, (y1 - 1) & ~31u, c.destPitchMacro, bytesLog2) +
-              (0x400u << bytesLog2);
+              tile;
     }
 
     ResolveInfo DecodeResolve()
@@ -281,6 +287,8 @@ namespace gpu
             sourceFormat = (colorInfo >> 16) & 0xF;
             if (sourceFormat == 12) // 2_10_10_10_FLOAT_AS_16_16_16_16: stored as 2_10_10_10_FLOAT, resolved to 16-bit floats
                 sourceFormat = 3;
+            if (sourceFormat == 10) // 2_10_10_10_AS_10_10_10_10
+                sourceFormat = 2;
             if (!OutputMergerSupportsColorFormat(sourceFormat))
                 Fatal("GPU: resolve from render target {} format {} ({}) is not implemented", select, sourceFormat,
                       EdramColorFormatName(sourceFormat));
@@ -320,7 +328,8 @@ namespace gpu
             key.swap = (destInfo >> 24) & 1;
             key.expBias = SignExtend((destInfo >> 16) & 0x3F, 6);
             const bool numberMatches = number == (IsFloatTextureFormat(destFormat) ? 7u : 0u);
-            key.raw = key.expBias == 0 && key.select < 4 && BitwiseEquivalent(sourceFormat, destFormat) && numberMatches;
+            // (a 64-bit source is converted: its pixels are two dwords, which the raw copy does not move)
+            key.raw = key.expBias == 0 && key.select < 4 && sourceFormat != 7 && BitwiseEquivalent(sourceFormat, destFormat) && numberMatches;
         }
         ResolveConstants& c = info.constants;
         c.x0 = info.x0;
@@ -328,11 +337,13 @@ namespace gpu
         c.width = width;
         c.height = height;
         c.sourceBase = sourceBase;
-        c.pitchTiles = pitchTiles;
+        const bool wideSource = !depth && sourceFormat == 7; // 16_16_16_16_FLOAT: 64 bits, two dwords, 40-pixel tiles
+        const uint32_t pitchTiles64 = (pitch * (msaa == 2 ? 2 : 1) * 2 + 79) / 80;
+        c.pitchTiles = wideSource ? pitchTiles64 : pitchTiles;
         c.destBase = info.destBaseRegister;
         const uint32_t destPitch = info.destPitchRegister & 0x3FFF;
         c.destPitchMacro = (destPitch + 31) >> 5;
-        ResolveExtent(c, info.extentStart, info.extentEnd, !depth && destFormat == 32 ? 3 : 2);
+        ResolveExtent(c, info.extentStart, info.extentEnd, !depth && destFormat == 32 ? 3 : !depth && destFormat == 2 ? 0 : 2);
         if (c.destBase & 0xFFFu)
             Fatal("GPU: resolve destination {:08X} is not 4 KiB aligned", c.destBase);
         if (uint64_t(info.extentEnd) > guest::kPhysicalSize || info.extentEnd < info.extentStart)
@@ -340,8 +351,9 @@ namespace gpu
         info.copy = true;
 
         // Clears of the same rectangle after the copy (07 §9).
-        auto clear = [&](ClearConstants& cc, uint32_t base, bool isDepth, uint32_t value) {
-            cc = { info.x0, info.y0, width, height, base, pitchTiles, msaa, isDepth ? 1u : 0u, value, 0, 0, 0 };
+        auto clear = [&](ClearConstants& cc, uint32_t base, bool isDepth, uint32_t value, uint32_t value2 = 0, bool wide = false) {
+            cc = { info.x0, info.y0, width, height, base, wide ? pitchTiles64 : pitchTiles, msaa, isDepth ? 1u : 0u, value, value2,
+                   wide ? 1u : 0u, 0 };
         };
         if ((control >> 9) & 1)
         {
@@ -351,10 +363,10 @@ namespace gpu
         if (((control >> 8) & 1) && !depth)
         {
             info.clearColor = true;
-            if (Reg(0x231F) != Reg(0x231E))
+            if (!wideSource && Reg(0x231F) != Reg(0x231E))
                 Fatal("GPU: 32bpp resolve clear with RB_COLOR_CLEAR {:08X} != RB_COLOR_CLEAR_LO {:08X}", Reg(0x231E),
                       Reg(0x231F));
-            clear(info.colorClear, sourceBase, false, Reg(0x231E));
+            clear(info.colorClear, sourceBase, false, Reg(0x231E), Reg(0x231F), wideSource);
         }
         return info;
     }
@@ -393,7 +405,13 @@ cbuffer XeResolveConstants : register(b{})
 RWByteAddressBuffer xe_test_io : register(u0);
 uint xe_rs_edram_load(uint a) {{ return xe_test_io.Load(a); }}
 void xe_rs_edram_store(uint a, uint v) {{ xe_test_io.Store(a, v); }}
-void xe_rs_memory_store(uint a, uint v) {{ xe_test_io.Store({}u + a, v); }}
+void xe_rs_memory_store(uint a, uint v) {{ xe_test_io.Store({0}u + a, v); }}
+void xe_rs_memory_byte(uint a, uint v)
+{{
+    uint s = (a & 3u) * 8u;
+    xe_test_io.InterlockedAnd(({0}u + a) & ~3u, ~(0xFFu << s));
+    xe_test_io.InterlockedOr(({0}u + a) & ~3u, (v & 0xFFu) << s);
+}}
 )HLSL", kEdramBytes);
             else
                 text += R"HLSL(
@@ -402,6 +420,13 @@ RWByteAddressBuffer xe_rs_memory : register(u1);
 uint xe_rs_edram_load(uint a) { return xe_rs_edram.Load(a); }
 void xe_rs_edram_store(uint a, uint v) { xe_rs_edram.Store(a, v); }
 void xe_rs_memory_store(uint a, uint v) { xe_rs_memory.Store(a, v); }
+// One byte of a dword other pixels' threads write too: each lane has one writer, so clear-then-set per lane is exact.
+void xe_rs_memory_byte(uint a, uint v)
+{
+    uint s = (a & 3u) * 8u;
+    xe_rs_memory.InterlockedAnd(a & ~3u, ~(0xFFu << s));
+    xe_rs_memory.InterlockedOr(a & ~3u, (v & 0xFFu) << s);
+}
 )HLSL";
             return text + kEdramAddressHlsl;
         }
@@ -483,6 +508,22 @@ float4 xe_rs_decode(uint v)
     return float4(xe_max(r.x, -32.0), xe_max(r.y, -32.0), 0.0, 0.0);
 }
 )HLSL";
+            else if (key.sourceFormat == 2)
+                text += R"HLSL(
+float4 xe_rs_decode(uint v)
+{
+    precise float4 r = float4(uint4(v & 0x3FFu, (v >> 10) & 0x3FFu, (v >> 20) & 0x3FFu, v >> 30)) *
+                       float4(asfloat(0x3A802008u), asfloat(0x3A802008u), asfloat(0x3A802008u), asfloat(0x3EAAAAABu));
+    return r;
+}
+)HLSL";
+            else if (key.sourceFormat == 7)
+                text += R"HLSL(
+float4 xe_rs_decode(uint2 v)
+{
+    return float4(f16tof32(v.x & 0xFFFFu), f16tof32(v.x >> 16), f16tof32(v.y & 0xFFFFu), f16tof32(v.y >> 16));
+}
+)HLSL";
             else if (key.sourceFormat == 14)
                 text += R"HLSL(
 float4 xe_rs_decode(uint v) { return float4(asfloat(v), 0.0, 0.0, 0.0); }
@@ -557,8 +598,16 @@ void main(uint3 id : SV_DispatchThreadID)
                 text += std::format("    uint d{} = xe_rs_source(p, {}u);\n", i,
                                     key.msaa == 1 ? kHostSample2x[samples[i] & 1] : key.msaa == 2 ? kHostSample4x[samples[i]] : 0);
             else
+            {
+                if (!key.depth && key.sourceFormat == 7)
+                    text += std::format("    uint2 sq{0} = xe_edram_sample(p, {1}u, {2}u);\n"
+                                        "    uint sa{0} = xe_edram_address(xe_rs_surface.x, xe_rs_surface.y, uint2(sq{0}.x * 2u, sq{0}.y), false);\n"
+                                        "    uint2 d{0} = uint2(xe_rs_edram_load(sa{0}), xe_rs_edram_load(sa{0} + 4u));\n",
+                                        i, samples[i], key.msaa);
+                else
                 text += std::format("    uint d{} = xe_rs_edram_load(xe_edram_address(xe_rs_surface.x, xe_rs_surface.y, "
                                     "xe_edram_sample(p, {}u, {}u), {}));\n", i, samples[i], key.msaa, key.depth ? "true" : "false");
+            }
         if (key.raw)
         {
             text += "    uint result = d0;\n";
@@ -605,14 +654,15 @@ void main(uint3 id : SV_DispatchThreadID)
             }
         }
         const bool half4 = !key.depth && !key.raw && key.destFormat == 32;
-        if (key.endian)
+        const bool byte1 = !key.depth && !key.raw && key.destFormat == 2;
+        if (key.endian && !byte1)
         {
             text += std::format("    result = xe_swap(result, {}u);\n", key.endian);
             if (half4)
                 text += std::format("    result2 = xe_swap(result2, {}u);\n", key.endian);
         }
-        text += std::format("    uint address = xe_rs_dest.x + xe_rs_tiled(p, xe_rs_dest.y, {}u);\n", half4 ? 3 : 2);
-        text += "    xe_rs_memory_store(address, result);\n";
+        text += std::format("    uint address = xe_rs_dest.x + xe_rs_tiled(p, xe_rs_dest.y, {}u);\n", half4 ? 3 : byte1 ? 0 : 2);
+        text += byte1 ? "    xe_rs_memory_byte(address, result);\n" : "    xe_rs_memory_store(address, result);\n";
         if (half4)
             text += "    xe_rs_memory_store(address + 4u, result2);\n";
         text += "}\n";
@@ -632,10 +682,20 @@ void main(uint3 id : SV_DispatchThreadID)
     uint msaa = xe_rs_surface.z;
     bool depth = xe_rs_surface.w != 0u;
     uint samples = 1u << msaa;
+    bool wide = xe_rs_dest.z != 0u;   // a 64-bit colour surface: x doubles, the clear is two dwords (dest.x, dest.y)
     for (uint s = 0u; s < 4u; s++)
         if (s < samples)
-            xe_rs_edram_store(xe_edram_address(xe_rs_surface.x, xe_rs_surface.y, xe_edram_sample(p, s, msaa), depth),
-                              xe_rs_dest.x);
+        {
+            uint2 q = xe_edram_sample(p, s, msaa);
+            if (wide)
+            {
+                uint a = xe_edram_address(xe_rs_surface.x, xe_rs_surface.y, uint2(q.x * 2u, q.y), depth);
+                xe_rs_edram_store(a, xe_rs_dest.x);
+                xe_rs_edram_store(a + 4u, xe_rs_dest.y);
+            }
+            else
+                xe_rs_edram_store(xe_edram_address(xe_rs_surface.x, xe_rs_surface.y, q, depth), xe_rs_dest.x);
+        }
 }
 )HLSL";
     }

@@ -10,6 +10,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/io.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 
@@ -185,8 +186,7 @@ CB_TEST("formats.cab.file_times_come_from_the_cabinet", [] {
     // date 23915 = 2026-11-11, time 6860 = 03:22:24 (local time, the DOS way)
     const auto sys = std::chrono::clock_cast<std::chrono::system_clock>(cb::fs::last_write_time(got[0].path));
     const std::time_t t = std::chrono::system_clock::to_time_t(sys);
-    std::tm tm{};
-    localtime_s(&tm, &t);
+    const std::tm tm = cb::sys::local_tm(t);
     CB_CHECK_EQ(tm.tm_year + 1900, 2026);
     CB_CHECK_EQ(tm.tm_mon + 1, 11);
     CB_CHECK_EQ(tm.tm_mday, 11);

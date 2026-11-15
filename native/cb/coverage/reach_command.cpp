@@ -16,6 +16,10 @@
 #include "cb/formats/coleco.hpp"
 #include "cb/formats/atari2600.hpp"
 #include "cb/formats/atari5200.hpp"
+#include "cb/formats/jaguar.hpp"
+#include "cb/formats/threedo.hpp"
+#include "cb/formats/wonderswan.hpp"
+#include "cb/formats/cdi.hpp"
 #include "cb/formats/atari7800.hpp"
 #include "cb/formats/cpc.hpp"
 #include "cb/formats/lynx.hpp"
@@ -44,6 +48,10 @@
 #include "cb/platforms/coleco.hpp"
 #include "cb/platforms/atari2600.hpp"
 #include "cb/platforms/atari5200.hpp"
+#include "cb/platforms/jaguar.hpp"
+#include "cb/platforms/threedo.hpp"
+#include "cb/platforms/wonderswan.hpp"
+#include "cb/platforms/cdi.hpp"
 #include "cb/platforms/atari7800.hpp"
 #include "cb/platforms/cpc.hpp"
 #include "cb/platforms/lynx.hpp"
@@ -51,6 +59,10 @@
 #include "cb/platforms/snes.hpp"
 #include "cb/platforms/neogeo.hpp"
 #include "cb/platforms/dreamcast.hpp"
+#include "cb/platforms/ps2.hpp"
+#include "cb/platforms/psp.hpp"
+#include "cb/formats/ps2.hpp"
+#include "cb/formats/psp.hpp"
 #include "cb/platforms/saturn.hpp"
 #include "cb/platforms/gamecube.hpp"
 #include "cb/platforms/wii.hpp"
@@ -131,6 +143,10 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_coleco = [](const std::filesystem::path& p) { return formats::coleco::probe(p); };
     probes.is_cpc = [](const std::filesystem::path& p) { return formats::cpc::probe(p); };
     probes.is_atari5200 = [](const std::filesystem::path& p) { return formats::atari5200::probe(p); };
+    probes.is_jaguar = [](const std::filesystem::path& p) { return formats::jaguar::probe(p); };
+    probes.is_threedo = [](const std::filesystem::path& p) { return formats::threedo::probe(p); };
+    probes.is_wonderswan = [](const std::filesystem::path& p) { return formats::wonderswan::probe(p); };
+    probes.is_cdi = [](const std::filesystem::path& p) { return formats::cdi::probe(p); };
     probes.is_atari2600 = [](const std::filesystem::path& p) { return formats::atari2600::probe(p); };
     probes.is_atari7800 = [](const std::filesystem::path& p) { return formats::atari7800::probe(p); };
     probes.is_lynx = [](const std::filesystem::path& p) { return formats::lynx::probe(p); };
@@ -140,6 +156,8 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_segacd = [](const std::filesystem::path& p) { return formats::segacd::probe(p); };
     probes.is_sega32x = [](const std::filesystem::path& p) { return formats::sega32x::probe(p); };
     probes.is_saturn = [](const std::filesystem::path& p) { return formats::saturn::probe(p); };
+    probes.is_ps2 = [](const std::filesystem::path& p) { return formats::ps2::probe(p); };
+    probes.is_psp = [](const std::filesystem::path& p) { return formats::psp::probe(p); };
     probes.is_dreamcast = [](const std::filesystem::path& p) { return formats::dreamcast::probe(p); };
     probes.is_gamecube = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::GameCube); };
     probes.is_wii = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::Wii); };
@@ -157,6 +175,10 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::coleco());
     registry->add(platforms::cpc());
     registry->add(platforms::atari5200());
+    registry->add(platforms::jaguar());
+    registry->add(platforms::threedo());
+    registry->add(platforms::wonderswan());
+    registry->add(platforms::cdi());
     registry->add(platforms::atari2600());
     registry->add(platforms::atari7800());
     registry->add(platforms::lynx());
@@ -170,6 +192,8 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::gamecube());
     registry->add(platforms::wii());
     registry->add(platforms::wiiu());
+    registry->add(platforms::ps2());
+    registry->add(platforms::psp());
     registry->add(platforms::zx());
     registry->add(platforms::genesis());
     registry->add(platforms::ps1());

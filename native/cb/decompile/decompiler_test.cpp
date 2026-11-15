@@ -29,10 +29,6 @@
 #include "cb/decompile/decompiler_internal.hpp"
 #include "cb/translate/l2.hpp"
 
-// (last: <windows.h> defines `near` and `far`)
-#include <windows.h>
-#undef near
-#undef far
 
 namespace dc = cb::decompile::decompiler;
 namespace dsc = cb::decompile::describe;
@@ -114,9 +110,7 @@ private:
 };
 
 stdfs::path dt_fake_program() {
-    wchar_t buffer[MAX_PATH];
-    const DWORD n = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return stdfs::path(std::wstring(buffer, n)).parent_path() / "cb_fake_decompiler.exe";
+    return cb::fs::executable_path().parent_path() / "cb_fake_decompiler.exe";
 }
 
 // A folder, a context over it, a decompiler over that.
@@ -159,11 +153,11 @@ struct Fixture {
         description = dir.path() / "description.txt";
         log = dir.path() / "fake.log";
         cb::fs::write_text(log, "");
-        SetEnvironmentVariableA("FAKE_DECOMPILER_LOG", cb::fs::to_text(log).c_str());
+        cb::fs::set_env("FAKE_DECOMPILER_LOG", cb::fs::to_text(log));
     }
     ~Fixture() {
         for (const char* name : {"FAKE_DECOMPILER_LOG", "FAKE_DECOMPILER_DIE", "FAKE_DECOMPILER_NOTES", "FAKE_DECOMPILER_L2", "FAKE_DECOMPILER_FAIL"})
-            SetEnvironmentVariableA(name, nullptr);
+            cb::fs::set_env(name, std::nullopt);
     }
 
     // The description of functions: `F <hex> <name> -1 <extra>` each, and an import and a call-through-pointer line.
@@ -553,7 +547,7 @@ CB_TEST("decompile.decompiler.run_threads_by_hand", [] {
 CB_TEST("decompile.decompiler.run_survives_a_death", [] {
     Fixture f;
     f.describe({{0x401000, "a"}, {0x401010, "b"}, {0x401020, "c"}, {0x401030, "d"}});
-    SetEnvironmentVariableA("FAKE_DECOMPILER_DIE", "401020");
+    cb::fs::set_env("FAKE_DECOMPILER_DIE", "401020");
     const dc::Run r = f.decompiler.run(f.description);
     CB_CHECK_EQ(dt_names(r.order), "a,b,d");   // c is left out; what it died before and after are made
     CB_CHECK(dt_has(r.stderr_text, "decompiler died on 401020; left out"));
@@ -561,8 +555,8 @@ CB_TEST("decompile.decompiler.run_survives_a_death", [] {
     CB_CHECK(dt_has(f.runs()[1], "--at 401020 401030"));   // (from the next it had not written)
 
     // a module with a function the program gives up on: no text for it
-    SetEnvironmentVariableA("FAKE_DECOMPILER_DIE", nullptr);
-    SetEnvironmentVariableA("FAKE_DECOMPILER_FAIL", "401010");
+    cb::fs::set_env("FAKE_DECOMPILER_DIE", std::nullopt);
+    cb::fs::set_env("FAKE_DECOMPILER_FAIL", "401010");
     Fixture g;
     g.describe({{0x401000, "a"}, {0x401010, "b"}});
     CB_CHECK_EQ(dt_names(g.decompiler.run(g.description).order), "a");
@@ -597,10 +591,10 @@ CB_TEST("decompile.decompiler.run_the_environment", [] {
 CB_TEST("decompile.decompiler.run_notes_and_l2", [] {
     Fixture f;
     f.describe({{0x401000, "a"}, {0x401010, "b"}});
-    SetEnvironmentVariableA("FAKE_DECOMPILER_NOTES", "1");
+    cb::fs::set_env("FAKE_DECOMPILER_NOTES", "1");
     const stdfs::path l2 = f.dir.path() / "l2.json";
     cb::fs::write_text(l2, dt_document("f"));
-    SetEnvironmentVariableA("FAKE_DECOMPILER_L2", cb::fs::to_text(l2).c_str());
+    cb::fs::set_env("FAKE_DECOMPILER_L2", cb::fs::to_text(l2));
     // the notes are taken off the C; the document is a node
     const dc::Run kept = f.decompiler.run(f.description, {}, dc::RunOptions{.l2 = true, .write = false});
     CB_CHECK_EQ(kept.texts.at("a"), "int a(void)\n{\n  return " + std::to_string(0x401000) + ";\n}");

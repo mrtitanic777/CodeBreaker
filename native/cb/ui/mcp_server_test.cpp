@@ -11,8 +11,7 @@
 //     does not hold a GET stream open (405).
 #include "cb/ui/mcp_server.hpp"
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "cb/core/socket.hpp"
 
 #include <format>
 #include <future>
@@ -489,28 +488,21 @@ namespace {
 
 // One request on the HTTP transport; (status line, the headers as text, the body).
 std::tuple<std::string, std::string, std::string> http(int port, const std::string& request) {
-    WSADATA data;
-    WSAStartup(MAKEWORD(2, 2), &data);
-    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(static_cast<u_short>(port));
-    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
-    for (int tries = 0; tries < 50 && connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0; ++tries) std::this_thread::sleep_for(std::chrono::milliseconds{50});
-    send(s, request.data(), static_cast<int>(request.size()), 0);
+    std::optional<net::Socket> sock;
+    for (int tries = 0; tries < 50 && !(sock = net::connect("127.0.0.1", static_cast<std::uint16_t>(port))); ++tries) std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    if (!sock) return {};
+    sock->send(request);
     std::string reply;
-    char buf[4096];
-    DWORD timeout = 3000;
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof timeout);
+    std::uint8_t buf[4096];
+    sock->set_receive_timeout(std::chrono::milliseconds(3000));
     for (;;) {
-        const int n = recv(s, buf, sizeof buf, 0);
+        const auto n = sock->receive(buf);
         if (n <= 0) break;
-        reply.append(buf, static_cast<std::size_t>(n));
+        reply.append(reinterpret_cast<const char*>(buf), static_cast<std::size_t>(n));
         if (reply.find("\r\n\r\n") != std::string::npos && (reply.find("content-length: 0") != std::string::npos || reply.find("0\r\n\r\n") != std::string::npos ||
                                                             reply.find("\r\n\r\n", reply.find("\r\n\r\n") + 4) != std::string::npos))
             break;
     }
-    closesocket(s);
     const std::size_t split = reply.find("\r\n\r\n");
     const std::string head = reply.substr(0, split), body = split == std::string::npos ? "" : reply.substr(split + 4);
     return {head.substr(0, head.find("\r\n")), head, body};

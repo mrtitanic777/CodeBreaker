@@ -4,6 +4,7 @@
 #include "cb/engine/machine_atari2600.hpp"
 #include "cb/engine/machine_atari5200.hpp"
 #include "cb/engine/machine_atari7800.hpp"
+#include "cb/engine/machine_jaguar.hpp"
 #include "cb/engine/machine_lynx.hpp"
 
 namespace cb::engine {
@@ -13,6 +14,7 @@ void register_atari_lanes() {
     register_atari5200_lane();
     register_atari7800_lane();
     register_lynx_lane();
+    register_jaguar_lane();
 }
 
 }  // namespace cb::engine

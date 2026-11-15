@@ -113,6 +113,10 @@ public:
     void cp15_write(std::uint32_t reg, std::uint32_t value);
     void log_access(BusAccess::Kind kind, unsigned size, std::uint32_t address, std::uint32_t value) { log_.push_back({kind, static_cast<std::uint8_t>(size), address, value}); }
 
+    // A big-endian system (the 3DO's ARM60): the memory holds each aligned word with its bytes reversed (the caller loads it that way, so a
+    // word access sees the program's value), and a byte access goes to the byte `address ^ 3` of it, a halfword to `address ^ 2`.
+    void set_big_endian(bool on) { big_endian_ = on; }
+
     // Does an address reach memory, a register, or a mapped range?
     bool mapped(std::uint32_t address) const;
     // `size` is 1, 2 or 4 and the address is aligned to it (the CPU aligns; a read of an address that is not mapped reads 0).
@@ -146,6 +150,7 @@ private:
     Bytes itcm_, dtcm_, wram7_;                      // the DS's
     std::uint32_t dtcm_base_ = kNdsDtcmBase, dtcm_size_ = kNdsDtcmSize;
     std::map<std::uint32_t, std::uint32_t> cp15_;
+    bool big_endian_ = false;
     std::vector<Range> ranges_;
     std::vector<BusAccess> log_;
 };

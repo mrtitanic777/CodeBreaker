@@ -13,6 +13,12 @@ struct Loaded {
 #define CB_X(name) api.name = lib.function<decltype(&::name)>(#name);
         CB_CAPSTONE_FUNCTIONS(CB_X)
 #undef CB_X
+        // The structures in capstone.h are those of one major version: a library of another lays its records out differently
+        // (a system's libcapstone 4 under this program's 5 headers), and reading them would be reading the wrong bytes.
+        int major = 0, minor = 0;
+        api.cs_version(&major, &minor);
+        if (major != CS_API_MAJOR)
+            throw NotFoundError(lib.path(), 0, std::format("this program needs Capstone {}.x, the library found is {}.{}", CS_API_MAJOR, major, minor));
     }
 };
 

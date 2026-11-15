@@ -1,9 +1,7 @@
 // cb-unity: alone
 #include "cb/ui/service.hpp"
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
+#include "cb/core/socket.hpp"
 
 #include <atomic>
 #include <cstdio>
@@ -49,28 +47,23 @@ JobView finished(Jobs& jobs, const std::string& id) {
     return *jobs.view(id, 0);
 }
 
+// A launcher whose program sleeps twenty seconds whatever it is asked (the arguments the jobs append are comments or ignored).
+std::vector<std::string> sleeping_launcher() {
+    if (std::filesystem::path::preferred_separator == '\\') return {"powershell", "-NoProfile", "-Command", "Start-Sleep 20; #"};
+    return {"sh", "-c", "sleep 20"};
+}
+
 // A stand-in for the service process: the wire of ui/serve over a socket, answering from a Service.
 class FakeServer {
 public:
     FakeServer(Service& service, std::string token, std::string state_text)
         : service_(service), token_(std::move(token)), state_(std::move(state_text)) {
-        WSADATA data;
-        WSAStartup(MAKEWORD(2, 2), &data);
-        listener_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        sockaddr_in a{};
-        a.sin_family = AF_INET;
-        a.sin_port = 0;
-        inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
-        bind(listener_, reinterpret_cast<sockaddr*>(&a), sizeof a);
-        listen(listener_, 8);
-        int len = sizeof a;
-        getsockname(listener_, reinterpret_cast<sockaddr*>(&a), &len);
-        port_ = ntohs(a.sin_port);
+        listener_ = net::Listener::listen("127.0.0.1", 0, false);
+        port_ = listener_ ? listener_->port() : 0;
         thread_ = std::thread([this] { serve(); });
     }
     ~FakeServer() {
         done_ = true;
-        closesocket(listener_);
         thread_.join();
     }
     int port() const { return port_; }
@@ -78,14 +71,14 @@ public:
     std::atomic<int> calls{0};
 
 private:
-    static std::string read_request(SOCKET c, std::string& body, std::string& head) {
+    static std::string read_request(net::Socket& c, std::string& body, std::string& head) {
         std::string in;
         char buf[4096];
         std::size_t end = std::string::npos, want = 0;
         while (true) {
             if (end != std::string::npos && in.size() >= end + 4 + want)
                 break;
-            const int n = recv(c, buf, sizeof buf, 0);
+            const auto n = c.receive(ByteSpan(reinterpret_cast<std::uint8_t*>(buf), sizeof buf));
             if (n <= 0)
                 break;
             in.append(buf, static_cast<std::size_t>(n));
@@ -104,9 +97,10 @@ private:
 
     void serve() {
         while (!done_) {
-            const SOCKET c = accept(listener_, nullptr, nullptr);
-            if (c == INVALID_SOCKET)
-                break;
+            std::optional<net::Socket> accepted = listener_->accept(std::chrono::milliseconds(50));   // (looks at done_ between)
+            if (!accepted)
+                continue;
+            net::Socket& c = *accepted;
             std::string body, head;
             const std::string line = read_request(c, body, head);
             Json answer = Json::object();
@@ -126,14 +120,13 @@ private:
             const std::string text_body = json::dump(answer, json::Style::PythonCompatible);
             const std::string reply = std::format("HTTP/1.0 {} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}", status,
                                                   text_body.size(), text_body);
-            send(c, reply.data(), static_cast<int>(reply.size()), 0);
-            closesocket(c);
+            c.send(reply);
         }
     }
 
     Service& service_;
     std::string token_, state_;
-    SOCKET listener_ = INVALID_SOCKET;
+    std::optional<net::Listener> listener_;
     int port_ = 0;
     std::thread thread_;
     std::atomic<bool> done_{false}, stopped_{false};
@@ -280,7 +273,7 @@ CB_TEST("ui.service.a_job_runs_in_a_process_of_its_own_and_keeps_its_output", []
 CB_TEST("ui.service.only_one_measure_runs_at_a_time", [] {
     fs::ScopedTempDir tmp("cb-service");
     // each job waits a while (what follows the comment is the action and its arguments)
-    Jobs jobs({.folder = tmp.path() / "ui_jobs", .root = tmp.path(), .launcher = {"powershell", "-NoProfile", "-Command", "Start-Sleep 20; #"}});
+    Jobs jobs({.folder = tmp.path() / "ui_jobs", .root = tmp.path(), .launcher = sleeping_launcher()});
     const JobView first = jobs.launch("measure", {}, "a.dll", "", "pid-1");
     try {
         (void)jobs.launch("measure", {}, "b.dll", "", "pid-1");
@@ -296,7 +289,7 @@ CB_TEST("ui.service.only_one_measure_runs_at_a_time", [] {
 
 CB_TEST("ui.service.a_third_job_is_refused_and_stopping_ends_a_job", [] {
     fs::ScopedTempDir tmp("cb-service");
-    Jobs jobs({.folder = tmp.path() / "ui_jobs", .root = tmp.path(), .launcher = {"powershell", "-NoProfile", "-Command", "Start-Sleep 20; #"}});
+    Jobs jobs({.folder = tmp.path() / "ui_jobs", .root = tmp.path(), .launcher = sleeping_launcher()});
     const JobView a = jobs.launch("decompile", {}, "a.dll", "", "pid-1");
     const JobView b = jobs.launch("decompile", {}, "b.dll", "", "pid-2");
     CB_CHECK_EQ(jobs.running(), 2);

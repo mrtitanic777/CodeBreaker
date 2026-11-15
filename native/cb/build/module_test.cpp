@@ -429,3 +429,21 @@ CB_TEST("build.module.build_many_gives_each_module_its_own_error", [] {
     CB_CHECK(made[2].second.error.find("no module") != std::string::npos);   // the third is not in the corpus
     for (const auto& [name, b] : made) CB_CHECK(!b.linked());
 });
+
+CB_TEST("build.module.leaves_ds_is_a_ds_load_that_nothing_puts_back", [] {
+    using namespace internal;
+    namespace desc = decompile::describe;
+    const auto decode = [](const Bytes& code) { return desc::decode16(ByteView(code), 0, false); };
+    // mov ds, [01C4h] / retf: DS is another segment for the caller
+    CB_CHECK(leaves_ds(decode({0x8E, 0x1E, 0xC4, 0x01, 0xCB})));
+    // mov ax, imm / mov ds, ax / retf
+    const Bytes own = {0xB8, 0x00, 0x00, 0x8E, 0xD8, 0xCB};
+    CB_CHECK(leaves_ds(decode(own)));                  // (the immediate is a selector the loader does not say is the module's)
+    CB_CHECK(!leaves_ds(decode(own), {0}));            // (fixed to the module's own data segment: the caller has it already)
+    // push ds / mov ax, imm / mov ds, ax / pop ds / retf: put back
+    CB_CHECK(!leaves_ds(decode({0x1E, 0xB8, 0x00, 0x00, 0x8E, 0xD8, 0x1F, 0xCB})));
+    // mov ax, imm(own) / mov ax, 5 / mov ds, ax: AX no longer the own data
+    CB_CHECK(leaves_ds(decode({0xB8, 0x00, 0x00, 0xB8, 0x05, 0x00, 0x8E, 0xD8, 0xCB}), {0}));
+    // mov dx, ds / mov ds, ax(from elsewhere) / mov ds, dx / retf: a copy taken and put back
+    CB_CHECK(!leaves_ds(decode({0x8C, 0xDA, 0x8E, 0xD8, 0x8E, 0xDA, 0xCB})));
+});

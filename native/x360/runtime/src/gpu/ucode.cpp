@@ -22,6 +22,7 @@ namespace gpu::ucode
             Stage stage;
             Analysis& analysis;
             std::set<uint32_t> textureConstants;
+            std::set<uint32_t> volumeConstants;
             std::set<uint32_t> vertexConstants;
             std::string text;
 
@@ -212,6 +213,8 @@ namespace gpu::ucode
             {
                 line += std::format(", tf{}", tf);
                 c.textureConstants.insert(tf);
+                if (opcode == 1 && Bits(w2, 14, 2) == 2)
+                    c.volumeConstants.insert(tf);
             }
 
             // "" = keep (use the fetch constant's value), nullptr = undefined [d3d9gpu.h GPUMINMAGFILTER etc.].
@@ -548,6 +551,7 @@ namespace gpu::ucode
         }
 
         analysis.textureFetchConstants.assign(c.textureConstants.begin(), c.textureConstants.end());
+        analysis.volumeFetchConstants.assign(c.volumeConstants.begin(), c.volumeConstants.end());
         analysis.vertexFetchConstants.assign(c.vertexConstants.begin(), c.vertexConstants.end());
         return std::move(c.text);
     }

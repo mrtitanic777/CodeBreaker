@@ -92,6 +92,9 @@ namespace gpu
         // and r1.xyz those of corners 1-3 (corner 0 at (0,0), 1 at (1,0), 2 at (1,1), 3 at (0,1)), as a tessellated
         // vertex shader reads them (TRON's interpolates its corners with those weights).
         uint32_t domain = 0;
+        // Fetch constants (bit tf) that a tfetch3D reads while the constant describes a 2D texture (the instruction is
+        // "3D or stacked"; a 2D texture sampled by it uses X and Y): the fetch is translated as a 2D fetch.
+        uint32_t volumeAs2D = 0;
 
         auto operator<=>(const TranslationOptions&) const = default;
     };

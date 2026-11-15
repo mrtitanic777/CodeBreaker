@@ -104,7 +104,7 @@ namespace gpu
         case 2: case 8: case 9: return 1;                // k_8, k_8_A, k_8_B
         case 10: case 3: case 4: case 15: return 2;      // k_8_8, k_1_5_5_5, k_5_6_5, k_4_4_4_4
         case 18: case 51: return 8;                      // DXT1: per 4x4 block
-        case 19: case 20: case 52: case 53: return 16;   // DXT2_3, DXT4_5: per 4x4 block
+        case 19: case 20: case 52: case 53: case 49: return 16; // DXT2_3, DXT4_5, DXN: per 4x4 block
         case 37: case 29: case 32: return 8;             // k_32_32_FLOAT, k_16_16_16_16_EXPAND / _FLOAT (four halves)
         case 38: return 16;                              // k_32_32_32_32_FLOAT
         default: return 4;
@@ -126,7 +126,7 @@ namespace gpu
     uint32_t TextureBlockSize(uint32_t format)
     {
         const uint32_t kind = TextureUntileKind(format);
-        return kind >= kUntileDxt1 && kind <= kUntileDxt4_5 ? 4 : 1;
+        return (kind >= kUntileDxt1 && kind <= kUntileDxt4_5) || kind == kUntileDxn ? 4 : 1;
     }
 
     uint32_t TextureUntileKind(uint32_t format)
@@ -141,6 +141,7 @@ namespace gpu
         case 23: return kUntileDepth24Float;
         case 36: case 37: case 38: return kUntileFloat32;
         case 29: case 32: return kUntileHalf4;
+        case 49: return kUntileDxn;
         default: return kUntilePlain;
         }
     }
@@ -195,7 +196,7 @@ namespace gpu
         {
         case 2: case 6: case 8: case 9: case 10: case 14: case 25:           // 8 / 16 bits per component
         case 3: case 4: case 15:                                             // packed 16-bit texels
-        case 18: case 19: case 20: case 51: case 52: case 53:                // DXT blocks
+        case 18: case 19: case 20: case 51: case 52: case 53: case 49:       // DXT blocks, DXN (two alpha-style blocks)
         case 22: case 23:                                                    // 24-bit depth (unorm or 20e4 float), 8-bit stencil
         case 36: case 37: case 38:                                           // 32-bit floats
         case 29: case 32:                                                    // four 16-bit floats (EXPAND is the same data)
@@ -204,8 +205,7 @@ namespace gpu
             return std::format("format k_{}", TextureFormatName(f.format));
         }
         const uint32_t dimension = (d[5] >> 9) & 3;
-        if (dimension == 2)
-            return "3D texture";
+        f.volume = dimension == 2;
         if (dimension == 1 && ((d[1] >> 10) & 1))
             return "stacked (array) texture";
         f.faces = dimension == 3 ? 6 : 1;
@@ -217,6 +217,18 @@ namespace gpu
         f.width = (d[2] & 0x1FFF) + 1;
         f.height = ((d[2] >> 13) & 0x1FFF) + 1;
         f.pitch = ((d[0] >> 22) & 0x1FF) * 32;
+        if (f.volume)
+        {
+            // 3D: width, height (11 bits each) and depth (10) in the size dword. Only the base level is read (the host
+            // texture has one level: the mips of a volume are sampled as its base, which a volume used as a lookup
+            // table, the common use, never notices); a base level inside a packed mip tail is not implemented.
+            f.width = (d[2] & 0x7FF) + 1;
+            f.height = ((d[2] >> 11) & 0x7FF) + 1;
+            f.depth = ((d[2] >> 22) & 0x3FF) + 1;
+            if (f.packedMips && std::min(f.width, f.height) <= 16)
+                return "3D texture whose base level is in a packed mip tail";
+            f.packedMips = false;
+        }
         if (dimension == 0)
         {
             // 1D: the size is one 24-bit width. It is a one-row linear texture to the host (the shader samples the
@@ -233,8 +245,8 @@ namespace gpu
         // Levels (05a §3).
         uint32_t basePage = (d[1] >> 12) & 0x1FFFF, mipPage = (d[5] >> 12) & 0x1FFFF;
         const uint32_t sizeMaxLevel = Log2Floor(std::max(f.width, f.height));
-        f.minLevel = std::min((d[4] >> 2) & 0xF, sizeMaxLevel);
-        f.maxLevel = std::max(std::min((d[4] >> 6) & 0xF, sizeMaxLevel), f.minLevel);
+        f.minLevel = f.volume ? 0 : std::min((d[4] >> 2) & 0xF, sizeMaxLevel);
+        f.maxLevel = f.volume ? 0 : std::max(std::min((d[4] >> 6) & 0xF, sizeMaxLevel), f.minLevel);
         const uint32_t originalBase = basePage;
         if (f.maxLevel != 0 && basePage == 0)
             f.minLevel = std::max(f.minLevel, 1u);
@@ -269,8 +281,18 @@ namespace gpu
             anyBias |= sign == 2;
         }
         if (anyGamma)
-            return "gamma sign (PWL degamma, 05b §1.3)";
-        if (d[3] & 1)
+        {
+            // Gamma (PWL degamma, 05b §1.3): red, green and blue gamma with alpha unsigned, on a format the host holds as
+            // 8-bit RGBA (8_8_8_8, DXT after decoding): the host's sRGB view of it (the hardware's piecewise-linear
+            // curve approximates sRGB; Xenia uses the same views).
+            const uint32_t kind = TextureUntileKind(f.format);
+            const bool rgba8 = f.format == 6 || kind == kUntileDxt1 || kind == kUntileDxt2_3 || kind == kUntileDxt4_5;
+            if (!rgba8 || (f.signs & 0xFF) != 0x3F)
+                return "gamma sign (PWL degamma, 05b §1.3) other than red, green and blue of an 8-bit RGBA texture";
+            f.gamma = true;
+            f.numbers = TextureNumbers::kUnsigned;
+        }
+        else if (d[3] & 1)
         {
             if (anyBias)
                 return "bias sign with integer numbers";
@@ -361,6 +383,17 @@ namespace gpu
                 size += (f.faces - 1) * Align(e.storage.rowBytes * e.storage.rows, 4096);
             layout.extents.emplace_back(start, start + size);
         }
+        if (f.volume)
+        {
+            // Every slice: the row pitch of the (32-aligned) rows times the rows of a slice aligned to 32, a multiple of
+            // four slices (the console's volume tile is 32 x 32 x 4).
+            const TextureLevelSource& base = layout.levels[0];
+            const uint32_t bytes0 = TextureBytesPerTexel(f.format);
+            const uint32_t rowBytes = f.tiled ? base.pitchBlocks * bytes0 : base.rowBytes;
+            const uint32_t total = rowBytes * Align(f.height, 32) * Align(f.depth, 4);
+            layout.extents.clear();
+            layout.extents.emplace_back(f.baseAddress, f.baseAddress + total);
+        }
         return layout;
     }
 
@@ -381,6 +414,11 @@ namespace gpu
         c.signs = f.signs;
         c.kind = TextureUntileKind(f.format);
         c.packedWidths = TexturePackedWidths(f.format);
+        if (f.volume)
+        {
+            c.zStride = level.rowBytes * Align(f.height, 32);
+            c.depth = f.depth;
+        }
         return c;
     }
 
@@ -393,11 +431,40 @@ cbuffer XeUntileConstants : register(b0)
     uint4 xe_un_kind;    // kind (0 plain, 1 packed 16-bit, 2 DXT1, 3 DXT2_3, 4 DXT4_5, 5 depth 24_8, 6 32-bit floats), packed widths (nibbles, X first)
 };
 ByteAddressBuffer xe_memory : register(t0);
+#ifdef XE_UNTILE_3D
+#ifdef XE_UNTILE_FLOAT
+RWTexture3D<float4> xe_untile_dest : register(u0);
+#else
+RWTexture3D<uint4> xe_untile_dest : register(u0);
+#endif
+#else
 #ifdef XE_UNTILE_FLOAT
 RWTexture2DArray<float4> xe_untile_dest : register(u0);
 #else
 RWTexture2DArray<uint4> xe_untile_dest : register(u0);
 #endif
+#endif
+
+// 3D tiled byte offset of block p (a volume's 32 x 32 x 4 tiles; XGRAPHICS::TileVolume as Xenia's GetTiledOffset3D).
+uint xe_un_tiled3d(uint3 p, uint pitchBlocks, uint heightBlocks, uint bytesLog2)
+{
+    uint height = (heightBlocks + 31u) & ~31u;
+    uint macroOuter = ((p.y >> 4) + (p.z >> 2) * (height >> 4)) * (pitchBlocks >> 5);
+    uint macro = ((((p.x >> 5) + macroOuter) << (bytesLog2 + 6u)) & 0xFFFFFFFu) << 1;
+    uint micro = (((p.x & 7u) + ((p.y & 6u) << 2)) << (bytesLog2 + 6u)) >> 6;
+    uint offsetOuter = ((p.y >> 3) + (p.z >> 2)) & 1u;
+    uint offset1 = offsetOuter + ((((p.x >> 3) + (offsetOuter << 1)) & 3u) << 1);
+    uint offset2 = ((macro + (micro & ~15u)) << 1) + (micro & 15u) + ((p.z & 3u) << (bytesLog2 + 6u)) + ((p.y & 1u) << 4);
+    uint address = (offset1 & 1u) << 3;
+    address += (offset2 >> 6) & 7u;
+    address <<= 3;
+    address += offset1 & ~1u;
+    address <<= 2;
+    address += offset2 & ~511u;
+    address <<= 3;
+    address += offset2 & 63u;
+    return address;
+}
 
 // 2D tiled byte offset of block p (05b §2.2).
 uint xe_un_tiled(uint2 p, uint pitchMacro, uint bytesLog2)
@@ -475,25 +542,58 @@ uint4 xe_un_dxt(uint address, uint t, uint kind)
     return uint4(rgb, a);
 }
 
+// The alpha-style block (BC4: two end points, 3-bit indices) at `address`, texel t of 16 (DXT4_5's alpha; DXN's X and Y).
+uint xe_un_bc4(uint address, uint t)
+{
+    uint lo = xe_un_word(address), hi = xe_un_word(address + 4u);
+    uint a0 = lo & 255u, a1 = (lo >> 8) & 255u;
+    uint bit = 16u + 3u * t;
+    uint ai = bit + 3u <= 32u ? (lo >> bit) & 7u
+            : bit >= 32u ? (hi >> (bit - 32u)) & 7u
+            : ((lo >> bit) | (hi << (32u - bit))) & 7u;
+    if (ai == 0u) return a0;
+    if (ai == 1u) return a1;
+    if (a0 > a1) return ((8u - ai) * a0 + (ai - 1u) * a1 + 3u) / 7u;
+    if (ai == 6u) return 0u;
+    if (ai == 7u) return 255u;
+    return ((6u - ai) * a0 + (ai - 1u) * a1 + 2u) / 5u;
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= xe_un_rect.z || id.y >= xe_un_rect.w)
         return;
+#ifdef XE_UNTILE_3D
+    if (id.z >= xe_un_kind.w)
+        return;
+    uint zslice = id.z;
+#else
+    uint zslice = 0u;
+#endif
     uint kind = xe_un_kind.x;
-    if (kind >= 2u && kind <= 4u)
+    if ((kind >= 2u && kind <= 4u) || kind == 9u)
     {
-        // DXT: the 4x4 block holding the texel, at its block position (the packed offset is in blocks)
+        // DXT / DXN: the 4x4 block holding the texel, at its block position (the packed offset is in blocks)
         uint2 b = (id.xy >> 2) + xe_un_rect.xy;
         uint blockOffset = xe_un_layout.z != 0u ? xe_un_tiled(b, xe_un_layout.y >> 5, xe_un_format.x)
                                                 : b.y * xe_un_layout.y + (b.x << xe_un_format.x);
-        xe_untile_dest[uint3(id.xy, 0u)] = xe_un_dxt(xe_un_layout.x + blockOffset, (id.y & 3u) * 4u + (id.x & 3u), kind);
+        uint t = (id.y & 3u) * 4u + (id.x & 3u);
+        if (kind == 9u)
+            xe_untile_dest[uint3(id.xy, zslice)] = uint4(xe_un_bc4(xe_un_layout.x + blockOffset, t), xe_un_bc4(xe_un_layout.x + blockOffset + 8u, t), 0u, 255u);
+        else
+            xe_untile_dest[uint3(id.xy, zslice)] = xe_un_dxt(xe_un_layout.x + blockOffset, t, kind);
         return;
     }
     uint2 p = id.xy + xe_un_rect.xy;
     uint bytesLog2 = xe_un_format.x;
+#ifdef XE_UNTILE_3D
+    uint offset = xe_un_layout.z != 0u ? xe_un_tiled3d(uint3(p, zslice), xe_un_layout.y, xe_un_rect.w, bytesLog2)
+                                       : zslice * xe_un_kind.z + p.y * xe_un_layout.y + (p.x << bytesLog2);
+#else
     uint offset = xe_un_layout.z != 0u ? xe_un_tiled(p, xe_un_layout.y >> 5, bytesLog2)
                                        : p.y * xe_un_layout.y + (p.x << bytesLog2);
+#endif
     uint address = xe_un_layout.x + offset;
     // The endian swap works on 32-bit words of memory; the texel is then read little-endian from its word.
     uint word = xe_un_swap(xe_memory.Load(address & ~3u), xe_un_layout.w);
@@ -509,14 +609,14 @@ void main(uint3 id : SV_DispatchThreadID)
             e[i] = w != 0u ? xe_un_expand((texel >> shift) & ((1u << w) - 1u), w) : e[i == 0u ? 0u : i - 1u];
             shift += w;
         }
-        xe_untile_dest[uint3(id.xy, 0u)] = e;
+        xe_untile_dest[uint3(id.xy, zslice)] = e;
         return;
     }
 #ifdef XE_UNTILE_FLOAT
     if (kind == 5u)
     {
         // k_24_8: depth in the upper 24 bits (unorm), stencil in the low 8; the texture reads the depth
-        xe_untile_dest[uint3(id.xy, 0u)] = (float(texel >> 8) / 16777215.0).xxxx;
+        xe_untile_dest[uint3(id.xy, zslice)] = (float(texel >> 8) / 16777215.0).xxxx;
         return;
     }
     if (kind == 7u)
@@ -537,14 +637,14 @@ void main(uint3 id : SV_DispatchThreadID)
             }
             depth = asfloat((uint(expo + 112) << 23) | (mant << 3));
         }
-        xe_untile_dest[uint3(id.xy, 0u)] = depth.xxxx;
+        xe_untile_dest[uint3(id.xy, zslice)] = depth.xxxx;
         return;
     }
     if (kind == 8u)
     {
         // k_16_16_16_16_FLOAT / _EXPAND: eight bytes, four half floats (the first two in the first word)
         uint w1 = xe_un_swap(xe_memory.Load((address + 4u) & ~3u), xe_un_layout.w);
-        xe_untile_dest[uint3(id.xy, 0u)] = float4(f16tof32(word & 0xFFFFu), f16tof32(word >> 16),
+        xe_untile_dest[uint3(id.xy, zslice)] = float4(f16tof32(word & 0xFFFFu), f16tof32(word >> 16),
                                                   f16tof32(w1 & 0xFFFFu), f16tof32(w1 >> 16));
         return;
     }
@@ -557,7 +657,7 @@ void main(uint3 id : SV_DispatchThreadID)
         f.y = n > 1u ? asfloat(xe_un_word(address + 4u)) : f.x;
         f.z = n > 2u ? asfloat(xe_un_word(address + 8u)) : f.y;
         f.w = n > 2u ? asfloat(xe_un_word(address + 12u)) : f.z;
-        xe_untile_dest[uint3(id.xy, 0u)] = f;
+        xe_untile_dest[uint3(id.xy, zslice)] = f;
         return;
     }
 #endif
@@ -574,9 +674,9 @@ void main(uint3 id : SV_DispatchThreadID)
     uint4 signs = (xe_un_format.wwww >> uint4(0u, 2u, 4u, 6u)) & 3u;
     int4 extended = int4(c << (32u - bits)) >> int(32u - bits);
     uint4 m = signs == 1u ? 0xFFFFFFFFu : 0u; // a bit-mask select (host compilers rewrite float selects)
-    xe_untile_dest[uint3(id.xy, 0u)] = asfloat((asuint(float4(extended)) & m) | (asuint(float4(c)) & ~m));
+    xe_untile_dest[uint3(id.xy, zslice)] = asfloat((asuint(float4(extended)) & m) | (asuint(float4(c)) & ~m));
 #else
-    xe_untile_dest[uint3(id.xy, 0u)] = c;
+    xe_untile_dest[uint3(id.xy, zslice)] = c;
 #endif
 }
 )HLSL";

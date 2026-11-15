@@ -146,6 +146,9 @@ else()
   target_link_libraries(cb_core PUBLIC Threads::Threads ${CMAKE_DL_LIBS})   # (std::thread; dlopen for the engine libraries)
   find_package(OpenSSL REQUIRED)
   target_link_libraries(cb_core PUBLIC OpenSSL::Crypto)   # (core/crypto_cipher_posix.cpp: random bytes, AES/DES, RSA; Windows uses CNG)
+  # The static libraries reach into one another in a cycle; GNU ld reads each archive once, in command-line order, so the
+  # executables' libraries are linked as one group (every archive is searched again until nothing is left undefined).
+  set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_CXX_COMPILER> <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> -Wl,--start-group <LINK_LIBRARIES> -Wl,--end-group")
 endif()
 # core16_types.hpp: the records of the core16 cycle (header only; its test sits beside it, not in an area)
 get_property(CB_TESTS_BEFORE_CORE16 GLOBAL PROPERTY CB_TEST_SOURCES)
@@ -339,6 +342,10 @@ cb_apply_flags(cb_source_commands)
 target_link_libraries(cb_source_commands PRIVATE cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_source_commands)
 add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker cb_observe_worker)
+if(NOT WIN32)
+  # (the tests name these helper programs with .exe, as on Windows; an ELF file takes any name)
+  set_target_properties(cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker cb_observe_worker PROPERTIES SUFFIX ".exe")
+endif()
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 # cmdrun: runs the command layers of formats, build and analyze with the surroundings the application will give them, to compare each with the

@@ -30,7 +30,7 @@ std::optional<std::uint32_t> Bus::physical(std::uint32_t a) {
 }
 
 bool Bus::read(std::uint32_t address, unsigned size, std::uint64_t& value) {
-    if (address >= kScratchpad && address + size <= kScratchpad + kScratchpadSize) {
+    if (address >= kScratchpad && address - kScratchpad + size <= kScratchpadSize) {
         value = 0;
         for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(scratch_[address - kScratchpad + i]) << (8 * i);
         return true;
@@ -68,7 +68,7 @@ bool Bus::read(std::uint32_t address, unsigned size, std::uint64_t& value) {
 }
 
 bool Bus::write(std::uint32_t address, unsigned size, std::uint64_t value) {
-    if (address >= kScratchpad && address + size <= kScratchpad + kScratchpadSize) {
+    if (address >= kScratchpad && address - kScratchpad + size <= kScratchpadSize) {
         for (unsigned i = 0; i < size; ++i) scratch_[address - kScratchpad + i] = static_cast<std::uint8_t>(value >> (8 * i));
         return true;
     }

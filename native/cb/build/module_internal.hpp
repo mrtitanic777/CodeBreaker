@@ -19,6 +19,7 @@
 
 #include "cb/build/asm16.hpp"
 #include "cb/build/module.hpp"
+#include "cb/decompile/describe.hpp"
 #include "cb/formats/ne.hpp"
 
 namespace cb::build::module::internal {
@@ -126,6 +127,9 @@ std::optional<std::uint32_t> result_in_ax(ByteView code, std::uint32_t start, st
 // Whether every fix-up the original makes to a place of its own is by the segment's number -- none through the entry table (a
 // movable segment's), none a far pointer.
 bool segment_number_fixups(const formats::ne::Module& ne);
+// Whether a function's instructions load DS and do not put it back (`own_data_loads`: the `mov ax, imm` instructions that are fixed to the
+// module's own data segment, whose `mov ds, ax` changes nothing for a caller that has it already).
+bool leaves_ds(const std::vector<decompile::describe::Insn>& ins, const std::set<std::int64_t>& own_data_loads = {});
 // Where a self-loading KERNEL cuts its own code segment after start-up: GlobalReAlloc of CS to `mov cx, size`.
 std::optional<std::uint32_t> resident_limit_of(ByteView code);
 // Functions whose C cannot say what the original passes or returns in a register: {name: why}.

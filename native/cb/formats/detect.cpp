@@ -7,7 +7,10 @@
 
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/formats/atari5200.hpp"
+#include "cb/formats/cdi.hpp"
 #include "cb/formats/dos.hpp"
+#include "cb/formats/jaguar.hpp"
 #include "cb/formats/n64.hpp"
 #include "cb/formats/pce.hpp"
 #include "cb/formats/ppc_program.hpp"
@@ -17,6 +20,8 @@
 #include "cb/formats/sega32x.hpp"
 #include "cb/formats/segacd.hpp"
 #include "cb/formats/snes.hpp"
+#include "cb/formats/threedo.hpp"
+#include "cb/formats/wonderswan.hpp"
 
 namespace cb::formats::detect {
 
@@ -301,6 +306,18 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
                                get<std::uint32_t>(file, 0x18, "detect"), size - 0x800),
                    "playstation", "reach");
     }
+    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 8) {   // a little-endian MIPS ELF: the flags say which console
+        const std::uint32_t flags = get<std::uint32_t>(file, 36, "detect");
+        const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
+        if ((flags & 0x00FF0000u) == 0x00920000u) return one("PlayStation 2 executable (ELF)", std::format("Emotion Engine R5900, entry 0x{:08X}, {} bytes", entry, size), "ps2", "reach");
+        if ((flags & 0x00FF0000u) == 0x00A20000u)
+            return one((head[16] | head[17] << 8) == 0xFFA0 ? "PSP module (PRX)" : "PSP executable (ELF)", std::format("Allegrex, entry 0x{:08X}, {} bytes", entry, size), "psp", "reach");
+    }
+    if (size >= 40 && head.size() >= 40 && starts_with(head, 0, std::string_view(" PBP", 4))) {   // an EBOOT.PBP: its DATA.PSP is an ELF, or an encrypted ~PSP module (recorded, not handled)
+        const std::uint32_t at = get<std::uint32_t>(file, 8 + 4 * 6, "detect");
+        if (at + 4 <= size && starts_with(file, at, "~PSP")) return one("PSP EBOOT.PBP (encrypted ~PSP module)", "not handled: the module is encrypted", "psp", "gap");
+        if (at + 4 <= size && starts_with(file, at, "" "ELF")) return one("PSP EBOOT.PBP", std::format("DATA.PSP at 0x{:X}, {} bytes", at, size), "psp", "reach");
+    }
     if (const std::optional<n64::ByteOrder> order = size >= n64::kBootSize ? n64::order_of(head) : std::nullopt; order && head.size() >= n64::kHeaderSize) {   // a Nintendo 64 ROM: the PI configuration word $80371240, in one of three byte orders
         const Bytes z64 = n64::Rom::convert(head.first(n64::kHeaderSize), *order, n64::ByteOrder::Z64);
         const auto word = [&](std::size_t at) { return static_cast<std::uint32_t>(z64[at]) << 24 | static_cast<std::uint32_t>(z64[at + 1]) << 16 | static_cast<std::uint32_t>(z64[at + 2]) << 8 | z64[at + 3]; };
@@ -335,6 +352,54 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
             return one("Super Nintendo cartridge", std::format("\"{}\", {}, {} bytes{}, RESET ${:04X}", rom.title, formats::snes::to_string(rom.mapping), rom.data.size(),
                                                               rom.copier_header.empty() ? "" : " behind a 512-byte header", rom.emulation.reset), "snes", "reach");
         } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".ws", ".wsc"})) {   // a WonderSwan cartridge: a power-of-two ROM whose last 16 bytes start with the far jump
+        try {
+            const formats::wonderswan::Rom rom = formats::wonderswan::parse(file);
+            return one(rom.is_color() ? "WonderSwan Color cartridge" : "WonderSwan cartridge",
+                       std::format("{} KB, start {:04X}:{:04X}, developer {:02X}, game {:02X}, checksum {}", size / 1024, rom.reset_segment, rom.reset_offset, rom.developer, rom.game_id,
+                                   rom.checksum_ok ? "right" : "wrong"),
+                       "wonderswan", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".j64", ".jag", ".rom", ".cof", ".abs"})) {   // an Atari Jaguar cartridge (the start address at $404) or COFF executable
+        try {
+            const formats::jaguar::Program program = formats::jaguar::parse(file);
+            return one(program.kind == formats::jaguar::Kind::Cartridge ? "Atari Jaguar cartridge" : "Atari Jaguar COFF executable",
+                       std::format("{} bytes, start ${:06X}, {} segment(s)", size, program.entry, program.segments.size()), "jaguar", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if (starts_with(head, 0, std::string_view("\x01\x5A\x5A\x5A\x5A\x5A\x01", 7)) || name_ends_with(name, {".aif"})) {   // a 3DO disc (the Opera volume header) or an AIF executable
+        try {
+            const formats::threedo::Program program = formats::threedo::parse(file);
+            return one(program.kind == formats::threedo::Kind::Disc ? "3DO disc" : "3DO AIF executable",
+                       std::format("{}\"{}\", entry 0x{:06X}, {} bytes of AIF", program.label.empty() ? "" : "\"" + program.label + "\", ", program.name, program.aif.entry, program.image_size),
+                       "threedo", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".a52", ".bin", ".rom"})) {   // an Atari 5200 cartridge: 4, 8, 16 or 32 KB ending with a start address inside the ROM
+        try {
+            const formats::atari5200::Rom rom = formats::atari5200::parse(file);
+            const std::uint32_t first = *rom.offset(rom.start);
+            if (name_ends_with(name, {".a52"}) || (rom.data[first] != 0x00 && rom.data[first] != 0xFF)) {
+                return one("Atari 5200 cartridge", std::format("{} KB at ${:04X}, start ${:04X}", size / 1024, rom.base, rom.start), "atari5200", "reach");
+            }
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".iso", ".bin", ".cdi", ".img", ".mod", ".rtf"})) {   // a Philips CD-i disc (the Disc Label "CD-I " in an early sector) or a CD-RTOS module
+        bool label = false;
+        for (std::size_t at = 0; at + 7 <= file.size() && at <= 16 * formats::cdi::kSector; at += formats::cdi::kSector) label = label || (file[at] == 1 && starts_with(file, at + 1, "CD-I ") && file[at + 6] == 1);
+        if (label || formats::cdi::module_at(file, 0)) {
+            try {
+                const formats::cdi::Program program = formats::cdi::parse(file);
+                return one(program.disc ? "Philips CD-i disc" : "CD-RTOS module file", std::format("{} CD-RTOS module(s), {} executable", program.modules.size(), program.placed().size()), "cdi", "reach");
+            } catch (const FormatError&) {
+            }
         }
     }
     if (head.size() >= 0x108 && (starts_with(head, 0x100, "NEO-GEO") || starts_with(head, 0x100, "EN-OEG"))) {   // a Neo Geo P-ROM: "NEO-GEO" at $100, or with its words swapped

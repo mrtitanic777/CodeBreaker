@@ -331,7 +331,7 @@ Proof: direct `build` of USER: never-set 43 -> 28 (15 converted from "kept": `in
 PASS, PASS (8m20s): USER C 563 -> 569 / gated 41 (the gate sent back the ones it found different; the net gain is 6),
 every other module unchanged. (A first all15 run of the same exe failed with USER "NOT LINKED ... No such file": a
 collision of two builds in the shared folder state/build/user.exe, mine and another session's, and passed on the rerun;
-builds into state/build/<module> are not isolated between sessions.) `regress install` started with the same exe: result below.
+builds into state/build/<module> are not isolated between sessions.) `regress install --runs 1` with the same exe (`win95track-install-inax`): **PASS**, 1h30m, Setup to the desktop on all 22 modules, USER C 569 / gated 41; screen state/phase3/shots/win95track-install-inax-install-1.png.
 
 ### 14. USER's 20 "calls a function leaving DS changed" (also GDI 3, KEYBOARD 1): read, not converted
 

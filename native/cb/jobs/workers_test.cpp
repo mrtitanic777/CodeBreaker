@@ -3,8 +3,6 @@
 #include "cb/core/error.hpp"
 #include "cb/core/testing.hpp"
 
-#include <windows.h>
-
 // Design notes:
 //   * the kinds a worker can do are registered by the host (WorkerKinds), not hard-wired to gate/judge/build; a kind it
 //     does not know is exit code 2, a share that throws is exit code 3;

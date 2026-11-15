@@ -8,7 +8,9 @@
 #include "cb/core/dynlib.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
+#ifdef _WIN32
 #include "cb/core/win.hpp"
+#endif
 #include "dosexec/cbdos.h"
 
 namespace cb::exact::emu::dos {
@@ -16,6 +18,36 @@ namespace cb::exact::emu::dos {
 namespace stdfs = std::filesystem;
 
 namespace {
+
+// The engine's C interface takes wide paths: UTF-16 on Windows, UTF-32 (wchar_t is 32 bits) elsewhere.
+#ifdef _WIN32
+std::wstring to_wide(std::string_view s) { return win::to_wide(s); }
+std::string from_wide(std::wstring_view s) { return win::from_wide(s); }
+#else
+std::wstring to_wide(std::string_view s) {
+    std::wstring out;
+    for (std::size_t i = 0; i < s.size();) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        const int extra = c < 0x80 ? 0 : c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+        char32_t cp = extra == 0 ? c : c & (0x3Fu >> extra);
+        for (int k = 1; k <= extra && i + static_cast<std::size_t>(k) < s.size(); ++k) cp = (cp << 6) | (static_cast<unsigned char>(s[i + static_cast<std::size_t>(k)]) & 0x3Fu);
+        out.push_back(static_cast<wchar_t>(cp));
+        i += static_cast<std::size_t>(extra) + 1;
+    }
+    return out;
+}
+std::string from_wide(std::wstring_view s) {
+    std::string out;
+    for (const wchar_t w : s) {
+        const char32_t cp = static_cast<char32_t>(w);
+        if (cp < 0x80) out.push_back(static_cast<char>(cp));
+        else if (cp < 0x800) { out.push_back(static_cast<char>(0xC0 | (cp >> 6))); out.push_back(static_cast<char>(0x80 | (cp & 0x3F))); }
+        else if (cp < 0x10000) { out.push_back(static_cast<char>(0xE0 | (cp >> 12))); out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F))); out.push_back(static_cast<char>(0x80 | (cp & 0x3F))); }
+        else { out.push_back(static_cast<char>(0xF0 | (cp >> 18))); out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F))); out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F))); out.push_back(static_cast<char>(0x80 | (cp & 0x3F))); }
+    }
+    return out;
+}
+#endif
 
 constexpr std::uint8_t kSignatureMore = 0x4D;   // 'M'
 constexpr std::uint8_t kSignatureLast = 0x5A;   // 'Z'
@@ -373,7 +405,7 @@ namespace {
 
 Result Executive::run(const RunSpec& spec) const {
     const Impl& i = *impl_;
-    const std::wstring exe = win::to_wide(fs::to_text(stdfs::absolute(spec.exe))), workdir = win::to_wide(fs::to_text(stdfs::absolute(spec.workdir)));
+    const std::wstring exe = to_wide(fs::to_text(stdfs::absolute(spec.exe))), workdir = to_wide(fs::to_text(stdfs::absolute(spec.workdir)));
     const Bytes tail = text::to_latin1(spec.command_tail);
     cbd_args a{};
     a.exe = exe.c_str();
@@ -404,9 +436,9 @@ Result Executive::run(const RunSpec& spec) const {
     } handed{i};
     if (spec.files != nullptr) {
         handed.fs = i.fs_new();
-        for (const std::string& h : spec.files->hide_) i.fs_hide(handed.fs, win::to_wide(h).c_str());
-        for (const auto& [key, data] : spec.files->files_) i.fs_put(handed.fs, win::to_wide(key).c_str(), data->data(), static_cast<std::int64_t>(data->size()));
-        for (const std::string& key : spec.files->gone_) i.fs_gone(handed.fs, win::to_wide(key).c_str());
+        for (const std::string& h : spec.files->hide_) i.fs_hide(handed.fs, to_wide(h).c_str());
+        for (const auto& [key, data] : spec.files->files_) i.fs_put(handed.fs, to_wide(key).c_str(), data->data(), static_cast<std::int64_t>(data->size()));
+        for (const std::string& key : spec.files->gone_) i.fs_gone(handed.fs, to_wide(key).c_str());
         a.fs = handed.fs;
     }
 
@@ -425,12 +457,12 @@ Result Executive::run(const RunSpec& spec) const {
             const std::uint8_t* data = nullptr;
             std::int64_t n = 0;
             const bool present = i.fs_entry(handed.fs, k, &key, &data, &n) != 0;
-            const std::string name = win::from_wide(key);
+            const std::string name = from_wide(key);
             if (present) spec.files->files_[name] = std::make_shared<Bytes>(data, data + n);
             else spec.files->files_.erase(name);
         }
         spec.files->gone_.clear();
-        for (std::int64_t k = 0, n = i.fs_ngone(handed.fs); k < n; ++k) spec.files->gone_.insert(win::from_wide(i.fs_gone_at(handed.fs, k)));
+        for (std::int64_t k = 0, n = i.fs_ngone(handed.fs); k < n; ++k) spec.files->gone_.insert(from_wide(i.fs_gone_at(handed.fs, k)));
     }
     if (r->status != CBD_OK) dos_raise(*r, spec.exe);
 

@@ -50,6 +50,15 @@ repositories (kept outside the repository, in `GitHub/homebrew-samples/`).
 | BALL, GAMELIFE, MML, SAMPLE1 (demo projects, 3 banks behind a 512-byte header each) | PC Engine / TurboGrafx-16 | langel/pce-dev-kit (demo projects/) | Unlicense | 25, 34, 24, 25 | rebuilds identical, verified (11 of 12 judged functions of each diverge when their first byte is turned over) |
 | gothicvania.sfc (512 KB), hello-world-region.sfc (256 KB) | Super Nintendo (LoROM, PVSnesLib C) | donth77/snes-homebrew (release v1.0.0) | MIT | 80, 41 | rebuilds identical, verified (all 12 judged functions of each diverge when their first byte is turned over) |
 | the 65 example cartridges of OpenSNES 0.55.0 (aim_target ... world_sprites: 256 KB LoROM, hirom_demo: 512 KB HiROM; some use SuperFX, SA-1, DSP-1, the Super Scope) | Super Nintendo (OpenSNES C) | k0b3n4irb/opensnes (release v0.55.0, opensnes-examples zip) | MIT | 2,220 in all (283,879 of 17,301,504 bytes as code: the ROMs are mostly padding, graphics and sound) | all 65 rebuild identical; 9 judged (simple_sprite 19 functions, controller 9, blocks 75, breakout 31, hirom_demo 24, mode7_racing 31, rpg 63, shmup 31, hdma_wave 33): 100 of the 105 judged functions diverge when their first byte is turned over. The coprocessors' code is data, as is the SPC700's |
+| Curse of the Lost Miner (culomin5200.a52, `bin/main.c.rom`, 16 KB; cc65 C) | Atari 5200 | 8bitworkshop/culomin5200 | CC0-1.0 | 100 | rebuilds identical, verified (12 judged functions all diverge when their first byte is turned over; `reach --judge`: 100 of 100 verified) |
+| jag_ball.cof (4 KB COFF) and jag_ball.j64 (1 MB cartridge) | Atari Jaguar | 42Bastian/JaguarDemos (jag_ball/) | Unlicense (public domain) | 20 each | rebuilds identical, verified (the sections' bytes / the cartridge; 12 judged functions, 12 and 10 diverge when their first byte is turned over; the GPU code is data) |
+| yarc.cof (128 KB COFF) and yarc.j64 (1 MB cartridge) | Atari Jaguar | 42Bastian/JaguarDemos (yarc/) | Unlicense (public domain) | 8 each | rebuilds identical, verified (8 judged, 8 and 7 diverge when their first byte is turned over) |
+| (none) | WonderSwan / WonderSwan Color | no open-source WonderSwan program with a stated licence and a published binary was found: Wondersnake (tslanina/Retro-WonderSwanColor-Wondersnake, GPL-3.0) is source only and needs Borland TASM; the Wonderful toolchain's examples (CC0) ship no ROMs | | | the lane is tested with cartridges built in the tests (the footer layout is checked against what Wondersnake's `com2ws` writes); the rebuilt source needs NASM |
+| CDI_FROG (the CD-RTOS module of the game, 20,642 bytes, built from the C and assembly in `src/`) | Philips CD-i (a module file) | gameblabla/superquartet-cdi (src/Disk/) | MIT | 4 | rebuilds identical, verified (all 4 judged functions diverge when their first byte is turned over; `TRAP #0` system calls named and logged; the header read as the format says: sync, size, name, type, parity, execution offset) |
+| (none) | 3DO (Opera disc, AIF LaunchMe) | no open-source 3DO program with a stated licence and a published binary was found (trapexit/3do-devkit states none; gameblabla/exp3DOsdk's ISOs link the 3DO SDK's libraries, which are not under its MIT licence) | | | the lane is tested with discs and AIF executables built in the tests; the AIF header layout (big-endian words, entry as the BL at word 3) was checked against the first 384 bytes of a published LaunchMe, read and not kept |
+
+Not done for these four: the real WonderSwan and 3DO programs above are missing (nothing to put through `reach --judge` but the tests' own cartridges); the Jaguar's
+GPU and DSP RISC code stays data and the 6 MB banked cartridges are not modelled; the 5200's 40 KB banked cartridges are not modelled.
 
 ## PlayStation homebrew (the PS1 lane)
 
@@ -319,3 +328,21 @@ instruction changed beside the original in the SH-4 interpreter.
 Not done: no open-source Dreamcast program shipped as a `.cdi` / `.gdi` with a permissive licence was found (the KallistiOS examples and most homebrew are
 source only, and building them needs a downloaded toolchain), so `.cdi`, `.gdi` and a scrambled `1ST_READ.BIN` are tested on discs the tests build, not on a real
 image; `reach --judge` was not run on a real disc.
+
+## PlayStation 2 and PSP homebrew (the ps2 and psp lanes)
+
+Open-source programs with published source and a stated licence, downloaded 2026-11-15 as binaries from the authors' own release pages (kept outside the repository, in
+`GitHub/homebrew-samples/ps2/` and `/psp/`; never run on this machine). Each is written as GNU as source by `source/mips_elf_writer` and built again by CodeBreaker's own
+assembler; its functions (the first 150, or `CB_PS2_PSP_FUNCTIONS`) are then run in the interpreter, in the original and in the rebuilt file
+(`cb_tests --filter machine_ps2.homebrew` / `machine_psp.homebrew`; they skip programs that are not on the machine). The ps2-packer builds of Open PS2 Loader and
+wLaunchELF (AFL-3.0, AFL-2.0) are not listed: a packed ELF is a decompression stub and a compressed payload with no R5900 flags, so nothing of the program is code to read.
+
+| Program | Platform | Source | Licence | Functions | Result |
+|---|---|---|---|---|---|
+| NTPS2-UNC.ELF (NTP client, 2.1 MB, symbols) | PlayStation 2 | ShyavanS/NTPS2 (v1.2.1) | GPL-3.0 | 1,033 | rebuilds identical; 300 of 300 judged runs equal |
+| quake.elf (Quake port, 1.4 MB) | PlayStation 2 | glampert/quake-ps2 (v1.1.0) | GPL-2.0 | 2,783 | rebuilds identical; the first 129 functions judged equal (running them found the scratchpad bounds bug) |
+| ee_core.elf (neutrino's EE core, 25 KB) | PlayStation 2 | rickgaiser/neutrino (v1.8.0) | AFL-3.0 | 124 | rebuilds identical; 248 of 248 runs equal |
+| psplink.prx, usbhostfs.prx, usbgdb.prx, remotejoy.prx, debugmenu.prx, scrkprintf.prx, siokprintf.prx, usbkprintf.prx, psplink_user.prx | PSP (unencrypted PRX) | pspdev/psplinkusb (v3.2.1) | BSD-3-Clause | 556, 86, 81, 53, 39, 15, 13, 14, 6 | rebuild identical; every judged run equal (imports named by NID) |
+| EBOOT.PBP (psplink) | PSP | pspdev/psplinkusb (v3.2.1) | BSD-3-Clause | 322 | rebuilds identical (the whole package); 120 of 120 runs equal |
+| EBOOT.PBP (llama2psp) | PSP | sixf0ur/llama2psp (1.0) | MIT | 528 | rebuilds identical; 120 of 120 runs equal |
+| EBOOT.PBP (DOSBox 0.72 for the PSP, 3 MB) | PSP | PSP-Archive/dosbox_psp (0.72-psp-0.0.5) | GPL-2.0 | not finished | the writer's analysis of this 3 MB stripped module takes over 25 minutes (backlog: the function search re-reads every pointer-like word); skipped by the test unless `CB_PS2_PSP_ALL` is set |

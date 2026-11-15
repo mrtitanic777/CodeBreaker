@@ -21,6 +21,7 @@ namespace gpu::ucode
     {
         uint32_t cfCount = 0;                       // control-flow instructions (up to the first exec's address)
         std::vector<uint32_t> textureFetchConstants; // tf# used by texture instructions, sorted, unique
+        std::vector<uint32_t> volumeFetchConstants;  // those fetched by tfetch3D (dimension 3D-or-stacked), sorted, unique
         std::vector<uint32_t> vertexFetchConstants;  // hardware vertex fetch constant (0-95), sorted, unique
         uint32_t interpolatorsWritten = 0;          // VS: bit n = o#n
         uint32_t colorsWritten = 0;                 // PS: bit n = oC#n

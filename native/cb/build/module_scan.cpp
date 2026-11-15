@@ -34,30 +34,40 @@ std::string first_operand(std::string_view op_str) {
     return std::string(text::trim(op_str.substr(0, op_str.find(','))));
 }
 
+}  // namespace
+
 // Whether a function's instructions load DS and do not put it back: a `mov ds, x` from anything but a copy taken of DS (`mov dx, ds`),
-// with no `pop ds` or restoring `mov ds` after it.
-bool leaves_ds(const std::vector<desc::Insn>& ins) {
+// with no `pop ds` or restoring `mov ds` after it. `own_data_loads`: the addresses of the `mov ax, imm` instructions whose immediate
+// the loader fixes to the module's own automatic data segment -- `mov ax, DGROUP / mov ds, ax` (USER's sub_1_5D4F, which every USER
+// function that calls it has already done): the caller's DS is that segment already, so nothing is left changed.
+bool leaves_ds(const std::vector<desc::Insn>& ins, const std::set<std::int64_t>& own_data_loads) {
     std::set<std::string> saved;
     bool changed = false;
+    bool ax_is_own_data = false;
     for (const desc::Insn& x : ins) {
         const bool copy_of_ds = x.mn == "mov" && x.op_str.size() > 4 && x.op_str.ends_with(", ds") &&
                                 x.op_str.find(',') == x.op_str.size() - 4 &&
                                 text::is_identifier(std::string_view(x.op_str).substr(0, x.op_str.size() - 4));
+        if (x.mn == "mov" && x.op_str.starts_with("ax,") && own_data_loads.contains(x.address)) {
+            ax_is_own_data = true;
+            continue;
+        }
         if (copy_of_ds) {
             saved.insert(x.op_str.substr(0, x.op_str.find(',')));
         } else if (x.mn == "mov" && x.op_str.starts_with("ds,")) {
             const std::string_view source = text::trim(std::string_view(x.op_str).substr(x.op_str.find(',') + 1));
-            changed = !saved.contains(std::string(source));
+            changed = !saved.contains(std::string(source)) && !(ax_is_own_data && source == "ax");
         } else if (x.mn == "pop" && x.op_str == "ds") {
             changed = false;
         } else if (x.mn == "lds") {
             changed = true;
         }
+        if (x.mn != "push" && first_operand(x.op_str) == "ax") ax_is_own_data = false;   // (any other write of AX)
+        if (x.mn == "call" || x.mn == "lcall") ax_is_own_data = false;
     }
     return changed;
 }
 
-}  // namespace
 
 std::optional<std::uint32_t> result_in_ax(ByteView code, std::uint32_t start, std::uint32_t end) {
     const std::size_t to = std::min<std::size_t>(end, code.size());
@@ -148,6 +158,35 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
     std::map<std::uint32_t, Bytes> images;
     std::map<std::string, std::string> out;
     std::set<std::string> leaving_ds;
+    // (the places where the loader makes a `mov ax, imm` the module's own automatic data segment, by segment)
+    std::map<std::uint32_t, std::set<std::uint32_t>> own_data_offsets;
+    const auto own_data_loads_of = [&](std::uint32_t sg, const Bytes& code, const std::vector<desc::Insn>& ins) {
+        auto found = own_data_offsets.find(sg);
+        if (found == own_data_offsets.end()) {
+            std::set<std::uint32_t> offsets;
+            if (const auto it = segs.find(sg); it != segs.end() && ne.header().autodata_segment != 0) {
+                for (const formats::ne::Relocation& r : ne.relocations(it->second)) {
+                    const auto* ref = std::get_if<formats::ne::InternalRef>(&r.target);
+                    if (r.source != 2 || ref == nullptr || ref->segment != ne.header().autodata_segment) continue;
+                    // (a fix-up that is not additive names the first place only: the stored word at it is the offset of the next, 0xFFFF the last)
+                    std::uint32_t at_site = r.offset;
+                    for (int hops = 0; hops < 65536 && at_site + 1 < code.size(); ++hops) {
+                        offsets.insert(at_site);
+                        if (r.additive()) break;
+                        const std::uint32_t next = static_cast<std::uint32_t>(code[at_site]) | static_cast<std::uint32_t>(code[at_site + 1]) << 8;
+                        if (next == 0xFFFF || offsets.contains(next)) break;
+                        at_site = next;
+                    }
+                }
+            }
+            found = own_data_offsets.emplace(sg, std::move(offsets)).first;
+        }
+        std::set<std::int64_t> loads;
+        for (const desc::Insn& x : ins) {
+            if (x.mn == "mov" && x.op_str.starts_with("ax,") && found->second.contains(static_cast<std::uint32_t>(x.address + 1))) loads.insert(x.address);
+        }
+        return loads;
+    };
     std::map<std::string, std::set<std::string>> calls_of;   // (and who calls each: a caller of one that leaves DS changed counts on that too)
     const auto setdefault = [&](const std::string& k, std::string v) { out.emplace(k, std::move(v)); };
     for (const auto& [place, n] : at) {
@@ -175,7 +214,7 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
         const bool wide = wide_result.test(std::string_view(text->second).substr(0, text->second.find('(')));
         // (it loads DS and never puts it back: it leaves the caller another DS -- sub_1_222B's `mov ds, ax; ret`, KERNEL's sub_2_0170
         // `mov ds, cs:[16Eh]; ret`. Not USER's copy helper sub_1_39E2: `mov dx, ds` ... `mov ds, dx` puts it back)
-        if (leaves_ds(ins)) {
+        if (leaves_ds(ins, own_data_loads_of(sg, code, ins))) {
             leaving_ds.insert(n);
             setdefault(n, "it leaves DS changed for its caller");
         }
