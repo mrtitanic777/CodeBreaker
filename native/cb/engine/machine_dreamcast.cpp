@@ -4,15 +4,43 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/sh2.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/dreamcast.hpp"
 #include "cb/formats/dreamcast.hpp"
 #include "cb/source/dreamcast_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_dreamcast(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (dreamcast::is_disc_start(head) || name_ends_with(name, {".gdi", ".cdi"})) {   // a Dreamcast disc: "SEGA SEGAKATANA " starts the boot track's first sector (a .gdi names its tracks; a .cdi is searched)
+        try {
+            const dreamcast::Disc disc = name_ends_with(name, {".gdi"}) ? dreamcast::read(std::filesystem::path(std::string(name))) : dreamcast::parse(file);
+            const char* container = disc.container == dreamcast::Container::Gdi ? "GD-ROM image" : disc.container == dreamcast::Container::Cdi ? "DiscJuggler image" : disc.container == dreamcast::Container::Raw ? "raw sectors" : "2048-byte sectors";
+            return one("Sega Dreamcast disc", std::format("\"{}\", {}, {}, IP.BIN {} bytes, first program {}{} at 0x{:08X}", disc.header.title, disc.header.product, container, disc.ip_length(),
+                                                        disc.first_read_name.empty() ? std::string("(none)") : disc.first_read_name, disc.scrambled ? " (scrambled)" : "", dreamcast::kFirstReadBase + dreamcast::kCachedView),
+                       "dreamcast", "reach");
+        } catch (const Error&) {   // not a disc of this machine
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -246,15 +274,13 @@ vl::ImageLaneSpec dreamcast_lane_spec() {
 }
 
 void register_dreamcast_lane() {
-    if (machine_lanes().find("dreamcast")) return;
-    MachineLane lane;
-    lane.name = "dreamcast";
-    lane.probe = [](const stdfs::path& p) { return formats::dreamcast::probe(p); };
-    lane.make_spec = dreamcast_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "dreamcast",
+        .platform = platforms::dreamcast,
+        .probe = [](const stdfs::path& p) { return formats::dreamcast::probe(p); },
+        .make_spec = dreamcast_lane_spec,
+        .detectors = {{.priority = 380, .detect = formats::detect::info_dreamcast}},
+    });
 }
 
 }  // namespace cb::engine

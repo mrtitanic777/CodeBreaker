@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.o2.descriptor", [] {
     const Platform p = o2();
-    CB_CHECK(p.id == Id::O2);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "o2");
     CB_CHECK_EQ(p.title, "Magnavox Odyssey 2");
     CB_CHECK_EQ(p.family, "8048");

@@ -9,7 +9,7 @@ namespace cb::platforms {
 
 CB_TEST("platforms.gekko.descriptors", [] {
     const Platform gc = gamecube(), w = wii(), u = wiiu();
-    CB_CHECK(gc.id == Id::GameCube && w.id == Id::Wii && u.id == Id::WiiU);
+    CB_CHECK(gc.id == Id::Machine && w.id == Id::Machine && u.id == Id::Machine);
     CB_CHECK_EQ(gc.name, "gamecube");
     CB_CHECK_EQ(w.name, "wii");
     CB_CHECK_EQ(u.name, "wiiu");

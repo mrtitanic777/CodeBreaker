@@ -11,7 +11,7 @@ Platform neogeo() {
     registers.push_back("SR");
 
     MachineSpec s;
-    s.id = Id::NeoGeo;
+    s.name = "neogeo";
     s.title = "Neo Geo (AES / MVS)";
     s.family = "68000";
     s.container = "cartridge P-ROM (.p1, .bin, word-swapped or not) or .neo file";

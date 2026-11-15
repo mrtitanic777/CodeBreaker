@@ -479,7 +479,7 @@ CB_TEST("translate.python.lower.more_of_what_a_function_can_hold", [] {
     {"fn_with_lambda", R"x(refused dynamic:first-class lambda)x"},
     {"nested", R"x(refused syntax:nested function)x"},
     {"with_stmt", R"x(refused stdlib:open)x"},
-    {"gen", R"x(refused dynamic:generator)x"},
+    {"gen", R"x(function gen() -> py.iter<i64> {YieldReturn})x"},
     {"Shape.__init__", R"x(ctor __init__(w:i64) -> void {this:app.Shape.w:i64 = w:i64})x"},
     {"Shape.unit", R"x(method unit() -> i64 {return 1:i64})x"},
     {"Shape.area", R"x(method area() -> i64 {return this:app.Shape.w:i64})x"},

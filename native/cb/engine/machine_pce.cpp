@@ -1,6 +1,7 @@
 #include "cb/engine/machine_pce.hpp"
 
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -8,9 +9,33 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/emulate/huc6280.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/pce.hpp"
 #include "cb/formats/pce.hpp"
 #include "cb/source/pce_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_pce(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".pce", ".tg16", ".sgx"})) {   // a PC Engine / TurboGrafx-16 HuCard: whole 8 KB banks, a RESET vector into the top page
+        try {
+            const formats::pce::Rom rom = formats::pce::parse(file);
+            return one("PC Engine HuCard", std::format("{} banks of 8 KB{}, RESET ${:04X}", rom.bank_count(), rom.header.empty() ? "" : " behind a 512-byte header", rom.vectors.reset), "pce", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -104,15 +129,13 @@ vl::ImageLaneSpec pce_lane_spec() {
 }
 
 void register_pce_lane() {
-    if (machine_lanes().find("pce")) return;
-    MachineLane lane;
-    lane.name = "pce";
-    lane.probe = [](const stdfs::path& p) { return formats::pce::probe(p); };
-    lane.make_spec = pce_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "pce",
+        .platform = platforms::pce,
+        .probe = [](const stdfs::path& p) { return formats::pce::probe(p); },
+        .make_spec = pce_lane_spec,
+        .detectors = {{.priority = 220, .detect = formats::detect::info_pce}},
+    });
 }
 
 }  // namespace cb::engine

@@ -16,6 +16,7 @@
 #include "cb/core/log.hpp"
 #include "cb/core/regex.hpp"
 #include "cb/core/text.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
 #include "cb/formats/ne.hpp"
 #include "cb/formats/pe.hpp"
@@ -82,8 +83,10 @@ bool made_by_us(const stdfs::path& file) {
 
 // A module written as its assembly file: a driver, a real-mode program, a cartridge, a snapshot or a tape.
 bool written_as_assembly(std::string_view kind) {
-    return kind == "le" || kind == "dos" || kind == "nes" || kind == "sms" || kind == "gb" || kind == "genesis" || kind == "ps1" || kind == "gba" || kind == "zx" || kind == "msx" || kind == "coleco" || kind == "cpc" ||
-           engine::machine_lanes().find(kind) != nullptr;   // (a platform registered without editing this list: engine/machine_lanes.hpp)
+    if (kind == "le" || kind == "dos") return true;
+    engine::register_all_lanes();
+    const auto lanes = engine::registered_lanes();   // (every platform lane is a machine whose programs come back as assembly: engine/lane_registry.hpp)
+    return std::any_of(lanes.begin(), lanes.end(), [&](const auto& lane) { return lane->name == kind; }) || engine::machine_lanes().find(kind) != nullptr;
 }
 
 mf::Lane lane_of_kind(std::string_view kind) {

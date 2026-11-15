@@ -176,6 +176,7 @@ CB_TEST("exact.emu.dos.a_file_of_the_memfs_is_a_buffer", [] {
 });
 
 CB_TEST("exact.emu.dos.the_memfs_shows_the_disk_until_a_file_is_written", [] {
+    CB_WINDOWS_ONLY("it relies on the case-insensitive file names of the disk");
     fs::ScopedTempDir dir("dostest");
     fs::write_text(dir.path() / "ON.DISK", "disk");
     dos::MemFS fs;

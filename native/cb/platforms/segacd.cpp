@@ -11,7 +11,7 @@ Platform segacd() {
     registers.push_back("SR");
 
     MachineSpec s;
-    s.id = Id::SegaCd;
+    s.name = "segacd";
     s.title = "Sega CD / Mega-CD";
     s.family = "68000";
     s.container = "disc image boot sectors (.iso, .bin; 2048 or 2352 bytes a sector)";

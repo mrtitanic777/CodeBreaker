@@ -33,9 +33,9 @@ namespace stdfs = std::filesystem;
 
 // What is worth looking inside a container for: executables and cartridge images.
 constexpr std::string_view kProgramExts[] = {
-    ".xex", ".exe", ".dll", ".xbe", ".com", ".sys", ".drv", ".vxd", ".386", ".nes", ".gb", ".gbc", ".sms", ".gg", ".sg",
-    ".md", ".gen", ".smd", ".bin", ".rom", ".sna", ".z80", ".tap", ".jar", ".gba", ".nds", ".z64", ".n64", ".v64", ".sfc",
-    ".smc", ".elf", ".self", ".apk", ".ipa", ".xap", ".dol", ".rpx", ".rpl"};
+    ".xex", ".exe", ".dll", ".xbe", ".com", ".sys", ".drv", ".vxd", ".386",
+    ".bin", ".rom", ".jar",
+    ".elf", ".self", ".apk", ".ipa", ".xap"};
 // Not programs: never measured, only counted.
 constexpr std::string_view kSkipFamilies[] = {"media", "xna"};
 constexpr std::string_view kContainerFormats[] = {"STFS package", "CD image", "Xbox disc image", "disk image",
@@ -46,10 +46,10 @@ bool contains(const std::string_view (&list)[N], std::string_view s) {
     return std::find(std::begin(list), std::end(list), s) != std::end(list);
 }
 
-bool ends_with_program_ext(std::string_view path) {
+bool ends_with_program_ext(std::string_view path, const Services& services) {
     const std::string lower = text::lower(path);
-    return std::any_of(std::begin(kProgramExts), std::end(kProgramExts),
-                       [&](std::string_view e) { return lower.ends_with(e); });
+    return std::any_of(std::begin(kProgramExts), std::end(kProgramExts), [&](std::string_view e) { return lower.ends_with(e); }) ||
+           std::any_of(services.program_extensions.begin(), services.program_extensions.end(), [&](const std::string& e) { return lower.ends_with(e); });
 }
 
 void say(const Services& services, std::string_view line) {
@@ -266,7 +266,7 @@ std::vector<stdfs::path> unpack_volumes(std::vector<std::unique_ptr<formats::med
     try {
         for (auto& v : volumes) {
             for (const formats::media::Entry& e : v->files()) {
-                if (!e.is_dir && ends_with_program_ext(e.path) && e.size > 0 && e.size < (std::uint64_t{512} << 20)) {
+                if (!e.is_dir && ends_with_program_ext(e.path, services) && e.size > 0 && e.size < (std::uint64_t{512} << 20)) {
                     entries.push_back({v.get(), &e});
                 }
             }

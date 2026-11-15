@@ -2,13 +2,41 @@
 #include "cb/engine/machine_wonderswan.hpp"
 
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/unicorn_uc.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/wonderswan.hpp"
 #include "cb/formats/wonderswan.hpp"
 #include "cb/source/wonderswan_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_wonderswan(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".ws", ".wsc"})) {   // a WonderSwan cartridge: a power-of-two ROM whose last 16 bytes start with the far jump
+        try {
+            const formats::wonderswan::Rom rom = formats::wonderswan::parse(file);
+            return one(rom.is_color() ? "WonderSwan Color cartridge" : "WonderSwan cartridge",
+                       std::format("{} KB, start {:04X}:{:04X}, developer {:02X}, game {:02X}, checksum {}", size / 1024, rom.reset_segment, rom.reset_offset, rom.developer, rom.game_id,
+                                   rom.checksum_ok ? "right" : "wrong"),
+                       "wonderswan", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -134,15 +162,13 @@ vl::ImageLaneSpec wonderswan_lane_spec() {
 }
 
 void register_wonderswan_lane() {
-    if (machine_lanes().find("wonderswan")) return;
-    MachineLane lane;
-    lane.name = "wonderswan";
-    lane.probe = [](const stdfs::path& p) { return formats::wonderswan::probe(p); };
-    lane.make_spec = wonderswan_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "wonderswan",
+        .platform = platforms::wonderswan,
+        .probe = [](const stdfs::path& p) { return formats::wonderswan::probe(p); },
+        .make_spec = wonderswan_lane_spec,
+        .detectors = {{.priority = 240, .detect = formats::detect::info_wonderswan}},
+    });
 }
 
 }  // namespace cb::engine

@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform pce() {
     MachineSpec s;
-    s.id = Id::Pce;
+    s.name = "pce";
     s.title = "PC Engine / TurboGrafx-16";
     s.family = "6502";
     s.container = "HuCard image (.pce, .tg16)";

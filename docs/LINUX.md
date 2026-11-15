@@ -79,37 +79,46 @@ by code, no `cmd`: go through the interface above, or put the code in a `_win.cp
 
 ## 3. State
 
-2026-11-15, Ubuntu 24.04 (WSL), GCC 13, packages `libssl-dev libcapstone-dev libunicorn-dev`:
+2026-11-15, Ubuntu 24.04 (WSL), GCC 13, packages `libssl-dev libcapstone-dev libunicorn-dev` (the last two only as headers' stand-ins:
+see the engine libraries below):
 
     cmake -S native -B state/work/linux-build -G Ninja && cmake --build state/work/linux-build -j4
 
 - **Everything compiles and links**: `codebreaker`, `cb_tests`, the area test programs and the helper programs the tests start
-  (`cb_worker_probe.exe`, `cb_fake_qemu.exe`, `cb_fake_decompiler.exe`, `cb_lane_worker.exe`, `cb_observe_worker.exe`: on Linux
-  they are ELF files that keep the `.exe` name the tests give them). `codebreaker --help`, `identify` and the other commands run.
-  The state folder has to be on a Linux file system (`CB_STATE=/tmp/...`): SQLite's WAL needs shared memory, which the `/mnt/c`
-  mount does not give.
+  (`cb_worker_probe.exe` and the like: on Linux they are ELF files that keep the `.exe` name the tests give them). `codebreaker
+  --help`, `identify` and the other commands run. The state folder has to be on a Linux file system (`CB_STATE=/tmp/...`): SQLite's
+  WAL needs shared memory, which the `/mnt/c` mount does not give.
 - **What moved off the Windows API in this phase**: sockets (`ui/serve`, `ui/mcp_http`, `ui/service_client`, `verify/gate16`, and
-  their tests) onto `core/socket.hpp` (send timeouts, `Socket::timed_out()`, `connect(..., timed_out)`); the service's
-  jobs and its detached launch onto `core/process.hpp` (`Capture::ToFile(path, append)`, `ProcessSpec::terminal`,
-  `Process::pid()`, `start_detached`); `StreamRedirect` on Windows now redirects the C runtime's descriptor as the POSIX
-  one does; random bytes, AES/DES/3DES and RSA (key generation, PKCS#1 SHA-1 sign and verify) onto `core/crypto.hpp`
-  (CNG in `crypto_cipher_win.cpp`, OpenSSL's libcrypto in `crypto_cipher_posix.cpp`); `localtime_s`/`gmtime_s`, `_subborrow_u64`,
-  the DOS engine's wide paths (UTF-32 `wchar_t` on Linux) and `codebreaker`'s Python terminal launch (no allocator on Linux:
-  `app/allocator_main.cpp` is only on the Windows source line) are portable. The static libraries reach into one another in a
-  cycle, so on Linux the executables are linked with `--start-group`.
-- **Engines**: `libunicorn.so.2` loads through `dynlib`. The system's `libcapstone.so.4` does **not** serve: the headers in
-  `native/third_party/include/capstone` are Capstone **5.0** (the prebuilt `capstone.dll`), whose records are laid out
-  differently from 4.0's, so `core/capstone_api.cpp` now refuses a library of another major version (a clear error, not a
-  crash). Tests that decode x86 fail on Linux until a Capstone 5 `libcapstone.so` is built or installed (an Ubuntu without a
-  Capstone 5 package: build `capstone-engine` 5.0.x from source into `native/third_party/bin`). The DOS engine
-  (`native/dosexec`) has no Linux build yet (phase 3).
-- **Tests** (`cb_tests --filter "<area>."`, one process per area so that one crash is one area's; 2026-11-15): about 5,200 pass and
-  about 800 fail. `core` 138 of 139 (the Capstone one), `app` 10 of 10, `core16` 5 of 5, `java` 721 of 724, `formats` 742 of 761,
-  `knowledge` 71 of 72, `jobs` 25 of 28, `coverage` 46 of 48. The failures are of three kinds: about 560 need the Capstone 5
-  library (above); about 70 start a Windows tool (`.cmd`/`.bat` fakes, `powershell`, `cmd`); the rest write a drive path
-  (`C:/WATCOM`, `D:/old`) or compare against a Windows exit code. Three areas (`platforms`, `source`, `translate`, `ui`) still end in
-  a crash that follows from one of those (a test that indexes the result of a tool that could not run); none is a defect in the
-  Linux port itself. Bugs the Linux run found in the code and fixed: a dangling `initializer_list` in `exact/draft/prove.cpp`.
+  their tests) onto `core/socket.hpp`; the service's jobs and its detached launch onto `core/process.hpp` (`Capture::ToFile(path,
+  append)`, `ProcessSpec::terminal`, `Process::pid()`, `start_detached`); `StreamRedirect` on Windows redirects the C runtime's
+  descriptor as the POSIX one does; random bytes, AES/DES/3DES and RSA onto `core/crypto.hpp` (CNG in `crypto_cipher_win.cpp`,
+  OpenSSL's libcrypto in `crypto_cipher_posix.cpp`); the DOS engine's wide paths; `codebreaker`'s Python terminal launch. The static
+  libraries reach into one another in a cycle, so on Linux the executables are linked with `--start-group`. `app/allocator_main.cpp`
+  is only on the Windows source line.
+- **Engine libraries.** The headers in `native/third_party/include` are Capstone **5.0.7** and Unicorn **2.1.4** (the prebuilt DLLs);
+  the distribution's `libcapstone4` and `libunicorn2` (2.0.1) lay their records out or behave differently, so `core/capstone_api.cpp`
+  refuses a Capstone of another major version. Build the right ones from source into `state/work/linux-deps/prefix` (CMake picks them up
+  from `CB_LINUX_DEPS` and puts them beside every executable):
 
-Next, in order: Capstone 5 for Linux; the Windows-tool tests onto neutral spellings (or skip on Linux); the DOS engine and the
-other DLL engines as shared libraries (roadmap track 8, phase 3); `tools/` shell equivalents.
+      git clone --depth 1 --branch 5.0.7 https://github.com/capstone-engine/capstone.git state/work/linux-deps/src
+      cmake -S state/work/linux-deps/src -B /tmp/cs -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON             -DCAPSTONE_BUILD_TESTS=OFF -DCAPSTONE_BUILD_CSTOOL=OFF -DCMAKE_INSTALL_PREFIX=$PWD/state/work/linux-deps/prefix
+      cmake --build /tmp/cs && cmake --install /tmp/cs
+
+  (Unicorn 2.1.4 builds the same way; its configure wants `pkg-config`, for which an `exit 1` stand-in on the PATH will do.) The
+  native L2 library (`native/l2`) builds on Linux too: `cmake -S native/l2 -B native/l2/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release`
+  gives `native/l2/build-linux/bin/libcbl2.so`, which `translate/native_l2` looks for there (Windows: `native/l2/build/bin/cbl2.dll`).
+  The DOS engine (`native/dosexec`) has no Linux build yet (phase 3).
+- **Tests** (`cb_tests --filter "<area>."`, one process per area so a crash is one area's): about 6,050 pass, about 20 fail and about
+  150 end in a crash. Tests of something Windows by nature (`.cmd`/`.bat` stand-in tools, PowerShell, `cmd`, a case-insensitive
+  disk, a drive-lettered path the code must keep) begin with `CB_WINDOWS_ONLY("why")` and pass without running off Windows; paths
+  that only need a rooted shape use `testing::rooted()`. `CB_CHECK_EQ` now compares inside one call, so a view of a temporary
+  (`as_text(f.read(2))`) is still alive while it is compared. Two real bugs came out of the Linux run besides the earlier ones
+  (a dangling `initializer_list` in `exact/draft/prove.cpp`; `engine::native_text` wrote backslashes into paths the lanes read back).
+  What is left, by area: `translate` (about 140 tests of 450 crash, and 21 fail), `java` (9 crash) and `decompile` (1 and 1): all
+  of them walk an L2 tree (`ir::children` of a `Concat` whose `parts` vector is garbage: `cb_tests --filter
+  translate.c_java.corpus.bank`, deterministic, not a heap-reuse effect: a defect in the IR, found only on Linux); `verify.gate16.setup16` (3),
+  `exact.emu.xenix` (2), `emulate.driver` and `emulate.native_win16` (Unicorn 2.0.1 against 2.1.4), `ui.mcp` (2), `formats.xbox.crypto`
+  (1).
+
+Next, in order: the L2 `Concat` crash (an AddressSanitizer build of `cb_tests` is the way in: `-fsanitize=address` needs a full rebuild);
+the DOS engine and the other DLL engines as shared libraries (roadmap track 8, phase 3); `tools/` shell equivalents.

@@ -836,6 +836,9 @@ template <class V> void describe(ir::LocalClass& k, V& v) { v.child("decl", k.de
 template <class V> void describe(ir::Assert& k, V& v) { v.child("cond", k.cond); v.child("detail", k.detail); }
 template <class V> void describe(ir::CtorCall& k, V& v) { v.text("kind", k.kind); v.sym("sym", k.sym); v.children("args", k.args); v.child("target", k.target); }
 template <class V> void describe(ir::Yield& k, V& v) { v.child("expr", k.expr); }
+template <class V> void describe(ir::YieldReturn& k, V& v) { v.child("expr", k.expr); }
+template <class V> void describe(ir::YieldBreak&, V&) {}
+template <class V> void describe(ir::Await& k, V& v) { v.child("x", k.x); }
 template <class V> void describe(ir::Lit& k, V& v) { v.value("value", k.value); v.text("text", k.text); }
 template <class V> void describe(ir::Name& k, V& v) { v.sym("sym", k.sym); }
 template <class V> void describe(ir::Select& k, V& v) { v.child("obj", k.obj); v.sym("sym", k.sym); }

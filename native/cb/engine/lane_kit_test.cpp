@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <set>
 
 #include <nlohmann/json.hpp>
 
@@ -21,6 +22,7 @@
 #include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
+#include "cb/engine/lane_registry.hpp"
 
 using namespace cb;
 using namespace cb::engine;
@@ -51,9 +53,14 @@ CB_TEST("engine.lane_kit.the_kit_is_made_of_the_settings_and_says_which_lanes_it
     kit.add_lanes(kinds);
     const std::vector<std::string> names = kinds.names();
     // the lanes that can be wired are filed under the corpus's names for them; the Java lane is wired when a host C++ compiler is set up, and says what it needs when not
+    // (a machine is one a lane registered: engine/lane_registry.hpp; the rest are the corpus's own kinds)
+    register_all_lanes();
+    std::set<std::string> machines;
+    for (const auto& lane : registered_lanes()) machines.insert(lane->name);
     for (const std::string& name : names)
-        CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc" || name == "dos" || name == "nes" || name == "sms" || name == "gb" ||
-                 name == "genesis" || name == "ps1" || name == "gba" || name == "zx" || name == "msx" || name == "coleco" || name == "cpc" || name == "atari2600" || name == "atari5200" || name == "jaguar" || name == "threedo" || name == "wonderswan" || name == "cdi" || name == "vectrex" || name == "chf" || name == "o2" || name == "intv" || name == "vb" || name == "ngp" || name == "atari7800" || name == "lynx" || name == "pce" || name == "snes" || name == "neogeo" || name == "segacd" || name == "nds" || name == "n64" || name == "sega32x" || name == "saturn" || name == "dreamcast" || name == "gamecube" || name == "wii" || name == "wiiu" || name == "ps2" || name == "psp" || name == "n3ds" || name == "vita" || name == "ps3" || name == "switch" || name == "ps4" || name == "ps5" || name == "xboxone" || name == "java");
+        CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc" || name == "dos" || name == "java" || machines.contains(name));
+    // every lane the registry has is a lane the kit can name, a built-in one among them
+    for (const std::string& machine : machines) CB_CHECK(kit.lane_named(machine) != nullptr);
     CB_CHECK(std::find(names.begin(), names.end(), "gb") != names.end());   // (the machines need no tools but CodeBreaker's own)
     CB_CHECK(!LaneKit::java_missing().empty());
     // a lane made again is the same lane: one decompiler, one builder, one knowledge base

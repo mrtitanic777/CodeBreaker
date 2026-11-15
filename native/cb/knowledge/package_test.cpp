@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <nlohmann/json.hpp>
+
 #include "cb/core/crypto.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
@@ -22,6 +24,12 @@ using namespace cb::knowledge;
 namespace {
 
 std::filesystem::path checkout() { return std::filesystem::path(CB_SOURCE_DIR).parent_path(); }
+
+// What the checkout's win16 model file holds (the tests count the file, not a number that goes stale when a call is modelled).
+std::size_t win16_model_count() {
+    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "data" / "knowledge" / "models" / "win16.json"));
+    return j.at("functions").size();
+}
 
 struct TestKnowledge {
     fs::ScopedTempDir dir{"cb-knowledge-package"};
@@ -90,7 +98,7 @@ CB_TEST("knowledge.package.table_is_a_whole_kind_read", [] {
     TestKnowledge t;
     Recording rec;
     const Rows api = t.kb->table("ne", "api_model");   // authored: loaded from the checkout's file
-    CB_CHECK_EQ(api.size(), std::size_t{14});
+    CB_CHECK_EQ(api.size(), win16_model_count());
     CB_CHECK(rec.reads()->contains(Read{"win16", "api_model", std::string(kWholeKind)}));
 });
 

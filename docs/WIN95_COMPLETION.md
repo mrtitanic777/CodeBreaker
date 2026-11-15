@@ -398,7 +398,7 @@ Three pieces, all behind the two switches (`Policy::dx_shared_bodies`, `Policy::
    `call 1268 / cmp / je / les / mov es:[bx], ax / mov es:[bx+2], dx` reads it on one way only).
 
 Result with both on: GDI C 130 -> 132, never-set 10 -> 8; `regress all15 --runs 2`: PASS, PASS (USER 574 / gated 40, GDI 132 / 16, others
-unchanged). `regress install --runs 1` with both on: started (log kept in the session's scratch); the switches stay default off until it passes.
+unchanged). `regress install --runs 1` with both on (`win95track-install-dx`, a private exe copy): **PASS**, 1h52m (34 min for the install itself; the rest waiting for shared decompile slots), Setup to the desktop on all 22 modules, GDI C 132 / gated 16, USER C 574 / gated 40; screen state/phase3/shots/win95track-install-dx-install-1.png. Proven; the switches are still default off in the tree until the next edit window (two one-line defaults in describe.cpp and the policy test).
 The description of sub_1_1268 itself still says a two-byte result (it is the callee's own: rebuilt from instructions); what changed is the
 callers that read its DX.
 
@@ -419,6 +419,24 @@ The change that would close the gate itself, not the two functions: run the call
 their own model (a table of the Windows calls that fill a structure: BeginPaint, GetClientRect, GetWindowRect, GetMessage, ... which are known from
 the SDK headers) so the buffer is filled on both sides; and refuse (keep as instructions) any C that addresses a local at an offset from another local's
 address past that local's own size. Neither is built; the two functions stay in data/build/kept_as_asm.txt.
+
+### 19. A model for the Windows calls that fill a structure (built, default off: `CB_FILL=1`)
+
+`data/knowledge/models/win16.json` gains a `fill` for 13 calls (BEGINPAINT 32 bytes, GETCLIENTRECT / GETWINDOWRECT / GETUPDATERECT / GETCLIPBOX 8,
+GETCURSORPOS / GETCARETPOS 4, GETMESSAGE / PEEKMESSAGE 18, GETWINDOWPLACEMENT 22, GETTEXTMETRICS 31, GETKEYBOARDSTATE 256, GETSCROLLRANGE two words):
+`"fill": "<word>:<bytes>[,...]"`, the far pointer being the arguments' words `<word>` (segment) and `<word>+1` (offset) as pushed. `StubModel::fills`
+(emulate/windows16.hpp), read by `models_of`; `Runner::probe` writes the same fixed bytes (0x40 + 5i mod 0x3B, never zero) through that pointer on
+both sides of a comparison when `CB_FILL=1`. A call that is only a fill still answers as an unmodelled one (the path explorer keeps varying its
+result), and the gate's cache key includes the mode (module_gate.cpp). Unit tests: `emulate.windows16` 12 of 12.
+
+Does it move existing verdicts? No: with `CB_FILL=1` the gate re-ran (USER 594 functions, GDI 134) and the sets it sends back are **identical** to
+the baseline's (USER 40 / GDI 16, `diff` empty on the names).
+
+Does it explain BEAR306 and sub_25_0429? No. `sub_25_0429` as C (forced out of its DS rule) passes the gate with and without the fill (it calls no
+structure-filling API: ISWINDOW, its own helpers); BEAR306 is held by data/build/kept_as_asm.txt, which `CB_FORCE_C` does not override, so the fill
+could not be tried on it without editing that file. So the gate gap for these two is not the callee-fill. What remains as candidates, unproven:
+stack-frame layout dependence of the decompiled C (item 18), and state in the data segment that callees (stubbed) would have changed between
+two messages (a window procedure is correct per call and wrong in sequence: the gate runs one call at a time).
 
 Not converted (superseded by item 16):
 

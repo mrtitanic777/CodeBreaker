@@ -2,13 +2,39 @@
 #include "cb/engine/machine_intv.hpp"
 
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/cp1610.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/intv.hpp"
 #include "cb/formats/intv.hpp"
 #include "cb/source/intv_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_intv(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".rom", ".int"}) && size >= 519) {   // an Intellivision cartridge: an Intellicart .rom ($A8, N, ~N and the segments) or a raw .int
+        try {
+            const formats::intv::Rom rom = formats::intv::parse(file, !name_ends_with(name, {".rom"}));
+            return one(rom.raw ? "Intellivision cartridge (raw words)" : "Intellivision cartridge (Intellicart .rom)",
+                       std::format("CP1610, {} segment(s), {} words, \"{}\"{}", rom.segments.size(), rom.word_count(), rom.title(), rom.entry() ? std::format(", program at ${:04X}", *rom.entry()) : std::string()), "intv", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -113,15 +139,13 @@ vl::ImageLaneSpec intv_lane_spec() {
 }
 
 void register_intv_lane() {
-    if (machine_lanes().find("intv")) return;
-    MachineLane lane;
-    lane.name = "intv";
-    lane.probe = [](const stdfs::path& p) { return formats::intv::probe(p); };
-    lane.make_spec = intv_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "intv",
+        .platform = platforms::intv,
+        .probe = [](const stdfs::path& p) { return formats::intv::probe(p); },
+        .make_spec = intv_lane_spec,
+        .detectors = {{.priority = 300, .detect = formats::detect::info_intv}},
+    });
 }
 
 }  // namespace cb::engine

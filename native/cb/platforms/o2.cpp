@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform o2() {
     MachineSpec s;
-    s.id = Id::O2;
+    s.name = "o2";
     s.title = "Magnavox Odyssey 2";
     s.family = "8048";
     s.container = "cartridge (.o2, up to 3 KB at $0400)";

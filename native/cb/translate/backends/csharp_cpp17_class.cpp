@@ -256,17 +256,50 @@ void Writer::write_method_body(const ClassInfo& c, const ir::MethodDecl& m, cons
         std::string head = template_head(c, m.typeparams);
         head += (is_static_init ? "void" : type(m.ret)) + " " + self + "::" + (is_static_init ? "cs_static_init" : ident(m.name.value())) + "(" + params_text(m.params, m.sym) + ")";
         open(head);
+        // An iterator or async method returns at once with an object that holds its body, which runs on a coroutine (csrt.hpp, cs::Coroutine) as
+        // far as the consumer or the awaited task lets it: the body is a lambda that has copies of the parameters and the object.
+        const bool iterator = std::ranges::find(m.mods, "iterator") != m.mods.end();
+        const bool is_async = std::ranges::find(m.mods, "async") != m.mods.end();
+        // the body outlives the call, so it holds the object it runs on (`this` is only a raw pointer)
+        const bool instance = !(m.sym && m.sym->is_static) && std::ranges::find(m.mods, "static") == m.mods.end() && !c.is_struct;
+        const std::string keep = instance ? ", cs_self = this->shared_from_this()" : "";
+        TypeP element;
+        if (iterator) {
+            const auto* seq = class_of(m.ret);
+            if (seq == nullptr || seq->args.size() != 1 || seq->name != "System.Collections.Generic.IEnumerable") {
+                decline("iterator", "an iterator method whose result is not IEnumerable<T>");
+            }
+            element = seq->args[0];
+            yields_.push_back(element);
+            returns_.back() = ir::void_type();
+            line("return cs::generate<" + type(element) + ">([=" + keep + "](cs::Yielder<" + type(element) + ">& cs_y) mutable {");
+            ++indent_;
+        } else if (is_async) {
+            const auto* task = class_of(m.ret);
+            if (task == nullptr || task->name != "System.Threading.Tasks.Task") decline("async", "an async method whose result is not a Task");
+            const TypeP result = task->args.size() == 1 ? task->args[0] : ir::void_type();
+            returns_.back() = result;
+            const std::string rt = std::holds_alternative<ir::VoidType>(result->body) ? "void" : type(result);
+            line(std::string("return cs::run_async<") + (std::holds_alternative<ir::VoidType>(result->body) ? "void" : rt) + ">([=" + keep + "]() mutable -> " + rt + " {");
+            ++indent_;
+        }
         for (Node* p : m.params) {
             const auto* pa = ir::get<ir::Param>(p);
             if (boxed_.contains(sym_key(*pa->sym))) line("auto " + ident(pa->sym->name) + " = std::make_shared<" + type(pa->type) + ">(std::move(" + ident(pa->sym->name) + "__in));");
         }
         for (Node* s : list) write_hoists(s);
         body(m.body);
+        if (iterator || is_async) {
+            --indent_;
+            line("});");
+        }
+        if (iterator) yields_.pop_back();
         close();
         line("");
     } catch (...) {
         out_.resize(mark);   // nothing of a member that was declined stays in the text
         indent_ = indent;
+        if (std::ranges::find(m.mods, "iterator") != m.mods.end() && !yields_.empty()) yields_.pop_back();
         returns_.pop_back();
         throw;
     }

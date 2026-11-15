@@ -378,7 +378,7 @@ CB_TEST("translate.ir.tree.every_kind_can_be_made_by_name", [] {
     static const char* const kinds[] = {
         "Module", "Unit", "ClassDecl", "FieldDecl", "MethodDecl", "Param", "EnumConst", "Property", "TypeParam", "Block", "Local",
         "ExprStmt", "If", "While", "DoWhile", "For", "ForEach", "Switch", "Case", "Break", "Continue", "Return", "Throw", "Try",
-        "Catch", "Labeled", "Goto", "MachineFragment", "Sync", "Empty", "Comment", "LocalClass", "Assert", "CtorCall", "Yield",
+        "Catch", "Labeled", "Goto", "MachineFragment", "Sync", "Empty", "Comment", "LocalClass", "Assert", "CtorCall", "Yield", "YieldReturn", "YieldBreak", "Await",
         "Lit", "Name", "Select", "TypeName", "This", "Super", "Call", "New", "NewArray", "Index", "Length", "Unary", "Binary",
         "Concat", "Assign", "Cond", "Cast", "InstanceOf", "ClassLit", "Lambda", "MethodRef", "SwitchExpr", "AddressOf",
         "FarAddress", "Piece", "Join", "Paren", "Unsupported"};
@@ -392,7 +392,7 @@ CB_TEST("translate.ir.tree.every_kind_can_be_made_by_name", [] {
         CB_CHECK(ir::children(*n).empty());           // every slot empty
         seen.insert(name);
     }
-    CB_CHECK_EQ(seen.size(), std::size_t{63});
+    CB_CHECK_EQ(seen.size(), std::size_t{66});
     CB_CHECK_EQ(seen.size(), std::variant_size_v<ir::Kind>);   // all of them
     CB_CHECK(ir::make_node(arena, "Nope") == nullptr);
     CB_CHECK(ir::make_node(arena, "") == nullptr);

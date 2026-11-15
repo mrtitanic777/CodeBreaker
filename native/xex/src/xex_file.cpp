@@ -166,13 +166,14 @@ void XexFile::parse_optional_headers(const Reader& r) {
         uint32_t total_size = r.u32(o);
         uint32_t string_table_size = r.u32(o + 4);
         size_t strtab = o + 12;
-        // Split the string table into a list of NUL-terminated names.
+        // Split the string table into a list of NUL-terminated names, each padded to a multiple of 4 bytes. The padding
+        // is not always zero (Left 4 Dead 2's engine DLLs leave stray bytes in it, e.g. a backslash), so the next name
+        // starts at the padded offset rather than after the zero bytes.
         std::vector<std::string> names;
         for (size_t p = 0; p < string_table_size; ) {
             std::string nm = r.cstr(strtab + p, string_table_size - p);
             names.push_back(nm);
-            p += nm.size() + 1;
-            while (p < string_table_size && r.u8(strtab + p) == 0) ++p; // padding
+            p += (nm.size() + 1 + 3) & ~size_t(3);
         }
         for (size_t desc = strtab + string_table_size; desc < o + total_size; ) {
             uint32_t dsize = r.u32(desc);

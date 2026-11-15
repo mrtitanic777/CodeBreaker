@@ -25,7 +25,7 @@ std::vector<std::string> wii_registers() {
 
 Platform wii() {
     MachineSpec s;
-    s.id = Id::Wii;
+    s.name = "wii";
     s.title = "Nintendo Wii";
     s.family = "powerpc";
     s.container = "DOL executable (.dol), ELF (.elf)";

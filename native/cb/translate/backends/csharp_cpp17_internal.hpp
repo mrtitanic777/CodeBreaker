@@ -70,6 +70,7 @@ private:
     std::set<std::string> boxed_;                    // locals a lambda captures: held through a shared_ptr
     std::set<std::string> hoisted_;                    // pattern variables, declared at the top of the function
     std::vector<TypeP> returns_;                          // the result type of the function being written
+    std::vector<TypeP> yields_;                           // the element type of the iterator method being written (`yield return` gives one)
     int temp_ = 0;
 
     // ---- the program and its classes (csharp_cpp17.cpp)

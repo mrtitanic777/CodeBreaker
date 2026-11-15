@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform ps2() {
     MachineSpec s;
-    s.id = Id::Ps2;
+    s.name = "ps2";
     s.title = "PlayStation 2";
     s.family = "mips";
     s.container = "ELF (.elf), disc image (.iso)";

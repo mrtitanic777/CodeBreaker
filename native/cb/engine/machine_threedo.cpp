@@ -2,13 +2,40 @@
 #include "cb/engine/machine_threedo.hpp"
 
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/arm.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/threedo.hpp"
 #include "cb/formats/threedo.hpp"
 #include "cb/source/threedo_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_threedo(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (starts_with(head, 0, std::string_view("\x01\x5A\x5A\x5A\x5A\x5A\x01", 7)) || name_ends_with(name, {".aif"})) {   // a 3DO disc (the Opera volume header) or an AIF executable
+        try {
+            const formats::threedo::Program program = formats::threedo::parse(file);
+            return one(program.kind == formats::threedo::Kind::Disc ? "3DO disc" : "3DO AIF executable",
+                       std::format("{}\"{}\", entry 0x{:06X}, {} bytes of AIF", program.label.empty() ? "" : "\"" + program.label + "\", ", program.name, program.aif.entry, program.image_size),
+                       "threedo", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -111,15 +138,13 @@ vl::ImageLaneSpec threedo_lane_spec() {
 }
 
 void register_threedo_lane() {
-    if (machine_lanes().find("threedo")) return;
-    MachineLane lane;
-    lane.name = "threedo";
-    lane.probe = [](const stdfs::path& p) { return formats::threedo::probe(p); };
-    lane.make_spec = threedo_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "threedo",
+        .platform = platforms::threedo,
+        .probe = [](const stdfs::path& p) { return formats::threedo::probe(p); },
+        .make_spec = threedo_lane_spec,
+        .detectors = {{.priority = 260, .detect = formats::detect::info_threedo}},
+    });
 }
 
 }  // namespace cb::engine

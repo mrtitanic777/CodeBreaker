@@ -3,6 +3,8 @@
 #include <map>
 #include <set>
 
+#include <nlohmann/json.hpp>
+
 #include "cb/core/crypto.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
@@ -45,6 +47,12 @@ public:
 };
 
 std::filesystem::path checkout() { return std::filesystem::path(CB_SOURCE_DIR).parent_path(); }
+
+// What the checkout's win16 model file holds (the tests count the file, not a number that goes stale when a call is modelled).
+std::size_t win16_model_count() {
+    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "data" / "knowledge" / "models" / "win16.json"));
+    return j.at("functions").size();
+}
 
 // A folder with a symbols/ and models/ the test writes its own files into.
 struct Folders {
@@ -89,7 +97,7 @@ CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
         {{"vxd", "device"}, 109},                 {{"vxd", "service_table"}, 38},
         {{"vxd", "driver"}, 25},                  {{"vxd", "message"}, 51},
         {{"vxd", "api_model"}, 6},                {{"dos", "interrupt"}, 27},
-        {{"xbox360", "ordinal_names"}, 3},        {{"win16", "api_model"}, 14},
+        {{"xbox360", "ordinal_names"}, 3},        {{"win16", "api_model"}, win16_model_count()},
         {{"win32", "api_model"}, 97},             {{"win16", "kernel_ordinal"}, 17},
     };
     CB_CHECK_EQ(expected.size(), AuthoredSources::catalogue().size());

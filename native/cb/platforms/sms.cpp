@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform sms() {
     MachineSpec s;
-    s.id = Id::Sms;
+    s.name = "sms";
     s.title = "Master System / Game Gear";
     s.family = "z80";
     s.container = "cartridge image (.sms, .gg, .sg, .sc)";

@@ -82,9 +82,12 @@ TR Eval::e_dispatch(const syntax::Expr* n, const State& state) {
             ev(syntax::cast<syntax::Starred>(n)->value, state);
             return TR(issue(n, IssueClass::Syntax, "starred"));
         case EK::Await: return TR(issue(n, IssueClass::Dynamic, "await"));
-        case EK::Yield:
-            if (const syntax::Expr* v = syntax::cast<syntax::Yield>(n)->value) ev(v, state);
-            return TR(P::bottom());
+        case EK::Yield: {
+            const syntax::Expr* v = syntax::cast<syntax::Yield>(n)->value;
+            const Type item = v != nullptr ? ev(v, state) : P::none();
+            if (live()) yielded = p.join(yielded, item);
+            return TR(P::none());
+        }
         case EK::YieldFrom:
             if (const syntax::Expr* v = syntax::cast<syntax::YieldFrom>(n)->value) ev(v, state);
             return TR(P::bottom());

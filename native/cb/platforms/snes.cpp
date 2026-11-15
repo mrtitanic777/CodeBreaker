@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform snes() {
     MachineSpec s;
-    s.id = Id::Snes;
+    s.name = "snes";
     s.title = "Super Nintendo";
     s.family = "65816";
     s.container = "cartridge image (.sfc, .smc)";

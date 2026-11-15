@@ -45,6 +45,8 @@ const std::map<std::string, std::string, std::less<>> kCxSystemClasses = {
     {"System.Collections.Generic.List", "cs::List"},
     {"System.Collections.Generic.Dictionary", "cs::Dictionary"},
     {"System.Collections.Generic.IEnumerable", "cs::IEnumerable"},
+    {"System.Linq.IOrderedEnumerable", "cs::IEnumerable"},
+    {"System.Linq.IGrouping", "cs::Grouping"},
     {"System.Text.StringBuilder", "cs::StringBuilder"},
     {"System.Type", "cs::Type"},
     {"System.Reflection.MemberInfo", "cs::Type"},
@@ -61,7 +63,11 @@ std::string cx_strip_package(const std::string& qname, const std::string& packag
 
 std::string ident(std::string_view name) {
     std::string out(name);
-    if (kCxReserved.contains(name)) out += "_";
+    // the compiler's own names (`<>h__TransparentIdentifier0`, a query's range variable) have characters C++ names cannot
+    for (char& c : out) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') c = '_';
+    }
+    if (kCxReserved.contains(out)) out += "_";
     return out;
 }
 
@@ -332,6 +338,10 @@ std::string Writer::type(const TypeP& t) {
                 if (b.name == "System.String") return "cs::String";
                 if (b.name == "System.Nullable" && b.args.size() == 1) return "std::optional<" + type(b.args[0]) + ">";
                 if (b.name == "System.Collections.Generic.KeyValuePair") return "cs::KeyValuePair<" + type_list(b.args) + ">";
+                // a task (and the awaiter of one: cs::TaskOf is its own awaiter) with a result is a TaskOf<T>, one without is a Task
+                if (b.name == "System.Threading.Tasks.Task" || b.name == "System.Runtime.CompilerServices.TaskAwaiter") {
+                    return b.args.size() == 1 ? "cs::Ref<cs::TaskOf<" + type(b.args[0]) + ">>" : "cs::Ref<cs::Task>";
+                }
                 if (b.name == "System.IComparable" || b.name == "System.IDisposable") return "cs::Ref<cs::Object>";
                 if (b.name == "System.Action" || b.name == "System.Func" || b.name == "System.Predicate") {
                     std::string params;
@@ -570,7 +580,14 @@ void Writer::write_main() {
     const std::string qualified = "::" + (entry->package.empty() ? "" : text::replace_all(entry->package, ".", "::") + "::") + entry->cname;
     const std::string args = main_method->params.empty() ? "" : "cs::make_array<cs::String>(0)";
     const bool returns_int = main_method->ret && main_method->ret->is_prim();
-    if (returns_int) line("return " + qualified + "::Main(" + args + ");");
+    const auto* async_main = class_of(main_method->ret);
+    if (async_main != nullptr && async_main->name == "System.Threading.Tasks.Task") {   // `static async Task Main`: run until the task is done
+        if (async_main->args.size() == 1) line("return " + qualified + "::Main(" + args + ")->Result();");
+        else {
+            line(qualified + "::Main(" + args + ")->Wait();");
+            line("return 0;");
+        }
+    } else if (returns_int) line("return " + qualified + "::Main(" + args + ");");
     else {
         line(qualified + "::Main(" + args + ");");
         line("return 0;");

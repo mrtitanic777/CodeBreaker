@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.threedo.descriptor", [] {
     const Platform p = threedo();
-    CB_CHECK(p.id == Id::ThreeDo);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "threedo");
     CB_CHECK_EQ(p.title, "3DO");
     CB_CHECK_EQ(p.family, "arm");

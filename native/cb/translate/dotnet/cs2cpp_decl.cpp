@@ -196,6 +196,7 @@ ir::Node* ToJava::method(ir::Node* mn, const ir::ClassDecl& c) {
         }
     }
     if (decl_impl::has_mod(m.mods, "operator")) throw Refuse("operator", "an operator");
+    const std::vector<std::string> original_mods = m.mods;   // (before the mapping below)
     m.name = name;
     m.sym = m.sym ? sym(m.sym) : ir::SymP();
     if (m.sym) {
@@ -211,6 +212,9 @@ ir::Node* ToJava::method(ir::Node* mn, const ir::ClassDecl& c) {
         p->sym = sym(p->sym);
     }
     m.ret = ty(m.ret);
+    // (the C++03 path has no coroutine: a method that stops in the middle has no form here; the C++17 back end writes both)
+    if (decl_impl::has_mod(original_mods, "iterator")) throw Refuse("iterator", "an iterator method (`yield`)");
+    if (decl_impl::has_mod(original_mods, "async")) throw Refuse("async", "an async method");
     if (!(m.kind && *m.kind == "ctor")) {
         m.mods = mods(m.mods);
     } else {

@@ -222,6 +222,8 @@ public:
     std::vector<Issue> issues;
     Type ret;
     bool returns_value = false;
+    Type yielded;   // what `yield` gave, joined: the item type of a generator function
+    bool is_generator = false;
     // the (breaks, continues) states of each loop being run
     struct LoopExits {
         std::vector<State> breaks;

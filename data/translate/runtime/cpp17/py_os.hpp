@@ -2,6 +2,7 @@
 // and the file object, os / os.path / shutil / time, hashlib, re (over native/l2's pyre, when its header
 // is on the include path), tagged variants. Each behaves as CPython 3 on Windows does, error for error.
 #pragma once
+#include "coro.hpp"
 #include <array>
 #include <chrono>
 #include <cstdlib>
@@ -1547,6 +1548,41 @@ template <class T> class iter {
     it end() const { return {nullptr, std::nullopt}; }
     std::optional<T> next() const { return g_->next(); }
 };
+
+// a generator function the translator writes with a body that yields: the body runs on a coroutine (coro.hpp) as far as each item the
+// consumer asks for, so what it does happens as the consumer reads it, and a generator dropped part way is unwound
+template <class T> struct yielder {
+    corort::Coroutine& co;
+    std::optional<T>* slot;
+    void yield_return(const T& v) {
+        *slot = v;
+        co.suspend();
+    }
+};
+template <class T> struct coroutine_generator : generator<T> {
+    std::optional<T> current;
+    bool finished = false;
+    std::unique_ptr<corort::Coroutine> co;
+    explicit coroutine_generator(std::function<void(yielder<T>&)> body) {
+        auto* self = this;   // (the body must not own the generator that owns its coroutine)
+        co = std::make_unique<corort::Coroutine>([self, body](corort::Coroutine& c) {
+            yielder<T> y{c, &self->current};
+            body(y);
+        });
+    }
+    std::optional<T> next() override {
+        if (finished) return std::nullopt;
+        current.reset();
+        if (!co->resume()) {
+            finished = true;
+            return std::nullopt;
+        }
+        return current;
+    }
+};
+template <class T, class F> iter<T> generate(F body) {
+    return iter<T>(std::make_shared<coroutine_generator<T>>(std::function<void(yielder<T>&)>(std::move(body))));
+}
 
 // ------------------------------------------------------------------------------------------ variants
 // py.variant<A, B ...>: where scalars of several kinds meet; its tags are its alternatives

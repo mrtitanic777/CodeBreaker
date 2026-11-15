@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform cpc() {
     MachineSpec s;
-    s.id = Id::Cpc;
+    s.name = "cpc";
     s.title = "Amstrad CPC";
     s.family = "z80";
     s.container = "disk (.dsk), snapshot (.sna), AMSDOS binary (.bin)";

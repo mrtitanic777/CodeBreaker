@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform nds() {
     MachineSpec s;
-    s.id = Id::Nds;
+    s.name = "nds";
     s.title = "Nintendo DS";
     s.family = "arm";
     s.container = "cartridge ROM (.nds)";

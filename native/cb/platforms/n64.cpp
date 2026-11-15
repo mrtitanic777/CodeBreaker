@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform n64() {
     MachineSpec s;
-    s.id = Id::N64;
+    s.name = "n64";
     s.title = "Nintendo 64";
     s.family = "mips";
     s.container = "cartridge ROM (.z64, .v64, .n64)";

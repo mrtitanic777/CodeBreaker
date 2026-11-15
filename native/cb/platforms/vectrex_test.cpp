@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.vectrex.descriptor", [] {
     const Platform p = vectrex();
-    CB_CHECK(p.id == Id::Vectrex);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "vectrex");
     CB_CHECK_EQ(p.title, "Vectrex");
     CB_CHECK_EQ(p.family, "6809");

@@ -506,7 +506,7 @@ The library the corpus uses is in the runtime: `Console`, `Math`, `Char`, `Strin
 `OrderBy[Descending]`, `Sum`, `Count`, `Any`, `All`, `First`, `ToList`, `ToArray`, `Range`, `Min`, `Max`, `Contains`).
 
 **Declined, with the reason (never guessed):** a library type or member the runtime does not have yet, events, anonymous classes, inner
-classes, `await`/iterators/tuples/local functions (the front end's own refusals), labeled `break`/`continue`, a multi-type `catch`,
+classes, tuples/local functions (the front end's own refusals; `await` and iterators are written, see Phase 2), labeled `break`/`continue`, a multi-type `catch`,
 arrays of three or more dimensions, static fields of a generic class, `break` inside a section of a `switch` on a string. A
 declined program is not written at all and the judge says what and where.
 
@@ -541,6 +541,84 @@ C# program (csc and the installed runtime) and compares standard output and exit
 Before (2026-11-14 morning): all ten lowered to IR; none had a C++17 back end (the L2 emitter declines `csharp`), and the older C#
 -> C++03 path (`dotnet/cs2cpp`) wrote Shapes and refused the rest. Now 10 of 10 (and the two extra programs) agree on all three compilers. What the front end still refuses (so no program with it reaches
 the back end): interpolation with a format or alignment (`{x:F2}`), `yield`, `decimal`, `await`, tuples, local functions, events.
+
+## Phase 2 as built (2026-11-15): the language features phase 1 left out
+
+Every feature below is a front end lowering into L2 and a back end writing it, never a pair of languages: what the C# front end lowers is
+what any back end gets (the Python front end does not lower `yield` or `await` yet: see "What is left" below). Each has a program in
+`tests/translate/corpus/csharp_features/`, judged (`codebreaker judge-cs-cpp tests/translate/corpus/csharp_features`, and the unit test
+`translate.judge_cs_cpp.the_language_features_agree`): the C# runs beside its C++17 translation and the output and exit code must be equal.
+Built and run with g++ 15, clang 22 and MSVC 14.51.
+
+**New L2 nodes** (ir.hpp, schema in data/translate/l2.schema.json): `YieldReturn{expr}` and `YieldBreak` (statements), `Await{x}` (an
+expression typed as the task's result). A method that holds a yield carries the mod `iterator`; an `async` method carries `async` (the
+front end copies the source's modifiers; `iterator` it adds). Nothing else changed in the IR: the other features lower to nodes L2 already
+had, so every back end reads them.
+
+| Feature | In L2 | C++17 form | Program |
+|---|---|---|---|
+| Iterators: C# `yield return`, `yield break`, in loops, `try`/`finally`, recursion, instance methods | mod `iterator` on the MethodDecl, `YieldReturn`/`YieldBreak` in its body | a **stackful coroutine** (below): `return cs::generate<T>([=](cs::Yielder<T>& cs_y) mutable { ... cs_y.yield_return(x); ... });` | Iterators, Lazy |
+| async/await: `Task`, `Task<T>`, `Task.Delay/Yield/Run/WhenAll/FromResult`, `await` in loops, `try`/`catch`/`finally`, `async Task Main` | mod `async`, `Await` | the same coroutine, driven by a scheduler: `return cs::run_async<T>([=]() mutable -> T { ... cs::await(t) ... });` | Asyncs, Tasks |
+| Switch statements over patterns (type, relational, property, constant, `and`/`or`/`not`, `var`, `when`) | an `If` / else-if chain over one read of the value (a temporary when it has effects); the default section is the final `else` | `if (...) {} else if (...) {}` | Patterns, Matching |
+| Switch expressions with patterns | a `Cond` chain (already) | `?:` chain | Patterns, Matching |
+| Query expressions: `from/where/orderby/select/group by/let/join`, multiple `from`, `into` | what Roslyn already turned them into: the calls `Where`, `Select`, `OrderBy`, `GroupBy`, `SelectMany`, `Join`; the compiler's range-variable carriers are anonymous types, lowered to classes | the lazy LINQ in csrt.hpp | Queries |
+| Anonymous types | a generated class `AnonTypeN` (public fields, a constructor); member reads are field reads | a struct held through `cs::Ref` | Queries |
+| Exceptions with `finally` | `Try` (already) | a scope guard (`cs::finally`); a `finally` runs when a `return`, `break`, `continue`, a throw, or a dropped iterator leaves the scope | Exceptions, Iterators |
+| Nullable value types: `+ - * / %` etc., unary `-`, `<`/`>`/`<=`/`>=`, `+=`, `??`, `??=`, `?.`, `is T v`, `.Value`, `GetValueOrDefault(d)` | lifted operators written out: `a != null && b != null ? a.Value + b.Value : null`; a relational operator gives `false` instead; `==` stays | `std::optional<T>`; `.Value` on null throws `InvalidOperationException` | Nullables, Optionals |
+
+**Why a coroutine and not a state machine (decision).** C++17 has neither `co_await` nor a generator type, and a state machine written as
+goto labels cannot jump into a `try` block, which is exactly where C# puts `yield return` (an iterator with a `finally` that must run when
+the consumer stops early, an async method awaiting inside a `try`). So the runtime has a stackful coroutine, `cs::Coroutine`: a function
+that runs on a thread of its own and hands control back and forth with its caller, one side at a time (a mutex and a condition variable),
+so it is suspended exactly where it called `suspend()`, in a loop, a `try`, a nested call. Nothing runs in parallel; the program is as
+deterministic as the C# is. It is portable (`std::thread`: MSVC, clang-cl, g++), and the C++ it writes reads like the C# (the body is the
+body; a `yield return x` is `cs_y.yield_return(x)`). Dropping the sequence part way (a `foreach` left by `break`) throws a private exception
+from the suspended `yield`, which unwinds the body through its `finally` blocks, as `Dispose()` runs them in C#. A target with its own
+generators writes the same L2 as its native form (a Python back end: `yield`; a C# back end: `yield return`); only a target without them
+needs a lowering, and a goto-based state machine (for a body with no `yield` inside a `try`) is the cheaper form to add there when
+threads are not available (C, a console).
+
+**Lazy sequences.** `IEnumerable<T>` in csrt.hpp was a vector; it now may also be lazy: a sequence makes `pull` functions, each one an
+enumeration (`bool(T&)`), and `foreach` reads it through `cs::iter` (a range that reads a held sequence in place and pulls a lazy one).
+`Generator<T>` (an iterator method's result) and every LINQ operator (`Select`, `Where`, `Take`, `Skip`, `TakeWhile`, `SelectMany`,
+`Concat`, `Reverse`, `Distinct`, `OrderBy[Descending]`, `ThenBy[Descending]`, `GroupBy`, `Join`, `Range`) are lazy, so deferred
+execution behaves as .NET's: a query that is built and not read does nothing, `Naturals().Where(...).Take(5)` ends, a generator's prints
+interleave with its consumer's (Lazy.cs prints the order). The operators that give a value (`Sum`, `Count`, `Min`, `Max`, `First`,
+`ToList`, ...) read it through. Held collections (`List`, arrays, `Dictionary`) are unchanged.
+
+**Async.** `Task` / `TaskOf<T>` hold completion, the result or the exception, and the continuations waiting on them. An async method
+starts running at once, on its own coroutine, up to the first `await` of a task that is not done (so a method that finishes at once
+does not suspend its caller, as in .NET); the awaiting method's coroutine suspends and the scheduler resumes it when the task completes.
+The scheduler is one queue, plus timers on a **virtual clock** that moves only when nothing else is ready: `Task.Delay(30)` costs no real
+time, and tasks wake in the order of their time (Tasks.cs starts a 300, a 100 and a 200 millisecond task and they finish 2, 3, 1; the C# side of the judge runs on real timers, so the programs keep their waits far apart).
+`.Result`, `.Wait()` and `GetAwaiter().GetResult()` run the scheduler until the task is done; `async Task Main` is run so. An
+exception an async method throws is the awaiting method's. Not modelled: threads (a thread-pool task runs on the same single line of
+control, started after what is already ready), `ConfigureAwait`, `SynchronizationContext`, `Task.WhenAny`, cancellation tokens.
+
+**What the front end still refuses (each with its reason in the judge's table):** `catch ... when` filters (a filter runs before the
+inner `finally` blocks, which a catch-and-rethrow does not do), positional (deconstructing) and list patterns, a switch expression with no
+`_` arm (it throws `SwitchExpressionException`), `goto case`, local functions, tuples, `decimal`, events, interpolation with alignment or a
+format, `lifted ++/--`, lifted `&`/`|`/`!` on `bool?` (three-valued logic), `await foreach` and async iterators.
+
+**Corpus.** See docs/TESTED_SOFTWARE.md, "The universal translator".
+
+**The second back end (the hub is N:M).** The same L2 goes out as C# again (`backends/csharp`: `yield return`, `yield break`, `await`; a
+`var` pattern as `(x = v) is var _`; the compiler's range-variable names made plain), and the written C# is compiled and run beside the
+original: `translate.csharp.pairs.language_features_round_trip_to_equivalent` judges every program of csharp_features equivalent. The C#
+-> C++03 path (`dotnet/cs2cpp`) refuses an `iterator` or `async` method with that reason.
+
+**Results (2026-11-15).** csharp_features: 11 programs (Iterators, Lazy, Asyncs, Tasks, Patterns, Matching, Queries, Nullables,
+Optionals, Exceptions, Logic): all lower, write, compile and agree with g++ 15, clang 22 and MSVC 14.51,
+and all round-trip through the C# back end. With the phase 1 corpus 23 of 23 programs agree on each of the three compilers. A parenthesised
+`(a || b) && c` was written `a || b && c` by the C++17 back end (an old bug, found by Logic.cs, fixed).
+
+**What is left.**
+- Python: its front end still refuses a generator (`dynamic:generator`) and `async`; `yield` needs inference of the generator's item
+  type and a lowering to `YieldReturn`, and the Python -> C++17 emitter (native/l2, cbl2.dll) a generator form (the coroutine of csrt.hpp
+  has a py.hpp twin to write). No Python judge exists yet either.
+- The other targets of the new nodes: the Java back end (`csharp_java`) and the C emitter decline them.
+- Corpus: real open-source C# (permissive) was not added: nothing was downloaded (a download needs the owner's yes), and the C# on this
+  machine is GPL (Reko, ExtremeLauncher) or XNA-bound. Candidates to ask for are in docs/TESTED_SOFTWARE.md.
 
 ## Still open
 

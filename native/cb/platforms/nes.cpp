@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform nes() {
     MachineSpec s;
-    s.id = Id::Nes;
+    s.name = "nes";
     s.title = "NES";
     s.family = "6502";
     s.container = "iNES (.nes)";

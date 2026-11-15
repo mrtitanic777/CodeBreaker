@@ -2,13 +2,40 @@
 #include "cb/engine/machine_n64.hpp"
 
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/r4300.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/n64.hpp"
 #include "cb/formats/n64.hpp"
 #include "cb/source/n64_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_n64(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (const std::optional<n64::ByteOrder> order = size >= n64::kBootSize ? n64::order_of(head) : std::nullopt; order && head.size() >= n64::kHeaderSize) {   // a Nintendo 64 ROM: the PI configuration word $80371240, in one of three byte orders
+        const Bytes z64 = n64::Rom::convert(head.first(n64::kHeaderSize), *order, n64::ByteOrder::Z64);
+        const auto word = [&](std::size_t at) { return static_cast<std::uint32_t>(z64[at]) << 24 | static_cast<std::uint32_t>(z64[at + 1]) << 16 | static_cast<std::uint32_t>(z64[at + 2]) << 8 | z64[at + 3]; };
+        std::string title(as_text(ByteView(z64).subspan(0x20, 20)));
+        while (!title.empty() && (title.back() == ' ' || title.back() == '\0')) title.pop_back();
+        return one("Nintendo 64 ROM", std::format("\"{}\" ({}{}), {} ({}), {} bytes, entry 0x{:08X}", title, as_text(ByteView(z64).subspan(0x3C, 2)), static_cast<char>(z64[0x3E]), std::string(n64::order_text(*order)).substr(1),
+                                                    *order == n64::ByteOrder::Z64 ? "big-endian" : *order == n64::ByteOrder::V64 ? "byte-swapped" : "little-endian", size, word(8)),
+                   "n64", "reach");
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -102,15 +129,14 @@ vl::ImageLaneSpec n64_lane_spec() {
 }
 
 void register_n64_lane() {
-    if (machine_lanes().find("n64")) return;
-    MachineLane lane;
-    lane.name = "n64";
-    lane.probe = [](const stdfs::path& p) { return formats::n64::probe(p); };
-    lane.make_spec = n64_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "n64",
+        .platform = platforms::n64,
+        .probe = [](const stdfs::path& p) { return formats::n64::probe(p); },
+        .make_spec = n64_lane_spec,
+        .detectors = {{.priority = 190, .detect = formats::detect::info_n64}},
+        .program_extensions = {".z64", ".n64", ".v64"},
+    });
 }
 
 }  // namespace cb::engine

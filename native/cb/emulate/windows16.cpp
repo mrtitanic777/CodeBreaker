@@ -737,7 +737,18 @@ ModelLookup models_of(knowledge::Knowledge& kb) {
             }
             throw FormatError("win16 api_model", 0, std::format("{}: a stand-in value that is neither a number, \"heap\" nor \"argN\"", fn));
         };
-        return StubModel{word("ax"), word("dx"), word("pop")};
+        StubModel out{word("ax"), word("dx"), word("pop"), {}};
+        if (const knowledge::Value* fill = model->get("fill"); fill != nullptr && fill->text() != nullptr) {
+            for (std::string_view part : text::split(*fill->text(), ',')) {
+                const std::size_t colon = part.find(':');
+                if (colon == std::string_view::npos) throw FormatError("win16 api_model", 0, std::format("{}: fill \"{}\" is not arg:bytes", fn, part));
+                const auto arg = text::parse_int<std::size_t>(text::trim(part.substr(0, colon)));
+                const auto bytes = text::parse_int<std::uint32_t>(text::trim(part.substr(colon + 1)));
+                if (!arg || !bytes) throw FormatError("win16 api_model", 0, std::format("{}: fill \"{}\" is not arg:bytes", fn, part));
+                out.fills.push_back({*arg, *bytes});
+            }
+        }
+        return out;
     };
 }
 
@@ -1366,6 +1377,22 @@ Trace16 Runner::trace(const std::filesystem::path& path, const TraceOptions& opt
 }
 
 Trace16 Runner::probe(const std::filesystem::path& path, const ProbeOptions& options) {
+    // The structures a Windows call fills through a far pointer (the model's `fill`), written the same way on every run: byte i is 0x40 + i * 5 mod 0x3B,
+    // never zero, so a read of what was not filled shows. Only with CB_FILL=1 (under test).
+    const auto fill_structures = [&](const ImportHit& hit, Uc& machine) {
+        if (!impl_->env.models || !fs::get_env("CB_FILL").has_value()) return;
+        const std::optional<StubModel> model = impl_->env.models(hit.api);
+        if (!model) return;
+        for (const FillArgument& f : model->fills) {
+            if (f.seg_arg + 1 >= hit.args_stack.size()) continue;
+            const std::uint32_t selector = static_cast<std::uint32_t>(hit.args_stack[f.seg_arg]), offset = static_cast<std::uint32_t>(hit.args_stack[f.seg_arg + 1]);
+            if (selector == 0) continue;
+            Bytes bytes(f.bytes);
+            for (std::uint32_t i = 0; i < f.bytes; ++i) bytes[i] = static_cast<std::uint8_t>(0x40 + (i * 5) % 0x3B);
+            machine.mem_write(static_cast<std::uint64_t>(selector_base(machine, selector)) + offset, bytes);
+        }
+    };
+
     Setup setup = options;
     if (options.cdecl_args) std::reverse(setup.args.begin(), setup.args.end());   // pushed in Pascal order: C's right to left needs them turned
     std::optional<Heaps> heaps;   // made with the machine, at the first call
@@ -1373,6 +1400,7 @@ Trace16 Runner::probe(const std::filesystem::path& path, const ProbeOptions& opt
         if (!heaps) heaps.emplace(machine);
         StubResult res = options.stub ? options.stub(hit, machine, *heaps) : default_stub(hit, *heaps);
         hit.unmodelled = !res.pop.has_value();   // its result: stub_ret, for the path explorer
+        fill_structures(hit, machine);
         if (!res.pop && options.stub_ret) {      // not modelled: the result asked for
             res.ax = *options.stub_ret & 0xFFFF;
             res.dx = (*options.stub_ret >> 16) & 0xFFFF;
@@ -1414,7 +1442,7 @@ Run Runner::recorded(const std::filesystem::path& module, const ProbeOptions& op
 
 StubResult Runner::default_stub(const ImportHit& hit, HeapContext& heap) const {
     const std::optional<StubModel> model = impl_->env.models ? impl_->env.models(hit.api) : std::nullopt;
-    if (!model) return StubResult{0, std::nullopt, std::nullopt};   // unknown: a benign 0 (the stack may drift)
+    if (!model || (!model->ax && !model->dx && !model->pop)) return StubResult{0, std::nullopt, std::nullopt};   // unknown (or only a fill): a benign 0 (the stack may drift)
     auto value = [&](const std::optional<ModelWord>& word) -> std::optional<std::uint32_t> {
         if (!word) return std::nullopt;
         if (const auto* number = std::get_if<std::int64_t>(&*word)) return static_cast<std::uint32_t>(*number);

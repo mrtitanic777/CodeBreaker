@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform vita() {
     MachineSpec s;
-    s.id = Id::Vita;
+    s.name = "vita";
     s.title = "PlayStation Vita";
     s.family = "arm";
     s.container = "unencrypted SELF (eboot.bin of a .vpk) or the ELF it holds (.velf)";

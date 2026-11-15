@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform ps1() {
     MachineSpec s;
-    s.id = Id::Ps1;
+    s.name = "ps1";
     s.title = "PlayStation";
     s.family = "mips";
     s.container = "PS-X EXE (.exe, .psx)";

@@ -25,7 +25,7 @@ std::vector<std::string> wiiu_registers() {
 
 Platform wiiu() {
     MachineSpec s;
-    s.id = Id::WiiU;
+    s.name = "wiiu";
     s.title = "Nintendo Wii U";
     s.family = "powerpc";
     s.container = "RPX executable (.rpx), RPL library (.rpl): an ELF with compressed sections";

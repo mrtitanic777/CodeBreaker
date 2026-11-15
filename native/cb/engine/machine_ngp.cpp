@@ -3,13 +3,39 @@
 
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/tlcs900.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/ngp.hpp"
 #include "cb/formats/ngp.hpp"
 #include "cb/source/ngp_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_ngp(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".ngp", ".ngc", ".npc"}) && size >= 64) {   // a Neo Geo Pocket cartridge: the SNK licence text, then the start address; the lane reads it with the TLCS-900/H core
+        try {
+            const formats::ngp::Rom rom = formats::ngp::parse(file);
+            return one(rom.header.colour ? "Neo Geo Pocket Color cartridge" : "Neo Geo Pocket cartridge",
+                       std::format("TLCS-900/H, \"{}\", {} bytes, start at 0x{:06X}", rom.header.title, size, rom.header.start), "ngp", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -173,15 +199,13 @@ vl::ImageLaneSpec ngp_lane_spec() {
 }
 
 void register_ngp_lane() {
-    if (machine_lanes().find("ngp")) return;
-    MachineLane lane;
-    lane.name = "ngp";
-    lane.probe = [](const stdfs::path& p) { return formats::ngp::probe(p); };
-    lane.make_spec = ngp_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "ngp",
+        .platform = platforms::ngp,
+        .probe = [](const stdfs::path& p) { return formats::ngp::probe(p); },
+        .make_spec = ngp_lane_spec,
+        .detectors = {{.priority = 310, .detect = formats::detect::info_ngp}},
+    });
 }
 
 }  // namespace cb::engine

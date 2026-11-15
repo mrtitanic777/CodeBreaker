@@ -3,13 +3,38 @@
 
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/i8048.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/o2.hpp"
 #include "cb/formats/o2.hpp"
 #include "cb/source/o2_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_o2(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".o2"}) && size >= 256 && size <= formats::o2::kMaxSize && size % 256 == 0) {   // an Odyssey 2 cartridge: no header; the file name and a whole number of pages up to 3 KB
+        try {
+            const formats::o2::Rom rom = formats::o2::parse(file);
+            return one("Odyssey 2 cartridge", std::format("8048, {} bytes at $0400", rom.data.size()), "o2", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -116,15 +141,13 @@ vl::ImageLaneSpec o2_lane_spec() {
 }
 
 void register_o2_lane() {
-    if (machine_lanes().find("o2")) return;
-    MachineLane lane;
-    lane.name = "o2";
-    lane.probe = [](const stdfs::path& p) { return formats::o2::probe(p); };
-    lane.make_spec = o2_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {
-    }
+    register_lane({
+        .name = "o2",
+        .platform = platforms::o2,
+        .probe = [](const stdfs::path& p) { return formats::o2::probe(p); },
+        .make_spec = o2_lane_spec,
+        .detectors = {{.priority = 320, .detect = formats::detect::info_o2}},
+    });
 }
 
 }  // namespace cb::engine

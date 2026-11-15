@@ -2,15 +2,38 @@
 #include "cb/engine/machine_psp.hpp"
 
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/allegrex.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/psp.hpp"
 #include "cb/formats/psp.hpp"
 #include "cb/source/psp_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_psp(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (size >= 40 && head.size() >= 40 && starts_with(head, 0, std::string_view("\0PBP", 4))) {   // an EBOOT.PBP: its DATA.PSP is an ELF, or an encrypted ~PSP module (recorded, not handled)
+        const std::uint32_t at = get<std::uint32_t>(file, 8 + 4 * 6, "detect");
+        if (at + 4 <= size && starts_with(file, at, "~PSP")) return one("PSP EBOOT.PBP (encrypted ~PSP module)", "not handled: the module is encrypted", "psp", "gap");
+        if (at + 4 <= size && starts_with(file, at, "" "ELF")) return one("PSP EBOOT.PBP", std::format("DATA.PSP at 0x{:X}, {} bytes", at, size), "psp", "reach");
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -141,15 +164,13 @@ vl::ImageLaneSpec psp_lane_spec() {
 }
 
 void register_psp_lane() {
-    if (machine_lanes().find("psp")) return;
-    MachineLane lane;
-    lane.name = "psp";
-    lane.probe = [](const stdfs::path& p) { return formats::psp::probe(p); };
-    lane.make_spec = psp_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {
-    }
+    register_lane({
+        .name = "psp",
+        .platform = platforms::psp,
+        .probe = [](const stdfs::path& p) { return formats::psp::probe(p); },
+        .make_spec = psp_lane_spec,
+        .detectors = {{.priority = 180, .detect = formats::detect::info_psp}},
+    });
 }
 
 }  // namespace cb::engine

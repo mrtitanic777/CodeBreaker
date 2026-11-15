@@ -3,13 +3,41 @@
 
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/m6502.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/atari5200.hpp"
 #include "cb/formats/atari5200.hpp"
 #include "cb/source/atari5200_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_atari5200(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".a52", ".bin", ".rom"})) {   // an Atari 5200 cartridge: 4, 8, 16 or 32 KB ending with a start address inside the ROM
+        try {
+            const formats::atari5200::Rom rom = formats::atari5200::parse(file);
+            const std::uint32_t first = *rom.offset(rom.start);
+            if (name_ends_with(name, {".a52"}) || (rom.data[first] != 0x00 && rom.data[first] != 0xFF)) {
+                return one("Atari 5200 cartridge", std::format("{} KB at ${:04X}, start ${:04X}", size / 1024, rom.base, rom.start), "atari5200", "reach");
+            }
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -120,15 +148,13 @@ vl::ImageLaneSpec atari5200_lane_spec() {
 }
 
 void register_atari5200_lane() {
-    if (machine_lanes().find("atari5200")) return;
-    MachineLane lane;
-    lane.name = "atari5200";
-    lane.probe = [](const stdfs::path& p) { return formats::atari5200::probe(p); };
-    lane.make_spec = atari5200_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "atari5200",
+        .platform = platforms::atari5200,
+        .probe = [](const stdfs::path& p) { return formats::atari5200::probe(p); },
+        .make_spec = atari5200_lane_spec,
+        .detectors = {{.priority = 270, .detect = formats::detect::info_atari5200}},
+    });
 }
 
 }  // namespace cb::engine

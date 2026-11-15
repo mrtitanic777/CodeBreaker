@@ -18,7 +18,7 @@ std::vector<std::string> sh2_registers() {
 
 Platform sega32x() {
     MachineSpec s;
-    s.id = Id::Sega32x;
+    s.name = "sega32x";
     s.title = "Sega 32X";
     s.family = "superh";
     s.container = "32X cartridge (.32x): a Genesis ROM with the SH-2 programs of the add-on in it";

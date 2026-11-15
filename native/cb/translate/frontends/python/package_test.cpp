@@ -10,7 +10,10 @@
 #include "cb/translate/frontends/python/package.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <map>
 
+#include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 #include "cb/translate/frontends/python/methods.hpp"
@@ -188,4 +191,41 @@ CB_TEST("translate.python.package.types_of_names_the_programs_own_types", [] {
     CB_CHECK((pk::types_of(outer) == std::set<std::string>{"shapes.Other", "shapes.Point"}));
     CB_CHECK(pk::types_of(ir::i32_type()).empty());
     CB_CHECK(pk::types_of(ir::TypeP()).empty());
+});
+
+// A census of real open-source Python (docs/TESTED_SOFTWARE.md, "The universal translator"): a dozen small modules of CPython's own standard
+// library (PSF License 2.0, read in place from the installed Python's Lib folder, never copied into the checkout), each through the whole
+// front end alone: how many of its functions lower to L2 and how many are refused, with the reason. It asserts only that every module
+// goes through without an error; the numbers are the report. Where no Python is installed it does nothing.
+CB_TEST("translate.python.package.the_standard_library_census", [] {
+    std::vector<std::filesystem::path> libs;
+    if (const auto env = cb::fs::get_env("CB_PYTHON_STDLIB")) libs.emplace_back(*env);
+    for (const char* v : {"C:/Python314/Lib", "C:/Python313/Lib", "C:/Python312/Lib", "/usr/lib/python3/lib", "/usr/lib/python3.12"}) libs.emplace_back(v);
+    std::filesystem::path lib;
+    for (const auto& c : libs) {
+        if (std::filesystem::is_regular_file(c / "bisect.py")) {
+            lib = c;
+            break;
+        }
+    }
+    if (lib.empty()) return;
+    std::size_t translated = 0, refused = 0, modules = 0;
+    std::map<std::string, std::size_t> why;
+    for (const char* name : {"bisect", "heapq", "colorsys", "keyword", "operator", "fnmatch", "genericpath", "posixpath", "shlex", "textwrap", "string", "reprlib"}) {
+        const std::filesystem::path file = lib / (std::string(name) + ".py");
+        if (!std::filesystem::is_regular_file(file)) continue;
+        const Built b = build({{name, cb::fs::read_text(file)}}, only({name}));
+        const lo::ModuleResult* r = b.done.find(name);
+        CB_CHECK(r != nullptr);
+        if (r == nullptr) continue;
+        ++modules;
+        translated += r->translated.size();
+        refused += r->refused.size();
+        for (const auto& entry : r->refused) ++why[entry.second.reason().substr(0, entry.second.reason().find(':'))];
+        std::fprintf(stderr, "  census %-12s %3zu translated, %3zu refused\n", name, r->translated.size(), r->refused.size());
+    }
+    std::string reasons;
+    for (const auto& [reason, n] : why) reasons += " " + reason + "=" + std::to_string(n);
+    std::fprintf(stderr, "  census total: %zu modules, %zu functions translated, %zu refused (%s )\n", modules, translated, refused, reasons.c_str());
+    CB_CHECK(modules > 0);
 });

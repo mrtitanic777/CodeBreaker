@@ -36,12 +36,8 @@ namespace gpu
             Fatal("GPU: swap: front-buffer fetch constant is not a plain 2D texture (type {}, dimension {}, stacked {}, "
                   "border {}; {})", type, dimension, int(stacked), int(border), fetch);
         // k_2_10_10_10_AS_16_16_16_16 (a 10-bit front buffer, Forza Motorsport 4): A2R10G10B10 in a dword, shown through the
-        // same swizzle; the display's piecewise-linear gamma ramp applies, which only the identity is implemented of (nothing
-        // written to it).
+        // same swizzle; the display's piecewise-linear gamma ramp applies (the identity until the title writes it).
         const bool tenBit = format == 54;
-        if (tenBit && gamma.pwlWrites != 0)
-            Fatal("GPU: swap: a 10-bit front buffer with a piecewise-linear gamma ramp written ({} entries' components) is not "
-                  "implemented ({})", gamma.pwlWrites, fetch);
         if (format != 6 && !tenBit)
             Fatal("GPU: swap: front-buffer format {} is not implemented ({})", format, fetch);
         // Red, green, blue from data components Z, Y, X (LE_X8R8G8B8: memory bytes B, G, R, X); alpha is not displayed.
@@ -65,10 +61,11 @@ namespace gpu
         c.pitch = pitch;
         c.tiled = tiled ? 1 : 0;
         c.endian = (d[1] >> 6) & 3;
-        c.tenBit = tenBit ? 1 : 0;
+        c.tenBit = !tenBit ? 0 : gamma.pwlWrites != 0 ? 2 : 1;
         c.width = width;
         c.height = height;
         std::memcpy(c.table, gamma.table, sizeof(c.table));
+        std::memcpy(c.pwl, gamma.pwl, sizeof(c.pwl));
         uint32_t start, end;
         PresentExtent(c, start, end);
         if (uint64_t(end) > guest::kPhysicalSize)
@@ -146,6 +143,7 @@ cbuffer PresentConstants : register(b0)
     uint4 xe_pr_ov_size;   // texture width, height
     uint4 xe_pr_ov_rect;   // source rectangle x1, y1, x2, y2
     uint4 xe_pr_gamma[64]; // display gamma table, DC_LUT_30_COLOR layout
+    uint4 xe_pr_pwl[96];   // piecewise-linear ramp: entry * 3 + R, G, B (base bits 0-15, delta 16-31)
 };
 ByteAddressBuffer xe_memory : register(t0);
 Texture2D<uint4> xe_overlay : register(t1);
@@ -197,6 +195,14 @@ uint xe_pr_gamma_entry(uint i)
     return xe_pr_gamma[i >> 2][i & 3u];
 }
 
+// The piecewise-linear ramp of a 10-bit channel: segment c >> 3 of 128, base + delta * (c & 7) / 8 in 16 bits, top 10 kept.
+uint xe_pr_pwl_apply(uint c, uint channel)
+{
+    uint i = (c >> 3) * 3u + channel;
+    uint e = xe_pr_pwl[i >> 2][i & 3u];
+    return min(((e & 0xFFFFu) + (e >> 16) * (c & 7u) / 8u) >> 6, 1023u);
+}
+
 [numthreads(16, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID)
 {
@@ -209,13 +215,16 @@ void main(uint3 id : SV_DispatchThreadID)
     uint3 c = uint3((v >> 16) & 0xFFu, (v >> 8) & 0xFFu, v & 0xFFu);
     if (xe_pr_size.w != 0u)
     {
-        // A2R10G10B10 (the same swizzle): the 10-bit channels pass through the identity ramp; an overlay is 8-bit, scaled up
+        // A2R10G10B10 (the same swizzle): the 10-bit channels pass through the title's piecewise-linear ramp (the identity
+        // until it writes one); an overlay is 8-bit, scaled up
         uint3 t = uint3((v >> 20) & 0x3FFu, (v >> 10) & 0x3FFu, v & 0x3FFu);
         if (xe_pr_size.z != 0u)
         {
             uint4 o = xe_pr_size.z == 2u ? xe_pr_ov_sample(id.xy) : xe_overlay.Load(int3(id.xy, 0));
             t = min((o.rgb << 2) + (t * (255u - o.a) + 127u) / 255u, 1023u);
         }
+        if (xe_pr_size.w == 2u)
+            t = uint3(xe_pr_pwl_apply(t.x, 0u), xe_pr_pwl_apply(t.y, 1u), xe_pr_pwl_apply(t.z, 2u));
         xe_output[id.xy] = uint4(t, 3u);
         return;
     }
@@ -302,6 +311,12 @@ void main(uint3 id : SV_DispatchThreadID)
                     if (c.overlay == 2 || (c.overlay && overlay))
                         for (uint32_t& channel : t)
                             channel = std::min(1023u, (o[&channel - t] << 2) + (channel * (255u - o[3]) + 127) / 255);
+                    if (c.tenBit == 2)
+                        for (uint32_t ch = 0; ch < 3; ch++)
+                        {
+                            const uint32_t e = c.pwl[(t[ch] >> 3) * 3 + ch];
+                            t[ch] = std::min(1023u, ((e & 0xFFFFu) + (e >> 16) * (t[ch] & 7u) / 8u) >> 6);
+                        }
                     out[size_t(y) * c.width + x] = t[0] | t[1] << 10 | t[2] << 20 | 3u << 30;
                     continue;
                 }

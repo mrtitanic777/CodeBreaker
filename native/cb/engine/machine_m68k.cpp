@@ -3,15 +3,67 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/m68k.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/neogeo.hpp"
+#include "cb/platforms/segacd.hpp"
 #include "cb/formats/neogeo.hpp"
 #include "cb/formats/segacd.hpp"
 #include "cb/source/neogeo_writer.hpp"
 #include "cb/source/segacd_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_neogeo(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (head.size() >= 0x108 && (starts_with(head, 0x100, "NEO-GEO") || starts_with(head, 0x100, "EN-OEG"))) {   // a Neo Geo P-ROM: "NEO-GEO" at $100, or with its words swapped
+        const bool swapped = starts_with(head, 0x100, "EN-OEG");
+        const unsigned ngh = swapped ? head[0x109] << 8 | head[0x108] : head[0x108] << 8 | head[0x109];
+        return one("Neo Geo cartridge (P-ROM)", std::format("NGH {:04X}, {} KB{}", ngh, size / 1024, swapped ? ", words swapped" : ""), "neogeo", "reach");
+    }
+    if (starts_with(h4, 0, "NEO") && size >= 4096) {   // a .neo file: a 4 KB header, then the P, S, M, V and C ROMs
+        return one("Neo Geo .neo file", std::format("{} KB P-ROM, {} KB sound program, {} KB sprites", get<std::uint32_t>(file, 4, "detect") / 1024,
+                                                      get<std::uint32_t>(file, 12, "detect") / 1024, get<std::uint32_t>(file, 24, "detect") / 1024),
+                   "neogeo", "reach");
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_segacd(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (segacd::is_disc_start(head)) {   // a Sega CD disc: "SEGADISCSYSTEM" starts its first sector, which holds the boot header
+        try {
+            const segacd::Disc disc = segacd::parse(file);
+            return one("Sega CD disc", std::format("\"{}\", {}-byte sectors, IP {} bytes at 0x{:X}, SP {} bytes at 0x{:X}", disc.header.domestic_name, disc.sector_size,
+                                                 disc.header.ip.size, disc.header.ip.start, disc.header.sp.size, disc.header.sp.start),
+                       "segacd", "reach");
+        } catch (const Error&) {   // a damaged boot header is no disc of this machine
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -261,19 +313,20 @@ vl::ImageLaneSpec segacd_lane_spec() {
 }
 
 void register_m68k_lanes() {
-    const auto add = [](std::string name, std::function<bool(const stdfs::path&)> probe, std::function<vl::ImageLaneSpec()> make) {
-        if (machine_lanes().find(name)) return;
-        MachineLane lane;
-        lane.name = std::move(name);
-        lane.probe = std::move(probe);
-        lane.make_spec = std::move(make);
-        try {
-            machine_lanes().add(std::move(lane));
-        } catch (const UsageError&) {   // (another thread added it first)
-        }
-    };
-    add("neogeo", [](const stdfs::path& p) { return formats::neogeo::probe(p); }, neogeo_lane_spec);
-    add("segacd", [](const stdfs::path& p) { return formats::segacd::probe(p); }, segacd_lane_spec);
+    register_lane({
+        .name = "neogeo",
+        .platform = platforms::neogeo,
+        .probe = [](const stdfs::path& p) { return formats::neogeo::probe(p); },
+        .make_spec = neogeo_lane_spec,
+        .detectors = {{.priority = 350, .detect = formats::detect::info_neogeo}},
+    });
+    register_lane({
+        .name = "segacd",
+        .platform = platforms::segacd,
+        .probe = [](const stdfs::path& p) { return formats::segacd::probe(p); },
+        .make_spec = segacd_lane_spec,
+        .detectors = {{.priority = 370, .detect = formats::detect::info_segacd}},
+    });
 }
 
 }  // namespace cb::engine

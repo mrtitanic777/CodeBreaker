@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform gba() {
     MachineSpec s;
-    s.id = Id::Gba;
+    s.name = "gba";
     s.title = "Game Boy Advance";
     s.family = "arm";
     s.container = "cartridge ROM (.gba)";

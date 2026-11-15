@@ -20,6 +20,7 @@
 #include "cb/emulate/z80.hpp"
 #include "cb/emulate/z80_machines.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
 #include "cb/formats/gb.hpp"
 #include "cb/formats/gba.hpp"
@@ -635,19 +636,17 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
     return impl_->machines_.emplace(std::string(name), std::move(lane)).first->second;
 }
 
-// The machine a file is made for, by its format (a cartridge, a snapshot, a tape), in the order the platforms are tried; empty when it is none.
+// The machine a file is made for, by its format (a cartridge, a snapshot, a tape), in the order the platforms are tried (the order of
+// engine/lane_list.cpp); empty when it is none.
 std::string kit_detail::machine_of_file(const stdfs::path& path) {
-    if (formats::nes::probe(path)) return "nes";
-    if (formats::sms::probe(path)) return "sms";
-    if (formats::gb::probe(path)) return "gb";
-    if (formats::genesis::probe(path)) return "genesis";
-    if (formats::psx::probe(path)) return "ps1";
-    if (formats::gba::probe(path)) return "gba";
-    if (formats::zx::probe(path)) return "zx";
-    if (formats::msx::probe(path)) return "msx";
-    if (formats::coleco::probe(path)) return "coleco";
-    if (formats::cpc::probe(path)) return "cpc";
-    return machine_lanes().name_of_file(path);   // (a registered machine: machine_lanes.hpp)
+    register_all_lanes();
+    for (const std::shared_ptr<const LaneRegistration>& lane : registered_lanes()) {
+        try {
+            if (lane->probe(path)) return lane->name;
+        } catch (const Error&) {   // isolation boundary: a damaged file is not this machine's
+        }
+    }
+    return machine_lanes().name_of_file(path);   // (a machine added to the machine lane table directly: machine_lanes.hpp)
 }
 
 }  // namespace cb::engine

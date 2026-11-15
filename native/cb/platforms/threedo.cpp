@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform threedo() {
     MachineSpec s;
-    s.id = Id::ThreeDo;
+    s.name = "threedo";
     s.title = "3DO";
     s.family = "arm";
     s.container = "Opera disc image (.iso) or AIF executable (LaunchMe)";

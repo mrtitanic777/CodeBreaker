@@ -165,3 +165,18 @@ CB_TEST("translate.judge_cs_cpp.the_corpus_programs_agree", [] {
         CB_CHECK(s.agrees.value_or(false));
     }
 });
+
+// The language features the first phase left out, each a small program (tests/translate/corpus/csharp_features): iterators (`yield`),
+// async/await, switch statements and expressions over patterns, query expressions, try/finally, nullable arithmetic. Each is translated and
+// judged: the C# and its C++17 translation print the same and exit alike.
+CB_TEST("translate.judge_cs_cpp.the_language_features_agree", [] {
+    const JcctTools tools = jcct_tools();
+    if (!tools.ok()) return;
+    const stdfs::path corpus = cb::testing::data_path("../../tests/translate/corpus/csharp_features");
+    for (const char* name : {"Iterators", "Lazy", "Asyncs", "Tasks", "Patterns", "Queries", "Nullables", "Exceptions"}) {
+        const stdfs::path work = jcct_work(name);
+        const jcc::Score s = jcc::judge_program(*tools.sdk, jcct_environment(), *tools.cxx, name, {corpus / (std::string(name) + ".cs")}, work);
+        if (!s.agrees.value_or(false)) std::cerr << name << ": " << s.detail << "\n";
+        CB_CHECK(s.agrees.value_or(false));
+    }
+});

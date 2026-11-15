@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform xboxone() {
     Platform p;
-    p.id = Id::XboxOne;
+    p.id = Id::Machine;
     p.name = "xboxone";
     p.title = "Xbox One / Series";
     p.family = "x86";

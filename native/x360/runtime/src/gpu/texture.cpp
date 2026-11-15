@@ -195,6 +195,10 @@ namespace gpu
         if ((d[0] & 3) != 2)
             return std::format("fetch constant type {} is not a texture", d[0] & 3);
         f.format = d[1] & 0x3F;
+        // k_8_8_8_8_AS_16_16_16_16 is k_8_8_8_8's memory layout with the texture unit returning the 16-bit expanded values:
+        // the sampled colour is the same unorm (or gamma) value (Forza Motorsport 4's gamma-sampled scene buffer).
+        if (f.format == 50)
+            f.format = 6;
         switch (f.format)
         {
         case 2: case 6: case 8: case 9: case 10: case 14: case 25:           // 8 / 16 bits per component

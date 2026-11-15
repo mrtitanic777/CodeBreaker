@@ -12,7 +12,7 @@ Platform cdi() {
     registers.push_back("SR");
 
     MachineSpec s;
-    s.id = Id::CdI;
+    s.name = "cdi";
     s.title = "Philips CD-i";
     s.family = "68000";
     s.container = "disc image (.iso, .bin, .cdi) or CD-RTOS module (.mod)";

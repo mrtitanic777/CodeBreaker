@@ -87,6 +87,10 @@ std::vector<Node*> Lowerer::s_expr(const syntax::ExprStmt* st) {
         if (c->value.kind == syntax::ConstValue::Kind::Str) return {mk(ir::Comment{.text = c->value.text})};
         return {};
     }
+    if (const auto* y = syntax::as<syntax::Yield>(st->value)) {   // `yield x`: the next item of the generator
+        if (y->value == nullptr) refuse(RefusalClass::Syntax, "a bare yield", line_of(st));
+        return {mk(ir::YieldReturn{.expr = expr(y->value)})};
+    }
     return {expr_stmt(expr(st->value), line_of(st))};
 }
 

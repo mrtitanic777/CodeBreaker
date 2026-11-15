@@ -10,7 +10,7 @@ Platform saturn() {
     for (const char* name : {"PR", "MACH", "MACL", "SR", "GBR", "VBR"}) registers.push_back(name);
 
     MachineSpec s;
-    s.id = Id::Saturn;
+    s.name = "saturn";
     s.title = "Sega Saturn";
     s.family = "superh";
     s.container = "disc image (.iso, .bin with a .cue sheet): IP.BIN and the first program";

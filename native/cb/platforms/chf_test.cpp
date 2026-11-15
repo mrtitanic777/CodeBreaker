@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.chf.descriptor", [] {
     const Platform p = chf();
-    CB_CHECK(p.id == Id::Chf);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "chf");
     CB_CHECK_EQ(p.title, "Fairchild Channel F");
     CB_CHECK_EQ(p.family, "F8");

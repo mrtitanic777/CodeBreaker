@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform psp() {
     MachineSpec s;
-    s.id = Id::Psp;
+    s.name = "psp";
     s.title = "PSP";
     s.family = "mips";
     s.container = "ELF (.elf), module (.prx), EBOOT.PBP";

@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform msx() {
     MachineSpec s;
-    s.id = Id::Msx;
+    s.name = "msx";
     s.title = "MSX";
     s.family = "z80";
     s.container = "cartridge image (.rom)";

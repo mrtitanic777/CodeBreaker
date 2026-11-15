@@ -7,7 +7,7 @@ Platform ngp() {
     // the registers a result names: the current bank's long registers, the common ones, SR (the flags and the register bank)
     const std::vector<std::string> registers = {"XWA", "XBC", "XDE", "XHL", "XIX", "XIY", "XIZ", "XSP", "SR"};
     MachineSpec s;
-    s.id = Id::Ngp;
+    s.name = "ngp";
     s.title = "SNK Neo Geo Pocket / Pocket Color";
     s.family = "TLCS-900/H";
     s.container = "cartridge (.ngp, .ngc, .npc)";

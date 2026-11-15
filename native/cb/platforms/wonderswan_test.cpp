@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.wonderswan.descriptor", [] {
     const Platform p = wonderswan();
-    CB_CHECK(p.id == Id::WonderSwan);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "wonderswan");
     CB_CHECK_EQ(p.title, "WonderSwan / WonderSwan Color");
     CB_CHECK_EQ(p.family, "x86");

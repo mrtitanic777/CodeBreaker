@@ -326,8 +326,17 @@ GUEST_IMPORT(NtReadFile)
     ov.Offset = DWORD(offset);
     ov.OffsetHigh = DWORD(offset >> 32);
     DWORD read = 0;
-    guest::PrepareHostWrite(ctx.r8.u32, ctx.r9.u32); // ReadFile writes from kernel mode
-    if (!ReadFile(file->host, mem.Translate(ctx.r8.u32), ctx.r9.u32, &read, &ov) && GetLastError() != ERROR_HANDLE_EOF)
+    // A read past the end of the file transfers the bytes that exist: the title may pass a buffer sized for the request
+    // (a 128 KiB read at the tail of a small file, Forza Motorsport 4's .fev) that the guest allocator has not committed
+    // in full, and the host call checks the whole buffer, not the part it fills.
+    uint32_t length = ctx.r9.u32;
+    if (!file->directory)
+    {
+        const uint64_t size = Stat(file->path).size;
+        length = uint32_t(std::min<uint64_t>(length, size > offset ? size - offset : 0));
+    }
+    guest::PrepareHostWrite(ctx.r8.u32, length); // ReadFile writes from kernel mode
+    if (!ReadFile(file->host, mem.Translate(ctx.r8.u32), length, &read, &ov) && GetLastError() != ERROR_HANDLE_EOF)
     {
         // Which pages of the buffer the host could not write (998: a page not committed or not writable).
         const DWORD error = GetLastError();
@@ -428,6 +437,12 @@ GUEST_IMPORT(NtQueryInformationFile)
     case 34: // FileNetworkOpenInformation
         WriteNetworkOpenInfo(info, a);
         written = 0x38;
+        break;
+    case 26: // The console's one-dword class (not an NT file class: NT's 26 is a mailslot query): a 4-byte buffer, the file's
+             // length. Forza Motorsport 4's file wrapper (sub_82BD2B10) asks for it right after opening a zip and returns
+             // the dword to its caller.
+        mem.Write32(info, a.directory ? 0 : uint32_t(a.size));
+        written = 4;
         break;
     default:
         Fatal("NtQueryInformationFile class {} is not implemented ({})", cls, file->path.string());

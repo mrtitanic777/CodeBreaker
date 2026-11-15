@@ -125,7 +125,11 @@ Node* Lowerer::lower() {
     const auto returned = p.returns.find(f.qname);
     Type ret_type = returned != p.returns.end() ? returned->second : pt::none();
     if (ret_type.kind == pt::Kind::Bottom) ret_type = pt::none();
-    ret = f.name == "__init__" ? none_type() : ty(ret_type, f.node, "return value");
+    bool is_generator = false;   // a function with `yield` in it (not in a nested one: those are refused) returns what it yields
+    for (const pyast::AnyNode& an : pyast::walk(pyast::AnyNode(static_cast<const syntax::Stmt*>(f.node)))) {
+        if (an.expr() != nullptr && an.expr()->kind == syntax::ExprKind::Yield) is_generator = true;
+    }
+    ret = f.name == "__init__" ? none_type() : ty(ret_type, f.node, is_generator ? "generator result" : "return value");
     plan_locals();
 
     // a docstring is the function's comment, not a statement
@@ -140,6 +144,7 @@ Node* Lowerer::lower() {
     std::vector<std::string> mods;
     if (f.kind == program::FnKind::Static) mods.push_back("static");
     if (f.kind == program::FnKind::Property) mods.push_back("property");
+    if (is_generator) mods.push_back("iterator");
     const ir::SymP sym = ir::make_sym(f.cls == nullptr ? ir::SymKind::Function : (is_ctor ? ir::SymKind::Ctor : ir::SymKind::Method), f.name,
                                       f.cls != nullptr ? f.cls->qname : f.module->name, f.kind == program::FnKind::Static);
     sym->params = parameter_types;

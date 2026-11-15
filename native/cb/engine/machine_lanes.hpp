@@ -1,5 +1,8 @@
 // cb/engine/machine_lanes.hpp -- the table a platform adds its machine lane to, without editing the lane kit.
 //
+// (A platform lane registers through engine/lane_registry.hpp: one registration object, which fills this table with its probe and spec, and the platform
+// registry, `info`'s detectors and `reach`'s extensions too. This table is what the lane kit asks for the lanes' specs.)
+//
 // A machine lane (a cartridge, a snapshot, a tape: the NES, Game Boy ... lanes of lane_kit_machines.cpp) is made of what is particular
 // to its machine -- how to tell its files, and the `ImageLaneSpec` its lane is built from. A platform that is not one of the lane kit's
 // own gives those two things here, once, before the kit is used:

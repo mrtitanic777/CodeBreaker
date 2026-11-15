@@ -58,7 +58,7 @@ ir::TypeP Context::type_of(const Type& t, std::uint32_t line, std::string_view w
         case Kind::Iter:
             // an iterator (range, enumerate, zip, dict.items ...) is consumed where it is made: a loop or a call that takes an iterable; kept in
             // a name, passed or returned it has no C++ type here
-            if (what != "value") throw Refused(RefusalClass::Syntax, "an iterator as a " + what_text, line);
+            if (what != "value" && what != "generator result") throw Refused(RefusalClass::Syntax, "an iterator as a " + what_text, line);
             return py_class("py.iter", {type_of(t.args.at(0), line, "value")});
         case Kind::Top: {
             const std::string why = t.why.value_or("");

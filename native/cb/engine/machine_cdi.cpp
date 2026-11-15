@@ -3,13 +3,42 @@
 
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/m68k.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/cdi.hpp"
 #include "cb/formats/cdi.hpp"
 #include "cb/source/cdi_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_cdi(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".iso", ".bin", ".cdi", ".img", ".mod", ".rtf"})) {   // a Philips CD-i disc (the Disc Label "CD-I " in an early sector) or a CD-RTOS module
+        bool label = false;
+        for (std::size_t at = 0; at + 7 <= file.size() && at <= 16 * formats::cdi::kSector; at += formats::cdi::kSector) label = label || (file[at] == 1 && starts_with(file, at + 1, "CD-I ") && file[at + 6] == 1);
+        if (label || formats::cdi::module_at(file, 0)) {
+            try {
+                const formats::cdi::Program program = formats::cdi::parse(file);
+                return one(program.disc ? "Philips CD-i disc" : "CD-RTOS module file", std::format("{} CD-RTOS module(s), {} executable", program.modules.size(), program.placed().size()), "cdi", "reach");
+            } catch (const FormatError&) {
+            }
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -130,15 +159,13 @@ vl::ImageLaneSpec cdi_lane_spec() {
 }
 
 void register_cdi_lane() {
-    if (machine_lanes().find("cdi")) return;
-    MachineLane lane;
-    lane.name = "cdi";
-    lane.probe = [](const stdfs::path& p) { return formats::cdi::probe(p); };
-    lane.make_spec = cdi_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "cdi",
+        .platform = platforms::cdi,
+        .probe = [](const stdfs::path& p) { return formats::cdi::probe(p); },
+        .make_spec = cdi_lane_spec,
+        .detectors = {{.priority = 280, .detect = formats::detect::info_cdi}},
+    });
 }
 
 }  // namespace cb::engine

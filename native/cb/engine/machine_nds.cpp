@@ -2,13 +2,37 @@
 #include "cb/engine/machine_nds.hpp"
 
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/arm.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/nds.hpp"
 #include "cb/formats/nds.hpp"
 #include "cb/source/nds_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_nds(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (head.size() >= 0x200 && head[0x15C] == 0x56 && head[0x15D] == 0xCF && head[0xC0] == 0x24 && head[0xC1] == 0xFF) {   // a Nintendo DS ROM: the logo, and its checksum $CF56 at $15C
+        std::string title(as_text(clamped(head, 0, 12)));
+        while (!title.empty() && title.back() == '\0') title.pop_back();
+        std::string code(as_text(clamped(head, 0x0C, 4)));
+        return one("Nintendo DS cartridge", std::format("\"{}\" ({}), {} bytes, ARM9 {} bytes at 0x{:08X}, ARM7 {} bytes at 0x{:08X}", title, code, size, get<std::uint32_t>(file, 0x2C, "detect"), get<std::uint32_t>(file, 0x28, "detect"), get<std::uint32_t>(file, 0x3C, "detect"), get<std::uint32_t>(file, 0x38, "detect")), "nds", "reach");
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -131,15 +155,14 @@ vl::ImageLaneSpec nds_lane_spec() {
 }
 
 void register_nds_lane() {
-    if (machine_lanes().find("nds")) return;
-    MachineLane lane;
-    lane.name = "nds";
-    lane.probe = [](const stdfs::path& p) { return formats::nds::probe(p); };
-    lane.make_spec = nds_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "nds",
+        .platform = platforms::nds,
+        .probe = [](const stdfs::path& p) { return formats::nds::probe(p); },
+        .make_spec = nds_lane_spec,
+        .detectors = {{.priority = 200, .detect = formats::detect::info_nds}},
+        .program_extensions = {".nds"},
+    });
 }
 
 }  // namespace cb::engine

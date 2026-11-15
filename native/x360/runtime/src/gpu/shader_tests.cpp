@@ -799,7 +799,7 @@ namespace gpu
             {
                 if (gen.Next(3) == 0)
                     continue;
-                const uint32_t format = gen.Next(2) ? 0 : 4;
+                const uint32_t format = gen.Next(2) ? (gen.Next(3) == 0 ? 1 : 0) : 4;
                 key.colorFormat[rt] = format;
                 key.colorMask[rt] = format == 4 ? 1 + gen.Next(3) : 1 + gen.Next(15);
                 auto factor = [&] {

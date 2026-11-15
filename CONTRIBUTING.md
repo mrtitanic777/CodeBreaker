@@ -13,7 +13,8 @@ change what the judge decides unless that is the point of the change.
 - Read the [README](README.md) for what CodeBreaker does and how it is laid out, and
   [docs/ROADMAP.md](docs/ROADMAP.md) for where it is going. If you plan something large, open an issue first so it
   can fit the roadmap.
-- New platforms: [docs/LANES.md](docs/LANES.md) is the lane interface, with worked examples and a checklist.
+- New platforms: [docs/LANES.md](docs/LANES.md) is the lane interface, with worked examples and a checklist; a lane is one registration object
+  (`register_lane({...})` in its own `engine/machine_<name>.cpp`) and one line in `engine/lane_list.cpp`.
 - C++ style: [docs/CPP_DESIGN.md](docs/CPP_DESIGN.md).
 
 ## Setting up

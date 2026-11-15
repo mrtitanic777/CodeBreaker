@@ -15,31 +15,7 @@
 #include "cb/core/log.hpp"
 #include "cb/core/parallel.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
-#include "cb/engine/machine_atari.hpp"
-#include "cb/engine/machine_pce.hpp"
-#include "cb/engine/machine_snes.hpp"
-#include "cb/engine/machine_nds.hpp"
-#include "cb/engine/machine_gekko.hpp"
-#include "cb/engine/machine_n64.hpp"
-#include "cb/engine/machine_ps2.hpp"
-#include "cb/engine/machine_psp.hpp"
-#include "cb/engine/machine_n3ds.hpp"
-#include "cb/engine/machine_vita.hpp"
-#include "cb/engine/machine_ps3.hpp"
-#include "cb/engine/machine_switch.hpp"
-#include "cb/engine/machine_x64.hpp"
-#include "cb/engine/machine_m68k.hpp"
-#include "cb/engine/machine_dreamcast.hpp"
-#include "cb/engine/machine_threedo.hpp"
-#include "cb/engine/machine_wonderswan.hpp"
-#include "cb/engine/machine_cdi.hpp"
-#include "cb/engine/machine_vectrex.hpp"
-#include "cb/engine/machine_chf.hpp"
-#include "cb/engine/machine_o2.hpp"
-#include "cb/engine/machine_intv.hpp"
-#include "cb/engine/machine_vb.hpp"
-#include "cb/engine/machine_ngp.hpp"
-#include "cb/engine/machine_sh2.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/jobs/workers.hpp"
 
 namespace cb::engine {
@@ -147,33 +123,7 @@ int host_main_hook(int argc, char** argv) {
 bool hosting_workers() { return g_hosting.load(); }
 
 void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
-    register_m68k_lanes();    // (the Neo Geo and Sega CD lanes: the same table, the same reason)
-    register_atari_lanes();   // (the Atari machines' lanes, in the table of engine/machine_lanes.hpp: the host and its workers make the same registrations)
-    register_pce_lane();      // (the PC Engine lane, likewise)
-    register_snes_lane();     // (the Super Nintendo lane, likewise)
-    register_nds_lane();   // (the Nintendo DS lane, likewise)
-    register_ps2_lane();   // (the PlayStation 2 and PSP lanes, likewise)
-    register_psp_lane();
-    register_n3ds_lane();   // (the Nintendo 3DS lane, likewise)
-    register_vita_lane();   // (the PlayStation Vita lane, likewise)
-    register_ps3_lane();    // (the PlayStation 3 lane, likewise)
-    register_switch_lane(); // (the Nintendo Switch lane, likewise)
-    register_ps4_lane();    // (the PlayStation 4, PlayStation 5 and Xbox One lanes, likewise)
-    register_ps5_lane();
-    register_xboxone_lane();
-    register_n64_lane();   // (the Nintendo 64 lane, likewise)
-    register_gekko_lanes();   // (the GameCube, Wii and Wii U lanes, likewise)
-    register_sh2_lanes();   // (the Sega 32X and Saturn lanes, likewise)
-    register_dreamcast_lane();   // (the Sega Dreamcast lane, likewise)
-    register_threedo_lane();     // (the 3DO lane, likewise)
-    register_wonderswan_lane();  // (the WonderSwan lane, likewise)
-    register_cdi_lane();         // (the Philips CD-i lane, likewise)
-    register_vectrex_lane();     // (the Vectrex lane, likewise)
-    register_chf_lane();     // (and this one)
-    register_o2_lane();     // (and this one)
-    register_intv_lane();     // (and this one)
-    register_vb_lane();     // (and this one)
-    register_ngp_lane();     // (the Neo Geo Pocket lane, likewise)
+    register_all_lanes();   // (the platform lanes, in the table of engine/lane_registry.hpp: the host and its workers make the same registrations)
     kinds.add("lane-judge", kit_judge_share);
     kinds.add("lane-build", kit_build_share);
 }

@@ -11,7 +11,7 @@ Platform dreamcast() {
     for (int i = 0; i < 16; ++i) registers.push_back(std::format("FR{}", i));
 
     MachineSpec s;
-    s.id = Id::Dreamcast;
+    s.name = "dreamcast";
     s.title = "Sega Dreamcast";
     s.family = "superh";
     s.container = "disc image (.gdi with its track files, .cdi, .iso, .bin): IP.BIN and the first program";

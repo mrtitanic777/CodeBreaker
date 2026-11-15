@@ -10,6 +10,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/coverage/ledger.hpp"
 #include "cb/engine/lane_kit.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/store/functions.hpp"
@@ -90,7 +91,9 @@ std::function<std::map<std::string, std::optional<std::string>>()> verifier_prof
     return [profiles, settings]() -> std::map<std::string, std::optional<std::string>> {
         // every kind the store files results under: one whose settings cannot be worked out here has none, and the ones it last used stand in
         std::map<std::string, std::optional<std::string>> out;
-        for (const char* kind : {"pe", "ne", "le", "dos", "java", "powerpc", "nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc"}) out[kind] = std::nullopt;
+        for (const char* kind : {"pe", "ne", "le", "dos", "java", "powerpc"}) out[kind] = std::nullopt;
+        engine::register_all_lanes();
+        for (const auto& lane : engine::registered_lanes()) out[lane->name] = std::nullopt;   // (the platform lanes: engine/lane_registry.hpp)
         for (const std::string& kind : engine::machine_lanes().names()) out[kind] = std::nullopt;   // (platforms registered in engine/machine_lanes.hpp)
         if (const std::optional<std::string> stored = fs::get_env("CB_MCP_STORED_PROFILES"); stored && !stored->empty() && *stored != "0") return out;
         std::lock_guard hold(profiles->lock);

@@ -243,6 +243,14 @@ MathHelper through the javac front end and the C# back end (translator phase 7),
 driver of seeded world-generation calls: the same output, java.util.Random and Java's text for doubles included
 (the C# kit's tests under tests/translate).
 
+## The universal translator (C# and Python inputs)
+
+| Input | Licence | Result |
+|---|---|---|
+| tests/translate/corpus/csharp (10), csharp_cpp (2), csharp_features (11) | written for the kit | C# -> C++17: 23 of 23 lower, write, compile and agree with g++, clang and MSVC; the 11 feature programs also round-trip through the C# back end |
+| CPython standard library: bisect, heapq, colorsys, keyword, operator, fnmatch, genericpath, posixpath, shlex, textwrap, reprlib (read in place from the installed Python's Lib, not copied) | PSF-2.0 | Python front end census (`translate.python.package.the_standard_library_census`): 11 modules, 184 functions, 2 translate, 182 refused (untyped 91, stdlib 36, dynamic 30, conflict 8, unresolved 6, syntax 4); the reasons are the next work |
+| C# from Reko (Win16-Research/reko) and ExtremeLauncher on this machine | GPL | not used: not permissive |
+
 ## Nintendo DS homebrew (the DS lane)
 
 Open-source DS ROMs with published source, downloaded 2026-11-15 as binaries from the authors' own release pages (kept outside the repository, in

@@ -6,10 +6,12 @@
 #include <cstdio>
 
 #include "cb/base/config.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/ui/serve.hpp"
 
 int main(int argc, char** argv) {
     using namespace cb;
+    engine::register_all_lanes();   // (the platform lanes `info` and `reach` ask: engine/lane_registry.hpp)
     try {
         const cli::Cli cli("cb_serve", {ui::serve::command({.config = config::current()})});
         return cli.run(argc, argv);

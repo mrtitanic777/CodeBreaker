@@ -12,7 +12,7 @@ Platform jaguar() {
     registers.push_back("SR");
 
     MachineSpec s;
-    s.id = Id::Jaguar;
+    s.name = "jaguar";
     s.title = "Atari Jaguar";
     s.family = "68000";
     s.container = "cartridge (.j64, .jag, .rom) or COFF executable (.cof, .abs)";

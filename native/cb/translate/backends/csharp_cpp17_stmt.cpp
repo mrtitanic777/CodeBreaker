@@ -176,6 +176,11 @@ void Writer::stmt(Node* s) {
         } else if constexpr (std::is_same_v<K, ir::Return>) {
             if (k.expr == nullptr) line("return;");
             else line("return " + bare(conv(k.expr, returns_.empty() ? TypeP{} : returns_.back())) + ";");
+        } else if constexpr (std::is_same_v<K, ir::YieldReturn>) {
+            if (yields_.empty()) decline("yield", "a `yield return` outside an iterator method");
+            line("cs_y.yield_return(" + bare(conv(k.expr, yields_.back())) + ");");
+        } else if constexpr (std::is_same_v<K, ir::YieldBreak>) {
+            line("return;");
         } else if constexpr (std::is_same_v<K, ir::Yield>) {
             line("return " + bare(conv(k.expr, returns_.empty() ? TypeP{} : returns_.back())) + ";");
         } else if constexpr (std::is_same_v<K, ir::Throw>) {

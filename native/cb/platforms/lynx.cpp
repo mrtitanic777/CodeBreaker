@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform lynx() {
     MachineSpec s;
-    s.id = Id::Lynx;
+    s.name = "lynx";
     s.title = "Atari Lynx";
     s.family = "6502";
     s.container = "Lynx cartridge (.lnx) or BS93 object (.o)";

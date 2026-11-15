@@ -8,6 +8,7 @@
 
 #include "cb/build/asm_text.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/core/parallel.hpp"
 #include "cb/core/text.hpp"
 #include "cb/decompile/a64.hpp"
 
@@ -199,10 +200,31 @@ Image build(std::string_view source, const std::filesystem::path& include_dir) {
             throw AsmError(l.number, l.text, e.what());
         }
     }
-    // pass 2: the bytes
+    // pass 2: the bytes. An instruction is four bytes and its place is known from the lines before it, so the instructions are assembled side by side:
+    // a serial walk finds each line's address (and writes the directives, which are few and cheap), the instructions are assembled in parallel, and the
+    // bytes are put in place in line order, where the first fault in line order is the one reported, as when the lines were done one at a time.
+    struct Placed {
+        const Line* line;
+        std::uint64_t pc;
+        Bytes bytes;
+        std::exception_ptr error;   // the fault of assembling this instruction
+    };
+    const auto as_asm_error = [](const std::exception_ptr& error, const Line& l) {
+        try {
+            std::rethrow_exception(error);
+        } catch (const AsmError&) {
+            throw;
+        } catch (const Error& e) {
+            throw AsmError(l.number, l.text, e.what());
+        }
+    };
     Image image;
     bool started = false;
     pc = 0;
+    std::vector<Placed> placed;
+    std::vector<std::size_t> instructions;   // the entries of `placed` still to assemble
+    std::exception_ptr walk_error;           // the fault that ended the walk, and its line
+    const Line* walk_line = nullptr;
     for (const Line& l : lines) {
         try {
             if (l.keyword.empty() || l.keyword == ".equ" || l.keyword == ".set") continue;
@@ -220,18 +242,39 @@ Image build(std::string_view source, const std::filesystem::path& include_dir) {
                 image.base = pc;
                 started = true;
             }
-            const Bytes b = l.instruction ? da::assemble(l.keyword + " " + l.operand, pc, labels, false) : directive_bytes(l, pc, labels, false, include_dir);
-            const std::size_t at = static_cast<std::size_t>(pc - image.base);
-            if (at + b.size() > (std::size_t{1} << 28)) throw AsmError(l.number, l.text, "past the end of the image (256 MB)");
-            if (image.data.size() < at + b.size()) image.data.resize(at + b.size(), 0);
-            std::copy(b.begin(), b.end(), image.data.begin() + static_cast<std::ptrdiff_t>(at));
-            pc += b.size();
-        } catch (const AsmError&) {
-            throw;
-        } catch (const Error& e) {
-            throw AsmError(l.number, l.text, e.what());
+            if (l.instruction) {
+                instructions.push_back(placed.size());
+                placed.push_back({&l, pc, {}, nullptr});
+                pc += 4;
+            } else {
+                Bytes b = directive_bytes(l, pc, labels, false, include_dir);
+                const std::size_t size = b.size();
+                placed.push_back({&l, pc, std::move(b), nullptr});
+                pc += size;
+            }
+        } catch (...) {
+            walk_error = std::current_exception();
+            walk_line = &l;
+            break;
         }
     }
+    parallel::parallel_for(instructions.size(), [&](std::size_t item) {
+        Placed& p = placed[instructions[item]];
+        try {
+            p.bytes = da::assemble(p.line->keyword + " " + p.line->operand, p.pc, labels, false);
+        } catch (...) {
+            p.error = std::current_exception();
+        }
+    });
+    for (Placed& p : placed) {
+        if (p.error) as_asm_error(p.error, *p.line);
+        const Line& l = *p.line;
+        const std::size_t at = static_cast<std::size_t>(p.pc - image.base);
+        if (at + p.bytes.size() > (std::size_t{1} << 28)) throw AsmError(l.number, l.text, "past the end of the image (256 MB)");
+        if (image.data.size() < at + p.bytes.size()) image.data.resize(at + p.bytes.size(), 0);
+        std::copy(p.bytes.begin(), p.bytes.end(), image.data.begin() + static_cast<std::ptrdiff_t>(at));
+    }
+    if (walk_error) as_asm_error(walk_error, *walk_line);
     return image;
 }
 

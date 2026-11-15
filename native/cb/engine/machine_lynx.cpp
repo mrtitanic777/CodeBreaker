@@ -1,6 +1,7 @@
 #include "cb/engine/machine_lynx.hpp"
 
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -9,7 +10,9 @@
 #include "cb/core/fs.hpp"
 #include "cb/emulate/lynx.hpp"
 #include "cb/emulate/m6502.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/platforms/lynx.hpp"
 #include "cb/formats/lynx.hpp"
 #include "cb/source/lynx_writer.hpp"
 
@@ -123,15 +126,12 @@ vl::ImageLaneSpec lynx_lane_spec() {
 }
 
 void register_lynx_lane() {
-    if (machine_lanes().find("lynx")) return;
-    MachineLane lane;
-    lane.name = "lynx";
-    lane.probe = [](const stdfs::path& p) { return formats::lynx::probe(p); };
-    lane.make_spec = lynx_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "lynx",
+        .platform = platforms::lynx,
+        .probe = [](const stdfs::path& p) { return formats::lynx::probe(p); },
+        .make_spec = lynx_lane_spec,
+    });
 }
 
 }  // namespace cb::engine

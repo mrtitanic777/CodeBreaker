@@ -297,14 +297,17 @@ Eval& Eval::run() {
     }
     for (const pyast::AnyNode& an : pyast::walk(pyast::AnyNode(static_cast<const syntax::Stmt*>(node)))) {
         const syntax::Expr* e = an.expr();
-        if (e != nullptr && (e->kind == syntax::ExprKind::Yield || e->kind == syntax::ExprKind::YieldFrom)) {
-            issue(e, IssueClass::Dynamic, "generator");
+        if (e != nullptr && e->kind == syntax::ExprKind::YieldFrom) {
+            issue(e, IssueClass::Dynamic, "yield from");
             break;
         }
+        if (e != nullptr && e->kind == syntax::ExprKind::Yield) is_generator = true;
     }
     const Flow out = block(node->body, state);
     if (out && returns_value) ret = p.join(ret, P::none());
     if (!returns_value) ret = P::none();
+    // a generator function's result is the sequence of what it yields (its `return` value, which StopIteration carries, is not read)
+    if (is_generator) ret = P::iter_of(yielded.kind == Kind::Bottom ? P::none() : yielded);
     if (ret.kind == Kind::Int && !ret.fits_i64()) ret = fit(node, ret, "return value");
     if (live()) {
         const Type old_type = get_or(p.returns, f.qname, P::bottom());

@@ -106,11 +106,11 @@ namespace gpu
         HostShader Build(const Shader& shader, const TranslationOptions& options);
 
         // Compiled shaders by (hash, options). An entry exists from the first request on; `ready` once built.
-        // CB_ASYNC_SHADERS=1: shaders compile on worker threads and a draw whose shader is not ready is skipped: FXC
-        // takes up to seconds for a large translated shader, and a first-seen shader stalled the command processor
-        //. Off by default: a skipped draw left the boot animation's
-        // first swoosh frames as horizontal stripes for a frame or two. The
-        // disk caches (shaders, pipelines) keep the stalls to a first run.
+        // Shaders compile on worker threads and a draw whose shader is not ready is skipped (CB_ASYNC_SHADERS=0: the
+        // command processor compiles at once, as the pixel-exact tests want). A large translated shader takes 0.1-1.5 s
+        // to compile and a new scene brings 50-60 of them, so compiling on the command processor's thread froze the
+        // picture for tens of seconds in a cold cache. The disk caches (shaders, pipelines, manifest) make a second run
+        // start with everything compiled, so a skipped draw is a first-run event only.
         struct Entry
         {
             std::atomic<bool> ready = false;
@@ -128,7 +128,7 @@ namespace gpu
         {
             static const bool on = [] {
                 const char* v = std::getenv("CB_ASYNC_SHADERS");
-                return v && std::string(v) == "1";
+                return !(v && std::string(v) == "0");
             }();
             return on;
         }

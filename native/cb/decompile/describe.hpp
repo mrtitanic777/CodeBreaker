@@ -112,8 +112,8 @@ class NoKnowledge : public Knowledge {};
 // The switches of the 16-bit describer (each was an environment variable; `from_environment` reads them).
 struct Policy {
     bool caller_args = true;       // a call's arguments from the cleanup after it (CB_CALLER_ARGS=0 turns off)
-    bool dx_unspecified = false;      // a callee whose callers read DX is four bytes when some way sets DX, the others unspecified (CB_DX_UNSPECIFIED=1; under test)
-    bool dx_shared_bodies = false;   // DxReturns follows jumps into other functions' code and calls that never write DX (CB_DX_SHARED=1; under test)
+    bool dx_unspecified = false;      // a callee whose callers read DX is four bytes when some way sets DX, the others unspecified (CB_DX_UNSPECIFIED=0 turns it off)
+    bool dx_shared_bodies = false;   // DxReturns follows jumps into other functions' code and calls that never write DX (CB_DX_SHARED=0 turns it off)
     bool caller_results = false;   // a callee's four-byte result from its callers' reads of DX (CB_CALLER_RESULTS=1)
     bool fastcall = true;          // _fastcall functions (CB_FASTCALL=0 turns off)
     bool inline_helpers = true;    // helpers that change their caller's registers become part of it (CB_INLINE_HELPERS=0)

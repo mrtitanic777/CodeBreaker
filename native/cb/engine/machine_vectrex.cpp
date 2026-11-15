@@ -3,13 +3,38 @@
 
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/m6809.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/vectrex.hpp"
 #include "cb/formats/vectrex.hpp"
 #include "cb/source/vectrex_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_vectrex(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".vec", ".bin", ".gam"}) && starts_with(head, 0, "g GCE")) {   // a Vectrex cartridge: the header the BIOS reads starts `g GCE`
+        try {
+            const formats::vectrex::Rom rom = formats::vectrex::parse(file);
+            return one("Vectrex cartridge", std::format("\"{}\", {} bytes, program at ${:04X}{}", rom.copyright, size, rom.entry, rom.title.empty() ? std::string() : ", \"" + rom.title.front().text + "\""), "vectrex", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -113,15 +138,13 @@ vl::ImageLaneSpec vectrex_lane_spec() {
 }
 
 void register_vectrex_lane() {
-    if (machine_lanes().find("vectrex")) return;
-    MachineLane lane;
-    lane.name = "vectrex";
-    lane.probe = [](const stdfs::path& p) { return formats::vectrex::probe(p); };
-    lane.make_spec = vectrex_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "vectrex",
+        .platform = platforms::vectrex,
+        .probe = [](const stdfs::path& p) { return formats::vectrex::probe(p); },
+        .make_spec = vectrex_lane_spec,
+        .detectors = {{.priority = 290, .detect = formats::detect::info_vectrex}},
+    });
 }
 
 }  // namespace cb::engine

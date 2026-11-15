@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform chf() {
     MachineSpec s;
-    s.id = Id::Chf;
+    s.name = "chf";
     s.title = "Fairchild Channel F";
     s.family = "F8";
     s.container = "cartridge (.chf, or .bin starting $55 $2B; at $0800)";

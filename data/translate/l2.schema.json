@@ -4535,6 +4535,7 @@
       "AddressOf",
       "Assert",
       "Assign",
+      "Await",
       "Binary",
       "Block",
       "Break",
@@ -4594,7 +4595,9 @@
       "Unit",
       "Unsupported",
       "While",
-      "Yield"
+      "Yield",
+      "YieldBreak",
+      "YieldReturn"
      ]
     }
    },
@@ -5354,8 +5357,163 @@
      "then": {
       "$ref": "#/$defs/Yield"
      }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "YieldReturn"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/YieldReturn"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "YieldBreak"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/YieldBreak"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Await"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Await"
+     }
     }
    ]
+  },
+  "YieldReturn": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "YieldReturn"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "YieldBreak": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "YieldBreak"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Await": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Await"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
   }
  }
 }

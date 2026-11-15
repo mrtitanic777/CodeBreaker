@@ -2,6 +2,7 @@
 #include "cb/engine/machine_gekko.hpp"
 
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -9,10 +10,38 @@
 #include "cb/core/error.hpp"
 #include "cb/decompile/ppc.hpp"
 #include "cb/emulate/powerpc.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/gamecube.hpp"
+#include "cb/platforms/wii.hpp"
+#include "cb/platforms/wiiu.hpp"
 #include "cb/formats/gekko_map.hpp"
 #include "cb/formats/ppc_program.hpp"
 #include "cb/source/gekko_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_gamecube(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    // a GameCube, Wii or Wii U program: a DOL (a header that reads as one), or a PowerPC ELF (devkitPPC's output, a Wii U RPX or RPL)
+    if (ppc_elf::is_ppc_elf(head) || name_ends_with(name, {".dol"})) {
+        if (const std::optional<ppc_program::Program> program = ppc_program::parse(file)) {
+            return one(std::format("Nintendo {} {}", ppc_program::console_text(program->console), ppc_program::kind_text(program->kind)),
+                       std::format("{} ({}), entry 0x{:08X}, {} bytes, {} loaded sections{}", ppc_program::cpu_text(program->console), "PowerPC 750 family", program->entry, size,
+                                   program->segments.size(), program->elf && program->elf->inflated_sections != 0 ? std::format(" ({} compressed)", program->elf->inflated_sections) : std::string()),
+                       std::string(ppc_program::lane_name(program->console)), "reach");
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -157,18 +186,26 @@ vl::ImageLaneSpec gekko_lane_spec(std::string_view console_name) {
 }
 
 void register_gekko_lanes() {
-    for (const char* name : {"gamecube", "wii", "wiiu"}) {
-        if (machine_lanes().find(name)) continue;
-        MachineLane lane;
-        lane.name = name;
-        const pp::Console console = d::console_of(name);
-        lane.probe = [console](const stdfs::path& p) { return pp::probe(p, console); };
-        lane.make_spec = [name = std::string(name)] { return gekko_lane_spec(name); };
-        try {
-            machine_lanes().add(std::move(lane));
-        } catch (const UsageError&) {   // (another thread added it first)
-        }
-    }
+    register_lane({
+        .name = "gamecube",
+        .platform = platforms::gamecube,
+        .probe = [](const stdfs::path& p) { return pp::probe(p, pp::Console::GameCube); },
+        .make_spec = [] { return gekko_lane_spec("gamecube"); },
+        .detectors = {{.priority = 410, .detect = formats::detect::info_gamecube}},
+        .program_extensions = {".dol", ".rpx", ".rpl"},
+    });
+    register_lane({
+        .name = "wii",
+        .platform = platforms::wii,
+        .probe = [](const stdfs::path& p) { return pp::probe(p, pp::Console::Wii); },
+        .make_spec = [] { return gekko_lane_spec("wii"); },
+    });
+    register_lane({
+        .name = "wiiu",
+        .platform = platforms::wiiu,
+        .probe = [](const stdfs::path& p) { return pp::probe(p, pp::Console::WiiU); },
+        .make_spec = [] { return gekko_lane_spec("wiiu"); },
+    });
 }
 
 }  // namespace cb::engine

@@ -11,7 +11,7 @@ Platform genesis() {
     registers.push_back("SR");
 
     MachineSpec s;
-    s.id = Id::Genesis;
+    s.name = "genesis";
     s.title = "Genesis / Mega Drive";
     s.family = "68000";
     s.container = "cartridge image (.md, .bin, .gen, .smd)";

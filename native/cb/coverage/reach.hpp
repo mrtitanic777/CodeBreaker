@@ -71,6 +71,9 @@ struct Services {
     std::function<void(std::string_view)> log;         // a line of progress (default: standard output)
     std::filesystem::path state_dir;                   // results and unpacked programs go under <state_dir>/reach
     std::filesystem::path checkout_root;               // where git is asked the revision
+    // The file extensions of the platform lanes' programs (".gba": lower case with the dot), which reach takes for programs when it looks
+    // inside a container, beside the executable ones it knows itself. The platform registry's lanes give them (engine/lane_registry.hpp).
+    std::vector<std::string> program_extensions;
 };
 
 // The platform of a program from a registry: the Services::identify_platform for it. The registry must outlive it.

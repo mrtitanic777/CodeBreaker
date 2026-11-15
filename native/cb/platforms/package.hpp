@@ -12,7 +12,8 @@
 // -- and a new platform adds a descriptor, not branches in every stage (docs/PLATFORM_DESCRIPTOR.md). `name` is what
 // results are filed under in the function store, so it keeps the name each lane has always had ("pe" is 32-bit
 // Windows); `id` says which descriptor it is (win16, win32, vxd ...), which the engine's steps are filed under.
-// Platforms are tried in kOrder: the first that recognises a file is its platform.
+// Platforms are tried in kOrder: the first that recognises a file is its platform. A console or home computer is not in the enum: its lane registers
+// its descriptor and its probe (engine/lane_registry.hpp, `Id::Machine`), and it is told apart by name.
 //
 // A descriptor is DATA. The functions that do a platform's work -- open its container, run its code, compile and link
 // it, write its source -- belong to the layers that own them (the formats, the emulators, the build and verify lanes),
@@ -38,11 +39,11 @@
 namespace cb::platforms {
 
 // ---- the descriptors' vocabulary --------------------------------------------------------------------------------
-enum class Id { Java, Xbox360, Xbox, Nes, Sms, Gb, Genesis, Ps1, Gba, Nds, N64, Zx, Msx, Coleco, Cpc, Atari5200, Atari2600, Atari7800, Lynx, Pce, Snes, NeoGeo, SegaCd, Sega32x, Saturn, Dreamcast, ThreeDo, Jaguar, WonderSwan, CdI, Vectrex, GameCube, Wii, WiiU, Ps2, Psp, N3ds, Vita, Ps3, Switch, Vb, Intv, O2, Chf, Ngp, Ps4, Ps5, XboxOne, Win32, Win16, Vxd, Dos };
+enum class Id { Java, Xbox360, Xbox, Machine, Win32, Win16, Vxd, Dos };
 
-// The order platforms are tried in.
-inline constexpr std::array<Id, 52> kOrder = {Id::Java, Id::Xbox360, Id::Xbox, Id::Nes,   Id::Sms,   Id::Gb, Id::Genesis, Id::Ps1, Id::Gba, Id::Nds, Id::N64,
-                                              Id::Zx,   Id::Msx,   Id::Coleco, Id::Cpc, Id::Atari5200, Id::Atari2600, Id::Atari7800, Id::Lynx, Id::Pce, Id::Snes, Id::NeoGeo, Id::SegaCd, Id::Sega32x, Id::Saturn, Id::Dreamcast, Id::ThreeDo, Id::Jaguar, Id::WonderSwan, Id::CdI, Id::Vectrex, Id::GameCube, Id::Wii, Id::WiiU, Id::Ps2, Id::Psp, Id::N3ds, Id::Vita, Id::Ps3, Id::Switch, Id::Vb, Id::Intv, Id::O2, Id::Chf, Id::Ngp, Id::Ps4, Id::Ps5, Id::XboxOne, Id::Win32, Id::Win16, Id::Vxd, Id::Dos};
+// The order platforms are tried in. `Machine` is the place of every platform a lane registered (engine/lane_registry.hpp: a console or home computer
+// that gives its descriptor and its probe as data instead of an Id): they are tried in the order they were added, all of them here, after the Xbox.
+inline constexpr std::array<Id, 8> kOrder = {Id::Java, Id::Xbox360, Id::Xbox, Id::Machine, Id::Win32, Id::Win16, Id::Vxd, Id::Dos};
 
 // The descriptor's name ("win32", "xbox360", ...), and back.
 std::string_view id_text(Id id);
@@ -130,12 +131,15 @@ struct Platform {
     Convention convention;
     Emulator emulator;
     Compiler compiler;
+    // Is this file one of the platform's? Set for the platforms a lane registered (`Id::Machine`); the others are recognised by the registry's
+    // probes. Answers false for a file that is not, unreadable or damaged.
+    std::function<bool(const std::filesystem::path&)> recognise;
 };
 
 // A machine whose programs were written in assembly and come back as assembly (the console and home-computer lanes):
 // its processor, its registers in and out, CodeBreaker's own interpreter, the assembler that rebuilds it.
 struct MachineSpec {
-    Id id = Id::Nes;                       // the lane, the name and the id are all this machine's
+    std::string name;                      // the machine's name, which is its lane's and what results are filed under (lower case: "vb"); no Id: see Id::Machine
     std::string title;
     std::string family;
     std::string container;
@@ -164,7 +168,7 @@ struct Probes {
     std::function<std::optional<ExeKind>(const Path&)> kind;                // that, and DOS for a headerless .COM or driver
     std::function<std::optional<std::uint16_t>(const Path&)> pe_machine;    // a PE image's machine type
     std::function<bool(const Path&)> holds_drivers;                         // an LE/LX image, or a W3 bundle (vmm32.vxd)
-    std::function<bool(const Path&)> is_xex, is_nes, is_sms, is_gb, is_genesis, is_ps1, is_gba, is_nds, is_n64, is_msx, is_zx, is_coleco, is_cpc, is_atari5200, is_atari2600, is_atari7800, is_lynx, is_threedo, is_jaguar, is_wonderswan, is_cdi, is_vectrex, is_chf, is_o2, is_intv, is_vb, is_ngp, is_pce, is_snes, is_neogeo, is_segacd, is_sega32x, is_saturn, is_dreamcast, is_gamecube, is_wii, is_wiiu, is_ps2, is_psp, is_n3ds, is_vita, is_ps3, is_switch, is_ps4, is_ps5, is_xboxone;
+    std::function<bool(const Path&)> is_xex;
     std::function<bool(const Path&)> is_java_module;                        // a folder or .java file the Java lane takes
     std::function<Path(const Path&)> xex_basefile;                          // the image a XEX2 container holds
     std::function<Path(const Path&)> xbe_to_pe;                            // the PE image an XBE becomes
@@ -177,7 +181,8 @@ public:
 
     // Add a descriptor. Throws UsageError for an id added twice.
     void add(Platform platform);
-    bool complete() const { return platforms_.size() == kOrder.size(); }
+    // Whether every descriptor of the enum has been added (`Machine` is no descriptor: the lanes that registered, however many, stand in its place).
+    bool complete() const;
 
     // Every platform added, in kOrder.
     std::span<const Platform> all() const { return platforms_; }

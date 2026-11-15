@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.cdi.descriptor", [] {
     const Platform p = cdi();
-    CB_CHECK(p.id == Id::CdI);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "cdi");
     CB_CHECK_EQ(p.title, "Philips CD-i");
     CB_CHECK_EQ(p.family, "68000");

@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.vb.descriptor", [] {
     const Platform p = vb();
-    CB_CHECK(p.id == Id::Vb);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "vb");
     CB_CHECK_EQ(p.title, "Nintendo Virtual Boy");
     CB_CHECK_EQ(p.family, "V810");

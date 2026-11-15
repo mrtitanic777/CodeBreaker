@@ -2,13 +2,38 @@
 #include "cb/engine/machine_vb.hpp"
 
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/v810.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/vb.hpp"
 #include "cb/formats/vb.hpp"
 #include "cb/source/vb_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_vb(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".vb", ".vboy"}) && size >= 0x4000 && (size & (size - 1)) == 0) {   // a Virtual Boy cartridge: a power-of-two ROM whose reset slot (the last 16 bytes) holds code
+        try {
+            const formats::vb::Rom rom = formats::vb::parse(file);
+            return one("Virtual Boy cartridge", std::format("V810, \"{}\", {} bytes, reset at 0x{:08X}", rom.header.title, size, rom.reset_address()), "vb", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -121,15 +146,13 @@ vl::ImageLaneSpec vb_lane_spec() {
 }
 
 void register_vb_lane() {
-    if (machine_lanes().find("vb")) return;
-    MachineLane lane;
-    lane.name = "vb";
-    lane.probe = [](const stdfs::path& p) { return formats::vb::probe(p); };
-    lane.make_spec = vb_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "vb",
+        .platform = platforms::vb,
+        .probe = [](const stdfs::path& p) { return formats::vb::probe(p); },
+        .make_spec = vb_lane_spec,
+        .detectors = {{.priority = 340, .detect = formats::detect::info_vb}},
+    });
 }
 
 }  // namespace cb::engine

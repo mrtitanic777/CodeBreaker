@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform gb() {
     MachineSpec s;
-    s.id = Id::Gb;
+    s.name = "gb";
     s.title = "Game Boy / Game Boy Color";
     s.family = "sm83";
     s.container = "cartridge image (.gb, .gbc)";

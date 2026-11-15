@@ -13,6 +13,7 @@
 // Only what the translated programs use is here; a library member missing is a compile error, which the judge reports.
 #ifndef CSRT_HPP
 #define CSRT_HPP
+#include "coro.hpp"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -20,14 +21,17 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <condition_variable>
 #include <deque>
 #include <exception>
 #include <functional>
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -319,6 +323,11 @@ template <class E, class... A> [[noreturn]] void raise(A&&... a) { throw Thrown{
 [[noreturn]] inline void throw_new_argument_out_of_range(const char* what) { raise<ArgumentOutOfRangeException>(String(what)); }
 [[noreturn]] inline void throw_new_null_reference() { raise<NullReferenceException>(); }
 [[noreturn]] inline void throw_new_invalid_cast() { raise<InvalidCastException>(); }
+// `n.Value` (and a cast from `T?` to T): the value, or InvalidOperationException when there is none.
+template <class T> const T& value_of(const std::optional<T>& n) {
+    if (!n.has_value()) raise<InvalidOperationException>(String(u"Nullable object must have a value."));
+    return *n;
+}
 
 // `catch (T e)`: the exception as a T, or null.
 template <class T> Ref<T> catch_as(const Thrown& t) { return std::dynamic_pointer_cast<T>(t.ex); }
@@ -565,13 +574,127 @@ template <class T> String to_string(T v, const String& fmt) {
 
 template <class T> using Storage = std::conditional_t<std::is_same_v<T, bool>, std::deque<bool>, std::vector<T>>;
 
+using corort::Coroutine;
+using corort::CoroutineCancelled;
+
+// A sequence. Most are held whole, in `items` (an array, a list). A lazy one (the result of a generator method, a query) is not: it makes
+// `pull` functions, each one an enumeration that gives the next element when called (false at the end), so what it does happens as the
+// consumer reads it, and an enumeration can be dropped part way. foreach reads either through cs::iter.
 template <class T> struct IEnumerable : virtual Object {
     using value_type = T;
     Storage<T> items;
     IEnumerable() = default;
     explicit IEnumerable(Storage<T> v) : items(std::move(v)) {}
     int Count() const { return static_cast<int>(items.size()); }
+    virtual bool is_lazy() const { return false; }
+    virtual std::function<bool(T&)> pull() const {
+        auto self = std::dynamic_pointer_cast<const IEnumerable<T>>(shared_from_this());
+        auto at = std::make_shared<std::size_t>(0);
+        return [self, at](T& out) {
+            if (*at >= self->items.size()) return false;
+            out = self->items[(*at)++];
+            return true;
+        };
+    }
 };
+
+// The elements of a sequence as a range, for `for (auto x : view)`: read in place for a held sequence, pulled one at a time for a lazy one.
+template <class T> class SeqView {
+public:
+    explicit SeqView(Ref<IEnumerable<T>> s) : src_(std::move(s)) {}
+    class iterator {
+    public:
+        using iterator_category = std::input_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const T*;
+        using reference = const T&;
+        iterator() = default;
+        explicit iterator(const IEnumerable<T>& s) {
+            if (!s.is_lazy()) {
+                eager_ = &s;
+                end_ = s.items.empty();
+                return;
+            }
+            pull_ = std::make_shared<std::function<bool(T&)>>(s.pull());
+            cur_ = std::make_shared<T>();
+            step();
+        }
+        const T& operator*() const { return eager_ != nullptr ? eager_->items[i_] : *cur_; }
+        iterator& operator++() {
+            if (eager_ != nullptr) end_ = ++i_ >= eager_->items.size();
+            else step();
+            return *this;
+        }
+        bool operator!=(const iterator& o) const { return end_ != o.end_; }
+        bool operator==(const iterator& o) const { return end_ == o.end_; }
+
+    private:
+        void step() { end_ = !(*pull_)(*cur_); }
+        const IEnumerable<T>* eager_ = nullptr;
+        std::size_t i_ = 0;
+        std::shared_ptr<std::function<bool(T&)>> pull_;
+        std::shared_ptr<T> cur_;
+        bool end_ = true;
+    };
+    iterator begin() const { return iterator(*src_); }
+    iterator end() const { return iterator(); }
+
+private:
+    Ref<IEnumerable<T>> src_;
+};
+
+// A lazy sequence made from a function that makes `pull` functions.
+template <class T> struct LazySeq : IEnumerable<T> {
+    std::function<std::function<bool(T&)>()> make;
+    explicit LazySeq(std::function<std::function<bool(T&)>()> m) : make(std::move(m)) {}
+    bool is_lazy() const override { return true; }
+    std::function<bool(T&)> pull() const override { return make(); }
+};
+template <class T, class F> Ref<IEnumerable<T>> lazy_seq(F make) { return std::make_shared<LazySeq<T>>(std::function<std::function<bool(T&)>()>(std::move(make))); }
+
+// What the body of an iterator method (one with `yield return`) is given: it hands out each element where the C# yielded it.
+template <class T> struct Yielder {
+    Coroutine& co;
+    T* slot;
+    void yield_return(const T& v) {
+        *slot = v;
+        co.suspend();
+    }
+};
+
+// The sequence an iterator method returns: its body runs, on a coroutine of its own, as far as each element the consumer asks for; each
+// enumeration runs the body again from the start, with the arguments the call gave.
+template <class T> struct Generator : IEnumerable<T> {
+    std::function<void(Yielder<T>&)> body;
+    explicit Generator(std::function<void(Yielder<T>&)> b) : body(std::move(b)) {}
+    bool is_lazy() const override { return true; }
+    std::function<bool(T&)> pull() const override {
+        struct State {
+            T current{};
+            bool finished = false;
+            std::unique_ptr<Coroutine> co;
+        };
+        auto st = std::make_shared<State>();
+        State* raw = st.get();   // (the coroutine's body must not own the state that owns the coroutine)
+        std::function<void(Yielder<T>&)> b = body;
+        st->co = std::make_unique<Coroutine>([raw, b](Coroutine& co) mutable {
+            Yielder<T> y{co, &raw->current};
+            b(y);
+        });
+        return [st](T& out) {
+            if (st->finished) return false;
+            if (!st->co->resume()) {
+                st->finished = true;
+                return false;
+            }
+            out = st->current;
+            return true;
+        };
+    }
+};
+template <class T> SeqView<T> iter(const Ref<IEnumerable<T>>& c);
+template <class T, class F> Ref<IEnumerable<T>> generate(F body) { return std::make_shared<Generator<T>>(std::function<void(Yielder<T>&)>(std::move(body))); }
 
 template <class T> struct Array : IEnumerable<T> {
     Array() = default;
@@ -616,9 +739,13 @@ template <class T> Ref<Array2<T>> make_array2(int r, int c) { return std::make_s
 template <class T> struct List : IEnumerable<T> {
     List() = default;
     explicit List(int capacity) { (void)capacity; }
-    explicit List(const Ref<IEnumerable<T>>& src) { this->items.assign(src->items.begin(), src->items.end()); }
+    explicit List(const Ref<IEnumerable<T>>& src) {
+        for (const auto& x : iter(src)) this->items.push_back(x);
+    }
     void Add(const T& x) { this->items.push_back(x); }
-    void AddRange(const Ref<IEnumerable<T>>& src) { this->items.insert(this->items.end(), src->items.begin(), src->items.end()); }
+    void AddRange(const Ref<IEnumerable<T>>& src) {
+        for (const auto& x : iter(src)) this->items.push_back(x);
+    }
     T& operator[](int i) {
         if (i < 0 || static_cast<std::size_t>(i) >= this->items.size()) throw_new_argument_out_of_range("index");
         return this->items[static_cast<std::size_t>(i)];
@@ -763,6 +890,10 @@ template <class C> const auto& iter(const Ref<C>& c) {
     return c->items;
 }
 inline std::u16string iter(const String& s) { return s.chars(); }
+template <class T> SeqView<T> iter(const Ref<IEnumerable<T>>& c) {
+    if (!c) throw_new_null_reference();
+    return SeqView<T>(c);
+}
 
 // ---------------------------------------------------------------------------------------------------------- conversions and tests
 
@@ -798,6 +929,22 @@ template <class S, class V> bool is_as(const Ref<S>& o, V& v) {
         return true;
     }
 }
+// `s is string t` on a string (null matches nothing), and `n is int v` on an int (a pattern whose type is the value's own).
+inline bool is_as(const String& x, String& v) {
+    if (x.is_null()) return false;
+    v = x;
+    return true;
+}
+template <class T, std::enable_if_t<std::is_arithmetic_v<T>, int> = 0> bool is_as(const T& x, T& v) {
+    v = x;
+    return true;
+}
+// `n is int v` on a `T?`: it holds a value, which v takes.
+template <class T> bool is_as(const std::optional<T>& n, T& v) {
+    if (!n.has_value()) return false;
+    v = *n;
+    return true;
+}
 // `x as T`
 template <class T, class S> Ref<T> as(const Ref<S>& o) { return std::dynamic_pointer_cast<T>(o); }
 template <class T> T as_value(const Ref<Object>& o) {   // `o as string`: null when it is no string
@@ -807,7 +954,11 @@ template <class T> T as_value(const Ref<Object>& o) {   // `o as string`: null w
 
 // `a ?? b`
 template <class T, class F> Ref<T> coalesce(const Ref<T>& a, F b) { return a ? a : Ref<T>(b()); }
-template <class T, class F> auto coalesce(const std::optional<T>& a, F b) { return a ? *a : static_cast<T>(b()); }
+template <class T, class F> auto coalesce(const std::optional<T>& a, F b) {
+    // `a ?? b` is a T when b is, and a `T?` when b is (the chain `x ?? y ?? z` of nullables)
+    if constexpr (std::is_same_v<std::decay_t<decltype(b())>, std::optional<T>>) return a ? a : b();
+    else return a ? *a : static_cast<T>(b());
+}
 template <class F> String coalesce(const String& a, F b) { return a.is_null() ? String(b()) : a; }
 
 template <class T, class U> int compare_to(const T& a, const U& b) {
@@ -933,33 +1084,327 @@ struct StringStatics {
     }
 };
 
-// LINQ over eager sequences.
+// LINQ. The operators are lazy as .NET's are: each makes a sequence that does its work as the consumer reads it (so a sequence that is
+// never finished, a generator that logs, a Take over an endless source all behave as they do in C#); the ones that give a value or a
+// collection (Sum, Count, ToList ...) read the sequence through to the end when they are called.
 template <class S> using Elem = typename S::element_type::value_type;
 template <class T> Ref<IEnumerable<T>> seq(Storage<T> v) { return std::make_shared<IEnumerable<T>>(std::move(v)); }
+// The function that pulls the elements of any sequence reference, one enumeration of it.
+template <class S> auto pull_of(const S& s) {
+    if (!s) throw_new_null_reference();
+    return s->pull();
+}
+
+// The sorted form of a sequence: it keeps the comparisons so ThenBy can add one; it sorts (stably) when first read.
+template <class T> struct Ordered : IEnumerable<T> {
+    std::function<std::function<bool(T&)>()> source;
+    std::vector<std::function<int(const T&, const T&)>> keys;
+    bool is_lazy() const override { return true; }
+    std::function<bool(T&)> pull() const override {
+        auto items = std::make_shared<std::vector<T>>();
+        auto at = std::make_shared<std::size_t>(0);
+        auto started = std::make_shared<bool>(false);
+        auto src = source;
+        auto compare = keys;
+        return [=](T& out) {
+            if (!*started) {
+                *started = true;
+                auto next = src();
+                T x{};
+                while (next(x)) items->push_back(x);
+                std::stable_sort(items->begin(), items->end(), [&](const T& a, const T& b) {
+                    for (const auto& k : compare) {
+                        const int c = k(a, b);
+                        if (c != 0) return c < 0;
+                    }
+                    return false;
+                });
+            }
+            if (*at >= items->size()) return false;
+            out = (*items)[(*at)++];
+            return true;
+        };
+    }
+};
+
+// A group of a GroupBy: the elements that share a key.
+template <class K, class T> struct Grouping : IEnumerable<T> {
+    K key{};
+    K Key() const { return key; }
+};
 
 struct Enumerable {
     template <class S, class F> static auto Select(const S& s, F f) {
-        using R = std::decay_t<decltype(f(std::declval<Elem<S>>()))>;
-        Storage<R> out;
-        for (const auto& x : iter(s)) out.push_back(f(x));
-        return seq<R>(std::move(out));
+        using T = Elem<S>;
+        using R = std::decay_t<decltype(f(std::declval<T>()))>;
+        (void)pull_of(s);   // (a null source throws at the call, as in C#)
+        return lazy_seq<R>([s, f] {
+            auto next = pull_of(s);
+            return std::function<bool(R&)>([next, f](R& out) {
+                T x{};
+                if (!next(x)) return false;
+                out = f(x);
+                return true;
+            });
+        });
     }
     template <class S, class F> static auto Where(const S& s, F f) {
-        Storage<Elem<S>> out;
-        for (const auto& x : iter(s)) {
-            if (f(x)) out.push_back(x);
-        }
-        return seq<Elem<S>>(std::move(out));
+        using T = Elem<S>;
+        (void)pull_of(s);
+        return lazy_seq<T>([s, f] {
+            auto next = pull_of(s);
+            return std::function<bool(T&)>([next, f](T& out) {
+                while (next(out)) {
+                    if (f(out)) return true;
+                }
+                return false;
+            });
+        });
+    }
+    template <class S> static auto Take(const S& s, int n) {
+        using T = Elem<S>;
+        (void)pull_of(s);
+        return lazy_seq<T>([s, n] {
+            auto next = pull_of(s);
+            auto taken = std::make_shared<int>(0);
+            return std::function<bool(T&)>([next, n, taken](T& out) {
+                if (*taken >= n) return false;
+                ++*taken;
+                return next(out);
+            });
+        });
+    }
+    template <class S> static auto Skip(const S& s, int n) {
+        using T = Elem<S>;
+        (void)pull_of(s);
+        return lazy_seq<T>([s, n] {
+            auto next = pull_of(s);
+            auto skipped = std::make_shared<bool>(false);
+            return std::function<bool(T&)>([next, n, skipped](T& out) {
+                if (!*skipped) {
+                    *skipped = true;
+                    for (int i = 0; i < n; ++i) {
+                        if (!next(out)) return false;
+                    }
+                }
+                return next(out);
+            });
+        });
+    }
+    template <class S, class F> static auto TakeWhile(const S& s, F f) {
+        using T = Elem<S>;
+        (void)pull_of(s);
+        return lazy_seq<T>([s, f] {
+            auto next = pull_of(s);
+            auto over = std::make_shared<bool>(false);
+            return std::function<bool(T&)>([next, f, over](T& out) {
+                if (*over || !next(out)) return false;
+                if (f(out)) return true;
+                *over = true;
+                return false;
+            });
+        });
+    }
+    // Each element's sequence, one after the other (`from a in x from b in y`: with a result selector over both).
+    template <class S, class F> static auto SelectMany(const S& s, F f) {
+        using T = Elem<S>;
+        using Inner = std::decay_t<decltype(f(std::declval<T>()))>;
+        using R = typename Inner::element_type::value_type;
+        (void)pull_of(s);
+        return lazy_seq<R>([s, f] {
+            auto outer = pull_of(s);
+            auto inner = std::make_shared<std::function<bool(R&)>>();
+            return std::function<bool(R&)>([outer, f, inner](R& out) {
+                for (;;) {
+                    if (*inner && (*inner)(out)) return true;
+                    T x{};
+                    if (!outer(x)) return false;
+                    *inner = pull_of(f(x));
+                }
+            });
+        });
+    }
+    template <class S, class F, class G> static auto SelectMany(const S& s, F f, G g) {
+        using T = Elem<S>;
+        using Inner = std::decay_t<decltype(f(std::declval<T>()))>;
+        using U = typename Inner::element_type::value_type;
+        using R = std::decay_t<decltype(g(std::declval<T>(), std::declval<U>()))>;
+        (void)pull_of(s);
+        return lazy_seq<R>([s, f, g] {
+            auto outer = pull_of(s);
+            auto inner = std::make_shared<std::function<bool(U&)>>();
+            auto current = std::make_shared<T>();
+            return std::function<bool(R&)>([outer, f, g, inner, current](R& out) {
+                for (;;) {
+                    U u{};
+                    if (*inner && (*inner)(u)) {
+                        out = g(*current, u);
+                        return true;
+                    }
+                    if (!outer(*current)) return false;
+                    *inner = pull_of(f(*current));
+                }
+            });
+        });
+    }
+    template <class S, class R> static auto Concat(const S& a, const R& b) {
+        using T = Elem<S>;
+        (void)pull_of(a);
+        (void)pull_of(b);
+        return lazy_seq<T>([a, b] {
+            auto first = pull_of(a);
+            auto second = pull_of(b);
+            auto on_first = std::make_shared<bool>(true);
+            return std::function<bool(T&)>([first, second, on_first](T& out) {
+                if (*on_first) {
+                    if (first(out)) return true;
+                    *on_first = false;
+                }
+                return second(out);
+            });
+        });
+    }
+    template <class S> static auto Reverse(const S& s) {
+        using T = Elem<S>;
+        (void)pull_of(s);
+        return lazy_seq<T>([s] {
+            auto all = std::make_shared<std::vector<T>>();
+            auto filled = std::make_shared<bool>(false);
+            auto at = std::make_shared<std::size_t>(0);
+            return std::function<bool(T&)>([s, all, filled, at](T& out) {
+                if (!*filled) {
+                    *filled = true;
+                    auto next = pull_of(s);
+                    T x{};
+                    while (next(x)) all->push_back(x);
+                }
+                if (*at >= all->size()) return false;
+                out = (*all)[all->size() - 1 - (*at)++];
+                return true;
+            });
+        });
+    }
+    template <class S> static auto Distinct(const S& s) {
+        using T = Elem<S>;
+        (void)pull_of(s);
+        return lazy_seq<T>([s] {
+            auto next = pull_of(s);
+            auto seen = std::make_shared<std::vector<T>>();
+            return std::function<bool(T&)>([next, seen](T& out) {
+                while (next(out)) {
+                    if (std::find(seen->begin(), seen->end(), out) == seen->end()) {
+                        seen->push_back(out);
+                        return true;
+                    }
+                }
+                return false;
+            });
+        });
     }
     template <class S, class F> static auto OrderBy(const S& s, F f) {
-        Storage<Elem<S>> out(iter(s).begin(), iter(s).end());
-        std::stable_sort(out.begin(), out.end(), [&](const auto& a, const auto& b) { return f(a) < f(b); });
-        return seq<Elem<S>>(std::move(out));
+        using T = Elem<S>;
+        (void)pull_of(s);
+        auto out = std::make_shared<Ordered<T>>();
+        out->source = [s] { return pull_of(s); };
+        out->keys.push_back([f](const T& a, const T& b) { return f(a) < f(b) ? -1 : f(b) < f(a) ? 1 : 0; });
+        return Ref<IEnumerable<T>>(out);
     }
     template <class S, class F> static auto OrderByDescending(const S& s, F f) {
-        Storage<Elem<S>> out(iter(s).begin(), iter(s).end());
-        std::stable_sort(out.begin(), out.end(), [&](const auto& a, const auto& b) { return f(b) < f(a); });
-        return seq<Elem<S>>(std::move(out));
+        using T = Elem<S>;
+        (void)pull_of(s);
+        auto out = std::make_shared<Ordered<T>>();
+        out->source = [s] { return pull_of(s); };
+        out->keys.push_back([f](const T& a, const T& b) { return f(b) < f(a) ? -1 : f(a) < f(b) ? 1 : 0; });
+        return Ref<IEnumerable<T>>(out);
+    }
+    template <class S, class F> static Ref<IEnumerable<Elem<S>>> ThenBy(const S& s, F f) {
+        using T = Elem<S>;
+        auto prior = std::dynamic_pointer_cast<Ordered<T>>(s);
+        if (!prior) return OrderBy(s, f);
+        auto out = std::make_shared<Ordered<T>>(*prior);
+        out->keys.push_back([f](const T& a, const T& b) { return f(a) < f(b) ? -1 : f(b) < f(a) ? 1 : 0; });
+        return Ref<IEnumerable<T>>(out);
+    }
+    template <class S, class F> static Ref<IEnumerable<Elem<S>>> ThenByDescending(const S& s, F f) {
+        using T = Elem<S>;
+        auto prior = std::dynamic_pointer_cast<Ordered<T>>(s);
+        if (!prior) return OrderByDescending(s, f);
+        auto out = std::make_shared<Ordered<T>>(*prior);
+        out->keys.push_back([f](const T& a, const T& b) { return f(b) < f(a) ? -1 : f(a) < f(b) ? 1 : 0; });
+        return Ref<IEnumerable<T>>(out);
+    }
+    // The groups, in the order their keys first appear; each group keeps its elements in order.
+    template <class S, class F> static auto GroupBy(const S& s, F f) {
+        using T = Elem<S>;
+        using K = std::decay_t<decltype(f(std::declval<T>()))>;
+        using G = Grouping<K, T>;
+        (void)pull_of(s);
+        return lazy_seq<Ref<G>>([s, f] {
+            auto groups = std::make_shared<std::vector<Ref<G>>>();
+            auto filled = std::make_shared<bool>(false);
+            auto at = std::make_shared<std::size_t>(0);
+            return std::function<bool(Ref<G>&)>([s, f, groups, filled, at](Ref<G>& out) {
+                if (!*filled) {
+                    *filled = true;
+                    auto next = pull_of(s);
+                    T x{};
+                    while (next(x)) {
+                        const K k = f(x);
+                        Ref<G> found;
+                        for (const auto& g : *groups) {
+                            if (g->key == k) found = g;
+                        }
+                        if (!found) {
+                            found = std::make_shared<G>();
+                            found->key = k;
+                            groups->push_back(found);
+                        }
+                        found->items.push_back(x);
+                    }
+                }
+                if (*at >= groups->size()) return false;
+                out = (*groups)[(*at)++];
+                return true;
+            });
+        });
+    }
+    // An inner join: each outer element with each inner element of an equal key.
+    template <class S, class R, class FO, class FI, class FR> static auto Join(const S& outer, const R& inner, FO ko, FI ki, FR result) {
+        using T = Elem<S>;
+        using U = Elem<R>;
+        using V = std::decay_t<decltype(result(std::declval<T>(), std::declval<U>()))>;
+        (void)pull_of(outer);
+        (void)pull_of(inner);
+        return lazy_seq<V>([outer, inner, ko, ki, result] {
+            auto next = pull_of(outer);
+            auto inners = std::make_shared<std::vector<U>>();
+            auto loaded = std::make_shared<bool>(false);
+            auto current = std::make_shared<T>();
+            auto at = std::make_shared<std::size_t>(0);
+            auto have = std::make_shared<bool>(false);
+            return std::function<bool(V&)>([=](V& out) {
+                if (!*loaded) {
+                    *loaded = true;
+                    auto pi = pull_of(inner);
+                    U u{};
+                    while (pi(u)) inners->push_back(u);
+                }
+                for (;;) {
+                    if (*have) {
+                        while (*at < inners->size()) {
+                            const U& u = (*inners)[(*at)++];
+                            if (ko(*current) == ki(u)) {
+                                out = result(*current, u);
+                                return true;
+                            }
+                        }
+                    }
+                    if (!next(*current)) return false;
+                    *have = true;
+                    *at = 0;
+                }
+            });
+        });
     }
     template <class S, class F> static auto Sum(const S& s, F f) {
         using R = std::decay_t<decltype(f(std::declval<Elem<S>>()))>;
@@ -972,13 +1417,37 @@ struct Enumerable {
         for (const auto& x : iter(s)) total = checked_add<Elem<S>>(total, x);
         return total;
     }
-    template <class S> static int Count(const S& s) { return static_cast<int>(iter(s).size()); }
+    template <class S> static double Average(const S& s) {
+        double total = 0;
+        int n = 0;
+        for (const auto& x : iter(s)) {
+            total += static_cast<double>(x);
+            ++n;
+        }
+        if (n == 0) raise<InvalidOperationException>(String(u"Sequence contains no elements"));
+        return total / n;
+    }
+    template <class S, class F> static double Average(const S& s, F f) { return Average(Select(s, f)); }
+    template <class S> static int Count(const S& s) {
+        int n = 0;
+        for (const auto& x : iter(s)) {
+            (void)x;
+            ++n;
+        }
+        return n;
+    }
     template <class S, class F> static int Count(const S& s, F f) {
         int n = 0;
         for (const auto& x : iter(s)) n += f(x) ? 1 : 0;
         return n;
     }
-    template <class S> static bool Any(const S& s) { return !iter(s).empty(); }
+    template <class S> static bool Any(const S& s) {
+        for (const auto& x : iter(s)) {
+            (void)x;
+            return true;
+        }
+        return false;
+    }
     template <class S, class F> static bool Any(const S& s, F f) {
         for (const auto& x : iter(s)) {
             if (f(x)) return true;
@@ -992,8 +1461,8 @@ struct Enumerable {
         return true;
     }
     template <class S> static Elem<S> First(const S& s) {
-        if (iter(s).empty()) raise<InvalidOperationException>(String(u"Sequence contains no elements"));
-        return iter(s).front();
+        for (const auto& x : iter(s)) return x;
+        raise<InvalidOperationException>(String(u"Sequence contains no elements"));
     }
     template <class S, class F> static Elem<S> First(const S& s, F f) {
         for (const auto& x : iter(s)) {
@@ -1001,22 +1470,321 @@ struct Enumerable {
         }
         raise<InvalidOperationException>(String(u"Sequence contains no matching element"));
     }
+    template <class S> static Elem<S> FirstOrDefault(const S& s) {
+        for (const auto& x : iter(s)) return x;
+        return Elem<S>{};
+    }
+    template <class S, class F> static Elem<S> FirstOrDefault(const S& s, F f) {
+        for (const auto& x : iter(s)) {
+            if (f(x)) return x;
+        }
+        return Elem<S>{};
+    }
+    template <class S> static Elem<S> Last(const S& s) {
+        bool any = false;
+        Elem<S> last{};
+        for (const auto& x : iter(s)) {
+            last = x;
+            any = true;
+        }
+        if (!any) raise<InvalidOperationException>(String(u"Sequence contains no elements"));
+        return last;
+    }
     template <class S> static auto ToList(const S& s) {
         auto out = std::make_shared<List<Elem<S>>>();
-        out->items.assign(iter(s).begin(), iter(s).end());
+        for (const auto& x : iter(s)) out->items.push_back(x);
         return out;
     }
     template <class S> static auto ToArray(const S& s) {
-        return std::make_shared<Array<Elem<S>>>(Storage<Elem<S>>(iter(s).begin(), iter(s).end()));
+        Storage<Elem<S>> v;
+        for (const auto& x : iter(s)) v.push_back(x);
+        return std::make_shared<Array<Elem<S>>>(std::move(v));
     }
     static Ref<IEnumerable<int>> Range(int start, int count) {
-        Storage<int> out;
-        for (int i = 0; i < count; ++i) out.push_back(start + i);
-        return seq<int>(std::move(out));
+        return lazy_seq<int>([start, count] {
+            auto i = std::make_shared<int>(0);
+            return std::function<bool(int&)>([start, count, i](int& out) {
+                if (*i >= count) return false;
+                out = start + (*i)++;
+                return true;
+            });
+        });
     }
-    template <class S> static Elem<S> Min(const S& s) { return *std::min_element(iter(s).begin(), iter(s).end()); }
-    template <class S> static Elem<S> Max(const S& s) { return *std::max_element(iter(s).begin(), iter(s).end()); }
-    template <class S> static bool Contains(const S& s, const Elem<S>& x) { return std::find(iter(s).begin(), iter(s).end(), x) != iter(s).end(); }
+    template <class S> static Elem<S> Min(const S& s) {
+        bool any = false;
+        Elem<S> best{};
+        for (const auto& x : iter(s)) {
+            if (!any || x < best) best = x;
+            any = true;
+        }
+        if (!any) raise<InvalidOperationException>(String(u"Sequence contains no elements"));
+        return best;
+    }
+    template <class S> static Elem<S> Max(const S& s) {
+        bool any = false;
+        Elem<S> best{};
+        for (const auto& x : iter(s)) {
+            if (!any || best < x) best = x;
+            any = true;
+        }
+        if (!any) raise<InvalidOperationException>(String(u"Sequence contains no elements"));
+        return best;
+    }
+    template <class S, class F> static auto Min(const S& s, F f) { return Min(Select(s, f)); }
+    template <class S, class F> static auto Max(const S& s, F f) { return Max(Select(s, f)); }
+    template <class S> static bool Contains(const S& s, const Elem<S>& x) {
+        for (const auto& y : iter(s)) {
+            if (y == x) return true;
+        }
+        return false;
+    }
+};
+
+}  // namespace sys
+
+using sys::Grouping;   // (IGrouping<K, T>, which the translated code names cs::Grouping)
+
+// ---------------------------------------------------------------------------------------------------------- async
+
+// What runs the work an `await` waits for. There is one thread of control at any moment (a task's body runs on its own coroutine, but
+// only while its caller waits), so this is a plain queue: the work that is ready, and the timers, which run in the order of their time on a
+// clock that moves only when nothing else is ready (so Task.Delay costs no real time, and tasks wake in the order .NET wakes them).
+class Scheduler {
+public:
+    static Scheduler& get() {
+        static Scheduler s;
+        return s;
+    }
+    void post(std::function<void()> f) { ready_.push_back(std::move(f)); }
+    void after(long long ms, std::function<void()> f) { timers_.push_back({now_ + (ms < 0 ? 0 : ms), seq_++, std::move(f)}); }
+    // Runs work until `done` says to stop; false when there is nothing left to run and it is still not done (the program would hang).
+    template <class D> bool run_until(D done) {
+        while (!done()) {
+            if (!ready_.empty()) {
+                std::function<void()> f = std::move(ready_.front());
+                ready_.pop_front();
+                f();
+                continue;
+            }
+            if (timers_.empty()) return false;
+            std::size_t first = 0;
+            for (std::size_t i = 1; i < timers_.size(); ++i) {
+                if (timers_[i].when < timers_[first].when || (timers_[i].when == timers_[first].when && timers_[i].seq < timers_[first].seq)) first = i;
+            }
+            Timer t = std::move(timers_[first]);
+            timers_.erase(timers_.begin() + static_cast<std::ptrdiff_t>(first));
+            now_ = t.when;
+            t.run();
+        }
+        return true;
+    }
+
+private:
+    struct Timer {
+        long long when;
+        long long seq;
+        std::function<void()> run;
+    };
+    std::deque<std::function<void()>> ready_;
+    std::vector<Timer> timers_;
+    long long now_ = 0, seq_ = 0;
+};
+
+// A task: work that is going on, and what it will give (TaskOf), or the exception it ended with. What awaits it is resumed, by the
+// scheduler, when it is complete. A task made by an async method owns the coroutine its body runs on.
+struct Task : virtual Object {
+    bool done = false;
+    std::exception_ptr error;
+    std::vector<std::function<void()>> waiters;
+    std::unique_ptr<Coroutine> body;
+    void complete() {
+        done = true;
+        for (auto& w : waiters) Scheduler::get().post(std::move(w));
+        waiters.clear();
+    }
+    void fail(std::exception_ptr e) {
+        error = e;
+        complete();
+    }
+    // Blocks (runs the scheduler) until the task is done; throws its exception.
+    void Wait() {
+        if (!done && !Scheduler::get().run_until([this] { return done; })) raise<InvalidOperationException>(String(u"the task can never complete"));
+        if (error) std::rethrow_exception(error);
+    }
+    bool IsCompleted() const { return done; }
+    Ref<Task> GetAwaiter() { return std::dynamic_pointer_cast<Task>(shared_from_this()); }
+    void GetResult() { Wait(); }
+    std::u16string cs_type_name() const override { return u"System.Threading.Tasks.Task"; }
+};
+template <class T> struct TaskOf : Task {
+    T value{};
+    T Result() {
+        Wait();
+        return value;
+    }
+    Ref<TaskOf<T>> GetAwaiter() { return std::dynamic_pointer_cast<TaskOf<T>>(shared_from_this()); }
+    T GetResult() { return Result(); }
+};
+
+// The task the async method being run on this thread is: set when its coroutine starts.
+inline Task*& current_task() {
+    thread_local Task* t = nullptr;
+    return t;
+}
+
+// `await t`: when the task is done, go on at once; else this method stops here (its coroutine suspends) and is resumed by the
+// scheduler when t completes. An exception t ended with is thrown here.
+inline void await_task(Task& t) {
+    if (!t.done) {
+        Coroutine* me = Coroutine::current();
+        Task* self = current_task();
+        if (me == nullptr || self == nullptr) {
+            t.Wait();   // (`await` outside an async method: block)
+            return;
+        }
+        Ref<Task> keep = std::dynamic_pointer_cast<Task>(self->shared_from_this());
+        t.waiters.push_back([me, keep] { me->resume(); });
+        me->suspend();
+    }
+    if (t.error) std::rethrow_exception(t.error);
+}
+template <class T> T await(const Ref<TaskOf<T>>& t) {
+    if (!t) throw_new_null_reference();
+    await_task(*t);
+    return t->value;
+}
+inline void await(const Ref<Task>& t) {
+    if (!t) throw_new_null_reference();
+    await_task(*t);
+}
+
+// The task an async method returns: its body starts running at once, on a coroutine of its own, as far as the first await that is not
+// already complete; the scheduler runs the rest.
+template <class T, class F> auto run_async(F fn) {
+    if constexpr (std::is_void_v<T>) {
+        auto task = std::make_shared<Task>();
+        Task* raw = task.get();
+        task->body = std::make_unique<Coroutine>([raw, fn](Coroutine&) mutable {
+            current_task() = raw;
+            try {
+                fn();
+                raw->complete();
+            } catch (const CoroutineCancelled&) {
+                throw;
+            } catch (...) {
+                raw->fail(std::current_exception());
+            }
+        });
+        task->body->resume();
+        return task;
+    } else {
+        auto task = std::make_shared<TaskOf<T>>();
+        TaskOf<T>* raw = task.get();
+        task->body = std::make_unique<Coroutine>([raw, fn](Coroutine&) mutable {
+            current_task() = raw;
+            try {
+                raw->value = fn();
+                raw->complete();
+            } catch (const CoroutineCancelled&) {
+                throw;
+            } catch (...) {
+                raw->fail(std::current_exception());
+            }
+        });
+        task->body->resume();
+        return task;
+    }
+}
+
+namespace sys {
+
+// Task's static members.
+struct Task {
+    static Ref<cs::Task> make_done() {
+        auto t = std::make_shared<cs::Task>();
+        t->done = true;
+        return t;
+    }
+    inline static Ref<cs::Task> CompletedTask = make_done();
+    // Done once the scheduler has run what is already waiting.
+    static Ref<cs::Task> Yield() {
+        auto t = std::make_shared<cs::Task>();
+        Scheduler::get().post([t] { t->complete(); });
+        return t;
+    }
+    static Ref<cs::Task> Delay(int ms) {
+        auto t = std::make_shared<cs::Task>();
+        Scheduler::get().after(ms, [t] { t->complete(); });
+        return t;
+    }
+    template <class T> static Ref<TaskOf<T>> FromResult(T v) {
+        auto t = std::make_shared<TaskOf<T>>();
+        t->value = std::move(v);
+        t->done = true;
+        return t;
+    }
+    // Starts the function on the scheduler (not at once, as a thread-pool task starts later), and gives its task.
+    template <class F> static auto Run(F fn) {
+        using R = std::decay_t<decltype(fn())>;
+        return run_deferred<R>(std::move(fn));
+    }
+    // A task done when all of them are; its result is theirs, in order.
+    template <class T> static Ref<TaskOf<Ref<Array<T>>>> WhenAll(const Ref<Array<Ref<TaskOf<T>>>>& tasks) {
+        auto out = std::make_shared<TaskOf<Ref<Array<T>>>>();
+        auto remaining = std::make_shared<int>(static_cast<int>(tasks->items.size()));
+        auto finish = [out, tasks] {
+            Storage<T> values;
+            for (const auto& t : tasks->items) {
+                if (t->error && !out->error) out->error = t->error;
+                values.push_back(t->value);
+            }
+            out->value = std::make_shared<Array<T>>(std::move(values));
+            out->complete();
+        };
+        if (*remaining == 0) finish();
+        for (const auto& t : tasks->items) {
+            if (t->done) {
+                --*remaining;
+            } else {
+                t->waiters.push_back([remaining, finish] {
+                    if (--*remaining == 0) finish();
+                });
+            }
+        }
+        if (*remaining == 0 && !out->done) finish();
+        return out;
+    }
+    static Ref<cs::Task> WhenAll(const Ref<Array<Ref<cs::Task>>>& tasks) {
+        auto out = std::make_shared<cs::Task>();
+        auto remaining = std::make_shared<int>(static_cast<int>(tasks->items.size()));
+        auto finish = [out, tasks] {
+            for (const auto& t : tasks->items) {
+                if (t->error && !out->error) out->error = t->error;
+            }
+            out->complete();
+        };
+        for (const auto& t : tasks->items) {
+            if (t->done) {
+                --*remaining;
+            } else {
+                t->waiters.push_back([remaining, finish] {
+                    if (--*remaining == 0) finish();
+                });
+            }
+        }
+        if (*remaining == 0) finish();
+        return out;
+    }
+
+private:
+    template <class R, class F> static auto run_deferred(F fn) {
+        auto gate = std::make_shared<Ref<cs::Task>>();
+        auto task = run_async<R>([gate, fn]() mutable -> R {
+            await(Yield());   // (start after what is waiting now)
+            return fn();
+        });
+        return task;
+    }
 };
 
 }  // namespace sys

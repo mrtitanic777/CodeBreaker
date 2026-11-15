@@ -2,12 +2,37 @@
 #include "cb/engine/machine_chf.hpp"
 
 #include <format>
+#include <optional>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/f8.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/chf.hpp"
 #include "cb/formats/chf.hpp"
 #include "cb/source/chf_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_chf(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if ((name_ends_with(name, {".chf"}) || (name_ends_with(name, {".bin"}) && starts_with(head, 0, std::string_view("U+", 2)))) && size >= 256 && size <= formats::chf::kMaxSize && size % 256 == 0) {   // a Channel F cartridge: no header; `.chf`, or a `.bin` that starts $55 $2B
+        try {
+            const formats::chf::Rom rom = formats::chf::parse(file);
+            return one("Channel F cartridge", std::format("F8, {} bytes at $0800", rom.data.size()), "chf", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -97,15 +122,13 @@ vl::ImageLaneSpec chf_lane_spec() {
 }
 
 void register_chf_lane() {
-    if (machine_lanes().find("chf")) return;
-    MachineLane lane;
-    lane.name = "chf";
-    lane.probe = [](const stdfs::path& p) { return formats::chf::probe(p); };
-    lane.make_spec = chf_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {
-    }
+    register_lane({
+        .name = "chf",
+        .platform = platforms::chf,
+        .probe = [](const stdfs::path& p) { return formats::chf::probe(p); },
+        .make_spec = chf_lane_spec,
+        .detectors = {{.priority = 330, .detect = formats::detect::info_chf}},
+    });
 }
 
 }  // namespace cb::engine

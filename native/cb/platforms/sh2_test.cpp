@@ -31,11 +31,11 @@ void check_sh2_machine(const Platform& p, Id id, const std::string& name, const 
 }
 
 CB_TEST("platforms.sega32x.descriptor", [] {
-    check_sh2_machine(sega32x(), Id::Sega32x, "sega32x", "Sega 32X", "32X cartridge (.32x): a Genesis ROM with the SH-2 programs of the add-on in it");
+    check_sh2_machine(sega32x(), Id::Machine, "sega32x", "Sega 32X", "32X cartridge (.32x): a Genesis ROM with the SH-2 programs of the add-on in it");
 });
 
 CB_TEST("platforms.saturn.descriptor", [] {
-    check_sh2_machine(saturn(), Id::Saturn, "saturn", "Sega Saturn", "disc image (.iso, .bin with a .cue sheet): IP.BIN and the first program");
+    check_sh2_machine(saturn(), Id::Machine, "saturn", "Sega Saturn", "disc image (.iso, .bin with a .cue sheet): IP.BIN and the first program");
 });
 
 }  // namespace

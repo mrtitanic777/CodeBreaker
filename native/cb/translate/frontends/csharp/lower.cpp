@@ -32,6 +32,9 @@ using ir::TypeP;
 
 constexpr std::string_view kReader = "csharp dump";
 
+// The names CsTreeDump gives anonymous types begin with this.
+constexpr std::string_view kAnonPrefix = "AnonType";
+
 // A construct that cannot be carried: its kind and why. Caught where a statement, an initialiser or a lambda body
 // holds it; it never leaves lower().
 class Refuse : public UnsupportedError {
@@ -441,6 +444,12 @@ void collect_bindings(const Json& n, std::vector<std::string>& out) {
     }
 }
 
+// The type a `T?` holds, or null when `t` is not nullable.
+TypeP nullable_arg(const TypeP& t) {
+    const auto* c = t ? std::get_if<ir::ClassType>(&t->body) : nullptr;
+    return c != nullptr && c->name == "System.Nullable" && c->args.size() == 1 ? c->args[0] : TypeP{};
+}
+
 bool is_null_literal(const Node* e) {
     const auto* lit = ir::get<ir::Lit>(e);
     if (lit == nullptr || !std::holds_alternative<std::monostate>(lit->value)) return false;
@@ -561,6 +570,7 @@ private:
 
     // ---- declarations
     Node* top_level(const Json& n);
+    Node* anonymous_class(const Json& a);
     std::vector<Node*> tparams(const Json* tps);
     Node* decl(const Json& n, const std::optional<std::string>& outer);
     void primary(Node* class_node, const Json& n);
@@ -579,6 +589,7 @@ private:
     Node* as_block(const Json& op);
     Node* loop(const Json& op, Pos p);
     Node* switch_stmt(const Json& op, Pos p);
+    Node* switch_chain(const Json& op, Pos p);
     Node* try_stmt(const Json& op, Pos p);
 
     // ---- expressions
@@ -600,6 +611,7 @@ private:
     Node* interpolated(const Json& n, Pos p);
     Node* lambda(const Json& n, const TypeP& t, Pos p);
     Node* concat(Node* left, Node* right, const TypeP& t, Pos p);
+    Node* lifted_binary(std::string_view op, Node* left, Node* right, const TypeP& t, Pos p, bool checked, const Json& n);
 
     // ---- patterns
     Node* pattern(const Json& pat, const Node* v, Pos p);
@@ -618,6 +630,10 @@ Node* Lowering::unit(const Json& n) {
         if (dot != std::string::npos) package = qname.substr(0, dot);
     }
     if (opt(n, "main") != nullptr) types.push_back(top_level(n));
+    // the classes of the anonymous types this file met first come before the code that uses them
+    std::vector<Node*> anonymous;
+    for (const Json& a : list(n, "anon")) anonymous.push_back(anonymous_class(a));
+    types.insert(types.begin(), anonymous.begin(), anonymous.end());
     std::vector<std::string> imports;
     for (const Json& u : list(n, "usings")) {
         const std::string& name = text_of(u, "name");
@@ -630,6 +646,40 @@ Node* Lowering::unit(const Json& n) {
     u.types = std::move(types);
     u.lang = std::string(kLang);
     return mk(std::move(u), pos_of(n));
+}
+
+// The class of an anonymous type (the dump's "anon" entry): a public class with one field per member and a constructor that sets them
+// in order. Its members are read as fields (the member accesses of the code that uses it are lowered the same way).
+Node* Lowering::anonymous_class(const Json& a) {
+    const std::string& name = text_of(a, "name");
+    Node* class_node = mk(ir::ClassDecl{}, {});
+    ir::ClassDecl& c = *ir::get<ir::ClassDecl>(class_node);
+    c.name = name;
+    c.qname = name;
+    c.kind = "class";
+    c.mods = {"public", "sealed"};
+    std::vector<Node*> parameters;
+    std::vector<Node*> assigns;
+    SymP csym = ir::make_sym(ir::SymKind::Ctor, ".ctor", name);
+    csym->ret = ir::void_type();
+    for (const Json& m : list(a, "members")) {
+        const std::string& member = text_of(m, "name");
+        const TypeP mt = lower_type(req(m, "type"));
+        SymP field = ir::make_sym(ir::SymKind::Field, member, name, false, mt);
+        c.members.push_back(mk(ir::FieldDecl{.sym = field, .type = mt, .mods = {"public"}}, {}));
+        SymP param = ir::make_sym(ir::SymKind::Param, member, name + ".ctor", false, mt);
+        parameters.push_back(mk(ir::Param{.sym = param, .type = mt}, {}));
+        csym->params.push_back(mt);
+        Node* self = mk(ir::Select{.obj = mk(ir::This{}, {}, ir::class_type(name)), .sym = field}, {}, mt);
+        assigns.push_back(mk(ir::ExprStmt{.expr = mk(ir::Assign{.target = self, .value = mk(ir::Name{.sym = param}, {}, mt)}, {}, mt)}, {}));
+    }
+    std::vector<Node*> body;
+    body.push_back(mk(ir::CtorCall{.kind = "super:implicit"}, {}));
+    body.insert(body.end(), assigns.begin(), assigns.end());
+    c.members.push_back(mk(ir::MethodDecl{.sym = csym, .name = ".ctor", .kind = "ctor", .params = std::move(parameters), .ret = ir::void_type(),
+                                          .body = mk(ir::Block{.stmts = std::move(body)}, {}), .mods = {"public"}},
+                           {}));
+    return class_node;
 }
 
 // Top-level statements: the compiler's Program.Main, as a class.
@@ -849,6 +899,12 @@ std::vector<Node*> Lowering::member(const Json& m, Node* class_node) {
         Node* body = opt(m, "body") != nullptr ? method_body(&req(m, "body")) : nullptr;
         std::vector<std::string> mods = texts(m, "mods");
         if (k != "method") mods.emplace_back("operator");
+        for (const Node* x : ir::walk(body)) {
+            if (ir::is<ir::YieldReturn>(x) || ir::is<ir::YieldBreak>(x)) {
+                mods.emplace_back("iterator");   // a method with `yield` in it hands out a sequence (ir.hpp, YieldReturn)
+                break;
+            }
+        }
         std::vector<std::string> typeparams;
         for (const Json& tp : list(m, "typeparams")) typeparams.push_back(text_of(tp, "name"));
         std::vector<Node*> parameters = params(opt(m, "params"));
@@ -1047,12 +1103,13 @@ std::vector<Node*> Lowering::stmt_inner(const Json& op) {
     }
     if (k == "Return") {
         const std::string_view return_kind = text_or_empty(op, "returnKind");
-        if (!return_kind.empty() && return_kind != "Return") {
-            throw Refuse("iterator", "`yield return` / `yield break`: an iterator (a state machine)");
-        }
+        if (return_kind == "YieldReturn") return {mk(ir::YieldReturn{.expr = expr(req(op, "returnedValue"))}, p)};
+        if (return_kind == "YieldBreak") return {mk(ir::YieldBreak{}, p)};
+        if (!return_kind.empty() && return_kind != "Return") throw Refuse("return", std::format("a {} return", return_kind));
         return {mk(ir::Return{.expr = opt(op, "returnedValue") != nullptr ? expr(req(op, "returnedValue")) : nullptr}, p)};
     }
-    if (k == "YieldReturn" || k == "YieldBreak") throw Refuse("iterator", "`yield return` / `yield break`: an iterator (a state machine)");
+    if (k == "YieldReturn") return {mk(ir::YieldReturn{.expr = expr(req(op, "returnedValue"))}, p)};
+    if (k == "YieldBreak") return {mk(ir::YieldBreak{}, p)};
     if (k == "Switch") return {switch_stmt(op, p)};
     if (k == "Try") return {try_stmt(op, p)};
     if (k == "Using") {
@@ -1124,7 +1181,128 @@ Node* Lowering::loop(const Json& op, Pos p) {
     throw Refuse("loop", std::format("a {} loop", lk));
 }
 
+// Whether a switch statement has a section only an if-chain can say: a type, relational or property pattern, or a `when` guard.
+static bool switch_needs_chain(const Json& op) {
+    for (const Json& c : list(op, "cases")) {
+        for (const Json& cl : list(c, "clauses")) {
+            std::string_view ck = text_or_empty(cl, "caseKind");
+            if (ck.empty()) ck = text_of(cl, "k");
+            if (ck != "Pattern" && ck != "PatternCaseClause") continue;
+            const Json* pat = opt(cl, "pattern");
+            if (opt(cl, "guard") != nullptr || pat == nullptr || text_or_empty(*pat, "k") != "ConstantPattern") return true;
+        }
+    }
+    return false;
+}
+
+// Whether `n` holds a `break` that leaves the switch it is in (one not inside a loop or a switch of its own).
+static bool leaves_switch(const Node* n) {
+    if (n == nullptr) return false;
+    if (ir::is<ir::Break>(n)) return true;
+    if (ir::is<ir::While>(n) || ir::is<ir::DoWhile>(n) || ir::is<ir::For>(n) || ir::is<ir::ForEach>(n) || ir::is<ir::Switch>(n) ||
+        ir::is<ir::Lambda>(n)) {
+        return false;
+    }
+    for (const Node* c : ir::children(*n)) {
+        if (leaves_switch(c)) return true;
+    }
+    return false;
+}
+
+// A switch with pattern sections as an if / else-if chain over one read of the switched value, the way a switch expression's arms
+// become a conditional chain. A section's tests are its patterns (each and-ed with its guard) or-ed together; the default section is
+// the final else wherever it was written. The `break` that ends a section goes (a chain has nothing to break out of); a section that
+// leaves by a `break` from inside a nested statement has no such form, and is refused.
+Node* Lowering::switch_chain(const Json& op, Pos p) {
+    Node* v = expr(req(op, "value"));
+    if (!can_read_twice(v)) v = temp(v->type, v, op);
+    const Json::array_t& sections = list(op, "cases");
+    // a name two sections both bind is given a number in the later ones, as the arms of a switch expression are
+    std::set<std::string> bound;
+    std::vector<std::map<std::string, std::string>> renames;
+    for (std::size_t i = 0; i < sections.size(); ++i) {
+        std::map<std::string, std::string> r;
+        std::vector<std::string> names;
+        for (const Json& cl : list(sections[i], "clauses")) collect_bindings(cl, names);
+        for (const std::string& x : names) {
+            if (bound.contains(x)) r[x] = std::format("{}{}", x, i + 1);
+            bound.insert(x);
+        }
+        renames.push_back(std::move(r));
+    }
+    const std::map<std::string, std::string> saved = rename_;
+    struct Restore {
+        Lowering& l;
+        const std::map<std::string, std::string>& saved;
+        ~Restore() { l.rename_ = saved; }
+    } restore{*this, saved};
+    struct Section {
+        Node* test = nullptr;   // null: the default section
+        Node* body = nullptr;
+    };
+    std::vector<Section> lowered;
+    const TypeP boolean = ir::bool_type();
+    for (std::size_t i = 0; i < sections.size(); ++i) {
+        const Json& c = sections[i];
+        rename_ = saved;
+        for (const auto& [from, to] : renames[i]) rename_[from] = to;
+        Section s;
+        bool is_default = false;
+        {
+            MaybeSkipped skipped(*this);
+            for (const Json& cl : list(c, "clauses")) {
+                std::string_view ck = text_or_empty(cl, "caseKind");
+                if (ck.empty()) ck = text_of(cl, "k");
+                Node* test = nullptr;
+                const Pos cp = pos_of(cl);
+                if (ck == "Default" || ck == "DefaultCaseClause") {
+                    is_default = true;
+                    continue;
+                }
+                if (ck == "SingleValue" || ck == "SingleValueCaseClause") {
+                    Node* label = expr(req(cl, "value"));
+                    test = mk(ir::Binary{.op = "==", .left = copy(v), .right = label}, cp, boolean);
+                    if (is_string(v->type)) {
+                        SymP eq = ir::make_sym(ir::SymKind::Method, "op_Equality", "System.String", true);
+                        eq->params = {string_type(), string_type()};
+                        eq->ret = boolean;
+                        eq->flags = {"operator"};
+                        test = mk(ir::Call{.target = type_name(string_type(), cp), .sym = eq, .args = {copy(v), label}}, cp, boolean);
+                    }
+                } else {
+                    test = pattern(req(cl, "pattern"), v, cp);
+                    if (opt(cl, "guard") != nullptr) {
+                        test = mk(ir::Binary{.op = "&&", .left = test, .right = expr(req(cl, "guard"))}, cp, boolean);
+                    }
+                }
+                s.test = s.test == nullptr ? test : mk(ir::Binary{.op = "||", .left = s.test, .right = test}, cp, boolean);
+            }
+        }
+        if (is_default) s.test = nullptr;
+        std::vector<Node*> body;
+        for (const Json& b : list(c, "body")) {
+            for (Node* st : stmt(b)) body.push_back(st);
+        }
+        if (!body.empty() && ir::is<ir::Break>(body.back())) body.pop_back();
+        for (const Node* st : body) {
+            if (leaves_switch(st)) throw Refuse("switch-pattern", "a pattern section that leaves the switch by a `break` inside a nested statement");
+        }
+        s.body = mk(ir::Block{.stmts = std::move(body)}, pos_of(c));
+        lowered.push_back(s);
+    }
+    Node* chain = nullptr;
+    for (const Section& s : lowered) {
+        if (s.test == nullptr) chain = s.body;
+    }
+    for (std::size_t i = lowered.size(); i-- > 0;) {
+        if (lowered[i].test == nullptr) continue;
+        chain = mk(ir::If{.cond = lowered[i].test, .then = lowered[i].body, .orelse = chain}, p);
+    }
+    return chain != nullptr ? chain : mk(ir::Block{}, p);
+}
+
 Node* Lowering::switch_stmt(const Json& op, Pos p) {
+    if (switch_needs_chain(op)) return switch_chain(op, p);
     std::vector<Node*> cases;
     for (const Json& c : list(op, "cases")) {
         std::vector<Node*> labels;
@@ -1237,6 +1415,10 @@ Node* Lowering::expr_inner(const Json& n) {
     }
     if (k == "PropertyReference") {
         SymP s = required_sym(req(n, "property"));
+        if (s->owner && s->owner->starts_with(kAnonPrefix)) {   // a member of an anonymous type is a field of the class made for it
+            s = copy_of(s);
+            s->kind = ir::SymKind::Field;
+        }
         Node* obj = receiver(n, s);
         if (s->owner == "System.Array" && s->name == "Length") return mk(ir::Length{.arr = obj}, p, t);
         if (std::find(s->flags.begin(), s->flags.end(), "indexer") != s->flags.end()) {
@@ -1250,7 +1432,30 @@ Node* Lowering::expr_inner(const Json& n) {
     if (k == "Invocation") return call(n, t, p);
     if (k == "ObjectCreation") return object_creation(n, t, p);
     if (k == "TypeParameterObjectCreation") throw Refuse("new-T", "`new T()` of a type parameter");
-    if (k == "AnonymousObjectCreation") throw Refuse("anonymous-type", "an anonymous type");
+    if (k == "CollectionExpression") {   // `[a, b]` where the compiler chose an array or a span (a params argument): an array
+        const auto* named = t ? std::get_if<ir::ClassType>(&t->body) : nullptr;
+        const auto* array = t ? std::get_if<ir::ArrayType>(&t->body) : nullptr;
+        TypeP elem;
+        if (array != nullptr) elem = array->elem;
+        else if (named != nullptr && named->args.size() == 1 && (named->name == "System.ReadOnlySpan" || named->name == "System.Span")) elem = named->args[0];
+        else throw Refuse("collection-expression", "a collection expression that is not an array or a span");
+        std::vector<Node*> items;
+        for (const Json& e : list(n, "elements")) items.push_back(expr(e));
+        std::vector<Node*> dims;
+        if (items.empty()) dims.push_back(mk(ir::Lit{.value = std::int64_t{0}}, p, ir::i32_type()));
+        ir::ArrayType made;
+        made.elem = elem;
+        return mk(ir::NewArray{.elem = elem, .dims = std::move(dims), .init = std::move(items)}, p, ir::make_type(std::move(made)));
+    }
+    if (k == "AnonymousObjectCreation") {   // `new { a, b }`: the constructor of the class the dump's "anon" entry declares, its members in order
+        std::vector<Node*> arguments;
+        for (const Json& i : list(n, "initializers")) arguments.push_back(expr(req(i, "value")));
+        SymP s = ir::make_sym(ir::SymKind::Ctor, ".ctor", class_name(t));
+        s->ret = ir::void_type();
+        for (const Node* a : arguments) s->params.push_back(a->type);
+        ++effects_;
+        return mk(ir::New{.sym = s, .args = std::move(arguments), .memory = ir::MemoryModel::Gc}, p, t);
+    }
     if (k == "ArrayCreation") return array_creation(n, t, p);
     if (k == "ArrayElementReference") {
         Node* arr = expr(req(n, "arrayReference"));
@@ -1268,11 +1473,22 @@ Node* Lowering::expr_inner(const Json& n) {
             return op_call(s, {expr(req(n, "operand"))}, t, p);
         }
         const std::string_view op = unary_op(text_or_empty(n, "operatorKind"));
-        if (op.empty() || flag(n, "isLifted")) {
+        if (op.empty()) {
             const std::string_view kind = opt(n, "operatorKind") != nullptr ? text_or_empty(n, "operatorKind") : "None";
-            throw Refuse("unary", std::format("the unary operator {}{}", kind, flag(n, "isLifted") ? " (lifted)" : ""));
+            throw Refuse("unary", std::format("the unary operator {}", kind));
         }
-        ir::Unary u{.op = std::string(op), .x = expr(req(n, "operand"))};
+        Node* operand = expr(req(n, "operand"));
+        const TypeP inner = flag(n, "isLifted") ? nullable_arg(operand->type) : TypeP{};
+        if (inner) {   // -x on `int?`: null when x is, else the operator on the value
+            if (ir::to_text(*inner) == "bool") throw Refuse("lifted", "! on bool?");
+            if (!can_read_twice(operand)) operand = temp(operand->type, operand, n);
+            SymP v = ir::make_sym(ir::SymKind::Property, "Value", "System.Nullable", false, inner);
+            ir::Unary lifted{.op = std::string(op), .x = mk(ir::Select{.obj = copy(operand), .sym = v}, p, inner)};
+            if (flag(n, "isChecked")) lifted.overflow = ir::Overflow::Trap;
+            Node* test = mk(ir::Binary{.op = "!=", .left = copy(operand), .right = null_literal(p)}, p, ir::bool_type());
+            return mk(ir::Cond{.cond = test, .then = mk(std::move(lifted), p, inner), .orelse = null_literal(p)}, p, t);
+        }
+        ir::Unary u{.op = std::string(op), .x = operand};
         if (flag(n, "isChecked")) u.overflow = ir::Overflow::Trap;
         return mk(std::move(u), p, t);
     }
@@ -1295,12 +1511,15 @@ Node* Lowering::expr_inner(const Json& n) {
     if (k == "DeconstructionAssignment") throw Refuse("deconstruction", "a deconstruction");
     if (k == "CompoundAssignment") {
         if (opt(n, "operatorMethod") != nullptr && !is_string(t)) throw Refuse("compound", "a compound assignment through a user-defined operator");
-        if (flag(n, "isLifted")) throw Refuse("lifted", "lifted nullable arithmetic");
         const std::string_view op = binary_op(text_or_empty(n, "operatorKind"));
         if (op.empty()) throw Refuse("compound", std::format("the compound operator {}", text_or_empty(n, "operatorKind")));
         Node* target = expr(req(n, "target"));
         Node* value = expr(req(n, "value"));
         ++effects_;
+        if (flag(n, "isLifted")) {   // x += y on a nullable: x = x + y, lifted
+            if (!can_read_twice(target)) throw Refuse("lifted", "a lifted compound assignment on an expression with effects");
+            return mk(ir::Assign{.target = target, .value = lifted_binary(op, copy(target), value, t, p, flag(n, "isChecked"), n)}, p, t);
+        }
         ir::Assign a{.op = std::string(op), .target = target, .value = value};
         if (flag(n, "isChecked")) a.overflow = ir::Overflow::Trap;
         return mk(std::move(a), p, t);
@@ -1377,7 +1596,10 @@ Node* Lowering::expr_inner(const Json& n) {
     if (k == "DefaultValue") return default_value(n, t, p);
     if (k == "InterpolatedString") return interpolated(n, p);
     if (k == "Throw") throw Refuse("throw-expression", "a throw expression");
-    if (k == "Await") throw Refuse("await", "`await`: an asynchronous method (a state machine)");
+    if (k == "Await") {
+        ++effects_;
+        return mk(ir::Await{.x = expr(req(n, "operation"))}, p, t);
+    }
     if (k == "DeclarationExpression") {
         const Json* inner = opt(n, "expression");
         if (inner != nullptr && text_or_empty(*inner, "k") == "LocalReference") return expr(*inner);   // out T x
@@ -1562,6 +1784,39 @@ Node* Lowering::concat(Node* left, Node* right, const TypeP& t, Pos p) {
     return mk(ir::Concat{.parts = std::move(parts)}, p, t);
 }
 
+// A lifted operator (C# 12.8.8): the result is null when an operand is, else the operator on the values. `a + b` on `int?` is
+// `a != null && b != null ? a.Value + b.Value : null`; a relational operator gives false instead of null. An operand that is not
+// nullable is always present. An operand read twice is read from a name, so one with effects goes through a temporary.
+Node* Lowering::lifted_binary(std::string_view op, Node* left, Node* right, const TypeP& t, Pos p, bool checked, const Json& n) {
+    const TypeP boolean = ir::bool_type();
+    const bool relational = op == "<" || op == ">" || op == "<=" || op == ">=";
+    const TypeP lt = nullable_arg(left->type), rt = nullable_arg(right->type);
+    if ((op == "&" || op == "|" || op == "^") && ((lt && ir::to_text(*lt) == "bool") || (rt && ir::to_text(*rt) == "bool"))) {
+        throw Refuse("lifted", "three-valued logic on bool?");
+    }
+    if (lt && !can_read_twice(left)) left = temp(left->type, left, n);
+    if (rt && !can_read_twice(right)) right = temp(right->type, right, n);
+    Node* test = nullptr;
+    auto present = [&](Node* x) {
+        Node* has = mk(ir::Binary{.op = "!=", .left = copy(x), .right = null_literal(p)}, p, boolean);
+        test = test == nullptr ? has : mk(ir::Binary{.op = "&&", .left = test, .right = has}, p, boolean);
+    };
+    auto value = [&](Node* x, const TypeP& inner) -> Node* {
+        if (!inner) return x;
+        SymP v = ir::make_sym(ir::SymKind::Property, "Value", "System.Nullable", false, inner);
+        return mk(ir::Select{.obj = copy(x), .sym = v}, p, inner);
+    };
+    if (lt) present(left);
+    if (rt) present(right);
+    const TypeP result = relational ? boolean : nullable_arg(t);
+    ir::Binary b{.op = std::string(op), .left = value(left, lt), .right = value(right, rt)};
+    if (checked) b.overflow = ir::Overflow::Trap;
+    Node* operation = mk(std::move(b), p, result ? result : t);
+    if (test == nullptr) return operation;
+    if (relational) return mk(ir::Binary{.op = "&&", .left = test, .right = operation}, p, boolean);
+    return mk(ir::Cond{.cond = test, .then = operation, .orelse = null_literal(p)}, p, t);
+}
+
 Node* Lowering::binary(const Json& n, const TypeP& t, Pos p) {
     const std::string_view kind = text_or_empty(n, "operatorKind");
     if (opt(n, "operatorMethod") != nullptr) {
@@ -1582,9 +1837,9 @@ Node* Lowering::binary(const Json& n, const TypeP& t, Pos p) {
         if (short_circuit) skipped.emplace(*this);
         right = expr(req(n, "rightOperand"));
     }
-    if (flag(n, "isLifted") && !((op == "==" || op == "!=") && (is_null_literal(left) || is_null_literal(right)))) {
-        throw Refuse("lifted", std::format("lifted nullable arithmetic ({} on a nullable value)", op));
-    }
+    // a lifted == / != is the plain one (std::optional and C# agree that two nulls are equal and a null differs from a value); the
+    // other lifted operators are null when an operand is, and are written out as that test
+    if (flag(n, "isLifted") && op != "==" && op != "!=") return lifted_binary(op, left, right, t, p, flag(n, "isChecked"), n);
     if (op == "+" && is_string(t)) return concat(left, right, t, p);
     ir::Binary b{.op = std::string(op), .left = left, .right = right};
     if (flag(n, "isChecked")) b.overflow = ir::Overflow::Trap;
@@ -1723,7 +1978,14 @@ Node* Lowering::pattern(const Json& pat, const Node* v, Pos p) {
         if (matched == nullptr) matched = opt(pat, "narrowedType");
         TypeP mt = lower_type(matched);
         const Json* ds = opt(pat, "declaredSymbol");
-        if (flag(pat, "matchesNull")) throw Refuse("var-pattern", "a `var` pattern");
+        if (flag(pat, "matchesNull")) {   // `var x`: always matches, and sets x: `(x = v, true)`, the variable declared before the statement
+            if (ds == nullptr) return bool_literal(true, p);
+            if (pending_ == nullptr) throw Refuse("var-pattern", "a `var` pattern in a declaration");
+            SymP var_sym = renamed(required_sym(*ds));
+            pending_->push_back(mk(ir::Local{.sym = var_sym, .type = mt}, p));
+            Node* set = mk(ir::Assign{.target = mk(ir::Name{.sym = var_sym}, p, mt), .value = copy(v)}, p, mt);
+            return mk(ir::Binary{.op = ",", .left = set, .right = bool_literal(true, p)}, p, boolean);
+        }
         Node* binding = ds != nullptr ? mk(ir::Local{.sym = renamed(required_sym(*ds)), .type = mt}, p) : nullptr;
         return mk(ir::InstanceOf{.x = copy(v), .test = mt, .binding = binding}, p, boolean);
     }

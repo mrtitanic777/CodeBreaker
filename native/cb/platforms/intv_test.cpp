@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.intv.descriptor", [] {
     const Platform p = intv();
-    CB_CHECK(p.id == Id::Intv);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "intv");
     CB_CHECK_EQ(p.title, "Mattel Intellivision");
     CB_CHECK_EQ(p.family, "CP1610");

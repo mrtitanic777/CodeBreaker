@@ -27,6 +27,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "cb/core/fs.hpp"
 #include "cb/core/json.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/translate/l2.hpp"
@@ -183,10 +184,25 @@ CB_TEST("translate.csharp.lower.cases_give_the_reviewed_documents_and_refusals",
     const Json cases = load("translate/frontends/csharp/testdata/csharp_cases.json");
     CB_CHECK(cases.size() >= 24);
     std::size_t refusals = 0;
+    // CB_UPDATE_CASES=FILE writes what each case lowers to now ({name: {l2, refused}}) instead of comparing, to be read through and merged
+    // into csharp_cases.json when the lowering changes on purpose
+    const auto update = cb::fs::get_env("CB_UPDATE_CASES");
+    Json updated = Json::object();
     for (const Json& c : cases) {
         const std::string name = c.at("name").get<std::string>();
         std::vector<cs::Refusal> refused;
-        const Json made = lowered_document(c.at("tree"), "case", &refused);
+        Json made;
+        try {
+            made = lowered_document(c.at("tree"), "case", &refused);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(name + ": " + e.what());
+        }
+        if (update) {
+            Json r = Json::array();
+            for (const cs::Refusal& x : refused) r.push_back(Json::array({x.line, x.kind.value_or("?"), x.why}));
+            updated[name] = Json{{"l2", made}, {"refused", r}};
+            continue;
+        }
         CB_CHECK_EQ(name + ": " + first_difference(made, normal(c.at("l2")), ""), name + ": ");
         const Json& want = c.at("refused");
         CB_CHECK_EQ(name + " refusals: " + std::to_string(refused.size()), name + " refusals: " + std::to_string(want.size()));
@@ -200,6 +216,10 @@ CB_TEST("translate.csharp.lower.cases_give_the_reviewed_documents_and_refusals",
         Arena arena;
         cs::Lowered again = cs::lower(arena, c.at("tree"), "case");
         CB_CHECK_EQ(ir::unsupported(again.unit).size(), again.refused.size());
+    }
+    if (update) {
+        cb::fs::write_text(std::filesystem::path(*update), updated.dump());
+        return;
     }
     CB_CHECK(refusals > 60);
 });

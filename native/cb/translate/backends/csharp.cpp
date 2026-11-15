@@ -7,6 +7,7 @@
 #include "cb/translate/backends/csharp.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -568,7 +569,15 @@ Decline declined_for(const ir::Unsupported& u) {
 
 // ---- module-level helpers -----------------------------------------------------------------------------------------------
 
-std::string ident(std::string_view name) { return keywords().contains(name) ? "@" + std::string(name) : std::string(name); }
+std::string ident(std::string_view name) {
+    if (keywords().contains(name)) return "@" + std::string(name);
+    // the compiler's own names (`<>h__TransparentIdentifier0`, a query's range variable) are not written by a person: a plain name
+    std::string out(name);
+    for (char& c : out) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') c = '_';
+    }
+    return out;
+}
 
 bool is_string(const ir::TypeP& t) {
     const std::string* n = class_of(t);
@@ -1303,7 +1312,8 @@ Lines Writer::method_decl(Node* node, ir::ClassDecl& c, const std::string& ind) 
         extend(r, body_lines(ir::Suite(std::move(all)), ind, &m));
         return r;
     }
-    const std::vector<std::string> mods = java_ ? lib().method_mods(*this, m, c) : m.mods;
+    std::vector<std::string> mods = java_ ? lib().method_mods(*this, m, c) : m.mods;
+    std::erase(mods, "iterator");   // (the IR's note that the body holds `yield`: C# says it by the statement alone)
     const std::string name = java_ ? lib().method_name(*this, m, c) : ident(m.name.value_or(""));
     std::string head;
     const std::string mname = m.name.value_or("");
@@ -1805,6 +1815,14 @@ void Writer::stmt(Node* s, Lines& out, const std::string& ind) {
     if (const auto* x = ir::get<ir::Switch>(s)) return switch_stmt(*x, out, ind);
     if (const auto* x = ir::get<ir::Try>(s)) return try_stmt(*x, out, ind);
     if (ir::is<ir::Yield>(s)) throw Decline("yield", "a switch-expression arm with statements");
+    if (const auto* x = ir::get<ir::YieldReturn>(s)) {
+        out.push_back(ind + "yield return " + expr(x->expr).text + ";");
+        return;
+    }
+    if (ir::is<ir::YieldBreak>(s)) {
+        out.push_back(ind + "yield break;");
+        return;
+    }
     if (const auto* x = ir::get<ir::MachineFragment>(s)) throw Decline("machine", "machine code (" + (x->reason && !x->reason->empty() ? *x->reason : std::string("asm")) + ")");
     const std::string k = describe(s);
     throw Decline(k, "the statement " + k);
@@ -2037,6 +2055,7 @@ Ex Writer::dispatch(Node* e) {
     }
     if (const auto* x = ir::get<ir::Lit>(e)) return literal(*x, e->type);
     if (const auto* x = ir::get<ir::Paren>(e)) return expr(x->x);   // (grouping is written from the operators' precedence, where needed)
+    if (const auto* x = ir::get<ir::Await>(e)) return {"await " + wrap(x->x, kUnary, false), kUnary};
     if (const auto* x = ir::get<ir::Call>(e)) return call_expr(e, *x);
     if (const auto* x = ir::get<ir::Select>(e)) {
         if (java_) {
@@ -2081,6 +2100,8 @@ Ex Writer::dispatch(Node* e) {
         if (java_) {
             if (auto got = lib().binary(*this, e)) return *got;
         }
+        // `(x = v, true)`, which a pattern variable of `var x` lowers to: C# says it `(x = v) is var _` (a `var` pattern always matches)
+        if (x->op == ",") return {"(" + expr(x->left).text + ") is var _", kRel};
         const auto pit = binary_precedence().find(x->op);
         if (pit == binary_precedence().end()) throw Decline("operator", "the operator " + x->op);
         const int prec = pit->second;
@@ -2125,6 +2146,15 @@ Ex Writer::dispatch(Node* e) {
         std::string a = e->type ? coerce(x->then, e->type) : expr(x->then).text;
         const std::string b = !e->type ? wrap(x->orelse, kCond) : coerce(x->orelse, e->type);
         if (contains(a, " = ")) a = "(" + a + ")";
+        // `c ? v : null` of a nullable value type: the value is made a T? (C# types a conditional by its branches, and `null` has no type)
+        if (e->type) {
+            const auto* null_else = ir::get<ir::Lit>(x->orelse);
+            const std::string ct = ctype(e->type);
+            if (null_else != nullptr && std::holds_alternative<std::monostate>(null_else->value) && ct.ends_with("?") && !ct.ends_with("??")) {
+                const TypeP then_type = type_of(x->then);
+                if (then_type && !ctype(then_type).ends_with("?")) a = "(" + ct + ")(" + a + ")";
+            }
+        }
         return {c + " ? " + a + " : " + b, kCond};
     }
     if (const auto* x = ir::get<ir::Cast>(e)) {

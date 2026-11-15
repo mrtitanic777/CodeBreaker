@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform intv() {
     MachineSpec s;
-    s.id = Id::Intv;
+    s.name = "intv";
     s.title = "Mattel Intellivision";
     s.family = "CP1610";
     s.container = "cartridge (.rom Intellicart / jzIntv, raw .int)";

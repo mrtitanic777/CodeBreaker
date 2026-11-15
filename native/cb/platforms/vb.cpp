@@ -11,7 +11,7 @@ Platform vb() {
     registers.push_back("PSW");
 
     MachineSpec s;
-    s.id = Id::Vb;
+    s.name = "vb";
     s.title = "Nintendo Virtual Boy";
     s.family = "V810";
     s.container = "cartridge (.vb, .vboy)";

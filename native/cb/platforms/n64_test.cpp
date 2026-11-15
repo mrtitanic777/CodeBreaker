@@ -7,7 +7,7 @@ namespace cb::platforms {
 
 CB_TEST("platforms.n64.descriptor", [] {
     const Platform p = n64();
-    CB_CHECK(p.id == Id::N64);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "n64");
     CB_CHECK_EQ(p.title, "Nintendo 64");
     CB_CHECK_EQ(p.family, "mips");

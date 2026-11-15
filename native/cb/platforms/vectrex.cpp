@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform vectrex() {
     MachineSpec s;
-    s.id = Id::Vectrex;
+    s.name = "vectrex";
     s.title = "Vectrex";
     s.family = "6809";
     s.container = "cartridge (.vec, .bin)";

@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform atari5200() {
     MachineSpec s;
-    s.id = Id::Atari5200;
+    s.name = "atari5200";
     s.title = "Atari 5200";
     s.family = "6502";
     s.container = "raw cartridge (.a52, .bin)";

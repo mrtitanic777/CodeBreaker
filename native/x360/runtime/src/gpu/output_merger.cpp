@@ -152,6 +152,42 @@ uint xe_om_encode_0(float4 c)
     return n.x | (n.y << 8) | (n.z << 16) | (n.w << 24);
 }
 )HLSL";
+            case 1:
+                return R"HLSL(
+// 8_8_8_8_GAMMA: the 8_8_8_8 bytes hold gamma-encoded R, G, B (A stays linear). The shader's colour is linear: the
+// output merger converts it to the gamma curve when it stores and back to linear when a blend reads the destination.
+// The curve is the hardware's piecewise-linear approximation of gamma 2.2, in four segments over the gamma value g:
+// slope 1/4 up to g = 1/4, slope 1/2 up to 3/8, slope 1 up to 3/4, slope 2 up to 1 (linear 0, 1/16, 1/8, 1/2, 1).
+float xe_om_gamma_to_linear(float g)
+{
+    precise float l = g < 0.25 ? g * 0.25
+                    : g < 0.375 ? (g - 0.25) * 0.5 + 0.0625
+                    : g < 0.75 ? (g - 0.375) + 0.125
+                    : (g - 0.75) * 2.0 + 0.5;
+    return l;
+}
+float xe_om_linear_to_gamma(float l)
+{
+    precise float g = l < 0.0625 ? l * 4.0
+                    : l < 0.125 ? (l - 0.0625) * 2.0 + 0.25
+                    : l < 0.5 ? (l - 0.125) + 0.375
+                    : (l - 0.5) * 0.5 + 0.75;
+    return g;
+}
+float4 xe_om_decode_1(uint v)
+{
+    precise float4 r = float4((uint4(v, v >> 8, v >> 16, v >> 24) & 0xFFu)) * asfloat(0x3B808081u); // n * (1/255)
+    return float4(xe_om_gamma_to_linear(r.x), xe_om_gamma_to_linear(r.y), xe_om_gamma_to_linear(r.z), r.w);
+}
+float4 xe_om_range_1(float4 c) { return saturate(c); }
+uint xe_om_encode_1(float4 c)
+{
+    float4 g = float4(xe_om_linear_to_gamma(c.x), xe_om_linear_to_gamma(c.y), xe_om_linear_to_gamma(c.z), c.w);
+    precise float4 t = g * 255.0 + 0.5;
+    uint4 n = uint4(floor(t));
+    return n.x | (n.y << 8) | (n.z << 16) | (n.w << 24);
+}
+)HLSL";
             case 4:
                 return R"HLSL(
 // 16_16 fixed point, range -32..32 (Xenia's scale 32767/32; 06a §6.1). Only R and G exist.
@@ -322,7 +358,7 @@ uint2 xe_om_encode_7(float4 c)
 
     bool OutputMergerSupportsColorFormat(uint32_t format)
     {
-        return format == 0 || format == 2 || format == 3 || format == 4 || format == 6 || format == 7 || format == 14;
+        return format == 0 || format == 1 || format == 2 || format == 3 || format == 4 || format == 6 || format == 7 || format == 14;
     }
 
     const char* EdramColorFormatName(uint32_t format)

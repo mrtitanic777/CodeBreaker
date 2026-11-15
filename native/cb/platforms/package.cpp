@@ -14,8 +14,7 @@ namespace {
 constexpr std::uint16_t kMachine386 = 0x014C;
 constexpr std::uint16_t kMachineXenon = 0x01F2;
 
-constexpr std::array<std::string_view, 52> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1", "gba", "nds", "n64",
-                                                       "zx",   "msx",     "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "switch", "vb", "intv", "o2", "chf", "ngp", "ps4", "ps5", "xboxone", "win32", "win16", "vxd", "dos"};
+constexpr std::array<std::string_view, 8> kIdNames = {"java", "xbox360", "xbox", "machine", "win32", "win16", "vxd", "dos"};
 static_assert(kIdNames.size() == kOrder.size());
 
 std::size_t order_index(Id id) {
@@ -84,8 +83,8 @@ std::string_view language_text(Language l) {
 // ---- the descriptors -------------------------------------------------------------------------------------------------
 Platform machine(const MachineSpec& spec) {
     Platform p;
-    p.id = spec.id;
-    p.name = std::string(id_text(spec.id));
+    p.id = Id::Machine;
+    p.name = spec.name;
     p.title = spec.title;
     p.family = spec.family;
     p.source = SourceLanguage::Asm;
@@ -169,7 +168,7 @@ Platform win32() {
 
 Platform zx() {
     MachineSpec s;
-    s.id = Id::Zx;
+    s.name = "zx";
     s.title = "ZX Spectrum";
     s.family = "z80";
     s.container = "snapshot or tape (.sna, .z80, .tap)";
@@ -183,10 +182,17 @@ Platform zx() {
 // ---- the registry --------------------------------------------------------------------------------------------------------
 void Registry::add(Platform platform) {
     for (const Platform& p : platforms_)
-        if (p.id == platform.id) throw UsageError(std::format("platform '{}' is added twice", id_text(platform.id)));
+        if (p.id == platform.id && (platform.id != Id::Machine || p.name == platform.name))   // (a machine is told by its name)
+            throw UsageError(std::format("platform '{}' is added twice", platform.id == Id::Machine ? platform.name : std::string(id_text(platform.id))));
     const std::size_t at = order_index(platform.id);
-    auto where = std::find_if(platforms_.begin(), platforms_.end(), [at](const Platform& p) { return order_index(p.id) > at; });
+    auto where = std::find_if(platforms_.begin(), platforms_.end(), [at](const Platform& p) { return order_index(p.id) > at; });   // (after the equal ones: machines keep the order added)
     platforms_.insert(where, std::move(platform));
+}
+
+bool Registry::complete() const {
+    for (const Id id : kOrder)
+        if (id != Id::Machine && std::none_of(platforms_.begin(), platforms_.end(), [id](const Platform& p) { return p.id == id; })) return false;
+    return true;
 }
 
 bool Registry::recognises(const Platform& platform, const std::filesystem::path& path) const {
@@ -206,51 +212,7 @@ bool Registry::recognises(const Platform& platform, const std::filesystem::path&
                        need(pr.pe_machine, "pe_machine")(path) == kMachineXenon;
             }
             case Id::Xbox: return starts_with_xbeh(path);
-            case Id::Nes: return need(pr.is_nes, "is_nes")(path);
-            case Id::Sms: return need(pr.is_sms, "is_sms")(path);
-            case Id::Gb: return need(pr.is_gb, "is_gb")(path);
-            case Id::Genesis: return need(pr.is_genesis, "is_genesis")(path);
-            case Id::Ps1: return need(pr.is_ps1, "is_ps1")(path);
-            case Id::Gba: return need(pr.is_gba, "is_gba")(path);
-            case Id::Nds: return need(pr.is_nds, "is_nds")(path);
-            case Id::N64: return need(pr.is_n64, "is_n64")(path);
-            case Id::Zx: return need(pr.is_zx, "is_zx")(path);
-            case Id::Msx: return need(pr.is_msx, "is_msx")(path);
-            case Id::Coleco: return need(pr.is_coleco, "is_coleco")(path);
-            case Id::Cpc: return need(pr.is_cpc, "is_cpc")(path);
-            case Id::Atari5200: return need(pr.is_atari5200, "is_atari5200")(path);
-            case Id::ThreeDo: return need(pr.is_threedo, "is_threedo")(path);
-            case Id::Jaguar: return need(pr.is_jaguar, "is_jaguar")(path);
-            case Id::WonderSwan: return need(pr.is_wonderswan, "is_wonderswan")(path);
-            case Id::CdI: return need(pr.is_cdi, "is_cdi")(path);
-            case Id::Vectrex: return need(pr.is_vectrex, "is_vectrex")(path);
-            case Id::Chf: return need(pr.is_chf, "is_chf")(path);
-            case Id::Ngp: return need(pr.is_ngp, "is_ngp")(path);
-            case Id::O2: return need(pr.is_o2, "is_o2")(path);
-            case Id::Intv: return need(pr.is_intv, "is_intv")(path);
-            case Id::Vb: return need(pr.is_vb, "is_vb")(path);
-            case Id::Switch: return need(pr.is_switch, "is_switch")(path);
-            case Id::Atari2600: return need(pr.is_atari2600, "is_atari2600")(path);
-            case Id::Atari7800: return need(pr.is_atari7800, "is_atari7800")(path);
-            case Id::Lynx: return need(pr.is_lynx, "is_lynx")(path);
-            case Id::Pce: return need(pr.is_pce, "is_pce")(path);
-            case Id::Snes: return need(pr.is_snes, "is_snes")(path);
-            case Id::NeoGeo: return need(pr.is_neogeo, "is_neogeo")(path);
-            case Id::SegaCd: return need(pr.is_segacd, "is_segacd")(path);
-            case Id::Sega32x: return need(pr.is_sega32x, "is_sega32x")(path);
-            case Id::Saturn: return need(pr.is_saturn, "is_saturn")(path);
-            case Id::Dreamcast: return need(pr.is_dreamcast, "is_dreamcast")(path);
-            case Id::GameCube: return need(pr.is_gamecube, "is_gamecube")(path);
-            case Id::Wii: return need(pr.is_wii, "is_wii")(path);
-            case Id::WiiU: return need(pr.is_wiiu, "is_wiiu")(path);
-            case Id::Ps2: return need(pr.is_ps2, "is_ps2")(path);
-            case Id::Psp: return need(pr.is_psp, "is_psp")(path);
-            case Id::N3ds: return need(pr.is_n3ds, "is_n3ds")(path);
-            case Id::Vita: return need(pr.is_vita, "is_vita")(path);
-            case Id::Ps3: return need(pr.is_ps3, "is_ps3")(path);
-            case Id::Ps4: return need(pr.is_ps4, "is_ps4")(path);
-            case Id::Ps5: return need(pr.is_ps5, "is_ps5")(path);
-            case Id::XboxOne: return need(pr.is_xboxone, "is_xboxone")(path);
+            case Id::Machine: return platform.recognise && platform.recognise(path);
             case Id::Win32: {
                 if (need(pr.executable_class, "executable_class")(path) != ExeKind::Pe) return false;
                 const std::optional<std::uint16_t> m = need(pr.pe_machine, "pe_machine")(path);

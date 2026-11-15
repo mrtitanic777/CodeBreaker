@@ -118,6 +118,8 @@ public static class CsTreeDump
             var entry = comp.GetEntryPoint(default);
             if (entry != null) sb.Append(",\"mainSym\":").Append(Sym(entry));
         }
+        if (anonPending.Count > 0) sb.Append(",\"anon\":[").Append(string.Join(",", anonPending)).Append(']');
+        anonPending.Clear();
         sb.Append('}');
     }
 
@@ -448,9 +450,28 @@ public static class CsTreeDump
     }
 
     // ---------------------------------------------------------------------------------- symbols and types
+    // Anonymous types (`new { a, b }`, and the ones a query expression makes to carry its range variables) have no name in the
+    // compiler: each distinct shape is given one here, AnonType1, AnonType2 ... for the whole run, and its members are written once, in
+    // the file where it was first met, as an "anon" entry the front end declares a class from.
+    static readonly Dictionary<string, string> anonNames = new Dictionary<string, string>();
+    static readonly List<string> anonPending = new List<string>();
+
+    static string AnonName(INamedTypeSymbol t)
+    {
+        string key = t.ToDisplayString();
+        if (anonNames.TryGetValue(key, out var found)) return found;
+        string name = "AnonType" + (anonNames.Count + 1);
+        anonNames[key] = name;
+        var b = new StringBuilder("{\"name\":").Append(Str(name)).Append(",\"members\":[");
+        Join(b, t.GetMembers().OfType<IPropertySymbol>().ToList(), (bb, p) => bb.Append("{\"name\":").Append(Str(p.Name)).Append(",\"type\":").Append(Ty(p.Type)).Append('}'));
+        anonPending.Add(b.Append("]}").ToString());
+        return name;
+    }
+
     static string Qualified(ISymbol s)
     {
         if (s == null) return "";
+        if (s is INamedTypeSymbol anon && anon.IsAnonymousType) return AnonName(anon);
         if (s is INamespaceSymbol ns && ns.IsGlobalNamespace) return "";
         string outer = s.ContainingType != null ? Qualified(s.ContainingType)
             : s.ContainingNamespace != null ? Qualified(s.ContainingNamespace) : "";

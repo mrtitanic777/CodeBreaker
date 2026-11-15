@@ -9,7 +9,7 @@ namespace cb::platforms {
 
 CB_TEST("platforms.nds.descriptor", [] {
     const Platform p = nds();
-    CB_CHECK(p.id == Id::Nds);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "nds");
     CB_CHECK_EQ(p.title, "Nintendo DS");
     CB_CHECK_EQ(p.family, "arm");

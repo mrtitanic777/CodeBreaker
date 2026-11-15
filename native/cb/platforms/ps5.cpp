@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform ps5() {
     Platform p;
-    p.id = Id::Ps5;
+    p.id = Id::Machine;
     p.name = "ps5";
     p.title = "PlayStation 5";
     p.family = "x86";

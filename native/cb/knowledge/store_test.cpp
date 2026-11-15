@@ -3,6 +3,8 @@
 #include <thread>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "cb/base/sqlite.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -20,6 +22,12 @@ using namespace cb::knowledge;
 namespace {
 
 std::filesystem::path checkout() { return std::filesystem::path(CB_SOURCE_DIR).parent_path(); }
+
+// What the checkout's win16 model file holds (the tests count the file, not a number that goes stale when a call is modelled).
+std::size_t win16_model_count() {
+    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "data" / "knowledge" / "models" / "win16.json"));
+    return j.at("functions").size();
+}
 
 struct TestStore {
     fs::ScopedTempDir dir{"cb-knowledge-store"};
@@ -249,10 +257,10 @@ CB_TEST("knowledge.store.default_path_and_beside", [] {
 CB_TEST("knowledge.store.authored_kinds_load_from_the_checkouts_files", [] {
     TestStore t;
     const Rows api = t.store.authored_table({"win16", "api_model"});
-    CB_CHECK_EQ(api.size(), std::size_t{14});
+    CB_CHECK_EQ(api.size(), win16_model_count());
     CB_CHECK(api.contains("GLOBALLOCK"));
     // loaded once: the kind is in the base now, with where it came from
-    CB_CHECK_EQ(t.store.table("win16", "api_model").size(), std::size_t{14});
+    CB_CHECK_EQ(t.store.table("win16", "api_model").size(), win16_model_count());
     CB_CHECK(t.store.stamp_of("win16", "api_model").has_value());
     const auto p = t.store.about("win16", "api_model", "GLOBALLOCK");
     CB_CHECK(p && p->origin == "authored" && p->source == "data/knowledge/models/win16.json");
@@ -269,8 +277,8 @@ CB_TEST("knowledge.store.kinds_listing_counts_by_origin", [] {
     CB_CHECK_EQ(all.size(), std::size_t{2});
     CB_CHECK_EQ(all[0].platform, "win16");
     CB_CHECK_EQ(all[0].kind, "api_model");
-    CB_CHECK_EQ(all[0].keys, 15);
-    CB_CHECK_EQ(all[0].origins.at("authored"), 14);
+    CB_CHECK_EQ(static_cast<std::size_t>(all[0].keys), win16_model_count() + 1);
+    CB_CHECK_EQ(static_cast<std::size_t>(all[0].origins.at("authored")), win16_model_count());
     CB_CHECK_EQ(all[0].origins.at("given"), 1);
     CB_CHECK_EQ(all[0].source, "data/knowledge/models/win16.json");
     CB_CHECK(all[0].bytes > 0);

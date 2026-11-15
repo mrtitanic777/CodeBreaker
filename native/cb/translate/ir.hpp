@@ -622,6 +622,17 @@ struct Yield {   // a switch expression's arm gives its value
     Node* expr = nullptr;
     template <class F> void each_child(F&& f);
 };
+// An iterator method (its MethodDecl has the mod "iterator") hands out its sequence with these: `yield return expr` gives the next
+// element and stops where it is until the consumer asks for another; `yield break` ends the sequence. Python's `yield` is the same.
+struct YieldReturn {
+    static constexpr std::string_view kName = "YieldReturn";
+    Node* expr = nullptr;
+    template <class F> void each_child(F&& f);
+};
+struct YieldBreak {
+    static constexpr std::string_view kName = "YieldBreak";
+    template <class F> void each_child(F&&) {}
+};
 
 // -- expressions (a Node's `type` is the expression's type)
 struct Lit {
@@ -762,6 +773,13 @@ struct MethodRef {   // mode: invoke / new
     std::optional<std::string> mode;
     template <class F> void each_child(F&& f);
 };
+// `await x` in an async method (its MethodDecl has the mod "async"): the method stops here until the task x is done, then goes on with
+// its result (or throws its exception). The type of the node is the task's result.
+struct Await {
+    static constexpr std::string_view kName = "Await";
+    Node* x = nullptr;
+    template <class F> void each_child(F&& f);
+};
 struct SwitchExpr {   // cases: each arm ends in a Yield or a Throw
     static constexpr std::string_view kName = "SwitchExpr";
     Node* expr = nullptr;
@@ -836,10 +854,10 @@ using Kind = std::variant<
     Module, Boxed<Unit>, Boxed<ClassDecl>, FieldDecl, Boxed<MethodDecl>, Param, EnumConst, Boxed<Property>, Boxed<TypeParam>,
     // statements
     Block, Local, ExprStmt, If, While, DoWhile, For, ForEach, Switch, Case, Break, Continue, Return, Throw, Try, Catch,
-    Labeled, Goto, Boxed<MachineFragment>, Sync, Empty, Comment, LocalClass, Assert, CtorCall, Yield,
+    Labeled, Goto, Boxed<MachineFragment>, Sync, Empty, Comment, LocalClass, Assert, CtorCall, Yield, YieldReturn, YieldBreak,
     // expressions
     Lit, Name, Select, TypeName, This, Super, Call, New, NewArray, Index, Length, Unary, Binary, Concat, Assign, Cond, Cast,
-    InstanceOf, ClassLit, Lambda, MethodRef, SwitchExpr, AddressOf, FarAddress, Piece, Join, Paren, Unsupported>;
+    InstanceOf, ClassLit, Lambda, MethodRef, Await, SwitchExpr, AddressOf, FarAddress, Piece, Join, Paren, Unsupported>;
 
 // A node: its place in the source, where in a binary it came from (shared, immutable, and absent for source), the type of
 // an expression (empty for a node that is not one), and what kind of node it is.
@@ -993,6 +1011,8 @@ CB_IR_EACH_CHILD(LocalClass, decl)
 CB_IR_EACH_CHILD(Assert, cond, detail)
 CB_IR_EACH_CHILD(CtorCall, args, target)
 CB_IR_EACH_CHILD(Yield, expr)
+CB_IR_EACH_CHILD(YieldReturn, expr)
+CB_IR_EACH_CHILD(Await, x)
 CB_IR_EACH_CHILD(Select, obj)
 CB_IR_EACH_CHILD(Call, target, args)
 CB_IR_EACH_CHILD(New, outer, args, body)

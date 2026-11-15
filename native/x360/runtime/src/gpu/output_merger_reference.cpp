@@ -39,11 +39,27 @@ namespace gpu
             return x >= 1.0f ? 1.0f : x;
         }
 
+        // 8_8_8_8_GAMMA's curve (output_merger.cpp): piecewise linear, slopes 1/4, 1/2, 1, 2 over gamma 0 - 1/4 - 3/8 - 3/4 - 1.
+        float GammaToLinear(float g)
+        {
+            if (g < 0.25f) return g * 0.25f;
+            if (g < 0.375f) return (g - 0.25f) * 0.5f + 0.0625f;
+            if (g < 0.75f) return (g - 0.375f) + 0.125f;
+            return (g - 0.75f) * 2.0f + 0.5f;
+        }
+        float LinearToGamma(float l)
+        {
+            if (l < 0.0625f) return l * 4.0f;
+            if (l < 0.125f) return (l - 0.0625f) * 2.0f + 0.25f;
+            if (l < 0.5f) return (l - 0.125f) + 0.375f;
+            return (l - 0.5f) * 0.5f + 0.75f;
+        }
+
         void Range(uint32_t format, float c[4])
         {
             for (int i = 0; i < 4; i++)
             {
-                if (format == 0)
+                if (format == 0 || format == 1)
                     c[i] = Saturate(c[i]);
                 else
                     c[i] = Min(Max(IsNan(c[i]) ? 0.0f : c[i], -32.0f), 32.0f);
@@ -52,11 +68,14 @@ namespace gpu
 
         void Decode(uint32_t format, uint32_t v, float c[4])
         {
-            if (format == 0)
+            if (format == 0 || format == 1)
             {
                 const float k = std::bit_cast<float>(0x3B808081u); // 1/255
                 for (int i = 0; i < 4; i++)
                     c[i] = float((v >> (8 * i)) & 0xFF) * k;
+                if (format == 1)
+                    for (int i = 0; i < 3; i++)
+                        c[i] = GammaToLinear(c[i]);
                 return;
             }
             const float k = std::bit_cast<float>(0x3A800100u); // 32/32767
@@ -67,12 +86,12 @@ namespace gpu
 
         uint32_t Encode(uint32_t format, const float c[4])
         {
-            if (format == 0)
+            if (format == 0 || format == 1)
             {
                 uint32_t packed = 0;
                 for (int i = 0; i < 4; i++)
                 {
-                    float t = c[i] * 255.0f;
+                    float t = (format == 1 && i < 3 ? LinearToGamma(c[i]) : c[i]) * 255.0f;
                     t = t + 0.5f;
                     packed |= uint32_t(std::floor(t)) << (8 * i);
                 }

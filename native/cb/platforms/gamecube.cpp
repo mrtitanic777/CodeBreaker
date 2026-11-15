@@ -25,7 +25,7 @@ std::vector<std::string> gamecube_registers() {
 
 Platform gamecube() {
     MachineSpec s;
-    s.id = Id::GameCube;
+    s.name = "gamecube";
     s.title = "Nintendo GameCube";
     s.family = "powerpc";
     s.container = "DOL executable (.dol), ELF (.elf)";

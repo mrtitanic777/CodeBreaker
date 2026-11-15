@@ -8,7 +8,7 @@
 // window scales it.
 //
 // Not implemented (each stops with specifics): formats other than k_8_8_8_8 and the 10-bit k_2_10_10_10_AS_16_16_16_16
-// (shown through the identity of the PWL ramp; one the title wrote stops), swizzles other than LE_X8R8G8B8's (Z, Y, X), DC_LUTA_CONTROL other than 0 (256-entry
+// (shown through the PWL ramp: a 10-bit channel c takes entry c >> 3, base + delta * (c & 7) / 8, top 10 of 16 bits), swizzles other than LE_X8R8G8B8's (Z, Y, X), DC_LUTA_CONTROL other than 0 (256-entry
 // table), nonzero DC_LUTA black/white offsets, borders, stacked or non-2D textures.
 
 #include <cstdint>
@@ -39,13 +39,15 @@ namespace gpu
         uint32_t width, height;
         uint32_t overlay;     // 1: blend the system UI overlay (t1) into the front buffer before the gamma table;
                               // 2: blend XAM's overlay texture from guest memory (ov*), scaled to the front buffer
-        uint32_t tenBit;      // 1: the front buffer is k_2_10_10_10_AS_16_16_16_16 (A2R10G10B10, identity ramp), else k_8_8_8_8
+        uint32_t tenBit;      // 1: the front buffer is k_2_10_10_10_AS_16_16_16_16 (A2R10G10B10, identity ramp), 2: the same through the
+                              // title's piecewise-linear ramp (pwl), 0: k_8_8_8_8
         uint32_t ovBase, ovPitch, ovTiled, ovEndian; // XAM's overlay: k_8_8_8_8, premultiplied (GuestOverlay)
         uint32_t ovWidth, ovHeight, pad2, pad3;     // its texture's size
         uint32_t ovX1, ovY1, ovX2, ovY2;            // the source rectangle scaled to the frame
         uint32_t table[256];  // DisplayGamma::table (blue bits 0-9, green 10-19, red 20-29)
+        uint32_t pwl[128 * 3]; // DisplayGamma::pwl flattened (entry * 3 + R, G, B): base bits 0-15, delta bits 16-31
     };
-    static_assert(sizeof(PresentConstants) == 80 + 1024);
+    static_assert(sizeof(PresentConstants) == 80 + 1024 + 1536);
 
     // Fills the ov* fields of `constants` for XAM's overlay (overlay = 2); stops on a format not implemented.
     void SetGuestOverlay(PresentConstants& constants, const GuestOverlay& overlay);

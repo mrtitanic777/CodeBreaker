@@ -25,7 +25,7 @@ std::vector<std::string> ps3_registers() {
 
 Platform ps3() {
     MachineSpec s;
-    s.id = Id::Ps3;
+    s.name = "ps3";
     s.title = "PlayStation 3";
     s.family = "powerpc";
     s.container = "PSL1GHT ELF (.elf), or an unencrypted SELF holding one";

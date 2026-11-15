@@ -10,10 +10,12 @@
 #include <vector>
 
 #include "cb/base/config.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/ui/mcp_command.hpp"
 
 int main(int argc, char** argv) {
     using namespace cb;
+    engine::register_all_lanes();   // (the platform lanes `info` and `reach` ask: engine/lane_registry.hpp)
     try {
         const cli::Cli cli("cb_mcp_stdio", {ui::mcp_command::command({.config = config::current()})});
         std::vector<std::string> args{"mcp"};

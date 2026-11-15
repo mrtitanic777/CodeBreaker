@@ -433,6 +433,7 @@ CB_TEST("decompile.decompiler.calls_and_names", [] {
     CB_CHECK(!dc::mentions("", doc, "nowhere"));
     const vector<std::int64_t> arguments = dc::call_arguments("", "sub_1_0010", doc);
     CB_CHECK_EQ(arguments.size(), std::size_t{2});
+    if (arguments.size() != 2) return;   // (what follows reads them)
     CB_CHECK_EQ(arguments[0], 2);
     CB_CHECK_EQ(arguments[1], 0);
     CB_CHECK(dc::call_arguments("", "nowhere", doc).empty());
@@ -444,6 +445,7 @@ CB_TEST("decompile.decompiler.calls_and_names", [] {
     CB_CHECK(dc::mentions(text, nullptr, "gg"));
     const vector<std::int64_t> from_text = dc::call_arguments(text, "g", nullptr);
     CB_CHECK_EQ(from_text.size(), std::size_t{3});
+    if (from_text.size() != 3) return;
     CB_CHECK_EQ(from_text[0], 3);   // (g(1, h(2, 3), a[1, 2]): commas inside the brackets are not its)
     CB_CHECK_EQ(from_text[1], 0);   // (g(): none)
     CB_CHECK_EQ(from_text[2], 1);

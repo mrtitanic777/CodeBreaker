@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.jaguar.descriptor", [] {
     const Platform p = jaguar();
-    CB_CHECK(p.id == Id::Jaguar);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "jaguar");
     CB_CHECK_EQ(p.title, "Atari Jaguar");
     CB_CHECK_EQ(p.family, "68000");

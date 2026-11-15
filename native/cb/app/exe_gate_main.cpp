@@ -264,6 +264,19 @@ Outcome run_case(const Env& env, const Vars& vars, const Case& c, const stdfs::p
         spec.stdin_data = fs::read_file(fs::from_text(f));
     }
     const process::ProcessResult r = process::run(spec);
+    // A command may have started the background service of the case's state folder (the MCP server does: it outlives the program that started it and
+    // keeps the knowledge database open). It is the case's own, so it ends with the case: asked to stop, and waited for, before the folder is removed.
+    {
+        process::ProcessSpec stop;
+        stop.argv = {fs::to_text(env.exe), "serve", "--stop"};
+        stop.cwd = spec.cwd;
+        stop.env = spec.env;
+        stop.timeout = std::chrono::seconds(30);
+        try {
+            (void)process::run(stop);
+        } catch (const Error&) {   // isolation boundary: nothing to stop is not a failure of the case
+        }
+    }
 
     Normaliser n;
     n.add_path(work_abs, "<work>");

@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform nswitch() {
     MachineSpec s;
-    s.id = Id::Switch;
+    s.name = "switch";
     s.title = "Nintendo Switch";
     s.family = "AArch64";
     s.container = "homebrew executable (.nro), NSO executable (.nso), or the AArch64 ELF devkitA64 links (.elf)";

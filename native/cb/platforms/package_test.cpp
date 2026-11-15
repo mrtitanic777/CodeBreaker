@@ -36,12 +36,20 @@ Platform stand_in(Id id, const char* name, std::optional<std::uint16_t> machine 
     return p;
 }
 
+// A platform a lane registered (Id::Machine): recognised by its own probe, answering from the table of what each path "is".
+Platform machine_stand_in(const char* name, std::function<bool(const std::filesystem::path&)> recognise) {
+    Platform p = stand_in(Id::Machine, name, std::nullopt, true);
+    p.recognise = std::move(recognise);
+    return p;
+}
+
 // Probes answering from a table of what each path "is", the way the formats layer answers from a file's header.
 struct Files {
     std::map<std::string, ExeKind> classes;       // by MZ header
     std::map<std::string, ExeKind> kinds;         // that, and headerless DOS
     std::map<std::string, std::uint16_t> machines;
-    std::set<std::string> nes, sms, gb, genesis, ps1, gba, nds, n64, msx, coleco, cpc, atari5200, atari2600, atari7800, lynx, threedo, jaguar, wonderswan, cdi, vectrex, chf, o2, intv, vb, ngp, ps4, ps5, xboxone, pce, snes, neogeo, segacd, sega32x, saturn, dreamcast, n3ds, vita, ps3, nswitch, gamecube, wii, wiiu, ps2, psp, zx, xex, drivers, java_modules;
+    std::map<std::string, std::set<std::string>> machine_files;   // by the name of a registered machine: the paths its probe takes
+    std::set<std::string> xex, drivers, java_modules;
 
     Probes probes() const {
         auto in = [](const std::set<std::string>& s) {
@@ -62,110 +70,31 @@ struct Files {
         };
         pr.holds_drivers = in(drivers);
         pr.is_xex = in(xex);
-        pr.is_nes = in(nes);
-        pr.is_sms = in(sms);
-        pr.is_gb = in(gb);
-        pr.is_genesis = in(genesis);
-        pr.is_ps1 = in(ps1);
-        pr.is_gba = in(gba);
-        pr.is_nds = in(nds);
-        pr.is_n64 = in(n64);
-        pr.is_msx = in(msx);
-        pr.is_coleco = in(coleco);
-        pr.is_cpc = in(cpc);
-        pr.is_atari5200 = in(atari5200);
-        pr.is_threedo = in(threedo);
-        pr.is_jaguar = in(jaguar);
-        pr.is_wonderswan = in(wonderswan);
-        pr.is_cdi = in(cdi);
-        pr.is_vectrex = in(vectrex);
-        pr.is_chf = in(chf);
-        pr.is_o2 = in(o2);
-        pr.is_intv = in(intv);
-        pr.is_vb = in(vb);
-        pr.is_switch = in(nswitch);
-        pr.is_ngp = in(ngp);
-        pr.is_atari2600 = in(atari2600);
-        pr.is_atari7800 = in(atari7800);
-        pr.is_lynx = in(lynx);
-        pr.is_pce = in(pce);
-        pr.is_snes = in(snes);
-        pr.is_neogeo = in(neogeo);
-        pr.is_segacd = in(segacd);
-        pr.is_sega32x = in(sega32x);
-        pr.is_saturn = in(saturn);
-        pr.is_dreamcast = in(dreamcast);
-        pr.is_gamecube = in(gamecube);
-        pr.is_wii = in(wii);
-        pr.is_wiiu = in(wiiu);
-        pr.is_ps2 = in(ps2);
-        pr.is_psp = in(psp);
-        pr.is_n3ds = in(n3ds);
-        pr.is_vita = in(vita);
-        pr.is_ps3 = in(ps3);
-        pr.is_ps4 = in(ps4);
-        pr.is_ps5 = in(ps5);
-        pr.is_xboxone = in(xboxone);
-        pr.is_zx = in(zx);
         pr.is_java_module = in(java_modules);
         pr.xex_basefile = [](const std::filesystem::path& p) { return std::filesystem::path(fs::to_text(p) + ".base"); };
         pr.xbe_to_pe = [](const std::filesystem::path& p) { return std::filesystem::path(fs::to_text(p) + ".pe"); };
         return pr;
     }
+
+    // The probe of the registered machine `name`.
+    std::function<bool(const std::filesystem::path&)> machine_probe(const std::string& name) const {
+        return [this, name](const std::filesystem::path& p) {
+            const auto it = machine_files.find(name);
+            return it != machine_files.end() && it->second.contains(fs::to_text(p));
+        };
+    }
 };
 
-// A registry with every platform added in a scrambled order.
-Registry full_registry(const Probes& probes) {
+// A registry with every platform added in a scrambled order; the registered machines are three stand-ins, added in the order toyc, toya, toyb.
+Registry full_registry(const Probes& probes, const Files& files = {}) {
     Registry r(probes);
     r.add(dos());
     r.add(stand_in(Id::Vxd, "le"));
     r.add(stand_in(Id::Win16, "ne", std::nullopt, true));
     r.add(win32());
-    r.add(msx());
-    r.add(coleco());
-    r.add(cpc());
-    r.add(stand_in(Id::Atari5200, "atari5200", std::nullopt, true));
-    r.add(stand_in(Id::ThreeDo, "threedo", std::nullopt, true));
-    r.add(stand_in(Id::Jaguar, "jaguar", std::nullopt, true));
-    r.add(stand_in(Id::WonderSwan, "wonderswan", std::nullopt, true));
-    r.add(stand_in(Id::CdI, "cdi", std::nullopt, true));
-    r.add(stand_in(Id::Vectrex, "vectrex", std::nullopt, true));
-    r.add(stand_in(Id::Chf, "chf", std::nullopt, true));
-    r.add(stand_in(Id::O2, "o2", std::nullopt, true));
-    r.add(stand_in(Id::Intv, "intv", std::nullopt, true));
-    r.add(stand_in(Id::Vb, "vb", std::nullopt, true));
-    r.add(stand_in(Id::Ngp, "ngp", std::nullopt, true));
-    r.add(stand_in(Id::Atari2600, "atari2600", std::nullopt, true));
-    r.add(stand_in(Id::Atari7800, "atari7800", std::nullopt, true));
-    r.add(stand_in(Id::Lynx, "lynx", std::nullopt, true));
-    r.add(stand_in(Id::Pce, "pce", std::nullopt, true));
-    r.add(stand_in(Id::Snes, "snes", std::nullopt, true));
-    r.add(stand_in(Id::NeoGeo, "neogeo", std::nullopt, true));
-    r.add(stand_in(Id::SegaCd, "segacd", std::nullopt, true));
-    r.add(stand_in(Id::Sega32x, "sega32x", std::nullopt, true));
-    r.add(stand_in(Id::Saturn, "saturn", std::nullopt, true));
-    r.add(stand_in(Id::Dreamcast, "dreamcast", std::nullopt, true));
-    r.add(stand_in(Id::GameCube, "gamecube", std::nullopt, true));
-    r.add(stand_in(Id::Wii, "wii", std::nullopt, true));
-    r.add(stand_in(Id::WiiU, "wiiu", std::nullopt, true));
-    r.add(stand_in(Id::Ps2, "ps2", std::nullopt, true));
-    r.add(stand_in(Id::Psp, "psp", std::nullopt, true));
-    r.add(stand_in(Id::N3ds, "n3ds", std::nullopt, true));
-    r.add(stand_in(Id::Vita, "vita", std::nullopt, true));
-    r.add(stand_in(Id::Ps3, "ps3", std::nullopt, true));
-    r.add(stand_in(Id::Switch, "switch", std::nullopt, true));
-    r.add(stand_in(Id::Ps4, "ps4", std::nullopt, true));
-    r.add(stand_in(Id::Ps5, "ps5", std::nullopt, true));
-    r.add(stand_in(Id::XboxOne, "xboxone", std::nullopt, true));
-    r.add(zx());
-    r.add(stand_in(Id::Genesis, "genesis", std::nullopt, true));
-    r.add(stand_in(Id::Ps1, "ps1", std::nullopt, true));
-    r.add(stand_in(Id::Gba, "gba", std::nullopt, true));
-    r.add(stand_in(Id::Nds, "nds", std::nullopt, true));
-    r.add(stand_in(Id::N64, "n64", std::nullopt, true));
-    r.add(stand_in(Id::Gb, "gb", std::nullopt, true));
-    r.add(stand_in(Id::Sms, "sms", std::nullopt, true));
-    r.add(stand_in(Id::Nes, "nes", std::nullopt, true));
+    r.add(machine_stand_in("toyc", files.machine_probe("toyc")));
+    r.add(machine_stand_in("toya", files.machine_probe("toya")));
+    r.add(machine_stand_in("toyb", files.machine_probe("toyb")));
     r.add(xbe());
     r.add(xbox360());
     r.add(java());
@@ -175,24 +104,30 @@ Registry full_registry(const Probes& probes) {
 }  // namespace
 
 CB_TEST("platforms.package.ids", [] {
-    const std::vector<std::string> expected = {"java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "ps1", "gba", "nds", "n64", "zx", "msx", "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "switch", "vb", "intv", "o2", "chf", "ngp", "ps4", "ps5", "xboxone", "win32", "win16", "vxd", "dos"};
-    CB_CHECK_EQ(kOrder.size(), expected.size());
-    for (std::size_t i = 0; i < kOrder.size(); ++i) {
-        CB_CHECK_EQ(std::string(id_text(kOrder[i])), expected[i]);
-        CB_CHECK(parse_id(expected[i]) == kOrder[i]);
+    // every descriptor has a name of its own, and the name finds it again
+    std::set<std::string> seen;
+    for (const Id id : kOrder) {
+        const std::string name(id_text(id));
+        CB_CHECK(!name.empty());
+        CB_CHECK(seen.insert(name).second);
+        CB_CHECK(parse_id(name) == id);
     }
+    CB_CHECK_EQ(seen.size(), kOrder.size());
     CB_CHECK(!parse_id("pe"));        // "pe" is a platform's name, not a descriptor
     CB_CHECK(!parse_id(""));
+    // the order platforms are tried in: Java and the Xboxes first, the registered machines, then the Windows and DOS lanes
+    const auto at = [](Id id) { return std::find(kOrder.begin(), kOrder.end(), id) - kOrder.begin(); };
+    CB_CHECK(at(Id::Java) < at(Id::Xbox360) && at(Id::Xbox360) < at(Id::Xbox) && at(Id::Xbox) < at(Id::Machine));
+    CB_CHECK(at(Id::Machine) < at(Id::Win32) && at(Id::Win32) < at(Id::Win16) && at(Id::Win16) < at(Id::Vxd) && at(Id::Vxd) < at(Id::Dos));
 });
 
 CB_TEST("platforms.package.registry_orders_and_finds", [] {
     Files files;
     Registry r = full_registry(files.probes());
     CB_CHECK(r.complete());
-    // recorded: [id, name] in the order platforms are tried
+    // recorded: [id, name] in the order platforms are tried -- the registered machines keep the order they were added in
     const std::vector<std::pair<std::string, std::string>> expected = {
-        {"java", "java"}, {"xbox360", "powerpc"}, {"xbox", "xbe"}, {"nes", "nes"}, {"sms", "sms"}, {"gb", "gb"}, {"genesis", "genesis"}, {"ps1", "ps1"}, {"gba", "gba"}, {"nds", "nds"}, {"n64", "n64"},
-        {"zx", "zx"},     {"msx", "msx"}, {"coleco", "coleco"}, {"cpc", "cpc"}, {"atari5200", "atari5200"}, {"atari2600", "atari2600"}, {"atari7800", "atari7800"}, {"lynx", "lynx"}, {"pce", "pce"}, {"snes", "snes"}, {"neogeo", "neogeo"}, {"segacd", "segacd"}, {"sega32x", "sega32x"}, {"saturn", "saturn"}, {"dreamcast", "dreamcast"}, {"threedo", "threedo"}, {"jaguar", "jaguar"}, {"wonderswan", "wonderswan"}, {"cdi", "cdi"}, {"vectrex", "vectrex"}, {"gamecube", "gamecube"}, {"wii", "wii"}, {"wiiu", "wiiu"}, {"ps2", "ps2"}, {"psp", "psp"}, {"n3ds", "n3ds"}, {"vita", "vita"}, {"ps3", "ps3"}, {"switch", "switch"}, {"vb", "vb"}, {"intv", "intv"}, {"o2", "o2"}, {"chf", "chf"}, {"ngp", "ngp"}, {"ps4", "ps4"}, {"ps5", "ps5"}, {"xboxone", "xboxone"}, {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"},   {"dos", "dos"}};
+        {"java", "java"}, {"xbox360", "powerpc"}, {"xbox", "xbe"}, {"machine", "toyc"}, {"machine", "toya"}, {"machine", "toyb"}, {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"}, {"dos", "dos"}};
     CB_CHECK_EQ(r.all().size(), expected.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {
         CB_CHECK_EQ(std::string(id_text(r.all()[i].id)), expected[i].first);
@@ -204,6 +139,7 @@ CB_TEST("platforms.package.registry_orders_and_finds", [] {
     CB_CHECK_EQ(r.named("xbox360")->name, "powerpc");
     CB_CHECK_EQ(r.named("xbox")->name, "xbe");
     CB_CHECK_EQ(r.named("vxd")->name, "le");
+    CB_CHECK_EQ(r.named("toya")->name, "toya");
     CB_CHECK(r.named("mz") == nullptr);
     CB_CHECK(r.named("") == nullptr);
     CB_CHECK_EQ(r.of("win16").name, "ne");
@@ -216,29 +152,34 @@ CB_TEST("platforms.package.registry_orders_and_finds", [] {
     CB_CHECK(r.for_machine(-1) == nullptr);
     CB_CHECK(r.for_machine(332 + 65536) == nullptr);       // not a 16-bit machine type
     CB_CHECK_THROWS_AS(UsageError, r.add(java()));
+    CB_CHECK_THROWS_AS(UsageError, r.add(machine_stand_in("toya", nullptr)));   // a machine is told by its name: twice is an error
+    r.add(machine_stand_in("toyd", nullptr));                                   // another is not
+    CB_CHECK_EQ(r.all()[6].name, "toyd");                                       // after the machines before it, before the Windows lanes
 });
 
 CB_TEST("platforms.package.lanes_runners_steps", [] {
     Files files;
     Registry r = full_registry(files.probes());
     const auto lanes = r.lanes();
-    CB_CHECK_EQ(lanes.size(), 51u);                         // xbe has no lane: it is handed the PE image
+    // a platform has a lane when it says so: every one but xbe, which is handed the PE image, and dos, whose lane is not a platform lane
+    std::size_t with_lane = 0;
+    for (const Platform& p : r.all()) with_lane += p.lane.has_value();
+    CB_CHECK_EQ(lanes.size(), with_lane);
     CB_CHECK(lanes[0] == (std::pair<std::string, std::string>{"java", "java"}));
     CB_CHECK(lanes[1] == (std::pair<std::string, std::string>{"powerpc", "powerpc"}));
-    // (its place moves as console lanes are added before it: found by name)
     CB_CHECK(std::find(lanes.begin(), lanes.end(), std::pair<std::string, std::string>{"pe", "win32"}) != lanes.end());
+    CB_CHECK(std::find(lanes.begin(), lanes.end(), std::pair<std::string, std::string>{"toya", "toya"}) != lanes.end());
     const std::vector<std::string> runners = r.runners();
     // (win32 and powerpc run; the stand-ins above say who else does)
     CB_CHECK(std::find(runners.begin(), runners.end(), "powerpc") != runners.end());
     CB_CHECK(std::find(runners.begin(), runners.end(), "pe") != runners.end());
-    CB_CHECK(std::find(runners.begin(), runners.end(), "msx") != runners.end());
-    CB_CHECK(std::find(runners.begin(), runners.end(), "coleco") != runners.end());
+    CB_CHECK(std::find(runners.begin(), runners.end(), "toyb") != runners.end());
     CB_CHECK(std::find(runners.begin(), runners.end(), "dos") == runners.end());
     CB_CHECK(std::find(runners.begin(), runners.end(), "java") == runners.end());   // the JVM runs it, not us
     CB_CHECK(std::find(runners.begin(), runners.end(), "xbe") == runners.end());
     const auto steps = r.step_sets();
-    CB_CHECK_EQ(steps.size(), 51u);
     for (const auto& [id, s] : steps) CB_CHECK(s == Steps::Lanes);
+    CB_CHECK_EQ(steps.size(), with_lane);
 });
 
 CB_TEST("platforms.package.win32_descriptor", [] {
@@ -352,13 +293,14 @@ CB_TEST("platforms.package.machine_platforms", [] {
     CB_CHECK_EQ(z.loader.container, "snapshot or tape (.sna, .z80, .tap)");
     // machine() with the default toolchain
     MachineSpec s;
-    s.id = Id::Nes;
+    s.name = "toy";
     s.title = "NES";
     s.family = "6502";
     s.container = "iNES (.nes)";
     s.results = {"A", "X", "Y", "P"};
     const Platform n = machine(s);
-    CB_CHECK_EQ(n.name, "nes");
+    CB_CHECK_EQ(n.name, "toy");
+    CB_CHECK(n.id == Id::Machine);
     CB_CHECK_EQ(n.compiler.toolchain, "CodeBreaker's own assembler");
 });
 
@@ -367,36 +309,19 @@ CB_TEST("platforms.package.identify_by_probes", [] {
     files.classes = {{"a.exe", ExeKind::Pe}, {"x360.exe", ExeKind::Pe}, {"w.exe", ExeKind::Ne}, {"d.exe", ExeKind::Dos}, {"drv.vxd", ExeKind::Le}};
     files.machines = {{"a.exe", std::uint16_t{0x14C}}, {"x360.exe", std::uint16_t{0x1F2}}};
     files.kinds = {{"d.exe", ExeKind::Dos}, {"prog.com", ExeKind::Dos}};
-    files.nes = {"game.nes"};
-    files.sms = {"game.sms"};
-    files.gb = {"game.gb"};
-    files.genesis = {"game.md"};
-    files.ps1 = {"game.psx"};
-    files.gba = {"game.gba"};
-    files.n64 = {"game.z64"};
-    files.msx = {"game.rom"};
-    files.coleco = {"game.col"};
-    files.cpc = {"game.dsk"};
-    files.zx = {"snap.sna"};
+    files.machine_files = {{"toya", {"game.toya", "both.toy"}}, {"toyb", {"game.toyb"}}, {"toyc", {"game.toyc", "both.toy"}}};
     files.xex = {"game.xex"};
     files.drivers = {"drv.vxd", "vmm32.vxd"};
     fs::ScopedTempDir dir("cb-platforms");
     const std::string folder = fs::to_text(dir.path() / "src");
     fs::make_dirs(folder);
     files.java_modules = {folder, "One.java"};
-    const Registry r = full_registry(files.probes());
+    const Registry r = full_registry(files.probes(), files);
     auto who = [&](const char* path) { const Platform* p = r.identify(path); return p ? p->name : std::string("none"); };
-    CB_CHECK_EQ(who("game.nes"), "nes");
-    CB_CHECK_EQ(who("game.sms"), "sms");
-    CB_CHECK_EQ(who("game.gb"), "gb");
-    CB_CHECK_EQ(who("game.md"), "genesis");
-    CB_CHECK_EQ(who("game.psx"), "ps1");
-    CB_CHECK_EQ(who("game.gba"), "gba");
-    CB_CHECK_EQ(who("game.z64"), "n64");
-    CB_CHECK_EQ(who("game.rom"), "msx");
-    CB_CHECK_EQ(who("game.col"), "coleco");
-    CB_CHECK_EQ(who("game.dsk"), "cpc");
-    CB_CHECK_EQ(who("snap.sna"), "zx");
+    CB_CHECK_EQ(who("game.toya"), "toya");
+    CB_CHECK_EQ(who("game.toyb"), "toyb");
+    CB_CHECK_EQ(who("game.toyc"), "toyc");
+    CB_CHECK_EQ(who("both.toy"), "toyc");                   // taken by two machines: the one added first
     CB_CHECK_EQ(who("game.xex"), "powerpc");
     CB_CHECK_EQ(who("x360.exe"), "powerpc");               // a PE image of the Xenon machine type
     CB_CHECK_EQ(who("a.exe"), "pe");
@@ -409,7 +334,7 @@ CB_TEST("platforms.package.identify_by_probes", [] {
     CB_CHECK_EQ(who(folder.c_str()), "java");              // a folder the Java lane takes
     CB_CHECK_EQ(who(fs::to_text(dir.path()).c_str()), "none");   // a folder it does not
     CB_CHECK_EQ(who("text.txt"), "none");
-    CB_CHECK_EQ(who("short.nes"), "none");
+    CB_CHECK_EQ(who("short.toya"), "none");
     CB_CHECK_EQ(who(""), "none");
     // a .jar is Java by its name, whatever the case, without asking anyone
     CB_CHECK_EQ(who("x.jar"), "java");
@@ -448,17 +373,20 @@ CB_TEST("platforms.package.probe_failures", [] {
     Files files;
     Probes pr = files.probes();
     // a probe that finds the file damaged or gone answers "no" for that platform
-    pr.is_nes = [](const std::filesystem::path&) -> bool { throw FormatError("nes", 4, "bad header"); };
-    pr.is_sms = [](const std::filesystem::path& p) -> bool { throw NotFoundError(p, 2); };
-    const Registry r = full_registry(pr);
-    CB_CHECK(!r.recognises(r.of("nes"), "x.nes"));
-    CB_CHECK(!r.recognises(r.of("sms"), "x.sms"));
-    // a probe that was never wired is a start-up bug and is loud
+    Registry r(pr);
+    r.add(machine_stand_in("toya", [](const std::filesystem::path&) -> bool { throw FormatError("toya", 4, "bad header"); }));
+    r.add(machine_stand_in("toyb", [](const std::filesystem::path& p) -> bool { throw NotFoundError(p, 2); }));
+    CB_CHECK(!r.recognises(r.of("toya"), "x.toya"));
+    CB_CHECK(!r.recognises(r.of("toyb"), "x.toyb"));
+    // a machine with no probe takes nothing
+    r.add(machine_stand_in("toyc", nullptr));
+    CB_CHECK(!r.recognises(r.of("toyc"), "x.toyc"));
+    // a probe of the registry that was never wired is a start-up bug and is loud
     Registry unwired{Probes{}};
-    unwired.add(msx());
-    CB_CHECK_THROWS_AS(InternalError, (void)unwired.recognises(unwired.of("msx"), "x.rom"));
+    unwired.add(win32());
+    CB_CHECK_THROWS_AS(InternalError, (void)unwired.recognises(unwired.of("pe"), "x.exe"));
     // other errors are not "no"
-    pr.is_gb = [](const std::filesystem::path&) -> bool { throw ToolError("x", 1, "", "boom"); };
-    const Registry r2 = full_registry(pr);
-    CB_CHECK_THROWS_AS(ToolError, (void)r2.recognises(r2.of("gb"), "x.gb"));
+    Registry r2(pr);
+    r2.add(machine_stand_in("toyd", [](const std::filesystem::path&) -> bool { throw ToolError("x", 1, "", "boom"); }));
+    CB_CHECK_THROWS_AS(ToolError, (void)r2.recognises(r2.of("toyd"), "x.toyd"));
 });

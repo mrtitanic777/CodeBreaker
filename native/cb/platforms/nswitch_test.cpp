@@ -6,7 +6,7 @@ using namespace cb::platforms;
 
 CB_TEST("platforms.nswitch.descriptor", [] {
     const Platform p = nswitch();
-    CB_CHECK(p.id == Id::Switch);
+    CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "switch");
     CB_CHECK_EQ(p.title, "Nintendo Switch");
     CB_CHECK_EQ(p.family, "AArch64");

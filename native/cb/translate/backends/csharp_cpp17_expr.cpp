@@ -23,6 +23,7 @@ CeEffects ce_effects_of(Node* n) {
         if (ir::is<ir::Assign>(x)) e.writes = true;
         if (const auto* u = ir::get<ir::Unary>(x); u != nullptr && (u->op == "++" || u->op == "--")) e.writes = true;
         if (ir::is<ir::Call>(x) || ir::is<ir::New>(x)) e.calls = true;
+        if (ir::is<ir::Await>(x)) e.calls = e.writes = true;   // (an await runs other code before it gives its value)
     }
     return e;
 }
@@ -215,6 +216,8 @@ std::string Writer::expr(Node* e) {
             return cast(k, e);
         } else if constexpr (std::is_same_v<K, ir::InstanceOf>) {
             return instance_of(k);
+        } else if constexpr (std::is_same_v<K, ir::Await>) {
+            return "cs::await(" + bare(expr(k.x)) + ")";
         } else if constexpr (std::is_same_v<K, ir::Lambda>) {
             return lambda(k, e);
         } else if constexpr (std::is_same_v<K, ir::MethodRef>) {
@@ -258,7 +261,7 @@ std::string Writer::select(const ir::Select& s, Node* n) {
     const std::string recv = receiver(s.obj);
     if (sym->kind == ir::SymKind::Property) {
         if (system) {
-            if (owner == "System.Nullable") return recv + (sym->name == "HasValue" ? "has_value()" : "value()");
+            if (owner == "System.Nullable") return sym->name == "HasValue" ? recv + "has_value()" : "cs::value_of(" + bare(expr(s.obj)) + ")";
             return recv + sym->name + "()";
         }
         return recv + "get_" + sym->name + "()";
@@ -387,7 +390,10 @@ std::string Writer::library_call(const ir::Call& c, Node* n, const std::string& 
     }
     if (owner == "System.IComparable" || name == "CompareTo") return "cs::compare_to(" + bare(expr(target)) + ", " + list + ")";
     if (name == "Invoke" && is_function(target->type)) return expr(target) + "(" + list + ")";
-    if (owner == "System.Nullable" && name == "GetValueOrDefault") return receiver(target) + "value_or(" + type(std::get<ir::ClassType>(target->type->body).args.at(0)) + "{})";
+    if (owner == "System.Nullable" && name == "GetValueOrDefault") {
+        const std::string inner = type(std::get<ir::ClassType>(target->type->body).args.at(0));
+        return receiver(target) + "value_or(" + (args.empty() ? inner + "{}" : bare(conv(args[0], std::get<ir::ClassType>(target->type->body).args.at(0)))) + ")";
+    }
     if (owner == "System.String" && name == "ToString") return expr(target);
     if (name == "Equals" && args.size() == 1) return receiver(target) + "Equals(" + bare(conv(args[0], ir::class_type("System.Object"))) + ")";
     return receiver(target) + name + "(" + list + ")";
@@ -418,7 +424,11 @@ std::string Writer::binop(const std::string& op, const std::string& l, const std
 
 std::string Writer::binary(const ir::Binary& b, Node* n) {
     const std::string& op = b.op;
-    if (op == "&&" || op == "||") return "(" + bare(expr(b.left)) + " " + op + " " + bare(expr(b.right)) + ")";
+    if (op == "&&" || op == "||") {
+        // (an operand the source parenthesised keeps its parentheses: `(a || b) && c` is not `a || b && c`)
+        const auto side = [&](Node* x) { return ir::is<ir::Paren>(x) ? expr(x) : bare(expr(x)); };
+        return "(" + side(b.left) + " " + op + " " + side(b.right) + ")";
+    }
     if (op == "??") {
         return "cs::coalesce(" + bare(expr(b.left)) + ", [&] { return " + bare(conv(b.right, n->type)) + "; })";
     }
@@ -565,7 +575,7 @@ std::string Writer::cast(const ir::Cast& c, Node* n) {
         }
         if (is_user_value(from)) return "static_cast<" + type(to) + ">(" + x + ")";
         if (is_object_like(from)) return "cs::unbox<" + type(to) + ">(" + x + ")";
-        if (is_nullable(from)) return x + ".value()";
+        if (is_nullable(from)) return "cs::value_of(" + x + ")";
     }
     if (is_user_value(to)) {
         if (is_numeric(from) || is_user_value(from)) return "static_cast<" + type(to) + ">(" + x + ")";

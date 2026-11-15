@@ -235,7 +235,7 @@ Category category(const Node& node) {
                 return Category::Declaration;
             } else if constexpr (kOneOf<K, Block, Local, ExprStmt, If, While, DoWhile, For, ForEach, Switch, Case, Break, Continue, Return,
                                         Throw, Try, Catch, Labeled, Goto, MachineFragment, Sync, Empty, Comment, LocalClass, Assert,
-                                        CtorCall, Yield>) {
+                                        CtorCall, Yield, YieldReturn, YieldBreak>) {
                 return Category::Statement;
             } else {
                 return Category::Expression;
@@ -285,7 +285,7 @@ bool present(const Suite& suite) {
 #define CB_IR_KINDS(X)                                                                                                         \
     X(Module) X(Unit) X(ClassDecl) X(FieldDecl) X(MethodDecl) X(Param) X(EnumConst) X(Property) X(TypeParam) X(Block) X(Local) \
     X(ExprStmt) X(If) X(While) X(DoWhile) X(For) X(ForEach) X(Switch) X(Case) X(Break) X(Continue) X(Return) X(Throw) X(Try)  \
-    X(Catch) X(Labeled) X(Goto) X(MachineFragment) X(Sync) X(Empty) X(Comment) X(LocalClass) X(Assert) X(CtorCall) X(Yield)    \
+    X(Catch) X(Labeled) X(Goto) X(MachineFragment) X(Sync) X(Empty) X(Comment) X(LocalClass) X(Assert) X(CtorCall) X(Yield) X(YieldReturn) X(YieldBreak) X(Await) \
     X(Lit) X(Name) X(Select) X(TypeName) X(This) X(Super) X(Call) X(New) X(NewArray) X(Index) X(Length) X(Unary) X(Binary)    \
     X(Concat) X(Assign) X(Cond) X(Cast) X(InstanceOf) X(ClassLit) X(Lambda) X(MethodRef) X(SwitchExpr) X(AddressOf)           \
     X(FarAddress) X(Piece) X(Join) X(Paren) X(Unsupported)

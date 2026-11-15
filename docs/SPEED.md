@@ -155,7 +155,12 @@ Rebuilt files and sources are byte-identical before and after (same SHA-256 for 
 (`state/reach/r_<platform>.json` as printed) are identical before and after, line for line. (The `after` run used the exe built before the
 parallel text check and ByteMarks, the two smaller changes.)
 
-What is left in the writers (NX-Shell, 10.4 s): the a64 assembler 5.6 s (two serial passes, about 4 us per instruction in
-`assemble_word`: the pass-2 instructions are independent and could run side by side), text check 1.4 s, listing 1.3 s.
+Then: the AArch64 assembler's second pass assembles the instructions side by side (a serial walk finds each line's address, the bytes are put in
+place in line order, the first fault in line order is the one reported). NX-Shell's `switch.assemble` 5.6 s -> 2.9 s, the whole writer 10.4 s ->
+6.8 s, peak memory 1,297 -> 1,136 MB (with ByteMarks); the same SHA-256 for source and rebuilt file. Unit tests rerun after these edits:
+cb_tests_build `asm` (141), cb_tests_source `writer` (266) and `homebrew` (16), `image_writer` (21): all pass.
+
+What is left in the writers (NX-Shell, 6.8 s): the a64 assembler's first pass and second-pass assembling 2.9 s, text check 1.4 s, listing 1.3 s.
+The ARM and MIPS assemblers' passes are still serial (their first pass sizes instructions that name later labels).
 
 Not done: item 3 of the first list (decompile cache). Its key problem (the knowledge base's version) is unchanged and this phase did not touch it.

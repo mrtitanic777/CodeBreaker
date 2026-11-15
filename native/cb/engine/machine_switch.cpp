@@ -2,6 +2,7 @@
 #include "cb/engine/machine_switch.hpp"
 
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -9,9 +10,93 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/emulate/a64.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/nswitch.hpp"
 #include "cb/formats/nro.hpp"
 #include "cb/source/switch_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_switch_1(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (size >= 0x80 && head.size() >= 0x80 && starts_with(head, 0x10, "NRO0")) {   // a Switch homebrew executable: the header gives the segment sizes
+        return one("Nintendo Switch homebrew executable (NRO)",
+                   std::format("AArch64, text {} bytes, rodata {} bytes, data {} bytes, bss {} bytes, {} bytes in all", get<std::uint32_t>(file, 0x24, "detect"), get<std::uint32_t>(file, 0x2C, "detect"),
+                               get<std::uint32_t>(file, 0x34, "detect"), get<std::uint32_t>(file, 0x38, "detect"), size),
+                   "switch", "reach");
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_switch_2(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (size >= 0x100 && head.size() >= 0x100 && starts_with(head, 0, "NSO0")) return one("Nintendo Switch executable (NSO)", std::format("AArch64, {} bytes (the segments may be LZ4-compressed)", size), "switch", "reach");
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_switch_3(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (size >= 64 && head.size() >= 64 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 2 && head[5] == 1 && (head[18] | head[19] << 8) == 183)   // an AArch64 ELF: devkitA64's output
+        return one("AArch64 executable (ELF)", std::format("ARMv8-A, entry 0x{:X}, {} bytes", get<std::uint32_t>(file, 24, "detect"), size), "switch", "reach");
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_switch_4(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (size >= 4 && head.size() >= 4 && starts_with(head, 0, "PFS0")) return one("Nintendo Switch NSP (PFS0)", "not handled: the contents are encrypted", "switch", "gap");
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_switch_5(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (size >= 0x104 && head.size() >= 0x104 && starts_with(head, 0x100, "HEAD")) return one("Nintendo Switch cartridge image (XCI)", "not handled: the contents are encrypted", "switch", "gap");
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -202,15 +287,13 @@ vl::ImageLaneSpec switch_lane_spec() {
 }
 
 void register_switch_lane() {
-    if (machine_lanes().find("switch")) return;
-    MachineLane lane;
-    lane.name = "switch";
-    lane.probe = [](const stdfs::path& p) { return formats::nro::probe(p); };
-    lane.make_spec = switch_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {
-    }
+    register_lane({
+        .name = "switch",
+        .platform = platforms::nswitch,
+        .probe = [](const stdfs::path& p) { return formats::nro::probe(p); },
+        .make_spec = switch_lane_spec,
+        .detectors = {{.priority = 50, .detect = formats::detect::info_switch_1}, {.priority = 60, .detect = formats::detect::info_switch_2}, {.priority = 70, .detect = formats::detect::info_switch_3}, {.priority = 80, .detect = formats::detect::info_switch_4}, {.priority = 90, .detect = formats::detect::info_switch_5}},
+    });
 }
 
 }  // namespace cb::engine

@@ -13,6 +13,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/omf.hpp"
@@ -205,8 +206,10 @@ void LaneKit::add_lanes(verify::reconstruct::Kinds& kinds) {
     if (auto lane = driver_lane()) kinds.add(std::move(lane));                          // (one signature for every entry point: the driver's source)
     if (auto lane = powerpc_lane()) kinds.add(std::move(lane), verify::lanes::PowerPcLane::traits());
     if (auto lane = dos_lane()) kinds.add(std::move(lane));                             // (the whole program is judged as one)
-    for (const char* machine : {"nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc"})
-        if (auto lane = machine_lane(machine)) kinds.add(std::move(lane));
+    register_all_lanes();
+    for (const std::shared_ptr<const LaneRegistration>& registered : registered_lanes())   // (the machines the kit builds itself: no spec of their own in the table)
+        if (built_in_machine(registered->name))
+            if (auto lane = machine_lane(registered->name)) kinds.add(std::move(lane));
     for (const std::string& machine : machine_lanes().names())   // (platforms registered in machine_lanes.hpp)
         if (auto lane = machine_lane(machine)) kinds.add(std::move(lane));
     if (auto lane = java_lane()) kinds.add(std::move(lane), verify::lanes::JavaLane::traits());

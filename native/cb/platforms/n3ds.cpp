@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform n3ds() {
     MachineSpec s;
-    s.id = Id::N3ds;
+    s.name = "n3ds";
     s.title = "Nintendo 3DS";
     s.family = "arm";
     s.container = "3DSX homebrew executable (.3dsx), or the ARM ELF it is linked from (.elf)";

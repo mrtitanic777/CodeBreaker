@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform coleco() {
     MachineSpec s;
-    s.id = Id::Coleco;
+    s.name = "coleco";
     s.title = "ColecoVision";
     s.family = "z80";
     s.container = "cartridge image (.col)";

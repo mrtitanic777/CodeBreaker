@@ -4,32 +4,13 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <memory>
+#include <mutex>
 
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
-#include "cb/formats/atari5200.hpp"
-#include "cb/formats/cdi.hpp"
 #include "cb/formats/dos.hpp"
-#include "cb/formats/jaguar.hpp"
-#include "cb/formats/n64.hpp"
-#include "cb/formats/pce.hpp"
-#include "cb/formats/ppc_program.hpp"
 #include "cb/formats/read.hpp"
-#include "cb/formats/dreamcast.hpp"
-#include "cb/formats/saturn.hpp"
-#include "cb/formats/sega32x.hpp"
-#include "cb/formats/segacd.hpp"
-#include "cb/formats/snes.hpp"
-#include "cb/formats/threedo.hpp"
-#include "cb/formats/vectrex.hpp"
-#include "cb/formats/vb.hpp"
-#include "cb/formats/chf.hpp"
-#include "cb/formats/o2.hpp"
-#include "cb/formats/ngp.hpp"
-#include "cb/formats/orbis.hpp"
-#include "cb/formats/xboxone.hpp"
-#include "cb/formats/intv.hpp"
-#include "cb/formats/wonderswan.hpp"
 
 namespace cb::formats::detect {
 
@@ -197,7 +178,6 @@ constexpr std::array kMagic = {
     Magic{"\xfe\xed\xfa\xcf"sv, "Mach-O (64-bit)"sv, "apple"sv, ""sv},
     Magic{"\xce\xfa\xed\xfe"sv, "Mach-O (32-bit)"sv, "apple"sv, ""sv},
     Magic{"\xcf\xfa\xed\xfe"sv, "Mach-O (64-bit)"sv, "apple"sv, ""sv},
-    Magic{"NES\x1a"sv, "NES ROM (iNES)"sv, "nes"sv, ""sv},
     Magic{"\xff\x4f"sv, "Xbox 360 NAND flash image"sv, "xbox360"sv, ""sv},
     Magic{"PK\x03\x04"sv, "ZIP archive (or .jar / .apk / .xlsx)"sv, "archive"sv, ""sv},
     Magic{"RIFF"sv, "RIFF container (WAV / AVI / XMA)"sv, "media"sv, "info"sv},
@@ -241,9 +221,13 @@ const char* coff_name(std::uint32_t m) {
     }
 }
 
+}  // namespace
+
 std::vector<Detected> one(std::string format, std::string detail, std::string_view family, std::string_view command) {
     return {Detected{std::move(format), std::move(detail), std::string(family), std::string(command)}};
 }
+
+namespace {
 
 // The Bink codec letter in a detail string: a printable ASCII letter as it is, anything else as \xNN.
 std::string codec_text(std::uint8_t ch) {
@@ -251,7 +235,8 @@ std::string codec_text(std::uint8_t ch) {
     return std::format("'\\x{:02x}'", ch);
 }
 
-// Does the file name end in one of the (lower-case) extensions, whatever its case?
+}  // namespace
+
 bool name_ends_with(std::string_view name, std::initializer_list<std::string_view> extensions) {
     for (const std::string_view e : extensions) {
         if (name.size() >= e.size() && std::equal(e.begin(), e.end(), name.end() - static_cast<std::ptrdiff_t>(e.size()), [](char a, char b) { return a == (b >= 'A' && b <= 'Z' ? b + 32 : b); })) return true;
@@ -265,7 +250,51 @@ std::uint32_t be32_or_zero(ByteView d, std::uint64_t off) {
     return ((*v & 0xFF) << 24) | ((*v & 0xFF00) << 8) | ((*v >> 8) & 0xFF00) | (*v >> 24);
 }
 
+namespace {
+
+// The detectors lanes registered, by priority; a snapshot is shared so identify never copies or holds the lock while a detector runs.
+struct DetectorEntry {
+    std::string lane;
+    int priority = 0;
+    Detector run;
+};
+// (function-local: a unit test registers lanes from a static initialiser, before this file's own globals would be made)
+struct DetectorTable {
+    std::mutex lock;
+    std::shared_ptr<const std::vector<DetectorEntry>> entries = std::make_shared<const std::vector<DetectorEntry>>();
+};
+DetectorTable& detector_table() {
+    static DetectorTable table;
+    return table;
+}
+
+std::shared_ptr<const std::vector<DetectorEntry>> detector_snapshot() {
+    DetectorTable& t = detector_table();
+    std::lock_guard hold(t.lock);
+    return t.entries;
+}
+
 }  // namespace
+
+void add_detector(std::string lane, int priority, Detector detector) {
+    DetectorTable& t = detector_table();
+    std::lock_guard hold(t.lock);
+    std::vector<DetectorEntry> next = *t.entries;
+    const auto at = std::find_if(next.begin(), next.end(), [priority](const DetectorEntry& e) { return e.priority > priority; });   // (after the equal ones)
+    next.insert(at, DetectorEntry{std::move(lane), priority, std::move(detector)});
+    t.entries = std::make_shared<const std::vector<DetectorEntry>>(std::move(next));
+}
+
+bool remove_detectors(std::string_view lane) {
+    DetectorTable& t = detector_table();
+    std::lock_guard hold(t.lock);
+    std::vector<DetectorEntry> next = *t.entries;
+    const auto end = std::remove_if(next.begin(), next.end(), [&](const DetectorEntry& e) { return e.lane == lane; });
+    if (end == next.end()) return false;
+    next.erase(end, next.end());
+    t.entries = std::make_shared<const std::vector<DetectorEntry>>(std::move(next));
+    return true;
+}
 
 std::vector<Detected> identify(ByteView file, std::string_view name) {
     const std::uint64_t size = file.size();
@@ -310,277 +339,10 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         if (0 < n && n < 30) return one("Mach-O universal binary", std::format("{} architectures", n), "apple", "");
         return one("Java class file", "", "java", "java");
     }
-    if (starts_with(head, 0, "PS-X EXE") && size >= 0x800) {   // a PlayStation executable: the header says where it starts and loads
-        return one("PlayStation executable (PS-X EXE)",
-                   std::format("entry 0x{:08X}, program at 0x{:08X}, {} bytes", get<std::uint32_t>(file, 0x10, "detect"),
-                               get<std::uint32_t>(file, 0x18, "detect"), size - 0x800),
-                   "playstation", "reach");
-    }
-    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 8) {   // a little-endian MIPS ELF: the flags say which console
-        const std::uint32_t flags = get<std::uint32_t>(file, 36, "detect");
-        const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
-        if ((flags & 0x00FF0000u) == 0x00920000u) return one("PlayStation 2 executable (ELF)", std::format("Emotion Engine R5900, entry 0x{:08X}, {} bytes", entry, size), "ps2", "reach");
-        if ((flags & 0x00FF0000u) == 0x00A20000u)
-            return one((head[16] | head[17] << 8) == 0xFFA0 ? "PSP module (PRX)" : "PSP executable (ELF)", std::format("Allegrex, entry 0x{:08X}, {} bytes", entry, size), "psp", "reach");
-    }
-    if (size >= 32 && head.size() >= 32 && starts_with(head, 0, "3DSX")) {   // a 3DS homebrew executable: the header gives the segment sizes
-        return one("Nintendo 3DS homebrew executable (3DSX)",
-                   std::format("ARM11, code {} bytes, rodata {} bytes, data {} bytes, bss {} bytes", get<std::uint32_t>(file, 16, "detect"), get<std::uint32_t>(file, 20, "detect"),
-                               get<std::uint32_t>(file, 24, "detect") - get<std::uint32_t>(file, 28, "detect"), get<std::uint32_t>(file, 28, "detect")),
-                   "n3ds", "reach");
-    }
-    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 40 &&
-        (head[16] | head[17] << 8) == 2) {   // an ARM ELF whose entry is in the 3DS homebrew's range ($00100000 up): devkitARM's output
-        const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
-        if (entry >= 0x00100000u && entry < 0x01000000u) return one("Nintendo 3DS executable (ELF)", std::format("ARM11, entry 0x{:08X}, {} bytes", entry, size), "n3ds", "reach");
-    }
-    if (size >= 0x80 && head.size() >= 0x80 && starts_with(head, 0x10, "NRO0")) {   // a Switch homebrew executable: the header gives the segment sizes
-        return one("Nintendo Switch homebrew executable (NRO)",
-                   std::format("AArch64, text {} bytes, rodata {} bytes, data {} bytes, bss {} bytes, {} bytes in all", get<std::uint32_t>(file, 0x24, "detect"), get<std::uint32_t>(file, 0x2C, "detect"),
-                               get<std::uint32_t>(file, 0x34, "detect"), get<std::uint32_t>(file, 0x38, "detect"), size),
-                   "switch", "reach");
-    }
-    if (size >= 0x100 && head.size() >= 0x100 && starts_with(head, 0, "NSO0")) return one("Nintendo Switch executable (NSO)", std::format("AArch64, {} bytes (the segments may be LZ4-compressed)", size), "switch", "reach");
-    if (size >= 64 && head.size() >= 64 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 2 && head[5] == 1 && (head[18] | head[19] << 8) == 183)   // an AArch64 ELF: devkitA64's output
-        return one("AArch64 executable (ELF)", std::format("ARMv8-A, entry 0x{:X}, {} bytes", get<std::uint32_t>(file, 24, "detect"), size), "switch", "reach");
-    if (size >= 4 && head.size() >= 4 && starts_with(head, 0, "PFS0")) return one("Nintendo Switch NSP (PFS0)", "not handled: the contents are encrypted", "switch", "gap");
-    if (size >= 0x104 && head.size() >= 0x104 && starts_with(head, 0x100, "HEAD")) return one("Nintendo Switch cartridge image (XCI)", "not handled: the contents are encrypted", "switch", "gap");
-    if (size >= 64 && head.size() >= 64 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 2 && head[5] == 2 && (head[18] << 8 | head[19]) == 21) {   // a 64-bit big-endian PowerPC ELF: PSL1GHT's output
-        const std::uint64_t entry = static_cast<std::uint64_t>(be32_or_zero(head, 24)) << 32 | be32_or_zero(head, 28);
-        return one("PlayStation 3 executable (ELF)", std::format("Cell PPU, entry descriptor 0x{:X}, {} bytes", entry, size), "ps3", "reach");
-    }
-    if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE ", 4)) && be32_or_zero(head, 4) == 2) {   // a PS3 SELF: the segment table says whether they are encrypted
-        const std::uint64_t info = static_cast<std::uint64_t>(be32_or_zero(head, 0x48)) << 32 | be32_or_zero(head, 0x4C);
-        const bool encrypted = info + 32 <= size && info + 32 <= head.size() ? be32_or_zero(head, static_cast<std::size_t>(info) + 28) == 1 : true;
-        if (encrypted) return one("PlayStation 3 SELF (encrypted)", "not handled: the segments are encrypted", "ps3", "gap");
-        return one("PlayStation 3 SELF", std::format("Cell PPU, {} bytes", size), "ps3", "reach");
-    }
-    if (const auto kind = orbis::kind_of(head); kind != orbis::Kind::None && size >= 64) {   // the PlayStation 4 and 5: an x86-64 ELF, OpenOrbis's fake SELF, a PS5 SELF or a package
-        if (kind == orbis::Kind::Ps5Self) return one("PlayStation 5 SELF", "not handled: signed and encrypted, CodeBreaker does not decrypt", "ps5", "gap");
-        if (kind == orbis::Kind::Pkg) return one("PlayStation 4 package (.pkg)", "not handled: recognised only", "ps4", "gap");
-        if (size <= (64u << 20)) {
-            try {
-                const orbis::Program program = orbis::parse(file);
-                if (kind == orbis::Kind::Fself || orbis::is_playstation(program)) {
-                    const bool ps5 = orbis::console_of(std::filesystem::path(std::string(name)), program) == orbis::Console::Ps5;
-                    return one(std::format("PlayStation {} {}", ps5 ? 5 : 4, kind == orbis::Kind::Fself ? "SELF (fake-signed)" : program.orbis ? "executable (Orbis ELF)" : "executable (ELF)"),
-                               std::format("{}, {} bytes, {} imports", ps5 ? "AMD Zen 2 x86-64" : "AMD Jaguar x86-64", size, program.imports.size()), ps5 ? "ps5" : "ps4", "reach");
-                }
-            } catch (const FormatError&) {
-                if (kind == orbis::Kind::Fself) return one("PlayStation 4 SELF (encrypted)", "not handled: signed or encrypted, CodeBreaker does not decrypt", "ps4", "gap");
-            }
-        }
-    }
-    if (starts_with(head, 0, "PK") && name_ends_with(name, {".appx", ".msix", ".appxbundle", ".msixbundle"})) {   // an Xbox One / Series dev-mode package: a zip with an x64 PE32+ in it
-        try {
-            const xboxone::Program program = xboxone::parse(file, std::string(name));
-            return one(std::format("Xbox One / Series {}", program.container), std::format("{} {}, {}, {} bytes", program.identity, program.version, program.member, size), "xboxone", "reach");
-        } catch (const Error&) {
-        }
-    }
-    if (name_ends_with(name, {".xvc", ".msixvc", ".eappx", ".eappxbundle"}))   // a retail package: encrypted with the console's keys
-        return one("Xbox One / Series package (encrypted)", "not handled: CodeBreaker does not decrypt", "xboxone", "gap");
-    if (size >= 0x60 && head.size() >= 0x60 && starts_with(head, 0, std::string_view("SCE ", 4)) && get<std::uint32_t>(file, 4, "detect") == 3) {   // a Vita SELF: the segments' table says whether they are encrypted
-        const std::uint64_t info = get<std::uint32_t>(file, 0x58, "detect");
-        const bool encrypted = info + 32 <= size && get<std::uint32_t>(file, static_cast<std::size_t>(info) + 24, "detect") == 1;
-        if (encrypted) return one("PlayStation Vita SELF (encrypted)", "not handled: the segments are encrypted", "vita", "gap");
-        return one("PlayStation Vita SELF", std::format("ARMv7-A Thumb-2, {} bytes", size), "vita", "reach");
-    }
-    if (size >= 52 && head.size() >= 52 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 1 && head[5] == 1 && (head[18] | head[19] << 8) == 40 &&
-        (head[16] | head[17] << 8) >= 0xFE00 && (head[16] | head[17] << 8) <= 0xFE04)   // an ARM ELF of a Sony type: VitaSDK's .velf
-        return one("PlayStation Vita executable (ELF)", std::format("ARMv7-A Thumb-2, entry field 0x{:08X}, {} bytes", get<std::uint32_t>(file, 24, "detect"), size), "vita", "reach");
-    if (size >= 0x104 && head.size() >= 0x104 && starts_with(head, 0x100, "NCSD")) return one("Nintendo 3DS cartridge image (NCSD)", "not handled: the contents are encrypted", "n3ds", "gap");
-    if (size >= 40 && head.size() >= 40 && starts_with(head, 0, std::string_view(" PBP", 4))) {   // an EBOOT.PBP: its DATA.PSP is an ELF, or an encrypted ~PSP module (recorded, not handled)
-        const std::uint32_t at = get<std::uint32_t>(file, 8 + 4 * 6, "detect");
-        if (at + 4 <= size && starts_with(file, at, "~PSP")) return one("PSP EBOOT.PBP (encrypted ~PSP module)", "not handled: the module is encrypted", "psp", "gap");
-        if (at + 4 <= size && starts_with(file, at, "" "ELF")) return one("PSP EBOOT.PBP", std::format("DATA.PSP at 0x{:X}, {} bytes", at, size), "psp", "reach");
-    }
-    if (const std::optional<n64::ByteOrder> order = size >= n64::kBootSize ? n64::order_of(head) : std::nullopt; order && head.size() >= n64::kHeaderSize) {   // a Nintendo 64 ROM: the PI configuration word $80371240, in one of three byte orders
-        const Bytes z64 = n64::Rom::convert(head.first(n64::kHeaderSize), *order, n64::ByteOrder::Z64);
-        const auto word = [&](std::size_t at) { return static_cast<std::uint32_t>(z64[at]) << 24 | static_cast<std::uint32_t>(z64[at + 1]) << 16 | static_cast<std::uint32_t>(z64[at + 2]) << 8 | z64[at + 3]; };
-        std::string title(as_text(ByteView(z64).subspan(0x20, 20)));
-        while (!title.empty() && (title.back() == ' ' || title.back() == '\0')) title.pop_back();
-        return one("Nintendo 64 ROM", std::format("\"{}\" ({}{}), {} ({}), {} bytes, entry 0x{:08X}", title, as_text(ByteView(z64).subspan(0x3C, 2)), static_cast<char>(z64[0x3E]), std::string(n64::order_text(*order)).substr(1),
-                                                    *order == n64::ByteOrder::Z64 ? "big-endian" : *order == n64::ByteOrder::V64 ? "byte-swapped" : "little-endian", size, word(8)),
-                   "n64", "reach");
-    }
-    if (head.size() >= 0x200 && head[0x15C] == 0x56 && head[0x15D] == 0xCF && head[0xC0] == 0x24 && head[0xC1] == 0xFF) {   // a Nintendo DS ROM: the logo, and its checksum $CF56 at $15C
-        std::string title(as_text(clamped(head, 0, 12)));
-        while (!title.empty() && title.back() == '\0') title.pop_back();
-        std::string code(as_text(clamped(head, 0x0C, 4)));
-        return one("Nintendo DS cartridge", std::format("\"{}\" ({}), {} bytes, ARM9 {} bytes at 0x{:08X}, ARM7 {} bytes at 0x{:08X}", title, code, size, get<std::uint32_t>(file, 0x2C, "detect"), get<std::uint32_t>(file, 0x28, "detect"), get<std::uint32_t>(file, 0x3C, "detect"), get<std::uint32_t>(file, 0x38, "detect")), "nds", "reach");
-    }
-    if (head.size() >= 0xC0 && head[0xB2] == 0x96 && (head[3] & 0x0E) == 0x0A && (head[3] >> 4) != 0xF) {   // a Game Boy Advance cartridge: $96 at $B2 and the entry branch
-        std::string title(as_text(clamped(head, 0xA0, 12)));
-        while (!title.empty() && title.back() == '\0') title.pop_back();
-        std::string code(as_text(clamped(head, 0xAC, 4)));
-        return one("Game Boy Advance cartridge", std::format("\"{}\" ({}), {} bytes", title, code, size), "gba", "reach");
-    }
-    if (name_ends_with(name, {".pce", ".tg16", ".sgx"})) {   // a PC Engine / TurboGrafx-16 HuCard: whole 8 KB banks, a RESET vector into the top page
-        try {
-            const formats::pce::Rom rom = formats::pce::parse(file);
-            return one("PC Engine HuCard", std::format("{} banks of 8 KB{}, RESET ${:04X}", rom.bank_count(), rom.header.empty() ? "" : " behind a 512-byte header", rom.vectors.reset), "pce", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".sfc", ".smc", ".swc", ".fig"})) {   // a Super Nintendo cartridge: an internal header at $7FC0 or $FFC0 that reads as one
-        try {
-            const formats::snes::Rom rom = formats::snes::parse(file);
-            return one("Super Nintendo cartridge", std::format("\"{}\", {}, {} bytes{}, RESET ${:04X}", rom.title, formats::snes::to_string(rom.mapping), rom.data.size(),
-                                                              rom.copier_header.empty() ? "" : " behind a 512-byte header", rom.emulation.reset), "snes", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".ws", ".wsc"})) {   // a WonderSwan cartridge: a power-of-two ROM whose last 16 bytes start with the far jump
-        try {
-            const formats::wonderswan::Rom rom = formats::wonderswan::parse(file);
-            return one(rom.is_color() ? "WonderSwan Color cartridge" : "WonderSwan cartridge",
-                       std::format("{} KB, start {:04X}:{:04X}, developer {:02X}, game {:02X}, checksum {}", size / 1024, rom.reset_segment, rom.reset_offset, rom.developer, rom.game_id,
-                                   rom.checksum_ok ? "right" : "wrong"),
-                       "wonderswan", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".j64", ".jag", ".rom", ".cof", ".abs"})) {   // an Atari Jaguar cartridge (the start address at $404) or COFF executable
-        try {
-            const formats::jaguar::Program program = formats::jaguar::parse(file);
-            return one(program.kind == formats::jaguar::Kind::Cartridge ? "Atari Jaguar cartridge" : "Atari Jaguar COFF executable",
-                       std::format("{} bytes, start ${:06X}, {} segment(s)", size, program.entry, program.segments.size()), "jaguar", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (starts_with(head, 0, std::string_view("\x01\x5A\x5A\x5A\x5A\x5A\x01", 7)) || name_ends_with(name, {".aif"})) {   // a 3DO disc (the Opera volume header) or an AIF executable
-        try {
-            const formats::threedo::Program program = formats::threedo::parse(file);
-            return one(program.kind == formats::threedo::Kind::Disc ? "3DO disc" : "3DO AIF executable",
-                       std::format("{}\"{}\", entry 0x{:06X}, {} bytes of AIF", program.label.empty() ? "" : "\"" + program.label + "\", ", program.name, program.aif.entry, program.image_size),
-                       "threedo", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".a52", ".bin", ".rom"})) {   // an Atari 5200 cartridge: 4, 8, 16 or 32 KB ending with a start address inside the ROM
-        try {
-            const formats::atari5200::Rom rom = formats::atari5200::parse(file);
-            const std::uint32_t first = *rom.offset(rom.start);
-            if (name_ends_with(name, {".a52"}) || (rom.data[first] != 0x00 && rom.data[first] != 0xFF)) {
-                return one("Atari 5200 cartridge", std::format("{} KB at ${:04X}, start ${:04X}", size / 1024, rom.base, rom.start), "atari5200", "reach");
-            }
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".iso", ".bin", ".cdi", ".img", ".mod", ".rtf"})) {   // a Philips CD-i disc (the Disc Label "CD-I " in an early sector) or a CD-RTOS module
-        bool label = false;
-        for (std::size_t at = 0; at + 7 <= file.size() && at <= 16 * formats::cdi::kSector; at += formats::cdi::kSector) label = label || (file[at] == 1 && starts_with(file, at + 1, "CD-I ") && file[at + 6] == 1);
-        if (label || formats::cdi::module_at(file, 0)) {
-            try {
-                const formats::cdi::Program program = formats::cdi::parse(file);
-                return one(program.disc ? "Philips CD-i disc" : "CD-RTOS module file", std::format("{} CD-RTOS module(s), {} executable", program.modules.size(), program.placed().size()), "cdi", "reach");
-            } catch (const FormatError&) {
-            }
-        }
-    }
-    if (name_ends_with(name, {".vec", ".bin", ".gam"}) && starts_with(head, 0, "g GCE")) {   // a Vectrex cartridge: the header the BIOS reads starts `g GCE`
-        try {
-            const formats::vectrex::Rom rom = formats::vectrex::parse(file);
-            return one("Vectrex cartridge", std::format("\"{}\", {} bytes, program at ${:04X}{}", rom.copyright, size, rom.entry, rom.title.empty() ? std::string() : ", \"" + rom.title.front().text + "\""), "vectrex", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".rom", ".int"}) && size >= 519) {   // an Intellivision cartridge: an Intellicart .rom ($A8, N, ~N and the segments) or a raw .int
-        try {
-            const formats::intv::Rom rom = formats::intv::parse(file, !name_ends_with(name, {".rom"}));
-            return one(rom.raw ? "Intellivision cartridge (raw words)" : "Intellivision cartridge (Intellicart .rom)",
-                       std::format("CP1610, {} segment(s), {} words, \"{}\"{}", rom.segments.size(), rom.word_count(), rom.title(), rom.entry() ? std::format(", program at ${:04X}", *rom.entry()) : std::string()), "intv", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".ngp", ".ngc", ".npc"}) && size >= 64) {   // a Neo Geo Pocket cartridge: the SNK licence text, then the start address; the lane reads it with the TLCS-900/H core
-        try {
-            const formats::ngp::Rom rom = formats::ngp::parse(file);
-            return one(rom.header.colour ? "Neo Geo Pocket Color cartridge" : "Neo Geo Pocket cartridge",
-                       std::format("TLCS-900/H, \"{}\", {} bytes, start at 0x{:06X}", rom.header.title, size, rom.header.start), "ngp", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".o2"}) && size >= 256 && size <= formats::o2::kMaxSize && size % 256 == 0) {   // an Odyssey 2 cartridge: no header; the file name and a whole number of pages up to 3 KB
-        try {
-            const formats::o2::Rom rom = formats::o2::parse(file);
-            return one("Odyssey 2 cartridge", std::format("8048, {} bytes at $0400", rom.data.size()), "o2", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if ((name_ends_with(name, {".chf"}) || (name_ends_with(name, {".bin"}) && starts_with(head, 0, std::string_view("U+", 2)))) && size >= 256 && size <= formats::chf::kMaxSize && size % 256 == 0) {   // a Channel F cartridge: no header; `.chf`, or a `.bin` that starts $55 $2B
-        try {
-            const formats::chf::Rom rom = formats::chf::parse(file);
-            return one("Channel F cartridge", std::format("F8, {} bytes at $0800", rom.data.size()), "chf", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (name_ends_with(name, {".vb", ".vboy"}) && size >= 0x4000 && (size & (size - 1)) == 0) {   // a Virtual Boy cartridge: a power-of-two ROM whose reset slot (the last 16 bytes) holds code
-        try {
-            const formats::vb::Rom rom = formats::vb::parse(file);
-            return one("Virtual Boy cartridge", std::format("V810, \"{}\", {} bytes, reset at 0x{:08X}", rom.header.title, size, rom.reset_address()), "vb", "reach");
-        } catch (const FormatError&) {
-        }
-    }
-    if (head.size() >= 0x108 && (starts_with(head, 0x100, "NEO-GEO") || starts_with(head, 0x100, "EN-OEG"))) {   // a Neo Geo P-ROM: "NEO-GEO" at $100, or with its words swapped
-        const bool swapped = starts_with(head, 0x100, "EN-OEG");
-        const unsigned ngh = swapped ? head[0x109] << 8 | head[0x108] : head[0x108] << 8 | head[0x109];
-        return one("Neo Geo cartridge (P-ROM)", std::format("NGH {:04X}, {} KB{}", ngh, size / 1024, swapped ? ", words swapped" : ""), "neogeo", "reach");
-    }
-    if (starts_with(h4, 0, "NEO") && size >= 4096) {   // a .neo file: a 4 KB header, then the P, S, M, V and C ROMs
-        return one("Neo Geo .neo file", std::format("{} KB P-ROM, {} KB sound program, {} KB sprites", get<std::uint32_t>(file, 4, "detect") / 1024,
-                                                      get<std::uint32_t>(file, 12, "detect") / 1024, get<std::uint32_t>(file, 24, "detect") / 1024),
-                   "neogeo", "reach");
-    }
-    if (segacd::is_disc_start(head)) {   // a Sega CD disc: "SEGADISCSYSTEM" starts its first sector, which holds the boot header
-        try {
-            const segacd::Disc disc = segacd::parse(file);
-            return one("Sega CD disc", std::format("\"{}\", {}-byte sectors, IP {} bytes at 0x{:X}, SP {} bytes at 0x{:X}", disc.header.domestic_name, disc.sector_size,
-                                                 disc.header.ip.size, disc.header.ip.start, disc.header.sp.size, disc.header.sp.start),
-                       "segacd", "reach");
-        } catch (const Error&) {   // a damaged boot header is no disc of this machine
-        }
-    }
-    if (dreamcast::is_disc_start(head) || name_ends_with(name, {".gdi", ".cdi"})) {   // a Dreamcast disc: "SEGA SEGAKATANA " starts the boot track's first sector (a .gdi names its tracks; a .cdi is searched)
-        try {
-            const dreamcast::Disc disc = name_ends_with(name, {".gdi"}) ? dreamcast::read(std::filesystem::path(std::string(name))) : dreamcast::parse(file);
-            const char* container = disc.container == dreamcast::Container::Gdi ? "GD-ROM image" : disc.container == dreamcast::Container::Cdi ? "DiscJuggler image" : disc.container == dreamcast::Container::Raw ? "raw sectors" : "2048-byte sectors";
-            return one("Sega Dreamcast disc", std::format("\"{}\", {}, {}, IP.BIN {} bytes, first program {}{} at 0x{:08X}", disc.header.title, disc.header.product, container, disc.ip_length(),
-                                                        disc.first_read_name.empty() ? std::string("(none)") : disc.first_read_name, disc.scrambled ? " (scrambled)" : "", dreamcast::kFirstReadBase + dreamcast::kCachedView),
-                       "dreamcast", "reach");
-        } catch (const Error&) {   // not a disc of this machine
-        }
-    }
-    if (saturn::is_disc_start(head)) {   // a Saturn disc: "SEGA SEGASATURN " starts its first sector, which holds IP.BIN's header
-        try {
-            const saturn::Disc disc = saturn::parse(file);
-            return one("Sega Saturn disc", std::format("\"{}\", {}, IP {} bytes, first program {} at 0x{:08X}", disc.header.title, disc.header.product, disc.ip_length(),
-                                                     disc.first_read_name.empty() ? std::string("(none)") : disc.first_read_name, disc.load_address()),
-                       "saturn", "reach");
-        } catch (const Error&) {   // a damaged boot header is no disc of this machine
-        }
-    }
-    {   // a Sega 32X cartridge: a Genesis ROM whose header at $3C0 names the SH-2 programs
-        const bool dot_32x = name.size() >= 4 && (name.substr(name.size() - 4) == ".32x" || name.substr(name.size() - 4) == ".32X");
-        if (sega32x::is_rom_start(head, dot_32x)) {
-            try {
-                const sega32x::Rom rom = sega32x::parse(file);
-                return one("Sega 32X cartridge", std::format("\"{}\", {} KB, master SH-2 at 0x{:08X}, slave at 0x{:08X}", rom.header.domestic_name, size / 1024,
-                                                           rom.header.master_start, rom.header.slave_start),
-                           "sega32x", "reach");
-            } catch (const Error&) {
-            }
-        }
-    }
-    // a GameCube, Wii or Wii U program: a DOL (a header that reads as one), or a PowerPC ELF (devkitPPC's output, a Wii U RPX or RPL)
-    if (ppc_elf::is_ppc_elf(head) || name_ends_with(name, {".dol"})) {
-        if (const std::optional<ppc_program::Program> program = ppc_program::parse(file)) {
-            return one(std::format("Nintendo {} {}", ppc_program::console_text(program->console), ppc_program::kind_text(program->kind)),
-                       std::format("{} ({}), entry 0x{:08X}, {} bytes, {} loaded sections{}", ppc_program::cpu_text(program->console), "PowerPC 750 family", program->entry, size,
-                                   program->segments.size(), program->elf && program->elf->inflated_sections != 0 ? std::format(" ({} compressed)", program->elf->inflated_sections) : std::string()),
-                       std::string(ppc_program::lane_name(program->console)), "reach");
-        }
+    {   // the lanes' detectors (the platforms that registered one: engine/lane_registry.hpp)
+        const DetectInput input{file, head, size, name};
+        for (const DetectorEntry& entry : *detector_snapshot())
+            if (std::optional<std::vector<Detected>> found = entry.run(input)) return std::move(*found);
     }
     for (const Magic& m : kMagic) {
         if (starts_with(head, 0, m.magic)) {

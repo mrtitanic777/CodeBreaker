@@ -64,6 +64,8 @@ static std::vector<NodeClass> make_classes() {
     stmt1("Assert", {"cond", "detail"});
     stmt("CtorCall", {"kind", "sym", "args", "target"}, {"args", "target"});
     stmt1("Yield", {"expr"});
+    stmt1("YieldReturn", {"expr"});
+    stmt("YieldBreak", {}, {});
     // -- expressions
     expr("Lit", {"value", "text"}, {});
     expr("Name", {"sym"}, {});
@@ -92,6 +94,7 @@ static std::vector<NodeClass> make_classes() {
     expr("Piece", {"x", "byte", "width"}, {"x"});
     expr1("Join", {"hi", "lo"});
     expr1("Paren", {"x"});
+    expr1("Await", {"x"});
     expr("Unsupported", {"kind", "raw"}, {});
     return c;
 }

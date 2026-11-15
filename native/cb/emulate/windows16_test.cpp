@@ -532,6 +532,36 @@ CB_TEST("emulate.windows16.the_knowledge_models_are_read_with_ordinals_and_all",
     CB_CHECK(!models("USER.@999").has_value());
 });
 
+CB_TEST("emulate.windows16.the_models_say_which_calls_fill_a_structure_through_a_pointer", [] {
+    World w;
+    const ModelLookup models = models_of(w.kb);
+    const std::optional<StubModel> paint = models("USER.BEGINPAINT");
+    CB_CHECK(paint.has_value());
+    CB_CHECK_EQ(paint->fills.size(), 1u);
+    CB_CHECK_EQ(paint->fills[0].seg_arg, 1u);          // (hwnd, then the far pointer: its segment is the word 1 as pushed)
+    CB_CHECK_EQ(paint->fills[0].bytes, 32u);           // a PAINTSTRUCT
+    CB_CHECK(!paint->ax && !paint->dx && !paint->pop);   // the result is not modelled: the call stays `unmodelled`
+    const std::optional<StubModel> range = models("USER.GETSCROLLRANGE");
+    CB_CHECK(range.has_value());
+    CB_CHECK_EQ(range->fills.size(), 2u);              // (two pointers: lpMin at 2, lpMax at 4, a word each)
+    CB_CHECK_EQ(range->fills[1].seg_arg, 4u);
+    CB_CHECK_EQ(range->fills[1].bytes, 2u);
+    // a call that is only a fill answers like an unmodelled one
+    native_trace::Governor governor;
+    Environment env;
+    env.governor = &governor;
+    env.models = models;
+    Runner runner(env);
+    struct Heap : HeapContext {
+        std::uint16_t alloc_heap(std::uint32_t) override { return 1; }
+    } heap;
+    ImportHit hit;
+    hit.api = "USER.BEGINPAINT";
+    const StubResult r = runner.default_stub(hit, heap);
+    CB_CHECK_EQ(r.ax.value_or(9), 0u);
+    CB_CHECK(!r.pop.has_value());
+});
+
 CB_TEST("emulate.windows16.errors", [] {
     native_trace::Governor governor;
     CB_CHECK_THROWS_AS(UsageError, (void)Runner(Environment{}));

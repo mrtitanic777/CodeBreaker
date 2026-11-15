@@ -4,7 +4,7 @@ namespace cb::platforms {
 
 Platform atari7800() {
     MachineSpec s;
-    s.id = Id::Atari7800;
+    s.name = "atari7800";
     s.title = "Atari 7800";
     s.family = "6502";
     s.container = "A78 cartridge (.a78)";

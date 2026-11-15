@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/m6502.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/platforms/atari7800.hpp"
 #include "cb/formats/atari7800.hpp"
 #include "cb/source/atari7800_writer.hpp"
 
@@ -122,15 +125,12 @@ vl::ImageLaneSpec atari7800_lane_spec() {
 }
 
 void register_atari7800_lane() {
-    if (machine_lanes().find("atari7800")) return;
-    MachineLane lane;
-    lane.name = "atari7800";
-    lane.probe = [](const stdfs::path& p) { return formats::atari7800::probe(p); };
-    lane.make_spec = atari7800_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "atari7800",
+        .platform = platforms::atari7800,
+        .probe = [](const stdfs::path& p) { return formats::atari7800::probe(p); },
+        .make_spec = atari7800_lane_spec,
+    });
 }
 
 }  // namespace cb::engine

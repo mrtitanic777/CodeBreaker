@@ -8,6 +8,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -64,5 +66,29 @@ struct Detected {
 std::vector<Detected> identify(const std::filesystem::path& file);
 // The same on bytes that are already in memory; `name` is only used for files told by extension (.zar, .pck).
 std::vector<Detected> identify(ByteView whole_file, std::string_view name);
+
+// ---- what a platform lane adds: its own detector --------------------------------------------------------------------
+// A platform lane (engine/lane_registry.hpp) says what its files are by a detector: the text `info` prints for one of its files. identify
+// tries the registered detectors, in the order of their priority (then of registration), after the Xbox and Windows headers and before the
+// generic magic table; the first that answers decides. A detector answers nullopt for a file that is not its platform's.
+struct DetectInput {
+    ByteView file;            // the whole file (mapped)
+    ByteView head;            // its first 0x400 bytes (fewer for a short file)
+    std::uint64_t size = 0;   // the file's size
+    std::string_view name;    // the file's name, for what is told by its extension
+};
+using Detector = std::function<std::optional<std::vector<Detected>>(const DetectInput&)>;
+
+// Add a detector of `lane`. Lower priorities are tried first; equal ones in the order added.
+void add_detector(std::string lane, int priority, Detector detector);
+// Take the detectors of `lane` out again (a test's); false when it had none.
+bool remove_detectors(std::string_view lane);
+
+// What a detector's answer is made of.
+std::vector<Detected> one(std::string format, std::string detail, std::string_view family, std::string_view command);
+// Does the file name end in one of the (lower-case) extensions, whatever its case?
+bool name_ends_with(std::string_view name, std::initializer_list<std::string_view> extensions);
+// The big-endian 32-bit word at `off`, 0 when the file ends before it.
+std::uint32_t be32_or_zero(ByteView d, std::uint64_t off);
 
 }  // namespace cb::formats::detect

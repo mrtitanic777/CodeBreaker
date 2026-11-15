@@ -138,8 +138,17 @@ struct FromArgument {
     std::size_t index = 0;
 };
 using ModelWord = std::variant<std::int64_t, FromHeap, FromArgument>;
+// A structure the function fills through a pointer argument (BeginPaint's PAINTSTRUCT, GetClientRect's RECT ...): the far pointer is the
+// words `seg_arg` (its segment) and `seg_arg + 1` (its offset) of the arguments as pushed, `bytes` long. The stand-in writes the same fixed
+// bytes there on both sides of a comparison, so what the caller later reads of it is the same and a caller that lays its frame out
+// differently shows. (The knowledge base's `fill`: "1:32" or, for two, "2:2,4:2".)
+struct FillArgument {
+    std::size_t seg_arg = 0;
+    std::uint32_t bytes = 0;
+};
 struct StubModel {
     std::optional<ModelWord> ax, dx, pop;
+    std::vector<FillArgument> fills;
 };
 // The model of a function by its name as the hit gives it ("KERNEL.GLOBALALLOC"; a KERNEL ordinal "KERNEL.@15" is looked up by its
 // number too); absent when it is not modelled.

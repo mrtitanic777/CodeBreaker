@@ -182,7 +182,9 @@ CB_TEST("translate.csharp.frontend.what_cannot_be_carried_is_refused_with_its_re
         kinds.insert(r.kind);
         CB_CHECK(r.where.starts_with("Refused:"));
     }
-    for (const char* kind : {"iterator", "await", "tuple", "local-function"}) CB_CHECK(kinds.contains(kind));
+    for (const char* kind : {"tuple", "local-function"}) CB_CHECK(kinds.contains(kind));
+    // (an iterator and an async method are lowered since 2026-11-15: yield and await are IR nodes, not refusals)
+    for (const char* kind : {"iterator", "await"}) CB_CHECK(!kinds.contains(kind));
 });
 
 CB_TEST("translate.csharp.pairs.every_corpus_program_round_trips_to_equivalent", [] {
@@ -204,6 +206,27 @@ CB_TEST("translate.csharp.pairs.every_corpus_program_round_trips_to_equivalent",
     }
 });
 
+// The second back end out of the same L2: the language features (iterators, async/await, patterns, queries, nullable arithmetic ...) go
+// through the hub into C# again and the written C# runs beside the original (docs/TRANSLATOR_DESIGN.md, phase 2).
+CB_TEST("translate.csharp.pairs.language_features_round_trip_to_equivalent", [] {
+    const dn::Sdk* sdk = csf_installed();
+    if (sdk == nullptr) return;
+    const cs::Frontend frontend = csf_frontend_of(*sdk);
+    const stdfs::path dir = cb::testing::data_path("../../tests/translate/corpus/csharp_features");
+    std::size_t programs = 0;
+    for (const auto& entry : stdfs::directory_iterator(dir)) {
+        if (entry.path().extension() != ".cs") continue;
+        ++programs;
+        CsfWork work("features-" + entry.path().stem().string());
+        cb::Arena arena;
+        const dn::pairs::Pairs pairs{*sdk, frontend, arena};
+        const dn::pairs::Verdict v = pairs.csharp_to_csharp({entry.path()}, work.path);
+        CB_CHECK(v.verdict == dn::judge::Verdict::Equivalent);
+        if (v.verdict != dn::judge::Verdict::Equivalent) std::fprintf(stderr, "%s: %s\n", entry.path().stem().string().c_str(), v.detail.c_str());
+    }
+    CB_CHECK(programs >= 10);
+});
+
 CB_TEST("translate.csharp.pairs.a_refused_construct_is_a_refused_verdict", [] {
     const dn::Sdk* sdk = csf_installed();
     if (sdk == nullptr) return;
@@ -212,8 +235,8 @@ CB_TEST("translate.csharp.pairs.a_refused_construct_is_a_refused_verdict", [] {
     cb::fs::write_text(src,
                        "using System.Collections.Generic;\n"
                        "static class P {\n"
-                       "    static IEnumerable<int> Count() { yield return 1; }\n"
-                       "    static void Main() { foreach (var i in Count()) System.Console.WriteLine(i); }\n"
+                       "    static (int, int) Pair() => (1, 2);\n"
+                       "    static void Main() { System.Console.WriteLine(Pair().Item1); }\n"
                        "}\n");
     cb::Arena arena;
     const cs::Frontend frontend = csf_frontend_of(*sdk);
@@ -221,7 +244,7 @@ CB_TEST("translate.csharp.pairs.a_refused_construct_is_a_refused_verdict", [] {
     CB_CHECK(v.verdict == dn::judge::Verdict::Refused);
     CB_CHECK(!v.refused.empty());
     // the detail, word for word
-    CB_CHECK(v.detail == "Gap:3 iterator: `yield return` / `yield break`: an iterator (a state machine); P.Count iterator: `yield return` / `yield break`: an iterator (a state machine)");
+    CB_CHECK_EQ(v.detail, std::string("Gap:3 tuple: a tuple; P.Pair tuple: a tuple"));
 });
 
 // Java -> C#: the Java lane's front end (javac's tree), the C# back end with Java's library, and the two programs run beside each other.

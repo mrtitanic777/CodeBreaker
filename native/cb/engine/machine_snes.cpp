@@ -1,6 +1,7 @@
 #include "cb/engine/machine_snes.hpp"
 
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -8,9 +9,34 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/emulate/w65816.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/snes.hpp"
 #include "cb/formats/snes.hpp"
 #include "cb/source/snes_writer.hpp"
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_snes(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".sfc", ".smc", ".swc", ".fig"})) {   // a Super Nintendo cartridge: an internal header at $7FC0 or $FFC0 that reads as one
+        try {
+            const formats::snes::Rom rom = formats::snes::parse(file);
+            return one("Super Nintendo cartridge", std::format("\"{}\", {}, {} bytes{}, RESET ${:04X}", rom.title, formats::snes::to_string(rom.mapping), rom.data.size(),
+                                                              rom.copier_header.empty() ? "" : " behind a 512-byte header", rom.emulation.reset), "snes", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -105,15 +131,14 @@ vl::ImageLaneSpec snes_lane_spec() {
 }
 
 void register_snes_lane() {
-    if (machine_lanes().find("snes")) return;
-    MachineLane lane;
-    lane.name = "snes";
-    lane.probe = [](const stdfs::path& p) { return formats::snes::probe(p); };
-    lane.make_spec = snes_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "snes",
+        .platform = platforms::snes,
+        .probe = [](const stdfs::path& p) { return formats::snes::probe(p); },
+        .make_spec = snes_lane_spec,
+        .detectors = {{.priority = 230, .detect = formats::detect::info_snes}},
+        .program_extensions = {".sfc", ".smc"},
+    });
 }
 
 }  // namespace cb::engine

@@ -248,6 +248,7 @@ struct PyWriter : Emitter {
     std::set<std::string> locals;
     std::set<std::string> class_members;      // the class whose method is being written: its members' names
     TypeP ret;
+    TypeP yield_item;                         // the item type of the generator function being written (null: not one)
     PyWriter(const std::string& mod, const std::string& api) : Emitter("    "), module(mod), api_root(api) {}
 
     // ---------------------------------------------------------------- names, types
@@ -422,9 +423,14 @@ struct PyWriter : Emitter {
             out.push_back(pad + "break;");
         } else if (k == "Continue") {
             out.push_back(pad + "continue;");
+        } else if (k == "YieldReturn") {
+            if (!yield_item) throw Decline("a yield outside a generator function");
+            out.push_back(pad + "py_y.yield_return(" + expr(node(s, "expr"), yield_item) + ");");
+        } else if (k == "YieldBreak") {
+            out.push_back(pad + "return;");
         } else if (k == "Return") {
             NodeP e = node(s, "expr");
-            if (!e) out.push_back(pad + "return;");
+            if (!e || yield_item) out.push_back(pad + "return;");   // (a generator's `return value` ends it; StopIteration's value is not read)
             else out.push_back(pad + "return " + expr(e, ret) + ";");
         } else if (k == "Throw") {
             NodeP e = node(s, "expr");
@@ -1388,7 +1394,19 @@ Strs definition_(PyWriter& w, const NodeP& m, const NodeP& c) {
             for (auto& line : py::splitlines(py::strip(str(text)))) out.push_back("// " + py::rstrip(line));
     out.push_back(signature(w, m, c, false) + init + " {");
     Strs body;
-    for (auto& s : stmts) w.stmt(s, body, "    ");
+    if (has_mod(m, "iterator")) {
+        // a generator function returns at once with an object that runs its body on a coroutine as the consumer reads it (py.hpp, py::generate)
+        TypeP rt = type(m, "ret");
+        if (!rt || rt->args.size() != 1) throw Decline("a generator function whose result is not an iterator");
+        w.yield_item = rt->args[0];
+        const std::string t = w.ctype(w.yield_item);
+        body.push_back("    return py::generate<" + t + ">([=](py::yielder<" + t + ">& py_y) mutable {");
+        for (auto& s : stmts) w.stmt(s, body, "        ");
+        body.push_back("    });");
+        w.yield_item = nullptr;
+    } else {
+        for (auto& s : stmts) w.stmt(s, body, "    ");
+    }
     out.insert(out.end(), body.begin(), body.end());
     out.push_back("}");
     return out;

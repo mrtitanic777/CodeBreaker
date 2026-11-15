@@ -8,7 +8,6 @@ issue app.f_complex 100 syntax:constant complex
 issue app.f_del 43 dynamic:del
 issue app.f_div 92 int-range:an int beyond 2**53 meets a float
 issue app.f_ellipsis 104 syntax:constant ellipsis
-issue app.f_gen 24 dynamic:generator
 issue app.f_global 2 dynamic:global
 issue app.f_ifexp 146 conflict:int and str mixed
 issue app.f_in_bytes 66 conflict:str in bytes
@@ -41,7 +40,7 @@ return app.f_complex top(syntax:constant complex)
 return app.f_del int[0..0]
 return app.f_div float
 return app.f_ellipsis top(syntax:constant ellipsis)
-return app.f_gen none
+return app.f_gen iter[int[1..1]]
 return app.f_global int[1..1]
 return app.f_ifexp top(conflict:int and str mixed)
 return app.f_in_bytes bool

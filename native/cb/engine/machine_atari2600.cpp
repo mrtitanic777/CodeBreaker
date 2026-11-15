@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <optional>
 #include <memory>
 
 #include "cb/core/error.hpp"
 #include "cb/emulate/m6502.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/platforms/atari2600.hpp"
 #include "cb/formats/atari2600.hpp"
 #include "cb/source/atari2600_writer.hpp"
 
@@ -134,15 +137,12 @@ vl::ImageLaneSpec atari2600_lane_spec() {
 }
 
 void register_atari2600_lane() {
-    if (machine_lanes().find("atari2600")) return;
-    MachineLane lane;
-    lane.name = "atari2600";
-    lane.probe = [](const stdfs::path& p) { return formats::atari2600::probe(p); };
-    lane.make_spec = atari2600_lane_spec;
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {   // (another thread added it first)
-    }
+    register_lane({
+        .name = "atari2600",
+        .platform = platforms::atari2600,
+        .probe = [](const stdfs::path& p) { return formats::atari2600::probe(p); },
+        .make_spec = atari2600_lane_spec,
+    });
 }
 
 }  // namespace cb::engine

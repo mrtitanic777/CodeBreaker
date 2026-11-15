@@ -364,7 +364,8 @@ CB_TEST("formats.xbox.crypto.tool_logic.create_key_makes_a_pair_in_the_key_store
         CB_CHECK(at != std::string::npos);
         const std::size_t end = source.find("};", at);
         Bytes bytes;
-        for (const std::string_view row : text::lines(source.substr(at, end - at)))
+        const std::string block = source.substr(at, end - at);   // (named: a temporary in a range-for's range expression would be gone before the loop)
+        for (const std::string_view row : text::lines(block))
             for (const std::string_view part : text::split(row, ',')) {
                 const std::string_view t = text::trim(part);
                 if (t.starts_with("0x")) bytes.push_back(*text::parse_int<std::uint8_t>(t.substr(2), 16));

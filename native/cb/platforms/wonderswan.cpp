@@ -5,7 +5,7 @@ namespace cb::platforms {
 
 Platform wonderswan() {
     Platform p;
-    p.id = Id::WonderSwan;
+    p.id = Id::Machine;
     p.name = "wonderswan";
     p.title = "WonderSwan / WonderSwan Color";
     p.family = "x86";

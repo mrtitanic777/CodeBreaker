@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -16,7 +17,12 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/unicorn_api.hpp"
 #include "cb/emulate/unicorn_uc.hpp"
+#include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
+#include "cb/formats/read.hpp"
+#include "cb/platforms/ps4.hpp"
+#include "cb/platforms/ps5.hpp"
+#include "cb/platforms/xboxone.hpp"
 #include "cb/formats/orbis.hpp"
 #include "cb/formats/xboxone.hpp"
 #include "cb/source/orbis_writer.hpp"
@@ -25,6 +31,73 @@
 #pragma warning(push, 0)
 #include <unicorn/x86.h>
 #pragma warning(pop)
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_ps4(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (const auto kind = orbis::kind_of(head); kind != orbis::Kind::None && size >= 64) {   // the PlayStation 4 and 5: an x86-64 ELF, OpenOrbis's fake SELF, a PS5 SELF or a package
+        if (kind == orbis::Kind::Ps5Self) return one("PlayStation 5 SELF", "not handled: signed and encrypted, CodeBreaker does not decrypt", "ps5", "gap");
+        if (kind == orbis::Kind::Pkg) return one("PlayStation 4 package (.pkg)", "not handled: recognised only", "ps4", "gap");
+        if (size <= (64u << 20)) {
+            try {
+                const orbis::Program program = orbis::parse(file);
+                if (kind == orbis::Kind::Fself || orbis::is_playstation(program)) {
+                    const bool ps5 = orbis::console_of(std::filesystem::path(std::string(name)), program) == orbis::Console::Ps5;
+                    return one(std::format("PlayStation {} {}", ps5 ? 5 : 4, kind == orbis::Kind::Fself ? "SELF (fake-signed)" : program.orbis ? "executable (Orbis ELF)" : "executable (ELF)"),
+                               std::format("{}, {} bytes, {} imports", ps5 ? "AMD Zen 2 x86-64" : "AMD Jaguar x86-64", size, program.imports.size()), ps5 ? "ps5" : "ps4", "reach");
+                }
+            } catch (const FormatError&) {
+                if (kind == orbis::Kind::Fself) return one("PlayStation 4 SELF (encrypted)", "not handled: signed or encrypted, CodeBreaker does not decrypt", "ps4", "gap");
+            }
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_xboxone_1(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (starts_with(head, 0, "PK") && name_ends_with(name, {".appx", ".msix", ".appxbundle", ".msixbundle"})) {   // an Xbox One / Series dev-mode package: a zip with an x64 PE32+ in it
+        try {
+            const xboxone::Program program = xboxone::parse(file, std::string(name));
+            return one(std::format("Xbox One / Series {}", program.container), std::format("{} {}, {}, {} bytes", program.identity, program.version, program.member, size), "xboxone", "reach");
+        } catch (const Error&) {
+        }
+    }
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
+
+// What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
+namespace cb::formats::detect {
+namespace {
+std::optional<std::vector<Detected>> info_xboxone_2(const DetectInput& in) {
+    [[maybe_unused]] const ByteView file = in.file;
+    [[maybe_unused]] const ByteView head = in.head;
+    [[maybe_unused]] const ByteView h4 = clamped(head, 0, 4);
+    [[maybe_unused]] const std::uint64_t size = in.size;
+    [[maybe_unused]] const std::string_view name = in.name;
+    if (name_ends_with(name, {".xvc", ".msixvc", ".eappx", ".eappxbundle"}))   // a retail package: encrypted with the console's keys
+        return one("Xbox One / Series package (encrypted)", "not handled: CodeBreaker does not decrypt", "xboxone", "gap");
+    return std::nullopt;
+}
+}  // namespace
+}  // namespace cb::formats::detect
 
 namespace cb::engine {
 
@@ -336,18 +409,6 @@ vl::ImageLaneSpec spec_for(const std::string& kind, Loader loader, std::function
     return spec;
 }
 
-void register_lane(const std::string& name, std::function<bool(const stdfs::path&)> probe, std::function<vl::ImageLaneSpec()> make_spec) {
-    if (machine_lanes().find(name)) return;
-    MachineLane lane;
-    lane.name = name;
-    lane.probe = std::move(probe);
-    lane.make_spec = std::move(make_spec);
-    try {
-        machine_lanes().add(std::move(lane));
-    } catch (const UsageError&) {
-    }
-}
-
 }  // namespace x64_lane_detail
 
 vl::ImageLaneSpec ps4_lane_spec() {
@@ -361,11 +422,22 @@ vl::ImageLaneSpec ps5_lane_spec() {
 }
 
 void register_ps4_lane() {
-    x64_lane_detail::register_lane("ps4", [](const stdfs::path& p) { return fo::probe(p, fo::Console::Ps4); }, ps4_lane_spec);
+    register_lane({
+        .name = "ps4",
+        .platform = platforms::ps4,
+        .probe = [](const stdfs::path& p) { return fo::probe(p, fo::Console::Ps4); },
+        .make_spec = ps4_lane_spec,
+        .detectors = {{.priority = 120, .detect = formats::detect::info_ps4}},
+    });
 }
 
 void register_ps5_lane() {
-    x64_lane_detail::register_lane("ps5", [](const stdfs::path& p) { return fo::probe(p, fo::Console::Ps5); }, ps5_lane_spec);
+    register_lane({
+        .name = "ps5",
+        .platform = platforms::ps5,
+        .probe = [](const stdfs::path& p) { return fo::probe(p, fo::Console::Ps5); },
+        .make_spec = ps5_lane_spec,
+    });
 }
 
 vl::ImageLaneSpec xboxone_lane_spec() {
@@ -374,7 +446,13 @@ vl::ImageLaneSpec xboxone_lane_spec() {
 }
 
 void register_xboxone_lane() {
-    x64_lane_detail::register_lane("xboxone", [](const stdfs::path& p) { return formats::xboxone::probe(p); }, xboxone_lane_spec);
+    register_lane({
+        .name = "xboxone",
+        .platform = platforms::xboxone,
+        .probe = [](const stdfs::path& p) { return formats::xboxone::probe(p); },
+        .make_spec = xboxone_lane_spec,
+        .detectors = {{.priority = 130, .detect = formats::detect::info_xboxone_1}, {.priority = 140, .detect = formats::detect::info_xboxone_2}},
+    });
 }
 
 }  // namespace cb::engine

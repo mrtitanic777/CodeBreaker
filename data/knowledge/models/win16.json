@@ -20,6 +20,19 @@
   "_LREAD": {"ax": "arg3", "pop": 8, "_": "(hf, lpBuffer, cb) -> cb bytes read"},
   "_HREAD": {"ax": "arg3", "pop": 8},
   "_LWRITE": {"ax": "arg3", "pop": 8},
-  "_HWRITE": {"ax": "arg3", "pop": 8}
+  "_HWRITE": {"ax": "arg3", "pop": 8},
+  "BEGINPAINT": {"fill": "1:32", "_": "(hwnd, LPPAINTSTRUCT): the structure written through the far pointer; the result is not modelled"},
+  "GETCLIENTRECT": {"fill": "1:8", "_": "(hwnd, LPRECT): the structure written through the far pointer; the result is not modelled"},
+  "GETWINDOWRECT": {"fill": "1:8", "_": "(hwnd, LPRECT): the structure written through the far pointer; the result is not modelled"},
+  "GETUPDATERECT": {"fill": "1:8", "_": "(hwnd, LPRECT, fErase): the structure written through the far pointer; the result is not modelled"},
+  "GETCLIPBOX": {"fill": "1:8", "_": "(hdc, LPRECT): the structure written through the far pointer; the result is not modelled"},
+  "GETCURSORPOS": {"fill": "0:4", "_": "(LPPOINT): the structure written through the far pointer; the result is not modelled"},
+  "GETCARETPOS": {"fill": "0:4", "_": "(LPPOINT): the structure written through the far pointer; the result is not modelled"},
+  "GETMESSAGE": {"fill": "0:18", "_": "(LPMSG, hwnd, wMin, wMax): the structure written through the far pointer; the result is not modelled"},
+  "PEEKMESSAGE": {"fill": "0:18", "_": "(LPMSG, hwnd, wMin, wMax, wRemove): the structure written through the far pointer; the result is not modelled"},
+  "GETWINDOWPLACEMENT": {"fill": "1:22", "_": "(hwnd, LPWINDOWPLACEMENT): the structure written through the far pointer; the result is not modelled"},
+  "GETTEXTMETRICS": {"fill": "1:31", "_": "(hdc, LPTEXTMETRIC): the structure written through the far pointer; the result is not modelled"},
+  "GETKEYBOARDSTATE": {"fill": "0:256", "_": "(LPBYTE): the structure written through the far pointer; the result is not modelled"},
+  "GETSCROLLRANGE": {"fill": "2:2,4:2", "_": "(hwnd, nBar, LPINT lpMin, LPINT lpMax): the structure written through the far pointer; the result is not modelled"}
  }
 }
