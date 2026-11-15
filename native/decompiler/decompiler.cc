@@ -23,7 +23,11 @@
 //                                             last for varargs, `void`, or `-` (left to the
 //                                             analysis). Stated parts are locked. noreturn: a
 //                                             call to it ends the caller's path.
-//                                             e.g. P 800718d0 void 4u:Code,4u,4u,4u,4u noreturn
+//                                             e.g. P 800716e8 void 4u:Code,4u,4u,4u,4u noreturn
+//                                             A type may also be a structure by name, `*<type>`
+//                                             (pointer), `[N]<type>` (array): `*IRP:Irp`.
+//   T      <Name> <hexSize> <hexOff>:<type>:<field> ...   a structure (each field its own column)
+//   G      <hexVA> <type> <name>              a global variable's name and type
 //
 // F may carry a fifth field, the calling-convention model by name (e.g. __stdcall16far), or
 // the word `inline`: a compiler helper that is part of every caller's prologue or epilogue
@@ -393,10 +397,14 @@ struct Fact { uint64_t va; std::string name; int pop; std::string model; int res
 struct Span { uint64_t va; std::vector<uint8_t> data; };
 // A function's prototype as the describer knows it (`P <hexVA> <result> <args> [noreturn]`),
 // for processors whose code does not state it (PowerPC: the arguments are in r3.., nothing in
-// the function says how many). Each type is one token: <bytes>[i|u|p|x|f][:name] -- a signed
-// or unsigned integer, a pointer, a value of unknown type or a float of that many bytes;
+// the function says how many). Each type is one token, <type>[:name], where <type> is
+//   <bytes>[i|u|p|x|f]   a signed or unsigned integer, a pointer to bytes, a value of unknown
+//                        type or a float of that many bytes (`4`, `4u`, `4p`, `8x`, `8f`)
+//   <Name>               a structure a `T` line defines, by value
+//   *<type>              a pointer to one (`*IRP`, `*4u`, `**KTHREAD`)
+//   [<count>]<type>      an array (`[16]1u`) -- in a structure's fields
 // `void` as the result, `-` for "left to the analysis", `...` (last) for more arguments.
-struct ProtoType { int size = 0; char kind = 'i'; std::string name; };
+struct ProtoType { std::string spec, name; };
 struct Proto {
   bool resultKnown = false, resultVoid = false;
   ProtoType result;
@@ -404,6 +412,12 @@ struct Proto {
   std::vector<ProtoType> args;
   bool noreturn = false;
 };
+// A structure (`T <Name> <hexSize> <hexOffset>:<type>:<field> ...`) and a global variable
+// (`G <hexVA> <type> <name>`): data-types the code does not state, named and laid out as the
+// describer knows them. A field or global's <type> is the grammar of ProtoType.
+struct FieldDef { int offset; std::string spec, name; };
+struct StructDef { std::string name; int size; std::vector<FieldDef> fields; };
+struct GlobalDef { uint64_t va; std::string spec, name; };
 // A call through a pointer (a driver's dispatch table, a callback): what it is passed, as the
 // code pushed it -- the callee is not known, so the analysis cannot tell what it takes.
 struct CallSite { uint64_t site; uint64_t func; int pop; std::string model; };
@@ -520,31 +534,45 @@ void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop, b
   fp.setOutputLock(true);
 }
 
-// `4`, `4u`, `4p`, `8x`, `8f:Value` (see Proto). False when the token is not one.
-bool parseProtoType(const std::string& tok, ProtoType& t) {
-  size_t i = 0;
-  while (i < tok.size() && std::isdigit((unsigned char)tok[i])) ++i;
-  if (i == 0) return false;
-  t.size = std::atoi(tok.substr(0, i).c_str());
-  if (t.size <= 0 || t.size > 16) return false;
-  t.kind = 'i';
-  if (i < tok.size() && tok[i] != ':') {
-    t.kind = tok[i++];
-    if (std::string("iupxf").find(t.kind) == std::string::npos) return false;
+// The <type> grammar above; `names` collects the structure names it uses (checked against the
+// `T` lines once the whole description is read).
+bool typeSpecOk(const std::string& t, std::set<std::string>* names) {
+  if (t.empty()) return false;
+  if (t[0] == '*') return typeSpecOk(t.substr(1), names);
+  if (t[0] == '[') {
+    size_t e = t.find(']');
+    if (e == std::string::npos || e == 1) return false;
+    for (size_t i = 1; i < e; ++i) if (!std::isdigit((unsigned char)t[i])) return false;
+    if (std::atoi(t.substr(1, e - 1).c_str()) <= 0) return false;
+    return typeSpecOk(t.substr(e + 1), names);
   }
-  if (i < tok.size()) {
-    if (tok[i] != ':') return false;
-    t.name = tok.substr(i + 1);
+  if (std::isdigit((unsigned char)t[0])) {
+    size_t i = 0;
+    while (i < t.size() && std::isdigit((unsigned char)t[i])) ++i;
+    int size = std::atoi(t.substr(0, i).c_str());
+    if (size <= 0 || size > 16) return false;
+    if (i == t.size()) return true;
+    return i + 1 == t.size() && std::string("iupxf").find(t[i]) != std::string::npos;
   }
+  if (!(std::isalpha((unsigned char)t[0]) || t[0] == '_')) return false;
+  for (char c : t) if (!(std::isalnum((unsigned char)c) || c == '_')) return false;
+  if (names) names->insert(t);
   return true;
 }
 
-// `P <va> <result> <args> [noreturn]` (Proto). False, with why, when the line is malformed.
-bool parseProto(const std::vector<std::string>& f, Proto& p, std::string& why) {
+// `<type>[:name]` (see ProtoType). False when the token is not one.
+bool parseProtoType(const std::string& tok, ProtoType& t, std::set<std::string>* names = nullptr) {
+  size_t c = tok.find(':');
+  t.spec = tok.substr(0, c);
+  t.name = c == std::string::npos ? std::string() : tok.substr(c + 1);
+  return typeSpecOk(t.spec, names);
+}
+
+bool parseProto(const std::vector<std::string>& f, Proto& p, std::string& why, std::set<std::string>* names) {
   const std::string& r = f[2];
   if (r == "void") { p.resultKnown = p.resultVoid = true; }
   else if (r != "-") {
-    if (!parseProtoType(r, p.result)) { why = "result `" + r + "`"; return false; }
+    if (!parseProtoType(r, p.result, names)) { why = "result `" + r + "`"; return false; }
     p.resultKnown = true;
   }
   const std::string& a = f[3];
@@ -557,7 +585,7 @@ bool parseProto(const std::vector<std::string>& f, Proto& p, std::string& why) {
       if (t == "...") { p.varargs = true; continue; }
       if (p.varargs) { why = "`...` before the last argument"; return false; }
       ProtoType pt;
-      if (!parseProtoType(t, pt)) { why = "argument `" + t + "`"; return false; }
+      if (!parseProtoType(t, pt, names)) { why = "argument `" + t + "`"; return false; }
       p.args.push_back(pt);
     }
   }
@@ -568,16 +596,34 @@ bool parseProto(const std::vector<std::string>& f, Proto& p, std::string& why) {
   return true;
 }
 
-Datatype* protoDatatype(Machine& m, const ProtoType& t) {
-  switch (t.kind) {
-    case 'u': return m.types->getBase(t.size, TYPE_UINT);
-    case 'x': return m.types->getBase(t.size, TYPE_UNKNOWN);
-    case 'f': return m.types->getBase(t.size, TYPE_FLOAT);
-    case 'p': return m.types->getTypePointer(t.size, m.types->getBase(1, TYPE_UNKNOWN),
-                                              m.getDefaultDataSpace()->getWordSize());
-    default:  return m.types->getBase(t.size, TYPE_INT);
+// A <type> as the machine's data-type (structures by the names their `T` lines gave them, made
+// in setUp before anything uses them).
+Datatype* resolveType(Machine& m, const std::string& t) {
+  if (t[0] == '*') {
+    Datatype* to = resolveType(m, t.substr(1));
+    return m.types->getTypePointer(m.types->getSizeOfPointer(), to, m.getDefaultDataSpace()->getWordSize());
   }
+  if (t[0] == '[') {
+    size_t e = t.find(']');
+    Datatype* el = resolveType(m, t.substr(e + 1));
+    return m.types->getTypeArray(std::atoi(t.substr(1, e - 1).c_str()), el);
+  }
+  if (std::isdigit((unsigned char)t[0])) {
+    size_t i = 0;
+    while (i < t.size() && std::isdigit((unsigned char)t[i])) ++i;
+    int size = std::atoi(t.substr(0, i).c_str());
+    switch (i < t.size() ? t[i] : 'i') {
+      case 'u': return m.types->getBase(size, TYPE_UINT);
+      case 'x': return m.types->getBase(size, TYPE_UNKNOWN);
+      case 'f': return m.types->getBase(size, TYPE_FLOAT);
+      case 'p': return m.types->getTypePointer(size, m.types->getBase(1, TYPE_UNKNOWN),
+                                                m.getDefaultDataSpace()->getWordSize());
+      default:  return m.types->getBase(size, TYPE_INT);
+    }
+  }
+  return m.types->findByName(t);
 }
+Datatype* protoDatatype(Machine& m, const ProtoType& t) { return resolveType(m, t.spec); }
 
 // PowerPC, more than eight integer arguments: the homed cspec describes no stack arguments (see
 // its header: a general "the stack above sp+8 is arguments" made locals read as outgoing
@@ -590,9 +636,13 @@ void placeStackArguments(Machine& m, FuncProto& fp, const Proto& p, const Protot
   if (!m.translate->isBigEndian()) return;
   const VarnodeData* r3 = nullptr;
   try { r3 = &m.translate->getRegister("r3"); } catch (LowlevelError&) { return; }
-  for (const auto& a : p.args)
-    if (a.kind == 'f' || a.size > 8) return;
-  if (p.resultKnown && !p.resultVoid && (p.result.kind == 'f' || p.result.size > 8)) return;
+  auto plain = [](Datatype* t) {                   // (an integer or pointer that fits a register)
+    type_metatype mt = t->getMetatype();
+    return t->getSize() <= 8 && mt != TYPE_FLOAT && mt != TYPE_STRUCT && mt != TYPE_ARRAY && mt != TYPE_UNION;
+  };
+  for (Datatype* t : pieces.intypes)
+    if (!plain(t)) return;
+  if (pieces.outtype->getMetatype() != TYPE_VOID && !plain(pieces.outtype)) return;
   AddrSpace* stack = m.getStackSpace();
   if (stack == nullptr) return;
   fp.clearInput();
@@ -616,6 +666,41 @@ void placeStackArguments(Machine& m, FuncProto& fp, const Proto& p, const Protot
     fp.setParam((int4)i, pieces.innames[i], in);
   }
   fp.setInputErrors(false);
+}
+
+// The `T` structures, as the machine's data-types: all named first (a field may point to one
+// defined later, or to its own structure), then laid out -- a structure held by value in another
+// laid out before it. A layout that does not fit (a field past the end, two fields overlapping)
+// is an error in the description.
+void buildStructs(Machine& m, const std::vector<StructDef>& defs) {
+  std::map<std::string, size_t> index;
+  for (size_t i = 0; i < defs.size(); ++i) {
+    index[defs[i].name] = i;
+    m.types->getTypeStruct(defs[i].name);
+  }
+  std::vector<int> state(defs.size(), 0);         // 0 not laid out, 1 being laid out, 2 done
+  std::function<void(size_t)> layOut = [&](size_t i) {
+    if (state[i] == 2) return;
+    if (state[i] == 1) throw LowlevelError("structure " + defs[i].name + " holds itself by value");
+    state[i] = 1;
+    std::vector<TypeField> fields;
+    int4 id = 0;
+    for (const auto& f : defs[i].fields) {
+      std::string base = f.spec;                   // (what it holds by value: past any [N])
+      while (!base.empty() && base[0] == '[') base = base.substr(base.find(']') + 1);
+      if (!base.empty() && base[0] != '*') {
+        auto dep = index.find(base);
+        if (dep != index.end()) layOut(dep->second);
+      }
+      Datatype* t = resolveType(m, f.spec);
+      if (t == nullptr) throw LowlevelError("structure " + defs[i].name + ": unknown type " + f.spec);
+      fields.emplace_back(id++, (int4)f.offset, f.name, t);
+    }
+    std::sort(fields.begin(), fields.end(), [](const TypeField& a, const TypeField& b) { return a.offset < b.offset; });
+    m.types->assignFixedFields((TypeStruct*)m.types->findByName(defs[i].name), fields, (int4)defs[i].size);
+    state[i] = 2;
+  };
+  for (size_t i = 0; i < defs.size(); ++i) layOut(i);
 }
 
 // The describer's prototype over whatever the model gave: the arguments and the result it
@@ -676,6 +761,9 @@ struct Description {
   std::vector<JumpOverride> jumps;
   std::vector<uint64_t> retjumps;                  // returns that are jumps (`R <address>`)
   std::map<uint64_t, Proto> protos;                // `P` lines, by function address
+  std::vector<StructDef> structs;                  // `T` lines
+  std::vector<GlobalDef> globals;                  // `G` lines
+  std::set<std::string> typeNames;                 // structures the types above name
   std::set<uint64_t> only;
   bool x86_32 = false;
   bool flat = false;                               // (one address space: every processor but 16-bit x86)
@@ -793,6 +881,12 @@ void setUp(Analysis& a, const Description& d) {
       if (f.pop >= 0) fp.setExtraPop(f.pop + ret_addr);
     }
   };
+  buildStructs(m, d.structs);
+  for (const auto& g : d.globals) {               // (named and typed: the analysis keeps them)
+    Datatype* t = resolveType(m, g.spec);
+    if (t == nullptr) throw LowlevelError("global " + g.name + ": unknown type " + g.spec);
+    glb->addSymbol(g.name, t, Address(m.getDefaultDataSpace(), (uintb)g.va), Address());
+  }
   for (const auto& x : d.externs) {
     Address ea(code, (uintb)x.va);
     Funcdata* fd = glb->addFunction(ea, x.name)->getFunction();
@@ -2358,14 +2452,41 @@ int main(int argc, char** argv) {
       } else if (f[0] == "P") {
         Proto p;
         std::string why = "too few fields";
-        if (f.size() < 4 || !parseProto(f, p, why)) {
+        if (f.size() < 4 || !parseProto(f, p, why, &d.typeNames)) {
           std::fprintf(stderr, "FAIL: bad P line (%s): %s\n", why.c_str(), line.c_str());
           return 1;
         }
         d.protos[strtoull(f[1].c_str(), nullptr, 16)] = p;
+      } else if (f[0] == "T") {
+        StructDef sd;
+        bool ok = f.size() >= 3 && typeSpecOk(f[1], nullptr) && !std::isdigit((unsigned char)f[1][0]) &&
+                  f[1][0] != '*' && f[1][0] != '[';
+        if (ok) { sd.name = f[1]; sd.size = (int)strtol(f[2].c_str(), nullptr, 16); }
+        ok = ok && sd.size > 0;
+        for (size_t i = 3; ok && i < f.size(); ++i) {
+          if (f[i].empty()) continue;
+          size_t a = f[i].find(':'), b = a == std::string::npos ? a : f[i].find(':', a + 1);
+          if (b == std::string::npos) { ok = false; break; }
+          FieldDef fd{(int)strtol(f[i].substr(0, a).c_str(), nullptr, 16), f[i].substr(a + 1, b - a - 1), f[i].substr(b + 1)};
+          ok = typeSpecOk(fd.spec, &d.typeNames) && !fd.name.empty();
+          sd.fields.push_back(fd);
+        }
+        if (!ok) { std::fprintf(stderr, "FAIL: bad T line: %s\n", line.c_str()); return 1; }
+        d.structs.push_back(sd);
+      } else if (f[0] == "G") {
+        if (f.size() < 4 || !typeSpecOk(f[2], &d.typeNames) || f[3].empty()) {
+          std::fprintf(stderr, "FAIL: bad G line: %s\n", line.c_str());
+          return 1;
+        }
+        d.globals.push_back({strtoull(f[1].c_str(), nullptr, 16), f[2], f[3]});
       }
     }
     d.spans = spans;
+  }
+  for (const auto& n : d.typeNames) {              // every structure a type names is defined
+    bool found = false;
+    for (const auto& sd : d.structs) found = found || sd.name == n;
+    if (!found) { std::fprintf(stderr, "FAIL: no T line defines %s\n", n.c_str()); return 1; }
   }
   if (d.arch.empty() || d.spans->empty()) { std::fprintf(stderr, "FAIL: the description names no arch or no bytes\n"); return 1; }
   for (int i = 2; i < argc; ++i)
