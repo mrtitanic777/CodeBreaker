@@ -281,6 +281,8 @@ The milestone regression adds the end-to-end proofs: `codebreaker regress all15`
 
 | Document | About |
 |---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | how to build, test and send a change |
+| [ROADMAP.md](docs/ROADMAP.md) | the nine tracks: Windows 95 in full, every console, Linux, speed, the translator, ... |
 | [PLATFORMS.md](docs/PLATFORMS.md) | every platform family: what is handled, what is next |
 | [TESTED_SOFTWARE.md](docs/TESTED_SOFTWARE.md) | real programs put through each lane, and the results |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | the program database, incremental engine and service |

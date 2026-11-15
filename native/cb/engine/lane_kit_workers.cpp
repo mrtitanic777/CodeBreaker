@@ -15,6 +15,10 @@
 #include "cb/core/log.hpp"
 #include "cb/core/parallel.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
+#include "cb/engine/machine_atari.hpp"
+#include "cb/engine/machine_pce.hpp"
+#include "cb/engine/machine_nds.hpp"
+#include "cb/engine/machine_m68k.hpp"
 #include "cb/jobs/workers.hpp"
 
 namespace cb::engine {
@@ -122,6 +126,10 @@ int host_main_hook(int argc, char** argv) {
 bool hosting_workers() { return g_hosting.load(); }
 
 void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
+    register_m68k_lanes();    // (the Neo Geo and Sega CD lanes: the same table, the same reason)
+    register_atari_lanes();   // (the Atari machines' lanes, in the table of engine/machine_lanes.hpp: the host and its workers make the same registrations)
+    register_pce_lane();      // (the PC Engine lane, likewise)
+    register_nds_lane();   // (the Nintendo DS lane, likewise)
     kinds.add("lane-judge", kit_judge_share);
     kinds.add("lane-build", kit_build_share);
 }

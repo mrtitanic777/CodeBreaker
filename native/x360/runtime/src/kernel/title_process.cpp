@@ -142,7 +142,7 @@ GUEST_IMPORT(ExTerminateTitleProcess)
             params.processType = kernel::kProcessTypeSystem;
             kernel::GuestThread* thread = kernel::CreateThread(params);
             PPCContext* c = kernel::AttachHostThread(thread);
-            c->r1.u64 = thread->stackBase;
+            c->r1.u64 = thread->stackBase - kernel::kInitialStackOffset;
             EndTitle(*c);
         });
         throw kernel::ThreadExit{ ctx.r3.u32 };

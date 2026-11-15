@@ -338,7 +338,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const bool snorm = f.numbers == TextureNumbers::kSigned;
             switch (f.format)
             {
-            case 22: // k_24_8: the depth as a float (the untile converts it)
+            case 22: case 23: // k_24_8, k_24_8_FLOAT: the depth as a float (the untile converts it)
                 return { DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT,
                          D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 0, 0, 0), 4 };
             case 2: case 8: case 9:
@@ -1439,7 +1439,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             Transition(texture.resource.Get(), texture.state, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             list_->SetComputeRootSignature(presentRootSignature_.Get());
             list_->SetPipelineState(untilePipelines_[texture.fetch.numbers == TextureNumbers::kInteger ||
-                                                    TextureUntileKind(texture.fetch.format) == kUntileDepth24].Get());
+                                                    TextureUntileKind(texture.fetch.format) == kUntileDepth24 ||
+                                                    TextureUntileKind(texture.fetch.format) == kUntileDepth24Float].Get());
             list_->SetComputeRootDescriptorTable(1, SrvGpu(0));
             for (uint32_t level = 0; level < texture.layout.levelCount; level++)
                 for (uint32_t face = 0; face < texture.fetch.faces; face++)
@@ -1664,8 +1665,6 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 Fatal("GPU: a shader uses {} textures (at most {} are bound)", shader.textures.size(), kTableSize);
             for (size_t i = 0; i < shader.textures.size(); i++)
             {
-                if (shader.textures[i].dimension == 0)
-                    Fatal("GPU: 1D texture fetches are not implemented (tf{})", shader.textures[i].fetchConstant);
                 // A fetch constant the title never set up as a texture (type 0: all zero) while its shader still
                 // samples it: the null descriptor, which reads 0 (titles rely on it: a shader shared by draws that
                 // bind fewer textures).

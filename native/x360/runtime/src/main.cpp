@@ -206,6 +206,14 @@ int main(int argc, char** argv)
         gpu::ReplayTrace(trace, frames ? std::strtoull(frames, nullptr, 10) : 0);
         TerminateProcess(GetCurrentProcess(), 0);
     }
+    // CB_KERNEL_TEST=2 (kernel/kernel_tests.cpp): the kernel checks a title's program can run (1 is the dashboard's
+    // whole set) run instead of the title; the exit code is the number of failed checks (the results are in CB_LOG).
+    if (const char* test = std::getenv("CB_KERNEL_TEST"); test && (test[0] == '1' || test[0] == '2'))
+    {
+        const int failures = kernel::RunKernelTests(test[0] == '2');
+        logging::PauseIfOwnConsole();
+        TerminateProcess(GetCurrentProcess(), UINT(failures));
+    }
     kernel::ThreadParams params;
     params.stackSize = title.defaultStackSize;
     params.startAddress = title.entryPoint;

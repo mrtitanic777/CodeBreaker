@@ -301,7 +301,11 @@ GUEST_IMPORT(XexGetProcedureAddress)
         address = kernel::ResolveVariable(library, uint16_t(ordinal));
     if (address == 0)
         address = kernel::BindDynamicExport(library, uint16_t(ordinal));
-    if (address == 0 && library == "xam.xex" && kernel::IsAbsentXamExport(uint16_t(ordinal)))
+    // xboxkrnl 642-649 (rexglue: XInputdFFGetDeviceInfo ... XInputdFFSetRumble, the force feedback driver), looked up by
+    // the same XInput start-up code as the XAM ordinals 442 and 520 (Vigilante 8 Arcade, Monopoly Plus, Forza 4): optional,
+    // with a fallback (the plain rumble of XInputSetState) when they are not found.
+    if (address == 0 && ((library == "xam.xex" && kernel::IsAbsentXamExport(uint16_t(ordinal))) ||
+                         (library == "xboxkrnl.exe" && ordinal >= 642 && ordinal <= 649)))
     {
         // An empty slot of the console's export table: STATUS_DRIVER_ENTRYPOINT_NOT_FOUND with a null address (Xenia's
         // XexGetProcedureAddress, the same for any export the module lacks).

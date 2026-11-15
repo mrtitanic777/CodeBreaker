@@ -6,6 +6,7 @@
 #include "cb/core/testing.hpp"
 #include "cb/source/gb_writer.hpp"
 #include "cb/source/genesis_writer.hpp"
+#include "cb/source/gba_writer.hpp"
 #include "cb/source/ps1_writer.hpp"
 #include "cb/source/sms_writer.hpp"
 #include "cb/source/zx_writer.hpp"
@@ -27,6 +28,7 @@ void rebuild(std::string_view relative, std::size_t functions_at_least, Writer&&
     if (!file) return;   // (not on this machine)
     fs::ScopedTempDir dir("cb_homebrew");
     const image_writer::Written r = writer(*file, dir.path());
+    CB_CHECK_EQ(r.notes.empty() ? std::string(relative) : r.notes.front(), std::string(relative));   // (why it did not rebuild, when it did not)
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
     CB_CHECK(r.functions.size() >= functions_at_least);
@@ -54,6 +56,15 @@ CB_TEST("source.writers.homebrew.playstation", [] {
     rebuild("ps1/peterlemon/PRINTGPU.exe", 8, ps1_writer::reconstruct);
     rebuild("ps1/peterlemon/VBLANK.exe", 4, ps1_writer::reconstruct);
     rebuild("ps1/peterlemon/Cube.exe", 1, ps1_writer::reconstruct);
+});
+
+// (the Game Boy Advance's: hand-written ARM and Thumb tests, and devkitARM's C, each rebuilt from its source)
+CB_TEST("source.writers.homebrew.game_boy_advance", [] {
+    rebuild("gba/jsmolka-gba-tests/arm-arm.gba", 3, gba_writer::reconstruct);
+    rebuild("gba/jsmolka-gba-tests/thumb-thumb.gba", 3, gba_writer::reconstruct);
+    rebuild("gba/jsmolka-gba-tests/memory-memory.gba", 3, gba_writer::reconstruct);
+    rebuild("gba/zerodayarcade-pong/Pong-Homebrew-GBA.gba", 5, gba_writer::reconstruct);
+    rebuild("gba/nba-hw-test/timer-reload-reload.gba", 5, gba_writer::reconstruct);
 });
 
 }  // namespace

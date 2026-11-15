@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "cb/core/fs.hpp"
+#include "cb/core/regex.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 #include "cb/engine/engine.hpp"
@@ -58,13 +59,19 @@ struct FactsCommandWorld {
         std::string text = cap.out();
         for (char& c : text)
             if (c == '\\') c = '/';
-        return text + "exit=" + std::to_string(code) + "\n";
+        return local_time_masked(text) + "exit=" + std::to_string(code) + "\n";
+    }
+
+    // A fact's time is shown in the machine's time zone, so it is compared with the time masked on both sides.
+    static std::string local_time_masked(const std::string& text) {
+        static const cb::Regex time(R"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [AP]M)");
+        return time.replace_all(text, "<TIME>");
     }
 
     std::string golden(const char* name) const {
         std::string text = cb::fs::read_text(cb::testing::data_path(std::string("engine/testdata/commands/") + name + ".txt"));
         text = cb::text::replace_all(text, "<STATE>", cb::fs::to_text(state));
-        return cb::text::replace_all(text, "<BIN>", cb::fs::to_text(dir.path() / "bin"));
+        return local_time_masked(cb::text::replace_all(text, "<BIN>", cb::fs::to_text(dir.path() / "bin")));
     }
 
     // Without the lines that depend on the binary's path.
@@ -115,7 +122,7 @@ CB_TEST("engine.show.the_databases_and_the_cap", [] {
     FactsCommandWorld w;
     const std::string out = w.run({"--databases"});
     CB_CHECK(out.starts_with(std::string("  ") + kFactsSha + ".sqlite"));
-    CB_CHECK(out.find(" KB  opened 20") != std::string::npos);
+    CB_CHECK(out.find(" KB  opened <TIME>") != std::string::npos);   // (the time, masked: it is shown in the machine's zone)
     CB_CHECK(out.find("  all ") != std::string::npos);
     CB_CHECK(out.find("(cap 4096.0 MB: setting db_max_gb)\nexit=0\n") != std::string::npos);
 });

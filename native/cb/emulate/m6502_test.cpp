@@ -545,3 +545,86 @@ CB_TEST("emulate.m6502.record", [] {
     CB_CHECK(cut.truncated);
     CB_CHECK_EQ(cut.ended(), "limit");
 });
+
+// ---- the 65SC02, and a bus with a narrower address and quiet memory ----------------------------------------------------
+
+namespace {
+struct CmosRig {
+    m::Bus bus;
+    m::Cpu cpu;
+    explicit CmosRig(std::string_view code) : cpu(bus, true, m::Variant::Cmos) {
+        place(bus, 0x8000, code);
+        cpu.regs.pc = 0x8000;
+    }
+    void step(int n = 1) {
+        for (int i = 0; i < n; ++i) CB_CHECK(!cpu.step());
+    }
+};
+}  // namespace
+
+CB_TEST("emulate.m6502.cmos_instructions", [] {
+    CmosRig stz("A9 55 85 10 64 10");   // LDA #$55; STA $10; STZ $10
+    stz.step(3);
+    CB_CHECK_EQ(stz.bus.memory()[0x10], 0);
+    CmosRig bra("80 02 A9 01 A9 02");   // BRA +2 skips LDA #1
+    bra.step(2);
+    CB_CHECK_EQ(bra.cpu.regs.a, 2);
+    CmosRig stack("A2 07 A0 09 DA 5A FA 7A");   // LDX #7; LDY #9; PHX; PHY; PLX; PLY: X and Y swap
+    stack.step(6);
+    CB_CHECK_EQ(stack.cpu.regs.x, 9);
+    CB_CHECK_EQ(stack.cpu.regs.y, 7);
+    CmosRig inca("A9 FF 1A 3A 3A");   // INC A wraps to 0 (Z), DEC A to $FF then $FE
+    inca.step(2);
+    CB_CHECK_EQ(inca.cpu.regs.a, 0);
+    CB_CHECK(inca.cpu.regs.p & st::Z);
+    inca.step(2);
+    CB_CHECK_EQ(inca.cpu.regs.a, 0xFE);
+    CmosRig tsb("A9 0F 85 20 A9 F0 04 20 A9 0F 14 20");   // $20 = $0F; TSB with A=$F0 -> $FF, Z set (no common bits)
+    tsb.step(4);
+    CB_CHECK_EQ(tsb.bus.memory()[0x20], 0xFF);
+    CB_CHECK(tsb.cpu.regs.p & st::Z);
+    tsb.step(2);   // LDA #$0F; TRB $20 -> $F0, Z clear (common bits)
+    CB_CHECK_EQ(tsb.bus.memory()[0x20], 0xF0);
+    CB_CHECK(!(tsb.cpu.regs.p & st::Z));
+    CmosRig izp("A9 34 85 30 A9 12 85 31 B2 30");   // ($30) points at $1234
+    place(izp.bus, 0x1234, "99");
+    izp.step(5);
+    CB_CHECK_EQ(izp.cpu.regs.a, 0x99);
+    CmosRig iax("A2 02 7C 00 90");   // JMP ($9000,X) with the pointer at $9002
+    place(iax.bus, 0x9002, "00 A0");
+    iax.step(2);
+    CB_CHECK_EQ(iax.cpu.regs.pc, 0xA000);
+    CmosRig jmp("6C FF 30");   // the indirect JMP does not wrap the page on the 65SC02
+    place(jmp.bus, 0x30FF, "34");
+    place(jmp.bus, 0x3100, "12");
+    jmp.step();
+    CB_CHECK_EQ(jmp.cpu.regs.pc, 0x1234);
+    CmosRig bit("A9 01 89 02");   // BIT #2 sets Z alone
+    bit.step(2);
+    CB_CHECK(bit.cpu.regs.p & st::Z);
+    CmosRig brk("F8 00");   // BRK clears D
+    brk.step(2);
+    CB_CHECK(!(brk.cpu.regs.p & st::D));
+    m::Bus nmos;   // the same opcode on an NMOS part is not documented
+    place(nmos, 0x8000, "80 00");
+    m::Cpu plain(nmos);
+    plain.regs.pc = 0x8000;
+    CB_CHECK(plain.step().has_value());
+});
+
+CB_TEST("emulate.m6502.address_mask_and_quiet_ranges", [] {
+    m::Bus bus;
+    bus.set_address_mask(0x1FFF);
+    place(bus, 0x1000, "A9 2A 8D 02 00 60");   // LDA #$2A; STA $0002; RTS, at $1000 (and seen at $F000)
+    std::uint8_t last = 0;
+    bus.map(0x0000, 0x007F, {}, [&](std::uint16_t, std::uint8_t v) { last = v; });   // a logged device
+    std::uint8_t ram[128] = {};
+    bus.map_quiet(0x0080, 0x00FF, [&](std::uint16_t a) { return ram[a & 0x7F]; }, [&](std::uint16_t a, std::uint8_t v) { ram[a & 0x7F] = v; });
+    const m::RunResult r = m::run(bus, 0xF000);   // the stack pushes at $01FD land in the quiet RAM's mirror?
+    CB_CHECK_EQ(r.exit(), "return");
+    CB_CHECK_EQ(last, 0x2A);
+    CB_CHECK_EQ(r.io.size(), 1u);   // only the device write is logged
+    CB_CHECK_EQ(r.io[0].address, 0x0002);
+    bus.write(0xF123, 1);   // 0xF123 & 0x1FFF = 0x1123
+    CB_CHECK_EQ(bus.memory()[0x1123], 1);
+});

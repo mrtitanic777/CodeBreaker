@@ -153,8 +153,140 @@ seven all assembly). Screens: state/phase3/shots/win95track-wep-*.png.
 Written, not yet run: the installed exe of 8:15 PM may predate it. Check with `codebreaker build state/mini/original/WIN87EM.DLL`
 and read `state/build/<m>/module.l2.json`: a function kept without a compiler rejection says "its C is not used: <evidence>".
 
+### 3. Per-function reasons are in (module_pack.cpp), and the class behind row 3
+
+With the evidence recorded, the 44 small-module functions are (KEYBOARD, VGA, SYSTEM, SOUND, VER, LZEXPAND, KRNL386):
+"no room" in a fixed or self-loading segment 23 (13 KRNL386 below the cut, 7 + 3 in fixed segments of SYSTEM, SOUND,
+KEYBOARD), reads ES as entered 4, calls pass the caller's CS 3, reads a variable nothing sets 5, calls leave DS changed 3,
+returns in the flags 1, C that does not compile 3 (vga DEVICEBITMAPBITS, ver GETFILERESOURCE, sub_3_1200). So the biggest class
+is "no room".
+
+Cause for the stubs in it (SOUND `SYNCALLVOICES`, 3 bytes `xor ax,ax / retf`): the original has no Windows prologue, but
+OpenWatcom writes one for a far function (`push ds / pop ax / nop / push bp / mov bp,sp / push ds / mov ds,ax ...`, 14 bytes), so the C
+does not fit its place; `-zW` leaves it out (measured: 3 bytes).
+
+Fix (module_build16.cpp, `refit_without_prologue`, called from the fixed-segment packing in `decide_resident`): a function that
+finds no room, whose original has no Windows far prologue (`windows_far_prologue`), is compiled once more with `-zW`; the
+object is kept if smaller and the packing is tried again; else the function is given up as before.
+
+Proof: `regress all15 --runs 2`: PASS, PASS (7m49s, screens state/phase3/shots/win95track-refit-all15-*.png).
+SOUND C 2 -> 3 (`SYNCALLVOICES` now C, gate passes it); USER C 547 -> 549; nothing got worse. Setup's programs are all assembly
+and are not touched by this (not rerun).
+
+What the fix does not reach: the other stubs of this class (SOUND `WEP`, `SETSOUNDNOISE`, `SETVOICEENVELOPE`, SYSTEM `WEP`,
+`A20_PROC`, KEYBOARD's three) take arguments, and OpenWatcom gives a `__stdcall` function with parameters a BP frame whatever
+the flags (`push bp / mov bp,sp / mov ax,1 / pop bp / retf 2`, 10 bytes against the original's 6: `-zW -of- -ox` measured, no
+change). Next step for them: write those unused-parameter stubs so the compiler makes no frame (a calling-convention pragma
+for the stub, or the decompiler's stub text without the parameter names), then the same refit applies.
+
+### 4. Row 2, read against the original (not converted)
+
+- `BUGSTOP`: the C is `return int03_ax(param_1)`; the gate's "leaves 0000=0, 0012=1 in the data segment where the original
+  leaves nothing" comes from the `int03_ax` helper (the interrupt-routine stand-ins the build adds), not from the function: it
+  needs the helper's data writes kept out of the comparison, or the INT 3 written inline.
+- `CPLAPPLET`: the C keeps SI, DI, DS where the original changes DI (it calls through a far pointer at DS:4A and the callee's
+  register contract is not modelled); it needs that callee's register effects in the description.
+- `DISABLE`, `POWEREVENTPROC`: as the work list says (call through DS:0018 answered by the gate with INQUIRE): a gate change,
+  to leave out arguments of a pointer call whose callee has no signature; not done, because it weakens the gate and needs its own
+  proof of teeth (`codebreaker teeth`).
+
+### 5. Parameter stubs: not possible with OpenWatcom flags (measured, no change made)
+
+Tried on `int __far __pascal B(int a1){ return 1; }` (original: `mov ax,1 / retf 2`, 6 bytes): with `-zW`, `-bt=dos`,
+`-os/-ot/-ox/-oh/-oi/-ol`, `-0`/`-3`, no `-zu`, `__pascal`, `__stdcall`, `__cdecl`, an unnamed or `(void)`-used parameter, and
+`#pragma aux ... parm routine / caller []` the code is always `push bp / mov bp,sp / mov ax,1 / pop bp / retf 2` (10 bytes);
+near functions too. OpenWatcom builds a BP frame for any function with stack parameters; the only switches that change it
+(`-od`, `-of+`) make it larger. Only a parameterless stub is frame-free (`xor ax,ax / retf`, what item 3 handles). So the ten stubs
+that take parameters (SOUND WEP, SETSOUNDNOISE, SETVOICEENVELOPE; SYSTEM WEP, A20_PROC; KEYBOARD SCREENSWITCHENABLE,
+ENABLEKBSYSREQ, INQUIRE; ...) need either a compiler change (an OpenWatcom option to omit the frame when no parameter is read:
+the toolchain is ours to extend) or stay assembly. Their size in the original is exactly the frame-less form, so this is the
+smallest well-defined compiler item on the list.
+
+### 6. Recorded reasons for GDI and USER (after items 1 and 3), biggest class first
+
+| class | GDI | USER | what it needs |
+|---|---:|---:|---|
+| no room in fixed segment 1 (the C is bigger than the original's code; the segment must keep the original's size, see the comment in decide_resident) | 2 (+12 gate-diff ones that also found no room: `GETDCSTATE`...) | 73 (+8 with `GETDESKTOPHWND`...) | smaller code from the compiler (the prologue trick of item 3 is tried first and does not reach these), or a measured budget for how far a fixed segment may grow: USER 1:BA2E grown to C63C still ran Setup, C778 did not, so there is room for roughly 1.5 KB, which `regress install` (not all15: it stops at the License page) would have to decide |
+| reads a variable nothing sets (a register live in at entry: in_CX, extraout_DX, unaff_BP ...) | 10 | 43 | register live-in in the lifter (x86_lift.cc): the keystone item of the backlog plan; one fix converts the most functions of any single rule |
+| calls a function that leaves DS changed | 3 | 20 | the callee's DS effect in the description, so the C reloads DS after the call |
+| passes AX/CL to a register-argument helper | 10 | 25 (16+5+4) | the helper's register convention as a `__fastcall`-style pragma in the header |
+| reads ES as entered | 4 | 8 | ES as a parameter in the description |
+| gate diff (calls differ) | 1 | 12 | per function, as for DISABLE below |
+| returns DX:AX where the C returns a word | 0 | 5 | result width from the callers |
+| caller's CS passed | 1 | 5 | the far-call argument read |
+
+Totals now: GDI 53 and USER 250 functions of origin C are still kept as instructions (GDI 18 and USER 42 of them by the gate).
+
+### 7. Caller results on by default (describe.cpp, `Policy::caller_results`)
+
+The "reads a variable nothing sets" class is not, in the cases read (GDI sub_1_5FC1 ... in_DX), a register live-in: it is
+the second word (DX) of a callee's DX:AX result that the callee's description gives as a word. The decompiler already has the
+rule (`results()`: a callee whose DX its callers read, and that hands back a DX of its own on every way, is four bytes), off by
+default since USER's C once stopped Setup ("not enough memory": since explained by the fixed-segment size, and kept by the size
+rule). (There is no x86_lift.cc in the tree: the lifter is the Ghidra-derived decompiler core plus describe_ne_facts.cpp.)
+Turned on (`CB_CALLER_RESULTS=0` turns it off).
+
+Proof: `regress all15 --runs 2` with it on: PASS, PASS (7m04s): USER C 549 -> 553, VER C 23 -> 24. Installed exe, default
+policy: `regress install --runs 1`: **PASS**, 1h13m, Setup to the desktop on all 22 modules (screen
+state/phase3/shots/win95track-install-install-1.png). GDI is unchanged (its in_DX cases are a shared-body entry,
+sub_1_1260/1268 `mov cx,..; mov dx,..` into one body, which "every way" does not accept: next).
+
+### 8. OpenWatcom: no BP frame for a routine whose stack parameters are never read
+
+The source is beside the rel tree (experiments/premise-proof/open-watcom-v2/bld, built in place by its own makefiles).
+Cause: `NeedBPProlog()` (bld/cg/intel/c/x86proc.c) answered "yes" whenever `parms.size != 0`.
+Change: `ScanInstructions()` (which already walks every instruction of the routine before the prologue) records whether any
+instruction other than `OP_PARM_DEF` names a `STACK_PARM` temp (as operand, result, or the base/index of an indexed operand);
+`NeedBPProlog()` asks for BP for parameters only when one is referenced. Windows far prologues (`CHAIN_FRAME`), locals,
+debug info, address-taken parameters keep their frame as before.
+
+Build (no Python, nothing else touched): `cmd` with `OWROOT=<tree>`, `OWTOOLS=VISUALC`, vcvars64, `cmnvars.bat`, then `wmake` in
+`bld/cg/intel/i86/ntx64.dll` (cgi86.lib) and `bld/cc/i86/ntx64.dll` (wccd.dll, wcc.exe). The result was put in a copy of rel
+(CB_OPENWATCOM) so the shared rel was not changed while other runs were using it.
+
+Measured, `-bt=windows -mm -zq -w0 -s -os -nc=MCODE`:
+
+| function | before | after |
+|---|---|---|
+| `int __far __pascal B(int a1){return 1;}` with `-zW` | `55 89 E5 B8 01 00 5D CA 02 00` (10) | `B8 01 00 CA 02 00` (6, the original's) |
+| `return a1;` | frame | frame (unchanged) |
+| `return g(&a1);` | frame | frame (unchanged) |
+
+Proof: `CB_OPENWATCOM=<copy> codebreaker regress all15 --runs 2`: PASS, PASS. SOUND C 3 -> 6, KRNL386 18 -> 20, USER 553 -> 556
+(gated 42 -> 41). `regress install` with the rebuilt compiler was started and stopped by me at 12:42 AM: it sat for 20 minutes "waiting for a free slot - decompile" (other jobs held the slots) and never reached a boot, so **the rebuilt compiler is not install-proven and rel/ is unchanged**. To install it: `cp bld/cc/i86/ntx64.dll/binbuild/{wccd.dll,wcc.exe}` over rel/binnt64 after an install passes with `CB_OPENWATCOM` set to a copy of rel holding them. The ten parameter stubs: three of SOUND fit and are C now (WEP, SETSOUNDNOISE, SETVOICEENVELOPE); the other
+stubs (SYSTEM WEP/A20_PROC, KEYBOARD's three) did not change: see "Next".
+
+Open (found at the end, not solved): SYSTEM `WEP` and `A20_PROC` and KEYBOARD's `SCREENSWITCHENABLE`, `ENABLEKBSYSREQ`,
+`INQUIRE` still say "finds no room in fixed segment" although their objects are now the original's size (SYSTEM f0004.obj
+`B8 02 00 CA 02 00`, f0005.obj `B8 01 00 CA 02 00`: 6 bytes each, in holes of 6). SOUND's identical stubs were accepted, so the
+packing in `decide_resident` (pack_holes, run once per fixed segment) gives them up for another reason in these two modules;
+next: print the holes and sizes it sees for SYSTEM segment 1.
+
+### 9. Why the install "waited for a free slot - decompile" (not stuck)
+
+`Slots` (base/parallel.cpp) are lock files state/slots/slot-0..3: four decompile slots for every session on the machine. A
+decompile of more than one chunk of functions asks for slots, waits up to 600 s for one, then runs on one regardless. After an
+exe change (describe.cpp's policy, other sessions' builds) the decompile of the big modules is a cache miss; with another
+session's decompiles holding the four slots the install's builds queued, in 10-minute waits, behind them. No deadlock, no
+leak: the slot files are re-taken by whoever runs. Retrying is right; to shorten it, start the install when no other decompile
+runs. (The ~5 GB codebreaker.exe was a decompile of USER/NETDI chunks, not a stuck process.)
+
+### 10. The packing pad (module_pack.cpp, module.hpp `byte_aligned_code`, module_build16.cpp)
+
+SYSTEM `WEP` and `A20_PROC` (6-byte objects in 6-byte holes) were refused because `pack_holes` put one pad byte before an
+object whose hole starts at an odd offset ("OpenWatcom aligns its code to a word"). The objects of this build are compiled
+`-os`, and OpenWatcom then gives their code segment byte alignment (SEGDEF attribute 28h, A=1, measured in f0005.obj), so no pad
+is wanted. `pack_holes` takes `word_aligned` (default true: its tests are unchanged); the 16-bit build passes false.
+
+Proof (the rebuilt compiler of item 8 and this build; unit tests `decompile.describe` 19/19 and `build.module` 19/19 pass):
+`regress all15 --runs 2`: PASS, PASS. KRNL386 C 18 -> 21, GDI 123 -> 130 (gated 23 -> 16), USER 542 -> 561, SOUND 2 -> 6,
+SYSTEM 0 -> 2, VER 23 -> 24; since the start of the session +37 functions in C, none lost.
+The install with the rebuilt compiler (the third attempt, `win95track-install-ow2`) was started at 1:04 AM; see the end of this
+section for its result if it has finished.
+
 ### Where this stops
 
-Rows 2 and 3 of the work list are not started: they need row 2's gate decision (DISABLE / POWEREVENTPROC) and the per-function
-reasons of item 2 above, which need one more build of the tree. Next: build, read the reasons for the 44 small-module
-functions, fix the largest class once.
+Converted and proved this session: `WEP` (item 1, +11 functions in all) and the prologue refit (item 3, +3). `DISABLE` and
+`POWEREVENTPROC`: the gate was not changed, because `codebreaker teeth` was not run on a changed gate. Next, by size of
+class: register live-in in the lifter (43 + 10 + 5 here, plus the 5 small-module ones), then the fixed-segment size budget
+(73 + 2 + 10 small), then DS-leaving callees (23).

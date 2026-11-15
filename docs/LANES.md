@@ -13,7 +13,7 @@ is one record) and `docs/PLATFORMS.md`.
 
 Two kinds of lane exist, and the difference decides how much a new platform has to write.
 
-* **Machine lanes** (`nes`, `sms`, `gb`, `genesis`, `ps1`, `zx`, `msx`): programs written in assembly come back as
+* **Machine lanes** (`nes`, `sms`, `gb`, `genesis`, `ps1`, `zx`, `msx`, `coleco`, `cpc`): programs written in assembly come back as
   assembly. One shared class, `verify::lanes::ImageLane`, is the lane; a platform gives it a *spec*. This is the path
   for a new console or home computer, and the rest of this document is about it.
 * **Bespoke lanes** (`pe`, `ne`, `le`, `powerpc`, `dos`, `java`): each is its own `verify::lanes::Kind` subclass
@@ -219,6 +219,10 @@ assembles with `sm83_asm::build` (4); `build` records whether the bytes are the 
 "identical" or runs the function in both programs with `gb_effects` over `emulate::sm83` (5) from the four
 starting states and compares end, A, flags, BC, DE, HL, RAM and the I/O log.
 
+**The Game Boy Advance lane (ARM7TDMI)** is the third (2026-11-15): `formats/gba`, `decompile/arm`, `build/arm_asm`, `emulate/arm`, `source/gba_writer`, `platforms/gba` and a `gba` branch in `lane_kit_machines.cpp`. What is new against the others: the processor has two instruction sets, so an address carries the state in its lowest bit (odd: Thumb) through the format's function finder (`source/isa`: `arm_decoder`), the writer's flow (a `bx` is followed when the register was just loaded from a literal pool or made from the pc) and the assembler (`.arm`/`.thumb`; the encoder is given the state as the address's bit 0); a function's key in the result and in the store is odd for Thumb. The writer checks each instruction's text against the assembler and keeps the bits (`.hword`/`.word`) of those it would write differently.
+
+**The Nintendo DS lane (ARM946E-S + ARM7TDMI)** reuses the GBA's ARM code (2026-11-15) and is the example of a lane added through `engine/machine_lanes` (no edit of the lane kit: `engine/machine_nds`, called from `LaneKit::register_worker_kinds`). Two processors in one image: the writer (`source/nds_writer`) analyses each program on its own (`Arch::V5TE` for the ARM9, V4T for the ARM7, each at its RAM address, with its own names `arm9_...` and `arm7_...`) and writes ONE source with a part for each, because the ROM is one file whose header, tables and file system name the two by offset, address and size: the header's words are label expressions (`.word arm9_end - arm9`), `.org` puts each program at its RAM address and back to the file position, and `.cpu` switches the assembler's instruction set. The assembler takes a second encoder (`Assembler(v4t, &v5te)`). The lane picks the interpreter's `System` from the function's address.
+
 **The PlayStation lane (MIPS)** is the second example, in place since 2026-11-14: `formats/psx`, `decompile/mips`,
 `build/mips_asm`, `emulate/mips`, `source/ps1_writer`, `platforms/ps1` and a `ps1` branch in `lane_kit_machines.cpp`
 (a 32-bit address space with `key_digits = 8`, BIOS calls in its effects). It will be added here when it is merged.
@@ -330,3 +334,15 @@ function store work.
 * Registration at start-up: one call before the kit is made.
 * For bespoke (compiled-language) lanes, the `Kind` subclass and its tools; those are not registrable yet (their
   construction is in `lane_kit.cpp` and takes the kit's decompiler, builder and cache).
+
+## 7. The flat Z80 machines with a model: ColecoVision and Amstrad CPC
+
+`msx` and `zx` are flat Z80 lanes: one block at one address, ROM bytes read as RET. `coleco` and `cpc` use the same writer
+(`source/z80_writer`) and the same lane (`flat_spec` in `engine/lane_kit_machines.cpp`) but give it a *model*
+(`emulate/z80_machines.{hpp,cpp}`): which addresses are firmware (every byte RET, each call noted by its documented
+name: `formats/coleco::bios_names()`, `formats/cpc::firmware_names()`), which RAM a run is handed and seeded, where the stack
+is, what a port read answers, and every port access noted with all 16 bits (the CPC decodes by the high byte). The effects
+compared are the registers, the memory changed, the ports touched and the firmware entries called. A new Z80 machine of
+this kind is a format (`formats/<name>`), a writer that names the machine's ports and entries, a `Machine`, and one
+branch in `LaneKit::machine_lane` (the SG-1000 / SC-3000 stay in the `sms` lane: `.sg` / `.sc` files have no mapper, so
+`sms_effects` does not log $FFFC-$FFFF as mapper writes for them).

@@ -1,12 +1,14 @@
-// cb/decompile/mips.cpp -- the MIPS R3000A's instructions: a table of every encoding, read both ways (mips.hpp).
+            return insn.imm == 0 ? m// cb/decompile/mips.cpp -- the MIPS R3000A's and R4300i's instructions: a table of every encoding, read both ways (mips.hpp).
 
 #include "cb/decompile/mips.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <deque>
 #include <format>
 #include <unordered_map>
+#include <vector>
 
 #include "cb/core/text.hpp"
 
@@ -16,6 +18,9 @@ namespace {
 
 // ---- the table --------------------------------------------------------------------------------------------------
 
+// Which processors have an instruction.
+enum class Isa : std::uint8_t { Both, R3000A, R4300 };
+
 struct Def {
     std::string_view name;
     Form form;
@@ -23,7 +28,11 @@ struct Def {
     std::uint32_t mask;    // ... and which bits those are (everything else is an operand)
     Flow flow = Flow::None;
     bool delay = false;
+    Isa isa = Isa::Both;
+    bool likely = false;   // a branch likely
 };
+
+constexpr bool has(Isa isa, Variant v) { return isa == Isa::Both || (isa == Isa::R3000A) == (v == Variant::R3000A); }
 
 constexpr std::uint32_t op(std::uint32_t o) { return o << 26; }
 constexpr std::uint32_t kSpecialMask = 0xFC00003F;   // opcode and function
@@ -79,13 +88,13 @@ constexpr auto kDefs = std::to_array<Def>({
     {"lui", Form::RtImm, op(15), 0xFFE00000},
     {"mfc0", Form::RtCop, op(0x10) | (0u << 21), 0xFFE007FF},
     {"mtc0", Form::RtCop, op(0x10) | (4u << 21), 0xFFE007FF},
-    {"rfe", Form::None, 0x42000010, 0xFFFFFFFF},
-    {"mfc2", Form::RtCop, op(0x12) | (0u << 21), 0xFFE007FF},
-    {"cfc2", Form::RtCop, op(0x12) | (2u << 21), 0xFFE007FF},
-    {"mtc2", Form::RtCop, op(0x12) | (4u << 21), 0xFFE007FF},
-    {"ctc2", Form::RtCop, op(0x12) | (6u << 21), 0xFFE007FF},
-    {"bc2f", Form::CopBranch, op(0x12) | (8u << 21) | (0u << 16), 0xFFFF0000, Flow::Branch, true},
-    {"bc2t", Form::CopBranch, op(0x12) | (8u << 21) | (1u << 16), 0xFFFF0000, Flow::Branch, true},
+    {"rfe", Form::None, 0x42000010, 0xFFFFFFFF, Flow::None, false, Isa::R3000A},
+    {"mfc2", Form::RtCop, op(0x12) | (0u << 21), 0xFFE007FF, Flow::None, false, Isa::R3000A},
+    {"cfc2", Form::RtCop, op(0x12) | (2u << 21), 0xFFE007FF, Flow::None, false, Isa::R3000A},
+    {"mtc2", Form::RtCop, op(0x12) | (4u << 21), 0xFFE007FF, Flow::None, false, Isa::R3000A},
+    {"ctc2", Form::RtCop, op(0x12) | (6u << 21), 0xFFE007FF, Flow::None, false, Isa::R3000A},
+    {"bc2f", Form::CopBranch, op(0x12) | (8u << 21) | (0u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R3000A},
+    {"bc2t", Form::CopBranch, op(0x12) | (8u << 21) | (1u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R3000A},
     {"lb", Form::RtMem, op(0x20), 0xFC000000},
     {"lh", Form::RtMem, op(0x21), 0xFC000000},
     {"lwl", Form::RtMem, op(0x22), 0xFC000000},
@@ -98,9 +107,144 @@ constexpr auto kDefs = std::to_array<Def>({
     {"swl", Form::RtMem, op(0x2A), 0xFC000000},
     {"sw", Form::RtMem, op(0x2B), 0xFC000000},
     {"swr", Form::RtMem, op(0x2E), 0xFC000000},
-    {"lwc2", Form::RtMem, op(0x32), 0xFC000000},
-    {"swc2", Form::RtMem, op(0x3A), 0xFC000000},
+    {"lwc2", Form::RtMem, op(0x32), 0xFC000000, Flow::None, false, Isa::R3000A},
+    {"swc2", Form::RtMem, op(0x3A), 0xFC000000, Flow::None, false, Isa::R3000A},
 });
+
+// What the R4300i has beyond MIPS I (and without the GTE): MIPS II's branch likely and traps, MIPS III's 64-bit integers, its system
+// control coprocessor's TLB and exception return, and the FPU's moves, loads, stores and branches; the FPU's arithmetic is made in `fpu_defs`.
+constexpr std::uint32_t kTrapMask = 0xFC00FFFF;      // opcode, function and the (unused) code field
+constexpr auto kDefs4300 = std::to_array<Def>({
+    {"sync", Form::None, 0x0F, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
+    {"dsllv", Form::RdRtRs, 0x14, kNoSa, Flow::None, false, Isa::R4300},
+    {"dsrlv", Form::RdRtRs, 0x16, kNoSa, Flow::None, false, Isa::R4300},
+    {"dsrav", Form::RdRtRs, 0x17, kNoSa, Flow::None, false, Isa::R4300},
+    {"dmult", Form::RsRt, 0x1C, 0xFC00FFFF, Flow::None, false, Isa::R4300},
+    {"dmultu", Form::RsRt, 0x1D, 0xFC00FFFF, Flow::None, false, Isa::R4300},
+    {"ddiv", Form::RsRt, 0x1E, 0xFC00FFFF, Flow::None, false, Isa::R4300},
+    {"ddivu", Form::RsRt, 0x1F, 0xFC00FFFF, Flow::None, false, Isa::R4300},
+    {"dadd", Form::RdRsRt, 0x2C, kNoSa, Flow::None, false, Isa::R4300},
+    {"daddu", Form::RdRsRt, 0x2D, kNoSa, Flow::None, false, Isa::R4300},
+    {"dsub", Form::RdRsRt, 0x2E, kNoSa, Flow::None, false, Isa::R4300},
+    {"dsubu", Form::RdRsRt, 0x2F, kNoSa, Flow::None, false, Isa::R4300},
+    {"tge", Form::RsRt, 0x30, kTrapMask, Flow::None, false, Isa::R4300},
+    {"tgeu", Form::RsRt, 0x31, kTrapMask, Flow::None, false, Isa::R4300},
+    {"tlt", Form::RsRt, 0x32, kTrapMask, Flow::None, false, Isa::R4300},
+    {"tltu", Form::RsRt, 0x33, kTrapMask, Flow::None, false, Isa::R4300},
+    {"teq", Form::RsRt, 0x34, kTrapMask, Flow::None, false, Isa::R4300},
+    {"tne", Form::RsRt, 0x36, kTrapMask, Flow::None, false, Isa::R4300},
+    {"dsll", Form::RdRtSa, 0x38, 0xFFE0003F, Flow::None, false, Isa::R4300},
+    {"dsrl", Form::RdRtSa, 0x3A, 0xFFE0003F, Flow::None, false, Isa::R4300},
+    {"dsra", Form::RdRtSa, 0x3B, 0xFFE0003F, Flow::None, false, Isa::R4300},
+    {"dsll32", Form::RdRtSa, 0x3C, 0xFFE0003F, Flow::None, false, Isa::R4300},
+    {"dsrl32", Form::RdRtSa, 0x3E, 0xFFE0003F, Flow::None, false, Isa::R4300},
+    {"dsra32", Form::RdRtSa, 0x3F, 0xFFE0003F, Flow::None, false, Isa::R4300},
+    {"bltzl", Form::RsBranch, op(1) | (2u << 16), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
+    {"bgezl", Form::RsBranch, op(1) | (3u << 16), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
+    {"tgei", Form::RsImm, op(1) | (8u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
+    {"tgeiu", Form::RsImm, op(1) | (9u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
+    {"tlti", Form::RsImm, op(1) | (10u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
+    {"tltiu", Form::RsImm, op(1) | (11u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
+    {"teqi", Form::RsImm, op(1) | (12u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
+    {"tnei", Form::RsImm, op(1) | (14u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
+    {"bltzall", Form::RsBranch, op(1) | (18u << 16), kRegimmMask, Flow::Call, true, Isa::R4300, true},
+    {"bgezall", Form::RsBranch, op(1) | (19u << 16), kRegimmMask, Flow::Call, true, Isa::R4300, true},
+    {"beql", Form::RsRtBranch, op(0x14), 0xFC000000, Flow::Branch, true, Isa::R4300, true},
+    {"bnel", Form::RsRtBranch, op(0x15), 0xFC000000, Flow::Branch, true, Isa::R4300, true},
+    {"blezl", Form::RsBranch, op(0x16), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
+    {"bgtzl", Form::RsBranch, op(0x17), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
+    {"daddi", Form::RtRsImm, op(0x18), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"daddiu", Form::RtRsImm, op(0x19), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"ldl", Form::RtMem, op(0x1A), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"ldr", Form::RtMem, op(0x1B), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"dmfc0", Form::RtCop, op(0x10) | (1u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"dmtc0", Form::RtCop, op(0x10) | (5u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"tlbr", Form::None, 0x42000001, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
+    {"tlbwi", Form::None, 0x42000002, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
+    {"tlbwr", Form::None, 0x42000006, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
+    {"tlbp", Form::None, 0x42000008, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
+    {"eret", Form::None, 0x42000018, 0xFFFFFFFF, Flow::Indirect, false, Isa::R4300},
+    {"mfc1", Form::RtFs, op(0x11) | (0u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"dmfc1", Form::RtFs, op(0x11) | (1u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"cfc1", Form::RtCop, op(0x11) | (2u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"mtc1", Form::RtFs, op(0x11) | (4u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"dmtc1", Form::RtFs, op(0x11) | (5u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"ctc1", Form::RtCop, op(0x11) | (6u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"bc1f", Form::CopBranch, op(0x11) | (8u << 21) | (0u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300},
+    {"bc1t", Form::CopBranch, op(0x11) | (8u << 21) | (1u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300},
+    {"bc1fl", Form::CopBranch, op(0x11) | (8u << 21) | (2u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300, true},
+    {"bc1tl", Form::CopBranch, op(0x11) | (8u << 21) | (3u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300, true},
+    {"lwu", Form::RtMem, op(0x27), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"sdl", Form::RtMem, op(0x2C), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"sdr", Form::RtMem, op(0x2D), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"cache", Form::OpMem, op(0x2F), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"ll", Form::RtMem, op(0x30), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"lwc1", Form::FtMem, op(0x31), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"lld", Form::RtMem, op(0x34), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"ldc1", Form::FtMem, op(0x35), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"ld", Form::RtMem, op(0x37), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"sc", Form::RtMem, op(0x38), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"swc1", Form::FtMem, op(0x39), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"scd", Form::RtMem, op(0x3C), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"sdc1", Form::FtMem, op(0x3D), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"sd", Form::RtMem, op(0x3F), 0xFC000000, Flow::None, false, Isa::R4300},
+});
+
+// The FPU's arithmetic, conversions and compares, one entry per format: `add.s`, `cvt.d.w`, `c.lt.d` ... (the fmt field is bits 25-21).
+struct FpuOp {
+    std::string_view name;
+    std::uint32_t function;
+    Form form;
+    unsigned formats;   // which formats take it: bit 0 S (16), 1 D (17), 2 W (20), 3 L (21)
+};
+constexpr unsigned kS = 1, kD = 2, kW = 4, kL = 8;
+constexpr auto kFpuOps = std::to_array<FpuOp>({
+    {"add", 0, Form::FdFsFt, kS | kD},         {"sub", 1, Form::FdFsFt, kS | kD},         {"mul", 2, Form::FdFsFt, kS | kD},
+    {"div", 3, Form::FdFsFt, kS | kD},         {"sqrt", 4, Form::FdFs, kS | kD},          {"abs", 5, Form::FdFs, kS | kD},
+    {"mov", 6, Form::FdFs, kS | kD},           {"neg", 7, Form::FdFs, kS | kD},           {"round.l", 8, Form::FdFs, kS | kD},
+    {"trunc.l", 9, Form::FdFs, kS | kD},       {"ceil.l", 10, Form::FdFs, kS | kD},       {"floor.l", 11, Form::FdFs, kS | kD},
+    {"round.w", 12, Form::FdFs, kS | kD},      {"trunc.w", 13, Form::FdFs, kS | kD},      {"ceil.w", 14, Form::FdFs, kS | kD},
+    {"floor.w", 15, Form::FdFs, kS | kD},      {"cvt.s", 32, Form::FdFs, kD | kW | kL},   {"cvt.d", 33, Form::FdFs, kS | kW | kL},
+    {"cvt.w", 36, Form::FdFs, kS | kD},        {"cvt.l", 37, Form::FdFs, kS | kD},
+});
+constexpr std::array<std::string_view, 16> kCompares = {"f", "un", "eq", "ueq", "olt", "ult", "ole", "ule", "sf", "ngle", "seq", "ngl", "lt", "nge", "le", "ngt"};
+constexpr std::array<std::pair<unsigned, char>, 4> kFormats = {{{16, 's'}, {17, 'd'}, {20, 'w'}, {21, 'l'}}};
+
+// One processor's instructions: the shared table and its own. The names the FPU's entries are made from live as long as the table does.
+struct Table {
+    std::vector<Def> defs;
+    std::deque<std::string> names;
+};
+
+Table make_table(Variant variant) {
+    Table t;
+    for (const Def& d : kDefs)
+        if (has(d.isa, variant)) t.defs.push_back(d);
+    if (variant == Variant::R3000A) return t;
+    for (const Def& d : kDefs4300) t.defs.push_back(d);
+    const auto add = [&](std::string name, Form form, std::uint32_t match, std::uint32_t mask) {
+        t.names.push_back(std::move(name));
+        t.defs.push_back({t.names.back(), form, match, mask, Flow::None, false, Isa::R4300});
+    };
+    for (const FpuOp& f : kFpuOps) {
+        for (std::size_t i = 0; i < kFormats.size(); ++i) {
+            if ((f.formats & (1u << i)) == 0) continue;
+            const auto [fmt, letter] = kFormats[i];
+            const std::uint32_t match = op(0x11) | (fmt << 21) | f.function;
+            add(std::format("{}.{}", f.name, letter), f.form, match, f.form == Form::FdFsFt ? 0xFFE0003Fu : 0xFFFF003Fu);
+        }
+    }
+    for (unsigned c = 0; c < kCompares.size(); ++c)
+        for (std::size_t i = 0; i < 2; ++i)   // S and D
+            add(std::format("c.{}.{}", kCompares[c], kFormats[i].second), Form::FsFt, op(0x11) | (kFormats[i].first << 21) | (0x30 + c), 0xFFE007FFu);
+    return t;
+}
+
+const std::vector<Def>& defs_of(Variant variant) {
+    static const Table r3000 = make_table(Variant::R3000A);
+    static const Table r4300 = make_table(Variant::R4300);
+    return (variant == Variant::R3000A ? r3000 : r4300).defs;
+}
 
 // The GTE's commands: the function in the low six bits, and the whole 25-bit command word the PlayStation SDK's macros make
 // of it (what the disassembler writes as the bare name).
@@ -143,6 +287,7 @@ std::int32_t sign16(std::uint32_t v) { return static_cast<std::int16_t>(v & 0xFF
 
 bool unsigned_immediate(std::string_view name) { return name == "andi" || name == "ori" || name == "xori" || name == "lui"; }
 bool coprocessor_register(std::string_view name) { return name == "lwc2" || name == "swc2"; }
+std::string fpu_register(unsigned n) { return "$f" + std::to_string(n); }
 
 }  // namespace
 
@@ -165,19 +310,27 @@ std::optional<unsigned> register_number(std::string_view t) {
     return std::nullopt;
 }
 
+std::optional<unsigned> fpu_register_number(std::string_view t) {
+    t = text::trim(t);
+    if (t.size() < 3 || t[0] != '$' || t[1] != 'f' || !std::isdigit(static_cast<unsigned char>(t[2]))) return std::nullopt;
+    const auto n = text::parse_int<unsigned>(t.substr(2));
+    if (n && *n < 32) return *n;
+    return std::nullopt;
+}
+
 // ---- decoding ---------------------------------------------------------------------------------------------------
 
-std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc) {
+std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, Variant variant) {
     Insn insn;
     insn.word = word;
     insn.pc = pc;
-    for (unsigned i = 0; i < 4; ++i) insn.raw[i] = static_cast<std::uint8_t>(word >> (8 * i));
+    for (unsigned i = 0; i < 4; ++i) insn.raw[i] = static_cast<std::uint8_t>(word >> (variant == Variant::R4300 ? 24 - 8 * i : 8 * i));
     insn.rs = static_cast<std::uint8_t>((word >> 21) & 31);
     insn.rt = static_cast<std::uint8_t>((word >> 16) & 31);
     insn.rd = static_cast<std::uint8_t>((word >> 11) & 31);
     insn.shamt = static_cast<std::uint8_t>((word >> 6) & 31);
 
-    if ((word >> 25) == 0x25) {   // a GTE command: COP2 with bit 25 set
+    if (variant == Variant::R3000A && (word >> 25) == 0x25) {   // a GTE command: COP2 with bit 25 set
         const std::uint32_t command = word & 0x1FFFFFF;
         const GteDef* g = gte_by_function(command & kFunctionBits);
         insn.imm = static_cast<std::int32_t>(command);
@@ -201,20 +354,24 @@ std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc) {
         insn.form = Form::None;
         return insn;
     }
-    for (const Def& d : kDefs) {
+    for (const Def& d : defs_of(variant)) {
         if ((word & d.mask) != d.match) continue;
         insn.mnemonic = std::string(d.name);
         insn.form = d.form;
         insn.flow = d.flow;
         insn.delay_slot = d.delay;
+        insn.likely = d.likely;
         const std::int32_t offset = sign16(word);
         switch (d.form) {
             case Form::None:
                 insn.imm = static_cast<std::int32_t>((word >> 6) & 0xFFFFF);   // syscall, break: the code
-                if (d.name == "rfe") insn.imm = 0;
+                if (d.mask == 0xFFFFFFFF) insn.imm = 0;   // (rfe, eret, tlbp ... : no code)
                 break;
             case Form::RtRsImm:
             case Form::RtImm: insn.imm = unsigned_immediate(d.name) ? static_cast<std::int32_t>(word & 0xFFFF) : offset; break;
+            case Form::RsImm:
+            case Form::FtMem:
+            case Form::OpMem:
             case Form::RtMem: insn.imm = offset; break;
             case Form::RsRtBranch:
             case Form::RsBranch:
@@ -223,18 +380,18 @@ std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc) {
             default: break;
         }
         if (d.name == "jr") insn.flow = insn.rs == 31 ? Flow::Return : Flow::Indirect;
-        if (d.name == "beq" && insn.rs == 0 && insn.rt == 0) insn.flow = Flow::Jump;   // `b`
+        if ((d.name == "beq" || d.name == "beql") && insn.rs == 0 && insn.rt == 0) insn.flow = Flow::Jump;   // `b`
         if (d.name == "bgezal" && insn.rs == 0) insn.flow = Flow::Call;
         return insn;
     }
     return std::nullopt;
 }
 
-std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc) {
+std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, Variant variant) {
     if (at + 4 > code.size()) return std::nullopt;
-    const std::uint32_t word = static_cast<std::uint32_t>(code[at]) | static_cast<std::uint32_t>(code[at + 1]) << 8 |
-                               static_cast<std::uint32_t>(code[at + 2]) << 16 | static_cast<std::uint32_t>(code[at + 3]) << 24;
-    return decode_word(word, pc);
+    const auto b = [&](std::size_t i) { return static_cast<std::uint32_t>(code[at + i]); };
+    const std::uint32_t word = variant == Variant::R4300 ? b(0) << 24 | b(1) << 16 | b(2) << 8 | b(3) : b(0) | b(1) << 8 | b(2) << 16 | b(3) << 24;
+    return decode_word(word, pc, variant);
 }
 
 // ---- text -------------------------------------------------------------------------------------------------------
@@ -299,7 +456,7 @@ std::string text(const Insn& insn, const AddressLabels& labels, std::string_view
         case Form::RsRtBranch: {
             const std::string to = address_text(*insn.target, labels);
             if (m == "beq" && insn.rs == 0 && insn.rt == 0) return "b " + to;
-            if (insn.rt == 0) return std::format("{} {}, {}", m == "beq" ? "beqz" : "bnez", reg(insn.rs), to);
+            if (insn.rt == 0 && (m == "beq" || m == "bne")) return std::format("{} {}, {}", m == "beq" ? "beqz" : "bnez", reg(insn.rs), to);
             return std::format("{} {}, {}, {}", m, reg(insn.rs), reg(insn.rt), to);
         }
         case Form::RsBranch: return std::format("{} {}, {}", m, reg(insn.rs), address_text(*insn.target, labels));
@@ -312,6 +469,13 @@ std::string text(const Insn& insn, const AddressLabels& labels, std::string_view
         case Form::CopBranch: return std::format("{} {}", m, address_text(*insn.target, labels));
         case Form::Command: return command_text(insn);
         case Form::Raw: return std::format("cop2 0x{:X}", insn.imm);
+        case Form::RsImm: return std::format("{} {}, {}", m, reg(insn.rs), signed_text(insn.imm));
+        case Form::FtMem: return std::format("{} {}, {}({})", m, fpu_register(insn.rt), imm_text(signed_text(insn.imm)), reg(insn.rs));
+        case Form::OpMem: return std::format("{} {}, {}({})", m, insn.rt, imm_text(signed_text(insn.imm)), reg(insn.rs));
+        case Form::RtFs: return std::format("{} {}, {}", m, reg(insn.rt), fpu_register(insn.rd));
+        case Form::FdFsFt: return std::format("{} {}, {}, {}", m, fpu_register(insn.shamt), fpu_register(insn.rd), fpu_register(insn.rt));
+        case Form::FdFs: return std::format("{} {}, {}", m, fpu_register(insn.shamt), fpu_register(insn.rd));
+        case Form::FsFt: return std::format("{} {}, {}", m, fpu_register(insn.rd), fpu_register(insn.rt));
     }
     return m;
 }
@@ -472,8 +636,13 @@ namespace {
 
 [[noreturn]] void refuse(std::string_view line, const std::string& why) { throw ParseError("", 0, 0, std::string(line) + " (" + why + ")"); }
 
-void put_word(Bytes& out, std::uint32_t word) {
-    for (unsigned i = 0; i < 4; ++i) out.push_back(static_cast<std::uint8_t>(word >> (8 * i)));
+void put_word(Bytes& out, std::uint32_t word, bool big) {
+    for (unsigned i = 0; i < 4; ++i) out.push_back(static_cast<std::uint8_t>(word >> (big ? 24 - 8 * i : 8 * i)));
+}
+
+unsigned need_fpu(std::string_view line, std::string_view operand) {
+    if (const auto r = fpu_register_number(operand)) return *r;
+    refuse(line, "'" + std::string(operand) + "' is not an FPU register");
 }
 
 unsigned need_register(std::string_view line, std::string_view operand) {
@@ -526,13 +695,15 @@ std::uint32_t branch_offset(std::string_view line, std::int64_t target, std::uin
 
 }  // namespace
 
-Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels) {
+Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels, Variant variant) {
     line = text::trim(line);
     std::size_t split = 0;
     while (split < line.size() && !text::is_space(line[split])) ++split;
     const std::string name = text::lower(line.substr(0, split));
     Operands ops{line, z80::split_operands(line.substr(split)), labels, pc};
     Bytes out;
+    const bool big = variant == Variant::R4300;
+    const auto put_word = [&](Bytes& to, std::uint32_t word) { mips::put_word(to, word, big); };
 
     // ---- pseudo-instructions
     if (name == "nop") {
@@ -582,7 +753,7 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     }
 
     // ---- GTE commands
-    if (const GteDef* g = gte_by_name(name)) {
+    if (const GteDef* g = variant == Variant::R3000A ? gte_by_name(name) : nullptr) {
         std::uint32_t command = g->usual;
         if (!ops.list.empty()) {
             const bool mvmva = name == "mvmva";
@@ -612,7 +783,7 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
         put_word(out, op(0x12) | (1u << 25) | command);
         return out;
     }
-    if (name == "cop2") {
+    if (name == "cop2" && variant == Variant::R3000A) {
         ops.count(1);
         put_word(out, op(0x12) | (1u << 25) | field(line, ops.number(0), 0, 0x1FFFFFF, "the command"));
         return out;
@@ -620,14 +791,14 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
 
     // ---- the table
     const Def* def = nullptr;
-    for (const Def& d : kDefs) {
+    for (const Def& d : defs_of(variant)) {
         if (d.name == name) def = &d;
     }
     if (!def) refuse(line, "not an instruction");
     std::uint32_t word = def->match;
     switch (def->form) {
         case Form::None:
-            if (def->name == "rfe") {
+            if (def->mask == 0xFFFFFFFF) {   // (rfe, eret, tlbp ... take nothing)
                 ops.count(0);
             } else {
                 if (ops.list.size() > 1) refuse(line, "too many operands");
@@ -650,7 +821,12 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
         case Form::RsRt: ops.count(2); word |= (ops.reg(0) << 21) | (ops.reg(1) << 16); break;
         case Form::RtRsImm:
             ops.count(3);
-            word |= (ops.reg(0) << 16) | (ops.reg(1) << 21) | (field(line, ops.number(2), -32768, 65535, "the immediate") & 0xFFFF);
+            word |        case Form::RtCop: ops.count(2); word |= (ops.reg(0) << 16) | (ops.reg(1) << 11); break;
+        case Form::RsImm: ops.count(2); word |= (ops.reg(0) << 21) | (field(line, ops.number(1), -32768, 65535, "the immediate") & 0xFFFF); break;
+        case Form::RtFs: ops.count(2); word |= (ops.reg(0) << 16) | (need_fpu(line, ops.list[1]) << 11); break;
+        case Form::FdFsFt: ops.count(3); word |= (need_fpu(line, ops.list[0]) << 6) | (need_fpu(line, ops.list[1]) << 11) | (need_fpu(line, ops.list[2]) << 16); break;
+        case Form::FdFs: ops.count(2); word |= (need_fpu(line, ops.list[0]) << 6) | (need_fpu(line, ops.list[1]) << 11); break;
+        case Form::FsFt: ops.count(2); word |= (need_fpu(line, ops.list[0]) << 11) | (need_fpu(line, ops.list[1]) << 16); break;| (ops.reg(1) << 21) | (field(line, ops.number(2), -32768, 65535, "the immediate") & 0xFFFF);
             break;
         case Form::RtImm:
             ops.count(2);
@@ -667,11 +843,17 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
             word |= static_cast<std::uint32_t>(to >> 2) & 0x3FFFFFF;
             break;
         }
+        case Form::FtMem:
+        case Form::OpMem:
         case Form::RtMem: {
             ops.count(2);
             std::string_view offset, base;
             if (!split_memory(ops.list[1], offset, base)) refuse(line, "a memory operand is offset($register)");
-            const unsigned rt = coprocessor_register(def->name) ? field(line, register_number(ops.list[0]).value_or(99), 0, 31, "the register") : ops.reg(0);
+            unsigned rt = 0;
+            if (def->form == Form::FtMem) rt = need_fpu(line, ops.list[0]);
+            else if (def->form == Form::OpMem) rt = field(line, ops.number(0), 0, 31, "the operation");
+            else if (coprocessor_register(def->name)) rt = field(line, register_number(ops.list[0]).value_or(99), 0, 31, "the register");
+            else rt = ops.reg(0);
             const std::int64_t off = offset.empty() ? 0 : value(offset, labels, pc);
             word |= (rt << 16) | (need_register(line, base) << 21) | (field(line, off, -32768, 65535, "the offset") & 0xFFFF);
             break;

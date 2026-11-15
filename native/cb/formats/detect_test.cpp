@@ -203,6 +203,27 @@ CB_TEST("formats.detect.dos_header", [] {
     CB_CHECK(!detect::dos_header(Bytes{'M', 'Z'}).has_value());
 });
 
+CB_TEST("formats.detect.identify_a_game_boy_advance_cartridge", [] {
+    Bytes rom(0x100, 0);
+    put(rom, 0, 0xEA00002E, 4);   // b $C0
+    rom[0xB2] = 0x96;
+    const std::string title = "TESTROM";
+    std::copy(title.begin(), title.end(), rom.begin() + 0xA0);
+    std::copy_n("ATST", 4, rom.begin() + 0xAC);
+    const detect::Detected d = only(rom, "game.gba");
+    CB_CHECK_EQ(d.format, "Game Boy Advance cartridge");
+    CB_CHECK_EQ(d.detail, "\"TESTROM\" (ATST), 256 bytes");
+    CB_CHECK_EQ(d.family, "gba");
+    CB_CHECK_EQ(d.command, "reach");
+    // no entry branch, or no $96: not one
+    Bytes no_branch = rom;
+    put(no_branch, 0, 0xE3A00000, 4);
+    CB_CHECK(detect::identify(no_branch, "game.gba").empty());
+    Bytes no_mark = rom;
+    no_mark[0xB2] = 0;
+    CB_CHECK(detect::identify(no_mark, "game.gba").empty());
+});
+
 CB_TEST("formats.detect.identify_a_playstation_executable", [] {
     Bytes exe = with_magic("PS-X EXE", 0x800 + 0x40);
     put(exe, 0x10, 0x80010010, 4);   // pc0

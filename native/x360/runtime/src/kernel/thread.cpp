@@ -52,7 +52,10 @@ namespace kernel
             _mm_setcsr(0x1F80);
             ctx->fpscr.csr = ctx->fpscr.getcsr();
 
-            ctx->r1.u64 = thread->stackBase;
+            // The console's thread start leaves the stack pointer below the top of the stack (a thread entry stores its
+            // arguments in the caller's frame, above its own): a title's thread function wrote 0x14 bytes past the
+            // top of its stack when r1 started exactly there (Top Spin 2, UNO, WALL-E, in the first second).
+            ctx->r1.u64 = thread->stackBase - kInitialStackOffset;
             ctx->r13.u64 = thread->pcr;
             ctx->lr = 0;
             return ctx;

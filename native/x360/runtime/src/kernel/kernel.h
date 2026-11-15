@@ -221,6 +221,10 @@ namespace kernel
     // unused part of the kernel's fixed window (where the console's kernel code lives); the shared indirect-call table
     // maps each address to its host function. No guest code or data is ever placed there.
     constexpr uint32_t kDynamicExportStart = 0x80100000;
+
+    // Where a guest thread's stack pointer starts, below the top of its stack: a thread function stores into its
+    // caller's frame (up to 0xC4 bytes above its own), which on the console is the thread start's frame.
+    constexpr uint32_t kInitialStackOffset = 0x100;
     constexpr uint32_t kDynamicExportEnd = 0x80110000;
 
     void RegisterDynamicExport(const char* library, uint16_t ordinal, PPCFunc* func);
@@ -472,6 +476,7 @@ namespace kernel
 
     // Calls a guest function by address through the recompiler's lookup table.
     void CallGuest(PPCContext& ctx, uint32_t address);
-    // CB_KERNEL_TEST=1 (kernel/kernel_tests.cpp): returns the number of failed checks.
-    int RunKernelTests();
+    // CB_KERNEL_TEST=1 (kernel/kernel_tests.cpp, the dashboard's runtime): returns the number of failed checks.
+    // CB_KERNEL_TEST=2 (titleChecksOnly): only the checks that need nothing of the dashboard, in a title's program.
+    int RunKernelTests(bool titleChecksOnly = false);
 }

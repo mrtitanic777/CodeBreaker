@@ -5,6 +5,8 @@
 // compiler and comparison to the search of verify/authored/repair.
 #include "cb/source/pipeline_ppc.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <map>
 #include <mutex>

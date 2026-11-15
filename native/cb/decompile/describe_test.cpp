@@ -351,10 +351,10 @@ CB_TEST("decompile.describe.ne_driver_and_every_policy_switch", [] {
 
 CB_TEST("decompile.describe.ne_policy_from_the_environment", [] {
     const dsc::Policy defaults = dsc::Policy::from_environment();
-    CB_CHECK(defaults.caller_args && !defaults.caller_results && defaults.fastcall && defaults.inline_helpers && defaults.call_overrides);
-    cb::fs::ScopedEnv a("CB_FASTCALL", "0"), b("CB_CALLER_RESULTS", "1"), c("CB_NO_CALL_OVERRIDES", "1");
+    CB_CHECK(defaults.caller_args && defaults.caller_results && defaults.fastcall && defaults.inline_helpers && defaults.call_overrides);
+    cb::fs::ScopedEnv a("CB_FASTCALL", "0"), b("CB_CALLER_RESULTS", "0"), c("CB_NO_CALL_OVERRIDES", "1");
     const dsc::Policy p = dsc::Policy::from_environment();
-    CB_CHECK(!p.fastcall && p.caller_results && !p.call_overrides && p.caller_args);
+    CB_CHECK(!p.fastcall && !p.caller_results && !p.call_overrides && p.caller_args);
 });
 
 CB_TEST("decompile.describe.ne_decorated_and_import_names", [] {

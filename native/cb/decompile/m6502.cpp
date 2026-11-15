@@ -10,7 +10,7 @@ namespace cb::decompile::m6502 {
 
 namespace {
 
-constexpr std::size_t kModeCount = 13;
+constexpr std::size_t kModeCount = 15;
 
 struct Form {
     Mode mode;
@@ -64,11 +64,27 @@ constexpr Group kGroups[] = {
     {"TXA", {{{Mode::Imp, 0x8A}}}, 1}, {"TXS", {{{Mode::Imp, 0x9A}}}, 1}, {"TYA", {{{Mode::Imp, 0x98}}}, 1},
 };
 
+// What the 65SC02 adds to the NMOS set: a form of an existing mnemonic, or a new mnemonic.
+struct Extra {
+    std::string_view mnemonic;
+    Mode mode;
+    std::uint8_t op;
+};
+constexpr Extra kCmosExtra[] = {
+    {"ADC", Mode::Izp, 0x72}, {"AND", Mode::Izp, 0x32}, {"CMP", Mode::Izp, 0xD2}, {"EOR", Mode::Izp, 0x52},
+    {"LDA", Mode::Izp, 0xB2}, {"ORA", Mode::Izp, 0x12}, {"SBC", Mode::Izp, 0xF2}, {"STA", Mode::Izp, 0x92},
+    {"BIT", Mode::Imm, 0x89}, {"BIT", Mode::Zpx, 0x34}, {"BIT", Mode::Abx, 0x3C}, {"BRA", Mode::Rel, 0x80},
+    {"DEC", Mode::Acc, 0x3A}, {"INC", Mode::Acc, 0x1A}, {"JMP", Mode::Iax, 0x7C},
+    {"PHX", Mode::Imp, 0xDA}, {"PHY", Mode::Imp, 0x5A}, {"PLX", Mode::Imp, 0xFA}, {"PLY", Mode::Imp, 0x7A},
+    {"STZ", Mode::Zp, 0x64},  {"STZ", Mode::Zpx, 0x74}, {"STZ", Mode::Abs, 0x9C}, {"STZ", Mode::Abx, 0x9E},
+    {"TRB", Mode::Zp, 0x14},  {"TRB", Mode::Abs, 0x1C}, {"TSB", Mode::Zp, 0x04},  {"TSB", Mode::Abs, 0x0C},
+};
+
 struct Tables {
     std::array<std::optional<OpcodeEntry>, 256> by_opcode;
     // mnemonic -> opcode per mode (-1: no such form); lookup only
     std::unordered_map<std::string_view, std::array<int, kModeCount>> by_mnemonic;
-    Tables() {
+    explicit Tables(Variant variant) {
         for (const Group& g : kGroups) {
             std::array<int, kModeCount> forms;
             forms.fill(-1);
@@ -78,12 +94,21 @@ struct Tables {
             }
             by_mnemonic.emplace(g.mnemonic, forms);
         }
+        if (variant == Variant::Cmos) {
+            for (const Extra& e : kCmosExtra) {
+                by_opcode[e.op] = OpcodeEntry{e.mnemonic, e.mode};
+                auto [it, added] = by_mnemonic.try_emplace(e.mnemonic);
+                if (added) it->second.fill(-1);
+                it->second[static_cast<std::size_t>(e.mode)] = e.op;
+            }
+        }
     }
 };
 
-const Tables& tables() {
-    static const Tables t;
-    return t;
+const Tables& tables(Variant variant = Variant::Nmos) {
+    static const Tables nmos(Variant::Nmos);
+    static const Tables cmos(Variant::Cmos);
+    return variant == Variant::Cmos ? cmos : nmos;
 }
 
 [[noreturn]] void bad(std::string_view line, const std::string& what) {
@@ -116,31 +141,32 @@ Value value_of(std::string_view s, const NameLabels& labels, std::string_view li
 
 std::string_view mode_name(Mode mode) {
     static constexpr std::string_view kNames[kModeCount] = {"imp", "acc", "imm", "zp",  "zpx", "zpy", "abs",
-                                                           "abx", "aby", "ind", "izx", "izy", "rel"};
+                                                           "abx", "aby", "ind", "izx", "izy", "rel", "izp", "iax"};
     return kNames[static_cast<std::size_t>(mode)];
 }
 
-const std::array<std::optional<OpcodeEntry>, 256>& opcode_table() { return tables().by_opcode; }
+const std::array<std::optional<OpcodeEntry>, 256>& opcode_table(Variant variant) { return tables(variant).by_opcode; }
 
-std::optional<std::uint8_t> opcode_of(std::string_view mnemonic, Mode mode) {
-    auto it = tables().by_mnemonic.find(mnemonic);
-    if (it == tables().by_mnemonic.end()) return std::nullopt;
+std::optional<std::uint8_t> opcode_of(std::string_view mnemonic, Mode mode, Variant variant) {
+    const Tables& t = tables(variant);
+    auto it = t.by_mnemonic.find(mnemonic);
+    if (it == t.by_mnemonic.end()) return std::nullopt;
     int op = it->second[static_cast<std::size_t>(mode)];
     if (op < 0) return std::nullopt;
     return static_cast<std::uint8_t>(op);
 }
 
-bool is_mnemonic(std::string_view mnemonic) { return tables().by_mnemonic.contains(mnemonic); }
+bool is_mnemonic(std::string_view mnemonic, Variant variant) { return tables(variant).by_mnemonic.contains(mnemonic); }
 
 bool is_branch(std::string_view m) {
-    return m == "BCC" || m == "BCS" || m == "BEQ" || m == "BMI" || m == "BNE" || m == "BPL" || m == "BVC" || m == "BVS";
+    return m == "BCC" || m == "BCS" || m == "BEQ" || m == "BMI" || m == "BNE" || m == "BPL" || m == "BVC" || m == "BVS" || m == "BRA";
 }
 
-bool ends_flow(std::string_view m) { return m == "JMP" || m == "RTS" || m == "RTI" || m == "BRK"; }
+bool ends_flow(std::string_view m) { return m == "JMP" || m == "RTS" || m == "RTI" || m == "BRK" || m == "BRA"; }
 
-std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc) {
+std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc, Variant variant) {
     if (offset >= code.size()) return std::nullopt;
-    const std::optional<OpcodeEntry>& entry = tables().by_opcode[code[offset]];
+    const std::optional<OpcodeEntry>& entry = tables(variant).by_opcode[code[offset]];
     if (!entry) return std::nullopt;
     Insn insn;
     insn.at = pc;
@@ -189,12 +215,45 @@ std::string text(const Insn& insn, const AddressLabels& labels) {
         case Mode::Abx: return m + " " + addr(v, 4) + ",x";
         case Mode::Aby: return m + " " + addr(v, 4) + ",y";
         case Mode::Ind: return m + " (" + addr(v, 4) + ")";
+        case Mode::Iax: return m + " (" + addr(v, 4) + ",x)";
+        case Mode::Izp: return m + " (" + addr(v, 2) + ")";
         case Mode::Izx: return m + " (" + addr(v, 2) + ",x)";
         default: return m + " (" + addr(v, 2) + "),y";   // Izy
     }
 }
 
-Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels) {
+std::string dasm_text(const Insn& insn, const AddressLabels& labels) {
+    std::string m(insn.mnemonic);
+    auto addr = [&](std::uint16_t value, int width) {
+        auto it = labels.find(value);
+        if (it != labels.end() && !it->second.empty()) return it->second;
+        return width == 4 ? std::format("${:04X}", value) : std::format("${:02X}", value);
+    };
+    switch (insn.mode) {
+        case Mode::Imp: return m;
+        case Mode::Acc: return m + " A";
+        case Mode::Imm: return std::format("{} #${:02X}", m, *insn.operand);
+        case Mode::Rel: return m + " " + addr(*insn.target, 4);
+        default: break;
+    }
+    const std::uint16_t v = *insn.operand;
+    const bool wide = v < 0x100 && insn.mnemonic != "JMP" && insn.mnemonic != "JSR";   // an absolute form of a zero-page address: dasm's `.w`
+    switch (insn.mode) {
+        case Mode::Zp: return m + " " + addr(v, 2);
+        case Mode::Zpx: return m + " " + addr(v, 2) + ",X";
+        case Mode::Zpy: return m + " " + addr(v, 2) + ",Y";
+        case Mode::Abs: return m + (wide ? ".w " : " ") + addr(v, 4);
+        case Mode::Abx: return m + (wide ? ".w " : " ") + addr(v, 4) + ",X";
+        case Mode::Aby: return m + (wide ? ".w " : " ") + addr(v, 4) + ",Y";
+        case Mode::Ind: return m + " (" + addr(v, 4) + ")";
+        case Mode::Iax: return m + " (" + addr(v, 4) + ",X)";
+        case Mode::Izp: return m + " (" + addr(v, 2) + ")";
+        case Mode::Izx: return m + " (" + addr(v, 2) + ",X)";
+        default: return m + " (" + addr(v, 2) + "),Y";   // Izy
+    }
+}
+
+Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels, Variant variant) {
     // `  MNM  argument  ; comment`: three letters, then whitespace and the argument, or nothing
     std::string_view rest = text::ltrim(line);
     const bool three_letters = rest.size() >= 3 && std::isalpha(static_cast<unsigned char>(rest[0])) &&
@@ -209,8 +268,8 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     if (comment != std::string_view::npos) rest = rest.substr(0, comment);
     const std::string_view arg = text::trim(rest);
 
-    auto it = tables().by_mnemonic.find(mnemonic);
-    if (it == tables().by_mnemonic.end()) bad(line, "unknown instruction " + mnemonic);
+    auto it = tables(variant).by_mnemonic.find(mnemonic);
+    if (it == tables(variant).by_mnemonic.end()) bad(line, "unknown instruction " + mnemonic);
     const std::array<int, kModeCount>& forms = it->second;
     auto value = [&](std::string_view s) { return value_of(s, labels, line); };
 
@@ -241,8 +300,9 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     } else if (low.starts_with("(") && low.ends_with(",x)")) {
         const std::size_t cut = low_arg.rfind(",x");
         if (cut == std::string::npos) bad(line, "bad indexed-indirect operand");
-        mode = Mode::Izx;
-        operand = value(arg.substr(1, cut - 1)).v;
+        const Value v = value(arg.substr(1, cut - 1));
+        mode = (forms[static_cast<std::size_t>(Mode::Izx)] < 0 && forms[static_cast<std::size_t>(Mode::Iax)] >= 0) ? Mode::Iax : Mode::Izx;
+        operand = v.v;
     } else if (low.starts_with("(") && low.ends_with("),y")) {
         const std::size_t cut = arg.find(')');
         mode = Mode::Izy;
@@ -250,8 +310,9 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     } else if (low.starts_with("(")) {
         const std::size_t cut = arg.rfind(')');
         if (cut == std::string_view::npos) bad(line, "unclosed parenthesis");
-        mode = Mode::Ind;
-        operand = value(arg.substr(1, cut - 1)).v;
+        const Value v = value(arg.substr(1, cut - 1));
+        mode = (!v.wide && forms[static_cast<std::size_t>(Mode::Izp)] >= 0) ? Mode::Izp : Mode::Ind;
+        operand = v.v;
     } else {
         const bool x = low.ends_with(",x"), y = low.ends_with(",y");
         const Value v = value(x || y ? arg.substr(0, arg.size() - 2) : arg);

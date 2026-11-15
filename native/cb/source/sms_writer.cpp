@@ -140,13 +140,18 @@ iw::Written write(const formats::sms::Rom& rom, std::string_view file_name, cons
     // the hardware the code names
     std::map<std::uint32_t, std::string> known_ports = ports();
     if (rom.system == formats::sms::System::GameGear) known_ports.insert(game_gear_ports().begin(), game_gear_ports().end());
+    if (rom.system == formats::sms::System::Sg1000) {   // (no memory control, I/O control or V counter; the SC-3000's 8255 is at $DC-$DF)
+        for (const std::uint32_t p : {0x3Eu, 0x3Fu, 0x7Eu}) known_ports.erase(p);
+        known_ports[0xDE] = "PPI_C";
+        known_ports[0xDF] = "PPI_CONTROL";
+    }
     std::set<std::uint32_t> used_ports, used_registers;
     for (const auto& entry : code) {
         const z80::Insn& insn = entry.second;
         if (port_access(insn) && insn.value_count > 0 && insn.values[0] >= 0 && known_ports.contains(static_cast<std::uint32_t>(insn.values[0]))) {
             used_ports.insert(static_cast<std::uint32_t>(insn.values[0]));
         }
-        if (isa::pattern_has(insn.pattern, "(nn)") && insn.value_count > 0 && insn.values[insn.value_count - 1] >= 0 &&
+        if (rom.system != formats::sms::System::Sg1000 && isa::pattern_has(insn.pattern, "(nn)") && insn.value_count > 0 && insn.values[insn.value_count - 1] >= 0 &&
             mapper_registers().contains(static_cast<std::uint32_t>(insn.values[insn.value_count - 1]))) {
             used_registers.insert(static_cast<std::uint32_t>(insn.values[insn.value_count - 1]));
         }

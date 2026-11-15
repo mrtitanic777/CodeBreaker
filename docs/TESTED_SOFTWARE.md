@@ -26,6 +26,25 @@ repositories (kept outside the repository, in `GitHub/homebrew-samples/`).
 | Retail Clerk '89 | Genesis / Mega Drive | huguesjohnson/RetailClerk89 (v1.0.1) | see its LICENSE | 82 | rebuilds identical, verified |
 | World Rally (demo) | MSX (48 KB) | theNestruo/msx-wrally | GPL-3.0 | 358 | rebuilds identical, verified (found: header at $4000, lone DD/FD prefixes, NEG mirrors) |
 | nohzdyve | MSX (8 KB) | plainspooky/nohzdyve (v1.0) | see its repository | 99 | rebuilds identical, verified |
+| 240p Test Suite | ColecoVision (32 KB) | nanochess/240pTestSuite_colecovision (suitecv.rom) | GPL-2.0 | 74 | rebuilds identical, verified |
+| 240p Test Suite | SG-1000 (32 KB, .sg) | nanochess/240pTestSuite_colecovision (suitesg.rom) | GPL-2.0 | 63 | rebuilds identical, verified (the Master System lane, no mapper) |
+| brk, demo01, demo02, irq_test, raw (BLL demos) | Atari Lynx (BS93 objects) | 42Bastian/new_bll (demos/) | Apache-2.0 | 2, 3, 11, 2, 19 | rebuilds identical, verified |
+| boing, fire, 256col, drawtest, mines2 (BLL demos) | Atari Lynx (BS93 objects) | 42Bastian/new_bll (demos/) | Apache-2.0 | 17, 22, 16, 14, 27 | rebuilds identical, verified (65SC02: BRA, STZ, TRB/TSB, INC A; Suzy and Mikey registers by name) |
+| Overlay Test (overlay.lnx) | Atari Lynx (.lnx cartridge) | 42Bastian/new_bll (demos/overlay) | Apache-2.0 | 16 | rebuilds identical, verified (the first stage decrypted, the loaders run to find the 3 segments they copy) |
+| new_bll.lnx (uBLL loader) | Atari Lynx (.lnx, 256 KB) | 42Bastian/new_bll (uBLL) | Apache-2.0 | 1 | rebuilds identical, verified |
+| Refrain 0.0.2.43 (202-p1.p1, 1 MB P-ROM, GCC, words swapped) | Neo Geo | defalt45/refrain (builds/) | GPL-3.0 | 13 | rebuilds identical, verified (13 functions run in the 68000 with the Neo Geo's memory map and each differs when its first instruction is changed); most of the game is reached through function pointers (`JSR (A3)`), which the flow does not follow: 5.4 KB of 1 MB is code |
+| DATlib demo (dev_p1.rom, 398 KB) | Neo Geo | kl3mousse/seafighter (include/DATlib/sample/DATdemo) | GPL-3.0 | 11 | rebuilds identical, verified |
+| Mezz-Estate audio driver 1.1.1b (driver.m1, 24 KB Z80 M-ROM) | Neo Geo (sound) | neogeo-mzs/Mezz-Estate-NeoGeo-Audio-Driver (release) | MIT | 56 | rebuilds identical (as Z80 source with the YM2610 and 68000-link ports named; not judged: no Neo Geo sound model in the Z80 lanes) |
+| minimalcd.iso (96 KB) | Sega CD | LukeUsher/ProjectCD (release minimal-cd) | BSD-2-Clause | 5 | rebuilds identical, verified (the system area: EUR security code, the IP that starts the sub CPU, an SP with an empty jump table) |
+| bootsect.bin (32 KB system area) | Sega CD | LukeUsher/ProjectCD | BSD-2-Clause | 8 | rebuilds identical, verified |
+| loader.lnx | Atari Lynx (.lnx, 256 KB) | 42Bastian/new_bll | Apache-2.0 | 0 | rebuilds identical (as data: its loaders end in the boot ROM at $FE4A, which is not modelled) |
+| Kibalchish (NTSC, PAL, PAL60) | Atari 2600 (4 KB, dasm) | ivanivorontsov-sudo/atari-kibalchish (build/) | MIT | 16 each | rebuilds identical, verified (all 12 judged functions diverge when their first byte is turned over; TIA and RIOT registers named) |
+| Legendary Spear (NTSC) | Atari 2600 (2 KB) | DChristianson/legendary-spear (v1.1 release) | MIT | 1 | rebuilds identical, verified (a 2 KB cartridge: the window at $F800, mirrors folded) |
+| FlappyBoot (boot.bin) | Atari 2600 (4 KB) | cleak/FlappyBoot | Unlicense | (counted in the test output) | rebuilds identical, verified |
+| Pipes 2600 (pipe2600.bin) | Atari 2600 (8 KB, F8, batari Basic) | albf/pipes-2600 | MIT | 2 (one reset per bank) | rebuilds identical, verified (code in the second bank is reached only through bank-switch trampolines, so most of the cartridge is data) |
+| (none yet) | Atari 7800 | no open-source homebrew with a permissive licence and a published binary was found (Drone Patrol, Side Bounce and Black Forest state no licence; hotdog and cc7800 are GPL source only) | | | the lane is tested with synthetic A78 files built in the tests (a linear 16 KB ROM and a 128 KB SuperGame): rebuild identical, judged |
+| 8K Copier (8KLEVELC.BIN, the best binary on the disk) | Amstrad CPC (.dsk, extended) | muckypaws/AmstradCPC (8KCopier.dsk) | LGPL-3.0 | 18 | rebuilds identical, verified |
+| ROMDump (ROMDUMP.BIN) | Amstrad CPC (.dsk, standard) | llopis/amstrad-diagnostics (ROMDump.dsk) | MIT | 1 | rebuilds identical, verified (load address $0000) |
 | Icarus | ZX Spectrum (tape) | MmmPT/icarus-zx-spectrum | see its ASSET-LICENSE | 95 | rebuilds identical, verified |
 
 ## PlayStation homebrew (the PS1 lane)
@@ -97,6 +116,58 @@ function starts found (the entry point, what it calls, what begins after another
 | timer-dump.exe | PlayStation | JaCzekanski/ps1-tests (timer-dump) | MIT | 76 | rebuilds identical, verified |
 | timers.exe | PlayStation | JaCzekanski/ps1-tests (timers) | MIT | 89 | rebuilds identical, verified |
 
+## Game Boy Advance homebrew (the GBA lane)
+
+Open-source GBA ROMs with published source, downloaded 2026-11-15 as binaries from the authors' own repositories (kept outside the repository, in
+`GitHub/homebrew-samples/gba/`): jsmolka/gba-tests (MIT; hand-written ARM and Thumb conformance suites), nba-emu/hw-test (BSD-3-Clause;
+hardware tests), ZeroDayArcade/Pong-Homebrew-GBA (MIT; C), djedditt/gba-rumble-example (MIT; C), HorstBaerbel/GBA-mem (MIT; C, a memory test).
+Each is written as GNU as source by `source/gba_writer` and built again by CodeBreaker's own ARM/Thumb assembler; `reach --judge --per-platform 100` then judged every
+function (rebuilt identical, so each is the original: 41 programs, 4075 functions, 100% verified). *Functions* are the starts the writer found, ARM and Thumb.
+
+| Program | Platform | Source | Licence | Functions | Result |
+|---|---|---|---|---|---|
+| MemTestGBA.gba | Game Boy Advance | HorstBaerbel/GBA-mem | MIT | 37 | rebuilds identical, verified |
+| Pong-Homebrew-GBA.gba | Game Boy Advance | ZeroDayArcade/Pong-Homebrew-GBA | MIT | 45 | rebuilds identical, verified |
+| archive-irq-cancel-irq-ie-cancel-irq-ie.gba | Game Boy Advance | nba-emu/hw-test (archive/irq-cancel-irq-ie-cancel-irq-ie.gba) | BSD-3-Clause | 176 | rebuilds identical, verified |
+| archive-irq-cancel-irq-if-cancel-irq-if.gba | Game Boy Advance | nba-emu/hw-test (archive/irq-cancel-irq-if-cancel-irq-if.gba) | BSD-3-Clause | 176 | rebuilds identical, verified |
+| archive-irq-cancel-irq-ime-cancel-irq-ime.gba | Game Boy Advance | nba-emu/hw-test (archive/irq-cancel-irq-ime-cancel-irq-ime.gba) | BSD-3-Clause | 176 | rebuilds identical, verified |
+| archive-ppu-basic-timing-basic-timing.gba | Game Boy Advance | nba-emu/hw-test (archive/ppu-basic-timing-basic-timing.gba) | BSD-3-Clause | 177 | rebuilds identical, verified |
+| archive-ppu-exact-timing-exact-timing.gba | Game Boy Advance | nba-emu/hw-test (archive/ppu-exact-timing-exact-timing.gba) | BSD-3-Clause | 170 | rebuilds identical, verified |
+| archive-ppu-mode2-mode2.gba | Game Boy Advance | nba-emu/hw-test (archive/ppu-mode2-mode2.gba) | BSD-3-Clause | 14 | rebuilds identical, verified |
+| archive-ppu-mode3-mode3.gba | Game Boy Advance | nba-emu/hw-test (archive/ppu-mode3-mode3.gba) | BSD-3-Clause | 14 | rebuilds identical, verified |
+| archive-ppu-mode4-mode4.gba | Game Boy Advance | nba-emu/hw-test (archive/ppu-mode4-mode4.gba) | BSD-3-Clause | 14 | rebuilds identical, verified |
+| arm-arm.gba | Game Boy Advance | jsmolka/gba-tests (arm-arm) | MIT | 11 | rebuilds identical, verified |
+| bios-bios.gba | Game Boy Advance | jsmolka/gba-tests (bios-bios) | MIT | 7 | rebuilds identical, verified |
+| bus-128kb-boundary-128kb-boundary.gba | Game Boy Advance | nba-emu/hw-test (bus-128kb-boundary-128kb-boundary) | BSD-3-Clause | 252 | rebuilds identical, verified |
+| dma-burst-into-tears-burst-into-tears.gba | Game Boy Advance | nba-emu/hw-test (dma-burst-into-tears-burst-into-tears) | BSD-3-Clause | 253 | rebuilds identical, verified |
+| dma-force-nseq-access-force-nseq-access.gba | Game Boy Advance | nba-emu/hw-test (dma-force-nseq-access-force-nseq-access) | BSD-3-Clause | 257 | rebuilds identical, verified |
+| dma-latch-latch.gba | Game Boy Advance | nba-emu/hw-test (dma-latch-latch) | BSD-3-Clause | 256 | rebuilds identical, verified |
+| dma-start-delay-start-delay.gba | Game Boy Advance | nba-emu/hw-test (dma-start-delay-start-delay) | BSD-3-Clause | 253 | rebuilds identical, verified |
+| gba-rumble-example.gba | Game Boy Advance | djedditt/gba-rumble-example | MIT | 290 | rebuilds identical, verified |
+| haltcnt-haltcnt.gba | Game Boy Advance | nba-emu/hw-test (haltcnt-haltcnt) | BSD-3-Clause | 183 | rebuilds identical, verified |
+| irq-irq-delay-irq-delay.gba | Game Boy Advance | nba-emu/hw-test (irq-irq-delay-irq-delay) | BSD-3-Clause | 183 | rebuilds identical, verified |
+| memory-memory.gba | Game Boy Advance | jsmolka/gba-tests (memory-memory) | MIT | 7 | rebuilds identical, verified |
+| nes-nes.gba | Game Boy Advance | jsmolka/gba-tests (nes-nes) | MIT | 2 | rebuilds identical, verified |
+| ppu-bgpd-bgpd.gba | Game Boy Advance | nba-emu/hw-test (ppu-bgpd-bgpd) | BSD-3-Clause | 15 | rebuilds identical, verified |
+| ppu-bgx-bgx.gba | Game Boy Advance | nba-emu/hw-test (ppu-bgx-bgx) | BSD-3-Clause | 15 | rebuilds identical, verified |
+| ppu-dispcnt-latch-dispcnt-latch.gba | Game Boy Advance | nba-emu/hw-test (ppu-dispcnt-latch-dispcnt-latch) | BSD-3-Clause | 103 | rebuilds identical, verified |
+| ppu-greenswap-greenswap.gba | Game Boy Advance | nba-emu/hw-test (ppu-greenswap-greenswap) | BSD-3-Clause | 22 | rebuilds identical, verified |
+| ppu-hello.gba | Game Boy Advance | jsmolka/gba-tests (ppu-hello) | MIT | 7 | rebuilds identical, verified |
+| ppu-ram-access-timing-ram-access-timing.gba | Game Boy Advance | nba-emu/hw-test (ppu-ram-access-timing-ram-access-timing) | BSD-3-Clause | 187 | rebuilds identical, verified |
+| ppu-shades.gba | Game Boy Advance | jsmolka/gba-tests (ppu-shades) | MIT | 2 | rebuilds identical, verified |
+| ppu-sprite-hmosaic-sprite-hmosaic.gba | Game Boy Advance | nba-emu/hw-test (ppu-sprite-hmosaic-sprite-hmosaic) | BSD-3-Clause | 24 | rebuilds identical, verified |
+| ppu-status-irq-dma-status-irq-dma.gba | Game Boy Advance | nba-emu/hw-test (ppu-status-irq-dma-status-irq-dma) | BSD-3-Clause | 193 | rebuilds identical, verified |
+| ppu-stripes.gba | Game Boy Advance | jsmolka/gba-tests (ppu-stripes) | MIT | 2 | rebuilds identical, verified |
+| ppu-vram-mirror-vram-mirror.gba | Game Boy Advance | nba-emu/hw-test (ppu-vram-mirror-vram-mirror) | BSD-3-Clause | 171 | rebuilds identical, verified |
+| save-flash128.gba | Game Boy Advance | jsmolka/gba-tests (save-flash128) | MIT | 7 | rebuilds identical, verified |
+| save-flash64.gba | Game Boy Advance | jsmolka/gba-tests (save-flash64) | MIT | 7 | rebuilds identical, verified |
+| save-none.gba | Game Boy Advance | jsmolka/gba-tests (save-none) | MIT | 7 | rebuilds identical, verified |
+| save-sram.gba | Game Boy Advance | jsmolka/gba-tests (save-sram) | MIT | 7 | rebuilds identical, verified |
+| thumb-thumb.gba | Game Boy Advance | jsmolka/gba-tests (thumb-thumb) | MIT | 10 | rebuilds identical, verified |
+| timer-reload-reload.gba | Game Boy Advance | nba-emu/hw-test (timer-reload-reload) | BSD-3-Clause | 163 | rebuilds identical, verified |
+| timer-start-stop-start-stop.gba | Game Boy Advance | nba-emu/hw-test (timer-start-stop-start-stop) | BSD-3-Clause | 172 | rebuilds identical, verified |
+| unsafe-unsafe.gba | Game Boy Advance | jsmolka/gba-tests (unsafe-unsafe) | MIT | 8 | rebuilds identical, verified |
+
 ## Xbox 360 titles (recompile lane)
 
 Logan's own copies (`C:\Nexia360\Games`), through `recompile-project <title> --check`. All are in
@@ -152,3 +223,17 @@ Minecraft Alpha (decompiled source), as C#: NoiseGenerator, NoiseGeneratorPerlin
 MathHelper through the javac front end and the C# back end (translator phase 7), judged beside the JVM with a
 driver of seeded world-generation calls: the same output, java.util.Random and Java's text for doubles included
 (the C# kit's tests under tests/translate).
+
+## Nintendo DS homebrew (the DS lane)
+
+Open-source DS ROMs with published source, downloaded 2026-11-15 as binaries from the authors' own release pages (kept outside the repository, in
+`GitHub/homebrew-samples/nds/`). Each is written as GNU as source by `source/nds_writer` (both processors in one file) and built again by CodeBreaker's own
+assembler; every function is then run in the interpreter of its own processor in the original and in the rebuilt ROM
+(`cb_tests --filter machine_nds.homebrew`; it skips programs that are not on the machine).
+
+| Program | Platform | Source | Licence | Functions | Result |
+|---|---|---|---|---|---|
+| DinoDS.nds | Nintendo DS | BotRandomness/DinoDS v1.0.0 (C, libnds) | MIT | 794 (ARM9 585, ARM7 209; 753 Thumb) | rebuilds identical; 3176 of 3176 runs (4 states) the same in the rebuilt ROM: 1692 return, 906 reach the step limit, 526 stop at a bus error (hardware not modelled), 52 at bytes that are no instruction |
+| dldi_benchmark_blocksds.nds | Nintendo DS | asiekierka/dldi-driver-benchmark v0.4.3 (BlocksDS) | MIT | not recorded | run did not finish in the session: not yet verified |
+| dldi_benchmark_dkA.nds | Nintendo DS | asiekierka/dldi-driver-benchmark v0.4.3 (devkitARM) | MIT | not recorded | run did not finish in the session: not yet verified |
+| ButtonBoot.nds | Nintendo DS | FlameKat53/ButtonBoot v3.0.0 | MIT | - | refused: its header has no DS logo checksum ($CF56 at $15C), so it is not read as a DS ROM |

@@ -1,5 +1,5 @@
-// cb/decompile/mips.hpp -- the MIPS R3000A's instructions (MIPS I, little-endian, as the PlayStation's CPU has them): a
-// disassembler and an assembler.
+// cb/decompile/mips.hpp -- the MIPS instructions of the consoles: the PlayStation's R3000A (MIPS I, little-endian) and the Nintendo 64's
+// R4300i (MIPS III, big-endian), a disassembler and an assembler.
 //
 //     decode(code, at, pc)         the instruction at code[at:] running at address pc, or nullopt
 //     text(insn, labels)           "addiu $sp, $sp, -32" / "beq $a0, $zero, L_80010040" / "lw $t0, 4($sp)"
@@ -27,6 +27,22 @@
 // Expressions are numbers (decimal, 0x hex), labels, `%hi()` and `%lo()`, `+ - * / & | ^ ~ << >>` and parentheses.
 // Whether an instruction is the last of a flow is the decoder's: a jump, a branch and a call each have one delay slot, which
 // is the instruction after them (`Insn::delay_slot`).
+//
+// The two processors are two `Variant`s, and every function takes one (the R3000A when it is left out, so the PlayStation's callers are
+// as they were). The R4300i has no GTE (COP2 is not decoded) and no RFE, and adds what MIPS II and III have:
+//
+//     64-bit integers   dsll dsrl dsra (and the 32 and V forms) dmult dmultu ddiv ddivu dadd daddu dsub dsubu daddi daddiu
+//                       ld sd ldl ldr sdl sdr lld scd lwu ll sc, and sync, cache
+//     branch likely     beql bnel blezl bgtzl bltzl bgezl bltzall bgezall bc1fl bc1tl: the delay slot runs only when the branch is
+//                       taken (`Insn::likely`); the flow is read as for any branch
+//     traps             tge tgeu tlt tltu teq tne and tgei tgeiu tlti tltiu teqi tnei
+//     system control    mfc0 dmfc0 mtc0 dmtc0 and tlbr tlbwi tlbwr tlbp eret
+//     the FPU (COP1)    mfc1 dmfc1 cfc1 mtc1 dmtc1 ctc1, lwc1 ldc1 swc1 sdc1, bc1f bc1t, and add sub mul div sqrt abs mov neg
+//                       round.l trunc.l ceil.l floor.l round.w trunc.w ceil.w floor.w cvt.s cvt.d cvt.w cvt.l and the sixteen compares
+//                       c.f c.un c.eq c.ueq c.olt c.ult c.ole c.ule c.sf c.ngle c.seq c.ngl c.lt c.nge c.le c.ngt, each with its format
+//                       (`add.s`, `cvt.d.w`, `c.lt.d`); FPU registers are written `$f0` ... `$f31`, the control registers `$31`
+//
+// An R4300i program's words are big-endian: `decode(code, at, pc, Variant::R4300)` reads them so, and `assemble` gives them so.
 #pragma once
 
 #include <array>
@@ -65,6 +81,20 @@ enum class Form : std::uint8_t {
     CopBranch,   // bc2f target
     Command,     // a GTE command with its fields
     Raw,         // cop2 0x...: a coprocessor 2 command word the GTE names no command for
+    // the R4300i's additions
+    RsImm,       // tgei $s, imm
+    FtMem,       // lwc1 $f0, imm($s)
+    OpMem,       // cache op, imm($s)
+    RtFs,        // mfc1 $t, $f2
+    FdFsFt,      // add.s $f0, $f1, $f2
+    FdFs,        // mov.s $f0, $f1
+    FsFt,        // c.eq.s $f1, $f2
+};
+
+// Which processor's instructions.
+enum class Variant : std::uint8_t {
+    R3000A,      // the PlayStation's: MIPS I, little-endian, with the GTE
+    R4300,       // the Nintendo 64's: MIPS III, big-endian, with the FPU
 };
 
 // One decoded instruction.
@@ -79,16 +109,17 @@ struct Insn {
     std::optional<std::uint32_t> target;   // where a branch, jump or call goes
     Flow flow = Flow::None;
     bool delay_slot = false;               // the instruction after it runs before the transfer takes effect
+    bool likely = false;                   // a branch likely (R4300): the delay slot runs only when the branch is taken
 
-    std::array<std::uint8_t, 4> raw{};     // the word as the code holds it (little-endian)
+    std::array<std::uint8_t, 4> raw{};     // the word as the code holds it (little-endian for the R3000A, big-endian for the R4300)
 
     ByteView bytes() const { return {raw.data(), raw.size()}; }
 };
 
 // The instruction at code[at:], which runs at address `pc`, or nullopt when the bytes are not one (or are fewer than four).
-std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc);
+std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, Variant variant = Variant::R3000A);
 // The same from the word.
-std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc);
+std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, Variant variant = Variant::R3000A);
 
 // The instruction as source. `labels` names branch and jump targets; an empty name counts as no label.
 std::string text(const Insn& insn, const AddressLabels& labels = {});
@@ -99,6 +130,8 @@ std::string text(const Insn& insn, const AddressLabels& labels, std::string_view
 // The register's name ("$sp"), and the number of a name ("$sp", "$29", "sp": nullopt for neither).
 std::string_view register_name(unsigned number);
 std::optional<unsigned> register_number(std::string_view text);
+// The number of an FPU register written "$f12" (nullopt for anything else).
+std::optional<unsigned> fpu_register_number(std::string_view text);
 
 // A numeric expression as the assembler reads it. ParseError for a malformed one, z80::UnknownLabel for a label not in
 // `labels`.
@@ -107,6 +140,6 @@ std::int64_t value(std::string_view expr, const NameLabels& labels, std::uint32_
 // The bytes of one instruction line (a pseudo-instruction may be two words). `labels` resolves names; `pc` is where the
 // instruction will be. ParseError for text that is not an instruction or one whose operand is out of reach (a branch too far,
 // an immediate that does not fit its field, a jump into another 256 MB region); z80::UnknownLabel for a label that is not there.
-Bytes assemble(std::string_view line, std::uint32_t pc = 0, const NameLabels& labels = {});
+Bytes assemble(std::string_view line, std::uint32_t pc = 0, const NameLabels& labels = {}, Variant variant = Variant::R3000A);
 
 }  // namespace cb::decompile::mips

@@ -16,9 +16,16 @@ PPC_FUNC(__imp__XamAvatarManifestGetBodyType);
 // empty (the owner's decompilation of xam.xex, xam/reference/_exports.txt, gives them the image base) and none of the
 // dashboards checked (7258, 7357, 8495, 9199) imports or binds them: 7357's only "li r4,1492" and "li r4,1536" are
 // allocation sizes, its lookups are 1500-1521 and 1566. Xenia's tables do not name them either. A lookup is answered "not found", as for any empty slot (kernel::IsAbsentXamExport).
+//
+// Ordinal 442 (rexglue's table names it XamInputGetUserVibrationLevel; the name is unconfirmed) is looked up by the
+// Xbox LIVE Arcade titles of one engine family (Vigilante 8 Arcade, Monopoly Plus, Forza 4 and another, through the
+// same wrapper at start-up; the next lookup is 520, rexglue's XamUserGetDeviceContext). Ordinal 1800 is Monopoly
+// Plus's probe of every loaded module for one export (rexglue: XamGetLiveHiveValueA): a failed lookup moves it on to
+// the next module. Each keeps the address, calls it only when it is not null (a gamepad query that has a
+// fallback: XamInputGetCapabilities) and takes its absence as an older XAM: answered "not found" too.
 bool kernel::IsAbsentXamExport(uint16_t ordinal)
 {
-    return ordinal == 1492 || ordinal == 1536;
+    return ordinal == 442 || ordinal == 520 || ordinal == 1492 || ordinal == 1536 || ordinal == 1800;
 }
 
 namespace

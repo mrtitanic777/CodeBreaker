@@ -2,6 +2,7 @@
 
 #include "cb/source/isa.hpp"
 
+#include "cb/decompile/arm.hpp"
 #include "cb/decompile/m6502.hpp"
 #include "cb/decompile/m68k.hpp"
 #include "cb/decompile/mips.hpp"
@@ -69,6 +70,30 @@ std::optional<DecodedInsn> decode_sm83(ByteView mem, std::uint32_t pc) {
     out.flow = insn->pattern == "STOP" ? formats::Flow::Halt : flow_of(insn->flow);
     return out;
 }
+
+// The ARM7TDMI: the address `pc` carries the state in its lowest bit (odd: Thumb), and so does a target. A jump, a return and an indirect jump
+// end the flow (every instruction is conditional, so a conditional one falls through: the decoder says so); a BX through a register is
+// `Indirect` and the writer resolves where it goes.
+std::optional<DecodedInsn> decode_arm_as(ByteView mem, std::uint32_t pc, decompile::arm::Arch arch) {
+    const std::optional<decompile::arm::Insn> insn = decompile::arm::decode(mem, pc & ~1u, pc, arch);
+    if (!insn) return std::nullopt;
+    DecodedInsn out;
+    out.size = insn->length;
+    if (insn->target) out.target = *insn->target;
+    switch (insn->flow) {
+        case dz::Flow::Jump: out.flow = formats::Flow::Jump; break;
+        case dz::Flow::Branch: out.flow = formats::Flow::Branch; break;
+        case dz::Flow::Call: out.flow = formats::Flow::Call; break;
+        case dz::Flow::Return: out.flow = formats::Flow::Return; break;
+        case dz::Flow::Indirect: out.flow = formats::Flow::Indirect; break;
+        default: break;
+    }
+    return out;
+}
+
+std::optional<DecodedInsn> decode_arm(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V4T); }
+// The ARM946E-S (ARMv5TE): the same, with BLX (a call whose target has the other state), CLZ and the rest of the ARMv5TE instructions.
+std::optional<DecodedInsn> decode_arm9(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V5TE); }
 
 // The 68000: a TRAP is a branch to its handler (formats/code_scan: not a function start); a halt ends the flow.
 std::optional<DecodedInsn> decode_68k(ByteView mem, std::uint32_t pc) {
@@ -172,6 +197,33 @@ public:
     }
 };
 
+// The ARM7TDMI's: the state an instruction is assembled in is the lowest bit of its address (decompile/arm.hpp).
+class ArmSyntax final : public build::Encoder {
+public:
+    explicit ArmSyntax(decompile::arm::Arch arch = decompile::arm::Arch::V4T) : arch_(arch) {}
+    Result<std::int64_t> value(std::string_view expr, const build::Labels& labels, std::int64_t pc) const override {
+        try {
+            return decompile::arm::value(expr, labels, static_cast<std::uint32_t>(pc) & ~1u);
+        } catch (const dz::UnknownLabel& e) {
+            return unknown(e);
+        } catch (const ParseError& e) {
+            return Failure(e.clone());
+        }
+    }
+    Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
+        try {
+            return decompile::arm::assemble(line, static_cast<std::uint32_t>(pc), labels, arch_);
+        } catch (const dz::UnknownLabel& e) {
+            return unknown(e);
+        } catch (const ParseError& e) {
+            return Failure(e.clone());
+        }
+    }
+
+private:
+    decompile::arm::Arch arch_;
+};
+
 // The 6502's assembler says an unknown name as a ParseError ("unknown label or number NAME (line)"): the name is read out of it.
 class M6502Syntax final : public build::m6502_asm::Encoder6502 {
 public:
@@ -208,6 +260,14 @@ const formats::Decoder& mips_decoder() {
     static const formats::Decoder decoder = decode_mips;
     return decoder;
 }
+const formats::Decoder& arm_decoder() {
+    static const formats::Decoder decoder = decode_arm;
+    return decoder;
+}
+const formats::Decoder& arm9_decoder() {
+    static const formats::Decoder decoder = decode_arm9;
+    return decoder;
+}
 const formats::Decoder& m68k_decoder() {
     static const formats::Decoder decoder = decode_68k;
     return decoder;
@@ -219,6 +279,14 @@ const build::Encoder& z80_encoder() {
 }
 const build::Encoder& mips_encoder() {
     static const MipsSyntax syntax;
+    return syntax;
+}
+const build::Encoder& arm_encoder() {
+    static const ArmSyntax syntax;
+    return syntax;
+}
+const build::Encoder& arm9_encoder() {
+    static const ArmSyntax syntax(decompile::arm::Arch::V5TE);
     return syntax;
 }
 const build::Encoder& m68k_encoder() {

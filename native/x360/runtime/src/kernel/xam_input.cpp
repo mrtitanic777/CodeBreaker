@@ -86,7 +86,12 @@ GUEST_IMPORT(XamInputGetCapabilities)
     if (caps)
         std::memset(mem.Translate(caps), 0, 0x14);
     if (!(flags & kFlagGamepad))
-        Fatal("XamInputGetCapabilities(user {}): flags {:08X} (only the gamepad is implemented)", user, ctx.r4.u32);
+    {
+        // A keyboard (2) or another device type (a Big Button pad, a headset): none is ever connected. MW3 asks for
+        // the keyboard of user 0 at start-up.
+        ctx.r3.u64 = kErrorDeviceNotConnected;
+        return;
+    }
     input::PadState pad;
     uint32_t packet = 0;
     if (user >= 4 || !input::GetState(user, pad, packet))

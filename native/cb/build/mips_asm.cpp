@@ -75,9 +75,9 @@ bool ignored_directive(std::string_view head) {
     return std::ranges::find(kIgnored, h) != kIgnored.end();
 }
 
-void append_little_endian(Bytes& out, std::int64_t value, std::int64_t width) {
+void append_value(Bytes& out, std::int64_t value, std::int64_t width, ByteOrder order) {
     const auto bits = static_cast<std::uint64_t>(value);
-    for (std::int64_t i = 0; i < width; ++i) out.push_back(static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFF));
+    for (std::int64_t i = 0; i < width; ++i) out.push_back(static_cast<std::uint8_t>((bits >> (8 * (order == ByteOrder::Big ? width - 1 - i : i))) & 0xFF));
 }
 
 // The bytes of a quoted string with GNU as's escapes.
@@ -117,8 +117,8 @@ Bytes string_bytes(std::string_view quoted) {
 
 class Pass {
 public:
-    Pass(const Encoder& isa, Labels& labels, std::unordered_map<std::uint32_t, std::size_t>& sizes, bool final)
-        : isa_(isa), labels_(labels), sizes_(sizes), final_(final) {}
+    Pass(const Encoder& isa, Labels& labels, std::unordered_map<std::uint32_t, std::size_t>& sizes, bool final, ByteOrder order)
+        : isa_(isa), labels_(labels), sizes_(sizes), final_(final), order_(order) {}
 
     Bytes run(const std::vector<SourceLine>& lines) {
         for (const SourceLine& l : lines) {
@@ -189,6 +189,7 @@ private:
         if (text::iequals(head, ".word") || text::iequals(head, ".long") || text::iequals(head, ".4byte")) return put(items(rest, 4));
         if (text::iequals(head, ".half") || text::iequals(head, ".short") || text::iequals(head, ".2byte")) return put(items(rest, 2));
         if (text::iequals(head, ".byte")) return put(items(rest, 1));
+        if (text::iequals(head, ".dword") || text::iequals(head, ".8byte") || text::iequals(head, ".quad")) return put(items(rest, 8));
         if (text::iequals(head, ".ascii")) return put(strings(rest, false));
         if (text::iequals(head, ".asciz") || text::iequals(head, ".asciiz")) return put(strings(rest, true));
         if (text::iequals(head, ".space") || text::iequals(head, ".skip")) {
@@ -207,7 +208,7 @@ private:
             const std::int64_t value = parts.size() > 2 ? need(parts[2]) : 0;
             if (count < 0 || size < 1 || size > 8 || count * size > kMaxImageBytes) fail(std::format(".fill of {} items of {} bytes", count, size));
             Bytes out;
-            for (std::int64_t i = 0; i < count; ++i) append_little_endian(out, value, size);
+            for (std::int64_t i = 0; i < count; ++i) append_value(out, value, size, order_);
             return put(out);
         }
         if (text::iequals(head, ".align") || text::iequals(head, ".p2align")) {
@@ -225,7 +226,7 @@ private:
         Bytes out;
         for (std::string_view item : split_items(items_text, true)) {
             const std::int64_t v = soft(item, pc_ + static_cast<std::int64_t>(out.size())).value_or(0);
-            append_little_endian(out, v, width);
+            append_value(out, v, width, order_);
         }
         return out;
     }
@@ -259,6 +260,7 @@ private:
     Labels& labels_;
     std::unordered_map<std::uint32_t, std::size_t>& sizes_;
     bool final_;
+    ByteOrder order_;
     Bytes image_;
     std::int64_t pc_ = 0;
     std::string_view current_;
@@ -298,7 +300,7 @@ Bytes Assembler::build(std::string_view source) const {
     std::unordered_map<std::uint32_t, std::size_t> sizes;
     Bytes image;
     for (const bool final : {false, true}) {
-        Pass pass(*isa_, labels, sizes, final);
+        Pass pass(*isa_, labels, sizes, final, order_);
         image = pass.run(lines);
     }
     return image;

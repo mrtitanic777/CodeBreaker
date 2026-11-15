@@ -158,6 +158,8 @@ struct RunOptions {
     std::uint64_t max_steps = kMaxSteps;
     std::uint16_t sp = 0xDFF0;
     RegisterInit regs;
+    // Called with the program counter before each instruction (a machine model notes the calls into its firmware); none by default.
+    std::function<void(std::uint16_t pc)> before_step;
 };
 
 enum class End : std::uint8_t { Return, Stopped, Limit };

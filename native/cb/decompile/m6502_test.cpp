@@ -270,3 +270,65 @@ CB_TEST("decompile.m6502.nes_demo_program", [] {
     // the multiply routine is a loop of ADC with a backwards branch to `more`
     CB_CHECK(labels.contains("multiply") && labels.contains("more") && labels.at("more") > labels.at("multiply"));
 });
+
+// ---- the 65SC02 (Atari Lynx) and dasm's spelling ---------------------------------------------------------------------
+
+namespace {
+Bytes hexs(std::string_view s) {
+    std::string squeezed;
+    for (const char c : s) {
+        if (c != ' ') squeezed.push_back(c);
+    }
+    return hex(squeezed);
+}
+}  // namespace
+
+CB_TEST("decompile.m6502.cmos_table", [] {
+    int documented = 0;
+    for (const auto& entry : m::opcode_table(m::Variant::Cmos)) documented += entry.has_value();
+    CB_CHECK_EQ(documented, 151 + 27);   // the NMOS set and 27 forms the 65SC02 adds
+    CB_CHECK_EQ(m::opcode_of("BRA", m::Mode::Rel, m::Variant::Cmos).value(), 0x80);
+    CB_CHECK(!m::opcode_of("BRA", m::Mode::Rel).has_value());   // not on the NMOS part
+    CB_CHECK_EQ(m::opcode_of("STZ", m::Mode::Abx, m::Variant::Cmos).value(), 0x9E);
+    CB_CHECK_EQ(m::opcode_of("LDA", m::Mode::Izp, m::Variant::Cmos).value(), 0xB2);
+    CB_CHECK(!m::opcode_table()[0x80].has_value());
+    CB_CHECK(m::ends_flow("BRA") && m::is_branch("BRA"));
+});
+
+CB_TEST("decompile.m6502.cmos_decode_and_assemble", [] {
+    auto dis_cmos = [](std::string_view bytes, std::uint32_t pc = 0x0400) {
+        const Bytes code = hexs(bytes);
+        const auto insn = m::decode(code, 0, pc, m::Variant::Cmos);
+        return insn ? m::text(*insn) : std::string("<none>");
+    };
+    CB_CHECK_EQ(dis_cmos("80 FE"), "BRA $0400");
+    CB_CHECK_EQ(dis_cmos("B2 10"), "LDA ($10)");
+    CB_CHECK_EQ(dis_cmos("7C 00 20"), "JMP ($2000,x)");
+    CB_CHECK_EQ(dis_cmos("1A"), "INC a");
+    CB_CHECK_EQ(dis_cmos("9C 00 FD"), "STZ $FD00");
+    CB_CHECK_EQ(dis_cmos("89 0F"), "BIT #$0F");
+    CB_CHECK_EQ(dis_cmos("DA"), "PHX");
+    for (const char* line : {"BRA $0400", "LDA ($10)", "JMP ($2000,x)", "INC a", "DEC a", "STZ $FD00", "STZ $20,x", "TSB $20", "TRB $1234", "PHY"}) {
+        const Bytes bytes = m::assemble(line, 0x0400, {}, m::Variant::Cmos);
+        const auto insn = m::decode(bytes, 0, 0x0400, m::Variant::Cmos);
+        CB_CHECK(insn.has_value());
+        CB_CHECK_EQ(cb::text::upper(m::text(*insn)), cb::text::upper(line));
+    }
+    CB_CHECK_THROWS_AS(cb::ParseError, (void)m::assemble("BRA $0400", 0x0400));   // NMOS: no such instruction
+});
+
+CB_TEST("decompile.m6502.dasm_text", [] {
+    auto text = [](std::string_view bytes, const m::AddressLabels& labels = {}) {
+        const Bytes code = hexs(bytes);
+        return m::dasm_text(*m::decode(code, 0, 0xF000), labels);
+    };
+    CB_CHECK_EQ(text("A9 10"), "LDA #$10");
+    CB_CHECK_EQ(text("85 02"), "STA $02");
+    CB_CHECK_EQ(text("85 02", {{2, "WSYNC"}}), "STA WSYNC");
+    CB_CHECK_EQ(text("8D 02 00"), "STA.w $0002");   // an absolute form of a zero-page address
+    CB_CHECK_EQ(text("BD 34 12"), "LDA $1234,X");
+    CB_CHECK_EQ(text("0A"), "ASL A");
+    CB_CHECK_EQ(text("D0 FE", {{0xF000, "loop"}}), "BNE loop");
+    CB_CHECK_EQ(text("4C 00 F0"), "JMP $F000");
+    CB_CHECK_EQ(text("B1 80"), "LDA ($80),Y");
+});

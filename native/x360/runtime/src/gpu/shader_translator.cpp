@@ -606,8 +606,10 @@ namespace gpu
                  "td4 = xe_fetch_dword({}u);", base, base + 2, base + 3, base + 4);
             if (dimension == 0)
             {
-                Line("float tu = {}.{};", src, kComponents[swz & 3]);
-                Line("float tsize = float((td2 & 0xFFFFFFu) + 1u);");
+                // A 1D texture is a one-row 2D texture on the host (the texture's decoder gives it height 1): the
+                // coordinate is U and the middle of the row.
+                Line("float2 tu = float2({}.{}, 0.5);", src, kComponents[swz & 3]);
+                Line("float2 tsize = float2(float((td2 & 0xFFFFFFu) + 1u), 1.0);");
             }
             else if (dimension == 3)
             {
@@ -635,7 +637,7 @@ namespace gpu
             if ((ox || oy) && dimension != 3)
             {
                 if (dimension == 0)
-                    Line("tu += {} / tsize;", float(ox) * 0.5f);
+                    Line("tu += float2({}, 0.0) / tsize;", float(ox) * 0.5f);
                 else
                     Line("tu += float2({}, {}) / tsize;", float(ox) * 0.5f, float(oy) * 0.5f);
             }
@@ -838,7 +840,6 @@ namespace gpu
             std::string text;
             for (uint32_t i = 0; i < result_.textures.size(); i++)
                 text += std::format("{} xe_texture_{} : register(t{}, space1);\n",
-                                    result_.textures[i].dimension == 0 ? "Texture1D<float4>" :
                                     result_.textures[i].dimension == 3 ? "TextureCube<float4>" : "Texture2D<float4>", i, i);
             for (uint32_t i = 0; i < result_.samplers.size(); i++)
                 text += std::format("SamplerState xe_sampler_{} : register(s{});\n", i, i);

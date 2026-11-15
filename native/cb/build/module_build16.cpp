@@ -427,6 +427,38 @@ bool loads_itself(ByteView head) {
     return pages * 512 >= static_cast<std::int64_t>(head.size()) - 511;
 }
 
+// Compile the function again without the Windows prologue when the original's has none, and keep that object if it is smaller. True: it is.
+bool refit_without_prologue(Ctx16& c, std::int64_t seg, std::uint32_t at, const std::string& name, OrderedMap<std::string, std::uint32_t>& size) {
+    const std::uint32_t sg = static_cast<std::uint32_t>(seg);
+    if (decompile::describe::windows_far_prologue(c.segment_bytes(c.segs.at(sg)), at)) return false;
+    const std::string& stem = c.stems.at(name);
+    const std::size_t slash = stem.find('/');
+    if (slash == std::string::npos) return false;
+    const stdfs::path dir = c.folder / stem.substr(0, slash);
+    const std::string leaf = stem.substr(slash + 1);
+    const auto code_size = [&]() -> std::optional<std::uint32_t> {
+        try {
+            return static_cast<std::uint32_t>(msc6::object_code(fs::read_file(c.folder / (stem + ".obj"))).code.size());
+        } catch (const IoError&) {
+            return std::nullopt;
+        }
+    };
+    std::vector<std::string> flags = c.flags_for(sg);
+    flags.push_back("-zW");
+    const std::optional<std::uint32_t> was = code_size();
+    if (!c.builder().compile(c.cc, flags, dir, leaf, c.texts.at(name)).empty()) {
+        c.builder().compile(c.cc, c.flags_for(sg), dir, leaf, c.texts.at(name));   // (the object as it was)
+        return false;
+    }
+    const std::optional<std::uint32_t> now = code_size();
+    if (!now || (was && *now >= *was)) {
+        c.builder().compile(c.cc, c.flags_for(sg), dir, leaf, c.texts.at(name));
+        return false;
+    }
+    size.insert_or_assign(name, *now);
+    return true;
+}
+
 void decide_resident(Ctx16& c, bool self_loading) {
     Built& b = c.b;
     b.resident_limit.clear();
@@ -478,6 +510,7 @@ void decide_resident(Ctx16& c, bool self_loading) {
                 // (no object for it: it has no size, and takes no part in the packing)
             }
         }
+        std::set<std::string> refitted;
         while (true) {
             std::vector<HoleSpec> holes;
             std::map<std::string, std::uint32_t> own;
@@ -486,7 +519,7 @@ void decide_resident(Ctx16& c, bool self_loading) {
                 holes.push_back({ord[k].first, k + 1 < ord.size() ? ord[k + 1].first : c.segs.at(static_cast<std::uint32_t>(sg)).length, ord[k].second});
                 own[ord[k].second] = ord[k].first;
             }
-            const Packed packed = pack_holes(holes, size, c.m.near, {}, limit);
+            const Packed packed = pack_holes(holes, size, c.m.near, {}, limit, !c.b.byte_aligned_code);
             std::vector<std::string> stuck;
             for (const std::vector<std::string>* group : {&packed.no_room_far, &packed.no_room_near}) {
                 for (const std::string& nm : *group) {
@@ -494,7 +527,14 @@ void decide_resident(Ctx16& c, bool self_loading) {
                 }
             }
             if (stuck.empty()) break;
+            // A function whose original has no Windows prologue (a driver's stub: `xor ax, ax / retf`) is compiled without the one the compiler
+            // writes for a far function (-zW), once, before it is given up: the prologue is what made it too big for its place.
+            std::vector<std::string> give_up;
             for (const std::string& nm : stuck) {
+                if (!refitted.insert(nm).second || !refit_without_prologue(c, sg, own.at(nm), nm, size)) give_up.push_back(nm);
+            }
+            if (give_up.empty()) continue;
+            for (const std::string& nm : give_up) {
                 c.forced.insert(nm);
                 size.erase(nm);
                 c.evidence(nm, limit < c.segs.at(static_cast<std::uint32_t>(sg)).length
@@ -590,6 +630,7 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         if (f != "-ms") c.cflags.push_back(f);
     }
     for (const char* f : {"-mm", "-fpi87", "-os", "-nc=MCODE"}) c.cflags.push_back(f);
+    b.byte_aligned_code = true;   // (-os: the code segment of each object is byte-aligned)
 
     compile_functions(c);
     const std::shared_ptr<const data::Data> d = make_data(c);

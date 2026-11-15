@@ -20,6 +20,7 @@ enum class Op : std::uint8_t {
     Lda, Ldx, Ldy, Sta, Stx, Sty, Adc, Sbc, And, Ora, Eor, Cmp, Cpx, Cpy, Bit, Asl, Lsr, Rol, Ror, Inc, Dec,
     Inx, Dex, Iny, Dey, Tax, Tay, Txa, Tya, Tsx, Txs, Clc, Sec, Cli, Sei, Cld, Sed, Clv, Pha, Php, Pla, Plp,
     Bcc, Bcs, Beq, Bmi, Bne, Bpl, Bvc, Bvs, Jmp, Jsr, Rts, Rti, Brk, Nop,
+    Bra, Phx, Phy, Plx, Ply, Stz, Trb, Tsb,   // the 65SC02's
 };
 
 struct Named {
@@ -36,7 +37,8 @@ constexpr Named kNames[] = {
     {"SED", Op::Sed}, {"CLV", Op::Clv}, {"PHA", Op::Pha}, {"PHP", Op::Php}, {"PLA", Op::Pla}, {"PLP", Op::Plp},
     {"BCC", Op::Bcc}, {"BCS", Op::Bcs}, {"BEQ", Op::Beq}, {"BMI", Op::Bmi}, {"BNE", Op::Bne}, {"BPL", Op::Bpl},
     {"BVC", Op::Bvc}, {"BVS", Op::Bvs}, {"JMP", Op::Jmp}, {"JSR", Op::Jsr}, {"RTS", Op::Rts}, {"RTI", Op::Rti},
-    {"BRK", Op::Brk}, {"NOP", Op::Nop},
+    {"BRK", Op::Brk}, {"NOP", Op::Nop}, {"BRA", Op::Bra}, {"PHX", Op::Phx}, {"PHY", Op::Phy}, {"PLX", Op::Plx},
+    {"PLY", Op::Ply}, {"STZ", Op::Stz}, {"TRB", Op::Trb}, {"TSB", Op::Tsb},
 };
 
 struct Entry {
@@ -46,22 +48,23 @@ struct Entry {
     std::uint8_t size = 1;
 };
 
-// The 256 opcodes, resolved once from the decoder's table (the one description the disassembler and the assembler
-// read too).
-const std::array<Entry, 256>& table() {
-    static const std::array<Entry, 256> t = [] {
-        std::array<Entry, 256> out{};
-        const auto& source = dec::opcode_table();
-        for (std::size_t code = 0; code < 256; ++code) {
-            if (!source[code]) continue;
-            const auto it = std::find_if(std::begin(kNames), std::end(kNames),
-                                         [&](const Named& n) { return n.name == source[code]->mnemonic; });
-            CB_ASSERT(it != std::end(kNames), "an opcode of the table the interpreter does not know");
-            out[code] = {true, it->op, source[code]->mode, dec::instruction_size(source[code]->mode)};
-        }
-        return out;
-    }();
-    return t;
+// The 256 opcodes of a variant, resolved once from the decoder's table (the one description the disassembler and the
+// assembler read too).
+std::array<Entry, 256> make_table(Variant variant) {
+    std::array<Entry, 256> out{};
+    const auto& source = dec::opcode_table(variant);
+    for (std::size_t code = 0; code < 256; ++code) {
+        if (!source[code]) continue;
+        const auto it = std::find_if(std::begin(kNames), std::end(kNames), [&](const Named& n) { return n.name == source[code]->mnemonic; });
+        CB_ASSERT(it != std::end(kNames), "an opcode of the table the interpreter does not know");
+        out[code] = {true, it->op, source[code]->mode, dec::instruction_size(source[code]->mode)};
+    }
+    return out;
+}
+
+const std::array<Entry, 256>& table(Variant variant) {
+    static const std::array<std::array<Entry, 256>, 2> tables = {make_table(Variant::Nmos), make_table(Variant::Cmos)};
+    return tables[static_cast<std::size_t>(variant)];
 }
 
 }  // namespace
@@ -85,14 +88,23 @@ Bus Bus::over(std::span<std::uint8_t> ram) {
 }
 
 void Bus::map(std::uint16_t lo, std::uint16_t hi, ReadFn read, WriteFn write) {
-    ranges_.push_back({lo, hi, std::move(read), std::move(write)});
+    ranges_.push_back({lo, hi, std::move(read), std::move(write), true});
+}
+
+void Bus::map_quiet(std::uint16_t lo, std::uint16_t hi, ReadFn read, WriteFn write) {
+    ranges_.push_back({lo, hi, std::move(read), std::move(write), false});
+}
+
+void Bus::map_writes(std::uint16_t lo, std::uint16_t hi, WriteFn write) {
+    ranges_.push_back({lo, hi, {}, std::move(write), true, false});
 }
 
 std::uint8_t Bus::read(std::uint16_t address) {
+    address &= mask_;
     for (const Range& r : ranges_) {
-        if (r.lo <= address && address <= r.hi) {
+        if (r.reads && r.lo <= address && address <= r.hi) {
             const std::uint8_t v = r.read ? r.read(address) : 0;
-            log_.push_back({DeviceAccess::Kind::Read, address, v});
+            if (r.logged) log_.push_back({DeviceAccess::Kind::Read, address, v});
             return v;
         }
     }
@@ -100,9 +112,10 @@ std::uint8_t Bus::read(std::uint16_t address) {
 }
 
 void Bus::write(std::uint16_t address, std::uint8_t value) {
+    address &= mask_;
     for (const Range& r : ranges_) {
         if (r.lo <= address && address <= r.hi) {
-            log_.push_back({DeviceAccess::Kind::Write, address, value});
+            if (r.logged) log_.push_back({DeviceAccess::Kind::Write, address, value});
             if (r.write) r.write(address, value);
             return;
         }
@@ -121,19 +134,19 @@ std::uint16_t Cpu::rd16(std::uint16_t a) {
 }
 
 std::uint16_t Cpu::rd16_zp(std::uint8_t a) {
-    const std::uint16_t lo = rd(a);
-    const std::uint16_t hi = rd(static_cast<std::uint8_t>(a + 1));
+    const std::uint16_t lo = rd(static_cast<std::uint16_t>(zero_page_ + a));
+    const std::uint16_t hi = rd(static_cast<std::uint16_t>(zero_page_ + static_cast<std::uint8_t>(a + 1)));
     return static_cast<std::uint16_t>(lo | hi << 8);
 }
 
 void Cpu::push(std::uint8_t v) {
-    wr(static_cast<std::uint16_t>(0x100 | regs.s), v);
+    wr(static_cast<std::uint16_t>(stack_ | regs.s), v);
     regs.s = static_cast<std::uint8_t>(regs.s - 1);
 }
 
 std::uint8_t Cpu::pull() {
     regs.s = static_cast<std::uint8_t>(regs.s + 1);
-    return rd(static_cast<std::uint16_t>(0x100 | regs.s));
+    return rd(static_cast<std::uint16_t>(stack_ | regs.s));
 }
 
 void Cpu::set_flag(std::uint8_t f, bool on) {
@@ -162,6 +175,7 @@ void Cpu::adc(std::uint8_t v) {
         if (hi > 9) hi += 6;
         set_flag(status::C, hi > 15);
         regs.a = static_cast<std::uint8_t>((hi << 4) | (lo & 0x0F));
+        if (variant_ == Variant::Cmos) set_nz(regs.a);   // (the 65SC02 sets N and Z from the decimal result)
         return;
     }
     const int r = a + v + c;
@@ -183,6 +197,7 @@ void Cpu::sbc(std::uint8_t v) {
         if (lo < 0) lo -= 6;
         if (hi < 0) hi -= 6;
         regs.a = static_cast<std::uint8_t>(hi * 16 | (lo & 0x0F));
+        if (variant_ == Variant::Cmos) set_nz(regs.a);
         return;
     }
     adc(static_cast<std::uint8_t>(v ^ 0xFF));   // the carry is "no borrow": a - v - b is a + ~v + c
@@ -204,7 +219,7 @@ std::optional<Fault> Cpu::step() {
     using Mode = dec::Mode;
     const std::uint16_t pc = regs.pc;
     const std::uint8_t opcode = rd(pc);
-    const Entry& e = table()[opcode];
+    const Entry& e = table(variant_)[opcode];
     if (!e.documented) return Fault{opcode, pc};
     std::uint16_t next = static_cast<std::uint16_t>(pc + e.size);
     ++steps;
@@ -213,16 +228,19 @@ std::optional<Fault> Cpu::step() {
     auto address = [&](Mode mode) -> std::uint16_t {
         const std::uint16_t operand = static_cast<std::uint16_t>(pc + 1);
         switch (mode) {
-            case Mode::Zp: return rd(operand);
-            case Mode::Zpx: return static_cast<std::uint8_t>(rd(operand) + regs.x);
-            case Mode::Zpy: return static_cast<std::uint8_t>(rd(operand) + regs.y);
+            case Mode::Zp: return static_cast<std::uint16_t>(zero_page_ + rd(operand));
+            case Mode::Zpx: return static_cast<std::uint16_t>(zero_page_ + static_cast<std::uint8_t>(rd(operand) + regs.x));
+            case Mode::Zpy: return static_cast<std::uint16_t>(zero_page_ + static_cast<std::uint8_t>(rd(operand) + regs.y));
             case Mode::Abs: return rd16(operand);
             case Mode::Abx: return static_cast<std::uint16_t>(rd16(operand) + regs.x);
             case Mode::Aby: return static_cast<std::uint16_t>(rd16(operand) + regs.y);
             case Mode::Izx: return rd16_zp(static_cast<std::uint8_t>(rd(operand) + regs.x));
             case Mode::Izy: return static_cast<std::uint16_t>(rd16_zp(rd(operand)) + regs.y);
-            case Mode::Ind: {   // the page-wrap of the original chip
+            case Mode::Izp: return rd16_zp(rd(operand));
+            case Mode::Iax: return rd16(static_cast<std::uint16_t>(rd16(operand) + regs.x));
+            case Mode::Ind: {   // the page-wrap of the original chip (the 65SC02 has none)
                 const std::uint16_t p = rd16(operand);
+                if (variant_ == Variant::Cmos) return rd16(p);
                 const std::uint16_t lo = rd(p);
                 const std::uint16_t hi = rd(static_cast<std::uint16_t>((p & 0xFF00) | ((p + 1) & 0xFF)));
                 return static_cast<std::uint16_t>(lo | hi << 8);
@@ -256,6 +274,7 @@ std::optional<Fault> Cpu::step() {
         case Op::Bit: {
             const std::uint8_t v = load(e.mode);
             set_flag(status::Z, (regs.a & v) == 0);
+            if (e.mode == Mode::Imm) break;   // (BIT #n sets Z alone)
             set_flag(status::N, (v & 0x80) != 0);
             set_flag(status::V, (v & 0x40) != 0);
             break;
@@ -287,6 +306,10 @@ std::optional<Fault> Cpu::step() {
         }
         case Op::Inc:
         case Op::Dec: {
+            if (e.mode == Mode::Acc) {
+                regs.a = set_nz(e.op == Op::Inc ? regs.a + 1u : regs.a - 1u);
+                break;
+            }
             const std::uint16_t addr = address(e.mode);
             const unsigned v = rd(addr);
             wr(addr, set_nz(e.op == Op::Inc ? v + 1 : v - 1));
@@ -366,10 +389,25 @@ std::optional<Fault> Cpu::step() {
             push(static_cast<std::uint8_t>(ret));
             push(regs.p | status::B | status::U);
             set_flag(status::I, true);
+            if (variant_ == Variant::Cmos) set_flag(status::D, false);
             next = rd16(0xFFFE);
             break;
         }
         case Op::Nop: break;
+        case Op::Bra: next = static_cast<std::uint16_t>(next + static_cast<std::int8_t>(rd(static_cast<std::uint16_t>(pc + 1)))); break;
+        case Op::Phx: push(regs.x); break;
+        case Op::Phy: push(regs.y); break;
+        case Op::Plx: regs.x = set_nz(pull()); break;
+        case Op::Ply: regs.y = set_nz(pull()); break;
+        case Op::Stz: wr(address(e.mode), 0); break;
+        case Op::Trb:
+        case Op::Tsb: {
+            const std::uint16_t addr = address(e.mode);
+            const std::uint8_t v = rd(addr);
+            set_flag(status::Z, (regs.a & v) == 0);
+            wr(addr, e.op == Op::Trb ? static_cast<std::uint8_t>(v & ~regs.a) : static_cast<std::uint8_t>(v | regs.a));
+            break;
+        }
     }
     regs.pc = next;
     return std::nullopt;
@@ -388,7 +426,7 @@ std::string RunResult::exit() const {
 
 RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options) {
     const std::size_t log_start = bus.log().size();
-    Cpu cpu(bus, options.decimal);
+    Cpu cpu(bus, options.decimal, options.variant);
     cpu.regs.a = options.a;
     cpu.regs.x = options.x;
     cpu.regs.y = options.y;

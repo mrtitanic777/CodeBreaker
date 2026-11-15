@@ -18,6 +18,7 @@ namespace
     constexpr uint32_t kFalse = 1;                   // S_FALSE
     constexpr uint32_t kInvalidArg = 0x80070057;     // E_INVALIDARG
     constexpr uint32_t kAccessDenied = 0x80070005;
+    constexpr uint32_t kNotFound = 0x80070490;       // HRESULT_FROM_WIN32(ERROR_NOT_FOUND)
     constexpr uint32_t kFunctionFailed = 0x8007065B; // HRESULT_FROM_WIN32(ERROR_FUNCTION_FAILED)
     constexpr uint32_t kAlreadyExists = 0x800700B7;  // HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)
 
@@ -50,6 +51,8 @@ namespace
         uint32_t controllerOwner = kClientTitle; // +0x1D94
         uint32_t workspace = 0, workspaceSize = 0;
         uint32_t playbackController = 0; // XMPSetPlaybackController
+        uint32_t volume = 0x3F800000;    // XMPSetVolume's float, 1.0 until set
+        uint32_t playbackMode = 0, repeatMode = 0, behaviorFlags = 0; // XMPSetPlaybackBehavior
     };
     State g_state;
 
@@ -82,8 +85,8 @@ namespace
             return kInvalidArg;
         if (client != kClientDash && client != kClientTitle)
             return kFunctionFailed;
-        if (songs != 0)
-            Fatal("XMP: creating a title playlist with songs is not implemented");
+        // With songs (SONGS: an array of {path, title ...} records the title lists): nothing plays here, so the list is
+        // only recorded as XAM would keep it, a header and the song records' room; each song's handle is its record.
         memset(mem.Translate(storage), 0, 0x88);
         mem.Write32(storage + 0x00, storage);                        // self
         mem.Write32(storage + 0x0C, client == kClientDash ? 0 : 1);  // playlist type
@@ -103,6 +106,9 @@ namespace
         if (flags & 1)
             g_state.lockedPlaylists++;
         mem.Write32(handlePtr, storage);
+        if (const uint32_t songHandles = Word(buffer, 7))
+            for (uint32_t i = 0; songs != 0 && i < count; i++)
+                mem.Write32(songHandles + i * 4, storage + 0x88 + i * 0x3DC);
         return kOk;
     }
 
@@ -217,6 +223,42 @@ namespace
         return kOk;
     }
 
+    // The title's playback controls (XMPPlayTitlePlaylist 0x70002, XMPContinue 0x70003, XMPStop 0x70004, XMPPause
+    // 0x70005, XMPNext 0x70006, XMPPrevious 0x70007): {client, ...}. There is no playback engine, so nothing is
+    // started and XMPGetStatus keeps answering idle; a title that plays its own music (Hexic HD, Marble Blast Ultra)
+    // goes on without it. Play names a title playlist that must exist (a handle XMPCreateTitlePlaylist gave).
+    uint32_t PlayTitlePlaylist(uint32_t buffer)
+    {
+        const uint32_t storage = Word(buffer, 1);
+        std::lock_guard lock(g_state.mutex);
+        if (g_state.playlists.find(storage) == g_state.playlists.end())
+            return kNotFound;
+        return kOk;
+    }
+
+    // 0x70008, XMPSetPlaybackBehavior: {client, playback mode, repeat mode, flags}.
+    uint32_t SetPlaybackBehavior(uint32_t buffer)
+    {
+        g_state.playbackMode = Word(buffer, 1);
+        g_state.repeatMode = Word(buffer, 2);
+        g_state.behaviorFlags = Word(buffer, 3);
+        return kOk;
+    }
+
+    // 0x7000B, XMPGetVolume: {client, float* pVolume}. 0x7000C, XMPSetVolume: {client, float volume}.
+    uint32_t GetVolume(uint32_t buffer)
+    {
+        if (const uint32_t volumePtr = Word(buffer, 1))
+            guest::g_memory.Write32(volumePtr, g_state.volume);
+        return kOk;
+    }
+
+    uint32_t SetVolume(uint32_t buffer)
+    {
+        g_state.volume = Word(buffer, 1);
+        return kOk;
+    }
+
     // 0x70009, XMPGetStatus: XMP_STATE_IDLE (0); nothing plays. {client, pState}
     uint32_t GetStatus(uint32_t buffer)
     {
@@ -230,12 +272,20 @@ std::optional<uint32_t> kernel::xmp::Dispatch(uint32_t message, uint32_t buffer,
 {
     switch (message)
     {
+    case 0x00070002: return PlayTitlePlaylist(buffer);
+    case 0x00070003: case 0x00070004: case 0x00070005: // continue, stop, pause: nothing plays
+    case 0x00070006: case 0x00070007:                  // next, previous
+        return kOk;
     case 0x00070009: return GetStatus(buffer);
+    case 0x0007000B: return GetVolume(buffer);
+    case 0x0007000C: return SetVolume(buffer);
     case 0x0007000D: return CreateTitlePlaylist(buffer);
     case 0x00070013: return DeleteTitlePlaylist(buffer);
     case 0x0007001A: return SetPlaybackController(buffer);
     case 0x0007001B: return GetPlaybackController(buffer);
-    case 0x00070008: // the old numbering only (an older dashboard, CB_DASH)
+    case 0x00070008: // the title's XMPSetPlaybackBehavior (client 2, 16 bytes); else the old numbering only (an older dashboard, CB_DASH)
+        if (Word(buffer, 0) == kClientTitle)
+            return SetPlaybackBehavior(buffer);
         if (kernel::OlderDashVersion().empty())
             return std::nullopt;
         return VisualizerSwitchOld(buffer);

@@ -11,6 +11,9 @@
 //     NAME = $2000            a constant
 //     .byte 1, $02, "text"    bytes and strings          .word $1234, label    little-endian words
 //     .incbin "file"          a file's bytes, from `folder`
+//     .res 32, $FF            32 bytes of $FF (zero without a value)
+//     .setcpu "65SC02"        accepted and ignored: the encoder chosen says which instructions exist (so are .p816, .pc02, .smart)
+//     .a8 .a16 .i8 .i16       the 65816's register widths from here on (handed to the encoder; 8 bits at the start)
 //     LDA $0200,x ...         an instruction (the encoder)
 //     ; ...                   a comment
 //
@@ -37,6 +40,19 @@ public:
     virtual Result<Bytes> assemble(std::string_view line, std::uint32_t pc, const Labels& labels) const = 0;
     // Whether the (upper-case) mnemonic is a relative branch, always two bytes: the first pass sizes it so.
     virtual bool is_branch(std::string_view mnemonic) const = 0;
+    // The length of a branch whose target is not known yet in the first pass: 0 when `mnemonic` is not a branch that is sized so. An
+    // encoder with branches that are not two bytes (the HuC6280's BBRn and BBSn, the 65816's BRL and PER) says so here.
+    virtual std::size_t branch_length(std::string_view mnemonic) const { return is_branch(mnemonic) ? 2 : 0; }
+    // The instruction line as the source stands at it: `.a16` / `.i16` make the accumulator and the index registers 16 bits wide
+    // (the 65816's immediate operands change length with them); `.a8` / `.i8` make them 8. The directive layer tracks them and hands
+    // them to the encoder that needs them.
+    struct Widths {
+        bool a16 = false;
+        bool i16 = false;
+    };
+    virtual Result<Bytes> assemble_with(std::string_view line, std::uint32_t pc, const Labels& labels, Widths /*widths*/) const {
+        return assemble(line, pc, labels);
+    }
 };
 
 // One MEMORY area of the configuration.

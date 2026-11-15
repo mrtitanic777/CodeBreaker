@@ -77,7 +77,7 @@ CB_TEST("engine.machine_lanes.what_is_not_a_lane_is_refused", [] {
     CB_CHECK_THROWS_AS(UsageError, registry.add(toy("", ".tx")));
     CB_CHECK_THROWS_AS(UsageError, registry.add(toy("Toy", ".tx")));    // not lower case
     CB_CHECK_THROWS_AS(UsageError, registry.add(toy("to-y", ".tx")));
-    for (const char* built_in : {"nes", "sms", "gb", "genesis", "ps1", "zx", "msx"}) {
+    for (const char* built_in : {"nes", "sms", "gb", "genesis", "ps1", "zx", "msx", "coleco", "cpc"}) {
         CB_CHECK(built_in_machine(built_in));
         CB_CHECK_THROWS_AS(UsageError, registry.add(toy(built_in, ".tx")));
     }

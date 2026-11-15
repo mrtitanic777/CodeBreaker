@@ -4,6 +4,7 @@
 #include <format>
 
 #include "cb/core/capstone_api.hpp"
+#include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/io.hpp"

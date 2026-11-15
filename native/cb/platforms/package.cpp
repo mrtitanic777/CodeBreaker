@@ -14,8 +14,8 @@ namespace {
 constexpr std::uint16_t kMachine386 = 0x014C;
 constexpr std::uint16_t kMachineXenon = 0x01F2;
 
-constexpr std::array<std::string_view, 14> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1",
-                                                       "zx",   "msx",     "win32", "win16", "vxd", "dos"};
+constexpr std::array<std::string_view, 24> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1", "gba", "nds", "n64",
+                                                       "zx",   "msx",     "coleco", "cpc", "atari2600", "atari7800", "lynx", "neogeo", "segacd", "win32", "win16", "vxd", "dos"};
 static_assert(kIdNames.size() == kOrder.size());
 
 std::size_t order_index(Id id) {
@@ -211,8 +211,18 @@ bool Registry::recognises(const Platform& platform, const std::filesystem::path&
             case Id::Gb: return need(pr.is_gb, "is_gb")(path);
             case Id::Genesis: return need(pr.is_genesis, "is_genesis")(path);
             case Id::Ps1: return need(pr.is_ps1, "is_ps1")(path);
+            case Id::Gba: return need(pr.is_gba, "is_gba")(path);
+            case Id::Nds: return need(pr.is_nds, "is_nds")(path);
+            case Id::N64: return need(pr.is_n64, "is_n64")(path);
             case Id::Zx: return need(pr.is_zx, "is_zx")(path);
             case Id::Msx: return need(pr.is_msx, "is_msx")(path);
+            case Id::Coleco: return need(pr.is_coleco, "is_coleco")(path);
+            case Id::Cpc: return need(pr.is_cpc, "is_cpc")(path);
+            case Id::Atari2600: return need(pr.is_atari2600, "is_atari2600")(path);
+            case Id::Atari7800: return need(pr.is_atari7800, "is_atari7800")(path);
+            case Id::Lynx: return need(pr.is_lynx, "is_lynx")(path);
+            case Id::NeoGeo: return need(pr.is_neogeo, "is_neogeo")(path);
+            case Id::SegaCd: return need(pr.is_segacd, "is_segacd")(path);
             case Id::Win32: {
                 if (need(pr.executable_class, "executable_class")(path) != ExeKind::Pe) return false;
                 const std::optional<std::uint16_t> m = need(pr.pe_machine, "pe_machine")(path);

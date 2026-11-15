@@ -7,9 +7,19 @@
 #include "cb/engine/lane_kit.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/gb.hpp"
+#include "cb/formats/gba.hpp"
+#include "cb/formats/nds.hpp"
+#include "cb/formats/n64.hpp"
 #include "cb/formats/genesis.hpp"
 #include "cb/formats/psx.hpp"
 #include "cb/formats/msx.hpp"
+#include "cb/formats/coleco.hpp"
+#include "cb/formats/atari2600.hpp"
+#include "cb/formats/atari7800.hpp"
+#include "cb/formats/cpc.hpp"
+#include "cb/formats/lynx.hpp"
+#include "cb/formats/neogeo.hpp"
+#include "cb/formats/segacd.hpp"
 #include "cb/formats/nes.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/formats/sms.hpp"
@@ -17,10 +27,20 @@
 #include "cb/formats/zx.hpp"
 #include "cb/platforms/dos.hpp"
 #include "cb/platforms/gb.hpp"
+#include "cb/platforms/gba.hpp"
+#include "cb/platforms/nds.hpp"
+#include "cb/platforms/n64.hpp"
 #include "cb/platforms/genesis.hpp"
 #include "cb/platforms/ps1.hpp"
 #include "cb/platforms/java.hpp"
 #include "cb/platforms/msx.hpp"
+#include "cb/platforms/coleco.hpp"
+#include "cb/platforms/atari2600.hpp"
+#include "cb/platforms/atari7800.hpp"
+#include "cb/platforms/cpc.hpp"
+#include "cb/platforms/lynx.hpp"
+#include "cb/platforms/neogeo.hpp"
+#include "cb/platforms/segacd.hpp"
 #include "cb/platforms/nes.hpp"
 #include "cb/platforms/sms.hpp"
 #include "cb/platforms/vxd.hpp"
@@ -88,7 +108,17 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_gb = [](const std::filesystem::path& p) { return formats::gb::probe(p); };
     probes.is_genesis = [](const std::filesystem::path& p) { return formats::genesis::probe(p); };
     probes.is_ps1 = [](const std::filesystem::path& p) { return formats::psx::probe(p); };
+    probes.is_gba = [](const std::filesystem::path& p) { return formats::gba::probe(p); };
+    probes.is_nds = [](const std::filesystem::path& p) { return formats::nds::probe(p); };
+    probes.is_n64 = [](const std::filesystem::path& p) { return formats::n64::probe(p); };
     probes.is_msx = [](const std::filesystem::path& p) { return formats::msx::probe(p); };
+    probes.is_coleco = [](const std::filesystem::path& p) { return formats::coleco::probe(p); };
+    probes.is_cpc = [](const std::filesystem::path& p) { return formats::cpc::probe(p); };
+    probes.is_atari2600 = [](const std::filesystem::path& p) { return formats::atari2600::probe(p); };
+    probes.is_atari7800 = [](const std::filesystem::path& p) { return formats::atari7800::probe(p); };
+    probes.is_lynx = [](const std::filesystem::path& p) { return formats::lynx::probe(p); };
+    probes.is_neogeo = [](const std::filesystem::path& p) { return formats::neogeo::probe(p); };
+    probes.is_segacd = [](const std::filesystem::path& p) { return formats::segacd::probe(p); };
     probes.is_zx = [](const std::filesystem::path& p) { return formats::zx::probe(p); };
     probes.is_java_module = [](const std::filesystem::path& p) { return verify::lanes::JavaLane::is_module(p); };
     probes.xex_basefile = [](const std::filesystem::path& p) { return p; };
@@ -99,9 +129,19 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::win16());
     registry->add(platforms::win32());
     registry->add(platforms::msx());
+    registry->add(platforms::coleco());
+    registry->add(platforms::cpc());
+    registry->add(platforms::atari2600());
+    registry->add(platforms::atari7800());
+    registry->add(platforms::lynx());
+    registry->add(platforms::neogeo());
+    registry->add(platforms::segacd());
     registry->add(platforms::zx());
     registry->add(platforms::genesis());
     registry->add(platforms::ps1());
+    registry->add(platforms::gba());
+    registry->add(platforms::nds());
+    registry->add(platforms::n64());
     registry->add(platforms::gb());
     registry->add(platforms::sms());
     registry->add(platforms::nes());

@@ -155,7 +155,8 @@ struct Packed {
 // `size`: bytes of code of each; `aside`: far ones sent elsewhere first; `limit`: where the segment's resident part ends -- a
 // function from below it goes only into a hole that ends below it too (KERNEL keeps only the first A940h bytes of its segment 1).
 Packed pack_holes(const std::vector<HoleSpec>& holes, const OrderedMap<std::string, std::uint32_t>& size,
-                  const std::set<std::string>& near, const std::set<std::string>& aside, std::optional<std::uint32_t> limit);
+                  const std::set<std::string>& near, const std::set<std::string>& aside, std::optional<std::uint32_t> limit,
+                  bool word_aligned = true);
 
 // ---- assembly in a 16-bit module -----------------------------------------------------------------------------------------------
 

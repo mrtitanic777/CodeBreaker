@@ -110,7 +110,7 @@ namespace
                     continue;
                 }
                 lock.unlock();
-                ctx->r1.u64 = thread->stackBase;
+                ctx->r1.u64 = thread->stackBase - kernel::kInitialStackOffset;
                 ctx->r3.u64 = cell;
                 kernel::CallGuest(*ctx, callback);
                 lock.lock();

@@ -205,7 +205,7 @@ void LaneKit::add_lanes(verify::reconstruct::Kinds& kinds) {
     if (auto lane = driver_lane()) kinds.add(std::move(lane));                          // (one signature for every entry point: the driver's source)
     if (auto lane = powerpc_lane()) kinds.add(std::move(lane), verify::lanes::PowerPcLane::traits());
     if (auto lane = dos_lane()) kinds.add(std::move(lane));                             // (the whole program is judged as one)
-    for (const char* machine : {"nes", "sms", "gb", "genesis", "ps1", "zx", "msx"})
+    for (const char* machine : {"nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc"})
         if (auto lane = machine_lane(machine)) kinds.add(std::move(lane));
     for (const std::string& machine : machine_lanes().names())   // (platforms registered in machine_lanes.hpp)
         if (auto lane = machine_lane(machine)) kinds.add(std::move(lane));

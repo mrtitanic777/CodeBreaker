@@ -5,9 +5,12 @@
 #include <array>
 #include <format>
 
+#include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/formats/dos.hpp"
+#include "cb/formats/n64.hpp"
 #include "cb/formats/read.hpp"
+#include "cb/formats/segacd.hpp"
 
 namespace cb::formats::detect {
 
@@ -283,6 +286,46 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
                    std::format("entry 0x{:08X}, program at 0x{:08X}, {} bytes", get<std::uint32_t>(file, 0x10, "detect"),
                                get<std::uint32_t>(file, 0x18, "detect"), size - 0x800),
                    "playstation", "reach");
+    }
+    if (const std::optional<n64::ByteOrder> order = size >= n64::kBootSize ? n64::order_of(head) : std::nullopt; order && head.size() >= n64::kHeaderSize) {   // a Nintendo 64 ROM: the PI configuration word $80371240, in one of three byte orders
+        const Bytes z64 = n64::Rom::convert(head.first(n64::kHeaderSize), *order, n64::ByteOrder::Z64);
+        const auto word = [&](std::size_t at) { return static_cast<std::uint32_t>(z64[at]) << 24 | static_cast<std::uint32_t>(z64[at + 1]) << 16 | static_cast<std::uint32_t>(z64[at + 2]) << 8 | z64[at + 3]; };
+        std::string name(as_text(ByteView(z64).subspan(0x20, 20)));
+        while (!name.empty() && (name.back() == ' ' || name.back() == '\0')) name.pop_back();
+        return one("Nintendo 64 ROM", std::format("\"{}\" ({}{}), {} ({}), {} bytes, entry 0x{:08X}", name, as_text(ByteView(z64).subspan(0x3C, 2)), static_cast<char>(z64[0x3E]), std::string(n64::order_text(*order)).substr(1),
+                                                    *order == n64::ByteOrder::Z64 ? "big-endian" : *order == n64::ByteOrder::V64 ? "byte-swapped" : "little-endian", size, word(8)),
+                   "n64", "reach");
+    }
+    if (head.size() >= 0x200 && head[0x15C] == 0x56 && head[0x15D] == 0xCF && head[0xC0] == 0x24 && head[0xC1] == 0xFF) {   // a Nintendo DS ROM: the logo, and its checksum $CF56 at $15C
+        std::string title(as_text(clamped(head, 0, 12)));
+        while (!title.empty() && title.back() == '\0') title.pop_back();
+        std::string code(as_text(clamped(head, 0x0C, 4)));
+        return one("Nintendo DS cartridge", std::format("\"{}\" ({}), {} bytes, ARM9 {} bytes at 0x{:08X}, ARM7 {} bytes at 0x{:08X}", title, code, size, get<std::uint32_t>(file, 0x2C, "detect"), get<std::uint32_t>(file, 0x28, "detect"), get<std::uint32_t>(file, 0x3C, "detect"), get<std::uint32_t>(file, 0x38, "detect")), "nds", "reach");
+    }
+    if (head.size() >= 0xC0 && head[0xB2] == 0x96 && (head[3] & 0x0E) == 0x0A && (head[3] >> 4) != 0xF) {   // a Game Boy Advance cartridge: $96 at $B2 and the entry branch
+        std::string title(as_text(clamped(head, 0xA0, 12)));
+        while (!title.empty() && title.back() == '\0') title.pop_back();
+        std::string code(as_text(clamped(head, 0xAC, 4)));
+        return one("Game Boy Advance cartridge", std::format("\"{}\" ({}), {} bytes", title, code, size), "gba", "reach");
+    }
+    if (head.size() >= 0x108 && (starts_with(head, 0x100, "NEO-GEO") || starts_with(head, 0x100, "EN-OEG"))) {   // a Neo Geo P-ROM: "NEO-GEO" at $100, or with its words swapped
+        const bool swapped = starts_with(head, 0x100, "EN-OEG");
+        const unsigned ngh = swapped ? head[0x109] << 8 | head[0x108] : head[0x108] << 8 | head[0x109];
+        return one("Neo Geo cartridge (P-ROM)", std::format("NGH {:04X}, {} KB{}", ngh, size / 1024, swapped ? ", words swapped" : ""), "neogeo", "reach");
+    }
+    if (starts_with(h4, 0, "NEO") && size >= 4096) {   // a .neo file: a 4 KB header, then the P, S, M, V and C ROMs
+        return one("Neo Geo .neo file", std::format("{} KB P-ROM, {} KB sound program, {} KB sprites", get<std::uint32_t>(file, 4, "detect") / 1024,
+                                                      get<std::uint32_t>(file, 12, "detect") / 1024, get<std::uint32_t>(file, 24, "detect") / 1024),
+                   "neogeo", "reach");
+    }
+    if (segacd::is_disc_start(head)) {   // a Sega CD disc: "SEGADISCSYSTEM" starts its first sector, which holds the boot header
+        try {
+            const segacd::Disc disc = segacd::parse(file);
+            return one("Sega CD disc", std::format("\"{}\", {}-byte sectors, IP {} bytes at 0x{:X}, SP {} bytes at 0x{:X}", disc.header.domestic_name, disc.sector_size,
+                                                 disc.header.ip.size, disc.header.ip.start, disc.header.sp.size, disc.header.sp.start),
+                       "segacd", "reach");
+        } catch (const Error&) {   // a damaged boot header is no disc of this machine
+        }
     }
     for (const Magic& m : kMagic) {
         if (starts_with(head, 0, m.magic)) {

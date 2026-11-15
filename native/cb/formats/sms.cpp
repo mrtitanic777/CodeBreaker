@@ -125,7 +125,7 @@ Rom parse(ByteView data, std::string_view extension) {
         rom.system = r ? r->system : System::MasterSystem;
     } else if (text::iequals(extension, ".gg")) {
         rom.system = System::GameGear;
-    } else if (text::iequals(extension, ".sg")) {
+    } else if (text::iequals(extension, ".sg") || text::iequals(extension, ".sc")) {
         rom.system = System::Sg1000;
     }
     rom.has_mapper = rom.system != System::Sg1000 && rom.data.size() > kSlotsSize;
@@ -138,7 +138,7 @@ Rom read(const std::filesystem::path& path) {
 }
 
 bool probe(const std::filesystem::path& path) {
-    if (!has_extension(path, {".sms", ".gg", ".sg"})) return false;
+    if (!has_extension(path, {".sms", ".gg", ".sg", ".sc"})) return false;
     const std::optional<std::uint64_t> size = size_of(path);
     return size && *size >= 0x2000;
 }

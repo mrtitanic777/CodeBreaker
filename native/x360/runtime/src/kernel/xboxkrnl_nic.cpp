@@ -744,7 +744,7 @@ namespace
         params.processType = kernel::kProcessTypeSystem;
         kernel::GuestThread* thread = kernel::CreateThread(params);
         PPCContext* ctx = kernel::AttachHostThread(thread);
-        ctx->r1.u64 = thread->stackBase;
+        ctx->r1.u64 = thread->stackBase - kernel::kInitialStackOffset;
         auto& mem = guest::g_memory;
         const uint32_t frameBuffer = mem.SystemAlloc(2048);
         for (;;)

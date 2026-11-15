@@ -30,7 +30,7 @@ Policy Policy::from_environment() {
     };
     Policy p;
     p.caller_args = !is("CB_CALLER_ARGS", "0");
-    p.caller_results = is("CB_CALLER_RESULTS", "1");
+    p.caller_results = !is("CB_CALLER_RESULTS", "0");
     p.fastcall = !is("CB_FASTCALL", "0");
     p.inline_helpers = !is("CB_INLINE_HELPERS", "0");
     auto no_overrides = fs::get_env("CB_NO_CALL_OVERRIDES");

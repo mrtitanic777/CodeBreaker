@@ -7,6 +7,7 @@
 #include "kernel/profile_store.h"
 #include "kernel/users.h"
 #include "kernel/xam_avatar.h"
+#include "kernel/xmp.h"
 
 #include <algorithm>
 #include <atomic>
@@ -14,9 +15,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <format>
+#include <optional>
 #include <string>
 #include <thread>
 
+PPC_EXTERN_FUNC(__imp__InterlockedPushEntrySList);
+PPC_EXTERN_FUNC(__imp__InterlockedPopEntrySList);
+PPC_EXTERN_FUNC(__imp__InterlockedFlushSList);
+PPC_EXTERN_FUNC(__imp__QueryDepthSList);
+PPC_EXTERN_FUNC(__imp__MmSetAddressProtect);
 PPC_EXTERN_FUNC(__imp__KeInitializeEvent);
 PPC_EXTERN_FUNC(__imp__KeSetEvent);
 PPC_EXTERN_FUNC(__imp__KeWaitForSingleObject);
@@ -357,6 +364,67 @@ namespace
                 "XamAvatarGetMetadataSignedOutProfile: each index S_OK or no-avatar (zeroed), past the count 0x80070012, no buffer E_INVALIDARG");
     }
 
+    // The checks that need nothing of the dashboard (no XAM data, profiles or flash): what a title's own program can run
+    // (CB_KERNEL_TEST=2), after the recompiled-title gaps they cover: interlocked lists, XMP, a new thread's stack.
+    void RunTitleHostChecks(Runner& t)
+    {
+        auto& mem = guest::g_memory;
+        PPCContext& ctx = t.ctx;
+        // Interlocked lists: LIFO order, depth, the header's Next/Depth/Sequence words, an empty pop, a flush.
+        const uint32_t list = Alloc(8), entries = Alloc(0x30);
+        t.Check(t.Call(__imp__InterlockedPopEntrySList, { list }) == 0, "InterlockedPopEntrySList on an empty list: NULL");
+        for (uint32_t i = 0; i < 3; i++)
+            t.Check(t.Call(__imp__InterlockedPushEntrySList, { list, entries + i * 16 }) == (i ? entries + (i - 1) * 16 : 0),
+                    std::format("InterlockedPushEntrySList #{} returns the previous first entry", i));
+        t.Check(t.Call(__imp__QueryDepthSList, { list }) == 3 && mem.Read32(list) == entries + 32 && mem.Read16(list + 6) == 3,
+                "the header: Next is the last pushed, Depth 3, Sequence 3");
+        t.Check(t.Call(__imp__InterlockedPopEntrySList, { list }) == entries + 32 && mem.Read32(list) == entries + 16 &&
+                    t.Call(__imp__QueryDepthSList, { list }) == 2,
+                "InterlockedPopEntrySList returns the last pushed and links to the one before");
+        t.Check(t.Call(__imp__InterlockedFlushSList, { list }) == entries + 16 && mem.Read32(list) == 0 &&
+                    t.Call(__imp__QueryDepthSList, { list }) == 0,
+                "InterlockedFlushSList returns the chain and empties the list");
+        constexpr uint32_t kNodes = 64;
+        const uint32_t nodes = Alloc(kNodes * 16);
+        for (uint32_t i = 0; i < kNodes; i++)
+            t.Call(__imp__InterlockedPushEntrySList, { list, nodes + i * 16 });
+        uint32_t drained = 0;
+        for (uint32_t node; (node = t.Call(__imp__InterlockedPopEntrySList, { list })) != 0; drained++)
+            if (node != nodes + (kNodes - 1 - drained) * 16)
+                break;
+        t.Check(drained == kNodes && t.Call(__imp__QueryDepthSList, { list }) == 0, "64 pushes pop in reverse order, then the list is empty");
+
+        // XMP: a title playlist with songs (Marble Blast Ultra, Tempest), then play, volume and status.
+        const uint32_t storage = Alloc(0x88 + 2 * 0x3DC), songs = Alloc(72), handles = Alloc(8), phPlaylist = Alloc(4);
+        const uint32_t args = Alloc(36);
+        const uint32_t words[9] = { 2, storage, 0x88 + 2 * 0x3DC, songs, 2, 0, 0, handles, phPlaylist };
+        for (uint32_t i = 0; i < 9; i++)
+            mem.Write32(args + i * 4, words[i]);
+        t.Check(kernel::xmp::Dispatch(0x7000D, args, 36) == std::optional<uint32_t>(0) && mem.Read32(phPlaylist) == storage &&
+                    mem.Read32(handles) != 0 && mem.Read32(handles) != mem.Read32(handles + 4),
+                "XMPCreateTitlePlaylist with songs: a playlist handle and a handle per song");
+        const uint32_t play = Alloc(12);
+        mem.Write32(play, 2);
+        mem.Write32(play + 4, storage);
+        mem.Write32(play + 8, 0);
+        t.Check(kernel::xmp::Dispatch(0x70002, play, 12) == std::optional<uint32_t>(0), "XMPPlayTitlePlaylist on that playlist: S_OK");
+        mem.Write32(play + 4, storage + 0x1000);
+        t.Check(kernel::xmp::Dispatch(0x70002, play, 12) == std::optional<uint32_t>(0x80070490), "on an unknown playlist: not found");
+        const uint32_t volume = Alloc(8), volumeOut = Alloc(4);
+        mem.Write32(volume, 2);
+        mem.Write32(volume + 4, 0x3F000000);
+        kernel::xmp::Dispatch(0x7000C, volume, 8);
+        mem.Write32(volume + 4, volumeOut);
+        t.Check(kernel::xmp::Dispatch(0x7000B, volume, 8) == std::optional<uint32_t>(0) && mem.Read32(volumeOut) == 0x3F000000,
+                "XMPSetVolume then XMPGetVolume: 0.5");
+
+        // The stack of a new thread starts below its top (a thread function stores into its caller's frame).
+        t.Check(ctx.r1.u32 <= kernel::CurrentThread()->stackBase - kernel::kInitialStackOffset,
+                "a guest thread's stack pointer starts below the top of its stack");
+
+        t.Call(__imp__MmSetAddressProtect, { 0x40000000, 0x1000, 4 });
+    }
+
     int Run(PPCContext& ctx, uint8_t* base)
     {
         Runner t{ ctx, base };
@@ -616,6 +684,8 @@ namespace
         t.Check(t.Call(__imp__XamGetOnlineLanguageAndCountryString, { 1, 103, 32, text }) == 0 && wideAt(text) == "en-US",
                 "XamGetOnlineLanguageAndCountryString(1, 103) = en-US");
 
+        RunTitleHostChecks(t);
+
         Log("Kernel tests: {}", t.failures ? std::format("{} FAILED", t.failures) : "all passed");
         return t.failures;
     }
@@ -623,15 +693,23 @@ namespace
 
 namespace kernel
 {
-    int RunKernelTests()
+    int RunKernelTests(bool titleChecksOnly)
     {
         std::atomic<int> result = -1;
-        StartHostThread([&result] {
+        StartHostThread([&result, titleChecksOnly] {
             ThreadParams params;
             params.stackSize = 0x20000;
             GuestThread* thread = CreateThread(params);
             PPCContext* ctx = AttachHostThread(thread);
-            result = Run(*ctx, guest::g_memory.base);
+            if (titleChecksOnly)
+            {
+                Runner t{ *ctx, guest::g_memory.base };
+                RunTitleHostChecks(t);
+                Log("Kernel tests: {}", t.failures ? std::format("{} FAILED", t.failures) : "all passed");
+                result = t.failures;
+            }
+            else
+                result = Run(*ctx, guest::g_memory.base);
         });
         while (result < 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));

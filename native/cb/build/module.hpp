@@ -168,6 +168,7 @@ struct Built {
     std::map<std::string, std::string> elsewhere_why;  // {function: why the compiler rejected its far copy}
     std::set<std::string> near_names;                  // near functions (a near one stays in its segment)
     std::map<std::int64_t, std::int64_t> resident_limit;   // {segment: where it is cut after start-up}
+    bool byte_aligned_code = false;                         // the functions' objects are byte-aligned (-os): no pad byte before one at an odd place
     std::map<std::string, PublicSymbol> publics;       // {function: the symbol the linker sees}
     std::map<std::string, analyze::origin::Origin> origins;   // by function name
     std::optional<std::string> layout;                 // "segments renumbered: ..." when the segments differ

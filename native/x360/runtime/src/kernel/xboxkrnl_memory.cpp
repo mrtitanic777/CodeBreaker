@@ -230,3 +230,11 @@ GUEST_IMPORT(NtFreeEncryptedMemory)
     ctx.r3.u64 = mem.encrypted.Contains(address) && mem.encrypted.Release(address) ? kernel::kStatusSuccess
                                                                                     : kernel::kStatusInvalidParameter;
 }
+
+// VOID MmSetAddressProtect(PVOID BaseAddress, ULONG Size, ULONG NewProtect): changes the page protection of a range
+// (MW3 calls it 594 times in its first minute, write-combining and no-access toggles on its own buffers). The guest
+// address space here is one flat mapping with no per-page protection, so there is nothing to change.
+GUEST_IMPORT(MmSetAddressProtect)
+{
+    ctx.r3.u64 = 0;
+}

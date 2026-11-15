@@ -30,9 +30,13 @@
 #include <vector>
 
 #include "cb/core/bytes.hpp"
+#include "cb/decompile/m6502.hpp"
 #include "cb/emulate/run.hpp"
 
 namespace cb::emulate::m6502 {
+
+// The instruction set the CPU runs (decompile/m6502): the NMOS 6502, or the Lynx's 65SC02 (see the end of this comment).
+using Variant = cb::decompile::m6502::Variant;
 
 inline constexpr std::uint64_t kMaxSteps = 200000;
 inline constexpr std::size_t kMemorySize = 0x10000;
@@ -69,6 +73,12 @@ public:
     // Addresses lo..hi (inclusive) go to the callbacks: a range with no read callback reads 0, with no write
     // callback ignores the write.
     void map(std::uint16_t lo, std::uint16_t hi, ReadFn read = {}, WriteFn write = {});
+    // The same, with the accesses not logged: for memory behind a callback (the 2600's 128 bytes of RAM), which is state and not an effect.
+    void map_quiet(std::uint16_t lo, std::uint16_t hi, ReadFn read = {}, WriteFn write = {});
+    // A range that only writes are handed to the callback (logged): a read of it is the memory behind it (a cartridge's bank-select register over its ROM).
+    void map_writes(std::uint16_t lo, std::uint16_t hi, WriteFn write);
+    // The address lines the chip has: every address is ANDed with `mask` before anything else (the 2600's 6507 has 13, mask 0x1FFF).
+    void set_address_mask(std::uint16_t mask) { mask_ = mask; }
 
     std::uint8_t read(std::uint16_t address);
     void write(std::uint16_t address, std::uint8_t value);
@@ -82,11 +92,14 @@ private:
         std::uint16_t lo, hi;
         ReadFn read;
         WriteFn write;
+        bool logged;
+        bool reads = true;   // false: the range answers writes only
     };
     Bytes owned_;
     std::span<std::uint8_t> ram_;
     std::vector<Range> ranges_;
     std::vector<DeviceAccess> log_;
+    std::uint16_t mask_ = 0xFFFF;
 };
 
 struct Registers {
@@ -104,10 +117,16 @@ struct Fault {
 
 class Cpu {
 public:
-    explicit Cpu(Bus& bus, bool decimal = false) : bus_(&bus), decimal_(decimal) {}
+    explicit Cpu(Bus& bus, bool decimal = false, Variant variant = Variant::Nmos) : bus_(&bus), decimal_(decimal), variant_(variant) {}
 
     Registers regs;
     std::uint64_t steps = 0;   // instructions executed
+
+    // Where page zero and the stack are in the address space: $0000 and $0100 on the 6502; the HuC6280's are at $2000 and $2100.
+    void set_pages(std::uint16_t zero_page, std::uint16_t stack) {
+        zero_page_ = zero_page;
+        stack_ = stack;
+    }
 
     // Execute the instruction at pc. nullopt: it ran. A Fault: the opcode is undocumented (nothing changed).
     std::optional<Fault> step();
@@ -133,6 +152,9 @@ private:
 
     Bus* bus_;
     bool decimal_;
+    Variant variant_;
+    std::uint16_t zero_page_ = 0x0000;
+    std::uint16_t stack_ = 0x0100;
 };
 
 struct RunOptions {
@@ -140,6 +162,7 @@ struct RunOptions {
     std::uint8_t p = status::U | status::I;
     std::uint64_t max_steps = kMaxSteps;
     bool decimal = false;
+    Variant variant = Variant::Nmos;   // Cmos: the 65SC02 (BRK clears D, the indirect JMP does not wrap, decimal results set N and Z)
 };
 
 enum class End : std::uint8_t { Return, Stopped, Limit };

@@ -1,6 +1,11 @@
 // Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis, ps1. Each is checked against the values below.
+#include "cb/platforms/coleco.hpp"
+#include "cb/platforms/cpc.hpp"
 #include "cb/platforms/gb.hpp"
+#include "cb/platforms/gba.hpp"
 #include "cb/platforms/genesis.hpp"
+#include "cb/platforms/neogeo.hpp"
+#include "cb/platforms/segacd.hpp"
 #include "cb/platforms/ps1.hpp"
 #include "cb/platforms/nes.hpp"
 #include "cb/platforms/sms.hpp"
@@ -52,7 +57,7 @@ CB_TEST("platforms.nes.descriptor", [] {
 
 CB_TEST("platforms.sms.descriptor", [] {
     const Platform p = sms();
-    check_machine(p, Id::Sms, "sms", "Master System / Game Gear", "z80", "cartridge image (.sms, .gg, .sg)");
+    check_machine(p, Id::Sms, "sms", "Master System / Game Gear", "z80", "cartridge image (.sms, .gg, .sg, .sc)");
     CB_CHECK_EQ(p.cpu.language, "z80:LE:16:default");
     CB_CHECK_EQ(*p.cpu.bits, 8u);
     CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::Z80);
@@ -116,9 +121,11 @@ CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
     probes.is_gb = [](const std::filesystem::path& p) { return p.extension() == ".gb"; };
     probes.is_genesis = [](const std::filesystem::path& p) { return p.extension() == ".md"; };
     probes.is_ps1 = [](const std::filesystem::path& p) { return p.extension() == ".psx"; };
+    probes.is_gba = [](const std::filesystem::path& p) { return p.extension() == ".gba"; };
     Registry registry(probes);
     registry.add(genesis());
     registry.add(ps1());
+    registry.add(gba());
     registry.add(gb());
     registry.add(sms());
     registry.add(nes());
@@ -127,7 +134,64 @@ CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
     CB_CHECK_EQ(registry.identify("g.gb")->name, "gb");
     CB_CHECK_EQ(registry.identify("g.md")->name, "genesis");
     CB_CHECK_EQ(registry.identify("g.psx")->name, "ps1");
+    CB_CHECK_EQ(registry.identify("g.gba")->name, "gba");
     CB_CHECK(registry.identify("g.bin") == nullptr);
     CB_CHECK_EQ(registry.all().front().name, "nes");
-    CB_CHECK_EQ(registry.runners().size(), 5u);
+    CB_CHECK_EQ(registry.runners().size(), 6u);
+});
+
+CB_TEST("platforms.gba.descriptor", [] {
+    const Platform p = gba();
+    check_machine(p, Id::Gba, "gba", "Game Boy Advance", "arm", "cartridge ROM (.gba)");
+    CB_CHECK_EQ(p.cpu.language, "ARM:LE:32:v4t");
+    CB_CHECK_EQ(*p.cpu.bits, 32u);
+    CB_CHECK(*p.cpu.endian == Endian::Little);
+    CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::Arm);
+    CB_CHECK_EQ(p.cpu.registers.size(), 11u);   // R0 R1 R4..R11 SP
+    CB_CHECK_EQ(p.cpu.registers[0], "R0");
+    CB_CHECK_EQ(p.cpu.registers[10], "SP");
+    CB_CHECK_EQ(p.cpu.stack, "SP");
+    CB_CHECK((p.convention.results == p.cpu.registers));
+    CB_CHECK_EQ(p.compiler.toolchain, "CodeBreaker's own assembler, or GNU as");
+});
+
+CB_TEST("platforms.coleco.descriptor", [] {
+    const Platform p = coleco();
+    check_machine(p, Id::Coleco, "coleco", "ColecoVision", "z80", "cartridge image (.col)");
+    CB_CHECK_EQ(p.cpu.language, "z80:LE:16:default");
+    CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::Z80);
+    CB_CHECK((p.convention.results == Strings{"A", "F", "BC", "DE", "HL", "IX", "IY"}));
+    CB_CHECK_EQ(p.cpu.stack, "SP");
+    CB_CHECK_EQ(p.compiler.toolchain, "CodeBreaker's own assembler, or sjasmplus / pasmo");
+});
+
+CB_TEST("platforms.cpc.descriptor", [] {
+    const Platform p = cpc();
+    check_machine(p, Id::Cpc, "cpc", "Amstrad CPC", "z80", "disk (.dsk), snapshot (.sna), AMSDOS binary (.bin)");
+    CB_CHECK_EQ(p.cpu.language, "z80:LE:16:default");
+    CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::Z80);
+    CB_CHECK((p.cpu.registers == Strings{"A", "F", "BC", "DE", "HL", "IX", "IY", "SP"}));
+    CB_CHECK_EQ(p.compiler.toolchain, "CodeBreaker's own assembler, or sjasmplus / pasmo");
+});
+
+CB_TEST("platforms.neogeo.descriptor", [] {
+    const Platform p = neogeo();
+    check_machine(p, Id::NeoGeo, "neogeo", "Neo Geo (AES / MVS)", "68000", "cartridge P-ROM (.p1, .bin, word-swapped or not) or .neo file");
+    CB_CHECK_EQ(p.cpu.language, "68000:BE:32:default");
+    CB_CHECK(*p.cpu.endian == Endian::Big);
+    CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::M68k);
+    CB_CHECK_EQ(p.cpu.registers.size(), 17u);   // D0..D7, A0..A7, SR
+    CB_CHECK_EQ(p.cpu.stack, "A7");
+    CB_CHECK_EQ(p.convention.results.size(), 15u);   // D0..D7, A0..A6
+    CB_CHECK_EQ(p.compiler.toolchain, "CodeBreaker's own assembler");
+});
+
+CB_TEST("platforms.segacd.descriptor", [] {
+    const Platform p = segacd();
+    check_machine(p, Id::SegaCd, "segacd", "Sega CD / Mega-CD", "68000", "disc image boot sectors (.iso, .bin; 2048 or 2352 bytes a sector)");
+    CB_CHECK_EQ(p.cpu.language, "68000:BE:32:default");
+    CB_CHECK(std::get<OwnDecoder>(p.cpu.decoder) == OwnDecoder::M68k);
+    CB_CHECK_EQ(p.cpu.registers.size(), 17u);
+    CB_CHECK_EQ(p.convention.results.front(), "D0");
+    CB_CHECK_EQ(p.convention.results.back(), "A6");
 });

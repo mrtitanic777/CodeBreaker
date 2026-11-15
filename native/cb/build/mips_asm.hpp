@@ -1,12 +1,15 @@
-// cb/build/mips_asm.hpp -- CodeBreaker's own R3000A assembler, for the source the PlayStation lane writes.
+// cb/build/mips_asm.hpp -- CodeBreaker's own MIPS assembler, for the source the PlayStation lane (R3000A, little-endian) and the Nintendo 64
+// lane (R4300i, big-endian) write.
 //
 //     Assembler mips(encoder);                     // the MIPS instruction syntax (decompile/mips)
+//     Assembler n64(encoder, ByteOrder::Big);      // the same, writing data directives big-endian (the encoder makes big-endian instructions)
 //     Bytes file = mips.build(source_text);        // the bytes written, in the order they were written
 //
 // It reads the part of GNU as's language (the assembler of the PlayStation homebrew toolchains: mipsel-none-elf-as, PSn00bSDK)
 // that source/ps1_writer writes, so the source's instructions also build with it:
 //
-//     .word / .4byte / .long    words (little-endian): numbers, labels, expressions
+//     .word / .4byte / .long    words (in the byte order): numbers, labels, expressions
+//     .dword / .8byte / .quad   doublewords
 //     .half / .short / .2byte   halfwords;  .byte  bytes
 //     .ascii / .asciz / .asciiz text (with \n \t \r \0 \\ \" and \ooo octal), without and with the terminating zero
 //     .space n[, fill]          n bytes (zero, or fill);  .fill n, size, value   n items of `size` bytes
@@ -35,10 +38,13 @@
 
 namespace cb::build::mips_asm {
 
+// How the data directives (.word .half .fill ...) lay out a value; an instruction's bytes are the encoder's.
+enum class ByteOrder : std::uint8_t { Little, Big };
+
 class Assembler {
 public:
     // The encoder is borrowed and must outlive the assembler.
-    explicit Assembler(const Encoder& encoder) : isa_(&encoder) {}
+    explicit Assembler(const Encoder& encoder, ByteOrder order = ByteOrder::Little) : isa_(&encoder), order_(order) {}
 
     // The file `source` describes. AsmError, with the line, for anything that does not assemble (including an instruction whose size
     // differs between the two passes, and a file past 16 MiB).
@@ -46,6 +52,7 @@ public:
 
 private:
     const Encoder* isa_;
+    ByteOrder order_;
 };
 
 // `line` with its `#` comment removed (not one inside a string), trimmed at the end.

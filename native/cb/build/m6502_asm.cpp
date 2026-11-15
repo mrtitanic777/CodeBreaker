@@ -98,6 +98,11 @@ public:
             return;
         }
         if (text.starts_with(".segment")) return segment(text);
+        if (text.starts_with(".setcpu") || text.starts_with(".pc02") || text.starts_with(".p02") || text.starts_with(".p816") || text.starts_with(".smart")) return;   // (the instruction set is the encoder's)
+        if (text == ".a8" || text == ".a16" || text == ".i8" || text == ".i16") {   // the 65816's register widths
+            (text[1] == 'a' ? widths_.a16 : widths_.i16) = text.ends_with("16");
+            return;
+        }
         if (!current_) fail("code outside any segment");
         Bytes& out = areas_[*current_].body;
         if (text.starts_with(".byt")) {   // .byte and .byt
@@ -110,6 +115,13 @@ public:
                     out.push_back(static_cast<std::uint8_t>(number_or_fail(a) & 0xFF));
                 }
             }
+        } else if (text.starts_with(".res") || text.starts_with(".fill")) {   // .res count [, value]
+            const std::vector<std::string_view> items = operands(text);
+            if (items.empty() || items.size() > 2) fail(".res takes a count and an optional value");
+            const std::int64_t count = number_or_fail(items[0]);
+            const std::uint8_t value = items.size() == 2 ? static_cast<std::uint8_t>(number_or_fail(items[1]) & 0xFF) : 0;
+            if (count < 0 || count > 0x1000000) fail("a count out of range");
+            out.insert(out.end(), static_cast<std::size_t>(count), value);
         } else if (text.starts_with(".word") || text.starts_with(".addr")) {
             for (const std::string_view a : operands(text)) {
                 std::int64_t v = 0;
@@ -202,25 +214,25 @@ private:
     void instruction(std::string_view text, Bytes& out) {
         const std::uint32_t pc = address();
         if (final_) {
-            Result<Bytes> r = isa_.assemble(text, pc, labels_);
+            Result<Bytes> r = isa_.assemble_with(text, pc, labels_, widths_);
             if (!r.ok()) fail(r.error().what());
             append(out, r.value());
             return;
         }
         // The first pass needs sizes only: every label not known yet is far (absolute addressing), every branch
         // is near. Unknown names get a placeholder for this one line.
-        if (isa_.is_branch(text::upper(split_mnemonic(text).first))) {
-            out.insert(out.end(), {0, 0});
+        if (const std::size_t length = isa_.branch_length(text::upper(split_mnemonic(text).first))) {
+            out.insert(out.end(), length, 0);
             return;
         }
         std::vector<std::string> placeholders;
-        Result<Bytes> r = isa_.assemble(text, pc, labels_);
+        Result<Bytes> r = isa_.assemble_with(text, pc, labels_, widths_);
         while (!r.ok() && is_undefined(r.error())) {
             const std::string& name = static_cast<const UndefinedSymbolError&>(r.error()).name();
             if (labels_.contains(name)) break;
             labels_[name] = 0xFFFF;
             placeholders.push_back(name);
-            r = isa_.assemble(text, pc, labels_);
+            r = isa_.assemble_with(text, pc, labels_, widths_);
         }
         for (const std::string& name : placeholders) labels_.erase(name);
         if (!r.ok()) fail(r.error().what());
@@ -240,6 +252,7 @@ private:
     Path folder_;
     std::vector<Area> areas_;
     std::optional<std::size_t> current_;
+    Encoder6502::Widths widths_;
 };
 
 }  // namespace

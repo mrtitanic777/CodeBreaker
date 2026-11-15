@@ -61,7 +61,7 @@ namespace
         params.processType = kernel::kProcessTypeSystem;
         kernel::GuestThread* thread = kernel::CreateThread(params);
         PPCContext* ctx = kernel::AttachHostThread(thread);
-        ctx->r1.u64 = thread->stackBase; // the calls into XAM run on this thread's own guest stack
+        ctx->r1.u64 = thread->stackBase - kernel::kInitialStackOffset; // the calls into XAM run on this thread's own guest stack
         auto& mem = guest::g_memory;
         const uint32_t userByte = mem.SystemAlloc(4);
         std::array<bool, kUsers> bound{};

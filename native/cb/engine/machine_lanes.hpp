@@ -41,7 +41,7 @@ struct MachineLane {
     std::function<verify::lanes::ImageLaneSpec()> make_spec;
 };
 
-// The names the lane kit builds itself ("nes", "sms", "gb", "genesis", "ps1", "zx", "msx").
+// The names the lane kit builds itself ("nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc").
 bool built_in_machine(std::string_view name);
 
 class MachineLaneRegistry {

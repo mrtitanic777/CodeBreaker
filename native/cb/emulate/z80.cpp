@@ -946,6 +946,7 @@ RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options) {
             out.end = End::Return;
             break;
         }
+        if (options.before_step) options.before_step(r.pc);
         if (auto fault = cpu.step()) {
             out.end = End::Stopped;
             out.fault = fault;

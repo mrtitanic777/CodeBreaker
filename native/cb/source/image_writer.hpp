@@ -193,6 +193,8 @@ public:
     // What stands at a place of its own (a header field, the vectors): write it (after `flush`) and say how many bytes it took,
     // or answer 0.
     virtual std::uint32_t special(std::uint32_t /*offset*/, std::uint32_t /*address*/, const Flush& /*flush*/) { return 0; }
+    // The line that defines a label: `name:` unless the assembler wants another spelling (dasm: the name alone).
+    virtual std::string label_line(const std::string& name) const { return name + ":"; }
 };
 
 // Append the lines for the image's bytes [start, end) to `out`.
@@ -218,7 +220,7 @@ void emit(translate::l2::Assembly& out, std::uint32_t start, std::uint32_t end, 
                 out.part(fn->second, "function", translate::ir::OriginVa{out.module().value_or(""), addr});   // each function a fragment
                 out.append("");
             }
-            out.append(label->second + ":");
+            out.append(listing.label_line(label->second));
         }
         if (const Insn* insn = listing.code_at(offset, addr)) {
             flush();

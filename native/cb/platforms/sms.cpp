@@ -7,7 +7,7 @@ Platform sms() {
     s.id = Id::Sms;
     s.title = "Master System / Game Gear";
     s.family = "z80";
-    s.container = "cartridge image (.sms, .gg, .sg)";
+    s.container = "cartridge image (.sms, .gg, .sg, .sc)";
     s.cpu = {"z80:LE:16:default", 8, Endian::Little, OwnDecoder::Z80, {"A", "F", "BC", "DE", "HL", "IX", "IY", "SP"}, "SP"};
     s.results = {"A", "F", "BC", "DE", "HL", "IX", "IY"};
     s.toolchain = "CodeBreaker's own assembler, or WLA-DX";

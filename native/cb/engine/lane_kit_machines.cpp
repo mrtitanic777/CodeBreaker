@@ -1,6 +1,6 @@
 // cb/engine/lane_kit_machines.cpp -- the real-mode program lane and the lanes of the cartridge machines, wired (see lane_kit.hpp).
 //
-// "dos" is the real-mode lane: the program written back as assembly, built, compared as a whole. "nes", "sms", "gb", "genesis", "ps1", "zx" and "msx" are
+// "dos" is the real-mode lane: the program written back as assembly, built, compared as a whole. "nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco" and "cpc" are
 // each one verify/lanes/image_lane: the cartridge (or executable, snapshot, or tape) written back by its platform's writer and rebuilt; a program that comes back
 // identical is the original, an edited one has each function run beside the original's in CodeBreaker's own interpreter of the machine's processor,
 // from the same starting states, and what each did (how it ended, the registers, the memory it left, the hardware it touched) is compared. What is
@@ -12,23 +12,31 @@
 #include "cb/build/driver.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
+#include "cb/emulate/arm.hpp"
 #include "cb/emulate/m6502.hpp"
 #include "cb/emulate/m68k.hpp"
 #include "cb/emulate/mips.hpp"
 #include "cb/emulate/sm83.hpp"
 #include "cb/emulate/z80.hpp"
+#include "cb/emulate/z80_machines.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
 #include "cb/engine/machine_lanes.hpp"
 #include "cb/formats/gb.hpp"
+#include "cb/formats/gba.hpp"
 #include "cb/formats/genesis.hpp"
 #include "cb/formats/psx.hpp"
+#include "cb/formats/coleco.hpp"
+#include "cb/formats/cpc.hpp"
 #include "cb/formats/msx.hpp"
 #include "cb/formats/nes.hpp"
 #include "cb/formats/sms.hpp"
 #include "cb/formats/zx.hpp"
 #include "cb/source/dos_writer.hpp"
 #include "cb/source/gb_writer.hpp"
+#include "cb/source/gba_writer.hpp"
 #include "cb/source/genesis_writer.hpp"
+#include "cb/source/coleco_writer.hpp"
+#include "cb/source/cpc_writer.hpp"
 #include "cb/source/msx_writer.hpp"
 #include "cb/source/ps1_writer.hpp"
 #include "cb/source/nes_writer.hpp"
@@ -143,12 +151,13 @@ lanes::Effects nes_effects(const stdfs::path& path, std::uint32_t entry, const l
 // ---- the Master System and Game Gear -----------------------------------------------------------------------------------------------
 
 lanes::Effects sms_effects(const stdfs::path& path, std::uint32_t entry, const lanes::State& state) {
-    Bytes mem = formats::sms::read(path).memory();
+    const formats::sms::Rom rom = formats::sms::read(path);
+    Bytes mem = rom.memory();
     const std::int64_t seed = at(state, "fill");
     if (seed != 0)
         for (std::size_t i = 0; i < 0x2000; ++i) mem[0xC000 + i] = machine_fill(i, seed);
     emulate::z80::Bus bus(mem, [](std::uint16_t port) -> std::uint8_t { return (port & 0xFF) == 0xBF ? 0x80 : 0xFF; });   // (the VDP always in vblank)
-    bus.map(0xFFFC, 0xFFFF);
+    if (rom.system != formats::sms::System::Sg1000) bus.map(0xFFFC, 0xFFFF);   // (the Master System's mapper registers, logged; on an SG-1000 they are RAM)
     emulate::z80::RunOptions options;
     options.max_steps = kSteps;
     options.regs.a = static_cast<std::uint8_t>(at(state, "a"));
@@ -261,6 +270,64 @@ lanes::Effects ps1_effects(const stdfs::path& path, std::uint32_t entry, const l
             lanes::Effect(std::move(changed)), lanes::Effect(std::move(io)), lanes::Effect(std::move(bios))};
 }
 
+// ---- the Game Boy Advance ----------------------------------------------------------------------------------------------------------
+
+// The work RAM a run may be handed pointers into: seeded from `fill`, in the part of the 256 KB no program of ours has data in at the start.
+constexpr std::uint32_t kGbaWork = 0x02010000;
+constexpr std::size_t kGbaWorkBytes = 0x10000;
+
+lanes::State gba_state(std::uint32_t a0, std::uint32_t a1, std::uint32_t a2, std::uint32_t a3, std::uint32_t s0, int fill) {
+    return {{"a0", a0}, {"a1", a1}, {"a2", a2}, {"a3", a3}, {"s0", s0}, {"fill", fill}};
+}
+
+lanes::Effects gba_effects(const stdfs::path& path, std::uint32_t entry, const lanes::State& state) {
+    const formats::gba::Rom rom = formats::gba::read(path);
+    emulate::arm::Bus bus;
+    bus.set_rom(rom.memory());
+    const std::int64_t seed = at(state, "fill");
+    if (seed != 0)
+        for (std::size_t i = 0; i < kGbaWorkBytes; ++i) bus.ewram()[kGbaWork - emulate::arm::kEwramBase + i] = machine_fill(i, seed);
+    // the scanline counter moves on every read, so a wait for the vertical blank ends; the status register's blank flag follows it; no key is down
+    const auto scanline = std::make_shared<std::uint32_t>(0);
+    bus.map(0x04000004, 0x04000007, [scanline](std::uint32_t address, unsigned) -> std::uint32_t {
+        const std::uint32_t line = (*scanline)++ % 228;
+        const std::uint32_t word = ((line >= 160 && line < 227) ? 1u : 0u) | line << 16;
+        return word >> (8 * (address - 0x04000004));
+    });
+    bus.map(0x04000130, 0x04000131, [](std::uint32_t address, unsigned) -> std::uint32_t { return address == 0x04000130 ? 0xFF : 0x03; });   // KEYINPUT: nothing pressed
+    struct Region {
+        std::uint32_t base;
+        ByteSpan memory;
+    };
+    const std::vector<Region> regions = {{emulate::arm::kEwramBase, bus.ewram()}, {emulate::arm::kIwramBase, bus.iwram()}, {emulate::arm::kPaletteBase, bus.palette()},
+                                         {emulate::arm::kVramBase, bus.vram()},   {emulate::arm::kOamBase, bus.oam()},     {emulate::arm::kSramBase, bus.sram()}};
+    std::vector<Bytes> before;
+    for (const Region& r : regions) before.emplace_back(r.memory.begin(), r.memory.end());
+    emulate::arm::RunOptions options;
+    options.max_steps = kSteps;
+    options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
+                 static_cast<std::uint32_t>(at(state, "a3"))};
+    options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
+    const emulate::arm::RunResult run = emulate::arm::run(bus, entry, options);
+    // what the run changed in the machine's memories (the program is in the ROM, which a run cannot write)
+    std::vector<std::string> changed;
+    for (std::size_t k = 0; k < regions.size(); ++k)
+        for (std::size_t i = 0; i < before[k].size() && changed.size() < kIoShown; ++i)
+            if (before[k][i] != regions[k].memory[i]) changed.push_back(std::format("{:08x}={:02x}", regions[k].base + i, regions[k].memory[i]));
+    Bytes saved;
+    for (std::size_t i = 4; i < 12; ++i)
+        for (int shift = 0; shift < 32; shift += 8) saved.push_back(static_cast<std::uint8_t>(run.r[i] >> shift));
+    std::vector<std::string> io;
+    for (const emulate::arm::BusAccess& x : run.io) {
+        io.push_back(io_line(x.text(), x.address, x.value));
+        if (io.size() == kIoShown) break;
+    }
+    std::vector<std::string> bios;
+    for (const emulate::arm::BiosCall& c : run.bios) bios.push_back(c.text());
+    return {lanes::Effect(run.exit()), number(run.r[0]), number(run.r[1]), lanes::Effect(std::move(saved)), number(run.r[13]),
+            lanes::Effect(std::move(changed)), lanes::Effect(std::move(io)), lanes::Effect(std::move(bios))};
+}
+
 // ---- the flat Z80 programs: the ZX Spectrum and the MSX ----------------------------------------------------------------------------------
 
 // What a flat program is run in is a file: the origin, the length of the block, then the 64 KB of memory as it is laid out (the machine's ROM every
@@ -315,6 +382,44 @@ lanes::Effects flat_effects(const stdfs::path& path, std::uint32_t entry, const 
             number(r.hl()),           number(r.ix), number(r.iy), lanes::Effect(std::move(changed)), lanes::Effect(std::move(io))};
 }
 
+// The same for a machine with a model (emulate/z80_machines): its RAM is seeded and its firmware is RET, its ports answer as the machine's do, and the
+// ports touched and the firmware's entries called are compared with the rest.
+lanes::Effects model_effects(const emulate::z80_machines::Machine& machine, const stdfs::path& path, std::uint32_t entry, const lanes::State& state) {
+    const Bytes file = fs::read_file(path);
+    CB_ASSERT(file.size() == 8 + 0x10000, "a flat program file is its origin, its length and 64 KB of memory");
+    const auto word = [&](std::size_t at_) { return static_cast<std::uint32_t>(file[at_] | file[at_ + 1] << 8 | file[at_ + 2] << 16 | static_cast<std::uint32_t>(file[at_ + 3]) << 24); };
+    const std::uint32_t begin = word(0), end = word(0) + word(4);
+    Bytes mem(file.begin() + 8, file.end());
+    const std::int64_t seed = at(state, "fill");
+    if (seed != 0) {
+        for (const emulate::z80_machines::Range& range : machine.ram)
+            for (std::uint32_t a = range.low; a <= range.high; ++a)
+                if ((a < begin || a >= end) && !emulate::z80_machines::in_firmware(machine, static_cast<std::uint16_t>(a))) mem[a] = machine_fill(a, seed);
+    }
+    emulate::z80_machines::stub_firmware(machine, mem);
+    const Bytes before = mem;
+    emulate::z80_machines::Trace trace;
+    emulate::z80::Bus bus = emulate::z80_machines::bus_for(machine, before, trace);
+    emulate::z80::RunOptions options;
+    options.max_steps = kSteps;
+    options.regs.a = static_cast<std::uint8_t>(at(state, "a"));
+    options.regs.b = static_cast<std::uint8_t>(at(state, "b"));
+    options.regs.c = static_cast<std::uint8_t>(at(state, "c"));
+    options.regs.d = static_cast<std::uint8_t>(at(state, "d"));
+    options.regs.e = static_cast<std::uint8_t>(at(state, "e"));
+    options.regs.h = static_cast<std::uint8_t>(at(state, "h"));
+    options.regs.l = static_cast<std::uint8_t>(at(state, "l"));
+    const emulate::z80::RunResult run = emulate::z80_machines::run(machine, bus, trace, static_cast<std::uint16_t>(entry), options);
+    std::vector<std::string> changed;
+    for (std::size_t i = 0; i < 0x10000; ++i)
+        if (before[i] != bus.memory()[i]) changed.push_back(std::format("{:04x}={:02x}", i, bus.memory()[i]));
+    if (trace.ports.size() > kIoShown) trace.ports.resize(kIoShown);
+    if (trace.calls.size() > kIoShown) trace.calls.resize(kIoShown);
+    const emulate::z80::Registers& r = run.regs;
+    return {lanes::Effect(run.exit()), number(r.a),  number(r.f),  number(r.bc()), number(r.de()),         number(r.hl()),
+            number(r.ix),              number(r.iy), lanes::Effect(std::move(changed)), lanes::Effect(std::move(trace.ports)), lanes::Effect(std::move(trace.calls))};
+}
+
 // The flat machine's lane: its writer leaves the block it rebuilt in the folder beside the source, and the two programs are run from files.
 struct FlatMachine {
     std::string kind;
@@ -323,6 +428,8 @@ struct FlatMachine {
     std::function<source::image_writer::Written(const stdfs::path&, const stdfs::path&)> reconstruct;
     // The original's block: its origin, bytes, and the memory around it.
     std::function<std::tuple<std::uint32_t, Bytes, Bytes>(const stdfs::path&)> open;
+    // A machine with a model (emulate/z80_machines): run in that, not in a bare 64 KB.
+    const emulate::z80_machines::Machine* model = nullptr;
 };
 
 lanes::ImageLaneSpec flat_spec(const FlatMachine& m) {
@@ -330,8 +437,14 @@ lanes::ImageLaneSpec flat_spec(const FlatMachine& m) {
     spec.kind = m.kind;
     spec.rev = m.rev;
     spec.states = {flat_state(0, 0, 0, 0, 0, 0, 0, 0), flat_state(1, 2, 3, 0xC1, 0x00, 0xC2, 0x10, 1), flat_state(0x80, 0xFF, 0x7F, 0xD0, 0x80, 0xE1, 0x00, 2)};
-    spec.effects = flat_effects;
+    if (m.model) {
+        const emulate::z80_machines::Machine* model = m.model;
+        spec.effects = [model](const stdfs::path& p, std::uint32_t entry, const lanes::State& s) { return model_effects(*model, p, entry, s); };
+    } else {
+        spec.effects = flat_effects;
+    }
     spec.what = {"end", "A", "flags", "BC", "DE", "HL", "IX", "IY", "memory", "port accesses"};
+    if (m.model) spec.what.push_back("firmware calls");
     spec.start = [](const lanes::State& s) {
         return std::format("from A={:02X} BC={:02X}{:02X} HL={:02X}{:02X}", at(s, "a"), at(s, "b"), at(s, "c"), at(s, "h"), at(s, "l"));
     };
@@ -440,7 +553,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::nes_writer::reconstruct(m, out)); };
     } else if (name == "sms") {
         spec.kind = "sms";
-        spec.rev = 1;
+        spec.rev = 2;
         spec.states = {gb_state(0, 0, 0, 0, 0, 0, 0, 0), gb_state(1, 2, 3, 0xC1, 0x00, 0xC2, 0x10, 1), gb_state(0x80, 0xFF, 0x7F, 0xC0, 0x80, 0xC1, 0x00, 2),
                        gb_state(0x55, 0x10, 0xAA, 0xD0, 0x00, 0xC8, 0x40, 3)};
         spec.effects = sms_effects;
@@ -468,6 +581,16 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.start = [](const lanes::State& s) { return std::format("from A0={:08X} A1={:08X} A2={:X}", at(s, "a0"), at(s, "a1"), at(s, "a2")); };
         spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::ps1_writer::reconstruct(m, out)); };
         spec.key_digits = 8;
+    } else if (name == "gba") {
+        spec.kind = "gba";
+        spec.rev = 1;
+        spec.states = {gba_state(0, 0, 0, 0, 0, 0), gba_state(kGbaWork, kGbaWork + 0x1000, 5, 0x10, 0, 1),
+                       gba_state(kGbaWork + 0x2000, 0xFFFFFFFF, 0x7F, 0x80000000, 3, 2), gba_state(2, 3, kGbaWork + 0x100, kGbaWork + 0x200, 7, 3)};
+        spec.effects = gba_effects;
+        spec.what = {"end", "R0", "R1", "R4-R11", "SP", "RAM changes", "hardware accesses", "BIOS calls"};
+        spec.start = [](const lanes::State& s) { return std::format("from R0={:08X} R1={:08X} R2={:X}", at(s, "a0"), at(s, "a1"), at(s, "a2")); };
+        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::gba_writer::reconstruct(m, out)); };
+        spec.key_digits = 8;
     } else if (name == "zx") {
         spec = flat_spec(FlatMachine{
             std::string(lanes::zx::kKind), lanes::zx::kRev, {lanes::zx::kRomLow, lanes::zx::kRomHigh},
@@ -484,6 +607,24 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
                 const formats::msx::Program p = formats::msx::read(m);
                 return std::make_tuple(p.origin, p.image, Bytes());
             }});
+    } else if (name == "coleco") {
+        spec = flat_spec(FlatMachine{
+            "coleco", 1, {0, 0},
+            [](const stdfs::path& m, const stdfs::path& out) { return source::coleco_writer::reconstruct(m, out); },
+            [](const stdfs::path& m) {
+                const formats::coleco::Program p = formats::coleco::read(m);
+                return std::make_tuple(formats::coleco::kOrigin, p.image, Bytes());
+            },
+            &emulate::z80_machines::coleco()});
+    } else if (name == "cpc") {
+        spec = flat_spec(FlatMachine{
+            "cpc", 1, {0, 0},
+            [](const stdfs::path& m, const stdfs::path& out) { return source::cpc_writer::reconstruct(m, out); },
+            [](const stdfs::path& m) {
+                const formats::cpc::Program p = formats::cpc::read(m);
+                return std::make_tuple(p.origin, p.image, p.memory);
+            },
+            &emulate::z80_machines::cpc()});
     } else if (const std::shared_ptr<const MachineLane> registered = machine_lanes().find(name)) {   // a platform added without editing this file (machine_lanes.hpp)
         spec = registered->make_spec();
     } else {
@@ -501,8 +642,11 @@ std::string kit_detail::machine_of_file(const stdfs::path& path) {
     if (formats::gb::probe(path)) return "gb";
     if (formats::genesis::probe(path)) return "genesis";
     if (formats::psx::probe(path)) return "ps1";
+    if (formats::gba::probe(path)) return "gba";
     if (formats::zx::probe(path)) return "zx";
     if (formats::msx::probe(path)) return "msx";
+    if (formats::coleco::probe(path)) return "coleco";
+    if (formats::cpc::probe(path)) return "cpc";
     return machine_lanes().name_of_file(path);   // (a registered machine: machine_lanes.hpp)
 }
 

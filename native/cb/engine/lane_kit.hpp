@@ -78,7 +78,7 @@ public:
     std::shared_ptr<const verify::lanes::Kind> powerpc_lane();     // "powerpc": the Xbox 360 compiler (settings powerpc_tools, powerpc_lib) is set up
     std::shared_ptr<const verify::lanes::Kind> java_lane();        // "java"
     std::shared_ptr<const verify::lanes::Kind> dos_lane();         // "dos": real-mode programs, written back as assembly and compared whole; null without OpenWatcom's wasm and wlink
-    // "nes", "sms", "gb", "genesis", "ps1", "zx", "msx": a cartridge, snapshot or tape written back by its machine's writer, rebuilt, and run beside the original's; null for another name.
+    // "nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc": a cartridge, snapshot or tape written back by its machine's writer, rebuilt, and run beside the original's; null for another name.
     std::shared_ptr<const verify::lanes::Kind> machine_lane(std::string_view name);
     // Adds every lane that can be made, with the traits the reconstruction path is told of it.
     void add_lanes(verify::reconstruct::Kinds& kinds);

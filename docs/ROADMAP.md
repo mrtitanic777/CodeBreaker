@@ -81,12 +81,12 @@ Every games console, from the first home consoles to today's: each one's program
 they were written in assembly, C/C++ where they were compiled), rebuild, and are judged in a model of the machine.
 A lane is a CPU family plus a machine model (docs/LANES.md), so each new CPU opens a group of consoles.
 
-Done: NES, Master System / Game Gear, Game Boy / Color, Genesis, ZX Spectrum, MSX, PlayStation, original Xbox, Xbox 360.
+Done: NES, Master System / Game Gear, Game Boy / Color, Genesis, Neo Geo (AES / MVS), Sega CD, ZX Spectrum, MSX, PlayStation, original Xbox, Xbox 360.
 Order, by consoles opened per lane:
 
 1. Game Boy Advance (ARM7TDMI), then Nintendo DS / DSi (ARM9 + ARM7).
 2. The 65xx family: SNES (65816 + SPC700), TurboGrafx-16 / PC Engine (HuC6280), Atari 2600 / 5200 / 7800 / Lynx.
-3. The rest of the Z80 and 68000 machines: ColecoVision, SG-1000, Amstrad CPC, Neo Geo AES / CD, Sega CD, Neo Geo
+3. The rest of the Z80 and 68000 machines: ColecoVision, SG-1000, Amstrad CPC, Neo Geo CD, Neo Geo
    Pocket (TLCS-900).
 4. Nintendo 64 (MIPS R4300 + RSP), reusing the PlayStation's MIPS core.
 5. SuperH: Sega 32X and Saturn (SH-2), Dreamcast (SH-4).
@@ -103,4 +103,6 @@ are judged, recorded in docs/TESTED_SOFTWARE.md.
 ## Status
 
 - 2026-11-14: roadmap set; tracks 1 (audit) and 2 (MIPS/PS1) started.
+- 2026-11-15: track 2 phase 3 (Nintendo DS, ARM946E-S + ARM7TDMI) landed: `.nds` loader, the ARMv5TE additions to the ARM decoder/assembler/interpreter, the DS memory maps and CP15, one source for both processors with the file system as data, and the `nds` lane (registered through engine/machine_lanes). Left: bank-switched video memory, the hardware divider and square-root unit, the 3D engine and the wireless registers are not modelled; overlays and compressed ARM9 binaries are data; DSi (ARM9 with ARMv5 extras, `.dsi`) not read.
+- 2026-11-15: track 2 phase 2 (ARM7TDMI, Game Boy Advance) landed: `.gba` loader, ARM and Thumb decoder/disassembler and assembler (GNU as `.syntax unified`), own interpreter, source writer and the `gba` lane; see docs/TESTED_SOFTWARE.md for the ROMs that rebuild identical. Left: literal-pool assembly (`ldr r0, =x`), multiboot ROMs loaded to EWRAM, Thumb switch tables, interrupt delivery in the interpreter, then N64 and DS.
 - 2026-11-14: track 2 phase 1 (MIPS R3000A, PlayStation) landed: PS-X EXE loader, decoder/disassembler (GNU as syntax, GTE decoded), own assembler, own interpreter (GTE registers and the division-free commands), source writer and the `ps1` lane; 58 open-source PS-X EXEs rebuild identical. Left: GTE RTPS/RTPT and the colour commands, PS-X EXEs inside disc images (BIN/CUE, ISO), then phase 2 (ARM7TDMI, Game Boy Advance).

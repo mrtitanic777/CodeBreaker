@@ -82,7 +82,7 @@ bool made_by_us(const stdfs::path& file) {
 
 // A module written as its assembly file: a driver, a real-mode program, a cartridge, a snapshot or a tape.
 bool written_as_assembly(std::string_view kind) {
-    return kind == "le" || kind == "dos" || kind == "nes" || kind == "sms" || kind == "gb" || kind == "genesis" || kind == "ps1" || kind == "zx" || kind == "msx" ||
+    return kind == "le" || kind == "dos" || kind == "nes" || kind == "sms" || kind == "gb" || kind == "genesis" || kind == "ps1" || kind == "gba" || kind == "zx" || kind == "msx" || kind == "coleco" || kind == "cpc" ||
            engine::machine_lanes().find(kind) != nullptr;   // (a platform registered without editing this list: engine/machine_lanes.hpp)
 }
 

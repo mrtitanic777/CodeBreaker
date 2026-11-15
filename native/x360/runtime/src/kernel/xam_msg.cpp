@@ -859,6 +859,16 @@ GUEST_IMPORT(XMsgSystemProcessCall)
         ctx.r3.u64 = kernel::kErrorSuccess;
         return;
     }
+    if (app == kAppXmp && buffer != 0)
+    {
+        // The music player's controls (XMPPlayTitlePlaylist ...) are queued like any message: the handler's result is
+        // dropped, and the call returns 0 (Hexic HD starts its music this way).
+        if (kernel::xmp::Dispatch(message, buffer, length))
+        {
+            ctx.r3.u64 = kernel::kErrorSuccess;
+            return;
+        }
+    }
     Fatal("XMsgSystemProcessCall: app {:02X} message {:08X} (buffer {:08X}, {} bytes) is not implemented", app, message,
         buffer, length);
 }

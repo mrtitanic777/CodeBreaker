@@ -117,7 +117,7 @@ namespace gpu
         {
         case 2: case 8: case 9: return 1;
         case 10: case 25: case 37: return 2;
-        case 22: case 36: return 1;
+        case 22: case 23: case 36: return 1;
         case 4: return 3;                                // k_5_6_5: no W
         default: return 4;
         }
@@ -138,6 +138,7 @@ namespace gpu
         case 19: case 52: return kUntileDxt2_3;
         case 20: case 53: return kUntileDxt4_5;
         case 22: return kUntileDepth24;
+        case 23: return kUntileDepth24Float;
         case 36: case 37: case 38: return kUntileFloat32;
         default: return kUntilePlain;
         }
@@ -194,15 +195,15 @@ namespace gpu
         case 2: case 6: case 8: case 9: case 10: case 14: case 25:           // 8 / 16 bits per component
         case 3: case 4: case 15:                                             // packed 16-bit texels
         case 18: case 19: case 20: case 51: case 52: case 53:                // DXT blocks
-        case 22:                                                             // 24-bit depth, 8-bit stencil
+        case 22: case 23:                                                    // 24-bit depth (unorm or 20e4 float), 8-bit stencil
         case 36: case 37: case 38:                                           // 32-bit floats
             break;
         default:
             return std::format("format k_{}", TextureFormatName(f.format));
         }
         const uint32_t dimension = (d[5] >> 9) & 3;
-        if (dimension != 1 && dimension != 3)
-            return dimension == 0 ? "1D texture" : "3D texture";
+        if (dimension == 2)
+            return "3D texture";
         if (dimension == 1 && ((d[1] >> 10) & 1))
             return "stacked (array) texture";
         f.faces = dimension == 3 ? 6 : 1;
@@ -214,6 +215,16 @@ namespace gpu
         f.width = (d[2] & 0x1FFF) + 1;
         f.height = ((d[2] >> 13) & 0x1FFF) + 1;
         f.pitch = ((d[0] >> 22) & 0x1FF) * 32;
+        if (dimension == 0)
+        {
+            // 1D: the size is one 24-bit width. It is a one-row linear texture to the host (the shader samples the
+            // middle of the row); the row's pitch is its width to the 32-texel alignment of linear rows.
+            if (f.tiled)
+                return "tiled 1D texture";
+            f.width = (d[2] & 0xFFFFFF) + 1;
+            f.height = 1;
+            f.pitch = (f.width + 31) & ~31u;
+        }
         if (f.pitch < f.width)
             return std::format("pitch {} smaller than the width {}", f.pitch, f.width);
 
@@ -267,8 +278,9 @@ namespace gpu
             return "signed and unsigned components in one texture";
         else
             f.numbers = anySigned ? TextureNumbers::kSigned : TextureNumbers::kUnsigned;
-        if (TextureUntileKind(f.format) == kUntileFloat32)
+        if (TextureUntileKind(f.format) == kUntileFloat32 || TextureUntileKind(f.format) == kUntileDepth24Float)
             f.numbers = TextureNumbers::kInteger; // floats are what they are: no sign or number format applies
+                                                  // (a float depth texture's fetch constant has the integer bit set)
         else if (TextureUntileKind(f.format) != kUntilePlain && f.numbers != TextureNumbers::kUnsigned)
             return std::format("k_{} with signed or integer components", TextureFormatName(f.format));
         return {};
@@ -502,6 +514,27 @@ void main(uint3 id : SV_DispatchThreadID)
     {
         // k_24_8: depth in the upper 24 bits (unorm), stencil in the low 8; the texture reads the depth
         xe_untile_dest[uint3(id.xy, 0u)] = (float(texel >> 8) / 16777215.0).xxxx;
+        return;
+    }
+    if (kind == 7u)
+    {
+        // k_24_8_FLOAT: the upper 24 bits are the depth as a 20e4 float (4-bit exponent, 20-bit mantissa, bias 1),
+        // converted to a 32-bit float as Xenia's Float20e4To32 does; a zero exponent is a denormal, normalized.
+        uint f24 = texel >> 8;
+        uint mant = f24 & 0xFFFFFu;
+        int expo = int(f24 >> 20);
+        float depth = 0.0;
+        if (f24 != 0u)
+        {
+            if (expo == 0)
+            {
+                int shift = 31 - int(firstbithigh(mant)) - 12;
+                expo = 1 - shift;
+                mant = (mant << uint(shift)) & 0xFFFFFu;
+            }
+            depth = asfloat((uint(expo + 112) << 23) | (mant << 3));
+        }
+        xe_untile_dest[uint3(id.xy, 0u)] = depth.xxxx;
         return;
     }
     if (kind == 6u)

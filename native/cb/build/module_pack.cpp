@@ -12,7 +12,7 @@
 namespace cb::build::module::internal {
 
 Packed pack_holes(const std::vector<HoleSpec>& holes, const OrderedMap<std::string, std::uint32_t>& size,
-                  const std::set<std::string>& near, const std::set<std::string>& aside, std::optional<std::uint32_t> limit) {
+                  const std::set<std::string>& near, const std::set<std::string>& aside, std::optional<std::uint32_t> limit, bool word_aligned) {
     Packed out;
     std::vector<std::string> rest;
     for (const HoleSpec& h : holes) {
@@ -21,7 +21,7 @@ Packed pack_holes(const std::vector<HoleSpec>& holes, const OrderedMap<std::stri
         bin.hi = h.hi;
         bin.used = h.lo;
         if (h.name && size.contains(*h.name) && !aside.contains(*h.name)) {
-            const std::uint32_t pad = bin.used & 1;   // (OpenWatcom aligns its code to a word)
+            const std::uint32_t pad = word_aligned ? bin.used & 1 : 0;   // (OpenWatcom aligns its code to a word, unless it is compiled for size: -os)
             if (pad + size.at(*h.name) <= h.hi - h.lo) {
                 bin.objects.emplace_back(pad, *h.name);
                 bin.used += pad + size.at(*h.name);
@@ -45,7 +45,7 @@ Packed pack_holes(const std::vector<HoleSpec>& holes, const OrderedMap<std::stri
         for (Bin& bin : out.bins) {
             const auto it = own.find(name);
             if (limit && (it == own.end() ? 0u : it->second) < *limit && bin.hi > *limit) continue;
-            const std::uint32_t pad = bin.used & 1;
+            const std::uint32_t pad = word_aligned ? bin.used & 1 : 0;
             if (bin.used + pad + size.at(name) <= bin.hi) {
                 bin.objects.emplace_back(pad, name);
                 bin.used += pad + size.at(name);
@@ -118,7 +118,7 @@ std::optional<std::vector<std::string>> frame_pieces(Built& b, Piece& piece, std
 
     std::vector<HoleSpec> holes;
     for (const asm16::Hole& h : f.holes()) holes.push_back({h.start, h.end, name_for(h.symbol)});
-    const auto place = [&](const std::set<std::string>& aside) { return pack_holes(holes, size, near, aside, limit); };
+    const auto place = [&](const std::set<std::string>& aside) { return pack_holes(holes, size, near, aside, limit, !b.byte_aligned_code); };
 
     // A near function with no room goes after the frame and makes the segment bigger than the original's -- past 64K, in the end. A far
     // one can go to the segment beside instead: the far ones give up their places, largest first, while near ones are still left over.

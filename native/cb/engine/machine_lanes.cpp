@@ -10,7 +10,7 @@ namespace cb::engine {
 
 namespace {
 
-constexpr std::array<std::string_view, 7> kBuiltIn = {"nes", "sms", "gb", "genesis", "ps1", "zx", "msx"};
+constexpr std::array<std::string_view, 10> kBuiltIn = {"nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc"};
 
 bool well_formed(std::string_view name) {
     return !name.empty() && std::all_of(name.begin(), name.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'); });

@@ -1,4 +1,4 @@
-// cb/formats/sms.hpp -- Sega Master System, Game Gear and SG-1000 cartridge images (`.sms`, `.gg`, `.sg`).
+// cb/formats/sms.hpp -- Sega Master System, Game Gear and SG-1000 / SC-3000 cartridge images (`.sms`, `.gg`, `.sg`, `.sc`).
 //
 // A cartridge image is the ROM as it is, nothing in front (a 512-byte copier header is recognised by the size and
 // dropped). The Master System BIOS checks a header at $7FF0 (or $3FF0 / $1FF0 for small ROMs): "TMR SEGA", two
@@ -9,7 +9,7 @@
 // written to $FFFD / $FFFE / $FFFF (the first 1 KB always page 0, where the vectors are); RAM is 8 KB at $C000,
 // repeated at $E000. At power-on the slots hold pages 0, 1 and 2, which is what memory() maps; other pages are
 // listed by number, their addresses known only by running the program (it writes the mapper registers itself).
-// SG-1000 cartridges have no mapper.
+// SG-1000 and SC-3000 cartridges (`.sg`, `.sc`) have no mapper: $FFFC-$FFFF are RAM there.
 #pragma once
 
 #include <array>
@@ -26,7 +26,7 @@
 namespace cb::formats::sms {
 
 inline constexpr std::size_t kPage = 0x4000;
-inline constexpr std::array<std::string_view, 3> kExtensions = {".sms", ".gg", ".sg"};
+inline constexpr std::array<std::string_view, 4> kExtensions = {".sms", ".gg", ".sg", ".sc"};
 
 enum class System { MasterSystem, GameGear, Sg1000 };
 std::string_view to_string(System s);   // "Master System", "Game Gear", "SG-1000"

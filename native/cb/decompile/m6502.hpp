@@ -26,7 +26,13 @@
 
 namespace cb::decompile::m6502 {
 
-enum class Mode : std::uint8_t { Imp, Acc, Imm, Zp, Zpx, Zpy, Abs, Abx, Aby, Ind, Izx, Izy, Rel };
+// Izp and Iax exist on the CMOS parts only: `($nn)` and `($nnnn,X)`.
+enum class Mode : std::uint8_t { Imp, Acc, Imm, Zp, Zpx, Zpy, Abs, Abx, Aby, Ind, Izx, Izy, Rel, Izp, Iax };
+
+// The instruction set: the NMOS 6502 (the NES, the Atari 2600 and 7800) or the 65SC02 of the Atari Lynx -- the NMOS set and BRA, STZ,
+// TRB, TSB, PHX PHY PLX PLY, INC A, DEC A, BIT #/zp,X/abs,X, the `(zp)` form of the accumulator instructions and JMP (abs,X). The 65SC02 has
+// not the Rockwell bit instructions (RMB SMB BBR BBS).
+enum class Variant : std::uint8_t { Nmos, Cmos };
 
 // The instruction's length in bytes (opcode + operand) in this mode.
 constexpr std::uint8_t instruction_size(Mode mode) {
@@ -36,7 +42,8 @@ constexpr std::uint8_t instruction_size(Mode mode) {
         case Mode::Abs:
         case Mode::Abx:
         case Mode::Aby:
-        case Mode::Ind: return 3;
+        case Mode::Ind:
+        case Mode::Iax: return 3;
         default: return 2;
     }
 }
@@ -50,13 +57,13 @@ struct OpcodeEntry {
 };
 
 // The 256-entry table: nullopt for an undocumented opcode.
-const std::array<std::optional<OpcodeEntry>, 256>& opcode_table();
+const std::array<std::optional<OpcodeEntry>, 256>& opcode_table(Variant variant = Variant::Nmos);
 
 // The opcode of `mnemonic` (upper case) in `mode`; nullopt when that form does not exist.
-std::optional<std::uint8_t> opcode_of(std::string_view mnemonic, Mode mode);
-bool is_mnemonic(std::string_view mnemonic);
-bool is_branch(std::string_view mnemonic);   // BCC BCS BEQ BMI BNE BPL BVC BVS
-bool ends_flow(std::string_view mnemonic);   // JMP RTS RTI BRK: flow does not fall through
+std::optional<std::uint8_t> opcode_of(std::string_view mnemonic, Mode mode, Variant variant = Variant::Nmos);
+bool is_mnemonic(std::string_view mnemonic, Variant variant = Variant::Nmos);
+bool is_branch(std::string_view mnemonic);   // BCC BCS BEQ BMI BNE BPL BVC BVS, and the 65SC02's BRA
+bool ends_flow(std::string_view mnemonic);   // JMP RTS RTI BRK BRA: flow does not fall through
 
 // One decoded instruction.
 struct Insn {
@@ -71,7 +78,7 @@ struct Insn {
 
 // The instruction at code[offset], which sits at address `pc`; nullopt for an undocumented opcode or one cut
 // off by the end of `code`.
-std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc);
+std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc, Variant variant = Variant::Nmos);
 
 // Label tables (decompile/labels.hpp): address -> name for text(), name -> address for assemble().
 using decompile::AddressLabels;
@@ -82,9 +89,13 @@ using decompile::NameLabels;
 // address is written, so the bytes come back the same.)
 std::string text(const Insn& insn, const AddressLabels& labels = {});
 
+// The instruction in dasm syntax, the assembler of the Atari 2600 and 7800 homebrew: upper-case, a zero-page-sized operand written
+// absolute takes the `.w` suffix (`LDA.w $0080`). `labels` names addresses as in text().
+std::string dasm_text(const Insn& insn, const AddressLabels& labels = {});
+
 // The bytes of one instruction written as text() writes it. Labels are resolved from `labels`; `a:` forces an
 // absolute address. Throws ParseError when the line is not an instruction, names an unknown mnemonic, label or
 // number, uses a form the mnemonic lacks, or branches out of reach.
-Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels = {});
+Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels = {}, Variant variant = Variant::Nmos);
 
 }  // namespace cb::decompile::m6502
