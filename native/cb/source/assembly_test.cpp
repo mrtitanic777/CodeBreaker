@@ -301,7 +301,11 @@ CB_TEST("source.assembly.the_linker_gets_its_directives_in_a_script", [] {
     CB_CHECK(made.file.has_value());
     CB_CHECK_EQ(made.log, "linked");
     const std::string script = fs::read_text(fake.dir.path() / "out.lnk");
-    CB_CHECK_EQ(script, "system nt\r\nfile a.obj\r\nname " + fs::to_text(stdfs::absolute(fake.dir.path() / "out.dll")) + "\r\n");
+    CB_CHECK_EQ(script, "system nt\r\nfile a.obj\r\nname out.dll\r\n");   // (in the linker's folder: named by its file name)
+    const stdfs::path elsewhere = fake.dir.path() / "sub" / "far.dll";
+    fs::make_dirs(elsewhere.parent_path());
+    (void)link(fake.tools, lines, elsewhere, fake.dir.path());
+    CB_CHECK_EQ(fs::read_text(fake.dir.path() / "sub" / "far.lnk"), "system nt\r\nfile a.obj\r\nname " + fs::to_text(stdfs::absolute(elsewhere)) + "\r\n");
     CB_CHECK(!link(Tools{}, lines, fake.dir.path() / "x.dll", fake.dir.path()).file.has_value());
 });
 

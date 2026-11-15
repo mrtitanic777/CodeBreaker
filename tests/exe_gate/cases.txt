@@ -109,13 +109,13 @@ le-source: le-source {fmt}/splitter.vxd --out {out}
 dos-source: dos-source {fmt}/choice.com --out {out} @sizeonly=.obj
 dos-build: dos-build {td}/choice_src --against {fmt}/choice.com
 driver-source: driver-source {fmt}/splitter.vxd --out {out} @sizeonly=.obj,.map
-driver-build: driver-build {td}/splitter --original {fmt}/splitter.vxd --out {out}
+driver-build: driver-build {td}/splitter --original {fmt}/splitter.vxd --out {out} @mask="(?m)Error! E\d+: .*$" @sizeonly=.err
 driver-judge-self: driver-judge --self-check {fmt}/splitter.vxd
 driver-judge-pair: driver-judge {fmt}/splitter.vxd {fmt}/splitter.vxd
 vxd-idiom: vxd idiom {fmt}/splitter.vxd
 vxd-masm: vxd masm {fmt}/splitter.vxd
 vxd-usage: vxd
-ne-asm-idiom: ne-asm idiom lzexpand.dll 1 0 whole @needs=corpus
+ne-asm-idiom: ne-asm idiom lzexpand.dll 1 0 whole @needs=corpus @needs=toolchains
 ne-asm-usage: ne-asm
 build16-lzexpand: build16 {repo}/tests/fixtures/lzexpand @timeout=300 @mask="build16[-_][\w-]+"
 build16-usage: build16
@@ -133,9 +133,9 @@ place-file: place {fmt}/lz32.dll --list
 place-usage: place
 
 # --- the verdicts: module, measure, match, repair, teeth, score16, versions, sweep -----------------------------------------------
-module-pe: module {fmt}/lz32.dll --out {out} @timeout=300 @mask="\(\d+s: [^)]*\)"
+module-pe: module {fmt}/lz32.dll --out {out} @timeout=300 @mask="\(\d+s: [^)]*\)" @mask="verifier settings [0-9a-f]{12}"
 module-usage: module --help
-scoreboard: scoreboard --out {out}
+scoreboard: scoreboard --out {out} @mask="verifier settings [0-9a-f]{12}"
 measure-pe: measure {fmt}/lz32.dll @timeout=300 @mask="\(\d+s: [^)]*\)"
 measure-usage: measure --help
 match-pe: match {fmt}/lz32.dll
@@ -159,10 +159,10 @@ facts-make: facts {fmt}/lz32.dll --make @mask="[0-9a-f]{64}"
 facts-databases: facts --databases
 knowledge-all: knowledge
 knowledge-platform: knowledge win95
-tidy-dry: tidy-state --dry
-tidy-stray: tidy-state --dry --stray
+tidy-dry: tidy-state --dry @mask="(?m)^Converted/.*$"
+tidy-stray: tidy-state --dry --stray @mask="(?m)^Converted/.*$"
 progress-once: progress --once @mask="\[\d\d:\d\d:\d\d\]"
-settings: settings @mask="(?m)^ +(ok|--|!!) .*$"
+settings: settings @mask="(?m)^ +(ok|--|!!) .*$" @needs=toolchains
 serve-status: serve --status
 serve-stop: serve --stop
 serve-help: serve --help

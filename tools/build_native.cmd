@@ -26,6 +26,21 @@ for %%L in (%LIBS%) do (
       cmake -S native -B state/cxx/cb -G Ninja -DCMAKE_BUILD_TYPE=Release >nul || set FAILED=!FAILED! cb
     )
     if exist state\cxx\cb\build.ninja cmake --build state/cxx/cb --target cbtrace -j 2 || set FAILED=!FAILED! cb
+  ) else if "%%L"=="nasm" (
+    rem NASM is built with gcc (MinGW-w64): gcc on PATH, or MSYS2's at C:\msys64\mingw64\bin
+    echo == native/nasm
+    set MINGW=
+    for %%G in (gcc.exe) do if not "%%~$PATH:G"=="" set MINGW=%%~dp$PATH:G
+    if not defined MINGW if exist C:\msys64\mingw64\bin\gcc.exe set MINGW=C:\msys64\mingw64\bin\
+    if not defined MINGW (
+      echo    skipped: needs MinGW-w64 gcc ^(MSYS2: pacman -S mingw-w64-x86_64-gcc^); pe-source, ne-source and le-source use it
+    ) else (
+      set "PATH=!MINGW!;!PATH!"
+      if not exist native\nasm\build\CMakeCache.txt (
+        cmake -S native/nasm -B native/nasm/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc >nul || set FAILED=!FAILED! nasm
+      )
+      if exist native\nasm\build\CMakeCache.txt cmake --build native/nasm/build -j 2 || set FAILED=!FAILED! nasm
+    )
   ) else (
     echo == native/%%L
     rem (a tree configured before keeps its generator: --config Release covers Visual Studio's multi-config trees too)

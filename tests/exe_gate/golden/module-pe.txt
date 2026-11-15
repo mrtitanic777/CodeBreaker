@@ -3,6 +3,6 @@ exit: 0
 lz32.dll: 39 functions, 39 judged now: VERIFIED 17, IDENTIFIED (runtime library) 19, UNVERIFIED 3  <~>
 <work>/out/lz32.c: VERIFIED 17, IDENTIFIED (runtime library) 19, UNVERIFIED 3
 --- files
-lz32.c 13952 934fd67e0ea46e6ee8fc0094782dc2a33e9168c48cd49170f1e8973987f6a446
+lz32.c 13925 d5038016be58a1fbb1eb10a7acf2ba074ada08bb4a7003cb42f5de51d52eb0d4
 lz32.h 11812 940166cc633035fda8f02b7409143668e19e5e0a9be2f3dde91cb4f25192b8d9
 --- stderr (not compared)

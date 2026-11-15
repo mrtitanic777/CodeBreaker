@@ -19,7 +19,8 @@
 // A case file line is `name: word word "a quoted word" @option ...`. Words may use {repo} (the inputs), {corpus},
 // {work} (the case's own scratch folder; CB_STATE is {work}/state, so no case touches the real state), and {out}
 // ({work}/out: every file the case leaves there is compared). Options:
-//     @needs=corpus|games  skip when the corpus / the Xbox 360 games folder (CB_GAMES, C:/Nexia360/Games) is absent
+//     @needs=corpus|games|toolchains  skip when the corpus / the Xbox 360 games folder (CB_GAMES, C:/Nexia360/Games) /
+//              this machine's toolchains (<checkout>/toolchains: period compilers, the driver kit; not in the repository) are absent
 //              @timeout=SECONDS   (default 120)
 //     @stdin=FILE        feed this file (a {repo} path) to stdin  @mask=REGEX       replace matches by <~> before comparing
 //     @sizeonly=.obj,.map  output files with these extensions are compared by name only (a build time and the source path are inside them)
@@ -64,6 +65,7 @@ struct Case {
     std::vector<std::string> argv;
     bool needs_corpus = false;
     bool needs_games = false;
+    bool needs_toolchains = false;
     int timeout_s = 120;
     std::string stdin_file;
     std::vector<std::string> masks;
@@ -77,7 +79,7 @@ struct Case {
 struct Env {
     stdfs::path exe, repo, cases, golden, corpus, games, scratch;
     stdfs::path exe_root;   // the checkout the exe lives in (its settings, its corpus)
-    bool have_corpus = false, have_games = false;
+    bool have_corpus = false, have_games = false, have_toolchains = false;
     int jobs = 4;
     bool update = false, keep = false;
 };
@@ -141,6 +143,7 @@ std::vector<Case> load_cases(const stdfs::path& file, Vars& vars) {
             if (w.rfind("@needs=", 0) == 0) {
                 if (w.substr(7) == "corpus") c.needs_corpus = true;
                 else if (w.substr(7) == "games") c.needs_games = true;
+                else if (w.substr(7) == "toolchains") c.needs_toolchains = true;
                 else throw ParseError(fs::to_text(file), lineno, 1, "unknown @needs " + w);
             }
             else if (w.rfind("@timeout=", 0) == 0) c.timeout_s = std::stoi(w.substr(9));
@@ -412,6 +415,7 @@ int main(int argc, char** argv) {
         env.have_corpus = stdfs::exists(env.corpus);
         env.games = env_var("CB_GAMES").empty() ? stdfs::path("C:/Nexia360/Games") : stdfs::path(env_var("CB_GAMES"));
         env.have_games = stdfs::exists(env.games);
+        env.have_toolchains = stdfs::exists(env.exe_root / "toolchains") || stdfs::exists(env.repo / "toolchains");
 
         Vars vars;
         std::vector<Case> all = load_cases(env.cases, vars);
@@ -482,9 +486,11 @@ int main(int argc, char** argv) {
             const std::size_t i = t - nunit;
             const Case& c = *picked[i];
             Result& res = results[i];
-            if ((c.needs_corpus && !env.have_corpus) || (c.needs_games && !env.have_games)) {
+            if ((c.needs_corpus && !env.have_corpus) || (c.needs_games && !env.have_games) || (c.needs_toolchains && !env.have_toolchains)) {
                 res.verdict = Verdict::Skip;
-                res.detail = c.needs_games && !env.have_games ? "needs the games folder (" + fs::to_text(env.games) + ")" : "needs the corpus (" + fs::to_text(env.corpus) + ")";
+                res.detail = c.needs_games && !env.have_games       ? "needs the games folder (" + fs::to_text(env.games) + ")"
+                             : c.needs_toolchains && !env.have_toolchains ? std::string("needs this machine's toolchains (<checkout>/toolchains)")
+                                                                          : "needs the corpus (" + fs::to_text(env.corpus) + ")";
             } else {
                 try {
                     const stdfs::path work = env.scratch / c.name;
