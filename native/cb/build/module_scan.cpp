@@ -68,6 +68,23 @@ bool leaves_ds(const std::vector<desc::Insn>& ins, const std::set<std::int64_t>&
     return changed;
 }
 
+// Whether, before instruction `k`, the function has loaded DS from the module's own data segment (`mov ax, DGROUP / mov ds, ax`): its DS
+// is then that segment, and a callee that loads the same one changes nothing for the rest of it.
+bool loads_own_ds_before(const std::vector<desc::Insn>& ins, std::size_t k, const std::set<std::int64_t>& own_data_loads) {
+    bool ax_is_own_data = false;
+    for (std::size_t j = 0; j < k && j < ins.size(); ++j) {
+        const desc::Insn& x = ins[j];
+        if (x.mn == "mov" && x.op_str.starts_with("ax,") && own_data_loads.contains(x.address)) {
+            ax_is_own_data = true;
+            continue;
+        }
+        if (x.mn == "mov" && x.op_str == "ds, ax" && ax_is_own_data) return true;
+        if (x.mn != "push" && first_operand(x.op_str) == "ax") ax_is_own_data = false;
+        if (x.mn == "call" || x.mn == "lcall") ax_is_own_data = false;
+    }
+    return false;
+}
+
 
 std::optional<std::uint32_t> result_in_ax(ByteView code, std::uint32_t start, std::uint32_t end) {
     const std::size_t to = std::min<std::size_t>(end, code.size());
@@ -157,7 +174,8 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
     for (auto& [seg, offsets] : starts) std::sort(offsets.begin(), offsets.end());
     std::map<std::uint32_t, Bytes> images;
     std::map<std::string, std::string> out;
-    std::set<std::string> leaving_ds;
+    std::set<std::string> leaving_ds, leaving_own;
+    std::set<std::pair<std::string, std::string>> own_ds_ready;   // {callee, caller}: the caller had its own data in DS before the call
     // (the places where the loader makes a `mov ax, imm` the module's own automatic data segment, by segment)
     std::map<std::uint32_t, std::set<std::uint32_t>> own_data_offsets;
     const auto own_data_loads_of = [&](std::uint32_t sg, const Bytes& code, const std::vector<desc::Insn>& ins) {
@@ -214,9 +232,15 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
         const bool wide = wide_result.test(std::string_view(text->second).substr(0, text->second.find('(')));
         // (it loads DS and never puts it back: it leaves the caller another DS -- sub_1_222B's `mov ds, ax; ret`, KERNEL's sub_2_0170
         // `mov ds, cs:[16Eh]; ret`. Not USER's copy helper sub_1_39E2: `mov dx, ds` ... `mov ds, dx` puts it back)
-        if (leaves_ds(ins, own_data_loads_of(sg, code, ins))) {
+        const std::set<std::int64_t> own_loads = own_data_loads_of(sg, code, ins);
+        if (leaves_ds(ins)) {
             leaving_ds.insert(n);
             setdefault(n, "it leaves DS changed for its caller");
+            // (A callee that leaves only the module's own data segment, for a caller that has loaded it itself before the call, changes
+            // nothing -- `leaves_ds(ins, own_loads)` and `loads_own_ds_before` say so, and are tested -- but USER's callers of sub_1_5D4F
+            // rebuilt as C on that reading fail the all-15 boot (FAIL(dos)) while with all 13 of them as assembly it passes, so
+            // no caller is excused until the one that breaks is found: `leaving_own` stays empty.)
+            (void)own_loads;
         }
         for (std::size_t k = 0; k < ins.size(); ++k) {
             const desc::Insn& i = ins[k];
@@ -229,7 +253,10 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
                 const auto bo = by_offset.find(target);
                 if (bo != by_offset.end()) {
                     for (const auto& [callee_seg, callee] : bo->second) {
-                        if (!(i.mn == "call" && callee_seg != sg) && callee != n) calls_of[callee].insert(n);
+                        if (!(i.mn == "call" && callee_seg != sg) && callee != n) {
+                            calls_of[callee].insert(n);
+                            if (loads_own_ds_before(ins, k, own_loads)) own_ds_ready.emplace(callee, n);
+                        }
                     }
                 }
                 if (const auto tk = takes.find(target); tk != takes.end()) {
@@ -289,7 +316,10 @@ std::map<std::string, std::string> registers_c_cannot_carry(const formats::ne::M
     for (const std::string& callee : leaving_ds) {
         const auto it = calls_of.find(callee);
         if (it == calls_of.end()) continue;
-        for (const std::string& caller : it->second) setdefault(caller, "it calls " + callee + ", which leaves DS changed");
+        for (const std::string& caller : it->second) {
+            if (leaving_own.contains(callee) && own_ds_ready.contains({callee, caller})) continue;
+            setdefault(caller, "it calls " + callee + ", which leaves DS changed");
+        }
     }
     return out;
 }
