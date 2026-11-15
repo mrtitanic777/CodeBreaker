@@ -166,6 +166,8 @@ int restore(Run *r) {
     for (size_t i = 0; i < r->saved_base.size(); i++) {
         uc_err e = r->saved_none[i] ? ucl().mem_unmap(r->uc, r->saved_base[i], PAGE)
                                     : ucl().mem_write(r->uc, r->saved_base[i], r->saved_data[i].data(), PAGE);
+        // whatever was translated there is not what the page holds now (a page mapped there again, or put back as it was): Unicorn does not drop it for a host write
+        ucl().ctl(r->uc, UC_CTL_WRITE(UC_CTL_TB_REMOVE_CACHE, 2), r->saved_base[i], r->saved_base[i] + PAGE);
         if (e != UC_ERR_OK)
             return int(e);
     }

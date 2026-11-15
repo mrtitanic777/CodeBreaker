@@ -200,7 +200,10 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
 }
 
 void hook_code(uc_engine *, uint64_t address, uint32_t size, void *user) {
-    code_step(static_cast<Run *>(user), address, size);
+    Run *r = static_cast<Run *>(user);
+    if (!r->code_armed)
+        return;
+    code_step(r, address, size);
 }
 
 // FAST: told of a whole straight run of the file's code at once.  Anything else goes to
@@ -209,6 +212,18 @@ void hook_block(uc_engine *uc, uint64_t address, uint32_t size, void *user) {
     Run *r = static_cast<Run *>(user);
     if (r->switched)
         return;
+    const uint64_t block_key = address << 32 | size;
+    Run::BlockSlot &slot = r->block_slots[(address ^ (address >> 8)) & 255];
+    if (slot.key == block_key && slot.info != nullptr && !r->dirty) {   // met before in this run: the same answer as the search below gives
+        const int64_t c = r->insn_count;
+        if (c + int64_t(slot.info->addrs.size()) <= r->insn_cap) {
+            r->zeros = 0;
+            r->insn_count = c + int64_t(slot.info->addrs.size());
+            r->last = slot.info;
+            r->last_new.clear();
+            return;
+        }
+    }
     bool sentinel = r->sentinels.count(address) != 0;
     if ((r->stub && sentinel) || (r->pads && r->pads_lo <= address && address < r->pads_hi)) {
         r->last = nullptr;
@@ -219,7 +234,10 @@ void hook_block(uc_engine *uc, uint64_t address, uint32_t size, void *user) {
             r->skip = address;                 // not returned from: go on with care
             r->skip_set = true;
             r->switched = true;
-            r->stop();
+            if (r->persistent_code)
+                r->code_armed = true;          // the instruction hook is on already: it takes this block from its first instruction
+            else
+                r->stop();
         }
         return;
     }
@@ -246,13 +264,18 @@ void hook_block(uc_engine *uc, uint64_t address, uint32_t size, void *user) {
     if (!info || !info->ok || info->zero || c + int64_t(info->addrs.size()) > r->insn_cap) {
         r->last = nullptr;
         r->switched = true;
-        r->stop();
+        if (r->persistent_code)
+            r->code_armed = true;              // (stopping the engine to start it again throws its translated code away)
+        else
+            r->stop();
         return;
     }
     r->zeros = 0;
     r->insn_count = c + int64_t(info->addrs.size());
     uint64_t key = address << 32 | size;
     r->last = info;
+    slot.key = block_key;
+    slot.info = info;
     r->last_new.clear();
     if (r->seen_blocks.insert(key).second) {
         for (size_t i = 0; i < info->addrs.size(); i++) {

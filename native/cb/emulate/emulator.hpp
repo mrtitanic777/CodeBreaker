@@ -63,7 +63,7 @@ inline constexpr std::uint32_t kSentinelBase = 0xE1000000, kSentinelStride = 0x1
 // Recording caps: a trace is evidence, not a full replay log, so it is bounded and says that it was.
 inline constexpr std::int64_t kMaxInsns = 20000;   // instructions per run
 inline constexpr std::int64_t kMaxMem = 40000;     // memory operations kept
-inline constexpr std::size_t kMaxMachines = 4;     // laid-out machines kept between reuse runs
+inline constexpr std::size_t kMaxMachines = 6;     // laid-out machines kept between reuse runs
 
 // ---- what the Tracer needs from outside ------------------------------------------------------------------------------------------
 

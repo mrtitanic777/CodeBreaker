@@ -62,8 +62,53 @@ Findings:
 Not worth doing: the truncated runs (already 0.3 us per instruction, and the cap is part of the verdict);
 PS1; the 16-bit lane's 17 s on commdlg (0.09 s per function, already threaded).
 
-## Status
+## Phase 2: what was changed, and what it gave
 
-Phase 1 (this file, `CB_PROFILE` stage timer) done. No optimization has been made yet: the tracer fix (1) needs a
-build-test loop on the shared build folder, which was blocked for long stretches today. No verdict can have
-changed: only the stage timer was added.
+Cause found (micro-benchmarks against Unicorn alone, then counters in the tracer): a run on a kept machine paid about
+4 ms that was not emulation, because the translated code was thrown away again and again.
+* Unicorn drops its translated code when a code hook is added, and a run that is ended by `uc_emu_stop` costs the
+  next ones their translation too (measured: 28 us for a 100-block function run to its end address, 830 us when the same
+  run is ended by a stop from a hook).
+* Every run put its hooks on and took them off; every run that has to go one instruction at a time (a block the
+  recorder cannot take whole, a call into an import's stand-in, the instruction cap) stopped the engine, added the
+  instruction hook, flushed all translated code and started again. In msacm32.dll 40% of the runs were such runs
+  (most of them calls into nothing that stop after about 30 instructions), each costing 4-8 ms.
+
+Changes (all in native/cb/emulate, none in core):
+1. `native_trace::HookHost` (kept by each machine): the hooks stay on the engine between runs while the runs ask for
+   the same set; the per-run state is the host's one object, made new for each run. Plain runs: 4-5 ms -> 0.15-0.6 ms.
+2. The instruction hook stays on too, unarmed (`code_armed`), and a run that has to go one instruction at a time arms
+   it and goes on where it is: no stop, no flush, no second start. (Without a host, the old way is unchanged.)
+3. Machines are kept apart by whether they log branches (a machine of each: the branch hook is on a function's range
+   and changes with the function), up to 6 kept machines (was 4).
+4. Because translated code now outlives a run: `forget_code` throws away what was translated from a page the host
+   wrote (memory the run was given, pages put back after a run, pages unmapped again). Unicorn does not drop code for
+   host writes: without this a call into scratch memory ran stale code and one function in msacm32.dll (7db6188c)
+   changed verdict from run to run. A test covers the mix (emulator_test: a_kept_machine_keeps_its_hooks...).
+5. Within a run, the recorder looks a straight run up in a small per-run table before it takes the cache's lock.
+
+Timings (`codebreaker measure`, fresh state folder, cold; the machine was shared and loaded 60-70%, so ranges):
+
+| Module | Before | After | Judge CPU (CB_PROFILE judge.function, per process) |
+|---|---|---|---|
+| lz32.dll | 3.2 s | 2.4-3.2 s | -- |
+| mpr.dll | 42-59 s | 25-35 s | 34 s -> about 15 s |
+| msacm32.dll | 53-65 s | 38-48 s | 35 s -> about 16 s |
+| lzexpand.dll, commdlg.dll (16-bit) | 4.4 / 23.6 s | same (the 16-bit lane does not use this tracer) | -- |
+
+What is left on msacm32.dll's 38-48 s: decompile 11 s and build 4 s, both serial and before any judging starts; the
+judging itself is now about 16 s.
+
+Proof that verdicts are unchanged: for each of lz32, mpr, msacm32, lzexpand and commdlg a fresh state folder was measured
+before and after, and the program database was dumped (every function: address, signature, verdict, reason, limits,
+detail, carried). The `measure` text is identical (apart from times) and the rows are identical, with one
+normalisation: the `paths=N` count in limits, which varies from run to run on the unchanged code (the explorer's
+path count, e.g. mpr 7fd05a67: 29 / 26 / 29 on three runs of one binary). The 32-bit modules match the pre-change dump
+row for row, three runs of msacm32 included. commdlg (16-bit) differs from the pre-change dump in 3 rows only because
+the NE decompiler was changed by other work in between (variable names in the source text); it is identical between
+the runs before and after this tracer change.
+
+Not done: opportunity 3 (cache the decompile of an unchanged module). The decompile depends on the knowledge base
+(names and prototypes that propagate), so a cache key of the module hash and the decompiler revision is not enough,
+and a key that is enough needs the knowledge base's own version; left until that exists. Opportunities 4 and 5 are
+open. The 1-2.5 s warm re-run (decompile only) is the remaining cost of an unchanged module.

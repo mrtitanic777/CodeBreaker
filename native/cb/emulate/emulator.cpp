@@ -86,11 +86,12 @@ struct Machine {
     std::unordered_set<std::uint64_t> init_pages;                // pages given other contents than the file's (membership only)
     std::map<std::uint64_t, std::vector<IatSlot>> slots;         // page -> the import slots on it (written last, as ever)
     std::unique_ptr<core16::Uc::Context> context;
+    std::unique_ptr<native_trace::HookHost> host = std::make_unique<native_trace::HookHost>();   // after `uc`: its hooks come off before the engine goes
 };
 
 struct MachineKey {
     std::string path, sha, overlay;
-    bool stub = false, fast = false;
+    bool stub = false, fast = false, branches = false;   // (the hooks a machine keeps differ with these: a machine of each, so that none is hooked again and again)
     friend bool operator==(const MachineKey&, const MachineKey&) = default;
 };
 
@@ -477,7 +478,7 @@ Trace Tracer::trace(std::string_view module, const FuncSelector& function, const
     // than most runs of a function do.
     const bool reuse = options.reuse;
     const MachineKey key{loaded->path.lexically_normal().string(), loaded->sha256, overlay ? overlay->path.lexically_normal().string() : std::string(), stub,
-                         options.fast};
+                         options.fast, options.branches};
     std::unique_ptr<Machine> mach;
     if (reuse) {
         const std::lock_guard<std::mutex> hold(s.mutex);
@@ -515,6 +516,7 @@ Trace Tracer::trace(std::string_view module, const FuncSelector& function, const
                 a = base + kPage;
             }
             uc.mem_write(item.address, item.data);
+            native_trace::forget_code(static_cast<uc_struct*>(uc.handle()), item.address, std::uint64_t{item.address} + item.data.size());   // (code translated from what the page held before is not what runs now)
         }
         for (const std::uint64_t base : again) {   // import slots are written last, as ever
             for (const IatSlot& slot : mach->slots.at(base)) uc.mem_write(slot.address, slot.sentinel);
@@ -573,6 +575,7 @@ Trace Tracer::trace(std::string_view module, const FuncSelector& function, const
         }
     }
     o.module_hash = loaded->sha256;
+    if (reuse) o.host = mach->host.get();   // the hooks stay on the kept machine: its translated code lives on from run to run
     o.governor = &s.governor;
     o.fast = options.fast && s.governor.ceil == 0 && options.shadow == nullptr;
     o.lean = options.lean;
@@ -634,8 +637,14 @@ Trace Tracer::trace(std::string_view module, const FuncSelector& function, const
             if (options.lean) uc.mem_write(kStackBase, Bytes(kStackSize, 0));   // (its writes were not followed)
             run.detach();
             for (const auto& [base, held] : saved) {
-                if (!held) uc.mem_unmap(base, kPage);
-                else uc.mem_write(base, *held);
+                if (!held) {
+                    uc.mem_unmap(base, kPage);
+                    native_trace::forget_code(static_cast<uc_struct*>(uc.handle()), base, base + kPage);
+                }
+                else {
+                    uc.mem_write(base, *held);
+                    native_trace::forget_code(static_cast<uc_struct*>(uc.handle()), base, base + kPage);
+                }
             }
             run.restore();   // (the pages its hooks saved, after ours)
             const std::lock_guard<std::mutex> hold(s.mutex);

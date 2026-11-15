@@ -58,6 +58,8 @@ int add(Run *r, int type, void *callback, uint64_t begin, uint64_t end) {
 int attach(Run *r) {
     int e = r->fast ? add(r, UC_HOOK_BLOCK, reinterpret_cast<void *>(hook_block), 1, 0)
                     : add(r, UC_HOOK_CODE, reinterpret_cast<void *>(hook_code), 1, 0);
+    if (!e && r->fast && r->persistent_code)
+        e = add(r, UC_HOOK_CODE, reinterpret_cast<void *>(hook_code), 1, 0);
     if (!e)
         e = !r->lean ? add(r, r->reads ? (UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE) : UC_HOOK_MEM_WRITE,
                            reinterpret_cast<void *>(hook_mem), 1, 0)

@@ -99,6 +99,8 @@ CB_TEST("base.cache.tools_and_folders_by_content", [] {
     CB_CHECK_EQ(c.tool_bytes_id(dir.path() / "none.exe"), std::string("none.exe:missing"));
     CB_CHECK_EQ(c.tool_bytes_id(dir.path() / "sub"), std::string("sub:missing"));   // a folder is not a tool
     cb::fs::write_file(b, pattern(5000, 3));
+    // (same size: the file's time must move for the change to be seen, and a fast machine can rewrite it in one tick)
+    cb::fs::set_last_write_time(b, cb::fs::last_write_time(b) + std::chrono::seconds(2));
     CB_CHECK_NE(c.tool_bytes_id(a).substr(6), c.tool_bytes_id(b).substr(6));
 
     // a folder of headers: names (case-folded, relative) and bytes; creation order does not matter

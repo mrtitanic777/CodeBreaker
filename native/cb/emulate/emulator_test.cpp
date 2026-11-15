@@ -690,3 +690,34 @@ CB_TEST("emulate.emulator.cases_the_recorder_agreed_gave_one_record_give_one_rec
     const std::string with5 = seen.at(std::format("f stub [5, {}]", kTraceP)), with7 = seen.at(std::format("f stub [7, {}]", kTraceP));
     CB_CHECK(with5 != with7);   // the other argument: the je goes, Sleep is not entered
 });
+
+CB_TEST("emulate.emulator.a_kept_machine_keeps_its_hooks_and_every_run_is_what_a_fresh_one_is", [] {
+    Modules mods;
+    Tracer tracer(mods.environment());
+    // runs of both kinds on one kept machine, in turn: a block-at-a-time run that has to go one instruction at a time (the loop reaches the cap), a plain
+    // one, and one that logs branches (another set of hooks: the machine takes it as it is, and the next run asks for the first again)
+    auto run = [&](std::uint32_t function, bool reuse, bool branches) {
+        TraceOptions o;
+        o.insn_cap = 50;
+        o.reuse = reuse;
+        o.fast = true;
+        o.branches = branches;
+        return tracer.trace("main.dll", FuncSelector{std::uint64_t{function}}, o);
+    };
+    const Trace fresh_loop = run(kLoop, false, false);
+    const Trace fresh_read = run(kReadMem, false, false);
+    CB_CHECK(fresh_loop.exit == Exit::Truncated);
+    for (int i = 0; i < 4; ++i) {
+        const Trace loop = run(kLoop, true, false);
+        CB_CHECK(loop.exit == Exit::Truncated);
+        CB_CHECK_EQ(loop.record.insn_count, fresh_loop.record.insn_count);
+        CB_CHECK(emu_path_of(loop) == emu_path_of(fresh_loop));
+        const Trace read = run(kReadMem, true, false);
+        CB_CHECK(read.exit == fresh_read.exit);
+        CB_CHECK_EQ(read.ret.value_or(1), fresh_read.ret.value_or(2));
+        CB_CHECK_EQ(read.record.insn_count, fresh_read.record.insn_count);
+        const Trace logged = run(kLoop, true, true);   // (a machine of its own: its hooks are not the plain ones)
+        CB_CHECK(logged.exit == Exit::Truncated);
+        CB_CHECK_EQ(logged.record.insn_count, fresh_loop.record.insn_count);
+    }
+});

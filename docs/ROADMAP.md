@@ -1,6 +1,6 @@
 # Roadmap
 
-Where CodeBreaker goes after 1.0.0. Seven tracks, each worked to its finish line. Each track lists what "done"
+Where CodeBreaker goes after 1.0.0. Nine tracks, each worked to its finish line. Each track lists what "done"
 means and its phases; the status line is updated as phases land.
 
 ## 1. Windows 95 in authored source, all of it
@@ -74,6 +74,31 @@ tests, the same results. About 87 source files call the Windows API directly tod
 4. CI builds and tests on Ubuntu; the gate's command cases run on Linux where their tools exist there.
 5. The lanes that drive Windows-only tools (period compilers under DOSBox-X, QEMU for the Windows 95 boot) work on
    Linux with those tools' Linux builds.
+
+## 9. Every console
+
+Every games console, from the first home consoles to today's: each one's programs come back as source (assembly where
+they were written in assembly, C/C++ where they were compiled), rebuild, and are judged in a model of the machine.
+A lane is a CPU family plus a machine model (docs/LANES.md), so each new CPU opens a group of consoles.
+
+Done: NES, Master System / Game Gear, Game Boy / Color, Genesis, ZX Spectrum, MSX, PlayStation, original Xbox, Xbox 360.
+Order, by consoles opened per lane:
+
+1. Game Boy Advance (ARM7TDMI), then Nintendo DS / DSi (ARM9 + ARM7).
+2. The 65xx family: SNES (65816 + SPC700), TurboGrafx-16 / PC Engine (HuC6280), Atari 2600 / 5200 / 7800 / Lynx.
+3. The rest of the Z80 and 68000 machines: ColecoVision, SG-1000, Amstrad CPC, Neo Geo AES / CD, Sega CD, Neo Geo
+   Pocket (TLCS-900).
+4. Nintendo 64 (MIPS R4300 + RSP), reusing the PlayStation's MIPS core.
+5. SuperH: Sega 32X and Saturn (SH-2), Dreamcast (SH-4).
+6. PowerPC: GameCube (Gekko), Wii (Broadway), Wii U (Espresso), reusing the Xbox 360's PowerPC.
+7. PlayStation 2 (R5900 Emotion Engine + IOP) and PSP (Allegrex).
+8. The oddities: Virtual Boy (V810), WonderSwan (V30), 3DO (ARM60), Intellivision (CP1610), Channel F (F8), Vectrex
+   (6809), Odyssey 2 (8048), Atari Jaguar (68000 + Tom/Jerry), CD-i (68070).
+9. Modern: 3DS (ARM11), PS Vita, Switch (ARM64), PS3 (Cell PPU + SPU), PS4 / PS5 and Xbox One / Series (x86-64) —
+   for programs one may lawfully take apart (homebrew, decrypted dumps of one's own).
+
+Each lane is proven like the PlayStation's: open-source homebrew for that console rebuilds identical and its functions
+are judged, recorded in docs/TESTED_SOFTWARE.md.
 
 ## Status
 

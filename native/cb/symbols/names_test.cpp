@@ -763,7 +763,9 @@ struct ProposingWorld {
         return s;
     }
     static std::vector<cb::symbols::FunctionEvidence> evidence(const stdfs::path& module) {
+        static const cb::fs::ScopedTempDir state("names-evidence");   // (the 16-bit description's work files go under it)
         cb::analyze::report::Environment environment;
+        environment.state = state.path();
         return cb::analyze::function_evidence::of_module(module, environment);
     }
     cb::symbols::proposals::Proposals::Services proposing(nm::Namer& namer) {

@@ -97,6 +97,9 @@ struct Run {
     std::unordered_map<int64_t, std::vector<int64_t>> answers; // the resolver's answer per import, this run
     bool fast = false, lean = false, reads = false, quiet = false, stop_wild = false, stub = false;
     bool unique = false, branches = false, pads = false, saving = false;
+    // A kept machine's hooks stay on between runs, the instruction hook too, so that a run gone one instruction at a time does not have to throw
+    // away the translated code to get it: until `code_armed` the instruction hook does nothing.
+    bool persistent_code = false, code_armed = true;
 
     // memory put back after the run (reuse): pages saved by the host before it, and by the hooks
     std::unordered_set<uint64_t> saved_keys;
@@ -138,6 +141,12 @@ struct Run {
     const Straight *last = nullptr;                          // the straight run being executed
     std::vector<uint64_t> last_new;                          // ... and the instructions first seen in it
     std::unordered_set<uint64_t> seen_blocks;
+    // the straight runs this run has met, by (address, size): a loop meets the same few again and again, and takes no lock or search for them
+    struct BlockSlot {
+        uint64_t key = 0;
+        const Straight *info = nullptr;
+    };
+    BlockSlot block_slots[256];
     // the branch log's
     bool pend = false;
     uint64_t pend_addr = 0, pend_target = 0, pend_next = 0;

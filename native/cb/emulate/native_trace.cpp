@@ -2,6 +2,7 @@
 #include "cb/emulate/native_trace.hpp"
 
 #include <algorithm>
+#include <array>
 #include <format>
 
 #include "cb/core/error.hpp"
@@ -46,10 +47,31 @@ StaticId TraceCache::add_code(std::uint64_t lo, ByteView image) {
 
 // ---- one run -------------------------------------------------------------------------------------------------
 
+// The hooks a host keeps, and what they were made for.
+struct HookHost::Impl {
+    std::unique_ptr<tr::Run> run;
+    uc_struct* engine = nullptr;
+    std::array<std::uint64_t, 8> shape{};
+    std::size_t base = 0;   // how many hooks the set has (a run gone one instruction at a time adds one)
+    bool hooked = false;
+    ~Impl() {
+        if (hooked && run) tr::detach(run.get());
+    }
+};
+
+void forget_code(uc_struct* engine, std::uint64_t begin, std::uint64_t end) {
+    tracer::ucl().ctl(engine, UC_CTL_WRITE(UC_CTL_TB_REMOVE_CACHE, 2), begin, end);
+}
+
+HookHost::HookHost() : impl_(std::make_unique<Impl>()) {}
+HookHost::~HookHost() = default;
+
 struct TraceRun::Impl {
     uc_struct* engine = nullptr;
     Options options;
-    std::unique_ptr<tr::Run> run;
+    std::unique_ptr<tr::Run> owned;                      // this run's own state and hooks (no host)
+    tr::Run* run = nullptr;
+    HookHost::Impl* host = nullptr;
     std::vector<ImportName> names;                       // by place in options.sentinels
     std::exception_ptr raised;                           // what the resolver threw, carried out of the run
     bool attached = false;
@@ -98,12 +120,42 @@ TraceRun::TraceRun(uc_struct* engine, Options options) : impl_(std::make_unique<
     s.engine = engine;
     s.options = std::move(options);
     const Options& o = s.options;
-    s.run = std::make_unique<tr::Run>();
+    // With a host the state is the host's one object, made new for each run, and the hooks that are on it stay if they are the set this run needs.
+    HookHost::Impl* host = o.host ? o.host->impl_.get() : nullptr;
+    const std::array<std::uint64_t, 8> shape = {o.fast ? 1u : 0u, o.lean ? 1u : 0u, o.reads ? 1u : 0u, o.branches ? 1u : 0u,
+                                                o.branches ? o.func.lo : 0, o.branches ? o.func.hi : 0, o.lean_low_end, o.lean_high_begin};
+    bool keep = false;
+    std::vector<uc_hook> kept;
+    if (host) {
+        if (!host->run) host->run = std::make_unique<tr::Run>();
+        keep = host->hooked && host->engine == engine && host->shape == shape;
+        if (keep) {
+            kept = std::move(host->run->hooks);
+        } else if (host->hooked) {
+            tr::detach(host->run.get());
+            host->hooked = false;
+        }
+        *host->run = tr::Run();
+        s.run = host->run.get();
+        s.host = host;
+    } else {
+        s.owned = std::make_unique<tr::Run>();
+        s.run = s.owned.get();
+    }
     tr::Run& r = *s.run;
+    if (keep) r.hooks = std::move(kept);
+    if (keep) {   // (a run that ended in an error may have left its extra hook)
+        while (r.hooks.size() > host->base) {
+            tracer::ucl().hook_del(engine, r.hooks.back());
+            r.hooks.pop_back();
+        }
+    }
     r.cache = &o.cache->impl().cache;
     r.uc = engine;
     r.flags = 0;
     r.fast = o.fast;
+    r.persistent_code = host != nullptr && o.fast;   // (a host keeps the instruction hook on, unarmed, for the run that goes one instruction at a time)
+    r.code_armed = !r.persistent_code;
     r.lean = o.lean;
     r.reads = o.reads;
     r.quiet = o.quiet.has_value();
@@ -148,15 +200,24 @@ TraceRun::TraceRun(uc_struct* engine, Options options) : impl_(std::make_unique<
     }
     Impl* self = &s;
     r.resolver = [self](std::int32_t index, std::int64_t* out, std::int32_t cap) { return self->resolve(index, out, cap); };
-    if (const int e = tr::attach(&r)) {
-        tr::detach(&r);
-        throw EmulationError(std::format("native_trace: a hook could not be attached (unicorn error {})", e));
+    if (!keep) {
+        if (const int e = tr::attach(&r)) {
+            tr::detach(&r);
+            throw EmulationError(std::format("native_trace: a hook could not be attached (unicorn error {})", e));
+        }
+        if (host) {   // (code translated under another set of hooks is not trusted under this one)
+            tracer::ucl().ctl(engine, UC_CTL_WRITE(UC_CTL_TB_FLUSH, 0));
+            host->hooked = true;
+            host->engine = engine;
+            host->shape = shape;
+            host->base = r.hooks.size();
+        }
     }
-    s.attached = true;
+    s.attached = host == nullptr;   // (a host's hooks are the host's to take off)
 }
 
 TraceRun::~TraceRun() {
-    if (impl_ && impl_->attached && impl_->run) tr::detach(impl_->run.get());
+    if (impl_ && impl_->attached && impl_->run) tr::detach(impl_->run);
 }
 
 void TraceRun::before_host_start() { impl_->raised = nullptr; }
@@ -187,7 +248,7 @@ int TraceRun::run(std::uint64_t begin, std::uint64_t until) {
     int status = 0;
     if (s.options.fast) {
         status = start(begin, until);
-        if (switched()) {                                // from here on, one instruction at a time
+        if (switched() && !s.run->persistent_code) {      // from here on, one instruction at a time (with a kept machine the first start goes on that way by itself)
             attach_code();
             tracer::ucl().ctl(s.engine, UC_CTL_WRITE(UC_CTL_TB_FLUSH, 0));
             status = start(tracer::reg(s.engine, UC_X86_REG_EIP), until, cap);
@@ -202,13 +263,13 @@ int TraceRun::run(std::uint64_t begin, std::uint64_t until) {
 bool TraceRun::switched() const { return impl_->run->switched; }
 
 void TraceRun::attach_code() {
-    if (const int e = tr::attach_code(impl_->run.get())) {
+    if (const int e = tr::attach_code(impl_->run)) {
         throw EmulationError(std::format("native_trace: a hook could not be attached (unicorn error {})", e));
     }
 }
 
 void TraceRun::settle() {
-    tr::settle(impl_->run.get());
+    tr::settle(impl_->run);
 }
 
 bool TraceRun::truncated() const { return impl_->run->truncated; }
@@ -218,11 +279,22 @@ std::int64_t TraceRun::lean_seen() const { return impl_->run->lean_seen; }
 void TraceRun::detach() {
     Impl& s = *impl_;
     s.attached = false;
-    if (tr::detach(s.run.get())) throw EmulationError("native_trace: a hook could not be taken off");
+    if (s.host) {   // only what the run added to the host's set (the instruction hook of a run gone one instruction at a time)
+        std::vector<uc_hook>& hooks = s.run->hooks;
+        bool bad = false;
+        while (hooks.size() > s.host->base) {
+            if (tracer::ucl().hook_del(s.run->uc, hooks.back()) != UC_ERR_OK) bad = true;
+            hooks.pop_back();
+        }
+        if (bad) throw EmulationError("native_trace: a hook could not be taken off");
+        return;
+    }
+    if (tr::detach(s.run)) throw EmulationError("native_trace: a hook could not be taken off");
+
 }
 
 void TraceRun::restore() {
-    if (const int e = tr::restore(impl_->run.get())) {
+    if (const int e = tr::restore(impl_->run)) {
         throw EmulationError(std::format("native_trace: the saved pages could not be put back (unicorn error {})", e));
     }
 }

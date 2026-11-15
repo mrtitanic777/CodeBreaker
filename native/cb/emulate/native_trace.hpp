@@ -102,6 +102,24 @@ struct Governor {
     std::int64_t ceil = 0;
 };
 
+// Hooks kept on an engine from one run to the next (a laid-out machine that is run again and again). Each run otherwise puts its
+// hooks on and takes them off, and Unicorn throws away the code it translated whenever the hooks change: every run translated the
+// function again. With a host the hooks stay while the runs ask for the same set (fast, lean, reads, branches and their ranges),
+// and the translated code lives on from run to run. The host must be destroyed before the engine it hooked.
+// Throws away the code translated from [begin, end): a page that is unmapped may be mapped again with other bytes, and a kept machine would run
+// the old ones.
+void forget_code(uc_struct* engine, std::uint64_t begin, std::uint64_t end);
+
+class HookHost {
+public:
+    HookHost();
+    ~HookHost();
+    HookHost(const HookHost&) = delete;
+    HookHost& operator=(const HookHost&) = delete;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
 struct Options {
     TraceCache* cache = nullptr;             // required
     std::vector<StaticId> statics;           // code ranges, in trace_function's order
@@ -131,6 +149,7 @@ struct Options {
     std::uint64_t lean_high_begin = 0;       // ... and [lean_high_begin, 0xFFFFFFFF]
 
     ImportResolver resolver;                 // empty: no import is answered
+    HookHost* host = nullptr;                // keep the hooks on the engine after the run (see HookHost); none: they are taken off
     tracer::Shadow* shadow = nullptr;        // the path explorer's, stepped before each instruction
 };
 
