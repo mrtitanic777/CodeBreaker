@@ -71,6 +71,7 @@ namespace gpu
             bool float32;   // k_32_FLOAT: the dword is R's float bits
             bool half4;     // k_16_16_16_16_FLOAT: 64 bits per pixel, four half floats (R, G in the first dword)
             bool byte1;     // k_8: one byte per pixel (R)
+            bool half2;     // k_16_16_FLOAT: R and G as half floats in one dword
         };
 
         bool DestLayout(uint32_t format, PackLayout& layout)
@@ -101,6 +102,10 @@ namespace gpu
                 return true;
             case 2: // k_8
                 layout = { { 8, 0, 0, 0 }, { 0, 0, 0, 0 }, false, false, true };
+                return true;
+            case 31: // k_16_16_FLOAT
+                layout = {};
+                layout.half2 = true;
                 return true;
             default:
                 return false;
@@ -320,7 +325,7 @@ namespace gpu
             PackLayout layout;
             if (!DestLayout(destFormat, layout))
                 Fatal("GPU: resolve to texture format {} is not implemented (RB_COPY_DEST_INFO {:08X})", destFormat, destInfo);
-            if (layout.float32 || layout.half4 ? number != 7 : number > 3)
+            if (layout.float32 || layout.half4 || layout.half2 ? number != 7 : number > 3)
                 Fatal("GPU: resolve to texture format {} with number format {} is not implemented ({:08X})", destFormat,
                       number, destInfo);
             key.destFormat = destFormat;
@@ -508,6 +513,10 @@ float4 xe_rs_decode(uint v)
     return float4(xe_max(r.x, -32.0), xe_max(r.y, -32.0), 0.0, 0.0);
 }
 )HLSL";
+            else if (key.sourceFormat == 6)
+                text += R"HLSL(
+float4 xe_rs_decode(uint v) { return float4(f16tof32(v & 0xFFFFu), f16tof32(v >> 16), 0.0, 0.0); }
+)HLSL";
             else if (key.sourceFormat == 2)
                 text += R"HLSL(
 float4 xe_rs_decode(uint v)
@@ -637,6 +646,8 @@ void main(uint3 id : SV_DispatchThreadID)
             {
                 text += "    uint result = asuint(c.x);\n";
             }
+            else if (layout.half2)
+                text += "    uint result = f32tof16(c.x) | (f32tof16(c.y) << 16);\n";
             else if (layout.half4)
             {
                 // Two dwords, R and G then B and A as half floats (round to nearest even).

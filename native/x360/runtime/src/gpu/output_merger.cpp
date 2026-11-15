@@ -223,6 +223,18 @@ uint xe_om_encode_2(float4 c)
     return n.x | (n.y << 10) | (n.z << 20) | (n.w << 30);
 }
 )HLSL";
+            case 6:
+                return R"HLSL(
+// 16_16_FLOAT: R and G half floats (low, high half); no B or A.
+float4 xe_om_decode_6(uint v) { return float4(f16tof32(v & 0xFFFFu), f16tof32(v >> 16), 0.0, 0.0); }
+float4 xe_om_range_6(float4 c)
+{
+    uint4 u = asuint(c);
+    float4 r = xe_select4((u & 0x7FFFFFFFu) > 0x7F800000u, 0.0, c);   // NaN -> 0
+    return xe_min4(xe_max4(r, -65504.0), 65504.0);
+}
+uint xe_om_encode_6(float4 c) { return f32tof16(c.x) | (f32tof16(c.y) << 16); }
+)HLSL";
             case 7:
                 return R"HLSL(
 // 16_16_16_16_FLOAT: 64 bits, two EDRAM dwords: R, G (low, high half) then B, A.
@@ -254,6 +266,8 @@ uint2 xe_om_encode_7(float4 c)
                 return channel == 0 ? 0x0000FFFFu : channel == 1 ? 0xFFFF0000u : 0u;
             if (format == 14)
                 return channel == 0 ? 0xFFFFFFFFu : 0u;
+            if (format == 6)
+                return channel == 0 ? 0x0000FFFFu : channel == 1 ? 0xFFFF0000u : 0u;
             if (format == 3 || format == 2)
                 return channel == 0 ? 0x000003FFu : channel == 1 ? 0x000FFC00u : channel == 2 ? 0x3FF00000u : 0xC0000000u;
             return 0xFFu << (8 * channel);
@@ -308,7 +322,7 @@ uint2 xe_om_encode_7(float4 c)
 
     bool OutputMergerSupportsColorFormat(uint32_t format)
     {
-        return format == 0 || format == 2 || format == 3 || format == 4 || format == 7 || format == 14;
+        return format == 0 || format == 2 || format == 3 || format == 4 || format == 6 || format == 7 || format == 14;
     }
 
     const char* EdramColorFormatName(uint32_t format)
@@ -445,7 +459,7 @@ float3 xe_om_mul(float3 a, float3 b) { precise float3 r = a * b; return r; }
                 text += std::format("    float4 k = xe_om_range_{}(xe_om_blend_constant);\n", format);
                 text += "    float4 r = src;\n";
                 text += BlendGroup(srcColor, opColor, dstColor, false, format);
-                if (!IsFixed16(format) && format != 14) // 16_16 and 32_FLOAT have no alpha channel
+                if (!IsFixed16(format) && format != 14 && format != 6) // 16_16, 16_16_FLOAT and 32_FLOAT have no alpha channel
                     text += BlendGroup(srcAlpha, opAlpha, dstAlpha, true, format);
                 text += std::format("    r = xe_om_range_{}(r);\n", format);
             }

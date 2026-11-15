@@ -103,8 +103,13 @@ by code, no `cmd`: go through the interface above, or put the code in a `_win.cp
   crash). Tests that decode x86 fail on Linux until a Capstone 5 `libcapstone.so` is built or installed (an Ubuntu without a
   Capstone 5 package: build `capstone-engine` 5.0.x from source into `native/third_party/bin`). The DOS engine
   (`native/dosexec`) has no Linux build yet (phase 3).
-- **Tests**: see the counts in the next paragraph; the failures left are tests that start Windows tools (`.cmd` fakes,
-  `powershell`, drive paths) and tests that need Capstone 5. Run them in shards: `cb_tests --shard K/4`.
+- **Tests** (`cb_tests --filter "<area>."`, one process per area so that one crash is one area's; 2026-11-15): about 5,200 pass and
+  about 800 fail. `core` 138 of 139 (the Capstone one), `app` 10 of 10, `core16` 5 of 5, `java` 721 of 724, `formats` 742 of 761,
+  `knowledge` 71 of 72, `jobs` 25 of 28, `coverage` 46 of 48. The failures are of three kinds: about 560 need the Capstone 5
+  library (above); about 70 start a Windows tool (`.cmd`/`.bat` fakes, `powershell`, `cmd`); the rest write a drive path
+  (`C:/WATCOM`, `D:/old`) or compare against a Windows exit code. Three areas (`platforms`, `source`, `translate`, `ui`) still end in
+  a crash that follows from one of those (a test that indexes the result of a tool that could not run); none is a defect in the
+  Linux port itself. Bugs the Linux run found in the code and fixed: a dangling `initializer_list` in `exact/draft/prove.cpp`.
 
 Next, in order: Capstone 5 for Linux; the Windows-tool tests onto neutral spellings (or skip on Linux); the DOS engine and the
 other DLL engines as shared libraries (roadmap track 8, phase 3); `tools/` shell equivalents.

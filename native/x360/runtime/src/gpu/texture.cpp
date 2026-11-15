@@ -142,6 +142,7 @@ namespace gpu
         case 36: case 37: case 38: return kUntileFloat32;
         case 29: case 32: return kUntileHalf4;
         case 49: return kUntileDxn;
+        case 7: case 54: return kUntile2_10_10_10;
         default: return kUntilePlain;
         }
     }
@@ -197,6 +198,7 @@ namespace gpu
         case 2: case 6: case 8: case 9: case 10: case 14: case 25:           // 8 / 16 bits per component
         case 3: case 4: case 15:                                             // packed 16-bit texels
         case 18: case 19: case 20: case 51: case 52: case 53: case 49:       // DXT blocks, DXN (two alpha-style blocks)
+        case 7: case 54:                                                     // 2_10_10_10 (also sampled as 16_16_16_16)
         case 22: case 23:                                                    // 24-bit depth (unorm or 20e4 float), 8-bit stencil
         case 36: case 37: case 38:                                           // 32-bit floats
         case 29: case 32:                                                    // four 16-bit floats (EXPAND is the same data)
@@ -303,7 +305,7 @@ namespace gpu
         else
             f.numbers = anySigned ? TextureNumbers::kSigned : TextureNumbers::kUnsigned;
         if (TextureUntileKind(f.format) == kUntileFloat32 || TextureUntileKind(f.format) == kUntileDepth24Float ||
-            TextureUntileKind(f.format) == kUntileHalf4)
+            TextureUntileKind(f.format) == kUntileHalf4 || TextureUntileKind(f.format) == kUntile2_10_10_10)
             f.numbers = TextureNumbers::kInteger; // floats are what they are: no sign or number format applies
                                                   // (a float depth texture's fetch constant has the integer bit set)
         else if (TextureUntileKind(f.format) != kUntilePlain && f.numbers != TextureNumbers::kUnsigned)
@@ -638,6 +640,13 @@ void main(uint3 id : SV_DispatchThreadID)
             depth = asfloat((uint(expo + 112) << 23) | (mant << 3));
         }
         xe_untile_dest[uint3(id.xy, zslice)] = depth.xxxx;
+        return;
+    }
+    if (kind == 10u)
+    {
+        // k_2_10_10_10: R, G, B 10-bit unorm (bits 0-9, 10-19, 20-29), A 2-bit unorm; to the host as floats
+        xe_untile_dest[uint3(id.xy, zslice)] = float4(float(word & 0x3FFu) / 1023.0, float((word >> 10) & 0x3FFu) / 1023.0,
+                                                      float((word >> 20) & 0x3FFu) / 1023.0, float(word >> 30) / 3.0);
         return;
     }
     if (kind == 8u)

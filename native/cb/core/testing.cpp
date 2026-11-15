@@ -106,6 +106,24 @@ std::filesystem::path beside_checkout(std::string_view relative) {
     return (parent / fs::from_text(relative)).lexically_normal();
 }
 
+std::string rooted(std::string_view relative) {
+#ifdef _WIN32
+    return "C:/" + std::string(relative);
+#else
+    return "/" + std::string(relative);
+#endif
+}
+
+bool windows_only(std::string_view reason) {
+#ifdef _WIN32
+    (void)reason;
+    return false;
+#else
+    std::fprintf(stderr, "  (not run off Windows: %.*s)\n", static_cast<int>(reason.size()), reason.data());
+    return true;
+#endif
+}
+
 int run_all(int argc, char** argv) {
     std::string filter;
     std::string xml_path;

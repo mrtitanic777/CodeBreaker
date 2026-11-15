@@ -344,22 +344,32 @@ before the next DS use / used with the new DS); (2) for the restored sites the C
 `codebreaker_ds()`-style statement the build already has for `__loadds` functions). Not done: (2) changes the C of every caller of
 such a callee, and each needs the gate.
 
-### 15. The DS classifier: built, tested, and NOT applied (the boot fails with it)
+### 15. The DS classifier (module_scan.cpp): on by default; two callers kept as assembly
 
 Built in build/module_scan.cpp, tested in build/module_test.cpp (21 tests pass): `leaves_ds(ins, own_data_loads)` (a `mov ds, ax` whose AX is a
 `mov ax, imm` the loader fixes to the module's own automatic data segment changes nothing: the fix-ups are found from the segment's
-relocation records, following the chain of a non-additive one through the stored words), and `loads_own_ds_before(ins, k, own_data_loads)`
-(the caller loaded the same segment itself before the call at instruction k). With both as the rule (callers of sub_1_5D4F, which only loads
-DGROUP, stay C when they had DGROUP loaded before the call): USER's 20 callers fell to 7 and USER C rose 569 -> 582 (first version, no
-caller check) / 576 (with the caller check), the gate passed them, and **`regress all15` FAILED (`FAIL(dos)`, twice) with either**. Control: the same
-exe with the 13 callers forced back to assembly (`CB_ASM_ONLY`): PASS, USER C 569. So the failure is in one or more of the callers rebuilt as C,
-not in the build: what breaks is not DS itself on the call path (the caller check holds for all six) but something else those C bodies do. A
-bisection by `CB_ASM_ONLY` subsets is not reliable (forcing a subset moves other functions' offsets and fails differently, "error box before
-Welcome", 44 s), so it needs a one-function-at-a-time run with the others as in the passing state. Until then `leaving_own` stays empty: no caller is excused,
-the behaviour is the blanket rule as before, and `regress all15 --runs 2` PASSES again (USER C 569 / gated 41).
+relocation records, following the chain of a non-additive one through the stored words) and `loads_own_ds_before(ins, k, own_data_loads)`
+(the caller loaded the same segment itself before the call at instruction k). A caller of a callee that leaves only that segment (USER's
+sub_1_5D4F: 20 callers) is no longer forced to assembly when it had DGROUP loaded before the call.
 
-IMPORTANT: the snapshot 6d948c5d4 already on origin contains the first version of this change (callee-only `own_data_loads`), which fails the all-15
-boot. The restoring edit is in module_scan.cpp on disk (`(void)own_loads;`, `leaving_own` never filled) and needs the next gate.
+First tried on all of them: USER C 569 -> 576 and `regress all15` FAILED (`FAIL(dos)`, twice); the same exe with the 13 callers forced back
+to assembly passed. Bisection by `CB_ASM_ONLY` subsets is not reliable (forcing a subset moves other functions and fails differently), so the rule
+was put behind a switch (`CB_DS_OWN_CALLERS=<one name>`, default off) and run one function at a time, all else as in the passing state
+(one `regress all15 --runs 1` each; two earlier series ran on a stale exe copy and were discarded):
+
+| caller | all15 | USER C |
+|---|---|---:|
+| sub_1_6CA0 | PASS | 571 |
+| sub_6_028C | PASS | 570 |
+| sub_15_147C | PASS | 570 |
+| sub_15_187A | PASS | 570 |
+| **BEAR306** | **FAIL(dos)** | 570 |
+| **sub_25_0429** | **FAIL(error box before Welcome)** | 570 |
+
+So the DS reading is right for four and the two others break for a reason of their own (their C, unlocked, is wrong in a way the gate
+does not see; not found). They are listed in data/build/kept_as_asm.txt (the whole-run-showed-wrong list). The rule is then on by default
+(`CB_NO_DS_OWN=1` turns it off). `regress all15 --runs 2` with the switch on for all 13 callers and the two kept: PASS, PASS, USER C 574 / gated 40;
+default (no switch), rebuilt exe: PASS, PASS (5m23s), USER C 574 / gated 40 (+5 over 569), GDI unchanged. `regress install` of this exe: see below.
 
 Also noted: regress has no option for a private state folder (its builds go to state/build/<module> and state/work/regress), so concurrent runs
 by two sessions can collide; run them one at a time.

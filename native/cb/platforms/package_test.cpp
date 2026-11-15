@@ -41,7 +41,7 @@ struct Files {
     std::map<std::string, ExeKind> classes;       // by MZ header
     std::map<std::string, ExeKind> kinds;         // that, and headerless DOS
     std::map<std::string, std::uint16_t> machines;
-    std::set<std::string> nes, sms, gb, genesis, ps1, gba, nds, n64, msx, coleco, cpc, atari5200, atari2600, atari7800, lynx, threedo, jaguar, wonderswan, cdi, vectrex, chf, o2, intv, vb, pce, snes, neogeo, segacd, sega32x, saturn, dreamcast, n3ds, vita, ps3, gamecube, wii, wiiu, ps2, psp, zx, xex, drivers, java_modules;
+    std::set<std::string> nes, sms, gb, genesis, ps1, gba, nds, n64, msx, coleco, cpc, atari5200, atari2600, atari7800, lynx, threedo, jaguar, wonderswan, cdi, vectrex, chf, o2, intv, vb, ngp, pce, snes, neogeo, segacd, sega32x, saturn, dreamcast, n3ds, vita, ps3, nswitch, gamecube, wii, wiiu, ps2, psp, zx, xex, drivers, java_modules;
 
     Probes probes() const {
         auto in = [](const std::set<std::string>& s) {
@@ -83,6 +83,8 @@ struct Files {
         pr.is_o2 = in(o2);
         pr.is_intv = in(intv);
         pr.is_vb = in(vb);
+        pr.is_switch = in(nswitch);
+        pr.is_ngp = in(ngp);
         pr.is_atari2600 = in(atari2600);
         pr.is_atari7800 = in(atari7800);
         pr.is_lynx = in(lynx);
@@ -129,6 +131,7 @@ Registry full_registry(const Probes& probes) {
     r.add(stand_in(Id::O2, "o2", std::nullopt, true));
     r.add(stand_in(Id::Intv, "intv", std::nullopt, true));
     r.add(stand_in(Id::Vb, "vb", std::nullopt, true));
+    r.add(stand_in(Id::Ngp, "ngp", std::nullopt, true));
     r.add(stand_in(Id::Atari2600, "atari2600", std::nullopt, true));
     r.add(stand_in(Id::Atari7800, "atari7800", std::nullopt, true));
     r.add(stand_in(Id::Lynx, "lynx", std::nullopt, true));
@@ -147,6 +150,7 @@ Registry full_registry(const Probes& probes) {
     r.add(stand_in(Id::N3ds, "n3ds", std::nullopt, true));
     r.add(stand_in(Id::Vita, "vita", std::nullopt, true));
     r.add(stand_in(Id::Ps3, "ps3", std::nullopt, true));
+    r.add(stand_in(Id::Switch, "switch", std::nullopt, true));
     r.add(zx());
     r.add(stand_in(Id::Genesis, "genesis", std::nullopt, true));
     r.add(stand_in(Id::Ps1, "ps1", std::nullopt, true));
@@ -165,7 +169,7 @@ Registry full_registry(const Probes& probes) {
 }  // namespace
 
 CB_TEST("platforms.package.ids", [] {
-    const std::vector<std::string> expected = {"java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "ps1", "gba", "nds", "n64", "zx", "msx", "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "vb", "intv", "o2", "chf", "win32", "win16", "vxd", "dos"};
+    const std::vector<std::string> expected = {"java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "ps1", "gba", "nds", "n64", "zx", "msx", "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "switch", "vb", "intv", "o2", "chf", "ngp", "win32", "win16", "vxd", "dos"};
     CB_CHECK_EQ(kOrder.size(), expected.size());
     for (std::size_t i = 0; i < kOrder.size(); ++i) {
         CB_CHECK_EQ(std::string(id_text(kOrder[i])), expected[i]);
@@ -182,7 +186,7 @@ CB_TEST("platforms.package.registry_orders_and_finds", [] {
     // recorded: [id, name] in the order platforms are tried
     const std::vector<std::pair<std::string, std::string>> expected = {
         {"java", "java"}, {"xbox360", "powerpc"}, {"xbox", "xbe"}, {"nes", "nes"}, {"sms", "sms"}, {"gb", "gb"}, {"genesis", "genesis"}, {"ps1", "ps1"}, {"gba", "gba"}, {"nds", "nds"}, {"n64", "n64"},
-        {"zx", "zx"},     {"msx", "msx"}, {"coleco", "coleco"}, {"cpc", "cpc"}, {"atari5200", "atari5200"}, {"atari2600", "atari2600"}, {"atari7800", "atari7800"}, {"lynx", "lynx"}, {"pce", "pce"}, {"snes", "snes"}, {"neogeo", "neogeo"}, {"segacd", "segacd"}, {"sega32x", "sega32x"}, {"saturn", "saturn"}, {"dreamcast", "dreamcast"}, {"threedo", "threedo"}, {"jaguar", "jaguar"}, {"wonderswan", "wonderswan"}, {"cdi", "cdi"}, {"vectrex", "vectrex"}, {"gamecube", "gamecube"}, {"wii", "wii"}, {"wiiu", "wiiu"}, {"ps2", "ps2"}, {"psp", "psp"}, {"n3ds", "n3ds"}, {"vita", "vita"}, {"ps3", "ps3"}, {"vb", "vb"}, {"intv", "intv"}, {"o2", "o2"}, {"chf", "chf"}, {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"},   {"dos", "dos"}};
+        {"zx", "zx"},     {"msx", "msx"}, {"coleco", "coleco"}, {"cpc", "cpc"}, {"atari5200", "atari5200"}, {"atari2600", "atari2600"}, {"atari7800", "atari7800"}, {"lynx", "lynx"}, {"pce", "pce"}, {"snes", "snes"}, {"neogeo", "neogeo"}, {"segacd", "segacd"}, {"sega32x", "sega32x"}, {"saturn", "saturn"}, {"dreamcast", "dreamcast"}, {"threedo", "threedo"}, {"jaguar", "jaguar"}, {"wonderswan", "wonderswan"}, {"cdi", "cdi"}, {"vectrex", "vectrex"}, {"gamecube", "gamecube"}, {"wii", "wii"}, {"wiiu", "wiiu"}, {"ps2", "ps2"}, {"psp", "psp"}, {"n3ds", "n3ds"}, {"vita", "vita"}, {"ps3", "ps3"}, {"switch", "switch"}, {"vb", "vb"}, {"intv", "intv"}, {"o2", "o2"}, {"chf", "chf"}, {"ngp", "ngp"}, {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"},   {"dos", "dos"}};
     CB_CHECK_EQ(r.all().size(), expected.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {
         CB_CHECK_EQ(std::string(id_text(r.all()[i].id)), expected[i].first);
@@ -212,7 +216,7 @@ CB_TEST("platforms.package.lanes_runners_steps", [] {
     Files files;
     Registry r = full_registry(files.probes());
     const auto lanes = r.lanes();
-    CB_CHECK_EQ(lanes.size(), 46u);                         // xbe has no lane: it is handed the PE image
+    CB_CHECK_EQ(lanes.size(), 48u);                         // xbe has no lane: it is handed the PE image
     CB_CHECK(lanes[0] == (std::pair<std::string, std::string>{"java", "java"}));
     CB_CHECK(lanes[1] == (std::pair<std::string, std::string>{"powerpc", "powerpc"}));
     // (its place moves as console lanes are added before it: found by name)
@@ -227,7 +231,7 @@ CB_TEST("platforms.package.lanes_runners_steps", [] {
     CB_CHECK(std::find(runners.begin(), runners.end(), "java") == runners.end());   // the JVM runs it, not us
     CB_CHECK(std::find(runners.begin(), runners.end(), "xbe") == runners.end());
     const auto steps = r.step_sets();
-    CB_CHECK_EQ(steps.size(), 46u);
+    CB_CHECK_EQ(steps.size(), 48u);
     for (const auto& [id, s] : steps) CB_CHECK(s == Steps::Lanes);
 });
 

@@ -330,6 +330,17 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         const std::uint32_t entry = get<std::uint32_t>(file, 24, "detect");
         if (entry >= 0x00100000u && entry < 0x01000000u) return one("Nintendo 3DS executable (ELF)", std::format("ARM11, entry 0x{:08X}, {} bytes", entry, size), "n3ds", "reach");
     }
+    if (size >= 0x80 && head.size() >= 0x80 && starts_with(head, 0x10, "NRO0")) {   // a Switch homebrew executable: the header gives the segment sizes
+        return one("Nintendo Switch homebrew executable (NRO)",
+                   std::format("AArch64, text {} bytes, rodata {} bytes, data {} bytes, bss {} bytes, {} bytes in all", get<std::uint32_t>(file, 0x24, "detect"), get<std::uint32_t>(file, 0x2C, "detect"),
+                               get<std::uint32_t>(file, 0x34, "detect"), get<std::uint32_t>(file, 0x38, "detect"), size),
+                   "switch", "reach");
+    }
+    if (size >= 0x100 && head.size() >= 0x100 && starts_with(head, 0, "NSO0")) return one("Nintendo Switch executable (NSO)", std::format("AArch64, {} bytes (the segments may be LZ4-compressed)", size), "switch", "reach");
+    if (size >= 64 && head.size() >= 64 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 2 && head[5] == 1 && (head[18] | head[19] << 8) == 183)   // an AArch64 ELF: devkitA64's output
+        return one("AArch64 executable (ELF)", std::format("ARMv8-A, entry 0x{:X}, {} bytes", get<std::uint32_t>(file, 24, "detect"), size), "switch", "reach");
+    if (size >= 4 && head.size() >= 4 && starts_with(head, 0, "PFS0")) return one("Nintendo Switch NSP (PFS0)", "not handled: the contents are encrypted", "switch", "gap");
+    if (size >= 0x104 && head.size() >= 0x104 && starts_with(head, 0x100, "HEAD")) return one("Nintendo Switch cartridge image (XCI)", "not handled: the contents are encrypted", "switch", "gap");
     if (size >= 64 && head.size() >= 64 && head[0] == 0x7F && head[1] == 'E' && head[2] == 'L' && head[3] == 'F' && head[4] == 2 && head[5] == 2 && (head[18] << 8 | head[19]) == 21) {   // a 64-bit big-endian PowerPC ELF: PSL1GHT's output
         const std::uint64_t entry = static_cast<std::uint64_t>(be32_or_zero(head, 24)) << 32 | be32_or_zero(head, 28);
         return one("PlayStation 3 executable (ELF)", std::format("Cell PPU, entry descriptor 0x{:X}, {} bytes", entry, size), "ps3", "reach");
@@ -454,11 +465,11 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         } catch (const FormatError&) {
         }
     }
-    if (name_ends_with(name, {".ngp", ".ngc", ".npc"}) && size >= 64) {   // a Neo Geo Pocket cartridge: the SNK licence text, then the start address; recognised, not yet handled (no TLCS-900/H core)
+    if (name_ends_with(name, {".ngp", ".ngc", ".npc"}) && size >= 64) {   // a Neo Geo Pocket cartridge: the SNK licence text, then the start address; the lane reads it with the TLCS-900/H core
         try {
             const formats::ngp::Rom rom = formats::ngp::parse(file);
             return one(rom.header.colour ? "Neo Geo Pocket Color cartridge" : "Neo Geo Pocket cartridge",
-                       std::format("TLCS-900/H, \"{}\", {} bytes, start at 0x{:06X}", rom.header.title, size, rom.header.start), "ngp", "gap");
+                       std::format("TLCS-900/H, \"{}\", {} bytes, start at 0x{:06X}", rom.header.title, size, rom.header.start), "ngp", "reach");
         } catch (const FormatError&) {
         }
     }

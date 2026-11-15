@@ -162,3 +162,88 @@ Still open, by titles:
    `resources.xpr`, not yet traced); `KeSetCurrentStackPointers` (Street Fighter II' HF calls it 6,348 times: fiber switches; the
    arguments are `(sp?, thread, base, base, limit)`, and treating r3 as the new r1 broke the title, so it stays unimplemented);
    `XeKeysSetKey`/`XeKeysAesCbc` (Rock Band Blitz); XMA decode errors.
+
+## Round 3 (2026-11-15, evening)
+
+The 54 entries again (`--check 120`, one project at a time, deleted after), with Monopoly Plus and Happy Wars rerun after their last fixes.
+
+| Folder | Title | Functions | Frames | Stop |
+|---|---|---|---|---|
+| 584107D1 | Hexic HD | 7563 | 6000 |  |
+| 584107D5 | Small Arms | 42521 | 12 | no frame presented for 20 s after frame 239 |
+| 584107D7 | Marble Blast Ultra | 17631 | 6600 |  |
+| 584107E7 | Cloning Clyde | 12753 | 2400 |  |
+| 584107ED | Geometry Wars Evolved | 3378 | 6600 |  |
+| 584107F1 | Feeding Frenzy | 9795 | 6600 |  |
+| 584107F3 | UNO | 8391 | 6600 |  |
+| 584107F4 | Street Fighter II' HF | 13051 | 6600 |  |
+| 584107F8 | LUMINES LIVE! - Base Pack | 9629 | 6600 |  |
+| 584107FE | Assault Heroes | 21947 | 6600 |  |
+| 58410810 | Heavy Weapon | 19041 | 1 | Guest memory read fault at 00000070 in guest function 820CA570 (host +45E) on thread 1 (last guest c |
+| 58410811 | PAC-MAN | 8504 | 6600 |  |
+| 58410841 | 3D Ultra Minigolf | 23428 | 6600 |  |
+| 58410870 | TMNT 1989 Classic Arcade | 11073 | 6600 |  |
+| 584108A4 | SuperStreetFighter2THD | 15413 | 6600 |  |
+| 584108A8 | Vigilante 8 Arcade | 8268 | 6600 |  |
+| 584108B7 | Castle Crashers | 3938 | 6600 |  |
+| 58410AE9 | Happy Wars | 331546 | 1 | texture k_16_16_FLOAT (after the k_16_16_FLOAT resolve and 16_16_FLOAT target) |
+| 584111D6 | Bejeweled 3 | 30246 | 6600 |  |
+| 584111F7 | Minecraft Xbox 360 Edition | 43128 | 6600 |  |
+| 5841128F | Terraria | 1740 | 0 | no frame presented for 20 s after frame 0 |
+| 423607D1 | (title 423607D1, GoD) | 17598 | 0 | XexGetProcedureAddress on module handle 00000000 (ordinal 18): only system modules are supported |
+| 423607D3 | (GoD image unreadable: xdvdfs read before the start) |  | - |  |
+| 415487DB | Catherine Demo | 41103 | 2400 |  |
+| 415608CB | (not an Xbox 360 title: no default.xex) |  | - |  |
+| 545487F5 | Top Spin 2 Wimbledon Demo | 27674 | 1 | no frame presented for 20 s after frame 266 |
+| 454188D6 | Left 4 Dead 2 Demo | 270 | 0 |  |
+| 4D5389F0 | Forza Motorsport 4 | 47808 | 0 | no frame presented for 20 s after frame 0 |
+| 45410806 | (EA, disc, 33,319 functions) | 23123 | 6600 |  |
+| Arcadecraft | (not an Xbox 360 title: no default.xex) |  | - |  |
+| Bomberman LIVE | Bomberman LIVE | 10944 | 6600 |  |
+| DIG-DUG | DIG DUG | 8789 | 6600 |  |
+| Doritos Crash Course | Doritos Crash Course | 25945 | 6000 |  |
+| Echo The Dolphin | Ecco the Dolphin | 9264 | 6600 |  |
+| GALAGA | GALAGA | 8567 | 6600 |  |
+| Joy-Ride-Turbo | Joy Ride Turbo | 77975 | 1 | NtQueryInformationFile class 27 is not implemented (C:\Users\mrtit\Documents\GitHub\CodeBreaker\Conv |
+| MS. PAC-MAN | MS.PAC-MAN | 8802 | 6600 |  |
+| Millipede & Centipede | Centipede & Millipede | 12574 | 6600 |  |
+| Monopoly PLUS | MONOPOLY PLUS | 57814 | 1800 | no frame presented for 20 s after frame 233 (a stall) |
+| PAC-MAN CE DX | PAC-MAN CE DX | 11372 | 6600 |  |
+| PAC-MAN CE | Pac-Man C.E. | 6548 | 6600 |  |
+| PAC-MAN MUSEUM | PAC-MAN MUSEUM | 46345 | 0 | Indirect call to 821BED60, where no recompiled function starts (call at 821BFDBC) |
+| RALLY-X | NEW RALLY-X | 8791 | 6600 |  |
+| REAL-STEEL | REAL STEEL | 17966 | 6600 |  |
+| Rock-Band-Blitz | Rock Band Blitz | 42819 | 6600 |  |
+| Spongebob Underpants Slam | SpongeBob UnderPants! | 22377 | 6600 |  |
+| TEMPEST | Tempest | 15406 | 6600 |  |
+| TRON | TRON | 10700 | 6600 |  |
+| TrialsHD | Trials HD | 18199 | 6600 |  |
+| UNO Rush | UNO RUSH | 18169 | 6600 |  |
+| WALL-E | WALL-E Demo | 25815 | 5400 |  |
+| Zuma | Zuma | 11289 | 6600 |  |
+| MW3.iso | Modern Warfare 3 | 24603 | 6600 |  |
+| DEFENDER |  | 10025 | 6600 |  |
+
+40 of the 54 entries run the whole check with no stop (frames 1800-6600; Cloning Clyde and Catherine are CPU-bound at 20 frames a second); round 2 had 31, round 1 24. 3 are not recompilable titles.
+
+### Implemented in round 3 (native/x360)
+
+- **64-bit render targets**: `16_16_16_16_FLOAT` in the EDRAM output merger (two dwords a pixel with x doubled, a pitch of twice the tiles
+  in `xe_om_poly_back.y`), as resolve source (converted to `k_16_16_16_16_FLOAT`) and for the colour clear (two dwords). Also render targets
+  `2_10_10_10` and `16_16_FLOAT`, resolve to `k_8` (a byte store by interlocked and/or), `k_16_16_FLOAT` and `k_16_16_16_16_FLOAT`.
+  Lumines: 0 to 6600 frames; Catherine and Small Arms run until a later stall.
+- **Textures**: gamma (sRGB view of RGB), `DXN`, `2_10_10_10` (and `_AS_16_16_16_16`), and **3D textures**: a Texture3D untiled with
+  rexglue's volume tiling (base level only; not exercised yet: the three titles use `tfetch3D` on 2D constants).
+- **`tfetch3D` of a 2D constant** (shader variant by constant: `volumeAs2D`) and `getCompTexLOD`: Cloning Clyde, UNO and Vigilante 8
+  run (Cloning Clyde 1 to 2400 frames, UNO 1 to 6600, Vigilante 8 103 to 6600).
+
+### Traced, not fixed
+
+- **Heavy Weapon**: the read at 0x70 is `*(*(owner+72)+2684)+112` in `sub_820CA570` (a title object's field +2684 never set); the stores to that
+  offset are in a dozen game functions, so it is game state, not a kernel call we answered wrongly.
+- **Top Spin 2**: the loader thread's `LeaveCriticalSection` is called with 0x3721C (a `this` of 0x37214 from an uninitialised table) after
+  `ObOpenObjectByName` answers not found: the title expects a named object that exists on the console.
+- **Stalls** in Catherine (a thread spinning in `KeGetCurrentProcessType` callers), Small Arms and Monopoly Plus after frames 233-745: not traced.
+- **Extra modules** (Terraria, L4D2, Forza 4): `recompile-project` would need one XenonRecomp configuration per XEX/DLL (with the function
+  suffix the config has), a `module_info` and registration for each in `x360.cmake`, and `XexLoadImage` loading a linked module by name
+  and calling its entry; not started.

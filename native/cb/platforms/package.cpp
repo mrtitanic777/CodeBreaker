@@ -14,8 +14,8 @@ namespace {
 constexpr std::uint16_t kMachine386 = 0x014C;
 constexpr std::uint16_t kMachineXenon = 0x01F2;
 
-constexpr std::array<std::string_view, 47> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1", "gba", "nds", "n64",
-                                                       "zx",   "msx",     "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "vb", "intv", "o2", "chf", "win32", "win16", "vxd", "dos"};
+constexpr std::array<std::string_view, 49> kIdNames = {"java", "xbox360", "xbox", "nes", "sms",   "gb", "genesis", "ps1", "gba", "nds", "n64",
+                                                       "zx",   "msx",     "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "cdi", "vectrex", "gamecube", "wii", "wiiu", "ps2", "psp", "n3ds", "vita", "ps3", "switch", "vb", "intv", "o2", "chf", "ngp", "win32", "win16", "vxd", "dos"};
 static_assert(kIdNames.size() == kOrder.size());
 
 std::size_t order_index(Id id) {
@@ -225,9 +225,11 @@ bool Registry::recognises(const Platform& platform, const std::filesystem::path&
             case Id::CdI: return need(pr.is_cdi, "is_cdi")(path);
             case Id::Vectrex: return need(pr.is_vectrex, "is_vectrex")(path);
             case Id::Chf: return need(pr.is_chf, "is_chf")(path);
+            case Id::Ngp: return need(pr.is_ngp, "is_ngp")(path);
             case Id::O2: return need(pr.is_o2, "is_o2")(path);
             case Id::Intv: return need(pr.is_intv, "is_intv")(path);
             case Id::Vb: return need(pr.is_vb, "is_vb")(path);
+            case Id::Switch: return need(pr.is_switch, "is_switch")(path);
             case Id::Atari2600: return need(pr.is_atari2600, "is_atari2600")(path);
             case Id::Atari7800: return need(pr.is_atari7800, "is_atari7800")(path);
             case Id::Lynx: return need(pr.is_lynx, "is_lynx")(path);

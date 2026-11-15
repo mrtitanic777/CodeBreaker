@@ -94,17 +94,23 @@ Image build(std::string_view source, const Options& o) {
     NameLabels labels;
     std::uint32_t pc = 0;
     try {
-        for (const Line& l : lines) {
-            if (l.keyword == "EQU" || l.keyword == "=") {
-                if (l.label.empty()) throw AsmError(l.number, l.text, "EQU needs a name");
-                labels[l.label] = o.eval(l.operand, labels, true);
-                continue;
+        for (unsigned round = 0;; ++round) {
+            const NameLabels previous = labels;   // (what a name defined further on was in the round before)
+            pc = 0;
+            for (const Line& l : lines) {
+                if (l.keyword == "EQU" || l.keyword == "=") {
+                    if (l.label.empty()) throw AsmError(l.number, l.text, "EQU needs a name");
+                    labels[l.label] = o.eval(l.operand, labels, true);
+                    continue;
+                }
+                if (!l.label.empty()) labels[l.label] = pc;
+                if (l.keyword.empty() && !l.instruction) continue;
+                if (l.keyword == "ORG") pc = static_cast<std::uint32_t>(o.eval(l.operand, labels, true));
+                else if (l.instruction) pc += static_cast<std::uint32_t>(o.assemble(l.operand, pc, labels, true).size());
+                else pc += static_cast<std::uint32_t>(directive_bytes(l, labels, true, o).size());
             }
-            if (!l.label.empty()) labels[l.label] = pc;
-            if (l.keyword.empty() && !l.instruction) continue;
-            if (l.keyword == "ORG") pc = static_cast<std::uint32_t>(o.eval(l.operand, labels, true));
-            else if (l.instruction) pc += static_cast<std::uint32_t>(o.assemble(l.operand, pc, labels, true).size());
-            else pc += static_cast<std::uint32_t>(directive_bytes(l, labels, true, o).size());
+            if (!o.converge || labels == previous) break;
+            if (round == 16) throw AsmError(0, "", "the sizes of the instructions do not settle");
         }
     } catch (const AsmError&) {
         throw;

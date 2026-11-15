@@ -50,6 +50,19 @@ std::filesystem::path data_path(std::string_view relative);
 // they do not. `local_input("cab/MINI.CAB")`: <checkout>/binaries/test-inputs/cab/MINI.CAB, the git-ignored folder
 // for copyrighted test inputs. `beside_checkout("Windows95")`: a checkout next to this one (<checkout>/../Windows95).
 std::filesystem::path local_input(std::string_view relative);
+
+// A test of something that is Windows by nature (a `.cmd` or `.bat` fake tool, PowerShell, a drive-lettered path the code
+// under test must keep, a Windows exit code) begins with CB_WINDOWS_ONLY("why"): elsewhere it says so on stderr and passes
+// without running. (It stands in for a test that cannot run there, not for a test that fails.)
+bool windows_only(std::string_view reason);
+
+// An absolute path that exists nowhere, spelled with forward slashes, for a test that needs a path of that shape and no
+// more: rooted("work/state") is "C:/work/state" on Windows and "/work/state" elsewhere.
+std::string rooted(std::string_view relative);
+#define CB_WINDOWS_ONLY(reason)                          \
+    do {                                                 \
+        if (::cb::testing::windows_only(reason)) return; \
+    } while (false)
 std::filesystem::path beside_checkout(std::string_view relative);
 
 // Captures what the code under test writes to stdout and stderr (through cb::out/cb::err/cb::log or the C

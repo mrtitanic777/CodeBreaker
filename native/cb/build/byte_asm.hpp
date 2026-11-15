@@ -32,6 +32,9 @@ struct Options {
     // The value of an expression.
     std::function<std::int64_t(std::string_view expr, const decompile::NameLabels& labels, bool lenient)> eval;
     bool big_endian_words = false;
+    // For an instruction whose size depends on a value (an absolute address of 8, 16 or 24 bits): repeat the first pass, a name defined further on standing for its address from the
+    // pass before, until no label moves.
+    bool converge = false;
 };
 
 // AsmError, with the line, for anything that does not assemble.

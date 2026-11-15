@@ -269,6 +269,7 @@ CB_TEST("build.functions.an_object_kept_from_another_folder_is_rewritten_for_thi
     const Bytes kept = make_object(was, "f0003");
     const auto here = omf_here(kept, now);
     CB_CHECK(here.has_value());
+    if (!here) return;
     const Parsed p = parse_object(*here);
     CB_CHECK_EQ(p.theadr, native_text(now) + "\\f0003.c");
     CB_CHECK_EQ(p.dep, native_text(now) + "\\m.h");
@@ -278,6 +279,7 @@ CB_TEST("build.functions.an_object_kept_from_another_folder_is_rewritten_for_thi
     // the same folder: nothing changes but the date of m.h
     const auto same = omf_here(make_object(now, "f0003"), now);
     CB_CHECK(same.has_value());
+    if (!same) return;
     CB_CHECK_EQ(parse_object(*same).theadr, native_text(now) + "\\f0003.c");
     // the two names change length with the folder's, and nothing else does
     CB_CHECK_EQ(static_cast<std::ptrdiff_t>(here->size()) - static_cast<std::ptrdiff_t>(kept.size()),

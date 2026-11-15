@@ -74,7 +74,7 @@ namespace gpu
     // How the untile shader reads the format: one component per 8 or 16 bits; a packed 16-bit texel (its components'
     // widths: TexturePackedWidths, a nibble each, X first) expanded to 8 bits each; or a DXT block decoded.
     enum : uint32_t { kUntilePlain = 0, kUntilePacked16 = 1, kUntileDxt1 = 2, kUntileDxt2_3 = 3, kUntileDxt4_5 = 4,
-                      kUntileDepth24 = 5, kUntileFloat32 = 6, kUntileDepth24Float = 7, kUntileHalf4 = 8, kUntileDxn = 9 };
+                      kUntileDepth24 = 5, kUntileFloat32 = 6, kUntileDepth24Float = 7, kUntileHalf4 = 8, kUntileDxn = 9, kUntile2_10_10_10 = 10 };
     uint32_t TextureUntileKind(uint32_t format);
     uint32_t TexturePackedWidths(uint32_t format);
 

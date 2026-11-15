@@ -25,6 +25,7 @@
 #include "cb/formats/o2.hpp"
 #include "cb/formats/intv.hpp"
 #include "cb/formats/vb.hpp"
+#include "cb/formats/ngp.hpp"
 #include "cb/formats/atari7800.hpp"
 #include "cb/formats/cpc.hpp"
 #include "cb/formats/lynx.hpp"
@@ -62,6 +63,7 @@
 #include "cb/platforms/o2.hpp"
 #include "cb/platforms/intv.hpp"
 #include "cb/platforms/vb.hpp"
+#include "cb/platforms/ngp.hpp"
 #include "cb/platforms/atari7800.hpp"
 #include "cb/platforms/cpc.hpp"
 #include "cb/platforms/lynx.hpp"
@@ -71,11 +73,13 @@
 #include "cb/platforms/dreamcast.hpp"
 #include "cb/platforms/ps2.hpp"
 #include "cb/platforms/n3ds.hpp"
+#include "cb/platforms/nswitch.hpp"
 #include "cb/platforms/ps3.hpp"
 #include "cb/platforms/vita.hpp"
 #include "cb/platforms/psp.hpp"
 #include "cb/formats/ps2.hpp"
 #include "cb/formats/n3ds.hpp"
+#include "cb/formats/nro.hpp"
 #include "cb/formats/ps3.hpp"
 #include "cb/formats/vita.hpp"
 #include "cb/formats/psp.hpp"
@@ -168,6 +172,7 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_o2 = [](const std::filesystem::path& p) { return formats::o2::probe(p); };
     probes.is_intv = [](const std::filesystem::path& p) { return formats::intv::probe(p); };
     probes.is_vb = [](const std::filesystem::path& p) { return formats::vb::probe(p); };
+    probes.is_ngp = [](const std::filesystem::path& p) { return formats::ngp::probe(p); };
     probes.is_atari2600 = [](const std::filesystem::path& p) { return formats::atari2600::probe(p); };
     probes.is_atari7800 = [](const std::filesystem::path& p) { return formats::atari7800::probe(p); };
     probes.is_lynx = [](const std::filesystem::path& p) { return formats::lynx::probe(p); };
@@ -182,6 +187,7 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_n3ds = [](const std::filesystem::path& p) { return formats::n3ds::probe(p); };
     probes.is_vita = [](const std::filesystem::path& p) { return formats::vita::probe(p); };
     probes.is_ps3 = [](const std::filesystem::path& p) { return formats::ps3::probe(p); };
+    probes.is_switch = [](const std::filesystem::path& p) { return formats::nro::probe(p); };
     probes.is_dreamcast = [](const std::filesystem::path& p) { return formats::dreamcast::probe(p); };
     probes.is_gamecube = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::GameCube); };
     probes.is_wii = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::Wii); };
@@ -208,6 +214,7 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::o2());
     registry->add(platforms::intv());
     registry->add(platforms::vb());
+    registry->add(platforms::ngp());
     registry->add(platforms::atari2600());
     registry->add(platforms::atari7800());
     registry->add(platforms::lynx());
@@ -226,6 +233,7 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::n3ds());
     registry->add(platforms::vita());
     registry->add(platforms::ps3());
+    registry->add(platforms::nswitch());
     registry->add(platforms::zx());
     registry->add(platforms::genesis());
     registry->add(platforms::ps1());

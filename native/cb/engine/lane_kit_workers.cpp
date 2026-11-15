@@ -26,6 +26,7 @@
 #include "cb/engine/machine_n3ds.hpp"
 #include "cb/engine/machine_vita.hpp"
 #include "cb/engine/machine_ps3.hpp"
+#include "cb/engine/machine_switch.hpp"
 #include "cb/engine/machine_m68k.hpp"
 #include "cb/engine/machine_dreamcast.hpp"
 #include "cb/engine/machine_threedo.hpp"
@@ -36,6 +37,7 @@
 #include "cb/engine/machine_o2.hpp"
 #include "cb/engine/machine_intv.hpp"
 #include "cb/engine/machine_vb.hpp"
+#include "cb/engine/machine_ngp.hpp"
 #include "cb/engine/machine_sh2.hpp"
 #include "cb/jobs/workers.hpp"
 
@@ -154,6 +156,7 @@ void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
     register_n3ds_lane();   // (the Nintendo 3DS lane, likewise)
     register_vita_lane();   // (the PlayStation Vita lane, likewise)
     register_ps3_lane();    // (the PlayStation 3 lane, likewise)
+    register_switch_lane(); // (the Nintendo Switch lane, likewise)
     register_n64_lane();   // (the Nintendo 64 lane, likewise)
     register_gekko_lanes();   // (the GameCube, Wii and Wii U lanes, likewise)
     register_sh2_lanes();   // (the Sega 32X and Saturn lanes, likewise)
@@ -166,6 +169,7 @@ void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
     register_o2_lane();     // (and this one)
     register_intv_lane();     // (and this one)
     register_vb_lane();     // (and this one)
+    register_ngp_lane();     // (the Neo Geo Pocket lane, likewise)
     kinds.add("lane-judge", kit_judge_share);
     kinds.add("lane-build", kit_build_share);
 }

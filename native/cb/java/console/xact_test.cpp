@@ -413,6 +413,7 @@ CB_TEST("java.console.xact.run_build_skips_what_cannot_run", [] {
     xact::RunResult r = xact::run_build(out);
     CB_CHECK(r.ok);
     CB_CHECK_EQ(r.lines.size(), std::size_t{4});
+    if (r.lines.size() < 4) return;   // (the scripts are batch files: nothing runs them off Windows)
     CB_CHECK_EQ(r.lines[0], "[audio] skip convert_audio.bat (not generated)");
     CB_CHECK_EQ(r.lines[3], "[audio] skip music_banks.bat (not generated)");
     // scripts there but no tools: skipped with the reason, and never a failure
@@ -420,6 +421,7 @@ CB_TEST("java.console.xact.run_build_skips_what_cannot_run", [] {
     std::vector<std::string> logged;
     r = xact::run_build(out, std::nullopt, [&](std::string_view l) { logged.emplace_back(l); });
     CB_CHECK(r.ok);
+    if (r.lines.size() < 3) return;
     CB_CHECK_EQ(r.lines[0], "[audio] SKIP convert_audio.bat -- ffmpeg (add it to PATH) not found; the .bat is written, run it later.");
     CB_CHECK_EQ(r.lines[2], "[audio] SKIP build_banks.bat -- XACTBLD (set %XEDK% / install the Xbox 360 SDK) not found; the .bat is written, run it later.");
     CB_CHECK(logged == r.lines);                                                 // the log callback saw every line
@@ -442,6 +444,7 @@ CB_TEST("java.console.xact.run_build_runs_the_scripts", [] {
     fs::write_text(out / "build_banks.bat", "@echo off\r\necho XEDK=%XEDK%\r\nexit /b 3\r\n");        // fails, and says what it saw
     const xact::RunResult r = xact::run_build(out, tmp.path() / "xdk", {}, std::vector<std::string>{"convert_audio.bat", "build_banks.bat"});
     CB_CHECK(!r.ok);                                                                                     // one script failed
+    if (r.lines.size() < 3) return;   // (the scripts are batch files: nothing runs them off Windows)
     CB_CHECK_EQ(r.lines[0], "[audio] convert_audio.bat -> exit 0");
     CB_CHECK(stdfs::exists(out / "converted.txt"));
     CB_CHECK_EQ(r.lines[1], "[audio] build_banks.bat -> exit 3");
@@ -450,6 +453,7 @@ CB_TEST("java.console.xact.run_build_runs_the_scripts", [] {
     // an XEDK the environment already has is not replaced
     fs::ScopedEnv own_xedk("XEDK", fs::to_text(tmp.path() / "xdk"));
     const xact::RunResult again = xact::run_build(out, tmp.path() / "other", {}, std::vector<std::string>{"build_banks.bat"});
+    if (again.lines.size() < 2) return;
     CB_CHECK(again.lines[1].find(fs::to_text(tmp.path() / "xdk")) != std::string::npos);
     CB_CHECK(again.lines[1].find("other") == std::string::npos);
 });

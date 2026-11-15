@@ -54,7 +54,8 @@ CB_TEST("formats.ngp.probe_and_names", [] {
     CB_CHECK(probe(dir.path() / "b.ngc"));
     CB_CHECK(!probe(dir.path() / "c.bin"));
     CB_CHECK(!probe(dir.path() / "d.ngp"));
-    CB_CHECK_EQ(hardware().at(0x8000), "K1GE_CONTROL");
+    CB_CHECK_EQ(hardware().at(0x8000), "K2GE_DISP_CTL");
+    CB_CHECK_EQ(hardware().at(0x6FCC), "BIOS_INT_VBL");
     CB_CHECK_EQ(hardware().at(0x6F82), "BIOS_JOYPAD");
 });
 

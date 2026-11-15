@@ -236,14 +236,14 @@ CB_TEST("knowledge.store.a_reopened_file_has_what_was_written", [] {
 CB_TEST("knowledge.store.default_path_and_beside", [] {
     {
         fs::ScopedEnv env("CB_KNOWLEDGE_DB", std::nullopt);
-        CB_CHECK_EQ(fs::to_text(Store::default_path("C:/state")), "C:/state/db/knowledge.v2.sqlite");
+        CB_CHECK_EQ(fs::to_text(Store::default_path(testing::rooted("state"))), testing::rooted("state/db/knowledge.v2.sqlite"));
     }
     {
-        fs::ScopedEnv env("CB_KNOWLEDGE_DB", "D:/elsewhere/k.sqlite");
-        CB_CHECK_EQ(fs::to_text(Store::default_path("C:/state")), "D:/elsewhere/k.sqlite");
+        fs::ScopedEnv env("CB_KNOWLEDGE_DB", testing::rooted("elsewhere/k.sqlite"));
+        CB_CHECK_EQ(fs::to_text(Store::default_path(testing::rooted("state"))), testing::rooted("elsewhere/k.sqlite"));
     }
-    const auto beside = Store::beside(std::filesystem::path("C:/work/state/functions.sqlite"));
-    CB_CHECK_EQ(fs::to_text(beside.lexically_normal().generic_string()), "C:/work/state/db/knowledge.v2.sqlite");
+    const auto beside = Store::beside(std::filesystem::path(testing::rooted("work/state/functions.sqlite")));
+    CB_CHECK_EQ(fs::to_text(beside.lexically_normal().generic_string()), testing::rooted("work/state/db/knowledge.v2.sqlite"));
 });
 
 CB_TEST("knowledge.store.authored_kinds_load_from_the_checkouts_files", [] {
