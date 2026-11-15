@@ -50,11 +50,9 @@ set(FORMATS_SOURCES
 
 # zlib 1.3.1 (MSZIP) and crc32(): native/cb's cb_zlib (the copy native/decompiler carries, core/zcrc32.c)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-# Capstone's headers, from the Python package that carries its DLL (the same version; nothing of it is linked)
+# Capstone's headers: native/third_party/include, the version of the capstone.dll beside them (nothing is linked)
 if(NOT CAPSTONE_INCLUDE)
-  execute_process(COMMAND ${Python3_EXECUTABLE} -c "import capstone, os; print(os.path.join(os.path.dirname(capstone.__file__), 'include'))"
-                  OUTPUT_VARIABLE CAPSTONE_INCLUDE OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(CAPSTONE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/include")
 endif()
 
 # formats.dll: the questions, and native/cb's libraries they answer from (the XEX parser of native/xex is cb_xex_reader)

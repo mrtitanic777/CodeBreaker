@@ -12,10 +12,9 @@ project(codebreaker_analyze CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+# Capstone's headers: native/third_party/include, the version of the capstone.dll beside them
 if(NOT CAPSTONE_DIR)
-  execute_process(COMMAND ${Python3_EXECUTABLE} -c "import capstone, os; print(os.path.dirname(capstone.__file__))"
-                  OUTPUT_VARIABLE CAPSTONE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(CAPSTONE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
 endif()
 message(STATUS "capstone: ${CAPSTONE_DIR}")
 

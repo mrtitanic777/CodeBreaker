@@ -46,7 +46,7 @@ if %JOBS% LSS 1 set JOBS=1
 set GJOBS=%CB_GATE_JOBS%
 if "%GJOBS%"=="" set GJOBS=4
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
-if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
 set TARGETS=cb_exe_gate
 if "%UNIT%"=="1" set TARGETS=cb_tests cb_exe_gate
 if "%BUILD%"=="1" cmake --build "%B%" --target %TARGETS% -j %JOBS% || exit /b 1

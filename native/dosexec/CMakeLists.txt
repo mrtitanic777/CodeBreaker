@@ -15,10 +15,9 @@ project(codebreaker_dosexec CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+# Unicorn's headers: native/third_party/include, the version of the unicorn.dll beside them
 if(NOT UNICORN_DIR)
-  execute_process(COMMAND ${Python3_EXECUTABLE} -c "import unicorn, os; print(os.path.dirname(unicorn.__file__))"
-                  OUTPUT_VARIABLE UNICORN_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(UNICORN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
 endif()
 message(STATUS "unicorn: ${UNICORN_DIR}")
 

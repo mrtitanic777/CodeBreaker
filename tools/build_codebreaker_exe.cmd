@@ -20,7 +20,7 @@ set JOBS=%CB_BUILD_JOBS%
 if "%JOBS%"=="" set /a JOBS=%NUMBER_OF_PROCESSORS% / 2
 if %JOBS% LSS 1 set JOBS=1
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
-if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
 cmake --build "%B%" --target codebreaker -j %JOBS% || exit /b 1
 if not exist "%OUT%" mkdir "%OUT%"
 del /q "%OUT%\codebreaker.old-*.exe" >nul 2>&1

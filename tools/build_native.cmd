@@ -23,7 +23,7 @@ for %%L in (%LIBS%) do (
   if "%%L"=="cb" (
     echo == native/cb ^(cbtrace^)
     if not exist state\cxx\cb\build.ninja (
-      cmake -S native -B state/cxx/cb -G Ninja -DCMAKE_BUILD_TYPE=Release >nul || set FAILED=!FAILED! cb
+      cmake -S native -B state/cxx/cb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl >nul || set FAILED=!FAILED! cb
     )
     if exist state\cxx\cb\build.ninja cmake --build state/cxx/cb --target cbtrace -j 2 || set FAILED=!FAILED! cb
   ) else if "%%L"=="nasm" (
@@ -45,7 +45,7 @@ for %%L in (%LIBS%) do (
     echo == native/%%L
     rem (a tree configured before keeps its generator: --config Release covers Visual Studio's multi-config trees too)
     if not exist native\%%L\build\CMakeCache.txt (
-      cmake -S native/%%L -B native/%%L/build -G Ninja -DCMAKE_BUILD_TYPE=Release >nul || set FAILED=!FAILED! %%L
+      cmake -S native/%%L -B native/%%L/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl >nul || set FAILED=!FAILED! %%L
     )
     if exist native\%%L\build\CMakeCache.txt cmake --build native/%%L/build --config Release -j 2 || set FAILED=!FAILED! %%L
   )

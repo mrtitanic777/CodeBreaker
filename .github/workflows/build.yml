@@ -32,7 +32,7 @@ jobs:
       - name: codebreaker.exe and the unit tests
         shell: cmd
         run: |
-          cmake -S native -B state\cxx\cb -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+          cmake -S native -B state\cxx\cb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
           cmake --build state\cxx\cb --target codebreaker cb_tests -j 4 || exit /b 1
 
       - name: Unit tests

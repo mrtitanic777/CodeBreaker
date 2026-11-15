@@ -25,10 +25,9 @@ add_library(cbinvert SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/../l2/src/pyre.cc    # Python's re (native/l2's pyre, with what it needs)
   ${CMAKE_CURRENT_SOURCE_DIR}/../l2/src/pystr.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../l2/src/value.cc)
-# capstone.h: the headers Python's `capstone` package carries (the same version as its DLL)
+# capstone.h: native/third_party/include, the version of the capstone.dll beside it
 if(NOT CAPSTONE_INCLUDE)
-  execute_process(COMMAND python -c "import capstone, os; print(os.path.join(os.path.dirname(capstone.__file__), 'include'))"
-                  OUTPUT_VARIABLE CAPSTONE_INCLUDE OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(CAPSTONE_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/include")
 endif()
 message(STATUS "capstone headers: ${CAPSTONE_INCLUDE}")
 target_include_directories(cbinvert PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../l2/src ${CAPSTONE_INCLUDE})

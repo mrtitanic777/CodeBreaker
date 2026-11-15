@@ -25,7 +25,7 @@ if "%1"=="asan" (
 )
 if "%1"=="--" shift
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
-if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release %EXTRA% || exit /b 1
+if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl %EXTRA% || exit /b 1
 rem tools\build_cb.cmd area NAME [args] -- only one area's library, what it links, and its own tests, then run them
 if "%1"=="area" (
   cmake --build "%B%" --target cb_tests_%2 -j %JOBS% || exit /b 1
