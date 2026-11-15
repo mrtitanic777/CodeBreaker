@@ -8,6 +8,7 @@
 #include <set>
 
 #include "cb/core/fs.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/json.hpp"
 #include "cb/core/text.hpp"
 #include "cb/symbols/demangle.hpp"
@@ -289,8 +290,7 @@ std::pair<std::optional<Json>, Json> Server::Impl::ledger_now(bool refresh) {
     try {
         const Json kept = json::load(s.state / "mcp" / "ledger.json");
         const std::time_t when = static_cast<std::time_t>(kept.at("time").get<double>());
-        std::tm tm{};
-        localtime_s(&tm, &when);
+        const std::tm tm = sys::local_tm(when);
         char buf[64];
         std::strftime(buf, sizeof buf, "%Y-%m-%d %I:%M %p", &tm);
         Json note = Json::object();

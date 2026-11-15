@@ -1,6 +1,4 @@
 // cb/ui/service_jobs.cpp -- Jobs: commands started from an interface, each a process of its own.
-#include <windows.h>
-
 #include <algorithm>
 #include <chrono>
 #include <ctime>
@@ -12,7 +10,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/process.hpp"
 #include "cb/core/text.hpp"
-#include "cb/core/win.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/ui/service.hpp"
 
 namespace cb::ui::service {
@@ -21,93 +19,42 @@ namespace {
 
 constexpr std::size_t kLogChunk = 1u << 18;
 
-// A child of this program, in a Job Object of its own: stopping it stops what it started too, and so does this
-// program's end (kill-on-close). No process is ever stopped by name or by a pid not started here.
+// A child of this program, in a job of its own (process::Process): stopping it stops what it started too, and so does this
+// program's end. No process is ever stopped by name or by a pid not started here.
 class Child {
 public:
     Child() = default;
-    Child(Child&& o) noexcept : process_(std::exchange(o.process_, nullptr)), job_(std::exchange(o.job_, nullptr)), pid_(o.pid_) {}
-    Child& operator=(Child&& o) noexcept {
-        if (this != &o) {
-            close();
-            process_ = std::exchange(o.process_, nullptr);
-            job_ = std::exchange(o.job_, nullptr);
-            pid_ = o.pid_;
-        }
-        return *this;
-    }
+    Child(Child&&) noexcept = default;
+    Child& operator=(Child&&) noexcept = default;
     Child(const Child&) = delete;
     Child& operator=(const Child&) = delete;
-    ~Child() { close(); }
 
     // Start `argv` in `cwd` below normal priority, its output (and error) in `log`, its input empty.
     static Child start(const std::vector<std::string>& argv, const std::filesystem::path& cwd, const std::filesystem::path& log) {
-        SECURITY_ATTRIBUTES inherit{sizeof inherit, nullptr, TRUE};
-        HANDLE out = CreateFileW(win::to_wide(path_text(log)).c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, CREATE_ALWAYS,
-                                 FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (out == INVALID_HANDLE_VALUE)
-            throw IoError(log, static_cast<int>(GetLastError()), "cannot open the job's log");
-        HANDLE nul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_EXISTING, 0, nullptr);
-
-        STARTUPINFOW si{};
-        si.cb = sizeof si;
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = nul;
-        si.hStdOutput = out;
-        si.hStdError = out;
-        PROCESS_INFORMATION pi{};
-        std::wstring command = win::to_wide(process::command_line(argv));
-        std::wstring dir = win::to_wide(path_text(cwd));
-        const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
-                                       BELOW_NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, dir.c_str(), &si, &pi);
-        const DWORD error = ok ? 0 : GetLastError();
-        CloseHandle(out);
-        if (nul != INVALID_HANDLE_VALUE)
-            CloseHandle(nul);
-        if (!ok)
-            throw ToolError(argv.empty() ? "job" : argv[0], 1, win::error_message(error), "cannot start");
-
+        process::ProcessSpec spec;
+        spec.argv = argv;
+        spec.cwd = cwd;
+        spec.out = process::Capture::ToFile(log);
+        spec.err = process::Capture::Merge;
+        spec.priority = process::Priority::BelowNormal;
         Child child;
-        child.process_ = pi.hProcess;
-        child.pid_ = pi.dwProcessId;
-        child.job_ = CreateJobObjectW(nullptr, nullptr);
-        if (child.job_) {
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            SetInformationJobObject(child.job_, JobObjectExtendedLimitInformation, &limits, sizeof limits);
-            AssignProcessToJobObject(child.job_, child.process_);   // (it may already be in a job that forbids this: then it is stopped alone)
-        }
-        ResumeThread(pi.hThread);
-        CloseHandle(pi.hThread);
+        child.process_ = std::make_unique<process::Process>(process::start(spec));
+        child.process_->close_stdin();   // (an empty input: the child reads the end of it at once)
+        child.pid_ = child.process_->pid();
         return child;
     }
 
     std::uint32_t pid() const { return pid_; }
     // Its exit code once it has ended, else nullopt.
-    std::optional<std::uint32_t> poll() const {
-        DWORD code = 0;
-        if (!process_ || !GetExitCodeProcess(process_, &code) || code == STILL_ACTIVE)
-            return std::nullopt;
-        return code;
-    }
+    std::optional<std::uint32_t> poll() const { return process_ ? process_->wait(std::chrono::milliseconds(0)) : std::nullopt; }
     // Ends the child and what it started.
     void terminate() {
-        if (job_)
-            TerminateJobObject(job_, 1);
-        else if (process_)
-            TerminateProcess(process_, 1);
+        if (process_)
+            process_->kill();
     }
 
 private:
-    void close() {
-        if (job_)
-            CloseHandle(job_);   // kill-on-close: whatever still runs ends with it
-        if (process_)
-            CloseHandle(process_);
-        job_ = process_ = nullptr;
-    }
-    HANDLE process_ = nullptr;
-    HANDLE job_ = nullptr;
+    std::unique_ptr<process::Process> process_;
     std::uint32_t pid_ = 0;
 };
 
@@ -115,8 +62,7 @@ using SystemClock = std::chrono::system_clock;
 
 std::string local_time_text(SystemClock::time_point t, const char* format) {
     const std::time_t tt = SystemClock::to_time_t(t);
-    std::tm tm{};
-    localtime_s(&tm, &tt);
+    const std::tm tm = sys::local_tm(tt);
     char buf[32];
     std::strftime(buf, sizeof buf, format, &tm);
     return buf;
@@ -132,18 +78,7 @@ struct JobRecord {
 
 }  // namespace
 
-std::string this_program_path() {
-    std::wstring buffer(MAX_PATH, wchar_t{});
-    for (;;) {
-        const DWORD n = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-        if (n < buffer.size()) {
-            buffer.resize(n);
-            break;
-        }
-        buffer.resize(buffer.size() * 2);
-    }
-    return win::from_wide(buffer);
-}
+std::string this_program_path() { return fs::to_text(fs::executable_path()); }
 
 std::string_view word(JobStatus status) {
     switch (status) {

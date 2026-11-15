@@ -100,7 +100,7 @@ namespace gpu
     // `bytesLog2` = log2 of the bytes per block.
     uint32_t TiledOffset2D(uint32_t x, uint32_t y, uint32_t pitchMacro, uint32_t bytesLog2);
     // Destination bytes [start, end) a copy may write (07 §6.3): whole 32x32 macro tiles of the rectangle.
-    void ResolveExtent(const ResolveConstants& constants, uint32_t& start, uint32_t& end);
+    void ResolveExtent(const ResolveConstants& constants, uint32_t& start, uint32_t& end, uint32_t bytesLog2 = 2);
 
     // ---- CPU reference (resolve_reference.cpp), written separately from the HLSL for the test harness ----------
 

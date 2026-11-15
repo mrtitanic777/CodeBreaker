@@ -1,12 +1,10 @@
 // cb-unity: alone
-// cb/ui/mcp_http.cpp -- the MCP server's streamable HTTP transport: POST /mcp on a Winsock socket, behind the bearer token, with the
+// cb/ui/mcp_http.cpp -- the MCP server's streamable HTTP transport: POST /mcp on a TCP socket, behind the bearer token, with the
 // transport library's Host / Origin / Content-Type checks. Each request is answered as one server-sent event (or 202 for a notification);
 // the stream a GET would hold open is not served (405).
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
 #include <atomic>
 #include <ctime>
+#include <chrono>
 #include <format>
 #include <map>
 #include <mutex>
@@ -16,6 +14,7 @@
 #include <sstream>
 #include <thread>
 
+#include "cb/core/socket.hpp"
 #include "cb/core/text.hpp"
 #include "cb/ui/mcp_impl.hpp"
 
@@ -50,12 +49,7 @@ struct HttpState {
 };
 
 std::string http_date() {
-    const std::time_t t = std::time(nullptr);
-    std::tm tm{};
-    gmtime_s(&tm, &t);
-    char b[64];
-    std::strftime(b, sizeof b, "%a, %d %b %Y %H:%M:%S GMT", &tm);
-    return b;
+    return std::format("{:%a, %d %b %Y %H:%M:%S} GMT", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
 }
 
 std::string session_id() {
@@ -192,11 +186,11 @@ Reply answer(Server& server, HttpState& st, Request req) {
     return r;
 }
 
-void serve_connection(Server& server, const std::shared_ptr<HttpState>& st, SOCKET s) {
+void serve_connection(Server& server, const std::shared_ptr<HttpState>& st, net::Socket s) {
     std::string buf;
     char tmp[8192];
     auto more = [&] {
-        const int n = recv(s, tmp, sizeof tmp, 0);
+        const auto n = s.receive(ByteSpan(reinterpret_cast<std::uint8_t*>(tmp), sizeof tmp));
         if (n <= 0) return false;
         buf.append(tmp, static_cast<std::size_t>(n));
         return true;
@@ -204,10 +198,7 @@ void serve_connection(Server& server, const std::shared_ptr<HttpState>& st, SOCK
     for (;;) {
         std::size_t head_end;
         while ((head_end = buf.find("\r\n\r\n")) == std::string::npos)
-            if (!more()) {
-                closesocket(s);
-                return;
-            }
+            if (!more()) return;
         Request req;
         std::istringstream hs(buf.substr(0, head_end));
         std::string line;
@@ -225,10 +216,7 @@ void serve_connection(Server& server, const std::shared_ptr<HttpState>& st, SOCK
         }
         const std::size_t want = req.headers.contains("content-length") ? static_cast<std::size_t>(std::strtoull(req.headers["content-length"].c_str(), nullptr, 10)) : 0;
         while (buf.size() < head_end + 4 + want)
-            if (!more()) {
-                closesocket(s);
-                return;
-            }
+            if (!more()) return;
         req.body = buf.substr(head_end + 4, want);
         buf.erase(0, head_end + 4 + want);
         Reply r;
@@ -238,14 +226,7 @@ void serve_connection(Server& server, const std::shared_ptr<HttpState>& st, SOCK
             r = plain(500, "Internal Server Error");
         }
         const std::string out = wire(r);
-        for (std::size_t sent = 0; sent < out.size();) {
-            const int n = send(s, out.data() + sent, static_cast<int>(out.size() - sent), 0);
-            if (n <= 0) {
-                closesocket(s);
-                return;
-            }
-            sent += static_cast<std::size_t>(n);
-        }
+        if (!s.send(out)) return;
     }
 }
 
@@ -253,8 +234,6 @@ void serve_connection(Server& server, const std::shared_ptr<HttpState>& st, SOCK
 
 int Server::serve_http(std::uint16_t port, const std::string& host, const std::vector<std::string>& hosts, bool is_public, std::stop_token stop,
                        const std::function<void(std::uint16_t)>& listening) {
-    WSADATA d;
-    WSAStartup(MAKEWORD(2, 2), &d);
     auto st = std::make_shared<HttpState>();
     st->secret = token(impl_->s.state);
     st->is_public = is_public;
@@ -264,34 +243,19 @@ int Server::serve_http(std::uint16_t port, const std::string& host, const std::v
         st->allowed_hosts.push_back(h);
         st->allowed_origins.push_back("https://" + h);
     }
-    SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(port);
-    inet_pton(AF_INET, host.c_str(), &a.sin_addr);
-    if (bind(listener, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 || listen(listener, 64) != 0) {
+    auto listener = net::Listener::listen(host, port);
+    if (!listener) {
         std::fprintf(stderr, "cannot listen on %s:%u\n", host.c_str(), static_cast<unsigned>(port));
-        closesocket(listener);
         if (listening) listening(0);   // (0: it is not listening)
         return 1;
     }
-    if (listening) {
-        sockaddr_in bound{};
-        int size = sizeof bound;
-        getsockname(listener, reinterpret_cast<sockaddr*>(&bound), &size);
-        listening(ntohs(bound.sin_port));
-    }
+    if (listening) listening(listener->port());
     while (!stop.stop_requested()) {
-        fd_set ready;
-        FD_ZERO(&ready);
-        FD_SET(listener, &ready);
-        const timeval wait{0, 200000};   // look at the stop request five times a second
-        if (select(0, &ready, nullptr, nullptr, &wait) <= 0) continue;
-        const SOCKET c = accept(listener, nullptr, nullptr);
-        if (c == INVALID_SOCKET) break;
-        std::thread([this, st, c] { serve_connection(*this, st, c); }).detach();
+        auto client = listener->accept(std::chrono::milliseconds(200));   // look at the stop request five times a second
+        if (!client) continue;
+        std::thread([this, st, c = std::move(*client)]() mutable { serve_connection(*this, st, std::move(c)); }).detach();
     }
-    closesocket(listener);
+    listener.reset();
     impl_->link.stop_mine();
     return 0;
 }

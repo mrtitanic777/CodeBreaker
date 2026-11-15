@@ -71,6 +71,37 @@ GUEST_IMPORT(XamInputSetState)
     ctx.r3.u64 = input::SetVibration(user, left, right) ? kErrorSuccess : kErrorDeviceNotConnected;
 }
 
+namespace
+{
+    // XINPUT_CAPABILITIES of the controller behind a user (the gamepad flag only; see XamInputGetCapabilities).
+    uint32_t FillCapabilities(uint32_t user, uint32_t flagsIn, uint32_t caps)
+    {
+        auto& mem = guest::g_memory;
+        const uint32_t flags = flagsIn ? flagsIn : 3;
+        if (caps)
+            std::memset(mem.Translate(caps), 0, 0x14);
+        if (!(flags & kFlagGamepad))
+            return kErrorDeviceNotConnected; // a keyboard (2), Big Button pad, headset: none is ever connected
+        input::PadState pad;
+        uint32_t packet = 0;
+        if (user >= 4 || !input::GetState(user, pad, packet))
+            return kErrorDeviceNotConnected;
+        if (caps)
+        {
+            mem.Write8(caps + 0x00, 1);       // XINPUT_DEVTYPE_GAMEPAD
+            mem.Write8(caps + 0x01, 1);       // XINPUT_DEVSUBTYPE_GAMEPAD
+            mem.Write16(caps + 0x04, 0xF3FF); // buttons
+            mem.Write8(caps + 0x06, 0xFF);
+            mem.Write8(caps + 0x07, 0xFF);
+            for (uint32_t i = 0; i < 4; i++)
+                mem.Write16(caps + 0x08 + 2 * i, 0xFFC0);
+            mem.Write16(caps + 0x10, 0xFF);
+            mem.Write16(caps + 0x12, 0xFF);
+        }
+        return kErrorSuccess;
+    }
+}
+
 // DWORD XamInputGetCapabilities(DWORD UserIndex, DWORD Flags, PXINPUT_CAPABILITIES Capabilities)
 // XAM 17559 (0x816F2E70): zeroes the 0x14-byte result, calls XamInputGetCapabilitiesEx(1, ...) and copies its result
 // on success. Ex (0x816F12B8): Flags 0 = 3; gamepad (1) and Big Button (8) ask the controller driver
@@ -81,37 +112,15 @@ GUEST_IMPORT(XamInputSetState)
 // The dash calls it for users 0-3 to find the first connected controller.
 GUEST_IMPORT(XamInputGetCapabilities)
 {
-    auto& mem = guest::g_memory;
-    const uint32_t user = ctx.r3.u32, flags = ctx.r4.u32 ? ctx.r4.u32 : 3, caps = ctx.r5.u32;
-    if (caps)
-        std::memset(mem.Translate(caps), 0, 0x14);
-    if (!(flags & kFlagGamepad))
-    {
-        // A keyboard (2) or another device type (a Big Button pad, a headset): none is ever connected. MW3 asks for
-        // the keyboard of user 0 at start-up.
-        ctx.r3.u64 = kErrorDeviceNotConnected;
-        return;
-    }
-    input::PadState pad;
-    uint32_t packet = 0;
-    if (user >= 4 || !input::GetState(user, pad, packet))
-    {
-        ctx.r3.u64 = kErrorDeviceNotConnected;
-        return;
-    }
-    if (caps)
-    {
-        mem.Write8(caps + 0x00, 1);       // XINPUT_DEVTYPE_GAMEPAD
-        mem.Write8(caps + 0x01, 1);       // XINPUT_DEVSUBTYPE_GAMEPAD
-        mem.Write16(caps + 0x04, 0xF3FF); // buttons
-        mem.Write8(caps + 0x06, 0xFF);
-        mem.Write8(caps + 0x07, 0xFF);
-        for (uint32_t i = 0; i < 4; i++)
-            mem.Write16(caps + 0x08 + 2 * i, 0xFFC0);
-        mem.Write16(caps + 0x10, 0xFF);
-        mem.Write16(caps + 0x12, 0xFF);
-    }
-    ctx.r3.u64 = kErrorSuccess;
+    ctx.r3.u64 = FillCapabilities(ctx.r3.u32, ctx.r4.u32, ctx.r5.u32);
+}
+
+// DWORD XamInputGetCapabilitiesEx(DWORD Version, DWORD UserIndex, DWORD Flags, PXINPUT_CAPABILITIES Capabilities): what
+// XamInputGetCapabilities calls (XAM 17559 0x816F12B8, with version 1); a title's XInput start-up calls it directly (Rock
+// Band Blitz: 2,038 times in two minutes). The version-1 structure is XINPUT_CAPABILITIES.
+GUEST_IMPORT(XamInputGetCapabilitiesEx)
+{
+    ctx.r3.u64 = ctx.r3.u32 == 1 ? FillCapabilities(ctx.r4.u32, ctx.r5.u32, ctx.r6.u32) : 0x80070057;
 }
 
 // DWORD XamInputGetKeystrokeEx(PDWORD UserIndex, DWORD Flags, PXINPUT_KEYSTROKE Keystroke)

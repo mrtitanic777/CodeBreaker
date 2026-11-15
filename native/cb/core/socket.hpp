@@ -35,6 +35,10 @@ public:
     bool send(std::string_view text) { return send(as_bytes(text)); }
     // A receive that waits longer than this gives up (-1); 0 waits for ever.
     void set_receive_timeout(std::chrono::milliseconds limit);
+    // Likewise for send (a peer that does not read): the send fails.
+    void set_send_timeout(std::chrono::milliseconds limit);
+    // Whether the last receive or send that failed did so because a timeout passed (rather than the peer going away).
+    bool timed_out() const;
     // Let go now (a peer's pending read ends).
     void close();
     bool valid() const { return impl_ != nullptr; }
@@ -71,7 +75,9 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-// Connect to host:port ("localhost" and dotted IPv4 names); nullopt if nobody answers within `wait`.
-std::optional<Socket> connect(const std::string& host, std::uint16_t port, std::chrono::milliseconds wait = std::chrono::seconds(5));
+// Connect to host:port ("localhost" and dotted IPv4 names); nullopt if nobody answers within `wait` (`*timed_out` then says
+// whether the time ran out, as against the connection being refused).
+std::optional<Socket> connect(const std::string& host, std::uint16_t port, std::chrono::milliseconds wait = std::chrono::seconds(5),
+                              bool* timed_out = nullptr);
 
 }  // namespace cb::net

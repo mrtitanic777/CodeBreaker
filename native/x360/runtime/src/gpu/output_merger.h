@@ -78,6 +78,8 @@ namespace gpu
 
     // Shared address arithmetic (also for resolves): byte offset in the EDRAM buffer of a pixel's sample.
     extern const char* const kEdramAddressHlsl;
+    // xe_f7e3_decode(uint) / xe_f7e3_encode(float): the 10-bit 7e3 floats of k_2_10_10_10_FLOAT.
+    extern const char* const kEdramFloat7e3Hlsl;
 
     // Whether the output merger implements a colour format / depth format (others are fatal at draw time).
     bool OutputMergerSupportsColorFormat(uint32_t format);

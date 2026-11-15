@@ -1,8 +1,8 @@
 // cb/app/commands.cpp -- see commands.hpp.
 
 #include "cb/app/commands.hpp"
+#include "cb/core/sys.hpp"
 
-#include <io.h>
 
 #include <algorithm>
 #include <format>
@@ -58,7 +58,7 @@ const CommandDoc* find_command_doc(std::string_view name) {
 }
 
 bool stdio_are_terminals() {
-    return _isatty(0) != 0 && _isatty(1) != 0;
+    return sys::is_terminal(sys::Stream::In) && sys::is_terminal(sys::Stream::Out);
 }
 
 CorpusOption take_corpus_option(std::span<const std::string> args, std::span<const std::string> known) {

@@ -2567,7 +2567,10 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                     const uint32_t mask = (colorMask >> (4 * rt)) & 0xF;
                     if (!mask || !((ps->analysis.colorsWritten >> rt) & 1))
                         continue;
-                    const uint32_t info = Reg(kColorInfo[rt]), format = (info >> 16) & 0xF;
+                    const uint32_t info = Reg(kColorInfo[rt]);
+                    uint32_t format = (info >> 16) & 0xF;
+                    if (format == 12) // 2_10_10_10_FLOAT_AS_16_16_16_16: the same EDRAM bits as 2_10_10_10_FLOAT
+                        format = 3;
                     if (!OutputMergerSupportsColorFormat(format))
                         Fatal("GPU: render target {} format {} ({}) is not implemented by the EDRAM output merger", rt,
                               format, EdramColorFormatName(format));

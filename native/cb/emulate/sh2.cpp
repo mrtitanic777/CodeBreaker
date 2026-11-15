@@ -15,13 +15,17 @@ namespace cb::emulate::sh2 {
 namespace {
 
 // Which of the 65536 words are instructions (decoded once, from the table the disassembler and the assembler read).
-const std::vector<bool>& valid_words() {
-    static const std::vector<bool> table = [] {
-        std::vector<bool> t(0x10000);
-        for (std::uint32_t w = 0; w < 0x10000; ++w) t[w] = decompile::sh2::decode_word(static_cast<std::uint16_t>(w), 0).has_value();
+const std::vector<bool>& valid_words(Variant variant) {
+    static const std::array<std::vector<bool>, 2> tables = [] {
+        std::array<std::vector<bool>, 2> t;
+        for (const Variant v : {Variant::Sh2, Variant::Sh4}) {
+            std::vector<bool>& row = t[v == Variant::Sh4 ? 1 : 0];
+            row.resize(0x10000);
+            for (std::uint32_t w = 0; w < 0x10000; ++w) row[w] = decompile::sh2::decode_word(static_cast<std::uint16_t>(w), 0, v).has_value();
+        }
         return t;
     }();
-    return table;
+    return tables[variant == Variant::Sh4 ? 1 : 0];
 }
 
 // The divide unit's registers, as offsets from $FFFFFE00.
@@ -38,11 +42,26 @@ std::int16_t low_signed16(std::uint32_t v) { return static_cast<std::int16_t>(v 
 
 }  // namespace
 
-std::string BusAccess::text() const { return std::format("{}{}", kind == Kind::Read ? 'r' : 'w', static_cast<unsigned>(size)); }
+std::string BusAccess::text() const {
+    if (kind == Kind::Call) return "call";
+    if (kind == Kind::Cache) return "cache";
+    return std::format("{}{}", kind == Kind::Read ? 'r' : 'w', static_cast<unsigned>(size));
+}
 
 // ---- the bus ----------------------------------------------------------------------------------------------------
 
 Bus::Bus() : chip_(kChipBytes, 0) {}
+Bus::Bus(Variant variant) : variant_(variant), chip_(kChipBytes, 0) {}
+
+void Bus::on_enter(std::uint32_t lo, std::uint32_t hi, EnterFn entered) { enter_.push_back({lo & kPhysicalMask, hi & kPhysicalMask, std::move(entered)}); }
+
+void Bus::enter(std::uint32_t pc, const std::array<std::uint32_t, 16>& regs) const {
+    const std::uint32_t physical = pc & kPhysicalMask;
+    for (const Enter& e : enter_)
+        if (physical >= e.lo && physical <= e.hi) e.fn(pc, regs);
+}
+
+void Bus::note(BusAccess::Kind kind, std::uint32_t address, std::uint32_t value) { log_.push_back({kind, 4, address, value}); }
 
 void Bus::add_ram(std::uint32_t lo, std::size_t size) {
     lo &= kPhysicalMask;
@@ -76,13 +95,13 @@ void Bus::map(std::uint32_t lo, std::uint32_t hi, ReadFn read, WriteFn write) {
 }
 
 bool Bus::mapped(std::uint32_t address) const {
-    if (address >= kChipBase) return true;
+    if (is_chip(address)) return true;
     const std::uint32_t physical = address & kPhysicalMask;
     return range_of(physical) != nullptr || region_of(physical) != nullptr;
 }
 
 bool Bus::is_ram(std::uint32_t address) const {
-    return address < kChipBase && range_of(address & kPhysicalMask) == nullptr && region_of(address & kPhysicalMask) != nullptr;
+    return !is_chip(address) && range_of(address & kPhysicalMask) == nullptr && region_of(address & kPhysicalMask) != nullptr;
 }
 
 ByteSpan Bus::region(std::uint32_t address) {
@@ -103,7 +122,10 @@ std::uint32_t Bus::peek(std::uint32_t address, unsigned size) const {
     const Region* r = region_of(physical);
     if (!r || physical - r->lo + size > r->data.size()) return 0;
     std::uint32_t v = 0;
-    for (unsigned i = 0; i < size; ++i) v = v << 8 | r->data[physical - r->lo + i];
+    for (unsigned i = 0; i < size; ++i) {   // (the SH-4 is little-endian: the byte at the lowest address is the lowest)
+        const unsigned k = little_endian() ? size - 1 - i : i;
+        v = v << 8 | r->data[physical - r->lo + k];
+    }
     return v;
 }
 
@@ -175,7 +197,12 @@ void Bus::chip_write(std::uint32_t offset, unsigned size, std::uint32_t value) {
 std::uint32_t Bus::read(std::uint32_t address, unsigned size) {
     std::uint32_t value = 0;
     std::uint32_t logged = address & kPhysicalMask;
-    if (address >= kChipBase) {
+    if (variant_ == Variant::Sh4 && address >= kP4Base) {
+        value = p4_read(address, size);
+        log_.push_back({BusAccess::Kind::Read, static_cast<std::uint8_t>(size), address, value});
+        return value;
+    }
+    if (address >= kChipBase && variant_ == Variant::Sh2) {
         logged = address;
         value = chip_read(chip_offset(address), size);
     } else if (const Range* range = range_of(address & kPhysicalMask)) {
@@ -190,7 +217,16 @@ std::uint32_t Bus::read(std::uint32_t address, unsigned size) {
 
 void Bus::write(std::uint32_t address, unsigned size, std::uint32_t value) {
     if (size < 4) value &= (1u << (8 * size)) - 1;
-    if (address >= kChipBase) {
+    if (variant_ == Variant::Sh4 && address >= kP4Base) {
+        if (address >= 0xE0000000u && address < 0xE4000000u) {   // the store queues: written as memory, copied out by PREF
+            if (size == 4) store_queue_[(address >> 2) & 15] = value;
+            return;
+        }
+        log_.push_back({BusAccess::Kind::Write, static_cast<std::uint8_t>(size), address, value});
+        p4_write(address, size, value);
+        return;
+    }
+    if (address >= kChipBase && variant_ == Variant::Sh2) {
         log_.push_back({BusAccess::Kind::Write, static_cast<std::uint8_t>(size), address, value});
         chip_write(chip_offset(address), size, value);
         return;
@@ -203,7 +239,34 @@ void Bus::write(std::uint32_t address, unsigned size, std::uint32_t value) {
     }
     Region* r = region_of(physical);
     if (!r || physical - r->lo + size > r->data.size()) return;
-    for (unsigned i = 0; i < size; ++i) r->data[physical - r->lo + i] = static_cast<std::uint8_t>(value >> (8 * (size - 1 - i)));
+    for (unsigned i = 0; i < size; ++i) {
+        const unsigned shift = little_endian() ? 8 * i : 8 * (size - 1 - i);
+        r->data[physical - r->lo + i] = static_cast<std::uint8_t>(value >> shift);
+    }
+}
+
+// ---- the SH-4's P4 area ------------------------------------------------------------------------------------------------
+
+std::uint32_t Bus::p4_read(std::uint32_t address, unsigned size) {
+    if (address >= 0xE0000000u && address < 0xE4000000u) return size == 4 ? store_queue_[(address >> 2) & 15] : 0;
+    std::uint32_t v = 0;
+    for (unsigned i = 0; i < size; ++i) {   // (little-endian)
+        const auto it = p4_.find(address + (size - 1 - i));
+        v = v << 8 | (it == p4_.end() ? 0u : it->second);
+    }
+    return v;
+}
+
+void Bus::p4_write(std::uint32_t address, unsigned size, std::uint32_t value) {
+    for (unsigned i = 0; i < size; ++i) p4_[address + i] = static_cast<std::uint8_t>(value >> (8 * i));
+}
+
+// A PREF of a store queue address: the 32 bytes of the queue go to external memory at the address QACR0 or QACR1 and the address's low bits give.
+void Bus::flush_store_queue(std::uint32_t address) {
+    const unsigned queue = (address >> 5) & 1;
+    const std::uint32_t qacr = p4_read(queue == 0 ? 0xFF000038u : 0xFF00003Cu, 4);
+    const std::uint32_t target = ((qacr & 0x1C) << 24) | (address & 0x03FFFFE0u);
+    for (unsigned k = 0; k < 8; ++k) write(target + 4 * k, 4, store_queue_[queue * 8 + k]);
 }
 
 // ---- faults ------------------------------------------------------------------------------------------------------
@@ -216,13 +279,24 @@ std::string Fault::text() const {
         case Kind::IllegalSlot: return std::format("illegal slot at {:08x}", pc);
         case Kind::Trap: return std::format("trapa {}", code);
         case Kind::Sleep: return "sleep";
+        case Kind::FpuDisabled: return std::format("fpu disabled at {:08x}", pc);
     }
     return "fault";
 }
 
 // ---- the processor -----------------------------------------------------------------------------------------------
 
-Cpu::Cpu(Bus& bus) : bus_(&bus) {}
+Cpu::Cpu(Bus& bus) : bus_(&bus), sh4_(bus.variant() == Variant::Sh4) {
+    if (sh4_) sr = 0x700000F0;   // MD, RB and BL set and the interrupts masked, as a reset leaves it
+}
+
+void Cpu::set_sr(std::uint32_t value) {
+    const std::uint32_t keep = sh4_ ? sr::kMaskSh4 : sr::kMask;
+    const std::uint32_t next = value & keep;
+    if (sh4_ && ((next ^ sr) & sr::RB) != 0)   // the register bank changes: R0-R7 are the other eight
+        for (unsigned i = 0; i < 8; ++i) std::swap(r[i], bank[i]);
+    sr = next;
+}
 
 std::optional<Fault> Cpu::load(std::uint32_t at, std::uint32_t address, unsigned size, std::uint32_t& value) {
     if (size > 1 && address % size != 0) return Fault{Fault::Kind::AddressError, at, address, 0};
@@ -311,6 +385,7 @@ std::optional<Fault> Cpu::mac_l(std::uint32_t at, unsigned rm, unsigned rn) {
 std::optional<Fault> Cpu::step() {
     if (pc % 2 != 0) return Fault{Fault::Kind::AddressError, pc, pc, 0};
     if (!bus_->is_ram(pc)) return Fault{Fault::Kind::BusError, pc, pc, 0};
+    if (bus_->has_enter_hooks()) bus_->enter(pc, r);
     Flow flow;
     if (auto f = execute(static_cast<std::uint16_t>(bus_->peek(pc, 2)), pc, false, flow)) return f;
     ++steps;
@@ -323,12 +398,17 @@ std::optional<Fault> Cpu::step() {
     Flow ignored;
     if (auto f = execute(static_cast<std::uint16_t>(bus_->peek(slot, 2)), slot, true, ignored)) return f;
     ++steps;
+    if (flow.restore_sr) set_sr(flow.new_sr);
     pc = flow.taken ? flow.target : pc + 4;
     return std::nullopt;
 }
 
 std::optional<Fault> Cpu::execute(std::uint16_t w, std::uint32_t at, bool in_slot, Flow& flow) {
-    if (!valid_words()[w]) return Fault{Fault::Kind::NoInstruction, at, 0, 0};
+    if (!valid_words(bus_->variant())[w]) return Fault{Fault::Kind::NoInstruction, at, 0, 0};
+    if (sh4_) {
+        Sh4Outcome o = execute_sh4(w, at, in_slot, flow);
+        if (o.handled) return o.fault;
+    }
     const unsigned n = (w >> 8) & 15, m = (w >> 4) & 15, d = w & 15;
     const std::uint32_t i8 = w & 0xFF;
     const std::uint32_t s8 = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(w & 0xFF)));
@@ -660,6 +740,10 @@ RunResult run(Bus& bus, std::uint32_t entry, const RunOptions& options) {
     cpu.vbr = options.vbr;
     cpu.r[0] = options.r0;
     cpu.r[15] = options.sp;
+    if (cpu.sh4()) {
+        cpu.fpscr = options.fpscr & fpscr::kMask;
+        for (std::size_t i = 0; i < options.fa.size(); ++i) cpu.fp[(cpu.fpscr & fpscr::FR) != 0 ? 1 : 0][4 + i] = options.fa[i];
+    }
     for (std::size_t i = 0; i < options.a.size(); ++i) cpu.r[4 + i] = options.a[i];
     for (std::size_t i = 0; i < options.s.size(); ++i) cpu.r[8 + i] = options.s[i];
 
@@ -683,6 +767,9 @@ RunResult run(Bus& bus, std::uint32_t entry, const RunOptions& options) {
     result.mach = cpu.mach;
     result.macl = cpu.macl;
     result.sr = cpu.sr;
+    result.fpscr = cpu.fpscr;
+    result.fpul = cpu.fpul;
+    for (unsigned i = 0; i < 16; ++i) result.fr[i] = cpu.fr(i);
     result.steps = cpu.steps;
     result.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(log_start), bus.log().end());
     return result;

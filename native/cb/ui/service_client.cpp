@@ -1,9 +1,5 @@
 // cb-unity: alone
 // cb/ui/service_client.cpp -- the client of the service process, and the link that picks which process answers.
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
-
 #include <algorithm>
 #include <cstdio>
 #include <format>
@@ -14,7 +10,9 @@
 #include "cb/core/json.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
-#include "cb/core/win.hpp"
+#include "cb/core/process.hpp"
+#include "cb/core/socket.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/ui/service.hpp"
 
 namespace cb::ui::service {
@@ -22,23 +20,6 @@ namespace cb::ui::service {
 namespace {
 
 using namespace std::chrono_literals;
-
-void start_winsock() {
-    static const bool started = [] {
-        WSADATA data;
-        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
-    }();
-    if (!started)
-        throw Gone("the network stack did not start");
-}
-
-struct Socket {
-    SOCKET s = INVALID_SOCKET;
-    ~Socket() {
-        if (s != INVALID_SOCKET)
-            closesocket(s);
-    }
-};
 
 std::filesystem::path service_folder(const std::filesystem::path& state) { return state / "service"; }
 
@@ -84,40 +65,29 @@ std::optional<Record> read_record(const std::filesystem::path& state) {
 // ---- Client --------------------------------------------------------------------------------------------------------
 
 Json Client::request(std::string_view method, std::string_view path, const Json* body, std::chrono::milliseconds timeout) {
-    start_winsock();
     const std::string data = body ? json::dump(*body, json::Style::PythonCompatible) : std::string();
-    Socket sock;
-    sock.s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock.s == INVALID_SOCKET)
-        throw Gone("no socket");
-    if (timeout.count() > 0) {
-        const DWORD ms = static_cast<DWORD>(timeout.count());
-        setsockopt(sock.s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&ms), sizeof ms);
-        setsockopt(sock.s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms), sizeof ms);
-    }
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(static_cast<u_short>(port_));
-    inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
-    if (connect(sock.s, reinterpret_cast<sockaddr*>(&address), sizeof address) != 0) {
-        const int e = WSAGetLastError();
-        if (e == WSAETIMEDOUT)
+    // (the connect is not held to `timeout`: a refusal can take a second on Windows, and it is the answer "gone", not "busy")
+    bool connect_timed_out = false;
+    std::optional<net::Socket> connected = net::connect("127.0.0.1", static_cast<std::uint16_t>(port_), 30s, &connect_timed_out);
+    if (!connected) {
+        if (connect_timed_out)
             throw Busy("the service did not answer in time");
-        throw Gone(std::format("cannot connect to the service: {}", win::error_message(static_cast<std::uint32_t>(e))));
+        throw Gone("cannot connect to the service");
+    }
+    net::Socket& sock = *connected;
+    if (timeout.count() > 0) {
+        sock.set_receive_timeout(timeout);
+        sock.set_send_timeout(timeout);
     }
 
     std::string request = std::format("{} {} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAccept-Encoding: identity\r\n", method, path, port_);
     if (body)
         request += std::format("Content-Length: {}\r\n", data.size());
     request += std::format("X-CodeBreaker-Token: {}\r\nContent-Type: application/json\r\n\r\n", secret_) + data;
-    for (std::size_t sent = 0; sent < request.size();) {
-        const int n = send(sock.s, request.data() + sent, static_cast<int>(request.size() - sent), 0);
-        if (n <= 0) {
-            if (WSAGetLastError() == WSAETIMEDOUT)
-                throw Busy("the service did not answer in time");
-            throw Gone("the service went away");
-        }
-        sent += static_cast<std::size_t>(n);
+    if (!sock.send(request)) {
+        if (sock.timed_out())
+            throw Busy("the service did not answer in time");
+        throw Gone("the service went away");
     }
 
     std::string in;
@@ -127,14 +97,14 @@ Json Client::request(std::string_view method, std::string_view path, const Json*
     for (;;) {
         if (head_end != std::string::npos && in.size() >= head_end + 4 + want)
             break;
-        const int n = recv(sock.s, buffer, sizeof buffer, 0);
+        const auto n = sock.receive(ByteSpan(reinterpret_cast<std::uint8_t*>(buffer), sizeof buffer));
         if (n == 0) {
             if (head_end == std::string::npos)
                 throw Gone("the service closed the connection without an answer");
             break;
         }
         if (n < 0) {
-            if (WSAGetLastError() == WSAETIMEDOUT)
+            if (sock.timed_out())
                 throw Busy("the service did not answer in time");
             throw Gone("the service went away");
         }
@@ -242,57 +212,23 @@ std::shared_ptr<Client> find_service(const std::filesystem::path& state) {
 std::shared_ptr<Client> launch_service(const Environment& environment, std::chrono::seconds wait) {
     const std::filesystem::path folder = service_folder(environment.state);
     std::filesystem::create_directories(folder);
-    SECURITY_ATTRIBUTES inherit{sizeof inherit, nullptr, TRUE};
-    const std::string log_path = path_text(folder / "serve.log");
-    HANDLE log = CreateFileW(win::to_wide(log_path).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_ALWAYS,
-                             FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (log == INVALID_HANDLE_VALUE)
-        throw IoError(folder / "serve.log", static_cast<int>(GetLastError()), "cannot open the service's log");
-    HANDLE nul = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_EXISTING, 0, nullptr);
-
     std::vector<std::string> argv = environment.launcher.empty() ? std::vector<std::string>{this_program_path()} : environment.launcher;
     argv.emplace_back("serve");
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = nul;
-    si.hStdOutput = log;
-    si.hStdError = log;
-    const std::string command_text = [&] {
-        std::string s;
-        for (const std::string& a : argv)
-            s += (s.empty() ? "" : " ") + std::string(a.find_first_of(" \t\"") == std::string::npos && !a.empty() ? a : "\"" + a + "\"");
-        return s;
-    }();
-    std::wstring command = win::to_wide(command_text);
-    const std::wstring cwd = win::to_wide(path_text(environment.root));
-    PROCESS_INFORMATION pi{};
-    // No window, a process group of its own, and out of our Job Object (so it outlives the program that started it);
-    // a Job Object that forbids leaving is lived in.
-    const DWORD flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
-    BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, flags | CREATE_BREAKAWAY_FROM_JOB, nullptr, cwd.c_str(), &si, &pi);
-    if (!ok)
-        ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, flags, nullptr, cwd.c_str(), &si, &pi);
-    const DWORD error = ok ? 0 : GetLastError();
-    CloseHandle(log);
-    if (nul != INVALID_HANDLE_VALUE)
-        CloseHandle(nul);
-    if (!ok)
-        throw ToolError(argv.front(), 1, win::error_message(error), "cannot start the service");
-    CloseHandle(pi.hThread);
-    struct Closer {
-        HANDLE h;
-        ~Closer() { CloseHandle(h); }
-    } closer{pi.hProcess};
+    process::ProcessSpec spec;
+    spec.argv = argv;
+    spec.cwd = environment.root;
+    spec.out = process::Capture::ToFile(folder / "serve.log", true);   // (what a service says, added to what earlier ones said)
+    spec.err = process::Capture::Merge;
+    // Out of our own job and with a process group or session of its own, so that it outlives the program that started it.
+    process::Detached child = process::start_detached(spec);
 
     const auto end = std::chrono::steady_clock::now() + wait;
     while (std::chrono::steady_clock::now() < end) {
         if (std::shared_ptr<Client> client = find_service(environment.state)) {
-            client->set_started(client->pid() && *client->pid() == static_cast<std::int64_t>(pi.dwProcessId));
+            client->set_started(client->pid() && *client->pid() == static_cast<std::int64_t>(child.pid()));
             return client;
         }
-        DWORD code = 0;
-        if (GetExitCodeProcess(pi.hProcess, &code) && code != STILL_ACTIVE)   // it found another one running, or failed
+        if (child.exit_code())   // it found another one running, or failed
             return find_service(environment.state);
         std::this_thread::sleep_for(200ms);
     }
@@ -303,7 +239,7 @@ std::shared_ptr<Client> launch_service(const Environment& environment, std::chro
 
 ServiceLink::ServiceLink(Service& service, LinkOptions options)
     : service_(service), options_(std::move(options)),
-      owner_(options_.owner.empty() ? std::format("pid-{}", GetCurrentProcessId()) : options_.owner) {}
+      owner_(options_.owner.empty() ? std::format("pid-{}", fs::process_id()) : options_.owner) {}
 
 std::shared_ptr<Client> ServiceLink::client(std::optional<bool> start_given) {
     if (options_.local || options_.mode == Mode::Off)

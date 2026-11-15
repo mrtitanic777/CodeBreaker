@@ -385,8 +385,6 @@ iw::Written write(const snes::Rom& rom, std::string_view file_name, const std::f
     }
     iw::Names labels = iw::make_labels(found.walked.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, kLocal);
     std::map<std::uint32_t, Insn> code = walked_code;
-    const decompile::AddressLabels no_names;
-    Naming naming{rom, high, labels, no_names, nullptr};
     // data an instruction names where a line starts (a 16-bit operand is in the instruction's own bank)
     for (const auto& entry : code) {
         const w::Insn& i = entry.second.i;

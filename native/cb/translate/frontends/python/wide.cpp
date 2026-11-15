@@ -1,8 +1,11 @@
 #include "cb/translate/frontends/python/wide.hpp"
 
+#if defined(_MSC_VER)
 #include <intrin.h>
+#endif
 
 #include <algorithm>
+#include <bit>
 #include <limits>
 
 namespace cb::translate::frontends::python {
@@ -11,6 +14,25 @@ namespace {
 
 using Mag = std::array<std::uint64_t, 4>;
 constexpr std::uint64_t kAllOnes = std::numeric_limits<std::uint64_t>::max();
+
+// The full 128-bit product of two 64-bit words: the low word returned, the high word through `high`.
+std::uint64_t mul_64x64(std::uint64_t a, std::uint64_t b, std::uint64_t* high) {
+#if defined(_MSC_VER)
+    return _umul128(a, b, high);
+#else
+    const unsigned __int128 product = static_cast<unsigned __int128>(a) * b;
+    *high = static_cast<std::uint64_t>(product >> 64);
+    return static_cast<std::uint64_t>(product);
+#endif
+}
+
+// a + b + carry_in into `out`, returning the carry out (0 or 1).
+unsigned char add_carry(unsigned char carry_in, std::uint64_t a, std::uint64_t b, std::uint64_t* out) {
+    const std::uint64_t sum = a + b;
+    const std::uint64_t with_carry = sum + carry_in;
+    *out = with_carry;
+    return static_cast<unsigned char>((sum < a) | (with_carry < sum));
+}
 
 bool is_zero(const Mag& a) { return (a[0] | a[1] | a[2] | a[3]) == 0; }
 
@@ -23,8 +45,7 @@ int compare_mag(const Mag& a, const Mag& b) {
 
 unsigned bit_length_mag(const Mag& a) {
     for (int i = 3; i >= 0; --i) {
-        unsigned long highest = 0;
-        if (_BitScanReverse64(&highest, a[i]) != 0) return static_cast<unsigned>(i) * 64 + static_cast<unsigned>(highest) + 1;
+        if (a[i] != 0) return static_cast<unsigned>(i) * 64 + static_cast<unsigned>(std::bit_width(a[i]));
     }
     return 0;
 }
@@ -32,16 +53,24 @@ unsigned bit_length_mag(const Mag& a) {
 Mag add_mag(const Mag& a, const Mag& b, bool& overflow) {
     Mag r{};
     unsigned char carry = 0;
-    for (int i = 0; i < 4; ++i) carry = _addcarry_u64(carry, a[i], b[i], &r[i]);
+    for (int i = 0; i < 4; ++i) carry = add_carry(carry, a[i], b[i], &r[i]);
     overflow = carry != 0;
     return r;
+}
+
+// a - b - borrow_in into `out`, returning the borrow out (0 or 1).
+unsigned char sub_borrow(unsigned char borrow_in, std::uint64_t a, std::uint64_t b, std::uint64_t* out) {
+    const std::uint64_t diff = a - b;
+    const std::uint64_t with_borrow = diff - borrow_in;
+    *out = with_borrow;
+    return static_cast<unsigned char>((a < b) | (diff < borrow_in));
 }
 
 // a - b, a >= b
 Mag sub_mag(const Mag& a, const Mag& b) {
     Mag r{};
     unsigned char borrow = 0;
-    for (int i = 0; i < 4; ++i) borrow = _subborrow_u64(borrow, a[i], b[i], &r[i]);
+    for (int i = 0; i < 4; ++i) borrow = sub_borrow(borrow, a[i], b[i], &r[i]);
     return r;
 }
 
@@ -51,11 +80,11 @@ Mag mul_mag(const Mag& a, const Mag& b, bool& overflow) {
         std::uint64_t carry = 0;
         for (int j = 0; j < 4; ++j) {
             std::uint64_t high = 0;
-            const std::uint64_t low = _umul128(a[i], b[j], &high);
+            const std::uint64_t low = mul_64x64(a[i], b[j], &high);
             std::uint64_t sum = 0;
-            const unsigned char c1 = _addcarry_u64(0, r[i + j], low, &sum);
+            const unsigned char c1 = add_carry(0, r[i + j], low, &sum);
             std::uint64_t with_carry = 0;
-            const unsigned char c2 = _addcarry_u64(0, sum, carry, &with_carry);
+            const unsigned char c2 = add_carry(0, sum, carry, &with_carry);
             r[i + j] = with_carry;
             carry = high + c1 + c2;   // (high is at most 2**64 - 2, so this cannot wrap)
         }

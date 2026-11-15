@@ -394,7 +394,7 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
     const formats::n64::Header& h = rom.header;
     const auto sums = rom.checksums();
     std::string crc_note;
-    if (!sums) crc_note = "CRCs not checked (the boot code is not one whose algorithm is known, or the ROM is short)";
+    if (!sums) crc_note = "CRCs not checked (the ROM is shorter than the megabyte they cover)";
     else if (rom.checksums_match()) crc_note = "CRCs match the program's";
     else crc_note = std::format("CRCs do not match the program's ({:08X} {:08X}); kept as they are", sums->first, sums->second);
     std::vector<std::string> head = {

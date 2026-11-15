@@ -281,10 +281,11 @@ Report apply(const std::filesystem::path& folder) {
     for (const stdfs::directory_entry& e : stdfs::recursive_directory_iterator(base)) {
         if (!e.is_regular_file() || e.path().extension() != ".cs") continue;
         // (the entry's path starts with the folder's, spelled the same: cut it off; relative() would resolve the prefixed form)
-        std::wstring_view below = e.path().native();
-        below.remove_prefix(base.native().size());
-        while (!below.empty() && (below.front() == L'\\' || below.front() == L'/')) below.remove_prefix(1);
-        files.emplace_back(fs::to_text(stdfs::path(below)), e.path());
+        const std::string whole = fs::to_text(e.path());
+        std::string_view below = whole;
+        below.remove_prefix(std::min(below.size(), fs::to_text(base).size()));
+        while (!below.empty() && (below.front() == '\\' || below.front() == '/')) below.remove_prefix(1);
+        files.emplace_back(fs::to_text(fs::from_text(below)), e.path());
     }
     std::sort(files.begin(), files.end());
 

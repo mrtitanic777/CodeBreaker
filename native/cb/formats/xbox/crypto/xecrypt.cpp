@@ -6,9 +6,6 @@
 #include <cwchar>
 #include <format>
 
-#include <windows.h>   // CNG (bcrypt.h) needs it; confined to this file
-#include <bcrypt.h>
-
 #include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -35,8 +32,7 @@ namespace {
 class OsRandom : public RandomSource {
 public:
     void fill(ByteSpan out) override {
-        if (out.empty()) return;
-        if (BCryptGenRandom(nullptr, out.data(), static_cast<ULONG>(out.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) throw InternalError("CNG: no random bytes");
+        cb::crypto::random_bytes(out);
     }
 };
 
@@ -169,78 +165,46 @@ Bytes Rc4::run(State& st, ByteView data) {
 
 Bytes rc4(ByteView key, ByteView data) { return Rc4(key).encrypt(data); }
 
-// ---- AES and DES (Windows CNG) -----------------------------------------------------------------------------------
-
-namespace {
-
-struct CngKey {   // one direction of a cipher: its key handle and its running IV
-    BCRYPT_KEY_HANDLE handle = nullptr;
-    Bytes iv;
-    CngKey() = default;
-    CngKey(const CngKey&) = delete;
-    CngKey& operator=(const CngKey&) = delete;
-    ~CngKey() {
-        if (handle) BCryptDestroyKey(handle);
-    }
-};
-
-struct CngProvider {
-    BCRYPT_ALG_HANDLE handle = nullptr;
-    CngProvider() = default;
-    CngProvider(const CngProvider&) = delete;
-    CngProvider& operator=(const CngProvider&) = delete;
-    ~CngProvider() {
-        if (handle) BCryptCloseAlgorithmProvider(handle, 0);
-    }
-};
-
-}  // namespace
+// ---- AES and DES (the system's: cb::crypto::Cipher) --------------------------------------------------------------
 
 struct BlockCipher::Impl {
-    CngProvider alg;   // (declared first, destroyed last: the keys go before their provider)
     std::size_t block = 0;
     bool cbc = false;
-    CngKey enc, dec;
+    std::unique_ptr<cb::crypto::Cipher> enc, dec;   // one per direction, each with its own running IV
+    Bytes enc_iv, dec_iv;
     Bytes enc_pending, dec_pending;   // a partial block held back, per direction
 };
 
 BlockCipher::BlockCipher(CipherAlgorithm algorithm, ByteView key, CipherMode mode, ByteView iv) : impl_(std::make_unique<Impl>()) {
-    const wchar_t* name = nullptr;
+    cb::crypto::Cipher::Algorithm kind = cb::crypto::Cipher::Algorithm::Aes;
     switch (algorithm) {
         case CipherAlgorithm::Aes:
             if (key.size() != 16 && key.size() != 32) usage(std::format("an AES key is 128 or 256 bits, not {} bytes", key.size()));
-            name = BCRYPT_AES_ALGORITHM;
+            kind = cb::crypto::Cipher::Algorithm::Aes;
             impl_->block = 16;
             break;
         case CipherAlgorithm::Des:
             require_size(key, 8, "a DES key");
-            name = BCRYPT_DES_ALGORITHM;
+            kind = cb::crypto::Cipher::Algorithm::Des;
             impl_->block = 8;
             break;
         case CipherAlgorithm::Des2:
             require_size(key, 16, "a two-key 3DES key");
-            name = BCRYPT_3DES_112_ALGORITHM;
+            kind = cb::crypto::Cipher::Algorithm::Des2;
             impl_->block = 8;
             break;
         case CipherAlgorithm::Des3:
             require_size(key, 24, "a 3DES key");
-            name = BCRYPT_3DES_ALGORITHM;
+            kind = cb::crypto::Cipher::Algorithm::Des3;
             impl_->block = 8;
             break;
     }
     impl_->cbc = mode == CipherMode::Cbc;
     if (impl_->cbc) require_size(iv, impl_->block, "a CBC initialisation vector");
-    if (BCryptOpenAlgorithmProvider(&impl_->alg.handle, name, nullptr, 0) != 0) throw InternalError("CNG: no such cipher");
-    const wchar_t* chain = impl_->cbc ? BCRYPT_CHAIN_MODE_CBC : BCRYPT_CHAIN_MODE_ECB;
-    if (BCryptSetProperty(impl_->alg.handle, BCRYPT_CHAINING_MODE, reinterpret_cast<PUCHAR>(const_cast<wchar_t*>(chain)), static_cast<ULONG>((wcslen(chain) + 1) * sizeof(wchar_t)), 0) != 0) {
-        throw InternalError("CNG: cannot set the chaining mode");
-    }
-    for (CngKey* k : {&impl_->enc, &impl_->dec}) {
-        if (BCryptGenerateSymmetricKey(impl_->alg.handle, &k->handle, nullptr, 0, const_cast<PUCHAR>(key.data()), static_cast<ULONG>(key.size()), 0) != 0) {
-            throw InternalError("CNG: the key was refused");
-        }
-        k->iv.assign(iv.begin(), iv.end());
-    }
+    impl_->enc = std::make_unique<cb::crypto::Cipher>(kind, key, impl_->cbc);
+    impl_->dec = std::make_unique<cb::crypto::Cipher>(kind, key, impl_->cbc);
+    impl_->enc_iv.assign(iv.begin(), iv.end());
+    impl_->dec_iv.assign(iv.begin(), iv.end());
 }
 
 BlockCipher::BlockCipher(BlockCipher&&) noexcept = default;
@@ -251,32 +215,20 @@ std::size_t BlockCipher::block_size() const { return impl_->block; }
 
 namespace {
 
-Bytes cng_run(bool cbc, CngKey& key, ByteView data, bool encrypt) {
-    Bytes out(data.size());
-    if (data.empty()) return out;
-    ULONG written = 0;
-    PUCHAR iv = cbc ? key.iv.data() : nullptr;
-    const ULONG iv_size = cbc ? static_cast<ULONG>(key.iv.size()) : 0;
-    const NTSTATUS st = encrypt ? BCryptEncrypt(key.handle, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), nullptr, iv, iv_size, out.data(), static_cast<ULONG>(out.size()), &written, 0)
-                                : BCryptDecrypt(key.handle, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), nullptr, iv, iv_size, out.data(), static_cast<ULONG>(out.size()), &written, 0);
-    if (st != 0 || written != out.size()) throw InternalError("CNG: the cipher failed");
-    return out;
-}
-
 // What one call of a direction answers: the pending partial block and the new data, as far as whole blocks go.
-Bytes cng_stream(bool cbc, std::size_t block, CngKey& key, Bytes& pending, ByteView data, bool encrypt) {
+Bytes cipher_stream(std::size_t block, cb::crypto::Cipher& cipher, Bytes& iv, Bytes& pending, ByteView data, bool encrypt) {
     Bytes input = std::move(pending);
     append(input, data);
     const std::size_t whole = input.size() / block * block;
     pending.assign(input.begin() + static_cast<std::ptrdiff_t>(whole), input.end());
     input.resize(whole);
-    return cng_run(cbc, key, input, encrypt);
+    return cipher.run(input, encrypt, iv);
 }
 
 }  // namespace
 
-Bytes BlockCipher::encrypt(ByteView data) { return cng_stream(impl_->cbc, impl_->block, impl_->enc, impl_->enc_pending, data, true); }
-Bytes BlockCipher::decrypt(ByteView data) { return cng_stream(impl_->cbc, impl_->block, impl_->dec, impl_->dec_pending, data, false); }
+Bytes BlockCipher::encrypt(ByteView data) { return cipher_stream(impl_->block, *impl_->enc, impl_->enc_iv, impl_->enc_pending, data, true); }
+Bytes BlockCipher::decrypt(ByteView data) { return cipher_stream(impl_->block, *impl_->dec, impl_->dec_iv, impl_->dec_pending, data, false); }
 std::size_t BlockCipher::pending_encrypt() const { return impl_->enc_pending.size(); }
 std::size_t BlockCipher::pending_decrypt() const { return impl_->dec_pending.size(); }
 

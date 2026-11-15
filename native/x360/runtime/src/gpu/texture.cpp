@@ -105,7 +105,7 @@ namespace gpu
         case 10: case 3: case 4: case 15: return 2;      // k_8_8, k_1_5_5_5, k_5_6_5, k_4_4_4_4
         case 18: case 51: return 8;                      // DXT1: per 4x4 block
         case 19: case 20: case 52: case 53: return 16;   // DXT2_3, DXT4_5: per 4x4 block
-        case 37: return 8;                               // k_32_32_FLOAT
+        case 37: case 29: case 32: return 8;             // k_32_32_FLOAT, k_16_16_16_16_EXPAND / _FLOAT (four halves)
         case 38: return 16;                              // k_32_32_32_32_FLOAT
         default: return 4;
         }
@@ -140,6 +140,7 @@ namespace gpu
         case 22: return kUntileDepth24;
         case 23: return kUntileDepth24Float;
         case 36: case 37: case 38: return kUntileFloat32;
+        case 29: case 32: return kUntileHalf4;
         default: return kUntilePlain;
         }
     }
@@ -197,6 +198,7 @@ namespace gpu
         case 18: case 19: case 20: case 51: case 52: case 53:                // DXT blocks
         case 22: case 23:                                                    // 24-bit depth (unorm or 20e4 float), 8-bit stencil
         case 36: case 37: case 38:                                           // 32-bit floats
+        case 29: case 32:                                                    // four 16-bit floats (EXPAND is the same data)
             break;
         default:
             return std::format("format k_{}", TextureFormatName(f.format));
@@ -278,7 +280,8 @@ namespace gpu
             return "signed and unsigned components in one texture";
         else
             f.numbers = anySigned ? TextureNumbers::kSigned : TextureNumbers::kUnsigned;
-        if (TextureUntileKind(f.format) == kUntileFloat32 || TextureUntileKind(f.format) == kUntileDepth24Float)
+        if (TextureUntileKind(f.format) == kUntileFloat32 || TextureUntileKind(f.format) == kUntileDepth24Float ||
+            TextureUntileKind(f.format) == kUntileHalf4)
             f.numbers = TextureNumbers::kInteger; // floats are what they are: no sign or number format applies
                                                   // (a float depth texture's fetch constant has the integer bit set)
         else if (TextureUntileKind(f.format) != kUntilePlain && f.numbers != TextureNumbers::kUnsigned)
@@ -535,6 +538,14 @@ void main(uint3 id : SV_DispatchThreadID)
             depth = asfloat((uint(expo + 112) << 23) | (mant << 3));
         }
         xe_untile_dest[uint3(id.xy, 0u)] = depth.xxxx;
+        return;
+    }
+    if (kind == 8u)
+    {
+        // k_16_16_16_16_FLOAT / _EXPAND: eight bytes, four half floats (the first two in the first word)
+        uint w1 = xe_un_swap(xe_memory.Load((address + 4u) & ~3u), xe_un_layout.w);
+        xe_untile_dest[uint3(id.xy, 0u)] = float4(f16tof32(word & 0xFFFFu), f16tof32(word >> 16),
+                                                  f16tof32(w1 & 0xFFFFu), f16tof32(w1 >> 16));
         return;
     }
     if (kind == 6u)

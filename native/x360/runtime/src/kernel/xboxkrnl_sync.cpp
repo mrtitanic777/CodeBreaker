@@ -743,10 +743,25 @@ GUEST_IMPORT(ObReferenceObject)
 }
 
 // NTSTATUS ObOpenObjectByPointer(PVOID Object, POBJECT_TYPE ObjectType, PHANDLE Handle): a new handle to the object.
+// A title's XDK has two arguments, (Object, PHANDLE Handle) (Xenia's signature too: Small Arms, thread handles from
+// ObLookupThreadByThreadId); the three-argument form is the console's own XAM's. The second argument says which: an
+// object type is a kernel address (0x80000000 and up) or 0, a title's handle pointer is in its own memory.
 GUEST_IMPORT(ObOpenObjectByPointer)
 {
-    guest::g_memory.Write32(ctx.r5.u32, CreateHandle(ctx.r3.u32));
+    const uint32_t handlePtr = ctx.r4.u32 != 0 && ctx.r4.u32 < 0x80000000 ? ctx.r4.u32 : ctx.r5.u32;
+    guest::g_memory.Write32(handlePtr, CreateHandle(ctx.r3.u32));
     ctx.r3.u64 = kStatusSuccess;
+}
+
+// NTSTATUS ObOpenObjectByName(POBJECT_ATTRIBUTES ObjectAttributes, POBJECT_TYPE ObjectType, PVOID ParseContext,
+//                             PHANDLE Handle): opens a named kernel object. Titles' XAPI wrappers (OpenEvent and the like,
+// Top Spin 2's worker start-up) ask for objects another process would have created by name; none exists here, so the
+// answer is STATUS_OBJECT_NAME_NOT_FOUND with a null handle.
+GUEST_IMPORT(ObOpenObjectByName)
+{
+    if (ctx.r6.u32)
+        guest::g_memory.Write32(ctx.r6.u32, 0);
+    ctx.r3.u64 = 0xC0000034;
 }
 
 // NTSTATUS ObLookupThreadByThreadId(ULONG ThreadId, PKTHREAD* Thread): the thread, referenced (the caller

@@ -103,6 +103,15 @@ Bytes Rom::memory() const {
     const ByteView program_bytes = program();
     const std::size_t at = load_address() & 0x1FFFFFFF;
     if (at < ram.size()) std::copy_n(program_bytes.begin(), std::min(program_bytes.size(), ram.size() - at), ram.begin() + static_cast<std::ptrdiff_t>(at));
+    // the words of the OS's reserved area the boot code and the PIF leave: the TV type, the ROM base, how much RDRAM there is (a program's startup
+    // code sets its stack from it)
+    const auto put = [&](std::size_t where, std::uint32_t value) {
+        for (unsigned i = 0; i < 4; ++i) ram[where + i] = static_cast<std::uint8_t>(value >> (24 - 8 * i));
+    };
+    const std::string_view pal = "PDFSIHXY";
+    put(0x300, header.country == 'B' ? 2u : pal.find(header.country) != std::string_view::npos && header.country != 0 ? 0u : 1u);   // osTvType: NTSC 1, PAL 0, MPAL 2
+    put(0x308, 0xB0000000u);                                                                                                  // osRomBase
+    put(0x318, static_cast<std::uint32_t>(kRdramSize));                                                                      // osMemSize
     return ram;
 }
 
@@ -110,11 +119,10 @@ std::optional<std::pair<std::uint32_t, std::uint32_t>> Rom::checksums() const {
     if (data.size() < kBootSize + kLoadSize) return std::nullopt;
     std::uint32_t seed = 0;
     switch (cic) {
-        case Cic::C6101: case Cic::C6102: seed = 0xF8CA4DDC; break;
+        case Cic::C6101: case Cic::C6102: case Cic::Unknown: seed = 0xF8CA4DDC; break;   // (a homebrew boot code is checksummed as the 6102, the commonest)
         case Cic::C6103: seed = 0xA3886759; break;
         case Cic::C6105: seed = 0xDF26F436; break;
         case Cic::C6106: seed = 0x1FEA617A; break;
-        case Cic::Unknown: return std::nullopt;
     }
     std::uint32_t t1 = seed, t2 = seed, t3 = seed, t4 = seed, t5 = seed, t6 = seed;
     const ByteView d(data);
@@ -127,7 +135,7 @@ std::optional<std::pair<std::uint32_t, std::uint32_t>> Rom::checksums() const {
         const std::uint32_t k = std::rotl(c, static_cast<int>(c & 0x1F));
         t5 += k;
         t2 ^= t2 > c ? k : t6 ^ c;
-        t1 += cic == Cic::C6105 ? be32(d, kHeaderSize + 0x0710 + (i & 0xFF)) ^ c : k ^ c;
+        t1 += cic == Cic::C6105 ? be32(d, kHeaderSize + 0x0710 + (i & 0xFF)) ^ c : t5 ^ c;
     }
     if (cic == Cic::C6103) return std::pair{(t6 ^ t4) + t3, (t5 ^ t2) + t1};
     if (cic == Cic::C6106) return std::pair{t6 * t4 + t3, t5 * t2 + t1};
@@ -174,7 +182,7 @@ Rom parse(ByteView file) {
     h.game_code = std::string(reinterpret_cast<const char*>(d.data()) + 0x3C, 2);
     h.country = static_cast<char>(d[0x3E]);
     h.version = d[0x3F];
-    rom.boot_crc32 = crc32(rom.boot_code());
+    rom.boot_crc32 = crypto::crc32(rom.boot_code());
     for (const CicEntry& c : kCics)
         if (c.crc32 == rom.boot_crc32) rom.cic = c.cic;
     return rom;

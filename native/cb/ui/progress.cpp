@@ -1,6 +1,6 @@
 #include "cb/ui/progress.hpp"
+#include "cb/core/sys.hpp"
 
-#include <io.h>
 
 #include <algorithm>
 #include <cmath>
@@ -41,8 +41,7 @@ std::vector<stdfs::directory_entry> entries(const stdfs::path& dir) {
 
 std::string local_time_text(Clock::time_point t) {
     const std::time_t seconds = Clock::to_time_t(t);
-    std::tm parts{};
-    localtime_s(&parts, &seconds);
+    const std::tm parts = sys::local_tm(seconds);
     return std::format("{:02}:{:02}:{:02}", parts.tm_hour, parts.tm_min, parts.tm_sec);
 }
 
@@ -146,7 +145,7 @@ std::string line(const Snapshot& s) {
 }
 
 int watch(const Options& options, const ReadFn& read, std::stop_token stop) {
-    const bool console = _isatty(1) != 0;
+    const bool console = sys::is_terminal(sys::Stream::Out);
     std::size_t width = 0;
     while (!stop.stop_requested()) {
         const std::string text = line(snapshot(read, options.log));

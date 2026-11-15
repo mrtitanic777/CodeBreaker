@@ -2,9 +2,7 @@
 #include <cstring>
 #include <format>
 
-#include <windows.h>   // CNG (bcrypt.h) needs it; confined to the key generator below
-#include <bcrypt.h>
-
+#include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/io.hpp"
 #include "cb/formats/xbox/crypto/xecrypt.hpp"
@@ -54,34 +52,11 @@ Bytes header_and_numbers(unsigned bits, std::uint32_t exponent, std::uint64_t mo
     return w.take();
 }
 
-// A key from Windows CNG (fast, from the OS generator): its p, q, dp, dq and q^-1 mod p laid out as a console key.
-Bytes cng_private_key(unsigned bits) {
-    BCRYPT_ALG_HANDLE alg = nullptr;
-    BCRYPT_KEY_HANDLE key = nullptr;
-    struct Closer {
-        BCRYPT_ALG_HANDLE& alg;
-        BCRYPT_KEY_HANDLE& key;
-        ~Closer() {
-            if (key) BCryptDestroyKey(key);
-            if (alg) BCryptCloseAlgorithmProvider(alg, 0);
-        }
-    } closer{alg, key};
-    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_RSA_ALGORITHM, nullptr, 0) != 0) throw InternalError("CNG: no RSA provider");
-    if (BCryptGenerateKeyPair(alg, &key, bits, 0) != 0 || BCryptFinalizeKeyPair(key, 0) != 0) throw InternalError("CNG: key generation failed");
-    ULONG size = 0;
-    BCryptExportKey(key, nullptr, BCRYPT_RSAFULLPRIVATE_BLOB, nullptr, 0, &size, 0);
-    Bytes blob(size);
-    if (BCryptExportKey(key, nullptr, BCRYPT_RSAFULLPRIVATE_BLOB, blob.data(), size, &size, 0) != 0) throw InternalError("CNG: cannot export the key");
-    BCRYPT_RSAKEY_BLOB header{};
-    std::memcpy(&header, blob.data(), sizeof header);
-    ByteView rest = ByteView(blob).subspan(sizeof header);
-    auto take = [&rest](std::size_t n) {
-        const ByteView v = rest.first(n);
-        rest = rest.subspan(n);
-        return Nat::from_be(v);
-    };
-    const Nat e = take(header.cbPublicExp), n = take(header.cbModulus), p = take(header.cbPrime1), q = take(header.cbPrime2);
-    const Nat dp = take(header.cbPrime1), dq = take(header.cbPrime2), u = take(header.cbPrime1);
+// A key from the system's generator (fast): its p, q, dp, dq and q^-1 mod p laid out as a console key.
+Bytes system_private_key(unsigned bits) {
+    const cb::crypto::RsaNumbers k = cb::crypto::rsa_generate(bits);
+    const Nat e = Nat::from_be(k.e), n = Nat::from_be(k.n), p = Nat::from_be(k.p), q = Nat::from_be(k.q);
+    const Nat dp = Nat::from_be(k.dp), dq = Nat::from_be(k.dq), u = Nat::from_be(k.u);
     return header_and_numbers(bits, static_cast<std::uint32_t>(e.low64()), montgomery_inverse(n).low64(), n, p, q, dp, dq, u);
 }
 
@@ -194,7 +169,7 @@ bool RsaKey::verify_pkcs1(ByteView signature, ByteView hash) const {
 RsaKey RsaKey::generate(unsigned bits, std::uint32_t exponent, RandomSource& rng) {
     if (!known_bits(bits)) rsa_usage(std::format("RSA keys are 1024, 1536, 2048 or 4096 bits, not {}", bits));
     if (exponent != 3 && exponent != 0x10001) rsa_usage("the public exponent is 3 or 0x10001");
-    if (&rng == &os_random() && exponent == 0x10001) return parse(cng_private_key(bits));   // the OS generator: let the OS do it
+    if (&rng == &os_random() && exponent == 0x10001) return parse(system_private_key(bits));   // the OS generator: let the system do it
     const Nat e(exponent);
     for (;;) {
         Nat p = Nat::random_prime(bits / 2, rng);

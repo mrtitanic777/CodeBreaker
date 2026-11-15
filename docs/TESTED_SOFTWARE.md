@@ -46,6 +46,10 @@ repositories (kept outside the repository, in `GitHub/homebrew-samples/`).
 | 8K Copier (8KLEVELC.BIN, the best binary on the disk) | Amstrad CPC (.dsk, extended) | muckypaws/AmstradCPC (8KCopier.dsk) | LGPL-3.0 | 18 | rebuilds identical, verified |
 | ROMDump (ROMDUMP.BIN) | Amstrad CPC (.dsk, standard) | llopis/amstrad-diagnostics (ROMDump.dsk) | MIT | 1 | rebuilds identical, verified (load address $0000) |
 | Icarus | ZX Spectrum (tape) | MmmPT/icarus-zx-spectrum | see its ASSET-LICENSE | 95 | rebuilds identical, verified |
+| PCE Mouse Test (pce_mouse.pce, 6 banks behind a 512-byte header) | PC Engine / TurboGrafx-16 | dshadoff/PCE_Mouse_Test (src/) | MIT | 66 | rebuilds identical, verified (12 judged functions run in the HuC6280 with the MPR map: 11 diverge when their first byte is turned over) |
+| BALL, GAMELIFE, MML, SAMPLE1 (demo projects, 3 banks behind a 512-byte header each) | PC Engine / TurboGrafx-16 | langel/pce-dev-kit (demo projects/) | Unlicense | 25, 34, 24, 25 | rebuilds identical, verified (11 of 12 judged functions of each diverge when their first byte is turned over) |
+| gothicvania.sfc (512 KB), hello-world-region.sfc (256 KB) | Super Nintendo (LoROM, PVSnesLib C) | donth77/snes-homebrew (release v1.0.0) | MIT | 80, 41 | rebuilds identical, verified (all 12 judged functions of each diverge when their first byte is turned over) |
+| the 65 example cartridges of OpenSNES 0.55.0 (aim_target ... world_sprites: 256 KB LoROM, hirom_demo: 512 KB HiROM; some use SuperFX, SA-1, DSP-1, the Super Scope) | Super Nintendo (OpenSNES C) | k0b3n4irb/opensnes (release v0.55.0, opensnes-examples zip) | MIT | 2,220 in all (283,879 of 17,301,504 bytes as code: the ROMs are mostly padding, graphics and sound) | all 65 rebuild identical; 9 judged (simple_sprite 19 functions, controller 9, blocks 75, breakout 31, hirom_demo 24, mode7_racing 31, rpg 63, shmup 31, hdma_wave 33): 100 of the 105 judged functions diverge when their first byte is turned over. The coprocessors' code is data, as is the SPC700's |
 
 ## PlayStation homebrew (the PS1 lane)
 
@@ -237,3 +241,81 @@ assembler; every function is then run in the interpreter of its own processor in
 | dldi_benchmark_blocksds.nds | Nintendo DS | asiekierka/dldi-driver-benchmark v0.4.3 (BlocksDS) | MIT | not recorded | run did not finish in the session: not yet verified |
 | dldi_benchmark_dkA.nds | Nintendo DS | asiekierka/dldi-driver-benchmark v0.4.3 (devkitARM) | MIT | not recorded | run did not finish in the session: not yet verified |
 | ButtonBoot.nds | Nintendo DS | FlameKat53/ButtonBoot v3.0.0 | MIT | - | refused: its header has no DS logo checksum ($CF56 at $15C), so it is not read as a DS ROM |
+
+## Nintendo 64 homebrew (the N64 lane)
+
+Open-source ROMs with published source, downloaded 2026-11-15 as binaries from the authors' own repositories (kept outside the
+repository, in `GitHub/homebrew-samples/n64/`): PeterLemon/N64 (Unlicense; hand-written MIPS assembly for the R4300i, the
+`.N64`/`.n64` files are big-endian `.z64` data, 1 MB programs under the standard CIC-NUS-6102 boot code: 78 of the repository's 408 ROMs,
+taken across its groups) and vrgl117-games/sblobber64 (MIT; a libdragon game in C built with GCC, the `.z64` of the release
+`n64brew-jam-1`). Nothing downloaded was run. Each is written as GNU as source by `source/n64_writer` and built again by CodeBreaker's
+own big-endian MIPS assembler (`reach --judge`: every function of the original verified, which for an identical rebuild is the rebuild
+itself; the unit test `engine.machine_n64.homebrew` also runs every function of the original and of the rebuilt ROM in `emulate/r4300` from
+two states, and runs the whole program from its entry point for three million instructions). The RSP and the RDP are not run: the programs
+that draw with them do so with their registers and display lists as logged writes.
+
+| Programs | Platform | Author / source | License | Functions | Result |
+|---|---|---|---|---|---|
+| CPUTest/CPU: 22 ROMs (ADDU, DADD, DDIV, DIV, DMULT, DSUB, the shifts DSLL32 DSRA DSRAV DSRL32 SLL SRA SRL, LB LH LW SD SW, MULTU, OR, SUB, TIMINGNTSC ...) | Nintendo 64 | PeterLemon/N64 (CPUTest/CPU) | Unlicense | 2,600 | rebuild identical, verified |
+| CPUTest/CP1: 12 ROMs (ABS ADD CEIL CVT DIV FLOOR MUL NEG ROUND SQRT SUB TRUNC) | Nintendo 64 | PeterLemon/N64 (CPUTest/CP1) | Unlicense | 1,294 | rebuild identical, verified |
+| CPUTest/CP0 (2), CPUTest/Exceptions (8: Compare, Syscall, TLB) | Nintendo 64 | PeterLemon/N64 (CPUTest) | Unlicense | 113, 383 | rebuild identical, verified |
+| HelloWorld (4), FrameBuffer (2), SetScreen NTSC / PAL, Initialize, Input (3), Interrupt (3) | Nintendo 64 | PeterLemon/N64 | Unlicense | 1 to 6 each | rebuild identical, verified |
+| Compress: HUFFMAN (3), LZ77 (3) | Nintendo 64 | PeterLemon/N64 (Compress) | Unlicense | 2 to 3 each | rebuild identical, verified |
+| RCP (2), RDP (AlphaCompare, AlphaCoverage, RDPModeInput), RDRAMTest, RSP DCT (3), CP1 Fractal (4) | Nintendo 64 | PeterLemon/N64 | Unlicense | 1 to 169 each | rebuild identical, verified |
+| sblobber64.z64 (5.8 MB: a libdragon game; its code ends before the first megabyte, the rest is data) | Nintendo 64 (libdragon, GCC) | vrgl117-games/sblobber64 (release n64brew-jam-1) | MIT | 3,445 | rebuilds identical, verified; from its entry point it runs three million instructions of libdragon's startup (stack from the memory size the boot code leaves, the code copied from the cartridge, PI DMA of its data, PI_STATUS polled) |
+
+78 ROMs of PeterLemon/N64: 4,669 functions in all; with sblobber64, 79 ROMs and 8,114 functions. Every ROM's header checksums are the ones the
+CIC-NUS-6102 algorithm computes (`formats.n64.the_checksums_of_real_roms_are_the_ones_the_boot_code_computes`).
+
+## Sega 32X and Saturn homebrew (the SH-2 lanes)
+
+Open-source programs with published source, downloaded 2026-11-15 as binaries from the authors' release pages (kept outside the repository, in
+`GitHub/homebrew-samples/sega32x/` and `saturn/`). Nothing downloaded was run. Each is written as GNU as source by `source/sega32x_writer` or
+`source/saturn_writer` and built again by CodeBreaker's own SH-2 assembler; `reach --judge` then judged every function (rebuilt identical, so each
+is the original: 3 programs on 32X or Saturn disc images, 1,460 functions, 100% verified), and a copy with each of 12 functions' first instruction
+changed is run beside the original in the SH-2 interpreter and diverges (`source.sega32x.homebrew`, `source.saturn.homebrew`).
+
+| Program | Platform | Author / source | License | Functions | Result |
+|---|---|---|---|---|---|
+| 240p Test Suite 1.0 (`240pSuite_32X_1.0.32x`, 1.9 MB; GCC-built SH-2 code, graphics and tables) | Sega 32X | Dasutin/32X240pTestSuite (release v1.0) | GPL-2.0 | 85 SH-2 + 4 68000 | rebuilds identical, verified (the SH-2 program is 126,704 bytes at ROM offset $1BE4B0: 9.5 KB of it is reached as code, the rest data; 12 of 12 edited functions diverge) |
+| RoQ Player (`roq32X.32x`, 3.5 MB; hand-written SH-2 assembly) | Sega 32X | viciious/roq32x (release 2.0) | MIT | 63 SH-2 + 4 68000 | rebuilds identical, verified (11 of 12 edited functions diverge) |
+| Save Game Copier 3.7.1, 3.7.0 and 3.6.18 (`game.iso`, 824 KB; Jo Engine, GCC) | Sega Saturn | slinga-homebrew/Save-Game-Copier (releases) | GPL-3.0 | 1,304 / 1,304 / 1,222 | rebuild identical, verified (the system area: IP.BIN of 6,144 bytes with its four area-code entries; the first program 0.BIN of 203,856 bytes at $06004000, 94 KB of it reached as code; 11 of 12 edited functions diverge in each) |
+
+Not done: no open-source Saturn or 32X program with a published binary and a permissive licence was found beyond these (Jo Engine's own samples
+and libyaul's examples are source only, and building them needs a downloaded toolchain, which is not run). Dreamcast (SH-4) is below.
+
+## GameCube, Wii and Wii U homebrew (the gamecube, wii and wiiu lanes)
+
+Open-source homebrew with published source and a permissive licence, binaries only, downloaded 2026-11-15 from the authors' own
+GitHub releases (kept outside the repository, in `GitHub/homebrew-samples/{gamecube,wii,wiiu}/`; never run on this machine). Functions are
+the ones `reach` finds; "runs" is how many of the first 60 functions, each from two states, the original and the rebuilt program ran the
+same in the PowerPC interpreter (an identical rebuild always does).
+
+| Program | Console | Author / source | License | Functions | Result |
+|---|---|---|---|---|---|
+| Wii-donut.c (`Wii-donut.c-gc.dol`, r9) | GameCube | AndrewPiroli/Wii-donut.c | Unlicense | 385 | rebuilds identical, verified |
+| BEANZ GameCube Monitor v1.1 (`.dol` and `.elf` with its symbol table) | GameCube | nxs8739/BEANZ-GameCube-Monitor | MIT | 354 (each) | both rebuild identical, verified |
+| SuDokuL v1.5 (gamecube) | GameCube | Mode8fx/SuDokuL | MIT | 4,703 | rebuilds identical, verified |
+| GCMM-EX v1.0.1 (`gcmm_ex_GC.dol` / `.elf`), gcradio v3.2.0 (`.dol`, `-gui.dol`), cubemenu v0.3.0 | GameCube | alexishida/gcmm-ex, RyoSaeba89/gcradio, hudsonbrendon/cubemenu | MIT | in `homebrew-samples`; run with `CB_GEKKO_ALL=1` | larger programs, not in the unit test |
+| Wii-donut.c (Wii `boot.dol`, r9) | Wii | AndrewPiroli/Wii-donut.c | Unlicense | 738 | rebuilds identical, verified |
+| doodle-jump-wii v1.0.0 (`doodle-wii.dol`) | Wii | TechAlberto/doodle-jump-wii | MIT | 838 | rebuilds identical, verified |
+| Scuffedcraft 0.0.1 (`.dol`, `.elf`), GCMM-EX (Wii build), SuDokuL v1.5 (wii) | Wii | pnyaa/Scuffedcraft, alexishida/gcmm-ex, Mode8fx/SuDokuL | MIT | in `homebrew-samples`; `CB_GEKKO_ALL=1` | larger programs, not in the unit test |
+| MultiDRCSpaceDemo v0.1 (`.rpx`, compressed sections) | Wii U | GaryOderNichts/MultiDRCSpaceDemo | MIT | 1,979 | rebuilds identical (the decompressed file), verified |
+| gamepadtopro 1.1.1 (`.wps`, a Wii U plugin: an RPL) | Wii U | capitalistspz/gamepadtopro | MIT | 488 | rebuilds identical (decompressed), verified |
+| SuDokuL v1.5 (wiiu `.rpx`) | Wii U | Mode8fx/SuDokuL | MIT | in `homebrew-samples`; `CB_GEKKO_ALL=1` | larger program, not in the unit test |
+
+## Sega Dreamcast homebrew (the SH-4 lane)
+
+Open-source program with published source, downloaded 2026-11-15 as a binary from the author's release page (kept outside the repository, in
+`GitHub/homebrew-samples/dreamcast/`). Nothing downloaded was run. The release ships `1ST_READ.BIN` without a disc, so `source.dreamcast.homebrew`
+puts it in a disc of its own (the test IP.BIN of `source/dreamcast_test_programs.hpp`, the program at $8C010000), writes it as GNU as source with
+`source/dreamcast_writer`, builds the source again with CodeBreaker's own SH-4 assembler (identical), and runs a copy with each of 12 functions' first
+instruction changed beside the original in the SH-4 interpreter.
+
+| Program | Platform | Author / source | License | Functions | Result |
+|---|---|---|---|---|---|
+| openMenu 1.3.0 (`1ST_READ.BIN`, 311,220 bytes; KallistiOS / GCC SH-4 code with FPU) | Sega Dreamcast | sbstnc/openmenu (release v1.3.0; openMenu, the open-source GDEMU frontend) | BSD-3-Clause | 1,497 | rebuilds identical; 9 of 12 edited functions diverge |
+
+Not done: no open-source Dreamcast program shipped as a `.cdi` / `.gdi` with a permissive licence was found (the KallistiOS examples and most homebrew are
+source only, and building them needs a downloaded toolchain), so `.cdi`, `.gdi` and a scrambled `1ST_READ.BIN` are tested on discs the tests build, not on a real
+image; `reach --judge` was not run on a real disc.

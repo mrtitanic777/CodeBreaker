@@ -8,10 +8,6 @@
 //
 // The terminal interface is the one thing that stays Python (codebreaker/ui/terminal.py, Textual): it runs under a real python found by
 // find_python() and talks to this program's `serve` (CB_EXE is set to this program for it; ui/client.py starts the service with it).
-#include <windows.h>
-#include <process.h>
-#include <stdlib.h>
-
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -23,8 +19,8 @@
 #include "cb/app/native_commands.hpp"
 #include "cb/base/config.hpp"
 #include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/core/process.hpp"
-#include "cb/core/win.hpp"
 
 extern "C" int cb_host_main_hook(int argc, char** argv);
 
@@ -32,13 +28,7 @@ namespace {
 
 bool is_help(std::string_view w) { return w == "-h" || w == "--help" || w == "help"; }
 
-std::string env_text(const char* name) {
-    const DWORD need = GetEnvironmentVariableA(name, nullptr, 0);   // (the Win32 call: every Windows compiler's CRT has it)
-    if (need == 0) return {};
-    std::string out(need, '\0');
-    out.resize(GetEnvironmentVariableA(name, out.data(), need));
-    return out;
-}
+std::string env_text(const char* name) { return cb::fs::get_env(name).value_or(std::string()); }
 
 // A python that runs: CB_PYTHON, the setting `python`, then `python` and `py -3` on the PATH. The first whose `-c pass` succeeds
 // (the Microsoft Store's stub for a missing python fails it). Empty argv when there is none.
@@ -59,12 +49,6 @@ std::vector<std::string> find_python(const cb::config::Config& config) {
     return {};
 }
 
-std::wstring self_path() {
-    char* path = nullptr;
-    _get_pgmptr(&path);   // the full path of this program
-    return path ? cb::win::to_wide(path) : std::wstring();
-}
-
 // The terminal interface, under real python, in this console (stdin, stdout and stderr are inherited). `args` are the words after `ui`.
 int run_terminal_interface(const std::vector<std::string>& args) {
     const cb::config::Config& config = cb::config::current();
@@ -82,29 +66,26 @@ int run_terminal_interface(const std::vector<std::string>& args) {
                      "  Every other command works without it.\n");
         return 2;
     }
-    std::vector<std::wstring> words;
-    for (const std::string& w : python) words.push_back(std::filesystem::u8path(w).wstring());
-    words.insert(words.end(), {L"-m", L"codebreaker.ui.terminal"});
-    for (const std::string& a : args) words.push_back(std::filesystem::u8path(a).wstring());
-    std::vector<const wchar_t*> argv;
-    for (const std::wstring& w : words) argv.push_back(w.c_str());
-    argv.push_back(nullptr);
+    cb::process::ProcessSpec spec;
+    spec.argv = python;
+    spec.argv.insert(spec.argv.end(), {"-m", "codebreaker.ui.terminal"});
+    spec.argv.insert(spec.argv.end(), args.begin(), args.end());
+    spec.out = cb::process::Capture::Inherit;
+    spec.err = cb::process::Capture::Inherit;
+    spec.terminal = true;   // the terminal is the child's: its keys, its size
 
     // CB_EXE: the program the client starts as the service. PYTHONPATH: the checkout, so `codebreaker.ui` imports from anywhere.
-    _wputenv_s(L"CB_EXE", self_path().c_str());
-    std::wstring path = root.wstring();
-    if (const DWORD need = GetEnvironmentVariableW(L"PYTHONPATH", nullptr, 0); need > 1) {
-        std::wstring old(need, L'\0');
-        old.resize(GetEnvironmentVariableW(L"PYTHONPATH", old.data(), need));
-        path += L";" + old;
-    }
-    _wputenv_s(L"PYTHONPATH", path.c_str());
-    const intptr_t rc = _wspawnvp(_P_WAIT, argv[0], argv.data());
-    if (rc == -1) {
+    constexpr char kPathSeparator = std::filesystem::path::preferred_separator == '\\' ? ';' : ':';
+    spec.env["CB_EXE"] = cb::fs::to_text(cb::fs::executable_path());
+    std::string path = cb::fs::to_text(root);
+    if (const std::string old = env_text("PYTHONPATH"); !old.empty()) path += kPathSeparator + old;
+    spec.env["PYTHONPATH"] = path;
+    try {
+        return static_cast<int>(cb::process::run(spec).exit_code);
+    } catch (const std::exception&) {   // not startable
         std::fprintf(stderr, "codebreaker: python could not be started for the terminal interface\n");
         return 2;
     }
-    return static_cast<int>(rc);
 }
 
 }  // namespace

@@ -1,7 +1,11 @@
 // cb-unity: alone
 // cb/ui/mcp_protocol.cpp -- the MCP wire: the tool table and its schemas, the checks of a call's arguments, JSON-RPC, the stdio transport.
+#if defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -576,9 +580,14 @@ Json Server::handle(const Json& msg, bool* initialized) {
 int Server::serve_stdio() {
     // Stdout is the protocol: file 1 is pointed at stderr while serving, so anything the commands print cannot corrupt it.
     std::fflush(stdout);
+#if defined(_WIN32)
     const int proto = _dup(1);
     _dup2(2, 1);
     _setmode(proto, _O_BINARY);
+#else
+    const int proto = ::dup(1);
+    ::dup2(2, 1);
+#endif
     // Each request is answered on a thread of its own, as the library does, so a slow tool does not hold up ping; a client that waits for
     // each reply sees the order it asked in. What is still running at the end of input is dropped with the process.
     struct Shared {
@@ -604,7 +613,11 @@ int Server::serve_stdio() {
             if (answer.is_null()) return;
             const std::string text = answer.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n";
             const std::lock_guard<std::mutex> hold(shared->write);
+#if defined(_WIN32)
             _write(proto, text.data(), static_cast<unsigned>(text.size()));
+#else
+            [[maybe_unused]] const ssize_t written = ::write(proto, text.data(), text.size());
+#endif
         };
         // The handshake is answered here, before anything after it is read: a request that follows `initialize` on the same pipe
         // must find the session initialized (on a thread of its own it could be handled first and refused).

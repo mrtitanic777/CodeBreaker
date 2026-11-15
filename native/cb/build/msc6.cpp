@@ -76,6 +76,11 @@ void clear_session_files(const stdfs::path& folder, bool headers_too) {
     }
 }
 
+#if !defined(_WIN32)
+extern "C" char** environ;   // POSIX: the process environment (the CRT's _environ on Windows)
+#define _environ environ
+#endif
+
 // The names of the variables of our environment: a native session starts the compiler with only the few it needs.
 std::vector<std::string> inherited_variable_names() {
     std::vector<std::string> names;

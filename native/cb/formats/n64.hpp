@@ -82,11 +82,13 @@ struct Rom {
     // The ROM in the byte order it was read in (the file as it was).
     Bytes in_order() const { return convert(data, ByteOrder::Z64, order); }
 
-    // The RDRAM as the program finds it after IPL3: 8 MB, the program at its load address.
+    // The RDRAM as the program finds it after IPL3: 8 MB, the program at its load address, and the words of the OS reserved area the boot code
+    // leaves ($80000300 the TV type, $80000308 the ROM base, $80000318 the amount of RDRAM: a program's startup code sets its stack from it). and the words of the OS's reserved area the boot code leaves
+    // ( the TV type,  the ROM base,  the amount of RDRAM).
     Bytes memory() const;
 
-    // The checksums of the program as the boot code computes them (nullopt for a ROM shorter than $101000 or a boot code that is not one of
-    // the five whose algorithm is known), and whether the header's are those.
+    // The checksums of the program as the boot code computes them (nullopt for a ROM shorter than $101000; a boot code that is not one of the five
+    // is taken as the CIC-NUS-6102's, which the homebrew toolchains' tools use), and whether the header's are those.
     std::optional<std::pair<std::uint32_t, std::uint32_t>> checksums() const;
     bool checksums_match() const;
 

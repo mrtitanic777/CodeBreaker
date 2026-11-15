@@ -45,7 +45,7 @@ CB_TEST("engine.machine_pce.a_card_comes_back_identical_and_an_edit_diverges", [
     const verify::Judgement j = lane.judge_function(false, original, changed, 0x014000);
     CB_CHECK(j.verdict == verify::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
-    CB_CHECK(lane.judge_function(false, original, changed, 0x00E040).verdict == verify::Verdict::Equivalent);   // a handler nobody edited
+    CB_CHECK(lane.judge_function(false, original, changed, 0x00E020).verdict == verify::Verdict::Equivalent);   // the subroutine, which nothing edited touches
 
     Bytes written = formats::pce_test_image::cartridge();
     written[0x31] = 0x08;   // the subroutine's LDA #$08: a different value reaches VDC_SELECT

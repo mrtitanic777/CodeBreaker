@@ -36,6 +36,35 @@ uint xe_edram_address(uint base, uint pitchTiles, uint2 q, bool depth)
 }
 )HLSL";
 
+    // 7e3 floats (k_2_10_10_10_FLOAT's R, G, B: 3-bit exponent with bias 3, 7-bit mantissa, no sign; Xenia's
+    // Float7e3To32 / Float32To7e3): the value 0.25 is exponent 1, below it denormals, the largest is 31.875.
+    const char* const kEdramFloat7e3Hlsl = R"HLSL(
+float xe_f7e3_decode(uint f)
+{
+    f &= 0x3FFu;
+    if (f == 0u)
+        return 0.0;
+    uint m = f & 0x7Fu;
+    int e = int(f >> 7);
+    if (e == 0)
+    {
+        int shift = 7 - int(firstbithigh(m)); // normalise: the leading one becomes the hidden bit
+        e = 1 - shift;
+        m = (m << uint(shift)) & 0x7Fu;
+    }
+    return asfloat((uint(e + 124) << 23) | (m << 16));
+}
+uint xe_f7e3_encode(float v)
+{
+    uint u = asuint(v);
+    if (u >= 0x41FF0000u)
+        return 0x3FFu;
+    if (u < 0x3E800000u)
+        return uint(v * 512.0 + 0.5);
+    return ((u + 0x8000u) >> 16) - (124u << 7);
+}
+)HLSL";
+
     namespace
     {
         const char kComponents[] = "xyzw";
@@ -147,6 +176,36 @@ uint xe_om_encode_4(float4 c)
     return (uint(n.x) & 0xFFFFu) | (uint(n.y) << 16);
 }
 )HLSL";
+            case 3:
+                return std::string(kEdramFloat7e3Hlsl) + R"HLSL(
+// 2_10_10_10_FLOAT: R, G, B 7e3 floats (bits 0-9, 10-19, 20-29), A 2-bit unorm (bits 30-31).
+float4 xe_om_decode_3(uint v)
+{
+    return float4(xe_f7e3_decode(v), xe_f7e3_decode(v >> 10), xe_f7e3_decode(v >> 20), float(v >> 30) * asfloat(0x3EAAAAABu));
+}
+float4 xe_om_range_3(float4 c)
+{
+    uint4 u = asuint(c);
+    float4 r = xe_select4((u & 0x7FFFFFFFu) > 0x7F800000u, 0.0, c);   // NaN -> 0
+    float4 t = xe_min4(xe_max4(r, 0.0), 31.875);
+    return float4(t.xyz, saturate(r.w));
+}
+uint xe_om_encode_3(float4 c)
+{
+    return xe_f7e3_encode(c.x) | (xe_f7e3_encode(c.y) << 10) | (xe_f7e3_encode(c.z) << 20) | (uint(floor(c.w * 3.0 + 0.5)) << 30);
+}
+)HLSL";
+            case 14:
+                return R"HLSL(
+// 32_FLOAT: the dword is R's float; there is no G, B or A.
+float4 xe_om_decode_14(uint v) { return float4(asfloat(v), 0.0, 0.0, 0.0); }
+float4 xe_om_range_14(float4 c)
+{
+    uint4 u = asuint(c);
+    return xe_select4((u & 0x7FFFFFFFu) > 0x7F800000u, 0.0, c);       // NaN -> 0
+}
+uint xe_om_encode_14(float4 c) { return asuint(c.x); }
+)HLSL";
             default:
                 Fatal("GPU: render target format {} ({}) is not implemented by the EDRAM output merger", format,
                       EdramColorFormatName(format));
@@ -158,6 +217,10 @@ uint xe_om_encode_4(float4 c)
         {
             if (format == 4)
                 return channel == 0 ? 0x0000FFFFu : channel == 1 ? 0xFFFF0000u : 0u;
+            if (format == 14)
+                return channel == 0 ? 0xFFFFFFFFu : 0u;
+            if (format == 3)
+                return channel == 0 ? 0x000003FFu : channel == 1 ? 0x000FFC00u : channel == 2 ? 0x3FF00000u : 0xC0000000u;
             return 0xFFu << (8 * channel);
         }
 
@@ -210,7 +273,7 @@ uint xe_om_encode_4(float4 c)
 
     bool OutputMergerSupportsColorFormat(uint32_t format)
     {
-        return format == 0 || format == 4;
+        return format == 0 || format == 3 || format == 4 || format == 14;
     }
 
     const char* EdramColorFormatName(uint32_t format)
@@ -314,7 +377,7 @@ float3 xe_om_mul(float3 a, float3 b) { precise float3 r = a * b; return r; }
                 text += std::format("    float4 k = xe_om_range_{}(xe_om_blend_constant);\n", format);
                 text += "    float4 r = src;\n";
                 text += BlendGroup(srcColor, opColor, dstColor, false, format);
-                if (!IsFixed16(format)) // 16_16 has no alpha channel
+                if (!IsFixed16(format) && format != 14) // 16_16 and 32_FLOAT have no alpha channel
                     text += BlendGroup(srcAlpha, opAlpha, dstAlpha, true, format);
                 text += std::format("    r = xe_om_range_{}(r);\n", format);
             }

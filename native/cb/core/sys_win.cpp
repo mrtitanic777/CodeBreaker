@@ -3,7 +3,13 @@
 
 #include <windows.h>
 
+#include <fcntl.h>
+#include <io.h>
+#include <share.h>
+#include <sys/stat.h>
+
 #include <algorithm>
+#include <cstdio>
 #include <thread>
 
 #include "cb/core/sys.hpp"
@@ -43,26 +49,31 @@ bool write_stream(Stream which, std::string_view data) {
     return true;
 }
 
+// The redirect is made on the C runtime's descriptor (_dup2 also points the process's standard handle at the file), so that
+// the C and C++ libraries' writers, WriteFile on the handle and children that inherit it all reach the file.
 struct StreamRedirect::Impl {
-    DWORD id = 0;
-    HANDLE saved = nullptr, file = INVALID_HANDLE_VALUE;
+    int fd = -1, saved = -1;
+    FILE* stream = nullptr;
 };
 
 StreamRedirect::StreamRedirect(Stream which, const std::filesystem::path& path) : impl_(std::make_unique<Impl>()) {
-    impl_->id = handle_id(which);
-    impl_->saved = GetStdHandle(impl_->id);
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    impl_->file = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, CREATE_ALWAYS,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
-    SetStdHandle(impl_->id, impl_->file);
+    impl_->fd = which == Stream::In ? 0 : which == Stream::Out ? 1 : 2;
+    impl_->stream = which == Stream::In ? stdin : which == Stream::Out ? stdout : stderr;
+    int file = -1;
+    if (_wsopen_s(&file, path.c_str(), _O_RDWR | _O_BINARY | _O_CREAT | _O_TRUNC, _SH_DENYNO, _S_IREAD | _S_IWRITE) != 0) return;
+    std::fflush(impl_->stream);
+    impl_->saved = _dup(impl_->fd);
+    _dup2(file, impl_->fd);
+    _close(file);
 }
 
 StreamRedirect::StreamRedirect(StreamRedirect&&) noexcept = default;
 
 StreamRedirect::~StreamRedirect() {
-    if (!impl_) return;
-    SetStdHandle(impl_->id, impl_->saved);
-    if (impl_->file != INVALID_HANDLE_VALUE) CloseHandle(impl_->file);
+    if (!impl_ || impl_->saved < 0) return;
+    std::fflush(impl_->stream);
+    _dup2(impl_->saved, impl_->fd);
+    _close(impl_->saved);
 }
 
 LocalTime local_time() {

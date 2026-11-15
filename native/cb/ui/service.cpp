@@ -1,11 +1,6 @@
 // cb/ui/service.cpp -- the service's answers: the store's view of a module, the calls by name, the jobs it starts.
 #include "cb/ui/service.hpp"
 
-#include <fcntl.h>
-#include <io.h>
-#include <share.h>
-#include <sys/stat.h>
-
 #include <algorithm>
 #include <cstdio>
 #include <format>
@@ -13,6 +8,7 @@
 
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/text.hpp"
 
 namespace cb::ui::service {
@@ -93,27 +89,26 @@ std::string captured(const std::filesystem::path& file, Work&& work) {
     flush_out();
     std::fflush(stdout);
     std::filesystem::create_directories(file.parent_path());
-    int target = -1;
-    if (_wsopen_s(&target, file.c_str(), _O_RDWR | _O_BINARY | _O_CREAT | _O_TRUNC, _SH_DENYNO, _S_IREAD | _S_IWRITE) != 0)
-        throw IoError(file, errno, "cannot open the file a command's output is kept in");
-    const int saved = _dup(1);
-    _dup2(target, 1);
-    _close(target);
-    const auto restore = [&] {
-        flush_out();
-        std::fflush(stdout);
-        _dup2(saved, 1);
-        _close(saved);
-    };
     try {
-        work();
-    } catch (...) {   // put stdout back, then let the failure go on
-        restore();
+        {
+            sys::StreamRedirect redirect(sys::Stream::Out, file);
+            const auto flush = [&] {
+                flush_out();
+                std::fflush(stdout);
+            };
+            try {
+                work();
+            } catch (...) {   // put the output out, then let the failure go on
+                flush();
+                throw;
+            }
+            flush();
+        }
+    } catch (...) {   // stdout is back; the kept output goes
         std::error_code ec;
         std::filesystem::remove(file, ec);
         throw;
     }
-    restore();
     std::string text = fs::read_text(file);
     std::error_code ec;
     std::filesystem::remove(file, ec);

@@ -158,6 +158,43 @@ struct Ctx16 {
     }
 };
 
+// A function with a path that returns without setting AX leaves AX as it came in: the source had a path with no value, and no caller reads one.
+// The decompiler writes it `return in_AX;` with `in_AX` declared and never set. When that is all `in_AX` is in the text, the path returns 0 (an
+// unspecified result) and the declaration goes -- no register parameter is invented; the gate then says, per function, whether it matters.
+std::string unspecified_entry_result(std::string text) {
+    const std::string_view name = "in_AX";
+    const auto word_at = [&](std::size_t at) {
+        const auto is_word = [](char ch) { return ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'); };
+        return (at == 0 || !is_word(text[at - 1])) && (at + name.size() >= text.size() || !is_word(text[at + name.size()]));
+    };
+    std::vector<std::size_t> uses;
+    for (std::size_t at = text.find(name); at != std::string::npos; at = text.find(name, at + 1)) {
+        if (word_at(at)) uses.push_back(at);
+    }
+    if (uses.size() < 2) return text;   // (a declaration and at least one return)
+    std::size_t declared = std::string::npos;
+    std::vector<std::size_t> returns;
+    for (const std::size_t at : uses) {
+        const std::size_t line = text.rfind('\n', at);
+        const std::string before = text.substr(line == std::string::npos ? 0 : line + 1, at - (line == std::string::npos ? 0 : line + 1));
+        const std::string after = text.substr(at + name.size(), text.find('\n', at) == std::string::npos ? std::string::npos : text.find('\n', at) - at - name.size());
+        if (after == ";" && declared == std::string::npos && text::trim(before).find(' ') == std::string::npos && !text::trim(before).empty()) {
+            declared = line == std::string::npos ? 0 : line;
+        } else if (text::trim(before) == "return" && after == ";") {
+            returns.push_back(at);
+        } else {
+            return text;   // (read or set some other way)
+        }
+    }
+    if (declared == std::string::npos || returns.empty() || returns.size() + 1 != uses.size()) return text;
+    for (auto it = returns.rbegin(); it != returns.rend(); ++it)
+        text.replace(*it, name.size() + 1, "0; /* the original left AX as it came in: no caller reads it */");
+    // (the declaration's line: from its newline to the next)
+    const std::size_t dl_end = text.find('\n', declared + 1);
+    if (dl_end != std::string::npos) text.erase(declared, dl_end - declared);
+    return text;
+}
+
 // Compile each function into the code segment it came from.
 void compile_functions(Ctx16& c) {
     Built& b = c.b;
@@ -174,6 +211,7 @@ void compile_functions(Ctx16& c) {
             if (!c.m.near.contains(*target) || (where != c.segment_of.end() && where->second == seg)) return *target;
             return std::nullopt;
         });
+        c.texts[name] = unspecified_entry_result(std::move(c.texts[name]));
     }
     std::vector<functions::Group> groups;
     for (const auto& [seg, names] : c.by_segment) groups.push_back({c.flags_for(seg), names, c.folder / std::format("s{:02d}", seg)});

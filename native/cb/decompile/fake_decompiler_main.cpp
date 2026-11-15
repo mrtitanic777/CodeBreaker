@@ -8,9 +8,12 @@
 //     FAKE_DECOMPILER_NOTES=1         writes a global, a pointer and a structure note before each body
 //     FAKE_DECOMPILER_L2=<file>       writes the file's text as the function's L2 note
 //     FAKE_DECOMPILER_FAIL=<hex>      writes a `decompile failed` body for that function
-#include <fcntl.h>
-#include <io.h>
+#if defined(_WIN32)
 #include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -23,6 +26,12 @@
 
 namespace {
 
+#if !defined(_WIN32)
+std::string env(const char* name) {
+    const char* value = std::getenv(name);
+    return value ? std::string(value) : std::string();
+}
+#else
 std::string env(const char* name) {
     const DWORD need = GetEnvironmentVariableA(name, nullptr, 0);   // (the Win32 call: every Windows compiler's CRT has it)
     if (need == 0) return {};
@@ -30,6 +39,7 @@ std::string env(const char* name) {
     out.resize(GetEnvironmentVariableA(name, out.data(), need));
     return out;
 }
+#endif
 
 std::vector<std::string> split(const std::string& s, char sep) {
     std::vector<std::string> out;
@@ -58,12 +68,19 @@ int main(int argc, char** argv) {
         for (int i = 2; i < argc; ++i) line += std::string(" ") + argv[i];
         line += " | threads=" + env("CB_THREADS") + " structs=" + env("CB_STRUCTS") + " l2=" + env("CB_L2") + " max=" + env("CB_MAX_INSTRUCTIONS") + "\n";
         // (one append of the whole line: processes running at once do not lose each other's lines)
+#if defined(_WIN32)
         HANDLE file = CreateFileA(log.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file != INVALID_HANDLE_VALUE) {
             DWORD written = 0;
             WriteFile(file, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
             CloseHandle(file);
         }
+#else
+        if (const int file = ::open(log.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644); file >= 0) {
+            [[maybe_unused]] const ssize_t written = ::write(file, line.data(), line.size());
+            ::close(file);
+        }
+#endif
     }
     std::vector<std::pair<unsigned long long, std::string>> functions;   // in the description's order
     std::ifstream in(description);

@@ -18,7 +18,6 @@
 #include "cb/core/process.hpp"
 #include "cb/core/regex.hpp"
 #include "cb/core/text.hpp"
-#include "cb/core/win.hpp"
 #include "dosexec/cbdos.h"
 
 namespace cb::port::verify {
@@ -223,7 +222,9 @@ Run CbdosRunner::run(const stdfs::path& exe, const stdfs::path& folder, std::str
 Run run_port(const stdfs::path& exe, const stdfs::path& folder, std::string_view cmd, ByteView stdin_data,
              const std::map<std::string, std::string>& env, std::chrono::milliseconds timeout) {
     process::ProcessSpec spec;
-    spec.argv.push_back(win::from_wide(stdfs::path(exe).make_preferred().native()));   // (a program name as the system spells it: cmd.exe takes the slashes for switches)
+    std::string program = fs::to_text(stdfs::path(exe));
+    if constexpr (stdfs::path::preferred_separator == L'\\') std::ranges::replace(program, '/', '\\');
+    spec.argv.push_back(std::move(program));   // (a program name as the system spells it: cmd.exe takes the slashes for switches)
     for (const std::string_view arg : text::split_ws(cmd)) spec.argv.emplace_back(arg);
     spec.cwd = folder;
     spec.env = env;

@@ -144,6 +144,8 @@ if(WIN32)
 else()
   find_package(Threads REQUIRED)
   target_link_libraries(cb_core PUBLIC Threads::Threads ${CMAKE_DL_LIBS})   # (std::thread; dlopen for the engine libraries)
+  find_package(OpenSSL REQUIRED)
+  target_link_libraries(cb_core PUBLIC OpenSSL::Crypto)   # (core/crypto_cipher_posix.cpp: random bytes, AES/DES, RSA; Windows uses CNG)
 endif()
 # core16_types.hpp: the records of the core16 cycle (header only; its test sits beside it, not in an area)
 get_property(CB_TESTS_BEFORE_CORE16 GLOBAL PROPERTY CB_TEST_SOURCES)
@@ -260,7 +262,7 @@ cb_apply_flags(cb_fake_decompiler)
 # The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
 add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
 cb_apply_flags(cb_fake_qemu)
-target_link_libraries(cb_fake_qemu PRIVATE ${CB_SOCKET_LIBS})
+target_link_libraries(cb_fake_qemu PRIVATE cb_core ${CB_SOCKET_LIBS})   # (cb_core: the socket and the environment)
 
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_symbols cb_translate)   # (cb_platforms: the one Capstone decoder, for the VxD disassembly; cb_analyze, cb_symbols, cb_translate: the DOS writer reads the functions, the interrupts' names and builds an L2 assembly -- static libraries may be cyclic)
 
@@ -348,7 +350,11 @@ cb_copy_prebuilt_dlls(cb_cmdrun)
 
 # codebreaker: THE program (tools/build_codebreaker_exe.cmd installs it as state/cxx/codebreaker/build/codebreaker.exe, the path every tool
 # uses). main is cb::app's command table; it hosts its own workers (app/host_hook.cpp); `ui` starts the Python terminal under real python.
-add_executable(codebreaker app/codebreaker_main.cpp app/allocator_main.cpp ${CB_MANIFEST})
+if(WIN32)
+  add_executable(codebreaker app/codebreaker_main.cpp app/allocator_main.cpp ${CB_MANIFEST})   # (the small-block allocator reserves address space with VirtualAlloc: Windows only, malloc elsewhere)
+else()
+  add_executable(codebreaker app/codebreaker_main.cpp)
+endif()
 cb_apply_flags(codebreaker)
 target_link_libraries(codebreaker PRIVATE cb_app cb_core)
 cb_copy_prebuilt_dlls(codebreaker)

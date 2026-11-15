@@ -29,6 +29,8 @@ namespace kernel
         constexpr uint32_t kSize = 0x10;
     }
 
+    constexpr uint32_t kObjectHeaderSize = 0x10; // OBJECT_HEADER before an object CreateOwnedObject made
+
     constexpr uint8_t kObjectTimerNotification = 8;
     constexpr uint8_t kObjectTimerSynchronization = 9;
 

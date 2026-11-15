@@ -9,21 +9,20 @@
 //     FAKE_QEMU_EXIT    1: the program ends at once with exit code 3 (a machine that never started)
 //
 // It runs until it is killed (the test's process object kills its job).
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <string>
 #include <vector>
 
+#include "cb/core/fs.hpp"
+#include "cb/core/socket.hpp"
+
 namespace {
 
 std::string env(const char* name) {
-    char buffer[32768];
-    const DWORD n = GetEnvironmentVariableA(name, buffer, sizeof buffer);
-    return n > 0 && n < sizeof buffer ? std::string(buffer, n) : std::string();
+    return cb::fs::get_env(name).value_or(std::string());
 }
 
 void log(const std::string& line) {
@@ -68,28 +67,22 @@ int main(int argc, char** argv) {
         }
     }
 
-    WSADATA data;
-    WSAStartup(MAKEWORD(2, 2), &data);
-    SOCKET listener = socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_port = htons(static_cast<u_short>(port));
-    inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
-    if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof address) != 0 || listen(listener, 4) != 0)
+    auto listener = cb::net::Listener::listen("127.0.0.1", static_cast<std::uint16_t>(port), false);
+    if (!listener)
         return 4;
 
     std::size_t shot = 0;
     for (;;) {
-        SOCKET client = accept(listener, nullptr, nullptr);
-        if (client == INVALID_SOCKET)
-            break;
-        const std::string banner = "QEMU 8.2.0 monitor - type 'help' for more information\r\n(qemu) ";
-        send(client, banner.data(), static_cast<int>(banner.size()), 0);
+        auto accepted = listener->accept(std::chrono::hours(24));
+        if (!accepted)
+            continue;
+        cb::net::Socket& client = *accepted;
+        client.send("QEMU 8.2.0 monitor - type 'help' for more information\r\n(qemu) ");
         std::string pending;
-        char buffer[1024];
-        int n;
-        while ((n = recv(client, buffer, sizeof buffer, 0)) > 0) {
-            pending.append(buffer, static_cast<std::size_t>(n));
+        std::uint8_t buffer[1024];
+        std::int64_t n;
+        while ((n = client.receive(buffer)) > 0) {
+            pending.append(reinterpret_cast<const char*>(buffer), static_cast<std::size_t>(n));
             for (std::size_t newline; (newline = pending.find('\n')) != std::string::npos;) {
                 const std::string line = pending.substr(0, newline);
                 pending.erase(0, newline + 1);
@@ -104,10 +97,9 @@ int main(int argc, char** argv) {
                 } else {
                     log("cmd: " + line);
                 }
-                send(client, "(qemu) ", 7, 0);
+                client.send("(qemu) ");
             }
         }
-        closesocket(client);
     }
     return 0;
 }

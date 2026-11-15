@@ -63,17 +63,21 @@ std::optional<std::pair<std::string_view, std::string_view>> split_label(std::st
     return std::pair{line.substr(0, i), text::trim(line.substr(i + 1))};
 }
 
-constexpr std::array<std::string_view, 14> kIgnored = {".globl", ".global", ".text", ".data", ".section", ".type", ".size",
-                                                       ".file",  ".extern", ".local", ".comm", ".arch",   ".cpu",  ".little"};
+constexpr std::array<std::string_view, 15> kIgnored = {".globl", ".global", ".text", ".data", ".section", ".type", ".size",
+                                                       ".file",  ".extern", ".local", ".comm", ".arch",   ".cpu",  ".little", ".big"};
 
 bool ignored_directive(std::string_view head) {
     const std::string h = text::lower(head);
     return std::ranges::find(kIgnored, h) != kIgnored.end();
 }
 
-void append_big_endian(Bytes& out, std::int64_t value, std::int64_t width) {
+// `width` bytes of `value`: the high byte first (the SH-2's big-endian mode), or the low byte first (the SH-4 in the Dreamcast's mode).
+void append_value(Bytes& out, std::int64_t value, std::int64_t width, bool little) {
     const auto bits = static_cast<std::uint64_t>(value);
-    for (std::int64_t i = width - 1; i >= 0; --i) out.push_back(static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFF));
+    for (std::int64_t k = 0; k < width; ++k) {
+        const std::int64_t i = little ? k : width - 1 - k;
+        out.push_back(static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFF));
+    }
 }
 
 // The bytes of a quoted string with GNU as's escapes.
@@ -113,7 +117,7 @@ Bytes string_bytes(std::string_view quoted) {
 
 class Pass {
 public:
-    Pass(const Encoder& isa, Labels& labels, bool final) : isa_(isa), labels_(labels), final_(final) {}
+    Pass(const Encoder& isa, Labels& labels, bool final, bool little) : isa_(isa), labels_(labels), final_(final), little_(little) {}
 
     Bytes run(const std::vector<SourceLine>& lines) {
         for (const SourceLine& l : lines) {
@@ -193,7 +197,7 @@ private:
             const std::int64_t value = parts.size() > 2 ? need(parts[2]) : 0;
             if (count < 0 || size < 1 || size > 8 || count * size > kMaxImageBytes) fail(std::format(".fill of {} items of {} bytes", count, size));
             Bytes out;
-            for (std::int64_t i = 0; i < count; ++i) append_big_endian(out, value, size);
+            for (std::int64_t i = 0; i < count; ++i) append_value(out, value, size, little_);
             return put(out);
         }
         if (text::iequals(head, ".align") || text::iequals(head, ".p2align")) {
@@ -216,7 +220,7 @@ private:
         Bytes out;
         for (std::string_view item : split_items(items_text, true)) {
             const std::int64_t v = soft(item, pc_ + static_cast<std::int64_t>(out.size())).value_or(0);
-            append_big_endian(out, v, width);
+            append_value(out, v, width, little_);
         }
         return out;
     }
@@ -244,6 +248,7 @@ private:
     const Encoder& isa_;
     Labels& labels_;
     bool final_;
+    bool little_;
     Bytes image_;
     std::int64_t pc_ = 0;
     std::string_view current_;
@@ -270,7 +275,7 @@ Bytes Assembler::build(std::string_view source) const {
     Labels labels;
     Bytes image;
     for (const bool final : {false, true}) {
-        Pass pass(*isa_, labels, final);
+        Pass pass(*isa_, labels, final, little_);
         image = pass.run(lines);
     }
     return image;

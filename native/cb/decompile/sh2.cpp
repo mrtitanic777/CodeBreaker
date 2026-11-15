@@ -192,14 +192,94 @@ constexpr auto kDefs = std::to_array<Def>({
     {"mov", kTop, 0xE000, O::ImmS, O::RegN, 0, Flow::None, false},
 });
 
-// The definitions whose first nibble is `top`, in table order.
-const std::array<std::vector<const Def*>, 16>& by_top_nibble() {
-    static const std::array<std::vector<const Def*>, 16> table = [] {
-        std::array<std::vector<const Def*>, 16> t;
-        for (const Def& d : kDefs) t[d.bits >> 12].push_back(&d);
+// What the SH-4 adds (SH7750). Operand names say where the register field is: N is bits 8-11, M bits 4-7.
+constexpr std::uint16_t kBankMask = 0xF08F;   // rn in bits 8-11, the bank register in bits 4-6
+constexpr std::uint16_t kEven = 0xF1FF;       // a double register: bit 8 clear
+constexpr auto kDefs4 = std::to_array<Def>({
+    // 0xxx: control registers, cache and TLB instructions
+    {"stc", kRn, 0x0032, O::Ssr, O::RegN, 0, Flow::None, false},
+    {"stc", kRn, 0x0042, O::Spc, O::RegN, 0, Flow::None, false},
+    {"stc", kRn, 0x003A, O::Sgr, O::RegN, 0, Flow::None, false},
+    {"stc", kRn, 0x00FA, O::Dbr, O::RegN, 0, Flow::None, false},
+    {"stc", kBankMask, 0x0082, O::BankM, O::RegN, 0, Flow::None, false},
+    {"pref", kRn, 0x0083, O::IndN, O::None, 0, Flow::None, false},
+    {"ocbi", kRn, 0x0093, O::IndN, O::None, 0, Flow::None, false},
+    {"ocbp", kRn, 0x00A3, O::IndN, O::None, 0, Flow::None, false},
+    {"ocbwb", kRn, 0x00B3, O::IndN, O::None, 0, Flow::None, false},
+    {"movca.l", kRn, 0x00C3, O::R0, O::IndN, 4, Flow::None, false},
+    {"ldtlb", kAll, 0x0038, O::None, O::None, 0, Flow::None, false},
+    {"clrs", kAll, 0x0048, O::None, O::None, 0, Flow::None, false},
+    {"sets", kAll, 0x0058, O::None, O::None, 0, Flow::None, false},
+    {"sts", kRn, 0x005A, O::Fpul, O::RegN, 0, Flow::None, false},
+    {"sts", kRn, 0x006A, O::Fpscr, O::RegN, 0, Flow::None, false},
+    // 4nxx
+    {"shad", kRm, 0x400C, O::RegM, O::RegN, 0, Flow::None, false},
+    {"shld", kRm, 0x400D, O::RegM, O::RegN, 0, Flow::None, false},
+    {"stc.l", kRn, 0x4033, O::Ssr, O::PreN, 4, Flow::None, false},
+    {"stc.l", kRn, 0x4043, O::Spc, O::PreN, 4, Flow::None, false},
+    {"stc.l", kRn, 0x4032, O::Sgr, O::PreN, 4, Flow::None, false},
+    {"stc.l", kRn, 0x40F2, O::Dbr, O::PreN, 4, Flow::None, false},
+    {"stc.l", kBankMask, 0x4083, O::BankM, O::PreN, 4, Flow::None, false},
+    {"ldc.l", kRn, 0x4037, O::PostN, O::Ssr, 4, Flow::None, false},
+    {"ldc.l", kRn, 0x4047, O::PostN, O::Spc, 4, Flow::None, false},
+    {"ldc.l", kRn, 0x40F6, O::PostN, O::Dbr, 4, Flow::None, false},
+    {"ldc.l", kBankMask, 0x4087, O::PostN, O::BankM, 4, Flow::None, false},
+    {"ldc", kRn, 0x403E, O::RegN, O::Ssr, 0, Flow::None, false},
+    {"ldc", kRn, 0x404E, O::RegN, O::Spc, 0, Flow::None, false},
+    {"ldc", kRn, 0x40FA, O::RegN, O::Dbr, 0, Flow::None, false},
+    {"ldc", kBankMask, 0x408E, O::RegN, O::BankM, 0, Flow::None, false},
+    {"sts.l", kRn, 0x4052, O::Fpul, O::PreN, 4, Flow::None, false},
+    {"sts.l", kRn, 0x4062, O::Fpscr, O::PreN, 4, Flow::None, false},
+    {"lds.l", kRn, 0x4056, O::PostN, O::Fpul, 4, Flow::None, false},
+    {"lds.l", kRn, 0x4066, O::PostN, O::Fpscr, 4, Flow::None, false},
+    {"lds", kRn, 0x405A, O::RegN, O::Fpul, 0, Flow::None, false},
+    {"lds", kRn, 0x406A, O::RegN, O::Fpscr, 0, Flow::None, false},
+    // Fxxx: the FPU
+    {"fadd", kRm, 0xF000, O::FrM, O::FrN, 0, Flow::None, false},
+    {"fsub", kRm, 0xF001, O::FrM, O::FrN, 0, Flow::None, false},
+    {"fmul", kRm, 0xF002, O::FrM, O::FrN, 0, Flow::None, false},
+    {"fdiv", kRm, 0xF003, O::FrM, O::FrN, 0, Flow::None, false},
+    {"fcmp/eq", kRm, 0xF004, O::FrM, O::FrN, 0, Flow::None, false},
+    {"fcmp/gt", kRm, 0xF005, O::FrM, O::FrN, 0, Flow::None, false},
+    {"fmov.s", kRm, 0xF006, O::R0IndexM, O::MovN, 4, Flow::None, false},
+    {"fmov.s", kRm, 0xF007, O::MovM, O::R0IndexN, 4, Flow::None, false},
+    {"fmov.s", kRm, 0xF008, O::IndM, O::MovN, 4, Flow::None, false},
+    {"fmov.s", kRm, 0xF009, O::PostM, O::MovN, 4, Flow::None, false},
+    {"fmov.s", kRm, 0xF00A, O::MovM, O::IndN, 4, Flow::None, false},
+    {"fmov.s", kRm, 0xF00B, O::MovM, O::PreN, 4, Flow::None, false},
+    {"fmov", kRm, 0xF00C, O::MovM, O::MovN, 0, Flow::None, false},
+    {"fmac", kRm, 0xF00E, O::FrM, O::FrN, 0, Flow::None, false},   // fmac fr0,frm,frn (fr0 is written in the text, not an operand)
+    {"fsts", kRn, 0xF00D, O::Fpul, O::FrN, 0, Flow::None, false},
+    {"flds", kRn, 0xF01D, O::FrN, O::Fpul, 0, Flow::None, false},
+    {"float", kRn, 0xF02D, O::Fpul, O::FrN, 0, Flow::None, false},
+    {"ftrc", kRn, 0xF03D, O::FrN, O::Fpul, 0, Flow::None, false},
+    {"fneg", kRn, 0xF04D, O::FrN, O::None, 0, Flow::None, false},
+    {"fabs", kRn, 0xF05D, O::FrN, O::None, 0, Flow::None, false},
+    {"fsqrt", kRn, 0xF06D, O::FrN, O::None, 0, Flow::None, false},
+    {"fsrra", kRn, 0xF07D, O::FrN, O::None, 0, Flow::None, false},
+    {"fldi0", kRn, 0xF08D, O::FrN, O::None, 0, Flow::None, false},
+    {"fldi1", kRn, 0xF09D, O::FrN, O::None, 0, Flow::None, false},
+    {"fcnvsd", kEven, 0xF0AD, O::Fpul, O::DrN, 0, Flow::None, false},
+    {"fcnvds", kEven, 0xF0BD, O::DrN, O::Fpul, 0, Flow::None, false},
+    {"fipr", kRn, 0xF0ED, O::FvM, O::FvN, 0, Flow::None, false},
+    {"ftrv", 0xF3FF, 0xF1FD, O::Xmtrx, O::FvN, 0, Flow::None, false},
+    {"fsca", kEven, 0xF0FD, O::Fpul, O::DrN, 0, Flow::None, false},
+    {"fschg", kAll, 0xF3FD, O::None, O::None, 0, Flow::None, false},
+    {"frchg", kAll, 0xFBFD, O::None, O::None, 0, Flow::None, false},
+});
+
+// The definitions whose first nibble is `top`, in table order (the SH-4's are the SH-2's and then its own).
+const std::array<std::vector<const Def*>, 16>& by_top_nibble(Variant variant) {
+    static const std::array<std::array<std::vector<const Def*>, 16>, 2> tables = [] {
+        std::array<std::array<std::vector<const Def*>, 16>, 2> t;
+        for (const Def& d : kDefs) {
+            t[0][d.bits >> 12].push_back(&d);
+            t[1][d.bits >> 12].push_back(&d);
+        }
+        for (const Def& d : kDefs4) t[1][d.bits >> 12].push_back(&d);
         return t;
     }();
-    return table;
+    return tables[variant == Variant::Sh4 ? 1 : 0];
 }
 
 std::int32_t sign_extend(std::uint32_t v, unsigned bits) {
@@ -210,8 +290,8 @@ std::int32_t sign_extend(std::uint32_t v, unsigned bits) {
 
 }  // namespace
 
-std::optional<Insn> decode_word(std::uint16_t word, std::uint32_t pc) {
-    for (const Def* d : by_top_nibble()[word >> 12]) {
+std::optional<Insn> decode_word(std::uint16_t word, std::uint32_t pc, Variant variant) {
+    for (const Def* d : by_top_nibble(variant)[word >> 12]) {
         if ((word & d->mask) != d->bits) continue;
         Insn i;
         i.word = word;
@@ -224,7 +304,8 @@ std::optional<Insn> decode_word(std::uint16_t word, std::uint32_t pc) {
         i.size = d->size;
         i.flow = d->flow;
         i.delay_slot = d->delay;
-        i.raw = {static_cast<std::uint8_t>(word >> 8), static_cast<std::uint8_t>(word)};
+        i.raw = little_endian(variant) ? std::array<std::uint8_t, 2>{static_cast<std::uint8_t>(word), static_cast<std::uint8_t>(word >> 8)}
+                                       : std::array<std::uint8_t, 2>{static_cast<std::uint8_t>(word >> 8), static_cast<std::uint8_t>(word)};
         for (const O o : {d->a, d->b}) {
             switch (o) {
                 case O::ImmS: i.imm = sign_extend(word & 0xFF, 8); break;
@@ -247,9 +328,10 @@ std::optional<Insn> decode_word(std::uint16_t word, std::uint32_t pc) {
     return std::nullopt;
 }
 
-std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc) {
+std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, Variant variant) {
     if (at + 2 > code.size()) return std::nullopt;
-    return decode_word(static_cast<std::uint16_t>(code[at] << 8 | code[at + 1]), pc);
+    const std::uint16_t word = little_endian(variant) ? static_cast<std::uint16_t>(code[at + 1] << 8 | code[at]) : static_cast<std::uint16_t>(code[at] << 8 | code[at + 1]);
+    return decode_word(word, pc, variant);
 }
 
 // ---- text -------------------------------------------------------------------------------------------------------
@@ -309,6 +391,19 @@ std::string operand_text(const Insn& i, O o, const AddressLabels& labels) {
         case O::Mach: return "mach";
         case O::Macl: return "macl";
         case O::Pr: return "pr";
+        case O::FrN: case O::MovN: return std::format("fr{}", i.n);
+        case O::FrM: case O::MovM: return std::format("fr{}", i.m);
+        case O::DrN: return std::format("dr{}", i.n);
+        case O::FvN: return std::format("fv{}", 4 * ((i.word >> 10) & 3));
+        case O::FvM: return std::format("fv{}", 4 * ((i.word >> 8) & 3));
+        case O::Xmtrx: return "xmtrx";
+        case O::Fpul: return "fpul";
+        case O::Fpscr: return "fpscr";
+        case O::Ssr: return "ssr";
+        case O::Spc: return "spc";
+        case O::Sgr: return "sgr";
+        case O::Dbr: return "dbr";
+        case O::BankM: return std::format("r{}_bank", (i.word >> 4) & 7);
     }
     return {};
 }
@@ -319,6 +414,7 @@ std::string text(const Insn& insn, const AddressLabels& labels) {
     const std::string a = operand_text(insn, insn.a, labels);
     if (a.empty()) return insn.mnemonic;
     const std::string b = operand_text(insn, insn.b, labels);
+    if (insn.mnemonic == "fmac") return std::format("{:<8}fr0,{},{}", insn.mnemonic, a, b);   // (fr0 is the third operand: the word has no field for it)
     return std::format("{:<8}{}", insn.mnemonic, b.empty() ? a : a + "," + b);
 }
 
@@ -334,9 +430,10 @@ namespace {
 
 // One operand of an assembly line, by its shape.
 struct Parsed {
-    enum class Kind : std::uint8_t { Reg, Imm, Ind, Post, Pre, DispReg, R0Index, GbrDisp, GbrR0, PcDisp, Control, Bare };
+    enum class Kind : std::uint8_t { Reg, Imm, Ind, Post, Pre, DispReg, R0Index, GbrDisp, GbrR0, PcDisp, Control, Fp, Bank, Bare };
     Kind kind = Kind::Bare;
     unsigned reg = 0;
+    char fclass = 0;   // Fp: 'f' frN, 'd' drN, 'x' xdN, 'v' fvN
     std::string_view expr;
     O control = O::None;
 };
@@ -349,6 +446,13 @@ std::optional<O> control_register(std::string_view t) {
     if (name == "mach") return O::Mach;
     if (name == "macl") return O::Macl;
     if (name == "pr") return O::Pr;
+    if (name == "ssr") return O::Ssr;
+    if (name == "spc") return O::Spc;
+    if (name == "sgr") return O::Sgr;
+    if (name == "dbr") return O::Dbr;
+    if (name == "fpul") return O::Fpul;
+    if (name == "fpscr") return O::Fpscr;
+    if (name == "xmtrx") return O::Xmtrx;
     return std::nullopt;
 }
 
@@ -367,6 +471,28 @@ std::vector<std::string_view> operands_of(std::string_view t) {
     }
     if (!text::trim(t.substr(from)).empty() || !out.empty()) out.push_back(text::trim(t.substr(from)));
     return out;
+}
+
+// fr0-fr15, dr0-dr14, xd0-xd14 and fv0-fv12: the class ('f' 'd' 'x' 'v') and the number.
+std::optional<std::pair<char, unsigned>> fp_register(std::string_view t) {
+    const std::string name = text::lower(t);
+    if (name.size() < 3 || name.size() > 4) return std::nullopt;
+    char cls = 0;
+    if (name.starts_with("fr")) cls = 'f';
+    else if (name.starts_with("dr")) cls = 'd';
+    else if (name.starts_with("xd")) cls = 'x';
+    else if (name.starts_with("fv")) cls = 'v';
+    else return std::nullopt;
+    const auto n = text::parse_int<unsigned>(std::string_view(name).substr(2));
+    if (!n || *n > 15 || (name.size() == 4 && name[2] == '0')) return std::nullopt;
+    return std::pair{cls, *n};
+}
+
+// r0_bank .. r7_bank: the number.
+std::optional<unsigned> bank_register(std::string_view t) {
+    const std::string name = text::lower(t);
+    if (name.size() != 7 || name[0] != 'r' || name.substr(2) != "_bank" || name[1] < '0' || name[1] > '7') return std::nullopt;
+    return static_cast<unsigned>(name[1] - '0');
 }
 
 Parsed parse_operand(std::string_view line, std::string_view t) {
@@ -428,6 +554,17 @@ Parsed parse_operand(std::string_view line, std::string_view t) {
         p.reg = *r;
         return p;
     }
+    if (const auto fp = fp_register(t)) {
+        p.kind = Parsed::Kind::Fp;
+        p.fclass = fp->first;
+        p.reg = fp->second;
+        return p;
+    }
+    if (const auto bank = bank_register(t)) {
+        p.kind = Parsed::Kind::Bank;
+        p.reg = *bank;
+        return p;
+    }
     if (const auto c = control_register(t)) {
         p.kind = Parsed::Kind::Control;
         p.control = *c;
@@ -436,6 +573,20 @@ Parsed parse_operand(std::string_view line, std::string_view t) {
     p.kind = Parsed::Kind::Bare;
     p.expr = t;
     return p;
+}
+
+// Every definition of a variant, in table order.
+const std::vector<const Def*>& all_defs(Variant variant) {
+    static const std::array<std::vector<const Def*>, 2> lists = [] {
+        std::array<std::vector<const Def*>, 2> l;
+        for (const Def& d : kDefs) {
+            l[0].push_back(&d);
+            l[1].push_back(&d);
+        }
+        for (const Def& d : kDefs4) l[1].push_back(&d);
+        return l;
+    }();
+    return lists[variant == Variant::Sh4 ? 1 : 0];
 }
 
 // Can an operand written like `p` be the table's operand `o`?
@@ -456,6 +607,12 @@ bool shape_matches(O o, const Parsed& p) {
         case O::PcDisp: return p.kind == K::PcDisp || p.kind == K::Bare;
         case O::Branch8: case O::Branch12: return p.kind == K::Bare;
         case O::Sr: case O::Gbr: case O::Vbr: case O::Mach: case O::Macl: case O::Pr: return p.kind == K::Control && p.control == o;
+        case O::FrN: case O::FrM: return p.kind == K::Fp && (p.fclass == 'f' || (p.fclass == 'd' && p.reg % 2 == 0));
+        case O::MovN: case O::MovM: return p.kind == K::Fp && (p.fclass == 'f' || ((p.fclass == 'd' || p.fclass == 'x') && p.reg % 2 == 0));
+        case O::DrN: return p.kind == K::Fp && p.fclass == 'd' && p.reg % 2 == 0;
+        case O::FvN: case O::FvM: return p.kind == K::Fp && p.fclass == 'v' && p.reg % 4 == 0;
+        case O::Xmtrx: case O::Fpul: case O::Fpscr: case O::Ssr: case O::Spc: case O::Sgr: case O::Dbr: return p.kind == K::Control && p.control == o;
+        case O::BankM: return p.kind == K::Bank;
     }
     return false;
 }
@@ -470,18 +627,29 @@ std::uint32_t scaled(std::string_view line, std::int64_t bytes, unsigned unit, u
 
 }  // namespace
 
-Bytes assemble(std::string_view line_in, std::uint32_t pc, const NameLabels& labels) {
+Bytes assemble(std::string_view line_in, std::uint32_t pc, const NameLabels& labels, Variant variant) {
     const std::string_view line = text::trim(line_in);
     std::size_t split = 0;
     while (split < line.size() && !text::is_space(line[split])) ++split;
-    const std::string mnemonic = text::lower(line.substr(0, split));
+    std::string mnemonic = text::lower(line.substr(0, split));
     if (mnemonic.empty()) fail(line, "no instruction");
     const std::vector<std::string_view> raw = operands_of(text::trim(line.substr(split)));
     std::vector<Parsed> operands;
     for (const std::string_view r : raw) operands.push_back(parse_operand(line, r));
+    if (variant == Variant::Sh4) {
+        // other spellings of the same words: `fmov.d` is the pair move `fmov.s` is when SZ=1, and `fmov` of a memory operand is `fmov.s`
+        const bool memory = std::ranges::any_of(operands, [](const Parsed& p) { return p.kind != Parsed::Kind::Fp; });
+        if (mnemonic == "fmov" || mnemonic == "fmov.s" || mnemonic == "fmov.d") mnemonic = memory ? "fmov.s" : "fmov";
+        // fmac fr0,frm,frn: the first operand names a register the word has no field for
+        if (mnemonic == "fmac" && operands.size() == 3) {
+            if (operands[0].kind != Parsed::Kind::Fp || operands[0].fclass != 'f' || operands[0].reg != 0) fail(line, "fmac multiplies into fr0: its first operand is fr0");
+            operands.erase(operands.begin());
+        }
+    }
 
     bool known = false;
-    for (const Def& d : kDefs) {
+    for (const Def* def : all_defs(variant)) {
+        const Def& d = *def;
         if (d.name != mnemonic) continue;
         known = true;
         const std::size_t wanted = d.a == O::None ? 0 : d.b == O::None ? 1 : 2;
@@ -518,6 +686,14 @@ Bytes assemble(std::string_view line_in, std::uint32_t pc, const NameLabels& lab
                     word |= scaled(line, bytes, d.size, 255, "@(disp,pc)");
                     break;
                 }
+                case O::FrN: word |= p.reg << 8; break;
+                case O::FrM: word |= p.reg << 4; break;
+                case O::MovN: word |= (p.reg | (p.fclass == 'x' ? 1u : 0u)) << 8; break;
+                case O::MovM: word |= (p.reg | (p.fclass == 'x' ? 1u : 0u)) << 4; break;
+                case O::DrN: word |= p.reg << 8; break;
+                case O::FvN: word |= (p.reg / 4) << 10; break;
+                case O::FvM: word |= (p.reg / 4) << 8; break;
+                case O::BankM: word |= p.reg << 4; break;
                 case O::Branch8: case O::Branch12: {
                     const std::int64_t bytes = number(p.expr) - (static_cast<std::int64_t>(pc) + 4);
                     const std::int64_t half = bytes / 2;
@@ -529,6 +705,7 @@ Bytes assemble(std::string_view line_in, std::uint32_t pc, const NameLabels& lab
                 default: break;
             }
         }
+        if (little_endian(variant)) return {static_cast<std::uint8_t>(word), static_cast<std::uint8_t>(word >> 8)};
         return {static_cast<std::uint8_t>(word >> 8), static_cast<std::uint8_t>(word)};
     }
     fail(line, known ? "the operands do not fit the instruction" : "unknown instruction " + mnemonic);

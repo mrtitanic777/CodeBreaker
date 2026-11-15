@@ -1,4 +1,5 @@
 #include "cb/coverage/ledger.hpp"
+#include "cb/core/sys.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -59,8 +60,7 @@ std::string ledger_stem(const std::string& name) {
 
 std::string ledger_clock_text() {
     const std::time_t now = std::time(nullptr);
-    std::tm local{};
-    localtime_s(&local, &now);
+    const std::tm local = sys::local_tm(now);
     char buf[40];
     std::strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", &local);
     return buf;

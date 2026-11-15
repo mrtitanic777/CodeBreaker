@@ -281,6 +281,7 @@ void memory_op(Machine& m, unsigned op, std::uint32_t w, unsigned rt, unsigned r
         for (unsigned i = rt; i < 32; ++i) m.write(static_cast<std::uint32_t>(ea + 4ull * (i - rt)), 4, r[i]);
     } else if (op == 48 || op == 49) {   // lfs, lfsu
         m.f[rt] = to_bits(single_from_word(static_cast<std::uint32_t>(m.read(ea, 4))));
+        if (m.paired_singles) m.ps1[rt] = m.f[rt];   // (Gekko: a single loaded into a register fills both halves)
         if (op == 49) r[ra] = base + simm;
     } else if (op == 50 || op == 51) {   // lfd, lfdu
         m.f[rt] = m.read(ea, 8);
@@ -412,6 +413,7 @@ void floating(Machine& m, unsigned op, std::uint32_t w, unsigned rt, unsigned ra
             return;
     }
     f[rt] = to_bits(single ? round_to_single(v) : v);
+    if (single && m.paired_singles) m.ps1[rt] = f[rt];   // (Gekko: the single-precision operations fill both halves)
 }
 
 void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb) {
@@ -469,11 +471,19 @@ void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb
     }
     if (xo == 339) {   // mfspr
         const unsigned spr = ((w >> 16) & 31) | (((w >> 11) & 31) << 5);
+        if (m.paired_singles && spr >= 912 && spr <= 919) {
+            r[rt] = m.gqr[spr - 912];
+            return;
+        }
         r[rt] = spr == 8 ? m.lr : spr == 9 ? m.ctr : spr == 1 ? std::uint64_t{m.ca} << 29 : 0;   // time base and the like read as zero
         return;
     }
     if (xo == 467) {   // mtspr
         const unsigned spr = ((w >> 16) & 31) | (((w >> 11) & 31) << 5);
+        if (m.paired_singles && spr >= 912 && spr <= 919) {
+            m.gqr[spr - 912] = static_cast<std::uint32_t>(r[rt]);
+            return;
+        }
         if (spr == 8) {
             m.lr = static_cast<std::uint32_t>(r[rt]);
         } else if (spr == 9) {
@@ -508,6 +518,7 @@ void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb
         const std::uint32_t ea = static_cast<std::uint32_t>(base + r[rb]);
         if (xo == 535 || xo == 567) {   // lfsx, lfsux
             m.f[rt] = to_bits(single_from_word(static_cast<std::uint32_t>(m.read(ea, 4))));
+            if (m.paired_singles) m.ps1[rt] = m.f[rt];
         } else if (xo == 599 || xo == 631) {   // lfdx, lfdux
             m.f[rt] = m.read(ea, 8);
         } else if (xo == 663 || xo == 695) {   // stfsx, stfsux
@@ -687,6 +698,7 @@ const Page* Machine::find_unwritten(std::uint32_t page_number) const {
 }
 
 std::uint64_t Machine::read(std::uint32_t address, unsigned size) {
+    if (!devices_.empty() && in_device(address)) return device_read(address, size);
     const unsigned off = address & (kPageSize - 1);
     std::uint64_t v = 0;
     if (off + size <= kPageSize) {
@@ -702,6 +714,10 @@ std::uint64_t Machine::read(std::uint32_t address, unsigned size) {
 }
 
 void Machine::write(std::uint32_t address, unsigned size, std::uint64_t value) {
+    if (!devices_.empty() && in_device(address)) {
+        device_write(address, size, value);
+        return;
+    }
     const bool track = !(kStackLow <= address && address < kStackTop);   // what the stack holds is not the function's output
     for (unsigned i = 0; i < size; ++i) {
         const std::uint32_t x = address + i;
@@ -717,6 +733,24 @@ void Machine::write(std::uint32_t address, unsigned size, std::uint64_t value) {
         }
         slot = byte;
     }
+}
+
+bool Machine::in_device(std::uint32_t address) const {
+    for (const AddressRange& range : devices_)
+        if (range.contains(address)) return true;
+    return false;
+}
+
+// A hardware register is not memory: a read answers how many times it has been read (so a loop that waits for a bit to change ends, the
+// same way on both sides of a comparison) and a write is only logged.
+std::uint64_t Machine::device_read(std::uint32_t address, unsigned size) {
+    const std::uint64_t value = io_reads_[address]++ & (size >= 8 ? ~std::uint64_t{0} : (std::uint64_t{1} << (8 * size)) - 1);
+    io_.push_back({address, size, value, false});
+    return value;
+}
+
+void Machine::device_write(std::uint32_t address, unsigned size, std::uint64_t value) {
+    io_.push_back({address, size, value & (size >= 8 ? ~std::uint64_t{0} : (std::uint64_t{1} << (8 * size)) - 1), true});
 }
 
 void Machine::set_cr(unsigned field, unsigned bits) {
@@ -772,6 +806,152 @@ const PageImage& fill_image(Fill kind) {
     }
     return images[i];
 }
+
+// ---- Gekko's paired singles ----------------------------------------------------------------------------------------
+
+namespace {
+
+constexpr unsigned kQuantU8 = 4, kQuantU16 = 5, kQuantS8 = 6, kQuantS16 = 7;
+
+// How a quantized value is held in memory: its type (0 float, 4 u8, 5 u16, 6 s8, 7 s16; 1-3 are reserved and read as float) and the
+// scale an integer is multiplied by.
+struct Quantization {
+    unsigned type = 0;
+    int scale = 0;
+    unsigned size() const { return type == kQuantU8 || type == kQuantS8 ? 1 : type == kQuantU16 || type == kQuantS16 ? 2 : 4; }
+    bool integer() const { return type >= kQuantU8; }
+};
+
+int signed_scale(std::uint32_t six_bits) { return six_bits >= 32 ? static_cast<int>(six_bits) - 64 : static_cast<int>(six_bits); }
+
+Quantization load_quantization(const Machine& m, unsigned i) {
+    const std::uint32_t q = m.gqr[i & 7];
+    return {(q >> 16) & 7, signed_scale((q >> 24) & 63)};
+}
+
+Quantization store_quantization(const Machine& m, unsigned i) {
+    const std::uint32_t q = m.gqr[i & 7];
+    return {q & 7, signed_scale((q >> 8) & 63)};
+}
+
+double quantized_load(Machine& m, std::uint32_t ea, const Quantization& q) {
+    const std::uint64_t raw = m.read(ea, q.size());
+    if (!q.integer()) return single_from_word(static_cast<std::uint32_t>(raw));
+    const bool is_signed = q.type == kQuantS8 || q.type == kQuantS16;
+    const double v = is_signed ? static_cast<double>(static_cast<std::int64_t>(sign_extend(raw, 8 * q.size()))) : static_cast<double>(raw);
+    return std::ldexp(v, -q.scale);
+}
+
+void quantized_store(Machine& m, std::uint32_t ea, double value, const Quantization& q) {
+    if (!q.integer()) {
+        m.write(ea, 4, single_word(value));
+        return;
+    }
+    const bool is_signed = q.type == kQuantS8 || q.type == kQuantS16;
+    const unsigned bits = 8 * q.size();
+    const double lo = is_signed ? -std::ldexp(1.0, static_cast<int>(bits) - 1) : 0.0;
+    const double hi = is_signed ? std::ldexp(1.0, static_cast<int>(bits) - 1) - 1 : std::ldexp(1.0, static_cast<int>(bits)) - 1;
+    double v = std::ldexp(value, q.scale);
+    v = std::isnan(v) ? 0.0 : std::trunc(v);
+    v = std::clamp(v, lo, hi);
+    m.write(ea, q.size(), static_cast<std::uint64_t>(static_cast<std::int64_t>(v)) & ((std::uint64_t{1} << bits) - 1));
+}
+
+// psq_l psq_lu psq_st psq_stu and the indexed forms: the effective address, the register, W (one value only) and I (which quantization
+// register); an update form puts the address in rA.
+void paired_memory(Machine& m, bool store, bool update, std::uint32_t ea, unsigned ra, unsigned fr, bool one, unsigned gqr_index) {
+    if (store) {
+        const Quantization q = store_quantization(m, gqr_index);
+        quantized_store(m, ea, to_double(m.f[fr]), q);
+        if (!one) quantized_store(m, ea + q.size(), to_double(m.ps1[fr]), q);
+    } else {
+        const Quantization q = load_quantization(m, gqr_index);
+        m.f[fr] = to_bits(quantized_load(m, ea, q));
+        m.ps1[fr] = one ? to_bits(1.0) : to_bits(quantized_load(m, ea + q.size(), q));
+    }
+    if (update) m.r[ra] = ea;
+}
+
+double divide_like_hardware(double a, double b) {
+    return b != 0 ? a / b : (a == 0 || std::isnan(a)) ? nan_value() : std::copysign(std::numeric_limits<double>::infinity(), a) * std::copysign(1.0, b);
+}
+
+double reciprocal_like_hardware(double x) { return x != 0 ? 1.0 / x : std::copysign(std::numeric_limits<double>::infinity(), x); }
+
+double reciprocal_square_root(double x) { return x > 0 ? 1.0 / std::sqrt(x) : (x == 0 ? std::numeric_limits<double>::infinity() : nan_value()); }
+
+// Opcode 4: the paired-single arithmetic, compares, merges and the indexed quantized loads and stores.
+void paired_single(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb) {
+    const unsigned rc5 = (w >> 6) & 31;
+    const unsigned xo10 = (w >> 1) & 0x3FF, xo6 = (w >> 1) & 63, xo5 = (w >> 1) & 31;
+    auto& f = m.f;
+    auto& g = m.ps1;
+    constexpr std::uint64_t kSign = std::uint64_t{1} << 63;
+    const double a0 = to_double(f[ra]), a1 = to_double(g[ra]), b0 = to_double(f[rb]), b1 = to_double(g[rb]);
+    const double c0 = to_double(f[rc5]), c1 = to_double(g[rc5]);
+    const auto set = [&](double x0, double x1) {
+        f[rt] = to_bits(round_to_single(x0));
+        g[rt] = to_bits(round_to_single(x1));
+    };
+    const auto compare = [&](double x, double y) { m.set_cr(rt >> 2, (std::isnan(x) || std::isnan(y)) ? 1 : x < y ? 8 : x > y ? 4 : 2); };
+
+    if (xo6 == 6 || xo6 == 7 || xo6 == 38 || xo6 == 39) {   // psq_lx psq_stx psq_lux psq_stux
+        const std::uint32_t ea = static_cast<std::uint32_t>((ra ? m.r[ra] : 0) + m.r[rb]);
+        paired_memory(m, xo6 == 7 || xo6 == 39, xo6 >= 38, ea, ra, rt, ((w >> 10) & 1) != 0, (w >> 7) & 7);
+        return;
+    }
+    switch (xo10) {
+        case 0: case 32: compare(a0, b0); return;                                    // ps_cmpu0, ps_cmpo0
+        case 64: case 96: compare(a1, b1); return;                                   // ps_cmpu1, ps_cmpo1
+        case 40: f[rt] = f[rb] ^ kSign; g[rt] = g[rb] ^ kSign; return;               // ps_neg
+        case 72: f[rt] = f[rb]; g[rt] = g[rb]; return;                               // ps_mr
+        case 136: f[rt] = f[rb] | kSign; g[rt] = g[rb] | kSign; return;              // ps_nabs
+        case 264: f[rt] = f[rb] & ~kSign; g[rt] = g[rb] & ~kSign; return;            // ps_abs
+        case 528: { const auto x = f[ra], y = f[rb]; f[rt] = x; g[rt] = y; return; }   // ps_merge00
+        case 560: { const auto x = f[ra], y = g[rb]; f[rt] = x; g[rt] = y; return; }   // ps_merge01
+        case 592: { const auto x = g[ra], y = f[rb]; f[rt] = x; g[rt] = y; return; }   // ps_merge10
+        case 624: { const auto x = g[ra], y = g[rb]; f[rt] = x; g[rt] = y; return; }   // ps_merge11
+        case 1014: {   // dcbz_l: the block in the locked cache is cleared
+            const std::uint32_t ea = static_cast<std::uint32_t>((ra ? m.r[ra] : 0) + m.r[rb]) & ~31u;
+            for (unsigned i = 0; i < 32; i += 8) m.write(ea + i, 8, 0);
+            return;
+        }
+        default: break;
+    }
+    switch (xo5) {
+        case 18: set(divide_like_hardware(a0, b0), divide_like_hardware(a1, b1)); return;   // ps_div
+        case 20: set(a0 - b0, a1 - b1); return;                                             // ps_sub
+        case 21: set(a0 + b0, a1 + b1); return;                                             // ps_add
+        case 23:                                                                            // ps_sel
+            f[rt] = a0 >= 0.0 ? f[rc5] : f[rb];
+            g[rt] = a1 >= 0.0 ? g[rc5] : g[rb];
+            return;
+        case 24: set(reciprocal_like_hardware(b0), reciprocal_like_hardware(b1)); return;   // ps_res
+        case 25: set(a0 * c0, a1 * c1); return;                                             // ps_mul
+        case 26: set(reciprocal_square_root(b0), reciprocal_square_root(b1)); return;       // ps_rsqrte
+        case 28: set(a0 * c0 - b0, a1 * c1 - b1); return;                                   // ps_msub
+        case 29: set(a0 * c0 + b0, a1 * c1 + b1); return;                                   // ps_madd
+        case 30: set(-(a0 * c0 - b0), -(a1 * c1 - b1)); return;                             // ps_nmsub
+        case 31: set(-(a0 * c0 + b0), -(a1 * c1 + b1)); return;                             // ps_nmadd
+        case 10: set(a0 + b1, c1); return;                                                  // ps_sum0
+        case 11: set(c0, a0 + b1); return;                                                  // ps_sum1
+        case 12: set(a0 * c0, a1 * c0); return;                                             // ps_muls0
+        case 13: set(a0 * c1, a1 * c1); return;                                             // ps_muls1
+        case 14: set(a0 * c0 + b0, a1 * c0 + b1); return;                                   // ps_madds0
+        case 15: set(a0 * c1 + b0, a1 * c1 + b1); return;                                   // ps_madds1
+        default: throw Fault(StopReason::Unsupported);
+    }
+}
+
+// Opcodes 56, 57, 60 and 61: psq_l psq_lu psq_st psq_stu (a 12-bit displacement, W at bit 15, I at bits 12-14).
+void paired_displacement(Machine& m, unsigned op, std::uint32_t w, unsigned rt, unsigned ra) {
+    const std::uint64_t base = ra ? m.r[ra] : 0;
+    const std::int64_t d = static_cast<std::int64_t>(sign_extend(w & 0xFFF, 12));
+    const std::uint32_t ea = static_cast<std::uint32_t>(base + static_cast<std::uint64_t>(d));
+    paired_memory(m, op >= 60, op == 57 || op == 61, ea, ra, rt, ((w >> 15) & 1) != 0, (w >> 12) & 7);
+}
+
+}  // namespace
 
 // ---- one instruction -----------------------------------------------------------------------------------------------
 
@@ -910,6 +1090,10 @@ void step(Machine& m, std::uint32_t w) {
         const std::int64_t a = wide ? s64(r[ra]) : s32(r[ra]), b = s64(simm);
         const std::uint64_t ua = wide ? r[ra] : r[ra] & kM32, ub = wide ? simm : simm & kM32;
         if (trap_taken(rt, a, b, ua, ub)) throw Fault(StopReason::Trap);
+    } else if (m.paired_singles && op == 4) {   // Gekko: the paired singles
+        paired_single(m, w, rt, ra, rb);
+    } else if (m.paired_singles && (op == 56 || op == 57 || op == 60 || op == 61)) {   // psq_l psq_lu psq_st psq_stu
+        paired_displacement(m, op, w, rt, ra);
     } else if (op == 17) {   // sc
         throw Fault(StopReason::Syscall);
     } else {
@@ -1017,12 +1201,15 @@ RunResult run(std::span<const Region> regions, std::uint32_t entry, std::span<co
     auto machine = std::make_shared<Machine>(regions, options.shared);
     Machine& m = *machine;
     if (options.fill != Fill::None) m.set_under(fill_image(options.fill));
+    m.paired_singles = options.paired_singles;
+    m.gqr = options.gqr;
+    m.set_devices(options.devices);
     for (std::size_t i = 0; i < args.size() && i < 8; ++i) m.r[3 + i] = args[i];
     for (std::size_t i = 0; i < options.fargs.size() && i < 13; ++i) m.f[1 + i] = to_bits(options.fargs[i]);
     for (unsigned i = 14; i < 32; ++i) m.r[i] = kSavedRegisterBase + i;   // values a function must hand back unchanged
     m.r[1] = kEntryStackPointer;
-    m.r[13] = 0x7E000000;   // per-thread data pointer of these targets
-    m.r[2] = 0;
+    m.r[13] = options.r13.value_or(0x7E000000);   // per-thread data pointer of these targets (Nintendo: the small data area)
+    m.r[2] = options.r2.value_or(0);
     m.lr = kReturnAddress;
     m.pc = entry;
     const auto saved_at_entry = [&] {

@@ -37,15 +37,17 @@ struct Capture {
         Inherit,   // the child writes to our own stdout/stderr
         Discard,   // thrown away
         Merge,     // stderr only: goes where stdout goes (so the two interleave in order)
-        File,      // written to `file` (truncated)
+        File,      // written to `file` (truncated, or added to when `append`)
     };
     Mode mode = Collect;
     std::filesystem::path file;
+    bool append = false;   // File only: keep what the file holds and write after it
 
     Capture(Mode m = Collect) : mode(m) {}   // NOLINT: lets `.err = Capture::Merge` read naturally
-    static Capture ToFile(std::filesystem::path p) {
+    static Capture ToFile(std::filesystem::path p, bool append = false) {
         Capture c(File);
         c.file = std::move(p);
+        c.append = append;
         return c;
     }
 };
@@ -63,6 +65,10 @@ struct ProcessSpec {
     std::chrono::milliseconds timeout{0};             // 0 = none; on expiry the whole job is terminated
     Priority priority = Priority::Normal;
     std::uint64_t memory_limit = 0;                   // bytes for the whole job; 0 = none
+    // An interactive child (a terminal program): it shares this program's terminal -- stdin as well as stdout and stderr (set
+    // those to Inherit) -- and on POSIX stays in our own session and foreground group, so the terminal's keys and resize
+    // signals reach it. Only run() takes it.
+    bool terminal = false;
 };
 
 struct ProcessResult {
@@ -104,6 +110,8 @@ public:
     // Wait for the child to exit; nullopt if `timeout` passes first. Returns the exit code.
     std::optional<std::uint32_t> wait(std::chrono::milliseconds timeout = std::chrono::milliseconds::max());
     bool running() const;
+    // The operating system's id of the child.
+    std::uint32_t pid() const;
     // Terminate the job (the child and everything it started).
     void kill();
 
@@ -117,6 +125,31 @@ private:
 
 // Start a child with a pipe on stdin and on each stream set to Collect. Throws ToolError if it cannot start.
 Process start(const ProcessSpec& spec);
+
+// A child that outlives this program (the service a command starts): in no job and no kill-on-close, in a process group
+// (Windows) or session (POSIX) of its own, stdin empty. Its output goes where `out` and `err` say (File, Discard or Merge).
+// Dropping the object lets go of the child without touching it; exit_code() tells whether it has ended.
+class Detached {
+public:
+    Detached(Detached&& other) noexcept;
+    Detached& operator=(Detached&& other) noexcept;
+    Detached(const Detached&) = delete;
+    Detached& operator=(const Detached&) = delete;
+    ~Detached();
+
+    std::uint32_t pid() const;
+    // Its exit code once it has ended, else nullopt.
+    std::optional<std::uint32_t> exit_code();
+
+    struct Impl;
+    explicit Detached(std::unique_ptr<Impl> impl);
+
+private:
+    std::unique_ptr<Impl> impl_;
+};
+
+// Start `spec` detached (timeout, memory_limit and stdin_data do not apply). Throws ToolError if it cannot start.
+Detached start_detached(const ProcessSpec& spec);
 
 // One argument quoted by the Windows argv rules (CommandLineToArgvW / the MSVC CRT): backslashes before a
 // quote are doubled, embedded quotes escaped, spaces and empty arguments wrapped in quotes.

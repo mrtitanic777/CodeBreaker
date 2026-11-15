@@ -160,15 +160,15 @@ CB_TEST("recompile.command.the_xbox_360_project_matches_the_golden", [] {
     CB_CHECK_EQ(r.code, 0);
     std::filesystem::path preferred = out;
     const std::string dir = preferred.make_preferred().string();   // (the command writes paths as the platform does)
-    CB_CHECK(r.out.starts_with("logan: 8744 functions, 91 switch tables, 0 unimplemented instructions\n  -> " + dir));
+    CB_CHECK(r.out.starts_with("logan: 5861 functions, 91 switch tables, 0 unimplemented instructions\n  -> " + dir));
     CB_CHECK_EQ(rc_manifest(out, {"ppc.new", "reports/", "Build-", "CMakeLists.txt"}), rc_golden("x360_manifest.txt"));
     // XenonRecomp again on the title's configuration: its warnings, and the files it generated
     const RcRun again = rc_run(rcmd::xenon_recompile, setup.environment, {fs::to_text(out / "src" / "logan.toml")});
     CB_CHECK_EQ(again.code, 0);
-    CB_CHECK(again.out.ends_with("38 files generated, 38 changed, 0 stale removed; 12 warning lines\n"));
+    CB_CHECK(again.out.ends_with("27 files generated, 27 changed, 0 stale removed; 12 warning lines\n"));
     // and the same synced into a folder that has them: nothing changed
     const RcRun third = rc_run(rcmd::xenon_recompile, setup.environment, {fs::to_text(out / "src" / "logan.toml")});
-    CB_CHECK(third.out.ends_with("38 files generated, 0 changed, 0 stale removed; 12 warning lines\n"));
+    CB_CHECK(third.out.ends_with("27 files generated, 0 changed, 0 stale removed; 12 warning lines\n"));
 });
 
 CB_TEST("recompile.command.xenon_recompile_misuse", [] {

@@ -116,3 +116,49 @@ implemented), `XamInputGetCapabilitiesEx`, `NtQueueApcThread`, `MmCreateKernelSt
 5. Null-object faults: SF2 HD (write at 8), Heavy Weapon (read at 0x70), Top Spin 2 (workers at 0x14), Rock Band Blitz, Monopoly Plus, Happy Wars.
 6. `.pdata` with zero entries (Small Arms, Happy Wars): `sub_0` emitted over and over; fix in the function discovery.
 7. Minecraft: no stop in 600 s headless (35,400 frames); further play needs input (`CB_INPUT_SCRIPT`).
+
+## Round 2 (2026-11-15, later)
+
+Re-checked after each fix (`--check 120`, one project at a time, deleted after).
+
+| Title | Round 1 | Now |
+|---|---|---|
+| Small Arms | no link (`sub_0` twice, 453,144 functions) | builds (42,521 functions), 1 frame, then a 64-bit render target |
+| Happy Wars | 535,116 functions, null write | recompiles smaller; not rerun (40-minute build) |
+| Rock Band Blitz | 0 frames, null write | 6600 frames (`XamInputGetCapabilitiesEx` now implemented) |
+| Street Fighter II' HF | 1 frame, null write at 8 | 6600 frames (`MmCreateKernelStack`) |
+| Top Spin 2 | 0 frames, null read | 267 frames, then its loader thread stalls |
+| Catherine Demo | 7 frames, `2_10_10_10_FLOAT` target | 57 frames, then a 16_16_16_16_FLOAT (64-bit) render target |
+| Lumines Live | 0 frames, `32_FLOAT` target | 0 frames, 16_16_16_16_FLOAT (64-bit) render target |
+| Forza 4 | 0 frames, `XexLoadImage` | 0 frames: XMediaFacade is a real module; `XamShowDirtyDiscErrorUI` loops |
+| Monopoly Plus | 140 frames, null write | 139 frames, then a resolve to `k_8` |
+| Regression set | | Minecraft, Hexic HD, Marble Blast Ultra, WALL-E, PAC-MAN CE, Defender, UNO Rush, Zuma, MW3: 6600/5400 frames as before |
+
+What changed:
+- **Recompiler** (`native/xenonrecomp`): a `.pdata` entry that is all zeros (begin address 0) is no longer a function, and a zero word
+  between functions is padding, not a one-word function. Small Arms and Happy Wars had 450,000 `.long 0x0` functions and a `sub_0` per
+  padding entry. Every title has fewer functions now (Minecraft 59,753 to 43,128, Defender 14,752 to 10,025) and all of the above
+  still play. The golden of `recompile.command.the_xbox_360_project_matches_the_golden` (LoganMinecraftTest: 8744 to 5861
+  functions, 38 to 27 generated files, `x360_manifest.txt`) is re-recorded for this.
+- **Null objects** were three missing kernel behaviours: `ObOpenObjectByPointer` takes `(Object, PHANDLE)` in a title's XDK (it wrote
+  through r5, garbage); `MmCreateKernelStack` (+ `MmDeleteKernelStack`); and kernel objects have no `OBJECT_HEADER` (a title's
+  inlined wait reads `Type->DefaultObject` at body-8): `CreateOwnedObject` now puts a 0x10-byte header before the body.
+  Also `ObOpenObjectByName` (not found).
+- **GPU**: render targets `k_32_FLOAT` and `k_2_10_10_10_FLOAT` (and `_AS_16_16_16_16`) in the EDRAM output merger (7e3 floats as
+  Xenia); resolve of those to `k_16_16_16_16_FLOAT` (64 bits per pixel, 8 KiB macro tiles); `k_16_16_16_16_FLOAT` / `_EXPAND` textures.
+- `XexLoadImage` of a module `recompile-project` has not translated: `STATUS_DLL_NOT_FOUND` instead of a stop.
+
+Still open, by titles:
+1. **64-bit render targets** (`16_16_16_16_FLOAT`, `16_16_16_16`): Catherine, Lumines, Small Arms (3). A 64-bit pixel is two EDRAM
+   dwords (x doubled) with its own pitch in tiles (twice the 32-bit one), and the renderer's tracking of the tiles a surface covers
+   (`rovSpan`, resolves) must know it.
+2. **3D textures** (`tfetch3D`, volume tiling `GetTiledOffset3D` of rexglue's `texture/util.cpp`, a Texture3D and its untile pass): Cloning Clyde,
+   UNO (the Xbox Live Arcade one), Vigilante 8 (3). Not started: the layout (z strides, 3D mips) and the HLSL translator need the same pass.
+3. **A second recompiled module**: Forza 4 (`XMediaFacade_default.xex`), Terraria (`HostLoader.dll`), Left 4 Dead 2 (the engine DLLs).
+   `recompile-project` recompiles `default.xex` only; the runtime links several modules already (the dashboard's), so this is a
+   project-generation step (find the title's other XEX/DLL files, one configuration each, linked and named).
+4. Resolve to 8-bit textures (`k_8`, Monopoly Plus; a byte store per pixel).
+5. Top Spin 2's loader thread (a critical section at 0x3721C, after `ObOpenObjectByName`); Heavy Weapon (null read at 0x70 after
+   `resources.xpr`, not yet traced); `KeSetCurrentStackPointers` (Street Fighter II' HF calls it 6,348 times: fiber switches; the
+   arguments are `(sp?, thread, base, base, limit)`, and treating r3 as the new r1 broke the title, so it stays unimplemented);
+   `XeKeysSetKey`/`XeKeysAesCbc` (Rock Band Blitz); XMA decode errors.

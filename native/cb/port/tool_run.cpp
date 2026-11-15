@@ -5,11 +5,14 @@
 #include <chrono>
 #include <cstdlib>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <set>
 
+#if defined(_WIN32)
 #include <windows.h>
 #include <psapi.h>   // NOLINT: after windows.h
+#endif
 
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -150,10 +153,18 @@ std::string build_script(const std::string& compiler_name, const Compiler& spec,
 // ---- the watch on the port's own memory ---------------------------------------------------------------------------------------
 
 std::optional<std::uint64_t> MemoryGuard::committed_bytes() {
+#if defined(_WIN32)
     PROCESS_MEMORY_COUNTERS_EX counters{};
     counters.cb = sizeof(counters);
     if (!GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters))) return std::nullopt;
     return static_cast<std::uint64_t>(counters.PrivateUsage);
+#else
+    // Linux: the resident set from /proc/self/statm (pages); elsewhere the system does not say.
+    std::ifstream statm("/proc/self/statm");
+    std::uint64_t size_pages = 0, resident_pages = 0;
+    if (!(statm >> size_pages >> resident_pages)) return std::nullopt;
+    return resident_pages * 4096u;
+#endif
 }
 
 MemoryGuard::MemoryGuard(stdfs::path out, double limit_gb, std::function<std::optional<std::uint64_t>()> used)

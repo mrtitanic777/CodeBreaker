@@ -9,8 +9,14 @@
 #include "cb/core/fs.hpp"
 #include "cb/formats/dos.hpp"
 #include "cb/formats/n64.hpp"
+#include "cb/formats/pce.hpp"
+#include "cb/formats/ppc_program.hpp"
 #include "cb/formats/read.hpp"
+#include "cb/formats/dreamcast.hpp"
+#include "cb/formats/saturn.hpp"
+#include "cb/formats/sega32x.hpp"
 #include "cb/formats/segacd.hpp"
+#include "cb/formats/snes.hpp"
 
 namespace cb::formats::detect {
 
@@ -232,6 +238,14 @@ std::string codec_text(std::uint8_t ch) {
     return std::format("'\\x{:02x}'", ch);
 }
 
+// Does the file name end in one of the (lower-case) extensions, whatever its case?
+bool name_ends_with(std::string_view name, std::initializer_list<std::string_view> extensions) {
+    for (const std::string_view e : extensions) {
+        if (name.size() >= e.size() && std::equal(e.begin(), e.end(), name.end() - static_cast<std::ptrdiff_t>(e.size()), [](char a, char b) { return a == (b >= 'A' && b <= 'Z' ? b + 32 : b); })) return true;
+    }
+    return false;
+}
+
 std::uint32_t be32_or_zero(ByteView d, std::uint64_t off) {
     auto v = try_get<std::uint32_t>(d, off);
     if (!v) return 0;
@@ -290,9 +304,9 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
     if (const std::optional<n64::ByteOrder> order = size >= n64::kBootSize ? n64::order_of(head) : std::nullopt; order && head.size() >= n64::kHeaderSize) {   // a Nintendo 64 ROM: the PI configuration word $80371240, in one of three byte orders
         const Bytes z64 = n64::Rom::convert(head.first(n64::kHeaderSize), *order, n64::ByteOrder::Z64);
         const auto word = [&](std::size_t at) { return static_cast<std::uint32_t>(z64[at]) << 24 | static_cast<std::uint32_t>(z64[at + 1]) << 16 | static_cast<std::uint32_t>(z64[at + 2]) << 8 | z64[at + 3]; };
-        std::string name(as_text(ByteView(z64).subspan(0x20, 20)));
-        while (!name.empty() && (name.back() == ' ' || name.back() == '\0')) name.pop_back();
-        return one("Nintendo 64 ROM", std::format("\"{}\" ({}{}), {} ({}), {} bytes, entry 0x{:08X}", name, as_text(ByteView(z64).subspan(0x3C, 2)), static_cast<char>(z64[0x3E]), std::string(n64::order_text(*order)).substr(1),
+        std::string title(as_text(ByteView(z64).subspan(0x20, 20)));
+        while (!title.empty() && (title.back() == ' ' || title.back() == '\0')) title.pop_back();
+        return one("Nintendo 64 ROM", std::format("\"{}\" ({}{}), {} ({}), {} bytes, entry 0x{:08X}", title, as_text(ByteView(z64).subspan(0x3C, 2)), static_cast<char>(z64[0x3E]), std::string(n64::order_text(*order)).substr(1),
                                                     *order == n64::ByteOrder::Z64 ? "big-endian" : *order == n64::ByteOrder::V64 ? "byte-swapped" : "little-endian", size, word(8)),
                    "n64", "reach");
     }
@@ -307,6 +321,21 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
         while (!title.empty() && title.back() == '\0') title.pop_back();
         std::string code(as_text(clamped(head, 0xAC, 4)));
         return one("Game Boy Advance cartridge", std::format("\"{}\" ({}), {} bytes", title, code, size), "gba", "reach");
+    }
+    if (name_ends_with(name, {".pce", ".tg16", ".sgx"})) {   // a PC Engine / TurboGrafx-16 HuCard: whole 8 KB banks, a RESET vector into the top page
+        try {
+            const formats::pce::Rom rom = formats::pce::parse(file);
+            return one("PC Engine HuCard", std::format("{} banks of 8 KB{}, RESET ${:04X}", rom.bank_count(), rom.header.empty() ? "" : " behind a 512-byte header", rom.vectors.reset), "pce", "reach");
+        } catch (const FormatError&) {
+        }
+    }
+    if (name_ends_with(name, {".sfc", ".smc", ".swc", ".fig"})) {   // a Super Nintendo cartridge: an internal header at $7FC0 or $FFC0 that reads as one
+        try {
+            const formats::snes::Rom rom = formats::snes::parse(file);
+            return one("Super Nintendo cartridge", std::format("\"{}\", {}, {} bytes{}, RESET ${:04X}", rom.title, formats::snes::to_string(rom.mapping), rom.data.size(),
+                                                              rom.copier_header.empty() ? "" : " behind a 512-byte header", rom.emulation.reset), "snes", "reach");
+        } catch (const FormatError&) {
+        }
     }
     if (head.size() >= 0x108 && (starts_with(head, 0x100, "NEO-GEO") || starts_with(head, 0x100, "EN-OEG"))) {   // a Neo Geo P-ROM: "NEO-GEO" at $100, or with its words swapped
         const bool swapped = starts_with(head, 0x100, "EN-OEG");
@@ -325,6 +354,46 @@ std::vector<Detected> identify(ByteView file, std::string_view name) {
                                                  disc.header.ip.size, disc.header.ip.start, disc.header.sp.size, disc.header.sp.start),
                        "segacd", "reach");
         } catch (const Error&) {   // a damaged boot header is no disc of this machine
+        }
+    }
+    if (dreamcast::is_disc_start(head) || name_ends_with(name, {".gdi", ".cdi"})) {   // a Dreamcast disc: "SEGA SEGAKATANA " starts the boot track's first sector (a .gdi names its tracks; a .cdi is searched)
+        try {
+            const dreamcast::Disc disc = name_ends_with(name, {".gdi"}) ? dreamcast::read(std::filesystem::path(std::string(name))) : dreamcast::parse(file);
+            const char* container = disc.container == dreamcast::Container::Gdi ? "GD-ROM image" : disc.container == dreamcast::Container::Cdi ? "DiscJuggler image" : disc.container == dreamcast::Container::Raw ? "raw sectors" : "2048-byte sectors";
+            return one("Sega Dreamcast disc", std::format("\"{}\", {}, {}, IP.BIN {} bytes, first program {}{} at 0x{:08X}", disc.header.title, disc.header.product, container, disc.ip_length(),
+                                                        disc.first_read_name.empty() ? std::string("(none)") : disc.first_read_name, disc.scrambled ? " (scrambled)" : "", dreamcast::kFirstReadBase + dreamcast::kCachedView),
+                       "dreamcast", "reach");
+        } catch (const Error&) {   // not a disc of this machine
+        }
+    }
+    if (saturn::is_disc_start(head)) {   // a Saturn disc: "SEGA SEGASATURN " starts its first sector, which holds IP.BIN's header
+        try {
+            const saturn::Disc disc = saturn::parse(file);
+            return one("Sega Saturn disc", std::format("\"{}\", {}, IP {} bytes, first program {} at 0x{:08X}", disc.header.title, disc.header.product, disc.ip_length(),
+                                                     disc.first_read_name.empty() ? std::string("(none)") : disc.first_read_name, disc.load_address()),
+                       "saturn", "reach");
+        } catch (const Error&) {   // a damaged boot header is no disc of this machine
+        }
+    }
+    {   // a Sega 32X cartridge: a Genesis ROM whose header at $3C0 names the SH-2 programs
+        const bool dot_32x = name.size() >= 4 && (name.substr(name.size() - 4) == ".32x" || name.substr(name.size() - 4) == ".32X");
+        if (sega32x::is_rom_start(head, dot_32x)) {
+            try {
+                const sega32x::Rom rom = sega32x::parse(file);
+                return one("Sega 32X cartridge", std::format("\"{}\", {} KB, master SH-2 at 0x{:08X}, slave at 0x{:08X}", rom.header.domestic_name, size / 1024,
+                                                           rom.header.master_start, rom.header.slave_start),
+                           "sega32x", "reach");
+            } catch (const Error&) {
+            }
+        }
+    }
+    // a GameCube, Wii or Wii U program: a DOL (a header that reads as one), or a PowerPC ELF (devkitPPC's output, a Wii U RPX or RPL)
+    if (ppc_elf::is_ppc_elf(head) || name_ends_with(name, {".dol"})) {
+        if (const std::optional<ppc_program::Program> program = ppc_program::parse(file)) {
+            return one(std::format("Nintendo {} {}", ppc_program::console_text(program->console), ppc_program::kind_text(program->kind)),
+                       std::format("{} ({}), entry 0x{:08X}, {} bytes, {} loaded sections{}", ppc_program::cpu_text(program->console), "PowerPC 750 family", program->entry, size,
+                                   program->segments.size(), program->elf && program->elf->inflated_sections != 0 ? std::format(" ({} compressed)", program->elf->inflated_sections) : std::string()),
+                       std::string(ppc_program::lane_name(program->console)), "reach");
         }
     }
     for (const Magic& m : kMagic) {

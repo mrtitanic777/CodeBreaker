@@ -4,6 +4,8 @@
 // as \xNN otherwise; a corrupt header whose machine field is cut short
 // reads as machine 0.
 #include "cb/formats/detect.hpp"
+#include "cb/formats/pce_test_image.hpp"
+#include "cb/formats/snes_test_image.hpp"
 
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
@@ -235,4 +237,31 @@ CB_TEST("formats.detect.identify_a_playstation_executable", [] {
     CB_CHECK_EQ(d.command, "reach");
     // a header cut short is not one
     CB_CHECK(detect::identify(with_magic("PS-X EXE", 0x100), "game.exe").empty());
+});
+
+CB_TEST("formats.detect.identify_a_pc_engine_card", [] {
+    const Bytes card = formats::pce_test_image::cartridge();
+    const detect::Detected d = only(card, "game.pce");
+    CB_CHECK_EQ(d.format, "PC Engine HuCard");
+    CB_CHECK_EQ(d.detail, "2 banks of 8 KB, RESET $E000");
+    CB_CHECK_EQ(d.family, "pce");
+    CB_CHECK_EQ(d.command, "reach");
+    CB_CHECK_EQ(only(formats::pce_test_image::cartridge(true), "GAME.PCE").detail, "2 banks of 8 KB behind a 512-byte header, RESET $E000");
+    CB_CHECK(detect::identify(card, "game.bin").empty());   // (the extension says it is one)
+    Bytes odd = card;
+    odd.push_back(0);
+    CB_CHECK(detect::identify(odd, "game.pce").empty());
+});
+
+CB_TEST("formats.detect.identify_a_super_nintendo_cartridge", [] {
+    const Bytes rom = formats::snes_test_image::cartridge();
+    const detect::Detected d = only(rom, "game.sfc");
+    CB_CHECK_EQ(d.format, "Super Nintendo cartridge");
+    CB_CHECK_EQ(d.detail, "\"CODEBREAKER TEST\", LoROM, 32768 bytes, RESET $8000");
+    CB_CHECK_EQ(d.family, "snes");
+    CB_CHECK_EQ(d.command, "reach");
+    CB_CHECK_EQ(only(formats::snes_test_image::hirom(), "game.sfc").detail, "\"CODEBREAKER TEST\", HiROM, 65536 bytes, RESET $8000");
+    CB_CHECK_EQ(only(formats::snes_test_image::cartridge(true), "game.smc").detail, "\"CODEBREAKER TEST\", LoROM, 32768 bytes behind a 512-byte header, RESET $8000");
+    CB_CHECK(detect::identify(rom, "game.bin").empty());
+    CB_CHECK(detect::identify(Bytes(0x8000, 0xFF), "game.sfc").empty());
 });

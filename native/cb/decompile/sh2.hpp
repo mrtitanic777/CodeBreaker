@@ -23,6 +23,15 @@
 // the SH-2 (the zero word, an FPU word) is not decoded, so data is not read as code, and what is written as an instruction assembles back
 // to the same word.
 //
+//
+// The SH-4 (SH7750: the Dreamcast's CPU) is a variant (`Variant::Sh4`): every instruction above, little-endian (the Dreamcast runs the SH-4 in
+// little-endian mode, so the two bytes of a word are low first), and the SH-4's own: the FPU (`fadd fr1,fr2`, `fmov.s @r4+,fr0`, `fipr fv0,fv4`,
+// `ftrv xmtrx,fv0`, `fsca fpul,dr0`, `float fpul,fr3`, `fmac fr0,fr1,fr2`), `fschg` and `frchg` (which flip FPSCR's SZ and FR), `shad` and `shld`,
+// `pref @rn`, `ocbi`, `ocbp`, `ocbwb`, `movca.l r0,@rn`, `ldtlb`, `clrs`, `sets`, and the extra control registers (`ssr spc sgr dbr fpul fpscr`,
+// `r0_bank`..`r7_bank`) in `ldc`, `stc`, `lds` and `sts`. The text of a word is the same whatever FPSCR holds (the single-precision names `frN`,
+// `fmov.s`); the assembler also takes the other views of the same word: `drN` (even) where PR=1 makes an operation double, `fmov.d`, and `xdN`
+// where SZ=1 moves a pair. Every word that decodes assembles back to itself, in either variant.
+//
 // Expressions are numbers (decimal, 0x hex), labels, `.` (here) and `+ - * / & | ^ ~ << >>` with parentheses, as GNU as reads them.
 #pragma once
 
@@ -38,6 +47,10 @@
 #include "cb/decompile/z80.hpp"
 
 namespace cb::decompile::sh2 {
+
+// Which SuperH: the SH-2 (SH7604, big-endian) or the SH-4 (SH7750 in the Dreamcast's little-endian mode: the SH-2's instructions and the FPU).
+enum class Variant : std::uint8_t { Sh2, Sh4 };
+inline bool little_endian(Variant v) { return v == Variant::Sh4; }
 
 // How control leaves an instruction (the Z80 module's: None, Jump, Branch, Call, Return, Indirect, Halt).
 using Flow = z80::Flow;
@@ -65,6 +78,16 @@ enum class Operand : std::uint8_t {
     Branch8,   // bt bf: target = pc + 4 + 2 x the signed 8-bit field
     Branch12,  // bra bsr: ... the signed 12-bit field
     Sr, Gbr, Vbr, Mach, Macl, Pr,
+    // the SH-4's
+    FrN,       // frn: the register in bits 8-11 (a double operation reads drN, N even, the same bits)
+    FrM,       // frm: bits 4-7
+    MovN,      // frn, drn or xdn of an FMOV (SZ=1 moves a pair, and bit 8 picks the bank): the text is always frn
+    MovM,      // the same in bits 4-7
+    DrN,       // drn: the even register in bits 9-11 (bit 8 clear)
+    FvN,       // fvn: the vector fv0 fv4 fv8 fv12 in bits 10-11
+    FvM,       // fvm: bits 8-9
+    Xmtrx, Fpul, Fpscr, Ssr, Spc, Sgr, Dbr,
+    BankM,     // rm_bank: r0_bank .. r7_bank, in bits 4-6
 };
 
 // One decoded instruction.
@@ -88,10 +111,11 @@ struct Insn {
     bool makes_address() const { return mnemonic == "mova"; }
 };
 
-// The instruction at code[at:], which runs at address `pc`, or nullopt when the bytes are not one (or are fewer than two).
-std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc);
+// The instruction at code[at:], which runs at address `pc`, or nullopt when the bytes are not one (or are fewer than two). The word is read big-endian
+// for the SH-2 and little-endian for the SH-4.
+std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, Variant variant = Variant::Sh2);
 // The same from the word.
-std::optional<Insn> decode_word(std::uint16_t word, std::uint32_t pc);
+std::optional<Insn> decode_word(std::uint16_t word, std::uint32_t pc, Variant variant = Variant::Sh2);
 
 // The instruction as source. `labels` names branch targets and the constants a PC-relative load reads; an empty name counts as no label.
 std::string text(const Insn& insn, const AddressLabels& labels = {});
@@ -106,6 +130,6 @@ std::int64_t value(std::string_view expr, const NameLabels& labels, std::uint32_
 // The two bytes of one instruction line. `labels` resolves names; `pc` is where the instruction will be. ParseError for text that is not
 // an instruction or one whose operand is out of reach (a branch too far, a displacement that is not a multiple of the size or does not fit
 // its field); z80::UnknownLabel for a label that is not there.
-Bytes assemble(std::string_view line, std::uint32_t pc = 0, const NameLabels& labels = {});
+Bytes assemble(std::string_view line, std::uint32_t pc = 0, const NameLabels& labels = {}, Variant variant = Variant::Sh2);
 
 }  // namespace cb::decompile::sh2

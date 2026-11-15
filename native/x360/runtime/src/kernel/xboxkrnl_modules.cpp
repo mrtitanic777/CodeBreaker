@@ -177,8 +177,13 @@ GUEST_IMPORT(XexLoadImage)
             ctx.r3.u64 = 0xC000000F; // STATUS_NO_SUCH_FILE
             return;
         }
-        Fatal("XexLoadImage(\"{}\", flags {:08X}, version {:08X}): not a loaded recompiled module or a system module",
-            name, ctx.r4.u32, ctx.r5.u32);
+        // A module file the title ships that recompile-project has not translated (it recompiles default.xex only):
+        // the loader's answer when the image cannot be loaded. A title that needs the module goes on without it and
+        // stops where it uses it; one that only offers it (Forza 4's XMediaFacade) is not held up.
+        Log("XexLoadImage(\"{}\", flags {:08X}, version {:08X}): not a recompiled module: STATUS_DLL_NOT_FOUND", name,
+            ctx.r4.u32, ctx.r5.u32);
+        ctx.r3.u64 = 0xC0000135; // STATUS_DLL_NOT_FOUND
+        return;
     }
     if (ctx.r6.u32)
         guest::g_memory.Write32(ctx.r6.u32, handle);

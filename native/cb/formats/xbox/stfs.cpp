@@ -5,9 +5,6 @@
 #include <cstring>
 #include <format>
 
-#include <windows.h>   // CNG (bcrypt.h) needs it; confined to this file
-#include <bcrypt.h>
-
 #include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -495,38 +492,6 @@ ByteView minimal(ByteView v) {   // without leading zeros (but never empty)
 
 constexpr std::string_view kSha1DigestInfo = "\x30\x21\x30\x09\x06\x05\x2b\x0e\x03\x02\x1a\x05\x00\x04\x14";
 
-struct Provider {
-    BCRYPT_ALG_HANDLE h = nullptr;
-    Provider() {
-        if (BCryptOpenAlgorithmProvider(&h, BCRYPT_RSA_ALGORITHM, nullptr, 0) != 0) throw InternalError("CNG: no RSA provider");
-    }
-    ~Provider() { BCryptCloseAlgorithmProvider(h, 0); }
-};
-struct KeyHandle {
-    BCRYPT_KEY_HANDLE h = nullptr;
-    ~KeyHandle() {
-        if (h) BCryptDestroyKey(h);
-    }
-};
-
-// A BCRYPT_RSAKEY_BLOB: the header, then the public exponent, modulus (and primes), big-endian.
-Bytes rsa_blob(ULONG magic, ByteView e, ByteView n, ByteView p, ByteView q) {
-    BCRYPT_RSAKEY_BLOB h{};
-    h.Magic = magic;
-    h.BitLength = static_cast<ULONG>(n.size() * 8);
-    h.cbPublicExp = static_cast<ULONG>(e.size());
-    h.cbModulus = static_cast<ULONG>(n.size());
-    h.cbPrime1 = static_cast<ULONG>(p.size());
-    h.cbPrime2 = static_cast<ULONG>(q.size());
-    Bytes out(sizeof h);
-    std::memcpy(out.data(), &h, sizeof h);
-    append(out, e);
-    append(out, n);
-    append(out, p);
-    append(out, q);
-    return out;
-}
-
 // PKCS#1 v1.5 RSA-SHA1 over `region` with the keyvault's console key: the 0x80-byte signature in the byte-reversed form
 // STFS stores.
 Bytes con_sign(ByteView region, ByteView kv) {
@@ -537,20 +502,10 @@ Bytes con_sign(ByteView region, ByteView kv) {
     const Bytes n = bn_big_endian(io::checked_range(kv, kKvPrivateKeyOffset + 0x10, 0x80));
     const Bytes p = bn_big_endian(io::checked_range(kv, kKvPrivateKeyOffset + 0x90, 0x40));
     const Bytes q = bn_big_endian(io::checked_range(kv, kKvPrivateKeyOffset + 0xD0, 0x40));
-    const Bytes blob = rsa_blob(BCRYPT_RSAPRIVATE_MAGIC, minimal(e), n, p, q);
-    Provider prov;
-    KeyHandle key;
-    if (BCryptImportKeyPair(prov.h, nullptr, BCRYPT_RSAPRIVATE_BLOB, &key.h, const_cast<PUCHAR>(blob.data()), static_cast<ULONG>(blob.size()), 0) != 0) {
-        bad("the keyvault's console key is not a valid RSA key");
-    }
     const crypto::Sha1Digest digest = crypto::sha1(region);
-    BCRYPT_PKCS1_PADDING_INFO pad{BCRYPT_SHA1_ALGORITHM};
-    Bytes sig(n.size());
-    ULONG written = 0;
-    if (BCryptSignHash(key.h, &pad, const_cast<PUCHAR>(digest.data()), static_cast<ULONG>(digest.size()), sig.data(), static_cast<ULONG>(sig.size()), &written, BCRYPT_PAD_PKCS1) != 0 ||
-        written != sig.size()) {
-        bad("the keyvault's console key cannot sign");
-    }
+    std::optional<Bytes> signed_digest = crypto::rsa_sign_sha1(minimal(e), n, p, q, digest);
+    if (!signed_digest) bad("the keyvault's console key is not a valid RSA key or cannot sign");
+    Bytes sig = std::move(*signed_digest);
     std::reverse(sig.begin(), sig.end());
     return sig;
 }
@@ -560,15 +515,9 @@ Bytes con_sign(ByteView region, ByteView kv) {
 bool con_verify(ByteView region, ByteView sig, ByteView modulus_bnqw, std::uint32_t exponent) {
     const Bytes n = bn_big_endian(modulus_bnqw);
     const Bytes e = {static_cast<std::uint8_t>(exponent >> 24), static_cast<std::uint8_t>(exponent >> 16), static_cast<std::uint8_t>(exponent >> 8), static_cast<std::uint8_t>(exponent)};
-    const Bytes blob = rsa_blob(BCRYPT_RSAPUBLIC_MAGIC, minimal(e), n, {}, {});
-    Provider prov;
-    KeyHandle key;
-    if (BCryptImportKeyPair(prov.h, nullptr, BCRYPT_RSAPUBLIC_BLOB, &key.h, const_cast<PUCHAR>(blob.data()), static_cast<ULONG>(blob.size()), 0) != 0) return false;
-    Bytes forward(sig.rbegin(), sig.rend());
+    const Bytes forward(sig.rbegin(), sig.rend());
     const crypto::Sha1Digest digest = crypto::sha1(region);
-    BCRYPT_PKCS1_PADDING_INFO pad{BCRYPT_SHA1_ALGORITHM};
-    return BCryptVerifySignature(key.h, &pad, const_cast<PUCHAR>(digest.data()), static_cast<ULONG>(digest.size()), forward.data(),
-                                 static_cast<ULONG>(forward.size()), BCRYPT_PAD_PKCS1) == 0;
+    return crypto::rsa_verify_sha1(minimal(e), n, digest, forward);
 }
 
 }  // namespace

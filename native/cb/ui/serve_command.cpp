@@ -3,8 +3,6 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -21,6 +19,7 @@
 #include "cb/core/json.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/text.hpp"
 #include "cb/ui/mcp_server.hpp"
 #include "cb/ui/serve.hpp"
@@ -33,8 +32,7 @@ namespace sfs = std::filesystem;
 
 std::string serve_stamp() {
     std::time_t now = std::time(nullptr);
-    std::tm tm{};
-    localtime_s(&tm, &now);
+    const std::tm tm = sys::local_tm(now);
     char text[40];
     std::strftime(text, sizeof text, "%Y-%m-%d %I:%M:%S %p", &tm);
     return text;
@@ -65,7 +63,7 @@ std::string serve_secret() {
 
 // A file written whole or not at all (a client never reads half of a record).
 void serve_write(const sfs::path& file, std::string_view text) {
-    const sfs::path part = file.string() + std::format(".{}.tmp", static_cast<unsigned long>(GetCurrentProcessId()));
+    const sfs::path part = file.string() + std::format(".{}.tmp", static_cast<unsigned long>(fs::process_id()));
     fs::write_text(part, text);
     std::error_code ec;
     sfs::rename(part, file, ec);
@@ -157,13 +155,13 @@ int serve_main(const Environment& environment, const cli::Args& args) {
     }
     const sfs::path record = folder / "service.json";
     serve_write(folder / "token", options.secret);
-    serve_write(record, json::dump(Json{{"pid", static_cast<std::int64_t>(GetCurrentProcessId())},
+    serve_write(record, json::dump(Json{{"pid", static_cast<std::int64_t>(fs::process_id())},
                                          {"port", static_cast<std::int64_t>(host.port())},
                                          {"root", fs::to_text(options.root)},
                                          {"state", fs::to_text(state)},
                                          {"started", host.ping().at("started")}},
                                    json::Style::PythonCompatible));
-    serve_log(std::format("CodeBreaker service, pid {}, on 127.0.0.1:{}; exits after {} idle minutes", GetCurrentProcessId(), host.port(), idle));
+    serve_log(std::format("CodeBreaker service, pid {}, on 127.0.0.1:{}; exits after {} idle minutes", fs::process_id(), host.port(), idle));
     std::string why;
     try {
         why = host.run();
@@ -173,7 +171,7 @@ int serve_main(const Environment& environment, const cli::Args& args) {
     service.jobs().stop_all();   // (its own processes only)
     // the record goes before the socket closes: a client that finds the port gone then finds no record
     std::error_code ec;
-    if (const std::optional<service::Record> mine = service::read_record(state); mine && mine->pid == static_cast<std::int64_t>(GetCurrentProcessId())) {
+    if (const std::optional<service::Record> mine = service::read_record(state); mine && mine->pid == static_cast<std::int64_t>(fs::process_id())) {
         sfs::remove(record, ec);
         sfs::remove(folder / "token", ec);
     }

@@ -157,18 +157,21 @@ void Bus::write(std::uint32_t p, unsigned size, std::uint64_t value) {
     for (unsigned i = 0; i < size && i < room; ++i) to[i] = scratch[i];
 }
 
+std::uint32_t Bus::latched_word(std::uint32_t aligned) const {
+    std::uint32_t v = 0;
+    for (unsigned i = 0; i < 4; ++i) {
+        const auto it = latched_.find(aligned + i);
+        v = v << 8 | (it != latched_.end() ? it->second : 0);
+    }
+    return v;
+}
+
 // A register's word: what a program polls for has a value of its own, the rest is what was written.
 std::uint64_t Bus::register_read(std::uint32_t p, unsigned size) {
     const auto word = [&](std::uint32_t aligned) -> std::uint32_t {
         if (aligned == kSpStatus) return 1;   // halted
         if (aligned == kViCurrent) return scanline_++ % kViHalfLines;
-        std::uint32_t v = 0;
-        for (unsigned i = 0; i < 4; ++i) {
-            const auto it = std::lower_bound(latched_.begin(), latched_.end(), std::pair<std::uint32_t, std::uint8_t>{aligned + i, 0},
-                                             [](const auto& a, const auto& b) { return a.first < b.first; });
-            v = v << 8 | (it != latched_.end() && it->first == aligned + i ? it->second : 0);
-        }
-        return v;
+        return latched_word(aligned);
     };
     std::uint8_t bytes[16] = {};
     const std::uint32_t first = p & ~3u;
@@ -180,34 +183,11 @@ std::uint64_t Bus::register_read(std::uint32_t p, unsigned size) {
 void Bus::register_write(std::uint32_t p, unsigned size, std::uint64_t value) {
     std::uint8_t bytes[8];
     write_big(bytes, size, value);
-    for (unsigned i = 0; i < size; ++i) {
-        const std::uint32_t a = p + i;
-        const auto it = std::lower_bound(latched_.begin(), latched_.end(), std::pair<std::uint32_t, std::uint8_t>{a, 0},
-                                         [](const auto& x, const auto& y) { return x.first < y.first; });
-        if (it != latched_.end() && it->first == a) it->second = bytes[i];
-        else latched_.insert(it, {a, bytes[i]});
-    }
-    if (p <= kPiWrLen && p + size > kPiWrLen && p >= kPiDramAddr) {   // the PI's cartridge-to-RDRAM DMA
-        std::uint32_t length = 0;
-        for (unsigned i = 0; i < 4; ++i) {
-            const auto it = std::lower_bound(latched_.begin(), latched_.end(), std::pair<std::uint32_t, std::uint8_t>{kPiWrLen + i, 0},
-                                             [](const auto& x, const auto& y) { return x.first < y.first; });
-            length = length << 8 | (it != latched_.end() && it->first == kPiWrLen + i ? it->second : 0);
-        }
-        pi_dma(length);
-    }
+    for (unsigned i = 0; i < size; ++i) latched_[p + i] = bytes[i];
+    if (p <= kPiWrLen && p + size > kPiWrLen && p >= kPiDramAddr) pi_dma(latched_word(kPiWrLen));   // the PI's cartridge-to-RDRAM DMA
 }
 
 void Bus::pi_dma(std::uint32_t length_field) {
-    const auto latched_word = [&](std::uint32_t a) {
-        std::uint32_t v = 0;
-        for (unsigned i = 0; i < 4; ++i) {
-            const auto it = std::lower_bound(latched_.begin(), latched_.end(), std::pair<std::uint32_t, std::uint8_t>{a + i, 0},
-                                             [](const auto& x, const auto& y) { return x.first < y.first; });
-            v = v << 8 | (it != latched_.end() && it->first == a + i ? it->second : 0);
-        }
-        return v;
-    };
     const std::uint32_t dram = latched_word(kPiDramAddr) & 0x00FFFFFF;
     const std::uint32_t cart = latched_word(kPiDramAddr + 4) & 0x1FFFFFFF;
     const std::uint32_t length = (length_field & 0x00FFFFFF) + 1;
@@ -250,10 +230,10 @@ std::optional<Fault> Cpu::translate(std::uint32_t va, bool write, std::uint32_t 
         if (((va ^ static_cast<std::uint32_t>(e.hi)) & ~span) != 0) continue;
         const bool global = (e.lo0 & e.lo1 & 1) != 0;
         if (!global && (static_cast<std::uint32_t>(e.hi) & 0xFF) != asid) continue;
-        const std::uint64_t lo = (va & ((span >> 1) + 1)) != 0 ? e.lo1 : e.lo0;
-        if ((lo & 2) == 0 || (write && (lo & 4) == 0)) break;   // invalid, or not dirty
+        const std::uint64_t entry_lo = (va & ((span >> 1) + 1)) != 0 ? e.lo1 : e.lo0;
+        if ((entry_lo & 2) == 0 || (write && (entry_lo & 4) == 0)) break;   // invalid, or not dirty
         const std::uint32_t page = span >> 1;                    // the page's size minus one
-        physical = (static_cast<std::uint32_t>((lo >> 6) & 0xFFFFF) << 12 & ~page) | (va & page);
+        physical = (static_cast<std::uint32_t>((entry_lo >> 6) & 0xFFFFF) << 12 & ~page) | (va & page);
         return std::nullopt;
     }
     return Fault{Fault::Kind::TlbMiss, at, va, {}, 0};
@@ -724,10 +704,49 @@ double as_double(std::uint64_t bits) { return std::bit_cast<double>(bits); }
 std::uint32_t bits_of(float v) { return std::bit_cast<std::uint32_t>(v); }
 std::uint64_t bits_of(double v) { return std::bit_cast<std::uint64_t>(v); }
 
-// What the FPU gives for an invalid operation (no exception enabled): the default quiet NaN, which on MIPS has the quiet bit clear in the
-// mantissa's top bit... as the manual says, 0x7FBFFFFF and 0x7FF7FFFFFFFFFFFF.
-float quiet(float v, float a, float b) { return std::isnan(v) && !std::isnan(a) && !std::isnan(b) ? as_float(0x7FBFFFFF) : v; }
-double quiet(double v, double a, double b) { return std::isnan(v) && !std::isnan(a) && !std::isnan(b) ? as_double(0x7FF7FFFFFFFFFFFF) : v; }
+// NaNs in the encoding the R4300i uses (MIPS's, from before IEEE 754-2008): a NaN is quiet when the top bit of its fraction is CLEAR, so the
+// default quiet NaN an invalid operation gives (no exception is enabled) is 0x7FBFFFFF, or 0x7FF7FFFFFFFFFFFF for a double. The host's NaNs are
+// the other way about, so NaN operands are found from their bits, before the host does any arithmetic.
+constexpr std::uint32_t kDefaultNan32 = 0x7FBFFFFF;
+constexpr std::uint64_t kDefaultNan64 = 0x7FF7FFFFFFFFFFFF;
+bool is_nan(std::uint32_t b) { return (b & 0x7F800000u) == 0x7F800000u && (b & 0x007FFFFFu) != 0; }
+bool is_nan(std::uint64_t b) { return (b & 0x7FF0000000000000ull) == 0x7FF0000000000000ull && (b & 0x000FFFFFFFFFFFFFull) != 0; }
+bool is_signaling(std::uint32_t b) { return is_nan(b) && (b & 0x00400000u) != 0; }
+bool is_signaling(std::uint64_t b) { return is_nan(b) && (b & 0x0008000000000000ull) != 0; }
+
+// What an operation on these operands gives when one is a NaN: a signaling one is an invalid operation, a quiet one is passed on.
+template <class Bits>
+std::optional<Bits> nan_result(Bits a, Bits b, Bits default_nan) {
+    if (is_signaling(a) || is_signaling(b)) return default_nan;
+    if (is_nan(a)) return a;
+    if (is_nan(b)) return b;
+    return std::nullopt;
+}
+
+// ADD, SUB, MUL, DIV, SQRT, ABS, MOV, NEG (functions 0-7) on the bits of single or double operands; the result's bits.
+template <class Bits>
+Bits arithmetic(unsigned function, Bits a_bits, Bits b_bits) {
+    using Float = std::conditional_t<sizeof(Bits) == 4, float, double>;
+    constexpr Bits sign = Bits{1} << (sizeof(Bits) * 8 - 1);
+    constexpr Bits default_nan = sizeof(Bits) == 4 ? static_cast<Bits>(kDefaultNan32) : static_cast<Bits>(kDefaultNan64);
+    if (function == 5) return a_bits & ~sign;
+    if (function == 6) return a_bits;
+    if (function == 7) return a_bits ^ sign;
+    if (const std::optional<Bits> n = nan_result(a_bits, function == 4 ? a_bits : b_bits, default_nan)) return *n;
+    const Float a = std::bit_cast<Float>(a_bits), b = std::bit_cast<Float>(b_bits);
+    Float v = 0;
+    switch (function) {
+        case 0: v = a + b; break;
+        case 1: v = a - b; break;
+        case 2: v = a * b; break;
+        case 3: v = a / b; break;
+        default:
+            if (a < 0) return default_nan;   // the square root of a negative number
+            v = std::sqrt(a);
+            break;
+    }
+    return std::isnan(v) ? default_nan : std::bit_cast<Bits>(v);   // (0 / 0, infinity - infinity ...: invalid)
+}
 
 // `v` rounded as FCR31's rounding mode (or the instruction's own) says.
 double rounded(double v, unsigned mode) {
@@ -781,35 +800,8 @@ std::optional<Fault> Cpu::fpu_arithmetic(std::uint32_t word, std::uint32_t at) {
         }
     };
     if ((single || dbl) && function <= 7) {
-        if (single) {
-            const float a = as_float(fpu_read32(fs)), b = as_float(fpu_read32(ft));
-            std::uint32_t out = 0;
-            switch (function) {
-                case 0: out = bits_of(quiet(a + b, a, b)); break;
-                case 1: out = bits_of(quiet(a - b, a, b)); break;
-                case 2: out = bits_of(quiet(a * b, a, b)); break;
-                case 3: out = bits_of(quiet(a / b, a, b)); break;
-                case 4: out = bits_of(a < 0 ? as_float(0x7FBFFFFF) : std::sqrt(a)); break;
-                case 5: out = fpu_read32(fs) & 0x7FFFFFFF; break;
-                case 6: out = fpu_read32(fs); break;
-                default: out = fpu_read32(fs) ^ 0x80000000; break;
-            }
-            fpu_write32(fd, out);
-        } else {
-            const double a = as_double(fpu_read64(fs)), b = as_double(fpu_read64(ft));
-            std::uint64_t out = 0;
-            switch (function) {
-                case 0: out = bits_of(quiet(a + b, a, b)); break;
-                case 1: out = bits_of(quiet(a - b, a, b)); break;
-                case 2: out = bits_of(quiet(a * b, a, b)); break;
-                case 3: out = bits_of(quiet(a / b, a, b)); break;
-                case 4: out = bits_of(a < 0 ? as_double(0x7FF7FFFFFFFFFFFF) : std::sqrt(a)); break;
-                case 5: out = fpu_read64(fs) & 0x7FFFFFFFFFFFFFFF; break;
-                case 6: out = fpu_read64(fs); break;
-                default: out = fpu_read64(fs) ^ 0x8000000000000000; break;
-            }
-            fpu_write64(fd, out);
-        }
+        if (single) fpu_write32(fd, arithmetic<std::uint32_t>(function, fpu_read32(fs), fpu_read32(ft)));
+        else fpu_write64(fd, arithmetic<std::uint64_t>(function, fpu_read64(fs), fpu_read64(ft)));
         return std::nullopt;
     }
     if ((single || dbl) && function >= 8 && function <= 15) {   // round, trunc, ceil, floor to a long (8-11) or a word (12-15)

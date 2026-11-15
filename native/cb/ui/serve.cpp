@@ -1,12 +1,5 @@
 // cb-unity: alone
 // cb/ui/serve.cpp -- `codebreaker serve`: the listening side of the service (see serve.hpp).
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
-
 #include "cb/ui/serve.hpp"
 
 #include <algorithm>
@@ -27,6 +20,8 @@
 #include "cb/core/json.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/socket.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/text.hpp"
 #include "cb/ui/mcp_server.hpp"
 
@@ -38,19 +33,10 @@ using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
 namespace stdfs = std::filesystem;
 
-void start_winsock() {
-    static const bool started = [] {
-        WSADATA data;
-        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
-    }();
-    if (!started) throw IoError(stdfs::path(), 0, "the network stack did not start");
-}
-
 // What a line of the service's log says, with the time as the UI client shows it ("2026-11-13 09:05:01 AM").
 void say(const std::string& line) {
     std::time_t now = std::time(nullptr);
-    std::tm tm{};
-    localtime_s(&tm, &now);
+    const std::tm tm = sys::local_tm(now);
     char stamp[40];
     std::strftime(stamp, sizeof stamp, "%Y-%m-%d %I:%M:%S %p", &tm);
     std::fprintf(stderr, "%s  %s\n", stamp, line.c_str());
@@ -62,14 +48,14 @@ struct Request {
     std::string method, path, host, token, body;
 };
 
-std::optional<Request> read_request(SOCKET c) {
+std::optional<Request> read_request(net::Socket& c) {
     std::string in;
     char buffer[8192];
     std::size_t head_end = std::string::npos, want = 0;
     for (;;) {
         if (head_end != std::string::npos && in.size() >= head_end + 4 + want) break;
         if (head_end == std::string::npos && in.size() > (1u << 20)) return std::nullopt;   // a head that never ends
-        const int n = recv(c, buffer, sizeof buffer, 0);
+        const auto n = c.receive(ByteSpan(reinterpret_cast<std::uint8_t*>(buffer), sizeof buffer));
         if (n <= 0) return std::nullopt;
         in.append(buffer, static_cast<std::size_t>(n));
         if (head_end == std::string::npos && (head_end = in.find("\r\n\r\n")) != std::string::npos) {
@@ -112,33 +98,15 @@ bool same_text(std::string_view a, std::string_view b) {   // (the time it takes
     return diff == 0;
 }
 
-void reply(SOCKET c, int status, const Json& value) {
+void reply(net::Socket& c, int status, const Json& value) {
     const std::string body = json::dump(value, json::Style::PythonCompatible);
     const char* reason = status == 200 ? "OK" : status == 400 ? "Bad Request" : status == 401 ? "Unauthorized" : "Not Found";
     const std::string head = std::format("HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", status, reason, body.size());
     const std::string all = head + body;
-    for (std::size_t sent = 0; sent < all.size();) {
-        const int n = send(c, all.data() + sent, static_cast<int>(all.size() - sent), 0);
-        if (n <= 0) return;
-        sent += static_cast<std::size_t>(n);
-    }
+    c.send(all);
 }
 
-SOCKET listen_on(std::uint16_t port) {
-    const SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == INVALID_SOCKET) return INVALID_SOCKET;
-    const BOOL exclusive = TRUE;   // (Windows lets two sockets share a port without it)
-    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive), sizeof exclusive);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(port);
-    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
-    if (bind(s, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 || listen(s, 64) != 0) {
-        closesocket(s);
-        return INVALID_SOCKET;
-    }
-    return s;
-}
+std::optional<net::Listener> listen_on(std::uint16_t port) { return net::Listener::listen("127.0.0.1", port, true); }
 
 double epoch_seconds() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
 
@@ -175,7 +143,7 @@ std::uint16_t fixed_port(const stdfs::path& state, std::optional<std::int64_t> c
 struct Host::Impl {
     service::Service& service;
     HostOptions options;
-    SOCKET listener = INVALID_SOCKET;
+    std::optional<net::Listener> listener;
     std::uint16_t port = 0;
     const double started = epoch_seconds();
     const CodeStamp stamp;
@@ -196,7 +164,7 @@ struct Host::Impl {
     Json ping_locked() {
         std::lock_guard hold(lock);
         const double idle_for = busy != 0 ? 0.0 : std::round(std::chrono::duration<double>(Clock::now() - last).count() * 10.0) / 10.0;
-        return Json{{"pid", static_cast<std::int64_t>(GetCurrentProcessId())},
+        return Json{{"pid", static_cast<std::int64_t>(fs::process_id())},
                     {"port", static_cast<std::int64_t>(port)},
                     {"root", fs::to_text(options.root)},
                     {"state", fs::to_text(options.state)},
@@ -233,7 +201,7 @@ struct Host::Impl {
         return out;
     }
 
-    void handle(SOCKET c) {
+    void handle(net::Socket& c) {
         try {
             const std::optional<Request> request = read_request(c);
             if (!request) return;
@@ -304,28 +272,24 @@ struct Host::Impl {
     }
 };
 
-Host::Host(service::Service& service, HostOptions options) : impl_(std::make_unique<Impl>(service, std::move(options))) { start_winsock(); }
+Host::Host(service::Service& service, HostOptions options) : impl_(std::make_unique<Impl>(service, std::move(options))) {}
 
 Host::~Host() { close(); }
 
 void Host::close() {
-    if (impl_->listener != INVALID_SOCKET) closesocket(impl_->listener);
-    impl_->listener = INVALID_SOCKET;
+    impl_->listener.reset();
 }
 
 bool Host::bind(const std::function<bool()>& already_running) {
     Impl& I = *impl_;
-    const auto take = [&](SOCKET s) {
-        sockaddr_in a{};
-        int len = sizeof a;
-        getsockname(s, reinterpret_cast<sockaddr*>(&a), &len);
-        I.listener = s;
-        I.port = ntohs(a.sin_port);
+    const auto take = [&](net::Listener&& s) {
+        I.port = s.port();
+        I.listener = std::move(s);
     };
     if (I.options.first_port != 0) {
         for (unsigned port = I.options.first_port; port < I.options.first_port + 20u && port < 65536u; ++port) {
-            if (const SOCKET s = listen_on(static_cast<std::uint16_t>(port)); s != INVALID_SOCKET) {
-                take(s);
+            if (auto s = listen_on(static_cast<std::uint16_t>(port))) {
+                take(std::move(*s));
                 return true;
             }
             // (one starting beside us: give it time to say so)
@@ -339,11 +303,11 @@ bool Host::bind(const std::function<bool()>& already_running) {
     }
     // (all twenty refused: Windows keeps whole ranges of ports for itself -- Hyper-V's and WinNAT's excluded ranges, a hundred at a time -- and a
     // folder's port can fall inside one. Then any port the system gives: the clients find it in the record, not by working it out)
-    if (const SOCKET s = listen_on(0); s != INVALID_SOCKET) {
-        take(s);
+    if (auto s = listen_on(0)) {
+        take(std::move(*s));
         return true;
     }
-    throw IoError(stdfs::path(), WSAGetLastError(), "no port free to answer on");
+    throw IoError(stdfs::path(), static_cast<int>(sys::last_error()), "no port free to answer on");
 }
 
 std::uint16_t Host::port() const { return impl_->port; }
@@ -356,19 +320,13 @@ std::string Host::run() {
     Impl& I = *impl_;
     std::thread watcher([&I] { I.watch(); });
     while (!I.done.load()) {
-        fd_set ready;
-        FD_ZERO(&ready);
-        FD_SET(I.listener, &ready);
-        const timeval wait{0, 500000};   // (the stop request is looked at twice a second)
-        if (select(0, &ready, nullptr, nullptr, &wait) <= 0) continue;
-        const SOCKET c = accept(I.listener, nullptr, nullptr);
-        if (c == INVALID_SOCKET) continue;
-        const DWORD limit = 30000;   // a client that says nothing is let go
-        setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&limit), sizeof limit);
+        auto client = I.listener->accept(500ms);   // (the stop request is looked at twice a second)
+        if (!client) continue;
+        client->set_receive_timeout(30s);   // a client that says nothing is let go
         ++I.handlers;
-        std::thread([&I, c] {
+        std::thread([&I, c = std::move(*client)]() mutable {
             I.handle(c);
-            closesocket(c);
+            c.close();
             --I.handlers;
         }).detach();
     }

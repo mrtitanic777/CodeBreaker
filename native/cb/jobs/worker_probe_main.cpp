@@ -6,7 +6,11 @@
 #include "cb/core/fs.hpp"
 #include "cb/jobs/workers.hpp"
 
+#if defined(_WIN32)
 #include <windows.h>
+#else
+#include <csignal>
+#endif
 
 using namespace cb;
 
@@ -28,7 +32,12 @@ int main(int argc, char** argv) {
     kinds.add("throw", [](const jobs::Args&) -> int { throw std::runtime_error("the share failed"); });
     // a worker the guest crashed: the process dies with an access-violation code
     kinds.add("crash", [](const jobs::Args&) -> int {
+#if defined(_WIN32)
         TerminateProcess(GetCurrentProcess(), 0xC0000005u);
+#else
+        std::signal(SIGSEGV, SIG_DFL);
+        std::raise(SIGSEGV);   // (POSIX: a crash is death by a signal)
+#endif
         return 0;
     });
     // a share that never ends

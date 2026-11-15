@@ -10,6 +10,7 @@
 #include "cb/core/io.hpp"
 #include "cb/core/text.hpp"
 #include "cb/formats/probe.hpp"
+#include "cb/formats/sega32x.hpp"
 #include "cb/formats/segacd.hpp"
 
 namespace cb::formats::genesis {
@@ -150,6 +151,7 @@ bool probe(const std::filesystem::path& path) {
     const std::optional<Bytes> head = read_prefix(path, 0, 0x400);
     if (!head) return false;
     if (segacd::is_disc_start(*head)) return false;   // a Sega CD disc carries the same header at $100, after its own ID
+    if (sega32x::is_rom_start(*head, has_extension(path, {".32x"}))) return false;   // a 32X cartridge is a Genesis ROM with the add-on's header: its own lane
     if (is_sega(*head, 0x100) || is_sega(*head, 0x101)) return true;
     return has_extension(path, {".md", ".gen", ".smd"}) && head->size() >= 0x200;
 }

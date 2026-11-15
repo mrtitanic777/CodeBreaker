@@ -17,8 +17,13 @@
 #include "cb/engine/lane_kit_internal.hpp"
 #include "cb/engine/machine_atari.hpp"
 #include "cb/engine/machine_pce.hpp"
+#include "cb/engine/machine_snes.hpp"
 #include "cb/engine/machine_nds.hpp"
+#include "cb/engine/machine_gekko.hpp"
+#include "cb/engine/machine_n64.hpp"
 #include "cb/engine/machine_m68k.hpp"
+#include "cb/engine/machine_dreamcast.hpp"
+#include "cb/engine/machine_sh2.hpp"
 #include "cb/jobs/workers.hpp"
 
 namespace cb::engine {
@@ -129,7 +134,12 @@ void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
     register_m68k_lanes();    // (the Neo Geo and Sega CD lanes: the same table, the same reason)
     register_atari_lanes();   // (the Atari machines' lanes, in the table of engine/machine_lanes.hpp: the host and its workers make the same registrations)
     register_pce_lane();      // (the PC Engine lane, likewise)
+    register_snes_lane();     // (the Super Nintendo lane, likewise)
     register_nds_lane();   // (the Nintendo DS lane, likewise)
+    register_n64_lane();   // (the Nintendo 64 lane, likewise)
+    register_gekko_lanes();   // (the GameCube, Wii and Wii U lanes, likewise)
+    register_sh2_lanes();   // (the Sega 32X and Saturn lanes, likewise)
+    register_dreamcast_lane();   // (the Sega Dreamcast lane, likewise)
     kinds.add("lane-judge", kit_judge_share);
     kinds.add("lane-build", kit_build_share);
 }

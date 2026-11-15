@@ -38,6 +38,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -120,7 +121,8 @@ private:
     Bytes pif_;
     Bytes rom_;
     std::vector<Range> ranges_;
-    std::vector<std::pair<std::uint32_t, std::uint8_t>> latched_;   // register bytes written (kept sorted by address)
+    std::map<std::uint32_t, std::uint8_t> latched_;                 // the bytes written to the registers
+    std::uint32_t latched_word(std::uint32_t aligned) const;
     std::uint32_t scanline_ = 0;
     std::vector<BusAccess> log_;
 };

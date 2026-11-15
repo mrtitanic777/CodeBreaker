@@ -6,13 +6,11 @@
 #include <set>
 #include <thread>
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
 #include "cb/base/runs.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/socket.hpp"
 #include "cb/core/text.hpp"
 #include "cb/formats/cab.hpp"
 #include "cb/formats/iso9660.hpp"
@@ -36,79 +34,6 @@ constexpr std::uint32_t kScreenWidth = 640;      // Windows' graphics screen
 constexpr std::uint32_t kTextScreenWidth = 720;  // DOS's text screen
 
 std::string upper(std::string_view s) { return text::upper(s); }
-
-// ---- Winsock ------------------------------------------------------------------------------------------------------------
-
-// The process-wide start of Winsock (the OS's reference count; it is never stopped).
-void winsock_ready() {
-    static const bool started = [] {
-        WSADATA d;
-        if (WSAStartup(MAKEWORD(2, 2), &d) != 0)
-            throw Error("Winsock could not be started");
-        return true;
-    }();
-    (void)started;
-}
-
-class Socket {
-public:
-    Socket() {
-        winsock_ready();
-        s_ = ::socket(AF_INET, SOCK_STREAM, 0);
-    }
-    Socket(const Socket&) = delete;
-    Socket& operator=(const Socket&) = delete;
-    ~Socket() {
-        if (s_ != INVALID_SOCKET)
-            ::closesocket(s_);
-    }
-    SOCKET get() const { return s_; }
-    bool valid() const { return s_ != INVALID_SOCKET; }
-
-    // Connect to 127.0.0.1:port within `timeout`.
-    bool connect_local(std::uint16_t port, std::chrono::milliseconds timeout) {
-        if (!valid())
-            return false;
-        u_long nonblocking = 1;
-        ioctlsocket(s_, FIONBIO, &nonblocking);
-        sockaddr_in a{};
-        a.sin_family = AF_INET;
-        a.sin_port = htons(port);
-        inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
-        bool connected = ::connect(s_, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0;
-        if (!connected && WSAGetLastError() == WSAEWOULDBLOCK) {
-            fd_set writable, failed;
-            FD_ZERO(&writable);
-            FD_ZERO(&failed);
-            FD_SET(s_, &writable);
-            FD_SET(s_, &failed);
-            const auto ms = timeout.count();
-            timeval tv{static_cast<long>(ms / 1000), static_cast<long>((ms % 1000) * 1000)};
-            connected = ::select(0, nullptr, &writable, &failed, &tv) > 0 && FD_ISSET(s_, &writable);
-        }
-        nonblocking = 0;
-        ioctlsocket(s_, FIONBIO, &nonblocking);
-        return connected;
-    }
-
-    void set_receive_timeout(std::chrono::milliseconds timeout) {
-        const DWORD ms = static_cast<DWORD>(timeout.count());
-        setsockopt(s_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&ms), sizeof ms);
-    }
-
-    bool send_all(std::string_view data) {
-        while (!data.empty()) {
-            const int n = ::send(s_, data.data(), static_cast<int>(data.size()), 0);
-            if (n <= 0)
-                return false;
-            data.remove_prefix(static_cast<std::size_t>(n));
-        }
-        return true;
-    }
-
-private:
-    SOCKET s_ = INVALID_SOCKET;
-};
 
 // Copy a file over another; the errors are ours.
 void copy_over(const stdfs::path& from, const stdfs::path& to) {
@@ -181,29 +106,21 @@ bool is_black(const Picture& screen) {
 // ---- QEMU's monitor ----------------------------------------------------------------------------------------------------
 
 std::uint16_t free_port() {
-    Socket s;
-    if (!s.valid())
-        throw Error("a socket could not be made");
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = 0;
-    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
-    int size = sizeof a;
-    if (::bind(s.get(), reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 ||
-        ::getsockname(s.get(), reinterpret_cast<sockaddr*>(&a), &size) != 0)
+    const auto listener = net::Listener::listen("127.0.0.1", 0, false);
+    if (!listener)
         throw Error("no local port is free");
-    return ntohs(a.sin_port);
+    return listener->port();
 }
 
 bool Monitor::send(std::span<const std::string> commands) const {
-    Socket s;
-    if (!s.connect_local(port_, pacing_.connect_timeout))
+    auto s = net::connect("127.0.0.1", port_, pacing_.connect_timeout);
+    if (!s)
         return false;
-    s.set_receive_timeout(pacing_.banner_timeout);
-    char banner[4096];
-    (void)::recv(s.get(), banner, sizeof banner, 0);   // (what the monitor says first; hearing nothing is no error)
+    s->set_receive_timeout(pacing_.banner_timeout);
+    std::uint8_t banner[4096];
+    (void)s->receive(banner);   // (what the monitor says first; hearing nothing is no error)
     for (const std::string& c : commands) {
-        if (!s.send_all(c + "\n"))
+        if (!s->send(c + "\n"))
             return false;
         std::this_thread::sleep_for(pacing_.after_command);
     }
@@ -211,22 +128,22 @@ bool Monitor::send(std::span<const std::string> commands) const {
 }
 
 std::string Monitor::ask(std::string_view command) const {
-    Socket s;
-    if (!s.connect_local(port_, pacing_.connect_timeout))
+    auto s = net::connect("127.0.0.1", port_, pacing_.connect_timeout);
+    if (!s)
         return {};
-    s.set_receive_timeout(pacing_.banner_timeout);
-    char buffer[8192];
-    (void)::recv(s.get(), buffer, sizeof buffer, 0);   // (the banner)
-    if (!s.send_all(std::string(command) + "\n"))
+    s->set_receive_timeout(pacing_.banner_timeout);
+    std::uint8_t buffer[8192];
+    (void)s->receive(buffer);   // (the banner)
+    if (!s->send(std::string(command) + "\n"))
         return {};
     std::this_thread::sleep_for(pacing_.after_command);
-    s.set_receive_timeout(std::chrono::milliseconds(1500));
+    s->set_receive_timeout(std::chrono::milliseconds(1500));
     std::string answer;
     for (int i = 0; i < 20; ++i) {
-        const int n = ::recv(s.get(), buffer, sizeof buffer, 0);
+        const auto n = s->receive(buffer);
         if (n <= 0)
             break;
-        answer.append(buffer, static_cast<std::size_t>(n));
+        answer.append(reinterpret_cast<const char*>(buffer), static_cast<std::size_t>(n));
         if (answer.ends_with("(qemu) "))
             break;
     }

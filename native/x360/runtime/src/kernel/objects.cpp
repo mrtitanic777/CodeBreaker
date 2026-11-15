@@ -1,3 +1,4 @@
+#include <cstring>
 #include "kernel/objects.h"
 
 #include <windows.h>
@@ -170,7 +171,7 @@ namespace kernel
             }
             for (auto it = g_namedObjects.begin(); it != g_namedObjects.end();)
                 it = it->second == object ? g_namedObjects.erase(it) : std::next(it);
-            guest::g_memory.SystemFree(object);
+            guest::g_memory.SystemFree(object - kObjectHeaderSize);
         }
     }
 
@@ -415,7 +416,20 @@ namespace kernel
 
     uint32_t CreateOwnedObject(uint32_t size)
     {
-        const uint32_t object = guest::g_memory.SystemAlloc(size);
+        // The object has the console's OBJECT_HEADER before it (PointerCount, HandleCount, Type at -8, then the
+        // flags): a title's XDK reads the type through it (Top Spin 2's inlined wait on an object it referenced
+        // loads Type->DefaultObject, the offset of the wait object inside the body: 0 for a dispatcher object).
+        // Every type shares one descriptor of zeros, whose DefaultObject (+0x14) is therefore 0.
+        static const uint32_t type = [] {
+            const uint32_t t = guest::g_memory.SystemAlloc(0x20);
+            std::memset(guest::g_memory.Translate(t), 0, 0x20);
+            return t;
+        }();
+        const uint32_t block = guest::g_memory.SystemAlloc(size + kObjectHeaderSize);
+        const uint32_t object = block + kObjectHeaderSize;
+        std::memset(guest::g_memory.Translate(block), 0, kObjectHeaderSize);
+        guest::g_memory.Write32(block + 0, 1);       // PointerCount
+        guest::g_memory.Write32(block + 8, type);
         std::lock_guard lock(g_handleMutex);
         g_references[object] = 0;
         return object;

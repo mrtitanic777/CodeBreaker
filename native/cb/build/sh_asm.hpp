@@ -36,13 +36,15 @@ namespace cb::build::sh_asm {
 class Assembler {
 public:
     // The encoder is borrowed and must outlive the assembler.
-    explicit Assembler(const Encoder& encoder) : isa_(&encoder) {}
+    // `little_endian`: `.long`, `.word` and `.fill` write the low byte first (the SH-4 in the Dreamcast's mode; the encoder's instructions must too).
+    explicit Assembler(const Encoder& encoder, bool little_endian = false) : isa_(&encoder), little_(little_endian) {}
 
     // The file `source` describes. AsmError, with the line, for anything that does not assemble (including a file past 16 MiB).
     Bytes build(std::string_view source) const;
 
 private:
     const Encoder* isa_;
+    bool little_;
 };
 
 // `line` with its `!` comment removed (not one inside a string), trimmed at the end.

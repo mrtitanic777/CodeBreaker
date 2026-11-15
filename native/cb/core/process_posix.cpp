@@ -79,9 +79,9 @@ Fd open_dev_null(bool for_read) {
     return fd;
 }
 
-Fd open_output_file(const std::filesystem::path& file) {
+Fd open_output_file(const std::filesystem::path& file, bool append) {
     if (file.has_parent_path()) fs::make_dirs(file.parent_path());
-    Fd fd(::open(file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666));
+    Fd fd(::open(file.c_str(), O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC) | O_CLOEXEC, 0666));
     if (!fd.valid()) throw IoError(file, errno, "cannot open output file");
     return fd;
 }
@@ -146,6 +146,7 @@ struct Process::Impl {
     std::string tool;
     Clock::time_point started;
     bool reaped = false;
+    bool own_session = true;   // false for a terminal child, which shares ours
     std::uint32_t exit_code = 0;
 
     // Collect the child's status if it has ended (block: wait for it); true once it has.
@@ -165,7 +166,9 @@ struct Process::Impl {
     }
     // The child's session: everything it started.
     void kill_group() const {
-        if (pid > 0) ::killpg(pid, SIGKILL);
+        if (pid <= 0) return;
+        if (own_session) ::killpg(pid, SIGKILL);
+        else if (!reaped) ::kill(pid, SIGKILL);
     }
 };
 
@@ -186,6 +189,8 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
         Pipe p = make_pipe();
         child_in = std::move(p.read);
         impl->in_w = std::move(p.write);
+    } else if (spec.terminal) {
+        child_in = inherit_std(STDIN_FILENO);
     } else {
         child_in = open_dev_null(true);
     }
@@ -199,7 +204,7 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
             }
             case Capture::Inherit: child_end = inherit_std(own_stream); break;
             case Capture::Discard: child_end = open_dev_null(false); break;
-            case Capture::File: child_end = open_output_file(cap.file); break;
+            case Capture::File: child_end = open_output_file(cap.file, cap.append); break;
             case Capture::Merge: break;
         }
     };
@@ -222,6 +227,8 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
     const std::string program_path = program->string();
     const std::string cwd = spec.cwd ? spec.cwd->string() : std::string();
     const bool below_normal = spec.priority == Priority::BelowNormal;
+    const bool new_session = !spec.terminal;
+    impl->own_session = new_session;
     const std::uint64_t memory_limit = spec.memory_limit;
 
     Pipe failure = make_pipe();   // the child reports an exec failure here (its end closes on a successful exec)
@@ -230,7 +237,7 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
     if (pid < 0) cannot_start(impl->tool, errno);
     if (pid == 0) {
         // child
-        ::setsid();
+        if (new_session) ::setsid();
         int fd_in = child_in.get(), fd_out = child_out.get(), fd_err = err_fd;
         // move the three ends above 2 first, so that dup2 onto 0..2 cannot overwrite one we still need
         auto lift = [](int fd) { return fd < 3 ? ::fcntl(fd, F_DUPFD_CLOEXEC, 3) : fd; };
@@ -256,7 +263,7 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
     }
     impl->pid = pid;
     // Our copy of the session leader's group is set in the parent too, so that a kill racing the child's setsid still lands.
-    ::setpgid(pid, pid);
+    if (new_session) ::setpgid(pid, pid);
     failure.write.reset();
     int code = 0;
     ssize_t got;
@@ -398,6 +405,35 @@ std::optional<std::uint32_t> Process::wait(std::chrono::milliseconds timeout) {
 }
 
 bool Process::running() const { return !impl_->reap(false); }
+
+std::uint32_t Process::pid() const { return static_cast<std::uint32_t>(impl_->pid); }
+
+// ---- detached -----------------------------------------------------------------------------------------
+
+struct Detached::Impl {
+    std::unique_ptr<Process::Impl> child;
+};
+
+Detached::Detached(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+Detached::Detached(Detached&&) noexcept = default;
+Detached& Detached::operator=(Detached&&) noexcept = default;
+Detached::~Detached() {
+    if (impl_ && impl_->child) impl_->child->reap(false);   // (a child that has ended is collected; one that runs on is left alone)
+}
+
+std::uint32_t Detached::pid() const { return static_cast<std::uint32_t>(impl_->child->pid); }
+
+std::optional<std::uint32_t> Detached::exit_code() {
+    if (!impl_->child->reap(false)) return std::nullopt;
+    return impl_->child->exit_code;
+}
+
+// The child is in a session of its own already (launch), and nothing here kills that session.
+Detached start_detached(const ProcessSpec& spec) {
+    auto impl = std::make_unique<Detached::Impl>();
+    impl->child = launch(spec, false);
+    return Detached(std::move(impl));
+}
 
 }  // namespace cb::process
 

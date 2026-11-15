@@ -168,10 +168,11 @@ Handle open_nul(bool for_read) {
     return h;
 }
 
-Handle open_output_file(const std::filesystem::path& file) {
+Handle open_output_file(const std::filesystem::path& file, bool append) {
     if (file.has_parent_path()) fs::make_dirs(file.parent_path());
     SECURITY_ATTRIBUTES sa = inheritable();
-    Handle h(CreateFileW(file.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+    Handle h(append ? CreateFileW(file.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr)
+                    : CreateFileW(file.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
     if (!h.valid()) throw IoError(file, static_cast<int>(GetLastError()), "cannot open output file");
     return h;
 }
@@ -213,8 +214,9 @@ struct Process::Impl {
 
 namespace {
 
-// Start the child. `stdin_pipe`: give it a pipe on stdin (streaming) rather than NUL.
-std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) {
+// Start the child. `stdin_pipe`: give it a pipe on stdin (streaming) rather than NUL. `detached`: no job (it outlives us),
+// a process group of its own.
+std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe, bool detached = false) {
     if (spec.argv.empty()) throw UsageError("process: empty argv");
     auto impl = std::make_unique<Process::Impl>();
     impl->tool = spec.argv[0];
@@ -229,6 +231,8 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
         Pipe p = make_pipe(true);
         child_in = std::move(p.read);
         impl->in_w = std::move(p.write);
+    } else if (spec.terminal) {
+        child_in = inherit_std(STD_INPUT_HANDLE);
     } else {
         child_in = open_nul(true);
     }
@@ -242,7 +246,7 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
             }
             case Capture::Inherit: child_end = inherit_std(&child_end == &child_out ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE); break;
             case Capture::Discard: child_end = open_nul(false); break;
-            case Capture::File: child_end = open_output_file(cap.file); break;
+            case Capture::File: child_end = open_output_file(cap.file, cap.append); break;
             case Capture::Merge: break;   // handled by the caller
         }
     };
@@ -293,19 +297,25 @@ std::unique_ptr<Process::Impl> launch(const ProcessSpec& spec, bool stdin_pipe) 
     if (spec.priority == Priority::BelowNormal) flags |= BELOW_NORMAL_PRIORITY_CLASS;
     if (spec.out.mode != Capture::Inherit) flags |= CREATE_NO_WINDOW;
 
-    impl->job = make_job(spec);
+    if (detached) flags |= CREATE_NEW_PROCESS_GROUP;
+    else impl->job = make_job(spec);
     PROCESS_INFORMATION pi{};
     const std::wstring cwd = spec.cwd ? spec.cwd->native() : std::wstring();
     const bool is_batch = text::iends_with(argv[0], ".bat") || text::iends_with(argv[0], ".cmd");
-    const BOOL created = CreateProcessW(is_batch ? nullptr : program->c_str(), cmdline.data(), nullptr, nullptr, TRUE,
-                                        flags, const_cast<wchar_t*>(block.c_str()), spec.cwd ? cwd.c_str() : nullptr,
-                                        &si.StartupInfo, &pi);
+    auto create = [&](DWORD more) {
+        return CreateProcessW(is_batch ? nullptr : program->c_str(), cmdline.data(), nullptr, nullptr, TRUE, flags | more,
+                              const_cast<wchar_t*>(block.c_str()), spec.cwd ? cwd.c_str() : nullptr, &si.StartupInfo, &pi);
+    };
+    // A detached child leaves our own Job Object (so it outlives the program that started it); a Job Object that forbids
+    // leaving is lived in.
+    BOOL created = detached ? create(CREATE_BREAKAWAY_FROM_JOB) : FALSE;
+    if (!created) created = create(0);
     if (!created) cannot_start(impl->tool, GetLastError());
     impl->process = Handle(pi.hProcess);
     Handle thread(pi.hThread);
 
     // Into the job before it runs a single instruction, so that nothing it starts can escape.
-    if (!AssignProcessToJobObject(impl->job.get(), impl->process.get())) {
+    if (impl->job.valid() && !AssignProcessToJobObject(impl->job.get(), impl->process.get())) {
         const DWORD code = GetLastError();
         TerminateProcess(impl->process.get(), 1);
         cannot_start(impl->tool, code);
@@ -432,6 +442,33 @@ std::optional<std::uint32_t> Process::wait(std::chrono::milliseconds timeout) {
 }
 
 bool Process::running() const { return WaitForSingleObject(impl_->process.get(), 0) == WAIT_TIMEOUT; }
+
+std::uint32_t Process::pid() const { return GetProcessId(impl_->process.get()); }
+
+// ---- detached -----------------------------------------------------------------------------------------
+
+struct Detached::Impl {
+    std::unique_ptr<Process::Impl> child;
+};
+
+Detached::Detached(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+Detached::Detached(Detached&&) noexcept = default;
+Detached& Detached::operator=(Detached&&) noexcept = default;
+Detached::~Detached() = default;   // (lets go of the handles; the child runs on)
+
+std::uint32_t Detached::pid() const { return GetProcessId(impl_->child->process.get()); }
+
+std::optional<std::uint32_t> Detached::exit_code() {
+    DWORD code = 0;
+    if (!GetExitCodeProcess(impl_->child->process.get(), &code) || code == STILL_ACTIVE) return std::nullopt;
+    return code;
+}
+
+Detached start_detached(const ProcessSpec& spec) {
+    auto impl = std::make_unique<Detached::Impl>();
+    impl->child = launch(spec, false, true);
+    return Detached(std::move(impl));
+}
 
 }  // namespace cb::process
 

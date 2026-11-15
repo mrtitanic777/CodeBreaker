@@ -89,13 +89,24 @@ enum class Form : std::uint8_t {
     FdFsFt,      // add.s $f0, $f1, $f2
     FdFs,        // mov.s $f0, $f1
     FsFt,        // c.eq.s $f1, $f2
+    RsRtCode,    // teq $s, $t, code (the code is optional, 0 to 1023)
+    // the R5900's and the Allegrex's additions
+    RdRt,        // seb $d, $t;  pabsw $d, $t
+    FdFt,        // sqrt.s $f0, $f1 (the R5900's reads FT)
+    Special,     // an instruction with its own operand layout (the VU0's macro mode, the Allegrex's VFPU, ext and ins): see mips_ext.hpp
 };
 
 // Which processor's instructions.
 enum class Variant : std::uint8_t {
     R3000A,      // the PlayStation's: MIPS I, little-endian, with the GTE
     R4300,       // the Nintendo 64's: MIPS III, big-endian, with the FPU
+    R5900,       // the PlayStation 2's Emotion Engine: MIPS III + MIPS IV's MOVZ/MOVN/PREF, little-endian, 128-bit registers (LQ, SQ and the multimedia
+                 // instructions), a single-precision FPU, VU0 in COP2
+    Allegrex,    // the PSP's: MIPS32 (little-endian) with CLZ CLO MADD MSUB MAX MIN, EXT INS SEB SEH WSBH BITREV ROTR, a single-precision FPU and the VFPU
 };
+
+// Is the processor's code held big-endian (the Nintendo 64's) or little-endian (all the others)?
+constexpr bool big_endian(Variant v) { return v == Variant::R4300; }
 
 // One decoded instruction.
 struct Insn {
@@ -111,7 +122,7 @@ struct Insn {
     bool delay_slot = false;               // the instruction after it runs before the transfer takes effect
     bool likely = false;                   // a branch likely (R4300): the delay slot runs only when the branch is taken
 
-    std::array<std::uint8_t, 4> raw{};     // the word as the code holds it (little-endian for the R3000A, big-endian for the R4300)
+    std::array<std::uint8_t, 4> raw{};     // the word as the code holds it (big-endian for the R4300, little-endian for the others)
 
     ByteView bytes() const { return {raw.data(), raw.size()}; }
 };

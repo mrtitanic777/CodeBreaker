@@ -17,6 +17,12 @@
 // What it does not do, and says so: vector instructions (the run ends "exception:unsupported"), overflow recording
 // (XER[OV] is never set), floating-point status and rounding modes other than round-to-nearest, and anything privileged.
 //
+// Nintendo's PowerPC 750 family (the GameCube's Gekko, the Wii's Broadway, the Wii U's Espresso) runs the same interpreter with `paired_singles`
+// set: opcode 4 and the psq loads and stores are then Gekko's paired-single instructions (they stay unsupported for the Xbox 360, where opcode 4
+// is VMX128), the second half of each floating register is kept in `ps1`, the quantization registers are `gqr`, and the memory-mapped
+// hardware registers named in `devices` are not memory: an access to one is logged (`io`) and a read answers with how many times that
+// register has been read before (so a loop that waits for a bit to change ends), a write is not kept.
+//
 // Memory is pages created on first touch (zero-filled), with a limit on how many, so code that reaches into memory it was
 // not given keeps running the same way on both sides of a comparison.
 //
@@ -126,6 +132,12 @@ std::optional<Fill> fill_from_text(std::string_view name);   // "pointers" | "co
 Bytes filled(Fill kind, std::size_t size = 0x10000);          // None: nothing
 const PageImage& fill_image(Fill kind);                       // filled(kind) as pages at kArgsBase, built once
 
+// A stretch of the address space: [lo, hi).
+struct AddressRange {
+    std::uint32_t lo = 0, hi = 0;        // [lo, hi)
+    bool contains(std::uint32_t a) const { return lo <= a && a < hi; }
+};
+
 // One byte of a function's output memory: the byte before the run and after it.
 struct ByteWrite {
     std::uint32_t address = 0;
@@ -148,6 +160,20 @@ public:
     bool ca = false;                     // XER[CA]
     std::uint32_t pc = 0;
     std::optional<std::uint32_t> reserve;   // the address lwarx/ldarx reserved
+
+    // -- Nintendo's PowerPC 750 family (see the top of this file)
+    bool paired_singles = false;
+    std::array<std::uint64_t, 32> ps1{};   // the second half of each paired-single register, as 64 raw bits (a single held as a double)
+    std::array<std::uint32_t, 8> gqr{};    // the graphics quantization registers (SPR 912-919)
+    void set_devices(std::vector<AddressRange> ranges) { devices_ = std::move(ranges); }
+    // Accesses to the devices, in order: (address, size, the value read or written, whether it was a write).
+    struct IoAccess {
+        std::uint32_t address = 0;
+        unsigned size = 0;
+        std::uint64_t value = 0;
+        bool write = false;
+    };
+    const std::vector<IoAccess>& io() const { return io_; }
 
     void load(std::uint32_t va, ByteView data);
     // Big-endian, 1..8 bytes. A page that was never touched is created (zero-filled): Fault{Memory} past kMaxPages.
@@ -174,6 +200,13 @@ public:
 private:
     Page& page_for_write(std::uint32_t key);
     const Page& page_for_read(std::uint32_t key);
+
+    bool in_device(std::uint32_t address) const;
+    std::uint64_t device_read(std::uint32_t address, unsigned size);
+    void device_write(std::uint32_t address, unsigned size, std::uint64_t value);
+    std::vector<AddressRange> devices_;
+    std::vector<IoAccess> io_;
+    std::unordered_map<std::uint32_t, std::uint64_t> io_reads_;   // how many times each device register has been read
 
     std::unordered_map<std::uint32_t, std::unique_ptr<Page>> pages_;
     PageImage shared_, under_;
@@ -211,10 +244,6 @@ public:
 };
 
 using ExternTable = std::unordered_map<std::uint32_t, std::string>;
-struct AddressRange {
-    std::uint32_t lo = 0, hi = 0;        // [lo, hi)
-    bool contains(std::uint32_t a) const { return lo <= a && a < hi; }
-};
 
 struct RunOptions {
     // Functions outside what was given (address -> name): a call to one is recorded with its eight argument registers and
@@ -231,6 +260,11 @@ struct RunOptions {
     // "@<address>" (a partial image calls into the rest of its title).
     std::optional<AddressRange> absent;
     Shadow* shadow = nullptr;
+    // Nintendo's PowerPC 750 family: paired singles on, the quantization registers, and the memory-mapped hardware.
+    bool paired_singles = false;
+    std::array<std::uint32_t, 8> gqr{};
+    std::vector<AddressRange> devices;
+    std::optional<std::uint64_t> r2, r13;   // the small data area bases (SDA2, SDA) a Nintendo program keeps in r2 and r13
 };
 
 struct Call {

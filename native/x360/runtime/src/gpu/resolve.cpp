@@ -69,6 +69,7 @@ namespace gpu
         {
             uint32_t bits[4], shift[4];
             bool float32;   // k_32_FLOAT: the dword is R's float bits
+            bool half4;     // k_16_16_16_16_FLOAT: 64 bits per pixel, four half floats (R, G in the first dword)
         };
 
         bool DestLayout(uint32_t format, PackLayout& layout)
@@ -93,6 +94,9 @@ namespace gpu
                 return true;
             case 36: // k_32_FLOAT
                 layout.float32 = true;
+                return true;
+            case 32: // k_16_16_16_16_FLOAT
+                layout.half4 = true;
                 return true;
             default:
                 return false;
@@ -160,12 +164,13 @@ namespace gpu
                ((oi >> 8) << 12);
     }
 
-    void ResolveExtent(const ResolveConstants& c, uint32_t& start, uint32_t& end)
+    void ResolveExtent(const ResolveConstants& c, uint32_t& start, uint32_t& end, uint32_t bytesLog2)
     {
-        // 4 bytes per pixel: one 32x32 macro tile is 4 KiB.
+        // 4 bytes per pixel: one 32x32 macro tile is 4 KiB (8 bytes: 8 KiB).
         const uint32_t x1 = c.x0 + c.width, y1 = c.y0 + c.height;
-        start = c.destBase + TiledOffset2D(c.x0 & ~31u, c.y0 & ~31u, c.destPitchMacro, 2);
-        end = c.destBase + TiledOffset2D((x1 - 1) & ~31u, (y1 - 1) & ~31u, c.destPitchMacro, 2) + 0x1000;
+        start = c.destBase + TiledOffset2D(c.x0 & ~31u, c.y0 & ~31u, c.destPitchMacro, bytesLog2);
+        end = c.destBase + TiledOffset2D((x1 - 1) & ~31u, (y1 - 1) & ~31u, c.destPitchMacro, bytesLog2) +
+              (0x400u << bytesLog2);
     }
 
     ResolveInfo DecodeResolve()
@@ -274,6 +279,8 @@ namespace gpu
             const uint32_t colorInfo = Reg(kColorInfo[select]);
             sourceBase = colorInfo & 0x7FF; // 11-bit periodic addressing (06a §3.3)
             sourceFormat = (colorInfo >> 16) & 0xF;
+            if (sourceFormat == 12) // 2_10_10_10_FLOAT_AS_16_16_16_16: stored as 2_10_10_10_FLOAT, resolved to 16-bit floats
+                sourceFormat = 3;
             if (!OutputMergerSupportsColorFormat(sourceFormat))
                 Fatal("GPU: resolve from render target {} format {} ({}) is not implemented", select, sourceFormat,
                       EdramColorFormatName(sourceFormat));
@@ -305,7 +312,7 @@ namespace gpu
             PackLayout layout;
             if (!DestLayout(destFormat, layout))
                 Fatal("GPU: resolve to texture format {} is not implemented (RB_COPY_DEST_INFO {:08X})", destFormat, destInfo);
-            if (layout.float32 ? number != 7 : number > 3)
+            if (layout.float32 || layout.half4 ? number != 7 : number > 3)
                 Fatal("GPU: resolve to texture format {} with number format {} is not implemented ({:08X})", destFormat,
                       number, destInfo);
             key.destFormat = destFormat;
@@ -325,7 +332,7 @@ namespace gpu
         c.destBase = info.destBaseRegister;
         const uint32_t destPitch = info.destPitchRegister & 0x3FFF;
         c.destPitchMacro = (destPitch + 31) >> 5;
-        ResolveExtent(c, info.extentStart, info.extentEnd);
+        ResolveExtent(c, info.extentStart, info.extentEnd, !depth && destFormat == 32 ? 3 : 2);
         if (c.destBase & 0xFFFu)
             Fatal("GPU: resolve destination {:08X} is not 4 KiB aligned", c.destBase);
         if (uint64_t(info.extentEnd) > guest::kPhysicalSize || info.extentEnd < info.extentStart)
@@ -419,11 +426,11 @@ void xe_rs_memory_store(uint a, uint v) { xe_rs_memory.Store(a, v); }
     {
         std::string text = Bindings(target);
         text += R"HLSL(
-uint xe_rs_tiled(uint2 p, uint pitchMacro)   // 2D tiled byte offset of a 4-byte block (05b §2.2)
+uint xe_rs_tiled(uint2 p, uint pitchMacro, uint bytesLog2)   // 2D tiled byte offset of a 4-byte block (05b §2.2)
 {
     uint outer = ((p.y >> 5) * pitchMacro + (p.x >> 5)) << 6;
     uint inner = (((p.y >> 1) & 7u) << 3) | (p.x & 7u);
-    uint oi = (outer | inner) << 2;
+    uint oi = (outer | inner) << bytesLog2;
     uint bank = (p.y >> 4) & 1u;
     uint pipe = ((p.x >> 3) & 3u) ^ (((p.y >> 3) & 1u) << 1);
     return ((p.y & 1u) << 4) | (pipe << 6) | (bank << 11) | (oi & 15u) | (((oi >> 4) & 1u) << 5) |
@@ -474,6 +481,17 @@ float4 xe_rs_decode(uint v)
 {
     precise float2 r = float2(int2(v << 16, v) >> 16) * asfloat(0x3A800100u); // n * (32/32767)
     return float4(xe_max(r.x, -32.0), xe_max(r.y, -32.0), 0.0, 0.0);
+}
+)HLSL";
+            else if (key.sourceFormat == 14)
+                text += R"HLSL(
+float4 xe_rs_decode(uint v) { return float4(asfloat(v), 0.0, 0.0, 0.0); }
+)HLSL";
+            else if (key.sourceFormat == 3)
+                text += std::string(kEdramFloat7e3Hlsl) + R"HLSL(
+float4 xe_rs_decode(uint v)
+{
+    return float4(xe_f7e3_decode(v), xe_f7e3_decode(v >> 10), xe_f7e3_decode(v >> 20), float(v >> 30) * asfloat(0x3EAAAAABu));
 }
 )HLSL";
             else
@@ -570,6 +588,12 @@ void main(uint3 id : SV_DispatchThreadID)
             {
                 text += "    uint result = asuint(c.x);\n";
             }
+            else if (layout.half4)
+            {
+                // Two dwords, R and G then B and A as half floats (round to nearest even).
+                text += "    uint result = f32tof16(c.x) | (f32tof16(c.y) << 16);\n";
+                text += "    uint result2 = f32tof16(c.z) | (f32tof16(c.w) << 16);\n";
+            }
             else
             {
                 text += "    uint result = 0u;\n";
@@ -580,9 +604,18 @@ void main(uint3 id : SV_DispatchThreadID)
                                             layout.shift[ch]);
             }
         }
+        const bool half4 = !key.depth && !key.raw && key.destFormat == 32;
         if (key.endian)
+        {
             text += std::format("    result = xe_swap(result, {}u);\n", key.endian);
-        text += "    xe_rs_memory_store(xe_rs_dest.x + xe_rs_tiled(p, xe_rs_dest.y), result);\n}\n";
+            if (half4)
+                text += std::format("    result2 = xe_swap(result2, {}u);\n", key.endian);
+        }
+        text += std::format("    uint address = xe_rs_dest.x + xe_rs_tiled(p, xe_rs_dest.y, {}u);\n", half4 ? 3 : 2);
+        text += "    xe_rs_memory_store(address, result);\n";
+        if (half4)
+            text += "    xe_rs_memory_store(address + 4u, result2);\n";
+        text += "}\n";
         return text;
     }
 

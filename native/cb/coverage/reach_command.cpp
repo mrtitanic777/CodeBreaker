@@ -15,10 +15,17 @@
 #include "cb/formats/msx.hpp"
 #include "cb/formats/coleco.hpp"
 #include "cb/formats/atari2600.hpp"
+#include "cb/formats/atari5200.hpp"
 #include "cb/formats/atari7800.hpp"
 #include "cb/formats/cpc.hpp"
 #include "cb/formats/lynx.hpp"
+#include "cb/formats/pce.hpp"
+#include "cb/formats/snes.hpp"
 #include "cb/formats/neogeo.hpp"
+#include "cb/formats/dreamcast.hpp"
+#include "cb/formats/saturn.hpp"
+#include "cb/formats/ppc_program.hpp"
+#include "cb/formats/sega32x.hpp"
 #include "cb/formats/segacd.hpp"
 #include "cb/formats/nes.hpp"
 #include "cb/formats/pe.hpp"
@@ -36,10 +43,19 @@
 #include "cb/platforms/msx.hpp"
 #include "cb/platforms/coleco.hpp"
 #include "cb/platforms/atari2600.hpp"
+#include "cb/platforms/atari5200.hpp"
 #include "cb/platforms/atari7800.hpp"
 #include "cb/platforms/cpc.hpp"
 #include "cb/platforms/lynx.hpp"
+#include "cb/platforms/pce.hpp"
+#include "cb/platforms/snes.hpp"
 #include "cb/platforms/neogeo.hpp"
+#include "cb/platforms/dreamcast.hpp"
+#include "cb/platforms/saturn.hpp"
+#include "cb/platforms/gamecube.hpp"
+#include "cb/platforms/wii.hpp"
+#include "cb/platforms/wiiu.hpp"
+#include "cb/platforms/sega32x.hpp"
 #include "cb/platforms/segacd.hpp"
 #include "cb/platforms/nes.hpp"
 #include "cb/platforms/sms.hpp"
@@ -114,11 +130,20 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     probes.is_msx = [](const std::filesystem::path& p) { return formats::msx::probe(p); };
     probes.is_coleco = [](const std::filesystem::path& p) { return formats::coleco::probe(p); };
     probes.is_cpc = [](const std::filesystem::path& p) { return formats::cpc::probe(p); };
+    probes.is_atari5200 = [](const std::filesystem::path& p) { return formats::atari5200::probe(p); };
     probes.is_atari2600 = [](const std::filesystem::path& p) { return formats::atari2600::probe(p); };
     probes.is_atari7800 = [](const std::filesystem::path& p) { return formats::atari7800::probe(p); };
     probes.is_lynx = [](const std::filesystem::path& p) { return formats::lynx::probe(p); };
+    probes.is_pce = [](const std::filesystem::path& p) { return formats::pce::probe(p); };
+    probes.is_snes = [](const std::filesystem::path& p) { return formats::snes::probe(p); };
     probes.is_neogeo = [](const std::filesystem::path& p) { return formats::neogeo::probe(p); };
     probes.is_segacd = [](const std::filesystem::path& p) { return formats::segacd::probe(p); };
+    probes.is_sega32x = [](const std::filesystem::path& p) { return formats::sega32x::probe(p); };
+    probes.is_saturn = [](const std::filesystem::path& p) { return formats::saturn::probe(p); };
+    probes.is_dreamcast = [](const std::filesystem::path& p) { return formats::dreamcast::probe(p); };
+    probes.is_gamecube = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::GameCube); };
+    probes.is_wii = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::Wii); };
+    probes.is_wiiu = [](const std::filesystem::path& p) { return formats::ppc_program::probe(p, formats::ppc_program::Console::WiiU); };
     probes.is_zx = [](const std::filesystem::path& p) { return formats::zx::probe(p); };
     probes.is_java_module = [](const std::filesystem::path& p) { return verify::lanes::JavaLane::is_module(p); };
     probes.xex_basefile = [](const std::filesystem::path& p) { return p; };
@@ -131,11 +156,20 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     registry->add(platforms::msx());
     registry->add(platforms::coleco());
     registry->add(platforms::cpc());
+    registry->add(platforms::atari5200());
     registry->add(platforms::atari2600());
     registry->add(platforms::atari7800());
     registry->add(platforms::lynx());
+    registry->add(platforms::pce());
+    registry->add(platforms::snes());
     registry->add(platforms::neogeo());
     registry->add(platforms::segacd());
+    registry->add(platforms::sega32x());
+    registry->add(platforms::saturn());
+    registry->add(platforms::dreamcast());
+    registry->add(platforms::gamecube());
+    registry->add(platforms::wii());
+    registry->add(platforms::wiiu());
     registry->add(platforms::zx());
     registry->add(platforms::genesis());
     registry->add(platforms::ps1());

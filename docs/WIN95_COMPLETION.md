@@ -281,8 +281,75 @@ is wanted. `pack_holes` takes `word_aligned` (default true: its tests are unchan
 Proof (the rebuilt compiler of item 8 and this build; unit tests `decompile.describe` 19/19 and `build.module` 19/19 pass):
 `regress all15 --runs 2`: PASS, PASS. KRNL386 C 18 -> 21, GDI 123 -> 130 (gated 23 -> 16), USER 542 -> 561, SOUND 2 -> 6,
 SYSTEM 0 -> 2, VER 23 -> 24; since the start of the session +37 functions in C, none lost.
-The install with the rebuilt compiler (the third attempt, `win95track-install-ow2`) was started at 1:04 AM; see the end of this
-section for its result if it has finished.
+`regress install --runs 1` with the fork's rebuilt compiler (CB_OPENWATCOM = a copy of rel with its wccd.dll and wcc.exe; the installed
+exe, so without the pad change): **PASS**, 1h05m (28m for the install itself), Setup to the desktop on all 22 modules (USER C 556,
+GDI 128, SOUND 6, KRNL386 20), screen state/phase3/shots/win95track-install-ow2-install-1.png. So the compiler change is
+install-proven and rel/binnt64 may take its wccd.dll and wcc.exe. The pad change was then proven by `regress install --runs 1` too (a private copy of the shared build's exe with the change and
+the installed compiler; `win95track-install-pad`): **PASS**, 1h26m, Setup to the desktop on all 22 modules (USER C 563 / gated 41,
+GDI 130 / 16, SYSTEM 2, SOUND 6); screen state/phase3/shots/win95track-install-pad-install-1.png.
+
+### 11. The compiler is in the real toolchain
+
+rel/binnt64/wccd.dll and wcc.exe replaced by the fork's builds (the ones the install above passed with; 02:09 AM, Nov 15), the
+originals kept in rel/binnt64/backup-20261115/. Built from the fork commit `7a2406dc` (branch `codebreaker` of
+github.com/mrtitanic777/open-watcom-v2, bld/cg/intel/c/x86proc.c: the frame is omitted for a routine whose stack parameters no
+instruction names), with the VISUALC host and `wmake` in bld/cg/intel/i86/ntx64.dll and bld/cc/i86/ntx64.dll (see item 8).
+
+### 12. "Reads a variable nothing sets", the biggest group, read (USER 43, GDI 10): what it is and where it belongs
+
+Counted by the variable (USER / GDI): `in_AX` 15 / 0, `in_DX` 3+1 / 6, `extraout_DX|AX|AH` 8 / 0, `unaff_BP|SI|DI` 4 / 3,
+stack temporaries 8 / 1, the rest singles.
+
+- GDI `in_DX` (6): a second result word of a callee whose body is shared by several entries (`sub_1_1260` / `sub_1_1268`:
+  `mov cx,..; mov dx,..; jmp` into one body that returns DX:AX). The `results()` rule (item 7) does not take a callee whose DX is set
+  on only some ways; here DX is set on every way but the entry code of the *other* entry sets it before the jump into the body, which
+  `DxReturns::every_way` does not follow across the jump. **Tried and found not to be the cause**: resolving a jump into another
+  function's middle to that function (`handed_on` in `DxReturns::every_way`) changed nothing in GDI (C 130, never-set 10, same
+  as before), and the change was taken out again. The body of 1:1268 is not a plain function: it leaves through `jmp 0x52D6` /
+  `jmp 0x5281` into other functions' code and calls a helper through `push cs / call near`; it needs reading by hand (or the
+  next step: which of its ways `every_way` refuses, printed), not a rule.
+- USER `in_AX` (15), sample `sub_1_441D`: `if (flag) { for (p = a2->next; p; p = p->next) if (p->f_1a || p->f_25 & 0x10) return in_AX; }
+  return sub_1_444C(a1, a2);`. On the early return the original leaves AX as it came in: the source function has a path with no value
+  (the C author's `return;` in an `int` function), so the callers cannot depend on it, and the C here reads the register it never
+  set. Not a live-in parameter in the `__fastcall` sense (`register_arguments` reads only the straight-line start): it is
+  "AX unspecified on this path". Where it belongs: the C back end (c_text), the value of a read of an entry register that only feeds
+  a `return` is the result left unspecified, to be written as the `AX` the function last computed (or 0) -- then the gate
+  decides, per function, whether callers see a difference. Not done: it needs the gate run on the 15 and a choice of what to return.
+- `extraout_*` (8 USER): the same as GDI's `in_DX` at call sites that read the second result of a callee the description gives one word.
+- `unaff_BP/SI/DI` (7): frame registers read without being set (a function that works in its caller's frame or keeps
+  SI/DI for its caller): `origin` calls most of these assembly already; they stay assembly.
+
+### 13. USER `in_AX`: the unspecified result written as 0 (module_build16.cpp `unspecified_entry_result`)
+
+As decided: where the only uses of `in_AX` in a function's text are its declaration and `return in_AX;` paths (never set, never read
+otherwise), each such return is written `return 0; /* the original left AX as it came in: no caller reads it */` and the
+declaration is dropped; no parameter is invented. Done in `compile_functions`, before the text is compiled, so the compiler, the
+never-set check and the gate all see the final text; the gate then decides per function (a function whose verdict changed
+goes back to assembly by the gate's own rule).
+
+Proof: direct `build` of USER: never-set 43 -> 28 (15 converted from "kept": `in_AX` all went). `regress all15 --runs 2`:
+PASS, PASS (8m20s): USER C 563 -> 569 / gated 41 (the gate sent back the ones it found different; the net gain is 6),
+every other module unchanged. (A first all15 run of the same exe failed with USER "NOT LINKED ... No such file": a
+collision of two builds in the shared folder state/build/user.exe, mine and another session's, and passed on the rerun;
+builds into state/build/<module> are not isolated between sessions.) `regress install` started with the same exe: result below.
+
+### 14. USER's 20 "calls a function leaving DS changed" (also GDI 3, KEYBOARD 1): read, not converted
+
+The rule is `scan` in build/module_scan.cpp (a caller of any function whose instructions load DS and do not put it back is kept as
+its instructions: KERNEL's sub_2_2437 `push ds; call 0170 ... pop ds` faulted with the C, which kept the callee's DS). It is a
+blanket: it does not look at what the caller does after the call. A caller whose original restores DS itself (`pop ds`, or `mov ds, ..`
+before any DS access) is correct as C if the C reloads DS after the call; one that goes on with the callee's DS cannot be written
+in C at all. So the rule needs two halves: (1) classify each such call site from the caller's instructions after it (restored
+before the next DS use / used with the new DS); (2) for the restored sites the C gets a DS reload after the call (a
+`codebreaker_ds()`-style statement the build already has for `__loadds` functions). Not done: (2) changes the C of every caller of
+such a callee, and each needs the gate.
+
+Not converted (the GDI `in_DX` shared-body entries; they need `DxReturns` read by hand, see item 12):
+
+
+Next (item 3 of the lead's list, not started): GDI's remaining recorded reasons (16 gated, 10 never-set shared-body entries,
+6 CL-to-helper) and USER's (73 no-room, 43 never-set, 20 DS-leaving callees); and KEYBOARD's three stubs (27 to 63 bytes:
+`SCREENSWITCHENABLE`, `ENABLEKBSYSREQ`, `INQUIRE`), which still find no room.
 
 ### Where this stops
 

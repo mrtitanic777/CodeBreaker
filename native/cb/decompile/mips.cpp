@@ -1,4 +1,4 @@
-            return insn.imm == 0 ? m// cb/decompile/mips.cpp -- the MIPS R3000A's and R4300i's instructions: a table of every encoding, read both ways (mips.hpp).
+// cb/decompile/mips.cpp -- the MIPS R3000A's and R4300i's instructions: a table of every encoding, read both ways (mips.hpp).
 
 #include "cb/decompile/mips.hpp"
 
@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "cb/core/text.hpp"
+#include "cb/decompile/mips_ext.hpp"
 
 namespace cb::decompile::mips {
 
@@ -18,8 +19,14 @@ namespace {
 
 // ---- the table --------------------------------------------------------------------------------------------------
 
-// Which processors have an instruction.
-enum class Isa : std::uint8_t { Both, R3000A, R4300 };
+// Which processors have an instruction: a set of bits, one per Variant.
+struct Isa {
+    static constexpr std::uint8_t R3000A = 1, R4300 = 2, R5900 = 4, Allegrex = 8, Both = 15;
+    static constexpr std::uint8_t Mips3 = R4300 | R5900;                 // MIPS III's 64-bit integer instructions
+    static constexpr std::uint8_t Mips32 = R4300 | R5900 | Allegrex;     // what MIPS II added: branch likely, traps, SYNC, CACHE, the FPU's moves and branches
+    static constexpr std::uint8_t Ee = R5900;
+    static constexpr std::uint8_t Psp = Allegrex;
+};
 
 struct Def {
     std::string_view name;
@@ -28,11 +35,11 @@ struct Def {
     std::uint32_t mask;    // ... and which bits those are (everything else is an operand)
     Flow flow = Flow::None;
     bool delay = false;
-    Isa isa = Isa::Both;
+    std::uint8_t isa = Isa::Both;
     bool likely = false;   // a branch likely
 };
 
-constexpr bool has(Isa isa, Variant v) { return isa == Isa::Both || (isa == Isa::R3000A) == (v == Variant::R3000A); }
+constexpr bool has(std::uint8_t isa, Variant v) { return (isa & (1u << static_cast<unsigned>(v))) != 0; }
 
 constexpr std::uint32_t op(std::uint32_t o) { return o << 26; }
 constexpr std::uint32_t kSpecialMask = 0xFC00003F;   // opcode and function
@@ -113,82 +120,215 @@ constexpr auto kDefs = std::to_array<Def>({
 
 // What the R4300i has beyond MIPS I (and without the GTE): MIPS II's branch likely and traps, MIPS III's 64-bit integers, its system
 // control coprocessor's TLB and exception return, and the FPU's moves, loads, stores and branches; the FPU's arithmetic is made in `fpu_defs`.
-constexpr std::uint32_t kTrapMask = 0xFC00FFFF;      // opcode, function and the (unused) code field
+constexpr std::uint32_t kTrapMask = 0xFC00003F;      // opcode and function (the code field, bits 15-6, is the program's own: the compilers put 7 in the divide-by-zero check)
 constexpr auto kDefs4300 = std::to_array<Def>({
-    {"sync", Form::None, 0x0F, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
-    {"dsllv", Form::RdRtRs, 0x14, kNoSa, Flow::None, false, Isa::R4300},
-    {"dsrlv", Form::RdRtRs, 0x16, kNoSa, Flow::None, false, Isa::R4300},
-    {"dsrav", Form::RdRtRs, 0x17, kNoSa, Flow::None, false, Isa::R4300},
+    {"sync", Form::None, 0x0F, 0xFFFFFFFF, Flow::None, false, Isa::Mips32},
+    {"dsllv", Form::RdRtRs, 0x14, kNoSa, Flow::None, false, Isa::Mips3},
+    {"dsrlv", Form::RdRtRs, 0x16, kNoSa, Flow::None, false, Isa::Mips3},
+    {"dsrav", Form::RdRtRs, 0x17, kNoSa, Flow::None, false, Isa::Mips3},
     {"dmult", Form::RsRt, 0x1C, 0xFC00FFFF, Flow::None, false, Isa::R4300},
     {"dmultu", Form::RsRt, 0x1D, 0xFC00FFFF, Flow::None, false, Isa::R4300},
     {"ddiv", Form::RsRt, 0x1E, 0xFC00FFFF, Flow::None, false, Isa::R4300},
     {"ddivu", Form::RsRt, 0x1F, 0xFC00FFFF, Flow::None, false, Isa::R4300},
-    {"dadd", Form::RdRsRt, 0x2C, kNoSa, Flow::None, false, Isa::R4300},
-    {"daddu", Form::RdRsRt, 0x2D, kNoSa, Flow::None, false, Isa::R4300},
-    {"dsub", Form::RdRsRt, 0x2E, kNoSa, Flow::None, false, Isa::R4300},
-    {"dsubu", Form::RdRsRt, 0x2F, kNoSa, Flow::None, false, Isa::R4300},
-    {"tge", Form::RsRt, 0x30, kTrapMask, Flow::None, false, Isa::R4300},
-    {"tgeu", Form::RsRt, 0x31, kTrapMask, Flow::None, false, Isa::R4300},
-    {"tlt", Form::RsRt, 0x32, kTrapMask, Flow::None, false, Isa::R4300},
-    {"tltu", Form::RsRt, 0x33, kTrapMask, Flow::None, false, Isa::R4300},
-    {"teq", Form::RsRt, 0x34, kTrapMask, Flow::None, false, Isa::R4300},
-    {"tne", Form::RsRt, 0x36, kTrapMask, Flow::None, false, Isa::R4300},
-    {"dsll", Form::RdRtSa, 0x38, 0xFFE0003F, Flow::None, false, Isa::R4300},
-    {"dsrl", Form::RdRtSa, 0x3A, 0xFFE0003F, Flow::None, false, Isa::R4300},
-    {"dsra", Form::RdRtSa, 0x3B, 0xFFE0003F, Flow::None, false, Isa::R4300},
-    {"dsll32", Form::RdRtSa, 0x3C, 0xFFE0003F, Flow::None, false, Isa::R4300},
-    {"dsrl32", Form::RdRtSa, 0x3E, 0xFFE0003F, Flow::None, false, Isa::R4300},
-    {"dsra32", Form::RdRtSa, 0x3F, 0xFFE0003F, Flow::None, false, Isa::R4300},
-    {"bltzl", Form::RsBranch, op(1) | (2u << 16), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
-    {"bgezl", Form::RsBranch, op(1) | (3u << 16), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
-    {"tgei", Form::RsImm, op(1) | (8u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
-    {"tgeiu", Form::RsImm, op(1) | (9u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
-    {"tlti", Form::RsImm, op(1) | (10u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
-    {"tltiu", Form::RsImm, op(1) | (11u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
-    {"teqi", Form::RsImm, op(1) | (12u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
-    {"tnei", Form::RsImm, op(1) | (14u << 16), kRegimmMask, Flow::None, false, Isa::R4300},
-    {"bltzall", Form::RsBranch, op(1) | (18u << 16), kRegimmMask, Flow::Call, true, Isa::R4300, true},
-    {"bgezall", Form::RsBranch, op(1) | (19u << 16), kRegimmMask, Flow::Call, true, Isa::R4300, true},
-    {"beql", Form::RsRtBranch, op(0x14), 0xFC000000, Flow::Branch, true, Isa::R4300, true},
-    {"bnel", Form::RsRtBranch, op(0x15), 0xFC000000, Flow::Branch, true, Isa::R4300, true},
-    {"blezl", Form::RsBranch, op(0x16), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
-    {"bgtzl", Form::RsBranch, op(0x17), kRegimmMask, Flow::Branch, true, Isa::R4300, true},
-    {"daddi", Form::RtRsImm, op(0x18), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"daddiu", Form::RtRsImm, op(0x19), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"ldl", Form::RtMem, op(0x1A), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"ldr", Form::RtMem, op(0x1B), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"dadd", Form::RdRsRt, 0x2C, kNoSa, Flow::None, false, Isa::Mips3},
+    {"daddu", Form::RdRsRt, 0x2D, kNoSa, Flow::None, false, Isa::Mips3},
+    {"dsub", Form::RdRsRt, 0x2E, kNoSa, Flow::None, false, Isa::Mips3},
+    {"dsubu", Form::RdRsRt, 0x2F, kNoSa, Flow::None, false, Isa::Mips3},
+    {"tge", Form::RsRtCode, 0x30, kTrapMask, Flow::None, false, Isa::Mips32},
+    {"tgeu", Form::RsRtCode, 0x31, kTrapMask, Flow::None, false, Isa::Mips32},
+    {"tlt", Form::RsRtCode, 0x32, kTrapMask, Flow::None, false, Isa::Mips32},
+    {"tltu", Form::RsRtCode, 0x33, kTrapMask, Flow::None, false, Isa::Mips32},
+    {"teq", Form::RsRtCode, 0x34, kTrapMask, Flow::None, false, Isa::Mips32},
+    {"tne", Form::RsRtCode, 0x36, kTrapMask, Flow::None, false, Isa::Mips32},
+    {"dsll", Form::RdRtSa, 0x38, 0xFFE0003F, Flow::None, false, Isa::Mips3},
+    {"dsrl", Form::RdRtSa, 0x3A, 0xFFE0003F, Flow::None, false, Isa::Mips3},
+    {"dsra", Form::RdRtSa, 0x3B, 0xFFE0003F, Flow::None, false, Isa::Mips3},
+    {"dsll32", Form::RdRtSa, 0x3C, 0xFFE0003F, Flow::None, false, Isa::Mips3},
+    {"dsrl32", Form::RdRtSa, 0x3E, 0xFFE0003F, Flow::None, false, Isa::Mips3},
+    {"dsra32", Form::RdRtSa, 0x3F, 0xFFE0003F, Flow::None, false, Isa::Mips3},
+    {"bltzl", Form::RsBranch, op(1) | (2u << 16), kRegimmMask, Flow::Branch, true, Isa::Mips32, true},
+    {"bgezl", Form::RsBranch, op(1) | (3u << 16), kRegimmMask, Flow::Branch, true, Isa::Mips32, true},
+    {"tgei", Form::RsImm, op(1) | (8u << 16), kRegimmMask, Flow::None, false, Isa::Mips32},
+    {"tgeiu", Form::RsImm, op(1) | (9u << 16), kRegimmMask, Flow::None, false, Isa::Mips32},
+    {"tlti", Form::RsImm, op(1) | (10u << 16), kRegimmMask, Flow::None, false, Isa::Mips32},
+    {"tltiu", Form::RsImm, op(1) | (11u << 16), kRegimmMask, Flow::None, false, Isa::Mips32},
+    {"teqi", Form::RsImm, op(1) | (12u << 16), kRegimmMask, Flow::None, false, Isa::Mips32},
+    {"tnei", Form::RsImm, op(1) | (14u << 16), kRegimmMask, Flow::None, false, Isa::Mips32},
+    {"bltzall", Form::RsBranch, op(1) | (18u << 16), kRegimmMask, Flow::Call, true, Isa::Mips32, true},
+    {"bgezall", Form::RsBranch, op(1) | (19u << 16), kRegimmMask, Flow::Call, true, Isa::Mips32, true},
+    {"beql", Form::RsRtBranch, op(0x14), 0xFC000000, Flow::Branch, true, Isa::Mips32, true},
+    {"bnel", Form::RsRtBranch, op(0x15), 0xFC000000, Flow::Branch, true, Isa::Mips32, true},
+    {"blezl", Form::RsBranch, op(0x16), kRegimmMask, Flow::Branch, true, Isa::Mips32, true},
+    {"bgtzl", Form::RsBranch, op(0x17), kRegimmMask, Flow::Branch, true, Isa::Mips32, true},
+    {"daddi", Form::RtRsImm, op(0x18), 0xFC000000, Flow::None, false, Isa::Mips3},
+    {"daddiu", Form::RtRsImm, op(0x19), 0xFC000000, Flow::None, false, Isa::Mips3},
+    {"ldl", Form::RtMem, op(0x1A), 0xFC000000, Flow::None, false, Isa::Mips3},
+    {"ldr", Form::RtMem, op(0x1B), 0xFC000000, Flow::None, false, Isa::Mips3},
     {"dmfc0", Form::RtCop, op(0x10) | (1u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
     {"dmtc0", Form::RtCop, op(0x10) | (5u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
-    {"tlbr", Form::None, 0x42000001, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
-    {"tlbwi", Form::None, 0x42000002, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
-    {"tlbwr", Form::None, 0x42000006, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
-    {"tlbp", Form::None, 0x42000008, 0xFFFFFFFF, Flow::None, false, Isa::R4300},
-    {"eret", Form::None, 0x42000018, 0xFFFFFFFF, Flow::Indirect, false, Isa::R4300},
-    {"mfc1", Form::RtFs, op(0x11) | (0u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"tlbr", Form::None, 0x42000001, 0xFFFFFFFF, Flow::None, false, Isa::Mips3},
+    {"tlbwi", Form::None, 0x42000002, 0xFFFFFFFF, Flow::None, false, Isa::Mips3},
+    {"tlbwr", Form::None, 0x42000006, 0xFFFFFFFF, Flow::None, false, Isa::Mips3},
+    {"tlbp", Form::None, 0x42000008, 0xFFFFFFFF, Flow::None, false, Isa::Mips3},
+    {"eret", Form::None, 0x42000018, 0xFFFFFFFF, Flow::Indirect, false, Isa::Mips32},
+    {"mfc1", Form::RtFs, op(0x11) | (0u << 21), 0xFFE007FF, Flow::None, false, Isa::Mips32},
     {"dmfc1", Form::RtFs, op(0x11) | (1u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
-    {"cfc1", Form::RtCop, op(0x11) | (2u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
-    {"mtc1", Form::RtFs, op(0x11) | (4u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
+    {"cfc1", Form::RtCop, op(0x11) | (2u << 21), 0xFFE007FF, Flow::None, false, Isa::Mips32},
+    {"mtc1", Form::RtFs, op(0x11) | (4u << 21), 0xFFE007FF, Flow::None, false, Isa::Mips32},
     {"dmtc1", Form::RtFs, op(0x11) | (5u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
-    {"ctc1", Form::RtCop, op(0x11) | (6u << 21), 0xFFE007FF, Flow::None, false, Isa::R4300},
-    {"bc1f", Form::CopBranch, op(0x11) | (8u << 21) | (0u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300},
-    {"bc1t", Form::CopBranch, op(0x11) | (8u << 21) | (1u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300},
-    {"bc1fl", Form::CopBranch, op(0x11) | (8u << 21) | (2u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300, true},
-    {"bc1tl", Form::CopBranch, op(0x11) | (8u << 21) | (3u << 16), 0xFFFF0000, Flow::Branch, true, Isa::R4300, true},
-    {"lwu", Form::RtMem, op(0x27), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"sdl", Form::RtMem, op(0x2C), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"sdr", Form::RtMem, op(0x2D), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"cache", Form::OpMem, op(0x2F), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"ll", Form::RtMem, op(0x30), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"lwc1", Form::FtMem, op(0x31), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"ctc1", Form::RtCop, op(0x11) | (6u << 21), 0xFFE007FF, Flow::None, false, Isa::Mips32},
+    {"bc1f", Form::CopBranch, op(0x11) | (8u << 21) | (0u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Mips32},
+    {"bc1t", Form::CopBranch, op(0x11) | (8u << 21) | (1u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Mips32},
+    {"bc1fl", Form::CopBranch, op(0x11) | (8u << 21) | (2u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Mips32, true},
+    {"bc1tl", Form::CopBranch, op(0x11) | (8u << 21) | (3u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Mips32, true},
+    {"lwu", Form::RtMem, op(0x27), 0xFC000000, Flow::None, false, Isa::Mips3},
+    {"sdl", Form::RtMem, op(0x2C), 0xFC000000, Flow::None, false, Isa::Mips3},
+    {"sdr", Form::RtMem, op(0x2D), 0xFC000000, Flow::None, false, Isa::Mips3},
+    {"cache", Form::OpMem, op(0x2F), 0xFC000000, Flow::None, false, Isa::Mips32},
+    {"ll", Form::RtMem, op(0x30), 0xFC000000, Flow::None, false, Isa::R4300 | Isa::Allegrex},
+    {"lwc1", Form::FtMem, op(0x31), 0xFC000000, Flow::None, false, Isa::Mips32},
     {"lld", Form::RtMem, op(0x34), 0xFC000000, Flow::None, false, Isa::R4300},
     {"ldc1", Form::FtMem, op(0x35), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"ld", Form::RtMem, op(0x37), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"sc", Form::RtMem, op(0x38), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"swc1", Form::FtMem, op(0x39), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"ld", Form::RtMem, op(0x37), 0xFC000000, Flow::None, false, Isa::Mips3},
+    {"sc", Form::RtMem, op(0x38), 0xFC000000, Flow::None, false, Isa::R4300 | Isa::Allegrex},
+    {"swc1", Form::FtMem, op(0x39), 0xFC000000, Flow::None, false, Isa::Mips32},
     {"scd", Form::RtMem, op(0x3C), 0xFC000000, Flow::None, false, Isa::R4300},
     {"sdc1", Form::FtMem, op(0x3D), 0xFC000000, Flow::None, false, Isa::R4300},
-    {"sd", Form::RtMem, op(0x3F), 0xFC000000, Flow::None, false, Isa::R4300},
+    {"sd", Form::RtMem, op(0x3F), 0xFC000000, Flow::None, false, Isa::Mips3},
 });
+
+// What the PlayStation 2's R5900 and the PSP's Allegrex have beyond the above, that the table says in one entry each: MIPS IV's conditional
+// moves, the Emotion Engine's shift amount register, LQ and SQ, the three-operand and second-pipeline multiplies, the multimedia
+// instructions' non-uniform ones (the uniform ones are made from `kMmiOps`), COP0's EI and DI, VU0's moves and branches (its macro-mode
+// instructions are in mips_ext); the Allegrex's counting, rotating and sign-extending instructions, MADD MSUB MAX MIN, HALT and the
+// internal-cache moves.
+constexpr std::uint32_t kMmiRsRt = 0xFC00FFFF, kMmiRdRsRt = 0xFC0007FF, kMmiRdRt = 0xFFE007FF, kMmiRd = 0xFFFF07FF, kMmiRs = 0xFC1FFFFF;
+constexpr auto kDefsExtra = std::to_array<Def>({
+    {"movz", Form::RdRsRt, 0x0A, kNoSa, Flow::None, false, Isa::Ee | Isa::Psp},
+    {"movn", Form::RdRsRt, 0x0B, kNoSa, Flow::None, false, Isa::Ee | Isa::Psp},
+    {"mfsa", Form::Rd, 0x28, 0xFFFF07FF, Flow::None, false, Isa::Ee},
+    {"mtsa", Form::Rs, 0x29, 0xFC1FFFFF, Flow::None, false, Isa::Ee},
+    {"mtsab", Form::RsImm, op(1) | (0x18u << 16), kRegimmMask, Flow::None, false, Isa::Ee},
+    {"mtsah", Form::RsImm, op(1) | (0x19u << 16), kRegimmMask, Flow::None, false, Isa::Ee},
+    {"lq", Form::RtMem, op(0x1E), 0xFC000000, Flow::None, false, Isa::Ee},
+    {"sq", Form::RtMem, op(0x1F), 0xFC000000, Flow::None, false, Isa::Ee},
+    {"pref", Form::OpMem, op(0x33), 0xFC000000, Flow::None, false, Isa::Ee},
+    {"ei", Form::None, 0x42000038, 0xFFFFFFFF, Flow::None, false, Isa::Ee},
+    {"di", Form::None, 0x42000039, 0xFFFFFFFF, Flow::None, false, Isa::Ee},
+    {"bc0f", Form::CopBranch, op(0x10) | (8u << 21) | (0u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee},
+    {"bc0t", Form::CopBranch, op(0x10) | (8u << 21) | (1u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee},
+    {"bc0fl", Form::CopBranch, op(0x10) | (8u << 21) | (2u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee, true},
+    {"bc0tl", Form::CopBranch, op(0x10) | (8u << 21) | (3u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee, true},
+    {"qmfc2", Form::RtCop, op(0x12) | (1u << 21), 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"qmfc2.i", Form::RtCop, op(0x12) | (1u << 21) | 1, 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"cfc2", Form::RtCop, op(0x12) | (2u << 21), 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"cfc2.i", Form::RtCop, op(0x12) | (2u << 21) | 1, 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"qmtc2", Form::RtCop, op(0x12) | (5u << 21), 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"qmtc2.i", Form::RtCop, op(0x12) | (5u << 21) | 1, 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"ctc2", Form::RtCop, op(0x12) | (6u << 21), 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"ctc2.i", Form::RtCop, op(0x12) | (6u << 21) | 1, 0xFFE007FF, Flow::None, false, Isa::Ee},
+    {"bc2f", Form::CopBranch, op(0x12) | (8u << 21) | (0u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee},
+    {"bc2t", Form::CopBranch, op(0x12) | (8u << 21) | (1u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee},
+    {"bc2fl", Form::CopBranch, op(0x12) | (8u << 21) | (2u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee, true},
+    {"bc2tl", Form::CopBranch, op(0x12) | (8u << 21) | (3u << 16), 0xFFFF0000, Flow::Branch, true, Isa::Ee, true},
+    // the multiplies: two operands (the result in HI and LO) or three (the low word also in RD), and the second pipeline's
+    {"mult", Form::RdRsRt, 0x18, kNoSa, Flow::None, false, Isa::Ee},
+    {"multu", Form::RdRsRt, 0x19, kNoSa, Flow::None, false, Isa::Ee},
+    {"madd", Form::RsRt, op(0x1C) | 0x00, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"madd", Form::RdRsRt, op(0x1C) | 0x00, kMmiRdRsRt, Flow::None, false, Isa::Ee},
+    {"maddu", Form::RsRt, op(0x1C) | 0x01, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"maddu", Form::RdRsRt, op(0x1C) | 0x01, kMmiRdRsRt, Flow::None, false, Isa::Ee},
+    {"mult1", Form::RsRt, op(0x1C) | 0x18, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"mult1", Form::RdRsRt, op(0x1C) | 0x18, kMmiRdRsRt, Flow::None, false, Isa::Ee},
+    {"multu1", Form::RsRt, op(0x1C) | 0x19, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"multu1", Form::RdRsRt, op(0x1C) | 0x19, kMmiRdRsRt, Flow::None, false, Isa::Ee},
+    {"div1", Form::RsRt, op(0x1C) | 0x1A, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"divu1", Form::RsRt, op(0x1C) | 0x1B, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"madd1", Form::RsRt, op(0x1C) | 0x20, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"madd1", Form::RdRsRt, op(0x1C) | 0x20, kMmiRdRsRt, Flow::None, false, Isa::Ee},
+    {"maddu1", Form::RsRt, op(0x1C) | 0x21, kMmiRsRt, Flow::None, false, Isa::Ee},
+    {"maddu1", Form::RdRsRt, op(0x1C) | 0x21, kMmiRdRsRt, Flow::None, false, Isa::Ee},
+    {"plzcw", Form::RdRs, op(0x1C) | 0x04, 0xFC1F07FF, Flow::None, false, Isa::Ee},
+    {"mfhi1", Form::Rd, op(0x1C) | 0x10, kMmiRd, Flow::None, false, Isa::Ee},
+    {"mthi1", Form::Rs, op(0x1C) | 0x11, kMmiRs, Flow::None, false, Isa::Ee},
+    {"mflo1", Form::Rd, op(0x1C) | 0x12, kMmiRd, Flow::None, false, Isa::Ee},
+    {"mtlo1", Form::Rs, op(0x1C) | 0x13, kMmiRs, Flow::None, false, Isa::Ee},
+    {"pmfhl.lw", Form::Rd, op(0x1C) | 0x30 | (0u << 6), kMmiRd, Flow::None, false, Isa::Ee},
+    {"pmfhl.uw", Form::Rd, op(0x1C) | 0x30 | (1u << 6), kMmiRd, Flow::None, false, Isa::Ee},
+    {"pmfhl.slw", Form::Rd, op(0x1C) | 0x30 | (2u << 6), kMmiRd, Flow::None, false, Isa::Ee},
+    {"pmfhl.lh", Form::Rd, op(0x1C) | 0x30 | (3u << 6), kMmiRd, Flow::None, false, Isa::Ee},
+    {"pmfhl.sh", Form::Rd, op(0x1C) | 0x30 | (4u << 6), kMmiRd, Flow::None, false, Isa::Ee},
+    {"pmthl.lw", Form::Rs, op(0x1C) | 0x31, kMmiRs, Flow::None, false, Isa::Ee},
+    {"psllh", Form::RdRtSa, op(0x1C) | 0x34, 0xFFE0003F, Flow::None, false, Isa::Ee},
+    {"psrlh", Form::RdRtSa, op(0x1C) | 0x36, 0xFFE0003F, Flow::None, false, Isa::Ee},
+    {"psrah", Form::RdRtSa, op(0x1C) | 0x37, 0xFFE0003F, Flow::None, false, Isa::Ee},
+    {"psllw", Form::RdRtSa, op(0x1C) | 0x3C, 0xFFE0003F, Flow::None, false, Isa::Ee},
+    {"psrlw", Form::RdRtSa, op(0x1C) | 0x3E, 0xFFE0003F, Flow::None, false, Isa::Ee},
+    {"psraw", Form::RdRtSa, op(0x1C) | 0x3F, 0xFFE0003F, Flow::None, false, Isa::Ee},
+    // the Allegrex
+    {"clz", Form::RdRs, 0x16, 0xFC1F07FF, Flow::None, false, Isa::Psp},
+    {"clo", Form::RdRs, 0x17, 0xFC1F07FF, Flow::None, false, Isa::Psp},
+    {"madd", Form::RsRt, 0x1C, 0xFC00FFFF, Flow::None, false, Isa::Psp},
+    {"maddu", Form::RsRt, 0x1D, 0xFC00FFFF, Flow::None, false, Isa::Psp},
+    {"max", Form::RdRsRt, 0x2C, kNoSa, Flow::None, false, Isa::Psp},
+    {"min", Form::RdRsRt, 0x2D, kNoSa, Flow::None, false, Isa::Psp},
+    {"msub", Form::RsRt, 0x2E, 0xFC00FFFF, Flow::None, false, Isa::Psp},
+    {"msubu", Form::RsRt, 0x2F, 0xFC00FFFF, Flow::None, false, Isa::Psp},
+    {"rotr", Form::RdRtSa, 0x00200002, 0xFFE0003F, Flow::None, false, Isa::Psp},
+    {"rotrv", Form::RdRtRs, 0x46, kNoSa, Flow::None, false, Isa::Psp},
+    {"wsbh", Form::RdRt, 0x7C0000A0, 0xFFE007FF, Flow::None, false, Isa::Psp},
+    {"wsbw", Form::RdRt, 0x7C0000E0, 0xFFE007FF, Flow::None, false, Isa::Psp},
+    {"seb", Form::RdRt, 0x7C000420, 0xFFE007FF, Flow::None, false, Isa::Psp},
+    {"bitrev", Form::RdRt, 0x7C000520, 0xFFE007FF, Flow::None, false, Isa::Psp},
+    {"seh", Form::RdRt, 0x7C000620, 0xFFE007FF, Flow::None, false, Isa::Psp},
+    {"halt", Form::None, 0x70000000, 0xFFFFFFFF, Flow::Halt, false, Isa::Psp},
+    {"mfic", Form::RtCop, 0x70000024, 0xFFE007FF, Flow::None, false, Isa::Psp},
+    {"mtic", Form::RtCop, 0x70000026, 0xFFE007FF, Flow::None, false, Isa::Psp},
+});
+
+// The multimedia instructions that follow one pattern: the opcode (0x1C), the group's function (MMI0 0x08, MMI1 0x28, MMI2 0x09, MMI3 0x29) and
+// the sub-function in the shift amount field.
+struct MmiOp {
+    std::string_view name;
+    std::uint32_t function;
+    std::uint32_t sub;
+    Form form;
+};
+constexpr std::uint32_t kMmi0 = 0x08, kMmi1 = 0x28, kMmi2 = 0x09, kMmi3 = 0x29;
+constexpr auto kMmiOps = std::to_array<MmiOp>({
+    {"paddw", kMmi0, 0x00, Form::RdRsRt},  {"psubw", kMmi0, 0x01, Form::RdRsRt},  {"pcgtw", kMmi0, 0x02, Form::RdRsRt},  {"pmaxw", kMmi0, 0x03, Form::RdRsRt},
+    {"paddh", kMmi0, 0x04, Form::RdRsRt},  {"psubh", kMmi0, 0x05, Form::RdRsRt},  {"pcgth", kMmi0, 0x06, Form::RdRsRt},  {"pmaxh", kMmi0, 0x07, Form::RdRsRt},
+    {"paddb", kMmi0, 0x08, Form::RdRsRt},  {"psubb", kMmi0, 0x09, Form::RdRsRt},  {"pcgtb", kMmi0, 0x0A, Form::RdRsRt},  {"paddsw", kMmi0, 0x10, Form::RdRsRt},
+    {"psubsw", kMmi0, 0x11, Form::RdRsRt}, {"pextlw", kMmi0, 0x12, Form::RdRsRt}, {"ppacw", kMmi0, 0x13, Form::RdRsRt},  {"paddsh", kMmi0, 0x14, Form::RdRsRt},
+    {"psubsh", kMmi0, 0x15, Form::RdRsRt}, {"pextlh", kMmi0, 0x16, Form::RdRsRt}, {"ppach", kMmi0, 0x17, Form::RdRsRt},  {"paddsb", kMmi0, 0x18, Form::RdRsRt},
+    {"psubsb", kMmi0, 0x19, Form::RdRsRt}, {"pextlb", kMmi0, 0x1A, Form::RdRsRt}, {"ppacb", kMmi0, 0x1B, Form::RdRsRt},  {"pext5", kMmi0, 0x1E, Form::RdRt},
+    {"ppac5", kMmi0, 0x1F, Form::RdRt},
+    {"pabsw", kMmi1, 0x01, Form::RdRt},    {"pceqw", kMmi1, 0x02, Form::RdRsRt},  {"pminw", kMmi1, 0x03, Form::RdRsRt},  {"padsbh", kMmi1, 0x04, Form::RdRsRt},
+    {"pabsh", kMmi1, 0x05, Form::RdRt},    {"pceqh", kMmi1, 0x06, Form::RdRsRt},  {"pminh", kMmi1, 0x07, Form::RdRsRt},  {"pceqb", kMmi1, 0x0A, Form::RdRsRt},
+    {"padduw", kMmi1, 0x10, Form::RdRsRt}, {"psubuw", kMmi1, 0x11, Form::RdRsRt}, {"pextuw", kMmi1, 0x12, Form::RdRsRt}, {"padduh", kMmi1, 0x14, Form::RdRsRt},
+    {"psubuh", kMmi1, 0x15, Form::RdRsRt}, {"pextuh", kMmi1, 0x16, Form::RdRsRt}, {"paddub", kMmi1, 0x18, Form::RdRsRt}, {"psubub", kMmi1, 0x19, Form::RdRsRt},
+    {"pextub", kMmi1, 0x1A, Form::RdRsRt}, {"qfsrv", kMmi1, 0x1B, Form::RdRsRt},
+    {"pmaddw", kMmi2, 0x00, Form::RdRsRt}, {"psllvw", kMmi2, 0x02, Form::RdRtRs}, {"psrlvw", kMmi2, 0x03, Form::RdRtRs}, {"pmsubw", kMmi2, 0x04, Form::RdRsRt},
+    {"pmfhi", kMmi2, 0x08, Form::Rd},      {"pmflo", kMmi2, 0x09, Form::Rd},      {"pinth", kMmi2, 0x0A, Form::RdRsRt},  {"pmultw", kMmi2, 0x0C, Form::RdRsRt},
+    {"pdivw", kMmi2, 0x0D, Form::RsRt},    {"pcpyld", kMmi2, 0x0E, Form::RdRsRt}, {"pmaddh", kMmi2, 0x10, Form::RdRsRt}, {"phmadh", kMmi2, 0x11, Form::RdRsRt},
+    {"pand", kMmi2, 0x12, Form::RdRsRt},   {"pxor", kMmi2, 0x13, Form::RdRsRt},   {"pmsubh", kMmi2, 0x14, Form::RdRsRt}, {"phmsbh", kMmi2, 0x15, Form::RdRsRt},
+    {"pexeh", kMmi2, 0x1A, Form::RdRt},    {"prevh", kMmi2, 0x1B, Form::RdRt},    {"pmulth", kMmi2, 0x1C, Form::RdRsRt}, {"pdivbw", kMmi2, 0x1D, Form::RsRt},
+    {"pexew", kMmi2, 0x1E, Form::RdRt},    {"prot3w", kMmi2, 0x1F, Form::RdRt},
+    {"pmadduw", kMmi3, 0x00, Form::RdRsRt}, {"psravw", kMmi3, 0x03, Form::RdRtRs}, {"pmthi", kMmi3, 0x08, Form::Rs},     {"pmtlo", kMmi3, 0x09, Form::Rs},
+    {"pinteh", kMmi3, 0x0A, Form::RdRsRt}, {"pmultuw", kMmi3, 0x0C, Form::RdRsRt}, {"pdivuw", kMmi3, 0x0D, Form::RsRt}, {"pcpyud", kMmi3, 0x0E, Form::RdRsRt},
+    {"por", kMmi3, 0x12, Form::RdRsRt},    {"pnor", kMmi3, 0x13, Form::RdRsRt},   {"pexch", kMmi3, 0x1A, Form::RdRt},    {"pcpyh", kMmi3, 0x1B, Form::RdRt},
+    {"pexcw", kMmi3, 0x1E, Form::RdRt},
+});
+
+constexpr std::uint32_t mmi_mask(Form form) {
+    switch (form) {
+        case Form::RdRt: return kMmiRdRt;
+        case Form::Rd: return kMmiRd;
+        case Form::Rs: return kMmiRs;
+        case Form::RsRt: return kMmiRsRt;
+        default: return kMmiRdRsRt;
+    }
+}
 
 // The FPU's arithmetic, conversions and compares, one entry per format: `add.s`, `cvt.d.w`, `c.lt.d` ... (the fmt field is bits 25-21).
 struct FpuOp {
@@ -221,29 +361,82 @@ Table make_table(Variant variant) {
     for (const Def& d : kDefs)
         if (has(d.isa, variant)) t.defs.push_back(d);
     if (variant == Variant::R3000A) return t;
-    for (const Def& d : kDefs4300) t.defs.push_back(d);
+    for (const Def& d : kDefs4300)
+        if (has(d.isa, variant)) t.defs.push_back(d);
+    for (const Def& d : kDefsExtra)
+        if (has(d.isa, variant)) t.defs.push_back(d);
+    const std::uint8_t mine = static_cast<std::uint8_t>(1u << static_cast<unsigned>(variant));
     const auto add = [&](std::string name, Form form, std::uint32_t match, std::uint32_t mask) {
         t.names.push_back(std::move(name));
-        t.defs.push_back({t.names.back(), form, match, mask, Flow::None, false, Isa::R4300});
+        t.defs.push_back({t.names.back(), form, match, mask, Flow::None, false, mine});
     };
-    for (const FpuOp& f : kFpuOps) {
-        for (std::size_t i = 0; i < kFormats.size(); ++i) {
-            if ((f.formats & (1u << i)) == 0) continue;
-            const auto [fmt, letter] = kFormats[i];
-            const std::uint32_t match = op(0x11) | (fmt << 21) | f.function;
-            add(std::format("{}.{}", f.name, letter), f.form, match, f.form == Form::FdFsFt ? 0xFFE0003Fu : 0xFFFF003Fu);
+    if (variant == Variant::R5900) {
+        // the Emotion Engine's FPU: single precision only (and the integer word it converts from and to), with the accumulator and its own
+        // operations; SQRT reads FT
+        const auto s = [](std::uint32_t function) { return op(0x11) | (16u << 21) | function; };
+        constexpr std::uint32_t kFdFsFt = 0xFFE0003F, kFdFs = 0xFFFF003F, kFsFt = 0xFFE007FF, kFdFt = 0xFFE0F83F;
+        add("add.s", Form::FdFsFt, s(0), kFdFsFt);
+        add("sub.s", Form::FdFsFt, s(1), kFdFsFt);
+        add("mul.s", Form::FdFsFt, s(2), kFdFsFt);
+        add("div.s", Form::FdFsFt, s(3), kFdFsFt);
+        add("sqrt.s", Form::FdFt, s(4), kFdFt);
+        add("abs.s", Form::FdFs, s(5), kFdFs);
+        add("mov.s", Form::FdFs, s(6), kFdFs);
+        add("neg.s", Form::FdFs, s(7), kFdFs);
+        add("rsqrt.s", Form::FdFsFt, s(0x16), kFdFsFt);
+        add("adda.s", Form::FsFt, s(0x18), kFsFt);
+        add("suba.s", Form::FsFt, s(0x19), kFsFt);
+        add("mula.s", Form::FsFt, s(0x1A), kFsFt);
+        add("madd.s", Form::FdFsFt, s(0x1C), kFdFsFt);
+        add("msub.s", Form::FdFsFt, s(0x1D), kFdFsFt);
+        add("madda.s", Form::FsFt, s(0x1E), kFsFt);
+        add("msuba.s", Form::FsFt, s(0x1F), kFsFt);
+        add("cvt.w.s", Form::FdFs, s(0x24), kFdFs);
+        add("max.s", Form::FdFsFt, s(0x28), kFdFsFt);
+        add("min.s", Form::FdFsFt, s(0x29), kFdFsFt);
+        add("cvt.s.w", Form::FdFs, op(0x11) | (20u << 21) | 0x20, kFdFs);
+        add("c.f.s", Form::FsFt, s(0x30), kFsFt);
+        add("c.eq.s", Form::FsFt, s(0x32), kFsFt);
+        add("c.lt.s", Form::FsFt, s(0x34), kFsFt);
+        add("c.le.s", Form::FsFt, s(0x36), kFsFt);
+    }
+    if (variant == Variant::R4300 || variant == Variant::Allegrex) {
+        const bool single = variant == Variant::Allegrex;   // the Allegrex's FPU has no doubles and no 64-bit integers
+        for (const FpuOp& f : kFpuOps) {
+            if (single && std::string_view(f.name).ends_with(".l")) continue;
+            for (std::size_t i = 0; i < kFormats.size(); ++i) {
+                if ((f.formats & (1u << i)) == 0) continue;
+                if (single && (i == 1 || i == 3)) continue;
+                const auto [fmt, letter] = kFormats[i];
+                const std::uint32_t match = op(0x11) | (fmt << 21) | f.function;
+                add(std::format("{}.{}", f.name, letter), f.form, match, f.form == Form::FdFsFt ? 0xFFE0003Fu : 0xFFFF003Fu);
+            }
+        }
+        for (unsigned c = 0; c < kCompares.size(); ++c)
+            for (std::size_t i = 0; i < (single ? 1u : 2u); ++i)   // S and D
+                add(std::format("c.{}.{}", kCompares[c], kFormats[i].second), Form::FsFt, op(0x11) | (kFormats[i].first << 21) | (0x30 + c), 0xFFE007FFu);
+    }
+    if (variant == Variant::R5900) {
+        for (const MmiOp& m : kMmiOps) {
+            const std::uint32_t match = op(0x1C) | m.function | (m.sub << 6);
+            add(std::string(m.name), m.form, match, mmi_mask(m.form));
         }
     }
-    for (unsigned c = 0; c < kCompares.size(); ++c)
-        for (std::size_t i = 0; i < 2; ++i)   // S and D
-            add(std::format("c.{}.{}", kCompares[c], kFormats[i].second), Form::FsFt, op(0x11) | (kFormats[i].first << 21) | (0x30 + c), 0xFFE007FFu);
     return t;
 }
 
 const std::vector<Def>& defs_of(Variant variant) {
     static const Table r3000 = make_table(Variant::R3000A);
     static const Table r4300 = make_table(Variant::R4300);
-    return (variant == Variant::R3000A ? r3000 : r4300).defs;
+    static const Table r5900 = make_table(Variant::R5900);
+    static const Table allegrex = make_table(Variant::Allegrex);
+    switch (variant) {
+        case Variant::R3000A: return r3000.defs;
+        case Variant::R4300: return r4300.defs;
+        case Variant::R5900: return r5900.defs;
+        case Variant::Allegrex: return allegrex.defs;
+    }
+    return r3000.defs;
 }
 
 // The GTE's commands: the function in the low six bits, and the whole 25-bit command word the PlayStation SDK's macros make
@@ -324,7 +517,7 @@ std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, Variant va
     Insn insn;
     insn.word = word;
     insn.pc = pc;
-    for (unsigned i = 0; i < 4; ++i) insn.raw[i] = static_cast<std::uint8_t>(word >> (variant == Variant::R4300 ? 24 - 8 * i : 8 * i));
+    for (unsigned i = 0; i < 4; ++i) insn.raw[i] = static_cast<std::uint8_t>(word >> (big_endian(variant) ? 24 - 8 * i : 8 * i));
     insn.rs = static_cast<std::uint8_t>((word >> 21) & 31);
     insn.rt = static_cast<std::uint8_t>((word >> 16) & 31);
     insn.rd = static_cast<std::uint8_t>((word >> 11) & 31);
@@ -373,6 +566,7 @@ std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, Variant va
             case Form::FtMem:
             case Form::OpMem:
             case Form::RtMem: insn.imm = offset; break;
+            case Form::RsRtCode: insn.imm = static_cast<std::int32_t>((word >> 6) & 0x3FF); break;
             case Form::RsRtBranch:
             case Form::RsBranch:
             case Form::CopBranch: insn.target = pc + 4 + static_cast<std::uint32_t>(offset) * 4; break;
@@ -384,13 +578,15 @@ std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, Variant va
         if (d.name == "bgezal" && insn.rs == 0) insn.flow = Flow::Call;
         return insn;
     }
+    // what the table does not say in one line: VU0's macro mode and the VFPU, EXT and INS (mips_ext)
+    if ((variant == Variant::R5900 || variant == Variant::Allegrex) && ext::decode(word, pc, variant, insn)) return insn;
     return std::nullopt;
 }
 
 std::optional<Insn> decode(ByteView code, std::size_t at, std::uint32_t pc, Variant variant) {
     if (at + 4 > code.size()) return std::nullopt;
     const auto b = [&](std::size_t i) { return static_cast<std::uint32_t>(code[at + i]); };
-    const std::uint32_t word = variant == Variant::R4300 ? b(0) << 24 | b(1) << 16 | b(2) << 8 | b(3) : b(0) | b(1) << 8 | b(2) << 16 | b(3) << 24;
+    const std::uint32_t word = big_endian(variant) ? b(0) << 24 | b(1) << 16 | b(2) << 8 | b(3) : b(0) | b(1) << 8 | b(2) << 16 | b(3) << 24;
     return decode_word(word, pc, variant);
 }
 
@@ -445,7 +641,7 @@ std::string text(const Insn& insn, const AddressLabels& labels, std::string_view
         case Form::Rs: return std::format("{} {}", m, reg(insn.rs));
         case Form::Rd: return std::format("{} {}", m, reg(insn.rd));
         case Form::RdRs:
-            if (insn.rd == 31) return std::format("{} {}", m, reg(insn.rs));
+            if (insn.rd == 31 && m == "jalr") return std::format("{} {}", m, reg(insn.rs));
             return std::format("{} {}, {}", m, reg(insn.rd), reg(insn.rs));
         case Form::RsRt: return std::format("{} {}, {}", m, reg(insn.rs), reg(insn.rt));
         case Form::RtRsImm: {
@@ -470,12 +666,18 @@ std::string text(const Insn& insn, const AddressLabels& labels, std::string_view
         case Form::Command: return command_text(insn);
         case Form::Raw: return std::format("cop2 0x{:X}", insn.imm);
         case Form::RsImm: return std::format("{} {}, {}", m, reg(insn.rs), signed_text(insn.imm));
+        case Form::RsRtCode:
+            if (insn.imm == 0) return std::format("{} {}, {}", m, reg(insn.rs), reg(insn.rt));
+            return std::format("{} {}, {}, {}", m, reg(insn.rs), reg(insn.rt), insn.imm);
         case Form::FtMem: return std::format("{} {}, {}({})", m, fpu_register(insn.rt), imm_text(signed_text(insn.imm)), reg(insn.rs));
         case Form::OpMem: return std::format("{} {}, {}({})", m, insn.rt, imm_text(signed_text(insn.imm)), reg(insn.rs));
         case Form::RtFs: return std::format("{} {}, {}", m, reg(insn.rt), fpu_register(insn.rd));
         case Form::FdFsFt: return std::format("{} {}, {}, {}", m, fpu_register(insn.shamt), fpu_register(insn.rd), fpu_register(insn.rt));
         case Form::FdFs: return std::format("{} {}, {}", m, fpu_register(insn.shamt), fpu_register(insn.rd));
         case Form::FsFt: return std::format("{} {}, {}", m, fpu_register(insn.rd), fpu_register(insn.rt));
+        case Form::RdRt: return std::format("{} {}, {}", m, reg(insn.rd), reg(insn.rt));
+        case Form::FdFt: return std::format("{} {}, {}", m, fpu_register(insn.shamt), fpu_register(insn.rt));
+        case Form::Special: return ext::text(insn, labels);
     }
     return m;
 }
@@ -702,7 +904,7 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     const std::string name = text::lower(line.substr(0, split));
     Operands ops{line, z80::split_operands(line.substr(split)), labels, pc};
     Bytes out;
-    const bool big = variant == Variant::R4300;
+    const bool big = big_endian(variant);
     const auto put_word = [&](Bytes& to, std::uint32_t word) { mips::put_word(to, word, big); };
 
     // ---- pseudo-instructions
@@ -792,9 +994,20 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     // ---- the table
     const Def* def = nullptr;
     for (const Def& d : defs_of(variant)) {
-        if (d.name == name) def = &d;
+        if (d.name != name) continue;
+        // an instruction with a two-operand and a three-operand form (the R5900's MULT and MADD): the one the operands fit
+        if (def && (d.form == Form::RdRsRt) != (ops.list.size() == 3)) continue;
+        def = &d;
     }
-    if (!def) refuse(line, "not an instruction");
+    if (!def) {
+        if (variant == Variant::R5900 || variant == Variant::Allegrex) {
+            if (const std::optional<std::uint32_t> word = ext::assemble(name, ops.list, pc, labels, variant)) {
+                put_word(out, *word);
+                return out;
+            }
+        }
+        refuse(line, "not an instruction");
+    }
     std::uint32_t word = def->match;
     switch (def->form) {
         case Form::None:
@@ -811,7 +1024,7 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
         case Form::Rs: ops.count(1); word |= ops.reg(0) << 21; break;
         case Form::Rd: ops.count(1); word |= ops.reg(0) << 11; break;
         case Form::RdRs:
-            if (ops.list.size() == 1) {
+            if (ops.list.size() == 1 && def->name == "jalr") {
                 word |= (31u << 11) | (ops.reg(0) << 21);
             } else {
                 ops.count(2);
@@ -821,12 +1034,7 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
         case Form::RsRt: ops.count(2); word |= (ops.reg(0) << 21) | (ops.reg(1) << 16); break;
         case Form::RtRsImm:
             ops.count(3);
-            word |        case Form::RtCop: ops.count(2); word |= (ops.reg(0) << 16) | (ops.reg(1) << 11); break;
-        case Form::RsImm: ops.count(2); word |= (ops.reg(0) << 21) | (field(line, ops.number(1), -32768, 65535, "the immediate") & 0xFFFF); break;
-        case Form::RtFs: ops.count(2); word |= (ops.reg(0) << 16) | (need_fpu(line, ops.list[1]) << 11); break;
-        case Form::FdFsFt: ops.count(3); word |= (need_fpu(line, ops.list[0]) << 6) | (need_fpu(line, ops.list[1]) << 11) | (need_fpu(line, ops.list[2]) << 16); break;
-        case Form::FdFs: ops.count(2); word |= (need_fpu(line, ops.list[0]) << 6) | (need_fpu(line, ops.list[1]) << 11); break;
-        case Form::FsFt: ops.count(2); word |= (need_fpu(line, ops.list[0]) << 11) | (need_fpu(line, ops.list[1]) << 16); break;| (ops.reg(1) << 21) | (field(line, ops.number(2), -32768, 65535, "the immediate") & 0xFFFF);
+            word |= (ops.reg(0) << 16) | (ops.reg(1) << 21) | (field(line, ops.number(2), -32768, 65535, "the immediate") & 0xFFFF);
             break;
         case Form::RtImm:
             ops.count(2);
@@ -859,8 +1067,21 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
             break;
         }
         case Form::RtCop: ops.count(2); word |= (ops.reg(0) << 16) | (ops.reg(1) << 11); break;
+        case Form::RsRtCode:
+            if (ops.list.size() != 2) ops.count(3);
+            word |= (ops.reg(0) << 21) | (ops.reg(1) << 16);
+            if (ops.list.size() == 3) word |= field(line, ops.number(2), 0, 1023, "the code") << 6;
+            break;
+        case Form::RsImm: ops.count(2); word |= (ops.reg(0) << 21) | (field(line, ops.number(1), -32768, 65535, "the immediate") & 0xFFFF); break;
+        case Form::RtFs: ops.count(2); word |= (ops.reg(0) << 16) | (need_fpu(line, ops.list[1]) << 11); break;
+        case Form::FdFsFt: ops.count(3); word |= (need_fpu(line, ops.list[0]) << 6) | (need_fpu(line, ops.list[1]) << 11) | (need_fpu(line, ops.list[2]) << 16); break;
+        case Form::FdFs: ops.count(2); word |= (need_fpu(line, ops.list[0]) << 6) | (need_fpu(line, ops.list[1]) << 11); break;
+        case Form::FsFt: ops.count(2); word |= (need_fpu(line, ops.list[0]) << 11) | (need_fpu(line, ops.list[1]) << 16); break;
+        case Form::RdRt: ops.count(2); word |= (ops.reg(0) << 11) | (ops.reg(1) << 16); break;
+        case Form::FdFt: ops.count(2); word |= (need_fpu(line, ops.list[0]) << 6) | (need_fpu(line, ops.list[1]) << 16); break;
         case Form::Command:
-        case Form::Raw: break;
+        case Form::Raw:
+        case Form::Special: break;
     }
     put_word(out, word);
     return out;

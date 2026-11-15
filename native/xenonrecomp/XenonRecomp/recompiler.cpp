@@ -186,6 +186,11 @@ void Recompiler::Analyse()
         fn.BeginAddress = ByteSwap(fn.BeginAddress);
         fn.Data = ByteSwap(fn.Data);
 
+        // An all-zero entry is the padding after the table's last real one (Small Arms, Happy Wars: the section is
+        // larger than its table): no function starts at address 0, and each such entry became a `sub_0`.
+        if (fn.BeginAddress == 0)
+            continue;
+
         if (image.symbols.find(fn.BeginAddress) == image.symbols.end())
         {
             auto& f = functions.emplace_back();
@@ -397,6 +402,13 @@ void Recompiler::Analyse()
                 const size_t step = fnSymbol->size != 0 ? fnSymbol->size : 4;
                 base += step;
                 data += step;
+            }
+            else if (*(const uint32_t*)data == 0)
+            {
+                // A zero word between functions is padding, not code: a title's code section can hold megabytes of
+                // it after its last function (Small Arms: 450,000 one-word `.long 0x0` functions).
+                base += 4;
+                data += 4;
             }
             else
             {

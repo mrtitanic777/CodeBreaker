@@ -41,7 +41,7 @@ struct Files {
     std::map<std::string, ExeKind> classes;       // by MZ header
     std::map<std::string, ExeKind> kinds;         // that, and headerless DOS
     std::map<std::string, std::uint16_t> machines;
-    std::set<std::string> nes, sms, gb, genesis, ps1, gba, nds, n64, msx, coleco, cpc, atari2600, atari7800, lynx, neogeo, segacd, zx, xex, drivers, java_modules;
+    std::set<std::string> nes, sms, gb, genesis, ps1, gba, nds, n64, msx, coleco, cpc, atari5200, atari2600, atari7800, lynx, threedo, jaguar, wonderswan, pce, snes, neogeo, segacd, sega32x, saturn, dreamcast, gamecube, wii, wiiu, zx, xex, drivers, java_modules;
 
     Probes probes() const {
         auto in = [](const std::set<std::string>& s) {
@@ -73,11 +73,23 @@ struct Files {
         pr.is_msx = in(msx);
         pr.is_coleco = in(coleco);
         pr.is_cpc = in(cpc);
+        pr.is_atari5200 = in(atari5200);
+        pr.is_threedo = in(threedo);
+        pr.is_jaguar = in(jaguar);
+        pr.is_wonderswan = in(wonderswan);
         pr.is_atari2600 = in(atari2600);
         pr.is_atari7800 = in(atari7800);
         pr.is_lynx = in(lynx);
+        pr.is_pce = in(pce);
+        pr.is_snes = in(snes);
         pr.is_neogeo = in(neogeo);
         pr.is_segacd = in(segacd);
+        pr.is_sega32x = in(sega32x);
+        pr.is_saturn = in(saturn);
+        pr.is_dreamcast = in(dreamcast);
+        pr.is_gamecube = in(gamecube);
+        pr.is_wii = in(wii);
+        pr.is_wiiu = in(wiiu);
         pr.is_zx = in(zx);
         pr.is_java_module = in(java_modules);
         pr.xex_basefile = [](const std::filesystem::path& p) { return std::filesystem::path(fs::to_text(p) + ".base"); };
@@ -96,11 +108,23 @@ Registry full_registry(const Probes& probes) {
     r.add(msx());
     r.add(coleco());
     r.add(cpc());
+    r.add(stand_in(Id::Atari5200, "atari5200", std::nullopt, true));
+    r.add(stand_in(Id::ThreeDo, "threedo", std::nullopt, true));
+    r.add(stand_in(Id::Jaguar, "jaguar", std::nullopt, true));
+    r.add(stand_in(Id::WonderSwan, "wonderswan", std::nullopt, true));
     r.add(stand_in(Id::Atari2600, "atari2600", std::nullopt, true));
     r.add(stand_in(Id::Atari7800, "atari7800", std::nullopt, true));
     r.add(stand_in(Id::Lynx, "lynx", std::nullopt, true));
+    r.add(stand_in(Id::Pce, "pce", std::nullopt, true));
+    r.add(stand_in(Id::Snes, "snes", std::nullopt, true));
     r.add(stand_in(Id::NeoGeo, "neogeo", std::nullopt, true));
     r.add(stand_in(Id::SegaCd, "segacd", std::nullopt, true));
+    r.add(stand_in(Id::Sega32x, "sega32x", std::nullopt, true));
+    r.add(stand_in(Id::Saturn, "saturn", std::nullopt, true));
+    r.add(stand_in(Id::Dreamcast, "dreamcast", std::nullopt, true));
+    r.add(stand_in(Id::GameCube, "gamecube", std::nullopt, true));
+    r.add(stand_in(Id::Wii, "wii", std::nullopt, true));
+    r.add(stand_in(Id::WiiU, "wiiu", std::nullopt, true));
     r.add(zx());
     r.add(stand_in(Id::Genesis, "genesis", std::nullopt, true));
     r.add(stand_in(Id::Ps1, "ps1", std::nullopt, true));
@@ -119,7 +143,7 @@ Registry full_registry(const Probes& probes) {
 }  // namespace
 
 CB_TEST("platforms.package.ids", [] {
-    const std::vector<std::string> expected = {"java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "ps1", "gba", "nds", "n64", "zx", "msx", "coleco", "cpc", "atari2600", "atari7800", "lynx", "neogeo", "segacd", "win32", "win16", "vxd", "dos"};
+    const std::vector<std::string> expected = {"java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "ps1", "gba", "nds", "n64", "zx", "msx", "coleco", "cpc", "atari5200", "atari2600", "atari7800", "lynx", "pce", "snes", "neogeo", "segacd", "sega32x", "saturn", "dreamcast", "threedo", "jaguar", "wonderswan", "gamecube", "wii", "wiiu", "win32", "win16", "vxd", "dos"};
     CB_CHECK_EQ(kOrder.size(), expected.size());
     for (std::size_t i = 0; i < kOrder.size(); ++i) {
         CB_CHECK_EQ(std::string(id_text(kOrder[i])), expected[i]);
@@ -136,7 +160,7 @@ CB_TEST("platforms.package.registry_orders_and_finds", [] {
     // recorded: [id, name] in the order platforms are tried
     const std::vector<std::pair<std::string, std::string>> expected = {
         {"java", "java"}, {"xbox360", "powerpc"}, {"xbox", "xbe"}, {"nes", "nes"}, {"sms", "sms"}, {"gb", "gb"}, {"genesis", "genesis"}, {"ps1", "ps1"}, {"gba", "gba"}, {"nds", "nds"}, {"n64", "n64"},
-        {"zx", "zx"},     {"msx", "msx"}, {"coleco", "coleco"}, {"cpc", "cpc"}, {"atari2600", "atari2600"}, {"atari7800", "atari7800"}, {"lynx", "lynx"}, {"neogeo", "neogeo"}, {"segacd", "segacd"}, {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"},   {"dos", "dos"}};
+        {"zx", "zx"},     {"msx", "msx"}, {"coleco", "coleco"}, {"cpc", "cpc"}, {"atari5200", "atari5200"}, {"atari2600", "atari2600"}, {"atari7800", "atari7800"}, {"lynx", "lynx"}, {"pce", "pce"}, {"snes", "snes"}, {"neogeo", "neogeo"}, {"segacd", "segacd"}, {"sega32x", "sega32x"}, {"saturn", "saturn"}, {"dreamcast", "dreamcast"}, {"threedo", "threedo"}, {"jaguar", "jaguar"}, {"wonderswan", "wonderswan"}, {"gamecube", "gamecube"}, {"wii", "wii"}, {"wiiu", "wiiu"}, {"win32", "pe"}, {"win16", "ne"}, {"vxd", "le"},   {"dos", "dos"}};
     CB_CHECK_EQ(r.all().size(), expected.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {
         CB_CHECK_EQ(std::string(id_text(r.all()[i].id)), expected[i].first);
@@ -166,7 +190,7 @@ CB_TEST("platforms.package.lanes_runners_steps", [] {
     Files files;
     Registry r = full_registry(files.probes());
     const auto lanes = r.lanes();
-    CB_CHECK_EQ(lanes.size(), 22u);                         // xbe has no lane: it is handed the PE image
+    CB_CHECK_EQ(lanes.size(), 35u);                         // xbe has no lane: it is handed the PE image
     CB_CHECK(lanes[0] == (std::pair<std::string, std::string>{"java", "java"}));
     CB_CHECK(lanes[1] == (std::pair<std::string, std::string>{"powerpc", "powerpc"}));
     // (its place moves as console lanes are added before it: found by name)
@@ -181,7 +205,7 @@ CB_TEST("platforms.package.lanes_runners_steps", [] {
     CB_CHECK(std::find(runners.begin(), runners.end(), "java") == runners.end());   // the JVM runs it, not us
     CB_CHECK(std::find(runners.begin(), runners.end(), "xbe") == runners.end());
     const auto steps = r.step_sets();
-    CB_CHECK_EQ(steps.size(), 22u);
+    CB_CHECK_EQ(steps.size(), 35u);
     for (const auto& [id, s] : steps) CB_CHECK(s == Steps::Lanes);
 });
 

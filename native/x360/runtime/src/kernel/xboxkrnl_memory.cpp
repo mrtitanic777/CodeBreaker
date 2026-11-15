@@ -238,3 +238,26 @@ GUEST_IMPORT(MmSetAddressProtect)
 {
     ctx.r3.u64 = 0;
 }
+
+// PVOID MmCreateKernelStack(ULONG Size, ULONG Unknown): a stack for a kernel thread: the top of Size bytes (a stack
+// grows down), page-aligned; 0 when memory is short. Street Fighter II' HF creates two for its own worker threads and
+// writes into the frame at the top (it faulted at 8 with the 0 the missing export returned).
+GUEST_IMPORT(MmCreateKernelStack)
+{
+    const uint32_t size = (ctx.r3.u32 + 0xFFF) & ~0xFFFu;
+    if (size == 0)
+    {
+        ctx.r3.u64 = 0;
+        return;
+    }
+    // A page above the top as well: the code that starts on the stack reads and writes its caller's frame there.
+    const uint32_t stack = guest::g_memory.SystemAlloc(size + 0x1000, (ctx.r3.u32 & 0xF000) ? 0x1000 : 0x10000);
+    ctx.r3.u64 = stack ? stack + size : 0;
+}
+
+// NTSTATUS MmDeleteKernelStack(PVOID Base, PVOID End): End is the low address. The system heap has no free: the
+// stack stays allocated (a title makes a handful).
+GUEST_IMPORT(MmDeleteKernelStack)
+{
+    ctx.r3.u64 = 0;
+}

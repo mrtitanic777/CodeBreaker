@@ -2,8 +2,6 @@
 // cb-unity: alone
 #include "cb/coverage/reach.hpp"
 
-#include <windows.h>
-
 #include <algorithm>
 #include <chrono>
 #include <format>
@@ -21,8 +19,8 @@
 #include "cb/core/json.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/sys.hpp"
 #include "cb/core/text.hpp"
-#include "cb/core/win.hpp"
 #include "cb/formats/detect.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/platforms/package.hpp"
@@ -37,7 +35,7 @@ namespace stdfs = std::filesystem;
 constexpr std::string_view kProgramExts[] = {
     ".xex", ".exe", ".dll", ".xbe", ".com", ".sys", ".drv", ".vxd", ".386", ".nes", ".gb", ".gbc", ".sms", ".gg", ".sg",
     ".md", ".gen", ".smd", ".bin", ".rom", ".sna", ".z80", ".tap", ".jar", ".gba", ".nds", ".z64", ".n64", ".v64", ".sfc",
-    ".smc", ".elf", ".self", ".apk", ".ipa", ".xap"};
+    ".smc", ".elf", ".self", ".apk", ".ipa", ".xap", ".dol", ".rpx", ".rpl"};
 // Not programs: never measured, only counted.
 constexpr std::string_view kSkipFamilies[] = {"media", "xna"};
 constexpr std::string_view kContainerFormats[] = {"STFS package", "CD image", "Xbox disc image", "disk image",
@@ -107,9 +105,7 @@ std::vector<std::string> measure_argv_of(const stdfs::path& program, const Servi
         std::vector<std::string> argv = services.measure_command(program);
         if (!argv.empty()) return argv;   // (empty: the default below)
     }
-    wchar_t buffer[MAX_PATH * 4];
-    const DWORD n = GetModuleFileNameW(nullptr, buffer, static_cast<DWORD>(std::size(buffer)));
-    return {win::from_wide(std::wstring_view(buffer, n)), "measure", fs::to_text(program)};
+    return {fs::to_text(fs::executable_path()), "measure", fs::to_text(program)};
 }
 
 // ---- results file
@@ -171,8 +167,7 @@ Row row_from(const Json& j) {
 
 std::string clock_text(double seconds) {
     const std::time_t t = static_cast<std::time_t>(seconds);
-    std::tm tm{};
-    localtime_s(&tm, &t);
+    const std::tm tm = sys::local_tm(t);
     char buf[64];
     std::strftime(buf, sizeof buf, "%Y-%m-%d %I:%M %p", &tm);
     return buf;
