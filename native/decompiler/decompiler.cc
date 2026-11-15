@@ -16,6 +16,14 @@
 //                                             far pointers to such addresses)
 //   reg    <register> <hexValue>              a register's value everywhere, e.g. DS = the data
 //                                             segment of a 16-bit module
+//   P      <hexVA> <result> <args> [noreturn] the prototype of the F or X function at hexVA, for
+//                                             code that does not state it (PowerPC). Types are
+//                                             <bytes>[i|u|p|x|f][:name] (signed, unsigned,
+//                                             pointer, unknown, float), comma separated, `...`
+//                                             last for varargs, `void`, or `-` (left to the
+//                                             analysis). Stated parts are locked. noreturn: a
+//                                             call to it ends the caller's path.
+//                                             e.g. P 800718d0 void 4u:Code,4u,4u,4u,4u noreturn
 //
 // F may carry a fifth field, the calling-convention model by name (e.g. __stdcall16far), or
 // the word `inline`: a compiler helper that is part of every caller's prologue or epilogue
@@ -383,6 +391,19 @@ namespace {
 
 struct Fact { uint64_t va; std::string name; int pop; std::string model; int result = -1; std::vector<std::string> args; };   // result: bytes it returns in AX (DX:AX), when known
 struct Span { uint64_t va; std::vector<uint8_t> data; };
+// A function's prototype as the describer knows it (`P <hexVA> <result> <args> [noreturn]`),
+// for processors whose code does not state it (PowerPC: the arguments are in r3.., nothing in
+// the function says how many). Each type is one token: <bytes>[i|u|p|x|f][:name] -- a signed
+// or unsigned integer, a pointer, a value of unknown type or a float of that many bytes;
+// `void` as the result, `-` for "left to the analysis", `...` (last) for more arguments.
+struct ProtoType { int size = 0; char kind = 'i'; std::string name; };
+struct Proto {
+  bool resultKnown = false, resultVoid = false;
+  ProtoType result;
+  bool argsKnown = false, varargs = false;
+  std::vector<ProtoType> args;
+  bool noreturn = false;
+};
 // A call through a pointer (a driver's dispatch table, a callback): what it is passed, as the
 // code pushed it -- the callee is not known, so the analysis cannot tell what it takes.
 struct CallSite { uint64_t site; uint64_t func; int pop; std::string model; };
@@ -499,6 +520,131 @@ void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop, b
   fp.setOutputLock(true);
 }
 
+// `4`, `4u`, `4p`, `8x`, `8f:Value` (see Proto). False when the token is not one.
+bool parseProtoType(const std::string& tok, ProtoType& t) {
+  size_t i = 0;
+  while (i < tok.size() && std::isdigit((unsigned char)tok[i])) ++i;
+  if (i == 0) return false;
+  t.size = std::atoi(tok.substr(0, i).c_str());
+  if (t.size <= 0 || t.size > 16) return false;
+  t.kind = 'i';
+  if (i < tok.size() && tok[i] != ':') {
+    t.kind = tok[i++];
+    if (std::string("iupxf").find(t.kind) == std::string::npos) return false;
+  }
+  if (i < tok.size()) {
+    if (tok[i] != ':') return false;
+    t.name = tok.substr(i + 1);
+  }
+  return true;
+}
+
+// `P <va> <result> <args> [noreturn]` (Proto). False, with why, when the line is malformed.
+bool parseProto(const std::vector<std::string>& f, Proto& p, std::string& why) {
+  const std::string& r = f[2];
+  if (r == "void") { p.resultKnown = p.resultVoid = true; }
+  else if (r != "-") {
+    if (!parseProtoType(r, p.result)) { why = "result `" + r + "`"; return false; }
+    p.resultKnown = true;
+  }
+  const std::string& a = f[3];
+  if (a == "void") p.argsKnown = true;
+  else if (a != "-") {
+    p.argsKnown = true;
+    std::stringstream as(a);
+    std::string t;
+    while (std::getline(as, t, ',')) {
+      if (t == "...") { p.varargs = true; continue; }
+      if (p.varargs) { why = "`...` before the last argument"; return false; }
+      ProtoType pt;
+      if (!parseProtoType(t, pt)) { why = "argument `" + t + "`"; return false; }
+      p.args.push_back(pt);
+    }
+  }
+  for (size_t i = 4; i < f.size(); ++i) {
+    if (f[i] == "noreturn") p.noreturn = true;
+    else if (!f[i].empty()) { why = "flag `" + f[i] + "`"; return false; }
+  }
+  return true;
+}
+
+Datatype* protoDatatype(Machine& m, const ProtoType& t) {
+  switch (t.kind) {
+    case 'u': return m.types->getBase(t.size, TYPE_UINT);
+    case 'x': return m.types->getBase(t.size, TYPE_UNKNOWN);
+    case 'f': return m.types->getBase(t.size, TYPE_FLOAT);
+    case 'p': return m.types->getTypePointer(t.size, m.types->getBase(1, TYPE_UNKNOWN),
+                                              m.getDefaultDataSpace()->getWordSize());
+    default:  return m.types->getBase(t.size, TYPE_INT);
+  }
+}
+
+// PowerPC, more than eight integer arguments: the homed cspec describes no stack arguments (see
+// its header: a general "the stack above sp+8 is arguments" made locals read as outgoing
+// arguments), so the model cannot place a ninth. A stated prototype says exactly how many there
+// are, so each is placed by hand: r3..r10, then the caller's 8-byte slots from sp+0x50 (the
+// Xbox 360 compilers' layout: every caller of NtCreateFile stores its ninth at sp+0x54), a value
+// smaller than its register or slot in the low-order (big-endian: last) bytes. Only integers and
+// pointers -- with a float argument the prototype is left as the model could make it.
+void placeStackArguments(Machine& m, FuncProto& fp, const Proto& p, const PrototypePieces& pieces) {
+  if (!m.translate->isBigEndian()) return;
+  const VarnodeData* r3 = nullptr;
+  try { r3 = &m.translate->getRegister("r3"); } catch (LowlevelError&) { return; }
+  for (const auto& a : p.args)
+    if (a.kind == 'f' || a.size > 8) return;
+  if (p.resultKnown && !p.resultVoid && (p.result.kind == 'f' || p.result.size > 8)) return;
+  AddrSpace* stack = m.getStackSpace();
+  if (stack == nullptr) return;
+  fp.clearInput();
+  ParameterPieces out;
+  out.type = pieces.outtype;
+  out.flags = 0;
+  if (out.type->getMetatype() == TYPE_VOID) out.addr = Address();
+  else out.addr = Address(r3->space, r3->offset + (8 - out.type->getSize()));
+  fp.setOutput(out);
+  for (size_t i = 0; i < p.args.size(); ++i) {
+    ParameterPieces in;
+    in.type = pieces.intypes[i];
+    in.flags = ParameterPieces::typelock | ParameterPieces::namelock;
+    const int sz = in.type->getSize();
+    if (i < 8) {
+      const VarnodeData& r = m.translate->getRegister("r" + std::to_string(3 + i));
+      in.addr = Address(r.space, r.offset + (8 - sz));
+    } else {
+      in.addr = Address(stack, 0x50 + 8 * (i - 8) + (8 - sz));
+    }
+    fp.setParam((int4)i, pieces.innames[i], in);
+  }
+  fp.setInputErrors(false);
+}
+
+// The describer's prototype over whatever the model gave: the arguments and the result it
+// states are locked (each caller passes exactly those, the body reads them as those types); what
+// it leaves as `-` stays the analysis's. noreturn: a call to it ends the caller's path there --
+// without it the analysis follows `bl KeBugCheckEx` into the padding after it, or into the next
+// function.
+void applyProto(Machine& m, Funcdata* fd, const std::string& name, const Proto& p) {
+  FuncProto& fp = fd->getFuncProto();
+  if (p.argsKnown || p.resultKnown) {
+    PrototypePieces pieces;
+    pieces.model = m.getModel(fp.getModelName());
+    pieces.name = name;
+    // (an unstated result: a placeholder, unlocked -- the analysis decides it as before)
+    pieces.outtype = (!p.resultKnown || p.resultVoid) ? m.types->getTypeVoid() : protoDatatype(m, p.result);
+    pieces.firstVarArgSlot = p.varargs ? (int)p.args.size() : -1;
+    for (size_t i = 0; i < p.args.size(); ++i) {
+      pieces.intypes.push_back(protoDatatype(m, p.args[i]));
+      pieces.innames.push_back(p.args[i].name.empty() ? "a" + std::to_string(i + 1) : p.args[i].name);
+    }
+    fp.setPieces(pieces);
+    if (fp.hasInputErrors()) placeStackArguments(m, fp, p, pieces);
+    fp.setInputLock(p.argsKnown);
+    fp.setOutputLock(p.resultKnown);
+    fp.setModelLock(true);
+  }
+  if (p.noreturn) fp.setNoReturn(true);
+}
+
 bool readFile(const std::string& path, uint64_t off, uint64_t size, std::vector<uint8_t>& out) {
   std::ifstream in(path, std::ios::binary);
   if (!in) return false;
@@ -529,6 +675,7 @@ struct Description {
   std::vector<CallSite> calls;
   std::vector<JumpOverride> jumps;
   std::vector<uint64_t> retjumps;                  // returns that are jumps (`R <address>`)
+  std::map<uint64_t, Proto> protos;                // `P` lines, by function address
   std::set<uint64_t> only;
   bool x86_32 = false;
   bool flat = false;                               // (one address space: every processor but 16-bit x86)
@@ -648,7 +795,10 @@ void setUp(Analysis& a, const Description& d) {
   };
   for (const auto& x : d.externs) {
     Address ea(code, (uintb)x.va);
-    applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
+    Funcdata* fd = glb->addFunction(ea, x.name)->getFunction();
+    applyModel(fd, x);
+    auto p = d.protos.find(x.va);
+    if (p != d.protos.end()) applyProto(m, fd, x.name, p->second);
   }
   // 16-bit: the software interrupts. The compiler spec turns `INT n` into a call to F000:n*16
   // (its swi fixup); each of those is a function int<n> taking its arguments and giving its
@@ -669,6 +819,8 @@ void setUp(Analysis& a, const Description& d) {
     Address addr(code, (uintb)f.va);
     Funcdata* fd = glb->addFunction(addr, f.name)->getFunction();
     applyModel(fd, f);
+    auto p = d.protos.find(f.va);
+    if (p != d.protos.end() && f.model != "inline") applyProto(m, fd, f.name, p->second);
     if (f.model != "inline" && (d.only.empty() || d.only.count(f.va))) a.todo.push_back({fd, f});
   }
   for (MapIterator it = glb->begin(); it != glb->end(); ++it) a.registered.insert((*it)->getSymbol());
@@ -2203,6 +2355,14 @@ int main(int argc, char** argv) {
         d.retjumps.push_back(strtoull(f[1].c_str(), nullptr, 16));
       } else if (f.size() >= 3 && f[0] == "reg") {
         d.regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
+      } else if (f[0] == "P") {
+        Proto p;
+        std::string why = "too few fields";
+        if (f.size() < 4 || !parseProto(f, p, why)) {
+          std::fprintf(stderr, "FAIL: bad P line (%s): %s\n", why.c_str(), line.c_str());
+          return 1;
+        }
+        d.protos[strtoull(f[1].c_str(), nullptr, 16)] = p;
       }
     }
     d.spans = spans;
