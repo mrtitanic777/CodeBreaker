@@ -28,6 +28,8 @@
 //                                             (pointer), `[N]<type>` (array): `*IRP:Irp`.
 //   T      <Name> <hexSize> <hexOff>:<type>:<field> ...   a structure (each field its own column)
 //   G      <hexVA> <type> <name>              a global variable's name and type
+//   regtype <register> <type> <name>          a register's value on entry to every function, as
+//                                             a variable of that type: regtype r13 *KPCR pcr
 //
 // F may carry a fifth field, the calling-convention model by name (e.g. __stdcall16far), or
 // the word `inline`: a compiler helper that is part of every caller's prologue or epilogue
@@ -756,6 +758,10 @@ struct Description {
   std::string path, arch;
   std::vector<Fact> funcs, imports, externs;
   std::vector<std::pair<std::string, uint64_t>> regs;
+  // `regtype <register> <type> <name>`: what a register holds on entry to every function, typed and
+  // named (PowerPC kernel code: r13 is the processor's KPCR, never written)
+  struct RegType { std::string reg, spec, name; };
+  std::vector<RegType> regtypes;
   std::shared_ptr<const std::vector<Span>> spans;
   std::vector<CallSite> calls;
   std::vector<JumpOverride> jumps;
@@ -916,6 +922,20 @@ void setUp(Analysis& a, const Description& d) {
     auto p = d.protos.find(f.va);
     if (p != d.protos.end() && f.model != "inline") applyProto(m, fd, f.name, p->second);
     if (f.model != "inline" && (d.only.empty() || d.only.count(f.va))) a.todo.push_back({fd, f});
+  }
+  // each register's value on entry, as a variable of every function's own (its local scope, over
+  // the whole function: the analysis reads `pcr->current_irql`, not `*(in_r13 + 0x18)`). The value
+  // sits in the register's low-order bytes when the type is smaller (big-endian: the last ones).
+  for (const auto& rt : d.regtypes) {
+    const VarnodeData& r = m.translate->getRegister(rt.reg);
+    Datatype* t = resolveType(m, rt.spec);
+    if (t == nullptr || t->getSize() > (int4)r.size) throw LowlevelError("regtype " + rt.reg + ": type " + rt.spec);
+    Address ra(r.space, r.offset + (m.translate->isBigEndian() ? r.size - t->getSize() : 0));
+    for (auto& td : a.todo) {
+      ScopeLocal* loc = td.first->getScopeLocal();
+      Symbol* sym = loc->addSymbol(rt.name, t, ra, Address())->getSymbol();
+      loc->setAttribute(sym, Varnode::typelock | Varnode::namelock);
+    }
   }
   for (MapIterator it = glb->begin(); it != glb->end(); ++it) a.registered.insert((*it)->getSymbol());
 }
@@ -1846,7 +1866,10 @@ ProtoSnap snapProto(Machine& m, FuncProto& fp, const std::string& name) {
 }
 
 void restoreProto(FuncProto& fp, const ProtoSnap& s) {
-  if (s.in_lock) fp.setPieces(s.pieces);
+  // (unlocked too: what the analysis committed -- its parameters, its result -- would be what the
+  // next function to call it starts from, so the C of a function would depend on which functions
+  // the same analysis wrote before it)
+  fp.setPieces(s.pieces);
   fp.setExtraPop(s.pop);
   fp.setInputLock(s.in_lock);                    // (unlocked: the analysis's parameters go with it)
   fp.setOutputLock(s.out_lock);
@@ -2245,9 +2268,16 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
   m.print->setOutputStream(&out);
   out << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
   governor::begin_function();
-  ProtoSnap snap;
-  bool proto_changed = false;
-  if (g_structs) snap = snapProto(m, t.first->getFuncProto(), t.second.name);
+  // Its prototype as the description set it, put back once it is written. The analysis commits
+  // what it found to the function's own prototype -- an unlocked one's parameters and result, and
+  // even a locked one's argument of unknown type, whose size alone is locked (VdPersistDisplay's
+  // `4x` first argument read as `int4 *`) -- and every caller decompiled after it, by the same
+  // analysis, then started from that. With CB_THREADS>1 which callers come after it varies from
+  // run to run, and so did their C.
+  ProtoSnap snap = snapProto(m, t.first->getFuncProto(), t.second.name);
+  FuncProto* before = new FuncProto();
+  before->copy(t.first->getFuncProto());
+  bool proto_changed = true;
   try {
     // its calls through pointers: each passed the words the code pushed before it, removed
     // by the callee (Windows' drivers and callbacks are Pascal). Every call's override is
@@ -2381,12 +2411,20 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
   } catch (LowlevelError& e) {
     out << "/* decompile failed: " << e.explain << " */" << std::endl;
   }
-  if (proto_changed) restoreProto(t.first->getFuncProto(), snap);
   out << std::endl;
   governor::end_function();
   m.clearAnalysis(t.first);                      // free this function's analysis; keep its symbol
   t.first->getOverride().clear();                // ...and the call overrides it was given (they were
                                                  // kept for the whole run: every function, every call)
+  // its prototype as it was before: the parameters' types (restoreProto), then everything else
+  // the prototype holds -- flags, extra pop, effects, the result (FuncProto::copy)
+  // (a `P` line's prototype is laid again by applyProto: a ninth argument and on are placed by
+  // hand -- placeStackArguments -- which setPieces alone cannot)
+  auto pl = d.protos.find(t.second.va);
+  if (pl != d.protos.end()) applyProto(m, t.first, t.second.name, pl->second);
+  else if (proto_changed) restoreProto(t.first->getFuncProto(), snap);
+  t.first->getFuncProto().copy(*before);
+  delete before;
   forgetGlobals(a);
 }
 
@@ -2447,6 +2485,12 @@ int main(int argc, char** argv) {
         if (!j.targets.empty()) d.jumps.push_back(j);
       } else if (f.size() >= 2 && f[0] == "R") {
         d.retjumps.push_back(strtoull(f[1].c_str(), nullptr, 16));
+      } else if (f[0] == "regtype") {
+        if (f.size() < 4 || !typeSpecOk(f[2], &d.typeNames) || f[3].empty()) {
+          std::fprintf(stderr, "FAIL: bad regtype line: %s\n", line.c_str());
+          return 1;
+        }
+        d.regtypes.push_back({f[1], f[2], f[3]});
       } else if (f.size() >= 3 && f[0] == "reg") {
         d.regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
       } else if (f[0] == "P") {
