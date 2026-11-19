@@ -26,9 +26,28 @@ std::string_view ctd_trim(std::string_view s) {
 }
 
 // The index just past the ')' matching the '(' at `open` (the end of `s` when there is none).
+// Past a comment or a string or character literal that starts at `k` (`/* ",..." */`: its commas and parentheses are not the
+// code's); `k` itself when none starts there.
+std::size_t ctd_skip(std::string_view s, std::size_t k) {
+    if (s.substr(k, 2) == "/*") {
+        const std::size_t e = s.find("*/", k + 2);
+        return e == std::string_view::npos ? s.size() : e + 2;
+    }
+    if (s[k] != '"' && s[k] != '\'') return k;
+    for (std::size_t e = k + 1; e < s.size(); ++e) {
+        if (s[e] == '\\') ++e;
+        else if (s[e] == s[k]) return e + 1;
+    }
+    return s.size();
+}
+
 std::size_t ctd_close(std::string_view s, std::size_t open) {
     int depth = 0;
     for (std::size_t k = open; k < s.size(); ++k) {
+        if (const std::size_t past = ctd_skip(s, k); past != k) {
+            k = past - 1;
+            continue;
+        }
         if (s[k] == '(') ++depth;
         else if (s[k] == ')' && --depth == 0) return k + 1;
     }
@@ -41,7 +60,13 @@ std::vector<std::string> ctd_args(std::string_view s) {
     if (ctd_trim(s).empty()) return out;
     int depth = 0;
     std::string cur;
-    for (const char c : s) {
+    for (std::size_t k = 0; k < s.size(); ++k) {
+        if (const std::size_t past = ctd_skip(s, k); past != k) {
+            cur += s.substr(k, past - k);
+            k = past - 1;
+            continue;
+        }
+        const char c = s[k];
         if (c == ',' && depth == 0) {
             out.emplace_back(ctd_trim(cur));
             cur.clear();
@@ -114,6 +139,168 @@ std::vector<std::string> ctd_params(std::string_view signature) {
 std::string ctd_declared(std::string_view declaration) {
     const std::vector<std::string_view> ids = ctd_identifiers(declaration);
     return ids.empty() ? std::string() : std::string(ids.back());
+}
+
+// The words a parameter of this type is (large model: a data pointer is far, two words), 0 for one that is not a type this
+// knows the size of.
+std::size_t ctd_words(std::string_view type) {
+    type = ctd_trim(type);
+    if (type.ends_with('*')) return 2;
+    for (const std::string_view two : {"int4", "uint4", "xunknown4", "long", "unsigned long", "float4"})
+        if (type == two) return 2;
+    for (const std::string_view one : {"int2", "uint2", "xunknown2", "int", "unsigned", "short", "unsigned short", "int1", "uint1",
+                                       "xunknown1", "char", "unsigned char"})
+        if (type == one) return 1;
+    return 0;
+}
+
+// Each call in `body` of a function of `merged` that passes its words one by one (as many arguments as the words of its
+// parameters, more than its parameters) passes each two-word parameter's pair as one value.
+std::string ctd_join_words(const std::string& body, const std::map<std::string, std::vector<std::string>>& merged) {
+    std::string out = body;
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        if (const std::size_t past = ctd_skip(out, k); past != k) {
+            k = past - 1;
+            continue;
+        }
+        if (!std::isalpha(static_cast<unsigned char>(out[k])) && out[k] != '_') continue;
+        std::size_t e = k;
+        while (e < out.size() && ctd_word(out[e])) ++e;
+        if (k > 0 && ctd_word(out[k - 1])) { k = e - 1; continue; }
+        const auto m = merged.find(out.substr(k, e - k));
+        if (m == merged.end() || e >= out.size() || out[e] != '(') { k = e - 1; continue; }
+        const std::size_t end = ctd_close(out, e);
+        const std::vector<std::string> args = ctd_args(std::string_view(out).substr(e + 1, end - e - 2));
+        std::size_t words = 0;
+        for (const std::string& t : m->second) words += ctd_words(t);
+        if (args.size() != words || args.size() == m->second.size()) { k = e - 1; continue; }
+        std::vector<std::string> joined;
+        std::size_t a = 0;
+        for (const std::string& t : m->second) {
+            if (ctd_words(t) == 2) joined.push_back(std::format("({})CONCAT22({},{})", t, args[a + 1], args[a])), a += 2;
+            else joined.push_back(args[a++]);
+        }
+        const std::string call = "(" + text::join(joined, ",") + ")";
+        out.replace(e, end - e, call);
+        k = e;   // (the arguments' own calls next)
+    }
+    return out;
+}
+
+// Each call in `body` of a function of `reads` with more arguments than it has parameters, where every argument past them
+// does nothing (no call, no store, no increment), written with as many as it has.
+std::string ctd_drop_surplus(const std::string& body, const std::map<std::string, std::size_t>& reads) {
+    std::string out = body;
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        if (const std::size_t past = ctd_skip(out, k); past != k) {
+            k = past - 1;
+            continue;
+        }
+        if (!std::isalpha(static_cast<unsigned char>(out[k])) && out[k] != '_') continue;
+        std::size_t e = k;
+        while (e < out.size() && ctd_word(out[e])) ++e;
+        if (k > 0 && ctd_word(out[k - 1])) { k = e - 1; continue; }
+        const auto m = reads.find(out.substr(k, e - k));
+        if (m == reads.end() || e >= out.size() || out[e] != '(') { k = e - 1; continue; }
+        const std::size_t end = ctd_close(out, e);
+        std::vector<std::string> args = ctd_args(std::string_view(out).substr(e + 1, end - e - 2));
+        if (args.size() <= m->second) { k = e - 1; continue; }
+        bool pure = true;
+        for (std::size_t a = m->second; a < args.size(); ++a) {
+            std::string_view x = args[a];
+            for (std::size_t p = 0; p < x.size() && pure; ++p) {
+                if (x[p] == '(' && p > 0 && ctd_word(x[p - 1])) {   // a call (but a far pointer made: no code)
+                    std::size_t b = p;
+                    while (b > 0 && ctd_word(x[b - 1])) --b;
+                    const std::string_view callee = x.substr(b, p - b);
+                    if (callee != "codebreaker_far" && !callee.starts_with("CONCAT") && !callee.starts_with("CODEBREAKER_PIECE")) pure = false;
+                }
+                if (x[p] == '=' && (p + 1 >= x.size() || x[p + 1] != '=') && (p == 0 || std::string_view("=!<>").find(x[p - 1]) == std::string_view::npos))
+                    pure = false;   // a store
+                if ((x[p] == '+' || x[p] == '-') && p + 1 < x.size() && x[p + 1] == x[p]) pure = false;
+            }
+        }
+        if (!pure) { k = e - 1; continue; }
+        args.resize(m->second);
+        out.replace(e, end - e, "(" + text::join(args, ",") + ")");
+        k = e;
+    }
+    return out;
+}
+
+// A number, with the comment the strings pass may have put beside it: `0x31a /* "MSC_CMD_FLAGS" */`, `0`.
+bool ctd_literal(std::string_view s) {
+    s = ctd_trim(s.substr(0, s.find("/*")));
+    if (s.empty()) return false;
+    for (const char c : s)
+        if (!std::isxdigit(static_cast<unsigned char>(c)) && c != 'x' && c != 'X') return false;
+    return std::isdigit(static_cast<unsigned char>(s[0])) != 0;
+}
+
+// `iVar4 = exit(...)`: a library function whose header says it returns nothing is called alone (the decompiler gave its
+// result a name where the analysis saw AX read after it).
+std::string ctd_library_void(const std::string& body, const std::set<std::string>& nothing) {
+    if (nothing.empty()) return body;
+    std::string out;
+    for (const std::string_view line : text::lines(body)) {
+        const std::size_t eq = line.find(" = ");
+        if (eq != std::string_view::npos && line.ends_with(");")) {
+            const std::string_view lhs = ctd_trim(line.substr(0, eq));
+            const std::string_view rhs = line.substr(eq + 3);
+            const std::size_t open = rhs.find('(');
+            bool simple = !lhs.empty();
+            for (const char c : lhs) simple = simple && ctd_word(c);
+            if (simple && open != std::string_view::npos && nothing.contains(std::string(rhs.substr(0, open))) && ctd_close(rhs, open) == rhs.size() - 1) {
+                out += std::string(line.substr(0, line.find_first_not_of(' '))) + std::string(rhs) + "\n";
+                continue;
+            }
+        }
+        out += line;
+        out += '\n';
+    }
+    return out;
+}
+
+// Each call in `body` of a library function passes each pointer argument as the type its header declares (`(FILE *)pxVar3`):
+// the decompiler typed the pointer by how this program uses it, the header by what the library does with it. A number stays
+// as it is unless it was already a pointer cast (`(xunknown1 *)0x31a` becomes `(char *)0x31a`), and 0 is the null pointer.
+std::string ctd_library_casts(const std::string& body, const std::map<std::string, std::vector<std::string>>& library) {
+    if (library.empty()) return body;
+    std::string out = body;
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        if (const std::size_t past = ctd_skip(out, k); past != k) {
+            k = past - 1;
+            continue;
+        }
+        if (!std::isalpha(static_cast<unsigned char>(out[k])) && out[k] != '_') continue;
+        std::size_t e = k;
+        while (e < out.size() && ctd_word(out[e])) ++e;
+        if (k > 0 && ctd_word(out[k - 1])) { k = e - 1; continue; }
+        const auto m = library.find(out.substr(k, e - k));
+        if (m == library.end() || e >= out.size() || out[e] != '(') { k = e - 1; continue; }
+        const std::size_t end = ctd_close(out, e);
+        std::vector<std::string> args = ctd_args(std::string_view(out).substr(e + 1, end - e - 2));
+        if (args.size() != m->second.size()) { k = e - 1; continue; }   // (as many as the header says, or left alone)
+        bool changed = false;
+        for (std::size_t a = 0; a < args.size(); ++a) {
+            const std::string& type = m->second[a];
+            std::string& arg = args[a];
+            if (type.empty() || arg.starts_with("(" + type + ")") || ctd_trim(arg) == "0") continue;
+            if (ctd_literal(arg)) continue;
+            const std::size_t close = arg.starts_with('(') ? ctd_close(arg, 0) : std::string::npos;
+            if (close != std::string::npos && arg.substr(0, close).ends_with("*)") && ctd_literal(std::string_view(arg).substr(close)))
+                arg = "(" + type + ")" + arg.substr(close);   // a pointer cast of a number: the header's
+            else {
+                bool word = true;
+                for (const char c : arg) word = word && ctd_word(c);
+                arg = "(" + type + ")" + (word ? arg : "(" + arg + ")");
+            }
+            changed = true;
+        }
+        if (changed) out.replace(e, end - e, "(" + text::join(args, ",") + ")");
+        k = e;   // (the arguments' own calls next)
+    }
+    return out;
 }
 
 struct CtdFunction {
@@ -206,6 +393,50 @@ std::string ctd_drop_registers(const CtdFunction& f, std::size_t& dropped) {
         }
         out += line;
         out += '\n';
+    }
+    return out;
+}
+
+// A local the decompiler declared as four bytes (`xunknown4 xStack_6;`) that its statements dereference (`*xStack_6`) is a
+// far pointer: declared as the pointer the statements most often store in it (`xStack_6 = (char *)CONCAT22(...)`).
+std::string ctd_pointer_locals(const std::string& body, std::size_t& retyped) {
+    std::map<std::string, std::size_t> wide;   // name -> its declaration's line start
+    std::size_t at = 0;
+    for (const std::string_view line : text::lines(body)) {
+        const std::string_view t = ctd_trim(line);
+        for (const std::string_view type : {"xunknown4 ", "int4 ", "uint4 "})
+            if (line.starts_with("  ") && t.starts_with(type) && t.ends_with(';') && t.find_first_of("=*(,[") == std::string_view::npos)
+                wide[std::string(ctd_trim(t.substr(type.size(), t.size() - type.size() - 1)))] = at;
+        at += line.size() + 1;
+    }
+    std::string out = body;
+    std::vector<std::pair<std::size_t, std::string>> edits;   // (declaration line start, its new line)
+    for (const auto& [name, line_at] : wide) {
+        bool deref = false;
+        std::map<std::string, std::size_t> stored;
+        for (std::size_t k = body.find(name); k != std::string::npos; k = body.find(name, k + name.size())) {
+            if (!ctd_whole(body, k, name.size())) continue;
+            std::size_t b = k;
+            while (b > 0 && body[b - 1] == ' ') --b;
+            if (b > 0 && body[b - 1] == '*' && (b < 2 || (body[b - 2] != '*' && body[b - 2] != ')' && !ctd_word(body[b - 2]))))
+                deref = true;
+            const std::size_t e = k + name.size();
+            if (body.compare(e, 4, " = (") == 0) {
+                const std::size_t close = body.find(')', e + 4);
+                const std::string cast = close == std::string::npos ? "" : body.substr(e + 4, close - e - 4);
+                if (cast.ends_with(" *") && cast.find_first_of("()") == std::string::npos && cast.find("__far") == std::string::npos)
+                    ++stored[cast];
+            }
+        }
+        if (!deref || stored.empty()) continue;
+        const auto best = std::max_element(stored.begin(), stored.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
+        edits.emplace_back(line_at, "  " + best->first + name + ";");
+    }
+    std::sort(edits.rbegin(), edits.rend());
+    for (const auto& [line_at, line] : edits) {
+        const std::size_t end = out.find('\n', line_at);
+        out.replace(line_at, (end == std::string::npos ? out.size() : end) - line_at, line);
+        ++retyped;
     }
     return out;
 }
@@ -358,6 +589,7 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     for (CtdFunction& f : fns) {
         const std::map<std::string, std::string> pointees = ctd_pointees(f);
         f.body = ctd_strings(ctd_label_statements(ctd_pieces(ctd_far(ctd_drop_registers(f, r.registers_dropped), pointees))), layout.data, layout.data_segment, r.strings);
+        f.body = ctd_library_void(ctd_library_casts(ctd_pointer_locals(f.body, r.pointers), layout.library_pointers), layout.library_void);
         f.signature = ctd_pieces(f.signature);
     }
 
@@ -429,13 +661,48 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     // a function written void whose result a caller uses returns what it leaves in AX
     std::set<std::string> used;
     for (const CtdFunction& f : fns)
-        for (std::size_t k = f.body.find("= sub_"); k != std::string::npos; k = f.body.find("= sub_", k + 2)) {
-            std::size_t e = k + 2;
+        for (std::size_t k = f.body.find("= "); k != std::string::npos; k = f.body.find("= ", k + 2)) {
+            std::size_t b = k + 2;   // (`x = sub_...(`, or through a cast: `x = (xunknown2 *)sub_...(`)
+            if (b < f.body.size() && f.body[b] == '(') {
+                const std::size_t close = ctd_close(f.body, b);
+                if (close <= b + 2 || f.body[close - 2] != '*') continue;
+                b = close;
+            }
+            if (f.body.compare(b, 4, "sub_") != 0) continue;
+            std::size_t e = b;
             while (e < f.body.size() && ctd_word(f.body[e])) ++e;
-            if (e < f.body.size() && f.body[e] == '(') used.insert(f.body.substr(k + 2, e - k - 2));
+            if (e < f.body.size() && f.body[e] == '(') used.insert(f.body.substr(b, e - b));
         }
     for (CtdFunction& f : fns)
         if (f.signature.starts_with("void ") && used.contains(ctd_name(f.signature))) f.signature = "xunknown2 " + f.signature.substr(5);
+
+    // a function whose parameters the clean-C pass made far pointers of (two words each: `void *a1` for the words a1 and a2)
+    // is still called with the words, by callers decompiled on their own: such a call passes each pair as the one value
+    // it is, `(void *)CONCAT22(high, low)` (cdecl pushes the low word last: it is the first of the two)
+    std::map<std::string, std::vector<std::string>> merged;   // function -> each parameter's type, where a parameter is two words
+    for (const CtdFunction& f : fns) {
+        std::vector<std::string> types;
+        bool wide = false;
+        for (const std::string& p : ctd_params(f.signature)) {
+            const std::string id = ctd_declared(p);
+            std::string type(ctd_trim(std::string_view(p).substr(0, p.size() - id.size())));
+            wide = wide || ctd_words(type) == 2;
+            types.push_back(std::move(type));
+        }
+        if (wide) merged[ctd_name(f.signature)] = std::move(types);
+    }
+    for (CtdFunction& f : fns) f.body = ctd_join_words(f.body, merged);
+
+    // a call passing more than its function reads (the decompiler guessed the words of a call it was told nothing of): the
+    // callee never reads the rest, and the caller removes what it pushed, so an argument past them that does nothing (no call,
+    // no store) is not written
+    std::map<std::string, std::size_t> parameters;   // function -> its parameters, where none is `...`
+    for (const CtdFunction& f : fns) {
+        const std::vector<std::string> params = ctd_params(f.signature);
+        if (std::none_of(params.begin(), params.end(), [](const std::string& p) { return ctd_trim(p) == "..."; }))
+            parameters[ctd_name(f.signature)] = params.size();
+    }
+    for (CtdFunction& f : fns) f.body = ctd_drop_surplus(f.body, parameters);
 
     // the arguments each function is called with
     std::map<std::string, std::set<std::size_t>> calls;
@@ -454,15 +721,47 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     for (CtdFunction& f : fns) {
         const std::string name = ctd_name(f.signature);
         std::vector<std::string> params = ctd_params(f.signature);
+        // a function whose callers pass different numbers of words is written `(int2 a1, ...)`, and where its body reads a word
+        // past those by name, `(int2 a1, ..., xunknown2 param_3)`: that `...` is the word between, and one last is dropped --
+        // such a function is defined the old way, which lets each caller pass what it passes
+        bool variadic = false;
+        std::size_t fixed = 0;   // the words every caller passes (each a word: the lane states them so)
+        for (std::size_t k = 0; k < params.size(); ++k) {
+            if (ctd_trim(params[k]) != "...") continue;
+            if (!variadic) fixed = k;
+            variadic = true;
+            if (k + 1 == params.size()) params.pop_back();
+            else params[k] = std::format("xunknown2 param_{}", k + 1);
+        }
         const auto seen = calls.find(name);
         const std::string head = f.signature.substr(0, f.signature.find('(') + 1);
-        if (seen == calls.end() || (seen->second.size() == 1 && *seen->second.begin() <= params.size())) {
+        if (variadic && fixed > 0) {
+            // `T f(int2 a1, ...)`: a prototype every caller agrees with; a word the body reads past the fixed ones is the word
+            // at its place beside the first argument (cdecl pushes the last first: they lie in order up the stack)
+            const std::vector<std::string> named(params.begin(), params.begin() + static_cast<std::ptrdiff_t>(fixed));
+            f.signature = head + text::join(named, ",") + ",...)";
+            prototypes.push_back(f.signature + ";");
+            const std::string first = ctd_declared(params[0]);
+            std::string reads;
+            for (std::size_t k = fixed; k < params.size(); ++k) {
+                const std::string p(ctd_trim(params[k]));
+                const std::string id = ctd_declared(p);
+                if (ctd_count(f.body, id) == 0) continue;   // (a word between that the body never reads)
+                const std::string type(ctd_trim(std::string_view(p).substr(0, p.size() - id.size())));
+                reads += std::format("  {} = *({} *)((xunknown2 *)&{} + {});\n", p, type, first, k);
+            }
+            const std::size_t open = f.body.find("{\n");
+            if (!reads.empty() && open != std::string::npos) f.body.insert(open + 2, reads);
+            ++r.old_style;
+            continue;
+        }
+        if (!variadic && (seen == calls.end() || (seen->second.size() == 1 && *seen->second.begin() <= params.size()))) {
             prototypes.push_back(f.signature + ";");
             continue;
         }
-        const std::size_t most = std::max(*seen->second.rbegin(), params.size());
+        const std::size_t most = std::max(seen == calls.end() ? 0 : *seen->second.rbegin(), params.size());
         for (std::size_t k = params.size(); k < most; ++k) params.push_back(std::format("xunknown2 param_{}", k + 1));
-        if (seen->second.size() == 1) {   // every caller passes the same number: the function takes them all
+        if (!variadic && seen->second.size() == 1) {   // every caller passes the same number: the function takes them all
             f.signature = head + text::join(params, ",") + ")";
             prototypes.push_back(f.signature + ";");
             ++r.widened;
@@ -620,7 +919,9 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         for (const std::string& p : ctd_params(f.signature)) declared.insert(ctd_declared(p));
         for (const std::string_view line : text::lines(f.body)) {
             const std::string_view t = ctd_trim(line);
-            if (line.starts_with(' ') && t.ends_with(';') && t.find_first_of("=(") == std::string_view::npos) declared.insert(ctd_declared(t.substr(0, t.size() - 1)));
+            if (line.starts_with(' ') && t.ends_with(';') && t.find_first_of("=(") == std::string_view::npos && !t.starts_with("return ") &&
+                !t.starts_with("goto "))
+                declared.insert(ctd_declared(t.substr(0, t.size() - 1)));
         }
         for (const std::string_view id : ctd_identifiers(f.body))
             if (id.size() >= 2 && id.starts_with('_') && declared.contains(std::string(id.substr(1))) && !declared.contains(std::string(id)))

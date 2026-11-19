@@ -50,8 +50,9 @@ CLibrary CLibrary::parse(std::string_view json_text, std::string_view source) {
     const auto functions = doc.find("functions");
     if (functions == doc.end() || !functions->is_object()) throw ParseError(source, 0, 0, "no \"functions\" object");
     for (const auto& [name, row] : functions->items()) {
-        if (!row.is_array() || row.size() != 3 || !row[0].is_string() || !row[1].is_string() || !row[2].is_string() || row[1].get<std::string>().size() != 1)
-            throw ParseError(source, 0, 0, name + ": not [header, result, arguments]");
+        if (!row.is_array() || (row.size() != 3 && row.size() != 4) || !row[0].is_string() || !row[1].is_string() || !row[2].is_string() ||
+            row[1].get<std::string>().size() != 1 || (row.size() == 4 && !row[3].is_string()))
+            throw ParseError(source, 0, 0, name + ": not [header, result, arguments, pointer types]");
         Prototype p;
         p.header = row[0].get<std::string>();
         p.result = row[1].get<std::string>()[0];
@@ -60,6 +61,11 @@ CLibrary CLibrary::parse(std::string_view json_text, std::string_view source) {
             if (kind.empty()) continue;
             if (kind == "...") p.variadic = true;
             else p.arguments.push_back(kind[0]);
+        }
+        if (row.size() == 4) {
+            const std::string types = row[3].get<std::string>();
+            for (const std::string_view type : text::split(types, ',')) p.pointers.emplace_back(type);
+            p.pointers.resize(p.arguments.size());
         }
         library.functions_.emplace(name, std::move(p));
     }

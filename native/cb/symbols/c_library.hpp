@@ -8,7 +8,8 @@
 // A program calls `strcpy`; nobody on the program's team wrote it. A function identified as the compiler's library (runtime_library)
 // is declared by its header -- the `#include` at the top of the program -- and called by name; what the header says of its arguments
 // tells the decompiler how many words each call passes. The kinds: v void, c char, i int, u unsigned, l long, f float, d double,
-// p pointer (a function taking any number more says "..." last).
+// p pointer (a function taking any number more says "..." last). A fourth field, where present, is the C type of each pointer
+// argument (`,,,FILE *`): a call passing another pointer there is written with that cast.
 #pragma once
 
 #include <cstdint>
@@ -25,6 +26,7 @@ struct Prototype {
     char result = 'i';
     std::vector<char> arguments;
     bool variadic = false;               // more arguments follow `arguments`
+    std::vector<std::string> pointers;   // each argument's C type where it is a pointer ("FILE *"), "" for the others; empty: not known
 
     // Bytes the result takes in AX (DX:AX); 0 for void and for a result that is not in those registers (a double).
     std::uint32_t result_bytes(std::uint32_t pointer_bytes) const;

@@ -852,6 +852,8 @@ void setUp(Analysis& a, const Description& d) {
         pieces.outtype = m.types->getBase(2, TYPE_INT);
         pieces.firstVarArgSlot = -1;
         for (size_t i = 0; i < sizes.size(); ++i) {
+          // (`...` last: its callers pass different numbers of words past these -- each call passes what it pushes)
+          if (sizes[i] == "...") { pieces.firstVarArgSlot = (int)i; break; }
           // (`4p`: a far pointer -- as a 4-byte number it was dereferenced as a near one)
           if (sizes[i] == "4p")
             pieces.intypes.push_back(m.types->getTypePointer(4, m.types->getBase(1, TYPE_UNKNOWN),

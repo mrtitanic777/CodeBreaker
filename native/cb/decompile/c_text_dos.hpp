@@ -28,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -43,6 +44,7 @@ struct Report {
     std::size_t old_style = 0;           // functions defined the old way: their callers disagree on the arguments
     std::size_t widened = 0;             // functions given the arguments all their callers pass
     std::size_t strings = 0;             // pointers into the data segment shown with the string they point at
+    std::size_t pointers = 0;            // four-byte locals the statements dereference, declared as the far pointers they are
 };
 
 struct Result {
@@ -61,6 +63,11 @@ struct Layout {
     std::string data_segment;                                   // its segment as the code writes it, "0x2a38" (empty: not known)
     std::string data;                                           // the data segment's bytes (up to 64 KB): a pointer into it that
                                                                 // starts a string gets the string beside it, `/* "MSC_CMD_FLAGS" */`
+    std::map<std::string, std::vector<std::string>> library_pointers;   // a library function -> the C type of each pointer
+                                                                // argument its header declares ("FILE *"; "" for the others):
+                                                                // a call passing another pointer there casts it
+    std::set<std::string> library_void;                         // the library functions that return nothing: a statement that
+                                                                // stores what one returned (after `exit`, say) calls it alone
 };
 
 // `text` is the program's C as the decompiler wrote it (Decompiler::as_c): its first lines (the title, the #includes of the

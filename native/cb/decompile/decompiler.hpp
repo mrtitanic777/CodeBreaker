@@ -212,6 +212,8 @@ struct DosProgramC {
     Functions functions;
     std::vector<LibraryFunction> library;   // the functions that are the compiler's library: named, called by name, not decompiled
     std::string header;                     // the `#include`s they come with
+    std::map<std::string, std::vector<std::string>> library_pointers;   // name -> the C type of each pointer argument
+    std::set<std::string> library_void;                                  // the names whose header says they return nothing
     std::shared_ptr<describe::DosDescription> description;
 };
 

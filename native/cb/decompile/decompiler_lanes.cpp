@@ -118,6 +118,8 @@ struct DosLibrary {
     std::set<Va> skipped;                 // the library's functions: described, so callers call them by name, but not decompiled
     std::vector<LibraryFunction> found;
     std::string header;
+    std::map<std::string, std::vector<std::string>> pointers;   // name -> the C type of each pointer argument (c_text_dos::Layout)
+    std::set<std::string> nothing;                              // the names whose header says they return nothing (void)
 };
 
 // Match the program's functions against the library signatures. A function that matches is named as the library names it, given the
@@ -151,6 +153,8 @@ DosLibrary lanes_dos_library(Decompiler& decompiler, describe::DosDescription& d
             line += "\t" + (result == 2 || result == 4 ? std::to_string(result) : std::string());
             const std::vector<std::string> sizes = p->argument_sizes(pointer_bytes);
             if (!sizes.empty()) line += "\t" + text::join(sizes, ",");
+            if (!p->pointers.empty()) out.pointers[name] = p->pointers;
+            if (p->result == 'v') out.nothing.insert(name);
         } else {
             by_library[what.library].push_back(name);
         }
@@ -248,10 +252,24 @@ void lanes_dos_startup(describe::DosDescription& d, DosLibrary& library) {
 // for two), so the instruction after a call says how many words that call passed. A function's description then states that
 // many (the most any caller passes), and every call of it is written with them -- the decompiler reading a call's pushes on its
 // own misses those pushed before a branch, and writes one far pointer as one argument here and as two words there.
+// Whether the instruction ending at `off` is a push: `push reg` / `push sreg`, `push imm8`, `push imm16`, `push word [...]`
+// (FF /6, by its addressing form's length). Read backwards, so a guess -- it only ever turns a count into "not known".
+bool lanes_push_before(ByteView image, std::size_t off) {
+    auto at = [&](std::size_t back) -> int { return off >= back ? image[off - back] : -1; };
+    const int b1 = at(1);
+    if ((b1 >= 0x50 && b1 <= 0x57) || b1 == 0x06 || b1 == 0x0E || b1 == 0x16 || b1 == 0x1E) return true;
+    if (at(2) == 0x6A || at(3) == 0x68) return true;
+    auto push_modrm = [](int m, int mod) { return m >= 0 && (m & 0x38) == 0x30 && (m >> 6) == mod; };
+    if (at(2) == 0xFF && push_modrm(at(1), 0) && (at(1) & 7) != 6) return true;            // push word [bx]
+    if (at(3) == 0xFF && push_modrm(at(2), 1)) return true;                                // push word [bp+d8]
+    if (at(4) == 0xFF && (push_modrm(at(3), 2) || (push_modrm(at(3), 0) && (at(3) & 7) == 6))) return true;   // [bp+d16], [a16]
+    return false;
+}
+
 void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& library) {
     const analyze::dos_functions::Analysis& a = *d.analysis;
     const ByteView image(d.image);
-    std::map<Va, std::size_t> words;
+    std::map<Va, std::pair<std::size_t, std::size_t>> words;   // the fewest and the most words a call of it removes
     auto cs_of = [&](Va linear) -> std::optional<Va> {
         auto it = a.functions.upper_bound(static_cast<std::uint32_t>(linear));
         if (it == a.functions.begin()) return std::nullopt;
@@ -280,8 +298,11 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
         if (next + 3 <= image.size() && image[next] == 0x83 && image[next + 1] == 0xC4 && image[next + 2] < 0x80) passed = image[next + 2] / 2;
         else if (next + 4 <= image.size() && image[next] == 0x81 && image[next + 1] == 0xC4) passed = (image[next + 2] | (image[next + 3] << 8)) / 2;
         else if (next < image.size() && image[next] == 0x59) passed = next + 1 < image.size() && image[next + 1] == 0x59 ? 2 : 1;   // pop cx
-        std::size_t& most = words[*target];
-        most = std::max(most, passed);
+        // (none removed right after it, but a push right before it: Microsoft C left this call's words for a later `add sp`
+        // to remove with the next call's -- the call says nothing of how many it passed)
+        if (passed == 0 && lanes_push_before(image, off)) continue;
+        const auto [w, first] = words.try_emplace(*target, passed, passed);
+        if (!first) w->second = {std::min(w->second.first, passed), std::max(w->second.second, passed)};
     }
     for (std::string& line : d.lines) {
         if (!line.starts_with("F\t")) continue;
@@ -289,9 +310,13 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
         if (f.size() != 5 || (f[3] != "0" && f[3] != "-1")) continue;   // (a function whose return removes its arguments says so already)
         const std::optional<std::int64_t> va = text::parse_int<std::int64_t>(f[1], 16);
         const auto w = va ? words.find(*va) : words.end();
-        if (w == words.end() || w->second == 0) continue;   // (no words: nothing to say -- an empty list is "not known")
-        // its callers remove the arguments, so its return removes none (the decompiler states the sizes of such a function only)
-        line = std::format("F\t{}\t{}\t0\t{}\t\t{}", f[1], f[2], f[4], text::join(std::vector<std::string>(w->second, "2"), ","));
+        if (w == words.end() || w->second.second == 0) continue;   // (no words: nothing to say -- an empty list is "not known")
+        // its callers remove the arguments, so its return removes none (the decompiler states the sizes of such a function only);
+        // callers that disagree (an error reporter given a message number and what the message names) pass the words all of
+        // them pass and then each its own: `...` (the most any passes, given to all, has the others pass words they never pushed)
+        std::vector<std::string> sizes(w->second.first, "2");
+        if (w->second.first != w->second.second) sizes.emplace_back("...");
+        line = std::format("F\t{}\t{}\t0\t{}\t\t{}", f[1], f[2], f[4], text::join(sizes, ","));
     }
     d.write();
 }
@@ -450,6 +475,8 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     result.description = d;
     result.library = library.found;
     result.header = library.header;
+    result.library_pointers = library.pointers;
+    result.library_void = library.nothing;
     return result;
 }
 
@@ -517,6 +544,8 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         if (parts.empty()) {
             DosProgramC r = decompile_dos(module, std::nullopt);
             dos_layout = lanes_dos_layout(*r.description);
+            dos_layout.library_pointers = r.library_pointers;
+            dos_layout.library_void = r.library_void;
             texts = std::move(r.functions.texts);
             order = std::move(r.functions.order);
             total = r.description->names.size();

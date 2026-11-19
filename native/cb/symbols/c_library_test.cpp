@@ -36,4 +36,17 @@ CB_TEST("symbols.c_library.the_projects_table", [] {
     CB_CHECK(library.size() > 150);
     CB_CHECK_EQ(library.find("strlen")->header, "string.h");
     CB_CHECK_EQ(library.find("fopen")->header, "stdio.h");
+    // the C type of each pointer argument, as Microsoft C 4.0's header declares it
+    CB_CHECK((library.find("fwrite")->pointers == std::vector<std::string>{"char *", "", "", "FILE *"}));
+    CB_CHECK(library.find("abs")->pointers.empty());
+});
+
+CB_TEST("symbols.c_library.reads_each_pointer_arguments_type", [] {
+    const cl::CLibrary library = cl::CLibrary::parse(
+        R"({"functions": {"fputs": ["stdio.h", "i", "p,p", "char *,FILE *"], "fprintf": ["stdio.h", "i", "p,p,...", "FILE *,char *"],
+            "abs": ["stdlib.h", "i", "i"]}})");
+    CB_CHECK((library.find("fputs")->pointers == std::vector<std::string>{"char *", "FILE *"}));
+    CB_CHECK((library.find("fprintf")->pointers == std::vector<std::string>{"FILE *", "char *"}));
+    CB_CHECK(library.find("abs")->pointers.empty());
+    CB_CHECK_THROWS_AS(cb::ParseError, cl::CLibrary::parse(R"({"functions": {"f": ["h", "i", "p", 4]}})"));
 });

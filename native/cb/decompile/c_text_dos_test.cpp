@@ -36,7 +36,7 @@ constexpr const char* kCtdtProgram =
     "  \n"
     "  xVar1 = sub_00300();\n"
     "  sub_00100(0);\n"
-    "  sub_00400(1,2);\n"
+    "  sub_00400(1,xVar1++);\n"
     "  sub_00400(1);\n"
     "  int21(xVar1);\n"
     "  return;\n"
@@ -96,7 +96,8 @@ CB_TEST("decompile.c_text_dos.calls_settle_each_functions_result_and_arguments",
     const Result r = compilable(kCtdtProgram, "");
     // sub_00300 is written void, but its caller uses its result
     CB_CHECK(ctdt_has(r.text, "xunknown2 __cdecl16near sub_00300(void);"));
-    // sub_00400's callers pass 2 and 1 arguments: defined the old way, declared without a prototype
+    // sub_00400's callers pass 2 and 1 arguments (the second does something, so it stays): defined the old way, declared
+    // without a prototype
     CB_CHECK(ctdt_has(r.text, "void __cdecl16near sub_00400();"));
     CB_CHECK(ctdt_has(r.text, "void __cdecl16near sub_00400(param_1,param_2)\n  int2 param_1;\n  xunknown2 param_2;\n"));
     CB_CHECK_EQ(r.report.old_style, std::size_t{1});
@@ -133,6 +134,73 @@ CB_TEST("decompile.c_text_dos.a_pointer_to_a_string_of_the_data_segment_shows_th
     CB_CHECK(ctdt_has(r.text, "getenv((xunknown1 *)0x4 /* \"MSC\" */);"));
     CB_CHECK(ctdt_has(r.text, "puts((xunknown1 *)0x6);"));
     CB_CHECK_EQ(r.report.strings, std::size_t{1});
+});
+
+CB_TEST("decompile.c_text_dos.callers_passing_different_words_get_a_variadic_prototype", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(int2 a1,...,xunknown2 param_3)\n\n{\n  sub_00100(a1, 2, param_3);\n  return;\n}\n\n"
+        "void __cdecl16far sub_00200(void)\n\n{\n  sub_00100(1);\n  sub_00100(1, 2, 3);\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "void __cdecl16far sub_00100(int2 a1,...);\n"));
+    // a word the body reads past the fixed ones: its place beside the first argument
+    CB_CHECK(ctdt_has(r.text, "{\n  xunknown2 param_3 = *(xunknown2 *)((xunknown2 *)&a1 + 2);\n"));
+    CB_CHECK(ctdt_has(r.text, "  sub_00100(1);\n  sub_00100(1, 2, 3);\n"));
+});
+
+CB_TEST("decompile.c_text_dos.a_call_passing_a_far_pointers_words_passes_the_pointer", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void *a1,int2 a3)\n\n{\n  return;\n}\n\n"
+        "void __cdecl16far sub_00200(int2 a1,int2 a2)\n\n{\n  sub_00100(a1,a2,0x5 /* \",x\" */);\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "  sub_00100((void *)CONCAT22(a2,a1),0x5 /* \",x\" */);\n"));
+    CB_CHECK(ctdt_has(r.text, "void __cdecl16far sub_00100(void *a1,int2 a3);\n"));   // (the comma in the comment is no argument)
+});
+
+CB_TEST("decompile.c_text_dos.a_four_byte_local_that_is_dereferenced_is_a_pointer", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(int2 a1,int2 a2)\n\n{\n  xunknown4 xStack_6;\n  xunknown4 xStack_a;\n  \n"
+        "  xStack_6 = (char *)CONCAT22(a2,a1);\n  xStack_a = (char *)CONCAT22(a2,a1);\n  *xStack_6 = 0;\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "  char *xStack_6;\n"));
+    CB_CHECK(ctdt_has(r.text, "  xunknown4 xStack_a;\n"));   // (never dereferenced: as it was)
+    CB_CHECK_EQ(r.report.pointers, std::size_t{1});
+});
+
+CB_TEST("decompile.c_text_dos.a_library_call_passes_each_pointer_as_its_header_declares", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(xunknown1 *a1,uint1 *pxVar3)\n\n{\n"
+        "  fwrite(a1,1,2,pxVar3);\n  fflush((FILE *)pxVar3);\n  fputs((xunknown1 *)0x31a,0);\n  iVar1 = exit(1);\n  return;\n}\n";
+    Layout layout;
+    layout.library_pointers = {{"fwrite", {"char *", "", "", "FILE *"}}, {"fflush", {"FILE *"}}, {"fputs", {"char *", "FILE *"}}};
+    layout.library_void = {"exit"};
+    const Result r = compilable(text, "", layout);
+    CB_CHECK(ctdt_has(r.text, "  fwrite((char *)a1,1,2,(FILE *)pxVar3);\n"));
+    CB_CHECK(ctdt_has(r.text, "  fflush((FILE *)pxVar3);\n"));
+    CB_CHECK(ctdt_has(r.text, "  fputs((char *)0x31a,0);\n"));
+    CB_CHECK(ctdt_has(r.text, "  exit(1);\n"));   // (it returns nothing: nothing is stored)
+});
+
+CB_TEST("decompile.c_text_dos.arguments_a_function_never_reads_are_not_passed_unless_they_do_something", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "int2 __cdecl16far sub_00100(void)\n\n{\n  return 1;\n}\n\n"
+        "void __cdecl16far sub_00200(int2 a1,int2 a2)\n\n{\n  a1 = sub_00100();\n  a1 = sub_00100(a1,CONCAT22(a2,a1));\n"
+        "  a1 = sub_00100(a2,sub_00100());\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "  a1 = sub_00100();\n  a1 = sub_00100();\n"));
+    CB_CHECK(ctdt_has(r.text, "  a1 = sub_00100(a2,sub_00100());\n"));   // (a call among them: kept, the old way)
+});
+
+CB_TEST("decompile.c_text_dos.an_argument_pair_read_as_one_pointer_is_named_in_a_function_returning_a_pointer", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "xunknown2 * __cdecl16far sub_00100(int2 a1,int2 a2)\n\n{\n  int2 iVar1;\n  \n  return _a1;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "#define _a1 (*(xunknown2 **)&a1)\nxunknown2 * __cdecl16far sub_00100(int2 a1,int2 a2)\n"));
 });
 
 }  // namespace
