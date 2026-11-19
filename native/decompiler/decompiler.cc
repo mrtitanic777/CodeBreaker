@@ -2104,6 +2104,16 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
     HighVariable* h = kv.first;
     const Sketch& s = kv.second;
     if (s.bad || s.fields.size() < 2 || h->getInstance(0)->getSize() != (s.isFar ? 4 : ptr_size)) continue;
+    // a variable the code sets to a small number is a count, not where a structure is (`mov cx, 0Dh` / `rep movsw`, a copy
+    // the analysis turned into a loop through CX): no structure a pointer reaches sits in the first 256 bytes of a segment
+    bool counted = false;
+    for (int i = 0; i < h->numInstances() && !counted; ++i) {
+      Varnode* v = h->getInstance(i);
+      if (!v->isWritten() || v->getDef()->code() != CPUI_COPY || !v->getDef()->getIn(0)->isConstant()) continue;
+      const uintb k = v->getDef()->getIn(0)->getOffset();
+      counted = k != 0 && k < 0x100;
+    }
+    if (counted) continue;
     Symbol* sym = h->getSymbol();
     // (the function's own: a global is every function's, and not this one's to type)
     if (sym == nullptr || sym->getScope() != loc || indexed(h)) continue;

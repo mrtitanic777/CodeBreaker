@@ -105,6 +105,7 @@ struct Policy {
 struct LibraryFunction {
     std::string name;      // as C: "strcpy"
     std::string library;   // "Microsoft C 4.0: large-model C runtime (LLIBC.LIB)"
+    std::size_t bytes = 0; // how far its code is known to be the library's (the bytes its signature compared; 0: not known)
 };
 
 // What the decompiler asks of the rest of CodeBreaker that is not part of it: the symbol tables, readers and the L2 library.
@@ -215,6 +216,8 @@ struct DosProgramC {
     std::string header;                     // the `#include`s they come with
     std::map<std::string, std::vector<std::string>> library_pointers;   // name -> the C type of each pointer argument
     std::set<std::string> library_void;                                  // the names whose header says they return nothing
+    std::set<std::string> library_double;                                // the names whose header says they return a double
+    std::set<std::uint32_t> library_segments;                            // the code segments the library's functions are in
     std::map<std::string, std::map<std::uint32_t, std::string>> structure_fields;   // structure -> offset -> its field's C type
     std::shared_ptr<describe::DosDescription> description;
 };
@@ -222,6 +225,7 @@ struct DosProgramC {
 // An executable as the text of one .c file: the functions decompiled, and the functions found.
 struct AsC {
     std::string text;
+    std::vector<std::pair<std::string, std::string>> files;   // a DOS program as its source files (c_text_dos::Result::files)
     std::size_t decompiled = 0;
     std::size_t found = 0;
     std::size_t library = 0;   // of `found`: identified as the compiler's library and left out of the text

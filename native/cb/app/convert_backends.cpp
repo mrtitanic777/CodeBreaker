@@ -102,7 +102,8 @@ void cv_decompile(Reporter& r, const config::Config& config, const stdfs::path& 
     const decompile::decompiler::AsC c = decompiler.as_c(input);
     decompiler.set_progress(nullptr);
     r.check();
-    fs::write_text(work / (cv_lower(fs::to_text(input.stem())) + ".c"), c.text);
+    if (c.files.empty()) fs::write_text(work / (cv_lower(fs::to_text(input.stem())) + ".c"), c.text);
+    for (const auto& [name, text] : c.files) fs::write_text(work / name, text);   // (a program as the source files it was made of)
     r.count(c.decompiled, std::max(c.found, c.decompiled), std::format("{} of {} functions", c.decompiled, std::max(c.found, c.decompiled)));
 }
 

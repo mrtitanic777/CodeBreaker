@@ -102,7 +102,11 @@ std::optional<Identified> SignatureTable::match(ByteView code) const {
         if (hit == by_lead_.end()) continue;
         for (const Entry& e : hit->second) {
             if (e.size > code.size()) continue;
-            if (sha1_prefix(compare::mask::blank(code.first(e.size), e.masked)) == e.digest) return e.what;
+            if (sha1_prefix(compare::mask::blank(code.first(e.size), e.masked)) == e.digest) {
+                Identified what = e.what;
+                what.bytes = e.size;
+                return what;
+            }
         }
     }
     return std::nullopt;
@@ -113,10 +117,12 @@ std::vector<Identified> SignatureTable::match_all(ByteView code) const {
     for (std::size_t n = std::min(kLead, code.size()); n > 0; --n) {
         const auto hit = by_lead_.find(lead_key(code.first(n)));
         if (hit == by_lead_.end()) continue;
-        for (const Entry& e : hit->second)
-            if (e.size <= code.size() && sha1_prefix(compare::mask::blank(code.first(e.size), e.masked)) == e.digest &&
-                std::find(out.begin(), out.end(), e.what) == out.end())
-                out.push_back(e.what);
+        for (const Entry& e : hit->second) {
+            if (e.size > code.size() || sha1_prefix(compare::mask::blank(code.first(e.size), e.masked)) != e.digest) continue;
+            Identified what = e.what;
+            what.bytes = e.size;
+            if (std::find(out.begin(), out.end(), what) == out.end()) out.push_back(std::move(what));
+        }
     }
     return out;
 }

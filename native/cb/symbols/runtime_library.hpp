@@ -69,6 +69,7 @@ std::vector<std::uint32_t> mask_offsets(std::string_view mask_text);
 struct Identified {
     std::string name;      // as the C name
     std::string library;   // "<compiler>: <library>" as it was learned
+    std::size_t bytes = 0; // how many of its bytes the signature compared (0: not by signature): the code is the library's that far
     friend bool operator==(const Identified&, const Identified&) = default;
 };
 

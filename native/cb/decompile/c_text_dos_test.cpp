@@ -115,13 +115,59 @@ CB_TEST("decompile.c_text_dos.functions_are_written_under_the_source_file_whose_
     layout.files = {{0x100, "lex.c"}, {0x200, "trees.c"}, {0x300, "strings.c"}};
     layout.segment_of = {{"sub_00100", 0x1000}, {"sub_00200", 0x2000}, {"sub_00300", 0x3000}};
     const Result r = compilable(text, "", layout);
-    CB_CHECK_EQ(r.placed, std::size_t{2});
+    CB_CHECK_EQ(r.placed, std::size_t{3});   // (the third by the link order: the one file after trees.c)
     const std::size_t lex = r.text.find("/* ---- lex.c ---- */"), trees = r.text.find("/* ---- trees.c ---- */");
     CB_CHECK(lex != std::string::npos && trees != std::string::npos && lex < trees);
     CB_CHECK(lex < r.text.find("\nvoid __cdecl16far sub_00100(void)\n") && r.text.find("\nvoid __cdecl16far sub_00100(void)\n") < trees);
-    CB_CHECK(ctdt_has(r.text, "/* ---- (not placed in a source file) ---- */\n\nvoid __cdecl16far sub_00300(void)"));
+    CB_CHECK(ctdt_has(r.text, "/* ---- strings.c ---- */\n\nvoid __cdecl16far sub_00300(void)"));
     // without a layout, no sections
     CB_CHECK(!ctdt_has(compilable(text, "").text, "/* ---- "));
+    CB_CHECK(compilable(text, "").files.empty());
+    // and the program as those files: the header every file includes, the files in link order, the rest last
+    layout.stem = "t";
+    const Result split = compilable(text, "", layout);
+    CB_CHECK_EQ(split.files.size(), std::size_t{4});
+    CB_CHECK_EQ(split.files[0].first, "t.h");
+    CB_CHECK_EQ(split.files[1].first, "lex.c");
+    CB_CHECK_EQ(split.files[2].first, "trees.c");
+    CB_CHECK_EQ(split.files[3].first, "strings.c");
+    CB_CHECK(ctdt_has(split.files[0].second, "#ifndef CODEBREAKER_T_H\n"));
+    CB_CHECK(ctdt_has(split.files[0].second, "void __cdecl16far sub_00100(void);"));   // (every prototype)
+    CB_CHECK(!ctdt_has(split.files[0].second, "\nvoid __cdecl16far sub_00100(void)\n"));
+    CB_CHECK(ctdt_has(split.files[1].second, "#include \"t.h\"\n"));
+    CB_CHECK(ctdt_has(split.files[1].second, "\nvoid __cdecl16far sub_00100(void)\n"));
+    CB_CHECK(!ctdt_has(split.files[1].second, "sub_00200(void)\n"));
+    CB_CHECK(ctdt_has(split.files[3].second, "\nvoid __cdecl16far sub_00300(void)\n"));
+});
+
+CB_TEST("decompile.c_text_dos.a_segment_no_data_places_is_the_file_the_link_order_puts_there", [] {
+    // lex.c, trees.c, types.c linked in that order (their version strings at 100h, 200h, 300h; 400h ends the last's data);
+    // A reads lex.c's data, C types.c's, B nothing: B is trees.c. D is in the library's segment: the run-time's code
+    const std::string text =
+        "/* T.EXE -- decompiled by CodeBreaker; not built, not judged. */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  *(int2 *)0x120 = *(int2 *)0x130;\n  return;\n}\n\n"
+        "void __cdecl16far sub_00200(void)\n\n{\n  return;\n}\n\n"
+        "void __cdecl16far sub_00300(void)\n\n{\n  *(int2 *)0x310 = *(int2 *)0x320;\n  return;\n}\n\n"
+        "void __cdecl16far sub_00400(void)\n\n{\n  return;\n}\n";
+    Layout layout;
+    layout.stem = "t";
+    layout.base = 0x10000;
+    layout.files = {{0x100, "lex.c"}, {0x200, "trees.c"}, {0x300, "types.c"}, {0x400, "end.c"}};
+    layout.segment_of = {{"sub_00100", 0x11000}, {"sub_00200", 0x12000}, {"sub_00300", 0x13000}, {"sub_00400", 0x14000}};
+    layout.runtime_segments = {0x14000};
+    const Result r = compilable(text, "", layout);
+    std::map<std::string, std::string> files(r.files.begin(), r.files.end());
+    CB_CHECK(files.contains("lex.c") && files.contains("trees.c") && files.contains("types.c") && files.contains("runtime.c"));
+    CB_CHECK(!files.contains("t.c"));   // (every function placed)
+    CB_CHECK(ctdt_has(files["trees.c"], "\nvoid __cdecl16far sub_00200(void)\n"));
+    CB_CHECK(ctdt_has(files["trees.c"], "where the link order places them"));
+    CB_CHECK(ctdt_has(files["runtime.c"], "\nvoid __cdecl16far sub_00400(void)\n"));
+    // with two files between and one segment, which it is stays open: a file of its own, named by its segment
+    layout.files = {{0x100, "lex.c"}, {0x200, "trees.c"}, {0x280, "msgs.c"}, {0x300, "types.c"}, {0x400, "end.c"}};
+    const Result open = compilable(text, "", layout);
+    std::map<std::string, std::string> open_files(open.files.begin(), open.files.end());
+    CB_CHECK(open_files.contains("seg0200.c"));
+    CB_CHECK(ctdt_has(open_files["seg0200.c"], "one of trees.c, msgs.c"));
 });
 
 CB_TEST("decompile.c_text_dos.a_pointer_to_a_string_of_the_data_segment_shows_the_string", [] {
@@ -176,6 +222,30 @@ CB_TEST("decompile.c_text_dos.a_local_read_through_a_cast_is_a_pointer_and_one_n
         "  a1 = (xunknown2 *)*xStack_6;\n  return;\n}\n";
     const Result r = compilable(text, "");
     CB_CHECK(ctdt_has(r.text, "  xunknown2 *xStack_6;\n"));   // (`(T *)*x` is a cast and a read, not a product)
+});
+
+CB_TEST("decompile.c_text_dos.a_far_offset_cast_then_stepped_keeps_its_cast", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void *a1,int2 a2)\n\n{\n  xunknown2 xVar1;\n  \n"
+        "  xVar1 = *MK_FP(a2,(xunknown2 *)a1 + 1);\n  xVar1 = *MK_FP(a2,(xunknown2 *)a1);\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    // `(xunknown2 *)a1 + 1` is the word after a1: the cast stays with what it steps through
+    CB_CHECK(ctdt_has(r.text, "((xunknown2 __far *)codebreaker_far(a2,(uint2)((xunknown2 *)a1 + 1)))"));
+    CB_CHECK(ctdt_has(r.text, "((xunknown2 __far *)codebreaker_far(a2,(uint2)(a1)))"));   // (one operand: the cast is the type)
+});
+
+CB_TEST("decompile.c_text_dos.a_double_read_through_as_a_pointer_is_the_accumulators_address", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  xunknown2 *pxVar1;\n  \n"
+        "  pxVar1 = (xunknown2 *)atof((char *)0x100);\n  return;\n}\n";
+    Layout layout;
+    layout.library_double = {"atof"};
+    const Result r = compilable(text, "", layout);
+    CB_CHECK(ctdt_has(r.text, "pxVar1 = (xunknown2 *)codebreaker_fac(atof((char *)0x100));"));
+    CB_CHECK(ctdt_has(r.text, "static double codebreaker_fac_value;"));
+    CB_CHECK(!ctdt_has(compilable(text, "").text, "codebreaker_fac"));
 });
 
 CB_TEST("decompile.c_text_dos.structure_fields_are_as_wide_as_the_decompiler_found_them", [] {

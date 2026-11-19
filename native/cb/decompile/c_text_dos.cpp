@@ -261,6 +261,33 @@ std::string ctd_library_void(const std::string& body, const std::set<std::string
     return out;
 }
 
+// A call of a library function that returns a double, whose result the code reads through as a pointer (Microsoft C before
+// 5.1 returned a double as the address of the library's floating-point accumulator, __fac): the call is written as giving
+// that address, `codebreaker_fac(atof(s))` (the value kept where the result is read from, as the library kept it).
+std::string ctd_library_double(const std::string& body, const std::set<std::string>& doubles, bool& used) {
+    if (doubles.empty()) return body;
+    std::string out = body;
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        if (const std::size_t past = ctd_skip(out, k); past != k) {
+            k = past - 1;
+            continue;
+        }
+        if (!ctd_word(out[k]) || (k > 0 && ctd_word(out[k - 1]))) continue;
+        std::size_t e = k;
+        while (e < out.size() && ctd_word(out[e])) ++e;
+        if (e >= out.size() || out[e] != '(' || !doubles.contains(out.substr(k, e - k)) || k < 2 || out.compare(k - 2, 2, "*)") != 0) {
+            k = e - 1;
+            continue;
+        }
+        const std::size_t close = ctd_close(out, e);   // (`(T *)atof(...)`: read through as a pointer)
+        out.insert(close, ")");
+        out.insert(k, "codebreaker_fac(");
+        used = true;
+        k = close + 16;
+    }
+    return out;
+}
+
 // Each call in `body` of a library function passes each pointer argument as the type its header declares (`(FILE *)pxVar3`):
 // the decompiler typed the pointer by how this program uses it, the header by what the library does with it. A number stays
 // as it is unless it was already a pointer cast (`(xunknown1 *)0x31a` becomes `(char *)0x31a`), and 0 is the null pointer.
@@ -357,9 +384,13 @@ std::string ctd_far(std::string_view s, const std::map<std::string, std::string>
         if (offset.starts_with('(')) {
             const std::size_t close = offset.find(')');
             const std::string_view cast = close == std::string_view::npos ? std::string_view() : ctd_trim(offset.substr(1, close - 1));
+            // (the cast is the whole offset's only when what follows it is one operand: `(xunknown2 *)a1 + 1` is a word past a1)
+            const std::string_view rest = close == std::string_view::npos ? std::string_view() : ctd_trim(offset.substr(close + 1));
+            const bool whole = !rest.empty() && (rest.front() == '(' ? ctd_close(rest, 0) == rest.size()
+                                                                     : std::all_of(rest.begin(), rest.end(), [](char c) { return ctd_word(c); }));
             if (cast.ends_with('*') && cast.find('(') == std::string_view::npos && ctd_trim(cast.substr(0, cast.size() - 1)).find('*') == std::string_view::npos) {
                 type = std::string(ctd_trim(cast.substr(0, cast.size() - 1)));
-                offset = offset.substr(close + 1);
+                if (whole) offset = offset.substr(close + 1);
             }
         }
         if (type == "xunknown2" && !ctd_trim(offset).starts_with('&')) {   // (no cast: the pointer the offset is made of; &x->f a field's word)
@@ -579,6 +610,43 @@ std::string ctd_globals(std::string_view s, std::map<std::uint32_t, CtdGlobal>& 
 
 }  // namespace
 
+// The program as its source files: `<stem>.h` (everything before the functions: the header, the declarations, every
+// prototype), each source file's functions after `#include "<stem>.h"` (a file the compiler was given under another name --
+// `grammar.y`, through yacc -- is the C it became, `grammar.c`), and `<stem>.c` for the functions no file is known of.
+std::vector<std::pair<std::string, std::string>> ctd_source_files(const std::string& common, const std::vector<std::string>& order,
+                                                                  const std::map<std::string, std::string>& texts, const std::string& stem,
+                                                                  const std::map<std::string, std::string>& notes) {
+    std::vector<std::pair<std::string, std::string>> out;
+    const std::string guard = "CODEBREAKER_" + text::upper(stem) + "_H";
+    const std::size_t title_end = common.find('\n');
+    const std::string title = title_end == std::string::npos ? std::string() : common.substr(0, title_end + 1);
+    out.emplace_back(stem + ".h", title + "#ifndef " + guard + "\n#define " + guard + "\n" +
+                                      (title_end == std::string::npos ? common : common.substr(title_end + 1)) + "\n#endif\n");
+    std::set<std::string> used = {text::lower(stem + ".h")};
+    auto trimmed = [](std::string s) {
+        while (!s.empty() && (s.back() == '\n' || s.back() == ' ')) s.pop_back();
+        return s + "\n";
+    };
+    auto add = [&](std::string name, const std::string& said, const std::string& body) {
+        std::string base = name.substr(0, name.rfind('.'));
+        for (int n = 2; used.contains(text::lower(name)); ++n) name = base + "_" + std::to_string(n) + ".c";
+        used.insert(text::lower(name));
+        const std::string head = said.empty() ? "/* " + name + " -- the functions no source file is known of */\n"
+                                              : "/* " + name + " -- " + said + " */\n";
+        out.emplace_back(name, head + "\n#include \"" + stem + ".h\"\n" + trimmed(body));
+    };
+    for (const std::string& file : order) {
+        if (file.empty()) continue;
+        std::string name = file.substr(file.find_last_of("/\\") == std::string::npos ? 0 : file.find_last_of("/\\") + 1);
+        const bool c = text::lower(name).ends_with(".c");
+        if (!c) name = name.substr(0, name.rfind('.')) + ".c";
+        const auto note = notes.find(file);
+        add(name, note != notes.end() ? note->second : c ? "its functions, where the program's version strings place them" : "the C " + file + " became", texts.at(file));
+    }
+    if (const auto rest = texts.find(""); rest != texts.end()) add(stem + ".c", "", rest->second);
+    return out;
+}
+
 Result compilable(std::string_view text, std::string_view header, const Layout& layout) {
     Result result;
     Report& r = result.report;
@@ -600,10 +668,12 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     r.functions = fns.size();
 
     // each function: its unused registers dropped, its far pointers and pieces written as C
+    bool fac = false;   // a double's result read through as the address it was returned as
     for (CtdFunction& f : fns) {
         const std::map<std::string, std::string> pointees = ctd_pointees(f);
         f.body = ctd_strings(ctd_label_statements(ctd_pieces(ctd_far(ctd_drop_registers(f, r.registers_dropped), pointees))), layout.data, layout.data_segment, r.strings);
         f.body = ctd_library_void(ctd_library_casts(ctd_pointer_locals(f.body, r.pointers), layout.library_pointers), layout.library_void);
+        f.body = ctd_library_double(f.body, layout.library_double, fac);
         f.signature = ctd_pieces(f.signature);
     }
 
@@ -803,6 +873,7 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     // the source files: each code segment votes, with every data-segment word its functions read, for the file whose data
     // that is (between its version string and the next; the last file's data runs on into the shared data, so it gets no votes)
     std::map<std::string, std::string> file_of;   // function name -> its file
+    std::map<std::string, std::string> file_notes;   // a file named for want of its name -> what it is
     if (layout.files.size() >= 2) {
         std::map<std::uint32_t, std::map<std::size_t, std::size_t>> votes;   // segment -> file -> words
         for (const CtdFunction& f : fns) {
@@ -826,22 +897,63 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
             }
             if (first >= 2 && first >= 2 * second) placed.emplace_back(segment, best);
         }
-        // the files were linked in the order their data is: keep the longest run of placements in that order
+        // the files were linked in the order their data is, each one code segment (Microsoft C gives a module's code one segment,
+        // `main1p_TEXT`): keep the longest run of placements in that order, no file twice
         std::vector<std::size_t> length(placed.size(), 1), previous(placed.size(), SIZE_MAX);
         std::size_t end = SIZE_MAX;
         for (std::size_t i = 0; i < placed.size(); ++i) {
             for (std::size_t j = 0; j < i; ++j)
-                if (placed[j].second <= placed[i].second && length[j] + 1 > length[i]) length[i] = length[j] + 1, previous[i] = j;
+                if (placed[j].second < placed[i].second && length[j] + 1 > length[i]) length[i] = length[j] + 1, previous[i] = j;
             if (end == SIZE_MAX || length[i] > length[end]) end = i;
         }
         std::map<std::uint32_t, std::size_t> file_of_segment;
         for (std::size_t i = end; i != SIZE_MAX; i = previous[i]) file_of_segment[placed[i].first] = placed[i].second;
-        // (a segment no data places stays unplaced: the files that have no code -- the message tables, the keyword table -- leave
-        // no count of files between two placed segments to go by)
-        for (const auto& [name, segment] : layout.segment_of) {
-            const auto file = file_of_segment.find(segment);
-            if (file != file_of_segment.end()) file_of[name] = layout.files[file->second].second;
+        // a segment no data places is, by the link order, the file between the placed segments around it, where as many files
+        // as segments lie between them; where fewer segments do (a file of data alone, the message tables, has no code) which
+        // is which is not known, and each such segment is a file of its own, `seg10F3.c`, said to be one of those files. The
+        // compiler's library's segment is its run-time code (`runtime.c`): code of it no signature names, not the program's.
+        std::set<std::uint32_t> segments;
+        for (const CtdFunction& f : fns)   // (the segments of the functions written: a segment of the library's alone is no file here)
+            if (const auto seg = layout.segment_of.find(ctd_name(f.signature)); seg != layout.segment_of.end()) segments.insert(seg->second);
+        std::map<std::uint32_t, std::string> name_of_segment;
+        for (const auto& [segment, file] : file_of_segment) name_of_segment[segment] = layout.files[file].second;
+        std::vector<std::uint32_t> gap;   // unplaced segments since the last placed one
+        std::size_t before = SIZE_MAX;    // the file of the last placed segment (SIZE_MAX: none yet)
+        auto settle = [&](std::size_t after) {   // the gap's files lie between `before` and `after`
+            const std::size_t from = before == SIZE_MAX ? 0 : before + 1;
+            const std::size_t count = after > from ? after - from : 0;
+            for (std::size_t i = 0; i < gap.size(); ++i) {
+                if (count == gap.size()) {
+                    name_of_segment[gap[i]] = layout.files[from + i].second;
+                    file_notes[layout.files[from + i].second] = "its functions, where the link order places them (between the files around it)";
+                    continue;
+                }
+                std::string candidates;
+                for (std::size_t f = from; f < after; ++f) candidates += (candidates.empty() ? "" : ", ") + layout.files[f].second;
+                const std::string file = std::format("seg{:04X}.c", (gap[i] - std::min(gap[i], layout.base)) >> 4);   // (as the program's segment)
+                name_of_segment[gap[i]] = file;
+                file_notes[file] = candidates.empty() ? "a file the program's version strings do not name"
+                                                      : "one of " + candidates + " (the link order leaves which one open)";
+            }
+            gap.clear();
+        };
+        for (const std::uint32_t segment : segments) {
+            if (layout.runtime_segments.contains(segment)) {
+                name_of_segment[segment] = "runtime.c";
+                file_notes["runtime.c"] = "code in the compiler's run-time library's segment that no signature names: the library's, not the program's";
+                continue;
+            }
+            const auto placed_file = file_of_segment.find(segment);
+            if (placed_file == file_of_segment.end()) {
+                gap.push_back(segment);
+                continue;
+            }
+            settle(placed_file->second);
+            before = placed_file->second;
         }
+        settle(layout.files.size());
+        for (const auto& [name, segment] : layout.segment_of)
+            if (const auto file = name_of_segment.find(segment); file != name_of_segment.end()) file_of[name] = file->second;
     }
     std::string defines;
     std::map<std::uint32_t, std::string> global_type;
@@ -913,23 +1025,33 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     if (title_end != std::string::npos) out += pre.substr(title_end + 1);
     if (!declarations.empty()) out += "\n/* structures the functions read through (a word at each offset a field is read at) */\n" + declarations;
     if (!defines.empty()) out += "\n/* the data segment's words, and memory outside the program */\n" + defines;
+    if (fac)
+        out += "\n/* Microsoft C before 5.1 returned a double as the address of the library's floating-point accumulator (__fac),\n"
+               "   and the code reads the result through it: the value kept, and its address given */\n"
+               "static double codebreaker_fac_value;\n"
+               "#define codebreaker_fac(x) (codebreaker_fac_value = (x), (void *)&codebreaker_fac_value)\n";
     if (!helpers.empty()) {
         out += "\n";
         for (const std::string& h : helpers) out += "int2 " + h + "();\n";
     }
     out += "\n";
     for (const std::string& p : prototypes) out += p + "\n";
+    const std::string common = out;   // (what every source file shares: its header)
+    std::vector<std::string> file_order;              // the source files, as their functions come
+    std::map<std::string, std::string> file_texts;    // source file ("" none known) -> its functions
     std::optional<std::string> current;   // the source file the functions written last are from
     for (const CtdFunction& f : fns) {
+        std::string here;
         if (!file_of.empty()) {
             const auto file = file_of.find(ctd_name(f.signature));
-            const std::string here = file == file_of.end() ? std::string() : file->second;
+            here = file == file_of.end() ? std::string() : file->second;
             if (!current || *current != here) {
                 out += here.empty() ? "\n/* ---- (not placed in a source file) ---- */\n" : "\n/* ---- " + here + " ---- */\n";
                 current = here;
             }
             if (!here.empty()) ++result.placed;
         }
+        const std::size_t text_at = out.size();
         // _a1: the decompiler's name for a1 and the word after it read as one far pointer -- the two arguments sit side by side
         // on the stack, so the name is that place read as one
         // (a local the same way: _piStack_a, piStack_a and the word after it in the frame)
@@ -947,10 +1069,15 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         for (const std::string& j : joined) out += "\n#define " + j + " (*(xunknown2 **)&" + j.substr(1) + ")";
         out += "\n" + f.signature + "\n" + f.body;
         for (const std::string& j : joined) out += "#undef " + j + "\n";
+        if (!file_of.empty()) {
+            if (!file_texts.contains(here)) file_order.push_back(here);
+            file_texts[here] += out.substr(text_at);
+        }
     }
     while (!out.empty() && (out.back() == '\n' || out.back() == ' ')) out.pop_back();
     out += '\n';
     result.text = std::move(out);
+    if (!file_of.empty()) result.files = ctd_source_files(common, file_order, file_texts, layout.stem.empty() ? "program" : layout.stem, file_notes);
     return result;
 }
 

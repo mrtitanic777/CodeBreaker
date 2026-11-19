@@ -6,8 +6,8 @@ exit: 0
   7%  Disassembling
  46%  Disassembling
  46%  Decompiling
- 86%  Decompiling: 64 of 71 functions
- 91%  Decompiling: 71 of 71 functions
+ 89%  Decompiling: 64 of 67 functions
+ 91%  Decompiling: 67 of 67 functions
  91%  Writing the source
  95%  Writing the source: setver.asm
  99%  Writing the source: setver.c
@@ -15,5 +15,5 @@ exit: 0
 2 files written to <work>/out/setver
 --- files
 setver/setver.asm 156660 b477a50704c4e24f42334176df4a581a24001cdd0ddbe9c49001096dfd240795
-setver/setver.c 76151 199f1ae7ed783ad2b3814aa6d6228cf1b9d4b4faf3ee8bf32d769dde15238be8
+setver/setver.c 74663 7282113b1ed783322c742043dcc769d235f4ebc46b69fdb6704215543b196766
 --- stderr (not compared)

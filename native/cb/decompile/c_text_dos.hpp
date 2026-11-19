@@ -51,6 +51,10 @@ struct Result {
     std::string text;
     Report report;
     std::size_t placed = 0;   // functions placed in the source file they were compiled from (Layout)
+    // The same program as its source files, where the layout names them: (file name, its text), the header every file
+    // includes first (`c1.h`: the declarations, every prototype), then each file the program was compiled from in link
+    // order, and last `c1.c` for the functions no file is known of. Empty: the program is the one text.
+    std::vector<std::pair<std::string, std::string>> files;
 };
 
 // What the program says of its own source files. A program built from several C files and linked with Microsoft's LINK keeps
@@ -58,8 +62,11 @@ struct Result {
 // file in its data (SCCS: `@(#)lex.c:1.9`). In the large and medium models each file's code is a code segment of its own.
 // So a code segment whose functions read the data between one file's string and the next is that file's code.
 struct Layout {
+    std::string stem;                                           // the program's name, lower case ("c1"): its header is <stem>.h
     std::vector<std::pair<std::uint32_t, std::string>> files;   // (offset in the data segment of its version string, the file), ascending
     std::map<std::string, std::uint32_t> segment_of;            // function name -> the code segment it is in
+    std::uint32_t base = 0;                                     // the linear address the program is loaded at (its segment 0)
+    std::set<std::uint32_t> runtime_segments;                   // the code segments the compiler's library functions are in
     std::string data_segment;                                   // its segment as the code writes it, "0x2a38" (empty: not known)
     std::string data;                                           // the data segment's bytes (up to 64 KB): a pointer into it that
                                                                 // starts a string gets the string beside it, `/* "MSC_CMD_FLAGS" */`
@@ -68,6 +75,9 @@ struct Layout {
                                                                 // a call passing another pointer there casts it
     std::set<std::string> library_void;                         // the library functions that return nothing: a statement that
                                                                 // stores what one returned (after `exit`, say) calls it alone
+    std::set<std::string> library_double;                       // the library functions that return a double: Microsoft C before
+                                                                // 5.1 returned its address (the library's accumulator, __fac),
+                                                                // which the program's code reads the result through
     std::map<std::string, std::map<std::uint32_t, std::string>> structure_fields;   // a structure the decompiler made -> offset ->
                                                                 // its field's C type ("uint1"): declared that wide (else a word)
 };

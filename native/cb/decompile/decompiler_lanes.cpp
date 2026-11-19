@@ -128,6 +128,7 @@ struct DosLibrary {
     std::string header;
     std::map<std::string, std::vector<std::string>> pointers;   // name -> the C type of each pointer argument (c_text_dos::Layout)
     std::set<std::string> nothing;                              // the names whose header says they return nothing (void)
+    std::set<std::string> doubles;                              // the names whose header says they return a double
 };
 
 // Match the program's functions against the library signatures. A function that matches is named as the library names it, given the
@@ -163,6 +164,7 @@ DosLibrary lanes_dos_library(Decompiler& decompiler, describe::DosDescription& d
             if (!sizes.empty()) line += "\t" + text::join(sizes, ",");
             if (!p->pointers.empty()) out.pointers[name] = p->pointers;
             if (p->result == 'v') out.nothing.insert(name);
+            if (p->result == 'd') out.doubles.insert(name);
         } else {
             by_library[what.library].push_back(name);
         }
@@ -173,7 +175,25 @@ DosLibrary lanes_dos_library(Decompiler& decompiler, describe::DosDescription& d
         }
         d.names[va] = name;
         out.skipped.insert(va);
-        out.found.push_back({name, what.library});
+        out.found.push_back({name, what.library, what.bytes});
+    }
+    // what the analysis took for functions inside a library function's code (hand-written assembly jumps to and calls its own
+    // labels: `_setargv`'s argument scanner) is that function's, not the program's: called by name, not decompiled
+    for (const auto& [va, what] : identified) {
+        const std::string& owner = d.names.at(va);
+        for (auto it = d.analysis->functions.upper_bound(static_cast<std::uint32_t>(va));
+             it != d.analysis->functions.end() && it->first < va + what.bytes; ++it) {
+            const Va inner = it->first;
+            if (identified.contains(inner)) break;
+            const std::string name = owner + "_" + upper_hex(static_cast<std::int64_t>(inner - d.base), 5);
+            for (std::string& existing : d.lines)
+                if (existing.starts_with("F\t" + hex(inner) + "\t")) {
+                    existing = "F\t" + hex(inner) + "\t" + name + "\t0\t__cdecl16" + std::string(analyze::dos_functions::name_of(it->second.distance));
+                    break;
+                }
+            d.names[inner] = name;
+            out.skipped.insert(inner);
+        }
     }
     d.write();
     for (const std::string& h : headers) out.header += "#include <" + h + ">\n";
@@ -260,24 +280,26 @@ void lanes_dos_startup(describe::DosDescription& d, DosLibrary& library) {
 // for two), so the instruction after a call says how many words that call passed. A function's description then states that
 // many (the most any caller passes), and every call of it is written with them -- the decompiler reading a call's pushes on its
 // own misses those pushed before a branch, and writes one far pointer as one argument here and as two words there.
-// Whether the instruction ending at `off` is a push: `push reg` / `push sreg`, `push imm8`, `push imm16`, `push word [...]`
-// (FF /6, by its addressing form's length). Read backwards, so a guess -- it only ever turns a count into "not known".
-bool lanes_push_before(ByteView image, std::size_t off) {
-    auto at = [&](std::size_t back) -> int { return off >= back ? image[off - back] : -1; };
-    const int b1 = at(1);
-    if ((b1 >= 0x50 && b1 <= 0x57) || b1 == 0x06 || b1 == 0x0E || b1 == 0x16 || b1 == 0x1E) return true;
-    if (at(2) == 0x6A || at(3) == 0x68) return true;
-    auto push_modrm = [](int m, int mod) { return m >= 0 && (m & 0x38) == 0x30 && (m >> 6) == mod; };
-    if (at(2) == 0xFF && push_modrm(at(1), 0) && (at(1) & 7) != 6) return true;            // push word [bx]
-    if (at(3) == 0xFF && push_modrm(at(2), 1)) return true;                                // push word [bp+d8]
-    if (at(4) == 0xFF && (push_modrm(at(3), 2) || (push_modrm(at(3), 0) && (at(3) & 7) == 6))) return true;   // [bp+d16], [a16]
-    return false;
+// How many push instructions come right before the instruction at `off`, decoded forwards from `start` (the function's first
+// instruction: read backwards, the last byte of `push word ptr [168Ah]` is `push ss`); 0 when the decoding does not reach `off`.
+std::size_t lanes_pushes_before(const describe::Code16& code, std::int64_t start, std::int64_t off) {
+    std::size_t run = 0;
+    std::int64_t at = start;
+    while (at < off) {
+        const describe::Insn* insn = code.one(at);
+        if (insn == nullptr || insn->size <= 0) return 0;
+        run = insn->mn == "push" ? run + 1 : 0;
+        at += insn->size;
+    }
+    return at == off ? run : 0;
 }
 
 void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& library) {
     const analyze::dos_functions::Analysis& a = *d.analysis;
     const ByteView image(d.image);
+    const describe::Code16 code(d.image);
     std::map<Va, std::pair<std::size_t, std::size_t>> words;   // the fewest and the most words a call of it removes
+    std::map<Va, std::size_t> deferred;   // the most words a call that leaves its words on the stack pushes right before it
     auto cs_of = [&](Va linear) -> std::optional<Va> {
         auto it = a.functions.upper_bound(static_cast<std::uint32_t>(linear));
         if (it == a.functions.begin()) return std::nullopt;
@@ -308,10 +330,19 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
         else if (next < image.size() && image[next] == 0x59) passed = next + 1 < image.size() && image[next + 1] == 0x59 ? 2 : 1;   // pop cx
         // (none removed right after it, but a push right before it: Microsoft C left this call's words for a later `add sp`
         // to remove with the next call's -- the call says nothing of how many it passed)
-        if (passed == 0 && lanes_push_before(image, off)) continue;
+        if (passed == 0) {
+            auto caller = a.functions.upper_bound(static_cast<std::uint32_t>(here));
+            const std::size_t pushed =   // (the pushes right before it: its words, when no other call says)
+                caller == a.functions.begin() ? 0 : lanes_pushes_before(code, static_cast<std::int64_t>((--caller)->first - d.base), static_cast<std::int64_t>(off));
+            if (pushed != 0) {
+                deferred[*target] = std::max(deferred[*target], pushed);
+                continue;
+            }
+        }
         const auto [w, first] = words.try_emplace(*target, passed, passed);
         if (!first) w->second = {std::min(w->second.first, passed), std::max(w->second.second, passed)};
     }
+    for (const auto& [target, pushed] : deferred) words.try_emplace(target, pushed, pushed);   // (only such calls: what they push)
     for (std::string& line : d.lines) {
         if (!line.starts_with("F\t")) continue;
         const std::vector<std::string_view> f = text::split(line, '\t');
@@ -486,6 +517,10 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     result.header = library.header;
     result.library_pointers = library.pointers;
     result.library_void = library.nothing;
+    for (const Va va : library.skipped)   // (the segments the library's code is in)
+        if (const auto fn = d->analysis->functions.find(static_cast<std::uint32_t>(va)); fn != d->analysis->functions.end())
+            result.library_segments.insert(fn->second.cs);
+    result.library_double = library.doubles;
     // each structure field's C type, as wide as the decompiler found it (`uint1` for a byte the code tests): the C pass declares
     // the structures again from what the statements reach, and every field it knows nothing of is a word
     for (const auto& [name, s] : result.functions.structures)
@@ -563,6 +598,9 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
             dos_layout = lanes_dos_layout(*r.description);
             dos_layout.library_pointers = r.library_pointers;
             dos_layout.library_void = r.library_void;
+            dos_layout.library_double = r.library_double;
+            dos_layout.runtime_segments = r.library_segments;
+            dos_layout.base = static_cast<std::uint32_t>(r.description->base);
             dos_layout.structure_fields = r.structure_fields;
             texts = std::move(r.functions.texts);
             order = std::move(r.functions.order);
@@ -602,8 +640,14 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         text += text::trim(*body);
     }
     text += "\n";
-    if (dos) text = c_text_dos::compilable(text, c_text::header16(), dos_layout).text;
-    return {std::move(text), order.size(), total, library};
+    std::vector<std::pair<std::string, std::string>> files;
+    if (dos) {
+        dos_layout.stem = stem.substr(0, stem.rfind('.'));
+        c_text_dos::Result r = c_text_dos::compilable(text, c_text::header16(), dos_layout);
+        text = std::move(r.text);
+        files = std::move(r.files);
+    }
+    return {std::move(text), std::move(files), order.size(), total, library};
 }
 
 // ---- the command ---------------------------------------------------------------------------------------------------------------

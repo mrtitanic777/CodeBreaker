@@ -484,7 +484,7 @@ std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> KitE
     std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> out;
     std::lock_guard hold(impl_->lock);
     if (!impl_->signatures16) impl_->signatures16 = symbols::runtime_library::SignatureTable::from_rows(impl_->kb.signatures("win16"));
-    for (const auto& [offset, found] : symbols::runtime_library::identify_dos(*impl_->signatures16, image)) out[base + offset] = {found.name, found.library};
+    for (const auto& [offset, found] : symbols::runtime_library::identify_dos(*impl_->signatures16, image)) out[base + offset] = {found.name, found.library, found.bytes};
     return out;
 }
 
