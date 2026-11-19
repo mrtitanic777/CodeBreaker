@@ -541,7 +541,9 @@ std::string file_label_name(const std::filesystem::path& file) { return rl_text:
 Learned learn(std::span<const LearnSource> sources, platforms::DecoderSet& decoders,
               const std::function<void(const std::string&)>& log) {
     Learned learned;
-    std::map<LearnKey, std::size_t> found;                       // key -> index in `all` (lookup only)
+    // (key, library) learned: the same code in another library is a row of its own -- a routine Microsoft carried from C 4.0
+    // to Visual C++ 1.5 unchanged is in both, and a program linked with either is identified as the one it was linked with
+    std::set<std::pair<LearnKey, std::string>> found;
     std::map<LearnKey, std::set<std::string>> names;             // the C names that share a signature
     std::vector<std::pair<LearnKey, LearnedRow>> all;            // in the order learned
     for (const LearnSource& source : sources) {
@@ -568,14 +570,14 @@ Learned learn(std::span<const LearnSource> sources, platforms::DecoderSet& decod
             const LearnKey key{bits, sig->size, sig->mask_text, sig->digest};
             const std::string name = c_name(f.name);
             names[key].insert(name);
-            if (found.contains(key) || substance(decoders, bits, f.code, sig->size) < need) continue;
+            if (found.contains({key, label}) || substance(decoders, bits, f.code, sig->size) < need) continue;
             auto lib_at = std::find(learned.libraries.begin(), learned.libraries.end(), label);
             if (lib_at == learned.libraries.end()) lib_at = learned.libraries.insert(learned.libraries.end(), label);
             LearnedRow row;
             row.bits = bits;
             row.library = static_cast<std::size_t>(lib_at - learned.libraries.begin());
             row.row = {crypto::to_hex(ByteView(f.code).first(lead)), sig->size, sig->mask_text, sig->digest, name, {}};
-            found[key] = all.size();
+            found.insert({key, label});
             all.emplace_back(key, std::move(row));
             ++added;
         }
@@ -619,11 +621,12 @@ Learned read_signature_file(std::string_view text) {
 }
 
 void merge(Learned& base, const Learned& fresh) {
-    std::set<LearnKey> have;
-    for (const LearnedRow& r : base.rows) have.insert({r.bits, r.row.size, r.row.mask_text, r.row.digest});
+    // (a row and the library it is from: the same code in another library is added as its own row)
+    std::set<std::pair<LearnKey, std::string>> have;
+    for (const LearnedRow& r : base.rows) have.insert({{r.bits, r.row.size, r.row.mask_text, r.row.digest}, base.libraries.at(r.library)});
     std::map<std::size_t, std::size_t> moved;   // fresh's library index -> base's (lookup only)
     for (const LearnedRow& r : fresh.rows) {
-        if (!have.insert({r.bits, r.row.size, r.row.mask_text, r.row.digest}).second) continue;
+        if (!have.insert({{r.bits, r.row.size, r.row.mask_text, r.row.digest}, fresh.libraries.at(r.library)}).second) continue;
         auto at = moved.find(r.library);
         if (at == moved.end()) {
             const std::string& label = fresh.libraries.at(r.library);

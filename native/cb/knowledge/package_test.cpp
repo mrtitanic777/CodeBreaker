@@ -171,7 +171,7 @@ CB_TEST("knowledge.package.names_of_bodies", [] {
 CB_TEST("knowledge.package.signatures_of_the_real_files", [] {
     TestKnowledge t;
     const auto rows16 = t.kb->signatures("ne");
-    CB_CHECK_EQ(rows16.size(), std::size_t{5694});
+    CB_CHECK_EQ(rows16.size(), std::size_t{6970});
     CB_CHECK_EQ(t.kb->signatures("pe").size(), std::size_t{5233});
     // a signature matches its own leading bytes (the code of the first 16-bit row, as far as the mask allows)
     const auto& first = rows16.front();

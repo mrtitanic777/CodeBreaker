@@ -336,6 +336,14 @@ CB_TEST("symbols.runtime_library.merge_keeps_what_was_learned", [] {
     CB_CHECK_EQ(again.rows[1].row.digest, "bb");
     CB_CHECK_EQ(again.rows[1].library, std::size_t{1});
     CB_CHECK_THROWS_AS(cb::FormatError, rl::read_signature_file("not json"));
+    // the same code from another library: a row of its own, after the first (which a single match still finds first)
+    rl::Learned other;
+    other.libraries = {"C (C.LIB)"};
+    other.rows = {row("kept", "aa", 0)};
+    rl::merge(base, other);
+    CB_CHECK_EQ(base.rows.size(), std::size_t{3});
+    CB_CHECK_EQ(base.libraries[base.rows[2].library], "C (C.LIB)");
+    CB_CHECK_EQ(base.rows[2].row.digest, "aa");
 });
 
 CB_TEST("symbols.runtime_library.identify_ne", [] {
@@ -552,12 +560,15 @@ CB_TEST("symbols.runtime_library.learn_leaves_out_ambiguous_signatures", [] {
     // (built as one COFF object holding the same code twice under two names is more than the test needs: use the
     // table form, which is what learn() reduces them to)
     cb::platforms::DecoderSet decoders;
-    // a library read twice under two names: the same functions, the same names: nothing is ambiguous, nothing is added
+    // a library read twice under two names: the same functions, the same names: nothing is ambiguous; the same code is in
+    // both libraries, so each has its row (the earlier first: a single match finds it)
     const std::vector<rl::LearnSource> twice = {{"First", lib_path("atof.obj")}, {"Second", lib_path("atof.obj")}};
     const rl::Learned learned = rl::learn(twice, decoders, [](const std::string&) {});
-    CB_CHECK_EQ(learned.rows.size(), std::size_t{1});      // the earlier library's
-    CB_CHECK_EQ(learned.libraries.size(), std::size_t{1});
-    CB_CHECK_EQ(learned.libraries[0], "First (ATOF.OBJ)");
+    CB_CHECK_EQ(learned.rows.size(), std::size_t{2});
+    CB_CHECK_EQ(learned.libraries.size(), std::size_t{2});
+    CB_CHECK_EQ(learned.libraries[learned.rows[0].library], "First (ATOF.OBJ)");
+    CB_CHECK_EQ(learned.libraries[learned.rows[1].library], "Second (ATOF.OBJ)");
+    CB_CHECK_EQ(learned.rows[0].row.digest, learned.rows[1].row.digest);
 });
 
 CB_TEST("symbols.runtime_library.signature_file_format", [] {
