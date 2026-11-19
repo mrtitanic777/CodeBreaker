@@ -48,9 +48,10 @@ Layout compute_layout(View view, float width, float height, float rail) {
     const float top = kTitleBarHeight + 8;
     const float card_h = std::max(0.0f, height - kStatusBarHeight - 16 - top);
     const float left_edge = rail > 0 ? rail + 4 : kOuterPadding;   // (the design's page starts 4 after the rail)
-    const float card_w = std::max(0.0f, (width - left_edge - kOuterPadding - kCardGap) / 2);
+    // One card, the page's whole width: Program until a conversion is done, then Source in its place (the window cross-fades them).
+    const float card_w = std::max(0.0f, width - left_edge - kOuterPadding);
     l.left_card = {left_edge, top, card_w, card_h};
-    l.right_card = {left_edge + card_w + kCardGap, top, card_w, card_h};
+    l.right_card = l.left_card;
     if (rail > 0) {   // the rail: three items of 48 x 56, Convert and Tools at the top, Settings at the bottom
         l.rail = {0, kTitleBarHeight, rail, std::max(0.0f, l.status_bar.y - kTitleBarHeight)};
         l.rail_convert = {8, kTitleBarHeight + 4, 48, 56};
@@ -62,6 +63,15 @@ Layout compute_layout(View view, float width, float height, float rail) {
         Rect& desc = card == &l.left_card ? l.left_desc : l.right_desc;
         title = {card->x + kCardPadX, card->y + kCardPadTop, card->w - 2 * kCardPadX, kCardTitleHeight};
         desc = {card->x + kCardPadX, title.bottom() + kCardDescGap, card->w - 2 * kCardPadX, kCardDescHeight};
+    }
+    // the Language drop-down sits in the Program card's header, on the right, level with the title and description
+    {
+        const float combo_w = std::min(220.0f, std::max(140.0f, l.left_card.w * 0.25f));
+        l.language_combo = {l.left_card.right() - kCardPadX - combo_w, l.left_card.y + kCardPadTop + 8, combo_w, 34};
+        l.language_label = {l.language_combo.x - 80, l.language_combo.y, 72, l.language_combo.h};
+        const float text_w = std::max(0.0f, l.language_label.x - 16 - l.left_title.x);
+        l.left_title.w = text_w;
+        l.left_desc.w = text_w;
     }
 
     // ---- the left card: the InfoBar (when there is one), then the drop area to the bottom
@@ -78,67 +88,62 @@ Layout compute_layout(View view, float width, float height, float rail) {
     l.drop = {l.left_card.x + kCardPadX, drop_top, l.left_card.w - 2 * kCardPadX, std::max(0.0f, l.left_card.bottom() - kCardPadBottom - drop_top)};
     const float cx = l.drop.x + l.drop.w / 2;
 
-    // idle: the "+" button, two lines, Browse (centred as a group)
+    // idle: the "+" button and two lines (centred as a group); the "+" itself opens the file picker
     {
-        const float group = kPlusSize + 18 + 20 + 4 + 17 + 18 + kButtonHeight;
+        const float group = kPlusSize + 18 + 20 + 4 + 17;
         float y = l.drop.y + (l.drop.h - group) / 2;
         l.plus = centered(cx, y, kPlusSize, kPlusSize);
         y += kPlusSize + 18;
         l.drop_line1 = {l.drop.x + 16, y, l.drop.w - 32, 20};
         y += 20 + 4;
         l.drop_line2 = {l.drop.x + 16, y, l.drop.w - 32, 17};
-        y += 17 + 18;
-        l.browse = centered(cx, y, 112, kButtonHeight);
     }
-    // working / done: the file's icon and name, the bar, its label and percentage, the detail, Cancel (centred as a group)
+    // working: the file's icon and name, the bar, its label and percentage, the detail, Cancel (centred as a group in the drop area)
     {
-        const bool done = view == View::Done;
         const float bar_w = std::min(380.0f, std::max(120.0f, l.drop.w - 64));
-        const float group = 56 + 14 + 22 + (done ? 16 : 20 + 4 + 8 + 19 + 6 + 16) + 24 + kButtonHeight;
+        const float group = 56 + 14 + 22 + 20 + 4 + 8 + 19 + 6 + 16 + 24 + kButtonHeight;
         float y = l.drop.y + (l.drop.h - group) / 2;
         l.file_icon = centered(cx, y, 56, 56);
         y += 56 + 14;
         l.file_name = {l.drop.x + 16, y, l.drop.w - 32, 22};
-        y += 22;
-        if (!done) {
-            y += 20;
-            l.bar = centered(cx, y, bar_w, 4);
-            y += 4 + 8;
-            l.bar_label = {cx - bar_w / 2, y, bar_w - 56, 19};
-            l.bar_percent = {cx + bar_w / 2 - 56, y, 56, 19};
-            y += 19 + 6;
-            l.detail = {cx - bar_w / 2, y, bar_w, 16};
-            y += 16;
-        } else {
-            l.detail = {l.drop.x + 16, y, l.drop.w - 32, 16};
-            y += 16;
-        }
-        y += 24;
-        l.cancel = centered(cx, y, done ? 180.0f : 96.0f, kButtonHeight);
-        if (done) l.browse = l.cancel;   // the Done view's "Convert another file" button takes Browse's place
+        y += 22 + 20;
+        l.bar = centered(cx, y, bar_w, 4);
+        y += 4 + 8;
+        l.bar_label = {cx - bar_w / 2, y, bar_w - 56, 19};
+        l.bar_percent = {cx + bar_w / 2 - 56, y, 56, 19};
+        y += 19 + 6;
+        l.detail = {cx - bar_w / 2, y, bar_w, 16};
+        y += 16 + 24;
+        l.cancel = centered(cx, y, 96.0f, kButtonHeight);
     }
 
-    // ---- the right card: Output label, the field, two buttons, the hint -- centred as a group in what is below the description
-    {
-        // Language (label, drop-down), then Output (label, field, two buttons, the hint of up to two lines)
-        const float group = 19 + 8 + 34 + 20 + 19 + 8 + 34 + 12 + kButtonHeight + 14 + 34;
+    // ---- the Source card (Done): the finished file (a check, its name, what was written), then Output: the folder, and Open folder, Copy path,
+    // Convert another file -- one column, centred in the card
+    if (view == View::Done) {
+        const float w = std::min(560.0f, std::max(0.0f, l.right_card.w - 2 * kCardPadX));
+        const float x = l.right_card.x + (l.right_card.w - w) / 2;
+        const float mid = x + w / 2;
+        const float group = 56 + 14 + 22 + 4 + 16 + 32 + 19 + 8 + 34 + 16 + kButtonHeight;
         const float area_top = l.right_desc.bottom();
         const float area_h = l.right_card.bottom() - kCardPadBottom - area_top;
         float y = area_top + std::max(0.0f, (area_h - group) / 2);
-        const float x = l.right_card.x + kCardPadX;
-        const float w = l.right_card.w - 2 * kCardPadX;
-        l.language_label = {x, y, w, 19};
-        y += 19 + 8;
-        l.language_combo = {x, y, w, 34};
-        y += 34 + 20;
+        l.file_icon = centered(mid, y, 56, 56);
+        y += 56 + 14;
+        l.file_name = {x, y, w, 22};
+        y += 22 + 4;
+        l.detail = {x, y, w, 16};       // "Conversion finished. 12 files written."
+        y += 16 + 32;
         l.output_label = {x, y, w, 19};
         y += 19 + 8;
         l.field = {x, y, w, 34};
-        y += 34 + 12;
-        l.open_folder = {x, y, 124, kButtonHeight};
-        l.copy_path = {x + 124 + 8, y, 112, kButtonHeight};
-        y += kButtonHeight + 14;
-        l.hint = {x, y, w, 34};
+        y += 34 + 16;
+        const float row = 124 + 8 + 112 + 8 + 180;
+        const float bx = mid - row / 2;
+        l.open_folder = {bx, y, 124, kButtonHeight};
+        l.copy_path = {bx + 124 + 8, y, 112, kButtonHeight};
+        l.browse = {bx + 124 + 8 + 112 + 8, y, 180, kButtonHeight};   // "Convert another file": back to the Program card
+        l.cancel = {};
+        l.hint = {x, y + kButtonHeight + 12, w, 34};
     }
     return l;
 }
@@ -147,12 +152,12 @@ bool control_exists(Control control, View view) {
     switch (control) {
         case Control::None: return false;
         case Control::Plus: return view == View::Idle || view == View::Unsupported || view == View::Failed;
-        case Control::Browse: return view != View::Working;   // (in the Done view it is "Convert another file")
+        case Control::Browse: return view == View::Done;      // "Convert another file" on the Source card (the Program card's "+" opens the picker)
         case Control::Cancel: return view == View::Working;
         case Control::TryAnother: return view == View::Unsupported || view == View::Failed;
         case Control::OpenFolder:
-        case Control::CopyPath:
-        case Control::Language: return true;
+        case Control::CopyPath: return view == View::Done;          // (the Source card)
+        case Control::Language: return view != View::Done;          // (the Program card)
         case Control::CaptionMinimize:
         case Control::CaptionMaximize:
         case Control::CaptionClose: return true;
@@ -218,11 +223,11 @@ Control hit_test(const Layout& l, View view, float x, float y) {
 
 std::vector<Control> focus_order(View view) {
     switch (view) {
-        case View::Idle: return {Control::Plus, Control::Browse, Control::Language};
+        case View::Idle: return {Control::Plus, Control::Language};
         case View::Working: return {Control::Cancel};
-        case View::Done: return {Control::Browse, Control::Language, Control::OpenFolder, Control::CopyPath};
+        case View::Done: return {Control::OpenFolder, Control::CopyPath, Control::Browse};
         case View::Unsupported:
-        case View::Failed: return {Control::TryAnother, Control::Plus, Control::Browse, Control::Language};
+        case View::Failed: return {Control::TryAnother, Control::Plus, Control::Language};
     }
     return {};
 }
@@ -245,6 +250,77 @@ int language_next_enabled(const std::vector<LanguageItem>& items, int from, int 
     for (int i = 0; i < count; ++i)
         if (items[static_cast<std::size_t>(i)].supported) return i;
     return -1;
+}
+
+// ---- the character stream
+
+void CharStream::push(const std::vector<std::string>& lines) {
+    for (const std::string& line : lines) pending_.push_back(line);
+    while (pending_.size() > kStreamPendingLines) pending_.pop_front();
+    if (!has_current_) start_next();
+}
+
+std::size_t CharStream::backlog() const {
+    std::size_t chars = has_current_ ? current_.size() - typed_ : 0;
+    for (const std::string& line : pending_) chars += line.size() + 1;
+    return chars;
+}
+
+void CharStream::start_next() {
+    has_current_ = !pending_.empty();
+    if (!has_current_) return;
+    current_ = std::move(pending_.front());
+    pending_.pop_front();
+    typed_ = 0;
+}
+
+void CharStream::advance(double seconds) {
+    if (!has_current_ || seconds <= 0) return;
+    // a backlog of 1000 characters types about 15 times faster than the steady pace: the stream keeps up with the work
+    const double rate = kStreamCharsPerSecond * (1.0 + static_cast<double>(backlog()) / 70.0);
+    carry_ += seconds * rate;
+    while (has_current_ && carry_ >= 1.0) {
+        if (typed_ < current_.size()) {
+            const std::size_t step = std::min(current_.size() - typed_, static_cast<std::size_t>(carry_));
+            typed_ += step;
+            carry_ -= static_cast<double>(step);
+        } else {   // the end of a line costs one character, then the next begins
+            carry_ -= 1.0;
+            shown_.push_back(std::move(current_));
+            while (shown_.size() > kStreamKeptLines) shown_.pop_front();
+            current_.clear();
+            start_next();
+        }
+    }
+    if (!has_current_) carry_ = 0;
+}
+
+void CharStream::show_all() {
+    while (has_current_) {
+        shown_.push_back(std::move(current_));
+        current_.clear();
+        start_next();
+    }
+    while (shown_.size() > kStreamKeptLines) shown_.pop_front();
+    carry_ = 0;
+}
+
+void CharStream::clear() {
+    pending_.clear();
+    shown_.clear();
+    current_.clear();
+    typed_ = 0;
+    has_current_ = false;
+    carry_ = 0;
+}
+
+std::vector<std::string> CharStream::visible(std::size_t rows) const {
+    std::vector<std::string> out;
+    if (rows == 0) return out;
+    const std::size_t from_shown = std::min(shown_.size(), has_current_ ? rows - 1 : rows);
+    for (std::size_t i = shown_.size() - from_shown; i < shown_.size(); ++i) out.push_back(shown_[i]);
+    if (has_current_) out.push_back(current_.substr(0, typed_));
+    return out;
 }
 
 }  // namespace cb::app::window

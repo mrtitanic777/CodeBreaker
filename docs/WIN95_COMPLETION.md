@@ -495,6 +495,33 @@ saves and the 0x403 ES reads; the C is right as read. Two things it depends on w
 fourth word); every other goes to `sub_1_5D4F` with the same arguments (the function's own default path); the function is left out of the gate (it is meant to differ). Used with
 `CB_FORCE_C=BEAR306`; `regress all15 --only USER.EXE --runs 1` on a private state, one boot at a time. Results below.
 
+### 22. The cause of BEAR306 and sub_25_0429, and the fix (built; `CB_FN_PTR_STORES=1`, default off until the lead says)
+
+**Cause (found 2026-11-18).** Neither function's C was wrong. Both are window procedures registered by C functions that build a WNDCLASS on the stack
+(`sub_3_14FC`, `sub_3_1547` and five more in segment 3), `lpfnWndProc` stored as two plain words: `frame[1] = 0x1587;` and the selector written symbolically from the loader
+fix-up (`frame[2] = (uint2)((uint4)(void __far *)&sub_10_009C >> 16);`). The offset kept the function's ORIGINAL value, so a function rebuilt from C that lands elsewhere (BEAR306:
+733 bytes of assembly, 800+ of C, so it goes to the end of the segment) is registered at an address that holds other code or filler: FAIL(dos). It is the "moved function's old
+offset kept as a number" class of 2026-10-17 again, in C where that fix (asm16) did not reach. The message bisect said so: `CB_BISECT` with every message delegated to
+sub_1_5D4F, and each of five leave-one-group-out runs, all FAIL(dos) -- the switch of the C was never the problem. The gate could not see it (one function at a time, the
+registering functions never call the procedure).
+
+**Fix** (build/module_check.cpp, called from module_build16.cpp on each function's text before it is compiled): `name_function_offsets_beside_selectors` -- an offset store next to a selector
+store that already names a segment (`&F >> 16`) becomes `(uint2)(uint4)(void __far *)&T`, T the far function at that offset of F's segment; and `name_function_pointer_stores` for the
+two-literal form (`= 0x1587; = 0x1048;`, selector the decompiler's pseudo value). Unit tests: `build.module.name_function_*` (cb_tests build.module 23 of 23).
+`CB_BISECT` stays (default off) as a bisection aid; `CB_FORCE_C` overrides kept_as_asm.txt.
+
+**Sites** (all seven rewritten by the same pass): BEAR306, sub_25_0429, sub_15_1062 (CALCCHILDSCROLL's segment), sub_25_1A12, sub_25_2313, sub_35_0100, sub_18_085D.
+
+**Proofs** (private state, private exe copy, `CB_FORCE_C=BEAR306,sub_25_0429 CB_FN_PTR_STORES=1`, all seven sites rewritten): `regress all15 --only USER.EXE`: PASS (1m10s boot);
+`regress all15 --runs 2` with the two sites: PASS, PASS; with all seven, `regress all15 --runs 1`: PASS, whole run 3m03s (USER C 576 / gated 40: 574 + the two functions);
+`regress install --runs 1`: **PASS**, 52m08s in all (the install itself 25m29s: Welcome 52 s, wizard 663 s, copy 1057 s, FIX95CPU patched 1212 s, desktop 1528 s; the rest was the
+builds of 22 modules behind the decompile slots), screen state/phase3/shots/extinst-install-1.png (private state). Not yet on by default; with it on, the two lines of
+data/build/kept_as_asm.txt go.
+
+**Item 22, the ending: on by default (2026-11-18).** `CB_FN_PTR_STORES` is on unless `CB_FN_PTR_STORES=0`; the BEAR306 and sub_25_0429 lines are out of data/build/kept_as_asm.txt
+(both are C now). Unit tests `build.module` 23/23, `decompile.describe` 19/19, `verify.regress` 18/18. `regress all15 --runs 1` with nothing set (private exe copy, shared state):
+**PASS**, boot 1m15s, whole run 3m41s, USER C 576 / gated 40. No new install (the same build as the proven one: 52m08s, PASS).
+
 Not converted (superseded by item 16):
 
 

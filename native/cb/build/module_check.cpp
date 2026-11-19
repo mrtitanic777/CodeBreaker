@@ -168,7 +168,8 @@ std::string name_function_pointer_stores(std::string_view text, const std::funct
         const std::size_t eq = rest.find(" = 0x");
         if (eq == std::string_view::npos || eq == 0 || !rest.ends_with(';')) return std::nullopt;
         const std::string_view target = rest.substr(0, eq);
-        if (!std::all_of(target.begin(), target.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; })) return std::nullopt;
+        // (a name, an element of an array of words -- `axStack_1c[1]` -- or of one in the frame structure -- `codebreaker_frame.axStack_26[1]`)
+        if (!std::all_of(target.begin(), target.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '[' || c == ']' || c == '.'; })) return std::nullopt;
         const std::string_view digits = rest.substr(eq + 5, rest.size() - eq - 6);
         if (digits.empty() || digits.size() > 4) return std::nullopt;
         const std::optional<std::uint64_t> value = text::parse_int<std::uint64_t>(digits, 16);
@@ -219,8 +220,8 @@ std::string name_function_offsets_beside_selectors(std::string_view text,
         const std::size_t first = line.find_first_not_of(' ');
         if (first == std::string_view::npos) return std::nullopt;
         const std::string_view rest = line.substr(first);
-        const auto word = [](std::string_view s) {
-            return !s.empty() && std::all_of(s.begin(), s.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; });
+        const auto word = [](std::string_view s) {   // (a name, or an element of an array of words, perhaps in the frame structure: `codebreaker_frame.axStack_26[1]`)
+            return !s.empty() && std::all_of(s.begin(), s.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '[' || c == ']' || c == '.'; });
         };
         Line out;
         out.indent = line.substr(0, first);

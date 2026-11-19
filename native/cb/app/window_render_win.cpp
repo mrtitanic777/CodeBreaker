@@ -245,6 +245,37 @@ void rd_combo(RdDraw& d, const Rect& r, const std::wstring& shown, bool open, bo
     d.glyph(open ? L'' : L'', Rect{r.right() - 30, r.y, 20, r.h}, 12, pal.text2);
 }
 
+// The character stream behind a running conversion: the newest lines, monospace, in the accent colour at low strength, bottom-aligned in the drop
+// area and fading out toward its top, with a block cursor after the line being typed. `keep_clear` is the progress group (icon to Cancel): lines
+// that pass behind it fade almost away (smoothly, over a short distance), so the stream never competes with what a person reads.
+void rd_stream(RdDraw& d, const Rect& drop, const Rect& keep_clear) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    if (m.stream.empty()) return;
+    constexpr float kSize = 11.5f, kLine = 16.0f, kInset = 14.0f;
+    const float char_w = kSize * 0.6f;   // (Cascadia Mono and Consolas advance 0.6 em)
+    const Rect area{drop.x + kInset, drop.y + kInset, drop.w - 2 * kInset, drop.h - 2 * kInset};
+    const std::size_t rows = static_cast<std::size_t>(std::max(1.0f, std::floor(area.h / kLine)));
+    const std::size_t first = m.stream.size() > rows ? m.stream.size() - rows : 0;
+    const float strength = pal.dark ? 0.34f : 0.30f;
+    d.rt->PushAxisAlignedClip(rd_rect(area), D2D1_ANTIALIAS_MODE_ALIASED);
+    float y = area.bottom() - static_cast<float>(m.stream.size() - first) * kLine;
+    for (std::size_t i = first; i < m.stream.size(); ++i, y += kLine) {
+        const float from_top = std::clamp((y - area.y) / (area.h * 0.45f), 0.0f, 1.0f);   // the top 45% fades out
+        // behind the progress group: down to 15%, easing in over 32 DIPs above and below it
+        const float mid = y + kLine / 2;
+        const float outside = std::max(keep_clear.y - mid, mid - keep_clear.bottom());   // < 0 inside the group
+        const float behind = 0.15f + 0.85f * std::clamp(outside / 32.0f, 0.0f, 1.0f);
+        const D2D1_COLOR_F c = rd_alpha(pal.accent, strength * (0.15f + 0.85f * from_top) * behind);
+        d.text(widen(m.stream[i]), Rect{area.x, y, area.w, kLine}, 3, kSize, DWRITE_FONT_WEIGHT_NORMAL, c);
+        if (i + 1 == m.stream.size() && m.stream_cursor) {
+            const float x = area.x + static_cast<float>(widen(m.stream[i]).size()) * char_w;
+            if (x + char_w <= area.right()) d.fill(Rect{x + 1, y + 2, char_w, kLine - 4}, 0, rd_alpha(pal.accent, strength * 1.8f * behind));
+        }
+    }
+    d.rt->PopAxisAlignedClip();
+}
+
 // The fields of a form, clipped to `clip`: labels (a required one marked), text boxes, Browse buttons, drop-downs, switches.
 void rd_form(RdDraw& d, const FormLayout& form, const std::vector<FieldItem>& fields, const Rect& clip, const Model& m) {
     const RdPalette& pal = d.pal;
@@ -533,6 +564,129 @@ std::wstring rd_fit_middle(const Painter& painter, const std::wstring& path, flo
 
 }  // namespace
 
+// The Program card (every view but Done): its title and description, the Language drop-down in its header, the InfoBar of a file that cannot be
+// converted, and the drop area -- the "+" and Browse when idle, the progress over the character stream while working.
+void rd_program_card(RdDraw& d, View view, const Layout& l) {
+    const Model& model = d.model;
+    const RdPalette& pal = d.pal;
+    d.fill(l.left_card, kCardRadius, pal.card);
+    d.stroke(l.left_card, kCardRadius, pal.card_stroke);
+    d.text(L"Program", l.left_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(L"The file you want to turn back into source code.", l.left_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+
+    // the Language drop-down (a Fluent ComboBox), in the header: the label, the closed control with the chosen language and a chevron
+    {
+        const bool enabled = control_enabled(Control::Language, view);
+        const float dim = enabled ? 1.0f : 0.45f;
+        d.text(L"Language", l.language_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.text2, dim), DWRITE_TEXT_ALIGNMENT_TRAILING);
+        D2D1_COLOR_F fill = pal.field;
+        if (enabled && (model.hot == Control::Language || model.language_open)) fill = rd_mix(fill, pal.text, pal.dark ? 0.04f : 0.035f);
+        d.fill(l.language_combo, 4, rd_alpha(fill, dim));
+        d.stroke(l.language_combo, 4, rd_alpha(pal.stroke2, dim));
+        d.brush->SetColor(model.language_open ? pal.accent : rd_alpha(pal.field_line, dim));
+        d.rt->DrawLine(D2D1::Point2F(l.language_combo.x + 4, l.language_combo.bottom() - 0.5f), D2D1::Point2F(l.language_combo.right() - 4, l.language_combo.bottom() - 0.5f),
+                       d.brush.get(), model.language_open ? 2.0f : 1.0f);
+        const std::size_t chosen = static_cast<std::size_t>(std::clamp(model.language_selected, 0, std::max(0, static_cast<int>(model.languages.size()) - 1)));
+        const std::wstring shown = model.languages.empty() ? std::wstring(L"Original") : widen(model.languages[chosen].name);
+        d.text(shown, Rect{l.language_combo.x + 11, l.language_combo.y, l.language_combo.w - 44, l.language_combo.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.text, dim));
+        d.glyph(model.language_open ? L'\xE70E' : L'\xE70D', Rect{l.language_combo.right() - 30, l.language_combo.y, 20, l.language_combo.h}, 12, rd_alpha(pal.text2, dim));
+        if (enabled) d.focus_ring(Control::Language, l.language_combo);
+    }
+
+    if (view == View::Unsupported || view == View::Failed) {
+        const bool failed = view == View::Failed;
+        const D2D1_COLOR_F tone = failed ? pal.error : pal.warn;
+        d.fill(l.info_bar, 4, failed ? pal.error_fill : pal.warn_fill);
+        d.stroke(l.info_bar, 4, pal.stroke2);
+        d.glyph(failed ? L'\xEA39' : L'\xE7BA', l.info_icon, 16, tone);
+        d.text(widen(model.info_title), l.info_title, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(widen(model.info_message), l.info_message, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_LEADING, true,
+               DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+        d.button(Control::TryAnother, l.try_another, L"Try another file", 0, true);
+    }
+
+    // the dashed drop area
+    {
+        ComPtr<ID2D1StrokeStyle> dashes;
+        const float pattern[2] = {3.0f, 2.0f};
+        D2D1_STROKE_STYLE_PROPERTIES sp = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_LINE_JOIN_MITER, 10.0f,
+                                                                      D2D1_DASH_STYLE_CUSTOM, 0.0f);
+        d.painter.d2d()->CreateStrokeStyle(sp, pattern, 2, dashes.put());
+        if (model.dragging) {
+            d.fill(l.drop, 8, rd_alpha(pal.accent, 0.12f));
+            d.stroke(l.drop, 8, pal.accent, 2.0f);
+        } else {
+            d.fill(l.drop, 8, pal.subtle);
+            d.stroke(l.drop, 8, pal.dash, 2.0f, dashes.get());
+        }
+    }
+
+    if (view == View::Working) {
+        const float left = std::min({l.file_icon.x, l.file_name.x, l.bar.x, l.cancel.x});
+        const float right = std::max({l.file_icon.right(), l.file_name.right(), l.bar.right(), l.cancel.right()});
+        rd_stream(d, l.drop, Rect{left, l.file_icon.y, right - left, l.cancel.bottom() - l.file_icon.y});
+        d.circle(l.file_icon, rd_alpha(pal.accent, 0.16f));
+        d.glyph(L'\xE8A5', l.file_icon, 24.0f, pal.accent);
+        d.text(widen(model.file_name), l.file_name, 0, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.fill(l.bar, 2, rd_alpha(pal.text3, 0.4f));
+        const float filled = l.bar.w * static_cast<float>(std::clamp(model.percent, 0, 100)) / 100.0f;
+        if (filled > 0) d.fill(Rect{l.bar.x, l.bar.y, std::max(filled, 4.0f), l.bar.h}, 2, pal.accent);
+        d.text(widen(model.stage_label), l.bar_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        d.text(widen(std::to_string(model.percent) + "%"), l.bar_percent, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        d.text(widen(model.detail), l.detail, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        d.button(Control::Cancel, l.cancel, L"Cancel", L'\xE711', true);
+    } else {
+        // the idle group: the round "+" button (it opens the file picker) and two lines
+        D2D1_COLOR_F plus = pal.accent;
+        if (model.pressed == Control::Plus && model.hot == Control::Plus) plus = rd_mix(plus, D2D1::ColorF(0, 0, 0), 0.25f);
+        else if (model.hot == Control::Plus) plus = rd_mix(plus, pal.dark ? D2D1::ColorF(1, 1, 1) : D2D1::ColorF(0, 0, 0), 0.10f);
+        d.circle(l.plus, plus);
+        d.glyph(L'\xE710', l.plus, 28, pal.accent_text);
+        d.focus_ring(Control::Plus, l.plus);
+        d.text(L"Drag a file here", l.drop_line1, 0, 15, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(widen(model.drop_hint), l.drop_line2, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+}
+
+// The Source card (Done): the finished file, then where its source is, with Open folder, Copy path and Convert another file.
+void rd_source_card(RdDraw& d, const Layout& l) {
+    const Model& model = d.model;
+    const RdPalette& pal = d.pal;
+    d.fill(l.right_card, kCardRadius, pal.card);
+    d.stroke(l.right_card, kCardRadius, pal.card_stroke);
+    d.text(L"Source", l.right_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(L"Where the finished source code goes.", l.right_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    d.circle(l.file_icon, pal.ok);
+    d.glyph(L'\xE73E', l.file_icon, 26.0f, D2D1::ColorF(1, 1, 1));
+    d.text(widen(model.done_file_name.empty() ? model.file_name : model.done_file_name), l.file_name, 0, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text,
+           DWRITE_TEXT_ALIGNMENT_CENTER);
+    const std::string note = model.done_note.empty() ? std::string("Conversion finished.") : "Conversion finished. " + model.done_note;
+    d.text(widen(note), l.detail, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    d.text(L"Output", l.output_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    d.fill(l.field, 4, pal.field);
+    d.stroke(l.field, 4, pal.stroke2);
+    d.brush->SetColor(pal.field_line);
+    d.rt->DrawLine(D2D1::Point2F(l.field.x + 4, l.field.bottom() - 0.5f), D2D1::Point2F(l.field.right() - 4, l.field.bottom() - 0.5f), d.brush.get(), 1.0f);
+    d.text(rd_fit_middle(d.painter, widen(model.output_path), l.field.w - 22, 14), Rect{l.field.x + 11, l.field.y, l.field.w - 22, l.field.h}, 0, 14,
+           DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    d.button(Control::OpenFolder, l.open_folder, L"Open folder", L'\xE838', true);
+    d.button(Control::CopyPath, l.copy_path, L"Copy path", L'\xE8C8', true);
+    d.button(Control::Browse, l.browse, L"Convert another file", L'\xE8E5', true);
+}
+
+// Draw `draw` at `alpha` (a layer when it is not fully shown; nothing at all when it is not shown).
+template <typename Draw>
+void rd_with_alpha(ID2D1RenderTarget* rt, float alpha, Draw&& draw) {
+    if (alpha <= 0.001f) return;
+    if (alpha >= 0.999f) {
+        draw();
+        return;
+    }
+    rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(), alpha), nullptr);
+    draw();
+    rt->PopLayer();
+}
+
 void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, const Appearance& look) {
     if (!rt || !ok()) return;
     const RdPalette pal = rd_palette(look.dark, look.accent);
@@ -572,118 +726,29 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         }
     }
 
-    if (l.rail.w > 0) rd_rail(d, l, model);
     const View view = model.view;
+    rd_with_alpha(rt, model.chrome_alpha, [&] {
+    if (l.rail.w > 0) rd_rail(d, l, model);
     if (model.page == Page::Tools) {
         rd_tools(d, l, model, *this);
     } else if (model.page == Page::Settings) {
         rd_settings(d, l, model);
     } else {
-    // ---- the cards
-    for (const Rect* card : {&l.left_card, &l.right_card}) {
-        d.fill(*card, kCardRadius, pal.card);
-        d.stroke(*card, kCardRadius, pal.card_stroke);
-    }
-    d.text(L"Program", l.left_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
-    d.text(L"The file you want to turn back into source code.", l.left_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
-    d.text(L"Source", l.right_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
-    d.text(L"Where the finished source code goes.", l.right_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
-
-    // ---- the left card
-    if (view == View::Unsupported || view == View::Failed) {
-        const bool failed = view == View::Failed;
-        const D2D1_COLOR_F tone = failed ? pal.error : pal.warn;
-        d.fill(l.info_bar, 4, failed ? pal.error_fill : pal.warn_fill);
-        d.stroke(l.info_bar, 4, pal.stroke2);
-        d.glyph(failed ? L'' : L'', l.info_icon, 16, tone);
-        d.text(widen(model.info_title), l.info_title, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
-        d.text(widen(model.info_message), l.info_message, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_LEADING, true,
-               DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-        d.button(Control::TryAnother, l.try_another, L"Try another file", 0, true);
-    }
-
-    // the dashed drop area
-    {
-        ComPtr<ID2D1StrokeStyle> dashes;
-        const float pattern[2] = {3.0f, 2.0f};
-        D2D1_STROKE_STYLE_PROPERTIES sp = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_LINE_JOIN_MITER, 10.0f,
-                                                                      D2D1_DASH_STYLE_CUSTOM, 0.0f);
-        d2d()->CreateStrokeStyle(sp, pattern, 2, dashes.put());
-        if (model.dragging) {
-            d.fill(l.drop, 8, rd_alpha(pal.accent, 0.12f));
-            d.stroke(l.drop, 8, pal.accent, 2.0f);
-        } else {
-            d.fill(l.drop, 8, pal.subtle);
-            d.stroke(l.drop, 8, pal.dash, 2.0f, dashes.get());
+        // ---- the one card: Program, or Source when Done; while the card changes, the old one fades out before the new one fades in
+        if (model.fade_from_alpha > 0) {
+            const Layout from = compute_layout(model.fade_from, l.width, l.height, l.rail.w);
+            RdDraw old{rt, d.brush, *this, pal, model, from};
+            rd_with_alpha(rt, model.fade_from_alpha, [&] {
+                if (model.fade_from == View::Done) rd_source_card(old, from);
+                else rd_program_card(old, model.fade_from, from);
+            });
         }
+        rd_with_alpha(rt, model.card_alpha, [&] {
+            if (view == View::Done) rd_source_card(d, l);
+            else rd_program_card(d, view, l);
+        });
     }
 
-    if (view == View::Working || view == View::Done) {
-        const bool done = view == View::Done;
-        d.circle(l.file_icon, done ? pal.ok : rd_alpha(pal.accent, 0.16f));
-        d.glyph(done ? L'' : L'', l.file_icon, done ? 26.0f : 24.0f, done ? D2D1::ColorF(1, 1, 1) : pal.accent);
-        d.text(widen(model.file_name), l.file_name, 0, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
-        if (!done) {
-            d.fill(l.bar, 2, rd_alpha(pal.text3, 0.4f));
-            const float filled = l.bar.w * static_cast<float>(std::clamp(model.percent, 0, 100)) / 100.0f;
-            if (filled > 0) d.fill(Rect{l.bar.x, l.bar.y, std::max(filled, 4.0f), l.bar.h}, 2, pal.accent);
-            d.text(widen(model.stage_label), l.bar_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
-            d.text(widen(std::to_string(model.percent) + "%"), l.bar_percent, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
-            d.text(widen(model.detail), l.detail, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
-            d.button(Control::Cancel, l.cancel, L"Cancel", L'', true);
-        } else {
-            d.text(L"Conversion finished", l.detail, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
-            d.button(Control::Browse, l.browse, L"Convert another file", L'', true);
-        }
-    } else {
-        // the idle group: the round "+" button, two lines, Browse
-        D2D1_COLOR_F plus = pal.accent;
-        if (model.pressed == Control::Plus && model.hot == Control::Plus) plus = rd_mix(plus, pal.dark ? D2D1::ColorF(0, 0, 0) : D2D1::ColorF(0, 0, 0), 0.25f);
-        else if (model.hot == Control::Plus) plus = rd_mix(plus, pal.dark ? D2D1::ColorF(1, 1, 1) : D2D1::ColorF(0, 0, 0), 0.10f);
-        d.circle(l.plus, plus);
-        d.glyph(L'', l.plus, 28, pal.accent_text);
-        d.focus_ring(Control::Plus, l.plus);
-        d.text(L"Drag a file here", l.drop_line1, 0, 15, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
-        d.text(widen(model.drop_hint), l.drop_line2, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
-        d.button(Control::Browse, l.browse, L"Browse…", L'', true);
-    }
-
-    // ---- the right card
-    {
-        const bool done = view == View::Done;
-        // the Language drop-down (a Fluent ComboBox): the label, the closed control with the chosen language and a chevron
-        {
-            const bool enabled = control_enabled(Control::Language, view);
-            const float dim = enabled ? 1.0f : 0.45f;
-            d.text(L"Language", l.language_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.text, dim));
-            D2D1_COLOR_F fill = pal.field;
-            if (enabled && (model.hot == Control::Language || model.language_open)) fill = rd_mix(fill, pal.text, pal.dark ? 0.04f : 0.035f);
-            d.fill(l.language_combo, 4, rd_alpha(fill, dim));
-            d.stroke(l.language_combo, 4, rd_alpha(pal.stroke2, dim));
-            d.brush->SetColor(model.language_open ? pal.accent : rd_alpha(pal.field_line, dim));
-            rt->DrawLine(D2D1::Point2F(l.language_combo.x + 4, l.language_combo.bottom() - 0.5f), D2D1::Point2F(l.language_combo.right() - 4, l.language_combo.bottom() - 0.5f), d.brush.get(),
-                         model.language_open ? 2.0f : 1.0f);
-            const std::size_t chosen = static_cast<std::size_t>(std::clamp(model.language_selected, 0, std::max(0, static_cast<int>(model.languages.size()) - 1)));
-            const std::wstring shown = model.languages.empty() ? std::wstring(L"Original") : widen(model.languages[chosen].name);
-            d.text(shown, Rect{l.language_combo.x + 11, l.language_combo.y, l.language_combo.w - 44, l.language_combo.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.text, dim));
-            d.glyph(model.language_open ? L'' : L'', Rect{l.language_combo.right() - 30, l.language_combo.y, 20, l.language_combo.h}, 12, rd_alpha(pal.text2, dim));
-            if (enabled) d.focus_ring(Control::Language, l.language_combo);
-        }
-        d.text(L"Output", l.output_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
-        d.fill(l.field, 4, pal.field);
-        d.stroke(l.field, 4, pal.stroke2);
-        d.brush->SetColor(pal.field_line);
-        rt->DrawLine(D2D1::Point2F(l.field.x + 4, l.field.bottom() - 0.5f), D2D1::Point2F(l.field.right() - 4, l.field.bottom() - 0.5f), d.brush.get(), 1.0f);
-        if (done)
-            d.text(rd_fit_middle(*this, widen(model.output_path), l.field.w - 22, 14), Rect{l.field.x + 11, l.field.y, l.field.w - 22, l.field.h}, 0, 14,
-                   DWRITE_FONT_WEIGHT_NORMAL, pal.text);
-        d.button(Control::OpenFolder, l.open_folder, L"Open folder", L'', done);
-        d.button(Control::CopyPath, l.copy_path, L"Copy path", L'', done);
-        d.text(done ? widen(model.done_note) : std::wstring(L"Appears here when the conversion is finished."), l.hint, 0, 12, DWRITE_FONT_WEIGHT_NORMAL,
-               done ? pal.text2 : pal.text3, DWRITE_TEXT_ALIGNMENT_LEADING, true, DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-    }
-
-    }   // (the Convert page)
 
     // ---- the status bar
     {
@@ -696,6 +761,16 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         d.circle(l.status_dot, dot);
         d.text(widen(model.status_text), l.status_text, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         d.text(widen(model.platforms), l.platforms, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
+    });   // (everything below the title bar, at chrome_alpha)
+
+    // ---- the welcome: the window's name in the middle of the empty window as it opens, fading in and out before the page appears
+    if (model.welcome && model.welcome_alpha > 0.001f) {
+        const float mid = (kTitleBarHeight + l.status_bar.bottom()) / 2;
+        d.text(L"Welcome to CodeBreaker", Rect{0, mid - 34, l.width, 46}, 1, 34, DWRITE_FONT_WEIGHT_SEMI_BOLD, rd_alpha(pal.text, model.welcome_alpha),
+               DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(L"Any program, back to its source.", Rect{0, mid + 16, l.width, 24}, 0, 15, DWRITE_FONT_WEIGHT_NORMAL,
+               rd_alpha(pal.text2, model.welcome_alpha), DWRITE_TEXT_ALIGNMENT_CENTER);
     }
 
     // ---- the drop-downs, dropped down over everything else

@@ -12,6 +12,7 @@
 
 #include "cb/base/runs.hpp"
 #include "cb/build/module.hpp"
+#include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/file_lock.hpp"
 #include "cb/core/fs.hpp"
@@ -260,6 +261,39 @@ Report run(Tier tier, const Services& s, const Options& o) {
     // boot: `runs` boots, `vms` at once, each its own CD and disk copy
     std::vector<std::string> tags;
     for (std::size_t i = 1; i <= runs; ++i) tags.push_back(std::format("{}-{}-{}", o.tag, word(tier), i));
+
+    // reuse: the same inputs as a run that passed with at least this many boots is a pass, and no machine starts
+    stdfs::path record;
+    std::size_t recorded_runs = 0;
+    if (o.reuse && s.inputs_key && !s.passed_dir.empty()) {
+        const std::string key = s.inputs_key(tier, replace);
+        if (!key.empty()) {
+            record = s.passed_dir / std::format("{}-{}.txt", word(tier), key);
+            std::error_code ec;
+            if (stdfs::is_regular_file(record, ec)) {
+                try {
+                    const std::string written = fs::read_text(record);
+                    recorded_runs = static_cast<std::size_t>(std::stoul(std::string(text::trim(written))));
+                } catch (const std::exception&) {
+                    recorded_runs = 0;
+                }
+            }
+            if (recorded_runs >= runs) {
+                for (const std::string& tag : tags) {
+                    Boot b;
+                    b.tag = tag;
+                    b.verdict = "PASS (reused)";
+                    b.pass = true;
+                    r.boots.push_back(std::move(b));
+                }
+                r.notes.push_back(std::format("reused: the inputs are byte-identical to those of a run that passed with {} boots ({}); no machine was "
+                                              "started (without --reuse the boots run again)", recorded_runs, fs::to_text(record.filename())));
+                r.pass = true;
+                r.took = since(start);
+                return r;
+            }
+        }
+    }
     for (std::size_t first = 0; first < tags.size(); first += o.vms) {
         std::vector<std::future<Boot>> batch;
         for (std::size_t i = first; i < std::min(tags.size(), first + o.vms); ++i) {
@@ -294,6 +328,13 @@ Report run(Tier tier, const Services& s, const Options& o) {
         for (auto& f : batch) r.boots.push_back(f.get());
     }
     r.pass = std::all_of(r.boots.begin(), r.boots.end(), [](const Boot& b) { return b.pass; }) && r.boots.size() == runs;
+    if (r.pass && !record.empty()) {
+        try {
+            fs::write_text(record, std::format("{}\n", std::max(runs, recorded_runs)));
+        } catch (const std::exception& e) {
+            log::warn(std::format("regress: the pass could not be written down for reuse: {}", e.what()));
+        }
+    }
     r.took = since(start);
     return r;
 }
@@ -377,18 +418,65 @@ Services production_services(const config::Config& config) {
         return out;
     };
 
-    s.boot = [config, state, qemu, iso](const setup16::Replace& replace, const std::string& tag) {
-        const setup16::Config machine = setup16::Config::in_state(state, qemu, iso.value_or(stdfs::path()));
-        return setup16::continue_test(machine, replace, tag);
+    // The machine's speed settings (both off unless set): qemu_accel (e.g. "whpx"), qemu_unsafe_disk (cache=unsafe on the throwaway disk copy).
+    const std::string accel = config.text("qemu_accel");
+    const bool unsafe_disk = config.truthy("qemu_unsafe_disk");
+    const auto machine_config = [=]() {
+        setup16::Config machine = setup16::Config::in_state(state, qemu, iso.value_or(stdfs::path()));
+        machine.accel = accel;
+        machine.unsafe_disk = unsafe_disk;
+        return machine;
+    };
+
+    s.boot = [machine_config](const setup16::Replace& replace, const std::string& tag) {
+        return setup16::continue_test(machine_config(), replace, tag);
     };
 
     // FIX95CPU's disk: the Windows 95 design folder's (beside the corpus)
     const std::optional<stdfs::path> corpus = config.path("corpus");
     const stdfs::path design = corpus ? corpus->parent_path().parent_path() : stdfs::path();
     const stdfs::path fix95cpu = design / "vm" / "FIX95CPU.IMA";
-    s.install = [state, qemu, iso, fix95cpu](const setup16::Replace& replace, const std::string& tag) {
-        const setup16::Config machine = setup16::Config::in_state(state, qemu, iso.value_or(stdfs::path()));
-        return install16::install(machine, replace, tag, fix95cpu);
+    const bool recognise = config.truthy("install_recognise_screens");
+    s.passed_dir = state / "work" / "regress" / "passed";
+    // The key of a tier's inputs: the bytes of every built image, of this program and of the fix disk; size and write time of the big fixed files
+    // (the disk, the Setup CD, the floppies, MINI.CAB, the originals, the emulator); and the settings that change the machine or how it is driven.
+    s.inputs_key = [state, qemu, iso, fix95cpu, accel, unsafe_disk, recognise](Tier tier, const setup16::Replace& replace) {
+        std::string text = std::format("v1 {} accel={} unsafe_disk={} recognise={}\n", word(tier), accel, unsafe_disk, tier == Tier::Install && recognise);
+        std::error_code ec;
+        const auto content = [&](const stdfs::path& p) {
+            try {
+                return crypto::to_hex(crypto::sha256(fs::read_file(p)));
+            } catch (const std::exception&) {
+                return std::string("unreadable");
+            }
+        };
+        const auto stat = [&](const stdfs::path& p) {
+            std::error_code e;
+            if (!stdfs::is_regular_file(p, e)) return std::string("missing");
+            return std::format("{}:{}", fs::file_size(p), fs::last_write_time(p).time_since_epoch().count());
+        };
+        for (const auto& [name, image] : replace) text += std::format("module {} {}\n", text::upper(name), content(image));
+        text += std::format("harness {}\n", content(fs::executable_path()));
+        text += std::format("qemu {}\n", stat(qemu));
+        stdfs::path x86_64 = qemu;
+        x86_64.replace_filename(text::replace_all(fs::to_text(qemu.filename()), "i386", "x86_64"));
+        if (accel.starts_with("whpx")) text += std::format("qemu64 {}\n", stat(x86_64));
+        text += std::format("iso {}\ndisk {}\ncab {}\nfloppy {}\n", stat(iso.value_or(stdfs::path())), stat(state / "mini" / "prepared_hd.img"),
+                            stat(state / "mini" / "MINI.CAB"), stat(state / "bootfloppy" / "boot95_is.img"));
+        if (tier == Tier::Install) text += std::format("fix95cpu {}\n", content(fix95cpu));
+        for (const stdfs::path& dir : {state / "mini" / "original", state / "setup" / "original"}) {
+            std::vector<stdfs::path> files;
+            for (stdfs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+                if (it->is_regular_file(ec)) files.push_back(it->path());
+            std::sort(files.begin(), files.end());
+            for (const stdfs::path& f : files) text += std::format("original {} {}\n", text::upper(fs::to_text(f.filename())), stat(f));
+        }
+        return crypto::to_hex(crypto::sha256(ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size())));
+    };
+    s.install = [machine_config, fix95cpu, recognise](const setup16::Replace& replace, const std::string& tag) {
+        install16::Options options;
+        options.timing.recognise = recognise;
+        return install16::install(machine_config(), replace, tag, fix95cpu, options);
     };
 
     s.free_gb = [state]() {
@@ -434,6 +522,7 @@ cli::Command command(const config::Config& config) {
                     cli::Option{"--only", "", "rebuild only these modules, the rest stay the originals (a look, not the regression)", cli::Arg::Value, "NAME,..."},
                     cli::Option{"--keep-built", "", "keep the built images in this folder", cli::Arg::Value, "DIR"},
                     cli::Option{"--tag", "", "the name the boots' screenshots are filed under (default regress)", cli::Arg::Value, "TAG"},
+                    cli::Option{"--reuse", "", "a pass without booting when every input is byte-identical to a run that passed (also the setting regress_reuse)"},
                     cli::Option{"--cases", "", "slow: the cases file (default tests/regress/slow.json)", cli::Arg::Value, "FILE"},
                     cli::Option{"--exe", "", "slow: the codebreaker program the cases run (default: this one)", cli::Arg::Value, "FILE"}},
                    {},
@@ -456,6 +545,7 @@ cli::Command command(const config::Config& config) {
             for (const std::string_view part : text::split_trim(list, ',')) o.only.push_back(text::upper(part));
         if (const auto v = args.value("keep-built")) o.keep_built = fs::from_text(*v);
         if (const auto v = args.value("tag")) o.tag = *v;
+        o.reuse = args.flag("reuse") || config.truthy("regress_reuse");
         o.cases = args.value("cases") ? fs::from_text(*args.value("cases")) : config.checkout_root() / "tests" / "regress" / "slow.json";
         if (const auto v = args.value("exe")) o.exe = fs::from_text(*v);
         else {                                                                       // this program

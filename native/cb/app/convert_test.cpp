@@ -107,6 +107,35 @@ CB_TEST("app.convert.counts_inside_a_stage_move_the_percentage_honestly", [] {
     CB_CHECK(f.percent_never_goes_down());
 });
 
+CB_TEST("app.convert.the_stream_carries_the_files_first_bytes_the_source_written_and_the_files_moved", [] {
+    CvFixture f;
+    Route route = cv_test_route({State::Opening, State::Disassembling});
+    const Outcome done = convert(f.request(), cv_test_planner(route), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    std::vector<std::string> lines;
+    for (const Progress& p : f.seen) lines.insert(lines.end(), p.lines.begin(), p.lines.end());
+    CB_CHECK(!lines.empty());
+    CB_CHECK_EQ(lines.front().substr(0, 18), std::string("0000  01 02 03 04 "));   // the input's first bytes, while it is identified
+    const auto has = [&](std::string_view s) { return std::find(lines.begin(), lines.end(), s) != lines.end(); };
+    CB_CHECK(has("=== out.asm ==="));          // each source file the route wrote, by name, then its text
+    CB_CHECK(has("main:"));
+    CB_CHECK(has("int main(void) { return 0; }"));
+    CB_CHECK(has("-> out.c"));                 // and the files moved into the output folder
+    for (const Progress& p : f.seen) CB_CHECK(p.lines.size() <= 12);   // a few at a time: the stream trickles
+    CB_CHECK(f.percent_never_goes_down());
+    CB_CHECK_EQ(fs::read_text(done.output / "out.asm"), std::string("main:\n ret\n"));   // what is written is untouched
+});
+
+CB_TEST("app.convert.a_route_may_stream_lines_of_its_own", [] {
+    CvFixture f;
+    Route route = cv_test_route({State::Disassembling}, [](Reporter& r) { r.preview("mov ax, 4C00h"); });
+    const Outcome done = convert(f.request(), cv_test_planner(route), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    bool found = false;
+    for (const Progress& p : f.seen) found = found || std::find(p.lines.begin(), p.lines.end(), "mov ax, 4C00h") != p.lines.end();
+    CB_CHECK(found);
+});
+
 CB_TEST("app.convert.a_cancel_in_the_middle_ends_cancelled_and_leaves_nothing", [] {
     CvFixture f;
     ProgressFn cancelling = [&f](const Progress& p) {

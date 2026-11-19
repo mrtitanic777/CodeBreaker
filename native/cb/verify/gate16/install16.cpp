@@ -8,6 +8,7 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
+#include "cb/verify/gate16/page_prints.hpp"
 
 namespace cb::verify::gate16::install16 {
 
@@ -30,6 +31,27 @@ bool near_grey(const Rgb& p, unsigned lowest, unsigned highest) {
 bool is_teal(const Rgb& p) {
     const int g = p.g, b = p.b, r = p.r;
     return g >= 100 && g <= 190 && std::abs(g - b) <= 14 && g - r >= 60;
+}
+
+// The screen holds a print's text where the print says: the rectangle's pixels, light or dark as the print has them, at least 97% alike (and
+// the text itself there at all: a blank rectangle is no page).
+bool shows(const Picture& screen, const PagePrint& print) {
+    if (screen.width() != kGraphicsWidth || screen.height() < 400 || print.rows.empty()) return false;
+    std::size_t total = 0, same = 0, ink = 0, ink_wanted = 0;
+    for (std::size_t j = 0; j < print.rows.size(); ++j) {
+        for (std::size_t i = 0; i < print.rows[j].size(); ++i) {
+            const std::optional<Rgb> p = screen.at(print.x + static_cast<std::uint32_t>(i), print.y + static_cast<std::uint32_t>(j));
+            if (!p) return false;
+            const unsigned mean = p->sum() / 3;
+            const bool on = print.dark_text ? mean < 100 : mean > 200;
+            const bool want = print.rows[j][i] == '#';
+            ++total;
+            same += on == want;
+            ink += on && want;
+            ink_wanted += want;
+        }
+    }
+    return static_cast<double>(same) >= 0.97 * static_cast<double>(total) && ink * 10 >= ink_wanted * 9;
 }
 
 std::string key_for(char c) {
@@ -70,6 +92,7 @@ private:
 
     // Wait for a page: half of `at_most` as it is, then until the screen stops changing (two looks in a row alike), then no longer than `at_most`.
     void settle(seconds at_most, bool early_ok = true) {
+        if (t_.recognise) return settle_by_screen(at_most, early_ok ? seconds(5) : seconds(15));
         const milliseconds start = c_.clock();
         const milliseconds limit = std::chrono::duration_cast<milliseconds>(scaled(at_most));
         if (early_ok) {
@@ -88,6 +111,30 @@ private:
             }
         } else {
             c_.sleep(std::max(milliseconds(1), limit));
+        }
+    }
+
+    // The recognising wait (Timing::recognise): the page after a key is the screen that changed from the one before the key and has stopped
+    // changing for `quiet`, looked at every two seconds; `at_most` is the limit, as in settle.
+    void settle_by_screen(seconds at_most, seconds quiet) {
+        const milliseconds start = c_.clock();
+        const milliseconds limit = std::chrono::duration_cast<milliseconds>(scaled(at_most));
+        const milliseconds still_for = std::chrono::duration_cast<milliseconds>(scaled(quiet));
+        const std::optional<Picture> pre = last_;
+        bool changed = !pre;   // (no picture from before the key: no change to wait for)
+        std::optional<Picture> before = pre;
+        milliseconds since = c_.clock();
+        while (c_.clock() - start < limit) {
+            nap(seconds(2));
+            const std::optional<Picture>& now = look();
+            if (!now) continue;
+            if (pre && !still(*pre, *now)) changed = true;
+            if (before && still(*before, *now)) {
+                if (changed && c_.clock() - since >= still_for) return;
+            } else {
+                since = c_.clock();
+            }
+            before = now;
         }
     }
 
@@ -209,21 +256,29 @@ void Driver::wizard(const Entries& entries) {
 bool Driver::copy() {
     press("ret");   // Start copying: Next
     const milliseconds start = c_.clock();
-    c_.sleep(std::max(milliseconds(1), std::chrono::duration_cast<milliseconds>(scaled(t_.copy_at_least))));
+    if (!t_.recognise) c_.sleep(std::max(milliseconds(1), std::chrono::duration_cast<milliseconds>(scaled(t_.copy_at_least))));
     std::optional<Picture> before = look();
     milliseconds since = c_.clock();
+    int finish_looks = 0;
     while (c_.clock() - start < std::chrono::duration_cast<milliseconds>(scaled(t_.copy_at_most))) {
         if (!c_.alive()) {
             fail(Verdict::Slow, "copy", "the machine ended during the copy");
             return false;
         }
         if (out_of_time()) break;
-        nap(seconds(10));
+        nap(t_.recognise ? seconds(3) : seconds(10));
         const std::optional<Picture>& now = look();
         if (!now) continue;
+        // The Finishing Setup page, twice in a row and quiet: the copy is done (the way out for a screen that is not that page is the quiet below).
+        finish_looks = t_.recognise && is_finish_page(*now) && before && still(*before, *now) ? finish_looks + 1 : 0;
+        if (finish_looks >= 2) {
+            stage_ends("copy", std::format("the copy is done after {}s: Finish (the page recognised)", std::chrono::duration_cast<seconds>(c_.clock() - start).count()));
+            return true;
+        }
         // (no error-box test here: the copy's slides -- "Register now" -- are white where an error box is, and stay for half a minute)
         if (before && still(*before, *now)) {
-            if (c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(t_.copy_still))) {
+            if (c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(t_.copy_still)) &&
+                (!t_.recognise || c_.clock() - start >= std::chrono::duration_cast<milliseconds>(scaled(t_.copy_at_least)))) {
                 stage_ends("copy", std::format("the copy is done after {}s: Finish", std::chrono::duration_cast<seconds>(c_.clock() - start).count()));
                 return true;
             }
@@ -366,7 +421,7 @@ void Driver::windows() {
     milliseconds text_since{-1};
     int enters = 0, errors = 0, desktops = 0;
     while (c_.clock() - start < std::chrono::duration_cast<milliseconds>(scaled(t_.windows_at_most)) && !out_of_time()) {
-        nap(seconds(10));
+        nap(t_.recognise ? seconds(4) : seconds(10));
         if (!c_.alive()) {
             fail(Verdict::Slow, "windows", "the machine ended");
             return;
@@ -395,7 +450,8 @@ void Driver::windows() {
             return;
         }
         if (before && still(*before, *now)) {
-            if (c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(t_.windows_still)) && now->width() == kGraphicsWidth) {
+            const seconds waits_for = t_.recognise && is_known_question(*now) ? std::min(t_.windows_still, seconds(8)) : t_.windows_still;
+            if (c_.clock() - since >= std::chrono::duration_cast<milliseconds>(scaled(waits_for)) && now->width() == kGraphicsWidth) {
                 if (enters >= t_.enters_at_most) {
                     fail(Verdict::FailStuck, "windows", std::format("the screen waits and {} Enters did not move it", enters));
                     return;
@@ -484,6 +540,12 @@ bool is_fault_box(const Picture& screen) {
         }
     }
     return false;
+}
+
+bool is_finish_page(const Picture& screen) { return shows(screen, kFinishPrint); }
+
+bool is_known_question(const Picture& screen) {
+    return shows(screen, kTimeZonePrint) || shows(screen, kPrinterPrint) || shows(screen, kRestartPrint);
 }
 
 bool has_text_colour(const Picture& screen, TextColour colour) {

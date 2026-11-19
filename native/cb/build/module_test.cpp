@@ -69,6 +69,23 @@ CB_TEST("build.module.name_function_pointer_stores_writes_the_two_words_as_the_f
     CB_CHECK_EQ(name_function_pointer_stores("", lookup), "");
 });
 
+CB_TEST("build.module.name_function_offsets_beside_selectors_names_the_function_at_that_offset_of_the_segment", [] {
+    const auto lookup = [](const std::string& anchor, std::uint64_t offset) -> std::optional<std::string> {
+        if (anchor == "sub_10_009C" && offset == 0x1587) return "BEAR306";
+        return std::nullopt;
+    };
+    const std::string selector = "  axStack_1c[2] = ((uint2)((uint4)(void __far *)&sub_10_009C >> 16));\n";
+    CB_CHECK_EQ(name_function_offsets_beside_selectors("  axStack_1c[0] = 0x800;\n  axStack_1c[1] = 0x1587;\n" + selector + "  axStack_1c[3] = 0;\n", lookup),
+                "  axStack_1c[0] = 0x800;\n  axStack_1c[1] = (uint2)(uint4)(void __far *)&BEAR306;\n" + selector + "  axStack_1c[3] = 0;\n");
+    // an element of the frame structure
+    CB_CHECK_EQ(name_function_offsets_beside_selectors("  codebreaker_frame.axStack_26[1] = 0x1587;\n" + selector, lookup),
+                "  codebreaker_frame.axStack_26[1] = (uint2)(uint4)(void __far *)&BEAR306;\n" + selector);
+    // the selector first, an offset that is no function there, and another segment's anchor: unchanged
+    CB_CHECK_EQ(name_function_offsets_beside_selectors(selector + "  axStack_1c[3] = 0x1587;\n", lookup), selector + "  axStack_1c[3] = (uint2)(uint4)(void __far *)&BEAR306;\n");
+    const std::string other = "  a = 0x1588;\n" + selector + "  b = 0x1588;\n  c = ((uint2)((uint4)(void __far *)&sub_11_0000 >> 16));\n";
+    CB_CHECK_EQ(name_function_offsets_beside_selectors(other, lookup), other);
+});
+
 CB_TEST("build.module.kept_as_asm_reads_module_function_and_reason", [] {
     const std::string text =
         "# functions the gate passes that a run of the whole module showed wrong\n"

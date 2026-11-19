@@ -116,6 +116,10 @@ struct Options {
     std::filesystem::path cases;           // slow: the cases file
     std::optional<std::filesystem::path> exe;   // slow: the codebreaker program the cases run
     std::chrono::minutes case_timeout{90};
+    // Off by default (`--reuse`, or the setting regress_reuse). A boot tier whose inputs are byte-identical to those of a run that passed -- the
+    // built images, the disk and the CD, the floppies, the emulator and its settings, this program -- is a pass without starting a machine
+    // (the report says so). Only a pass is written down; a failure is always run again.
+    bool reuse = false;
 };
 
 constexpr std::size_t kMaxVms = 3;
@@ -142,6 +146,10 @@ struct Services {
     // waits ("waiting for regress run pid N") when another run has them. The locks are the system's: a killed run's goes with it.
     std::filesystem::path lock_dir;
     std::filesystem::path mini_original, setup_original;
+    // reuse: a text that names every input of a tier's boots (equal text: byte-identical inputs); empty when it cannot be made. And the folder the
+    // passing runs are written down in (empty: no reuse).
+    std::function<std::string(Tier tier, const setup16::Replace& replace)> inputs_key;
+    std::filesystem::path passed_dir;
     // slow: run `argv` with `exe`; the exit code and the output.
     std::function<std::pair<int, std::string>(const std::vector<std::string>& argv, std::chrono::minutes timeout)> run_exe;
     // slow: the path a case names by setting (`package_setting`), nullopt when it is not set.

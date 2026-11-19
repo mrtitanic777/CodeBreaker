@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -59,10 +60,32 @@ constexpr DWORD kWwColorNone = 0xFFFFFFFE;    // DWMWA_COLOR_NONE: no colour, th
 
 constexpr UINT kWmProgress = WM_APP + 1;   // the worker has progress to show
 constexpr UINT_PTR kWwRunTimer = 1;       // while a tool runs: its output is read into the page
+constexpr UINT_PTR kWwStreamTimer = 2;    // while a conversion runs: the character stream types on (about 30 frames a second)
+constexpr UINT kWwStreamFrameMs = 33;
+constexpr std::size_t kWwStreamRows = 40;  // the most lines of the stream the drop area can show
+constexpr UINT_PTR kWwFadeTimer = 3;      // while the welcome shows or a card changes: about 60 frames a second
+constexpr UINT kWwFadeFrameMs = 16;
+// the welcome: its words fade in, stay, fade out, then the page fades in (seconds from the window opening)
+constexpr double kWwWelcomeIn = 0.6, kWwWelcomeHold = 1.5, kWwWelcomeOut = 2.0, kWwWelcomeEnd = 2.4;
+// a card change: the old card fades out, then the new one fades in (seconds)
+constexpr double kWwCardOut = 0.2, kWwCardIn = 0.3;
+
+// 0..1 with a gentle start and end.
+float ww_ease(double t) {
+    const double x = std::clamp(t, 0.0, 1.0);
+    return static_cast<float>(x * x * (3 - 2 * x));
+}
 constexpr UINT kWmFinished = WM_APP + 2;   // the worker is done: its outcome is ready
 constexpr wchar_t kWwClass[] = L"CodeBreakerWindow";
 
 // ---- what the system says ------------------------------------------------------------------------------------------------------------
+
+// Windows' "Animation effects" (Settings > Accessibility > Visual effects): when off, nothing in the window moves on its own.
+bool ww_animations_on() {
+    BOOL on = TRUE;
+    if (!SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &on, 0)) return true;
+    return on != FALSE;
+}
 
 bool ww_system_dark() {
     DWORD value = 1, size = sizeof value;
@@ -295,6 +318,11 @@ private:
     void scroll_page(float x, float y, int lines);
     void cancel_conversion();
     void on_progress();
+    void stream_frame();
+    void begin_card_fade(View from);
+    void start_welcome();
+    void skip_welcome();
+    void fade_frame();
     void on_finished();
     void reset_to_idle(const std::string& status);
 
@@ -327,6 +355,12 @@ private:
     std::atomic<bool> cancel_{false};
     std::mutex lock_;
     std::optional<convert::Progress> latest_;
+    std::vector<std::string> stream_waiting_;        // lines from the worker not yet handed to the stream (under lock_: latest_ keeps only the newest report)
+    CharStream stream_;                              // the character stream (UI thread)
+    std::chrono::steady_clock::time_point stream_tick_{};
+    std::uint32_t stream_frames_ = 0;
+    std::chrono::steady_clock::time_point fade_start_{}, welcome_start_{};   // the fades (fade_frame)
+    bool card_fading_ = false;
     std::optional<convert::Outcome> outcome_;
     std::atomic<bool> progress_posted_{false};
     std::atomic<bool> running_{false};
@@ -415,6 +449,7 @@ int WwApp::run() {
     model_.drop_hint = convert::drop_hint();
     set_language_list(convert::targets_for({}));
     if (!create_window()) return 2;
+    if (initial_file_.empty()) start_welcome();   // (a window opened on a file goes straight to work)
     ShowWindow(hwnd_, SW_SHOWNORMAL);
     UpdateWindow(hwnd_);
     if (!initial_file_.empty()) start_conversion(initial_file_);
@@ -1027,10 +1062,14 @@ void WwApp::reset_to_idle(const std::string& status) {
     m.info_message.clear();
     m.output_path.clear();
     m.done_note.clear();
+    m.stream.clear();
+    m.stream_cursor = false;
     m.language_open = false;
     m.pressed = Control::None;
     m.status_text = status;
     model_ = std::move(m);
+    stream_.clear();
+    KillTimer(hwnd_, kWwStreamTimer);
     relayout();
     invalidate();
 }
@@ -1050,15 +1089,28 @@ void WwApp::start_conversion(const stdfs::path& file) {
     }
     const LanguageItem& language = model_.languages[static_cast<std::size_t>(model_.language_selected)];
     const std::string target = language.id;
+    const View before = model_.view;
+    skip_welcome();
     model_.view = View::Working;
+    begin_card_fade(before);   // (from the Source card: it fades out with what it showed -- the output path and note stay until the next Done)
     model_.file_name = narrow(file.filename().wstring());
     model_.stage_label = std::string(convert::state_label(convert::State::Identifying));
     model_.detail.clear();
     model_.percent = 0;
-    model_.output_path.clear();
-    model_.done_note.clear();
     model_.status_text = (target == "original" ? "Converting " + model_.file_name : "Translating " + model_.file_name + " to " + language.name);
     model_.focus = Control::None;
+    stream_.clear();
+    model_.stream.clear();
+    model_.stream_cursor = false;
+    {
+        std::lock_guard hold(lock_);
+        stream_waiting_.clear();
+    }
+    if (ww_animations_on()) {
+        stream_tick_ = std::chrono::steady_clock::now();
+        stream_frames_ = 0;
+        SetTimer(hwnd_, kWwStreamTimer, kWwStreamFrameMs, nullptr);
+    }
     relayout();
     invalidate();
     cancel_ = false;
@@ -1076,6 +1128,9 @@ void WwApp::start_conversion(const stdfs::path& file) {
                     {
                         std::lock_guard hold(lock_);
                         latest_ = p;
+                        stream_waiting_.insert(stream_waiting_.end(), p.lines.begin(), p.lines.end());
+                        if (stream_waiting_.size() > CharStream::kStreamPendingLines)
+                            stream_waiting_.erase(stream_waiting_.begin(), stream_waiting_.end() - static_cast<std::ptrdiff_t>(CharStream::kStreamPendingLines));
                     }
                     if (!progress_posted_.exchange(true)) PostMessageW(window, kWmProgress, 0, 0);
                 },
@@ -1095,16 +1150,110 @@ void WwApp::start_conversion(const stdfs::path& file) {
 
 void WwApp::on_progress() {
     std::optional<convert::Progress> p;
+    std::vector<std::string> lines;
     {
         std::lock_guard hold(lock_);
         p = std::move(latest_);
         latest_.reset();
+        lines.swap(stream_waiting_);
     }
     progress_posted_ = false;
     if (!p || model_.view != View::Working) return;
     if (!cancel_) model_.stage_label = p->label;
     model_.detail = p->detail;
     model_.percent = p->percent;
+    if (!lines.empty()) {
+        stream_.push(lines);
+        if (!ww_animations_on()) {   // Windows' "Animation effects" off: the newest lines, still, no typing and no blinking cursor
+            stream_.show_all();
+            model_.stream = stream_.visible(kWwStreamRows);
+            model_.stream_cursor = false;
+        }
+    }
+    invalidate();
+}
+
+// ---- the fades
+
+// The welcome as the window opens: its words fade in, stay, fade out, then the page fades in. Not when Windows' animations are off.
+void WwApp::start_welcome() {
+    if (!ww_animations_on()) return;
+    model_.welcome = true;
+    model_.welcome_alpha = 0;
+    model_.chrome_alpha = 0;
+    welcome_start_ = std::chrono::steady_clock::now();
+    SetTimer(hwnd_, kWwFadeTimer, kWwFadeFrameMs, nullptr);
+}
+
+// A click or a key during the welcome: straight to the page fading in.
+void WwApp::skip_welcome() {
+    if (!model_.welcome) return;
+    const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - welcome_start_).count();
+    if (elapsed < kWwWelcomeOut)
+        welcome_start_ = std::chrono::steady_clock::now() - std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kWwWelcomeOut));
+    model_.welcome_alpha = 0;
+}
+
+// The Convert page's one card changes between Program and Source: the old one fades out, then the new one fades in.
+void WwApp::begin_card_fade(View from) {
+    const bool was_source = from == View::Done, is_source = model_.view == View::Done;
+    if (was_source == is_source || !ww_animations_on()) {
+        model_.card_alpha = 1;
+        model_.fade_from_alpha = 0;
+        return;
+    }
+    model_.fade_from = from;
+    model_.fade_from_alpha = 1;
+    model_.card_alpha = 0;
+    card_fading_ = true;
+    fade_start_ = std::chrono::steady_clock::now();
+    SetTimer(hwnd_, kWwFadeTimer, kWwFadeFrameMs, nullptr);
+}
+
+void WwApp::fade_frame() {
+    const auto now = std::chrono::steady_clock::now();
+    if (model_.welcome) {
+        const double t = std::chrono::duration<double>(now - welcome_start_).count();
+        if (t < kWwWelcomeIn) model_.welcome_alpha = ww_ease(t / kWwWelcomeIn);
+        else if (t < kWwWelcomeHold) model_.welcome_alpha = 1;
+        else if (t < kWwWelcomeOut) model_.welcome_alpha = 1 - ww_ease((t - kWwWelcomeHold) / (kWwWelcomeOut - kWwWelcomeHold));
+        else model_.welcome_alpha = 0;
+        model_.chrome_alpha = t < kWwWelcomeOut ? 0 : ww_ease((t - kWwWelcomeOut) / (kWwWelcomeEnd - kWwWelcomeOut));
+        if (t >= kWwWelcomeEnd) {
+            model_.welcome = false;
+            model_.chrome_alpha = 1;
+        }
+    }
+    if (card_fading_) {
+        const double t = std::chrono::duration<double>(now - fade_start_).count();
+        model_.fade_from_alpha = t < kWwCardOut ? 1 - ww_ease(t / kWwCardOut) : 0;
+        model_.card_alpha = t < kWwCardOut ? 0 : ww_ease((t - kWwCardOut) / kWwCardIn);
+        if (t >= kWwCardOut + kWwCardIn) {
+            card_fading_ = false;
+            model_.card_alpha = 1;
+            model_.fade_from_alpha = 0;
+        }
+    }
+    if (!model_.welcome && !card_fading_) KillTimer(hwnd_, kWwFadeTimer);
+    invalidate();
+}
+
+// The stream's timer: type on by the time that passed, blink the cursor, draw. It stops when the conversion is no longer running.
+void WwApp::stream_frame() {
+    if (model_.view != View::Working) {
+        KillTimer(hwnd_, kWwStreamTimer);
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::min(0.25, std::chrono::duration<double>(now - stream_tick_).count());
+    stream_tick_ = now;
+    ++stream_frames_;
+    const bool was_typing = stream_.typing();
+    stream_.advance(seconds);
+    const bool cursor = (stream_frames_ / 16) % 2 == 0;   // on and off about every half second
+    if (!was_typing && !stream_.typing() && cursor == model_.stream_cursor) return;   // nothing changed on screen
+    model_.stream = stream_.visible(kWwStreamRows);
+    model_.stream_cursor = cursor;
     invalidate();
 }
 
@@ -1119,11 +1268,20 @@ void WwApp::on_finished() {
     progress_posted_ = false;
     if (!outcome) return;
     const std::string file_name = model_.file_name;
+    const View before = model_.view;
+    // what the Program card showed as it ended, so it fades out as it was
+    const std::string stage = model_.stage_label, detail = model_.detail;
+    const std::vector<std::string> stream = model_.stream;
     reset_to_idle("Ready");
     model_.file_name = file_name;
     switch (outcome->state) {
         case convert::State::Done: {
             model_.view = View::Done;
+            model_.stage_label = stage;
+            model_.detail = detail;
+            model_.percent = 100;
+            model_.stream = stream;
+            model_.done_file_name = file_name;
             model_.output_path = narrow(outcome->output.wstring());
             model_.done_note = std::to_string(outcome->files) + (outcome->files == 1 ? " file written." : " files written.");
             if (!outcome->checked.empty()) model_.done_note += " Checked: " + outcome->checked;
@@ -1144,6 +1302,7 @@ void WwApp::on_finished() {
             model_.status_text = "Something went wrong";
             break;
     }
+    begin_card_fade(before);
     relayout();
     invalidate();
 }
@@ -1320,9 +1479,21 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 poll_tool();
                 return 0;
             }
+            if (wp == kWwStreamTimer) {
+                stream_frame();
+                return 0;
+            }
+            if (wp == kWwFadeTimer) {
+                fade_frame();
+                return 0;
+            }
             break;
         case WM_LBUTTONDOWN: {
             const float mx = ww_dip(GET_X_LPARAM(lp), dpi_), my = ww_dip(GET_Y_LPARAM(lp), dpi_);
+            if (model_.welcome && my >= kTitleBarHeight) {   // a click below the title bar during the welcome: on to the page (the caption buttons still work)
+                skip_welcome();
+                return 0;
+            }
             if (model_.field_popup >= 0) {   // a click while a form's list is open chooses an item or closes it, and does nothing else
                 const int item = language_item_at(field_popup_list(), mx, my);
                 choose_in_popup(item);
@@ -1379,6 +1550,10 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case WM_KEYDOWN: {
+            if (model_.welcome) {   // any key during the welcome: on to the page
+                skip_welcome();
+                return 0;
+            }
             const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
             if (ctrl && wp >= '1' && wp <= '3') {   // Ctrl+1, 2, 3: Convert, Tools, Settings
                 set_page(wp == '1' ? Page::Convert : wp == '2' ? Page::Tools : Page::Settings);
@@ -1522,6 +1697,12 @@ Model ww_model_for(const std::string& state, bool dark) {
     m.platforms = convert::platform_summary();
     m.drop_hint = convert::drop_hint();
     m.languages = ww_items(convert::targets_for({}));
+    if (state == "welcome") {   // the welcome as the window opens, its words fully shown
+        m.welcome = true;
+        m.welcome_alpha = 1;
+        m.chrome_alpha = 0;
+        return m;
+    }
     if (state == "tools") {   // a tool selected, its form filled in, a run finished (sample text: the screenshot shows no one's own files)
         m.page = Page::Tools;
         m.status_text = "Done";
@@ -1568,6 +1749,14 @@ Model ww_model_for(const std::string& state, bool dark) {
         m.detail = "9 of 14 functions";
         m.percent = 31;
         m.status_text = "Translating Bank.cs to C++17";
+        // a frame of the character stream (sample text in the shape the translator writes)
+        m.stream = {"=== Bank.cpp ===", "#include \"cs_runtime.hpp\"", "namespace Bank {", "class Account {", "public:",
+                    "    std::int64_t Balance = 0;", "    void Deposit(std::int64_t amount) {", "        if (amount <= 0) throw cs::ArgumentException(\"amount\");",
+                    "        Balance += amount;", "    }", "    bool Withdraw(std::int64_t amount) {", "        if (amount > Balance) return false;",
+                    "        Balance -= amount;", "        return true;", "    }", "};", "std::int64_t Total(const cs::List<Account>& all) {",
+                    "    std::int64_t sum = 0;", "    for (const Account& a : all) sum += a.Balance;", "    return sum;", "}", "int Main() {",
+                    "    cs::List<Account> accounts;", "    accounts.Add(Account{});", "    accounts[0].Dep"};
+        m.stream_cursor = true;
     } else if (state == "working") {
         m.view = View::Working;
         m.file_name = "setup.exe";
@@ -1575,6 +1764,17 @@ Model ww_model_for(const std::string& state, bool dark) {
         m.detail = "17 of 39 functions";
         m.percent = 62;
         m.status_text = "Converting setup.exe";
+        // a frame of the character stream (sample text in the shape the writers produce: the file's bytes, then its assembly source)
+        m.stream = {"0000  4D 5A 90 00 03 00 00 00  04 00 00 00 FF FF 00 00  MZ..............",
+                    "0010  B8 00 00 00 00 00 00 00  40 00 00 00 00 00 00 00  ........@.......",
+                    "=== setup.asm ===", "; setup.exe -- 32-bit Windows program (PE), i386", "bits 32", "section .text",
+                    "WinMain:", "        push    ebp", "        mov     ebp, esp", "        sub     esp, 0x54", "        push    ebx",
+                    "        push    esi", "        push    edi", "        push    0", "        call    [GetModuleHandleA]",
+                    "        mov     [hInstance], eax", "        call    InitApplication", "        test    eax, eax", "        jz      .quit",
+                    "        push    dword [ebp+0x14]", "        push    eax", "        call    InitInstance", "        test    eax, eax",
+                    "        jz      .quit", ".pump:", "        lea     eax, [ebp-0x54]", "        push    0", "        push    0",
+                    "        push    0", "        push    eax", "        call    [GetMess"};
+        m.stream_cursor = true;
     } else if (state == "done") {
         m.view = View::Done;
         m.file_name = "lz32.dll";
@@ -1700,7 +1900,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings] [--theme light|dark] [--size WxH] [--scale N]]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings] [--theme light|dark] [--size WxH] [--scale N]]\n");
             return 2;
         }
     }

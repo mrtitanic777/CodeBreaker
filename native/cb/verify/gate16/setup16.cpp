@@ -322,11 +322,25 @@ Machine::Machine(const Config& config, const Replace& replace, std::string_view 
     copy_over(config.prepared_disk(), disk);
 
     process::ProcessSpec spec;
-    spec.argv = {fs::to_text(config.qemu), "-M", "pc", "-m", "64",
-                 "-drive", std::format("file={},format=raw,if=floppy,index=0,snapshot=on", option_path(config.boot_floppy)),
-                 "-drive", std::format("file={},format=raw,if=ide,index=0", option_path(disk)),
-                 "-cdrom", fs::to_text(cd), "-boot", "a", "-display", "none",
-                 "-monitor", std::format("tcp:127.0.0.1:{},server,nowait", impl_->monitor.port())};
+    // The speed settings (off by default): the accelerator, and no host-disk flushes on the throwaway copy of the hard disk.
+    stdfs::path qemu = config.qemu;
+    if (config.accel.starts_with("whpx")) {   // (the i386 build of QEMU has no WHPX: its x86_64 sibling does, and runs the same 32-bit machine)
+        stdfs::path sibling = qemu;
+        sibling.replace_filename(text::replace_all(fs::to_text(qemu.filename()), "i386", "x86_64"));
+        std::error_code exists_ec;
+        if (stdfs::is_regular_file(sibling, exists_ec)) qemu = sibling;
+    }
+    spec.argv = {fs::to_text(qemu), "-M", "pc", "-m", "64"};
+    if (!config.accel.empty()) {
+        spec.argv.push_back("-accel");
+        spec.argv.push_back(config.accel);
+    }
+    const std::vector<std::string> rest = {
+        "-drive", std::format("file={},format=raw,if=floppy,index=0,snapshot=on", option_path(config.boot_floppy)),
+        "-drive", std::format("file={},format=raw,if=ide,index=0{}", option_path(disk), config.unsafe_disk ? ",cache=unsafe" : ""),
+        "-cdrom", fs::to_text(cd), "-boot", "a", "-display", "none",
+        "-monitor", std::format("tcp:127.0.0.1:{},server,nowait", impl_->monitor.port())};
+    spec.argv.insert(spec.argv.end(), rest.begin(), rest.end());
     spec.out = process::Capture::Discard;
     spec.err = process::Capture::Discard;
     impl_->machine.emplace(process::start(spec));

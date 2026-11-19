@@ -311,3 +311,43 @@ CB_TEST("verify.regress.each_module_reports_its_own_build_error", [] {
     for (const Built& b : r.built) with_write_error += b.error.find("cannot open for writing") != std::string::npos ? 1 : 0;
     CB_CHECK_EQ(with_write_error, std::size_t{1});
 });
+
+// ---- reuse: identical inputs to a passing run are a pass without a machine ---------------------------------------------------
+
+CB_TEST("verify.regress.reuse_skips_the_boots_of_identical_inputs_and_only_after_a_pass", [] {
+    RegressFake f;
+    std::string key = "aaaa";
+    Services s = f.services();
+    s.passed_dir = f.dir.path() / "passed";
+    s.inputs_key = [&key](Tier, const setup16::Replace&) { return key; };
+    Options reuse;
+    reuse.reuse = true;
+
+    // a failure is never written down: the next run boots again
+    f.boot_verdict = setup16::Verdict::FailHang;
+    CB_CHECK(!run(Tier::All15, s, reuse).pass);
+    CB_CHECK_EQ(f.boots.load(), 2);
+    f.boot_verdict = setup16::Verdict::Pass;
+    CB_CHECK(run(Tier::All15, s, reuse).pass);
+    CB_CHECK_EQ(f.boots.load(), 4);   // (booted: nothing had passed yet)
+
+    // the same inputs: a pass, no machine, and the report says so
+    const Report again = run(Tier::All15, s, reuse);
+    CB_CHECK(again.pass);
+    CB_CHECK_EQ(f.boots.load(), 4);
+    CB_CHECK(has(again.text(), "PASS (reused)"));
+    CB_CHECK(has(again.text(), "no machine was started"));
+
+    // other inputs (a changed module): the machines run
+    key = "bbbb";
+    CB_CHECK(run(Tier::All15, s, reuse).pass);
+    CB_CHECK_EQ(f.boots.load(), 6);
+
+    // a pass of two boots does not stand for three; without the option nothing is reused
+    Options three = reuse;
+    three.runs = 3;
+    CB_CHECK(run(Tier::All15, s, three).pass);
+    CB_CHECK_EQ(f.boots.load(), 9);
+    CB_CHECK(run(Tier::All15, s, {}).pass);
+    CB_CHECK_EQ(f.boots.load(), 11);
+});

@@ -108,6 +108,12 @@ struct Config {
     std::filesystem::path setup_iso;    // Windows 95's Setup CD
     std::filesystem::path mini_dir;     // <state>/mini: original/ (MINI.CAB's files), MINI.CAB, prepared_hd.img
     std::filesystem::path boot_floppy;  // <state>/bootfloppy/boot95_is.img: starts `SETUP /IS`
+    // Speed settings, both off by default (the machine is the TCG interpreter on a hard disk image synced like a real one):
+    //   accel        QEMU's `-accel` ("whpx" runs the guest on the Windows Hypervisor Platform; that needs the x86_64 build of QEMU, which this
+    //                uses in place of qemu-system-i386 when it sits beside it). Empty: QEMU's default.
+    //   unsafe_disk  `cache=unsafe` on the run's own copy of the hard disk (no flushes to the host disk: the copy is thrown away at the end).
+    std::string accel;
+    bool unsafe_disk = false;
 
     // The usual places under `state`.
     static Config in_state(const std::filesystem::path& state, std::filesystem::path qemu, std::filesystem::path setup_iso);

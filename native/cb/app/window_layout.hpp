@@ -7,10 +7,48 @@
 // InfoBar above it when a file cannot be converted or the run failed; the right card (Source) holds the output folder and its two buttons.
 #pragma once
 
+#include <cstddef>
+#include <deque>
 #include <string>
 #include <vector>
 
 namespace cb::app::window {
+
+// The character stream behind a running conversion: the lines the pipeline produces (convert::Progress::lines) typed out one character at a
+// time, like an old home computer printing a listing. Pure time arithmetic, so it is tested on every system; the window advances it from a
+// timer and draws `visible()`.
+//
+// Pace: kStreamCharsPerSecond while the stream keeps up; when lines pile up it types faster in proportion to the backlog, so it never falls
+// minutes behind the work; a backlog beyond kStreamPendingLines drops its oldest lines.
+class CharStream {
+public:
+    static constexpr double kStreamCharsPerSecond = 110;
+    static constexpr std::size_t kStreamPendingLines = 300;
+    static constexpr std::size_t kStreamKeptLines = 80;
+
+    void push(const std::vector<std::string>& lines);
+    // `seconds` more of typing.
+    void advance(double seconds);
+    // Everything waiting is typed at once (Windows' "Animation effects" turned off).
+    void show_all();
+    void clear();
+    // The last `rows` lines, oldest first; the last one may be partly typed.
+    std::vector<std::string> visible(std::size_t rows) const;
+    // Characters are still waiting to be typed.
+    bool typing() const { return has_current_ || !pending_.empty(); }
+    bool empty() const { return shown_.empty() && !typing(); }
+
+private:
+    std::size_t backlog() const;
+    void start_next();
+
+    std::deque<std::string> pending_;   // lines not begun
+    std::deque<std::string> shown_;     // lines typed in full (the newest kStreamKeptLines)
+    std::string current_;               // the line being typed
+    std::size_t typed_ = 0;             // how much of it
+    bool has_current_ = false;
+    double carry_ = 0;                  // a fraction of a character from the last advance
+};
 
 struct Rect {
     float x = 0, y = 0, w = 0, h = 0;
@@ -69,10 +107,21 @@ struct Model {
     std::string stage_label;           // "Disassembling"
     std::string detail;                // "17 of 39 functions"
     int percent = 0;
+    std::vector<std::string> stream;   // Working: the character stream's lines to draw behind the progress (CharStream::visible)
+    bool stream_cursor = false;        // its block cursor is showing (it blinks)
+    // ---- the fades, moved by the window's own timer (1 = fully shown). The Convert page shows one card: Program, or Source when Done; when the
+    // card changes the old one fades out, then the new one fades in.
+    float card_alpha = 1;              // the card of `view`
+    View fade_from = View::Idle;       // the card fading out (while fade_from_alpha > 0)
+    float fade_from_alpha = 0;
+    bool welcome = false;              // the welcome screen is showing (the window has just opened)
+    float welcome_alpha = 0;           // its words
+    float chrome_alpha = 1;            // everything below the title bar: the rail, the page, the status bar (0 while the welcome shows)
     std::string info_title;            // the InfoBar's title and message (Unsupported, Failed)
     std::string info_message;
     std::string output_path;           // Done: the folder
     std::string done_note;             // Done: "12 files written."
+    std::string done_file_name;        // Done: the program that was converted (the Source card keeps it while it fades out for the next file)
     std::string status_text = "Ready";
     std::string platforms;             // the status bar's right side
     std::string drop_hint = ".exe, .dll, ROMs, disc images and more";   // the drop area's second line

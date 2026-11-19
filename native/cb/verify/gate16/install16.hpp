@@ -66,6 +66,10 @@ double changed_share(const Picture& before, const Picture& after);
 // Windows' "Application Error" box (a General Protection Fault, a stack fault ...): the system-modal box's thick dark-blue frame, a run of
 // it across the screen. A message box -- Setup's own "remove the disks from the floppy drives" one at Finish -- has no such frame.
 bool is_fault_box(const Picture& screen);
+// Setup's "Finishing Setup" page (the copy is done; Finish restarts the machine): the heading's pixels, 97% alike.
+bool is_finish_page(const Picture& screen);
+// A page of Windows' second part that waits for a key: the Date/Time Properties dialog, the Add Printer Wizard, Setup's "restart your computer" box.
+bool is_known_question(const Picture& screen);
 
 // ---- the machine as the driver sees it ---------------------------------------------------------------------------------
 
@@ -98,6 +102,12 @@ struct Timing {
     std::chrono::seconds windows_still{45};                     // a screen this long unchanged is a question waiting: Enter
     std::chrono::seconds text_at_most{4 * 60};                  // a text screen that stays this long, after the patch, is a fault
     int enters_at_most = 25;
+    // Off by default. On, a page is known by what is on the screen instead of by how long it has been quiet: the wizard's pages are left when the
+    // screen changed after the key and has stopped changing (a few looks, not half the page's time first), the copy ends at the Finishing Setup page
+    // as soon as it shows (the long fixed minimum and the quiet minute and a half stay as the way out of a screen that is not that page), and a
+    // question of Windows' second part (the time zone, the printer wizard, the restart box) is answered after a few quiet seconds. The times above
+    // are still the limits: a screen that never comes ends as before.
+    bool recognise = false;
     std::string cd_path = "d:\\win95";                          // where Windows has the Setup CD (Setup's DOS part had it as X:)
     std::chrono::seconds everything_at_most{150 * 60};
 };

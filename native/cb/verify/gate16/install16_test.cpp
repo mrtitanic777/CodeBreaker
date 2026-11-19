@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "cb/core/testing.hpp"
+#include "cb/verify/gate16/page_prints.hpp"
 
 using namespace cb;
 using namespace cb::verify::gate16;
@@ -55,6 +56,18 @@ Picture page(unsigned n) {
     Picture p = solid(640, 480, kGrey);
     paint(p, 100, 60, 100 + 8 * (n % 50), 200, Rgb{0, 0, 128});
     return p;
+}
+// A page with the text of `print` where the real screen has it (the heading is dark on the grey page; a title is white on the blue bar).
+Picture with_print(Picture p, const PagePrint& print) {
+    if (!print.dark_text) paint(p, print.x - 2, print.y - 3, print.x + 120, print.y + 12, Rgb{0, 0, 168});
+    Bytes px = p.rgb();
+    for (std::size_t j = 0; j < print.rows.size(); ++j)
+        for (std::size_t i = 0; i < print.rows[j].size(); ++i) {
+            if (print.rows[j][i] != '#') continue;
+            const std::size_t at = ((print.y + j) * p.width() + print.x + i) * 3;
+            px[at] = px[at + 1] = px[at + 2] = print.dark_text ? 0 : 255;
+        }
+    return Picture(p.width(), p.height(), std::move(px));
 }
 Picture text_screen(unsigned lines, std::optional<Rgb> colour) {
     Picture p = solid(720, 400, kBlack);
@@ -151,7 +164,7 @@ private:
         case Phase::SetupDos: return text_screen(3, std::nullopt);
         case Phase::Wizard: return page_ == 0 && in_phase() < std::chrono::seconds(60) ? welcome() : page(page_ * 7);
         case Phase::Copy: return page(looks_);   // the bar moves with every look
-        case Phase::Finish: return page(3);
+        case Phase::Finish: return with_print(page(3), kFinishPrint);
         case Phase::Box: return page(9);
         case Phase::Restart:
             if (in_phase() < std::chrono::seconds(8)) return solid(640, 480, kBlack);
@@ -318,4 +331,42 @@ CB_TEST("verify.gate16.install16.setups_own_floppy_booting_again_is_swapped_and_
     CB_CHECK(reset != machine.commands.end());
     // the disk is put in again, and found in, before the reset (change, ask), and the reset is not the first thing done
     CB_CHECK(reset - machine.commands.begin() >= 4);
+});
+
+CB_TEST("verify.gate16.install16.pages_are_known_by_their_text", [] {
+    CB_CHECK(is_finish_page(with_print(page(3), kFinishPrint)));
+    CB_CHECK(!is_finish_page(page(3)));                   // the grey page without its heading
+    CB_CHECK(!is_finish_page(welcome()));
+    CB_CHECK(!is_finish_page(desktop()));
+    CB_CHECK(!is_finish_page(text_screen(5, std::nullopt)));
+    for (const PagePrint* print : {&kTimeZonePrint, &kPrinterPrint, &kRestartPrint}) {
+        CB_CHECK(is_known_question(with_print(solid(640, 480, kGrey), *print)));
+        CB_CHECK(!is_finish_page(with_print(solid(640, 480, kGrey), *print)));
+    }
+    CB_CHECK(!is_known_question(page(40)));
+    CB_CHECK(!is_known_question(with_print(page(3), kFinishPrint)));
+});
+
+// The recognising wait gives the verdict the fixed waits give, on every ending the machine can have -- the same stage, the same keys -- and
+// gets there sooner when the screens are the real ones.
+CB_TEST("verify.gate16.install16.recognising_screens_changes_the_time_not_the_verdict", [] {
+    using Ends = FakeSetup::Ends;
+    for (const Ends ends : {Ends::Desktop, Ends::FloppyBox, Ends::SetupFloppyAgain, Ends::FixError, Ends::StaysDos, Ends::WindowsErrorBox,
+                            Ends::CopyNeverEnds}) {
+        Timing slow, fast;
+        fast.recognise = true;
+        slow.copy_at_most = fast.copy_at_most = std::chrono::seconds(30 * 60);
+        FakeSetup a(ends), b(ends);
+        const Outcome oa = drive(a, "fix95cpu.ima", slow);
+        const Outcome ob = drive(b, "fix95cpu.ima", fast);
+        CB_CHECK_EQ(std::string(word(ob.verdict)), std::string(word(oa.verdict)));
+        CB_CHECK_EQ(ob.stage, oa.stage);
+        CB_CHECK(b.clock() <= a.clock());
+        if (ends == Ends::Desktop) {
+            CB_CHECK(b.clock() + std::chrono::minutes(5) < a.clock());
+            // the same keys, in the same order (the wizard's pages, Finish, FIX95CPU's disk, the question)
+            CB_CHECK_EQ(b.keys.size(), a.keys.size());
+            for (std::size_t i = 0; i < a.keys.size() && i < b.keys.size(); ++i) CB_CHECK_EQ(b.keys[i], a.keys[i]);
+        }
+    }
 });

@@ -80,6 +80,10 @@ struct Progress {
     std::uint64_t done = 0;    // real counts inside the stage; total is 0 when the stage has none
     std::uint64_t total = 0;
     int percent = 0;           // 0..100 over the whole run; never goes down
+    // New lines of what the run is producing, since the last report: the file's first bytes as hex while it is identified, then the text of
+    // each source file as it lands in the staging folder, then the names of the files written. The window types them out behind the
+    // progress (its character stream); nothing else reads them. Only a few are attached to each report, so the stream trickles.
+    std::vector<std::string> lines;
 };
 using ProgressFn = std::function<void(const Progress&)>;
 
@@ -112,6 +116,9 @@ public:
     virtual void check() = 0;
     // A sentence for the person about how the result was proved (it reaches Outcome::checked). Only the last one is kept.
     virtual void note(std::string_view) {}
+    // A line of what is being produced right now, for the window's character stream (Progress::lines). The machine already streams the
+    // source files a route writes into its staging folder; a route calls this only for output that never becomes a file.
+    virtual void preview(std::string_view) {}
 };
 
 // How one kind of file is converted: the stages it passes through (between Identifying and Writing) and the work itself. `run` reads `input`

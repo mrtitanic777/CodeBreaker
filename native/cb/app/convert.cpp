@@ -3,6 +3,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
+#include <deque>
+#include <fstream>
+#include <set>
 #include <system_error>
 
 namespace cb::app::convert {
@@ -93,10 +98,86 @@ std::string with_article(std::string_view what) {
 
 namespace {
 
+// ---- the character stream (Progress::lines) ----
+// How many lines ride on one report, how many may wait, how much of one source file is shown, and how long a shown line may be.
+constexpr std::size_t kCvLinesPerReport = 12;
+constexpr std::size_t kCvLinesWaiting = 4000;
+constexpr std::size_t kCvLinesPerFile = 160;
+constexpr std::size_t kCvLineWidth = 100;
+constexpr std::uintmax_t kCvBytesPerFile = 64 * 1024;
+constexpr auto kCvScanEvery = std::chrono::milliseconds(250);    // the staging folder is looked at no more often than this
+constexpr auto kCvTrickleEvery = std::chrono::milliseconds(80);  // a route that only calls check() still lets the stream move this often
+
+// "0000  4D 5A 90 00 03 00 00 00  04 00 00 00 FF FF 00 00  MZ..............": the first bytes of a file, sixteen to a line.
+std::vector<std::string> cv_hex_lines(const stdfs::path& file, std::size_t bytes) {
+    std::vector<std::string> lines;
+    std::ifstream in(file, std::ios::binary);
+    std::vector<unsigned char> data(bytes);
+    in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(bytes));
+    data.resize(static_cast<std::size_t>(std::max<std::streamsize>(0, in.gcount())));
+    for (std::size_t at = 0; at < data.size(); at += 16) {
+        char buf[8];
+        std::snprintf(buf, sizeof buf, "%04X", static_cast<unsigned>(at));
+        std::string line = buf;
+        line += "  ";
+        std::string text;
+        for (std::size_t i = 0; i < 16; ++i) {
+            if (i == 8) line += ' ';
+            if (at + i < data.size()) {
+                const unsigned char b = data[at + i];
+                std::snprintf(buf, sizeof buf, "%02X ", b);
+                line += buf;
+                text += (b >= 0x20 && b < 0x7F) ? static_cast<char>(b) : '.';
+            } else {
+                line += "   ";
+            }
+        }
+        lines.push_back(line + " " + text);
+    }
+    return lines;
+}
+
+// The text of a source file as stream lines: its name, then its first non-blank lines (tabs as spaces, cut to a width). A file that is not text
+// (it has a zero byte in its first 64 KB) gives only its name.
+std::vector<std::string> cv_text_lines(const stdfs::path& file, const std::string& name) {
+    std::vector<std::string> lines{"=== " + name + " ==="};
+    std::ifstream in(file, std::ios::binary);
+    std::string data(kCvBytesPerFile, '\0');
+    in.read(data.data(), static_cast<std::streamsize>(data.size()));
+    data.resize(static_cast<std::size_t>(std::max<std::streamsize>(0, in.gcount())));
+    if (data.find('\0') != std::string::npos) return lines;
+    std::size_t at = 0;
+    while (at < data.size() && lines.size() <= kCvLinesPerFile) {
+        std::size_t end = data.find('\n', at);
+        if (end == std::string::npos) end = data.size();
+        std::string line;
+        for (std::size_t i = at; i < end && line.size() < kCvLineWidth; ++i) {
+            const char c = data[i];
+            if (c == '\t') line += "    ";
+            else if (c != '\r') line += c;
+        }
+        while (!line.empty() && line.back() == ' ') line.pop_back();
+        if (!line.empty()) lines.push_back(std::move(line));
+        at = end + 1;
+    }
+    return lines;
+}
+
 // The machine's side of a run: the order of stages, the weights, the percentage, and what the route may tell it.
 class cv_Machine final : public Reporter {
 public:
     cv_Machine(const ProgressFn& progress, const std::atomic<bool>& cancel) : progress_(progress), cancel_(cancel) {}
+
+    // The staging folder: the text of each source file that appears in it joins the stream.
+    void watch(const stdfs::path& folder) { watch_ = folder; }
+
+    // The first bytes of the input join the stream, and are sent at once (Identifying has no counts to carry them).
+    void stream_hex(const stdfs::path& file) {
+        for (std::string& line : cv_hex_lines(file, 256)) push(std::move(line));
+        emit(last_done_, last_total_, last_detail_);
+    }
+
+    void preview(std::string_view line) override { push(std::string(line.substr(0, kCvLineWidth))); }
 
     // The stages that will be passed through (Identifying first, Writing last) and their weights.
     void set_route(const std::vector<State>& stages, const std::map<State, double>& weights) {
@@ -112,16 +193,23 @@ public:
 
     void enter(State stage) override {
         check();
+        if (stage == State::Writing && progress_) scan(true);
         current_ = stage;
         passed_.push_back(stage);
         emit(0, 0, {});
     }
     void count(std::uint64_t done, std::uint64_t total, std::string_view detail) override {
         check();
+        if (current_ == State::Writing && !detail.empty()) push("-> " + std::string(detail));
         emit(done, total, detail);
     }
     void check() override {
         if (cancel_.load()) throw Cancelled();
+        // a route busy between counts (a writer that only checks for cancel) still lets the stream move
+        if (progress_ && current_ != State::Idle && std::chrono::steady_clock::now() - last_emit_ >= kCvTrickleEvery) {
+            scan();
+            if (!waiting_.empty()) emit(last_done_, last_total_, last_detail_);
+        }
     }
     void note(std::string_view text) override { note_ = std::string(text); }
     const std::string& noted() const { return note_; }
@@ -145,7 +233,38 @@ private:
         return it != weights.end() ? it->second : default_weight(s);
     }
 
+    void push(std::string line) {
+        waiting_.push_back(std::move(line));
+        while (waiting_.size() > kCvLinesWaiting) waiting_.pop_front();
+    }
+
+    // New regular files under the staging folder join the stream, at most every kCvScanEvery (`always`: now, as Writing begins, before the
+    // files move out of the staging folder).
+    void scan(bool always = false) {
+        if (watch_.empty()) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (!always && now - last_scan_ < kCvScanEvery) return;
+        last_scan_ = now;
+        std::error_code ec;
+        std::vector<stdfs::path> fresh;
+        for (stdfs::recursive_directory_iterator it(watch_, ec), end; !ec && it != end; it.increment(ec)) {
+            if (!it->is_regular_file(ec) || seen_.contains(it->path())) continue;
+            if (it->file_size(ec) == 0) continue;   // (still being written: taken on a later look)
+            fresh.push_back(it->path());
+        }
+        std::sort(fresh.begin(), fresh.end());
+        for (const stdfs::path& file : fresh) {
+            seen_.insert(file);
+            for (std::string& line : cv_text_lines(file, stdfs::relative(file, watch_, ec).generic_string())) push(std::move(line));
+        }
+    }
+
     void emit(std::uint64_t done, std::uint64_t total, std::string_view detail) {
+        last_done_ = done;
+        last_total_ = total;
+        last_detail_ = std::string(detail);
+        last_emit_ = std::chrono::steady_clock::now();
+        if (progress_) scan();
         double before = 0;
         double own = 0;
         bool found = false;
@@ -168,6 +287,10 @@ private:
         const double at = found && total_weight_ > 0 ? (before + own * fraction) / total_weight_ * 100.0 : static_cast<double>(last_percent_);
         // 100 is Done's alone: a stage that is the last one at its end shows 99
         p.percent = last_percent_ = std::max(last_percent_, std::min(99, static_cast<int>(at)));
+        for (std::size_t n = 0; n < kCvLinesPerReport && !waiting_.empty(); ++n) {
+            p.lines.push_back(std::move(waiting_.front()));
+            waiting_.pop_front();
+        }
         if (progress_) progress_(p);
     }
 
@@ -180,6 +303,13 @@ private:
     int last_percent_ = 0;
     std::vector<State> passed_;
     std::string note_;
+    // the character stream
+    stdfs::path watch_;
+    std::set<stdfs::path> seen_;
+    std::deque<std::string> waiting_;
+    std::chrono::steady_clock::time_point last_scan_{}, last_emit_{};
+    std::uint64_t last_done_ = 0, last_total_ = 0;
+    std::string last_detail_;
 };
 
 void cv_remove(const stdfs::path& folder) {
@@ -215,6 +345,7 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
             outcome.what = "folder";
             outcome.message = "This is a folder. CodeBreaker converts one file at a time: pick the program itself.";
         } else {
+            if (progress) machine.stream_hex(request.input);
             Plan plan = planner(request.input);
             outcome.what = plan.what;
             if (!plan.route) {
@@ -237,6 +368,7 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
                 staging += ".partial";
                 cv_remove(staging);
                 stdfs::create_directories(staging);
+                machine.watch(staging);
 
                 route.run(machine, request.input, staging);
 

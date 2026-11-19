@@ -212,13 +212,23 @@ void compile_functions(Ctx16& c) {
             if (!c.m.near.contains(*target) || (where != c.segment_of.end() && where->second == seg)) return *target;
             return std::nullopt;
         });
-        // A function's address stored as two plain words (a window class built on the stack) goes to the function where it lands. CB_FN_PTR_STORES=1 (default off
-        // until the all-15 and install proofs).
-        if (env_is_set("CB_FN_PTR_STORES")) {
+        // A function's address stored as two plain words (a window class built on the stack) goes to the function where it lands. On by default (proved by
+        // the all-15 and install regressions: USER's BEAR306 and sub_25_0429 came right); CB_FN_PTR_STORES=0 turns it off.
+        const bool fn_ptr_stores = env_text("CB_FN_PTR_STORES") != "0";
+        if (fn_ptr_stores) {
             c.texts[name] = name_function_pointer_stores(c.texts[name], [&](std::uint64_t va) -> std::optional<std::string> {
                 const std::string* target = c.by_va.find(va);
                 if (target == nullptr || c.m.near.contains(*target) || !c.segment_of.contains(*target)) return std::nullopt;
                 return *target;
+            });
+        }
+        if (fn_ptr_stores) {   // (and where the selector is already the segment of a function: the offset beside it)
+            c.texts[name] = name_function_offsets_beside_selectors(c.texts[name], [&](const std::string& anchor, std::uint64_t offset) -> std::optional<std::string> {
+                const auto home = c.segment_of.find(anchor);
+                if (home == c.segment_of.end()) return std::nullopt;
+                const auto at = c.at.find(Place{static_cast<std::uint32_t>(home->second), static_cast<std::uint32_t>(offset)});
+                if (at == c.at.end() || c.m.near.contains(at->second) || !c.segment_of.contains(at->second)) return std::nullopt;
+                return at->second;
             });
         }
         c.texts[name] = unspecified_entry_result(std::move(c.texts[name]));
