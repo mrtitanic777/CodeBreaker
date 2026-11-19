@@ -1,0 +1,37 @@
+exit: 0
+--- stdout
+  0%  Identifying the file
+  2%  Opening
+  4%  Opening: Generators.py
+  4%  Translating
+ 35%  Translating: 11 of 11 functions
+ 35%  Checking
+ 49%  Checking: Running the Python module
+ 63%  Checking: Running the translation
+ 77%  Checking: Comparing the answers
+ 91%  Checking: 4 of 4 steps
+ 91%  Writing the source
+ 92%  Writing the source: BUILD.txt
+ 93%  Writing the source: Generators.cpp
+ 94%  Writing the source: Generators.hpp
+ 95%  Writing the source: runtime/py.hpp
+ 96%  Writing the source: runtime/py_json.hpp
+ 97%  Writing the source: runtime/py_os.hpp
+ 98%  Writing the source: runtime/py_stdlib.hpp
+ 99%  Writing the source: runtime/py_unicode.hpp
+100%  Done
+11 files written to <work>/out/generators
+Checked: CPython and the C++17 translation gave the same answer for every run_* function of the module.
+--- files
+generators/BUILD.txt  (content not compared)
+generators/Generators.cpp  (content not compared)
+generators/Generators.hpp  (content not compared)
+generators/runtime/coro.hpp  (content not compared)
+generators/runtime/py.hpp  (content not compared)
+generators/runtime/py_json.hpp  (content not compared)
+generators/runtime/py_os.hpp  (content not compared)
+generators/runtime/py_settings.hpp  (content not compared)
+generators/runtime/py_stdlib.hpp  (content not compared)
+generators/runtime/py_unicode.hpp  (content not compared)
+generators/runtime/py_unicode_print.hpp  (content not compared)
+--- stderr (not compared)

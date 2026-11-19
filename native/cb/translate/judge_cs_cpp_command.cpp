@@ -122,6 +122,14 @@ Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, cons
     const stdfs::path checkout = environment.config.checkout_root();
     const frontends::csharp::Frontend frontend(sdk, checkout / "data" / "translate" / "frontends" / "csharp" / "CsTreeDump.cs", environment.config.state());
 
+    const Observer& watch = environment.observer;
+    const auto translating = [&watch](std::uint64_t done, std::uint64_t total, std::string_view what) {
+        if (watch.translating) watch.translating(done, total, what);
+    };
+    const auto checking = [&watch](std::uint64_t done, std::uint64_t total, std::string_view what) {
+        if (watch.checking) watch.checking(done, total, what);
+    };
+    translating(0, 0, files.empty() ? std::string("the program") : fs::to_text(files.front().filename()));
     Arena arena;
     frontends::csharp::Program program;
     try {
@@ -144,6 +152,11 @@ Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, cons
         return score;
     }
 
+    std::uint64_t functions = 0;   // what there is to write: every method the front end lowered
+    for (ir::Node* u : program.units)
+        for (ir::Node* n : ir::walk(u))
+            if (ir::get<ir::MethodDecl>(n) != nullptr) ++functions;
+    translating(0, functions, {});
     const backends::csharp_cpp17::Output out = backends::csharp_cpp17::write(program.units);
     score.writes = out.declined.empty();
     if (!out.declined.empty()) {
@@ -152,20 +165,24 @@ Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, cons
         score.detail = "declined: " + text::join(why, "; ");
         return score;
     }
+    translating(functions, functions, {});
     const stdfs::path cpp_dir = work / "cpp";
     fs::make_dirs(cpp_dir);
     const stdfs::path source = cpp_dir / (name + ".cpp");
     const stdfs::path exe = cpp_dir / (name + ".exe");
     fs::write_text(source, out.source);
     std::string log;
+    checking(0, 4, "Building the C++ translation");
     score.compiles = build(cxx, checkout / "data" / "translate" / "runtime" / "cpp17", source, exe, log);
     if (!*score.compiles) {
         score.detail = "compile: " + dj::first_errors(log);
         return score;
     }
 
+    checking(1, 4, "Running the C# program");
     const dj::CSharpToolchain tools = dj::CSharpToolchain::of(sdk);
     const dj::Run original = dj::csharp(tools, files, work / "run-orig");
+    checking(2, 4, "Running the translation");
     dj::Run translation;
     translation.ok = true;
     {
@@ -179,7 +196,9 @@ Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, cons
     }
     fs::write_text(work / "original.out.txt", original.out);
     fs::write_text(work / "translated.out.txt", translation.out);
+    checking(3, 4, "Comparing what both print");
     const dj::Judgement j = dj::compare(original, translation);
+    checking(4, 4, {});
     score.agrees = j.verdict == dj::Verdict::Equivalent;
     if (!*score.agrees) score.detail = std::string(dj::word(j.verdict)) + ": " + j.detail;
     return score;

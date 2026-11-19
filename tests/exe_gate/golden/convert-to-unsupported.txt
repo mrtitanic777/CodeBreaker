@@ -1,0 +1,6 @@
+exit: 3
+--- stdout
+  0%  Identifying the file
+Unsupported: Python output is not supported yet. Choose one of the languages CodeBreaker can write from C# source code: C++17, C#.
+--- files
+--- stderr (not compared)

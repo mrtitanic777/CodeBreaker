@@ -1,5 +1,6 @@
 // cb/app/window_layout.cpp -- see window_layout.hpp.
 #include "cb/app/window_layout.hpp"
+#include "cb/app/window_pages.hpp"
 
 #include <algorithm>
 
@@ -23,7 +24,7 @@ Rect centered(float cx, float y, float w, float h) { return Rect{cx - w / 2, y, 
 
 }  // namespace
 
-Layout compute_layout(View view, float width, float height) {
+Layout compute_layout(View view, float width, float height, float rail) {
     Layout l;
     l.width = width;
     l.height = height;
@@ -46,9 +47,16 @@ Layout compute_layout(View view, float width, float height) {
     // ---- the cards: 8 below the title bar, a 16 gap, 24 on the sides, 16 above the status bar
     const float top = kTitleBarHeight + 8;
     const float card_h = std::max(0.0f, height - kStatusBarHeight - 16 - top);
-    const float card_w = std::max(0.0f, (width - 2 * kOuterPadding - kCardGap) / 2);
-    l.left_card = {kOuterPadding, top, card_w, card_h};
-    l.right_card = {kOuterPadding + card_w + kCardGap, top, card_w, card_h};
+    const float left_edge = rail > 0 ? rail + 4 : kOuterPadding;   // (the design's page starts 4 after the rail)
+    const float card_w = std::max(0.0f, (width - left_edge - kOuterPadding - kCardGap) / 2);
+    l.left_card = {left_edge, top, card_w, card_h};
+    l.right_card = {left_edge + card_w + kCardGap, top, card_w, card_h};
+    if (rail > 0) {   // the rail: three items of 48 x 56, Convert and Tools at the top, Settings at the bottom
+        l.rail = {0, kTitleBarHeight, rail, std::max(0.0f, l.status_bar.y - kTitleBarHeight)};
+        l.rail_convert = {8, kTitleBarHeight + 4, 48, 56};
+        l.rail_tools = {8, kTitleBarHeight + 4 + 60, 48, 56};
+        l.rail_settings = {8, l.status_bar.y - 56 - 8, 48, 56};
+    }
     for (const Rect* card : {&l.left_card, &l.right_card}) {
         Rect& title = card == &l.left_card ? l.left_title : l.right_title;
         Rect& desc = card == &l.left_card ? l.left_desc : l.right_desc;
@@ -112,12 +120,17 @@ Layout compute_layout(View view, float width, float height) {
 
     // ---- the right card: Output label, the field, two buttons, the hint -- centred as a group in what is below the description
     {
-        const float group = 19 + 8 + 34 + 12 + kButtonHeight + 14 + 16;
+        // Language (label, drop-down), then Output (label, field, two buttons, the hint of up to two lines)
+        const float group = 19 + 8 + 34 + 20 + 19 + 8 + 34 + 12 + kButtonHeight + 14 + 34;
         const float area_top = l.right_desc.bottom();
         const float area_h = l.right_card.bottom() - kCardPadBottom - area_top;
-        float y = area_top + (area_h - group) / 2;
+        float y = area_top + std::max(0.0f, (area_h - group) / 2);
         const float x = l.right_card.x + kCardPadX;
         const float w = l.right_card.w - 2 * kCardPadX;
+        l.language_label = {x, y, w, 19};
+        y += 19 + 8;
+        l.language_combo = {x, y, w, 34};
+        y += 34 + 20;
         l.output_label = {x, y, w, 19};
         y += 19 + 8;
         l.field = {x, y, w, 34};
@@ -125,7 +138,7 @@ Layout compute_layout(View view, float width, float height) {
         l.open_folder = {x, y, 124, kButtonHeight};
         l.copy_path = {x + 124 + 8, y, 112, kButtonHeight};
         y += kButtonHeight + 14;
-        l.hint = {x, y, w, 16};
+        l.hint = {x, y, w, 34};
     }
     return l;
 }
@@ -138,10 +151,21 @@ bool control_exists(Control control, View view) {
         case Control::Cancel: return view == View::Working;
         case Control::TryAnother: return view == View::Unsupported || view == View::Failed;
         case Control::OpenFolder:
-        case Control::CopyPath: return true;
+        case Control::CopyPath:
+        case Control::Language: return true;
         case Control::CaptionMinimize:
         case Control::CaptionMaximize:
         case Control::CaptionClose: return true;
+        // the rail and the pages after the first: the window knows which page it is on (window_pages.hpp)
+        case Control::NavConvert:
+        case Control::NavTools:
+        case Control::NavSettings: return true;
+        case Control::ToolSearch:
+        case Control::ToolRow:
+        case Control::Field:
+        case Control::FieldBrowse:
+        case Control::Run:
+        case Control::OutputPane: return false;
     }
     return false;
 }
@@ -149,6 +173,7 @@ bool control_exists(Control control, View view) {
 bool control_enabled(Control control, View view) {
     if (!control_exists(control, view)) return false;
     if (control == Control::OpenFolder || control == Control::CopyPath) return view == View::Done;
+    if (control == Control::Language) return view != View::Working;   // (the language of a run under way cannot change)
     return true;
 }
 
@@ -160,9 +185,19 @@ Rect control_rect(const Layout& l, Control control) {
         case Control::TryAnother: return l.try_another;
         case Control::OpenFolder: return l.open_folder;
         case Control::CopyPath: return l.copy_path;
+        case Control::Language: return l.language_combo;
         case Control::CaptionMinimize: return l.caption_minimize;
         case Control::CaptionMaximize: return l.caption_maximize;
         case Control::CaptionClose: return l.caption_close;
+        case Control::NavConvert: return l.rail_convert;
+        case Control::NavTools: return l.rail_tools;
+        case Control::NavSettings: return l.rail_settings;
+        case Control::ToolSearch:
+        case Control::ToolRow:
+        case Control::Field:
+        case Control::FieldBrowse:
+        case Control::Run:
+        case Control::OutputPane:
         case Control::None: break;
     }
     return {};
@@ -170,7 +205,7 @@ Rect control_rect(const Layout& l, Control control) {
 
 Control hit_test(const Layout& l, View view, float x, float y) {
     for (const Control c : {Control::CaptionClose, Control::CaptionMaximize, Control::CaptionMinimize, Control::TryAnother, Control::Cancel,
-                            Control::Browse, Control::OpenFolder, Control::CopyPath}) {
+                            Control::Browse, Control::OpenFolder, Control::CopyPath, Control::Language, Control::NavConvert, Control::NavTools, Control::NavSettings}) {
         if (control_exists(c, view) && control_rect(l, c).contains(x, y)) return c;
     }
     // the round "+" is a button
@@ -183,13 +218,33 @@ Control hit_test(const Layout& l, View view, float x, float y) {
 
 std::vector<Control> focus_order(View view) {
     switch (view) {
-        case View::Idle: return {Control::Plus, Control::Browse};
+        case View::Idle: return {Control::Plus, Control::Browse, Control::Language};
         case View::Working: return {Control::Cancel};
-        case View::Done: return {Control::Browse, Control::OpenFolder, Control::CopyPath};
+        case View::Done: return {Control::Browse, Control::Language, Control::OpenFolder, Control::CopyPath};
         case View::Unsupported:
-        case View::Failed: return {Control::TryAnother, Control::Plus, Control::Browse};
+        case View::Failed: return {Control::TryAnother, Control::Plus, Control::Browse, Control::Language};
     }
     return {};
+}
+
+LanguageList language_list_layout(const Layout& l, const std::vector<LanguageItem>& items) {
+    return popup_list_layout(l.language_combo, l.status_bar.y - 8, kTitleBarHeight + 8, items);
+}
+
+int language_item_at(const LanguageList& list, float x, float y) {
+    for (std::size_t i = 0; i < list.rows.size(); ++i)
+        if (list.rows[i].contains(x, y)) return static_cast<int>(i);
+    return -1;
+}
+
+int language_next_enabled(const std::vector<LanguageItem>& items, int from, int direction) {
+    const int count = static_cast<int>(items.size());
+    for (int i = from + direction; i >= 0 && i < count; i += direction)
+        if (items[static_cast<std::size_t>(i)].supported) return i;
+    if (from >= 0 && from < count && items[static_cast<std::size_t>(from)].supported) return from;
+    for (int i = 0; i < count; ++i)
+        if (items[static_cast<std::size_t>(i)].supported) return i;
+    return -1;
 }
 
 }  // namespace cb::app::window

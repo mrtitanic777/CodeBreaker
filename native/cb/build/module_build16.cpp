@@ -212,24 +212,33 @@ void compile_functions(Ctx16& c) {
             if (!c.m.near.contains(*target) || (where != c.segment_of.end() && where->second == seg)) return *target;
             return std::nullopt;
         });
+        // A function's address stored as two plain words (a window class built on the stack) goes to the function where it lands. CB_FN_PTR_STORES=1 (default off
+        // until the all-15 and install proofs).
+        if (env_is_set("CB_FN_PTR_STORES")) {
+            c.texts[name] = name_function_pointer_stores(c.texts[name], [&](std::uint64_t va) -> std::optional<std::string> {
+                const std::string* target = c.by_va.find(va);
+                if (target == nullptr || c.m.near.contains(*target) || !c.segment_of.contains(*target)) return std::nullopt;
+                return *target;
+            });
+        }
         c.texts[name] = unspecified_entry_result(std::move(c.texts[name]));
-        // (CB_TRACE_WNDPROC=<name>: that function, a window procedure of five words, writes 0B3h and then its message, wParam and window words to port 0E9h as it is
-        // entered -- the same bytes its instructions' build writes (asm16.cpp) -- so a boot of each can be compared call by call)
-        if (env_text("CB_TRACE_WNDPROC") == name) {
-            std::string& t = c.texts[name];
-            const std::size_t open = t.find('{');
-            const std::size_t blank = open == std::string::npos ? std::string::npos : t.find("\n\n", open);   // (the blank line after the declarations)
-            if (blank != std::string::npos) {
-                std::string probe;
-                for (const char* w : {"0xB3", "a4", "a3", "a5"}) {
-                    if (w[0] == '0') {
-                        probe += std::string("  codebreaker_dbg(") + w + ");\n";
-                    } else {
-                        probe += std::string("  codebreaker_dbg((unsigned char)") + w + ");\n  codebreaker_dbg((unsigned char)((unsigned)" + w + " >> 8));\n";
-                    }
+        // (CB_BISECT=<name>:<hex>,<hex>[:<default>]: a window procedure of five words answers only those messages (its fourth word) with its own C; every other
+        // goes to `<default>` (sub_1_5D4F, the DefWindowProc-like call of USER's wndprocs) with the same arguments. For finding which message's C breaks a
+        // boot: run with a set, and halve it. The function is not run beside the original by the gate (module_build.cpp), whose answer it would differ from.)
+        if (const std::optional<std::string> bisect = env_value("CB_BISECT")) {
+            const std::vector<std::string_view> parts = text::split(*bisect, ':');
+            if (parts.size() >= 2 && parts[0] == name) {
+                std::string test;
+                for (const std::string_view m : text::split(parts[1], ',')) {
+                    if (m.empty()) continue;
+                    test += std::string(test.empty() ? "" : " && ") + "a4 != 0x" + std::string(m);
                 }
-                t.insert(blank + 2, probe);
-                t.insert(0, "void codebreaker_dbg(unsigned char);\n#pragma aux codebreaker_dbg = \"out 0e9h, al\" parm [al] modify [];\n");
+                if (test.empty()) test = "a4 != 0x7FFE";
+                const std::string fallback = parts.size() > 2 ? std::string(parts[2]) : "sub_1_5D4F";
+                std::string& t = c.texts[name];
+                const std::size_t open = t.find('{');
+                const std::size_t blank = open == std::string::npos ? std::string::npos : t.find("\n\n", open);   // (the blank line after the declarations)
+                if (blank != std::string::npos) t.insert(blank + 2, "  if (" + test + ") return " + fallback + "(a1,a2,a3,a4,a5);\n");
             }
         }
     }

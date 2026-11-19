@@ -2,6 +2,7 @@
 // L2 tree.
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <map>
 #include <set>
@@ -152,6 +153,109 @@ OrderedMap<std::string, std::string> kept_as_asm(std::string_view text, std::str
         if (parts.size() >= 2 && text::iequals(parts[0], module)) kept.insert_or_assign(std::string(parts[1]), parts.size() > 2 ? std::string(text::trim(parts[2])) : std::string());
     }
     return kept;
+}
+
+std::string name_function_pointer_stores(std::string_view text, const std::function<std::optional<std::string>(std::uint64_t)>& lookup) {
+    // `  name = 0xhhhh;` -- one store of a plain word: its indent, its target, its value
+    struct Store {
+        std::string_view indent, target;
+        std::uint64_t value = 0;
+    };
+    const auto parse = [](std::string_view line) -> std::optional<Store> {
+        const std::size_t first = line.find_first_not_of(' ');
+        if (first == std::string_view::npos) return std::nullopt;
+        const std::string_view rest = line.substr(first);
+        const std::size_t eq = rest.find(" = 0x");
+        if (eq == std::string_view::npos || eq == 0 || !rest.ends_with(';')) return std::nullopt;
+        const std::string_view target = rest.substr(0, eq);
+        if (!std::all_of(target.begin(), target.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; })) return std::nullopt;
+        const std::string_view digits = rest.substr(eq + 5, rest.size() - eq - 6);
+        if (digits.empty() || digits.size() > 4) return std::nullopt;
+        const std::optional<std::uint64_t> value = text::parse_int<std::uint64_t>(digits, 16);
+        if (!value) return std::nullopt;
+        return Store{line.substr(0, first), target, *value};
+    };
+    const std::vector<std::string_view> lines = text::split(text, '\n');
+    std::string out;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (i != 0) out += '\n';
+        bool written = false;
+        if (i + 1 < lines.size()) {
+            const std::optional<Store> a = parse(lines[i]);
+            const std::optional<Store> b = a ? parse(lines[i + 1]) : std::nullopt;
+            if (a && b) {
+                for (const bool offset_first : {true, false}) {
+                    if (written) break;
+                    const Store& off = offset_first ? *a : *b;
+                    const Store& sel = offset_first ? *b : *a;
+                    const std::optional<std::string> fn = lookup((sel.value << 16) | off.value);
+                    if (!fn) continue;
+                    const std::string offset_line = std::string(off.indent) + std::string(off.target) + " = (uint2)(uint4)(void __far *)&" + *fn + ";";
+                    const std::string selector_line = std::string(sel.indent) + std::string(sel.target) + " = (uint2)((uint4)(void __far *)&" + *fn + " >> 16);";
+                    out += offset_first ? offset_line : selector_line;
+                    out += '\n';
+                    out += offset_first ? selector_line : offset_line;
+                    ++i;   // (both lines are written)
+                    written = true;
+                }
+            }
+        }
+        if (!written) out += lines[i];
+    }
+    return out;
+}
+
+std::string name_function_offsets_beside_selectors(std::string_view text,
+                                                   const std::function<std::optional<std::string>(const std::string& anchor, std::uint64_t offset)>& lookup) {
+    struct Line {
+        std::string_view indent, target;
+        std::uint64_t value = 0;   // an offset store
+        std::string anchor;        // a selector store: the function whose segment it is
+        bool selector = false;
+    };
+    constexpr std::string_view kSelector = " = ((uint2)((uint4)(void __far *)&";
+    constexpr std::string_view kSelectorEnd = " >> 16));";
+    const auto parse = [&](std::string_view line) -> std::optional<Line> {
+        const std::size_t first = line.find_first_not_of(' ');
+        if (first == std::string_view::npos) return std::nullopt;
+        const std::string_view rest = line.substr(first);
+        const auto word = [](std::string_view s) {
+            return !s.empty() && std::all_of(s.begin(), s.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; });
+        };
+        Line out;
+        out.indent = line.substr(0, first);
+        if (const std::size_t at = rest.find(kSelector); at != std::string_view::npos && rest.ends_with(kSelectorEnd)) {
+            out.target = rest.substr(0, at);
+            const std::size_t from = at + kSelector.size();
+            const std::string_view anchor = rest.substr(from, rest.size() - from - kSelectorEnd.size());
+            if (!word(out.target) || !word(anchor)) return std::nullopt;
+            out.anchor = std::string(anchor);
+            out.selector = true;
+            return out;
+        }
+        const std::size_t eq = rest.find(" = 0x");
+        if (eq == std::string_view::npos || !rest.ends_with(';')) return std::nullopt;
+        out.target = rest.substr(0, eq);
+        const std::string_view digits = rest.substr(eq + 5, rest.size() - eq - 6);
+        if (!word(out.target) || digits.empty() || digits.size() > 4) return std::nullopt;
+        const std::optional<std::uint64_t> value = text::parse_int<std::uint64_t>(digits, 16);
+        if (!value) return std::nullopt;
+        out.value = *value;
+        return out;
+    };
+    const std::vector<std::string_view> lines = text::split(text, '\n');
+    std::vector<std::string> out(lines.begin(), lines.end());
+    for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
+        const std::optional<Line> a = parse(lines[i]);
+        const std::optional<Line> b = a ? parse(lines[i + 1]) : std::nullopt;
+        if (!a || !b || a->selector == b->selector) continue;
+        const Line& offset = a->selector ? *b : *a;
+        const Line& selector = a->selector ? *a : *b;
+        const std::optional<std::string> fn = lookup(selector.anchor, offset.value);
+        if (!fn) continue;
+        out[a->selector ? i + 1 : i] = std::string(offset.indent) + std::string(offset.target) + " = (uint2)(uint4)(void __far *)&" + *fn + ";";
+    }
+    return text::join(out, "\n");
 }
 
 void whole_file_image(const stdfs::path& original, const stdfs::path& image) {

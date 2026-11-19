@@ -1,0 +1,13 @@
+exit: 2
+--- stdout
+convert: unknown language "cobol". The choices for this file:
+  original  Original  (not available: This is source code already: choose the language to translate it to.)
+  c         C  (not available: C# to C is not supported yet)
+  cpp03     C++03  (not available: C# to C++03 is not supported yet)
+  cpp17     C++17
+  csharp    C#
+  java      Java  (not available: C# to Java is not supported yet)
+  python    Python  (not available: Python output is not supported yet)
+usage: codebreaker convert FILE [--to LANG] [--out DIR] [--languages]
+--- files
+--- stderr (not compared)

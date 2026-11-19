@@ -17,6 +17,8 @@ std::string_view state_name(State state) {
         case State::Opening: return "opening";
         case State::Disassembling: return "disassembling";
         case State::Decompiling: return "decompiling";
+        case State::Translating: return "translating";
+        case State::Checking: return "checking";
         case State::Writing: return "writing";
         case State::Done: return "done";
         case State::Unsupported: return "unsupported";
@@ -34,6 +36,8 @@ std::string_view state_label(State state) {
         case State::Opening: return "Opening";
         case State::Disassembling: return "Disassembling";
         case State::Decompiling: return "Decompiling";
+        case State::Translating: return "Translating";
+        case State::Checking: return "Checking";
         case State::Writing: return "Writing the source";
         case State::Done: return "Done";
         case State::Unsupported: return "Cannot convert this file";
@@ -53,6 +57,8 @@ double default_weight(State stage) {
         case State::Opening: return 5;
         case State::Disassembling: return 35;
         case State::Decompiling: return 40;
+        case State::Translating: return 30;
+        case State::Checking: return 40;
         case State::Writing: return 8;
         default: return 0;
     }
@@ -117,6 +123,8 @@ public:
     void check() override {
         if (cancel_.load()) throw Cancelled();
     }
+    void note(std::string_view text) override { note_ = std::string(text); }
+    const std::string& noted() const { return note_; }
 
     // Report a state with no work of its own (the end of the run, or Identifying before a route is known).
     void final_state(State state, int percent, std::string detail = {}) {
@@ -171,6 +179,7 @@ private:
     State current_ = State::Idle;
     int last_percent_ = 0;
     std::vector<State> passed_;
+    std::string note_;
 };
 
 void cv_remove(const stdfs::path& folder) {
@@ -210,8 +219,10 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
             outcome.what = plan.what;
             if (!plan.route) {
                 outcome.state = State::Unsupported;
-                outcome.message = plan.what.empty() ? "CodeBreaker does not recognise this file, so it cannot convert it."
-                                                    : "This looks like " + with_article(plan.what) + ". CodeBreaker cannot convert it.";
+                if (!plan.refusal.empty()) outcome.message = plan.refusal;
+                else
+                    outcome.message = plan.what.empty() ? "CodeBreaker does not recognise this file, so it cannot convert it."
+                                                        : "This looks like " + with_article(plan.what) + ". CodeBreaker cannot convert it.";
             } else {
                 const Route& route = *plan.route;
                 outcome.route = route.name;
@@ -220,7 +231,7 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
                     const stdfs::path parent = request.out_dir->parent_path().empty() ? stdfs::path(".") : request.out_dir->parent_path();
                     out = unique_output_folder(parent, request.out_dir->filename().string());
                 } else {
-                    out = unique_output_folder(request.converted_root, request.input.stem().string());
+                    out = unique_output_folder(request.converted_root, request.input.stem().string() + plan.folder_suffix);
                 }
                 staging = out;
                 staging += ".partial";
@@ -253,6 +264,7 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
                     outcome.state = State::Done;
                     outcome.output = out;
                     outcome.files = files.size();
+                    outcome.checked = machine.noted();
                 }
             }
         }

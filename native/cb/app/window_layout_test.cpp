@@ -1,6 +1,7 @@
 // Tests of the window's layout (window_layout.hpp): the metrics of the approved design, and what a point is over.
 #include "cb/app/window_layout.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "cb/core/testing.hpp"
@@ -66,8 +67,50 @@ CB_TEST("app.window_layout.the_done_view_offers_another_file_where_browse_was", 
     const Layout l = compute_layout(View::Done, 1180, 700);
     CB_CHECK(hit_test(l, View::Done, l.browse.x + 3, l.browse.y + 3) == Control::Browse);
     const std::vector<Control> order = focus_order(View::Done);
-    CB_CHECK(order.size() == 3);
+    CB_CHECK(order.size() == 4);   // (Browse, Language, Open folder, Copy path)
     CB_CHECK(order.front() == Control::Browse);
+});
+
+CB_TEST("app.window_layout.the_language_drop_down_is_above_the_output_and_reachable", [] {
+    const Layout l = compute_layout(View::Idle, 1180, 700);
+    CB_CHECK(l.language_label.bottom() <= l.language_combo.y);
+    CB_CHECK(l.language_combo.bottom() < l.output_label.y);   // above the Output box
+    CB_CHECK(wl_near(l.language_combo.w, l.field.w));
+    CB_CHECK(wl_near(l.language_combo.h, 34));
+    CB_CHECK(l.language_combo.x >= l.right_card.x && l.language_combo.right() <= l.right_card.right());
+    CB_CHECK(hit_test(l, View::Idle, l.language_combo.x + 5, l.language_combo.y + 5) == Control::Language);
+    CB_CHECK(control_enabled(Control::Language, View::Idle));
+    CB_CHECK(control_enabled(Control::Language, View::Done));
+    CB_CHECK(!control_enabled(Control::Language, View::Working));   // (the language of a run under way cannot change)
+    for (const View v : {View::Idle, View::Done, View::Unsupported, View::Failed}) {
+        const std::vector<Control> order = focus_order(v);
+        CB_CHECK(std::find(order.begin(), order.end(), Control::Language) != order.end());   // Tab reaches it
+    }
+});
+
+CB_TEST("app.window_layout.the_open_list_has_a_row_per_language_and_opens_where_there_is_room", [] {
+    std::vector<LanguageItem> items = {{"original", "Original", true, ""}, {"c", "C", false, "C# to C is not supported yet"}, {"cpp17", "C++17", true, ""},
+                                       {"python", "Python", false, "Python output is not supported yet"}};
+    const Layout l = compute_layout(View::Idle, 1180, 700);
+    const LanguageList list = language_list_layout(l, items);
+    CB_CHECK(list.rows.size() == items.size());
+    CB_CHECK(list.outline.y >= l.language_combo.bottom());   // below the control
+    CB_CHECK(list.outline.bottom() < l.status_bar.y);
+    CB_CHECK(wl_near(list.rows[0].h, kLanguageRowHeight));
+    CB_CHECK(wl_near(list.rows[1].h, kLanguageRowWithReasonHeight));   // a reason sits under the name
+    CB_CHECK(language_item_at(list, list.rows[2].x + 3, list.rows[2].y + 3) == 2);
+    CB_CHECK(language_item_at(list, 1, 1) == -1);
+    // the arrows skip what cannot be chosen, and stay at the ends
+    CB_CHECK(language_next_enabled(items, 0, 1) == 2);
+    CB_CHECK(language_next_enabled(items, 2, 1) == 2);
+    CB_CHECK(language_next_enabled(items, 2, -1) == 0);
+    CB_CHECK(language_next_enabled(items, 0, -1) == 0);
+    CB_CHECK(language_next_enabled(items, -1, 1) == 0);
+    CB_CHECK(language_next_enabled(items, 4, -1) == 2);
+    // with many items the list is cut to the room there is
+    for (int i = 0; i < 20; ++i) items.push_back({"x", "X", false, "no"});
+    const LanguageList tall = language_list_layout(compute_layout(View::Idle, kMinWidth, kMinHeight), items);
+    CB_CHECK(tall.outline.y >= 56 && tall.outline.bottom() <= kMinHeight - kStatusBarHeight);
 });
 
 CB_TEST("app.window_layout.the_smallest_window_still_fits_its_parts", [] {

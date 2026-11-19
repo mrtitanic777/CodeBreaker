@@ -5,8 +5,9 @@ usage: codebreaker <command> [arguments]
 
     app [--screenshot PNG ...]      the CodeBreaker window, what `codebreaker` starts with no command; --screenshot
                                     PNG draws it to a file
-    convert FILE [--out DIR]        one file in, a folder of source code out: the pipeline the window drives, its
-                                    stages and percentages printed
+    convert FILE [--to LANG] [--out DIR] [--languages]
+                                    one file in, a folder of source code out: the pipeline the window drives (source
+                                    code is translated with --to, proved by running both)
     module <name> [--no-verify]     reconstruct one module: decompile, build, judge, write its source
     scoreboard                      rewrite the scoreboard from stored results
     place <module> ... | --all      where each module's source goes in the source tree

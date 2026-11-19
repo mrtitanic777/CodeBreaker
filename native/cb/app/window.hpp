@@ -2,7 +2,7 @@
 //
 //     codebreaker                                      the window (drop a file, get its source code)
 //     codebreaker app                                  the same
-//     codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported] [--theme light|dark] [--size WxH]
+//     codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings] [--theme light|dark] [--size WxH]
 //                                                      render the real window to a PNG instead of showing it (review, and the gate's UI test)
 //
 // The window is Windows 11 native: plain Win32 with Direct2D and DirectWrite, the DWM caption and Mica backdrop, the system accent colour and

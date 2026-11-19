@@ -638,3 +638,34 @@ unit test `translate.judge_py_cpp.the_python_corpus_agrees`.
    with name, source and size.
 2. **Corpora:** any programs, in any language, that you want converted.
 3. **Which console after the 360?**
+
+## Asking the hub what it can do (2026-11-18): the capability API
+
+A window or a command line must never hold a table of language pairs. It asks the translator: `native/cb/translate/capability.hpp`
+answers, for an input, which target languages are supported and, for each that is not, a short reason.
+
+```
+capability::targets_for_file("Bank.cs")        // a source file, by its language
+capability::targets_for_decompiled("c")        // a program whose decompiled output is C ("" : it comes back as assembly)
+capability::targets()                          // no input yet
+    -> [{id "original", name "Original", supported, reason, proof}, {"cpp17", "C++17", ...}, ...]
+```
+
+Three tables in `capability.cpp` are the only source of the answers, each kept next to the code it describes:
+
+| Table | Holds | Today |
+|---|---|---|
+| languages | every language with a front end (its extensions) or a back end (`back_end`) | C, C++03, C++17, C#, Java, Python (Python has no back end) |
+| paths | the (source, target) pairs wired end to end, the judge that proves each, the tools it needs | C# to C++17 (`judge-cs-cpp`), C# to C# (the round trip), Python to C++17 (`judge-py-cpp`) |
+| tools | what a path needs on this machine: the .NET SDK, a C++ compiler, Python, the L2 library | found the way the judges find them, once per process |
+
+A target is supported for a source when a path joins them and its tools are present. Otherwise the entry says why, in this order: no back
+end ("Python output is not supported yet"), no path ("C# to Java is not supported yet"), a missing tool ("needs the .NET SDK, which is not
+set up on this computer"). "Original" is not a translation: it is a program's own decompiled source, and for source code it is refused
+("This is source code already").
+
+`translate/translate_file.hpp` runs a path on one file with the judge's own steps (lower, write, build, run both, compare) and reports
+through an `Observer`: functions written of the total while translating, then the four steps of the check. The only success is `Agrees`;
+a translation that does not agree is never handed over (the conversion fails and leaves nothing), one the front end or back end declines is
+"cannot translate yet" with the construct named. Adding a language pair is a row in `paths()` and a runner in `translate_file.cpp`; the
+window, `codebreaker convert FILE --to LANG` and `--languages` pick it up with no change.

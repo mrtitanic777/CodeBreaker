@@ -475,7 +475,7 @@ sub_35_187A returns what they leave. The original therefore returns the window p
 the class of items 13 and 16. In `CB_SEQ=chain` mode the result is therefore no longer compared (calls and the carried data segment still are); the rerun of USER's MINI.CAB
 gives gated 40 (the baseline), no sequence refusals.
 
-**BEAR306 boot trace: not done; one approach ruled out.** Added, default off, and now known not to work: `CB_TRACE_WNDPROC=<name>` (module_build16.cpp for the C text,
+**BEAR306 boot trace: not done; one approach ruled out.** Tried (default off, now removed) and found not to work: `CB_TRACE_WNDPROC=<name>` (module_build16.cpp for the C text,
 build/asm16.cpp for the kept-assembly text: write 0B3h and the message, wParam and window words to port 0E9h at the function's entry) and `CB_DEBUGCON_FILE=<path>`
 (setup16.cpp: QEMU `-debugcon`). A boot with either variant (BEAR306 as kept assembly with the probe; as C with the probe) is FAIL(dos) in 5m31s, while the same private
 state with nothing set is PASS in 1m15s: the guest cannot execute `out` there (ring 3, or no I/O permission), so the probe itself stops Setup and the debugcon file stays empty.
@@ -483,8 +483,17 @@ A log has to go through memory, not a port: e.g. a ring buffer written in a bloc
 memory saved with the monitor's `pmemsave` after the failure and scanned for the records; or QEMU's gdb stub with a breakpoint at the function's linear address (code selector
 base from the LDT). Another way that needs no tracing: bisect by message -- keep BEAR306 as the original assembly under another name and have the C answer only a chosen
 set of messages itself, the rest delegated; each boot is 5 minutes, about 5 boots for 28 cases.
-Also found: `build <path>` takes the module name from the path as written, so `USER.EXE` does not match kept_as_asm.txt's `user.exe` (the file's lines did not apply to a build
-made with the upper-case name; regress passes the lower-case name).
+**Correction:** there is no upper-case module-name trap. `kept_as_asm()` compares with `iequals` (unit-tested with `USER.EXE`), `Built::name` is lower-cased, and a clean rebuild
+of MINI's USER from the upper-case path applied the kept lines (BEAR306 and sub_25_0429 came out as kept assembly). The "lines did not apply" runs were my own probe edits and
+stale runs. The two probes (`CB_TRACE_WNDPROC`, `CB_DEBUGCON_FILE`) were removed.
+
+**Static reading** (original assembly against the decompiled C and against the compiled C variant): every case of BEAR306 matches in argument order, DX:AX result, SI/DI/DS
+saves and the 0x403 ES reads; the C is right as read. Two things it depends on without saying so: after `sub_2_0B27` the C copies `mov dx, ax` and answers 0x4c9 with `xor dx, ax`
+(0 only because DX equals AX there). So the failure is not in an obvious case; it is a message-level or placement effect.
+
+**Bisect by message** (`CB_BISECT=<function>:<hex>,<hex>[:<default>]`, default off; module_build16.cpp, module_build.cpp): the function's C answers only the listed messages (its
+fourth word); every other goes to `sub_1_5D4F` with the same arguments (the function's own default path); the function is left out of the gate (it is meant to differ). Used with
+`CB_FORCE_C=BEAR306`; `regress all15 --only USER.EXE --runs 1` on a private state, one boot at a time. Results below.
 
 Not converted (superseded by item 16):
 

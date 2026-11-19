@@ -62,7 +62,7 @@ public:
     // The width of `text` in `size` DIPs of the body font: for the layouts that need to fit (the output path).
     float measure(const std::wstring& text, float size, bool semibold) const;
 
-    // A cached text format: kind 0 body, 1 display, 2 icons; align is a DWRITE_TEXT_ALIGNMENT, vertical a DWRITE_PARAGRAPH_ALIGNMENT.
+    // A cached text format: kind 0 body, 1 display, 2 icons, 3 monospace; align is a DWRITE_TEXT_ALIGNMENT, vertical a DWRITE_PARAGRAPH_ALIGNMENT.
     IDWriteTextFormat* format_for(int kind, float size, int weight, int align, int vertical, bool wrap);
 
 private:
@@ -82,7 +82,7 @@ private:
     ComPtr<ID2D1Factory> factory_;
     ComPtr<IDWriteFactory> write_;
     std::map<FormatKey, ComPtr<IDWriteTextFormat>> formats_;
-    std::wstring body_, display_, icons_;
+    std::wstring body_, display_, icons_, mono_;
 };
 
 // UTF-8 <-> UTF-16.

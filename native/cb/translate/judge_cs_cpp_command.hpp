@@ -14,9 +14,12 @@
 // agrees. --keep leaves the working folder (the Roslyn dumps, the C++, both runs' output); --l2 writes each program's IR beside it.
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "cb/base/config.hpp"
@@ -25,8 +28,18 @@
 
 namespace cb::translate::judge_cs_cpp {
 
+// What a judged run tells whoever watches it (the window's progress, translate/translate_file.hpp). Every member may be empty. A member may throw to
+// stop the run (a cancelled conversion): nothing in the judges catches what is not an Error.
+struct Observer {
+    // Translating: `done` of `total` functions written; total 0 while the front end has not yet said how many there are.
+    std::function<void(std::uint64_t done, std::uint64_t total, std::string_view what)> translating;
+    // Checking: step `done` of `total` ("Building the C++", "Running the original" ...); `what` names the step that begins.
+    std::function<void(std::uint64_t done, std::uint64_t total, std::string_view what)> checking;
+};
+
 struct Environment {
     cb::config::Config config;
+    Observer observer;
 };
 
 // The host C++ compiler the generated program is built with.

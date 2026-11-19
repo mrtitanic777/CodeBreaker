@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+The languages for Sieve.cs:
+  original  Original  (not available: This is source code already: choose the language to translate it to.)
+  c         C  (not available: C# to C is not supported yet)
+  cpp03     C++03  (not available: C# to C++03 is not supported yet)
+  cpp17     C++17
+  csharp    C#
+  java      Java  (not available: C# to Java is not supported yet)
+  python    Python  (not available: Python output is not supported yet)
+--- files
+--- stderr (not compared)

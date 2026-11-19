@@ -187,3 +187,10 @@ convert-unsupported: convert {td}/pixel.png
 convert-unknown: convert {td}/noise.dat
 convert-missing: convert {work}/no_such_file.dll
 convert-usage: convert
+convert-to-cpp17: convert {repo}/tests/translate/corpus/csharp/Sieve.cs --to cpp17 --out {out}/sieve @needs=translator-cs @timeout=300 @sizeonly=.cpp,.hpp,.txt
+convert-python-to-cpp17: convert {repo}/tests/translate/corpus/python/Generators.py --to cpp17 --out {out}/generators @needs=translator-py @timeout=300 @sizeonly=.cpp,.hpp,.txt
+convert-to-unsupported: convert {repo}/tests/translate/corpus/csharp/Sieve.cs --to python @needs=translator-cs
+convert-to-unknown: convert {repo}/tests/translate/corpus/csharp/Sieve.cs --to cobol @needs=translator-cs
+convert-source-as-original: convert {repo}/tests/translate/corpus/csharp/Sieve.cs @needs=translator-cs
+convert-languages: convert {repo}/tests/translate/corpus/csharp/Sieve.cs --languages @needs=translator-cs
+convert-program-to-java: convert {fmt}/lz32.dll --to java

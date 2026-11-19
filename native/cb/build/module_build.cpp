@@ -81,6 +81,8 @@ Built ModuleBuilder::build(std::string_view module, const BuildOptions& options)
             // (built with the kept verdicts: only a C function not among them is run now)
             std::set<std::string> c_functions = b.placed_c;
             c_functions.insert(b.moved_c.begin(), b.moved_c.end());
+            // (the function CB_BISECT edits is not run beside the original: it is meant to differ -- module_build16.cpp)
+            if (const std::optional<std::string> bisect = env_value("CB_BISECT")) c_functions.erase(bisect->substr(0, bisect->find(':')));
             const std::vector<std::string> c(c_functions.begin(), c_functions.end());
             say(log, std::format("{}: running {} functions rebuilt from C beside the original's", b.name, c.size()));
             std::vector<std::pair<std::string, std::string>> not_run;

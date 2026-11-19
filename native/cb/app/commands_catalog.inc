@@ -1,7 +1,7 @@
 // The commands, by name, in the order `help` lists them: name, how it is written, what it does. Each entry is one line of `help`.
 // Every command is listed here, by name. Nothing is discovered by scanning folders.
     {"app", "app [--screenshot PNG ...]", "the CodeBreaker window, what `codebreaker` starts with no command; --screenshot PNG draws it to a file"},
-    {"convert", "convert FILE [--out DIR]", "one file in, a folder of source code out: the pipeline the window drives, its stages and percentages printed"},
+    {"convert", "convert FILE [--to LANG] [--out DIR] [--languages]", "one file in, a folder of source code out: the pipeline the window drives (source code is translated with --to, proved by running both)"},
     {"module", "module <name> [--no-verify]", "reconstruct one module: decompile, build, judge, write its source"},
     {"scoreboard", "scoreboard", "rewrite the scoreboard from stored results"},
     {"place", "place <module> ... | --all", "where each module's source goes in the source tree"},

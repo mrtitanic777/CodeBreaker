@@ -209,6 +209,19 @@ std::optional<std::string> name_of_stem(std::string_view stem, const std::map<st
 // `text` is the file's: lines of `module function why`, `#` starting a comment.
 OrderedMap<std::string, std::string> kept_as_asm(std::string_view text, std::string_view module);
 
+// A far pointer to one of the module's functions that the decompiler left as two plain stores -- a window class built on the stack, `lpfnWndProc` as
+// `xStack_1a = 0x1587; xStack_18 = 0x1048;` (the offset and the selector the decompiler gives the function's segment) -- written as the function's address:
+// `xStack_1a = (uint2)(uint4)(void __far *)&BEAR306; xStack_18 = (uint2)((uint4)(void __far *)&BEAR306 >> 16);`. As numbers they keep the function's
+// ORIGINAL offset (the selector alone is fixed up), so a function rebuilt from C that lands elsewhere is registered at an address with other code, or the
+// filler, behind it: BEAR306 and sub_25_0429 of USER, registered as window procedures that way, stopped the boot for that reason and no other.
+// `lookup` gives the name of the far function whose address (selector << 16 | offset) is the value, or nothing. The two stores are consecutive lines, in either order.
+std::string name_function_pointer_stores(std::string_view text, const std::function<std::optional<std::string>(std::uint64_t)>& lookup);
+// The same where the selector is already written as the segment of a function (the decompiler does that for a loader fix-up):
+// `a = 0x1587; b = ((uint2)((uint4)(void __far *)&sub_10_009C >> 16));` -- the offset is then the offset of a function in sub_10_009C's segment, and is written
+// as that function's address. `lookup(anchor, offset)` gives the far function at that offset of the anchor's segment, or nothing.
+std::string name_function_offsets_beside_selectors(std::string_view text,
+                                                   const std::function<std::optional<std::string>(const std::string& anchor, std::uint64_t offset)>& lookup);
+
 // An original whose MZ header has DOS load the whole file (KRNL386: its real-mode start reads the NE header and the segments
 // out of memory): ours says the same of ours.
 void whole_file_image(const std::filesystem::path& original, const std::filesystem::path& image);

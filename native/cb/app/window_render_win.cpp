@@ -4,6 +4,8 @@
 #ifdef _WIN32
 #include "cb/app/window_render_win.hpp"
 
+#include "cb/app/window_pages.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -174,6 +176,267 @@ IDWriteTextFormat* RdDraw::painter_format(int kind, float size, int weight, DWRI
     return painter.format_for(kind, size, weight, align, vertical, wrap);
 }
 
+
+// ---- the rail, the Tools page and the Settings page ----------------------------------------------------------------------------------------
+
+// A drop-down list over the page: the rows of `items`, the chosen one marked, the one under the pointer or the keyboard lit.
+void rd_popup(RdDraw& d, const LanguageList& list, const std::vector<LanguageItem>& items, int selected, int hot) {
+    const RdPalette& pal = d.pal;
+    for (int i = 3; i >= 1; --i)   // a soft shadow
+        d.fill(Rect{list.outline.x - static_cast<float>(i), list.outline.y - static_cast<float>(i) + 2, list.outline.w + 2.0f * static_cast<float>(i), list.outline.h + 2.0f * static_cast<float>(i)},
+               kCardRadius, rd_color(0x000000, pal.dark ? 0.10f : 0.045f));
+    d.fill(list.outline, kCardRadius, pal.dark ? rd_color(0x323232) : rd_color(0xFCFCFC));
+    d.stroke(list.outline, kCardRadius, pal.dark ? rd_color(0xFFFFFF, 0.12f) : rd_color(0x000000, 0.12f));
+    for (std::size_t i = 0; i < list.rows.size() && i < items.size(); ++i) {
+        const LanguageItem& item = items[i];
+        const Rect& row = list.rows[i];
+        const bool chosen = static_cast<int>(i) == selected;
+        if (item.supported && static_cast<int>(i) == hot) d.fill(row, 4, rd_alpha(pal.text, pal.dark ? 0.09f : 0.06f));
+        else if (chosen) d.fill(row, 4, rd_alpha(pal.text, pal.dark ? 0.06f : 0.04f));
+        if (chosen) d.fill(Rect{row.x, row.y + (row.h > kLanguageRowHeight ? 8.0f : (row.h - 16) / 2), 3, 16}, 1.5f, pal.accent);
+        const bool reason = !item.supported && !item.reason.empty();
+        d.text(widen(item.name), Rect{row.x + 12, row.y + (reason ? 4.0f : 0.0f), row.w - 24, reason ? 22.0f : row.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, item.supported ? pal.text : pal.text3);
+        if (reason) d.text(widen(item.reason), Rect{row.x + 12, row.y + 26, row.w - 24, 16}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    }
+}
+
+// A text box: the field, its bottom line (accent while it has the keyboard), its text or its grey hint, the caret.
+void rd_text_box(RdDraw& d, const Rect& r, const std::wstring& text, const std::wstring& hint, bool focused, int caret_chars) {
+    const RdPalette& pal = d.pal;
+    d.fill(r, 4, pal.field);
+    d.stroke(r, 4, pal.stroke2);
+    d.brush->SetColor(focused ? pal.accent : pal.field_line);
+    d.rt->DrawLine(D2D1::Point2F(r.x + 4, r.bottom() - 0.5f), D2D1::Point2F(r.right() - 4, r.bottom() - 0.5f), d.brush.get(), focused ? 2.0f : 1.0f);
+    const Rect inner{r.x + 10, r.y, std::max(0.0f, r.w - 20), r.h};
+    const float width = d.painter.measure(text, 14, false);
+    const bool overflow = width > inner.w;
+    if (text.empty()) d.text(hint, inner, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    else d.text(text, inner, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text, overflow ? DWRITE_TEXT_ALIGNMENT_TRAILING : DWRITE_TEXT_ALIGNMENT_LEADING);   // (too long: its end shows)
+    if (focused) {
+        const std::wstring before = text.substr(0, static_cast<std::size_t>(std::clamp(caret_chars, 0, static_cast<int>(text.size()))));
+        float x = inner.x + std::min(d.painter.measure(before, 14, false), inner.w);
+        if (overflow) x = inner.right();
+        d.brush->SetColor(pal.text);
+        d.rt->DrawLine(D2D1::Point2F(x + 0.5f, r.y + 7), D2D1::Point2F(x + 0.5f, r.bottom() - 7), d.brush.get(), 1.0f);
+    }
+}
+
+// A Fluent switch.
+void rd_switch(RdDraw& d, const Rect& sw, bool on, bool focused) {
+    const RdPalette& pal = d.pal;
+    if (on) d.fill(sw, 10, pal.accent);
+    else d.stroke(sw, 10, pal.field_line, 1.0f);
+    const float knob = on ? 12.0f : 10.0f;
+    const float kx = on ? sw.right() - 5 - knob : sw.x + 5;
+    d.circle(Rect{kx, sw.y + (sw.h - knob) / 2, knob, knob}, on ? pal.accent_text : pal.text2);
+    if (focused) d.stroke(Rect{sw.x - 3, sw.y - 3, sw.w + 6, sw.h + 6}, 12, pal.text, 2.0f);
+}
+
+// A closed drop-down: the chosen text and a chevron.
+void rd_combo(RdDraw& d, const Rect& r, const std::wstring& shown, bool open, bool hot) {
+    const RdPalette& pal = d.pal;
+    D2D1_COLOR_F fill = pal.field;
+    if (hot || open) fill = rd_mix(fill, pal.text, pal.dark ? 0.04f : 0.035f);
+    d.fill(r, 4, fill);
+    d.stroke(r, 4, pal.stroke2);
+    d.brush->SetColor(open ? pal.accent : pal.field_line);
+    d.rt->DrawLine(D2D1::Point2F(r.x + 4, r.bottom() - 0.5f), D2D1::Point2F(r.right() - 4, r.bottom() - 0.5f), d.brush.get(), open ? 2.0f : 1.0f);
+    d.text(shown, Rect{r.x + 11, r.y, r.w - 44, r.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    d.glyph(open ? L'' : L'', Rect{r.right() - 30, r.y, 20, r.h}, 12, pal.text2);
+}
+
+// The fields of a form, clipped to `clip`: labels (a required one marked), text boxes, Browse buttons, drop-downs, switches.
+void rd_form(RdDraw& d, const FormLayout& form, const std::vector<FieldItem>& fields, const Rect& clip, const Model& m) {
+    const RdPalette& pal = d.pal;
+    d.rt->PushAxisAlignedClip(rd_rect(clip), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < fields.size() && i < form.fields.size(); ++i) {
+        const FieldItem& f = fields[i];
+        const FieldRects& r = form.fields[i];
+        const int idx = static_cast<int>(i);
+        const bool focused = m.focus == Control::Field && m.focus_index == idx;
+        if (r.label.bottom() < clip.y || r.label.y > clip.bottom()) continue;
+        if (f.kind == 4) {
+            rd_switch(d, r.input, !f.text.empty(), focused);
+            d.text(widen(f.label), r.label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+            if (r.note.h > 0) d.text(widen(f.note), r.note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+            continue;
+        }
+        d.text(widen(f.label), r.label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        if (r.note.h > 0) d.text(widen(f.note), r.note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        if (f.required) d.text(L"*", Rect{r.label.x + d.painter.measure(widen(f.label), 14, false) + 4, r.label.y, 12, r.label.h}, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.error);
+        if (f.kind == 3) {
+            rd_combo(d, r.input, widen(f.text), m.field_popup == idx, m.hot == Control::Field && m.hot_index == idx);
+            if (focused) d.stroke(Rect{r.input.x - 3, r.input.y - 3, r.input.w + 6, r.input.h + 6}, 6, pal.text, 2.0f);
+        } else {
+            rd_text_box(d, r.input, widen(f.text), widen(f.hint), focused, focused ? static_cast<int>(widen(f.text.substr(0, static_cast<std::size_t>(std::max(0, m.caret)))).size()) : 0);
+        }
+        if (r.browse.w > 0) {
+            const bool hot = m.hot == Control::FieldBrowse && m.hot_index == idx;
+            D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, hot ? 0.035f : 0.0f);
+            d.fill(r.browse, 4, fill);
+            d.stroke(r.browse, 4, pal.stroke2);
+            const float text_w = d.painter.measure(L"Browse…", 14, false);
+            const float x = r.browse.x + (r.browse.w - 24 - text_w) / 2;
+            d.glyph(L'', Rect{x, r.browse.y, 16, r.browse.h}, 16, pal.text);
+            d.text(L"Browse…", Rect{x + 24, r.browse.y, text_w + 4, r.browse.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+            if (m.focus == Control::FieldBrowse && m.focus_index == idx) d.stroke(Rect{r.browse.x - 3, r.browse.y - 3, r.browse.w + 6, r.browse.h + 6}, 6, pal.text, 2.0f);
+        }
+    }
+    d.rt->PopAxisAlignedClip();
+}
+
+void rd_scrollbar(RdDraw& d, const Rect& area, float content, float scroll) {
+    if (content <= area.h || area.h <= 0) return;
+    const float thumb_h = std::max(24.0f, area.h * area.h / content);
+    const float track = area.h - thumb_h;
+    const float at = track * std::clamp(scroll / std::max(1.0f, content - area.h), 0.0f, 1.0f);
+    d.fill(Rect{area.right() - 4, area.y + at, 3, thumb_h}, 1.5f, rd_alpha(d.pal.text3, 0.6f));
+}
+
+void rd_rail(RdDraw& d, const Layout& l, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const struct {
+        Control id;
+        Page page;
+        const Rect* rect;
+        wchar_t glyph;
+        const wchar_t* label;
+    } items[] = {{Control::NavConvert, Page::Convert, &l.rail_convert, L'', L"Convert"},
+                 {Control::NavTools, Page::Tools, &l.rail_tools, L'', L"Tools"},
+                 {Control::NavSettings, Page::Settings, &l.rail_settings, L'', L"Settings"}};
+    for (const auto& it : items) {
+        const Rect& r = *it.rect;
+        const bool on = m.page == it.page;
+        if (on) d.fill(r, 6, rd_alpha(pal.text, pal.dark ? 0.07f : 0.055f));
+        else if (m.hot == it.id) d.fill(r, 6, rd_alpha(pal.text, pal.dark ? 0.05f : 0.035f));
+        if (on) d.fill(Rect{r.x, r.y + 18, 3, 20}, 1.5f, pal.accent);
+        d.glyph(it.glyph, Rect{r.x, r.y + 8, r.w, 22}, 18, pal.text);
+        d.text(it.label, Rect{r.x - 4, r.y + 32, r.w + 8, 16}, 0, 10, DWRITE_FONT_WEIGHT_NORMAL, on ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        if (it.id == Control::NavTools && m.activity) d.circle(Rect{r.right() - 14, r.y + 6, 8, 8}, pal.accent);   // a tool is running
+        if (m.focus == it.id) d.stroke(Rect{r.x - 1, r.y - 1, r.w + 2, r.h + 2}, 7, pal.text, 2.0f);
+    }
+}
+
+void rd_tools(RdDraw& d, const Layout& l, const Model& m, Painter& painter) {
+    const RdPalette& pal = d.pal;
+    const ToolsLayout t = compute_tools_layout(l, m);
+    for (const Rect* card : {&t.list_card, &t.form_card}) {
+        d.fill(*card, kCardRadius, pal.card);
+        d.stroke(*card, kCardRadius, pal.card_stroke);
+    }
+    // ---- the list
+    d.text(L"Tools", t.list_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    {
+        const bool focused = m.focus == Control::ToolSearch;
+        d.fill(t.search, 4, pal.field);
+        d.stroke(t.search, 4, pal.stroke2);
+        d.brush->SetColor(focused ? pal.accent : pal.field_line);
+        d.rt->DrawLine(D2D1::Point2F(t.search.x + 4, t.search.bottom() - 0.5f), D2D1::Point2F(t.search.right() - 4, t.search.bottom() - 0.5f), d.brush.get(), focused ? 2.0f : 1.0f);
+        d.glyph(L'', Rect{t.search.x + 10, t.search.y, 16, t.search.h}, 14, pal.text3);
+        const Rect inner{t.search.x + 34, t.search.y, t.search.w - 44, t.search.h};
+        if (m.tool_query.empty()) d.text(widen(m.tools_count_text), inner, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        else d.text(widen(m.tool_query), inner, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        if (focused) {
+            const std::wstring q = widen(m.tool_query);
+            const std::size_t chars = widen(m.tool_query.substr(0, static_cast<std::size_t>(std::max(0, m.caret)))).size();
+            const float x = inner.x + std::min(painter.measure(q.substr(0, std::min(chars, q.size())), 14, false), inner.w);
+            d.brush->SetColor(pal.text);
+            d.rt->DrawLine(D2D1::Point2F(x + 0.5f, t.search.y + 7), D2D1::Point2F(x + 0.5f, t.search.bottom() - 7), d.brush.get(), 1.0f);
+        }
+    }
+    d.rt->PushAxisAlignedClip(rd_rect(t.list_area), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < m.tool_rows.size() && i < t.rows.size(); ++i) {
+        const ToolRowItem& row = m.tool_rows[i];
+        const Rect& r = t.rows[i];
+        if (r.bottom() < t.list_area.y || r.y > t.list_area.bottom()) continue;
+        if (row.heading) {
+            d.text(widen(row.text), Rect{r.x + 12, r.y + 8, r.w - 24, r.h - 8}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2, DWRITE_TEXT_ALIGNMENT_LEADING, false, DWRITE_PARAGRAPH_ALIGNMENT_FAR);
+            continue;
+        }
+        const bool selected = row.tool == m.tool_selected;
+        if (selected) d.fill(r, 4, rd_alpha(pal.text, pal.dark ? 0.07f : 0.055f));
+        else if (m.hot == Control::ToolRow && m.hot_index == row.tool) d.fill(r, 4, rd_alpha(pal.text, pal.dark ? 0.04f : 0.03f));
+        if (selected) d.fill(Rect{r.x, r.y + 9, 3, 16}, 1.5f, pal.accent);
+        d.text(widen(row.text), Rect{r.x + 12, r.y, r.w - 24, r.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        if (m.focus == Control::ToolRow && m.focus_index == row.tool) d.stroke(Rect{r.x + 1, r.y + 1, r.w - 2, r.h - 2}, 4, pal.text, 2.0f);
+    }
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, t.list_area, t.list_content_height, m.tool_scroll);
+
+    // ---- the selected tool
+    if (m.tool_selected < 0) {
+        d.text(L"Choose a tool from the list.", t.form_title, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        return;
+    }
+    d.text(widen(m.tool_title), t.form_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(widen(m.tool_description), t.form_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_LEADING, true, DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+    rd_form(d, t.form, m.tool_fields, t.form_card, m);
+    // Run (Stop while it runs): the one accent button
+    {
+        const Rect& r = t.run;
+        const bool enabled = m.tool_can_run || m.tool_running;
+        const float dim = enabled ? 1.0f : 0.45f;
+        D2D1_COLOR_F fill = pal.accent;
+        if (enabled && m.pressed == Control::Run) fill = rd_mix(fill, D2D1::ColorF(0, 0, 0), 0.25f);
+        else if (enabled && m.hot == Control::Run) fill = rd_mix(fill, pal.dark ? D2D1::ColorF(1, 1, 1) : D2D1::ColorF(0, 0, 0), 0.10f);
+        d.fill(r, 4, rd_alpha(fill, dim));
+        const std::wstring label = m.tool_running ? L"Stop" : L"Run";
+        d.glyph(m.tool_running ? L'' : L'', Rect{r.x + 14, r.y, 16, r.h}, 14, rd_alpha(pal.accent_text, dim));
+        d.text(label, Rect{r.x + 38, r.y, r.w - 44, r.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.accent_text, dim));
+        if (enabled && m.focus == Control::Run) d.stroke(Rect{r.x - 3, r.y - 3, r.w + 6, r.h + 6}, 6, pal.text, 2.0f);
+        d.text(widen(m.tool_note), t.run_note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    }
+    // the thin progress bar: determinate when the command prints percentages, else a moving segment while it runs, full when it has finished
+    {
+        d.fill(t.bar, 1.5f, rd_alpha(pal.text3, 0.3f));
+        if (m.tool_running && m.tool_percent < 0) {
+            const float seg = t.bar.w * 0.3f;
+            d.fill(Rect{t.bar.x + (t.bar.w - seg) * m.tool_phase, t.bar.y, seg, t.bar.h}, 1.5f, pal.accent);
+        } else if (m.tool_running || m.tool_done) {
+            const float f = m.tool_running ? static_cast<float>(std::clamp(m.tool_percent, 0, 100)) / 100.0f : 1.0f;
+            if (f > 0) d.fill(Rect{t.bar.x, t.bar.y, std::max(3.0f, t.bar.w * f), t.bar.h}, 1.5f, pal.accent);
+        }
+    }
+    // the output pane: monospace, the most recent lines that fit (scrolled up by output_scroll lines)
+    {
+        const Rect& o = t.output;
+        d.fill(o, 6, pal.dark ? rd_color(0x1F1F1F) : rd_color(0xF6F6F6));
+        d.stroke(o, 6, pal.stroke2);
+        const float line_h = 19.0f;
+        const int capacity = std::max(1, static_cast<int>((o.h - 20) / line_h));
+        std::vector<std::string> lines;
+        std::size_t at = 0;
+        while (at <= m.tool_output.size()) {
+            std::size_t end = m.tool_output.find('\n', at);
+            if (end == std::string::npos) end = m.tool_output.size();
+            lines.push_back(m.tool_output.substr(at, end - at));
+            at = end + 1;
+        }
+        if (!lines.empty() && lines.back().empty()) lines.pop_back();
+        const int skip = std::clamp(static_cast<int>(m.output_scroll), 0, std::max(0, static_cast<int>(lines.size()) - capacity));
+        const int last = static_cast<int>(lines.size()) - skip;
+        const int first = std::max(0, last - capacity);
+        float y = o.y + 10;
+        for (int i = first; i < last; ++i) {
+            const std::string& line = lines[static_cast<std::size_t>(i)];
+            const bool ok = line.rfind("100%  Done", 0) == 0 || line.rfind("Checked:", 0) == 0 || line.find("identical") != std::string::npos;
+            d.text(widen(line), Rect{o.x + 14, y, o.w - 28, line_h}, 3, 12.5f, DWRITE_FONT_WEIGHT_NORMAL, ok ? pal.ok : pal.text2);
+            y += line_h;
+        }
+    }
+}
+
+void rd_settings(RdDraw& d, const Layout& l, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const SettingsLayout s = compute_settings_layout(l, m);
+    d.fill(s.card, kCardRadius, pal.card);
+    d.stroke(s.card, kCardRadius, pal.card_stroke);
+    d.text(L"Settings", s.title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(L"How CodeBreaker looks, and where it finds the tools it uses. A change is saved when you make it.", s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    rd_form(d, s.form, m.setting_fields, s.fields_area, m);
+    rd_scrollbar(d, s.fields_area, s.form.content_height, m.setting_scroll);
+}
+
 }  // namespace
 
 // ---- the painter ------------------------------------------------------------------------------------------------------------------------
@@ -196,9 +459,10 @@ Painter::Painter() {
     body_ = pick({L"Segoe UI Variable Text", L"Segoe UI"});
     display_ = pick({L"Segoe UI Variable Display", L"Segoe UI"});
     icons_ = pick({L"Segoe Fluent Icons", L"Segoe MDL2 Assets"});
+    mono_ = pick({L"Cascadia Mono", L"Consolas", L"Courier New"});
 }
 
-std::wstring Painter::family(int kind) const { return kind == 1 ? display_ : kind == 2 ? icons_ : body_; }
+std::wstring Painter::family(int kind) const { return kind == 1 ? display_ : kind == 2 ? icons_ : kind == 3 ? mono_ : body_; }
 
 IDWriteTextFormat* Painter::format_for(int kind, float size, int weight, int align, int vertical, bool wrap) {
     const FormatKey key{kind, static_cast<int>(size * 10), weight, align, vertical, wrap};
@@ -308,6 +572,13 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         }
     }
 
+    if (l.rail.w > 0) rd_rail(d, l, model);
+    const View view = model.view;
+    if (model.page == Page::Tools) {
+        rd_tools(d, l, model, *this);
+    } else if (model.page == Page::Settings) {
+        rd_settings(d, l, model);
+    } else {
     // ---- the cards
     for (const Rect* card : {&l.left_card, &l.right_card}) {
         d.fill(*card, kCardRadius, pal.card);
@@ -319,7 +590,6 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
     d.text(L"Where the finished source code goes.", l.right_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
 
     // ---- the left card
-    const View view = model.view;
     if (view == View::Unsupported || view == View::Failed) {
         const bool failed = view == View::Failed;
         const D2D1_COLOR_F tone = failed ? pal.error : pal.warn;
@@ -374,13 +644,31 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         d.glyph(L'', l.plus, 28, pal.accent_text);
         d.focus_ring(Control::Plus, l.plus);
         d.text(L"Drag a file here", l.drop_line1, 0, 15, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
-        d.text(L".exe, .dll, ROMs, disc images and more", l.drop_line2, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(widen(model.drop_hint), l.drop_line2, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
         d.button(Control::Browse, l.browse, L"Browse…", L'', true);
     }
 
     // ---- the right card
     {
         const bool done = view == View::Done;
+        // the Language drop-down (a Fluent ComboBox): the label, the closed control with the chosen language and a chevron
+        {
+            const bool enabled = control_enabled(Control::Language, view);
+            const float dim = enabled ? 1.0f : 0.45f;
+            d.text(L"Language", l.language_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.text, dim));
+            D2D1_COLOR_F fill = pal.field;
+            if (enabled && (model.hot == Control::Language || model.language_open)) fill = rd_mix(fill, pal.text, pal.dark ? 0.04f : 0.035f);
+            d.fill(l.language_combo, 4, rd_alpha(fill, dim));
+            d.stroke(l.language_combo, 4, rd_alpha(pal.stroke2, dim));
+            d.brush->SetColor(model.language_open ? pal.accent : rd_alpha(pal.field_line, dim));
+            rt->DrawLine(D2D1::Point2F(l.language_combo.x + 4, l.language_combo.bottom() - 0.5f), D2D1::Point2F(l.language_combo.right() - 4, l.language_combo.bottom() - 0.5f), d.brush.get(),
+                         model.language_open ? 2.0f : 1.0f);
+            const std::size_t chosen = static_cast<std::size_t>(std::clamp(model.language_selected, 0, std::max(0, static_cast<int>(model.languages.size()) - 1)));
+            const std::wstring shown = model.languages.empty() ? std::wstring(L"Original") : widen(model.languages[chosen].name);
+            d.text(shown, Rect{l.language_combo.x + 11, l.language_combo.y, l.language_combo.w - 44, l.language_combo.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.text, dim));
+            d.glyph(model.language_open ? L'' : L'', Rect{l.language_combo.right() - 30, l.language_combo.y, 20, l.language_combo.h}, 12, rd_alpha(pal.text2, dim));
+            if (enabled) d.focus_ring(Control::Language, l.language_combo);
+        }
         d.text(L"Output", l.output_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
         d.fill(l.field, 4, pal.field);
         d.stroke(l.field, 4, pal.stroke2);
@@ -392,8 +680,10 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         d.button(Control::OpenFolder, l.open_folder, L"Open folder", L'', done);
         d.button(Control::CopyPath, l.copy_path, L"Copy path", L'', done);
         d.text(done ? widen(model.done_note) : std::wstring(L"Appears here when the conversion is finished."), l.hint, 0, 12, DWRITE_FONT_WEIGHT_NORMAL,
-               done ? pal.text2 : pal.text3);
+               done ? pal.text2 : pal.text3, DWRITE_TEXT_ALIGNMENT_LEADING, true, DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
     }
+
+    }   // (the Convert page)
 
     // ---- the status bar
     {
@@ -406,6 +696,24 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         d.circle(l.status_dot, dot);
         d.text(widen(model.status_text), l.status_text, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         d.text(widen(model.platforms), l.platforms, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
+
+    // ---- the drop-downs, dropped down over everything else
+    if (model.language_open && !model.languages.empty() && model.page == Page::Convert)
+        rd_popup(d, language_list_layout(l, model.languages), model.languages, model.language_selected, model.language_hot);
+    if (model.field_popup >= 0) {
+        const std::vector<FieldItem>& fields = model.page == Page::Settings ? model.setting_fields : model.tool_fields;
+        const FormLayout form = model.page == Page::Settings ? compute_settings_layout(l, model).form : compute_tools_layout(l, model).form;
+        if (static_cast<std::size_t>(model.field_popup) < fields.size() && static_cast<std::size_t>(model.field_popup) < form.fields.size()) {
+            const FieldItem& f = fields[static_cast<std::size_t>(model.field_popup)];
+            std::vector<LanguageItem> items;
+            int chosen = 0;
+            for (std::size_t k = 0; k < f.choices.size(); ++k) {
+                items.push_back({f.choices[k], f.choices[k], true, {}});
+                if (f.choices[k] == f.text) chosen = static_cast<int>(k);
+            }
+            rd_popup(d, popup_list_layout(form.fields[static_cast<std::size_t>(model.field_popup)].input, l.status_bar.y - 8, kTitleBarHeight + 8, items), items, chosen, model.language_hot);
+        }
     }
 }
 

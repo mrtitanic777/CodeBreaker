@@ -19,8 +19,9 @@
 // A case file line is `name: word word "a quoted word" @option ...`. Words may use {repo} (the inputs), {corpus},
 // {work} (the case's own scratch folder; CB_STATE is {work}/state, so no case touches the real state), and {out}
 // ({work}/out: every file the case leaves there is compared). Options:
-//     @needs=corpus|games|toolchains  skip when the corpus / the Xbox 360 games folder (CB_GAMES, C:/Nexia360/Games) /
-//              this machine's toolchains (<checkout>/toolchains: period compilers, the driver kit; not in the repository) are absent
+//     @needs=corpus|games|toolchains|translator-cs|translator-py  skip when the corpus / the Xbox 360 games folder (CB_GAMES, C:/Nexia360/Games) /
+//              this machine's toolchains (<checkout>/toolchains: period compilers, the driver kit; not in the repository) are absent /
+//              the translator cannot write C++17 from C# or from Python here (the program is asked: convert FILE --languages)
 //              @timeout=SECONDS   (default 120)
 //     @stdin=FILE        feed this file (a {repo} path) to stdin  @mask=REGEX       replace matches by <~> before comparing
 //     @sizeonly=.obj,.map  output files with these extensions are compared by name only (a build time and the source path are inside them)
@@ -67,6 +68,8 @@ struct Case {
     bool needs_corpus = false;
     bool needs_games = false;
     bool needs_toolchains = false;
+    bool needs_translator_cs = false;   // the translator can write C++17 from C# on this machine (the .NET SDK and a C++ compiler)
+    bool needs_translator_py = false;   // ... from Python (python, a C++ compiler and the L2 library)
     int timeout_s = 120;
     std::string stdin_file;
     std::vector<std::string> masks;
@@ -80,7 +83,7 @@ struct Case {
 struct Env {
     stdfs::path exe, repo, cases, golden, corpus, games, scratch;
     stdfs::path exe_root;   // the checkout the exe lives in (its settings, its corpus)
-    bool have_corpus = false, have_games = false, have_toolchains = false;
+    bool have_corpus = false, have_games = false, have_toolchains = false, have_translator_cs = false, have_translator_py = false;
     int jobs = 4;
     bool update = false, keep = false;
 };
@@ -144,6 +147,8 @@ std::vector<Case> load_cases(const stdfs::path& file, Vars& vars) {
                 if (w.substr(7) == "corpus") c.needs_corpus = true;
                 else if (w.substr(7) == "games") c.needs_games = true;
                 else if (w.substr(7) == "toolchains") c.needs_toolchains = true;
+                else if (w.substr(7) == "translator-cs") c.needs_translator_cs = true;
+                else if (w.substr(7) == "translator-py") c.needs_translator_py = true;
                 else throw ParseError(fs::to_text(file), lineno, 1, "unknown @needs " + w);
             }
             else if (w.rfind("@timeout=", 0) == 0) c.timeout_s = std::stoi(w.substr(9));
@@ -331,6 +336,22 @@ Outcome run_case(const Env& env, const Vars& vars, const Case& c, const stdfs::p
     return o;
 }
 
+// Whether the program can translate a source file of this extension to C++17 here: it is asked (`convert FILE --languages`) and the line of cpp17 must not say
+// "not available" (a missing .NET SDK, compiler, python ... is the reason it gives).
+bool translator_ready(const Env& env, const char* file_name) {
+    process::ProcessSpec spec;
+    spec.argv = {fs::to_text(env.exe), "convert", file_name, "--languages"};
+    spec.cwd = env.repo;
+    spec.timeout = std::chrono::seconds(60);
+    try {
+        const process::ProcessResult r = process::run(spec);
+        for (std::string_view line : text::lines(as_string(r.out)))
+            if (line.rfind("  cpp17", 0) == 0) return line.find("not available") == std::string_view::npos;
+    } catch (const Error&) {   // isolation boundary: a probe that cannot run says no
+    }
+    return false;
+}
+
 // What the golden file holds that is compared: everything before the "not compared" stderr section.
 std::string compared_part(const std::string& golden) {
     const std::size_t k = golden.find("--- stderr (not compared)");
@@ -429,6 +450,8 @@ int main(int argc, char** argv) {
         env.games = env_var("CB_GAMES").empty() ? stdfs::path("C:/Nexia360/Games") : stdfs::path(env_var("CB_GAMES"));
         env.have_games = stdfs::exists(env.games);
         env.have_toolchains = stdfs::exists(env.exe_root / "toolchains") || stdfs::exists(env.repo / "toolchains");
+        env.have_translator_cs = translator_ready(env, "probe.cs");
+        env.have_translator_py = translator_ready(env, "probe.py");
 
         Vars vars;
         std::vector<Case> all = load_cases(env.cases, vars);
@@ -499,9 +522,12 @@ int main(int argc, char** argv) {
             const std::size_t i = t - nunit;
             const Case& c = *picked[i];
             Result& res = results[i];
-            if ((c.needs_corpus && !env.have_corpus) || (c.needs_games && !env.have_games) || (c.needs_toolchains && !env.have_toolchains)) {
+            if ((c.needs_corpus && !env.have_corpus) || (c.needs_games && !env.have_games) || (c.needs_toolchains && !env.have_toolchains) ||
+                (c.needs_translator_cs && !env.have_translator_cs) || (c.needs_translator_py && !env.have_translator_py)) {
                 res.verdict = Verdict::Skip;
-                res.detail = c.needs_games && !env.have_games       ? "needs the games folder (" + fs::to_text(env.games) + ")"
+                res.detail = (c.needs_translator_cs && !env.have_translator_cs) || (c.needs_translator_py && !env.have_translator_py)
+                                 ? std::string("needs the translator's tools (the .NET SDK or python, and a C++ compiler): `codebreaker convert FILE --languages` says which is missing")
+                             : c.needs_games && !env.have_games       ? "needs the games folder (" + fs::to_text(env.games) + ")"
                              : c.needs_toolchains && !env.have_toolchains ? std::string("needs this machine's toolchains (<checkout>/toolchains)")
                                                                           : "needs the corpus (" + fs::to_text(env.corpus) + ")";
             } else {

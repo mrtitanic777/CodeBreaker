@@ -10,6 +10,10 @@
 //     Opening        the file is read and taken apart
 //     Disassembling  its code is turned back into assembly source
 //     Decompiling    only for lanes whose source is C (Windows 32-bit and 16-bit, DOS, drivers): the functions are decompiled
+//     Translating    only when a language other than Original is asked for: the source goes through the translator's hub into that language
+//                    (a source file of C# or Python is opened, then translated; counts are functions)
+//     Checking       only after Translating where the translator can prove the result: the translation is built and run beside the original and
+//                    what both print is compared; the run is Done only when they agree (translate/translate_file.hpp)
 //     Writing        the source is written into the output folder
 //
 // and ends in exactly one of Done, Unsupported (CodeBreaker has no way to convert this file; `Outcome::what` says what it is), Failed
@@ -38,6 +42,8 @@
 #include <string_view>
 #include <vector>
 
+#include "cb/translate/capability.hpp"
+
 namespace cb::app::convert {
 
 enum class State {
@@ -47,6 +53,8 @@ enum class State {
     Opening,
     Disassembling,
     Decompiling,
+    Translating,
+    Checking,
     Writing,
     Done,
     Unsupported,
@@ -56,7 +64,8 @@ enum class State {
 
 // "identifying", "unpacking" ... "done", "unsupported", "failed", "cancelled": stable names for logs, the command line and tests.
 std::string_view state_name(State state);
-// What a person is told, in plain words: "Identifying the file", "Unpacking", "Opening", "Disassembling", "Decompiling", "Writing the source".
+// What a person is told, in plain words: "Identifying the file", "Unpacking", "Opening", "Disassembling", "Decompiling", "Translating", "Checking",
+// "Writing the source".
 std::string_view state_label(State state);
 // Identifying .. Writing.
 bool is_stage(State state);
@@ -101,6 +110,8 @@ public:
     virtual void count(std::uint64_t done, std::uint64_t total, std::string_view detail = {}) = 0;
     // A cancelled run stops at the next call of enter() or count(); a route that works a long time between them calls this.
     virtual void check() = 0;
+    // A sentence for the person about how the result was proved (it reaches Outcome::checked). Only the last one is kept.
+    virtual void note(std::string_view) {}
 };
 
 // How one kind of file is converted: the stages it passes through (between Identifying and Writing) and the work itself. `run` reads `input`
@@ -116,6 +127,8 @@ struct Route {
 struct Plan {
     std::string what;                         // "a Windows program (PE, 32-bit)"; empty when the file is not recognised
     std::optional<Route> route;               // none: Unsupported
+    std::string refusal;                      // none: the sentence to show instead of "This looks like ... CodeBreaker cannot convert it." (a target that is not supported)
+    std::string folder_suffix;                // added to the output folder's name when it is made from the file's name: "_cpp17" gives Converted/Bank_cpp17
 };
 using Planner = std::function<Plan(const std::filesystem::path& input)>;
 
@@ -136,6 +149,7 @@ struct Outcome {
     std::vector<State> stages;                 // every state passed through, in order (Identifying first, the final state last)
     std::uint64_t files = 0;                   // Done: files written
     std::string route;                         // the route's name; empty when none was chosen
+    std::string checked;                       // Done after a translation: how it was proved ("... printed the same output and exited with the same code")
 };
 
 // Run the conversion. `cancel` is read between steps; set it from another thread to stop. Never throws: every failure is an Outcome.
@@ -150,14 +164,29 @@ std::string with_article(std::string_view what);
 // The Converted folder of the checkout (setting "converted").
 std::filesystem::path converted_root();
 
-// `codebreaker convert FILE [--out DIR]`: the words after `convert`; the exit code (0 done, 1 failed, 2 usage, 3 unsupported, 130 cancelled).
+// `codebreaker convert FILE [--to LANG] [--out DIR]`: the words after `convert`; the exit code (0 done, 1 failed, 2 usage, 3 unsupported, 130 cancelled).
 int run_command(std::span<const std::string> args);
 
-// The file extensions the window's file picker lists first (".exe", ".gba" ...): the Windows and DOS ones and every registered lane's.
+// The file extensions the window's file picker lists first (".exe", ".gba" ...): the Windows and DOS ones and every registered lane's. The source
+// languages' (".cs", ".py" ...) are listed with them.
 std::vector<std::string> program_extensions();
 
 // The planner of the program: every route CodeBreaker has (convert_backends.cpp). Needs the settings (cb::config::current()).
-Planner standard_planner();
+// `target` is the language asked for: "original" (or empty) is today's behaviour exactly; any other id of translate/capability.hpp ("cpp17", "csharp")
+// plans a translation of a source file, and a target the translator does not support for the file is refused (Plan::refusal) before any work.
+Planner standard_planner(const std::string& target = "original");
+
+// The targets for a file, asked of the translator (translate::capability): a source file by its language, a program by the language of its decompiled
+// output, anything else the plain list. Not-supported ones carry their reason.
+std::vector<translate::capability::Target> targets_for(const std::filesystem::path& file);
+
+// The language last chosen in the window ("original" when none), kept per user (a small JSON file in the user's application-data folder; the
+// environment variable CB_APP_SETTINGS names another file). remember_target writes it; failures to write are ignored.
+std::string remembered_target();
+void remember_target(const std::string& id);
+
+// The hint under "Drag a file here": what the window takes, from what the translator reads (".exe, .dll, ROMs, disc images, source code (.cs .py ...)").
+std::string drop_hint();
 
 // The routes' platform list as the window's status bar shows it ("Windows · DOS · Xbox · 45 consoles · Java · .NET"); the count of consoles is
 // the lane registry's.

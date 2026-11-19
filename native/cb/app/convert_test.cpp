@@ -284,5 +284,158 @@ CB_TEST("app.convert.a_32_bit_dll_is_disassembled_and_decompiled", [] {
     CB_CHECK(counted);
 });
 
+// ---- a language other than Original: translating through the hub ---------------------------------------------------------------------------
+
+namespace cap = cb::translate::capability;
+
+// A fixture whose input is a source file of the repository's translator corpus, and whose output folder is under state/work.
+struct CvTranslateFixture : CvFixture {
+    CvTranslateFixture(const std::string& corpus_file) {
+        input = testing::data_path("../../tests/translate/corpus/" + corpus_file);
+    }
+};
+
+bool cv_tools_for(const std::string& from, const std::string& to) { return cap::missing_tool(*cap::find_path(from, to)).empty(); }
+
+CB_TEST("app.convert.translating_and_checking_are_stages_between_decompiling_and_writing", [] {
+    CB_CHECK_EQ(std::string(state_name(State::Translating)), "translating");
+    CB_CHECK_EQ(std::string(state_name(State::Checking)), "checking");
+    CB_CHECK_EQ(std::string(state_label(State::Translating)), "Translating");
+    CB_CHECK_EQ(std::string(state_label(State::Checking)), "Checking");
+    CB_CHECK(is_stage(State::Translating) && is_stage(State::Checking) && !is_final(State::Checking));
+    CvFixture f;
+    Route route = cv_test_route({State::Opening, State::Translating, State::Checking}, [](Reporter& r) {
+        r.count(0, 4, "0 of 4 functions");
+        r.count(4, 4, "4 of 4 functions");
+        r.note("both printed the same");
+    });
+    const Outcome done = convert(f.request(), cv_test_planner(route), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    const std::vector<State> expected = {State::Identifying, State::Opening, State::Translating, State::Checking, State::Writing, State::Done};
+    CB_CHECK(done.stages == expected);
+    CB_CHECK(f.percent_never_goes_down());
+    CB_CHECK_EQ(done.checked, "both printed the same");
+});
+
+CB_TEST("app.convert.an_unsupported_target_is_refused_before_any_work_and_says_why", [] {
+    CvTranslateFixture f("csharp/Sieve.cs");
+    f.root = f.dir.path() / "Converted";
+    const Outcome done = convert(f.request(), standard_planner("python"), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Unsupported);
+    CB_CHECK(done.message.starts_with("Python output is not supported yet."));
+    CB_CHECK(done.message.find("C#") != std::string::npos);   // (what it can write from C# source is named)
+    const std::vector<State> expected = {State::Identifying, State::Unsupported};
+    CB_CHECK(done.stages == expected);   // no stage of work was entered
+    CB_CHECK(!stdfs::exists(f.root));
+    // a pair that has a back end but no path
+    const Outcome java = convert(f.request(), standard_planner("java"), nullptr, f.cancel);
+    CB_CHECK(java.state == State::Unsupported);
+    CB_CHECK(java.message.starts_with("C# to Java is not supported yet."));
+    // an unknown name
+    CB_CHECK(convert(f.request(), standard_planner("cobol"), nullptr, f.cancel).state == State::Unsupported);
+});
+
+CB_TEST("app.convert.source_code_with_the_target_original_is_refused_and_names_the_choices", [] {
+    CvTranslateFixture f("csharp/Sieve.cs");
+    const Outcome done = convert(f.request(), standard_planner("original"), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Unsupported);
+    CB_CHECK_EQ(done.what, "C# source code");
+    CB_CHECK(done.message.find("already") != std::string::npos);
+    CB_CHECK(done.stages.size() == 2);
+});
+
+CB_TEST("app.convert.a_program_cannot_be_translated_yet_and_original_is_unchanged", [] {
+    CvFixture f;
+    f.input = testing::data_path("formats/testdata/lz32.dll");
+    const Outcome done = convert(f.request(), standard_planner("java"), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Unsupported);
+    CB_CHECK(done.message.starts_with("C to Java is not supported yet."));
+    CB_CHECK(!stdfs::exists(f.root));
+    // the lists the window shows
+    const std::vector<cap::Target> list = targets_for(f.input);
+    CB_CHECK(list.front().id == "original" && list.front().supported);
+    CB_CHECK(!list[1].supported && !list[1].reason.empty());
+});
+
+CB_TEST("app.convert.csharp_source_becomes_cpp17_and_is_done_only_because_both_programs_agree", [] {
+    if (!cv_tools_for("csharp", "cpp17")) return;
+    CvTranslateFixture f("csharp/Sieve.cs");
+    const Outcome done = convert(f.request(), standard_planner("cpp17"), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    CB_CHECK_EQ(done.route, "translate:csharp:cpp17");
+    const std::vector<State> expected = {State::Identifying, State::Opening, State::Translating, State::Checking, State::Writing, State::Done};
+    CB_CHECK(done.stages == expected);
+    CB_CHECK(f.percent_never_goes_down());
+    CB_CHECK(done.output == f.root / "Sieve_cpp17");
+    CB_CHECK(stdfs::exists(done.output / "Sieve.cpp"));
+    CB_CHECK(!done.checked.empty());
+    CB_CHECK(!stdfs::exists(f.root / "Sieve_cpp17.partial"));
+    bool counted_functions = false, steps = false;   // real counts in both stages
+    for (const Progress& p : f.seen) {
+        counted_functions = counted_functions || (p.state == State::Translating && p.total > 0 && p.done == p.total && p.detail.find("functions") != std::string::npos);
+        steps = steps || (p.state == State::Checking && p.total == 4 && p.done == 4);
+    }
+    CB_CHECK(counted_functions);
+    CB_CHECK(steps);
+    // asked again, the folder is not written into: a numbered sibling
+    CB_CHECK(convert(f.request(), standard_planner("cpp17"), nullptr, f.cancel).output == f.root / "Sieve_cpp17_2");
+});
+
+CB_TEST("app.convert.python_source_becomes_cpp17", [] {
+    if (!cv_tools_for("python", "cpp17")) return;
+    CvTranslateFixture f("python/Generators.py");
+    const Outcome done = convert(f.request(), standard_planner("C++17"), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    CB_CHECK(stdfs::exists(done.output / "Generators.cpp"));
+    CB_CHECK(done.checked.find("CPython") != std::string::npos);
+    CB_CHECK(f.percent_never_goes_down());
+});
+
+CB_TEST("app.convert.a_translation_that_cannot_be_proved_leaves_nothing", [] {
+    if (!cv_tools_for("python", "cpp17")) return;
+    CvFixture f;
+    f.input = f.dir.path() / "plain.py";
+    fs::write_text(f.input, "def double(x):\n    return x * 2\n");
+    const Outcome done = convert(f.request(), standard_planner("cpp17"), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Unsupported);   // (nothing to run beside CPython: not translated, not guessed)
+    CB_CHECK(done.message.find("run_*") != std::string::npos);
+    CB_CHECK(done.output.empty());
+    CB_CHECK(!stdfs::exists(f.root / "plain_cpp17"));
+    CB_CHECK(!stdfs::exists(f.root / "plain_cpp17.partial"));
+});
+
+CB_TEST("app.convert.a_cancel_while_translating_stops_the_run", [] {
+    if (!cv_tools_for("csharp", "cpp17")) return;
+    CvTranslateFixture f("csharp/Sieve.cs");
+    ProgressFn cancelling = [&f](const Progress& p) {
+        f.seen.push_back(p);
+        if (p.state == State::Translating && p.total > 0) f.cancel = true;
+    };
+    const Outcome done = convert(f.request(), standard_planner("cpp17"), cancelling, f.cancel);
+    CB_CHECK(done.state == State::Cancelled);
+    CB_CHECK(!stdfs::exists(f.root / "Sieve_cpp17"));
+    CB_CHECK(!stdfs::exists(f.root / "Sieve_cpp17.partial"));
+});
+
+CB_TEST("app.convert.the_language_last_chosen_is_remembered_per_user", [] {
+    fs::ScopedTempDir dir{"cb_convert_settings"};
+    const std::string settings_path = fs::to_text(dir.path() / "app.json");
+    fs::ScopedEnv named("CB_APP_SETTINGS", std::string_view(settings_path));
+    CB_CHECK_EQ(remembered_target(), "original");   // (nothing remembered yet)
+    remember_target("cpp17");
+    CB_CHECK_EQ(remembered_target(), "cpp17");
+    remember_target("csharp");
+    CB_CHECK_EQ(remembered_target(), "csharp");
+    fs::write_text(dir.path() / "app.json", "not json");   // (an unreadable setting is no setting)
+    CB_CHECK_EQ(remembered_target(), "original");
+});
+
+CB_TEST("app.convert.the_picker_and_the_hint_take_source_files_too", [] {
+    const std::vector<std::string> extensions = program_extensions();
+    for (const char* e : {".exe", ".cs", ".py", ".java"}) CB_CHECK(std::find(extensions.begin(), extensions.end(), e) != extensions.end());
+    CB_CHECK(drop_hint().find(".cs") != std::string::npos);
+    CB_CHECK(drop_hint().find(".exe") != std::string::npos);
+});
+
 }  // namespace
 }  // namespace cb::app::convert

@@ -53,7 +53,16 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
     fs::make_dirs(work);
     const stdfs::path checkout = environment.config.checkout_root();
 
+    const judge_cs_cpp::Observer& watch = environment.observer;
+    const auto translating = [&watch](std::uint64_t done, std::uint64_t total, std::string_view what) {
+        if (watch.translating) watch.translating(done, total, what);
+    };
+    const auto checking = [&watch](std::uint64_t done, std::uint64_t total, std::string_view what) {
+        if (watch.checking) watch.checking(done, total, what);
+    };
+
     // 1. the front end: every run_* function must lower (what else is refused is only listed)
+    translating(0, 0, fs::to_text(file.filename()));
     const std::string source_text = fs::read_text(file);
     auto program = pk::program_of_sources({{name, source_text}});
     in::Inference inference(me::library());
@@ -76,6 +85,8 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
         if (qname.starts_with(name + ".run_")) why.push_back(qname + ": " + refusal.reason());
         else others.push_back(qname + ": " + refusal.reason());
     }
+    const std::uint64_t functions = module->translated.size() + module->refused.size();   // every function of the module, translated or not
+    translating(0, functions, {});
     score.lowers = why.empty() && !runs.empty();
     if (!*score.lowers) {
         score.detail = runs.empty() && why.empty() ? "no run_* function" : "refused by the front end: " + text::join(why, "; ") + (others.empty() ? "" : " | the others refused: " + text::join(others, "; "));
@@ -101,6 +112,7 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
         return score;
     }
     score.writes = true;
+    translating(module->translated.size(), functions, {});
 
     // 3. the C++: the module's header and source, then a main that prints each answer as JSON (an exception as {"error": class})
     const stdfs::path cpp_dir = work / "cpp";
@@ -116,6 +128,7 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
     const stdfs::path exe = cpp_dir / (name + ".exe");
     fs::write_text(source, main_text);
     std::string log;
+    checking(0, 4, "Building the C++ translation");
     score.compiles = judge_cs_cpp::build_program(cxx, checkout / "data" / "translate" / "runtime" / "cpp17", source, exe, log);
     if (!*score.compiles) {
         score.detail = "compile: " + clip(log, 700);
@@ -123,6 +136,7 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
     }
 
     // 4. the original: CPython runs the same functions
+    checking(1, 4, "Running the Python module");
     const stdfs::path module_dir = work / "py";
     fs::make_dirs(module_dir);
     fs::write_text(module_dir / (name + ".py"), source_text);
@@ -140,10 +154,12 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
     } catch (const std::exception& e) {
         throw ToolError("python", 0, "", std::string("judge-py-cpp needs python on the PATH (or CB_PYTHON): ") + e.what());
     }
+    checking(2, 4, "Running the translation");
     process::ProcessSpec run;
     run.argv = {fs::to_text(exe)};
     run.timeout = std::chrono::minutes(2);
     const process::ProcessResult translated = process::run(run);
+    checking(3, 4, "Comparing the answers");
     const std::string want_text(as_text(original.out)), got_text(as_text(translated.out));
     fs::write_text(work / "original.out.txt", want_text);
     fs::write_text(work / "translated.out.txt", got_text);
@@ -167,6 +183,7 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
             break;
         }
     }
+    checking(4, 4, {});
     return score;
 }
 

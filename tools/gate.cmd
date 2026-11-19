@@ -1,6 +1,6 @@
 @echo off
 rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--no-app] [--update] [--filter TEXT] -- THE gate: cb_tests, every command case of cb_exe_gate against the real
-rem codebreaker.exe, and the window's screenshot step (the window rendered in every state and both themes, each a non-empty PNG of the size asked).
+rem codebreaker.exe, and the window's screenshot step (the window rendered in every state (including the open Language list and a translating run) and both themes, each a non-empty PNG of the size asked).
 rem
 rem     tools\gate.cmd                 build native/cb and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run
 rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of tests\exe_gate; then the screenshots
@@ -67,8 +67,8 @@ if exist "%SHOTS%" rmdir /s /q "%SHOTS%"
 mkdir "%SHOTS%"
 set T0=%TIME%
 echo.
-echo Window screenshots: codebreaker.exe app --screenshot, 4 states x 2 themes
-for %%S in (idle working done unsupported) do for %%T in (light dark) do call :shot %%S %%T
+echo Window screenshots: codebreaker.exe app --screenshot, 8 states x 2 themes
+for %%S in (idle working done unsupported language translating tools settings) do for %%T in (light dark) do call :shot %%S %%T
 if %APP_RC% EQU 0 (echo Window screenshots: PASS ^(started %T0%, ended %TIME%^)) else echo Window screenshots: FAIL
 if %APP_RC% EQU 0 rmdir /s /q "%SHOTS%"
 exit /b %APP_RC%

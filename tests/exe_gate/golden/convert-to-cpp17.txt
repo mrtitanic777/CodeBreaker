@@ -1,0 +1,26 @@
+exit: 0
+--- stdout
+  0%  Identifying the file
+  2%  Opening
+  4%  Opening: Sieve.cs
+  4%  Translating
+ 35%  Translating: 6 of 6 functions
+ 35%  Checking
+ 49%  Checking: Running the C# program
+ 63%  Checking: Running the translation
+ 77%  Checking: Comparing what both print
+ 91%  Checking: 4 of 4 steps
+ 91%  Writing the source
+ 93%  Writing the source: BUILD.txt
+ 95%  Writing the source: Sieve.cpp
+ 97%  Writing the source: runtime/coro.hpp
+ 99%  Writing the source: runtime/csrt.hpp
+100%  Done
+4 files written to <work>/out/sieve
+Checked: The C# program and its C++17 translation printed the same output and exited with the same code.
+--- files
+sieve/BUILD.txt  (content not compared)
+sieve/Sieve.cpp  (content not compared)
+sieve/runtime/coro.hpp  (content not compared)
+sieve/runtime/csrt.hpp  (content not compared)
+--- stderr (not compared)

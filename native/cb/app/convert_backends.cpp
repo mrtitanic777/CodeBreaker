@@ -7,11 +7,14 @@
 //   a disc image, floppy or hard-disk image, cabinet                        Unpacking (its programs taken out), Disassembling (each program through
 //                                                                           the route of its own kind)
 //
+//   a C# or Python source file, with a language asked for                   Opening, Translating (through the hub), Checking (both run, outputs compared)
+//
 // Anything else is Unsupported, with what identification says it is.
 #include <algorithm>
 #include <cctype>
 #include <format>
 #include <set>
+#include <stdexcept>
 
 #include "cb/app/convert.hpp"
 #include "cb/base/config.hpp"
@@ -32,6 +35,7 @@
 #include "cb/source/le_writer.hpp"
 #include "cb/source/ne_writer.hpp"
 #include "cb/source/pe_writer.hpp"
+#include "cb/translate/translate_file.hpp"
 #include "cb/verify/lanes/image_lane.hpp"
 
 namespace cb::app::convert {
@@ -366,18 +370,126 @@ Plan cv_plan(const stdfs::path& input) {
     return plan;
 }
 
+// ---- translating source code through the hub ---------------------------------------------------------------------------------------------
+
+namespace cap = cb::translate::capability;
+namespace tf = cb::translate::translate_file;
+
+// The sentence for a translation that did not come out right, by the verdict. The translation is never kept unless both programs were run and agreed.
+[[noreturn]] void cv_translation_failed(const tf::Result& result, const std::string& from, const std::string& to) {
+    switch (result.verdict) {
+        case tf::Verdict::Refused:
+            throw NotConvertible("CodeBreaker cannot translate this " + from + " program to " + to + " yet: " + result.detail);
+        case tf::Verdict::BadInput:
+            throw std::runtime_error("The " + from + " program itself does not build or run, so there is nothing to compare a translation with: " + result.detail);
+        case tf::Verdict::CompileFailed:
+            throw std::runtime_error("The " + to + " written for this program does not build, so it was not kept: " + result.detail);
+        default:
+            throw std::runtime_error("The " + to + " translation does not behave like the " + from + " program, so it was not kept. " + result.detail);
+    }
+}
+
+// Reads the source file, translates it along `path` and proves the result; the files go into `work`. The stages are Opening, Translating, Checking.
+Route cv_translate_route(const cap::Path& path, std::string from_name, std::string to_name) {
+    Route route;
+    route.name = "translate:" + path.from + ":" + path.to;
+    route.stages = {State::Opening, State::Translating, State::Checking};
+    route.weights = {{State::Opening, 2}, {State::Translating, 30}, {State::Checking, 55}};
+    route.run = [path, from_name = std::move(from_name), to_name = std::move(to_name)](Reporter& r, const stdfs::path& input, const stdfs::path& work) {
+        r.enter(State::Opening);
+        if (fs::read_file(input).empty()) throw std::runtime_error("The file is empty.");   // (it must be readable before anything is started)
+        r.count(1, 1, fs::to_text(input.filename()));
+
+        r.enter(State::Translating);
+        translate::judge_cs_cpp::Environment environment{config::current(), {}};
+        bool checking = false;
+        environment.observer.translating = [&r](std::uint64_t done, std::uint64_t total, std::string_view what) {
+            r.count(done, total, total > 0 ? std::format("{} of {} functions", done, total) : std::string(what));
+        };
+        environment.observer.checking = [&r, &checking](std::uint64_t done, std::uint64_t total, std::string_view what) {
+            if (!checking) {
+                checking = true;
+                r.enter(State::Checking);
+            }
+            r.count(done, total, what.empty() ? std::format("{} of {} steps", done, total) : std::string(what));
+        };
+        const stdfs::path scratch = work / ".translate";
+        const tf::Result result = tf::run(path, input, work, scratch, environment);
+        std::error_code ec;
+        stdfs::remove_all(scratch, ec);
+        if (result.verdict != tf::Verdict::Agrees) cv_translation_failed(result, from_name, to_name);
+        r.note(result.checked);
+    };
+    return route;
+}
+
+// The plan for a source file the translator reads, when `target` is a translation (not "original").
+Plan cv_plan_source(const cap::Language& language, const std::string& target) {
+    Plan plan;
+    plan.what = language.name + " source code";
+    const std::vector<cap::Target> list = cap::targets_for_source(language.id);
+    const cap::Target* t = cap::find_target(list, target);
+    if (t == nullptr) {
+        plan.refusal = "CodeBreaker does not know a language called \"" + target + "\".";
+    } else if (!t->supported) {
+        plan.refusal = t->reason + ".";
+        if (t->id == "original") plan.refusal = "This is " + plan.what + " already, so there is nothing to turn back into source.";
+        const std::string choices = cap::supported_names(list);
+        plan.refusal += choices.empty() ? " CodeBreaker cannot translate " + plan.what + " yet."
+                                        : " Choose one of the languages CodeBreaker can write from " + plan.what + ": " + choices + ".";
+    } else {
+        const cap::Path* path = cap::find_path(language.id, t->id);
+        plan.route = cv_translate_route(*path, language.name, t->name);
+        plan.folder_suffix = "_" + t->id;
+    }
+    return plan;
+}
+
+// The plan with a language asked for.
+Plan cv_plan_for(const stdfs::path& input, const std::string& target) {
+    const bool original = target.empty() || cv_lower(target) == "original";
+    if (const cap::Language* language = cap::language_of_file(input)) return cv_plan_source(*language, original ? std::string("original") : target);
+    Plan plan = cv_plan(input);
+    if (original || !plan.route) return plan;   // (Original is today's behaviour; a file with no route is refused as before)
+    const std::vector<cap::Target> list = targets_for(input);
+    const cap::Target* t = cap::find_target(list, target);
+    const std::string reason = t != nullptr && !t->supported ? t->reason : "Translating a decompiled program is not available yet";
+    plan.route.reset();
+    plan.refusal = reason + ". This program can be written back as its Original source.";
+    return plan;
+}
+
 }  // namespace
+
+std::vector<cap::Target> targets_for(const stdfs::path& file) {
+    if (file.empty()) return cap::targets();   // (no file chosen yet)
+    if (cap::language_of_file(file) != nullptr) return cap::targets_for_file(file);
+    std::optional<formats::detect::Lane> lane;
+    try {
+        lane = formats::detect::kind(file);
+    } catch (const std::exception&) {
+    }
+    return cap::targets_for_decompiled(lane ? "c" : "");   // (Windows and DOS programs are decompiled to C; the rest come back as assembly)
+}
 
 std::vector<std::string> program_extensions() {
     engine::register_all_lanes();
     std::vector<std::string> out = {".exe", ".dll", ".com", ".sys", ".vxd", ".drv", ".cpl", ".ocx", ".scr", ".386", ".xex", ".xbe", ".cab", ".iso", ".img", ".bin"};
     for (const std::string& e : engine::lane_program_extensions())
         if (std::find(out.begin(), out.end(), e) == out.end()) out.push_back(e);
+    for (const std::string& e : cap::source_extensions())
+        if (std::find(out.begin(), out.end(), e) == out.end()) out.push_back(e);
     return out;
 }
 
-Planner standard_planner() {
-    return [](const stdfs::path& input) { return cv_plan(input); };
+std::string drop_hint() {
+    std::string sources;
+    for (const std::string& e : cap::source_extensions()) sources += (sources.empty() ? "" : " ") + e;
+    return ".exe, .dll, ROMs, disc images, source code (" + sources + ")";
+}
+
+Planner standard_planner(const std::string& target) {
+    return [target](const stdfs::path& input) { return cv_plan_for(input, target); };
 }
 
 std::string platform_summary() {

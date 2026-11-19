@@ -49,6 +49,26 @@ void mt_write(const std::filesystem::path& p, const Bytes& bytes) { fs::write_fi
 
 }  // namespace
 
+CB_TEST("build.module.name_function_pointer_stores_writes_the_two_words_as_the_functions_address", [] {
+    const auto lookup = [](std::uint64_t va) -> std::optional<std::string> {
+        if (va == 0x10481587) return "BEAR306";
+        if (va == 0x10c00429) return "sub_25_0429";
+        return std::nullopt;
+    };
+    // offset first, as WNDCLASS.lpfnWndProc is built; the neighbours stay
+    const std::string offset_first = "  xStack_1c = 0x800;\n  xStack_1a = 0x1587;\n  xStack_18 = 0x1048;\n  xStack_16 = 0;\n";
+    const std::string want_first =
+        "  xStack_1c = 0x800;\n  xStack_1a = (uint2)(uint4)(void __far *)&BEAR306;\n  xStack_18 = (uint2)((uint4)(void __far *)&BEAR306 >> 16);\n  xStack_16 = 0;\n";
+    CB_CHECK_EQ(name_function_pointer_stores(offset_first, lookup), want_first);
+    // selector first
+    CB_CHECK_EQ(name_function_pointer_stores("  a = 0x10c0;\n  b = 0x429;\n", lookup),
+                "  a = (uint2)((uint4)(void __far *)&sub_25_0429 >> 16);\n  b = (uint2)(uint4)(void __far *)&sub_25_0429;\n");
+    // two numbers that are no function's address, a store that is not a plain word, and a text with none: unchanged
+    const std::string plain = "  a = 0x1587;\n  b = 0x1049;\n  c = 0x1587;\n  d = x + 0x1048;\n  e = 0x12345;\n";
+    CB_CHECK_EQ(name_function_pointer_stores(plain, lookup), plain);
+    CB_CHECK_EQ(name_function_pointer_stores("", lookup), "");
+});
+
 CB_TEST("build.module.kept_as_asm_reads_module_function_and_reason", [] {
     const std::string text =
         "# functions the gate passes that a run of the whole module showed wrong\n"

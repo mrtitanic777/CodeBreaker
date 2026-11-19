@@ -81,8 +81,36 @@ Which stages a file passes through depends on what it is: *Unpacking* only for c
 images, cabinets); *Decompiling* only where the source is C (Windows 32-bit and 16-bit programs, drivers,
 DOS programs); console programs come back as assembly source. The window is plain Win32 with Direct2D
 and DirectWrite (Mica backdrop, the system accent colour and light or dark theme, per-monitor DPI); the
-screenshots above are drawn by it: `codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported]
+screenshots above are drawn by it: `codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings]
 [--theme light|dark] [--size WxH] [--scale N]`.
+
+**Translate source code, and have it checked.** Drop a C# or Python file instead of a program and open the
+**Language** drop-down above the Output box. It lists every language the translator knows; the ones it cannot
+write for that file are greyed out with the reason underneath ("Python output is not supported yet", "C# to
+Java is not supported yet"), and the list is asked of the translator, not written into the window. Choose
+C++17 (C# and Python) or C# (the round trip) and the run adds two stages: *Translating* (functions written of
+the total) and *Checking* (the translation is built and run beside the original, and what both print is
+compared). The run is Done only when both agree; if they do not, or the translator cannot do the program
+yet, it says so and keeps nothing. The choice is remembered. Alt+Down opens the list from the keyboard.
+On the command line: `codebreaker convert Bank.cs --to cpp17`; `--languages` lists the choices for a file.
+
+| Choosing a language | Translating |
+|---|---|
+| ![The Language drop-down open](docs/images/app-language-light.png) | ![A translation running](docs/images/app-translating-dark.png) |
+
+**Every command, from the window.** A navigation rail on the left (Convert, Tools, Settings; Ctrl+1, 2, 3) takes you
+to the **Tools** page: 76 commands in groups (Rebuild source, Inspect, Translate, Windows 95, Xbox, Verify,
+Maintenance), each with a plain-word title (*Windows program*, *Windows 3.x program*, *What is this file?*, *C# to C++*),
+a search box that matches the title, the command's name and its description, and a form made from the command's
+arguments: Browse buttons for files and folders, switches, drop-downs, lists, required fields marked, and Run
+disabled until they are filled. Run starts the command as a child of the same program; its output streams into the
+pane, the bar follows the percentages the command prints (a moving bar when it prints none), Stop ends that child, and
+a run goes on if you go back to Convert (the rail's Tools item shows a dot). **Settings** edits `settings.json`
+(paths with Browse, switches) and the theme (System, Light, Dark). The command line and `help` are unchanged.
+
+| Tools | Settings |
+|---|---|
+| ![The Tools page](docs/images/app-tools-light.png) | ![The Settings page](docs/images/app-settings-dark.png) |
 
 **A module, function by function.** `codebreaker decompile lzexpand.dll` writes each function's
 recovered C, `codebreaker names`, `analyze` and `info` say what is in it, and `measure` and `module`

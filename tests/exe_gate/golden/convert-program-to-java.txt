@@ -1,0 +1,6 @@
+exit: 3
+--- stdout
+  0%  Identifying the file
+Unsupported: C to Java is not supported yet. This program can be written back as its Original source.
+--- files
+--- stderr (not compared)
