@@ -6,7 +6,7 @@
 //
 // Design notes:
 //   * the command table is the catalog of cb/app (a command's synopsis and summary);
-//   * the version of the program is a fixed "1.0.0".
+//   * the version of the program is a fixed "2.0.0".
 #include <algorithm>
 #include <chrono>
 #include <format>
@@ -231,7 +231,7 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
         return Json{{"found", d.found}, {"platform", d.platform}, {"lane", d.lane ? Json(*d.lane) : Json(nullptr)}, {"family", d.family}};
     };
     services.java_classes = [](const std::filesystem::path& p) { return static_cast<std::int64_t>(java::corpus::discover(p).size()); };
-    services.version = [] { return std::string("1.0.0"); };
+    services.version = [] { return std::string("2.0.0"); };
 }
 
 }  // namespace cb::ui::mcp::wiring

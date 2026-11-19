@@ -66,7 +66,7 @@ CB_TEST("ui.mcp.standard_services_fill_every_service", [] {
     CB_CHECK(s.ledger && s.progress && s.names && s.identified && s.ordinal_name && s.stored_candidates && s.set_name && s.modules_with_body);
     CB_CHECK(s.usage && s.command_names && s.command_help);
     CB_CHECK(s.disasm && s.xrefs && s.decompile_function && s.compare && s.diff && s.version);
-    CB_CHECK_EQ(s.version(), "1.0.0");
+    CB_CHECK_EQ(s.version(), "2.0.0");
 });
 
 CB_TEST("ui.mcp.the_code_is_read_as_recorded", [] {

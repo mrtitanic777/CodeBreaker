@@ -16,7 +16,7 @@ correct sources is closest to what was originally written.
 |---|---|
 | ![The CodeBreaker window, light](docs/images/app-idle-light.png) | ![The CodeBreaker window, dark](docs/images/app-idle-dark.png) |
 
-> **Version 1.0.0** — the first official release. CodeBreaker is one native C++20 program (`codebreaker.exe`): with no
+> **Version 2.0.0** — the Windows app release. CodeBreaker is one native C++20 program (`codebreaker.exe`): with no
 > arguments it is a Windows 11 app, with arguments it is the command line. Every command runs natively, and there is no
 > Python anywhere in it.
 
@@ -183,7 +183,7 @@ the desktop with all 22 modules rebuilt — two runs of each, on VMs.
 ## Getting started
 
 **Download.** The [latest release](https://github.com/mrtitanic777/CodeBreaker/releases/latest) has
-`CodeBreaker-1.0.0-win64.zip`: the program (`bin\codebreaker.exe`), the engines it calls and the
+`CodeBreaker-2.0.0-win64.zip`: the program (`bin\codebreaker.exe`), the engines it calls and the
 tables it reads, with no tests. Unzip it, add its `bin` folder to `PATH`, and run `codebreaker settings`.
 
 **Or build from source:**
