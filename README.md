@@ -16,7 +16,7 @@ correct sources is closest to what was originally written.
 |---|---|
 | ![The CodeBreaker window, light](docs/images/app-idle-light.png) | ![The CodeBreaker window, dark](docs/images/app-idle-dark.png) |
 
-> **Version 2.0.0** — the Windows app release. CodeBreaker is one native C++20 program (`codebreaker.exe`): with no
+> **Version 2.1.0** — Settings for everyone, and the window grows: source preview, recent conversions, batches, drag the result out, a notification when it is done. CodeBreaker is one native C++20 program (`codebreaker.exe`): with no
 > arguments it is a Windows 11 app, with arguments it is the command line. Every command runs natively, and there is no
 > Python anywhere in it.
 
@@ -81,7 +81,7 @@ Which stages a file passes through depends on what it is: *Unpacking* only for c
 images, cabinets); *Decompiling* only where the source is C (Windows 32-bit and 16-bit programs, drivers,
 DOS programs); console programs come back as assembly source. The window is plain Win32 with Direct2D
 and DirectWrite (Mica backdrop, the system accent colour and light or dark theme, per-monitor DPI); the
-screenshots above are drawn by it: `codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings|recent|batch|preview|dragout]
+screenshots above are drawn by it: `codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings|recent|batch|preview|dragout|functions|check|compare|palette]
 [--theme light|dark] [--size WxH] [--scale N]`.
 
 **Several files, recent work, the source at a glance.** Drop several files (or choose several in the file dialog) and
@@ -100,6 +100,23 @@ says not to disturb).
 |---|---|---|---|
 | ![Recent conversions](docs/images/app-recent-light.png) | ![A queue of files](docs/images/app-batch-light.png) | ![The Source card's preview](docs/images/app-preview-dark.png) | ![The output box as a drag source](docs/images/app-dragout-light.png) |
 
+**Functions, Check, Compare and the command palette.** The finished Source card has three tabs. **Files** is the preview above.
+**Functions** lists every function of the result with its address and a chip: *Behaves like the original*, *Differs* or *Not
+checked*, under a segmented bar and "38 of 42 behave like the original" (the *Show* button cycles All, Differs, Not checked).
+A function is *Not checked* unless something actually ran it: a route that judges each function records the verdict, and for a
+Windows program the function store's latest verdicts are read; most routes do not judge, and the list says so rather than guess.
+**Check** is the ring with the share that behaves alike and the three counts, with **Show what differs** (the list filtered to
+Differs) and **Check again** (disabled, with the reason, until a route can judge again); with no verdicts it says "This
+conversion was not checked by running it." instead of a 0% ring. Clicking a function opens **Compare**: its original
+disassembly (from the output folder's `.asm`) beside its rebuilt source (from the `.c`), a function drop-down, **All
+functions** to go back and the verdict chip; clicking a line lights the line it corresponds to (today, where a `call` by name
+appears on both sides). **Ctrl+K** opens the command palette anywhere: type to filter the tools, the recent conversions and the
+pages (Settings: Advanced is Ctrl+,), the arrow keys move, Enter runs, Esc closes.
+
+| Functions | Check | Compare | Command palette |
+|---|---|---|---|
+| ![The Functions tab](docs/images/app-functions-light.png) | ![The Check tab](docs/images/app-check-dark.png) | ![Compare a function](docs/images/app-compare-light.png) | ![The command palette](docs/images/app-palette-dark.png) |
+
 **Translate source code, and have it checked.** Drop a C# or Python file instead of a program and open the
 **Language** drop-down above the Output box. It lists every language the translator knows; the ones it cannot
 write for that file are greyed out with the reason underneath ("Python output is not supported yet", "C# to
@@ -115,8 +132,8 @@ On the command line: `codebreaker convert Bank.cs --to cpp17`; `--languages` lis
 | ![The Language drop-down open](docs/images/app-language-light.png) | ![A translation running](docs/images/app-translating-dark.png) |
 
 **Every command, from the window.** A navigation rail on the left (Convert, Tools, Settings; Ctrl+1, 2, 3) takes you
-to the **Tools** page: 76 commands in groups (Rebuild source, Inspect, Translate, Windows 95, Xbox, Verify,
-Maintenance), each with a plain-word title (*Windows program*, *Windows 3.x program*, *What is this file?*, *C# to C++*),
+to the **Tools** page: every command in groups (Convert, Inspect, Extract, Build, Check, Compare, Collection,
+Look up, Xbox 360, Maintenance), each with a plain-word title (*Windows program*, *Windows 3.x program*, *What is this file?*, *C# to C++*),
 a search box that matches the title, the command's name and its description, and a form made from the command's
 arguments: Browse buttons for files and folders, switches, drop-downs, lists, required fields marked, and Run
 disabled until they are filled. Run starts the command as a child of the same program; its output streams into the
@@ -227,7 +244,7 @@ the desktop with all 22 modules rebuilt — two runs of each, on VMs.
 ## Getting started
 
 **Download.** The [latest release](https://github.com/mrtitanic777/CodeBreaker/releases/latest) has
-`CodeBreaker-2.0.0-win64.zip`: the program (`bin\codebreaker.exe`), the engines it calls and the
+`CodeBreaker-2.1.0-win64.zip`: the program (`bin\codebreaker.exe`), the engines it calls and the
 tables it reads, with no tests. Unzip it, add its `bin` folder to `PATH`, and run `codebreaker settings`.
 
 **Or build from source:**
@@ -274,10 +291,23 @@ codebreaker
 
 ## Commands
 
-78 commands, one program. `codebreaker help` lists them all; the ones most people start with:
+Nine verbs, one program. Each works out what to do from what you give it (a file's kind, a folder's contents, a word), and `codebreaker VERB --help` says what it picks and ends with the older names it replaces. `codebreaker help` lists them:
 
 | Command | What it does |
 |---|---|
+| `convert FILE` | any program to source code, picking the steps itself; `--to LANG` translates the source (proved by running both), `--asm` gives assembly source, `--check` builds and judges the result |
+| `inspect FILE` | what a file is and what is inside it; `--names`, `--functions`, `--analyze`, `--classes`, `--imports`, `--facts` ask one thing |
+| `extract FILE [OUT]` | the files out of a cabinet, floppy or CD image, Xbox 360 package or disc, game archive, menu or font; `--list` only lists |
+| `build FOLDER` | a program made again from its source folder (a driver's or DOS program's assembly, a 16-bit DLL's C); a module name builds the whole module |
+| `check FILE` | prove rebuilt source behaves like the original; `--bytes` asks for the original's bytes; a `.java`, `.cs` or `.py` file is run against its C++ translation |
+| `compare A B` | two builds of a program, function by function: identical, changed, added, removed |
+| `corpus [run\|progress\|scoreboard\|place\|coverage\|reach\|list]` | the whole collection: run it, watch it, score it |
+| `lookup NAME` | a decorated C++ name, a DOS or BIOS interrupt, a driver service, or a name from the knowledge base |
+| `xbox [xex\|edit\|crypto\|config\|match]` | the Xbox 360 specialist tools |
+
+`settings`, `cache` (which also tidies state and carries old results over), `regress`, `serve`, `mcp` and `app` (the window; what `codebreaker` with no command starts) stay as they were. Every command name of earlier versions still works, hidden from `help`: `decompile x.dll` is `convert x.dll --decompile`, `pe-source` is `convert FILE --asm`, `names` is `inspect FILE --names`, `sweep` is `corpus run`, and the same output.
+
+---|---|
 | `reach <file or folder>` | what CodeBreaker makes of anything: formats, lanes, what can be reconstructed |
 | `module <name>` | reconstruct one module: decompile, build, judge, write its source |
 | `decompile <name>` | decompile any module (32-bit, 16-bit, PowerPC) to C |

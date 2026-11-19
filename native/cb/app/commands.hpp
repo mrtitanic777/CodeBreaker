@@ -75,6 +75,13 @@ public:
     void set_fallback(RawRunner runner);
     bool has_runner(std::string_view name) const;
 
+    // Put a verb in front of a command of the same name (`convert`, `build`, `cache`): the command is kept, and `fn` runs in its place with the
+    // command's runner handed to it. A name that has no runner yet is left alone (false).
+    using Wrapper = std::function<int(const RawRunner& original, std::span<const std::string> args)>;
+    bool intercept(std::string_view name, Wrapper fn);
+    // Run one command by name with the words after it, the way the command line would (no `--corpus`, no help words taken here). Used by the verbs.
+    int invoke(std::string_view name, std::span<const std::string> args) const;
+
     // The command line: `--corpus` taken off, the window (`app`) for no command, help for a
     // help word, otherwise the command run. Returns its exit code (2 for no command or an unknown one). Errors a
     // command throws propagate.
@@ -82,7 +89,8 @@ public:
     // `run`, with errors mapped to exit codes: a cb::Error says its own, its message goes to stderr.
     int main(const std::vector<std::string>& args) const;
 
-    // The help text: usage lines, then every command in the catalog with its synopsis and summary.
+    // The help text: the verbs, each with one plain-word line, then the commands that stay as they are. (The older commands the verbs took over
+    // are hidden: they still run, and each verb's `--help` ends with its old names.)
     std::string usage() const;
 
 private:
@@ -92,6 +100,7 @@ private:
     };
     Environment env_;
     std::unordered_map<std::string, Entry> entries_; // lookup only; the catalog gives the order
+    int run_entry(const Entry& e, const std::string& name, std::span<const std::string> args) const;
     RawRunner fallback_;
 };
 

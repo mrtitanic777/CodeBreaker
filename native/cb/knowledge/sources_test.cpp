@@ -93,7 +93,7 @@ CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
     // The counts are what the repository's data files hold (checked against the files by hand, 2026-11-11).
     const std::map<KindId, std::size_t> expected = {
         {{"windows", "ordinal_names"}, 9},        {{"win32", "argument_bytes.header"}, 7279},
-        {{"win32", "signature"}, 5233},           {{"win16", "signature"}, 3988},
+        {{"win32", "signature"}, 5233},           {{"win16", "signature"}, 5694},
         {{"vxd", "device"}, 109},                 {{"vxd", "service_table"}, 38},
         {{"vxd", "driver"}, 25},                  {{"vxd", "message"}, 51},
         {{"vxd", "api_model"}, 6},                {{"dos", "interrupt"}, 27},

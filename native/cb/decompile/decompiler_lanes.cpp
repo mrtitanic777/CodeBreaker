@@ -1,6 +1,7 @@
 // cb/decompile/decompiler_lanes.cpp -- the decompiler's lanes: a 32-bit module (PE) and a PowerPC image through the description of the
 // module, a virtual device driver, a DOS program, a NES cartridge; any executable as the text of one .c file; and the command.
 #include <algorithm>
+#include <cctype>
 
 #include <nlohmann/json.hpp>
 
@@ -10,6 +11,8 @@
 #include "cb/core/json.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
+#include "cb/decompile/c_text.hpp"
+#include "cb/decompile/c_text_dos.hpp"
 #include "cb/decompile/decompiler.hpp"
 #include "cb/decompile/decompiler_internal.hpp"
 #include "cb/decompile/m6502.hpp"
@@ -19,6 +22,7 @@
 #include "cb/formats/nes.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/formats/pe_functions.hpp"
+#include "cb/symbols/c_library.hpp"
 #include "cb/symbols/dos_interrupts.hpp"
 #include "cb/translate/l2.hpp"
 
@@ -61,8 +65,8 @@ formats::Decoder lanes_decoder_6502() {
 // Decompile a description; then, while the output calls places not yet known as functions (`func_0x...`), add those inside the
 // module's code and decompile them too.
 template <class Described, class LineFor>
-Functions lanes_grow(Decompiler& decompiler, Described& d, const LineFor& line_for, int rounds) {
-    Run first = decompiler.run(d.path);
+Functions lanes_grow(Decompiler& decompiler, Described& d, const LineFor& line_for, int rounds, std::span<const Va> only = {}) {
+    Run first = decompiler.run(d.path, only);
     OrderedMap<std::string, std::string> out = first.texts;
     std::map<Va, std::string> by_va = first.by_va;
     for (int round = 0; round < rounds; ++round) {
@@ -105,6 +109,232 @@ Functions lanes_grow(Decompiler& decompiler, Described& d, const LineFor& line_f
 }
 
 }  // namespace
+
+// A character of a source file's name in a version string (`lex.c`, `p0scanner.c`, `grammar.y`).
+bool lanes_file_char(std::uint8_t c) { return std::isalnum(c) != 0 || c == '_' || c == '.' || c == '-'; }
+
+// What a real-mode program has of the compiler's library: the functions that are not the program's, and what goes at the top of its C.
+struct DosLibrary {
+    std::set<Va> skipped;                 // the library's functions: described, so callers call them by name, but not decompiled
+    std::vector<LibraryFunction> found;
+    std::string header;
+};
+
+// Match the program's functions against the library signatures. A function that matches is named as the library names it, given the
+// prototype its header declares (how many words each call passes, what it returns), and left out of what is decompiled: nobody wrote
+// `strcpy` for this program. The description is rewritten to say so.
+DosLibrary lanes_dos_library(Decompiler& decompiler, describe::DosDescription& d, const std::filesystem::path& checkout) {
+    DosLibrary out;
+    std::vector<Va> starts;
+    for (const auto& [va, fn] : d.analysis->functions) starts.push_back(va);
+    const std::map<Va, LibraryFunction> identified = decompiler.context().environment->dos_library(d.program, starts);
+    if (identified.empty()) return out;
+    symbols::c_library::CLibrary prototypes;
+    try {
+        prototypes = symbols::c_library::CLibrary::load(checkout / "data" / "symbols" / "c_library.json");
+    } catch (const Error&) {   // (no table: the functions are named, their arguments left to the analysis)
+    }
+    std::set<std::string> used;
+    std::map<std::string, std::vector<std::string>> by_library;   // library -> the names with no header of their own
+    std::set<std::string> headers;
+    for (const auto& [va, what] : identified) {
+        std::string name = text::sanitize_identifier(what.name);
+        if (name.empty() || !used.insert(name).second) name = (name.empty() ? "library" : name) + "_" + upper_hex(static_cast<std::int64_t>(va - d.base), 5), used.insert(name);
+        const analyze::dos_functions::Function& fn = d.analysis->functions.at(static_cast<std::uint32_t>(va));
+        const symbols::c_library::Prototype* p = prototypes.find(what.name);
+        // a large or compact model's data pointers are far
+        const std::uint32_t pointer_bytes = what.library.find("large") != std::string::npos || what.library.find("compact") != std::string::npos ? 4 : 2;
+        std::string line = "F\t" + hex(va) + "\t" + name + "\t0\t__cdecl16" + std::string(analyze::dos_functions::name_of(fn.distance));
+        if (p != nullptr) {
+            headers.insert(p->header);
+            const std::uint32_t result = p->result_bytes(pointer_bytes);
+            line += "\t" + (result == 2 || result == 4 ? std::to_string(result) : std::string());
+            const std::vector<std::string> sizes = p->argument_sizes(pointer_bytes);
+            if (!sizes.empty()) line += "\t" + text::join(sizes, ",");
+        } else {
+            by_library[what.library].push_back(name);
+        }
+        for (std::string& existing : d.lines) {
+            if (!existing.starts_with("F\t" + hex(va) + "\t")) continue;
+            existing = line;
+            break;
+        }
+        d.names[va] = name;
+        out.skipped.insert(va);
+        out.found.push_back({name, what.library});
+    }
+    d.write();
+    for (const std::string& h : headers) out.header += "#include <" + h + ">\n";
+    // the compiler the program was linked with: the one most of its library functions are from. A function only another
+    // compiler's library has a row for is that code -- said so, not claimed as that compiler's
+    std::map<std::string, std::size_t> by_compiler;
+    for (const LibraryFunction& f : out.found) ++by_compiler[f.library.substr(0, f.library.find(':'))];
+    std::string linked;
+    std::size_t most = 0;
+    for (const auto& [compiler, n] : by_compiler)
+        if (n > most) linked = compiler, most = n;
+    for (const auto& [library, names] : by_library) {
+        const bool own = library.substr(0, library.find(':')) == linked;
+        out.header += (own ? "\n/* from " : "\n/* the same code as in ") + library + ", called by name: " + text::join(names, ", ") + " */";
+    }
+    return out;
+}
+
+// The two functions Microsoft C's start-up code calls around the library's own: its CRT0.ASM is
+//     call _cinit / call _setargv / call _setenvp / ... / call main / ... / call exit
+// so in a program whose start-up calls _setargv and _setenvp, the function it calls just before them is _cinit (the library's,
+// not decompiled) and the first it calls after them is main.
+void lanes_dos_startup(describe::DosDescription& d, DosLibrary& library) {
+    const analyze::dos_functions::Analysis& a = *d.analysis;
+    const auto entry = std::find_if(a.functions.begin(), a.functions.end(),
+                                    [](const auto& f) { return f.second.evidence == analyze::dos_functions::Evidence::Entry; });
+    if (entry == a.functions.end()) return;
+    const auto next = std::next(entry);
+    const Va start = entry->first, end = next == a.functions.end() ? d.base + static_cast<Va>(d.image.size()) : static_cast<Va>(next->first);
+    const ByteView image(d.image);
+    std::vector<Va> calls;   // the start-up code's call targets, in order
+    for (Va va = start; va + 3 <= end; ++va) {
+        const std::size_t off = static_cast<std::size_t>(va - d.base);
+        if (off + 5 > image.size() || off >= a.bytes.size() || a.bytes[off] != analyze::dos_functions::ByteClass::Code) continue;
+        if (image[off] == 0xE8) {
+            const auto rel = static_cast<std::int16_t>(image[off + 1] | (image[off + 2] << 8));
+            const Va cs = static_cast<Va>(entry->second.cs);
+            calls.push_back(cs + ((va - cs + 3 + rel) & 0xFFFF));
+        } else if (image[off] == 0x9A) {
+            calls.push_back(static_cast<Va>(image[off + 3] | (image[off + 4] << 8)) * 16 + (image[off + 1] | (image[off + 2] << 8)));
+        }
+    }
+    auto name_of = [&](Va va) -> std::string {
+        const auto n = d.names.find(va);
+        return n == d.names.end() ? std::string() : n->second;
+    };
+    const auto argv = std::find_if(calls.begin(), calls.end(), [&](Va va) { return name_of(va) == "_setargv"; });
+    if (argv == calls.end() || std::next(argv) == calls.end() || name_of(*std::next(argv)) != "_setenvp") return;
+    auto rename = [&](Va va, const std::string& name) {
+        if (!a.functions.contains(static_cast<std::uint32_t>(va)) || !name_of(va).starts_with("sub_")) return false;
+        for (std::string& line : d.lines)
+            if (line.starts_with("F\t" + hex(va) + "\t")) {
+                std::vector<std::string> f;
+                for (const std::string_view p : text::split(line, '\t')) f.emplace_back(p);
+                f[2] = name;
+                line = text::join(f, "\t");
+            }
+        d.names[va] = name;
+        return true;
+    };
+    if (argv != calls.begin() && rename(*std::prev(argv), "_cinit")) {
+        library.skipped.insert(*std::prev(argv));
+        library.found.push_back({"_cinit", "Microsoft C start-up code (CRT0DAT.ASM)"});
+    }
+    // main (int argc, char **argv, char **envp): an int and two data pointers -- far ones in the compact and large models
+    bool far_data = false;
+    for (const LibraryFunction& f : library.found) far_data = far_data || f.library.find("large-model") != std::string::npos || f.library.find("compact-model") != std::string::npos;
+    for (auto it = std::next(argv, 2); it != calls.end(); ++it)
+        if (name_of(*it).starts_with("sub_")) {
+            if (rename(*it, "main"))
+                for (std::string& line : d.lines)
+                    if (line.starts_with("F\t" + hex(*it) + "\t")) {
+                        const std::vector<std::string_view> f = text::split(line, '\t');
+                        if (f.size() >= 5)
+                            line = std::format("F\t{}\tmain\t0\t{}\t2\t{}", f[1], f[4], far_data ? "2,4p,4p" : "2,2,2");
+                    }
+            break;
+        }
+    d.write();
+}
+
+// The words of arguments each of a real-mode program's own functions is called with, as its callers remove them: Microsoft C's
+// cdecl caller pushes the arguments and takes them off again right after the call (`add sp, N`, or `pop cx` for one word, two
+// for two), so the instruction after a call says how many words that call passed. A function's description then states that
+// many (the most any caller passes), and every call of it is written with them -- the decompiler reading a call's pushes on its
+// own misses those pushed before a branch, and writes one far pointer as one argument here and as two words there.
+void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& library) {
+    const analyze::dos_functions::Analysis& a = *d.analysis;
+    const ByteView image(d.image);
+    std::map<Va, std::size_t> words;
+    auto cs_of = [&](Va linear) -> std::optional<Va> {
+        auto it = a.functions.upper_bound(static_cast<std::uint32_t>(linear));
+        if (it == a.functions.begin()) return std::nullopt;
+        return static_cast<Va>((--it)->second.cs);
+    };
+    for (std::size_t off = 0; off + 3 <= image.size() && off < a.bytes.size(); ++off) {
+        if (a.bytes[off] != analyze::dos_functions::ByteClass::Code) continue;
+        const Va here = d.base + static_cast<Va>(off);
+        std::optional<Va> target;
+        std::size_t length = 0;
+        if (image[off] == 0xE8) {   // call near rel16, in the segment it runs in
+            const std::optional<Va> cs = cs_of(here);
+            if (!cs) continue;
+            const auto rel = static_cast<std::int16_t>(image[off + 1] | (image[off + 2] << 8));
+            target = *cs + ((here - *cs + 3 + rel) & 0xFFFF);
+            length = 3;
+        } else if (image[off] == 0x9A && off + 5 <= image.size()) {   // call far ptr16:16 (the reader has relocated its segment: linear)
+            const std::uint32_t o = image[off + 1] | (image[off + 2] << 8);
+            const std::uint32_t s = image[off + 3] | (image[off + 4] << 8);
+            target = static_cast<Va>(s) * 16 + o;
+            length = 5;
+        }
+        if (!target || !a.functions.contains(static_cast<std::uint32_t>(*target)) || library.contains(*target)) continue;
+        const std::size_t next = off + length;
+        std::size_t passed = 0;
+        if (next + 3 <= image.size() && image[next] == 0x83 && image[next + 1] == 0xC4 && image[next + 2] < 0x80) passed = image[next + 2] / 2;
+        else if (next + 4 <= image.size() && image[next] == 0x81 && image[next + 1] == 0xC4) passed = (image[next + 2] | (image[next + 3] << 8)) / 2;
+        else if (next < image.size() && image[next] == 0x59) passed = next + 1 < image.size() && image[next + 1] == 0x59 ? 2 : 1;   // pop cx
+        std::size_t& most = words[*target];
+        most = std::max(most, passed);
+    }
+    for (std::string& line : d.lines) {
+        if (!line.starts_with("F\t")) continue;
+        const std::vector<std::string_view> f = text::split(line, '\t');
+        if (f.size() != 5 || (f[3] != "0" && f[3] != "-1")) continue;   // (a function whose return removes its arguments says so already)
+        const std::optional<std::int64_t> va = text::parse_int<std::int64_t>(f[1], 16);
+        const auto w = va ? words.find(*va) : words.end();
+        if (w == words.end() || w->second == 0) continue;   // (no words: nothing to say -- an empty list is "not known")
+        // its callers remove the arguments, so its return removes none (the decompiler states the sizes of such a function only)
+        line = std::format("F\t{}\t{}\t0\t{}\t\t{}", f[1], f[2], f[4], text::join(std::vector<std::string>(w->second, "2"), ","));
+    }
+    d.write();
+}
+
+// What a real-mode program says of its source files (c_text_dos::Layout): the version string each file left in the data
+// segment (`@(#)lex.c:1.9`), at its offset in that segment, and the code segment each function is in.
+c_text_dos::Layout lanes_dos_layout(const describe::DosDescription& d) {
+    c_text_dos::Layout layout;
+    const ByteView image(d.image);
+    // the data segment: what the program's own code loads DS with (`mov ax, DGROUP` / `mov ds, ax`, as Microsoft C's start-up
+    // code and every far function that needs its data begin), the segment most often loaded so
+    std::map<std::uint32_t, std::size_t> loaded;
+    for (std::size_t at = 0; at + 5 <= image.size(); ++at)
+        if (image[at] == 0xB8 && image[at + 3] == 0x8E && image[at + 4] == 0xD8) ++loaded[image[at + 1] | (image[at + 2] << 8)];
+    std::optional<Va> ds;
+    std::size_t most = 0;
+    for (const auto& [segment, n] : loaded) {
+        const Va linear = static_cast<Va>(segment) * 16;
+        if (n > most && linear >= d.base && linear < d.base + static_cast<Va>(image.size())) ds = linear, most = n;
+    }
+    if (!ds && d.program.ds) ds = static_cast<Va>(*d.program.ds) * 16;
+    if (!ds) return layout;
+    if (*ds >= d.base && *ds < d.base + static_cast<Va>(image.size())) {
+        const std::size_t from = static_cast<std::size_t>(*ds - d.base);
+        layout.data_segment = std::format("0x{:x}", *ds / 16);
+        layout.data.assign(reinterpret_cast<const char*>(image.data() + from), std::min<std::size_t>(0x10000, image.size() - from));
+    }
+    for (std::size_t at = 0; at + 6 < image.size(); ++at) {
+        if (image[at] != '@' || image[at + 1] != '(' || image[at + 2] != '#' || image[at + 3] != ')') continue;
+        std::size_t e = at + 4;
+        while (e < image.size() && (lanes_file_char(image[e]))) ++e;
+        const std::string file(reinterpret_cast<const char*>(image.data() + at + 4), e - at - 4);
+        const Va linear = d.base + static_cast<Va>(at);
+        if (e < image.size() && image[e] == ':' && file.find('.') != std::string::npos && linear >= *ds && linear - *ds < 0x10000)
+            layout.files.emplace_back(static_cast<std::uint32_t>(linear - *ds), file);
+        at = e;
+    }
+    for (const auto& [va, fn] : d.analysis->functions) {
+        const auto name = d.names.find(va);
+        if (name != d.names.end()) layout.segment_of[name->second] = fn.cs;
+    }
+    return layout;
+}
 
 // ---- a PE module, 32-bit or PowerPC --------------------------------------------------------------------------------------------
 
@@ -197,7 +427,14 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
         const std::string n = "sub_" + upper_hex(va - d->base, 5);
         return {n, "F\t" + hex(va) + "\t" + n + "\t-1\t__cdecl16" + std::string(r.kind ? describe::distance_name(*r.kind) : "near")};
     };
-    Functions grown = lanes_grow(*this, *d, line, 8);
+    // the compiler's own library is named, not decompiled
+    DosLibrary library = lanes_dos_library(*this, *d, context_.settings.checkout);
+    lanes_dos_startup(*d, library);
+    lanes_dos_arguments(*d, library.skipped);
+    std::vector<Va> own;
+    for (const auto& [va, fn] : d->analysis->functions)
+        if (!library.skipped.contains(va)) own.push_back(va);
+    Functions grown = lanes_grow(*this, *d, line, 8, library.skipped.empty() ? std::span<const Va>() : std::span<const Va>(own));
     const symbols::dos_interrupts::ServiceTable table =
         symbols::dos_interrupts::ServiceTable::load(context_.settings.checkout / "data" / "symbols" / "dos_interrupts.json");
     DosProgramC result;
@@ -211,6 +448,8 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
         result.functions.texts.insert_or_assign(name, table.annotate(text, calls));
     }
     result.description = d;
+    result.library = library.found;
+    result.header = library.header;
     return result;
 }
 
@@ -223,6 +462,9 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
     std::vector<std::string> order;
     std::string header;
     std::size_t total = 0;
+    std::size_t library = 0;
+    bool dos = false;   // a real-mode program: its C made compilable as a whole (c_text_dos)
+    c_text_dos::Layout dos_layout;   // and its source files, where it names them
     const std::string stem = text::lower(fs::to_text(module.filename()));
     std::optional<formats::detect::Lane> kind;
     const bool nes = formats::nes::probe(module);
@@ -271,11 +513,15 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
     } else if (kind == Lane::Dos) {
         const Bytes data = fs::read_file(module);
         const auto parts = formats::dos::chain(data);
+        dos = true;
         if (parts.empty()) {
             DosProgramC r = decompile_dos(module, std::nullopt);
+            dos_layout = lanes_dos_layout(*r.description);
             texts = std::move(r.functions.texts);
             order = std::move(r.functions.order);
             total = r.description->names.size();
+            header = std::move(r.header);
+            library = r.library.size();
         } else {   // programs one after another: each its own
             std::size_t k = 1;
             for (const auto& [at, size] : parts) {
@@ -309,7 +555,8 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         text += text::trim(*body);
     }
     text += "\n";
-    return {std::move(text), order.size(), total};
+    if (dos) text = c_text_dos::compilable(text, c_text::header16(), dos_layout).text;
+    return {std::move(text), order.size(), total, library};
 }
 
 // ---- the command ---------------------------------------------------------------------------------------------------------------

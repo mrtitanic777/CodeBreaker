@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "cb/base/runs.hpp"
+#include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/process.hpp"
@@ -296,6 +297,28 @@ void make_cd(const Config& config, const stdfs::path& out, const Replace& replac
         replace_on_cd(cd, rest, out);
 }
 
+std::map<std::string, std::string> cabinet_originals(const stdfs::path& setup_iso, const std::set<std::string>& names, const stdfs::path& base) {
+    std::map<std::string, std::string> found;
+    iso::Volume cd(setup_iso);
+    fs::ScopedTempDir work("cabs", base);
+    std::map<std::string, cab::Cabinet> cabs;
+    for (const iso::Entry& e : cd.list(kCdFolder)) {
+        const std::string name = upper(e.name);
+        if (e.directory || !name.ends_with(".CAB")) continue;
+        fs::write_file(work.path() / name, cd.read(std::format("{}/{}", kCdFolder, e.name)));   // (the neighbours of a continued file are read from beside it)
+        cabs.emplace(name, cab::read(work.path() / name));
+    }
+    for (const auto& [name, c] : cabs) {
+        std::vector<std::string> wanted;
+        for (const cab::FileEntry& e : c.files)
+            if (e.folder != cab::kFromPrev && e.folder != cab::kPrevAndNext && names.contains(upper(e.name)) && !found.contains(upper(e.name))) wanted.push_back(e.name);
+        if (wanted.empty()) continue;
+        for (const cab::Extracted& x : cab::extract(work.path() / name, work.path() / (name + ".d"), wanted))
+            found[upper(x.name)] = crypto::to_hex(crypto::sha256(fs::read_file(x.path)));
+    }
+    return found;
+}
+
 // ---- the test --------------------------------------------------------------------------------------------------------
 
 struct Machine::Impl {
@@ -346,16 +369,19 @@ Machine::Machine(const Config& config, const Replace& replace, std::string_view 
     impl_->machine.emplace(process::start(spec));
 }
 
-Machine::~Machine() {
+void Machine::stop() {
     if (impl_ && impl_->machine) {
         impl_->machine->kill();
         (void)impl_->machine->wait(std::chrono::seconds(20));
     }
 }
 
+Machine::~Machine() { stop(); }
+
 const Monitor& Machine::monitor() const { return impl_->monitor; }
 bool Machine::running() const { return impl_->machine && impl_->machine->running(); }
 const stdfs::path& Machine::folder() const { return impl_->work.path(); }
+stdfs::path Machine::disk() const { return impl_->work.path() / "hd.img"; }
 const stdfs::path& Machine::screenshot() const { return impl_->png; }
 
 Outcome continue_test(const Config& config, const Replace& replace, std::string_view tag, const Options& options) {

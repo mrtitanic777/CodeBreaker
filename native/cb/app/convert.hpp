@@ -104,6 +104,20 @@ private:
     std::string message_;
 };
 
+// Whether a function of the result behaves like the original: Matches only when a judge ran both and they agreed, Differs when they did not, NotChecked
+// when nothing ran it (most routes today never judge a function; the window then says "Not checked" rather than guess).
+enum class FunctionVerdict { NotChecked, Matches, Differs };
+
+// One function of the result: what the Source card's Functions, Check and Compare views list.
+struct FunctionRecord {
+    std::string name;                          // "LZRead", "sub_00024"
+    std::string address;                       // "0x11F0" as the original's address; empty when unknown
+    FunctionVerdict verdict = FunctionVerdict::NotChecked;
+    std::string source_file;                   // the file of the output folder that holds its source ("lz32.c"); empty when unknown
+    int source_line = 0;                       // 1-based line of its definition there; 0 when unknown
+    friend bool operator==(const FunctionRecord&, const FunctionRecord&) = default;
+};
+
 // What a route tells the machine while it works.
 class Reporter {
 public:
@@ -119,6 +133,8 @@ public:
     // A line of what is being produced right now, for the window's character stream (Progress::lines). The machine already streams the
     // source files a route writes into its staging folder; a route calls this only for output that never becomes a file.
     virtual void preview(std::string_view) {}
+    // The functions of the result and what the route knows of each (it reaches Outcome::functions); `can_recheck`: the route can judge them again.
+    virtual void functions(std::vector<FunctionRecord>, bool /*can_recheck*/ = false) {}
 };
 
 // How one kind of file is converted: the stages it passes through (between Identifying and Writing) and the work itself. `run` reads `input`
@@ -157,6 +173,8 @@ struct Outcome {
     std::uint64_t files = 0;                   // Done: files written
     std::string route;                         // the route's name; empty when none was chosen
     std::string checked;                       // Done after a translation: how it was proved ("... printed the same output and exited with the same code")
+    std::vector<FunctionRecord> functions;     // Done: the functions of the result a route could name, with what it knows of each (empty: the route does not say)
+    bool can_recheck = false;                  // the route can judge the result again ("Check again" in the window)
 };
 
 // Run the conversion. `cancel` is read between steps; set it from another thread to stop. Never throws: every failure is an Outcome.

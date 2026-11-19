@@ -12,6 +12,8 @@
 #include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
 #include "cb/decompile/describe.hpp"
+#include "cb/analyze/dos_functions.hpp"
+#include "cb/formats/dos.hpp"
 #include "cb/formats/pe.hpp"
 #include "cb/formats/ne.hpp"
 #include "cb/formats/pe_functions.hpp"
@@ -74,6 +76,19 @@ struct Identifier::Impl {
         return out;
     }
 
+    // A real-mode program: the functions its analysis finds, matched in the image as the machine would see it. An address is a linear one.
+    Found dos(const std::filesystem::path& module) {
+        const formats::dos::Program program = formats::dos::read_program(fs::read_file(module), fs::to_text(module.filename()));
+        rl::DosImage image{program.image, {}};
+        if (!program.ds) return {};
+        for (const auto& [va, fn] : analyze::dos_functions::discover(program).functions)
+            if (va >= program.base && va - program.base < program.image.size()) image.function_starts.push_back(static_cast<std::uint32_t>(va - program.base));
+        std::sort(image.function_starts.begin(), image.function_starts.end());
+        Found out;
+        for (auto& [offset, what] : rl::identify_dos(table(rl::Bits::X16), image)) out.emplace(static_cast<Address>(program.base) + offset, std::move(what));
+        return out;
+    }
+
     Found ne(const std::filesystem::path& module) {
         const formats::ne::Module image = formats::ne::Module::open_file(module);
         rl::Ne16Module m;
@@ -103,12 +118,17 @@ Found Identifier::identify(const std::filesystem::path& module) {
     const std::optional<base::Lane> lane = impl_->s.corpus.lane(module);
     if (lane == base::Lane::Pe) return impl_->pe(module);
     if (lane == base::Lane::Ne) return impl_->ne(module);
+    if (lane == base::Lane::Dos) return impl_->dos(module);
     return {};
 }
 
 std::size_t Identifier::function_count(const std::filesystem::path& module) {
     const std::optional<base::Lane> lane = impl_->s.corpus.lane(module);
     if (lane == base::Lane::Ne) return describe::find_functions(formats::ne::Module::open_file(module)).size();
+    if (lane == base::Lane::Dos) {
+        const formats::dos::Program program = formats::dos::read_program(fs::read_file(module), fs::to_text(module.filename()));
+        return program.ds ? analyze::dos_functions::discover(program).functions.size() : 0;
+    }
     if (lane == base::Lane::Pe) {
         if (Impl::is_powerpc(module)) return formats::powerpc_image::Image::read(module).functions().size();
         return impl_->carves.get(module)->functions().size();
@@ -148,7 +168,7 @@ rl::CompilerInfo Identifier::compiler(const std::filesystem::path& module, const
 
 namespace {
 
-constexpr std::string_view kUsage = "identify MODULE | identify --learn \"WHAT=FILE\" ...";
+constexpr std::string_view kUsage = "identify MODULE | identify --learn [--add] \"WHAT=FILE\" ...";
 
 // "what=file" as `--learn` takes it; an argument without `=` is passed over.
 std::vector<rl::LearnSource> learn_sources(const std::vector<std::string>& arguments) {
@@ -161,12 +181,18 @@ std::vector<rl::LearnSource> learn_sources(const std::vector<std::string>& argum
     return out;
 }
 
-int learn_command(const Environment& environment, const std::vector<std::string>& arguments) {
+int learn_command(const Environment& environment, const std::vector<std::string>& arguments, bool add) {
     platforms::DecoderSet decoders;
     const std::vector<rl::LearnSource> sources = learn_sources(arguments);
-    const rl::Learned learned = rl::learn(sources, decoders, [](const std::string& line) { cb::out("{}\n", line); });
+    rl::Learned learned = rl::learn(sources, decoders, [](const std::string& line) { cb::out("{}\n", line); });
     std::filesystem::path file = environment.signature_file;
     if (file.empty()) file = environment.config->checkout_root() / "data" / "symbols" / "runtime_signatures.json";
+    if (add && std::filesystem::exists(file)) {   // (what is already learned stays; the new libraries come after it)
+        const Bytes kept = fs::read_file(file);
+        rl::Learned all = rl::read_signature_file(as_text(kept));
+        rl::merge(all, learned);
+        learned = std::move(all);
+    }
     const std::string text = rl::format_signature_file(learned);
     fs::write_file(file, ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
     cb::out("{} 32-bit and {} 16-bit signatures\n", learned.count(rl::Bits::X32), learned.count(rl::Bits::X16));
@@ -181,10 +207,11 @@ cli::Command command(const Environment& environment) {
         "which of a module's functions came with the compiler (the C runtime, MFC), and which compiler built it",
         {cli::Option{"--learn", "", "make the signatures from library files: the arguments are WHAT=FILE (\"Visual C++ 2.0 C runtime=C:\\\\msvc20\\\\lib\\\\libc.lib\")",
                      cli::Arg::Flag},
+         cli::Option{"--add", "", "with --learn: keep the signatures already learned and add these after them", cli::Arg::Flag},
          cli::Positional{"arguments", "MODULE (a corpus name or a path), or WHAT=FILE... with --learn", false, true}},
         [environment](const cli::Args& args) -> int {
             const std::vector<std::string> arguments = args.values("arguments");
-            if (args.flag("--learn")) return learn_command(environment, arguments);
+            if (args.flag("--learn")) return learn_command(environment, arguments, args.flag("--add"));
             if (arguments.empty()) throw UsageError(std::string(kUsage));
             const std::optional<std::filesystem::path> found_path = environment.corpus->retail(arguments[0]);
             if (!found_path) throw NotFoundError(std::filesystem::path(arguments[0]), 0, "no module '" + arguments[0] + "' in the corpus");

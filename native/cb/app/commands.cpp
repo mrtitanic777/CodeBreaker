@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <format>
 
+#include "cb/app/verbs.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/log.hpp"
 #include "cb/core/text.hpp"
@@ -98,23 +99,71 @@ bool CommandTable::has_runner(std::string_view name) const {
     return it != entries_.end() || (fallback_ && find_command_doc(name) != nullptr);
 }
 
+bool CommandTable::intercept(std::string_view name, Wrapper fn) {
+    auto it = entries_.find(std::string(name));
+    if (it == entries_.end()) return false;
+    RawRunner original;
+    if (it->second.declared) {
+        original = [command = *it->second.declared, n = std::string(name)](std::span<const std::string> args) -> int {
+            std::vector<std::string> line{n};
+            line.insert(line.end(), args.begin(), args.end());
+            return cli::Cli("codebreaker", {command}).run(line);
+        };
+    } else {
+        original = it->second.raw;
+    }
+    it->second = Entry{std::nullopt, [original = std::move(original), fn = std::move(fn)](std::span<const std::string> args) -> int { return fn(original, args); }};
+    return true;
+}
+
+int CommandTable::run_entry(const Entry& e, const std::string& name, std::span<const std::string> args) const {
+    if (e.declared) {
+        std::vector<std::string> line{name};
+        line.insert(line.end(), args.begin(), args.end());
+        return cli::Cli("codebreaker", {*e.declared}).run(line);
+    }
+    return e.raw(args);
+}
+
+int CommandTable::invoke(std::string_view name, std::span<const std::string> args) const {
+    const std::string n(name);
+    auto it = entries_.find(n);
+    if (it != entries_.end()) return run_entry(it->second, n, args);
+    if (fallback_) {
+        std::vector<std::string> line{n};
+        line.insert(line.end(), args.begin(), args.end());
+        return fallback_(line);
+    }
+    throw UsageError(std::format("the command '{}' is not available in this build", n));
+}
+
 std::string CommandTable::usage() const {
     std::string out = "usage: codebreaker <command> [arguments]\n";
-    out += "       codebreaker               with no command: the CodeBreaker window (app)\n\n";
-    for (const CommandDoc& d : kCatalog) {
-        std::string line = "    ";
-        line += d.synopsis;
-        std::vector<std::string> summary = wrap(d.summary, kLineWidth - kSummaryColumn);
-        std::size_t first = 0;
-        if (line.size() + 2 <= kSummaryColumn && !summary.empty()) { // the summary starts on the synopsis's line
-            line.append(kSummaryColumn - line.size(), ' ');
-            line += summary[0];
-            first = 1;
+    out += "       codebreaker               with no command: the CodeBreaker window\n";
+    out += "       codebreaker <command> --help    what a command does and its options\n\n";
+    const auto rows = [&](std::span<const std::string_view> names, std::string& into) {
+        for (const std::string_view name : names) {
+            const CommandDoc* d = find_command_doc(name);
+            if (d == nullptr) continue;
+            std::string_view form = d->synopsis;
+            if (const auto bracket = form.find(" ["); bracket != std::string_view::npos) form = form.substr(0, bracket);
+            std::string line = "    ";
+            line += form;
+            std::vector<std::string> summary = wrap(d->summary, kLineWidth - kSummaryColumn);
+            std::size_t first = 0;
+            if (line.size() + 2 <= kSummaryColumn && !summary.empty()) {
+                line.append(kSummaryColumn - line.size(), ' ');
+                line += summary[0];
+                first = 1;
+            }
+            into += line + "\n";
+            for (std::size_t i = first; i < summary.size(); ++i)
+                into += std::string(kSummaryColumn, ' ') + summary[i] + "\n";
         }
-        out += line + "\n";
-        for (std::size_t i = first; i < summary.size(); ++i)
-            out += std::string(kSummaryColumn, ' ') + summary[i] + "\n";
-    }
+    };
+    rows(verbs::verb_names(), out);
+    out += "\nAlso:\n";
+    rows(verbs::kept_names(), out);
     out += "\n`--corpus NAME` before or after any command selects another product's files (settings.json: corpora).\n";
     return out;
 }
@@ -133,7 +182,17 @@ int CommandTable::run(const std::vector<std::string>& line) const {
         args = {"app"};
 
     if (!args.empty() && is_help_word(args[0])) {
+        // `help` lists the verbs; `help convert` says what one does
+        if (args.size() >= 2 && verbs::is_verb(args[1])) {
+            out_text(verbs::help(args[1]));
+            return kExitOk;
+        }
         out_text(usage());
+        return kExitOk;
+    }
+    // `convert --help`: a verb says what it does and what it picks
+    if (args.size() >= 2 && verbs::is_verb(args[0]) && is_help_word(args[1])) {
+        out_text(verbs::help(args[0]));
         return kExitOk;
     }
     if (args.empty() || find_command_doc(args[0]) == nullptr) {

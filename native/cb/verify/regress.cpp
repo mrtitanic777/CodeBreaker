@@ -437,10 +437,14 @@ Services production_services(const config::Config& config) {
     const stdfs::path design = corpus ? corpus->parent_path().parent_path() : stdfs::path();
     const stdfs::path fix95cpu = design / "vm" / "FIX95CPU.IMA";
     const bool recognise = config.truthy("install_recognise_screens");
+    // FIX95CPU's patched files cached under <state>/cache/fix95cpu and installed by Setup itself (no floppy stage) unless the setting
+    // install_preapply_fix95cpu is false. The first install after a change of FIX95CPU.IMA or the CD goes through the floppy and fills it.
+    const bool preapply = config.text("install_preapply_fix95cpu").empty() || config.truthy("install_preapply_fix95cpu");
+    const stdfs::path fix_cache = preapply ? state / "cache" / "fix95cpu" : stdfs::path();
     s.passed_dir = state / "work" / "regress" / "passed";
     // The key of a tier's inputs: the bytes of every built image, of this program and of the fix disk; size and write time of the big fixed files
     // (the disk, the Setup CD, the floppies, MINI.CAB, the originals, the emulator); and the settings that change the machine or how it is driven.
-    s.inputs_key = [state, qemu, iso, fix95cpu, accel, unsafe_disk, recognise](Tier tier, const setup16::Replace& replace) {
+    s.inputs_key = [state, qemu, iso, fix95cpu, accel, unsafe_disk, recognise, preapply](Tier tier, const setup16::Replace& replace) {
         std::string text = std::format("v1 {} accel={} unsafe_disk={} recognise={}\n", word(tier), accel, unsafe_disk, tier == Tier::Install && recognise);
         std::error_code ec;
         const auto content = [&](const stdfs::path& p) {
@@ -463,7 +467,7 @@ Services production_services(const config::Config& config) {
         if (accel.starts_with("whpx")) text += std::format("qemu64 {}\n", stat(x86_64));
         text += std::format("iso {}\ndisk {}\ncab {}\nfloppy {}\n", stat(iso.value_or(stdfs::path())), stat(state / "mini" / "prepared_hd.img"),
                             stat(state / "mini" / "MINI.CAB"), stat(state / "bootfloppy" / "boot95_is.img"));
-        if (tier == Tier::Install) text += std::format("fix95cpu {}\n", content(fix95cpu));
+        if (tier == Tier::Install) text += std::format("fix95cpu {} preapply={}\n", content(fix95cpu), preapply);
         for (const stdfs::path& dir : {state / "mini" / "original", state / "setup" / "original"}) {
             std::vector<stdfs::path> files;
             for (stdfs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
@@ -473,9 +477,10 @@ Services production_services(const config::Config& config) {
         }
         return crypto::to_hex(crypto::sha256(ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size())));
     };
-    s.install = [machine_config, fix95cpu, recognise](const setup16::Replace& replace, const std::string& tag) {
+    s.install = [machine_config, fix95cpu, recognise, fix_cache](const setup16::Replace& replace, const std::string& tag) {
         install16::Options options;
         options.timing.recognise = recognise;
+        options.fix_cache = fix_cache;
         return install16::install(machine_config(), replace, tag, fix95cpu, options);
     };
 

@@ -213,6 +213,12 @@ public:
     }
     void note(std::string_view text) override { note_ = std::string(text); }
     const std::string& noted() const { return note_; }
+    void functions(std::vector<FunctionRecord> records, bool can_recheck) override {
+        functions_ = std::move(records);
+        can_recheck_ = can_recheck;
+    }
+    const std::vector<FunctionRecord>& recorded() const { return functions_; }
+    bool can_recheck() const { return can_recheck_; }
 
     // Report a state with no work of its own (the end of the run, or Identifying before a route is known).
     void final_state(State state, int percent, std::string detail = {}) {
@@ -303,6 +309,8 @@ private:
     int last_percent_ = 0;
     std::vector<State> passed_;
     std::string note_;
+    std::vector<FunctionRecord> functions_;
+    bool can_recheck_ = false;
     // the character stream
     stdfs::path watch_;
     std::set<stdfs::path> seen_;
@@ -397,6 +405,8 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
                     outcome.output = out;
                     outcome.files = files.size();
                     outcome.checked = machine.noted();
+                    outcome.functions = machine.recorded();
+                    outcome.can_recheck = machine.can_recheck();
                 }
             }
         }

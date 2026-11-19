@@ -79,7 +79,7 @@ Picture text_screen(unsigned lines, std::optional<Rgb> colour) {
 // the long copy, the restart into FIX95CPU's disk and the Windows that comes up after.
 class FakeSetup final : public Console {
 public:
-    enum class Ends { Desktop, FloppyBox, SetupFloppyAgain, FixError, StaysDos, CopyNeverEnds, WindowsErrorBox };
+    enum class Ends { Desktop, PreApplied, FloppyBox, SetupFloppyAgain, FixError, StaysDos, CopyNeverEnds, WindowsErrorBox };
     explicit FakeSetup(Ends ends) : ends_(ends) {}
 
     std::vector<std::string> keys;
@@ -144,7 +144,7 @@ private:
             if (page_ == 12) go(Phase::Copy);                           // Welcome..Start Copying: twelve pages answered
             break;
         case Phase::Finish:
-            if (k == "ret") go(ends_ == Ends::FloppyBox ? Phase::Box : Phase::Restart);   // (Setup asks for the floppy disk out first)
+            if (k == "ret") go(ends_ == Ends::FloppyBox ? Phase::Box : ends_ == Ends::PreApplied ? Phase::Windows : Phase::Restart);   // (Setup asks for the floppy disk out first)
             break;
         case Phase::Box:
             if (k == "ret") go(Phase::Restart);
@@ -275,6 +275,25 @@ CB_TEST("verify.gate16.install16.the_install_reaches_the_desktop", [] {
     CB_CHECK(std::find(machine.kept.begin(), machine.kept.end(), "fix95cpu") != machine.kept.end());
     CB_CHECK_EQ(machine.kept.back(), "desktop");
     CB_CHECK(o.log.size() >= 5);
+});
+
+CB_TEST("verify.gate16.install16.preapplied_files_skip_the_fix95cpu_stage", [] {
+    FakeSetup machine(FakeSetup::Ends::PreApplied);
+    Timing timing;
+    timing.fix_preapplied = true;
+    const Outcome o = drive(machine, "fix95cpu.ima", timing);
+    CB_CHECK_EQ(std::string(word(o.verdict)), "PASS");
+    // the wizard's keys, Finish, and the Enter of Windows' last question: FIX95CPU's keys and the restart key are not pressed
+    std::vector<std::string> expected = kWizardKeys;
+    for (const char* k : {"ret", "esc"}) expected.emplace_back(k);
+    const auto joined = [](const std::vector<std::string>& v) { std::string t; for (const std::string& k : v) t += k + " "; return t; };
+    CB_CHECK_EQ(joined(machine.keys), joined(expected));
+    // no FIX95CPU disk goes in; Setup's own floppy comes out and the machine boots the hard disk
+    CB_CHECK_EQ(machine.commands.size(), std::size_t{2});
+    CB_CHECK_EQ(machine.commands[0], "eject floppy0");
+    CB_CHECK_EQ(machine.commands[1], "boot_set c");
+    CB_CHECK(std::find(machine.kept.begin(), machine.kept.end(), "fix95cpu") == machine.kept.end());
+    CB_CHECK_EQ(machine.kept.back(), "desktop");
 });
 
 CB_TEST("verify.gate16.install16.the_patch_that_fails_fails_the_run", [] {

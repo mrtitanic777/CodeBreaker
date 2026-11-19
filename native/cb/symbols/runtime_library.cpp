@@ -108,6 +108,19 @@ std::optional<Identified> SignatureTable::match(ByteView code) const {
     return std::nullopt;
 }
 
+std::vector<Identified> SignatureTable::match_all(ByteView code) const {
+    std::vector<Identified> out;
+    for (std::size_t n = std::min(kLead, code.size()); n > 0; --n) {
+        const auto hit = by_lead_.find(lead_key(code.first(n)));
+        if (hit == by_lead_.end()) continue;
+        for (const Entry& e : hit->second)
+            if (e.size <= code.size() && sha1_prefix(compare::mask::blank(code.first(e.size), e.masked)) == e.digest &&
+                std::find(out.begin(), out.end(), e.what) == out.end())
+                out.push_back(e.what);
+    }
+    return out;
+}
+
 // ---- identifying ----------------------------------------------------------------------------------------------------
 
 std::string c_name(std::string_view symbol) {
@@ -245,6 +258,33 @@ std::map<SegOff, Identified> identify_ne(const SignatureTable& table, const Ne16
             if (named == module.ordinal_names.end() || named->second.empty()) continue;
             out.try_emplace(SegOff{e.segment, e.offset}, Identified{named->second, *library});
         }
+    }
+    return out;
+}
+
+std::map<std::uint32_t, Identified> identify_dos(const SignatureTable& table, const DosImage& program) {
+    // every library each function matches; the program was linked with one compiler's libraries, so where several have the same
+    // code the function is the one of the compiler most of the program's library functions are from
+    std::map<std::uint32_t, std::vector<Identified>> found;
+    for (const std::uint32_t start : program.function_starts) {
+        if (start >= program.image.size()) continue;
+        const std::size_t length = std::min<std::size_t>(kLongest, program.image.size() - start);
+        std::vector<Identified> hits = table.match_all(program.image.subspan(start, length));
+        if (!hits.empty()) found[start] = std::move(hits);
+    }
+    auto compiler_of = [](const Identified& i) { return i.library.substr(0, i.library.find(':')); };
+    std::map<std::string, std::size_t> votes;
+    for (const auto& [start, hits] : found) {
+        std::set<std::string> compilers;
+        for (const Identified& i : hits) compilers.insert(compiler_of(i));
+        for (const std::string& c : compilers) ++votes[c];
+    }
+    std::map<std::uint32_t, Identified> out;
+    for (const auto& [start, hits] : found) {
+        const Identified* best = &hits.front();
+        for (const Identified& i : hits)
+            if (votes[compiler_of(i)] > votes[compiler_of(*best)]) best = &i;
+        out[start] = *best;
     }
     return out;
 }
@@ -552,6 +592,49 @@ Learned learn(std::span<const LearnSource> sources, platforms::DecoderSet& decod
     }
     log(std::format("{} signatures left out: shared by differently named functions", unsure));
     return learned;
+}
+
+Learned read_signature_file(std::string_view text) {
+    Learned learned;
+    try {
+        const Json doc = Json::parse(std::string(text));
+        for (const Json& l : doc.at("libraries")) learned.libraries.push_back(l.get<std::string>());
+        for (const Bits bits : {Bits::X32, Bits::X16}) {
+            const std::string key = std::to_string(static_cast<int>(bits));
+            if (!doc.contains(key)) continue;
+            for (const Json& r : doc.at(key)) {
+                LearnedRow row;
+                row.bits = bits;
+                row.row = {r.at(0).get<std::string>(), r.at(1).get<std::size_t>(), r.at(2).get<std::string>(),
+                           r.at(3).get<std::string>(), r.at(4).get<std::string>(), {}};
+                row.library = r.at(5).get<std::size_t>();
+                if (row.library >= learned.libraries.size()) throw FormatError("runtime signatures", 0, "a row names a library that is not listed");
+                learned.rows.push_back(std::move(row));
+            }
+        }
+    } catch (const Json::exception& e) {
+        throw FormatError("runtime signatures", 0, e.what());
+    }
+    return learned;
+}
+
+void merge(Learned& base, const Learned& fresh) {
+    std::set<LearnKey> have;
+    for (const LearnedRow& r : base.rows) have.insert({r.bits, r.row.size, r.row.mask_text, r.row.digest});
+    std::map<std::size_t, std::size_t> moved;   // fresh's library index -> base's (lookup only)
+    for (const LearnedRow& r : fresh.rows) {
+        if (!have.insert({r.bits, r.row.size, r.row.mask_text, r.row.digest}).second) continue;
+        auto at = moved.find(r.library);
+        if (at == moved.end()) {
+            const std::string& label = fresh.libraries.at(r.library);
+            auto known = std::find(base.libraries.begin(), base.libraries.end(), label);
+            if (known == base.libraries.end()) known = base.libraries.insert(base.libraries.end(), label);
+            at = moved.emplace(r.library, static_cast<std::size_t>(known - base.libraries.begin())).first;
+        }
+        LearnedRow added = r;
+        added.library = at->second;
+        base.rows.push_back(std::move(added));
+    }
 }
 
 std::string format_signature_file(const Learned& learned) {

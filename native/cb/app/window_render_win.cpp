@@ -5,6 +5,7 @@
 #include "cb/app/window_render_win.hpp"
 
 #include "cb/app/window_convert.hpp"
+#include "cb/app/window_functions.hpp"
 #include "cb/app/window_pages.hpp"
 
 #include <algorithm>
@@ -964,6 +965,350 @@ void rd_program_card(RdDraw& d, View view, const Layout& l) {
     rd_recent(d, l);
 }
 
+// ---- the Source card's tabs: Functions, Check and Compare ------------------------------------------------------------------------------------
+
+namespace {
+
+D2D1_COLOR_F rd_amber() { return rd_color(0xA05A00); }
+
+// A rounded clip: everything drawn until the layer is popped stays inside `r`.
+ComPtr<ID2D1Layer> rd_push_rounded_clip(RdDraw& d, const Rect& r, float radius) {
+    ComPtr<ID2D1RoundedRectangleGeometry> geometry;
+    ComPtr<ID2D1Layer> layer;
+    if (FAILED(d.painter.d2d()->CreateRoundedRectangleGeometry(D2D1::RoundedRect(rd_rect(r), radius, radius), geometry.put()))) return layer;
+    if (FAILED(d.rt->CreateLayer(nullptr, layer.put()))) return layer;
+    d.rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), geometry.get()), layer.get());
+    return layer;
+}
+
+// The verdict chip of a function: a pill with its words (a check or a warning mark in front of the two that were judged).
+void rd_chip(RdDraw& d, const Rect& area, convert::FunctionVerdict verdict) {
+    const RdPalette& pal = d.pal;
+    const std::wstring words = widen(verdict_name(verdict));
+    D2D1_COLOR_F fill = rd_alpha(pal.text, 0.06f), ink = pal.text2;
+    wchar_t mark = 0;
+    if (verdict == convert::FunctionVerdict::Matches) {
+        fill = rd_alpha(pal.ok, pal.dark ? 0.16f : 0.14f);
+        ink = pal.ok;
+        mark = L'\xE73E';
+    } else if (verdict == convert::FunctionVerdict::Differs) {
+        fill = pal.warn_fill;
+        ink = pal.warn;
+        mark = L'\xE7BA';
+    }
+    const float text_w = d.painter.measure(words, 12, true);
+    const float w = std::min(area.w, text_w + (mark != 0 ? 20.0f : 0.0f) + 20);
+    const Rect chip{area.x, area.y + (area.h - 22) / 2, w, 22};
+    d.fill(chip, 11, fill);
+    float x = chip.x + 10;
+    if (mark != 0) {
+        d.glyph(mark, Rect{x, chip.y, 14, chip.h}, 11, ink);
+        x += 18;
+    }
+    d.text(words, Rect{x, chip.y, text_w + 4, chip.h}, 0, 12, verdict == convert::FunctionVerdict::NotChecked ? DWRITE_FONT_WEIGHT_NORMAL : DWRITE_FONT_WEIGHT_SEMI_BOLD, ink);
+}
+
+// An arc of a ring, from `a0` to `a1` degrees clockwise from the top.
+void rd_ring_arc(RdDraw& d, float cx, float cy, float radius, float a0, float a1, D2D1_COLOR_F color, float width) {
+    if (a1 - a0 <= 0.01f) return;
+    d.brush->SetColor(color);
+    if (a1 - a0 >= 359.9f) {
+        d.rt->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), radius, radius), d.brush.get(), width);
+        return;
+    }
+    const auto point = [&](float deg) {
+        const float rad = (deg - 90.0f) * 3.14159265f / 180.0f;
+        return D2D1::Point2F(cx + radius * std::cos(rad), cy + radius * std::sin(rad));
+    };
+    ComPtr<ID2D1PathGeometry> path;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(d.painter.d2d()->CreatePathGeometry(path.put())) || FAILED(path->Open(sink.put()))) return;
+    sink->BeginFigure(point(a0), D2D1_FIGURE_BEGIN_HOLLOW);
+    sink->AddArc(D2D1::ArcSegment(point(a1), D2D1::SizeF(radius, radius), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, a1 - a0 > 180.0f ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL));
+    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    sink->Close();
+    d.rt->DrawGeometry(path.get(), d.brush.get(), width);
+}
+
+// The tab strip: Files, Functions, Check; the shown one is semibold with the accent underline.
+void rd_tabs(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    d.brush->SetColor(pal.stroke2);
+    d.rt->DrawLine(D2D1::Point2F(l.tabs.x, l.tabs.bottom() - 0.5f), D2D1::Point2F(l.tabs.right(), l.tabs.bottom() - 0.5f), d.brush.get(), 1.0f);
+    const struct {
+        Control id;
+        SourceTab tab;
+        const Rect* rect;
+        const wchar_t* label;
+    } tabs[] = {{Control::TabFiles, SourceTab::Files, &l.tab_files, L"Files"},
+                {Control::TabFunctions, SourceTab::Functions, &l.tab_functions, L"Functions"},
+                {Control::TabCheck, SourceTab::Check, &l.tab_check, L"Check"}};
+    for (const auto& t : tabs) {
+        const bool on = m.source_tab == t.tab;
+        const float text_w = d.painter.measure(t.label, 14, on);
+        const Rect r{t.rect->x, l.tabs.y, t.rect->w, l.tabs.h};
+        d.text(t.label, Rect{r.x + (r.w - text_w) / 2 - 2, r.y, text_w + 4, r.h - 3}, 0, 14, on ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
+               on || m.hot == t.id ? pal.text : pal.text2);
+        if (on) d.fill(Rect{r.x + (r.w - text_w) / 2 - 2, r.bottom() - 3, text_w + 4, 3}, 1.5f, pal.accent);
+        if (m.focus == t.id) d.stroke(Rect{r.x - 4, r.y + 1, r.w + 8, r.h - 3}, 5, pal.text, 2.0f);
+    }
+}
+
+// The segmented bar of the Functions view: matches, differs, not checked, as shares of all the functions.
+void rd_segments(RdDraw& d, const Rect& bar, const fnsrc::Counts& c) {
+    const RdPalette& pal = d.pal;
+    d.fill(bar, 3, rd_alpha(pal.text, pal.dark ? 0.14f : 0.10f));
+    if (c.total <= 0) return;
+    const ComPtr<ID2D1Layer> clip = rd_push_rounded_clip(d, bar, 3);
+    const float total = static_cast<float>(c.total);
+    float x = bar.x;
+    const float ok_w = bar.w * static_cast<float>(c.matches) / total, bad_w = bar.w * static_cast<float>(c.differs) / total;
+    d.fill(Rect{x, bar.y, ok_w, bar.h}, 0, pal.ok);
+    x += ok_w;
+    d.fill(Rect{x, bar.y, std::max(bad_w, c.differs > 0 ? 3.0f : 0.0f), bar.h}, 0, rd_amber());
+    if (clip) d.rt->PopLayer();
+}
+
+void rd_functions(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    const FunctionsLayout f = compute_functions_layout(l, m);
+    const fnsrc::Counts counts = fnsrc::count(m.functions);
+    rd_segments(d, f.bar, counts);
+    // the words: the first figures are heavier
+    const std::string summary = functions_summary(counts);
+    const std::size_t of = summary.find(" behave like");
+    if (counts.judged() > 0 && of != std::string::npos) {
+        const std::wstring lead = widen(summary.substr(0, of)), rest = widen(summary.substr(of));
+        const float lead_w = d.painter.measure(lead, 13, true);
+        d.text(lead, Rect{f.summary.x, f.summary.y, lead_w + 4, f.summary.h}, 0, 13, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(rest, Rect{f.summary.x + lead_w, f.summary.y, std::max(0.0f, f.summary.w - lead_w), f.summary.h}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    } else {
+        d.text(widen(summary), f.summary, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    }
+    // Show: All
+    {
+        const bool hot = m.hot == Control::FnFilter;
+        D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, hot ? 0.035f : 0.0f);
+        d.fill(f.filter, 4, fill);
+        d.stroke(f.filter, 4, pal.stroke2);
+        d.glyph(L'\xE71C', Rect{f.filter.x + 10, f.filter.y, 18, f.filter.h}, 14, pal.text);
+        d.text(L"Show: " + widen(filter_name(m.fn_filter)), Rect{f.filter.x + 34, f.filter.y, f.filter.w - 40, f.filter.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        if (m.focus == Control::FnFilter) d.stroke(Rect{f.filter.x - 3, f.filter.y - 3, f.filter.w + 6, f.filter.h + 6}, 6, pal.text, 2.0f);
+    }
+    // the rows
+    d.rt->PushAxisAlignedClip(rd_rect(f.list_area), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < f.shown.size(); ++i) {
+        const Rect& r = f.rows[i];
+        if (r.bottom() < f.list_area.y || r.y > f.list_area.bottom()) continue;
+        const int index = f.shown[i];
+        const convert::FunctionRecord& fn = m.functions[static_cast<std::size_t>(index)];
+        if (m.hot == Control::FnRow && m.hot_index == index) d.fill(r, 4, rd_alpha(pal.text, pal.dark ? 0.07f : 0.055f));
+        const FnRowParts p = fn_row_parts(r);
+        d.glyph(L'\xE943', p.icon, 14, pal.text3);
+        d.text(widen(fn.name), p.name, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        d.text(widen(fn.address), p.address, 3, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        rd_chip(d, p.chip, fn.verdict);
+        if (m.focus == Control::FnRow && m.focus_index == index) d.stroke(Rect{r.x + 1, r.y + 1, r.w - 2, r.h - 2}, 4, pal.text, 2.0f);
+    }
+    d.rt->PopAxisAlignedClip();
+    if (f.shown.empty()) d.text(widen(empty_filter_text(m.fn_filter)), Rect{f.list_area.x + 12, f.list_area.y, f.list_area.w - 24, 32}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    rd_scrollbar(d, f.list_area, f.content_height, m.fn_scroll);
+}
+
+void rd_check(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    const CheckLayout c = compute_check_layout(l, m);
+    const fnsrc::Counts counts = fnsrc::count(m.functions);
+    if (c.judged) {
+        const float cx = c.ring.x + c.ring.w / 2, cy = c.ring.y + c.ring.h / 2, width = 14, radius = c.ring.w / 2 - width / 2;
+        const float total = static_cast<float>(counts.total);
+        const float a_ok = 360.0f * static_cast<float>(counts.matches) / total, a_bad = 360.0f * static_cast<float>(counts.differs) / total;
+        rd_ring_arc(d, cx, cy, radius, 0, 360, rd_alpha(pal.text, pal.dark ? 0.14f : 0.10f), width);
+        rd_ring_arc(d, cx, cy, radius, 0, a_ok, pal.ok, width);
+        rd_ring_arc(d, cx, cy, radius, a_ok, a_ok + a_bad, rd_amber(), width);
+        d.text(std::to_wstring(counts.percent_alike()) + L"%", Rect{c.ring.x, cy - 24, c.ring.w, 32}, 1, 28, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(L"behaves alike", Rect{c.ring.x, cy + 8, c.ring.w, 18}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(L"Checked by running both side by side", c.title, 0, 15, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(L"Each function of the rebuilt program ran beside the original with the same inputs. The share that did the same thing is shown; "
+               L"the ones nobody ran count against it.",
+               c.body, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_LEADING, true, DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+        const struct {
+            D2D1_COLOR_F color;
+            const wchar_t* label;
+            int count;
+        } rows[3] = {{pal.ok, L"Behaves like the original", counts.matches}, {rd_amber(), L"Differs", counts.differs}, {pal.text3, L"Not checked", counts.unchecked}};
+        for (int i = 0; i < 3; ++i) {
+            if (i == 2) d.stroke(c.dot[i], 4, rows[i].color, 1.5f);
+            else d.circle(c.dot[i], rows[i].color);
+            d.text(rows[i].label, c.label[i], 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+            d.text(std::to_wstring(rows[i].count), c.count[i], 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        }
+        if (c.show.w > 0) {
+            const bool hot = m.hot == Control::CheckShow;
+            d.fill(c.show, 4, hot ? rd_mix(pal.accent, pal.text, 0.1f) : pal.accent);
+            d.glyph(L'\xE7BA', Rect{c.show.x + 12, c.show.y, 16, c.show.h}, 14, pal.accent_text);
+            d.text(L"Show what differs", Rect{c.show.x + 36, c.show.y, c.show.w - 40, c.show.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.accent_text);
+            if (m.focus == Control::CheckShow) d.stroke(Rect{c.show.x - 3, c.show.y - 3, c.show.w + 6, c.show.h + 6}, 6, pal.text, 2.0f);
+        }
+    } else {
+        d.circle(c.mark, rd_alpha(pal.text, pal.dark ? 0.10f : 0.07f));
+        d.glyph(L'\xE9D9', c.mark, 24, pal.text2);
+        d.text(L"This conversion was not checked by running it.", c.title, 1, 17, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(L"Every function is listed on the Functions tab as Not checked. A check runs the rebuilt program beside the original and compares what "
+               L"they do.",
+               c.body, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER, true, DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+    }
+    // Check again: enabled only when the route can judge again
+    const bool on = m.can_recheck, hot = on && m.hot == Control::CheckAgain;
+    const float dim = on ? 1.0f : 0.45f;
+    D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, hot ? 0.035f : 0.0f);
+    d.fill(c.again, 4, rd_alpha(fill, dim));
+    d.stroke(c.again, 4, rd_alpha(pal.stroke2, dim));
+    d.glyph(L'\xE72C', Rect{c.again.x + 12, c.again.y, 16, c.again.h}, 14, rd_alpha(pal.text, dim));
+    d.text(L"Check again", Rect{c.again.x + 36, c.again.y, c.again.w - 40, c.again.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, rd_alpha(pal.text, dim));
+    if (on && m.focus == Control::CheckAgain) d.stroke(Rect{c.again.x - 3, c.again.y - 3, c.again.w + 6, c.again.h + 6}, 6, pal.text, 2.0f);
+    if (c.note.h > 0) d.text(widen(kRecheckUnavailable), c.note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, c.judged ? DWRITE_TEXT_ALIGNMENT_LEADING : DWRITE_TEXT_ALIGNMENT_CENTER);
+}
+
+// One side of Compare: its header, and its lines (lit where they match the clicked line).
+void rd_compare_side(RdDraw& d, const Rect& pane, const Rect& head, const Rect& code, const wchar_t* title, const std::vector<std::string>& lines,
+                     const std::vector<std::vector<preview::Span>>& spans, const std::string& note, int side, float first, ID2D1SolidColorBrush* const brushes[5]) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    d.fill(pane, 6, pal.dark ? rd_color(0x1F1F1F) : rd_color(0xF6F6F6));
+    d.fill(head, 6, pal.dark ? rd_color(0x262626) : rd_color(0xFBFBFB));
+    d.fill(Rect{head.x, head.y + 8, head.w, head.h - 8}, 0, pal.dark ? rd_color(0x262626) : rd_color(0xFBFBFB));
+    d.stroke(pane, 6, pal.stroke2);
+    d.brush->SetColor(pal.stroke2);
+    d.rt->DrawLine(D2D1::Point2F(head.x + 1, head.bottom() - 0.5f), D2D1::Point2F(head.right() - 1, head.bottom() - 0.5f), d.brush.get(), 1.0f);
+    d.glyph(L'\xE943', Rect{head.x + 10, head.y, 18, head.h}, 13, pal.text2);
+    d.text(title, Rect{head.x + 34, head.y, head.w - 44, head.h}, 0, 12.5f, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    if (lines.empty()) {
+        d.text(widen(note), Rect{code.x, code.y, code.w, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        return;
+    }
+    d.rt->PushAxisAlignedClip(rd_rect(code), D2D1_ANTIALIAS_MODE_ALIASED);
+    const std::size_t from = static_cast<std::size_t>(std::max(0.0f, first));
+    for (std::size_t i = from, k = 0; i < lines.size() && k < static_cast<std::size_t>(code.h / kCodeLineHeight) + 1; ++i, ++k) {
+        const float y = code.y + static_cast<float>(k) * kCodeLineHeight;
+        if (compare_line_lit(m, side, static_cast<int>(i))) d.fill(Rect{pane.x + 1, y, pane.w - 2, kCodeLineHeight}, 0, rd_alpha(pal.accent, pal.dark ? 0.16f : 0.13f));
+        else if (m.hot == (side == 0 ? Control::CmpAsmLine : Control::CmpCLine) && m.hot_index == static_cast<int>(i))
+            d.fill(Rect{pane.x + 1, y, pane.w - 2, kCodeLineHeight}, 0, rd_alpha(pal.text, 0.04f));
+        static const std::vector<preview::Span> none;
+        rd_code_line(d, lines[i], i < spans.size() ? spans[i] : none, code.x, y, brushes);
+    }
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, code, static_cast<float>(lines.size()) * kCodeLineHeight, static_cast<float>(from) * kCodeLineHeight);
+}
+
+void rd_compare(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    if (m.cmp_index < 0 || static_cast<std::size_t>(m.cmp_index) >= m.functions.size()) return;
+    const convert::FunctionRecord& fn = m.functions[static_cast<std::size_t>(m.cmp_index)];
+    const CompareLayout c = compute_compare_layout(l, m);
+    // All functions
+    {
+        const bool hot = m.hot == Control::FnAll;
+        D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, hot ? 0.035f : 0.0f);
+        d.fill(c.all, 4, fill);
+        d.stroke(c.all, 4, pal.stroke2);
+        d.glyph(L'\xE72B', Rect{c.all.x + 10, c.all.y, 18, c.all.h}, 14, pal.text);
+        d.text(L"All functions", Rect{c.all.x + 34, c.all.y, c.all.w - 40, c.all.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        if (m.focus == Control::FnAll) d.stroke(Rect{c.all.x - 3, c.all.y - 3, c.all.w + 6, c.all.h + 6}, 6, pal.text, 2.0f);
+    }
+    rd_combo(d, c.picker, widen(fn.name), m.cmp_picker_open, m.hot == Control::FnPicker);
+    if (m.focus == Control::FnPicker) d.stroke(Rect{c.picker.x - 3, c.picker.y - 3, c.picker.w + 6, c.picker.h + 6}, 6, pal.text, 2.0f);
+    rd_chip(d, c.chip, fn.verdict);
+    d.text(L"Click a line to see its match on the other side.", c.hint, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    ID2D1SolidColorBrush* brushes[5] = {};
+    ComPtr<ID2D1SolidColorBrush> owned[5];
+    const preview::Tok kinds[5] = {preview::Tok::Plain, preview::Tok::Keyword, preview::Tok::Comment, preview::Tok::Number, preview::Tok::String};
+    for (int k = 0; k < 5; ++k) {
+        if (FAILED(d.rt->CreateSolidColorBrush(rd_token_color(pal, kinds[k]), owned[k].put()))) return;
+        brushes[static_cast<int>(kinds[k])] = owned[k].get();
+    }
+    rd_compare_side(d, c.asm_pane, c.asm_head, c.asm_code, L"Original (disassembly)", m.cmp_asm, m.cmp_asm_spans, m.cmp_asm_note, 0, m.cmp_scroll_asm, brushes);
+    rd_compare_side(d, c.c_pane, c.c_head, c.c_code, L"Rebuilt source (C)", m.cmp_c, m.cmp_c_spans, m.cmp_c_note, 1, m.cmp_scroll_c, brushes);
+}
+
+// The function drop-down of Compare, dropped down over the panes.
+void rd_picker(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    const PickerLayout p = compute_picker_layout(l, m);
+    if (p.rows.empty()) return;
+    for (int i = 3; i >= 1; --i)
+        d.fill(Rect{p.outline.x - static_cast<float>(i), p.outline.y - static_cast<float>(i) + 2, p.outline.w + 2.0f * static_cast<float>(i), p.outline.h + 2.0f * static_cast<float>(i)},
+               kCardRadius, rd_color(0x000000, pal.dark ? 0.10f : 0.045f));
+    d.fill(p.outline, kCardRadius, pal.dark ? rd_color(0x323232) : rd_color(0xFCFCFC));
+    d.stroke(p.outline, kCardRadius, pal.dark ? rd_color(0xFFFFFF, 0.12f) : rd_color(0x000000, 0.12f));
+    for (std::size_t i = 0; i < p.rows.size(); ++i) {
+        const int index = p.first + static_cast<int>(i);
+        const Rect& row = p.rows[i];
+        if (index == m.cmp_picker_hot) d.fill(row, 4, rd_alpha(pal.text, pal.dark ? 0.09f : 0.06f));
+        if (index == m.cmp_index) d.fill(Rect{row.x, row.y + 8, 3, 16}, 1.5f, pal.accent);
+        d.text(widen(m.functions[static_cast<std::size_t>(index)].name), Rect{row.x + 12, row.y, row.w - 24, row.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    }
+}
+
+// The command palette: a scrim over the window and the box near its top with the search and the rows.
+void rd_palette_overlay(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    d.fill(Rect{0, 0, l.width, l.height}, 0, rd_color(0x000000, pal.dark ? 0.38f : 0.20f));
+    const PaletteLayout p = compute_palette_layout(l, m);
+    for (int i = 4; i >= 1; --i)
+        d.fill(Rect{p.box.x - static_cast<float>(i), p.box.y - static_cast<float>(i) + 3, p.box.w + 2.0f * static_cast<float>(i), p.box.h + 2.0f * static_cast<float>(i)}, kCardRadius + 2,
+               rd_color(0x000000, pal.dark ? 0.12f : 0.06f));
+    d.fill(p.box, kCardRadius, pal.dark ? rd_color(0x2B2B2B) : rd_color(0xFBFBFB));
+    d.stroke(p.box, kCardRadius, pal.dark ? rd_color(0xFFFFFF, 0.12f) : rd_color(0x000000, 0.12f));
+    // the search
+    d.glyph(L'\xE721', Rect{p.input.x + 12, p.input.y, 20, p.input.h}, 15, pal.text2);
+    const std::wstring typed = widen(m.palette_query);
+    const Rect field{p.input.x + 44, p.input.y, p.input.w - 44 - 120, p.input.h};
+    if (typed.empty()) d.text(L"Search tools, recent conversions and pages", field, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    else d.text(typed, field, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    const float caret_x = field.x + std::min(d.painter.measure(typed, 16, false), field.w) + 1;
+    d.brush->SetColor(pal.accent);
+    d.rt->DrawLine(D2D1::Point2F(caret_x + 3, p.input.y + 13), D2D1::Point2F(caret_x + 3, p.input.bottom() - 13), d.brush.get(), 1.5f);
+    d.text(L"Esc to close", p.close_hint, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    d.brush->SetColor(pal.stroke2);
+    d.rt->DrawLine(D2D1::Point2F(p.box.x + 1, p.input.bottom() + 0.5f), D2D1::Point2F(p.box.right() - 1, p.input.bottom() + 0.5f), d.brush.get(), 1.0f);
+    if (m.palette_result.rows.empty()) {
+        d.text(L"Nothing matches.", Rect{p.box.x + 16, p.input.bottom() + 1, p.box.w - 32, 40}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        return;
+    }
+    int pick = 0;
+    for (std::size_t i = 0; i < m.palette_result.rows.size() && i < p.rows.size(); ++i) {
+        const palette::Row& row = m.palette_result.rows[i];
+        const Rect& r = p.rows[i];
+        if (row.heading) {
+            if (r.w > 0) d.text(widen(row.text), Rect{r.x + 10, r.y, r.w - 20, r.h}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+            continue;
+        }
+        const bool chosen = pick == m.palette_selected;
+        ++pick;
+        if (r.w <= 0) continue;
+        const palette::Item& item = m.palette_items[static_cast<std::size_t>(row.item)];
+        if (chosen) d.fill(r, 4, rd_alpha(pal.text, pal.dark ? 0.08f : 0.06f));
+        wchar_t glyph = L'\xE943';
+        if (item.kind == palette::Kind::Recent) glyph = L'\xE7C3';
+        else if (item.kind == palette::Kind::GoTo) glyph = item.index == static_cast<int>(palette::Place::Convert) ? L'\xE8E5' : item.index == static_cast<int>(palette::Place::Tools) ? L'\xE90F' : L'\xE713';
+        d.glyph(glyph, Rect{r.x + 8, r.y, 20, r.h}, 15, item.kind == palette::Kind::Tool ? pal.accent : pal.text2);
+        const float title_w = d.painter.measure(widen(item.title), 14, false) + 4;
+        d.text(widen(item.title), Rect{r.x + 40, r.y, std::min(title_w, r.w - 150), r.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        d.text(widen(item.note), Rect{r.x + 40 + title_w + 12, r.y, std::max(0.0f, r.w - 40 - title_w - 12 - 90), r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        if (chosen) d.text(L"Enter", Rect{r.right() - 90, r.y, 80, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.accent, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        else if (!item.hint.empty()) d.text(widen(item.hint), Rect{r.right() - 90, r.y, 80, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
+}
+
+}  // namespace
+
 // The Source card (Done): the finished file, then where its source is, with Open folder, Copy path and Convert another file.
 void rd_source_card(RdDraw& d, const Layout& l) {
     const Model& model = d.model;
@@ -972,7 +1317,7 @@ void rd_source_card(RdDraw& d, const Layout& l) {
     d.stroke(l.right_card, kCardRadius, pal.card_stroke);
     d.text(L"Source", l.right_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
     d.text(L"Where the finished source code goes.", l.right_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
-    const bool with_preview = l.preview.w > 0;   // the file list and code view, the finished file at the top left; else the centred column
+    const bool with_preview = l.tabs.w > 0;   // the tabs with the file list and code view, the finished file at the top left; else the centred column
     d.circle(l.file_icon, pal.ok);
     d.glyph(L'\xE73E', l.file_icon, with_preview ? 22.0f : 26.0f, D2D1::ColorF(1, 1, 1));
     const DWRITE_TEXT_ALIGNMENT side = with_preview ? DWRITE_TEXT_ALIGNMENT_LEADING : DWRITE_TEXT_ALIGNMENT_CENTER;
@@ -980,12 +1325,21 @@ void rd_source_card(RdDraw& d, const Layout& l) {
     const std::string note = model.done_note.empty() ? std::string("Conversion finished.") : "Conversion finished. " + model.done_note;
     d.text(widen(note), l.detail, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, side);
     if (!with_preview) d.text(L"Output", l.output_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
-    rd_output_box(d, l);
+    if (l.field.w > 0) rd_output_box(d, l);
     if (!with_preview) d.text(widen(kDragHint), l.hint, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
     d.button(Control::OpenFolder, l.open_folder, L"Open folder", L'\xE838', true);
-    d.button(Control::CopyPath, l.copy_path, L"Copy path", L'\xE8C8', true);
+    if (l.copy_path.w > 0) d.button(Control::CopyPath, l.copy_path, L"Copy path", L'\xE8C8', true);
     d.button(Control::Browse, l.browse, L"Convert another file", L'\xE8E5', true);
-    if (with_preview) rd_preview(d, l);
+    if (with_preview) {
+        rd_tabs(d, l);
+        if (model.source_tab == SourceTab::Files) rd_preview(d, l);
+        else if (model.source_tab == SourceTab::Functions) {
+            if (model.cmp_index >= 0) rd_compare(d, l);
+            else rd_functions(d, l);
+        } else {
+            rd_check(d, l);
+        }
+    }
 }
 
 // Draw `draw` at `alpha` (a layer when it is not fully shown; nothing at all when it is not shown).
@@ -1074,7 +1428,7 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         else if (view == View::Failed) dot = pal.error;
         d.circle(l.status_dot, dot);
         // over the output box of the preview layout (which has no room for the hint) the status bar says what the box is for
-        const bool hint = view == View::Done && l.preview.w > 0 && (model.hot == Control::OutputBox || model.drag_out);
+        const bool hint = view == View::Done && l.preview_list.w > 0 && (model.hot == Control::OutputBox || model.drag_out);
         d.text(widen(hint ? std::string(kDragHint) : model.status_text), l.status_text, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         d.text(widen(model.platforms), l.platforms, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
     }
@@ -1092,6 +1446,7 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
     // ---- the drop-downs, dropped down over everything else
     if (model.language_open && !model.languages.empty() && model.page == Page::Convert)
         rd_popup(d, language_list_layout(l, model.languages), model.languages, model.language_selected, model.language_hot);
+    if (model.cmp_picker_open && model.page == Page::Convert && view == View::Done && model.source_tab == SourceTab::Functions) rd_picker(d, l);
     if (model.field_popup >= 0) {
         const std::vector<FieldItem>& fields = model.page == Page::Settings ? model.setting_fields : model.tool_fields;
         const FormLayout form = model.page == Page::Settings ? compute_settings_layout(l, model).form : compute_tools_layout(l, model).form;
@@ -1106,6 +1461,8 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
             rd_popup(d, popup_list_layout(form.fields[static_cast<std::size_t>(model.field_popup)].input, l.status_bar.y - 8, kTitleBarHeight + 8, items), items, chosen, model.language_hot);
         }
     }
+    // ---- the command palette, over a scrim over everything
+    if (model.palette_open) rd_palette_overlay(d, l);
 }
 
 }  // namespace cb::app::window

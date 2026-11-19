@@ -26,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -133,6 +134,12 @@ using Replace = std::map<std::string, std::filesystem::path>;
 // continued them: "Could not decompress this Setup (.CAB) file"). Each file is whole in the cabinet it starts in.
 void make_cd(const Config& config, const std::filesystem::path& out, const Replace& replace);
 
+// The names of `names` (upper case) that Setup's CD carries inside a cabinet, each with the SHA-256 (lower-case hex) of the file as the CD has
+// it. A name the CD has no cabinet file of is not in the answer: `replace` cannot put a file there.
+// The cabinets are written out under `work` while it reads them (a folder the caller removes).
+std::map<std::string, std::string> cabinet_originals(const std::filesystem::path& setup_iso, const std::set<std::string>& names,
+                                                     const std::filesystem::path& work);
+
 struct Timing {
     int welcome_polls = 60;                              // looks at the screen for the Welcome dialog
     std::chrono::milliseconds welcome_poll{4000};
@@ -163,6 +170,10 @@ public:
     bool running() const;
     // The run's own folder: a place for a file the run needs (a floppy to put in the machine).
     const std::filesystem::path& folder() const;
+    // The run's copy of the hard disk (hd.img in the folder): what the machine installs on.
+    std::filesystem::path disk() const;
+    // The machine is stopped (the same stop the destructor does), and the folder stays: the disk can be read, nothing writes to it.
+    void stop();
     // Where the last screen is kept: <shots>/<tag>.png.
     const std::filesystem::path& screenshot() const;
 

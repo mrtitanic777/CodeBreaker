@@ -12,6 +12,9 @@
 #include <string>
 #include <vector>
 
+#include "cb/app/convert.hpp"
+#include "cb/app/function_source.hpp"
+#include "cb/app/palette.hpp"
 #include "cb/app/source_preview.hpp"
 
 namespace cb::app::window {
@@ -71,8 +74,13 @@ enum class Control {
     SettingsAdvanced, SettingsBack, Locate,
     // the Convert page's lists: a recent conversion and its Remove (Model::hot_index is the row), a file of the preview, the code view, the output box
     // that the folder is dragged out of
-    RecentRow, RecentRemove, PreviewFile, CodeView, OutputBox
+    RecentRow, RecentRemove, PreviewFile, CodeView, OutputBox,
+    // the Source card's tabs (Files, Functions, Check) and what the Functions, Check and Compare views hold (Model::hot_index is the function / line)
+    TabFiles, TabFunctions, TabCheck, FnRow, FnFilter, FnAll, FnPicker, FnPickItem, CheckShow, CheckAgain, CmpAsmLine, CmpCLine
 };
+
+// The Source card's three tabs; Compare (one function's original beside its rebuilt source) is a view of Functions.
+enum class SourceTab { Files, Functions, Check };
 
 // The pages of the rail.
 enum class Page { Convert, Tools, Settings };
@@ -168,6 +176,29 @@ struct Model {
     float preview_list_scroll = 0;     // DIPs
     bool drag_out = false;             // the output folder is being dragged out (the box keeps its outline)
     bool drag_ghost = false;           // a drag image is drawn beside the box (screenshots only: the real drag has the system's)
+    // ---- the Source card's tabs: Functions (the list, its filter), Check (the counts), Compare (one function, both sides)
+    SourceTab source_tab = SourceTab::Files;
+    std::vector<convert::FunctionRecord> functions;   // every function of the result (function_source.hpp's collect)
+    bool can_recheck = false;          // the route can judge again: "Check again" is enabled
+    int fn_filter = 0;                 // Show: 0 All, 1 Differs, 2 Not checked
+    float fn_scroll = 0;               // DIPs
+    int cmp_index = -1;                // >= 0: Compare shows functions[cmp_index]
+    std::vector<std::string> cmp_asm, cmp_c;       // its two sides
+    std::vector<std::vector<preview::Span>> cmp_asm_spans, cmp_c_spans;
+    std::vector<fnsrc::Link> cmp_links;            // the lines that correspond
+    std::string cmp_asm_note, cmp_c_note;          // why a side is empty
+    int cmp_side = -1;                 // the line clicked: 0 original, 1 rebuilt; -1 none
+    int cmp_line = -1;
+    float cmp_scroll_asm = 0, cmp_scroll_c = 0;    // the first visible line of each side
+    bool cmp_picker_open = false;      // the function drop-down is dropped down
+    int cmp_picker_hot = 0;            // its item under the pointer or the keyboard
+    int cmp_picker_top = 0;            // its first visible item
+    // ---- the command palette (Ctrl+K)
+    bool palette_open = false;
+    std::string palette_query;
+    int palette_selected = 0;          // the choosable row (palette::Result::picks)
+    std::vector<palette::Item> palette_items;
+    palette::Result palette_result;
     // ---- the fades, moved by the window's own timer (1 = fully shown). The Convert page shows one card: Program, or Source when Done; when the
     // card changes the old one fades out, then the new one fades in.
     float card_alpha = 1;              // the card of `view`
@@ -244,6 +275,9 @@ struct Layout {
     Rect language_label, language_combo, output_label, field, open_folder, copy_path, hint;
     // the Source card's preview (empty unless Extras::preview): the file list on the left, the code on the right
     Rect preview, preview_list, preview_code;
+    // the Source card's tab strip (empty unless Extras::preview) and the Functions / Check / Compare view under it (`preview` is that view's area, with
+    // `preview_list` and `preview_code` empty, when the Files tab is not the one shown)
+    Rect tabs, tab_files, tab_functions, tab_check;
     // the Program card's Recent list (empty unless Extras::recent_rows): its heading, a row each, and the Remove button of a row whose folder is gone
     Rect recent_heading;
     std::vector<Rect> recent_rows, recent_remove;
@@ -273,6 +307,7 @@ struct Extras {
     int recent_rows = 0;
     bool preview = false;
     bool queue = false;
+    int tab = 0;                       // the Source card's tab (SourceTab): the Files tab has the path row, the others give its room to their view
 };
 Extras extras_for(const Model& model, View view);
 Layout compute_layout(View view, float width, float height, float rail = 0, const Extras& extras = {});

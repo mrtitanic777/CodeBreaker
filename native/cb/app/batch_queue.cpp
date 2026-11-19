@@ -52,6 +52,8 @@ void Queue::finish(std::size_t index, ItemState state, Item details) {
     item.message = std::move(details.message);
     item.checked = std::move(details.checked);
     item.chip = std::move(details.chip);
+    item.functions = std::move(details.functions);
+    item.can_recheck = details.can_recheck;
 }
 
 void Queue::cancel_waiting() {

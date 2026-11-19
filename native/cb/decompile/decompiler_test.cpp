@@ -104,6 +104,11 @@ public:
     std::optional<std::vector<cb::decompile::struct_text::Structure>> recover_structures(const stdfs::path&) override { return std::nullopt; }
     dsc::PowerPcFacts powerpc_facts(const stdfs::path&) override { return {}; }
     vector<dc::Va> powerpc_functions(const stdfs::path&) override { return {}; }
+    // what a test says a real-mode program has of its compiler's library (none by default)
+    std::function<std::map<dc::Va, dc::LibraryFunction>(std::span<const dc::Va>)> dos_library_of;
+    std::map<dc::Va, dc::LibraryFunction> dos_library(const cb::formats::dos::Program&, std::span<const dc::Va> starts) override {
+        return dos_library_of ? dos_library_of(starts) : std::map<dc::Va, dc::LibraryFunction>{};
+    }
 
 private:
     dsc::NoKnowledge knowledge_;
@@ -733,6 +738,58 @@ CB_TEST("decompile.decompiler.dos_program_as_c", [] {
     CB_CHECK_EQ(d.functions.order.size(), std::size_t{1});
     CB_CHECK(dt_has(d.functions.texts.at(d.functions.order[0]), "DOS_Exit(AL = return code)"));   // (the interrupt's service named: AH=4Ch)
     CB_CHECK(!d.description->lines.empty());
+});
+
+CB_TEST("decompile.decompiler.dos_library_is_named_and_not_decompiled", [] {
+    Fixture f;
+    // a .COM program: call 0110h / mov ah, 4Ch / int 21h, and at 0110h a function (the library's strcpy, the test says)
+    cb::Bytes code{0xE8, 0x0D, 0x00, 0xB4, 0x4C, 0xCD, 0x21};
+    code.resize(0x10, 0xCC);
+    for (const cb::Bytes::value_type b : cb::Bytes{0x55, 0x89, 0xE5, 0x5D, 0xC3}) code.push_back(b);
+    const stdfs::path program = f.dir.path() / "LIBCALL.COM";
+    cb::fs::write_file(program, code);
+    f.environment.dos_library_of = [](std::span<const dc::Va> starts) {
+        std::map<dc::Va, dc::LibraryFunction> found;
+        found[starts.back()] = {"strcpy", "Microsoft C 4.0: large-model C runtime (LLIBC.LIB)"};
+        return found;
+    };
+    const dc::DosProgramC d = f.decompiler.decompile_dos(program);
+    CB_CHECK_EQ(d.library.size(), std::size_t{1});
+    CB_CHECK_EQ(d.library[0].name, "strcpy");
+    CB_CHECK(dt_has(d.header, "#include <string.h>"));   // the header that declares it
+    // the description names it, with what the header says of its arguments (large model: two far pointers; it returns one)
+    bool described = false;
+    for (const string& line : d.description->lines)
+        if (line.find("\tstrcpy\t0\t__cdecl16") != string::npos) {
+            described = true;
+            CB_CHECK(dt_has(line, "\t4\t4p,4p"));
+        }
+    CB_CHECK(described);
+    // and it is not decompiled: the program's own function is the only text
+    CB_CHECK_EQ(d.functions.order.size(), std::size_t{1});
+    for (const string& name : d.functions.order) CB_CHECK(name != "strcpy");
+    const dc::AsC c = f.decompiler.as_c(program);
+    CB_CHECK_EQ(c.library, std::size_t{1});
+    CB_CHECK_EQ(c.found, std::size_t{2});
+    CB_CHECK_EQ(c.decompiled, std::size_t{1});
+    CB_CHECK(dt_has(c.text, "#include <string.h>"));
+});
+
+CB_TEST("decompile.decompiler.dos_function_takes_the_words_its_callers_remove", [] {
+    Fixture f;
+    // a .COM program: push ax / call 0110h / add sp, 2 / mov ah, 4Ch / int 21h; at 0110h push bp / mov bp, sp / mov ax, [bp+4] / pop bp / ret
+    cb::Bytes code{0x50, 0xE8, 0x0C, 0x00, 0x83, 0xC4, 0x02, 0xB4, 0x4C, 0xCD, 0x21};
+    code.resize(0x10, 0xCC);
+    for (const cb::Bytes::value_type b : cb::Bytes{0x55, 0x89, 0xE5, 0x8B, 0x46, 0x04, 0x5D, 0xC3}) code.push_back(b);
+    const stdfs::path program = f.dir.path() / "ARGS.COM";
+    cb::fs::write_file(program, code);
+    const dc::DosProgramC d = f.decompiler.decompile_dos(program);
+    bool stated = false;
+    for (const string& line : d.description->lines)
+        if (line.starts_with("F\t") && line.find("sub_00110") != string::npos) stated = line == "F\t10110\tsub_00110\t0\t__cdecl16near\t\t2";
+    // one word (the `add sp, 2` after its one call), and its return removes none: the native decompiler states the arguments
+    // of such a function only (`sub_00110(int2 a1)`; this fixture's decompiler is a stand-in, so the C is not looked at here)
+    CB_CHECK(stated);
 });
 
 CB_TEST("decompile.decompiler.nes_cartridge_as_c", [] {

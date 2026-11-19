@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "cb/app/convert.hpp"
+
 namespace cb::app::batch {
 
 enum class ItemState { Waiting, Running, Done, CannotConvert, Failed, Cancelled };
@@ -25,6 +27,8 @@ struct Item {
     std::string message;               // why a file could not be converted
     std::string checked;               // how a translation was proved
     std::string chip;                  // what it became ("C", "C++17")
+    std::vector<convert::FunctionRecord> functions;   // the functions the route named (see convert::Outcome::functions)
+    bool can_recheck = false;
 };
 
 class Queue {

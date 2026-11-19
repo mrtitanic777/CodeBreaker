@@ -6,7 +6,7 @@
 //
 // Design notes:
 //   * the command table is the catalog of cb/app (a command's synopsis and summary);
-//   * the version of the program is a fixed "2.0.0".
+//   * the version of the program is a fixed "2.1.0".
 #include <algorithm>
 #include <chrono>
 #include <format>
@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "cb/app/commands.hpp"
+#include "cb/app/verbs.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
@@ -211,6 +212,7 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
     services.command_help = [](std::string_view command) -> std::optional<std::pair<std::string, std::string>> {
         const app::CommandDoc* d = app::find_command_doc(command);
         if (d == nullptr) return std::nullopt;
+        if (app::verbs::is_verb(d->name)) return std::pair<std::string, std::string>{"codebreaker " + std::string(d->name), app::verbs::help(d->name)};   // a verb: what it picks, its options, its old names
         return std::pair<std::string, std::string>{"codebreaker " + std::string(d->name), std::string(d->synopsis) + "\n\n" + std::string(d->summary) + "\n"};
     };
     // the source tree
@@ -231,7 +233,7 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
         return Json{{"found", d.found}, {"platform", d.platform}, {"lane", d.lane ? Json(*d.lane) : Json(nullptr)}, {"family", d.family}};
     };
     services.java_classes = [](const std::filesystem::path& p) { return static_cast<std::int64_t>(java::corpus::discover(p).size()); };
-    services.version = [] { return std::string("2.0.0"); };
+    services.version = [] { return std::string("2.1.0"); };
 }
 
 }  // namespace cb::ui::mcp::wiring

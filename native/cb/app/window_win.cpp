@@ -41,6 +41,9 @@
 #include "cb/app/window_pages.hpp"
 #include "cb/app/window.hpp"
 #include "cb/app/window_convert.hpp"
+#include "cb/app/window_functions.hpp"
+#include "cb/app/function_source.hpp"
+#include "cb/app/palette.hpp"
 #include "cb/app/window_layout.hpp"
 #include "cb/app/window_render_win.hpp"
 #include "cb/app/window_shell_win.hpp"
@@ -392,6 +395,22 @@ private:
     bool convert_key(WPARAM key, bool ctrl);
     void scroll_preview_to(float first_line);
     void copy_preview_text();
+    // the Source card's tabs and the command palette
+    void load_functions(const stdfs::path& folder, const std::vector<convert::FunctionRecord>& recorded, const stdfs::path& input, bool can_recheck);
+    void set_source_tab(SourceTab tab);
+    void open_compare(int index);
+    void close_compare();
+    void compare_click(int side, int line);
+    void open_picker(bool open);
+    void picker_key(WPARAM key);
+    void cycle_filter();
+    bool source_key(WPARAM key);
+    bool scroll_source(float x, float y, int lines);
+    void palette_refresh();
+    void open_palette();
+    void close_palette();
+    void palette_run(int pick);
+    void palette_key(WPARAM key);
     void begin_drag_out();
     void update_taskbar();
     void notify_finished();
@@ -1148,6 +1167,21 @@ void WwApp::activate_page(Control c, int index) {
             break;
         case Control::CodeView:
         case Control::OutputBox: break;
+        case Control::TabFiles: set_source_tab(SourceTab::Files); break;
+        case Control::TabFunctions: set_source_tab(SourceTab::Functions); break;
+        case Control::TabCheck: set_source_tab(SourceTab::Check); break;
+        case Control::FnRow: open_compare(index); break;
+        case Control::FnFilter: cycle_filter(); break;
+        case Control::FnAll: close_compare(); break;
+        case Control::FnPicker: open_picker(!model_.cmp_picker_open); break;
+        case Control::FnPickItem: break;
+        case Control::CheckShow:
+            model_.fn_filter = 1;
+            set_source_tab(SourceTab::Functions);
+            break;
+        case Control::CheckAgain: break;   // (disabled until a route can judge again: Outcome::can_recheck)
+        case Control::CmpAsmLine: compare_click(0, index); break;
+        case Control::CmpCLine: compare_click(1, index); break;
         case Control::NavTools: set_page(Page::Tools); break;
         case Control::NavSettings: set_page(Page::Settings); break;
         case Control::ToolRow: select_tool(index); break;
@@ -1477,6 +1511,7 @@ void WwApp::open_recent(int index) {
     model_.done_note = std::to_string(entry.files) + (entry.files == 1 ? " file written." : " files written.");
     model_.status_text = "Done";
     load_preview_folder(fs::from_text(entry.folder), fs::to_text(fs::from_text(entry.name).stem()));
+    load_functions(fs::from_text(entry.folder), {}, {}, false);
     begin_card_fade(before);
     relayout();
     invalidate();
@@ -1494,6 +1529,13 @@ void WwApp::back_to_program() {
 // The files the output folder holds (the main source first) and the first one's source.
 void WwApp::load_preview_folder(const stdfs::path& folder, const std::string& main_stem) {
     preview_entries_ = preview::list_files(folder, main_stem);
+    model_.source_tab = SourceTab::Files;   // (a conversion's Source card opens on its files; load_functions follows)
+    model_.functions.clear();
+    model_.can_recheck = false;
+    model_.fn_filter = 0;
+    model_.fn_scroll = 0;
+    model_.cmp_index = -1;
+    model_.cmp_picker_open = false;
     model_.preview_files.clear();
     for (const preview::FileEntry& e : preview_entries_) model_.preview_files.push_back({e.path, preview::is_script_file(e.path)});
     model_.preview_list_scroll = 0;
@@ -1534,6 +1576,296 @@ void WwApp::scroll_preview_to(float first_line) {
     invalidate();
 }
 
+// ---- the Source card's tabs (Functions, Check, Compare) and the command palette ---------------------------------------------------------------
+
+// The functions of a finished conversion: what the route recorded (else what the output folder's source defines), with the verdicts the function store
+// holds for the program `input` (empty for a conversion opened from Recent: the program is not known then).
+void WwApp::load_functions(const stdfs::path& folder, const std::vector<convert::FunctionRecord>& recorded, const stdfs::path& input, bool can_recheck) {
+    std::map<std::string, convert::FunctionVerdict> verdicts;
+    if (!input.empty()) verdicts = fnsrc::stored_verdicts(input, config::current().state());
+    model_.functions = fnsrc::collect(folder, recorded, verdicts);
+    model_.can_recheck = can_recheck;
+}
+
+void WwApp::set_source_tab(SourceTab tab) {
+    if (model_.view != View::Done || model_.preview_files.empty()) return;
+    model_.source_tab = tab;
+    if (tab != SourceTab::Functions) model_.cmp_index = -1;
+    model_.cmp_picker_open = false;
+    model_.fn_scroll = 0;
+    if (model_.focus != Control::TabFiles && model_.focus != Control::TabFunctions && model_.focus != Control::TabCheck) {
+        model_.focus = Control::None;
+        model_.focus_index = -1;
+    }
+    relayout();
+    invalidate();
+}
+
+// Compare: one function's assembly beside its rebuilt source.
+void WwApp::open_compare(int index) {
+    if (index < 0 || static_cast<std::size_t>(index) >= model_.functions.size()) return;
+    const fnsrc::Pair pair = fnsrc::load_pair(fs::from_text(model_.output_path), model_.functions[static_cast<std::size_t>(index)]);
+    model_.source_tab = SourceTab::Functions;
+    model_.cmp_index = index;
+    model_.cmp_asm = pair.asm_lines;
+    model_.cmp_c = pair.c_lines;
+    model_.cmp_asm_spans = preview::highlight(preview::Lang::Asm, model_.cmp_asm);
+    model_.cmp_c_spans = preview::highlight(preview::Lang::C, model_.cmp_c);
+    model_.cmp_links = pair.links;
+    model_.cmp_asm_note = pair.asm_note;
+    model_.cmp_c_note = pair.c_note;
+    model_.cmp_side = -1;
+    model_.cmp_line = -1;
+    model_.cmp_scroll_asm = 0;
+    model_.cmp_scroll_c = 0;
+    model_.cmp_picker_open = false;
+    model_.focus = Control::FnAll;
+    model_.focus_index = -1;
+    relayout();
+    invalidate();
+}
+
+void WwApp::close_compare() {
+    model_.cmp_index = -1;
+    model_.cmp_picker_open = false;
+    model_.focus = Control::None;
+    model_.focus_index = -1;
+    invalidate();
+}
+
+// A click on a line of Compare: it is lit with the lines that match it; the other side shows them.
+void WwApp::compare_click(int side, int line) {
+    model_.cmp_side = side;
+    model_.cmp_line = line;
+    const fnsrc::Link* link = fnsrc::link_at(model_.cmp_links, side == 0 ? fnsrc::Side::Asm : fnsrc::Side::C, line);
+    if (link != nullptr) {
+        const CompareLayout c = compute_compare_layout(layout_, model_);
+        const int other = side == 0 ? 1 : 0;
+        const int first = other == 0 ? link->asm_first : link->c_first, last = other == 0 ? link->asm_last : link->c_last;
+        float& scroll = other == 0 ? model_.cmp_scroll_asm : model_.cmp_scroll_c;
+        if (first < static_cast<int>(scroll) || last >= static_cast<int>(scroll) + c.visible_lines)
+            scroll = static_cast<float>(std::clamp(first - 1, 0, compare_max_first_line(model_, c, other)));
+    }
+    invalidate();
+}
+
+void WwApp::open_picker(bool open) {
+    model_.cmp_picker_open = open && model_.cmp_index >= 0;
+    if (model_.cmp_picker_open) {
+        model_.cmp_picker_hot = model_.cmp_index;
+        model_.cmp_picker_top = std::max(0, model_.cmp_index - 4);
+    }
+    invalidate();
+}
+
+// Keys while the function drop-down is open.
+void WwApp::picker_key(WPARAM key) {
+    const int count = static_cast<int>(model_.functions.size());
+    switch (key) {
+        case VK_DOWN: model_.cmp_picker_hot = std::min(count - 1, model_.cmp_picker_hot + 1); break;
+        case VK_UP: model_.cmp_picker_hot = std::max(0, model_.cmp_picker_hot - 1); break;
+        case VK_HOME: model_.cmp_picker_hot = 0; break;
+        case VK_END: model_.cmp_picker_hot = count - 1; break;
+        case VK_RETURN:
+        case VK_SPACE: {
+            const int chosen = model_.cmp_picker_hot;
+            open_picker(false);
+            open_compare(chosen);
+            return;
+        }
+        case VK_ESCAPE:
+        case VK_F4: open_picker(false); return;
+        default: break;
+    }
+    const int rows = static_cast<int>(kPickerRows);
+    if (model_.cmp_picker_hot < model_.cmp_picker_top) model_.cmp_picker_top = model_.cmp_picker_hot;
+    if (model_.cmp_picker_hot >= model_.cmp_picker_top + rows) model_.cmp_picker_top = model_.cmp_picker_hot - rows + 1;
+    invalidate();
+}
+
+// Show: All, Differs, Not checked, one after the other.
+void WwApp::cycle_filter() {
+    model_.fn_filter = (model_.fn_filter + 1) % 3;
+    model_.fn_scroll = 0;
+    invalidate();
+}
+
+// Keys of the Source card's tabs. False when the key is not one of theirs.
+bool WwApp::source_key(WPARAM key) {
+    if (model_.source_tab == SourceTab::Files) return false;
+    if (model_.cmp_picker_open) {
+        picker_key(key);
+        return true;
+    }
+    const bool on_tab = model_.focus == Control::TabFiles || model_.focus == Control::TabFunctions || model_.focus == Control::TabCheck;
+    if (on_tab && (key == VK_LEFT || key == VK_RIGHT)) {   // the arrows move between the tabs
+        const int at = model_.focus == Control::TabFiles ? 0 : model_.focus == Control::TabFunctions ? 1 : 2;
+        const int to = std::clamp(at + (key == VK_RIGHT ? 1 : -1), 0, 2);
+        set_source_tab(static_cast<SourceTab>(to));
+        model_.focus = to == 0 ? Control::TabFiles : to == 1 ? Control::TabFunctions : Control::TabCheck;
+        model_.focus_index = -1;
+        invalidate();
+        return true;
+    }
+    if (model_.source_tab == SourceTab::Functions && model_.cmp_index < 0) {
+        const FunctionsLayout f = compute_functions_layout(layout_, model_);
+        if (model_.focus == Control::FnRow && !f.shown.empty()) {
+            int at = 0;
+            for (std::size_t i = 0; i < f.shown.size(); ++i)
+                if (f.shown[i] == model_.focus_index) at = static_cast<int>(i);
+            const int page = std::max(1, static_cast<int>(f.list_area.h / kFnRowHeight) - 1);
+            int to = at;
+            switch (key) {
+                case VK_UP: to = at - 1; break;
+                case VK_DOWN: to = at + 1; break;
+                case VK_PRIOR: to = at - page; break;
+                case VK_NEXT: to = at + page; break;
+                case VK_HOME: to = 0; break;
+                case VK_END: to = static_cast<int>(f.shown.size()) - 1; break;
+                default: return false;
+            }
+            to = std::clamp(to, 0, static_cast<int>(f.shown.size()) - 1);
+            model_.focus_index = f.shown[static_cast<std::size_t>(to)];
+            const float top = static_cast<float>(to) * kFnRowHeight;   // keep the row in view
+            if (top < model_.fn_scroll) model_.fn_scroll = top;
+            else if (top + kFnRowHeight > model_.fn_scroll + f.list_area.h) model_.fn_scroll = top + kFnRowHeight - f.list_area.h;
+            model_.fn_scroll = std::clamp(model_.fn_scroll, 0.0f, functions_max_scroll(f));
+            invalidate();
+            return true;
+        }
+        return false;
+    }
+    if (model_.source_tab == SourceTab::Functions && model_.cmp_index >= 0) {
+        const CompareLayout c = compute_compare_layout(layout_, model_);
+        const float page = static_cast<float>(std::max(1, c.visible_lines - 1));
+        float delta = 0;
+        switch (key) {
+            case VK_UP: delta = -1; break;
+            case VK_DOWN: delta = 1; break;
+            case VK_PRIOR: delta = -page; break;
+            case VK_NEXT: delta = page; break;
+            case VK_ESCAPE: close_compare(); return true;
+            default: return false;
+        }
+        model_.cmp_scroll_asm = std::clamp(model_.cmp_scroll_asm + delta, 0.0f, static_cast<float>(compare_max_first_line(model_, c, 0)));
+        model_.cmp_scroll_c = std::clamp(model_.cmp_scroll_c + delta, 0.0f, static_cast<float>(compare_max_first_line(model_, c, 1)));
+        invalidate();
+        return true;
+    }
+    return false;
+}
+
+// The wheel over the Functions list, a pane of Compare or the function drop-down. False when the point is over none of them.
+bool WwApp::scroll_source(float x, float y, int lines) {
+    if (model_.view != View::Done || model_.preview_files.empty() || model_.source_tab != SourceTab::Functions) return false;
+    if (model_.cmp_picker_open) {
+        const PickerLayout p = compute_picker_layout(layout_, model_);
+        if (p.outline.contains(x, y)) {
+            model_.cmp_picker_top = std::clamp(model_.cmp_picker_top - lines, 0, std::max(0, static_cast<int>(model_.functions.size()) - static_cast<int>(kPickerRows)));
+            invalidate();
+            return true;
+        }
+    }
+    if (model_.cmp_index < 0) {
+        const FunctionsLayout f = compute_functions_layout(layout_, model_);
+        if (!f.list_area.contains(x, y)) return false;
+        model_.fn_scroll = std::clamp(model_.fn_scroll - 36.0f * static_cast<float>(lines), 0.0f, functions_max_scroll(f));
+        invalidate();
+        return true;
+    }
+    const CompareLayout c = compute_compare_layout(layout_, model_);
+    for (int side = 0; side < 2; ++side) {
+        if (!(side == 0 ? c.asm_pane : c.c_pane).contains(x, y)) continue;
+        float& scroll = side == 0 ? model_.cmp_scroll_asm : model_.cmp_scroll_c;
+        scroll = std::clamp(scroll - 3.0f * static_cast<float>(lines), 0.0f, static_cast<float>(compare_max_first_line(model_, c, side)));
+        invalidate();
+        return true;
+    }
+    return false;
+}
+
+// ---- the command palette (Ctrl+K)
+
+void WwApp::palette_refresh() {
+    model_.palette_result = palette::search(model_.palette_items, model_.palette_query);
+    model_.palette_selected = palette::move(model_.palette_result, model_.palette_selected, 0);
+    invalidate();
+}
+
+void WwApp::open_palette() {
+    const std::int64_t now = recent::now_seconds();
+    const int offset = recent::utc_offset_seconds(now);
+    std::vector<palette::RecentEntry> recents;
+    for (const recent::Entry& e : recent_) {
+        std::error_code ec;
+        recents.push_back({e.name, "converted " + recent::when_words(now, e.when, offset), !stdfs::is_directory(fs::from_text(e.folder), ec)});
+    }
+    model_.palette_items = palette::make_items(tools::all(), recents);
+    model_.palette_query.clear();
+    model_.palette_selected = 0;
+    model_.palette_open = true;
+    model_.language_open = false;
+    model_.field_popup = -1;
+    model_.cmp_picker_open = false;
+    palette_refresh();
+}
+
+void WwApp::close_palette() {
+    model_.palette_open = false;
+    invalidate();
+}
+
+// Enter (or a click) on the choosable row `pick`.
+void WwApp::palette_run(int pick) {
+    if (pick < 0 || static_cast<std::size_t>(pick) >= model_.palette_result.picks.size()) return;
+    const palette::Item item = model_.palette_items[static_cast<std::size_t>(model_.palette_result.picks[static_cast<std::size_t>(pick)])];
+    close_palette();
+    switch (item.kind) {
+        case palette::Kind::Tool:
+            set_page(Page::Tools);
+            if (!model_.tool_query.empty()) {   // (the tool must be in the list shown)
+                model_.tool_query.clear();
+                ww_fill_tool_rows(model_);
+            }
+            select_tool(item.index);
+            break;
+        case palette::Kind::Recent:
+            set_page(Page::Convert);
+            open_recent(item.index);
+            break;
+        case palette::Kind::GoTo:
+            switch (static_cast<palette::Place>(item.index)) {
+                case palette::Place::Convert: set_page(Page::Convert); break;
+                case palette::Place::Tools: set_page(Page::Tools); break;
+                case palette::Place::Settings: set_page(Page::Settings); break;
+                case palette::Place::SettingsAdvanced:
+                    set_page(Page::Settings);
+                    open_advanced(true);
+                    break;
+            }
+            break;
+    }
+}
+
+void WwApp::palette_key(WPARAM key) {
+    switch (key) {
+        case VK_ESCAPE: close_palette(); return;
+        case VK_RETURN: palette_run(model_.palette_selected); return;
+        case VK_DOWN: model_.palette_selected = palette::move(model_.palette_result, model_.palette_selected, 1); break;
+        case VK_UP: model_.palette_selected = palette::move(model_.palette_result, model_.palette_selected, -1); break;
+        case VK_HOME: model_.palette_selected = 0; break;
+        case VK_END: model_.palette_selected = std::max(0, static_cast<int>(model_.palette_result.picks.size()) - 1); break;
+        case VK_BACK:
+            while (!model_.palette_query.empty() && (static_cast<unsigned char>(model_.palette_query.back()) & 0xC0) == 0x80) model_.palette_query.pop_back();
+            if (!model_.palette_query.empty()) model_.palette_query.pop_back();
+            model_.palette_selected = 0;
+            palette_refresh();
+            return;
+        default: return;
+    }
+    invalidate();
+}
+
 // The wheel over a list of the Convert page: the queue, the preview's files or its code (Shift: sideways). False when the point is over neither.
 bool WwApp::scroll_convert(float x, float y, int lines, bool horizontal) {
     if (model_.page != Page::Convert) return false;
@@ -1544,7 +1876,8 @@ bool WwApp::scroll_convert(float x, float y, int lines, bool horizontal) {
         invalidate();
         return true;
     }
-    if (model_.view == View::Done && !model_.preview_files.empty()) {
+    if (scroll_source(x, y, lines)) return true;
+    if (model_.view == View::Done && !model_.preview_files.empty() && model_.source_tab == SourceTab::Files) {
         const PreviewLayout p = compute_preview_layout(layout_, model_);
         if (layout_.preview_list.contains(x, y)) {
             model_.preview_list_scroll = std::clamp(model_.preview_list_scroll - 36.0f * static_cast<float>(lines), 0.0f, preview_list_max_scroll(p));
@@ -1573,11 +1906,12 @@ bool WwApp::convert_key(WPARAM key, bool ctrl) {
         return false;
     }
     if (model_.view != View::Done) return false;
+    if (source_key(key)) return true;
     if (key == VK_ESCAPE) {
         back_to_program();
         return true;
     }
-    if (model_.preview_files.empty()) return false;
+    if (model_.preview_files.empty() || model_.source_tab != SourceTab::Files) return false;
     const PreviewLayout p = compute_preview_layout(layout_, model_);
     const bool list = model_.focus == Control::PreviewFile;
     const int files = static_cast<int>(model_.preview_files.size());
@@ -1772,6 +2106,7 @@ void WwApp::present_item(const batch::Item& item, const std::string& stage, cons
             if (!item.checked.empty()) model_.done_note += " Checked: " + item.checked;
             model_.status_text = "Done";
             load_preview_folder(item.output, fs::to_text(item.file.stem()));
+            load_functions(item.output, item.functions, item.file, item.can_recheck);
             break;
         }
         case batch::ItemState::CannotConvert:
@@ -1844,6 +2179,8 @@ void WwApp::on_finished() {
     ended.files = outcome->files;
     ended.message = outcome->message;
     ended.checked = outcome->checked;
+    ended.functions = outcome->functions;
+    ended.can_recheck = outcome->can_recheck;
     batch::ItemState state = batch::ItemState::Failed;
     switch (outcome->state) {
         case convert::State::Done: state = batch::ItemState::Done; break;
@@ -2004,6 +2341,21 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     return 0;
                 }
             }
+            if (model_.palette_open) {   // the row under the pointer is the chosen one
+                const int pick = palette_pick_at(compute_palette_layout(layout_, model_), model_, mx, my);
+                if (pick >= 0 && pick != model_.palette_selected) {
+                    model_.palette_selected = pick;
+                    invalidate();
+                }
+                return 0;
+            }
+            if (model_.cmp_picker_open && model_.page == Page::Convert) {
+                const int item = picker_item_at(compute_picker_layout(layout_, model_), mx, my);
+                if (item >= 0 && item != model_.cmp_picker_hot) {
+                    model_.cmp_picker_hot = item;
+                    invalidate();
+                }
+            }
             if (model_.language_open && model_.page == Page::Convert) {   // over the open list: the item under the pointer is the one a click chooses
                 const int item = language_item_at(language_list(), mx, my);
                 const int hot = item >= 0 && model_.languages[static_cast<std::size_t>(item)].supported ? item : -1;
@@ -2040,6 +2392,22 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_CHAR: {
+            if (model_.palette_open) {   // typing in the palette
+                if (wp >= 32 && wp != 127) {
+                    const wchar_t unit = static_cast<wchar_t>(wp);
+                    if (unit >= 0xD800 && unit <= 0xDBFF) {
+                        pending_high_ = unit;
+                        return 0;
+                    }
+                    std::wstring text(1, unit);
+                    if (pending_high_ != 0 && unit >= 0xDC00 && unit <= 0xDFFF) text = std::wstring{pending_high_, unit};
+                    pending_high_ = 0;
+                    model_.palette_query += narrow(text);
+                    model_.palette_selected = 0;
+                    palette_refresh();
+                }
+                return 0;
+            }
             if (wp >= 32 && wp != 127 && model_.field_popup < 0 && edit_target() != nullptr) {
                 const wchar_t unit = static_cast<wchar_t>(wp);
                 if (unit >= 0xD800 && unit <= 0xDBFF) {   // the first half of a surrogate pair waits for the second
@@ -2081,6 +2449,19 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             const float mx = ww_dip(GET_X_LPARAM(lp), dpi_), my = ww_dip(GET_Y_LPARAM(lp), dpi_);
             if (model_.welcome && my >= kTitleBarHeight) {   // a click below the title bar during the welcome: on to the page (the caption buttons still work)
                 skip_welcome();
+                return 0;
+            }
+            if (model_.palette_open) {   // a click on a row runs it; a click outside the box closes the palette
+                const PaletteLayout pl = compute_palette_layout(layout_, model_);
+                const int pick = palette_pick_at(pl, model_, mx, my);
+                if (pick >= 0) palette_run(pick);
+                else if (!pl.box.contains(mx, my)) close_palette();
+                return 0;
+            }
+            if (model_.cmp_picker_open && model_.page == Page::Convert) {   // the function drop-down: a click chooses a function or closes it
+                const int item = picker_item_at(compute_picker_layout(layout_, model_), mx, my);
+                open_picker(false);
+                if (item >= 0) open_compare(item);
                 return 0;
             }
             if (model_.field_popup >= 0) {   // a click while a form's list is open chooses an item or closes it, and does nothing else
@@ -2149,6 +2530,20 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            if (ctrl && wp == 'K') {   // Ctrl+K: the command palette, anywhere
+                if (model_.palette_open) close_palette();
+                else open_palette();
+                return 0;
+            }
+            if (model_.palette_open) {
+                palette_key(wp);
+                return 0;
+            }
+            if (ctrl && wp == VK_OEM_COMMA) {   // Ctrl+,: Settings, Advanced
+                set_page(Page::Settings);
+                open_advanced(true);
+                return 0;
+            }
             if (ctrl && wp >= '1' && wp <= '3') {   // Ctrl+1, 2, 3: Convert, Tools, Settings
                 set_page(wp == '1' ? Page::Convert : wp == '2' ? Page::Tools : Page::Settings);
                 return 0;
@@ -2467,6 +2862,55 @@ Model ww_model_for(const std::string& state, bool dark) {
         m.hot = Control::OutputBox;
         m.drag_out = true;
         m.drag_ghost = true;
+    } else if (state == "functions" || state == "check" || state == "checknone" || state == "compare") {   // the Source card's tabs (sample functions, no one's own)
+        m.view = View::Done;
+        m.file_name = "lz32.dll";
+        m.done_file_name = "lz32.dll";
+        m.output_path = "C:\\CodeBreaker\\Converted\\lz32";
+        m.done_note = "12 files written.";
+        m.status_text = "Done";
+        m.preview_files = {{"lz32.c", false}, {"lz32.asm", false}, {"lz32.inc", false}, {"lz32.def", false}, {"lz32.rc", false}, {"build.cmd", true}};
+        const char* names[] = {"LZStart", "LZInit", "LZOpenFileA", "LZSeek", "LZRead", "LZCopy", "LZClose", "CopyLZFile", "GetExpandedNameA", "lz_decode_block", "lz_fill_buffer"};
+        const char* addresses[] = {"0x1000", "0x1024", "0x10B8", "0x1192", "0x11F0", "0x1388", "0x1452", "0x1480", "0x14C4", "0x1590", "0x1702"};
+        for (int i = 0; i < 42; ++i) {   // 38 behave like the original, 1 differs (LZRead), 3 were not checked (GetExpandedNameA and two more)
+            convert::FunctionRecord f;
+            f.name = i < 11 ? names[i] : "lz_helper_" + std::to_string(i - 10);
+            if (i < 11) {
+                f.address = addresses[i];
+            } else {
+                char hex[16];
+                std::snprintf(hex, sizeof hex, "0x%X", 0x1800 + (i - 11) * 0x40);
+                f.address = hex;
+            }
+            f.verdict = i == 4 ? convert::FunctionVerdict::Differs : (i == 8 || i == 40 || i == 41) ? convert::FunctionVerdict::NotChecked : convert::FunctionVerdict::Matches;
+            f.source_file = "lz32.c";
+            m.functions.push_back(std::move(f));
+        }
+        if (state == "checknone")
+            for (convert::FunctionRecord& f : m.functions) f.verdict = convert::FunctionVerdict::NotChecked;
+        m.source_tab = state == "check" || state == "checknone" ? SourceTab::Check : SourceTab::Functions;
+        if (state == "functions") {
+            m.hot = Control::FnRow;
+            m.hot_index = 4;
+        }
+        if (state == "compare") {
+            m.cmp_index = 4;
+            m.cmp_asm = {"LZRead:", "    push    ebp", "    mov     ebp, esp", "    push    ebx", "    mov     eax, [ebp+8]", "    call    lz_handle_of",
+                         "    test    eax, eax", "    jz      .bad", "    mov     ebx, eax", "    mov     ecx, [ebp+16]", "    cmp     ecx, [ebx+LZ.left]", "    jbe     .fits",
+                         "    mov     ecx, [ebx+LZ.left]", ".fits:"};
+            m.cmp_c = {"INT WINAPI LZRead(HFILE h, LPSTR buf, INT count)", "{", "    LZSTATE *lz = lz_handle_of(h);", "    if (lz == NULL)",
+                       "        return LZERROR_BADINHANDLE;", "    if (count > lz->left)", "        count = lz->left;", "    return lz_copy_out(lz, buf, count);", "}"};
+            m.cmp_asm_spans = preview::highlight(preview::Lang::Asm, m.cmp_asm);
+            m.cmp_c_spans = preview::highlight(preview::Lang::C, m.cmp_c);
+            m.cmp_links = {{4, 7, 2, 4}, {9, 12, 5, 6}};   // (the sample's lines that correspond)
+            m.cmp_side = 1;
+            m.cmp_line = 3;
+        }
+    } else if (state == "palette") {   // the command palette over the Program card, "s" typed (the real tool list; one sample recent conversion)
+        m.palette_open = true;
+        m.palette_query = "s";
+        m.palette_items = palette::make_items(tools::all(), {{"lz32.dll", "converted 2 minutes ago", false}});
+        m.palette_result = palette::search(m.palette_items, m.palette_query);
     }
     return m;
 }
@@ -2574,7 +3018,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout] [--theme light|dark] [--size WxH] [--scale N]]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette] [--theme light|dark] [--size WxH] [--scale N]]\n");
             return 2;
         }
     }

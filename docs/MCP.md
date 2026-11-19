@@ -137,7 +137,7 @@ copy, says how old it is, and works out a fresh one.
 
 | Tool | What it does |
 | --- | --- |
-| `commands()`, `command_help(command)` | Every `codebreaker` command, and one in full. |
+| `commands()`, `command_help(command)` | Every `codebreaker` command (the nine verbs and the older names they took over, which still work), and one in full; a verb's help says what it picks and lists its old names. |
 | `run_command(command, args?)` | Starts a command as a background job and returns its id: decompile, measure, reach --judge, pe-source, recompile-project, xna, java, ... At most two jobs at a time, one measure. |
 | `jobs()`, `job(job_id, offset?, tail?)`, `job_file(job_id, offset?, length?)` | This server's jobs, a job's state and output, the file it wrote. |
 | `stop_job(job_id)` | Stops a job this server started (that process only). |

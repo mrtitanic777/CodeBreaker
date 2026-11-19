@@ -130,9 +130,13 @@ CB_TEST("symbols.identify.a_console_image_has_no_library_but_says_what_its_tool_
     CB_CHECK_EQ(w.run(sy::identify::command(w.environment), {"natalsu.exe"}), idn_golden("identify_natalsu.exe.txt"));
 });
 
-CB_TEST("symbols.identify.a_dos_program_has_no_functions_to_identify", [] {
+CB_TEST("symbols.identify.a_dos_program_is_matched_in_its_image", [] {
     IdnWorld w;
-    CB_CHECK_EQ(w.run(sy::identify::command(w.environment), {"find.exe"}), idn_golden("identify_find.exe.txt"));
+    // (a DOS program of Windows 95 holds none of a period library's functions, but its functions are found and counted: they are matched)
+    const std::string text = w.run(sy::identify::command(w.environment), {"find.exe"});
+    CB_CHECK(text.starts_with("find.exe: 0 of "));
+    CB_CHECK(!text.starts_with("find.exe: 0 of 0 functions"));
+    CB_CHECK(text.ends_with("built with: not established (linker ?)\n"));
 });
 
 CB_TEST("symbols.identify.the_identifier_answers_in_the_addresses_the_decompiler_uses", [] {

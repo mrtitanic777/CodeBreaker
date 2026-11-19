@@ -90,6 +90,9 @@ public:
 
     // The library function `code` starts with: the longest leading bytes first, rows of one lead in the order given.
     std::optional<Identified> match(ByteView code) const;
+    // Every library function `code` starts with, longest leading bytes first: the same code is often in several compilers'
+    // libraries (a routine Microsoft carried from C 4.0 to Visual C++ 1.5 unchanged), each its own row.
+    std::vector<Identified> match_all(ByteView code) const;
     std::size_t size() const { return rows_; }
 
 private:
@@ -185,6 +188,17 @@ struct Ne16Module {
 // The same for a 16-bit module: by signature, and for a module that is itself a runtime library, its exports.
 std::map<SegOff, Identified> identify_ne(const SignatureTable& table, const Ne16Module& module);
 
+// A real-mode program (an MZ executable, a .COM): one flat image, the bytes as they sit in memory.
+struct DosImage {
+    ByteView image;                                 // the load module; an offset into it is a function's address
+    std::vector<std::uint32_t> function_starts;     // ascending offsets into `image`
+};
+
+// {offset into the image: what it is} of the functions of a real-mode program that belong to a runtime library, by signature.
+// The library's own relocation records say which bytes the linker filled in (the far-call segments, the offsets of
+// other functions and of data), so a program linked anywhere matches.
+std::map<std::uint32_t, Identified> identify_dos(const SignatureTable& table, const DosImage& program);
+
 // ---- which compiler ---------------------------------------------------------------------------------------------------
 
 // What the file itself says of its tools.
@@ -250,6 +264,13 @@ struct Learned {
 // A library that cannot be read, or is not x86 code, is reported to `log` and passed over.
 Learned learn(std::span<const LearnSource> sources, platforms::DecoderSet& decoders,
               const std::function<void(const std::string&)>& log);
+
+// What a runtime_signatures.json holds, as learn() makes it. FormatError for text that is not that layout.
+Learned read_signature_file(std::string_view text);
+
+// `fresh`'s rows added after `base`'s: a signature `base` already has keeps its row and its library, and the libraries `fresh` names are
+// added to `base`'s. (Learning one more library must not drop the ones already learned.)
+void merge(Learned& base, const Learned& fresh);
 
 // The text of runtime_signatures.json for what was learned (the layout the knowledge base's loader reads).
 std::string format_signature_file(const Learned& learned);

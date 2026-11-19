@@ -22,7 +22,7 @@ Words words(std::span<const std::string> s) {
 } // namespace
 
 CB_TEST("app.commands.catalog_lists_every_command", [] {
-    // the 72 commands, 70 documented plus score16 and exact
+    // the 78 older commands and the seven verbs that came with the condensed command line (convert and build were both)
     const char* expected[] = {"module",
                               "scoreboard",
                               "place",
@@ -100,14 +100,21 @@ CB_TEST("app.commands.catalog_lists_every_command", [] {
                               "xex-basic",
                               "xenon-config",
                               "switch-tables",
-                              "corpus-executables"};
+                              "corpus-executables",
+                              "inspect",
+                              "extract",
+                              "check",
+                              "compare",
+                              "corpus",
+                              "lookup",
+                              "xbox"};
     std::set<std::string> have;
     for (const CommandDoc& d : command_docs()) {
         CB_CHECK(have.insert(std::string(d.name)).second); // no name twice
         CB_CHECK(!d.synopsis.empty());
         CB_CHECK(d.synopsis.starts_with(d.name)); // a synopsis begins with the command's name
     }
-    CB_CHECK_EQ(have.size(), std::size_t{78});
+    CB_CHECK_EQ(have.size(), std::size_t{85});
     for (const char* n : expected)
         CB_CHECK(have.count(n) == 1);
     const CommandDoc* d = find_command_doc("flat-thunk");
@@ -195,9 +202,9 @@ CB_TEST("app.commands.help_and_unknown", [] {
         CB_CHECK_EQ(table.run({"-h"}), kExitOk);
         const std::string out = cap.out();
         CB_CHECK(out.find("usage: codebreaker <command>") != std::string::npos);
-        CB_CHECK(out.find("decompile <name> [--out FILE]") != std::string::npos);
-        CB_CHECK(out.find("decompile any module (32-bit, 16-bit, PowerPC) to C; nothing is built") !=
-                 std::string::npos);
+        CB_CHECK(out.find("    convert FILE") != std::string::npos); // the verbs are listed, one plain line each
+        CB_CHECK(out.find("turn a program into source code") != std::string::npos);
+        CB_CHECK(out.find("decompile") == std::string::npos);  // the older names are hidden
         CB_CHECK(out.find("--corpus NAME") != std::string::npos);
         CB_CHECK(cap.err().empty()); // help is a result: stdout
     }
@@ -216,14 +223,15 @@ CB_TEST("app.commands.usage_layout", [] {
     CommandTable table;
     const std::string u = table.usage();
     // a short synopsis has its summary on the same line at column 36; a long one has it on the lines below
-    CB_CHECK(u.find("    app [--screenshot PNG ...]      the CodeBreaker window") != std::string::npos);
-    const std::size_t at = u.find("    flat-thunk <module> [--recover DIR] [--build DIR] [--ow-build DIR]\n");
+    CB_CHECK(u.find("    compare A B" + std::string(21, ' ') + "match two builds of a program, function by function") != std::string::npos);
+    CB_CHECK(u.find("\nAlso:\n") != std::string::npos);
+    // a long summary goes on the lines below, at the same column
+    const std::size_t at = u.find("    regress <all15|setup|slow>");
     CB_CHECK(at != std::string::npos);
-    CB_CHECK(u.find("\n" + std::string(36, ' ') + "a 32-to-16-bit thunk DLL", at) != std::string::npos);
-    // no line is longer than the wrap width (the synopsis alone excepted)
+    CB_CHECK(u.find("\n" + std::string(36, ' '), at) != std::string::npos);
+    // no line is longer than the wrap width
     for (std::string_view line : text::lines(u))
-        if (line.find("    flat-thunk") != 0)
-            CB_CHECK(line.size() <= 120);
+        CB_CHECK(line.size() <= 120);
 });
 
 CB_TEST("app.commands.window_default", [] {

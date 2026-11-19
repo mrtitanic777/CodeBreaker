@@ -108,6 +108,9 @@ struct Timing {
     // question of Windows' second part (the time zone, the printer wizard, the restart box) is answered after a few quiet seconds. The times above
     // are still the limits: a screen that never comes ends as before.
     bool recognise = false;
+    // Off by default. On, FIX95CPU's files are already among those Setup installs (install() puts them on the CD): no disk goes in the floppy drive,
+    // Finish restarts the machine from the hard disk, and the FIX95CPU stage does not exist.
+    bool fix_preapplied = false;
     std::string cd_path = "d:\\win95";                          // where Windows has the Setup CD (Setup's DOS part had it as X:)
     std::chrono::seconds everything_at_most{150 * 60};
 };
@@ -127,6 +130,10 @@ struct Options {
     Timing timing;
     Entries entries;
     setup16::Options machine;   // (the CD's maker and the shots' folder)
+    // The folder FIX95CPU's patched files are cached in (gate16/fix95_cache.hpp); empty: no cache, the FIX95CPU disk every run. With a folder: a cache
+    // for this FIX95CPU.IMA and this Setup CD is used (Setup installs the files, no FIX95CPU stage); with none yet, the run goes through the FIX95CPU
+    // disk as ever and, when it passes, fills the cache from the installed disk.
+    std::filesystem::path fix_cache;
 };
 
 // Boot Setup on `replace` (the CD with those files in place, the prepared disk) and drive it to the desktop. `fix95cpu` is FIX95CPU.IMA.

@@ -85,6 +85,8 @@ public:
     decompile::describe::PowerPcFacts powerpc_facts(const std::filesystem::path& module) override;
     std::vector<decompile::decompiler::Va> powerpc_functions(const std::filesystem::path& module) override;
     void described(const std::filesystem::path& module, const decompile::describe::PeDescription& description) override;
+    std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> dos_library(const formats::dos::Program& program,
+                                                                                            std::span<const decompile::decompiler::Va> starts) override;
 
     // The link lines an object file of `module` needs for the imports its code calls (`used`: the imports its C calls).
     std::function<std::vector<std::string>(ByteView object)> import_lines(const std::filesystem::path& module,

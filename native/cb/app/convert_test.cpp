@@ -136,6 +136,23 @@ CB_TEST("app.convert.a_route_may_stream_lines_of_its_own", [] {
     CB_CHECK(found);
 });
 
+CB_TEST("app.convert.a_route_may_record_the_functions_of_its_result_and_a_route_that_does_not_leaves_none", [] {
+    CvFixture f;
+    Route route = cv_test_route({State::Decompiling}, [](Reporter& r) {
+        FunctionRecord a{"LZRead", "0x11F0", FunctionVerdict::Differs, "out.c", 1};
+        FunctionRecord b{"LZInit", "0x1024", FunctionVerdict::Matches, "out.c", 9};
+        r.functions({a, b}, true);
+    });
+    const Outcome done = convert(f.request(), cv_test_planner(route), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    CB_CHECK_EQ(done.functions.size(), 2u);
+    CB_CHECK(done.functions[0].verdict == FunctionVerdict::Differs && done.functions[1].name == "LZInit" && done.functions[1].source_line == 9);
+    CB_CHECK(done.can_recheck);
+    CvFixture g;
+    const Outcome plain = convert(g.request(), cv_test_planner(cv_test_route({State::Decompiling})), g.listener(), g.cancel);
+    CB_CHECK(plain.state == State::Done && plain.functions.empty() && !plain.can_recheck);   // (nothing is said about a function nobody judged)
+});
+
 CB_TEST("app.convert.a_cancel_in_the_middle_ends_cancelled_and_leaves_nothing", [] {
     CvFixture f;
     ProgressFn cancelling = [&f](const Progress& p) {

@@ -23,9 +23,16 @@ constexpr ToolRow kToolRows[] = {
 const std::vector<LeftOut> kLeftOut = {
     {"app", "it is the window itself"},
     {"mcp", "it is a server that talks to an assistant over its standard input and output, which a form cannot be on the other end of"},
+    {"inspect", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
+    {"extract", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
+    {"check", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
+    {"compare", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
+    {"corpus", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
+    {"lookup", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
+    {"xbox", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
 };
 
-constexpr const char* kGroups[] = {"Rebuild source", "Inspect", "Translate", "Windows 95", "Xbox", "Verify", "Maintenance"};
+constexpr const char* kGroups[] = {"Convert", "Inspect", "Extract", "Build", "Check", "Compare", "Collection", "Look up", "Xbox 360", "Maintenance"};
 
 std::string tl_trim(std::string_view s) { return std::string(text::trim(s)); }
 

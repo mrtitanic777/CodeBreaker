@@ -119,10 +119,10 @@ CB_TEST("app.window_convert.the_source_card_with_a_preview_has_the_path_row_abov
     CB_CHECK(l.preview.w > 0 && wc_near(l.preview.x, l.right_card.x + 24) && wc_near(l.preview.right(), l.right_card.right() - 24));
     CB_CHECK(l.file_icon.bottom() < l.field.y && l.field.bottom() < l.preview.y);
     CB_CHECK(wc_near(l.preview.bottom(), l.right_card.bottom() - 20));
-    // the box and the three buttons share one row, the buttons at the right
-    CB_CHECK(wc_near(l.field.y, l.open_folder.y));
-    CB_CHECK(l.field.right() < l.open_folder.x && l.open_folder.right() < l.copy_path.x && l.copy_path.right() < l.browse.x);
-    CB_CHECK(wc_near(l.browse.right(), l.preview.right()));
+    // the box and Copy path share the path row; Open folder and Convert another file are at the header's right, above the tabs
+    CB_CHECK(wc_near(l.field.y, l.copy_path.y));
+    CB_CHECK(l.field.right() < l.copy_path.x && wc_near(l.copy_path.right(), l.preview.right()));
+    CB_CHECK(l.open_folder.right() < l.browse.x && wc_near(l.browse.right(), l.preview.right()) && l.browse.bottom() < l.tabs.y);
     // the list on the left, the code on the right
     CB_CHECK(wc_near(l.preview_list.w, 220) && wc_near(l.preview_code.x, l.preview_list.right()) && wc_near(l.preview_code.right(), l.preview.right()));
     const PreviewLayout p = compute_preview_layout(l, m);
@@ -171,12 +171,13 @@ CB_TEST("app.window_convert.a_point_is_over_a_file_the_code_or_the_output_box_of
     CB_CHECK(hit_test_convert(l, m, l.field.x + 20, l.field.y + 10) == (PageHit{Control::OutputBox, -1}));
     CB_CHECK(hit_test_convert(l, m, l.open_folder.x + 5, l.open_folder.y + 5) == (PageHit{Control::OpenFolder, -1}));
     CB_CHECK(hit_test_convert(l, m, l.browse.x + 5, l.browse.y + 5) == (PageHit{Control::Browse, -1}));
-    // Tab: the three buttons, the file list (at the selected file), the code
+    // Tab: the three buttons, the three tabs, the file list (at the selected file), the code
     Model chosen = m;
     chosen.preview_selected = 2;
     const std::vector<PageHit> order = focus_order_convert(l, chosen);
-    CB_CHECK(order.size() == 5);
-    CB_CHECK(order[0].control == Control::OpenFolder && order[3] == (PageHit{Control::PreviewFile, 2}) && order[4].control == Control::CodeView);
+    CB_CHECK(order.size() == 8);
+    CB_CHECK(order[0].control == Control::OpenFolder && order[3].control == Control::TabFiles && order[5].control == Control::TabCheck &&
+             order[6] == (PageHit{Control::PreviewFile, 2}) && order[7].control == Control::CodeView);
 });
 
 CB_TEST("app.window_convert.without_a_preview_the_output_box_is_still_a_drag_source_with_its_hint_under_it", [] {

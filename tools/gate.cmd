@@ -44,6 +44,7 @@ if "%JOBS%"=="" set /a JOBS=%NUMBER_OF_PROCESSORS% / 2
 if %JOBS% LSS 1 set JOBS=1
 rem the run's pool: cb_exe_gate chooses (min(cores - 2, 12) on an idle machine, 4 on a shared one); CB_GATE_JOBS or --jobs set it
 set GJOBS=%CB_GATE_JOBS%
+if not defined VCINSTALLDIR set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
 if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
 set TARGETS=cb_exe_gate
@@ -68,8 +69,8 @@ if exist "%SHOTS%" rmdir /s /q "%SHOTS%"
 mkdir "%SHOTS%"
 set T0=%TIME%
 echo.
-echo Window screenshots: codebreaker.exe app --screenshot, 13 states x 2 themes
-for %%S in (idle working done unsupported language translating tools settings advanced recent batch preview dragout) do for %%T in (light dark) do call :shot %%S %%T
+echo Window screenshots: codebreaker.exe app --screenshot, 17 states x 2 themes
+for %%S in (idle working done unsupported language translating tools settings advanced recent batch preview dragout functions check compare palette) do for %%T in (light dark) do call :shot %%S %%T
 if %APP_RC% EQU 0 (echo Window screenshots: PASS ^(started %T0%, ended %TIME%^)) else echo Window screenshots: FAIL
 if %APP_RC% EQU 0 rmdir /s /q "%SHOTS%"
 exit /b %APP_RC%

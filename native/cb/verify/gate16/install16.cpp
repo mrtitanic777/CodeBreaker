@@ -1,8 +1,10 @@
 #include "cb/verify/gate16/install16.hpp"
+#include "cb/verify/gate16/fix95_cache.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <set>
 #include <thread>
 
 #include "cb/core/error.hpp"
@@ -195,6 +197,7 @@ private:
     bool copy();
     bool put_in_fix_disk();
     bool restart_into_dos();
+    bool finish_preapplied();
     bool fix95cpu();
     void windows();
 
@@ -361,6 +364,18 @@ bool Driver::restart_into_dos() {
     return false;
 }
 
+// FIX95CPU's files are among those Setup installed: no disk goes in the drive (Setup's own floppy comes out, so no "remove the disk" box), the
+// machine boots the hard disk, and Finish restarts it into Windows.
+bool Driver::finish_preapplied() {
+    c_.command("eject floppy0");
+    nap(seconds(2));
+    c_.command("boot_set c");
+    nap(seconds(2));
+    press("ret");   // Finish
+    stage_ends("finish", "Finish pressed with no FIX95CPU disk (its files were installed by Setup); the machine boots the hard disk");
+    return true;
+}
+
 // FIX95CPU's disk boots to its batch file: a key at the logo, N to "view the README?", a key to start; then the patch runs to the green
 // SUCCESS (or the yellow ERROR); the disk comes out, the boot goes to the hard disk, a key restarts.
 bool Driver::fix95cpu() {
@@ -482,8 +497,12 @@ Outcome Driver::run(const Entries& entries) {
     if (!welcome()) return out_;
     wizard(entries);
     if (!copy()) return out_;
-    if (!restart_into_dos()) return out_;
-    if (!fix95cpu()) return out_;
+    if (t_.fix_preapplied) {
+        if (!finish_preapplied()) return out_;
+    } else {
+        if (!restart_into_dos()) return out_;
+        if (!fix95cpu()) return out_;
+    }
     windows();
     return out_;
 }
@@ -619,15 +638,56 @@ private:
 
 Outcome install(const setup16::Config& config, const setup16::Replace& replace, std::string_view tag, const stdfs::path& fix95cpu,
                 const Options& options) {
+    // With a cache folder: the cache for this FIX95CPU disk and Setup CD, if there is one, is put among the files Setup installs (no floppy
+    // stage); if there is none, the run goes through the floppy and, passing, fills it.
+    std::vector<std::string> notes;
+    setup16::Replace effective = replace;
+    Timing timing = options.timing;
+    stdfs::path entry_folder;
+    bool fill = false;
+    if (!options.fix_cache.empty()) {
+        try {
+            entry_folder = options.fix_cache / fix95::key(fix95::hash_file(fix95cpu), fix95::hash_file(config.setup_iso));
+            const std::optional<fix95::Entry> entry = fix95::load(entry_folder);
+            const fix95::Plan plan = fix95::plan(replace, entry);
+            notes.push_back(plan.note);
+            if (plan.replace) {
+                effective = *plan.replace;
+                timing.fix_preapplied = true;
+            }
+            fill = !entry;
+        } catch (const std::exception& e) {
+            notes.push_back(std::format("fix95cpu cache: not used ({})", e.what()));
+        }
+    }
+    setup16::Machine machine(config, effective, tag, options.machine);
     // FIX95CPU's disk is a copy in the run's own folder: the machine may write to a floppy, never the original
-    setup16::Machine machine(config, replace, tag, options.machine);
     const stdfs::path floppy = machine.folder() / "fix95cpu.ima";
-    std::error_code ec;
-    stdfs::copy_file(fix95cpu, floppy, stdfs::copy_options::overwrite_existing, ec);
-    if (ec) throw IoError(fix95cpu, ec.value(), "FIX95CPU's disk cannot be copied: " + ec.message());
+    if (!timing.fix_preapplied) {
+        std::error_code ec;
+        stdfs::copy_file(fix95cpu, floppy, stdfs::copy_options::overwrite_existing, ec);
+        if (ec) throw IoError(fix95cpu, ec.value(), "FIX95CPU's disk cannot be copied: " + ec.message());
+    }
     MonitorConsole console(machine, std::string(tag));
-    Outcome outcome = drive(console, floppy, options.timing, options.entries);
+    Outcome outcome = drive(console, floppy, timing, options.entries);
     outcome.screenshot = machine.screenshot();
+    if (fill && outcome.verdict == Verdict::Pass) {
+        // The machine is stopped (nothing writes to the disk) and FIX95CPU's files are read back off the installed disk.
+        try {
+            machine.stop();
+            const fix95::Capture got = fix95::capture(machine.disk(), fix95cpu);
+            std::set<std::string> names;
+            for (const fix95::Captured& c : got.files) names.insert(c.name);
+            const auto originals = setup16::cabinet_originals(config.setup_iso, names, machine.folder());
+            const fix95::Entry entry = fix95::store(entry_folder, got, originals);
+            notes.push_back(std::format("fix95cpu cache: filled with {} file(s) read off the installed disk{}", entry.files.size(),
+                                        entry.usable() ? "" : " (not usable: a file has no cabinet to be replaced in, or is ambiguous)"));
+            for (const std::string& n : got.notes) notes.push_back("fix95cpu cache: " + n);
+        } catch (const std::exception& e) {
+            notes.push_back(std::format("fix95cpu cache: not filled ({})", e.what()));
+        }
+    }
+    outcome.log.insert(outcome.log.begin(), notes.begin(), notes.end());
     return outcome;
 }
 

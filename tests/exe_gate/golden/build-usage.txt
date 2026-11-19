@@ -1,17 +1,28 @@
 exit: 0
 --- stdout
-usage: codebreaker build [options] <module>...
+usage: codebreaker build FOLDER [--against F] [--out DIR]
 
-build a whole module from its recovered source and check what came out
+make a program again from its source folder, and check it against the original
 
-arguments:
-  module...  a corpus name or a file
+FOLDER is a source folder; build looks at what is in it: a driver's assembly, a DOS program's assembly, or a 16-bit DLL's C. A .toml file is a
+recompiler configuration. A module name or a file is the whole-module build, as before. Name the kind to be sure.
 
 options:
-      --out DIR    where the build goes (default: the module's project folder, build)
-      --no-run     do not call the built module's exports in the emulator
-      --engine     accepted, as the old command line had it; the direct path is the one taken
-      --no-engine  accepted, as the old command line had it; the direct path is the one taken
-  -h, --help       show this help
+  --module          the whole-module build: a corpus name or a file, built from its recovered source and checked
+  --dos             that program made again from its source folder alone
+  --driver          assemble and link a driver, check it against the original
+  --resources       a module's resources as .rc and files, compiled and compared
+  --floppy          the Win95 Setup boot floppy, made from the rebuilt files
+  --disc            write a CD image (also --list, --extract)
+  --xenon           XenonRecomp on a configuration, its output folder synced (changed files in, stale ones out): what
+                    a build runs, the Xbox 360 Dashboard's modules too
+
+Old names (they still work, and print what they always did):
+  dos-build          = build FILE --dos
+  driver-build       = build FILE --driver
+  resources          = build FILE --resources
+  boot-floppy        = build FILE --floppy
+  disc               = build FILE --disc
+  xenon-recompile    = build FILE --xenon
 --- files
 --- stderr (not compared)

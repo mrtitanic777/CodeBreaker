@@ -28,6 +28,7 @@ constexpr float kRecentRemoveWidth = 76;
 // the preview
 constexpr float kPreviewListWidth = 220;
 constexpr float kPreviewIcon = 44;
+constexpr float kTabStripHeight = 36;
 
 Rect centered(float cx, float y, float w, float h) { return Rect{cx - w / 2, y, w, h}; }
 
@@ -38,6 +39,7 @@ Extras extras_for(const Model& model, View view) {
     if (view == View::Idle) e.recent_rows = static_cast<int>(std::min<std::size_t>(model.recent.size(), 5));
     e.preview = view == View::Done && !model.preview_files.empty();
     e.queue = view == View::Working && !model.queue.empty();
+    e.tab = static_cast<int>(model.source_tab);
     return e;
 }
 
@@ -158,26 +160,37 @@ Layout compute_layout(View view, float width, float height, float rail, const Ex
         l.cancel = {l.left_card.x + kCardPadX, l.left_card.bottom() - kCardPadBottom - kButtonHeight, 116, kButtonHeight};
         l.hint = {l.cancel.right() + 16, l.cancel.y, std::max(0.0f, l.left_card.right() - kCardPadX - l.cancel.right() - 16), kButtonHeight};
     }
-    // the Source card with the preview: the finished file at the top left, the path row (the output box and the three buttons), then the files and the code
+    // the Source card with the preview: the finished file at the top left with Open folder and Convert another file at the right, the tabs under them;
+    // the Files tab has the path row (the output box and Copy path) then the files and the code; the other tabs give the view the whole area
     if (view == View::Done && extras.preview) {
         const float x = l.right_card.x + kCardPadX, w = l.right_card.w - 2 * kCardPadX;
         float y = l.right_desc.bottom() + 16;
-        l.file_icon = {x, y, kPreviewIcon, kPreviewIcon};
-        l.file_name = {x + kPreviewIcon + 12, y + 2, std::max(0.0f, w - kPreviewIcon - 12), 22};
-        l.detail = {l.file_name.x, y + 26, l.file_name.w, 18};
-        y += kPreviewIcon + 16;
-        const float buttons = 124 + 8 + 112 + 8 + 180;
+        const float buttons = 124 + 8 + 180;
         const float bx = x + std::max(0.0f, w - buttons);
-        l.field = {x, y, std::max(120.0f, bx - 12 - x), 34};
-        l.open_folder = {bx, y, 124, kButtonHeight};
-        l.copy_path = {bx + 124 + 8, y, 112, kButtonHeight};
-        l.browse = {bx + 124 + 8 + 112 + 8, y, 180, kButtonHeight};
-        y += 34 + 16;
+        l.file_icon = {x, y, kPreviewIcon, kPreviewIcon};
+        l.file_name = {x + kPreviewIcon + 12, y + 2, std::max(0.0f, bx - 12 - (x + kPreviewIcon + 12)), 22};
+        l.detail = {l.file_name.x, y + 26, l.file_name.w, 18};
+        l.open_folder = {bx, y + (kPreviewIcon - kButtonHeight) / 2, 124, kButtonHeight};
+        l.browse = {bx + 124 + 8, l.open_folder.y, 180, kButtonHeight};   // "Convert another file"
+        y += kPreviewIcon + 12;
+        l.tabs = {x, y, w, kTabStripHeight};
+        l.tab_files = {x, y, 52, kTabStripHeight};
+        l.tab_functions = {l.tab_files.right() + 24, y, 80, kTabStripHeight};
+        l.tab_check = {l.tab_functions.right() + 24, y, 52, kTabStripHeight};
+        y += kTabStripHeight + 12;
+        const bool files = extras.tab == static_cast<int>(SourceTab::Files);
+        if (files) {
+            l.field = {x, y, std::max(120.0f, w - 112 - 8), 34};
+            l.copy_path = {l.field.right() + 8, y, 112, kButtonHeight};
+            y += 34 + 12;
+        }
         const float h = std::max(0.0f, l.right_card.bottom() - kCardPadBottom - y);
         l.preview = {x, y, w, h};
-        const float list_w = std::min(kPreviewListWidth, w / 3);
-        l.preview_list = {x, y, list_w, h};
-        l.preview_code = {x + list_w, y, w - list_w, h};
+        if (files) {
+            const float list_w = std::min(kPreviewListWidth, w / 3);
+            l.preview_list = {x, y, list_w, h};
+            l.preview_code = {x + list_w, y, w - list_w, h};
+        }
         l.cancel = {};
     } else if (view == View::Done) {
         const float w = std::min(560.0f, std::max(0.0f, l.right_card.w - 2 * kCardPadX));
@@ -237,6 +250,18 @@ bool control_exists(Control control, View view) {
         case Control::PreviewFile:
         case Control::CodeView:
         case Control::OutputBox:
+        case Control::TabFiles:           // (the Source card's tabs and their views: window_functions.hpp)
+        case Control::TabFunctions:
+        case Control::TabCheck:
+        case Control::FnRow:
+        case Control::FnFilter:
+        case Control::FnAll:
+        case Control::FnPicker:
+        case Control::FnPickItem:
+        case Control::CheckShow:
+        case Control::CheckAgain:
+        case Control::CmpAsmLine:
+        case Control::CmpCLine:
         case Control::SettingsAdvanced:   // (the Settings page: window_pages.hpp)
         case Control::SettingsBack:
         case Control::Locate: return false;
@@ -277,6 +302,18 @@ Rect control_rect(const Layout& l, Control control) {
         case Control::PreviewFile:
         case Control::CodeView:
         case Control::OutputBox:
+        case Control::TabFiles: return l.tab_files;
+        case Control::TabFunctions: return l.tab_functions;
+        case Control::TabCheck: return l.tab_check;
+        case Control::FnRow:
+        case Control::FnFilter:
+        case Control::FnAll:
+        case Control::FnPicker:
+        case Control::FnPickItem:
+        case Control::CheckShow:
+        case Control::CheckAgain:
+        case Control::CmpAsmLine:
+        case Control::CmpCLine:
         case Control::SettingsAdvanced:
         case Control::SettingsBack:
         case Control::Locate:

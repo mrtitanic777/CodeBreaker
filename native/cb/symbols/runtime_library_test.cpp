@@ -271,6 +271,73 @@ CB_TEST("symbols.runtime_library.identify_pe_names_a_runtime_dlls_exports", [] {
     CB_CHECK(rl::identify_pe(table, m, decoders).empty());
 });
 
+CB_TEST("symbols.runtime_library.identify_dos", [] {
+    const libs::Function pf = first_function("debug.lib");
+    const rl::SignatureTable table = rl::SignatureTable::from_rows(std::vector<rl::SignatureRow>{row_of(pf, "Test 16-bit")});
+    Bytes image(0x200, 0x90);
+    put(image, 0x120, pf.code);
+    // a real-mode program is one flat image: the function is found wherever the linker put it
+    const auto found = rl::identify_dos(table, {image, {0x10, 0x120, 0x9000}});
+    CB_CHECK_EQ(found.size(), std::size_t{1});   // 0x10 is padding, 0x9000 is outside the image
+    CB_CHECK_EQ(found.at(0x120).name, "PrintFunc");
+    CB_CHECK_EQ(found.at(0x120).library, "Test 16-bit");
+    CB_CHECK(rl::identify_dos(table, {image, {}}).empty());
+});
+
+CB_TEST("symbols.runtime_library.identify_dos_names_the_compiler_most_of_the_library_is_from", [] {
+    // two functions of plain code (no fix-ups), long enough to have signatures
+    auto function = [](std::string name, std::uint8_t seed) {
+        libs::Function f;
+        f.name = std::move(name);
+        f.code = {0x55, 0x8B, 0xEC};
+        for (int i = 0; i < 40; ++i) f.code.push_back(static_cast<std::uint8_t>(seed + i * 7));
+        f.code.push_back(0xC3);
+        f.mask.assign(f.code.size(), 0);
+        return f;
+    };
+    const libs::Function shared = function("_shared", 0x10);   // the same code in both compilers' libraries
+    const libs::Function own = function("_own", 0x40);         // only in the newer one's
+    // the older compiler's row comes first, so a first-match lookup would name the shared function after it
+    const rl::SignatureTable table = rl::SignatureTable::from_rows(std::vector<rl::SignatureRow>{
+        row_of(shared, "Old C 1.0: C runtime (OLD.LIB)"), row_of(shared, "New C 2.0: C runtime (NEW.LIB)"), row_of(own, "New C 2.0: C runtime (NEW.LIB)")});
+    CB_CHECK_EQ(table.match_all(shared.code).size(), std::size_t{2});
+    Bytes image(0x400, 0x90);
+    put(image, 0x100, shared.code);
+    put(image, 0x280, own.code);
+    const auto found = rl::identify_dos(table, {image, {0x100, 0x280}});
+    CB_CHECK_EQ(found.size(), std::size_t{2});
+    CB_CHECK_EQ(found.at(0x100).library, "New C 2.0: C runtime (NEW.LIB)");   // the program was linked with New C's library
+    CB_CHECK_EQ(found.at(0x280).library, "New C 2.0: C runtime (NEW.LIB)");
+});
+
+CB_TEST("symbols.runtime_library.merge_keeps_what_was_learned", [] {
+    rl::Learned base, fresh;
+    base.libraries = {"A (A.LIB)"};
+    fresh.libraries = {"A (A.LIB)", "B (B.LIB)"};
+    const auto row = [](std::string name, std::string digest, std::size_t library) {
+        rl::LearnedRow r;
+        r.bits = rl::Bits::X16;
+        r.row = {"5589e5", 12, "3.2", std::move(digest), std::move(name), {}};
+        r.library = library;
+        return r;
+    };
+    base.rows = {row("kept", "aa", 0)};
+    fresh.rows = {row("kept_again", "aa", 0), row("added", "bb", 1)};   // the first is the same signature
+    rl::merge(base, fresh);
+    CB_CHECK_EQ(base.rows.size(), std::size_t{2});
+    CB_CHECK_EQ(base.rows[0].row.name, "kept");
+    CB_CHECK_EQ(base.rows[1].row.name, "added");
+    CB_CHECK_EQ(base.libraries.size(), std::size_t{2});
+    CB_CHECK_EQ(base.libraries[base.rows[1].library], "B (B.LIB)");
+    // and what is written reads back as it was
+    const rl::Learned again = rl::read_signature_file(rl::format_signature_file(base));
+    CB_CHECK(again.libraries == base.libraries);
+    CB_CHECK_EQ(again.rows.size(), std::size_t{2});
+    CB_CHECK_EQ(again.rows[1].row.digest, "bb");
+    CB_CHECK_EQ(again.rows[1].library, std::size_t{1});
+    CB_CHECK_THROWS_AS(cb::FormatError, rl::read_signature_file("not json"));
+});
+
 CB_TEST("symbols.runtime_library.identify_ne", [] {
     const libs::Function pf = first_function("debug.lib");
     const rl::SignatureTable table = rl::SignatureTable::from_rows(std::vector<rl::SignatureRow>{row_of(pf, "Test 16-bit")});

@@ -470,6 +470,22 @@ void KitEnvironment::described(const stdfs::path& module, const decompile::descr
     impl_->numbered[module] = std::move(numbered);
 }
 
+// The functions of a real-mode program that came with its compiler, by signature. The 16-bit table is shared with the Windows 3 modules': a library's
+// bytes are the same wherever the function was linked, and the rows name the library each came from.
+std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> KitEnvironment::dos_library(
+    const formats::dos::Program& program, std::span<const decompile::decompiler::Va> starts) {
+    symbols::runtime_library::DosImage image{program.image, {}};
+    const auto base = static_cast<decompile::decompiler::Va>(program.base);
+    for (const decompile::decompiler::Va va : starts)
+        if (va >= base && va - base < static_cast<decompile::decompiler::Va>(program.image.size())) image.function_starts.push_back(static_cast<std::uint32_t>(va - base));
+    std::sort(image.function_starts.begin(), image.function_starts.end());
+    std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> out;
+    std::lock_guard hold(impl_->lock);
+    if (!impl_->signatures16) impl_->signatures16 = symbols::runtime_library::SignatureTable::from_rows(impl_->kb.signatures("win16"));
+    for (const auto& [offset, found] : symbols::runtime_library::identify_dos(*impl_->signatures16, image)) out[base + offset] = {found.name, found.library};
+    return out;
+}
+
 std::function<std::vector<std::string>(ByteView)> KitEnvironment::import_lines(const stdfs::path& module, const std::vector<std::string>& used,
                                                                                 const build::watcom::OpenWatcom&) {
     const std::shared_ptr<const build::watcom::ImportMap> map = impl_->imports.of(module);

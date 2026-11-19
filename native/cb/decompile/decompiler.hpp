@@ -101,6 +101,12 @@ struct Policy {
     bool tree_images() const { return asm_blocks || frame16; }
 };
 
+// A function of a program that is the compiler's own library, not the program's authors': what it is called and which library has it.
+struct LibraryFunction {
+    std::string name;      // as C: "strcpy"
+    std::string library;   // "Microsoft C 4.0: large-model C runtime (LLIBC.LIB)"
+};
+
 // What the decompiler asks of the rest of CodeBreaker that is not part of it: the symbol tables, readers and the L2 library.
 // (The shim over the old ports answers some of them; the rest of CodeBreaker's modules are being moved to cb/ one at a time.)
 class Environment {
@@ -120,6 +126,13 @@ public:
     virtual describe::PowerPcFacts powerpc_facts(const std::filesystem::path& module) = 0;
     // The addresses a PowerPC image states for its functions (its .pdata table), ascending.
     virtual std::vector<Va> powerpc_functions(const std::filesystem::path& module) = 0;
+    // The functions of a real-mode program that are a period compiler's library (the C runtime), by signature: {address: what}.
+    // `starts` are the function starts the analysis found, as linear addresses. Nothing identified by default.
+    virtual std::map<Va, LibraryFunction> dos_library(const formats::dos::Program& program, std::span<const Va> starts) {
+        (void)program;
+        (void)starts;
+        return {};
+    }
     // A PE module has been described (what its description says of it: the names it gave its functions, those that take their first
     // argument in ECX, the imports by number). For whatever else wants to know what the description said.
     virtual void described(const std::filesystem::path& module, const describe::PeDescription& description) {
@@ -197,6 +210,8 @@ struct LeMember {
 
 struct DosProgramC {
     Functions functions;
+    std::vector<LibraryFunction> library;   // the functions that are the compiler's library: named, called by name, not decompiled
+    std::string header;                     // the `#include`s they come with
     std::shared_ptr<describe::DosDescription> description;
 };
 
@@ -205,6 +220,7 @@ struct AsC {
     std::string text;
     std::size_t decompiled = 0;
     std::size_t found = 0;
+    std::size_t library = 0;   // of `found`: identified as the compiler's library and left out of the text
 };
 
 // ---- the decompiler -----------------------------------------------------------------------------------------------------

@@ -38,7 +38,7 @@ Environment environment_in(const std::filesystem::path& state, std::vector<std::
 
 // Waits (up to ten seconds) for a job to end.
 JobView finished(Jobs& jobs, const std::string& id) {
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 600; ++i) {   // up to a minute: a loaded machine (a 12-job gate beside another) can take ten seconds to start cmd.exe
         const std::optional<JobView> v = jobs.view(id, 0);
         if (v && v->status != JobStatus::Running)
             return *v;

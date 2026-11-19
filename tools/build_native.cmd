@@ -12,6 +12,7 @@ call "%~dp0disk_guard.cmd" || exit /b 1
 set ROOT=%~dp0..
 pushd "%ROOT%" || exit /b 1
 if not defined VCINSTALLDIR (
+  set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
   call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul || (echo vcvars64.bat failed & popd & exit /b 1)
 )
 set LIBS=%*
