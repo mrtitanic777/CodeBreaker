@@ -49,6 +49,10 @@ struct Score {
 Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, const Cxx& cxx, const std::string& name,
                     const std::vector<std::filesystem::path>& files, const std::filesystem::path& work, bool write_l2 = false);
 
+// Build one C++ source (with the translator's runtime folder on the include path) into `exe`; `log` is the compiler's output.
+// false: it did not compile.
+bool build_program(const Cxx& cxx, const std::filesystem::path& runtime, const std::filesystem::path& source, const std::filesystem::path& exe, std::string& log);
+
 // The score table: a markdown table, one row per program.
 std::string table(const std::vector<Score>& scores);
 

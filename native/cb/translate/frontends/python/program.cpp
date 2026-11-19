@@ -1079,6 +1079,11 @@ Type Program::join(const Type& a, const Type& b) {
             }
             return pt::tuple_of(std::move(parts));
         }
+        case pt::Kind::Iter: {   // the sequences a generator function hands out, as its rounds find more of its items
+            const Type item = join(a.args.at(0), b.args.at(0));
+            if (item.kind == pt::Kind::Top) return item;
+            return pt::iter_of(item);
+        }
         case pt::Kind::List:
         case pt::Kind::Dict:
         case pt::Kind::Set: return program_container_type(ka, union_sites(a.site.value(), b.site.value()));

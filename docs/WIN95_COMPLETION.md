@@ -451,3 +451,32 @@ Converted and proved this session: `WEP` (item 1, +11 functions in all) and the 
 `POWEREVENTPROC`: the gate was not changed, because `codebreaker teeth` was not run on a changed gate. Next, by size of
 class: register live-in in the lifter (43 + 10 + 5 here, plus the 5 small-module ones), then the fixed-segment size budget
 (73 + 2 + 10 small), then DS-leaving callees (23).
+
+## State at the end of this run (2026-11-15) and the next step
+
+Proven and on (snapshot b4547db78): the register-save rule (`WEP`), the prologue-free refit of frame-less stubs, the word-alignment-free packing for `-os`
+objects, the compiler change in the OpenWatcom fork (no BP frame for a routine that never reads its stack parameters; rel/binnt64 holds it, originals in
+backup-20261115), caller results (DX:AX), the unspecified-result rule for `in_AX`, the DS classifier (USER's callers of sub_1_5D4F), and the unspecified-DX rule
+for GDI (`CB_DX_SHARED`, `CB_DX_UNSPECIFIED`, both on, `=0` turns each off). Each passed `regress all15 --runs 2` and `regress install --runs 1`.
+Today's counts (`regress all15`): KRNL386 C 21, GDI C 132 / gated 16, USER C 574 / gated 40, SOUND 6, SYSTEM 2, VER 24; every other module as at the start.
+Since the audit's start: all15 C 753 -> about 800 functions, none lost.
+
+Built, off by default: the Windows-call structure fill (`CB_FILL=1`, item 19). It moves no verdict (identical gated sets) and does not explain the two
+failures below.
+
+**Next step: a sequence-aware gate, for `BEAR306` and `sub_25_0429`** (both in data/build/kept_as_asm.txt; their C passes the gate and breaks the all-15 boot
+once it is used: FAIL(dos) and "error box before Welcome"). What is known (items 15, 18, 19): the DS reading of their call of sub_1_5D4F is right; the gate runs
+one call at a time with callees stubbed; filling the structures Windows calls write does not change either verdict; `CB_FORCE_C` does not override kept_as_asm.txt
+(to try BEAR306 as C remove its line temporarily, or add that override). The untried hypothesis: a window procedure is right per call and wrong in
+sequence -- the data segment (and the per-window struct a window's near handle points at) left by one message is what the next one reads. So: let the gate
+run a short script of messages through the same function and data segment on both sides (WM_NCCREATE, WM_CREATE, WM_SIZE, WM_PAINT ... taken from the message
+constants the function compares with, which the "directed" inputs already hold), carrying the data between the calls, and compare after each. Prove
+it first does not move existing verdicts (as item 19 did: compare the gated name sets before/after for USER and GDI), then try the two functions; a verdict that
+changes for a third function goes back to assembly. Alternatives if that finds nothing: trace the all-15 boot with the function as C and as assembly (QEMU or the
+isolated16 recorder) and compare the calls it makes from its first divergence; or bisect inside the function by keeping one `case` of its switch as instructions.
+
+Tools and habits learned this run (for the next agent): `bash state/work/locked.sh` for shared builds; `state/work/build_tests.cmd` (cb_tests) and
+`cmake --build state\cxx\cb --target codebreaker` (the exe); run regress on a private copy of the exe (`cp state/cxx/cb/bin/codebreaker.exe *.dll` into your
+scratch folder) so another session's build cannot replace it; never run two series scripts at once (a stopped task leaves its child running); wait for a free
+decompile slot (state/slots, four for the whole machine: a regress install may queue behind other sessions' decompiles); a regress run prints each module's
+C / asm / gated; `state/build/<m>/module.l2.json` carries each function's recorded reason; `CB_ASM_ONLY` subsets move other functions and are not a reliable bisection.

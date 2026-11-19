@@ -383,6 +383,7 @@ CB_TEST("engine.win16.the_function_facts_of_a_small_module", [] {
 });
 
 CB_TEST("engine.win16.a_function_the_compiler_rejects_has_the_stand_ins_object", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     Module16 m = small_module();
     m.texts["f2"] = "int2 f2(int2 a)\n{\n  return REJECT;\n}";
     World16 w(m);
@@ -397,6 +398,7 @@ CB_TEST("engine.win16.a_function_the_compiler_rejects_has_the_stand_ins_object",
 });
 
 CB_TEST("engine.win16.a_function_changed_by_hand_makes_again_what_depends_on_it_and_nothing_else", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     w.get("function.object", "1:0040");
     w.get("function.object", "2:0000");
@@ -442,6 +444,7 @@ CB_TEST("engine.win16.the_link_is_handed_the_objects_the_engine_made", [] {
 });
 
 CB_TEST("engine.win16.functions_the_gate_finds_different_are_left_to_the_original_and_the_module_is_linked_again", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     w.divergent = {"f1"};
     const Built16 b = w.win16->build(w.binary);
@@ -463,6 +466,7 @@ CB_TEST("engine.win16.functions_the_gate_finds_different_are_left_to_the_origina
 });
 
 CB_TEST("engine.win16.a_contract_mismatch_leaves_the_function_to_the_original", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     w.contract_says = {{"f0", "it calls f2 with one argument"}};
     const Built16 b = w.win16->build(w.binary);
@@ -471,6 +475,7 @@ CB_TEST("engine.win16.a_contract_mismatch_leaves_the_function_to_the_original", 
 });
 
 CB_TEST("engine.win16.a_contract_check_that_cannot_be_made_is_a_note_and_a_gate_that_cannot_run_is_not_kept", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     w.contract_throws = true;
     const Built16 b = w.win16->build(w.binary);
@@ -485,6 +490,7 @@ CB_TEST("engine.win16.a_contract_check_that_cannot_be_made_is_a_note_and_a_gate_
 });
 
 CB_TEST("engine.win16.a_resident_overflow_links_again_with_the_functions_gated", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     w.overflow_once = {{"f2", "the resident segment is full"}};
     const Built16 b = w.win16->build(w.binary);
@@ -495,6 +501,7 @@ CB_TEST("engine.win16.a_resident_overflow_links_again_with_the_functions_gated",
 );
 
 CB_TEST("engine.win16.a_link_that_makes_no_image_is_a_build_that_is_not_built", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     w.no_image = true;
     const Built16 b = w.win16->build(w.binary);
@@ -513,6 +520,7 @@ CB_TEST("engine.win16.the_gate_can_be_turned_off", [] {
 });
 
 CB_TEST("engine.win16.the_build_folder_cleared_the_image_is_made_again", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     w.win16->build(w.binary);
     CB_CHECK_EQ(w.links, 1);

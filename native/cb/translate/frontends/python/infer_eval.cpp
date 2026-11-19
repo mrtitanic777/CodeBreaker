@@ -165,6 +165,7 @@ Eval::Eval(Program& program, Fn* function, bool record_types, const Library& lib
       record(record_types),
       lib(library),
       ret(P::bottom()),
+      yielded(P::bottom()),
       cls(function != nullptr ? function->cls : nullptr) {}
 
 Type Eval::note(const syntax::Node* node, const Type& t, const std::optional<Res>& resolution) {
@@ -307,7 +308,7 @@ Eval& Eval::run() {
     if (out && returns_value) ret = p.join(ret, P::none());
     if (!returns_value) ret = P::none();
     // a generator function's result is the sequence of what it yields (its `return` value, which StopIteration carries, is not read)
-    if (is_generator) ret = P::iter_of(yielded.kind == Kind::Bottom ? P::none() : yielded);
+    if (is_generator) ret = P::iter_of(yielded);   // (while the callers have not told the parameters yet the item is still bottom, which joins with whatever comes)
     if (ret.kind == Kind::Int && !ret.fits_i64()) ret = fit(node, ret, "return value");
     if (live()) {
         const Type old_type = get_or(p.returns, f.qname, P::bottom());

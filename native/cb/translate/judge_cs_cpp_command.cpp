@@ -96,6 +96,10 @@ bool build(const Cxx& cxx, const stdfs::path& runtime, const stdfs::path& source
 
 }  // namespace
 
+bool build_program(const Cxx& cxx, const stdfs::path& runtime, const stdfs::path& source, const stdfs::path& exe, std::string& log) {
+    return build(cxx, runtime, source, exe, log);
+}
+
 std::optional<Cxx> find_cxx(const std::string& want) {
     if (want == "gcc") return gcc();
     if (want == "clang") return clang();

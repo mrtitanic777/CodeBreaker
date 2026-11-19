@@ -545,7 +545,7 @@ the back end): interpolation with a format or alignment (`{x:F2}`), `yield`, `de
 ## Phase 2 as built (2026-11-15): the language features phase 1 left out
 
 Every feature below is a front end lowering into L2 and a back end writing it, never a pair of languages: what the C# front end lowers is
-what any back end gets (the Python front end does not lower `yield` or `await` yet: see "What is left" below). Each has a program in
+what any back end gets (the Python front end lowers `yield` in a generator function to `YieldReturn`; `await` is not lowered yet: see "What is left" below). Each has a program in
 `tests/translate/corpus/csharp_features/`, judged (`codebreaker judge-cs-cpp tests/translate/corpus/csharp_features`, and the unit test
 `translate.judge_cs_cpp.the_language_features_agree`): the C# runs beside its C++17 translation and the output and exit code must be equal.
 Built and run with g++ 15, clang 22 and MSVC 14.51.
@@ -612,10 +612,18 @@ Optionals, Exceptions, Logic): all lower, write, compile and agree with g++ 15, 
 and all round-trip through the C# back end. With the phase 1 corpus 23 of 23 programs agree on each of the three compilers. A parenthesised
 `(a || b) && c` was written `a || b && c` by the C++17 back end (an old bug, found by Logic.cs, fixed).
 
+**Python generators (2026-11-15).** A Python function with `yield` gets the result type `iter[item]` (the item type is what its yields join to,
+as the rounds of inference find more of it), the mod `iterator` and `YieldReturn` nodes; `yield from`, a bare `yield` and `async` are still
+refused. The L2 core's C++17 back end writes it as `return py::generate<T>([=](py::yielder<T>& py_y) mutable { ... py_y.yield_return(x); });`
+on the same stackful coroutine as C# (now `data/translate/runtime/cpp17/coro.hpp`, shared by csrt.hpp and py.hpp). The new judge,
+`codebreaker judge-py-cpp [FILE.py ...]` (default: tests/translate/corpus/python), lowers a module's zero-argument `run_*` functions,
+writes and compiles the module with a generated main, runs CPython on the same functions and compares the JSON answers (an exception
+as `{"error": class}`). tests/translate/corpus/python/Generators.py (six functions) agrees on g++, clang and MSVC;
+unit test `translate.judge_py_cpp.the_python_corpus_agrees`.
+
 **What is left.**
-- Python: its front end still refuses a generator (`dynamic:generator`) and `async`; `yield` needs inference of the generator's item
-  type and a lowering to `YieldReturn`, and the Python -> C++17 emitter (native/l2, cbl2.dll) a generator form (the coroutine of csrt.hpp
-  has a py.hpp twin to write). No Python judge exists yet either.
+- Python `async def` / `await` / asyncio: still refused (`dynamic:async`). It needs a Task type in the front end's type universe, the
+  asyncio calls (`run`, `sleep`, `gather`) mapped, and the scheduler of csrt.hpp shared with py.hpp (move it beside coro.hpp).
 - The other targets of the new nodes: the Java back end (`csharp_java`) and the C emitter decline them.
 - Corpus: real open-source C# (permissive) was not added: nothing was downloaded (a download needs the owner's yes), and the C# on this
   machine is GPL (Reko, ExtremeLauncher) or XNA-bound. Candidates to ask for are in docs/TESTED_SOFTWARE.md.

@@ -267,6 +267,7 @@ CB_TEST("engine.nes_demo.the_source_rebuilds_the_cartridge", [] {
 // The SLEIGH cross-check: every documented opcode, in states of every register, one instruction on the SLEIGH specification's p-code and on
 // the interpreter; A X Y S, the flags, the next address and the bytes written must agree.
 CB_TEST("engine.nes_demo.sleigh_6502_agrees_with_the_interpreter", [] {
+    CB_WINDOWS_ONLY("it needs the p-code lifting program (a Windows executable)");
     const std::optional<stdfs::path> bin = nd_native_bin("pcodecheck.exe");
     if (!bin) {
         std::cout << "SKIP pcodecheck is not built (native/decompiler/CMakeLists.txt)\n";
@@ -335,6 +336,7 @@ CB_TEST("engine.nes_demo.sleigh_6502_agrees_with_the_interpreter", [] {
 // test_decompiles: the native decompiler's C of the cartridge: every function found is decompiled, the PPU's registers are volatile accesses,
 // and the multiply's loop adds the zero-page operand.
 CB_TEST("engine.nes_demo.the_native_decompiler_gives_the_c", [] {
+    CB_WINDOWS_ONLY("it needs the decompiler program (a Windows executable)");
     const std::optional<stdfs::path> bin = nd_native_bin("decompiler.exe");
     if (!bin) {
         std::cout << "SKIP decompiler.exe is not built (native/decompiler/CMakeLists.txt)\n";

@@ -117,6 +117,11 @@ usage: codebreaker <command> [arguments]
                                     by the Roslyn front end, written by the C++17 back end, compiled by the host C++
                                     compiler and run beside the C# program; a score table (lowers, writes, compiles,
                                     agrees)
+    judge-py-cpp [--cxx gcc|clang|msvc|PATH] [--keep] [--work DIR] [FILE.py ...]
+                                    Python -> C++17 judged by running both: each module's run_* functions (default:
+                                    the Python corpus) lowered by the Python front end, written by the L2 core's C++17
+                                    back end, compiled by the host C++ compiler and run beside CPython; a score table
+                                    (lowers, writes, compiles, agrees)
     java <tool> ...                 the Java transpiler: a Java program as C++03 (convert, decompile, worklist, ...;
                                     `java --help` lists them)
     score16 [options]               the 16-bit gate's scoreboard: each 16-bit module's C beside its own assembly

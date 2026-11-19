@@ -60,6 +60,7 @@ std::vector<std::string> names_in(const stdfs::path& folder) {
     std::error_code ec;
     for (stdfs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec))
         out.push_back(it->path().filename().generic_string());
+    std::ranges::sort(out);   // (a folder's own order is the system's: "the first of equals" has to be the same everywhere)
     return out;
 }
 
