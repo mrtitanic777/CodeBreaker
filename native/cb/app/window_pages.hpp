@@ -45,10 +45,20 @@ struct ToolsLayout {
 };
 ToolsLayout compute_tools_layout(const Layout& shell, const Model& model);
 
+// The Settings page has two views. The main one is rows (state/work/ui-mockup/feat-settings-*.png): "General" (Theme, where converted source goes,
+// Keep the computer responsive: each a row with its label on the left and its control on the right), "What this computer can convert" (one row
+// per Model::capabilities, Locate... on a missing one) and the Advanced row. Advanced is Back, a title, and every other setting as a form.
 struct SettingsLayout {
     Rect card, title, desc, fields_area;
-    FormLayout form;
+    FormLayout form;                   // the main view: a row per field (field_rows), the control on its right; Advanced: the stacked form
+    Rect back;                         // Advanced only
+    Rect general_heading, can_heading; // the main view only
+    std::vector<Rect> field_rows;      // the main view: the row behind each field
+    std::vector<Rect> capability_rows, locate;   // one per Model::capabilities; locate is empty for a ready row
+    Rect advanced_row;
 };
+inline constexpr float kSettingRowHeight = 60;
+inline constexpr float kSettingsMaxWidth = 760;
 SettingsLayout compute_settings_layout(const Layout& shell, const Model& model);
 
 // A part of a page under a point: a control and which one (tool row, field).

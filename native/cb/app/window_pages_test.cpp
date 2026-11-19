@@ -89,9 +89,10 @@ CB_TEST("app.window_pages.tab_visits_the_page_and_ends_at_the_rail", [] {
     CB_CHECK(focus_order_settings(m).size() == 2 + 1 + 3);
 });
 
-CB_TEST("app.window_pages.the_settings_page_scrolls_a_long_form", [] {
+CB_TEST("app.window_pages.advanced_settings_scroll_a_long_form", [] {
     const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
     Model m;
+    m.settings_advanced = true;
     for (int i = 0; i < 40; ++i) m.setting_fields.push_back({"key" + std::to_string(i), i % 3 == 0 ? 0 : 2, "", {}, false, ""});
     const SettingsLayout s = compute_settings_layout(shell, m);
     CB_CHECK(s.form.content_height > s.fields_area.h);
@@ -100,6 +101,62 @@ CB_TEST("app.window_pages.the_settings_page_scrolls_a_long_form", [] {
     m.setting_scroll = s.form.fields[39].input.y - s.fields_area.y - 20;
     const SettingsLayout moved = compute_settings_layout(shell, m);
     CB_CHECK(moved.fields_area.contains(moved.form.fields[39].input.x + 3, moved.form.fields[39].input.y + 3));
+});
+
+Model wp_settings_model() {
+    Model m;
+    m.page = Page::Settings;
+    m.setting_fields = {{"Theme", 3, "System", {"System", "Light", "Dark"}, false, ""}, {"Save converted source to", 1, "C:\\Converted", {}, false, ""},
+                        {"Keep the computer responsive", 4, "1", {}, false, ""}};
+    m.setting_keys = {"", "converted", "low_load"};
+    m.capabilities = {{"Ready", "Windows and DOS programs", true, "", true}, {"Xbox 360 games", "Needs the Xbox 360 SDK", false, "xbox360_sdk", true}};
+    return m;
+}
+
+CB_TEST("app.window_pages.settings_are_rows_with_the_control_on_the_right", [] {
+    const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
+    const Model m = wp_settings_model();
+    const SettingsLayout s = compute_settings_layout(shell, m);
+    CB_CHECK(s.field_rows.size() == 3 && s.capability_rows.size() == 2 && s.locate.size() == 2);
+    CB_CHECK(s.fields_area.w <= kSettingsMaxWidth);
+    CB_CHECK(s.general_heading.bottom() <= s.field_rows[0].y);
+    CB_CHECK(s.field_rows[2].bottom() <= s.can_heading.y && s.can_heading.bottom() <= s.capability_rows[0].y);
+    CB_CHECK(s.capability_rows[1].bottom() <= s.advanced_row.y);
+    CB_CHECK(s.advanced_row.bottom() <= s.card.bottom());   // everything fits the default window: no scrolling
+    for (std::size_t i = 0; i < 3; ++i) {   // each control inside its row, at the right, beside the words
+        const FieldRects& r = s.form.fields[i];
+        const Rect& control = m.setting_fields[i].kind == 1 ? r.browse : r.input;
+        CB_CHECK(control.w > 0 && control.x >= s.field_rows[i].x && control.right() <= s.field_rows[i].right());
+        CB_CHECK(control.y >= s.field_rows[i].y && control.bottom() <= s.field_rows[i].bottom());
+        CB_CHECK(r.label.right() < control.x);
+    }
+    CB_CHECK(s.form.fields[1].input.w == 0);   // a folder is Change..., not a text box
+    CB_CHECK(s.locate[0].w == 0 && s.locate[1].w > 0);   // Locate... only on what is missing
+    CB_CHECK(hit_test_settings(s, m, s.form.fields[0].input.x + 3, s.form.fields[0].input.y + 3) == PageHit({Control::Field, 0}));
+    CB_CHECK(hit_test_settings(s, m, s.form.fields[1].browse.x + 3, s.form.fields[1].browse.y + 3) == PageHit({Control::FieldBrowse, 1}));
+    CB_CHECK(hit_test_settings(s, m, s.locate[1].x + 3, s.locate[1].y + 3) == PageHit({Control::Locate, 1}));
+    CB_CHECK(hit_test_settings(s, m, s.advanced_row.x + 30, s.advanced_row.y + 20).control == Control::SettingsAdvanced);
+    CB_CHECK(hit_test_settings(s, m, s.capability_rows[0].x + 30, s.capability_rows[0].y + 20).control == Control::None);
+    const std::vector<PageHit> order = focus_order_settings(m);
+    CB_CHECK(order.size() == 3 + 1 + 1 + 3);   // the three settings, Locate..., Advanced, the rail
+    CB_CHECK(order[1] == PageHit({Control::FieldBrowse, 1}));
+    CB_CHECK(order[3] == PageHit({Control::Locate, 1}));
+    CB_CHECK(order[4].control == Control::SettingsAdvanced);
+});
+
+CB_TEST("app.window_pages.advanced_has_back_beside_its_title", [] {
+    const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
+    Model m = wp_settings_model();
+    m.settings_advanced = true;
+    m.setting_fields = {{"NASM assembler", 0, "", {}, false, ""}, {"Jobs at once", 2, "4", {}, false, ""}};
+    m.setting_keys = {"nasm", "workers"};
+    const SettingsLayout s = compute_settings_layout(shell, m);
+    CB_CHECK(s.back.w > 0 && s.back.right() < s.title.x);
+    CB_CHECK(hit_test_settings(s, m, s.back.x + 5, s.back.y + 5).control == Control::SettingsBack);
+    CB_CHECK(s.form.fields.size() == 2 && s.form.fields[0].input.w > 0 && s.form.fields[0].browse.w > 0);
+    const std::vector<PageHit> order = focus_order_settings(m);
+    CB_CHECK(order.front().control == Control::SettingsBack);
+    CB_CHECK(order.size() == 1 + 3 + 3);   // Back, the file field and its Browse, the text field, the rail
 });
 
 }  // namespace

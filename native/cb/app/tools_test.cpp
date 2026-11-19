@@ -209,6 +209,15 @@ CB_TEST("app.tools.settings_are_rows_a_form_can_edit_and_the_theme_is_remembered
     CB_CHECK_EQ(row("nasm")->label, "NASM assembler");   // (plain words; the key stays the settings.json key)
     CB_CHECK(!row("low_load")->hint.empty());
     CB_CHECK_EQ(settings::plain_label("some_new_key"), "Some new key");
+    CB_CHECK(settings::is_everyday("converted") && settings::is_everyday("low_load") && !settings::is_everyday("nasm"));
+    {   // what this computer can convert: one Ready line first, then a row with its setting for each tool not found
+        const std::vector<settings::Row> some = {{"java", "C:\\jdk", settings::Kind::Path, true, true, "", ""}, {"ilspycmd", "", settings::Kind::Path, false, false, "", ""}};
+        const std::vector<settings::Capability> can = settings::capabilities(some);
+        CB_CHECK(can.size() == 3 && can[0].ready && can[0].label == "Ready");
+        CB_CHECK(can[0].note.find("Java programs") != std::string::npos);
+        CB_CHECK(!can[1].ready && can[1].key == "ilspycmd" && !can[1].folder);
+        CB_CHECK(!can[2].ready && can[2].key == "xbox360_sdk" && can[2].folder);   // (no row at all: missing too)
+    }
     CB_CHECK_EQ(settings::write(config, "low_load", "false", settings::Kind::Toggle), "");
     CB_CHECK_EQ(settings::write(config, "nasm", "C:/tools/nasm.exe", settings::Kind::Path), "");
     const config::Config again = config::Config::load(dir.path());

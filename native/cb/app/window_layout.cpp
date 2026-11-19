@@ -19,12 +19,29 @@ constexpr float kCardPadBottom = 20;
 constexpr float kPlusSize = 72;
 constexpr float kButtonHeight = 32;
 constexpr float kInfoBarHeight = 132;
+// the Recent list
+constexpr float kRecentGap = 16;
+constexpr float kRecentHeadingHeight = 24;
+constexpr float kRecentRowHeight = 40;
+constexpr float kRecentMinDrop = 180;
+constexpr float kRecentRemoveWidth = 76;
+// the preview
+constexpr float kPreviewListWidth = 220;
+constexpr float kPreviewIcon = 44;
 
 Rect centered(float cx, float y, float w, float h) { return Rect{cx - w / 2, y, w, h}; }
 
 }  // namespace
 
-Layout compute_layout(View view, float width, float height, float rail) {
+Extras extras_for(const Model& model, View view) {
+    Extras e;
+    if (view == View::Idle) e.recent_rows = static_cast<int>(std::min<std::size_t>(model.recent.size(), 5));
+    e.preview = view == View::Done && !model.preview_files.empty();
+    e.queue = view == View::Working && !model.queue.empty();
+    return e;
+}
+
+Layout compute_layout(View view, float width, float height, float rail, const Extras& extras) {
     Layout l;
     l.width = width;
     l.height = height;
@@ -85,7 +102,24 @@ Layout compute_layout(View view, float width, float height, float rail) {
         l.try_another = {l.info_bar.right() - 16 - 140, l.info_bar.bottom() - 12 - kButtonHeight, 140, kButtonHeight};
         drop_top = l.info_bar.bottom() + 16;
     }
-    l.drop = {l.left_card.x + kCardPadX, drop_top, l.left_card.w - 2 * kCardPadX, std::max(0.0f, l.left_card.bottom() - kCardPadBottom - drop_top)};
+    float drop_h = std::max(0.0f, l.left_card.bottom() - kCardPadBottom - drop_top);
+    // the Recent list under the drop area (idle): the drop area gives it room, and the list shows fewer rows rather than squeeze the drop area below 180
+    if (view == View::Idle && extras.recent_rows > 0) {
+        int rows = extras.recent_rows;
+        while (rows > 0 && drop_h - (kRecentGap + kRecentHeadingHeight + static_cast<float>(rows) * kRecentRowHeight) < kRecentMinDrop) --rows;
+        if (rows > 0) {
+            drop_h -= kRecentGap + kRecentHeadingHeight + static_cast<float>(rows) * kRecentRowHeight;
+            const float x = l.left_card.x + kCardPadX, w = l.left_card.w - 2 * kCardPadX;
+            float y = drop_top + drop_h + kRecentGap;
+            l.recent_heading = {x, y, w, kRecentHeadingHeight};
+            y += kRecentHeadingHeight;
+            for (int i = 0; i < rows; ++i, y += kRecentRowHeight) {
+                l.recent_rows.push_back({x, y, w, kRecentRowHeight});
+                l.recent_remove.push_back({x + w - 12 - kRecentRemoveWidth, y + (kRecentRowHeight - 28) / 2, kRecentRemoveWidth, 28});
+            }
+        }
+    }
+    l.drop = {l.left_card.x + kCardPadX, drop_top, l.left_card.w - 2 * kCardPadX, drop_h};
     const float cx = l.drop.x + l.drop.w / 2;
 
     // idle: the "+" button and two lines (centred as a group); the "+" itself opens the file picker
@@ -119,11 +153,37 @@ Layout compute_layout(View view, float width, float height, float rail) {
 
     // ---- the Source card (Done): the finished file (a check, its name, what was written), then Output: the folder, and Open folder, Copy path,
     // Convert another file -- one column, centred in the card
-    if (view == View::Done) {
+    // several files: "Cancel all" at the foot of the Program card, the hint beside it
+    if (extras.queue) {
+        l.cancel = {l.left_card.x + kCardPadX, l.left_card.bottom() - kCardPadBottom - kButtonHeight, 116, kButtonHeight};
+        l.hint = {l.cancel.right() + 16, l.cancel.y, std::max(0.0f, l.left_card.right() - kCardPadX - l.cancel.right() - 16), kButtonHeight};
+    }
+    // the Source card with the preview: the finished file at the top left, the path row (the output box and the three buttons), then the files and the code
+    if (view == View::Done && extras.preview) {
+        const float x = l.right_card.x + kCardPadX, w = l.right_card.w - 2 * kCardPadX;
+        float y = l.right_desc.bottom() + 16;
+        l.file_icon = {x, y, kPreviewIcon, kPreviewIcon};
+        l.file_name = {x + kPreviewIcon + 12, y + 2, std::max(0.0f, w - kPreviewIcon - 12), 22};
+        l.detail = {l.file_name.x, y + 26, l.file_name.w, 18};
+        y += kPreviewIcon + 16;
+        const float buttons = 124 + 8 + 112 + 8 + 180;
+        const float bx = x + std::max(0.0f, w - buttons);
+        l.field = {x, y, std::max(120.0f, bx - 12 - x), 34};
+        l.open_folder = {bx, y, 124, kButtonHeight};
+        l.copy_path = {bx + 124 + 8, y, 112, kButtonHeight};
+        l.browse = {bx + 124 + 8 + 112 + 8, y, 180, kButtonHeight};
+        y += 34 + 16;
+        const float h = std::max(0.0f, l.right_card.bottom() - kCardPadBottom - y);
+        l.preview = {x, y, w, h};
+        const float list_w = std::min(kPreviewListWidth, w / 3);
+        l.preview_list = {x, y, list_w, h};
+        l.preview_code = {x + list_w, y, w - list_w, h};
+        l.cancel = {};
+    } else if (view == View::Done) {
         const float w = std::min(560.0f, std::max(0.0f, l.right_card.w - 2 * kCardPadX));
         const float x = l.right_card.x + (l.right_card.w - w) / 2;
         const float mid = x + w / 2;
-        const float group = 56 + 14 + 22 + 4 + 16 + 32 + 19 + 8 + 34 + 16 + kButtonHeight;
+        const float group = 56 + 14 + 22 + 4 + 16 + 32 + 19 + 8 + 34 + 6 + 18 + 16 + kButtonHeight;
         const float area_top = l.right_desc.bottom();
         const float area_h = l.right_card.bottom() - kCardPadBottom - area_top;
         float y = area_top + std::max(0.0f, (area_h - group) / 2);
@@ -136,14 +196,14 @@ Layout compute_layout(View view, float width, float height, float rail) {
         l.output_label = {x, y, w, 19};
         y += 19 + 8;
         l.field = {x, y, w, 34};
-        y += 34 + 16;
+        l.hint = {x, y + 34 + 6, w, 18};   // "Drag the folder anywhere ..." under the output box, which is a drag source
+        y += 34 + 6 + 18 + 16;
         const float row = 124 + 8 + 112 + 8 + 180;
         const float bx = mid - row / 2;
         l.open_folder = {bx, y, 124, kButtonHeight};
         l.copy_path = {bx + 124 + 8, y, 112, kButtonHeight};
         l.browse = {bx + 124 + 8 + 112 + 8, y, 180, kButtonHeight};   // "Convert another file": back to the Program card
         l.cancel = {};
-        l.hint = {x, y + kButtonHeight + 12, w, 34};
     }
     return l;
 }
@@ -170,7 +230,16 @@ bool control_exists(Control control, View view) {
         case Control::Field:
         case Control::FieldBrowse:
         case Control::Run:
-        case Control::OutputPane: return false;
+        case Control::OutputPane:
+        // the Convert page's lists: the window knows which exist (window_convert.hpp)
+        case Control::RecentRow:
+        case Control::RecentRemove:
+        case Control::PreviewFile:
+        case Control::CodeView:
+        case Control::OutputBox:
+        case Control::SettingsAdvanced:   // (the Settings page: window_pages.hpp)
+        case Control::SettingsBack:
+        case Control::Locate: return false;
     }
     return false;
 }
@@ -203,6 +272,14 @@ Rect control_rect(const Layout& l, Control control) {
         case Control::FieldBrowse:
         case Control::Run:
         case Control::OutputPane:
+        case Control::RecentRow:
+        case Control::RecentRemove:
+        case Control::PreviewFile:
+        case Control::CodeView:
+        case Control::OutputBox:
+        case Control::SettingsAdvanced:
+        case Control::SettingsBack:
+        case Control::Locate:
         case Control::None: break;
     }
     return {};

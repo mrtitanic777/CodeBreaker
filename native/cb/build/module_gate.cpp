@@ -13,6 +13,8 @@
 
 namespace cb::build::module {
 
+namespace stdfs = std::filesystem;
+
 namespace internal {
 
 std::map<std::string, std::string> gate_keys(const Services& services, const stdfs::path& module, const std::vector<std::string>& names,

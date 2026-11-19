@@ -81,8 +81,24 @@ Which stages a file passes through depends on what it is: *Unpacking* only for c
 images, cabinets); *Decompiling* only where the source is C (Windows 32-bit and 16-bit programs, drivers,
 DOS programs); console programs come back as assembly source. The window is plain Win32 with Direct2D
 and DirectWrite (Mica backdrop, the system accent colour and light or dark theme, per-monitor DPI); the
-screenshots above are drawn by it: `codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings]
+screenshots above are drawn by it: `codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings|recent|batch|preview|dragout]
 [--theme light|dark] [--size WxH] [--scale N]`.
+
+**Several files, recent work, the source at a glance.** Drop several files (or choose several in the file dialog) and
+they are converted one after another: the Program card lists the queue (a state icon, the file, the stage of the one
+running, a bar and *Done*, a percentage, *Waiting* or *Can't convert*) with **Cancel all**, and files dropped during a run
+join the end; when they have all finished the Source card shows the last one and every one is in **Recent**, the list under
+the drop area of the last five conversions (what each became, how many files, when; a click reopens its Source card; one
+whose folder has gone says so and offers Remove). The Source card lists the output folder's files, the main source first, and
+shows the selected one, read-only, with simple colouring for C, C++, C# and assembly (wheel and arrow keys scroll, Ctrl+C copies
+it; a long file shows its first 128 KB and says so). The output box is a drag source: drag the folder out of the window into
+Explorer, VS Code or a USB drive. The taskbar button shows the progress of the run (red if it failed), and a conversion that
+finishes while the window is not in front shows a Windows notification with *Open folder* and *Show* buttons (not when Windows
+says not to disturb).
+
+| Recent | Several files | Source preview | Drag the folder out |
+|---|---|---|---|
+| ![Recent conversions](docs/images/app-recent-light.png) | ![A queue of files](docs/images/app-batch-light.png) | ![The Source card's preview](docs/images/app-preview-dark.png) | ![The output box as a drag source](docs/images/app-dragout-light.png) |
 
 **Translate source code, and have it checked.** Drop a C# or Python file instead of a program and open the
 **Language** drop-down above the Output box. It lists every language the translator knows; the ones it cannot

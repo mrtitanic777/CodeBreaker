@@ -34,6 +34,8 @@ std::filesystem::path cv_settings_file() {
 
 }  // namespace
 
+std::filesystem::path settings_file() { return cv_settings_file(); }
+
 std::string remembered_target() {
     try {
         const std::filesystem::path file = cv_settings_file();

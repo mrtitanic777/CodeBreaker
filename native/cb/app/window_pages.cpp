@@ -103,10 +103,65 @@ SettingsLayout compute_settings_layout(const Layout& shell, const Model& m) {
     const float left = shell.rail.w > 0 ? shell.rail.w + 4 : kOuterPadding;
     s.card = {left, top, std::max(0.0f, shell.width - kOuterPadding - left), std::max(0.0f, shell.status_bar.y - 16 - top)};
     s.title = {s.card.x + kPgCardPadX, s.card.y + kPgCardPadTop, s.card.w - 2 * kPgCardPadX, kPgTitleHeight};
+    if (m.settings_advanced) {   // Back, then the title beside it
+        s.back = {s.title.x, s.title.y - 2, 32, 32};
+        s.title.x += 40;
+        s.title.w = std::max(0.0f, s.title.w - 40);
+    }
     s.desc = {s.title.x, s.title.bottom() + 4, s.title.w, 19};
-    const float fields_top = s.desc.bottom() + 16;
-    s.fields_area = {s.title.x, fields_top, std::min(s.title.w, 720.0f), std::max(0.0f, s.card.bottom() - 12 - fields_top)};
-    s.form = layout_form(s.fields_area, m.setting_fields, m.setting_scroll);
+    const float fields_top = s.desc.bottom() + (m.settings_advanced ? 16.0f : 8.0f);
+    s.fields_area = {s.card.x + kPgCardPadX, fields_top, std::min(s.card.w - 2 * kPgCardPadX, m.settings_advanced ? 720.0f : kSettingsMaxWidth),
+                     std::max(0.0f, s.card.bottom() - 12 - fields_top)};
+    if (m.settings_advanced) {
+        Rect form_area = s.fields_area;
+        form_area.w = std::max(0.0f, form_area.w - 14);   // (room for the scroll bar beside Browse)
+        s.form = layout_form(form_area, m.setting_fields, m.setting_scroll);
+        return s;
+    }
+
+    // the main view: rows
+    const Rect& a = s.fields_area;
+    const float pad = 16;
+    float y = a.y - m.setting_scroll;
+    const auto heading = [&](Rect& r) {
+        r = {a.x, y + 14, a.w, 20};
+        y += 14 + 20 + 8;
+    };
+    heading(s.general_heading);
+    for (const FieldItem& f : m.setting_fields) {
+        const Rect row{a.x, y, a.w, kSettingRowHeight};
+        FieldRects r;
+        float control_w = 0;
+        if (f.kind == 3) {
+            control_w = 180;
+            r.input = {row.right() - pad - control_w, row.y + 14, control_w, 32};
+        } else if (f.kind == 4) {
+            control_w = 40;
+            r.input = {row.right() - pad - control_w, row.y + 20, control_w, 20};
+        } else if (f.kind == 0 || f.kind == 1) {   // Change... (the path is the note under the label)
+            control_w = 112;
+            r.browse = {row.right() - pad - control_w, row.y + 14, control_w, 32};
+        } else {
+            control_w = 200;
+            r.input = {row.right() - pad - control_w, row.y + 14, control_w, 32};
+        }
+        const float text_w = std::max(0.0f, row.w - 2 * pad - control_w - 16);
+        r.label = {row.x + pad, row.y + 10, text_w, 20};
+        r.note = {row.x + pad, row.y + 31, text_w, 17};
+        s.form.fields.push_back(r);
+        s.field_rows.push_back(row);
+        y += kSettingRowHeight + 4;
+    }
+    heading(s.can_heading);
+    for (const CapabilityItem& c : m.capabilities) {
+        const Rect row{a.x, y, a.w, kSettingRowHeight};
+        s.capability_rows.push_back(row);
+        s.locate.push_back(!c.ready && !c.key.empty() ? Rect{row.right() - pad - 112, row.y + 14, 112, 32} : Rect{});
+        y += kSettingRowHeight + 4;
+    }
+    s.advanced_row = {a.x, y, a.w, kSettingRowHeight};
+    y += kSettingRowHeight;
+    s.form.content_height = y + m.setting_scroll - a.y;
     return s;
 }
 
@@ -146,7 +201,18 @@ PageHit hit_test_tools(const ToolsLayout& t, const Model& m, float x, float y) {
     return pg_hit_form(t.form, m.tool_fields, t.form_card, x, y);
 }
 
-PageHit hit_test_settings(const SettingsLayout& s, const Model& m, float x, float y) { return pg_hit_form(s.form, m.setting_fields, s.fields_area, x, y); }
+PageHit hit_test_settings(const SettingsLayout& s, const Model& m, float x, float y) {
+    if (m.settings_advanced) {
+        if (s.back.contains(x, y)) return {Control::SettingsBack, -1};
+        return pg_hit_form(s.form, m.setting_fields, s.fields_area, x, y);
+    }
+    if (!s.fields_area.contains(x, y)) return {};
+    if (const PageHit hit = pg_hit_form(s.form, m.setting_fields, s.fields_area, x, y); hit.control != Control::None) return hit;
+    for (std::size_t i = 0; i < s.locate.size(); ++i)
+        if (s.locate[i].w > 0 && s.locate[i].contains(x, y)) return {Control::Locate, static_cast<int>(i)};
+    if (s.advanced_row.contains(x, y)) return {Control::SettingsAdvanced, -1};
+    return {};
+}
 
 namespace {
 
@@ -176,7 +242,18 @@ std::vector<PageHit> focus_order_tools(const Model& m) {
 
 std::vector<PageHit> focus_order_settings(const Model& m) {
     std::vector<PageHit> order;
-    pg_add_fields(order, m.setting_fields);
+    if (m.settings_advanced) {
+        order.push_back({Control::SettingsBack, -1});
+        pg_add_fields(order, m.setting_fields);
+    } else {   // a path is a row with Change..., not a text box
+        for (std::size_t i = 0; i < m.setting_fields.size(); ++i) {
+            const bool path = m.setting_fields[i].kind == 0 || m.setting_fields[i].kind == 1;
+            order.push_back({path ? Control::FieldBrowse : Control::Field, static_cast<int>(i)});
+        }
+        for (std::size_t i = 0; i < m.capabilities.size(); ++i)
+            if (!m.capabilities[i].ready && !m.capabilities[i].key.empty()) order.push_back({Control::Locate, static_cast<int>(i)});
+        order.push_back({Control::SettingsAdvanced, -1});
+    }
     pg_add_rail(order);
     return order;
 }

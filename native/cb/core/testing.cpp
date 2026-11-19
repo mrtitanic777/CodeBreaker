@@ -10,7 +10,10 @@
 #include <cstdio>
 #include <exception>
 #include <fstream>
+#include <cstdlib>
+#include <map>
 #include <mutex>
+#include <set>
 
 #ifndef CB_SOURCE_DIR
 #define CB_SOURCE_DIR "."
@@ -23,7 +26,19 @@ namespace {
 struct Entry {
     std::string name;
     TestFn fn;
+    std::string file;   // the source file of the test ("" when it was registered by hand): `--area` reads its folder
 };
+
+// The area of a test file: the folder under native/cb ("/native/cb/engine/show_test.cpp" -> "engine"), "" when there is none.
+std::string area_of(const std::string& file) {
+    std::string f = file;
+    for (char& c : f)
+        if (c == '\\') c = '/';
+    const std::size_t at = f.find("native/cb/");
+    if (at == std::string::npos) return {};
+    const std::size_t from = at + 10, slash = f.find('/', from);
+    return slash == std::string::npos ? std::string() : f.substr(from, slash - from);
+}
 
 // The registry is built during static initialisation of the test translation units, so it must itself
 // be safe to touch before main: a function-local static.
@@ -57,7 +72,8 @@ std::string xml_escape(const std::string& s) {
 
 }  // namespace
 
-Registrar::Registrar(const char* name, TestFn fn) { registry().push_back({name, std::move(fn)}); }
+Registrar::Registrar(const char* name, TestFn fn) { registry().push_back({name, std::move(fn), {}}); }
+Registrar::Registrar(const char* name, const char* file, TestFn fn) { registry().push_back({name, std::move(fn), file}); }
 
 void record_failure(const char* file, int line, std::string message) {
     std::lock_guard lock(g_mutex);
@@ -127,13 +143,26 @@ bool windows_only(std::string_view reason) {
 int run_all(int argc, char** argv) {
     std::string filter;
     std::string xml_path;
-    bool list_only = false;
+    bool list_only = false, times = false;
+    std::string weights_path, times_file;
+    std::set<std::string> areas;         // --area a,b: only the tests of these areas (a test whose file is not known is always run)
     std::size_t shard = 0, shards = 1;   // --shard K/N: every Nth test of the sorted list, from K (the gate runs N processes)
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--filter" && i + 1 < argc) filter = argv[++i];
         else if (arg == "--xml" && i + 1 < argc) xml_path = argv[++i];
         else if (arg == "--list") list_only = true;
+        else if (arg == "--times") times = true;
+        else if (arg == "--weights" && i + 1 < argc) weights_path = argv[++i];   // "seconds<TAB>name" lines: how long each test took last time
+        else if (arg == "--times-file" && i + 1 < argc) times_file = argv[++i];   // writes the same lines for the tests this run ran
+        else if (arg == "--area" && i + 1 < argc) {
+            const std::string list = argv[++i];
+            for (std::size_t from = 0; from <= list.size();) {
+                const std::size_t comma = std::min(list.find(',', from), list.size());
+                if (comma > from) areas.insert(list.substr(from, comma - from));
+                from = comma + 1;
+            }
+        }
         else if (arg == "--shard" && i + 1 < argc) {
             const std::string spec = argv[++i];
             const std::size_t slash = spec.find('/');
@@ -143,7 +172,7 @@ int run_all(int argc, char** argv) {
             if (shards == 0 || shard >= shards) { std::fprintf(stderr, "--shard K/N: K below N\n"); return 2; }
         }
         else {
-            std::fprintf(stderr, "usage: cb_tests [--filter <substring>] [--shard K/N] [--list] [--xml <file>]\n");
+            std::fprintf(stderr, "usage: cb_tests [--filter <substring>] [--area a,b] [--shard K/N] [--list] [--times] [--xml <file>]\n");
             return 2;
         }
     }
@@ -153,10 +182,49 @@ int run_all(int argc, char** argv) {
 
     std::size_t passed = 0, failed = 0, total_checks = 0;
     std::string xml = "<testsuite name=\"cb_tests\">\n";
-    std::size_t index = 0;
+    std::vector<std::pair<double, std::string>> timed;
+    std::vector<const Entry*> selected;
     for (const Entry& t : tests) {
         if (!filter.empty() && t.name.find(filter) == std::string::npos) continue;
-        if (index++ % shards != shard) continue;
+        if (!areas.empty() && !t.file.empty() && !areas.contains(area_of(t.file))) continue;
+        selected.push_back(&t);
+    }
+    // This process's share. Without weights: every Nth of the sorted list. With them (seconds a test took last time): longest first onto the lightest
+    // shard, so no shard is left with the slow tests together; every process computes the same split from the same file. A test not in the file weighs
+    // what the median one does.
+    std::vector<bool> mine(selected.size(), false);
+    if (weights_path.empty()) {
+        for (std::size_t i = 0; i < selected.size(); ++i) mine[i] = i % shards == shard;
+    } else {
+        std::map<std::string, double> weight;
+        std::ifstream in(weights_path);
+        for (std::string line; std::getline(in, line);) {
+            const std::size_t tab = line.find('\t');
+            if (tab == std::string::npos) continue;
+            weight[line.substr(tab + 1)] = std::atof(line.substr(0, tab).c_str());
+        }
+        std::vector<double> known;
+        for (const auto& [name, secs] : weight) known.push_back(secs);
+        std::sort(known.begin(), known.end());
+        const double unknown = known.empty() ? 0.05 : known[known.size() / 2];
+        std::vector<double> w(selected.size());
+        std::vector<std::size_t> order(selected.size());
+        for (std::size_t i = 0; i < selected.size(); ++i) {
+            const auto it = weight.find(selected[i]->name);
+            w[i] = it != weight.end() ? it->second : unknown;
+            order[i] = i;
+        }
+        std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return w[a] > w[b]; });
+        std::vector<double> load(shards, 0.0);
+        for (const std::size_t i : order) {
+            const std::size_t k = static_cast<std::size_t>(std::min_element(load.begin(), load.end()) - load.begin());
+            load[k] += w[i];
+            if (k == shard) mine[i] = true;
+        }
+    }
+    for (std::size_t at = 0; at < selected.size(); ++at) {
+        if (!mine[at]) continue;
+        const Entry& t = *selected[at];
         if (list_only) {
             std::printf("%s\n", t.name.c_str());
             continue;
@@ -174,6 +242,7 @@ int run_all(int argc, char** argv) {
         g_current = nullptr;
         const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         total_checks += run.checks;
+        if (times || !times_file.empty()) timed.emplace_back(secs, t.name);
         xml += "  <testcase name=\"" + xml_escape(t.name) + "\" time=\"" + std::format("{:.3f}", secs) + "\"";
         if (run.failures.empty()) {
             ++passed;
@@ -193,6 +262,14 @@ int run_all(int argc, char** argv) {
     xml += "</testsuite>\n";
     if (list_only) return 0;
 
+    if (!times_file.empty()) {
+        std::ofstream out(times_file, std::ios::binary);
+        for (const auto& [secs, name] : timed) out << std::format("{:.3f}", secs) << '\t' << name << '\n';
+    }
+    if (times) {   // the slowest five of this run, for the gate's --times
+        std::sort(timed.begin(), timed.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (std::size_t k = 0; k < timed.size() && k < 5; ++k) std::printf("SLOW  %.2f  %s\n", timed[k].first, timed[k].second.c_str());
+    }
     std::printf("\n%zu passed, %zu failed (%zu checks)\n", passed, failed, total_checks);
     if (!xml_path.empty()) {
         std::ofstream out(xml_path, std::ios::binary);

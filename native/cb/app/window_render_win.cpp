@@ -4,6 +4,7 @@
 #ifdef _WIN32
 #include "cb/app/window_render_win.hpp"
 
+#include "cb/app/window_convert.hpp"
 #include "cb/app/window_pages.hpp"
 
 #include <algorithm>
@@ -457,14 +458,88 @@ void rd_tools(RdDraw& d, const Layout& l, const Model& m, Painter& painter) {
     }
 }
 
+// A plain button (Change..., Locate...): the field fill, a thin outline, an optional glyph and its words centred.
+void rd_plain_button(RdDraw& d, const Rect& r, wchar_t glyph, const std::wstring& label, bool hot, bool focused) {
+    const RdPalette& pal = d.pal;
+    D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, hot ? 0.035f : 0.0f);
+    d.fill(r, 4, fill);
+    d.stroke(r, 4, pal.stroke2);
+    const float text_w = d.painter.measure(label, 14, false);
+    const float glyph_w = glyph != 0 ? 24.0f : 0.0f;
+    const float x = r.x + (r.w - glyph_w - text_w) / 2;
+    if (glyph != 0) d.glyph(glyph, Rect{x, r.y, 16, r.h}, 14, pal.text);
+    d.text(label, Rect{x + glyph_w, r.y, text_w + 4, r.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    if (focused) d.stroke(Rect{r.x - 3, r.y - 3, r.w + 6, r.h + 6}, 6, pal.text, 2.0f);
+}
+
 void rd_settings(RdDraw& d, const Layout& l, const Model& m) {
     const RdPalette& pal = d.pal;
     const SettingsLayout s = compute_settings_layout(l, m);
     d.fill(s.card, kCardRadius, pal.card);
     d.stroke(s.card, kCardRadius, pal.card_stroke);
+    if (m.settings_advanced) {
+        const bool hot = m.hot == Control::SettingsBack;
+        if (hot) d.fill(s.back, 4, rd_alpha(pal.text, pal.dark ? 0.06f : 0.04f));
+        d.glyph(L'\xE72B', s.back, 16, pal.text);
+        if (m.focus == Control::SettingsBack) d.stroke(s.back, 4, pal.text, 2.0f);
+        d.text(L"Advanced", s.title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(L"Tool locations, limits and options for developers. A change is saved when you make it.", s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        rd_form(d, s.form, m.setting_fields, s.fields_area, m);
+        rd_scrollbar(d, s.fields_area, s.form.content_height, m.setting_scroll);
+        return;
+    }
     d.text(L"Settings", s.title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
-    d.text(L"How CodeBreaker looks, and where it finds the tools it uses. A change is saved when you make it.", s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
-    rd_form(d, s.form, m.setting_fields, s.fields_area, m);
+    d.text(L"Changes are saved as you make them.", s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+
+    const D2D1_COLOR_F row_fill = rd_alpha(pal.text, pal.dark ? 0.06f : 0.0373f);
+    d.rt->PushAxisAlignedClip(rd_rect(s.fields_area), D2D1_ANTIALIAS_MODE_ALIASED);
+    d.text(L"General", s.general_heading, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+    for (std::size_t i = 0; i < m.setting_fields.size() && i < s.form.fields.size() && i < s.field_rows.size(); ++i) {
+        const FieldItem& f = m.setting_fields[i];
+        const FieldRects& r = s.form.fields[i];
+        const int idx = static_cast<int>(i);
+        const bool focused = m.focus == Control::Field && m.focus_index == idx;
+        d.fill(s.field_rows[i], 6, row_fill);
+        d.text(widen(f.label), r.label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        const bool path = f.kind == 0 || f.kind == 1;
+        const std::string note = path ? (f.text.empty() ? f.hint : f.text) : f.note;
+        d.text(widen(note), r.note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        if (f.kind == 3) {
+            rd_combo(d, r.input, widen(f.text), m.field_popup == idx, m.hot == Control::Field && m.hot_index == idx);
+            if (focused) d.stroke(Rect{r.input.x - 3, r.input.y - 3, r.input.w + 6, r.input.h + 6}, 6, pal.text, 2.0f);
+        } else if (f.kind == 4) {
+            rd_switch(d, r.input, !f.text.empty(), focused);
+        } else if (path) {
+            rd_plain_button(d, r.browse, L'\xE8B7', L"Change\x2026", m.hot == Control::FieldBrowse && m.hot_index == idx,
+                            m.focus == Control::FieldBrowse && m.focus_index == idx);
+        } else {
+            rd_text_box(d, r.input, widen(f.text), widen(f.hint), focused, focused ? static_cast<int>(widen(f.text.substr(0, static_cast<std::size_t>(std::max(0, m.caret)))).size()) : 0);
+        }
+    }
+    d.text(L"What this computer can convert", s.can_heading, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+    const auto icon_row = [&](const Rect& row, wchar_t glyph, D2D1_COLOR_F tone, const std::string& label, const std::string& note, float right_w) {
+        d.fill(row, 6, row_fill);
+        d.glyph(glyph, Rect{row.x + 16, row.y, 16, row.h}, 16, tone);
+        const float w = std::max(0.0f, row.w - 44 - 16 - right_w);
+        d.text(widen(label), Rect{row.x + 44, row.y + 10, w, 20}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        d.text(widen(note), Rect{row.x + 44, row.y + 31, w, 17}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    };
+    for (std::size_t i = 0; i < m.capabilities.size() && i < s.capability_rows.size(); ++i) {
+        const CapabilityItem& c = m.capabilities[i];
+        const Rect& locate = s.locate[i];
+        icon_row(s.capability_rows[i], c.ready ? L'\xE73E' : L'\xE7BA', c.ready ? pal.ok : pal.warn, c.label, c.note, locate.w > 0 ? locate.w + 16 : 0.0f);
+        if (locate.w > 0)
+            rd_plain_button(d, locate, 0, L"Locate\x2026", m.hot == Control::Locate && m.hot_index == static_cast<int>(i),
+                            m.focus == Control::Locate && m.focus_index == static_cast<int>(i));
+    }
+    {
+        const Rect& r = s.advanced_row;
+        icon_row(r, L'\xE713', pal.text2, "Advanced", "Tool locations, limits and options for developers", 32);
+        if (m.hot == Control::SettingsAdvanced) d.fill(r, 6, rd_alpha(pal.text, pal.dark ? 0.04f : 0.03f));
+        d.glyph(L'\xE76C', Rect{r.right() - 40, r.y, 24, r.h}, 12, pal.text2);
+        if (m.focus == Control::SettingsAdvanced) d.stroke(Rect{r.x + 1, r.y + 1, r.w - 2, r.h - 2}, 6, pal.text, 2.0f);
+    }
+    d.rt->PopAxisAlignedClip();
     rd_scrollbar(d, s.fields_area, s.form.content_height, m.setting_scroll);
 }
 
@@ -564,6 +639,240 @@ std::wstring rd_fit_middle(const Painter& painter, const std::wstring& path, flo
 
 }  // namespace
 
+// ---- the Convert page's lists: Recent, the batch queue, the output box and the preview ------------------------------------------------------------
+
+namespace {
+
+ComPtr<ID2D1StrokeStyle> rd_dashes(RdDraw& d, float on, float off) {
+    ComPtr<ID2D1StrokeStyle> style;
+    const float pattern[2] = {on, off};
+    const D2D1_STROKE_STYLE_PROPERTIES sp = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_LINE_JOIN_MITER, 10.0f,
+                                                                        D2D1_DASH_STYLE_CUSTOM, 0.0f);
+    d.painter.d2d()->CreateStrokeStyle(sp, pattern, 2, style.put());
+    return style;
+}
+
+// A small button of a list row (Remove): a Fluent button without an icon; `hot` is whether the pointer is over this one.
+void rd_row_button(RdDraw& d, const Rect& r, const std::wstring& label, bool hot) {
+    const RdPalette& pal = d.pal;
+    D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, hot ? 0.035f : 0.0f);
+    d.fill(r, 4, fill);
+    d.stroke(r, 4, pal.stroke2);
+    d.text(label, r, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+}
+
+// "Recent" under the drop area: a row per conversion (the file, a chip with what it became, files written and when).
+void rd_recent(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    if (l.recent_rows.empty()) return;
+    d.text(L"Recent", l.recent_heading, 0, 13, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+    for (std::size_t i = 0; i < l.recent_rows.size() && i < m.recent.size(); ++i) {
+        const Rect& row = l.recent_rows[i];
+        const RecentItem& item = m.recent[i];
+        const int idx = static_cast<int>(i);
+        const bool hot = (m.hot == Control::RecentRow || m.hot == Control::RecentRemove) && m.hot_index == idx;
+        if (hot) d.fill(row, 4, rd_alpha(pal.text, pal.dark ? 0.06f : 0.045f));
+        const D2D1_COLOR_F name_color = item.missing ? pal.text3 : pal.text;
+        d.glyph(item.glyph_console ? L'\xE7FC' : L'\xE8A5', Rect{row.x + 12, row.y, 20, row.h}, 16, item.missing ? pal.text3 : pal.text);
+        const float name_w = std::min(d.painter.measure(widen(item.name), 14, false) + 4, row.w * 0.4f);
+        d.text(widen(item.name), Rect{row.x + 44, row.y, name_w, row.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, name_color);
+        const float chip_w = d.painter.measure(widen(item.chip), 12, false) + 18;
+        if (!item.chip.empty()) {
+            const Rect chip{row.x + 44 + name_w + 8, row.y + (row.h - 22) / 2, chip_w, 22};
+            d.stroke(chip, 11, pal.stroke2);
+            d.text(widen(item.chip), chip, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, item.missing ? pal.text3 : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        const float meta_right = row.right() - 16 - (item.missing && i < l.recent_remove.size() ? l.recent_remove[i].w + 12 : 0.0f);
+        d.text(widen(item.meta), Rect{row.x + 44 + name_w + chip_w + 24, row.y, std::max(0.0f, meta_right - (row.x + 44 + name_w + chip_w + 24)), row.h}, 0, 12,
+               DWRITE_FONT_WEIGHT_NORMAL, item.missing ? pal.warn : pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        if (item.missing && i < l.recent_remove.size()) rd_row_button(d, l.recent_remove[i], L"Remove", m.hot == Control::RecentRemove && m.hot_index == idx);
+        if (m.focus == Control::RecentRow && m.focus_index == idx) d.stroke(Rect{row.x + 1, row.y + 1, row.w - 2, row.h - 2}, 4, pal.text, 2.0f);
+        if (m.focus == Control::RecentRemove && m.focus_index == idx && i < l.recent_remove.size())
+            d.stroke(Rect{l.recent_remove[i].x - 3, l.recent_remove[i].y - 3, l.recent_remove[i].w + 6, l.recent_remove[i].h + 6}, 6, pal.text, 2.0f);
+    }
+}
+
+// The batch queue in the Program card: a row per file (its state icon, name, the stage of the running one, a bar and the status), Cancel all and how far it is.
+void rd_queue(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    const QueueLayout q = compute_queue_layout(l, m);
+    d.rt->PushAxisAlignedClip(rd_rect(q.area), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < m.queue.size() && i < q.rows.size(); ++i) {
+        const QueueRowItem& item = m.queue[i];
+        const QueueRowRects& r = q.rows[i];
+        if (r.row.bottom() < q.area.y || r.row.y > q.area.bottom()) continue;
+        const bool running = item.state == 1;
+        d.fill(r.row, 4, pal.dark ? rd_color(0xFFFFFF, 0.035f) : rd_color(0xFFFFFF, 0.7f));
+        d.stroke(r.row, 4, running ? pal.accent : pal.stroke2, running ? 1.5f : 1.0f);
+        wchar_t glyph = L'\xE8A5';
+        D2D1_COLOR_F tone = pal.text3;
+        if (running) tone = pal.accent;
+        else if (item.state == 2) { glyph = L'\xE73E'; tone = pal.ok; }
+        else if (item.state == 3) { glyph = L'\xE7BA'; tone = pal.warn; }
+        else if (item.state == 4) { glyph = L'\xEA39'; tone = pal.error; }
+        d.glyph(glyph, r.icon, 16, tone);
+        const float name_w = std::min(d.painter.measure(widen(item.name), 14, false) + 6, r.text.w);
+        d.text(widen(item.name), Rect{r.text.x, r.text.y, name_w, r.text.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, item.state == 5 ? pal.text3 : pal.text);
+        if (running && !item.detail.empty() && r.text.w > name_w + 20)
+            d.text(widen(item.detail), Rect{r.text.x + name_w + 4, r.text.y, r.text.w - name_w - 4, r.text.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        d.fill(r.bar, 2, rd_alpha(pal.text3, 0.3f));
+        const float f = item.state == 2 ? 1.0f : running ? static_cast<float>(std::clamp(item.percent, 0, 100)) / 100.0f : 0.0f;
+        if (f > 0) d.fill(Rect{r.bar.x, r.bar.y, std::max(3.0f, r.bar.w * f), r.bar.h}, 2, pal.accent);
+        d.text(widen(item.status), r.status, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING, true);
+    }
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, q.area, q.content_height, m.queue_scroll);
+    d.button(Control::Cancel, l.cancel, L"Cancel all", L'\xE711', true);
+    d.text(widen("Drop more files to add them to the list. " + m.queue_note + "."), l.hint, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+}
+
+// The output folder's box: its path, and a dashed accent outline while the pointer is over it or the folder is being dragged out of it (it is the drag source).
+void rd_output_box(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    const bool active = m.hot == Control::OutputBox || m.drag_out;
+    if (active) {
+        d.fill(l.field, 4, pal.subtle);
+        const ComPtr<ID2D1StrokeStyle> dashes = rd_dashes(d, 4.0f, 3.0f);
+        d.stroke(l.field, 4, pal.accent, 2.0f, dashes.get());
+    } else {
+        d.fill(l.field, 4, pal.field);
+        d.stroke(l.field, 4, pal.stroke2);
+        d.brush->SetColor(pal.field_line);
+        d.rt->DrawLine(D2D1::Point2F(l.field.x + 4, l.field.bottom() - 0.5f), D2D1::Point2F(l.field.right() - 4, l.field.bottom() - 0.5f), d.brush.get(), 1.0f);
+    }
+    const float inset = active ? 36.0f : 11.0f;
+    if (active) d.glyph(L'\xE8B7', Rect{l.field.x + 10, l.field.y, 20, l.field.h}, 16, pal.accent);
+    d.text(rd_fit_middle(d.painter, widen(m.output_path), l.field.w - inset - 11, 14), Rect{l.field.x + inset, l.field.y, l.field.w - inset - 11, l.field.h}, 0, 14,
+           DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    if (m.focus == Control::OutputBox) d.stroke(Rect{l.field.x - 3, l.field.y - 3, l.field.w + 6, l.field.h + 6}, 6, pal.text, 2.0f);
+    if (m.drag_ghost) {   // (screenshots) what the system draws under the pointer while the folder is dragged: its icon, name and size
+        const std::size_t slash = m.output_path.find_last_of("\\/");
+        const std::string leaf = slash == std::string::npos ? m.output_path : m.output_path.substr(slash + 1);
+        const std::string count = m.done_note.substr(0, m.done_note.find(" written"));
+        const Rect ghost{l.field.right() - 90, l.field.bottom() - 12, 150, 38};
+        for (int i = 3; i >= 1; --i) d.fill(Rect{ghost.x - static_cast<float>(i), ghost.y - static_cast<float>(i) + 2, ghost.w + 2.0f * static_cast<float>(i), ghost.h + 2.0f * static_cast<float>(i)}, 8, rd_color(0x000000, 0.06f));
+        d.fill(ghost, 6, pal.dark ? rd_color(0x383838) : rd_color(0xFFFFFF));
+        d.stroke(ghost, 6, pal.stroke2);
+        d.glyph(L'\xE8B7', Rect{ghost.x + 10, ghost.y, 20, ghost.h}, 16, pal.accent);
+        const float leaf_w = d.painter.measure(widen(leaf), 13, false) + 6;
+        d.text(widen(leaf), Rect{ghost.x + 38, ghost.y, leaf_w, ghost.h}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        d.text(widen(count), Rect{ghost.x + 38 + leaf_w + 6, ghost.y, ghost.w - 44 - leaf_w, ghost.h}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    }
+}
+
+D2D1_COLOR_F rd_token_color(const RdPalette& pal, preview::Tok kind) {
+    switch (kind) {
+        case preview::Tok::Keyword: return pal.dark ? rd_color(0x569CD6) : rd_color(0x0451A5);
+        case preview::Tok::Comment: return pal.dark ? rd_color(0x6A9955) : rd_color(0x008000);
+        case preview::Tok::Number: return pal.dark ? rd_color(0xB5CEA8) : rd_color(0x098658);
+        case preview::Tok::String: return pal.dark ? rd_color(0xCE9178) : rd_color(0xA31515);
+        case preview::Tok::Plain: break;
+    }
+    return pal.text;
+}
+
+// UTF-16 index of each byte offset of a UTF-8 line (so a span's bytes find their characters).
+std::vector<UINT32> rd_wide_index(const std::string& line) {
+    std::vector<UINT32> at(line.size() + 1, 0);
+    UINT32 w = 0;
+    for (std::size_t i = 0; i < line.size();) {
+        const unsigned char c = static_cast<unsigned char>(line[i]);
+        const std::size_t len = c < 0x80 ? 1 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+        for (std::size_t k = 0; k < len && i + k < line.size(); ++k) at[i + k] = w;
+        w += len == 4 ? 2 : 1;
+        i += len;
+    }
+    at[line.size()] = w;
+    return at;
+}
+
+// One line of code at (x, y), its spans in their colours (keywords semibold); one text layout so the monospace advance is the font's own.
+void rd_code_line(RdDraw& d, const std::string& line, const std::vector<preview::Span>& spans, float x, float y, ID2D1SolidColorBrush* const brushes[5]) {
+    if (line.empty()) return;
+    IDWriteTextFormat* format = d.painter_format(3, kCodeFontSize, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
+    if (format == nullptr) return;
+    const std::wstring wide = widen(line);
+    ComPtr<IDWriteTextLayout> layout;
+    if (FAILED(d.painter.dwrite()->CreateTextLayout(wide.c_str(), static_cast<UINT32>(wide.size()), format, 8000.0f, kCodeLineHeight, layout.put()))) return;
+    const std::vector<UINT32> at = rd_wide_index(line);
+    for (const preview::Span& s : spans) {
+        const std::size_t end = std::min<std::size_t>(line.size(), static_cast<std::size_t>(s.start) + s.length);
+        if (s.start >= line.size() || end <= s.start) continue;
+        const DWRITE_TEXT_RANGE range{at[s.start], at[end] - at[s.start]};
+        layout->SetDrawingEffect(brushes[static_cast<int>(s.kind)], range);
+        if (s.kind == preview::Tok::Keyword) layout->SetFontWeight(DWRITE_FONT_WEIGHT_SEMI_BOLD, range);
+    }
+    d.rt->DrawTextLayout(D2D1::Point2F(x, y + 2), layout.get(), brushes[0], D2D1_DRAW_TEXT_OPTIONS_NONE);
+}
+
+// The Source card's preview: the output folder's files on the left, the selected file's source on the right.
+void rd_preview(RdDraw& d, const Layout& l) {
+    const Model& m = d.model;
+    const RdPalette& pal = d.pal;
+    const PreviewLayout p = compute_preview_layout(l, m);
+    const D2D1_COLOR_F code_fill = pal.dark ? rd_color(0x1F1F1F) : rd_color(0xF6F6F6);
+    d.fill(l.preview, 6, code_fill);
+    d.fill(Rect{l.preview_list.x, l.preview_list.y, l.preview_list.w, l.preview_list.h}, 6, pal.dark ? rd_color(0x262626) : rd_color(0xFBFBFB));
+    d.fill(Rect{l.preview_list.right() - 8, l.preview_list.y, 8, l.preview_list.h}, 0, pal.dark ? rd_color(0x262626) : rd_color(0xFBFBFB));
+    d.stroke(l.preview, 6, pal.stroke2);
+    d.brush->SetColor(pal.stroke2);
+    d.rt->DrawLine(D2D1::Point2F(l.preview_list.right() - 0.5f, l.preview_list.y + 1), D2D1::Point2F(l.preview_list.right() - 0.5f, l.preview_list.bottom() - 1), d.brush.get(), 1.0f);
+
+    // the files
+    d.rt->PushAxisAlignedClip(rd_rect(p.list_area), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < m.preview_files.size() && i < p.file_rows.size(); ++i) {
+        const Rect& r = p.file_rows[i];
+        if (r.bottom() < p.list_area.y || r.y > p.list_area.bottom()) continue;
+        const bool selected = static_cast<int>(i) == m.preview_selected;
+        if (selected) d.fill(r, 4, rd_alpha(pal.text, pal.dark ? 0.08f : 0.06f));
+        else if (m.hot == Control::PreviewFile && m.hot_index == static_cast<int>(i)) d.fill(r, 4, rd_alpha(pal.text, pal.dark ? 0.045f : 0.035f));
+        d.glyph(m.preview_files[i].script ? L'\xE90F' : L'\xE943', Rect{r.x + 8, r.y, 20, r.h}, 14, pal.text2);
+        d.text(widen(m.preview_files[i].name), Rect{r.x + 36, r.y, std::max(0.0f, r.w - 44), r.h}, 0, 13.5f, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        if (m.focus == Control::PreviewFile && m.focus_index == static_cast<int>(i)) d.stroke(Rect{r.x + 1, r.y + 1, r.w - 2, r.h - 2}, 4, pal.text, 2.0f);
+    }
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, p.list_area, p.list_content_height, m.preview_list_scroll);
+
+    // the code
+    ID2D1SolidColorBrush* brushes[5] = {};
+    ComPtr<ID2D1SolidColorBrush> owned[5];
+    const preview::Tok kinds[5] = {preview::Tok::Plain, preview::Tok::Keyword, preview::Tok::Comment, preview::Tok::Number, preview::Tok::String};
+    for (int k = 0; k < 5; ++k) {
+        if (FAILED(d.rt->CreateSolidColorBrush(rd_token_color(pal, kinds[k]), owned[k].put()))) return;
+        brushes[static_cast<int>(kinds[k])] = owned[k].get();
+    }
+    // the font's own advance, for the sideways scroll
+    float advance = kCodeCharWidth;
+    if (IDWriteTextFormat* f = d.painter_format(3, kCodeFontSize, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false)) {
+        ComPtr<IDWriteTextLayout> probe;
+        if (SUCCEEDED(d.painter.dwrite()->CreateTextLayout(L"MMMMMMMMMM", 10, f, 1000.0f, 30.0f, probe.put()))) {
+            DWRITE_TEXT_METRICS tm{};
+            probe->GetMetrics(&tm);
+            if (tm.width > 0) advance = tm.width / 10.0f;
+        }
+    }
+    if (m.preview_lines.empty()) {
+        d.text(widen(m.preview_note.empty() ? std::string("This file is empty.") : m.preview_note), Rect{p.code_area.x, p.code_area.y, p.code_area.w, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    } else {
+        d.rt->PushAxisAlignedClip(rd_rect(p.code_area), D2D1_ANTIALIAS_MODE_ALIASED);
+        const std::size_t first = static_cast<std::size_t>(std::clamp(static_cast<int>(m.preview_scroll), 0, preview_max_first_line(m, p)));
+        const float x = p.code_area.x - m.preview_hscroll * advance;
+        for (std::size_t i = first, k = 0; i < m.preview_lines.size() && k < static_cast<std::size_t>(p.visible_lines) + 1; ++i, ++k) {
+            static const std::vector<preview::Span> none;
+            rd_code_line(d, m.preview_lines[i], i < m.preview_spans.size() ? m.preview_spans[i] : none, x, p.code_area.y + static_cast<float>(k) * kCodeLineHeight, brushes);
+        }
+        d.rt->PopAxisAlignedClip();
+        rd_scrollbar(d, p.code_area, static_cast<float>(m.preview_lines.size()) * kCodeLineHeight, static_cast<float>(first) * kCodeLineHeight);
+        if (m.focus == Control::CodeView) d.stroke(Rect{l.preview_code.x + 2, l.preview_code.y + 2, l.preview_code.w - 4, l.preview_code.h - 4}, 4, pal.text, 2.0f);
+        if (p.note_area.h > 0) d.text(widen(m.preview_note), p.note_area, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    }
+}
+
+}  // namespace
+
 // The Program card (every view but Done): its title and description, the Language drop-down in its header, the InfoBar of a file that cannot be
 // converted, and the drop area -- the "+" and Browse when idle, the progress over the character stream while working.
 void rd_program_card(RdDraw& d, View view, const Layout& l) {
@@ -603,6 +912,12 @@ void rd_program_card(RdDraw& d, View view, const Layout& l) {
         d.text(widen(model.info_message), l.info_message, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_LEADING, true,
                DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
         d.button(Control::TryAnother, l.try_another, L"Try another file", 0, true);
+    }
+
+    // several files: the queue takes the drop area's place
+    if (view == View::Working && !model.queue.empty()) {
+        rd_queue(d, l);
+        return;
     }
 
     // the dashed drop area
@@ -646,6 +961,7 @@ void rd_program_card(RdDraw& d, View view, const Layout& l) {
         d.text(L"Drag a file here", l.drop_line1, 0, 15, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
         d.text(widen(model.drop_hint), l.drop_line2, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
     }
+    rd_recent(d, l);
 }
 
 // The Source card (Done): the finished file, then where its source is, with Open folder, Copy path and Convert another file.
@@ -656,22 +972,20 @@ void rd_source_card(RdDraw& d, const Layout& l) {
     d.stroke(l.right_card, kCardRadius, pal.card_stroke);
     d.text(L"Source", l.right_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
     d.text(L"Where the finished source code goes.", l.right_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    const bool with_preview = l.preview.w > 0;   // the file list and code view, the finished file at the top left; else the centred column
     d.circle(l.file_icon, pal.ok);
-    d.glyph(L'\xE73E', l.file_icon, 26.0f, D2D1::ColorF(1, 1, 1));
-    d.text(widen(model.done_file_name.empty() ? model.file_name : model.done_file_name), l.file_name, 0, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text,
-           DWRITE_TEXT_ALIGNMENT_CENTER);
+    d.glyph(L'\xE73E', l.file_icon, with_preview ? 22.0f : 26.0f, D2D1::ColorF(1, 1, 1));
+    const DWRITE_TEXT_ALIGNMENT side = with_preview ? DWRITE_TEXT_ALIGNMENT_LEADING : DWRITE_TEXT_ALIGNMENT_CENTER;
+    d.text(widen(model.done_file_name.empty() ? model.file_name : model.done_file_name), l.file_name, 0, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, side);
     const std::string note = model.done_note.empty() ? std::string("Conversion finished.") : "Conversion finished. " + model.done_note;
-    d.text(widen(note), l.detail, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
-    d.text(L"Output", l.output_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
-    d.fill(l.field, 4, pal.field);
-    d.stroke(l.field, 4, pal.stroke2);
-    d.brush->SetColor(pal.field_line);
-    d.rt->DrawLine(D2D1::Point2F(l.field.x + 4, l.field.bottom() - 0.5f), D2D1::Point2F(l.field.right() - 4, l.field.bottom() - 0.5f), d.brush.get(), 1.0f);
-    d.text(rd_fit_middle(d.painter, widen(model.output_path), l.field.w - 22, 14), Rect{l.field.x + 11, l.field.y, l.field.w - 22, l.field.h}, 0, 14,
-           DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    d.text(widen(note), l.detail, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, side);
+    if (!with_preview) d.text(L"Output", l.output_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+    rd_output_box(d, l);
+    if (!with_preview) d.text(widen(kDragHint), l.hint, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
     d.button(Control::OpenFolder, l.open_folder, L"Open folder", L'\xE838', true);
     d.button(Control::CopyPath, l.copy_path, L"Copy path", L'\xE8C8', true);
     d.button(Control::Browse, l.browse, L"Convert another file", L'\xE8E5', true);
+    if (with_preview) rd_preview(d, l);
 }
 
 // Draw `draw` at `alpha` (a layer when it is not fully shown; nothing at all when it is not shown).
@@ -736,7 +1050,7 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
     } else {
         // ---- the one card: Program, or Source when Done; while the card changes, the old one fades out before the new one fades in
         if (model.fade_from_alpha > 0) {
-            const Layout from = compute_layout(model.fade_from, l.width, l.height, l.rail.w);
+            const Layout from = compute_layout(model.fade_from, l.width, l.height, l.rail.w, extras_for(model, model.fade_from));
             RdDraw old{rt, d.brush, *this, pal, model, from};
             rd_with_alpha(rt, model.fade_from_alpha, [&] {
                 if (model.fade_from == View::Done) rd_source_card(old, from);
@@ -759,7 +1073,9 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         else if (view == View::Unsupported) dot = pal.warn;
         else if (view == View::Failed) dot = pal.error;
         d.circle(l.status_dot, dot);
-        d.text(widen(model.status_text), l.status_text, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        // over the output box of the preview layout (which has no room for the hint) the status bar says what the box is for
+        const bool hint = view == View::Done && l.preview.w > 0 && (model.hot == Control::OutputBox || model.drag_out);
+        d.text(widen(hint ? std::string(kDragHint) : model.status_text), l.status_text, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         d.text(widen(model.platforms), l.platforms, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
     }
     });   // (everything below the title bar, at chrome_alpha)

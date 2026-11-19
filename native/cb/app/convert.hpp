@@ -191,6 +191,8 @@ std::vector<translate::capability::Target> targets_for(const std::filesystem::pa
 // environment variable CB_APP_SETTINGS names another file). remember_target writes it; failures to write are ignored.
 std::string remembered_target();
 void remember_target(const std::string& id);
+// The per-user file above (app.json); empty when the system names no application-data folder. The recent-conversions list is kept beside it.
+std::filesystem::path settings_file();
 
 // The hint under "Drag a file here": what the window takes, from what the translator reads (".exe, .dll, ROMs, disc images, source code (.cs .py ...)").
 std::string drop_hint();

@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "cb/app/source_preview.hpp"
+
 namespace cb::app::window {
 
 // The character stream behind a running conversion: the lines the pipeline produces (convert::Progress::lines) typed out one character at a
@@ -64,7 +66,12 @@ enum class View { Idle, Working, Done, Unsupported, Failed };
 enum class Control {
     None, Plus, Browse, Cancel, TryAnother, OpenFolder, CopyPath, Language, CaptionMinimize, CaptionMaximize, CaptionClose,
     // the navigation rail, and the Tools and Settings pages (window_pages.hpp): a field, a tool or a setting is named by Model::*_index beside the Control
-    NavConvert, NavTools, NavSettings, ToolSearch, ToolRow, Field, FieldBrowse, Run, OutputPane
+    NavConvert, NavTools, NavSettings, ToolSearch, ToolRow, Field, FieldBrowse, Run, OutputPane,
+    // the Settings page: the Advanced row, Back from Advanced, and Locate... on a row of what this computer cannot convert yet (its index)
+    SettingsAdvanced, SettingsBack, Locate,
+    // the Convert page's lists: a recent conversion and its Remove (Model::hot_index is the row), a file of the preview, the code view, the output box
+    // that the folder is dragged out of
+    RecentRow, RecentRemove, PreviewFile, CodeView, OutputBox
 };
 
 // The pages of the rail.
@@ -89,6 +96,16 @@ struct FieldItem {
     std::string note;                  // one line under the label (a setting's explanation); may be empty
 };
 
+// One row of the Settings page's "What this computer can convert": the first says what is ready; each after it is something that needs a tool,
+// with Locate... to say where that tool is (`key`: the setting Locate... fills in; `folder`: it names a folder, not a file).
+struct CapabilityItem {
+    std::string label;
+    std::string note;
+    bool ready = true;
+    std::string key;
+    bool folder = true;
+};
+
 // One line of the Language drop-down: a language the translator writes, whether it can for the current file, and if not why.
 struct LanguageItem {
     std::string id;                    // "original", "cpp17"
@@ -96,6 +113,33 @@ struct LanguageItem {
     bool supported = true;
     std::string reason;                // shown under the name of an item that is not supported
 };
+
+// One row of the Program card's Recent list.
+struct RecentItem {
+    std::string name;                  // "lz32.dll"
+    std::string chip;                  // "C"
+    std::string meta;                  // "12 files · 2 minutes ago", or "folder moved or deleted"
+    bool missing = false;              // the output folder is gone: the row offers Remove instead
+    bool glyph_console = false;        // a game-console image (its icon is a game controller)
+};
+
+// One row of the queue: a file waiting, running or finished.
+struct QueueRowItem {
+    std::string name;
+    std::string detail;                // the running row's stage: "Decompiling · 17 of 39 functions"
+    std::string status;                // "Done", "62%", "Waiting", "Can't convert"
+    int state = 0;                     // 0 waiting, 1 running, 2 done, 3 cannot convert, 4 failed, 5 cancelled
+    int percent = 0;
+};
+
+// One file of the Source card's preview list.
+struct PreviewFileItem {
+    std::string name;                  // the path relative to the output folder
+    bool script = false;               // a build script (its icon differs)
+};
+
+// The hint under the output box: what the box is for.
+inline constexpr const char* kDragHint = "Drag the folder anywhere: Explorer, VS Code, a USB drive.";
 
 // Everything the window draws that changes.
 struct Model {
@@ -109,6 +153,21 @@ struct Model {
     int percent = 0;
     std::vector<std::string> stream;   // Working: the character stream's lines to draw behind the progress (CharStream::visible)
     bool stream_cursor = false;        // its block cursor is showing (it blinks)
+    // ---- Recent (Idle), the queue (Working, several files), the preview and the drag source (Done)
+    std::vector<RecentItem> recent;    // the Program card's "Recent" list (newest first)
+    std::vector<QueueRowItem> queue;   // not empty: the Program card lists the files being converted
+    std::string queue_note;            // "2 of 5 done"
+    float queue_scroll = 0;            // DIPs
+    std::vector<PreviewFileItem> preview_files;   // not empty: the Source card shows the files and one's source
+    int preview_selected = 0;
+    std::vector<std::string> preview_lines;       // the selected file's first lines
+    std::vector<std::vector<preview::Span>> preview_spans;   // their colouring
+    std::string preview_note;          // "Showing the first 128 KB of 3.4 MB."
+    float preview_scroll = 0;          // the first visible line
+    float preview_hscroll = 0;         // columns scrolled left
+    float preview_list_scroll = 0;     // DIPs
+    bool drag_out = false;             // the output folder is being dragged out (the box keeps its outline)
+    bool drag_ghost = false;           // a drag image is drawn beside the box (screenshots only: the real drag has the system's)
     // ---- the fades, moved by the window's own timer (1 = fully shown). The Convert page shows one card: Program, or Source when Done; when the
     // card changes the old one fades out, then the new one fades in.
     float card_alpha = 1;              // the card of `view`
@@ -156,9 +215,11 @@ struct Model {
     float output_scroll = 0;                                    // lines scrolled up from the end
     int caret = 0;                                              // the text caret in the focused field (UTF-8 bytes)
     // Settings page
-    std::vector<FieldItem> setting_fields;                      // the first is the theme (a choice), then every setting
-    std::vector<std::string> setting_keys;                      // the setting each field after the theme edits
+    std::vector<FieldItem> setting_fields;                      // the main view: Theme, the output folder, Keep responsive; Advanced: every other setting
+    std::vector<std::string> setting_keys;                      // the setting each field edits ("" for the theme), one per field
     float setting_scroll = 0;
+    bool settings_advanced = false;                             // Advanced is open: every tool location and limit, as a form
+    std::vector<CapabilityItem> capabilities;                   // the main view's "What this computer can convert"
     // a drop-down of a form field is open (the Language drop-down has its own flag above)
     int field_popup = -1;
 };
@@ -181,6 +242,11 @@ struct Layout {
     Rect file_icon, file_name, bar, bar_label, bar_percent, detail, cancel;
     // the right card's group
     Rect language_label, language_combo, output_label, field, open_folder, copy_path, hint;
+    // the Source card's preview (empty unless Extras::preview): the file list on the left, the code on the right
+    Rect preview, preview_list, preview_code;
+    // the Program card's Recent list (empty unless Extras::recent_rows): its heading, a row each, and the Remove button of a row whose folder is gone
+    Rect recent_heading;
+    std::vector<Rect> recent_rows, recent_remove;
     // the status bar
     Rect status_dot, status_text, platforms;
 };
@@ -199,7 +265,17 @@ inline constexpr float kDefaultHeight = 700;
 // The layout of a window `width` x `height` (client area, DIPs) showing `view`. With a `rail` width (kRailWidth: the navigation rail of the window) the
 // cards start after it (the design's 4 DIP gap) instead of at the outer padding; the title bar and the status bar still span the window.
 inline constexpr float kRailWidth = 64;
-Layout compute_layout(View view, float width, float height, float rail = 0);
+//
+// What the Convert page holds besides the view decides some rectangles: `recent_rows` Recent rows shrink the idle drop area; `preview` gives the Source card
+// the file list and code view (the path row moves above them, the finished file's name to the left); `queue` puts "Cancel all" at the foot of the Program
+// card (the files are listed in window_convert.hpp's queue layout). extras_for takes them from a Model for the card of `view`.
+struct Extras {
+    int recent_rows = 0;
+    bool preview = false;
+    bool queue = false;
+};
+Extras extras_for(const Model& model, View view);
+Layout compute_layout(View view, float width, float height, float rail = 0, const Extras& extras = {});
 
 // The control at a point, None over nothing. Only the controls that exist in `view` (a disabled one is still found: `enabled` says whether it acts).
 Control hit_test(const Layout& layout, View view, float x, float y);

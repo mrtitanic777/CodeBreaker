@@ -31,6 +31,20 @@ std::vector<Row> rows(const config::Config& config);
 // Write one setting into settings.json (a Toggle as a JSON boolean, the rest as text). Returns "" or why not.
 std::string write(const config::Config& config, const std::string& key, const std::string& value, Kind kind);
 
+// The settings the Settings page shows to everyone (the output folder, Keep the computer responsive); every other one is under Advanced.
+bool is_everyday(const std::string& key);
+
+// One line of "What this computer can convert". The first is what is ready now; each after it is a kind of program that needs a tool not found
+// yet, with the setting that names that tool (`folder`: the setting names a folder, not a file).
+struct Capability {
+    std::string label;
+    std::string note;
+    bool ready = true;
+    std::string key;
+    bool folder = true;
+};
+std::vector<Capability> capabilities(const std::vector<Row>& rows);
+
 enum class Theme { System, Light, Dark };
 Theme remembered_theme();
 void remember_theme(Theme theme);

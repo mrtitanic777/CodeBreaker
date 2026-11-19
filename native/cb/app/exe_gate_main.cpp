@@ -11,7 +11,14 @@
 //   --cases    default <repo>/tests/exe_gate/cases.txt        --golden  default <repo>/tests/exe_gate/golden
 //   --corpus   the Win95 corpus files (default: the CB_CORPUS environment variable, else ../Windows95/design/corpus/files);
 //              cases that need it are skipped, and counted as skipped, when it is not there
-//   --jobs     cases run side by side (default 4, the project's cap)
+//   --jobs     cases run side by side (default: min(cores - 2, 12) when the machine is otherwise idle, else 4, the cap for a shared machine;
+//              the CB_GATE_JOBS environment variable also sets it)
+//   --shared   the old cap of 4 (other sessions are using the machine)
+//   --times    after the run, list the slowest cases, test shards and tests (seconds)
+//   --changed  only what a change can affect since the last passing gate: the cases and unit-test areas that depend on the files that differ from
+//              the record (--record FILE, default <repo>/state/work/gate-last.txt) -- gate_changed.hpp has the rules. Nothing recorded: everything runs.
+//   --no-record  do not write the record after a passing run (a run on an exe not built from this tree)
+//   A passing whole run (no --filter or --update, with --unit) writes the record: the tree it started on.
 //   --update   record the goldens of the selected cases from the program's current behaviour (review the diff!)
 //   --unit     also run the module tests (cb_tests) as N shards (default 8) in the same pool, so the whole gate is one run
 //   --keep     leave each case's scratch folder (state/work/exe_gate/run-PID) for inspection
@@ -39,6 +46,7 @@
 #include <cstdlib>
 #include <process.h>
 #include <filesystem>
+#include <format>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -46,6 +54,7 @@
 #include <string>
 #include <vector>
 
+#include "cb/app/gate_changed.hpp"
 #include "cb/core/crypto.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -70,6 +79,8 @@ struct Case {
     bool needs_toolchains = false;
     bool needs_translator_cs = false;   // the translator can write C++17 from C# on this machine (the .NET SDK and a C++ compiler)
     bool needs_translator_py = false;   // ... from Python (python, a C++ compiler and the L2 library)
+    std::string line;                   // the case's line as written (--changed notices a case whose line changed)
+    std::vector<std::string> areas;     // @areas=a,b: areas of native/cb the case depends on besides its command's (tests/exe_gate/areas.txt)
     int timeout_s = 120;
     std::string stdin_file;
     std::vector<std::string> masks;
@@ -85,8 +96,29 @@ struct Env {
     stdfs::path exe_root;   // the checkout the exe lives in (its settings, its corpus)
     bool have_corpus = false, have_games = false, have_toolchains = false, have_translator_cs = false, have_translator_py = false;
     int jobs = 4;
-    bool update = false, keep = false;
+    bool update = false, keep = false, times = false;
 };
+
+// How many cases to run side by side. The project's cap (4) holds while other sessions use the machine; on an idle one the gate takes
+// most of it: the busy share is measured over a third of a second (system times: idle, kernel which includes idle, user), and
+// below a quarter busy the pool is min(cores - 2, 12).
+int default_jobs() {
+    constexpr int kShared = 4;
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    const int cores = static_cast<int>(si.dwNumberOfProcessors);
+    const int wide = std::clamp(cores - 2, kShared, 12);
+    auto ticks = [](FILETIME f) { return (static_cast<std::uint64_t>(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
+    FILETIME i0, k0, u0, i1, k1, u1;
+    if (!GetSystemTimes(&i0, &k0, &u0)) return kShared;
+    Sleep(330);
+    if (!GetSystemTimes(&i1, &k1, &u1)) return kShared;
+    const std::uint64_t total = (ticks(k1) - ticks(k0)) + (ticks(u1) - ticks(u0));
+    const std::uint64_t idle = ticks(i1) - ticks(i0);
+    if (total == 0) return kShared;
+    const double busy = 1.0 - static_cast<double>(idle) / static_cast<double>(total);
+    return busy < 0.25 ? wide : kShared;
+}
 
 std::string env_var(const char* name) {
     const DWORD need = GetEnvironmentVariableA(name, nullptr, 0);   // (the Win32 call: every Windows compiler's CRT has it)
@@ -142,6 +174,7 @@ std::vector<Case> load_cases(const stdfs::path& file, Vars& vars) {
         Case c;
         c.name = std::string(text::trim(line.substr(0, colon)));
         if (!seen.insert(c.name).second) throw ParseError(fs::to_text(file), lineno, 1, "case name used twice: " + c.name);
+        c.line = std::string(line);
         for (std::string& w : words_of(line.substr(colon + 1))) {
             if (w.rfind("@needs=", 0) == 0) {
                 if (w.substr(7) == "corpus") c.needs_corpus = true;
@@ -161,6 +194,9 @@ std::vector<Case> load_cases(const stdfs::path& file, Vars& vars) {
                 for (std::string_view e : text::split(std::string_view(w).substr(10), ',')) c.size_only.emplace_back(text::lower(e));
             }
             else if (w.rfind("@head=", 0) == 0) c.head = std::stoi(w.substr(6));
+            else if (w.rfind("@areas=", 0) == 0) {
+                for (std::string_view a : text::split(std::string_view(w).substr(7), ',')) c.areas.emplace_back(a);
+            }
             else c.argv.push_back(std::move(w));
         }
         cases.push_back(std::move(c));
@@ -389,6 +425,22 @@ stdfs::path root_of_exe(const stdfs::path& exe) {
     return p;
 }
 
+// HEAD of the repository, read from .git (informational: the record says which commit the tree was near). Empty when it cannot be read.
+std::string head_commit(const stdfs::path& repo) {
+    try {
+        const stdfs::path git = repo / ".git";
+        if (!stdfs::is_directory(git)) return {};
+        const std::string head(text::trim(fs::read_text(git / "HEAD")));
+        if (!head.starts_with("ref: ")) return head.substr(0, 9);
+        const std::string ref = head.substr(5);
+        if (stdfs::exists(git / ref)) return std::string(text::trim(fs::read_text(git / ref))).substr(0, 9);
+        for (std::string_view line : text::lines(fs::read_text(git / "packed-refs")))
+            if (line.size() > 41 && line.substr(41) == ref) return std::string(line.substr(0, 9));
+    } catch (const std::exception&) {   // isolation boundary: the commit is a label only
+    }
+    return {};
+}
+
 int usage(const char* why) {
     std::fprintf(stderr, "cb_exe_gate: %s\nusage: cb_exe_gate [--exe EXE] [--repo DIR] [--cases FILE] [--golden DIR] [--corpus DIR] [--jobs N] [--filter TEXT] [--update] [--keep] [--list]\n", why);
     return 2;
@@ -404,7 +456,9 @@ int main(int argc, char** argv) {
         std::string filter;
         bool list_only = false;
         std::optional<stdfs::path> unit;
-        int unit_shards = 8;
+        int unit_shards = 0;   // 0: twice the pool, so the shards even out
+        bool jobs_given = false, changed_only = false, no_record = false;
+        std::optional<stdfs::path> record_file_arg;
         for (int i = 1; i < argc; ++i) {
             const std::string a = argv[i];
             auto value = [&]() -> std::string { return i + 1 < argc ? std::string(argv[++i]) : std::string(); };
@@ -414,7 +468,12 @@ int main(int argc, char** argv) {
             else if (a == "--cases") cases = fs::from_text(value());
             else if (a == "--golden") golden = fs::from_text(value());
             else if (a == "--corpus") corpus = fs::from_text(value());
-            else if (a == "--jobs") env.jobs = std::max(1, std::stoi(value()));
+            else if (a == "--jobs") env.jobs = std::max(1, std::stoi(value())), jobs_given = true;
+            else if (a == "--shared") env.jobs = 4, jobs_given = true;
+            else if (a == "--times") env.times = true;
+            else if (a == "--changed") changed_only = true;
+            else if (a == "--no-record") no_record = true;
+            else if (a == "--record") record_file_arg = fs::from_text(value());
             else if (a == "--filter") filter = value();
             else if (a == "--update") env.update = true;
             else if (a == "--keep") env.keep = true;
@@ -423,6 +482,11 @@ int main(int argc, char** argv) {
             else if (a == "--shards") unit_shards = std::max(1, std::stoi(value()));
             else return usage(("unknown option " + a).c_str());
         }
+        if (!jobs_given) {
+            const std::string e = env_var("CB_GATE_JOBS");
+            env.jobs = !e.empty() ? std::max(1, std::stoi(e)) : default_jobs();
+        }
+        if (unit_shards == 0) unit_shards = std::max(8, env.jobs * 2);
         env.repo = repo ? *repo : find_repo(stdfs::current_path());
         if (env.repo.empty()) return usage("no repository found (run from inside it, or pass --repo)");
         env.repo = stdfs::absolute(env.repo).lexically_normal();
@@ -464,6 +528,59 @@ int main(int argc, char** argv) {
         }
         fs::make_dirs(env.golden);
 
+        // The tree this run starts on, and (--changed) what changed since the last passing gate. A tree edited during the run is recorded as it was at the
+        // start, so the edit counts as changed next time. See gate_changed.hpp.
+        namespace gc = cb::app::gate_changed;
+        const stdfs::path record_file = record_file_arg ? *record_file_arg : env.repo / "state" / "work" / "gate-last.txt";
+        const bool whole_run = !env.update && filter.empty() && !list_only;
+        std::optional<gc::Record> tree;
+        std::vector<std::string> unit_areas_to_run;   // empty with units_all false: none
+        bool units_all = true, units_none = false;
+        if (whole_run && (changed_only || !no_record)) {
+            std::map<std::string, std::string> extra;
+            std::string vars_text;
+            for (const auto& [name, value] : vars) vars_text += name + " = " + value + "\n";
+            extra["case-vars"] = crypto::to_hex(crypto::sha1(Bytes(vars_text.begin(), vars_text.end())));
+            for (const Case& c : all) extra["case:" + c.name] = crypto::to_hex(crypto::sha1(Bytes(c.line.begin(), c.line.end())));
+            gc::Record was;
+            if (stdfs::exists(record_file)) was = gc::read_record(fs::read_text(record_file));
+            tree = gc::scan_tree(env.repo, &was, extra);
+            if (changed_only) {
+                gc::Selection sel;
+                std::size_t n_changed = 0;
+                if (was.files.empty()) {
+                    sel.everything = true;
+                    sel.why = "no record of a passing gate yet";
+                } else {
+                    const std::vector<std::string> paths = gc::changed_paths(was, *tree);
+                    n_changed = paths.size();
+                    sel = gc::select(paths);
+                }
+                const gc::Graph graph = gc::read_graph(env.repo);
+                gc::CommandAreas map;
+                if (const stdfs::path af = env.repo / "tests" / "exe_gate" / "areas.txt"; stdfs::exists(af)) map = gc::parse_areas(fs::read_text(af));
+                std::vector<const Case*> keep;
+                for (const Case* c : picked)
+                    if (gc::case_selected(sel, graph, map, c->name, c->argv.empty() ? std::string() : c->argv[0], c->areas)) keep.push_back(c);
+                std::string shown;
+                if (sel.everything) {
+                    std::printf("cb_exe_gate --changed: everything runs (%s)\n", sel.why.c_str());
+                } else {
+                    const std::set<std::string> ua = gc::unit_areas(sel, graph);
+                    unit_areas_to_run.assign(ua.begin(), ua.end());
+                    units_all = false;
+                    units_none = ua.empty();
+                    for (const std::string& a : sel.areas) shown += (shown.empty() ? "" : " ") + a;
+                    std::string cases_named;
+                    for (const std::string& n : sel.cases) cases_named += (cases_named.empty() ? "" : " ") + n;
+                    std::printf("cb_exe_gate --changed: %zu changed paths since the last passing gate (%s); areas [%s]%s%s; unit tests of [%s]; %zu of %zu cases\n",
+                                n_changed, was.commit.c_str(), shown.c_str(), cases_named.empty() ? "" : "; cases changed: ", cases_named.c_str(),
+                                text::join(unit_areas_to_run, " ").c_str(), keep.size(), picked.size());
+                }
+                picked = std::move(keep);
+            }
+        }
+
         auto update_or_filtered = [](const Env& e, const std::string& f) { return e.update || !f.empty(); };
         enum class Verdict { Pass, Fail, Skip, Recorded, Missing };
         struct Result {
@@ -478,11 +595,27 @@ int main(int argc, char** argv) {
         std::fflush(stdout);
         parallel::ThreadPool pool(static_cast<std::size_t>(env.jobs));
         // Module-test shards go first (they are the long tasks), then the cases.
-        const std::size_t nunit = (unit && !update_or_filtered(env, filter)) ? static_cast<std::size_t>(unit_shards) : 0;
+        // (--changed: the areas' tests alone, in fewer shards; none when no area's tests are affected)
+        std::size_t nunit = (unit && !update_or_filtered(env, filter) && !units_none) ? static_cast<std::size_t>(unit_shards) : 0;
+        if (nunit && !units_all) nunit = std::max<std::size_t>(1, nunit / 2);
+        const std::string area_arg = text::join(unit_areas_to_run, ",");
+        const stdfs::path test_times_file = env.repo / "state" / "work" / "gate-test-times.txt";   // seconds per test, last run: "secs<TAB>name"
+        const stdfs::path case_times_file = env.repo / "state" / "work" / "gate-case-times.txt";   // seconds per case, last run: "secs<TAB>name"
+        {   // the longest cases first (the pool takes them in order), so the last one started is a short one
+            std::map<std::string, double> last;
+            if (stdfs::exists(case_times_file))
+                for (std::string_view line : text::lines(fs::read_text(case_times_file))) {
+                    const std::size_t tab = line.find('\t');
+                    if (tab != std::string_view::npos) last[std::string(line.substr(tab + 1))] = std::atof(std::string(line.substr(0, tab)).c_str());
+                }
+            auto weight = [&](const Case* c) { const auto it = last.find(c->name); return it != last.end() ? it->second : 30.0; };
+            std::stable_sort(picked.begin(), picked.end(), [&](const Case* a, const Case* b) { return weight(a) > weight(b); });
+        }
         struct UnitResult {
             bool ok = true;
             std::string summary, failures;
             double seconds = 0;
+            std::vector<std::pair<double, std::string>> slow;   // --times: the slowest tests of the shard
         };
         std::vector<UnitResult> unit_results(nunit);
         parallel::parallel_for(pool, nunit + picked.size(), [&](std::size_t t) {
@@ -491,6 +624,10 @@ int main(int argc, char** argv) {
                 try {
                     process::ProcessSpec spec;
                     spec.argv = {fs::to_text(*unit), "--shard", std::to_string(t) + "/" + std::to_string(nunit)};
+                    if (!units_all) spec.argv.insert(spec.argv.end(), {"--area", area_arg});
+                    if (env.times) spec.argv.push_back("--times");
+                    if (stdfs::exists(test_times_file)) spec.argv.insert(spec.argv.end(), {"--weights", fs::to_text(test_times_file)});   // balance the shards by last time's seconds
+                    spec.argv.insert(spec.argv.end(), {"--times-file", fs::to_text(env.scratch / ("unit-" + std::to_string(t) + ".times"))});
                     spec.cwd = env.repo;
                     spec.env["CB_JOBS"] = "2";
                     const stdfs::path shard_tmp = env.scratch / ("unit-" + std::to_string(t));   // shards side by side must not share a temp folder
@@ -507,6 +644,10 @@ int main(int argc, char** argv) {
                         else if (line.rfind("PASS", 0) == 0) in_fail = false;
                         if (in_fail) ur.failures += std::string(line) + '\n';
                         if (line.find(" passed, ") != std::string_view::npos) ur.summary = std::string(line);
+                        if (line.rfind("SLOW  ", 0) == 0) {   // "SLOW  1.23  name"
+                            const std::vector<std::string_view> w = text::split_ws(line);
+                            if (w.size() >= 3) ur.slow.emplace_back(std::atof(std::string(w[1]).c_str()), "test " + std::string(w[2]));
+                        }
                     }
                     ur.ok = r.ok();
                     if (!ur.ok && ur.failures.empty()) ur.failures = r.timed_out ? std::string("timed out\n") : "exit " + std::to_string(r.exit_code) + "\n" + out.substr(out.size() > 2000 ? out.size() - 2000 : 0);
@@ -584,10 +725,69 @@ int main(int argc, char** argv) {
             }
         }
         if (nunit) std::printf("\ncb_tests: %zu passed, %zu failed in %zu shards\n", unit_pass, unit_fail, nunit);
+        if (env.times) {
+            std::vector<std::pair<double, std::string>> rows;
+            double case_sum = 0, shard_sum = 0;
+            for (std::size_t i = 0; i < picked.size(); ++i) {
+                if (results[i].verdict == Verdict::Skip) continue;
+                rows.emplace_back(results[i].seconds, picked[i]->name);
+                case_sum += results[i].seconds;
+            }
+            for (std::size_t t = 0; t < nunit; ++t) {
+                rows.emplace_back(unit_results[t].seconds, "cb_tests shard " + std::to_string(t) + "/" + std::to_string(nunit));
+                shard_sum += unit_results[t].seconds;
+                rows.insert(rows.end(), unit_results[t].slow.begin(), unit_results[t].slow.end());
+            }
+            std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+            std::printf("\nslowest (seconds; %d at a time; cases %.0f s and shards %.0f s of work in %.0f s of wall):\n", env.jobs, case_sum, shard_sum, total);
+            for (std::size_t k = 0; k < rows.size() && k < 25; ++k) std::printf("  %7.1f  %s\n", rows[k].first, rows[k].second.c_str());
+        }
         if (!env.keep) fs::remove_tree(env.scratch);
         if (env.update) std::printf("\n%zu goldens recorded (%.1f s)\n", rec, total);
         else std::printf("%zu passed, %zu failed, %zu skipped of %zu cases (%.1f s)\n", pass, fail, skip, picked.size(), total);
-        return (fail == 0 && unit_bad == 0) ? 0 : 1;
+        if (!env.update) {   // what this run learned of how long things take, for the next run's ordering and shards
+            try {
+                auto merge = [&](const stdfs::path& file, const std::vector<std::pair<double, std::string>>& now) {
+                    std::map<std::string, double> all_times;
+                    if (stdfs::exists(file))
+                        for (std::string_view line : text::lines(fs::read_text(file))) {
+                            const std::size_t tab = line.find('\t');
+                            if (tab != std::string_view::npos) all_times[std::string(line.substr(tab + 1))] = std::atof(std::string(line.substr(0, tab)).c_str());
+                        }
+                    for (const auto& [secs, name] : now) all_times[name] = secs;
+                    std::string out;
+                    for (const auto& [name, secs] : all_times) out += std::format("{:.3f}\t{}\n", secs, name);
+                    fs::write_text(file, out);
+                };
+                std::vector<std::pair<double, std::string>> case_now, test_now;
+                for (std::size_t i = 0; i < picked.size(); ++i)
+                    if (results[i].verdict == Verdict::Pass) case_now.emplace_back(results[i].seconds, picked[i]->name);
+                for (std::size_t t = 0; t < nunit; ++t) {
+                    const stdfs::path f = env.scratch / ("unit-" + std::to_string(t) + ".times");
+                    if (!stdfs::exists(f)) continue;
+                    for (std::string_view line : text::lines(fs::read_text(f))) {
+                        const std::size_t tab = line.find('\t');
+                        if (tab != std::string_view::npos) test_now.emplace_back(std::atof(std::string(line.substr(0, tab)).c_str()), std::string(line.substr(tab + 1)));
+                    }
+                }
+                if (!case_now.empty()) merge(case_times_file, case_now);
+                if (!test_now.empty()) merge(test_times_file, test_now);
+            } catch (const std::exception&) {   // isolation boundary: the timings are an optimisation
+            }
+        }
+        const bool passed_all = fail == 0 && unit_bad == 0;
+        // A passing whole run (every case it selected, and the unit tests) is the new base of --changed. Not when the run was told not to record (a
+        // gate on an exe that was not just built from this tree), not a filtered or recording run, not one without its unit tests.
+        if (passed_all && tree && !no_record && unit) {
+            try {
+                fs::make_dirs(record_file.parent_path());
+                tree->commit = head_commit(env.repo);
+                fs::write_text(record_file, gc::record_text(*tree));
+            } catch (const std::exception& e) {
+                std::fprintf(stderr, "cb_exe_gate: the record of this gate could not be written (%s)\n", e.what());
+            }
+        }
+        return passed_all ? 0 : 1;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "cb_exe_gate: %s\n", e.what());
         return 2;

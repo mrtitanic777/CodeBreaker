@@ -30,14 +30,20 @@
 #include <string>
 #include <thread>
 
+#include "cb/app/batch_queue.hpp"
 #include "cb/app/convert.hpp"
+#include "cb/app/notify.hpp"
+#include "cb/app/recent.hpp"
 #include "cb/app/settings_edit.hpp"
+#include "cb/app/source_preview.hpp"
 #include "cb/app/tools.hpp"
 #include "cb/app/tools_run.hpp"
 #include "cb/app/window_pages.hpp"
 #include "cb/app/window.hpp"
+#include "cb/app/window_convert.hpp"
 #include "cb/app/window_layout.hpp"
 #include "cb/app/window_render_win.hpp"
+#include "cb/app/window_shell_win.hpp"
 #include "cb/base/config.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
@@ -76,6 +82,12 @@ float ww_ease(double t) {
     return static_cast<float>(x * x * (3 - 2 * x));
 }
 constexpr UINT kWmFinished = WM_APP + 2;   // the worker is done: its outcome is ready
+constexpr UINT kWmToast = WM_APP + 3;      // a button or click on the notification: wParam 1 open the folder, 2 show the window
+constexpr UINT kWmTray = WM_APP + 4;       // the balloon's callbacks (where there is no toast)
+constexpr UINT_PTR kWwTaskbarTimer = 4;    // a failure shown on the taskbar button while the window is in front: cleared after a few seconds
+constexpr UINT kWwTaskbarErrorMs = 4000;
+constexpr UINT_PTR kWwMinuteTimer = 5;     // the Recent list's "when" words are made new
+constexpr UINT kWwMinuteMs = 30000;
 constexpr wchar_t kWwClass[] = L"CodeBreakerWindow";
 
 // ---- what the system says ------------------------------------------------------------------------------------------------------------
@@ -190,12 +202,13 @@ void ww_load_tool(Model& m, int tool, const tools::Values& values) {
     m.tool_can_run = !tools::missing(t, values).has_value();
 }
 
-// The Settings form: the theme first, then every setting of settings.json as a path (Browse), a switch or text.
+// The Settings page from the settings: the main view is Theme, the output folder and Keep the computer responsive, and what this computer can
+// convert; Advanced (m.settings_advanced) is every other setting as a path (Browse), a switch or text.
 void ww_fill_settings(Model& m, const std::vector<settings::Row>& rows, settings::Theme theme) {
     m.setting_fields.clear();
     m.setting_keys.clear();
-    m.setting_fields.push_back({"Theme", 3, settings::theme_name(theme), {"System", "Light", "Dark"}, false, ""});
-    for (const settings::Row& r : rows) {
+    m.capabilities.clear();
+    const auto field_of = [](const settings::Row& r) {
         FieldItem f;
         f.label = r.label.empty() ? r.key : r.label;
         f.note = r.hint;
@@ -210,9 +223,49 @@ void ww_fill_settings(Model& m, const std::vector<settings::Row>& rows, settings
             f.kind = 2;
             f.hint = "Not set";
         }
-        m.setting_fields.push_back(std::move(f));
-        m.setting_keys.push_back(r.key);
+        return f;
+    };
+    if (m.settings_advanced) {
+        for (const settings::Row& r : rows) {
+            if (settings::is_everyday(r.key)) continue;
+            m.setting_fields.push_back(field_of(r));
+            m.setting_keys.push_back(r.key);
+        }
+        return;
     }
+    m.setting_fields.push_back({"Theme", 3, settings::theme_name(theme), {"System", "Light", "Dark"}, false, "", "Follow Windows, or always light or dark."});
+    m.setting_keys.push_back("");
+    for (const char* key : {"converted", "low_load"}) {
+        for (const settings::Row& r : rows) {
+            if (r.key != key) continue;
+            FieldItem f = field_of(r);
+            if (r.key == "converted") {
+                f.label = "Save converted source to";
+                f.kind = 1;
+            }
+            m.setting_fields.push_back(std::move(f));
+            m.setting_keys.push_back(r.key);
+        }
+    }
+    for (const settings::Capability& c : settings::capabilities(rows)) m.capabilities.push_back({c.label, c.note, c.ready, c.key, c.folder});
+}
+
+// A file or folder the person chooses ("" when they cancel).
+std::string ww_choose_path(HWND owner, bool folder) {
+    ComPtr<IFileOpenDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(dialog.put())))) return {};
+    DWORD options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | (folder ? FOS_PICKFOLDERS : FOS_FILEMUSTEXIST));
+    dialog->SetTitle(folder ? L"Choose a folder" : L"Choose a file");
+    if (FAILED(dialog->Show(owner))) return {};
+    ComPtr<IShellItem> item;
+    if (FAILED(dialog->GetResult(item.put()))) return {};
+    PWSTR path = nullptr;
+    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) || path == nullptr) return {};
+    const std::string chosen = narrow(path);
+    CoTaskMemFree(path);
+    return chosen;
 }
 
 // A UTF-8 string one character before / after byte `at`.
@@ -267,8 +320,10 @@ public:
 
     // the drop target's calls
     void drag_changed(bool over);
-    bool can_take_files() const { return model_.view != View::Working; }
-    void start_conversion(const stdfs::path& file);
+    // (not while the folder is being dragged out of this window, nor once Cancel was pressed)
+    bool can_take_files() const { return !drag_out_active_ && !(running_ && cancel_); }
+    // Files to convert: they start a run, or join the queue of the run under way.
+    void add_files(const std::vector<stdfs::path>& files);
 
 private:
     static LRESULT CALLBACK proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
@@ -302,6 +357,9 @@ private:
     void set_focus(Control c, int index);
     void edited();
     void commit_setting(int field);
+    void fill_settings();
+    void open_advanced(bool open);
+    void locate_tool(int index);
     void blur();
     void insert_text(const std::string& utf8);
     bool edit_key(WPARAM key, bool ctrl);
@@ -317,6 +375,28 @@ private:
     void popup_key(WPARAM key);
     void scroll_page(float x, float y, int lines);
     void cancel_conversion();
+    // the queue, Recent, the preview, the drag, the notification (window_convert.hpp, recent.hpp, batch_queue.hpp, window_shell_win.hpp)
+    void begin_run();
+    void back_to_program();
+    void run_next();
+    void sync_queue();
+    void finish_run();
+    void present_item(const batch::Item& item, const std::string& stage, const std::string& detail, const std::vector<std::string>& stream);
+    void refresh_recent();
+    void remember_item(const batch::Item& item);
+    void open_recent(int index);
+    void remove_recent(int index);
+    void load_preview_folder(const stdfs::path& folder, const std::string& main_stem);
+    void select_preview(int index);
+    bool scroll_convert(float x, float y, int lines, bool horizontal);
+    bool convert_key(WPARAM key, bool ctrl);
+    void scroll_preview_to(float first_line);
+    void copy_preview_text();
+    void begin_drag_out();
+    void update_taskbar();
+    void notify_finished();
+    void on_toast(WPARAM action);
+    LanguageItem language_for(const stdfs::path& file) const;
     void on_progress();
     void stream_frame();
     void begin_card_fade(View from);
@@ -350,6 +430,19 @@ private:
     settings::Theme theme_ = settings::Theme::System;
     config::Config settings_config_ = config::Config::load(config::current().checkout_root());
 
+    // the queue of files (one file is a queue of one), Recent, the preview's files, the drag out, the taskbar and the notification
+    batch::Queue queue_;
+    int running_item_ = -1;                          // the queue's item the worker is on
+    std::vector<recent::Entry> recent_;
+    std::vector<preview::FileEntry> preview_entries_;
+    std::vector<notify::Result> run_results_;        // how each file of this run ended (the notification says it)
+    bool drag_pending_ = false, drag_out_active_ = false;
+    POINT drag_origin_{};
+    Taskbar taskbar_;
+    std::unique_ptr<Notifier> notifier_;
+    UINT taskbar_message_ = 0;
+    std::string run_language_name_;                  // the language the run writes (empty: Original)
+
     // the conversion
     std::thread worker_;
     std::atomic<bool> cancel_{false};
@@ -369,16 +462,19 @@ private:
 
 WwApp* ww_app(HWND hwnd) { return reinterpret_cast<WwApp*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA)); }
 
-// The first file of a drag, when it holds files.
-std::optional<stdfs::path> ww_first_file(IDataObject* data) {
+// The files of a drag, when it holds files (all of them: several files are converted one after another).
+std::vector<stdfs::path> ww_files(IDataObject* data) {
     FORMATETC fmt{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
     STGMEDIUM medium{};
-    if (data == nullptr || FAILED(data->GetData(&fmt, &medium))) return std::nullopt;
-    std::optional<stdfs::path> result;
+    std::vector<stdfs::path> result;
+    if (data == nullptr || FAILED(data->GetData(&fmt, &medium))) return result;
     const HDROP drop = static_cast<HDROP>(GlobalLock(medium.hGlobal));
     if (drop != nullptr) {
-        wchar_t path[MAX_PATH * 4] = {};
-        if (DragQueryFileW(drop, 0, path, static_cast<UINT>(std::size(path))) > 0) result = stdfs::path(path);
+        const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+        for (UINT i = 0; i < count; ++i) {
+            wchar_t path[MAX_PATH * 4] = {};
+            if (DragQueryFileW(drop, i, path, static_cast<UINT>(std::size(path))) > 0) result.emplace_back(path);
+        }
         GlobalUnlock(medium.hGlobal);
     }
     ReleaseStgMedium(&medium);
@@ -386,7 +482,7 @@ std::optional<stdfs::path> ww_first_file(IDataObject* data) {
 }
 
 HRESULT WwDropTarget::DragEnter(IDataObject* data, DWORD, POINTL, DWORD* effect) {
-    acceptable_ = app_->can_take_files() && ww_first_file(data).has_value();
+    acceptable_ = app_->can_take_files() && !ww_files(data).empty();
     *effect = acceptable_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
     app_->drag_changed(acceptable_);
     return S_OK;
@@ -403,9 +499,10 @@ HRESULT WwDropTarget::Drop(IDataObject* data, DWORD, POINTL, DWORD* effect) {
     app_->drag_changed(false);
     *effect = DROPEFFECT_NONE;
     if (!acceptable_) return S_OK;
-    if (const std::optional<stdfs::path> file = ww_first_file(data)) {
+    const std::vector<stdfs::path> files = ww_files(data);
+    if (!files.empty()) {
         *effect = DROPEFFECT_COPY;
-        app_->start_conversion(*file);
+        app_->add_files(files);
     }
     return S_OK;
 }
@@ -439,6 +536,9 @@ bool WwApp::create_window() {
 
 int WwApp::run() {
     if (FAILED(OleInitialize(nullptr))) return 2;
+    set_app_identity();   // (this process is "CodeBreaker" to the taskbar and the notification centre)
+    taskbar_message_ = RegisterWindowMessageW(L"TaskbarButtonCreated");
+    recent_ = recent::load(recent::store_file(convert::settings_file()));
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);   // (the manifest says it too; this covers a copy without it)
     if (!painter_.ok()) {
         err_text("codebreaker: Direct2D is not available\n");
@@ -449,10 +549,12 @@ int WwApp::run() {
     model_.drop_hint = convert::drop_hint();
     set_language_list(convert::targets_for({}));
     if (!create_window()) return 2;
+    refresh_recent();
+    SetTimer(hwnd_, kWwMinuteTimer, kWwMinuteMs, nullptr);
     if (initial_file_.empty()) start_welcome();   // (a window opened on a file goes straight to work)
     ShowWindow(hwnd_, SW_SHOWNORMAL);
     UpdateWindow(hwnd_);
-    if (!initial_file_.empty()) start_conversion(initial_file_);
+    if (!initial_file_.empty()) add_files({initial_file_});
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         TranslateMessage(&msg);
@@ -482,7 +584,7 @@ void WwApp::apply_theme() {
 void WwApp::relayout() {
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    layout_ = compute_layout(model_.view, ww_dip(rc.right - rc.left, dpi_), ww_dip(rc.bottom - rc.top, dpi_), kRailWidth);
+    layout_ = compute_layout(model_.view, ww_dip(rc.right - rc.left, dpi_), ww_dip(rc.bottom - rc.top, dpi_), kRailWidth, extras_for(model_, model_.view));
 }
 
 void WwApp::make_target() {
@@ -527,13 +629,13 @@ void WwApp::move_focus(bool backwards) {
     } else if (model_.page == Page::Settings) {
         order = focus_order_settings(model_);
     } else {
-        for (const Control c : focus_order(model_.view)) order.push_back({c, -1});
+        order = focus_order_convert(layout_, model_);
         for (const Control c : {Control::NavConvert, Control::NavTools, Control::NavSettings}) order.push_back({c, -1});
     }
     if (order.empty()) return;
     std::size_t at = order.size();
     for (std::size_t i = 0; i < order.size(); ++i)
-        if (order[i].control == model_.focus && (order[i].index == model_.focus_index || model_.page == Page::Convert)) at = i;
+        if (order[i].control == model_.focus && (order[i].index == model_.focus_index || (model_.page == Page::Convert && order[i].index < 0))) at = i;
     std::size_t next = 0;
     if (at == order.size()) next = backwards ? order.size() - 1 : 0;
     else next = backwards ? (at + order.size() - 1) % order.size() : (at + 1) % order.size();
@@ -541,8 +643,9 @@ void WwApp::move_focus(bool backwards) {
     if (model_.page == Page::Settings && order[next].control != Control::NavConvert && order[next].index >= 0) {   // keep the field in view
         const SettingsLayout sl = compute_settings_layout(layout_, model_);
         const std::size_t f = static_cast<std::size_t>(order[next].index);
-        if (f < sl.form.fields.size()) {
-            const Rect& r = sl.form.fields[f].input;
+        const std::vector<Rect>& rows = order[next].control == Control::Locate ? sl.capability_rows : sl.field_rows;
+        if (model_.settings_advanced ? f < sl.form.fields.size() : f < rows.size()) {
+            const Rect& r = model_.settings_advanced ? sl.form.fields[f].input : rows[f];
             if (r.y < sl.fields_area.y) model_.setting_scroll = std::max(0.0f, model_.setting_scroll - (sl.fields_area.y - r.y) - 24);
             else if (r.bottom() > sl.fields_area.bottom()) model_.setting_scroll += r.bottom() - sl.fields_area.bottom() + 24;
         }
@@ -569,7 +672,7 @@ void WwApp::activate(Control c) {
 
 // The system file picker.
 void WwApp::browse() {
-    if (running_) return;
+    if (!can_take_files()) return;
     ComPtr<IFileOpenDialog> dialog;
     if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(dialog.put())))) return;
     std::wstring programs;
@@ -579,16 +682,23 @@ void WwApp::browse() {
     dialog->SetTitle(L"Choose a program");
     DWORD options = 0;
     dialog->GetOptions(&options);
-    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
+    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_ALLOWMULTISELECT);   // (several files are converted one after another)
     if (FAILED(dialog->Show(hwnd_))) return;
-    ComPtr<IShellItem> item;
-    if (FAILED(dialog->GetResult(item.put()))) return;
-    PWSTR path = nullptr;
-    if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path != nullptr) {
-        const stdfs::path file(path);
-        CoTaskMemFree(path);
-        start_conversion(file);
+    ComPtr<IShellItemArray> chosen;
+    if (FAILED(dialog->GetResults(chosen.put()))) return;
+    DWORD count = 0;
+    if (FAILED(chosen->GetCount(&count))) return;
+    std::vector<stdfs::path> files;
+    for (DWORD i = 0; i < count; ++i) {
+        ComPtr<IShellItem> item;
+        if (FAILED(chosen->GetItemAt(i, item.put()))) continue;
+        PWSTR path = nullptr;
+        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path != nullptr) {
+            files.emplace_back(path);
+            CoTaskMemFree(path);
+        }
     }
+    add_files(files);
 }
 
 // The system menu (Restore, Move, Size, Minimize, Maximize, Close) where a click on the icon or a right click on the title bar asks for it. The window has
@@ -686,7 +796,7 @@ PageHit WwApp::hit_at(float x, float y) const {
     switch (model_.page) {
         case Page::Tools: return hit_test_tools(compute_tools_layout(layout_, model_), model_, x, y);
         case Page::Settings: return hit_test_settings(compute_settings_layout(layout_, model_), model_, x, y);
-        default: return {hit_test(layout_, model_.view, x, y), -1};
+        default: return hit_test_convert(layout_, model_, x, y);
     }
 }
 
@@ -702,9 +812,8 @@ void WwApp::set_page(Page page) {
     model_.focus_index = -1;
     if (page == Page::Tools && model_.tool_rows.empty()) ww_fill_tool_rows(model_);
     if (page == Page::Settings) {
-        settings_config_ = config::Config::load(config::current().checkout_root());
-        ww_fill_settings(model_, settings::rows(settings_config_), theme_);
-        model_.setting_scroll = 0;
+        model_.settings_advanced = false;
+        fill_settings();
     }
     relayout();
     invalidate();
@@ -748,19 +857,51 @@ void WwApp::edited() {
 void WwApp::commit_setting(int field) {
     if (model_.page != Page::Settings || field < 0 || static_cast<std::size_t>(field) >= model_.setting_fields.size()) return;
     const FieldItem& f = model_.setting_fields[static_cast<std::size_t>(field)];
-    if (field == 0) {   // the theme
+    if (static_cast<std::size_t>(field) >= model_.setting_keys.size()) return;
+    const std::string& key = model_.setting_keys[static_cast<std::size_t>(field)];
+    if (key.empty()) {   // the theme
         theme_ = f.text == "Light" ? settings::Theme::Light : f.text == "Dark" ? settings::Theme::Dark : settings::Theme::System;
         settings::remember_theme(theme_);
         apply_theme();
         return;
     }
-    const std::string& key = model_.setting_keys[static_cast<std::size_t>(field) - 1];
     const std::string error = settings::write(settings_config_, key, f.text, f.kind == 4 ? settings::Kind::Toggle : f.kind == 0 ? settings::Kind::Path : settings::Kind::Text);
     model_.status_text = error.empty() ? "Saved: " + f.label : "Could not save " + f.label + ": " + error;
 }
 
+// The Settings page read again from settings.json (after Locate..., or moving between the main view and Advanced).
+void WwApp::fill_settings() {
+    settings_config_ = config::Config::load(config::current().checkout_root());
+    ww_fill_settings(model_, settings::rows(settings_config_), theme_);
+    model_.setting_scroll = 0;
+}
+
+void WwApp::open_advanced(bool open) {
+    blur();
+    model_.field_popup = -1;
+    model_.settings_advanced = open;
+    fill_settings();
+    model_.focus = open ? Control::SettingsBack : Control::SettingsAdvanced;
+    model_.focus_index = -1;
+    invalidate();
+}
+
+// Locate... on a row of what this computer cannot convert yet: the tool's file or folder is written to its setting, and the rows are read again.
+void WwApp::locate_tool(int index) {
+    if (index < 0 || static_cast<std::size_t>(index) >= model_.capabilities.size()) return;
+    const CapabilityItem c = model_.capabilities[static_cast<std::size_t>(index)];
+    const std::string chosen = ww_choose_path(hwnd_, c.folder);
+    if (chosen.empty()) return;
+    const std::string error = settings::write(settings_config_, c.key, chosen, settings::Kind::Path);
+    fill_settings();
+    model_.status_text = error.empty() ? "Saved: " + settings::plain_label(c.key) : "Could not save " + settings::plain_label(c.key) + ": " + error;
+    invalidate();
+}
+
 void WwApp::blur() {
-    if (model_.page == Page::Settings && model_.focus == Control::Field && model_.focus_index > 0) commit_setting(model_.focus_index);
+    if (model_.page == Page::Settings && model_.focus == Control::Field && model_.focus_index >= 0 &&
+        static_cast<std::size_t>(model_.focus_index) < model_.setting_keys.size() && !model_.setting_keys[static_cast<std::size_t>(model_.focus_index)].empty())
+        commit_setting(model_.focus_index);
 }
 
 void WwApp::insert_text(const std::string& utf8) {
@@ -996,7 +1137,17 @@ void WwApp::popup_key(WPARAM key) {
 // Activating a part of the Tools or Settings page (a click released on it, or Enter or Space on the focused one).
 void WwApp::activate_page(Control c, int index) {
     switch (c) {
-        case Control::NavConvert: set_page(Page::Convert); break;
+        case Control::NavConvert:
+            if (model_.page == Page::Convert) back_to_program();   // (on the Source card: back to the Program card)
+            else set_page(Page::Convert);
+            break;
+        case Control::RecentRow: open_recent(index); break;
+        case Control::RecentRemove: remove_recent(index); break;
+        case Control::PreviewFile:
+            if (index >= 0 && index != model_.preview_selected) select_preview(index);
+            break;
+        case Control::CodeView:
+        case Control::OutputBox: break;
         case Control::NavTools: set_page(Page::Tools); break;
         case Control::NavSettings: set_page(Page::Settings); break;
         case Control::ToolRow: select_tool(index); break;
@@ -1005,6 +1156,9 @@ void WwApp::activate_page(Control c, int index) {
             else run_tool();
             break;
         case Control::FieldBrowse: browse_field(index); break;
+        case Control::SettingsAdvanced: open_advanced(true); break;
+        case Control::SettingsBack: open_advanced(false); break;
+        case Control::Locate: locate_tool(index); break;
         case Control::Field: {
             std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
             if (index < 0 || static_cast<std::size_t>(index) >= fields.size()) break;
@@ -1045,9 +1199,10 @@ void WwApp::scroll_page(float x, float y, int lines) {
 void WwApp::cancel_conversion() {
     if (!running_) return;
     cancel_ = true;
+    queue_.cancel_waiting();   // (Cancel all: the files still waiting are not started)
     model_.status_text = "Cancelling…";
     model_.stage_label = "Cancelling";
-    invalidate();
+    sync_queue();
 }
 
 void WwApp::reset_to_idle(const std::string& status) {
@@ -1074,31 +1229,73 @@ void WwApp::reset_to_idle(const std::string& status) {
     invalidate();
 }
 
-void WwApp::start_conversion(const stdfs::path& file) {
-    if (running_) return;
-    if (worker_.joinable()) worker_.join();
-    // the translator says which languages it can write for this file; one the file cannot have gives way to the first it can (not remembered)
-    set_language_list(convert::targets_for(file));
-    if (const auto at = static_cast<std::size_t>(model_.language_selected); at >= model_.languages.size() || !model_.languages[at].supported) {
-        for (std::size_t i = 0; i < model_.languages.size(); ++i) {
-            if (model_.languages[i].supported) {
-                model_.language_selected = static_cast<int>(i);
-                break;
-            }
-        }
+// The language the run writes `file` in: the one chosen when the translator can write it for this file, else the first it can (not remembered).
+LanguageItem WwApp::language_for(const stdfs::path& file) const {
+    const std::vector<LanguageItem> items = ww_items(convert::targets_for(file));
+    const std::string wanted = model_.languages.empty() ? std::string("original") : model_.languages[static_cast<std::size_t>(model_.language_selected)].id;
+    for (const LanguageItem& i : items)
+        if (i.id == wanted && i.supported) return i;
+    for (const LanguageItem& i : items)
+        if (i.supported) return i;
+    return LanguageItem{"original", "Original", true, {}};
+}
+
+// Files to convert. With no run under way they start one (a single file behaves as it always did: its own progress, then its Source card); while a run
+// is under way they join the end of its queue, and the Program card lists the files.
+void WwApp::add_files(const std::vector<stdfs::path>& files) {
+    if (files.empty()) return;
+    if (running_ || queue_.active()) {
+        if (cancel_) return;
+        queue_.add(files);
+        sync_queue();
+        return;
     }
-    const LanguageItem& language = model_.languages[static_cast<std::size_t>(model_.language_selected)];
-    const std::string target = language.id;
+    if (worker_.joinable()) worker_.join();
+    queue_.clear();
+    queue_.add(files);
+    run_results_.clear();
+    begin_run();
+}
+
+// The window turns to the working view for the queue just made, then runs its first file.
+void WwApp::begin_run() {
+    const stdfs::path first = queue_.items().front().file;
+    // the translator says which languages it can write for this file; one the file cannot have gives way to the first it can (not remembered)
+    set_language_list(convert::targets_for(first));
+    model_.language_selected = ww_index_of(model_.languages, language_for(first).id);
     const View before = model_.view;
     skip_welcome();
     model_.view = View::Working;
     begin_card_fade(before);   // (from the Source card: it fades out with what it showed -- the output path and note stay until the next Done)
-    model_.file_name = narrow(file.filename().wstring());
+    model_.focus = Control::None;
+    model_.queue.clear();
+    model_.queue_scroll = 0;
+    taskbar_.set(Taskbar::State::Indeterminate);
+    KillTimer(hwnd_, kWwTaskbarTimer);
+    if (ww_animations_on()) {
+        stream_tick_ = std::chrono::steady_clock::now();
+        stream_frames_ = 0;
+        SetTimer(hwnd_, kWwStreamTimer, kWwStreamFrameMs, nullptr);
+    }
+    run_next();
+}
+
+// Start the next file of the queue on the worker thread.
+void WwApp::run_next() {
+    const int next = queue_.next_waiting();
+    if (next < 0) return;
+    if (worker_.joinable()) worker_.join();
+    const stdfs::path file = queue_.items()[static_cast<std::size_t>(next)].file;
+    const LanguageItem language = language_for(file);
+    const std::string target = language.id;
+    queue_.start(static_cast<std::size_t>(next));
+    running_item_ = next;
+    run_language_name_ = target == "original" ? std::string() : language.name;
+    model_.file_name = queue_.items()[static_cast<std::size_t>(next)].name;
     model_.stage_label = std::string(convert::state_label(convert::State::Identifying));
     model_.detail.clear();
     model_.percent = 0;
     model_.status_text = (target == "original" ? "Converting " + model_.file_name : "Translating " + model_.file_name + " to " + language.name);
-    model_.focus = Control::None;
     stream_.clear();
     model_.stream.clear();
     model_.stream_cursor = false;
@@ -1106,14 +1303,8 @@ void WwApp::start_conversion(const stdfs::path& file) {
         std::lock_guard hold(lock_);
         stream_waiting_.clear();
     }
-    if (ww_animations_on()) {
-        stream_tick_ = std::chrono::steady_clock::now();
-        stream_frames_ = 0;
-        SetTimer(hwnd_, kWwStreamTimer, kWwStreamFrameMs, nullptr);
-    }
-    relayout();
-    invalidate();
-    cancel_ = false;
+    cancel_ = false;   // (before the queue is shown: the status text of several files is not kept while cancelling)
+    sync_queue();
     running_ = true;
     HWND window = hwnd_;
     worker_ = std::thread([this, file, window, target] {
@@ -1148,6 +1339,39 @@ void WwApp::start_conversion(const stdfs::path& file) {
     });
 }
 
+// The queue's rows, "n of m done" and the status text of several files, the layout they imply, and the taskbar button's progress.
+void WwApp::sync_queue() {
+    const bool batch = queue_.total() > 1;
+    model_.queue.clear();
+    if (batch) {
+        for (const batch::Item& item : queue_.items()) {
+            QueueRowItem row;
+            row.name = item.name;
+            row.status = batch::Queue::status_words(item);
+            row.percent = item.percent;
+            row.state = static_cast<int>(item.state);   // (Waiting, Running, Done, CannotConvert, Failed, Cancelled are 0..5)
+            if (item.state == batch::ItemState::Running) row.detail = item.stage + (item.detail.empty() ? std::string() : " \xC2\xB7 " + item.detail);
+            model_.queue.push_back(std::move(row));
+        }
+        model_.queue_note = queue_.progress_words();
+        if (!cancel_) model_.status_text = "Converting " + std::to_string(queue_.total()) + " files";
+    } else {
+        model_.queue_note.clear();
+        model_.queue_scroll = 0;
+    }
+    relayout();
+    if (batch) model_.queue_scroll = std::clamp(model_.queue_scroll, 0.0f, queue_max_scroll(compute_queue_layout(layout_, model_)));
+    invalidate();
+    update_taskbar();
+}
+
+// The taskbar button's bar follows the run: a moving one until there is a percentage, then the percentage (of the whole queue when there are several files).
+void WwApp::update_taskbar() {
+    if (!queue_.active()) return;
+    const int percent = queue_.total() > 1 ? queue_.overall_percent() : model_.percent;
+    taskbar_.set(percent <= 0 ? Taskbar::State::Indeterminate : Taskbar::State::Normal, percent);
+}
+
 void WwApp::on_progress() {
     std::optional<convert::Progress> p;
     std::vector<std::string> lines;
@@ -1162,6 +1386,7 @@ void WwApp::on_progress() {
     if (!cancel_) model_.stage_label = p->label;
     model_.detail = p->detail;
     model_.percent = p->percent;
+    if (running_item_ >= 0) queue_.progress(static_cast<std::size_t>(running_item_), p->percent, p->label, p->detail);
     if (!lines.empty()) {
         stream_.push(lines);
         if (!ww_animations_on()) {   // Windows' "Animation effects" off: the newest lines, still, no typing and no blinking cursor
@@ -1170,7 +1395,279 @@ void WwApp::on_progress() {
             model_.stream_cursor = false;
         }
     }
+    sync_queue();
+}
+
+// ---- Recent, the preview, the drag out and the notification -----------------------------------------------------------------------------------
+
+// A game-console image or cartridge (the Recent row shows a game controller for it rather than a document).
+bool ww_is_console_file(const std::string& name) {
+    static const char* const kExtensions[] = {".sfc", ".smc", ".nes", ".gb", ".gbc", ".gba", ".nds", ".n64", ".z64", ".v64", ".md", ".gen", ".smd", ".sms", ".gg",
+                                              ".pce", ".a26", ".a78", ".vec", ".ngp", ".ngc", ".32x", ".xex", ".xbe", ".iso", ".cue"};
+    const std::size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    const std::string ext = text::lower(name.substr(dot));
+    for (const char* e : kExtensions)
+        if (ext == e) return true;
+    return false;
+}
+
+// The Program card's Recent rows from the list kept: what each became, files and when, and whether its folder is still there.
+void WwApp::refresh_recent() {
+    const std::int64_t now = recent::now_seconds();
+    const int offset = recent::utc_offset_seconds(now);
+    model_.recent.clear();
+    for (const recent::Entry& e : recent_) {
+        RecentItem row;
+        row.name = e.name;
+        row.chip = e.chip;
+        std::error_code ec;
+        row.missing = !stdfs::is_directory(fs::from_text(e.folder), ec);
+        row.meta = row.missing ? std::string("folder moved or deleted")
+                               : std::to_string(e.files) + (e.files == 1 ? " file" : " files") + " \xC2\xB7 " + recent::when_words(now, e.when, offset);
+        row.glyph_console = ww_is_console_file(e.name);
+        model_.recent.push_back(std::move(row));
+    }
+    if (hwnd_ != nullptr) {
+        relayout();
+        invalidate();
+    }
+}
+
+// A conversion that ended Done joins Recent (newest first, five at most), kept for the next time the window starts.
+void WwApp::remember_item(const batch::Item& item) {
+    std::string chip = run_language_name_;   // (the language it was translated to; Original: what the main source is)
+    if (chip.empty()) chip = preview::chip_for_files(preview::list_files(item.output, fs::to_text(item.file.stem())));
+    recent::Entry entry;
+    entry.name = item.name;
+    entry.chip = chip;
+    entry.folder = narrow(item.output.wstring());
+    entry.files = item.files;
+    entry.when = recent::now_seconds();
+    recent::add(recent_, std::move(entry));
+    recent::save(recent::store_file(convert::settings_file()), recent_);
+    refresh_recent();
+}
+
+void WwApp::remove_recent(int index) {
+    if (index < 0 || static_cast<std::size_t>(index) >= recent_.size()) return;
+    recent::remove_at(recent_, static_cast<std::size_t>(index));
+    recent::save(recent::store_file(convert::settings_file()), recent_);
+    model_.focus = Control::None;
+    model_.focus_index = -1;
+    refresh_recent();
+}
+
+// A click on a Recent row: the Source card of that conversion (when its folder is still there; else the row says so and offers Remove).
+void WwApp::open_recent(int index) {
+    if (running_ || queue_.active() || index < 0 || static_cast<std::size_t>(index) >= recent_.size()) return;
+    const recent::Entry entry = recent_[static_cast<std::size_t>(index)];
+    std::error_code ec;
+    if (!stdfs::is_directory(fs::from_text(entry.folder), ec)) {
+        refresh_recent();
+        return;
+    }
+    const View before = model_.view;
+    skip_welcome();
+    model_.view = View::Done;
+    model_.focus = Control::None;
+    model_.file_name = entry.name;
+    model_.done_file_name = entry.name;
+    model_.output_path = entry.folder;
+    model_.done_note = std::to_string(entry.files) + (entry.files == 1 ? " file written." : " files written.");
+    model_.status_text = "Done";
+    load_preview_folder(fs::from_text(entry.folder), fs::to_text(fs::from_text(entry.name).stem()));
+    begin_card_fade(before);
+    relayout();
     invalidate();
+}
+
+// The Source card back to the Program card (Esc, or the Convert item of the rail).
+void WwApp::back_to_program() {
+    if (model_.view != View::Done || running_ || queue_.active()) return;
+    const View before = model_.view;
+    reset_to_idle("Ready");
+    begin_card_fade(before);
+    refresh_recent();
+}
+
+// The files the output folder holds (the main source first) and the first one's source.
+void WwApp::load_preview_folder(const stdfs::path& folder, const std::string& main_stem) {
+    preview_entries_ = preview::list_files(folder, main_stem);
+    model_.preview_files.clear();
+    for (const preview::FileEntry& e : preview_entries_) model_.preview_files.push_back({e.path, preview::is_script_file(e.path)});
+    model_.preview_list_scroll = 0;
+    select_preview(0);
+}
+
+// Show a file of the list: its first kilobytes as lines, coloured, from the top.
+void WwApp::select_preview(int index) {
+    model_.preview_lines.clear();
+    model_.preview_spans.clear();
+    model_.preview_note.clear();
+    model_.preview_scroll = 0;
+    model_.preview_hscroll = 0;
+    if (index < 0 || static_cast<std::size_t>(index) >= preview_entries_.size()) {
+        model_.preview_selected = 0;
+        invalidate();
+        return;
+    }
+    model_.preview_selected = index;
+    if (model_.focus == Control::PreviewFile) model_.focus_index = index;
+    const preview::FileEntry& entry = preview_entries_[static_cast<std::size_t>(index)];
+    preview::Preview p = preview::read_preview(fs::from_text(model_.output_path) / fs::from_text(entry.path));
+    model_.preview_spans = preview::highlight(preview::lang_for(entry.path), p.lines);
+    model_.preview_lines = std::move(p.lines);
+    model_.preview_note = p.note;
+    relayout();
+    const PreviewLayout pl = compute_preview_layout(layout_, model_);   // the row stays in view
+    const float top = static_cast<float>(index) * kFileRowHeight;
+    if (top < model_.preview_list_scroll) model_.preview_list_scroll = top;
+    else if (top + kFileRowHeight > model_.preview_list_scroll + pl.list_area.h) model_.preview_list_scroll = top + kFileRowHeight - pl.list_area.h;
+    model_.preview_list_scroll = std::clamp(model_.preview_list_scroll, 0.0f, preview_list_max_scroll(pl));
+    invalidate();
+}
+
+void WwApp::scroll_preview_to(float first_line) {
+    const PreviewLayout p = compute_preview_layout(layout_, model_);
+    model_.preview_scroll = std::clamp(first_line, 0.0f, static_cast<float>(preview_max_first_line(model_, p)));
+    invalidate();
+}
+
+// The wheel over a list of the Convert page: the queue, the preview's files or its code (Shift: sideways). False when the point is over neither.
+bool WwApp::scroll_convert(float x, float y, int lines, bool horizontal) {
+    if (model_.page != Page::Convert) return false;
+    if (model_.view == View::Working && !model_.queue.empty()) {
+        const QueueLayout q = compute_queue_layout(layout_, model_);
+        if (!q.area.contains(x, y)) return false;
+        model_.queue_scroll = std::clamp(model_.queue_scroll - 36.0f * static_cast<float>(lines), 0.0f, queue_max_scroll(q));
+        invalidate();
+        return true;
+    }
+    if (model_.view == View::Done && !model_.preview_files.empty()) {
+        const PreviewLayout p = compute_preview_layout(layout_, model_);
+        if (layout_.preview_list.contains(x, y)) {
+            model_.preview_list_scroll = std::clamp(model_.preview_list_scroll - 36.0f * static_cast<float>(lines), 0.0f, preview_list_max_scroll(p));
+            invalidate();
+            return true;
+        }
+        if (layout_.preview_code.contains(x, y)) {
+            if (horizontal) model_.preview_hscroll = std::clamp(model_.preview_hscroll - 4.0f * static_cast<float>(lines), 0.0f, static_cast<float>(preview_max_hscroll(model_, p)));
+            else scroll_preview_to(model_.preview_scroll - 3.0f * static_cast<float>(lines));
+            invalidate();
+            return true;
+        }
+    }
+    return false;
+}
+
+// Keys of the Convert page's lists: in the preview the arrows, Page Up / Down, Home and End move through the files (when the list has the keyboard) or the
+// code; Left / Right scroll the code sideways; Ctrl+C copies the file shown. Delete removes the focused Recent row; Esc returns from the Source card.
+bool WwApp::convert_key(WPARAM key, bool ctrl) {
+    if (model_.page != Page::Convert) return false;
+    if (model_.view == View::Idle) {
+        if (key == VK_DELETE && (model_.focus == Control::RecentRow || model_.focus == Control::RecentRemove) && model_.focus_index >= 0) {
+            remove_recent(model_.focus_index);
+            return true;
+        }
+        return false;
+    }
+    if (model_.view != View::Done) return false;
+    if (key == VK_ESCAPE) {
+        back_to_program();
+        return true;
+    }
+    if (model_.preview_files.empty()) return false;
+    const PreviewLayout p = compute_preview_layout(layout_, model_);
+    const bool list = model_.focus == Control::PreviewFile;
+    const int files = static_cast<int>(model_.preview_files.size());
+    const float page = static_cast<float>(std::max(1, p.visible_lines - 1));
+    switch (key) {
+        case VK_UP:
+            if (list) select_preview(std::max(0, model_.preview_selected - 1));
+            else scroll_preview_to(model_.preview_scroll - 1);
+            return true;
+        case VK_DOWN:
+            if (list) select_preview(std::min(files - 1, model_.preview_selected + 1));
+            else scroll_preview_to(model_.preview_scroll + 1);
+            return true;
+        case VK_PRIOR: scroll_preview_to(model_.preview_scroll - page); return true;
+        case VK_NEXT: scroll_preview_to(model_.preview_scroll + page); return true;
+        case VK_HOME:
+            if (list) select_preview(0);
+            else scroll_preview_to(0);
+            return true;
+        case VK_END:
+            if (list) select_preview(files - 1);
+            else scroll_preview_to(static_cast<float>(preview_max_first_line(model_, p)));
+            return true;
+        case VK_LEFT:
+            model_.preview_hscroll = std::max(0.0f, model_.preview_hscroll - 4.0f);
+            invalidate();
+            return true;
+        case VK_RIGHT:
+            model_.preview_hscroll = std::min(static_cast<float>(preview_max_hscroll(model_, p)), model_.preview_hscroll + 4.0f);
+            invalidate();
+            return true;
+        default: break;
+    }
+    if (ctrl && key == 'C') {
+        copy_preview_text();
+        return true;
+    }
+    return false;
+}
+
+// The lines of the file shown, to the clipboard.
+void WwApp::copy_preview_text() {
+    if (model_.preview_lines.empty() || !OpenClipboard(hwnd_)) return;
+    std::string text;
+    for (const std::string& line : model_.preview_lines) text += line + "\r\n";
+    const std::wstring wide = widen(text);
+    EmptyClipboard();
+    const HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, (wide.size() + 1) * sizeof(wchar_t));
+    if (mem != nullptr) {
+        void* p = GlobalLock(mem);
+        std::memcpy(p, wide.c_str(), (wide.size() + 1) * sizeof(wchar_t));
+        GlobalUnlock(mem);
+        if (SetClipboardData(CF_UNICODETEXT, mem) == nullptr) GlobalFree(mem);
+    }
+    CloseClipboard();
+}
+
+// The output box was pressed and the pointer has moved: the folder is dragged out (OLE; copy or link) until it is dropped or Esc is pressed.
+void WwApp::begin_drag_out() {
+    drag_pending_ = false;
+    if (model_.output_path.empty()) return;
+    if (GetCapture() == hwnd_) ReleaseCapture();
+    model_.pressed = Control::None;
+    model_.pressed_index = -1;
+    model_.drag_out = true;
+    drag_out_active_ = true;
+    invalidate();
+    UpdateWindow(hwnd_);
+    drag_folder(fs::from_text(model_.output_path));
+    drag_out_active_ = false;
+    model_.drag_out = false;
+    model_.hot = Control::None;
+    invalidate();
+}
+
+// A finished run that the person is not looking at (the window is not in front, or is minimised) says so.
+void WwApp::notify_finished() {
+    if (!notifier_ || run_results_.empty()) return;
+    if (GetForegroundWindow() == hwnd_ && !IsIconic(hwnd_)) return;
+    notifier_->show(notify::compose(run_results_));
+}
+
+// A button or click on the notification: Open folder, or Show (the window comes forward).
+void WwApp::on_toast(WPARAM action) {
+    if (action == 1) {
+        open_output();
+        return;
+    }
+    if (IsIconic(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    SetForegroundWindow(hwnd_);
 }
 
 // ---- the fades
@@ -1257,6 +1754,78 @@ void WwApp::stream_frame() {
     invalidate();
 }
 
+// The Source card (or the InfoBar) for the file `item` ended with; what the Program card showed as it ended (`stage`, `detail`, `stream`) fades out with it.
+void WwApp::present_item(const batch::Item& item, const std::string& stage, const std::string& detail, const std::vector<std::string>& stream) {
+    const View before = model_.view;
+    reset_to_idle("Ready");
+    model_.file_name = item.name;
+    switch (item.state) {
+        case batch::ItemState::Done: {
+            model_.view = View::Done;
+            model_.stage_label = stage;
+            model_.detail = detail;
+            model_.percent = 100;
+            model_.stream = stream;
+            model_.done_file_name = item.name;
+            model_.output_path = narrow(item.output.wstring());
+            model_.done_note = std::to_string(item.files) + (item.files == 1 ? " file written." : " files written.");
+            if (!item.checked.empty()) model_.done_note += " Checked: " + item.checked;
+            model_.status_text = "Done";
+            load_preview_folder(item.output, fs::to_text(item.file.stem()));
+            break;
+        }
+        case batch::ItemState::CannotConvert:
+            model_.view = View::Unsupported;
+            model_.info_title = "This file can't be converted";
+            model_.info_message = item.message;
+            model_.status_text = "Cannot convert this file";
+            break;
+        case batch::ItemState::Cancelled: model_.status_text = "Cancelled"; break;
+        default:
+            model_.view = View::Failed;
+            model_.info_title = "The conversion failed";
+            model_.info_message = item.message;
+            model_.status_text = "Something went wrong";
+            break;
+    }
+    begin_card_fade(before);
+    relayout();
+    invalidate();
+}
+
+// Every file of the queue has ended: the card shows the last one that was converted (or, when none was, how the last one ended), Recent has them all,
+// the taskbar button is cleared (red when something failed), and a window that is not in front says so with a notification.
+void WwApp::finish_run() {
+    const std::string stage = model_.stage_label, detail = model_.detail;
+    const std::vector<std::string> stream = model_.stream;
+    const std::size_t total = queue_.total(), converted = queue_.done();
+    int shown = queue_.last_done();
+    if (shown < 0) shown = static_cast<int>(total) - 1;
+    const batch::Item item = queue_.items()[static_cast<std::size_t>(shown)];
+    bool cancelled = false, failed = false;
+    for (const batch::Item& i : queue_.items()) {
+        cancelled = cancelled || i.state == batch::ItemState::Cancelled;
+        failed = failed || i.state == batch::ItemState::Failed;
+    }
+    present_item(item, stage, detail, stream);
+    if (total > 1) {
+        if (cancelled) {
+            model_.status_text = "Cancelled: " + std::to_string(converted) + " of " + std::to_string(total) + " converted";
+        } else if (item.state == batch::ItemState::Done) {
+            model_.status_text = "Done: " + std::to_string(converted) + " of " + std::to_string(total) + " converted";
+        } else {   // none could be converted: the InfoBar says so
+            model_.info_title = "None of the " + std::to_string(total) + " files could be converted";
+        }
+    }
+    taskbar_.set(failed ? Taskbar::State::Error : Taskbar::State::None, 100);
+    if (failed && model_.window_active) SetTimer(hwnd_, kWwTaskbarTimer, kWwTaskbarErrorMs, nullptr);
+    if (!cancelled) notify_finished();
+    queue_.clear();
+    running_item_ = -1;
+    relayout();
+    invalidate();
+}
+
 void WwApp::on_finished() {
     if (worker_.joinable()) worker_.join();
     std::optional<convert::Outcome> outcome;
@@ -1267,44 +1836,39 @@ void WwApp::on_finished() {
     }
     progress_posted_ = false;
     if (!outcome) return;
-    const std::string file_name = model_.file_name;
-    const View before = model_.view;
-    // what the Program card showed as it ended, so it fades out as it was
-    const std::string stage = model_.stage_label, detail = model_.detail;
-    const std::vector<std::string> stream = model_.stream;
-    reset_to_idle("Ready");
-    model_.file_name = file_name;
+    const int index = running_item_;
+    running_item_ = -1;
+    if (index < 0 || static_cast<std::size_t>(index) >= queue_.total()) return;
+    batch::Item ended;
+    ended.output = outcome->output;
+    ended.files = outcome->files;
+    ended.message = outcome->message;
+    ended.checked = outcome->checked;
+    batch::ItemState state = batch::ItemState::Failed;
     switch (outcome->state) {
-        case convert::State::Done: {
-            model_.view = View::Done;
-            model_.stage_label = stage;
-            model_.detail = detail;
-            model_.percent = 100;
-            model_.stream = stream;
-            model_.done_file_name = file_name;
-            model_.output_path = narrow(outcome->output.wstring());
-            model_.done_note = std::to_string(outcome->files) + (outcome->files == 1 ? " file written." : " files written.");
-            if (!outcome->checked.empty()) model_.done_note += " Checked: " + outcome->checked;
-            model_.status_text = "Done";
-            break;
-        }
-        case convert::State::Unsupported:
-            model_.view = View::Unsupported;
-            model_.info_title = "This file can't be converted";
-            model_.info_message = outcome->message;
-            model_.status_text = "Cannot convert this file";
-            break;
-        case convert::State::Cancelled: model_.status_text = "Cancelled"; break;
-        default:
-            model_.view = View::Failed;
-            model_.info_title = "The conversion failed";
-            model_.info_message = outcome->message;
-            model_.status_text = "Something went wrong";
-            break;
+        case convert::State::Done: state = batch::ItemState::Done; break;
+        case convert::State::Unsupported: state = batch::ItemState::CannotConvert; break;
+        case convert::State::Cancelled: state = batch::ItemState::Cancelled; break;
+        default: break;
     }
-    begin_card_fade(before);
-    relayout();
-    invalidate();
+    queue_.finish(static_cast<std::size_t>(index), state, std::move(ended));
+    const batch::Item& item = queue_.items()[static_cast<std::size_t>(index)];
+    if (state == batch::ItemState::Done) remember_item(item);
+    if (state != batch::ItemState::Cancelled) {
+        notify::Result result;
+        result.name = item.name;
+        result.outcome = state == batch::ItemState::Done ? notify::Outcome::Done : state == batch::ItemState::CannotConvert ? notify::Outcome::CannotConvert : notify::Outcome::Failed;
+        result.files = item.files;
+        result.folder = fs::to_text(item.output.filename());
+        result.detail = item.message;
+        run_results_.push_back(std::move(result));
+    }
+    if (queue_.next_waiting() >= 0) {   // the next file of the queue
+        sync_queue();
+        run_next();
+        return;
+    }
+    finish_run();
 }
 
 LRESULT CALLBACK WwApp::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1318,6 +1882,10 @@ LRESULT CALLBACK WwApp::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg != 0 && msg == taskbar_message_) {   // the taskbar button exists (it is made again when Explorer restarts): progress can be shown on it
+        taskbar_.attach(hwnd_);
+        return 0;
+    }
     switch (msg) {
         case WM_CREATE: {
             dpi_ = GetDpiForWindow(hwnd_);
@@ -1335,6 +1903,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 DwmSetWindowAttribute(hwnd_, kWwCaptionColor, &none, sizeof none);
             }
             apply_theme();
+            notifier_ = std::make_unique<Notifier>(hwnd_, kWmToast, kWmTray);
             RegisterDragDrop(hwnd_, &drop_);
             SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);   // (the system takes its caption away: WM_NCCALCSIZE)
             return 0;
@@ -1426,6 +1995,15 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             break;
         case WM_MOUSEMOVE: {
             const float mx = ww_dip(GET_X_LPARAM(lp), dpi_), my = ww_dip(GET_Y_LPARAM(lp), dpi_);
+            if (drag_pending_) {   // the output box was pressed: moving a little with the button down drags the folder out
+                if ((wp & MK_LBUTTON) == 0) {
+                    drag_pending_ = false;
+                } else if (std::abs(GET_X_LPARAM(lp) - drag_origin_.x) >= GetSystemMetricsForDpi(SM_CXDRAG, dpi_) ||
+                           std::abs(GET_Y_LPARAM(lp) - drag_origin_.y) >= GetSystemMetricsForDpi(SM_CYDRAG, dpi_)) {
+                    begin_drag_out();
+                    return 0;
+                }
+            }
             if (model_.language_open && model_.page == Page::Convert) {   // over the open list: the item under the pointer is the one a click chooses
                 const int item = language_item_at(language_list(), mx, my);
                 const int hot = item >= 0 && model_.languages[static_cast<std::size_t>(item)].supported ? item : -1;
@@ -1456,7 +2034,9 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSEWHEEL: {
             POINT p{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             ScreenToClient(hwnd_, &p);
-            scroll_page(ww_dip(p.x, dpi_), ww_dip(p.y, dpi_), GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA);
+            const float wx = ww_dip(p.x, dpi_), wy = ww_dip(p.y, dpi_);
+            const int notches = GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA;
+            if (!scroll_convert(wx, wy, notches, (GET_KEYSTATE_WPARAM(wp) & MK_SHIFT) != 0)) scroll_page(wx, wy, notches);
             return 0;
         }
         case WM_CHAR: {
@@ -1485,6 +2065,15 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kWwFadeTimer) {
                 fade_frame();
+                return 0;
+            }
+            if (wp == kWwTaskbarTimer) {   // a failure has been on the taskbar button long enough for a window that is in front
+                KillTimer(hwnd_, kWwTaskbarTimer);
+                if (taskbar_.state() == Taskbar::State::Error) taskbar_.set(Taskbar::State::None);
+                return 0;
+            }
+            if (wp == kWwMinuteTimer) {   // "2 minutes ago" moves on
+                if (model_.page == Page::Convert && model_.view == View::Idle && !model_.recent.empty()) refresh_recent();
                 return 0;
             }
             break;
@@ -1520,12 +2109,17 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 model_.pressed = h.control;
                 model_.pressed_index = h.index;
                 SetCapture(hwnd_);
+                if (h.control == Control::OutputBox && model_.view == View::Done) {
+                    drag_pending_ = true;
+                    drag_origin_ = POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                }
             }
             set_hot(h.control, h.index);
             invalidate();
             return 0;
         }
         case WM_LBUTTONUP: {
+            drag_pending_ = false;
             const Control pressed = model_.pressed;
             const int pressed_index = model_.pressed_index;
             model_.pressed = Control::None;
@@ -1609,6 +2203,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 language_key(wp, false);
                 if (wp == VK_UP || wp == VK_DOWN || wp == VK_F4) return 0;
             }
+            if (wp != VK_TAB && convert_key(wp, ctrl)) return 0;
             if (wp == VK_TAB) {
                 move_focus((GetKeyState(VK_SHIFT) & 0x8000) != 0);
                 return 0;
@@ -1659,6 +2254,10 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_ACTIVATE:
             model_.window_active = LOWORD(wp) != WA_INACTIVE;
+            if (model_.window_active) {   // looked at again: a failure on the taskbar button has been seen, and folders may have moved since
+                if (taskbar_.state() == Taskbar::State::Error) taskbar_.set(Taskbar::State::None);
+                if (!running_) refresh_recent();
+            }
             if (!model_.window_active) model_.language_open = false;
             invalidate();
             break;
@@ -1672,6 +2271,10 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_PAINT: paint(); return 0;
         case kWmProgress: on_progress(); return 0;
         case kWmFinished: on_finished(); return 0;
+        case kWmToast: on_toast(wp); return 0;
+        case kWmTray:
+            if (notifier_) notifier_->on_tray(lp);
+            return 0;
         case WM_CLOSE:
             if (running_) cancel_ = true;
             break;
@@ -1719,10 +2322,17 @@ Model ww_model_for(const std::string& state, bool dark) {
             "rebuilt file is identical to the original (312,320 bytes)\nsource: C:\\CodeBreaker\\Converted\\PINBALL\n";
         return m;
     }
-    if (state == "settings") {
+    if (state == "settings" || state == "advanced") {
         m.page = Page::Settings;
+        m.settings_advanced = state == "advanced";
         m.status_text = "Saved: " + settings::plain_label("low_load");
+        const auto row = [](const char* key, const char* value, settings::Kind kind, bool present) {
+            return settings::Row{key, value, kind, present, *value != 0, settings::plain_label(key), settings::plain_hint(key)};
+        };
         const std::vector<settings::Row> rows = {
+            row("ilspycmd", "C:\\Tools\\ilspycmd.exe", settings::Kind::Path, true),
+            row("java", "C:\\Program Files\\Java\\jdk-21", settings::Kind::Path, true),
+            row("xbox360_sdk", "", settings::Kind::Path, false),
             {"nasm", "C:\\Tools\\nasm\\nasm.exe", settings::Kind::Path, true, true, settings::plain_label("nasm"), settings::plain_hint("nasm")},
             {"openwatcom", "C:\\Tools\\WATCOM", settings::Kind::Path, true, true, settings::plain_label("openwatcom"), settings::plain_hint("openwatcom")},
             {"converted", "C:\\CodeBreaker\\Converted", settings::Kind::Path, true, true, settings::plain_label("converted"), settings::plain_hint("converted")},
@@ -1793,6 +2403,70 @@ Model ww_model_for(const std::string& state, bool dark) {
         m.info_title = "The conversion failed";
         m.info_message = "The file is cut short: its section table runs past the end of the file.";
         m.status_text = "Something went wrong";
+    } else if (state == "recent") {   // the Program card with the Recent list (sample rows: the screenshot shows no one's own files)
+        m.recent = {{"lz32.dll", "C", "12 files \xC2\xB7 2 minutes ago", false, false},
+                    {"Bank.cs", "C++17", "3 files \xC2\xB7 today 11:52 PM", false, false},
+                    {"gothicvania.sfc", "Assembly", "4 files \xC2\xB7 yesterday", false, true}};
+        m.hot = Control::RecentRow;
+        m.hot_index = 0;
+        m.status_text = "Ready";
+    } else if (state == "batch") {   // several files: the queue, one running
+        m.view = View::Working;
+        m.file_name = "setup.exe";
+        m.queue = {{"lz32.dll", "", "Done", 2, 100},
+                   {"ver.dll", "", "Done", 2, 100},
+                   {"setup.exe", "Decompiling \xC2\xB7 17 of 39 functions", "62%", 1, 62},
+                   {"mpr.dll", "", "Waiting", 0, 0},
+                   {"msacm32.dll", "", "Waiting", 0, 0},
+                   {"photo.png", "", "Can't convert", 3, 0}};
+        m.queue_note = "3 of 6 done";
+        m.status_text = "Converting 6 files";
+    } else if (state == "preview") {   // the Source card with the output folder's files and the main source (sample text)
+        m.view = View::Done;
+        m.file_name = "lz32.dll";
+        m.done_file_name = "lz32.dll";
+        m.output_path = "C:\\CodeBreaker\\Converted\\lz32";
+        m.done_note = "12 files written.";
+        m.status_text = "Done";
+        m.preview_files = {{"lz32.c", false}, {"lz32.asm", false}, {"lz32.inc", false}, {"lz32.def", false}, {"lz32.rc", false}, {"build.cmd", true}};
+        m.preview_lines = {"/* lz32.dll -- decompiled by CodeBreaker */",
+                           "#include <windows.h>",
+                           "",
+                           "INT WINAPI LZStart(void)",
+                           "{",
+                           "    return 1;",
+                           "}",
+                           "",
+                           "HFILE WINAPI LZOpenFileA(LPSTR name, LPOFSTRUCT of, WORD style)",
+                           "{",
+                           "    HFILE h = OpenFile(name, of, style);",
+                           "    if (h == HFILE_ERROR) return LZERROR_BADINHANDLE;",
+                           "    if (style & (OF_WRITE | OF_READWRITE)) return h;",
+                           "    return LZInit(h);",
+                           "}",
+                           "",
+                           "LONG WINAPI LZCopy(HFILE from, HFILE to)",
+                           "{",
+                           "    BYTE buffer[0x1000];",
+                           "    LONG total = 0;",
+                           "    INT n;",
+                           "    while ((n = LZRead(from, (LPSTR)buffer, sizeof buffer)) > 0) {",
+                           "        if (_lwrite(to, (LPCSTR)buffer, n) != (UINT)n) return LZERROR_WRITE;",
+                           "        total += n;",
+                           "    }",
+                           "    return n < 0 ? n : total;",
+                           "}"};
+        m.preview_spans = preview::highlight(preview::Lang::C, m.preview_lines);
+    } else if (state == "dragout") {   // the Source card (no preview) while the folder is dragged out of its output box
+        m.view = View::Done;
+        m.file_name = "lz32.dll";
+        m.done_file_name = "lz32.dll";
+        m.output_path = "C:\\CodeBreaker\\Converted\\lz32";
+        m.done_note = "12 files written.";
+        m.status_text = "Done";
+        m.hot = Control::OutputBox;
+        m.drag_out = true;
+        m.drag_ghost = true;
     }
     return m;
 }
@@ -1833,7 +2507,7 @@ int ww_screenshot(const WwShot& shot) {
     if (FAILED(painter.d2d()->CreateWicBitmapRenderTarget(bitmap.get(), props, target.put()))) return 2;
     target->SetDpi(96.0f * shot.scale, 96.0f * shot.scale);
     const Model model = ww_model_for(shot.state, dark);
-    const Layout layout = compute_layout(model.view, shot.width, shot.height, kRailWidth);
+    const Layout layout = compute_layout(model.view, shot.width, shot.height, kRailWidth, extras_for(model, model.view));
     Appearance look;
     look.dark = dark;
     look.accent = ww_accent(dark);
@@ -1900,7 +2574,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings] [--theme light|dark] [--size WxH] [--scale N]]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout] [--theme light|dark] [--size WxH] [--scale N]]\n");
             return 2;
         }
     }

@@ -1,0 +1,76 @@
+# Which areas of native/cb each command's code starts in (cb_exe_gate --changed, tools\gate.cmd --changed; native/cb/app/gate_changed.hpp).
+#
+# A command case runs after a change when the changed area is one of these, or one that their sources include, directly or through another
+# area (the include graph is read from the sources: it is never written here). So list the area where the command's own code lives, not
+# what it calls. A command with no line here is always run: unsure means run. The app's own files (the table, the wiring) and core/ and base/
+# changes run everything whatever is said here. `convert` is "app:convert": the pipeline's files (app/convert*). A case may add areas with
+# `@areas=a,b` on its line in cases.txt.
+#
+# command: area area ...
+--help: core
+no_such_command: core
+analyze: store
+build: build
+build16: build
+resources: build
+flat-thunk: build
+driver-build: build
+disc: build
+xex-edit: build
+cab: formats
+crypto: formats
+xbox-disc: formats
+system-ui: formats
+fonts: formats
+gfx: formats
+heavyiron: formats
+media: formats
+xex: formats
+xex-basic: formats
+xex-imports: formats
+info: formats
+ppc-calls: analyze
+dos-functions: analyze symbols
+dos-interrupts: analyze symbols
+cache: base
+corpus-executables: base
+settings: base
+tidy-state: base
+classes: symbols
+demangle: symbols
+driver-services: symbols
+identify: symbols
+xdk-match: symbols
+versions: store
+coverage: coverage
+reach: coverage
+convert: app:convert
+decompile: source
+measure: source
+module: source
+repair: source
+teeth: source
+score16: source
+scoreboard: source
+sweep: source
+place: source
+match: source
+dos-build: invert source
+dos-source: invert source
+driver-source: invert source
+driver-judge: invert source
+vxd: invert source
+ne-asm: invert source
+pe-source: invert source
+ne-source: invert source
+le-source: invert source
+invert: invert
+exact: exact
+java: java
+mcp: ui
+serve: ui
+recompile: recompile
+recompile-project: recompile
+xenon-recompile: recompile
+xenon-config: recompile
+xna: xna

@@ -89,6 +89,41 @@ std::string plain_hint(const std::string& key) {
     return {};
 }
 
+bool is_everyday(const std::string& key) { return key == "converted" || key == "low_load"; }
+
+namespace {
+
+struct StNeed {
+    const char* label;     // what can be converted with the tool
+    const char* key;       // the setting that names the tool
+    const char* needs;     // the note while it is missing
+    bool folder;
+};
+
+constexpr StNeed kStNeeds[] = {
+    {".NET programs", "ilspycmd", "Needs ILSpy, which turns .NET programs back into C#", false},
+    {"Java programs", "java", "Needs a Java JDK", true},
+    {"Xbox 360 games", "xbox360_sdk", "Needs the Xbox 360 SDK", true},
+};
+
+}  // namespace
+
+std::vector<Capability> capabilities(const std::vector<Row>& rows) {
+    std::vector<Capability> out;
+    Capability ready{"Ready", "Windows and DOS programs \xC2\xB7 game consoles \xC2\xB7 translating source to another language", true, {}, true};
+    std::vector<Capability> missing;
+    for (const StNeed& need : kStNeeds) {
+        bool found = false;
+        for (const Row& r : rows)
+            if (r.key == need.key) found = r.set && r.present;
+        if (found) ready.note += std::string(" \xC2\xB7 ") + need.label;
+        else missing.push_back({need.label, need.needs, false, need.key, need.folder});
+    }
+    out.push_back(std::move(ready));
+    for (Capability& c : missing) out.push_back(std::move(c));
+    return out;
+}
+
 std::vector<Row> rows(const config::Config& config) {
     std::vector<Row> out;
     for (const std::string& key : config.keys()) {

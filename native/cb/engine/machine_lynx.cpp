@@ -120,7 +120,7 @@ vl::ImageLaneSpec lynx_lane_spec() {
     spec.states = {lynx_state(0, 0, 0, 0), lynx_state(1, 2, 3, 1), lynx_state(0x80, 0xFF, 0x7F, 2), lynx_state(0x55, 0x10, 0xAA, 3)};
     spec.effects = lynx_effects;
     spec.what = {"end", "A", "X", "Y", "P", "S", "RAM changed", "Suzy and Mikey accesses"};
-    spec.start = [](const vl::State& s) { return std::format("from A={:02X} X={:02X} Y={:02X}", at(s, "a"), at(s, "x"), at(s, "y")); };
+    spec.start = [](const vl::State& s) { return std::format("from A={:02X} X={:02X} Y={:02X}", lynx_lane_detail::at(s, "a"), lynx_lane_detail::at(s, "x"), lynx_lane_detail::at(s, "y")); };
     spec.writer = written_by;
     return spec;
 }

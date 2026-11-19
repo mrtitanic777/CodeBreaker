@@ -35,6 +35,7 @@ using TestFn = std::function<void()>;
 // Registers a test at static-initialisation time (what CB_TEST expands to).
 struct Registrar {
     Registrar(const char* name, TestFn fn);
+    Registrar(const char* name, const char* file, TestFn fn);   // CB_TEST: the source file, so `cb_tests --area` can pick an area's tests
 };
 
 // Record a failed check against the running test.
@@ -119,7 +120,7 @@ void check_eq(const char* file, int line, const char* actual_text, const char* e
 
 // (variadic: a lambda body may contain commas outside parentheses, e.g. in a braced initialiser)
 #define CB_TEST(name, ...) \
-    static ::cb::testing::Registrar CB_TEST_CAT_(cb_test_registrar_, __LINE__)(name, __VA_ARGS__)
+    static ::cb::testing::Registrar CB_TEST_CAT_(cb_test_registrar_, __LINE__)(name, __FILE__, __VA_ARGS__)
 
 #define CB_CHECK(...)                                                                               \
     do {                                                                                            \
