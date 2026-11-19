@@ -437,9 +437,10 @@ Services production_services(const config::Config& config) {
     const stdfs::path design = corpus ? corpus->parent_path().parent_path() : stdfs::path();
     const stdfs::path fix95cpu = design / "vm" / "FIX95CPU.IMA";
     const bool recognise = config.truthy("install_recognise_screens");
-    // FIX95CPU's patched files cached under <state>/cache/fix95cpu and installed by Setup itself (no floppy stage) unless the setting
-    // install_preapply_fix95cpu is false. The first install after a change of FIX95CPU.IMA or the CD goes through the floppy and fills it.
-    const bool preapply = config.text("install_preapply_fix95cpu").empty() || config.truthy("install_preapply_fix95cpu");
+    // FIX95CPU's patched files cached under <state>/cache/fix95cpu and installed by Setup itself (no floppy stage) when the setting
+    // install_preapply_fix95cpu is true. Off by default (2026-11-19): with the cache, the first restart still failed at "While
+    // initializing device IOS" -- the patched IOS.VXD Setup was given is not the one that boot loads; not yet known why.
+    const bool preapply = config.truthy("install_preapply_fix95cpu");
     const stdfs::path fix_cache = preapply ? state / "cache" / "fix95cpu" : stdfs::path();
     s.passed_dir = state / "work" / "regress" / "passed";
     // The key of a tier's inputs: the bytes of every built image, of this program and of the fix disk; size and write time of the big fixed files
