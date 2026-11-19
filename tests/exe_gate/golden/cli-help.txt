@@ -1,10 +1,12 @@
 exit: 0
 --- stdout
 usage: codebreaker <command> [arguments]
-       codebreaker               with no command, in a terminal: the terminal interface (ui)
+       codebreaker               with no command: the CodeBreaker window (app)
 
-    ui [module]                     CodeBreaker in the command prompt: the corpus, a module's functions, their C,
-                                    assembly, calls and verdicts, jobs followed live
+    app [--screenshot PNG ...]      the CodeBreaker window, what `codebreaker` starts with no command; --screenshot
+                                    PNG draws it to a file
+    convert FILE [--out DIR]        one file in, a folder of source code out: the pipeline the window drives, its
+                                    stages and percentages printed
     module <name> [--no-verify]     reconstruct one module: decompile, build, judge, write its source
     scoreboard                      rewrite the scoreboard from stored results
     place <module> ... | --all      where each module's source goes in the source tree
@@ -91,8 +93,8 @@ usage: codebreaker <command> [arguments]
                                     lane for yet), and with --judge how far its lane gets; a few of each platform, one
                                     at a time
     mcp [--http PORT]               CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)
-    serve [--status|--stop]         the CodeBreaker service: one process the terminal interface, the MCP servers and
-                                    `facts` all ask (started on demand; exits when idle)
+    serve [--status|--stop]         the CodeBreaker service: one process the MCP servers and `facts` all ask (started
+                                    on demand; exits when idle)
     progress [--once]               watch a running sweep
     settings                        every setting, and whether what it names is there
     cache [--stats|--prune|--clear] what the cache keeps, kind by kind; old generations dropped, the cap

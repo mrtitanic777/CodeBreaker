@@ -301,3 +301,60 @@ set; the rest of the 54 entries were not rerun (Happy Wars alone is a 40-minute 
 
 Left: Happy Wars (rerun), L4D2 (rebuild with the stub fix and run), Forza past class 26, Heavy Weapon's field, Terraria's JIT, the full
 54-entry table.
+
+## Round 5 (2026-11-15 to 11-18)
+
+All 54 entries measured again with `--check 120` (one project at a time, deleted after; scratch `state/work/x360-r5`), after the changes below.
+Frames are what the title presented in 120 s (the check's ceiling is about 7200; the log prints every 600). 46 of the 51 recompilable
+titles run the whole check with no stop (round 3: 40); the sweep ran before the Joy Ride Turbo and Game-on-Demand 423607D1 fixes, which
+are re-run by hand (below).
+
+| Title | Round 4 | Round 5 |
+|---|---|---|
+| Catherine Demo | 1800 frames, a 21 s hitch at frame 744 | 3000, no stop; 118 compiles, 12.9 s in all (FXC: 33.0 s) |
+| Small Arms | past frame 236, 2.3 s a compile (94 s of 110) | 2400, no stop; 97 compiles, 314 ms on average |
+| Monopoly Plus | 1800 | 4800 |
+| Left 4 Dead 2 Demo | 0 frames (link failed) | 2400: the four engine DLLs load and run, the intro movie plays |
+| Forza Motorsport 4 | 1 frame, `NtQueryInformationFile` class 26 | 4800: the intro video plays |
+| Happy Wars | 1 frame (`k_16_16_FLOAT`, not rerun in round 4) | 3000 (15-minute build) |
+| Joy Ride Turbo | 1 frame, class 27 | 1 in the sweep; 2700+ after the fixes below |
+| Game-on-Demand 423607D1 | 0, the thread-name exception | 0 in the sweep; past it after the fix: stops at `XamContentOpenFile("stexemplar", "update:\Database.xmplr")` |
+| Hexic HD, Lumines | 6600, 6000 | 6600, 6600 (the 6000 was machine load: other sessions were building; the run is not the one that moved) |
+| Heavy Weapon | 1 frame, null read at 0x70 | 5 frames, same read: traced, below |
+| Terraria, PAC-MAN Museum | 0 | 0 (the .NET JIT; indirect call to 821BED60) |
+| Everything else | | unchanged: 6600 frames (WALL-E 5400, Cloning Clyde 3000), no stop |
+
+1. **Shader compile time.** The real cost was FXC. `dxcompiler.dll` is not on the PATH but the Windows SDK ships it (with `dxil.dll`);
+   round 4 had looked for it beside the program and not found it. `x360.cmake` now copies both next to every title's program (from the SDK, or
+   `CB_DXC_DIR`), and the runtime's existing DXC path compiles with them: on Catherine's four largest shaders 0.43-0.55 s instead of 0.85-2.3 s
+   (FXC) and half the bytecode (23.8 KB against 51 KB for the 1.4 s vertex shader), and over a whole run 118 compiles took 12.9 s instead of
+   33.0 s, the slowest 375 ms instead of 1505 ms. The harness passes with DXC (`CB_SHADER_TEST=1`: 57,696 instruction states, 25,600
+   output-merger cases, the resolves, the present pass and texture sampling: 0 mismatches), so the bit-exact translation survives it. And the
+   compile workers are on by default now (`CB_ASYNC_SHADERS=0` for the old behaviour and the pixel-exact tests): the command processor never
+   waits for a compile, a draw whose shaders are not ready is skipped (first run only: the manifest and `shader_cache/` start the next run with
+   everything compiled). The HLSL itself was not made smaller: with DXC it no longer is the limit.
+2. **L4D2.** The round-4 import-stub fix links. Three things stood in the way: an XEX whose import-name table has stray bytes in its padding
+   (the engine DLLs: the name after `xboxkrnl.exe` read as `\`, so the module's variable imports of `vstdlib` found no library; `native/xex`
+   reads the table at its 4-byte-aligned offsets now, as XenonRecomp's reader always did), `FscGetCacheElementCount` (still unimplemented and
+   skipped by the check), and render target format 1: **`8_8_8_8_GAMMA` in the output merger** (the 8_8_8_8 dword holds gamma-encoded RGB; the
+   shader's linear colour is converted on store and back for blending, with the piecewise-linear curve of slopes 1/4, 1/2, 1, 2; the CPU
+   reference and the random-key test cover it).
+3. **Forza 4.** Past class 26 and onward: `NtQueryInformationFile` class 26 (not an NT file class; a 4-byte buffer the title's file wrapper
+   returns to its caller right after opening a zip: the file length), a read longer than the rest of a file now transfers the bytes that exist
+   (the host call checked the whole 128 KiB buffer the guest had not committed), the **10-bit front buffer through the piecewise-linear gamma
+   ramp** (128 segments a channel, 10-bit input c: base + delta * (c & 7) / 8 of entry c >> 3; the GPU pass and the CPU reference agree) and
+   texture format `k_8_8_8_8_AS_16_16_16_16` (the 8_8_8_8 layout; sampled as the same unorm or gamma value).
+4. **The 54-entry table**: above. Lumines and Hexic did not change.
+5. **Heavy Weapon, traced further: not game state.** `X+2684` (X is the title object at `0x40001850`) is a 120-byte object created in
+   `sub_82173B90` (a loader thread, created by the main thread, which carries on). That thread's last calls are XMA (`XMADisableContext`,
+   `XMAIsInputBuffer0Valid` ...) on a context whose first frame never decodes: `APU: frame at buffer 0 bit 988 does not decode: channel
+   transform bit`, 406,000 times. The WMA Pro decoder stops on a set channel-transform bit (FFmpeg's decoder, which ours follows, does too), the
+   context parks with a bitstream-corruption error as the hardware's would, the title waits for audio that never arrives, and the main thread
+   reads the null object. The way on is the channel transform of the WMA Pro frame (and whether the frame is XMA1 rather than XMA2).
+
+Also: `RtlRaiseException` of 0x406D1388 (the debugger-only thread name) returns; `RtlDowncaseUnicodeChar`; `NtPulseEvent`;
+`NtQueryInformationFile` class 27 (a dword, bit 0 set: the wrapper of Joy Ride Turbo's data.bpk takes another path with 0 and reads through a
+null buffer).
+
+Left: the channel transform in the WMA Pro decoder (Heavy Weapon), `XamContentOpenFile` of a non-HDD package (423607D1), Terraria's JIT,
+`FscGetCacheElementCount`, PAC-MAN Museum's indirect call, a host render target path for `8_8_8_8_GAMMA` (it takes the ROV output merger).

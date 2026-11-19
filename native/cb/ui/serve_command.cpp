@@ -185,7 +185,7 @@ int serve_main(const Environment& environment, const cli::Args& args) {
 cli::Command command(const Environment& environment) {
     cli::Command c;
     c.name = "serve";
-    c.summary = "CodeBreaker as a service: one process that owns the databases and the engine and answers the terminal interface, the MCP servers and the queries";
+    c.summary = "CodeBreaker as a service: one process that owns the databases and the engine and answers the MCP servers and the queries";
     c.params = {cli::Option{.name = "status", .help = "the one running: pid, port, jobs, idle time"},
                 cli::Option{.name = "stop", .help = "stop the one running (its jobs with it)"},
                 cli::Option{.name = "idle", .help = "exit after this long with no call and no job (setting service_idle_minutes; default 20)", .arg = cli::Arg::Value, .value_name = "MINUTES"},

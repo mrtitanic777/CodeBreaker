@@ -12,10 +12,13 @@ the same arguments, the same return value, the same memory left behind, the same
 registers. Byte-identical output is never the goal; it is only used as a hint for which of several
 correct sources is closest to what was originally written.
 
-![The terminal interface: every module in the store and how far each has come](docs/images/ui-home.svg)
+| Light | Dark |
+|---|---|
+| ![The CodeBreaker window, light](docs/images/app-idle-light.png) | ![The CodeBreaker window, dark](docs/images/app-idle-dark.png) |
 
-> **Version 1.0.0** — the first official release. CodeBreaker is one native C++20 program (`codebreaker.exe`). Every command
-> runs natively; the only Python left is the terminal interface, a thin client of the native service.
+> **Version 1.0.0** — the first official release. CodeBreaker is one native C++20 program (`codebreaker.exe`): with no
+> arguments it is a Windows 11 app, with arguments it is the command line. Every command runs natively, and there is no
+> Python anywhere in it.
 
 ---
 
@@ -62,15 +65,29 @@ handled yet, is [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
 ## See it work
 
-**A module, function by function.** Each function's recovered source, its assembly, its calls, and
-the judge's verdict. This is `lzexpand.dll` from Windows 95: 16-bit code coming back as C with its
-far pointers intact.
+**Drop a file, get its source code.** Run `codebreaker` with no arguments (or double-click it), drag a
+program onto the window or press Browse, and the conversion runs with its real progress: the stage it
+is in (identifying, unpacking, opening, disassembling, decompiling, writing the source), functions
+decompiled of the total, files written of the total. When it finishes, the output folder is one click
+away; a file CodeBreaker cannot convert is named for what it is (for example "This looks like a PNG
+image") with a way to try another. The same pipeline runs on the command line as
+`codebreaker convert FILE [--out DIR]`, which prints the stages and percentages.
 
-![A 16-bit module's recovered C in the terminal interface](docs/images/ui-module-source.svg)
+| Working | Done | A file it cannot convert |
+|---|---|---|
+| ![Converting](docs/images/app-working-light.png) | ![Finished](docs/images/app-done-light.png) | ![Unsupported file](docs/images/app-unsupported-light.png) |
 
-| Assembly beside it | The judge's verdict |
-|---|---|
-| ![Assembly view](docs/images/ui-module-asm.svg) | ![Verdict view](docs/images/ui-module-verdict.svg) |
+Which stages a file passes through depends on what it is: *Unpacking* only for containers (disc and disk
+images, cabinets); *Decompiling* only where the source is C (Windows 32-bit and 16-bit programs, drivers,
+DOS programs); console programs come back as assembly source. The window is plain Win32 with Direct2D
+and DirectWrite (Mica backdrop, the system accent colour and light or dark theme, per-monitor DPI); the
+screenshots above are drawn by it: `codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported]
+[--theme light|dark] [--size WxH] [--scale N]`.
+
+**A module, function by function.** `codebreaker decompile lzexpand.dll` writes each function's
+recovered C, `codebreaker names`, `analyze` and `info` say what is in it, and `measure` and `module`
+judge it. This is `lzexpand.dll` from Windows 95: 16-bit code coming back as C with its far pointers
+intact.
 
 **Windows 95 Setup, running on modules rebuilt from CodeBreaker's source.** These are screenshots
 from the milestone regression run of 2026-11-14 — a real VM, booting and installing with every
@@ -117,7 +134,7 @@ that it notices.
 
 | Layer | Where | What lives there |
 |---|---|---|
-| Interfaces | `native/cb/app`, `native/cb/ui`, `codebreaker/ui` | the command table, the MCP server (32 tools), the service, the Textual terminal client |
+| Interfaces | `native/cb/app`, `native/cb/ui` | the command table, the Windows app (`window_*`) and its conversion pipeline (`convert`), the MCP server (32 tools), the service |
 | The path | `formats` → `symbols`, `analyze` → `decompile` → `source`, `port`, `exact` → `build` → `emulate`, `compare`, `verify` | reconstruct, rebuild, judge, record |
 | Lanes | `recompile`, `xna`, `java`, `translate`, `platforms`, `invert` | Xbox 360 recompilation, XNA ports, Java, the translator, platform descriptions, compiler inversion |
 | Engine | `engine`, `store`, `knowledge`, `coverage`, `jobs`, `core`, `base` | incremental engine and program database, function store, knowledge base, scoreboards, jobs, the C++ foundation |
@@ -134,7 +151,7 @@ same L2 passes, and the same C and assembly writers.
 
 ![Inside the decompiler](docs/architecture/04-decompiler.svg)
 
-**One program, one service.** The command line, the terminal interface and the MCP server all reach
+**One program, one service.** The command line, the window and the MCP server all reach
 the same command table; long work runs as jobs on one service process over one state folder.
 
 ![One program, one service](docs/architecture/05-program-and-service.svg)
@@ -173,7 +190,7 @@ tables it reads, with no tests. Unzip it, add its `bin` folder to `PATH`, and ru
 
 **Requirements:** Windows 10 or 11 (x64), CMake and Ninja, Git, and a C++20 compiler. CodeBreaker builds with
 MSVC (Visual Studio 2022 or 2026), Clang (`clang-cl`) and GCC (MinGW-w64), and CI builds it with all three on every
-push; the build scripts use MSVC, and the engines' NASM is built with MinGW-w64 GCC. The Java lane needs JDK 21. For the terminal interface: Python 3.10+ with `pip install textual`. The individual
+push; the build scripts use MSVC, and the engines' NASM is built with MinGW-w64 GCC. The Java lane needs JDK 21. The individual
 lanes use their own tools (OpenWatcom, DOSBox-X, the period compilers, an Xbox 360 SDK); `codebreaker
 settings` lists every one and whether it was found.
 
@@ -206,14 +223,14 @@ codebreaker reach C:\path\to\some.dll
 ```
 
 ```bash
-codebreaker ui
+codebreaker
 ```
 
 ---
 
 ## Commands
 
-75 commands, one program. `codebreaker help` lists them all; the ones most people start with:
+78 commands, one program. `codebreaker help` lists them all; the ones most people start with:
 
 | Command | What it does |
 |---|---|
@@ -229,7 +246,8 @@ codebreaker ui
 | `java <tool>` | the Java transpiler (Java to C++03) |
 | `driver-source`, `dos-source`, `pe-source`, `ne-source` | whole-file assembly source, built and compared byte for byte |
 | `regress all15\|setup\|install\|slow` | the milestone regression: Windows 95 boot, Setup chain, full install, slow cases |
-| `ui` | the terminal interface |
+| `convert FILE` | one file in, a folder of source code out, with its stages and percentages (the window runs the same pipeline) |
+| `app` | the window (what `codebreaker` with no command starts); `app --screenshot OUT.png` draws it to a file |
 | `mcp` | CodeBreaker as an MCP server, so an AI assistant can drive it ([docs/MCP.md](docs/MCP.md)) |
 
 ---
@@ -242,10 +260,9 @@ native/decompiler/  SLEIGH processor specs and the decompiler core
 native/l2/          L2, the typed intermediate form, and its back ends
 native/x360/, native/xenonrecomp/, native/rexglue/   the Xbox 360 recompiler and runtime
 native/nasm/        NASM with a MASM dialect, for reconstructed assembly
-codebreaker/ui/     the terminal interface (Python + Textual), a client of `codebreaker serve`
 data/               tables CodeBreaker reads: API maps, symbol tables, runtimes for translated code
 targets/            programs being taken back to source, with their research notes
-tests/              everything for testing: the command cases and goldens, fixtures, the interface's tests
+tests/              everything for testing: the command cases and goldens, fixtures
 tools/              build, gate and packaging scripts (package_release.cmd makes the release zip)
 docs/               design notes, platform map, tested software, diagrams
 ```
@@ -268,9 +285,9 @@ tools\gate.cmd
 The gate builds everything and runs, in one parallel pass:
 
 - **5,450 unit tests** (`cb_tests`, in 8 shards);
-- **155 command cases** — every command run as a user would, its output compared with a reviewed
+- **161 command cases** — every command run as a user would, its output compared with a reviewed
   golden ([tests/exe_gate](tests/exe_gate));
-- the terminal interface's tests, under a real Python.
+- **the window**: `codebreaker app --screenshot` in every state and both themes, each a non-empty PNG of the size asked.
 
 The milestone regression adds the end-to-end proofs: `codebreaker regress all15`, `setup`,
 `install` and `slow` (an Xbox 360 title recompiled and run headless).

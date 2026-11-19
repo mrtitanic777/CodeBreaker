@@ -327,6 +327,12 @@ Machine::Machine(const Config& config, const Replace& replace, std::string_view 
                  "-drive", std::format("file={},format=raw,if=ide,index=0", option_path(disk)),
                  "-cdrom", fs::to_text(cd), "-boot", "a", "-display", "none",
                  "-monitor", std::format("tcp:127.0.0.1:{},server,nowait", impl_->monitor.port())};
+    // (CB_DEBUGCON_FILE=<path>: what the guest writes to port 0E9h is kept there -- a rebuilt function built with CB_TRACE_WNDPROC writes the arguments of each
+    // call it gets; for finding where a function's C first does what its instructions do not. One machine per file: a run with several boots names one)
+    if (const std::optional<std::string> debugcon = fs::get_env("CB_DEBUGCON_FILE")) {
+        spec.argv.push_back("-debugcon");
+        spec.argv.push_back("file:" + *debugcon);
+    }
     spec.out = process::Capture::Discard;
     spec.err = process::Capture::Discard;
     impl_->machine.emplace(process::start(spec));

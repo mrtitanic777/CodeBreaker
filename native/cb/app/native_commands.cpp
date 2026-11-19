@@ -7,6 +7,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "cb/app/convert.hpp"
+#include "cb/app/window.hpp"
 #include "cb/analyze/dos_functions.hpp"
 #include "cb/base/config.hpp"
 #include "cb/base/settings.hpp"
@@ -75,7 +77,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp"});   // (counted by the compiler)
+constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp", "convert", "app"});   // (counted by the compiler)
 
 // The console's ordinal names (data/symbols/console_ordinals.json, {library: {ordinal: name}}), read the first time a name is asked for.
 formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config& config) {
@@ -300,6 +302,10 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         dr.state = config.state();
         return build::driver::command(dr);
     });
+
+    // convert FILE [--out DIR]: the window's pipeline on the command line; app: the window itself
+    table.set("convert", [](std::span<const std::string> args) -> int { return convert::run_command(args); });
+    table.set("app", [](std::span<const std::string> args) -> int { return window::run(args, false); });
 
     // demangle <name> ...: each name readable, or said to be not readable
     table.set("demangle", [](std::span<const std::string> args) -> int {

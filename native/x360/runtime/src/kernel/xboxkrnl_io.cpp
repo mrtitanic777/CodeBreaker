@@ -444,6 +444,11 @@ GUEST_IMPORT(NtQueryInformationFile)
         mem.Write32(info, a.directory ? 0 : uint32_t(a.size));
         written = 4;
         break;
+    case 27: // The console's second one-dword class: a flags dword whose bit 0 Joy Ride Turbo's file wrapper (sub_8260F900)
+             // tests after opening data.bpk (a failed query makes it answer 2). 0: no flag set, the plain-file answer.
+        mem.Write32(info, 1);
+        written = 4;
+        break;
     default:
         Fatal("NtQueryInformationFile class {} is not implemented ({})", cls, file->path.string());
     }

@@ -1,0 +1,6 @@
+exit: 1
+--- stdout
+  0%  Identifying the file
+Failed: The file was not found: <work>/no_such_file.dll
+--- files
+--- stderr (not compared)

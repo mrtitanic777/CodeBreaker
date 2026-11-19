@@ -1,14 +1,13 @@
 @echo off
-rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--update] [--filter TEXT] -- THE gate (docs/history/PYTHON_RETIREMENT.md 5.2): cb_tests, every command
-rem case of cb_exe_gate against the real codebreaker.exe, and the terminal interface's Python tests. tests\run_all.py is not part of it.
+rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--no-app] [--update] [--filter TEXT] -- THE gate: cb_tests, every command case of cb_exe_gate against the real
+rem codebreaker.exe, and the window's screenshot step (the window rendered in every state and both themes, each a non-empty PNG of the size asked).
 rem
 rem     tools\gate.cmd                 build native/cb and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run
-rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of tests\exe_gate
+rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of tests\exe_gate; then the screenshots
 rem     tools\gate.cmd --no-build      skip the build (the objects are current)
 rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else state\cxx\codebreaker\build\codebreaker.exe, which this script builds and installs)
-rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone)
-rem     tools\gate.cmd --no-ui         skip the UI's Python tests (the terminal interface stays Python and needs real python + Textual,
-rem                                    which the exe cannot run; --update, --filter and --no-unit skip them too)
+rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone) and the screenshots
+rem     tools\gate.cmd --no-app        skip the screenshot step (--update, --filter likewise skip it)
 rem     tools\gate.cmd --filter lz32   only the cases whose name contains this (no unit tests)
 rem     tools\gate.cmd --update ...    record goldens of the selected cases from the program's current output (review the diff before committing)
 rem
@@ -19,18 +18,18 @@ set ROOT=%~dp0..
 set B=%ROOT%\state\cxx\cb
 set BUILD=1
 set UNIT=1
-set UI=1
+set APP=1
 set EXE=
 set PASS=
-set UI_RC=0
+set APP_RC=0
 :args
 if "%1"=="" goto run
 if "%1"=="--no-build" (set BUILD=0& shift& goto args)
-if "%1"=="--no-unit" (set UNIT=0& set UI=0& shift& goto args)
-if "%1"=="--no-ui" (set UI=0& shift& goto args)
+if "%1"=="--no-unit" (set UNIT=0& shift& goto args)
+if "%1"=="--no-app" (set APP=0& shift& goto args)
 if "%1"=="--exe" (set EXE=%2& shift& shift& goto args)
-if "%1"=="--update" (set UNIT=0& set UI=0& set PASS=%PASS% --update& shift& goto args)
-if "%1"=="--filter" (set UNIT=0& set UI=0& set PASS=%PASS% --filter %2& shift& shift& goto args)
+if "%1"=="--update" (set UNIT=0& set APP=0& set PASS=%PASS% --update& shift& goto args)
+if "%1"=="--filter" (set UNIT=0& set APP=0& set PASS=%PASS% --filter %2& shift& shift& goto args)
 set PASS=%PASS% %1
 shift
 goto args
@@ -56,22 +55,25 @@ if not "%EXE%"=="" set CMD=%CMD% --exe "%EXE%"
 if "%UNIT%"=="1" set CMD=%CMD% --unit "%B%\bin\cb_tests.exe"
 %CMD% %PASS%
 set RC=%ERRORLEVEL%
-if "%UI%"=="1" call :ui
-if %UI_RC% NEQ 0 set RC=%UI_RC%
+if "%APP%"=="1" call :app
+if %APP_RC% NEQ 0 set RC=%APP_RC%
 exit /b %RC%
 
-rem The terminal interface (codebreaker/ui) stays Python, and its tests need real python with Textual. They run against the program under
-rem test, reported like the other results.
-:ui
-set UI_RC=0
-where python >nul 2>nul || (echo UI tests: FAIL -- python is not on the PATH ^(the terminal interface's tests need it^)& set UI_RC=1& exit /b 1)
-if "%EXE%"=="" (set CB_EXE=%ROOT%\state\cxx\codebreaker\build\codebreaker.exe) else set CB_EXE=%EXE%
+rem The window (codebreaker.exe app) rendered to a PNG in each state and theme: the file must exist, be a PNG, not be empty, and be the size asked.
+:app
+set APP_RC=0
+set SHOTS=%ROOT%\state\work\gate-shots
+if exist "%SHOTS%" rmdir /s /q "%SHOTS%"
+mkdir "%SHOTS%"
 set T0=%TIME%
 echo.
-echo UI tests (python, Textual): test_ui.py::test_terminal_interface, test_ui_thin.py, tools\check_imports.py, tools\tidy.py
-python "%ROOT%\tests\test_ui.py" --only test_terminal_interface || set UI_RC=1
-python "%ROOT%\tests\test_ui_thin.py" || set UI_RC=1
-python "%ROOT%\tools\check_imports.py" || set UI_RC=1
-python "%ROOT%\tools\tidy.py" || set UI_RC=1
-if %UI_RC% EQU 0 (echo UI tests: PASS ^(started %T0%, ended %TIME%^)) else echo UI tests: FAIL
-exit /b %UI_RC%
+echo Window screenshots: codebreaker.exe app --screenshot, 4 states x 2 themes
+for %%S in (idle working done unsupported) do for %%T in (light dark) do call :shot %%S %%T
+if %APP_RC% EQU 0 (echo Window screenshots: PASS ^(started %T0%, ended %TIME%^)) else echo Window screenshots: FAIL
+if %APP_RC% EQU 0 rmdir /s /q "%SHOTS%"
+exit /b %APP_RC%
+
+:shot
+"%EXE%" app --screenshot "%SHOTS%\%1-%2.png" --state %1 --theme %2 --size 1180x700 >nul || (echo   %1 %2: the program failed& set APP_RC=1& exit /b 1)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%check_png.ps1" "%SHOTS%\%1-%2.png" 1180 700 || set APP_RC=1
+exit /b 0

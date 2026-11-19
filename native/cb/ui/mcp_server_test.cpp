@@ -72,7 +72,7 @@ struct Fixture {
         };
         s.version = [] { return std::string("1.0.0"); };
         s.command_help = [](std::string_view) { return std::nullopt; };
-        s.command_names = [] { return std::vector<std::string>{"decompile", "ui", "measure", "mcp", "progress", "reach", "decompile"}; };
+        s.command_names = [] { return std::vector<std::string>{"decompile", "app", "measure", "mcp", "progress", "reach", "decompile"}; };
         s.usage = [] { return std::string("usage: codebreaker <command>"); };
         return s;
     }();

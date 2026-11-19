@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,9 @@ struct FunctionEvidence {
     // call or jump through the import, and the return. `pure`: it does not even touch its arguments (`jmp [import]`, or `call [import]; ret`).
     bool forwards_to_import = false;
     bool forwards_purely = false;
+    // The shape of a function that only passes its arguments on to one other function of the module (its instructions are the frame's, moves of
+    // its arguments, the one call or jump, and the return): where it goes.
+    std::optional<std::uint64_t> forwards_to_function;
     friend bool operator==(const FunctionEvidence&, const FunctionEvidence&) = default;
 };
 

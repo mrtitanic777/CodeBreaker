@@ -1,7 +1,7 @@
 // cb/app/commands.hpp -- the command table of codebreaker.exe and its dispatch (docs/CPP_DESIGN.md 3.12).
 //
 //     codebreaker <command> [arguments]
-//     codebreaker                 with no command, in a terminal: the terminal interface (`ui`)
+//     codebreaker                 with no command: the window (`app`)
 //
 // Every command is listed in the catalog, by name, with how it is written and what it does; nothing is discovered
 // by scanning folders. The catalog is what `help` prints and what the MCP `commands`/`command_help` tools read.
@@ -48,11 +48,10 @@ using RawRunner = std::function<int(std::span<const std::string> args)>;
 struct Environment {
     std::function<void(const std::string& name)> use_corpus; // `--corpus NAME`: select that product's files
     std::function<std::vector<std::string>()> corpus_names;  // listed when `--corpus` has no name
-    std::function<bool()> terminal_interface_available;      // stdin and stdout are terminals and `ui` is installed
+    std::function<bool()> window_available;                   // this program has its window (`app`): no command starts it
 };
 
-// The default `terminal_interface_available` check: stdin and stdout are terminals (the caller adds "and the
-// interface is installed").
+// Whether stdin and stdout are terminals (a program decides by it whether it was started from a command prompt).
 bool stdio_are_terminals();
 
 // A command line with `--corpus NAME` taken off. `corpus` is the name given (the first `--corpus` only).
@@ -76,7 +75,7 @@ public:
     void set_fallback(RawRunner runner);
     bool has_runner(std::string_view name) const;
 
-    // The command line: `--corpus` taken off, the terminal interface for no command in a terminal, help for a
+    // The command line: `--corpus` taken off, the window (`app`) for no command, help for a
     // help word, otherwise the command run. Returns its exit code (2 for no command or an unknown one). Errors a
     // command throws propagate.
     int run(const std::vector<std::string>& args) const;

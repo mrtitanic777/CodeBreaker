@@ -1,0 +1,6 @@
+exit: 3
+--- stdout
+  0%  Identifying the file
+Unsupported: This looks like a PNG image. CodeBreaker cannot convert it.
+--- files
+--- stderr (not compared)

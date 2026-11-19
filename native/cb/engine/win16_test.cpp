@@ -255,6 +255,7 @@ Module16 small_module() {
 // ---- the steps on a real module ----------------------------------------------------------------------------------------------
 
 CB_TEST("engine.win16.the_steps_make_what_the_recorded_steps_made_of_a_real_module", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(golden_module());
     const Json& want = golden().at("facts");
     expect(canon(w.get("ne.segments")) == canon(want.at("ne.segments")), "ne.segments");
@@ -423,6 +424,7 @@ CB_TEST("engine.win16.a_function_changed_by_hand_makes_again_what_depends_on_it_
 // ---- the link and the gate ----------------------------------------------------------------------------------------------------------------
 
 CB_TEST("engine.win16.the_link_is_handed_the_objects_the_engine_made", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module());
     const Built16 b = w.win16->build(w.binary);
     CB_CHECK_EQ(w.links, 1);
@@ -511,6 +513,7 @@ CB_TEST("engine.win16.a_link_that_makes_no_image_is_a_build_that_is_not_built", 
 });
 
 CB_TEST("engine.win16.the_gate_can_be_turned_off", [] {
+    CB_WINDOWS_ONLY("its compiler and linker stand-ins are .cmd files");
     World16 w(small_module(), /*gate=*/false);
     const Built16 b = w.win16->build(w.binary, w.dir.path() / "out");
     CB_CHECK_EQ(w.gates, 0);

@@ -69,7 +69,8 @@ CB_TEST("app.commands.catalog_lists_every_command", [] {
                               "reach",
                               "mcp",
                               "serve",
-                              "ui",
+                              "app",
+                              "convert",
                               "progress",
                               "settings",
                               "cache",
@@ -106,7 +107,7 @@ CB_TEST("app.commands.catalog_lists_every_command", [] {
         CB_CHECK(!d.synopsis.empty());
         CB_CHECK(d.synopsis.starts_with(d.name)); // a synopsis begins with the command's name
     }
-    CB_CHECK_EQ(have.size(), std::size_t{77});
+    CB_CHECK_EQ(have.size(), std::size_t{78});
     for (const char* n : expected)
         CB_CHECK(have.count(n) == 1);
     const CommandDoc* d = find_command_doc("flat-thunk");
@@ -215,7 +216,7 @@ CB_TEST("app.commands.usage_layout", [] {
     CommandTable table;
     const std::string u = table.usage();
     // a short synopsis has its summary on the same line at column 36; a long one has it on the lines below
-    CB_CHECK(u.find("    ui [module]                     CodeBreaker in the command prompt") != std::string::npos);
+    CB_CHECK(u.find("    app [--screenshot PNG ...]      the CodeBreaker window") != std::string::npos);
     const std::size_t at = u.find("    flat-thunk <module> [--recover DIR] [--build DIR] [--ow-build DIR]\n");
     CB_CHECK(at != std::string::npos);
     CB_CHECK(u.find("\n" + std::string(36, ' ') + "a 32-to-16-bit thunk DLL", at) != std::string::npos);
@@ -225,22 +226,22 @@ CB_TEST("app.commands.usage_layout", [] {
             CB_CHECK(line.size() <= 120);
 });
 
-CB_TEST("app.commands.terminal_default", [] {
+CB_TEST("app.commands.window_default", [] {
     std::optional<Words> seen;
     bool available = true;
     Environment env;
-    env.terminal_interface_available = [&] { return available; };
+    env.window_available = [&] { return available; };
     CommandTable table(env);
-    table.set("ui", [&](std::span<const std::string> args) {
+    table.set("app", [&](std::span<const std::string> args) {
         seen = words(args);
         return 0;
     });
-    CB_CHECK_EQ(table.run({}), 0); // no command, in a terminal with the interface: it starts
+    CB_CHECK_EQ(table.run({}), 0); // no command, with a window: it starts
     CB_CHECK(seen && seen->empty());
     seen.reset();
     available = false;
     testing::CapturedStd cap;
-    CB_CHECK_EQ(table.run({}), kExitUsage); // without it: usage
+    CB_CHECK_EQ(table.run({}), kExitUsage); // without one: usage
     CB_CHECK(!seen);
 });
 

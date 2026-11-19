@@ -149,3 +149,29 @@ CB_TEST("symbols.proposals.a_decision_is_kept_with_where_the_name_came_from", []
     CB_CHECK(cb::store::parse_state("accepted") == cb::store::ProposalState::Accepted);
     CB_CHECK(!cb::store::parse_state("maybe").has_value());
 });
+
+CB_TEST("symbols.proposals.a_function_that_only_forwards_to_a_named_function_is_its_thunk", [] {
+    FunctionEvidence e;
+    e.address = 0x2000;
+    e.forwards_to_function = 0x3000;
+    const auto p = sp::function_forward(e, "ReadBlock");
+    CB_CHECK(p.has_value());
+    CB_CHECK_EQ(p->name, "ReadBlock_thunk");
+    CB_CHECK_EQ(p->rule, "function-forward");
+    CB_CHECK_EQ(p->confidence, 70);
+    // a target with no name of its own, or one that is a thunk already, gives no name
+    CB_CHECK(!sp::function_forward(e, "").has_value());
+    CB_CHECK(!sp::function_forward(e, "sub_3000").has_value());
+    CB_CHECK(!sp::function_forward(e, "ReadBlock_thunk").has_value());
+    // the phase 1 rule set does not have this rule
+    CB_CHECK(!sp::by_rules(e, "ReadBlock", true).has_value());
+    CB_CHECK(sp::by_rules(e, "ReadBlock", false).has_value());
+    e.forwards_to_function.reset();
+    CB_CHECK(!sp::function_forward(e, "ReadBlock").has_value());
+});
+
+CB_TEST("symbols.proposals.names_compare_without_suffix_decoration_or_case", [] {
+    CB_CHECK_EQ(sp::comparable("_Sleep@4"), "sleep");
+    CB_CHECK_EQ(sp::comparable("CloseHandle_thunk"), "closehandle");
+    CB_CHECK_EQ(sp::comparable("Sleep_thunk"), "sleep");
+});

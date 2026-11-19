@@ -1,12 +1,14 @@
 #include "cb/build/asm16.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <format>
 
 #include "cb/build/msc6.hpp"
 #include "cb/core/capstone_api.hpp"
 #include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
 
 namespace cb::build::asm16 {
@@ -933,6 +935,23 @@ std::string Function::write(const Good& good_in, std::optional<std::pair<std::ui
         if (const auto e = entry.find(at); e != entry.end()) {
             flush();
             out.push_back(e->second + ":");
+            // (CB_TRACE_WNDPROC=<name>: the entry of that function of five words writes 0B3h, its message, wParam and window words to port 0E9h, as its C
+            // does when built the same way (module_build16.cpp); registers and flags are kept)
+            if (const std::optional<std::string> traced = fs::get_env("CB_TRACE_WNDPROC"); traced && e->second == "_" + *traced) {
+                out.push_back("        push ax");
+                out.push_back("        push bx");
+                out.push_back("        mov  bx, sp");
+                out.push_back("        mov  al, 0B3h");
+                out.push_back("        out  0E9h, al");
+                for (const char* slot : {"0Eh", "0Ch", "10h"}) {
+                    out.push_back(std::string("        mov  ax, word ptr ss:[bx+") + slot + "]");
+                    out.push_back("        out  0E9h, al");
+                    out.push_back("        mov  al, ah");
+                    out.push_back("        out  0E9h, al");
+                }
+                out.push_back("        pop  bx");
+                out.push_back("        pop  ax");
+            }
         }
         if (labels_.contains(at) && used(at, lo, hi)) {
             flush();

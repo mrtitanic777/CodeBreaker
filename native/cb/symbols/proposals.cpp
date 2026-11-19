@@ -124,13 +124,37 @@ std::optional<store::Proposal> string_reference(const FunctionEvidence& e) {
     return p;
 }
 
-std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence) {
+std::optional<store::Proposal> function_forward(const FunctionEvidence& e, std::string_view target_name) {
+    if (!e.forwards_to_function || target_name.empty() || !valid_name(target_name) || target_name.starts_with("sub_") || target_name.ends_with("_thunk"))
+        return std::nullopt;
+    store::Proposal p;
+    p.name = std::string(target_name) + "_thunk";
+    p.rule = "function-forward";
+    p.confidence = 70;
+    p.evidence = std::format("only passes its arguments on to {}", target_name);
+    p.description = std::format("Forwards to {}.", target_name);
+    return p;
+}
+
+std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence, std::string_view target_name, bool basic) {
     std::optional<store::Proposal> best;
-    for (const auto rule : {&import_wrapper, &string_reference}) {
-        std::optional<store::Proposal> p = rule(evidence);
+    const auto consider = [&](std::optional<store::Proposal> p) {
         if (p && (!best || p->confidence > best->confidence)) best = std::move(p);
+    };
+    consider(import_wrapper(evidence));
+    consider(string_reference(evidence));
+    if (!basic) {
+        consider(function_forward(evidence, target_name));
     }
     return best;
+}
+
+std::string comparable(std::string_view name) {
+    std::string n = text::lower(undecorated(std::string(name)));
+    while (n.starts_with('_')) n.erase(0, 1);
+    for (const std::string_view suffix : {"_thunk", "_wrapper"})
+        if (n.size() > suffix.size() && n.ends_with(suffix)) n.resize(n.size() - suffix.size());
+    return n;
 }
 
 // ---- the work over a module ---------------------------------------------------------------------------------------------------------------
@@ -164,6 +188,13 @@ struct Proposals::Impl {
         return *at->second;
     }
 
+    // What the function a function forwards to is called, when it has a name (a placeholder is not one); "" otherwise.
+    static std::string target_name(const Known& k, const FunctionEvidence& e) {
+        if (!e.forwards_to_function) return {};
+        const auto at = k.by_address.find(*e.forwards_to_function);
+        return at == k.by_address.end() || unnamed(*at->second) ? std::string() : at->second->name;
+    }
+
     static void check_name(std::string_view name, int confidence) {
         if (!valid_name(name)) throw UsageError("a name is letters, digits, _ and ::");
         if (confidence < 0 || confidence > 100) throw UsageError("a confidence is a percent, 0 to 100");
@@ -188,7 +219,7 @@ std::vector<store::Proposal> Proposals::propose(const std::filesystem::path& mod
         const std::string& key = at->second->key;
         const auto old = existing.find(key);
         if (old != existing.end() && (old->second.state != store::ProposalState::Proposed || old->second.rule == "assistant")) continue;
-        std::optional<store::Proposal> p = by_rules(e);
+        std::optional<store::Proposal> p = by_rules(e, self.target_name(k, e));
         if (!p) continue;
         if (old != existing.end()) k.used.erase(old->second.name);
         const std::string base = p->name;
@@ -201,6 +232,33 @@ std::vector<store::Proposal> Proposals::propose(const std::filesystem::path& mod
         made.push_back(std::move(*p));
     }
     return made;
+}
+
+Measure Proposals::measure(const std::filesystem::path& module, bool basic) {
+    Impl& self = *impl_;
+    const Impl::Known k = self.known(module);
+    Measure m;
+    for (const FunctionEvidence& e : self.s.evidence(module)) {
+        const auto at = k.by_address.find(e.address);
+        if (at == k.by_address.end()) continue;
+        const names::FunctionName& truth = *at->second;
+        // ground truth: what the module itself says (its exports, its ordinal table, its debug symbols), not what a person or a rule gave
+        const bool known_by_module = truth.source == "export" || truth.source.starts_with("debug symbols") || truth.source.starts_with("ordinal table");
+        if (!known_by_module) continue;
+        ++m.truth;
+        const std::optional<store::Proposal> p = by_rules(e, Impl::target_name(k, e), basic);
+        if (!p) continue;
+        ++m.proposed;
+        const std::string want = comparable(truth.name), got = comparable(p->name);
+        const bool exact = want == got;
+        const bool related = exact || (!want.empty() && !got.empty() && (want.find(got) != std::string::npos || got.find(want) != std::string::npos));
+        auto& row = m.by_rule[p->rule];
+        ++row[0];
+        if (exact) { ++m.exact; ++row[1]; }
+        if (related) { ++m.related; ++row[2]; }
+        else m.misses.push_back(std::format("{} <- {} ({})", truth.name, p->name, p->rule));
+    }
+    return m;
 }
 
 store::Proposal Proposals::suggest(const std::filesystem::path& module, Address address, std::string_view name, std::string_view description, int confidence) {
@@ -383,6 +441,16 @@ int Proposals::execute(const cli::Args& a) {
         for (const auto& [rule, n] : by_rule) rules += std::format("{}{} {}", rules.empty() ? "" : ", ", rule, n);
         cb::out("{}: {} functions, {} with no name, {} proposed{}{}\n", text::lower(fs::to_text(module.filename())), all.functions.size(), unnamed, fresh.size(),
                 rules.empty() ? "" : " -- ", rules);
+        return 0;
+    }
+    if (a.flag("--measure")) {
+        const Measure m = measure(module, a.value_or("--rules", "") == "basic");
+        for (const std::string& line : m.misses) cb::out("miss  {}\n", line);
+        for (const auto& [rule, n] : m.by_rule) cb::out("{:<17} proposed {:>4}  exact {:>4}  related {:>4}\n", rule, n[0], n[1], n[2]);
+        const auto percent = [](std::size_t a_, std::size_t b_) { return b_ == 0 ? 0.0 : 100.0 * static_cast<double>(a_) / static_cast<double>(b_); };
+        cb::out("{}: {} functions the module names, {} proposed (recall {:.1f}%), {} exact, {} related (precision {:.1f}%, exact {:.1f}%)\n",
+                text::lower(fs::to_text(module.filename())), m.truth, m.proposed, percent(m.proposed, m.truth), m.exact, m.related, percent(m.related, m.proposed),
+                percent(m.exact, m.proposed));
         return 0;
     }
     if (a.flag("--packets")) {

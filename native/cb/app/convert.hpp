@@ -1,0 +1,166 @@
+// cb/app/convert.hpp -- the conversion pipeline behind the CodeBreaker window and `codebreaker convert`: one file in, a folder of source code out.
+//
+//     convert::Request request{.input = "game.gb", .converted_root = "Converted"};
+//     convert::Outcome done = convert::convert(request, convert::standard_planner(config), report, cancel);
+//     done.state     Done | Unsupported | Failed | Cancelled;  done.output the folder;  done.message what to tell the person
+//
+// The run is a state machine. It always starts Idle -> Identifying; then, depending on what the file is, it passes through some of
+//
+//     Unpacking      only for containers and compressed images (a disc, a cabinet, an archive): its programs are taken out
+//     Opening        the file is read and taken apart
+//     Disassembling  its code is turned back into assembly source
+//     Decompiling    only for lanes whose source is C (Windows 32-bit and 16-bit, DOS, drivers): the functions are decompiled
+//     Writing        the source is written into the output folder
+//
+// and ends in exactly one of Done, Unsupported (CodeBreaker has no way to convert this file; `Outcome::what` says what it is), Failed
+// (something went wrong; `message` says what) or Cancelled. Which stages a file passes through is decided by its Route (planner), not by
+// the state machine: the machine only enforces the order, keeps the percentage, and cleans up.
+//
+// Progress is honest. Every stage has a weight (what share of the run it normally takes); inside a stage a route reports real counts
+// (functions decompiled of the total, files written of the total) and the percentage follows them. A stage that has no count to give
+// stays where it began until it ends; nothing is animated. A route writes into a staging folder next to the output; the Writing stage
+// moves the finished files into the output folder one by one, so a run that fails or is cancelled leaves nothing behind, and a folder
+// that already exists is never written into (the output is a numbered sibling: lz32, lz32_2, lz32_3 ...).
+//
+// This module uses no operating-system API: it runs the same on Linux. The routes themselves (convert_backends.cpp) call the writers and the
+// decompiler of the other areas.
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+#include <exception>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace cb::app::convert {
+
+enum class State {
+    Idle,
+    Identifying,
+    Unpacking,
+    Opening,
+    Disassembling,
+    Decompiling,
+    Writing,
+    Done,
+    Unsupported,
+    Failed,
+    Cancelled,
+};
+
+// "identifying", "unpacking" ... "done", "unsupported", "failed", "cancelled": stable names for logs, the command line and tests.
+std::string_view state_name(State state);
+// What a person is told, in plain words: "Identifying the file", "Unpacking", "Opening", "Disassembling", "Decompiling", "Writing the source".
+std::string_view state_label(State state);
+// Identifying .. Writing.
+bool is_stage(State state);
+// Done, Unsupported, Failed, Cancelled.
+bool is_final(State state);
+
+// One report of progress, handed to the listener from the thread that runs the conversion.
+struct Progress {
+    State state = State::Idle;
+    std::string label;         // state_label(state)
+    std::string detail;        // "12 of 39 functions", "gb.asm": what is being worked on; may be empty
+    std::uint64_t done = 0;    // real counts inside the stage; total is 0 when the stage has none
+    std::uint64_t total = 0;
+    int percent = 0;           // 0..100 over the whole run; never goes down
+};
+using ProgressFn = std::function<void(const Progress&)>;
+
+// Thrown by a route's reporter when the person cancelled; routes let it pass.
+class Cancelled final : public std::exception {
+public:
+    const char* what() const noexcept override { return "cancelled"; }
+};
+
+// Thrown by a route that finds, after it has begun, that it cannot convert the file (a 64-bit program, an image it does not know): the run ends
+// Unsupported with `what` and this message.
+class NotConvertible final : public std::exception {
+public:
+    explicit NotConvertible(std::string message) : message_(std::move(message)) {}
+    const char* what() const noexcept override { return message_.c_str(); }
+
+private:
+    std::string message_;
+};
+
+// What a route tells the machine while it works.
+class Reporter {
+public:
+    virtual ~Reporter() = default;
+    // Enter a stage (stages are entered in the order of Route::stages; one not entered is skipped). Throws Cancelled when cancelled.
+    virtual void enter(State stage) = 0;
+    // Real counts inside the current stage. Throws Cancelled when cancelled.
+    virtual void count(std::uint64_t done, std::uint64_t total, std::string_view detail = {}) = 0;
+    // A cancelled run stops at the next call of enter() or count(); a route that works a long time between them calls this.
+    virtual void check() = 0;
+};
+
+// How one kind of file is converted: the stages it passes through (between Identifying and Writing) and the work itself. `run` reads `input`
+// and writes the source into the folder `work` (never the final folder); it enters its stages through the reporter.
+struct Route {
+    std::string name;                         // "pe", "machine:gb", "container": for logs and tests
+    std::vector<State> stages;                // some of Unpacking, Opening, Disassembling, Decompiling, in order; Writing is always last, added by the machine
+    std::map<State, double> weights;          // the share of the run a stage takes; those not named have the default (see default_weight)
+    std::function<void(Reporter&, const std::filesystem::path& input, const std::filesystem::path& work)> run;
+};
+
+// What identification found: a sentence for the person ("a PNG image"), and the route when CodeBreaker can convert it.
+struct Plan {
+    std::string what;                         // "a Windows program (PE, 32-bit)"; empty when the file is not recognised
+    std::optional<Route> route;               // none: Unsupported
+};
+using Planner = std::function<Plan(const std::filesystem::path& input)>;
+
+// The weight a stage has unless the route names one.
+double default_weight(State stage);
+
+struct Request {
+    std::filesystem::path input;
+    std::optional<std::filesystem::path> out_dir;      // where the source goes; default <converted_root>/<file stem>
+    std::filesystem::path converted_root;              // the Converted folder
+};
+
+struct Outcome {
+    State state = State::Idle;                 // the final state
+    std::string what;                          // what the file is, as identification said ("a PNG image"); empty when unknown
+    std::string message;                       // Unsupported / Failed / Cancelled: the sentence to show
+    std::filesystem::path output;              // Done: the folder written
+    std::vector<State> stages;                 // every state passed through, in order (Identifying first, the final state last)
+    std::uint64_t files = 0;                   // Done: files written
+    std::string route;                         // the route's name; empty when none was chosen
+};
+
+// Run the conversion. `cancel` is read between steps; set it from another thread to stop. Never throws: every failure is an Outcome.
+Outcome convert(const Request& request, const Planner& planner, const ProgressFn& progress, const std::atomic<bool>& cancel);
+
+// <root>/<stem>, or <stem>_2, <stem>_3 ... when that exists. The folder is not made.
+std::filesystem::path unique_output_folder(const std::filesystem::path& root, std::string_view stem);
+
+// "a PNG image" from "PNG image": the right article before a format's name.
+std::string with_article(std::string_view what);
+
+// The Converted folder of the checkout (setting "converted").
+std::filesystem::path converted_root();
+
+// `codebreaker convert FILE [--out DIR]`: the words after `convert`; the exit code (0 done, 1 failed, 2 usage, 3 unsupported, 130 cancelled).
+int run_command(std::span<const std::string> args);
+
+// The file extensions the window's file picker lists first (".exe", ".gba" ...): the Windows and DOS ones and every registered lane's.
+std::vector<std::string> program_extensions();
+
+// The planner of the program: every route CodeBreaker has (convert_backends.cpp). Needs the settings (cb::config::current()).
+Planner standard_planner();
+
+// The routes' platform list as the window's status bar shows it ("Windows · DOS · Xbox · 45 consoles · Java · .NET"); the count of consoles is
+// the lane registry's.
+std::string platform_summary();
+
+}  // namespace cb::app::convert

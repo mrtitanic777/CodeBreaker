@@ -2,7 +2,7 @@ exit: 0
 --- stdout
 usage: codebreaker mcp [options]
 
-CodeBreaker as an MCP server: what the terminal interface shows, for an assistant to use
+CodeBreaker as an MCP server: what the command line shows, for an assistant to use
 
 Stdout is the protocol. The token for HTTP is CB_MCP_TOKEN, else <state>/mcp/http_token.txt.
 

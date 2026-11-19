@@ -113,6 +113,24 @@ std::vector<symbols::FunctionEvidence> of_module(const std::filesystem::path& mo
             e.forwards_to_import = true;
             e.forwards_purely = !touches_arguments;
         }
+        // the shape: only passes its arguments on to one other function of the module
+        {
+            int jumps = 0, rets = 0;
+            std::optional<Va> destination;
+            bool only = !fn.insns.empty() && fn.insns.size() <= 12 && fn.tables.empty();
+            for (const Instruction& ins : fn.insns) {
+                if (ins.flow == Flow::Call || ins.flow == Flow::Jump) {
+                    ++jumps;
+                    if (ins.target && !import_slot(image, ins) && *ins.target != start) destination = *ins.target;
+                    else only = false;
+                } else if (ins.flow == Flow::Return) {
+                    ++rets;
+                } else if (ins.flow == Flow::CondJump || !passes_arguments(ins)) {
+                    only = false;
+                }
+            }
+            if (only && jumps == 1 && rets <= 1 && destination) e.forwards_to_function = static_cast<std::uint64_t>(*destination);
+        }
         out.push_back(std::move(e));
     }
     return out;

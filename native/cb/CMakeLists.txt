@@ -137,6 +137,9 @@ endif()
 # zlib 1.3.1 (MSZIP): the copy native/decompiler carries (as native/formats compiles it), with crc32() from
 # native/formats/core/zcrc32.c; a C library compiled as it is.
 enable_language(C)
+if(WIN32)
+  enable_language(RC)   # (codebreaker.exe's icon and version information: app/codebreaker.rc)
+endif()
 file(GLOB CB_ZLIB_SOURCES CONFIGURE_DEPENDS "${CB_NATIVE_ROOT}/decompiler/core/zlib/*.c")
 add_library(cb_zlib STATIC ${CB_ZLIB_SOURCES} "${CB_NATIVE_ROOT}/formats/core/zcrc32.c")
 set_target_properties(cb_zlib PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -198,6 +201,10 @@ cb_area(verify)
 
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source cb_store cb_coverage cb_exact cb_recompile cb_java cb_xna cb_engine cb_jobs cb_ui cb_invert cb_knowledge cb_verify cb_translate)
+if(WIN32)
+  target_compile_definitions(cb_app PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00)   # (Windows 10: the per-monitor DPI functions; MinGW's headers default lower)
+  target_link_libraries(cb_app PUBLIC d2d1 dwrite dwmapi windowscodecs ole32 oleaut32 shell32 uuid user32 advapi32)   # (the window: Direct2D, DirectWrite, DWM, WIC, the file dialog, drag and drop)
+endif()
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
@@ -241,8 +248,8 @@ target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge 
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decompile)   # (cb_base: the Converted project; cb_formats: PE and media images; cb_java: the PNG codec of the content converters; cb_decompile: the Xbox effect as HLSL -- static libraries may be cyclic)
 
-# The translator's back ends, front ends and the whole-program judge; the terminal interface's helpers (the terminal
-# interface itself stays Python: docs/CPP_DESIGN.md section 9).
+# The translator's back ends, front ends and the whole-program judge; the interface's helpers (the window is
+# app/window_*: docs/CPP_DESIGN.md section 9).
 # pyfront: the Python parser the translator's Python front end reads programs with (source -> an AST shaped like CPython's
 # `ast`). Compiled as it is from native/pyfront (its own flags, not /W4 /WX); the C ABI (capi.cpp) is not needed here.
 add_library(cb_pyfront STATIC
@@ -362,9 +369,9 @@ target_link_libraries(cb_cmdrun PRIVATE cb_formats cb_build cb_analyze cb_source
 cb_copy_prebuilt_dlls(cb_cmdrun)
 
 # codebreaker: THE program (tools/build_codebreaker_exe.cmd installs it as state/cxx/codebreaker/build/codebreaker.exe, the path every tool
-# uses). main is cb::app's command table; it hosts its own workers (app/host_hook.cpp); `ui` starts the Python terminal under real python.
+# uses). main is cb::app's command table; it hosts its own workers (app/host_hook.cpp); with no command it is the Windows app (app/window_*.cpp).
 if(WIN32)
-  add_executable(codebreaker app/codebreaker_main.cpp app/allocator_main.cpp ${CB_MANIFEST})   # (the small-block allocator reserves address space with VirtualAlloc: Windows only, malloc elsewhere)
+  add_executable(codebreaker app/codebreaker_main.cpp app/allocator_main.cpp app/codebreaker.rc ${CB_MANIFEST})   # (the icon and version information are app/codebreaker.rc; the small-block allocator reserves address space with VirtualAlloc: Windows only, malloc elsewhere)
 else()
   add_executable(codebreaker app/codebreaker_main.cpp)
 endif()

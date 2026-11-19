@@ -146,7 +146,7 @@ CB_TEST("ui.mcp.the_command_table_is_the_catalog", [] {
     bool has_decompile = false, has_ui = false;
     for (const Json& c : commands["runnable"]) {
         has_decompile = has_decompile || c == "decompile";
-        has_ui = has_ui || c == "ui";   // (the interfaces are not run as jobs)
+        has_ui = has_ui || c == "app";   // (the interfaces are not run as jobs)
     }
     CB_CHECK(has_decompile);
     CB_CHECK(!has_ui);

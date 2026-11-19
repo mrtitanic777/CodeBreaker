@@ -6,7 +6,7 @@ what existing commands do or what they write.
 ## 1. Bring the version up to date
 
 - `CHANGELOG.md`: rename **Unreleased** to the new version and date, and start a new empty **Unreleased** above it.
-- `pyproject.toml`: `version = "X.Y.Z"`.
+- `native/cb/app/codebreaker.rc`: `FILEVERSION`, `PRODUCTVERSION` and the two version strings (the version of `codebreaker.exe`).
 - The MCP server's version: `native/cb/ui/mcp_symbols.cpp` (`services.version`), and the goldens that record it
   (`native/cb/ui/testdata/mcp_python.golden.json`, `tests/exe_gate/golden/mcp-session.txt`) and the two tests
   that check it (`native/cb/ui/mcp_server_test.cpp`, `native/cb/ui/mcp_services_test.cpp`).

@@ -1,11 +1,11 @@
 @echo off
 rem build_codebreaker_exe.cmd [OUT] -- THE program: codebreaker.exe, every command of CodeBreaker on native/cb, no Python behind it
-rem (the terminal interface stays Python: `codebreaker ui` starts it under a real python).
+rem (with no command it is the Windows app: app/window_win.cpp).
 rem
 rem     tools\build_codebreaker_exe.cmd          builds target `codebreaker` in state\cxx\cb (the tree tools\build_cb.cmd builds, so the
 rem                                              objects are shared) and installs it, with the DLLs it loads, as
-rem                                              state\cxx\codebreaker\build\codebreaker.exe -- the path .mcp.json, tests\run_all.py,
-rem                                              tools\gate.cmd and codebreaker\ui\client.py all use
+rem                                              state\cxx\codebreaker\build\codebreaker.exe -- the path .mcp.json and
+rem                                              tools\gate.cmd use
 rem     tools\build_codebreaker_exe.cmd OUT      installs into OUT instead
 rem
 rem Needs MSVC, CMake, Ninja. CB_BUILD_JOBS limits the build (default half the cores). A running codebreaker.exe (the background service, an

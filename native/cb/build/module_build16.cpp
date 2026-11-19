@@ -5,6 +5,7 @@
 // function the compiler rejects, or whose segment does not fit, becomes a stand-in and the module is linked again.
 
 #include <algorithm>
+#include <cstdio>
 #include <format>
 #include <map>
 #include <set>
@@ -212,6 +213,25 @@ void compile_functions(Ctx16& c) {
             return std::nullopt;
         });
         c.texts[name] = unspecified_entry_result(std::move(c.texts[name]));
+        // (CB_TRACE_WNDPROC=<name>: that function, a window procedure of five words, writes 0B3h and then its message, wParam and window words to port 0E9h as it is
+        // entered -- the same bytes its instructions' build writes (asm16.cpp) -- so a boot of each can be compared call by call)
+        if (env_text("CB_TRACE_WNDPROC") == name) {
+            std::string& t = c.texts[name];
+            const std::size_t open = t.find('{');
+            const std::size_t blank = open == std::string::npos ? std::string::npos : t.find("\n\n", open);   // (the blank line after the declarations)
+            if (blank != std::string::npos) {
+                std::string probe;
+                for (const char* w : {"0xB3", "a4", "a3", "a5"}) {
+                    if (w[0] == '0') {
+                        probe += std::string("  codebreaker_dbg(") + w + ");\n";
+                    } else {
+                        probe += std::string("  codebreaker_dbg((unsigned char)") + w + ");\n  codebreaker_dbg((unsigned char)((unsigned)" + w + " >> 8));\n";
+                    }
+                }
+                t.insert(blank + 2, probe);
+                t.insert(0, "void codebreaker_dbg(unsigned char);\n#pragma aux codebreaker_dbg = \"out 0e9h, al\" parm [al] modify [];\n");
+            }
+        }
     }
     std::vector<functions::Group> groups;
     for (const auto& [seg, names] : c.by_segment) groups.push_back({c.flags_for(seg), names, c.folder / std::format("s{:02d}", seg)});
@@ -435,7 +455,10 @@ void decide_forced(Ctx16& c) {
         std::error_code ec;
         if (!c.services.kept_as_asm_file.empty() && stdfs::is_regular_file(c.services.kept_as_asm_file, ec)) kept_text = read_text_lossy(c.services.kept_as_asm_file);
         for (const auto& [name, why] : kept_as_asm(kept_text, b.name)) {   // (C a whole run of the module showed wrong)
-            if (c.stems.contains(name)) {
+            // (CB_FORCE_C names are C whatever this file says: an experiment's way to try a kept function without editing the file)
+            const std::string force_c_text = env_text("CB_FORCE_C");
+            const std::vector<std::string_view> force_c = text::split(force_c_text, ',');
+            if (c.stems.contains(name) && std::find(force_c.begin(), force_c.end(), std::string_view(name)) == force_c.end()) {
                 c.forced.insert(name);
                 c.evidence(name, "kept as its instructions (build/kept_as_asm.txt): " + why);
             }

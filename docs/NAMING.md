@@ -174,3 +174,58 @@ after `names --propose` and `names --accept all` on the same module (knowledge b
 
 The candidates' C is part of those rows: no accepted name appears in it, because the judge reconstructs and
 judges before any name is applied (the writer renames `sub_...` afterwards, in the written source).
+
+## 5. Phase 2: measured rules (2026-11-18)
+
+### A ground truth, and `names MODULE --measure`
+
+The functions a module itself names (its export table, ordinal table or debug symbols) are the ground truth:
+`names MODULE --measure` hides those names from the rules (the evidence goes in, the name stays out), runs them,
+and compares what they say with the truth. A proposal is *exact* when its name, without the rule's suffix
+(`_thunk`), a leading underscore and a stdcall decoration, is the truth (case ignored), and *related* when one
+contains the other. It prints recall (functions proposed / functions the module names), precision (related /
+proposed), the rows per rule and each miss; `--rules basic` runs the phase 1 rules only, the baseline.
+`Proposals::measure` (`symbols/proposals.cpp`) stores nothing.
+
+### A new rule, and one that was measured and dropped
+
+* **function-forward** (70%, shown for review): the function only passes its arguments on to one other
+  function of the module (`FunctionEvidence::forwards_to_function`, read by `analyze/function_evidence`) and
+  that function has a name (exported, debug symbol, accepted): `<Target>_thunk`. Because it needs the
+  target's name, accepting names lets it reach the next link of a chain on the next `--propose`.
+* **api-wrapper** ("a small function whose only call is one import is `<Import>_wrapper`") was built and
+  measured first: on the exports of shell32, winmm, comctl32 and user32 it was wrong in 62 of 64 cases
+  (stubs that only call `SetLastError`, functions that happen to call one API), so it is **not** in the rule
+  set. The measurement is why: a rule that cannot be shown to be right is not shipped.
+
+### Measured (the truth = the module's own names)
+
+| module | names the module gives | phase 1 proposed | phase 2 proposed | related | precision |
+|---|---:|---:|---:|---:|---|
+| kernel32.dll | 506 | 0 | 13 | 10 | 77% (`GlobalCompact` is forwarded to `LocalCompact`, not named for it) |
+| ole32.dll | 160 | 3 | 3 | 3 | 100% |
+| user32.dll | 427 | 1 | 5 | 1 | 20% (import-wrapper 1 of 1; function-forward 0 of 4) |
+| gdi32.dll | 274 | 0 | 2 | 1 | 50% |
+| comctl32, winmm, shell32, lz32 | 125, 180, 76, 12 | 0 | 0 | | |
+
+The numbers are small because the ground truth is the exported API: an exported function is rarely a
+wrapper, and the functions the rules do name (internal thunks) have no truth to compare with. On the
+modules' *unnamed* functions `--propose` is unchanged from section 4 (import-wrapper only), since the
+targets of forwarding functions there are themselves unnamed: function-forward grows as names are accepted.
+
+### Proven unchanged
+
+`names --propose` and `--measure` write no name; the invariance test of section 3 and the 3 command cases of
+`names` pass with the rule set extended (the judge's inputs are untouched by construction: the new evidence
+field is read only by the rules).
+
+### Left
+
+* Parameter, local and struct-field names (from the SDK prototype a parameter is passed to) need the
+  decompiler to carry a name per variable through the verdict-neutral rename; not started.
+* Names across lanes: names are stored per body for the NE and PE lanes (Win16/32 and Xbox 360 PE);
+  DOS, the 8- and 16-bit consoles and the other platforms have no body digest yet.
+* Ground truth with private names (a module with its debug symbols, homebrew with published source) to
+  measure the rules on internal functions, not only exports.
+* Round trip of accepted names into Converted/ projects and a before-and-after build and verdict check on
+  a whole project.

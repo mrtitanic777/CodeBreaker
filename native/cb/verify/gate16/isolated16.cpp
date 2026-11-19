@@ -1,6 +1,7 @@
 #include "cb/verify/gate16/isolated16.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <format>
 #include <mutex>
 #include <set>
@@ -465,6 +466,114 @@ std::vector<Isolated16Answer> iso_run_share(const IsoShare& s, const std::vector
             return std::nullopt;
         };
 
+        // A window procedure's life: a run of messages through the same function, the data segment each side leaves carried to its next call (a message
+        // sets what a later one reads -- a window's own structure, a flag, a count). One call at a time, from a data segment as the loader left it, says
+        // nothing of that. CB_SEQ=1 turns it on (off by default until the all-15 and install proofs). Only for a function taking five words (a window
+        // procedure's pwnd, message, wParam, lParam), those being the last five words pushed.
+        const auto judge_sequences = [&]() -> std::optional<Isolated16Answer> {
+            // (CB_SEQ=chain: the module's other functions run for real on both sides, so what a message leaves through a callee -- a window word set by
+            // one function and read by the next message's -- is carried too; else the callees are answered alike, as in the one-call gate)
+            const std::string seq_mode = fs::get_env("CB_SEQ").value_or("");
+            w16::ProbeOptions seq_orig = base_orig, seq_ours = base_ours;
+            const bool real_callees = seq_mode.find("chain") != std::string::npos;
+            if (real_callees) {
+                seq_orig.callees.clear();
+                seq_ours.callees.clear();
+                seq_orig.insn_cap = seq_ours.insn_cap = 200000;
+            }
+            const std::uint32_t pwnd = data_end ? std::min<std::uint32_t>(data_end->image_end + 0x100, 0xF000) : 0x4000;
+            std::vector<std::uint16_t> messages = {0x81, 0x01, 0x83, 0x05, 0x03, 0x18, 0x06, 0x07, 0x14, 0x0F};
+            std::set<std::uint16_t> rest;
+            for (const Vector16& a : aimed)
+                if (!a.args.empty() && std::all_of(a.args.begin(), a.args.end(), [&](std::int64_t w) { return w == a.args[0]; }))
+                    rest.insert(static_cast<std::uint16_t>(a.args[0]));
+            for (const std::uint16_t m : rest)
+                if (std::find(messages.begin(), messages.end(), m) == messages.end() && m != 2 && m != 0x82) messages.push_back(m);
+            messages.push_back(0x02);
+            messages.push_back(0x82);
+            struct Script {
+                std::uint16_t wparam, lparam_hi, lparam_lo;
+                std::int64_t stub;
+                bool noisy_data;
+            };
+            const std::vector<Script> scripts = {{0, 0, 0, 0, false}, {1, 4, 3, 0, true}, {0, 0, 0, 1, false}};
+            for (std::size_t k = 0; k < scripts.size(); ++k) {
+                const Script& sc = scripts[k];
+                const Bytes& dimg = sc.noisy_data ? noisy : data;
+                std::map<std::int64_t, std::uint8_t> carry_o, carry_u;
+                std::vector<std::string> sent;
+                for (int round = 0; round < 2; ++round) {
+                    for (const std::uint16_t msg : messages) {
+                        Vector16 step;
+                        step.args = {0, 0, 0, static_cast<std::int64_t>(pwnd), msg, sc.wparam, sc.lparam_hi, sc.lparam_lo};
+                        step.stub_ret = sc.stub;
+                        if (sent.empty()) step.mem.push_back({w16::DataOffset{pwnd}, Bytes(0x60, 0)});   // (a fresh window's structure)
+                        const auto one = [&](bool original_side, std::map<std::int64_t, std::uint8_t>& carry, GatePrint& print) {
+                            Vector16 v = step;
+                            for (auto it = carry.begin(); it != carry.end();) {
+                                std::int64_t next = it->first;
+                                const std::int64_t first = next;
+                                Bytes run;
+                                while (it != carry.end() && it->first == next) {
+                                    run.push_back(it->second);
+                                    ++next;
+                                    ++it;
+                                }
+                                v.mem.push_back({w16::DataOffset{static_cast<std::uint32_t>(first)}, std::move(run)});
+                            }
+                            lanes::Win16Side side;
+                            side.data_image = dimg;
+                            const emulate::Run r = runner.recorded(original_side ? s.original : s.image,
+                                                                   lanes::win16_run_options(original_side ? seq_orig : seq_ours,original_side ? original_target : ours_target, v, side));
+                            print = gate_print(r, wide, data.size(), original_side ? places_orig : places_ours);
+                            // (through real callees the result may be what a callee left in AX and defines no result -- USER's sub_35_187A returns whatever
+                            // sub_35_085C leaves, the near pointer sub_2_0B27 gave it, in the original and 0 in the build: no behaviour to match. The calls and
+                            // the data segment are still compared)
+                            if (real_callees) print.result_kind = GatePrint::ResultKind::NoResult;
+                            const auto trace = std::any_cast<std::shared_ptr<const w16::Trace16>>(&r.raw);
+                            if (trace == nullptr || !*trace || !(*trace)->layout.data_base) return;
+                            const std::uint64_t ds = *(*trace)->layout.data_base;
+                            for (const emulate::MemoryWrite& w : r.writes) {
+                                if (w.address < ds || w.address >= ds + 0x10000) continue;
+                                for (std::uint32_t i = 0; i < std::min<std::uint32_t>(w.size, 4); ++i)
+                                    carry[static_cast<std::int64_t>(w.address - ds) + i] = static_cast<std::uint8_t>(w.value >> (8 * i));
+                            }
+                        };
+                        GatePrint po, pu;
+                        try {
+                            one(true, carry_o, po);
+                            one(false, carry_u, pu);
+                        } catch (const NotFoundError&) {
+                            throw;
+                        } catch (const Error&) {
+                            return std::nullopt;
+                        }
+                        std::vector<std::string> lately(sent.end() - static_cast<std::ptrdiff_t>(std::min<std::size_t>(3, sent.size())), sent.end());
+                        const std::string where = std::format("sequence {} step {} (message {:x} after {})", k + 1, sent.size() + 1, msg, lately.empty() ? std::string("none") : text::join(lately, " "));
+                        if (seq_mode.find("trace") != std::string::npos &&(po.exit != "ret" || pu.exit != "ret" || sent.size() == 5))
+                            std::fprintf(stderr, "seq %s: %s original %s ours %s\n", name.c_str(), where.c_str(), po.exit.c_str(), pu.exit.c_str());
+                        if (po.exit != "ret" || pu.exit != "ret") {
+                            if (po.exit != pu.exit && po.exit != "fault") return Isolated16Answer{name, Verdict::Divergent, where + std::format(": ends: original {}, ours {}", po.exit, pu.exit)};
+                            return std::nullopt;   // (a step that did not return leaves no state to go on from)
+                        }
+                        if (const std::optional<std::string> d = gate_difference(po, pu)) return Isolated16Answer{name, Verdict::Divergent, where + ": " + *d};
+                        // (what each left in the data segment, in all: a byte written the value it held shows nothing in a step, and one that differs shows here)
+                        std::vector<std::string> differ;
+                        for (std::int64_t o = 0; o < static_cast<std::int64_t>(data.size()) && differ.size() < 4; ++o) {
+                            const auto a = carry_o.find(o);
+                            const auto b = carry_u.find(o);
+                            const std::optional<std::uint8_t> x = a != carry_o.end() ? std::optional<std::uint8_t>(a->second) : std::nullopt;
+                            const std::optional<std::uint8_t> y = b != carry_u.end() ? std::optional<std::uint8_t>(b->second) : std::nullopt;
+                            if (x != y) differ.push_back(std::format("{:04x}={} vs {}", o, x ? std::to_string(*x) : "unwritten", y ? std::to_string(*y) : "unwritten"));
+                        }
+                        if (!differ.empty()) return Isolated16Answer{name, Verdict::Divergent, where + ": data segment (original vs ours): " + text::join(differ, ", ")};
+                        sent.push_back(std::format("{:x}", msg));
+                    }
+                }
+            }
+            return std::nullopt;
+        };
+
         std::optional<Isolated16Answer> verdict;
         if (s.given) {
             for (const Vector16& v : *s.given)
@@ -490,6 +599,7 @@ std::vector<Isolated16Answer> iso_run_share(const IsoShare& s, const std::vector
                 }
             }
         }
+        if (!verdict && !s.given && fn->removes == 10 && !data.empty() && fs::get_env("CB_SEQ").has_value()) verdict = judge_sequences();
         if (verdict) {
             answers.push_back(*verdict);
             continue;

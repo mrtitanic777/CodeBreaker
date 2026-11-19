@@ -266,6 +266,11 @@ GUEST_IMPORT(RtlRaiseException)
     const uint32_t record = ctx.r3.u32;
     const uint32_t code = mem.Read32(record);
     const kernel::GuestThread* thread = kernel::CurrentThread();
+    // MS_VC_EXCEPTION (0x406D1388): the debugger-only "name this thread" exception of the SDK's SetThreadName. Nothing
+    // handles it without a debugger attached (its __try uses EXCEPTION_CONTINUE_EXECUTION or swallows it), so the call
+    // returns and the title goes on; a handler of another kind (a C++ frame handler) must not stop the title for it.
+    if (code == 0x406D1388u)
+        return;
 
     // Kernel frame on the guest stack: CONTEXT, EXCEPTION_POINTERS, then room for calling filters below it.
     const uint32_t sp = ctx.r1.u32;

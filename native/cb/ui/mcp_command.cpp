@@ -37,7 +37,7 @@ int mcp_run(const Environment& environment, const cli::Args& args) {
 cli::Command command(const Environment& environment) {
     cli::Command c;
     c.name = "mcp";
-    c.summary = "CodeBreaker as an MCP server: what the terminal interface shows, for an assistant to use";
+    c.summary = "CodeBreaker as an MCP server: what the command line shows, for an assistant to use";
     c.params = {cli::Option{.name = "http", .help = "serve streamable HTTP at http://HOST:PORT/mcp behind a bearer token (default: stdio)", .arg = cli::Arg::Value, .value_name = "PORT"},
                 cli::Option{.name = "host", .help = "the address HTTP listens on (default 127.0.0.1)", .arg = cli::Arg::Value, .value_name = "H"},
                 cli::Option{.name = "allow-host", .help = "a Host name besides 127.0.0.1 and localhost to answer to, such as a tunnel's (repeatable)", .arg = cli::Arg::Value, .value_name = "NAME"},

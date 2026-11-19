@@ -589,7 +589,7 @@ one PR) and writes `docs/cpp_order.txt`: waves 0..N, each a list of modules. Wav
 4. **Builders and the rest:** `build/*`, `exact/*`, `invert`, `java/*` (transpile, runtime, console), `xna`,
    `recompile`, `port`, `jobs`, the VxD lane, the Xbox crypto and ZAR.
 5. **Applications:** `app/` -- the command table, `__main__`, `ui/service`, `ui/mcp_server` (JSON-RPC over stdio on
-   `cb::Json`), `ui/terminal` (decision in section 9), `ui/serve`, `worker`.
+   `cb::Json`), `app/window_*` (decision in section 9), `ui/serve`, `worker`.
 
 Within a wave, **speed first**: the modules the exe's hot paths use (judge tracer, describe, c_text, compare) are
 taken before cold ones, since Logan's standing rule is that slow is unacceptable.
@@ -765,9 +765,10 @@ line, which is also how the exe gate stays meaningful.
    (in `native/third_party/bin/`), loaded through one loader (`cb::emu::unicorn`, `cb::disasm::capstone`); nothing is
    read from Python's site-packages. Not built from source.
 2. **Z3: prebuilt `libz3.dll`**, shipped next to the exe the same way.
-3. **Terminal UI stays Python.** `ui/terminal.py` (Textual) is kept as the one Python part; it drives CodeBreaker by
-   running `codebreaker.exe` commands (and the MCP/service interfaces), never by importing CodeBreaker's Python
-   modules. Everything else is C++.
+3. **The interface is the Windows app, in C++ (2026-11-18).** The terminal UI (`ui/terminal.py`, Textual) was the one Python part and is gone:
+   `codebreaker` with no command is a native Windows 11 window (`native/cb/app/window_*`: Win32, Direct2D, DirectWrite, DWM; no WinUI, .NET, Qt or
+   web view) that drives the platform-neutral conversion pipeline `app/convert` on a worker thread; `codebreaker convert FILE` runs the same pipeline
+   on the command line. CodeBreaker has no Python.
 4. **PCRE2: not now** (only with profile numbers).
 5. **`nlohmann` forward declaration: by hand** (no download).
 6. **On-disk formats: dropped.** C++-native formats (versioned) replace the Python's pickled caches and repr files;

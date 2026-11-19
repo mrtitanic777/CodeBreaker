@@ -1,0 +1,6 @@
+exit: 3
+--- stdout
+  0%  Identifying the file
+Unsupported: CodeBreaker does not recognise this file, so it cannot convert it.
+--- files
+--- stderr (not compared)

@@ -24,7 +24,7 @@ namespace {
 using nlohmann::ordered_json;
 
 // The commands that are interfaces and servers, not jobs.
-constexpr std::array<std::string_view, 3> kInteractive = {"ui", "progress", "mcp"};
+constexpr std::array<std::string_view, 3> kInteractive = {"app", "progress", "mcp"};
 
 std::string py_repr(std::string_view s) {   // the quoting a repr-style string gets: ' unless the text holds one and no "
     const bool single = s.find('\'') == std::string_view::npos || s.find('"') != std::string_view::npos;

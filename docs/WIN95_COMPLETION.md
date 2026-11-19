@@ -438,6 +438,54 @@ could not be tried on it without editing that file. So the gate gap for these tw
 stack-frame layout dependence of the decompiled C (item 18), and state in the data segment that callees (stubbed) would have changed between
 two messages (a window procedure is correct per call and wrong in sequence: the gate runs one call at a time).
 
+### 20. A sequence-aware gate (built, default off: `CB_SEQ=1`; it does NOT catch BEAR306 or sub_25_0429)
+
+**Design** (`judge_sequences` in verify/gate16/isolated16.cpp, run after the one-call inputs agree, for a function that removes 10 argument bytes, i.e. a window
+procedure's pwnd, message, wParam, lParam -- the last five words pushed). Three scripts, each a message run: WM_NCCREATE, WM_CREATE, NCCALCSIZE, SIZE, MOVE, SHOWWINDOW,
+ACTIVATE, SETFOCUS, ERASEBKGND, PAINT, then every message constant the function compares with (the directed inputs'), then DESTROY and NCDESTROY; the whole list twice per script.
+The scripts differ in wParam / lParam, in what an unmodelled Windows call returns, and in the data segment (as loaded, or the patterned one). `pwnd` is a fresh, zeroed 0x60-byte
+window structure in the data segment's zero tail. After every step both sides' prints are compared (calls, writes, result, SI/DI/DS) and so is the data segment each side has
+accumulated: the writes of every step are carried to the next as `DataOffset` memory (`mem_init`), each side its own. Modes of the value: `1` callees answered alike (as the one-call
+gate); `chain` the module's other functions run for real on both sides (a window word set by one callee and read by the next message's, carried too); `trace` prints how far each
+function got (stderr). The cache key carries the value (module_gate.cpp). Also new: `CB_FORCE_C=name` now overrides kept_as_asm.txt (module_build16.cpp), so a kept function can be
+tried as C without editing the file.
+
+**Result (USER of MINI.CAB, 1613 functions, private `CB_STATE`; both functions forced to C)**:
+- Both sequences runs (callees alike; and with `CB_FILL=1` as well) pass BEAR306 and sub_25_0429: sequence 1 and 3 run all the steps to the end on both sides with the same prints and
+  the same data segment; sequence 2 of BEAR306 faults at step 25 (WM_USER+3) on both sides alike. Gated set: identical to the baseline (40, `diff` of the names empty).
+  So **state kept in the data segment between messages is not what the gate misses**, at least with a window structure this simple, and filling BeginPaint's structure does not change it.
+- `chain` mode: gated 40 -> 41; the one new refusal is `sub_35_187A` ("sequence 1 step 2, WM_CREATE after NCCREATE: returns original f83c, ours 0"). It is a three-line window
+  procedure that calls sub_2_0B27 (assembly) then sub_35_085C or sub_35_08E1 (both C): the difference is most likely in one of those callees' C that the one-call gate cannot see
+  (their callees are stand-ins), not in sub_35_187A itself; not traced further. `chain` also stops BEAR306 at its WM_PAINT (both sides fault in the real callees), so it says nothing of it.
+  `chain` is therefore a lead, not a gate: a refusal blames the caller for a callee.
+- Cost: about +10 s on USER's 4 minute build (the sequences run for the functions that remove 10 bytes only).
+
+**What this leaves open for BEAR306 / sub_25_0429** (the doc's two remaining hypotheses were: data-segment state between messages -- refuted above; stack-frame layout dependence -- untried).
+BEAR306's C (MINI's, 10:1587) reads its per-window structure through `sub_2_0B27(0, a5)` (assembly, AX in) and creates it in WM_CREATE through `LocalAlloc` + `sub_2_0B54`, so the state a
+later message reads goes through callees the one-call gate stubs; `chain` would carry that but faults at WM_PAINT in the emulator. Next: make `chain` survive BeginPaint/EndPaint
+(models for the fills in a chain run, or make the callee's own structure fill run), or trace the all-15 boot with the function as C and as assembly (the isolated16 recorder / QEMU)
+and compare the calls from the first divergence. Nothing here is on by default; the proofs (`regress all15 --runs 2`, `regress install --runs 1`) were not run because nothing that
+changes what is built is on: with the switch off the build is unchanged (the only default-path edit is the kept_as_asm override that applies only when `CB_FORCE_C` is set).
+
+### 21. sub_35_187A explained; the boot-trace attempt for BEAR306 (2026-11-18)
+
+**sub_35_187A is a chain-mode artifact, not a defect.** Original: `mov ds, 1160h`, `si = sub_2_0B27(0, a5)` (assembly, near pointer in AX), then `sub_35_085C` or `sub_35_08E1`
+by bit 20h of `[si+2Ch]`; neither callee defines AX when its first tests skip the body (`test [si+2Ch], 8 / je end`: AX stays what the caller left, the near pointer), and
+sub_35_187A returns what they leave. The original therefore returns the window pointer (f83c in the run), the C returns 0: an unspecified result inherited through callees,
+the class of items 13 and 16. In `CB_SEQ=chain` mode the result is therefore no longer compared (calls and the carried data segment still are); the rerun of USER's MINI.CAB
+gives gated 40 (the baseline), no sequence refusals.
+
+**BEAR306 boot trace: not done; one approach ruled out.** Added, default off, and now known not to work: `CB_TRACE_WNDPROC=<name>` (module_build16.cpp for the C text,
+build/asm16.cpp for the kept-assembly text: write 0B3h and the message, wParam and window words to port 0E9h at the function's entry) and `CB_DEBUGCON_FILE=<path>`
+(setup16.cpp: QEMU `-debugcon`). A boot with either variant (BEAR306 as kept assembly with the probe; as C with the probe) is FAIL(dos) in 5m31s, while the same private
+state with nothing set is PASS in 1m15s: the guest cannot execute `out` there (ring 3, or no I/O permission), so the probe itself stops Setup and the debugcon file stays empty.
+A log has to go through memory, not a port: e.g. a ring buffer written in a block the probe allocates (GlobalAlloc through KERNEL) with a signature per record, and the VM's
+memory saved with the monitor's `pmemsave` after the failure and scanned for the records; or QEMU's gdb stub with a breakpoint at the function's linear address (code selector
+base from the LDT). Another way that needs no tracing: bisect by message -- keep BEAR306 as the original assembly under another name and have the C answer only a chosen
+set of messages itself, the rest delegated; each boot is 5 minutes, about 5 boots for 28 cases.
+Also found: `build <path>` takes the module name from the path as written, so `USER.EXE` does not match kept_as_asm.txt's `user.exe` (the file's lines did not apply to a build
+made with the upper-case name; regress passes the lower-case name).
+
 Not converted (superseded by item 16):
 
 

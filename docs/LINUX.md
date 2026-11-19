@@ -108,17 +108,14 @@ see the engine libraries below):
   native L2 library (`native/l2`) builds on Linux too: `cmake -S native/l2 -B native/l2/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release`
   gives `native/l2/build-linux/bin/libcbl2.so`, which `translate/native_l2` looks for there (Windows: `native/l2/build/bin/cbl2.dll`).
   The DOS engine (`native/dosexec`) has no Linux build yet (phase 3).
-- **Tests** (`cb_tests --filter "<area>."`, one process per area so a crash is one area's): about 6,050 pass, about 20 fail and about
-  150 end in a crash. Tests of something Windows by nature (`.cmd`/`.bat` stand-in tools, PowerShell, `cmd`, a case-insensitive
-  disk, a drive-lettered path the code must keep) begin with `CB_WINDOWS_ONLY("why")` and pass without running off Windows; paths
-  that only need a rooted shape use `testing::rooted()`. `CB_CHECK_EQ` now compares inside one call, so a view of a temporary
-  (`as_text(f.read(2))`) is still alive while it is compared. Two real bugs came out of the Linux run besides the earlier ones
-  (a dangling `initializer_list` in `exact/draft/prove.cpp`; `engine::native_text` wrote backslashes into paths the lanes read back).
-  What is left, by area: `translate` (about 140 tests of 450 crash, and 21 fail), `java` (9 crash) and `decompile` (1 and 1): all
-  of them walk an L2 tree (`ir::children` of a `Concat` whose `parts` vector is garbage: `cb_tests --filter
-  translate.c_java.corpus.bank`, deterministic, not a heap-reuse effect: a defect in the IR, found only on Linux); `verify.gate16.setup16` (3),
-  `exact.emu.xenix` (2), `emulate.driver` and `emulate.native_win16` (Unicorn 2.0.1 against 2.1.4), `ui.mcp` (2), `formats.xbox.crypto`
-  (1).
+- **Tests** (`cb_tests --filter "<area>."`, one process per area; 2026-11-18, Capstone 5.0.7 and Unicorn 2.1.4 built from source, the L2
+  library built for Linux): **6,572 pass, 5 fail, no crash**, in all 27 areas. Tests of something Windows by nature (`.cmd`/`.bat`
+  stand-in tools, PowerShell, `cmd`, the p-code lifting program, a case-insensitive disk, a drive-lettered path the code must keep)
+  begin with `CB_WINDOWS_ONLY("why")` and pass without running off Windows; paths that only need a rooted shape use `testing::rooted()`.
+  `CB_CHECK_EQ` compares inside one call, so a view of a temporary (`as_text(f.read(2))`) is alive while it is compared. What the
+  Linux run found in the code, now fixed: a dangling `initializer_list` (`exact/draft/prove.cpp`), `engine::native_text` writing
+  backslashes into paths the lanes read back, a directory-order dependence in `translate/dotnet` (`names_in` is sorted),
+  a character constant written as a raw tab and a raw carriage return in `native/l2/src/pyre.cc`, and several tests that held views of temporaries.
+  Left: `ui.mcp` (2: `reading_what_was_made`, `one_function_is_decompiled_now_as_recorded`).
 
-Next, in order: the L2 `Concat` crash (an AddressSanitizer build of `cb_tests` is the way in: `-fsanitize=address` needs a full rebuild);
-the DOS engine and the other DLL engines as shared libraries (roadmap track 8, phase 3); `tools/` shell equivalents.
+Next, in order: the DOS engine and the other DLL engines as shared libraries (roadmap track 8, phase 3); `tools/` shell equivalents.

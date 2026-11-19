@@ -1,7 +1,7 @@
 # The command cases of cb_exe_gate (native/cb/app/exe_gate_main.cpp, run by tools\gate.cmd): codebreaker.exe is run on each line and
 # its exit code, stdout and the files it leaves in {out} are compared with tests/exe_gate/golden/<name>.txt. Every command of the
-# table in codebreaker/__main__.py has two to four cases here (usage, a real run, an error); `ui` and `boot-floppy` are the exceptions:
-# `ui` is the interactive terminal (its smoke is a terminal test, not a command line), and `boot-floppy` rebuilds the whole Setup floppy
+# table in native/cb/app/commands_catalog.inc has two to four cases here (usage, a real run, an error); `app` and `boot-floppy` are the exceptions:
+# `app` is the window (its smoke is the screenshot step of tools\gate.cmd, not a command line), and `boot-floppy` rebuilds the whole Setup floppy
 # (80 s). Goldens were recorded from the exe that ran the translated Python for the commands not yet native (2026-11-13), then each
 # command's output was read: where a native command differs from the Python only in wording, the golden is re-recorded after review
 # (`tools\gate.cmd --update --filter NAME`), and that diff is what a reviewer reads.
@@ -179,3 +179,11 @@ xna-missing: xna {work}/no_such_folder
 # --- the command line itself --------------------------------------------------------------------------------------------------
 cli-help: --help
 cli-unknown: no_such_command
+
+# --- convert: the window's pipeline on the command line (stages and percentages; the source goes to {out}) ---------------------------
+convert-pe: convert {fmt}/lz32.dll --out {out}/lz32
+convert-dos: convert {fmt}/setver.exe --out {out}/setver
+convert-unsupported: convert {td}/pixel.png
+convert-unknown: convert {td}/noise.dat
+convert-missing: convert {work}/no_such_file.dll
+convert-usage: convert

@@ -24,6 +24,7 @@
 // function of the module already has is not made (and not accepted), so the names of a module stay one to a function.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -53,8 +54,25 @@ bool valid_name(std::string_view name);
 // ---- the rules (each over one function's evidence; the module, key and body are the caller's to fill in) --------------------------------------
 std::optional<store::Proposal> import_wrapper(const FunctionEvidence& evidence);
 std::optional<store::Proposal> string_reference(const FunctionEvidence& evidence);
-// The most confident of the rules' proposals (the first, on a tie).
-std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence);
+// A function that only passes its arguments on to one other function of the module, whose name is `target_name`: "<target>_thunk", 70%.
+// (No proposal for a target with no name of its own, or one that is itself a thunk.)
+std::optional<store::Proposal> function_forward(const FunctionEvidence& evidence, std::string_view target_name);
+// The most confident of the rules' proposals (the first, on a tie). `target_name`: what the function it forwards to is called ("" when unknown).
+// `basic`: only the first two rules (import-wrapper, string-reference), as phase 1 had them (the baseline the measurement compares with).
+std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence, std::string_view target_name = {}, bool basic = false);
+
+// How well the rules name functions whose names are known: the functions a module's own export table, ordinal table or debug symbols name are
+// hidden from the rules (their evidence goes in, their name stays out) and what the rules say is compared with the truth.
+struct Measure {
+    std::size_t truth = 0;      // functions with a name the module itself gives
+    std::size_t proposed = 0;   // of those, functions a rule proposed a name for
+    std::size_t exact = 0;      // proposals whose name, without the rule's suffix and decoration, is the truth (case ignored)
+    std::size_t related = 0;    // ... or contains it, or is contained in it
+    std::map<std::string, std::array<std::size_t, 3>> by_rule;   // per rule: proposed, exact, related
+    std::vector<std::string> misses;                              // "<truth> <- <proposal> (<rule>)" for the proposals that are not related
+};
+// The name without a rule's suffix, a leading underscore or a stdcall decoration, lower case: what proposals and truth are compared by.
+std::string comparable(std::string_view name);
 
 // The name in a message that opens with the function's own name ("LZInit: bad header", "[ReadBlock] failed", "WriteBlock() failed"), or "".
 std::string name_in_message(std::string_view message);
@@ -86,6 +104,9 @@ public:
     // Accept every proposed one of at least `least` percent. -> how many.
     std::size_t accept_all(const std::filesystem::path& module, int least);
     bool reject(const std::filesystem::path& module, Address address);
+
+    // Run the rules over the module as if its own names were not there and compare (see Measure). Stores nothing. `basic`: the phase 1 rules.
+    Measure measure(const std::filesystem::path& module, bool basic);
 
     // The packets for the unnamed functions, one JSON object per line: where it is, its calls and callers (named as far as the namer names them),
     // its strings, its instructions, its decompiled C with `with_c`, and its proposal if it has one. At most `limit` (0: all).

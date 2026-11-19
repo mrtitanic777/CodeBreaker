@@ -21,7 +21,8 @@ std::map<std::string, std::string> gate_keys(const Services& services, const std
     const std::string module_key = base::cache::key({fs::read_file(module)});
     // (everything else the verdicts depend on -- the compiler and its options, what each Windows call removes, the branch-guided inputs the checker
     // runs, the explorers, the emulators -- is the gate's stamp)
-    const std::string tools = base::cache::key({services.gate_stamp ? services.gate_stamp() : std::string(), "build/module gate16 cb 1", fs::get_env("CB_FILL").has_value() ? "structures filled" : ""});
+    const std::string tools = base::cache::key({services.gate_stamp ? services.gate_stamp() : std::string(), "build/module gate16 cb 1", fs::get_env("CB_FILL").has_value() ? "structures filled" : "",
+                                                                                   fs::get_env("CB_SEQ").has_value() ? "message sequences " + *fs::get_env("CB_SEQ") : ""});
     const std::string header = base::cache::key({m.made.header()});
     // (and the description's lines for the function and for each it calls: the checker answers a call as the description says the callee does --
     // what it removes, what it returns -- so a callee described anew is a verdict to make again)

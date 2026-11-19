@@ -313,6 +313,14 @@ GUEST_IMPORT(RtlUpcaseUnicodeChar)
     ctx.r3.u64 = UpcaseWide(uint16_t(ctx.r3.u32));
 }
 
+// WCHAR RtlDowncaseUnicodeChar(WCHAR SourceCharacter): the lowercase of a wide character (Windows' own table).
+GUEST_IMPORT(RtlDowncaseUnicodeChar)
+{
+    wchar_t w = wchar_t(uint16_t(ctx.r3.u32));
+    CharLowerBuffW(&w, 1);
+    ctx.r3.u64 = uint16_t(w);
+}
+
 // VOID RtlCopyString(PSTRING Destination, const STRING* Source): STRING = { u16 Length, u16 MaximumLength, PCHAR
 // Buffer }. Copies at most the destination's MaximumLength bytes; a null source empties the destination.
 GUEST_IMPORT(RtlCopyString)

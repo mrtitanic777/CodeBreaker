@@ -505,7 +505,12 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
         wanted.assign(found.begin(), found.end());
     }
     if (wanted.empty()) return {};   // (no code: a font or resource-only module)
-    if (!threads.empty() || wanted.size() <= kChunk) return resuming(description, !only.empty(), env, wanted);   // (set by hand: as it says)
+    if (progress_) progress_(0, wanted.size());
+    if (!threads.empty() || wanted.size() <= kChunk) {   // (set by hand: as it says)
+        NativeOutput whole_run = resuming(description, !only.empty(), env, wanted);
+        if (progress_) progress_(wanted.size(), wanted.size());
+        return whole_run;
+    }
     // More than a chunk: the functions in fixed chunks of kChunk, in address order, each chunk a process of its own on one
     // thread, as many at once as the governor gives slots and memory for. Not the native program's threads: each keeps its own
     // analysis, and the globals one function types stay typed for the next -- so with threads a function's text depended on
@@ -521,7 +526,12 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
     for (const std::vector<Va>& chunk : chunks)
         futures.push_back(pool.submit([this, &description, &env, &chunk] { return resuming(description, true, env, chunk); }));
     std::vector<NativeOutput> parts;
-    for (std::future<NativeOutput>& f : futures) parts.push_back(f.get());
+    std::size_t finished = 0;
+    for (std::future<NativeOutput>& f : futures) {
+        parts.push_back(f.get());
+        finished += chunks[parts.size() - 1].size();
+        if (progress_) progress_(finished, wanted.size());
+    }
     std::vector<std::pair<Va, std::string>> blocks;
     bool whole = true;
     std::vector<std::string> errs;

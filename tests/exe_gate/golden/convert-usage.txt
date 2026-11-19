@@ -1,0 +1,9 @@
+exit: 2
+--- stdout
+usage: codebreaker convert FILE [--out DIR]
+
+Turn one file back into source code, as the CodeBreaker window does. The stages the file passes through and the share of the
+work done are printed; the source goes to Converted/<file name>/ (or DIR), in a folder that did not exist before: a numbered
+sibling (name_2, name_3 ...) when it would have. Exit code 0: done; 1: failed; 3: CodeBreaker cannot convert this kind of file.
+--- files
+--- stderr (not compared)

@@ -100,7 +100,7 @@ bool CommandTable::has_runner(std::string_view name) const {
 
 std::string CommandTable::usage() const {
     std::string out = "usage: codebreaker <command> [arguments]\n";
-    out += "       codebreaker               with no command, in a terminal: the terminal interface (ui)\n\n";
+    out += "       codebreaker               with no command: the CodeBreaker window (app)\n\n";
     for (const CommandDoc& d : kCatalog) {
         std::string line = "    ";
         line += d.synopsis;
@@ -128,9 +128,9 @@ int CommandTable::run(const std::vector<std::string>& line) const {
         env_.use_corpus(*taken.corpus);
     std::vector<std::string> args = std::move(taken.rest);
 
-    // no command, in a terminal with the interface installed: the interface
-    if (args.empty() && env_.terminal_interface_available && env_.terminal_interface_available())
-        args = {"ui"};
+    // no command: the window (where this program has one)
+    if (args.empty() && env_.window_available && env_.window_available())
+        args = {"app"};
 
     if (!args.empty() && is_help_word(args[0])) {
         out_text(usage());

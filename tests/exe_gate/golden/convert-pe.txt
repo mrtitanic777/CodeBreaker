@@ -1,0 +1,18 @@
+exit: 0
+--- stdout
+  0%  Identifying the file
+  2%  Opening
+  7%  Opening: lz32.dll
+  7%  Disassembling
+ 46%  Disassembling
+ 46%  Decompiling
+ 91%  Decompiling: 39 of 39 functions
+ 91%  Writing the source
+ 95%  Writing the source: lz32.c
+ 99%  Writing the source: lz32.dll.asm
+100%  Done
+2 files written to <work>/out/lz32
+--- files
+lz32/lz32.c 18451 3028be1f2548453e5e981d89e3108a4fddea89934b4965978f04e3178528b57b
+lz32/lz32.dll.asm 41544 6b75d74744c33212775e120e85c0c37f3b3d62922578af5c575471e09ca84fa8
+--- stderr (not compared)

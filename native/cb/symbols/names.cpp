@@ -494,6 +494,8 @@ cli::Command declare_command(std::function<int(const cli::Args&)> run) {
          cli::Option{"--ordinals", "", "remake the table of names for numbered exports from definition files and import libraries (the arguments)",
                      cli::Arg::Flag},
          cli::Option{"--propose", "", "run the naming rules over the module and store what they propose (nothing is named until it is accepted)", cli::Arg::Flag},
+         cli::Option{"--measure", "", "how well the rules name the functions the module itself names (its own names hidden from them): recall and precision; --rules basic: the first rules only", cli::Arg::Flag},
+         cli::Option{"--rules", "", "with --measure: `basic` for the phase 1 rules", cli::Arg::Value, "SET"},
          cli::Option{"--packets", "", "for each unnamed function, the evidence an assistant needs to propose a name (JSON, a line each); --c adds its C, --limit N stops after N", cli::Arg::Flag},
          cli::Option{"--proposals", "", "the module's proposed, accepted and rejected names", cli::Arg::Flag},
          cli::Option{"--suggest", "", "store an assistant's proposal for the function at ADDRESS; the name is the second argument, with --describe and --confidence", cli::Arg::Value, "ADDRESS"},
@@ -527,7 +529,7 @@ int Namer::execute(const cli::Args& a) {
                 c.in_several, c.copies);
         return 0;
     }
-    for (const char* option : {"--propose", "--packets", "--proposals", "--suggest", "--accept", "--reject"}) {
+    for (const char* option : {"--propose", "--measure", "--packets", "--proposals", "--suggest", "--accept", "--reject"}) {
         if (!a.flag(option)) continue;
         if (!self.s.proposals_command) throw UsageError("proposed names are not available here");
         return self.s.proposals_command(a);

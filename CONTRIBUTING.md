@@ -20,8 +20,8 @@ change what the judge decides unless that is the point of the change.
 ## Setting up
 
 You need Windows 10 or 11 (x64), Git, CMake and Ninja, and a C++20 compiler: MSVC (Visual Studio 2022 or 2026),
-Clang (`clang-cl`) or GCC (MinGW-w64). The engines' NASM is built with MinGW-w64 GCC (MSYS2). The Java lane needs JDK 21;
-the terminal interface needs Python 3.10+ with `textual`.
+Clang (`clang-cl`) or GCC (MinGW-w64). The engines' NASM is built with MinGW-w64 GCC (MSYS2). The Java lane needs JDK 21.
+Nothing in CodeBreaker needs Python.
 
 ```bash
 tools\build_native.cmd
@@ -41,8 +41,8 @@ CodeBreaker's changes to OpenWatcom are on the `codebreaker` branch of
 
 ## Making a change
 
-- **C++ only, idiomatic and typed.** CodeBreaker is C++20 in `native/cb`; the terminal interface in `codebreaker/ui`
-  is the only Python. New code uses the portable layer in `native/cb/core` (`cb::fs`, `cb::process`, `cb::dynlib`,
+- **C++ only, idiomatic and typed.** CodeBreaker is C++20 in `native/cb` and has no Python at all (the window is Win32 with Direct2D, in `native/cb/app/window_*`).
+  New code uses the portable layer in `native/cb/core` (`cb::fs`, `cb::process`, `cb::dynlib`,
   ...), not the Windows API directly, so it can build on Linux too.
 - **Every compiler.** Code must compile with MSVC (warnings are errors), clang-cl and GCC. CI builds all three.
 - **Tests beside the code.** A change comes with `*_test.cpp` tests next to the code it changes; inputs go in a

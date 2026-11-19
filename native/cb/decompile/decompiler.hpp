@@ -35,6 +35,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -288,6 +289,10 @@ public:
     // The arena the L2 documents of everything this made are nodes of.
     const std::shared_ptr<Arena>& arena() const { return arena_; }
 
+    // Told how many functions the native program has finished of how many it was given (a window's progress bar): once at the start
+    // (0 of n), after each chunk of kChunk functions, and at the end. Called from the thread that runs the decompiler; none by default.
+    void set_progress(std::function<void(std::size_t done, std::size_t total)> progress) { progress_ = std::move(progress); }
+
 private:
     struct NativeOutput {
         std::string out, err;
@@ -321,6 +326,7 @@ private:
     Context context_;
     std::shared_ptr<Arena> arena_ = std::make_shared<Arena>();
     std::mutex arena_lock_;
+    std::function<void(std::size_t, std::size_t)> progress_;
     std::once_flag kinds_once_;
     mutable std::mutex stamp_lock_;
     mutable std::optional<std::string> language_stamp_;

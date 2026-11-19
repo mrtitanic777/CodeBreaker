@@ -1,3 +1,0 @@
-# CodeBreaker's Python dependencies. The program is C++ (native/cb); the one Python piece is the terminal interface.
-textual>=0.80       # `codebreaker ui`: the interface in the command prompt (codebreaker/ui), a client of the native service
-pyflakes>=3.0        # tools/tidy.py, part of the test gate

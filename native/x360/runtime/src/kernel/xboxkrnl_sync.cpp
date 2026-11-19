@@ -221,6 +221,29 @@ GUEST_IMPORT(NtSetEvent)
     ctx.r3.u64 = kStatusSuccess;
 }
 
+// NTSTATUS NtPulseEvent(HANDLE EventHandle, PLONG PreviousState): signals the event so what waits on it is released,
+// then resets it (nothing arriving later sees it signalled); KePulseEvent's twin for handles.
+GUEST_IMPORT(NtPulseEvent)
+{
+    const uint32_t event = LookupHandle(ctx.r3.u32);
+    if (event == 0 || !HasType(event, { kObjectEventNotification, kObjectEventSynchronization }))
+    {
+        ctx.r3.u64 = event ? kStatusObjectTypeMismatch : kStatusInvalidHandle;
+        return;
+    }
+    int32_t previous;
+    {
+        auto lock = LockDispatcher();
+        previous = int32_t(guest::g_memory.Read32(event + header::kSignalState));
+        guest::g_memory.Write32(event + header::kSignalState, 1);
+        NotifyDispatcherChange(event);
+        guest::g_memory.Write32(event + header::kSignalState, 0);
+    }
+    if (ctx.r4.u32)
+        guest::g_memory.Write32(ctx.r4.u32, uint32_t(previous));
+    ctx.r3.u64 = kStatusSuccess;
+}
+
 // NTSTATUS NtClearEvent(HANDLE EventHandle)
 GUEST_IMPORT(NtClearEvent)
 {
