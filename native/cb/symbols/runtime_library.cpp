@@ -272,6 +272,50 @@ std::map<std::uint32_t, Identified> identify_dos(const SignatureTable& table, co
         std::vector<Identified> hits = table.match_all(program.image.subspan(start, length));
         if (!hits.empty()) found[start] = std::move(hits);
     }
+    // A library function calls library functions. A match whose code calls the program's own code is the program's: its bytes
+    // are a library function's only where the linker fills them in, the call's target (a `fscanf` is push the arguments, call
+    // `_input`, return -- and so is any program's two-argument wrapper of its own formatter). The library's modules are linked
+    // one after another, so its code is one run: a call to code no signature named (a helper too small or too common to sign
+    // is still the library's) is the program's when it is big enough to be told by its bytes (kTold) and lies away from the run the other matches make -- except from where the
+    // program starts: the start-up code calls `main`, the program's own
+    // (more than kLongest).
+    constexpr std::size_t kTold = 32;   // (shorter code no signature tells apart: a dispatcher, a stub)
+    const auto extent = [&](std::uint32_t start) {
+        const auto next = std::upper_bound(program.function_starts.begin(), program.function_starts.end(), start);
+        const std::size_t end = next == program.function_starts.end() ? program.image.size() : *next;
+        return std::min<std::size_t>({end - start, kLongest, program.image.size() - start});
+    };
+    std::set<std::uint32_t> foreign;   // the matches that call the program's code
+    for (const auto& [start, hits] : found) {
+        if (std::find(program.entries.begin(), program.entries.end(), start) != program.entries.end()) continue;   // (start-up calls main)
+        std::uint64_t lo = UINT64_MAX, hi = 0;   // the run of the other matches
+        for (const auto& [other, other_hits] : found)
+            if (other != start) lo = std::min<std::uint64_t>(lo, other), hi = std::max<std::uint64_t>(hi, other + extent(other));
+        if (lo > hi) continue;   // (one match alone: no run to tell it by)
+        lo = lo > kLongest ? lo - kLongest : 0;   // (a helper no signature names sits at the run's edge too: what is far from it is the program's)
+        hi += kLongest;
+        const auto outside = [&](std::int64_t target) {
+            return target >= 0 && !found.contains(static_cast<std::uint32_t>(target)) &&
+                   (static_cast<std::uint64_t>(target) < lo || static_cast<std::uint64_t>(target) >= hi) &&
+                   std::binary_search(program.function_starts.begin(), program.function_starts.end(), static_cast<std::uint32_t>(target)) &&
+                   extent(static_cast<std::uint32_t>(target)) >= kTold;
+        };
+        const ByteView code = program.image.subspan(start, extent(start));
+        for (std::size_t k = 0; k + 3 <= code.size(); ++k) {
+            std::int64_t target = -1;
+            if (code[k] == 0x9A && k + 5 <= code.size()) {   // call far seg:off (a segment of the program as it was loaded)
+                const std::uint32_t linear = (code[k + 3] | (code[k + 4] << 8)) * 16u + (code[k + 1] | (code[k + 2] << 8));
+                if (linear >= program.base) target = linear - program.base;
+            } else if (code[k] == 0xE8) {   // call near: relative to the next instruction
+                target = static_cast<std::int64_t>(start) + static_cast<std::int64_t>(k) + 3 + static_cast<std::int16_t>(code[k + 1] | (code[k + 2] << 8));
+            }
+            if (outside(target)) {
+                foreign.insert(start);
+                break;
+            }
+        }
+    }
+    for (const std::uint32_t start : foreign) found.erase(start);
     auto compiler_of = [](const Identified& i) { return i.library.substr(0, i.library.find(':')); };
     std::map<std::string, std::size_t> votes;
     for (const auto& [start, hits] : found) {

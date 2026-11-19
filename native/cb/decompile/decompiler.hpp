@@ -199,6 +199,7 @@ struct Functions {
     OrderedMap<std::string, std::string> texts;
     std::vector<std::string> order;
     std::map<Va, std::string> by_va;
+    std::map<std::string, core16::StructNote> structures;   // the structures the decompiler made, by name (its notes)
 };
 
 // One virtual device driver of a file: its name, its functions, how it was described.
@@ -214,6 +215,7 @@ struct DosProgramC {
     std::string header;                     // the `#include`s they come with
     std::map<std::string, std::vector<std::string>> library_pointers;   // name -> the C type of each pointer argument
     std::set<std::string> library_void;                                  // the names whose header says they return nothing
+    std::map<std::string, std::map<std::uint32_t, std::string>> structure_fields;   // structure -> offset -> its field's C type
     std::shared_ptr<describe::DosDescription> description;
 };
 

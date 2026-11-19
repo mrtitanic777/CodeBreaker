@@ -474,7 +474,9 @@ void KitEnvironment::described(const stdfs::path& module, const decompile::descr
 // bytes are the same wherever the function was linked, and the rows name the library each came from.
 std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> KitEnvironment::dos_library(
     const formats::dos::Program& program, std::span<const decompile::decompiler::Va> starts) {
-    symbols::runtime_library::DosImage image{program.image, {}};
+    symbols::runtime_library::DosImage image{program.image, {}, static_cast<std::uint32_t>(program.base), {}};
+    for (const formats::dos::Entry& e : program.entries)
+        if (e.address >= program.base) image.entries.push_back(static_cast<std::uint32_t>(e.address - program.base));
     const auto base = static_cast<decompile::decompiler::Va>(program.base);
     for (const decompile::decompiler::Va va : starts)
         if (va >= base && va - base < static_cast<decompile::decompiler::Va>(program.image.size())) image.function_starts.push_back(static_cast<std::uint32_t>(va - base));

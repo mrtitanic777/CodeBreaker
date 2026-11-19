@@ -369,6 +369,7 @@ std::string ctd_far(std::string_view s, const std::map<std::string, std::string>
                 if (p != pointees.end() && ctd_trim(offset).find(ids.front()) <= 1) type = p->second;
             }
         }
+        if (type == "void") type = "xunknown2";   // (a `void *` says nothing of what is there: the word the access reads)
         out += "((" + type + " __far *)codebreaker_far(" + seg + ",(uint2)(" + std::string(ctd_trim(offset)) + ")))";
         at = end;
     }
@@ -397,6 +398,18 @@ std::string ctd_drop_registers(const CtdFunction& f, std::size_t& dropped) {
     return out;
 }
 
+// Whether the `)` at `close` ends a cast (`(xunknown2 *)`, `(uint4)`), not a parenthesized value: what it encloses is a type.
+bool ctd_cast_before(std::string_view body, std::size_t close) {
+    const std::size_t open = body.rfind('(', close);
+    if (open == std::string_view::npos) return false;
+    std::string_view inside = ctd_trim(body.substr(open + 1, close - open - 1));
+    if (inside.empty()) return false;
+    if (inside.back() == '*') return true;
+    for (const std::string_view type : {"int", "uint", "xunknown", "char", "byte", "short", "long", "unsigned", "s_", "struct "})
+        if (inside.starts_with(type) && inside.find_first_of(" +-&|^<>=!?:()[],.") == (type == "struct " ? 6 : std::string_view::npos)) return true;
+    return false;
+}
+
 // A local the decompiler declared as four bytes (`xunknown4 xStack_6;`) that its statements dereference (`*xStack_6`) is a
 // far pointer: declared as the pointer the statements most often store in it (`xStack_6 = (char *)CONCAT22(...)`).
 std::string ctd_pointer_locals(const std::string& body, std::size_t& retyped) {
@@ -418,7 +431,7 @@ std::string ctd_pointer_locals(const std::string& body, std::size_t& retyped) {
             if (!ctd_whole(body, k, name.size())) continue;
             std::size_t b = k;
             while (b > 0 && body[b - 1] == ' ') --b;
-            if (b > 0 && body[b - 1] == '*' && (b < 2 || (body[b - 2] != '*' && body[b - 2] != ')' && !ctd_word(body[b - 2]))))
+            if (b > 0 && body[b - 1] == '*' && (b < 2 || (body[b - 2] != '*' && !ctd_word(body[b - 2]) && (body[b - 2] != ')' || ctd_cast_before(body, b - 2)))))
                 deref = true;
             const std::size_t e = k + name.size();
             if (body.compare(e, 4, " = (") == 0) {
@@ -428,7 +441,8 @@ std::string ctd_pointer_locals(const std::string& body, std::size_t& retyped) {
                     ++stored[cast];
             }
         }
-        if (!deref || stored.empty()) continue;
+        if (!deref) continue;
+        if (stored.empty()) stored["xunknown2 *"] = 1;   // (nothing stored says what it points at: a word, the general far datum)
         const auto best = std::max_element(stored.begin(), stored.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
         edits.emplace_back(line_at, "  " + best->first + name + ";");
     }
@@ -646,12 +660,16 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     for (const auto& [name, offsets] : structures) {
         std::string fields;
         std::uint32_t at = 0;
+        const auto known = layout.structure_fields.find(name);
         for (const std::uint32_t off : offsets) {
             if (off < at) continue;
             if (off > at) fields += std::format("uint1 pad_{:x}[{}]; ", at, off - at);
             const auto named = field_names.find({name, off});
-            fields += std::format("xunknown2 {}{:x}; ", named == field_names.end() ? "f_" : named->second, off);
-            at = off + 2;
+            std::string type = "xunknown2";
+            if (known != layout.structure_fields.end())
+                if (const auto t = known->second.find(off); t != known->second.end()) type = t->second;
+            fields += std::format("{} {}{:x}; ", type, named == field_names.end() ? "f_" : named->second, off);
+            at = off + static_cast<std::uint32_t>(ctd_words(type) == 2 ? 4 : type.ends_with('1') ? 1 : 2);
         }
         if (fields.empty()) fields = "xunknown2 f_0; ";
         declarations += "typedef struct " + name + " { " + fields + "} " + name + ";\n";

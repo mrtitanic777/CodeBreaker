@@ -169,6 +169,28 @@ CB_TEST("decompile.c_text_dos.a_four_byte_local_that_is_dereferenced_is_a_pointe
     CB_CHECK_EQ(r.report.pointers, std::size_t{1});
 });
 
+CB_TEST("decompile.c_text_dos.a_local_read_through_a_cast_is_a_pointer_and_one_nothing_types_points_at_words", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  xunknown2 *a1;\n  xunknown4 xStack_6;\n  \n"
+        "  a1 = (xunknown2 *)*xStack_6;\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "  xunknown2 *xStack_6;\n"));   // (`(T *)*x` is a cast and a read, not a product)
+});
+
+CB_TEST("decompile.c_text_dos.structure_fields_are_as_wide_as_the_decompiler_found_them", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  s_sub_00100_v *psVar1;\n  \n"
+        "  psVar1 = (s_sub_00100_v *)*(xunknown2 *)0x10;\n  psVar1->f_a = 0;\n  psVar1->f_b = 1;\n  return;\n}\n";
+    Layout layout;
+    layout.structure_fields["s_sub_00100_v"] = {{0xa, "xunknown1"}, {0xb, "uint1"}};
+    const Result r = compilable(text, "", layout);
+    // (the byte at 0xb is its own field, not inside a word at 0xa)
+    CB_CHECK(ctdt_has(r.text, "typedef struct s_sub_00100_v { uint1 pad_0[10]; xunknown1 f_a; uint1 f_b; } s_sub_00100_v;"));
+    CB_CHECK(ctdt_has(compilable(text, "").text, "typedef struct s_sub_00100_v { uint1 pad_0[10]; xunknown2 f_a; } s_sub_00100_v;"));
+});
+
 CB_TEST("decompile.c_text_dos.a_library_call_passes_each_pointer_as_its_header_declares", [] {
     const std::string text =
         "/* T.EXE */\n\n"

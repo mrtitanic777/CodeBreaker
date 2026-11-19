@@ -79,7 +79,9 @@ struct Identifier::Impl {
     // A real-mode program: the functions its analysis finds, matched in the image as the machine would see it. An address is a linear one.
     Found dos(const std::filesystem::path& module) {
         const formats::dos::Program program = formats::dos::read_program(fs::read_file(module), fs::to_text(module.filename()));
-        rl::DosImage image{program.image, {}};
+        rl::DosImage image{program.image, {}, static_cast<std::uint32_t>(program.base), {}};
+        for (const formats::dos::Entry& e : program.entries)
+            if (e.address >= program.base) image.entries.push_back(static_cast<std::uint32_t>(e.address - program.base));
         if (!program.ds) return {};
         for (const auto& [va, fn] : analyze::dos_functions::discover(program).functions)
             if (va >= program.base && va - program.base < program.image.size()) image.function_starts.push_back(static_cast<std::uint32_t>(va - program.base));

@@ -310,6 +310,49 @@ CB_TEST("symbols.runtime_library.identify_dos_names_the_compiler_most_of_the_lib
     CB_CHECK_EQ(found.at(0x280).library, "New C 2.0: C runtime (NEW.LIB)");
 });
 
+CB_TEST("symbols.runtime_library.identify_dos_leaves_a_match_that_calls_the_programs_code", [] {
+    auto plain = [](std::string name, std::uint8_t seed) {   // (plain code, long enough to have a signature)
+        libs::Function f;
+        f.name = std::move(name);
+        f.code = {0x55, 0x8B, 0xEC};
+        for (int i = 0; i < 40; ++i) f.code.push_back(static_cast<std::uint8_t>(seed + i * 7));
+        f.code.push_back(0xCB);
+        f.mask.assign(f.code.size(), 0);
+        return f;
+    };
+    // fscanf's code: push the arguments, call far _input (the linker fills the call in), return
+    libs::Function wrapper;
+    wrapper.name = "fscanf";
+    wrapper.code = {0x55, 0x8B, 0xEC, 0x8D, 0x46, 0x0E, 0x16, 0x50, 0xFF, 0x76, 0x0C, 0xFF, 0x76, 0x0A,
+                    0xFF, 0x76, 0x08, 0xFF, 0x76, 0x06, 0x9A, 0, 0, 0, 0, 0x8B, 0xE5, 0x5D, 0xCB};
+    wrapper.mask.assign(wrapper.code.size(), 0);
+    for (std::size_t k = 21; k < 25; ++k) wrapper.mask[k] = 1;
+    const libs::Function a = plain("_a", 0x10), b = plain("_b", 0x40);
+    const rl::SignatureTable table = rl::SignatureTable::from_rows(
+        std::vector<rl::SignatureRow>{row_of(wrapper, "C 4.0: C runtime"), row_of(a, "C 4.0: C runtime"), row_of(b, "C 4.0: C runtime")});
+    auto call_far = [](Bytes& image, std::size_t at, std::uint32_t target, std::uint32_t base) {
+        const std::uint32_t linear = base + target;
+        image[at + 21] = static_cast<std::uint8_t>(linear & 15);
+        image[at + 22] = 0;
+        image[at + 23] = static_cast<std::uint8_t>((linear >> 4) & 0xFF);
+        image[at + 24] = static_cast<std::uint8_t>(linear >> 12);
+    };
+    Bytes image(0x3200, 0x90);
+    put(image, 0x100, a.code);
+    put(image, 0x180, wrapper.code);   // the library's fscanf: its _input (no signature) is beside the rest of the library
+    call_far(image, 0x180, 0x240, 0x10000);
+    put(image, 0x300, b.code);
+    put(image, 0x3000, wrapper.code);   // the program's own wrapper of its own formatter, among the program's code
+    call_far(image, 0x3000, 0x3100, 0x10000);
+    const auto found = rl::identify_dos(table, {image, {0x100, 0x180, 0x240, 0x300, 0x3000, 0x3100}, 0x10000});
+    CB_CHECK_EQ(found.size(), std::size_t{3});
+    CB_CHECK_EQ(found.at(0x180).name, "fscanf");
+    CB_CHECK(!found.contains(0x3000));
+    // where the program starts, the library's start-up code calls the program's main: it stays the library's
+    const auto started = rl::identify_dos(table, {image, {0x100, 0x180, 0x240, 0x300, 0x3000, 0x3100}, 0x10000, {0x3000}});
+    CB_CHECK(started.contains(0x3000));
+});
+
 CB_TEST("symbols.runtime_library.merge_keeps_what_was_learned", [] {
     rl::Learned base, fresh;
     base.libraries = {"A (A.LIB)"};

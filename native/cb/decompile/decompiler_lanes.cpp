@@ -69,6 +69,12 @@ Functions lanes_grow(Decompiler& decompiler, Described& d, const LineFor& line_f
     Run first = decompiler.run(d.path, only);
     OrderedMap<std::string, std::string> out = first.texts;
     std::map<Va, std::string> by_va = first.by_va;
+    std::map<std::string, core16::StructNote> structures;
+    const auto take_structures = [&](const Run& r) {
+        for (const auto& [name, notes] : r.notes)
+            for (const core16::StructNote& s : notes.structs) structures.insert_or_assign(s.name, s);
+    };
+    take_structures(first);
     for (int round = 0; round < rounds; ++round) {
         std::set<Va> news;
         for (const auto& [name, text] : out)
@@ -98,6 +104,7 @@ Functions lanes_grow(Decompiler& decompiler, Described& d, const LineFor& line_f
         const Run more = decompiler.run(d.path, std::vector<Va>(both.begin(), both.end()));
         for (const auto& [name, text] : more.texts) out.insert_or_assign(name, text);
         for (const auto& [va, name] : more.by_va) by_va[va] = name;
+        take_structures(more);
     }
     std::map<std::string, std::string> known;
     for (const auto& [va, name] : d.names) known[hex8(va)] = name;
@@ -105,6 +112,7 @@ Functions lanes_grow(Decompiler& decompiler, Described& d, const LineFor& line_f
     for (const auto& [name, text] : out) result.texts.insert_or_assign(name, known.empty() ? text : by_their_names(text, known));
     for (const auto& [va, name] : by_va) result.order.push_back(name);
     result.by_va = std::move(by_va);
+    result.structures = std::move(structures);
     return result;
 }
 
@@ -465,6 +473,7 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     DosProgramC result;
     result.functions.order = std::move(grown.order);
     result.functions.by_va = std::move(grown.by_va);
+    result.functions.structures = std::move(grown.structures);
     for (const auto& [name, text] : grown.texts) {
         std::vector<symbols::dos_interrupts::Interrupt> calls;
         if (const auto it = d->interrupts.find(name); it != d->interrupts.end())
@@ -477,6 +486,14 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     result.header = library.header;
     result.library_pointers = library.pointers;
     result.library_void = library.nothing;
+    // each structure field's C type, as wide as the decompiler found it (`uint1` for a byte the code tests): the C pass declares
+    // the structures again from what the statements reach, and every field it knows nothing of is a word
+    for (const auto& [name, s] : result.functions.structures)
+        for (const core16::StructField& f : s.fields) {
+            static const std::set<std::string> scalars = {"int1", "uint1", "xunknown1", "int2", "uint2", "xunknown2", "int4", "uint4", "xunknown4"};
+            const std::string type = scalars.contains(f.type) ? f.type : f.bytes == 1 || f.bytes == 2 || f.bytes == 4 ? "xunknown" + std::to_string(f.bytes) : "";
+            if (!type.empty() && f.offset >= 0) result.structure_fields[name][static_cast<std::uint32_t>(f.offset)] = type;
+        }
     return result;
 }
 
@@ -546,6 +563,7 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
             dos_layout = lanes_dos_layout(*r.description);
             dos_layout.library_pointers = r.library_pointers;
             dos_layout.library_void = r.library_void;
+            dos_layout.structure_fields = r.structure_fields;
             texts = std::move(r.functions.texts);
             order = std::move(r.functions.order);
             total = r.description->names.size();

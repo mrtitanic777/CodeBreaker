@@ -192,6 +192,8 @@ std::map<SegOff, Identified> identify_ne(const SignatureTable& table, const Ne16
 struct DosImage {
     ByteView image;                                 // the load module; an offset into it is a function's address
     std::vector<std::uint32_t> function_starts;     // ascending offsets into `image`
+    std::uint32_t base = 0;                         // the linear address the image was loaded at: its far calls name segments of that load
+    std::vector<std::uint32_t> entries;             // offsets into `image` the program starts at (the start-up code, which calls main)
 };
 
 // {offset into the image: what it is} of the functions of a real-mode program that belong to a runtime library, by signature.

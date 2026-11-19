@@ -68,6 +68,8 @@ struct Layout {
                                                                 // a call passing another pointer there casts it
     std::set<std::string> library_void;                         // the library functions that return nothing: a statement that
                                                                 // stores what one returned (after `exit`, say) calls it alone
+    std::map<std::string, std::map<std::uint32_t, std::string>> structure_fields;   // a structure the decompiler made -> offset ->
+                                                                // its field's C type ("uint1"): declared that wide (else a word)
 };
 
 // `text` is the program's C as the decompiler wrote it (Decompiler::as_c): its first lines (the title, the #includes of the
