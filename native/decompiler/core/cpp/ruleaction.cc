@@ -11000,4 +11000,47 @@ int4 RuleExpandLoad::applyOp(PcodeOp *op,Funcdata &data)
   return 1;
 }
 
+
+/// \class RuleZextSpacebaseAdd
+/// rief CodeBreaker: `ZEXT(PTRSUB(sp,#c1)) + #c2  =>  ZEXT(PTRSUB(sp,#c1+c2))` (see the header)
+void RuleZextSpacebaseAdd::getOpList(vector<uint4> &oplist) const
+
+{
+  oplist.push_back(CPUI_INT_ADD);
+  oplist.push_back(CPUI_INT_SUB);
+}
+
+int4 RuleZextSpacebaseAdd::applyOp(PcodeOp *op,Funcdata &data)
+
+{
+  for(int4 slot=0;slot<2;++slot) {
+    if (op->code() == CPUI_INT_SUB && slot == 1) break;	// only (zext - #c)
+    Varnode *zextvn = op->getIn(slot);
+    Varnode *cvn = op->getIn(1-slot);
+    if (!cvn->isConstant()) continue;
+    if (!zextvn->isWritten()) continue;
+    PcodeOp *zextop = zextvn->getDef();
+    if (zextop->code() != CPUI_INT_ZEXT) continue;
+    Varnode *ptrvn = zextop->getIn(0);
+    if (!ptrvn->isWritten()) continue;
+    PcodeOp *ptrop = ptrvn->getDef();
+    if (ptrop->code() != CPUI_PTRSUB) continue;
+    Varnode *sb = ptrop->getIn(0);
+    if (!sb->isSpacebase() || sb->isConstant()) continue;	// a register spacebase (the stack), not a global one
+    if (!ptrop->getIn(1)->isConstant()) continue;
+    int4 psize = ptrvn->getSize();
+    if (psize >= op->getOut()->getSize()) continue;
+    intb c2 = sign_extend(cvn->getOffset(),cvn->getSize()*8-1);
+    if (op->code() == CPUI_INT_SUB) c2 = -c2;
+    if (c2 < -0x10000000 || c2 > 0x10000000) continue;	// a frame offset, not an unrelated constant
+    uintb off = (ptrop->getIn(1)->getOffset() + (uintb)c2) & calc_mask(psize);
+    PcodeOp *newptr = data.newOpBefore(op,CPUI_PTRSUB,sb,data.newConstant(psize,off));
+    data.opSetOpcode(op,CPUI_INT_ZEXT);
+    data.opRemoveInput(op,1);
+    data.opSetInput(op,newptr->getOut(),0);
+    return 1;
+  }
+  return 0;
+}
+
 } // End namespace ghidra

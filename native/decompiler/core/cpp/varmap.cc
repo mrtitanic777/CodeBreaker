@@ -743,6 +743,7 @@ void AliasChecker::gatherInternal(void) const
   gatherAdditiveBase(spacebase,addBase);
   for(vector<AddBase>::iterator iter=addBase.begin();iter!=addBase.end();++iter) {
     uintb offset = gatherOffset((*iter).base);
+    offset &= space->getHighest();	// CodeBreaker: an offset summed in a register wider than the space (Xenon r1)
     offset = AddrSpace::addressToByte(offset,space->getWordSize()); // Convert to byte offset
     alias.push_back(offset);
     if (direction == 1) {
@@ -833,6 +834,13 @@ void AliasChecker::gatherAdditiveBase(Varnode *startvn,vector<AddBase> &addbase)
     for(iter=vn->beginDescend();iter!=vn->endDescend();++iter) {
       op = *iter;
       switch(op->code()) {
+      case CPUI_SUBPIECE:	// CodeBreaker: the low part of a wide stack pointer is the pointer
+	if (op->getIn(1)->getOffset() != 0) {
+	  nonadduse = true;
+	  break;
+	}
+	// fallthru
+      case CPUI_INT_ZEXT:	// CodeBreaker: a stack pointer zero-extended to a wider register (Xenon r1)
       case CPUI_COPY:
 	nonadduse = true;	// Treat COPY as both non-add use and part of ADD expression
 	subvn = op->getOut();
@@ -899,6 +907,8 @@ uintb AliasChecker::gatherOffset(Varnode *vn)
   PcodeOp *def = vn->getDef();
   if (def == (PcodeOp *)0) return 0;
   switch(def->code()) {
+  case CPUI_SUBPIECE:		// CodeBreaker: the low part of a wide stack pointer (gatherAdditiveBase follows only offset 0)
+  case CPUI_INT_ZEXT:		// CodeBreaker: a stack pointer zero-extended to a wider register (Xenon r1)
   case CPUI_COPY:
     retval = gatherOffset(def->getIn(0));
     break;

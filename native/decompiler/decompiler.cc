@@ -2407,6 +2407,11 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
     }
     out << struct_notes;
     if (g_l2) out << "/*@L2 " << l2Document(m, t.first, d.flat, nullptr) << " */" << std::endl;
+    if (std::getenv("CB_DUMP_PCODE")) {           // (the final p-code, one op per line: CB_DUMP_PCODE=1 with --at)
+      std::ostringstream po;
+      for (auto it = t.first->beginOpAlive(); it != t.first->endOpAlive(); ++it) { (*it)->printRaw(po); po << "\n"; }
+      out << "/*@PCODE\n" << po.str() << "*/" << std::endl;
+    }
     m.print->docFunction(t.first);
   } catch (LowlevelError& e) {
     out << "/* decompile failed: " << e.explain << " */" << std::endl;

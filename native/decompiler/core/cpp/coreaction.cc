@@ -5956,6 +5956,7 @@ void ActionDatabase::universalAction(Architecture *conf)
 	actprop->addRule( new RuleConcatZero("analysis") );
 	actprop->addRule( new RuleConcatLeftShift("analysis") );
 	actprop->addRule( new RuleSubZext("analysis") );
+	actprop->addRule( new RuleZextSpacebaseAdd("analysis") );	// CodeBreaker: C22
 	actprop->addRule( new RuleSubCancel("analysis") );
 	actprop->addRule( new RuleShiftSub("analysis") );
 	actprop->addRule( new RuleHumptyDumpty("analysis") );

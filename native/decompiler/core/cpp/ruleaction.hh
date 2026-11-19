@@ -1616,5 +1616,24 @@ public:
   virtual int4 applyOp(PcodeOp *op,Funcdata &data);
 };
 
+
+/// rief CodeBreaker: Fold a constant into a zero-extended stack pointer: `ZEXT(PTRSUB(sp,#c1)) + #c2  =>  ZEXT(PTRSUB(sp,#c1+c2))`
+///
+/// On a target whose stack pointer register is wider than its address space (Xenon: r1 is 8 bytes,
+/// addresses 4) the stack pointer is the zero extension of a 4-byte spacebase. An address of a local
+/// that stays 8 bytes wide (passed whole to an untyped parameter) is then `ZEXT(&base) + c` and is
+/// never tied to the local: stores into the local look dead and loads through it get folded. The
+/// stack does not wrap around the address space, so the addition can move inside the extension.
+class RuleZextSpacebaseAdd : public Rule {
+public:
+  RuleZextSpacebaseAdd(const string &g) : Rule(g, 0, "zextspacebaseadd") {}	///< Constructor
+  virtual Rule *clone(const ActionGroupList &grouplist) const {
+    if (!grouplist.contains(getGroup())) return (Rule *)0;
+    return new RuleZextSpacebaseAdd(getGroup());
+  }
+  virtual void getOpList(vector<uint4> &oplist) const;
+  virtual int4 applyOp(PcodeOp *op,Funcdata &data);
+};
+
 } // End namespace ghidra
 #endif
