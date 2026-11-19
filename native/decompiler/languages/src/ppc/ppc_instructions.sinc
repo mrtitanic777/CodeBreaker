@@ -2121,6 +2121,10 @@
 :ldarx D,RA_OR_ZERO,B	is OP=31 & D & RA_OR_ZERO & B & XOP_1_10=21 & BIT_0=0
 {
 	ea:$(REGISTER_SIZE) = RA_OR_ZERO+B;
+	# CodeBreaker: the reservation is taken, as lwarx (stdcx. stores only while it is set)
+	RESERVE = 1;
+	RESERVE_ADDRESS = ea;
+	RESERVE_LENGTH = 8;
 	D = *:8(ea);
 }
 @endif
@@ -2265,8 +2269,13 @@ define pcodeop lswxOp;
 :lwarx D,RA_OR_ZERO,B	is OP=31 & D & RA_OR_ZERO & B & XOP_1_10=20 & BIT_0=0
 {
 	ea:$(REGISTER_SIZE) = RA_OR_ZERO+B;
-	#RESERVE = 1;
-	#RESERVE_ADDRSS:$(REGISTER_SIZE) = ea;
+	# CodeBreaker: the reservation is taken (upstream left it commented out). stwcx. (L6) stores
+	# only while RESERVE is set and clears it: without this, after a function's first
+	# lwarx/stwcx. loop every later one read as never succeeding -- an endless loop, and the code
+	# after it dropped as unreachable (xboxkrnl 17559 sub_8015CF18: three atomic updates in a row).
+	RESERVE = 1;
+	RESERVE_ADDRESS = ea;
+	RESERVE_LENGTH = 4;
 @ifdef BIT_64
 	D = zext(*:4(ea));
 @else
