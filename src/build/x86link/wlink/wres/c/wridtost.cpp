@@ -30,79 +30,76 @@
 *
 ****************************************************************************/
 
-#include <stdlib.h>
-#include <string.h>
+#include <array>
+#include <cstring>
 #include "layer0.h"
 #include "util.h"
 #include "reserr.h"
 #include "wresrtns.h"
 
 
-#define UINT16_MAXDIGITS    5
-#define UINT32_MAXDIGITS    9
+namespace {
 
-static char *u32tostr( char *buf, uint_32 num )
+constexpr size_t UINT16_MAXDIGITS = 5;
+constexpr size_t UINT32_MAXDIGITS = 9;
+
+/* the decimal digits of num at buf; returns the end of them (not NUL terminated) */
+char *u32tostr( char *buf, uint_32 num )
 {
-    if( num > 9 )
-        buf = u32tostr( buf, num / 10 );
-    *buf++ = ( num % 10 ) + '0';
+    std::array<char, 10>    digits;
+    size_t                  count = 0;
+
+    do {
+        digits[count++] = static_cast<char>( '0' + num % 10 );
+        num /= 10;
+    } while( num != 0 );
+    while( count > 0 ) {
+        *buf++ = digits[--count];
+    }
     return( buf );
 }
+
+/* the name or the decimal number of an ID as an allocated string */
+template <typename Id>
+char *idToStr( const Id *id, size_t maxdigits )
+{
+    char    *str;
+
+    if( id->IsName ) {
+        /* alloc space for the string and a \0 char at the end */
+        str = static_cast<char *>( WRESALLOC( id->ID.Name.NumChars + 1 ) );
+        if( str == nullptr ) {
+            WRES_ERROR( WRS_MALLOC_FAILED );
+        } else {
+            /* copy the string */
+            std::memcpy( str, id->ID.Name.Name, id->ID.Name.NumChars );
+            str[id->ID.Name.NumChars] = '\0';
+        }
+    } else {
+        str = static_cast<char *>( WRESALLOC( maxdigits + 1 ) );
+        if( str == nullptr ) {
+            WRES_ERROR( WRS_MALLOC_FAILED );
+        } else {
+            *u32tostr( str, id->ID.Num ) = '\0';
+        }
+    }
+    return( str );
+}
+
+} // namespace
 
 char *WResIDToStr( const WResID *id )
 /************************************
  * return the value in an ID if it is a string, NULL otherwise
  */
 {
-    char            *str;
-
-    if( id->IsName ) {
-        /* alloc space for the string and a \0 char at the end */
-        str = (char *)(WRESALLOC( id->ID.Name.NumChars + 1 ));
-        if( str == NULL ) {
-            WRES_ERROR( WRS_MALLOC_FAILED );
-        } else {
-            /* copy the string */
-            memcpy( str, id->ID.Name.Name, id->ID.Name.NumChars );
-            str[id->ID.Name.NumChars] = '\0';
-        }
-    } else {
-        str = (char *)(WRESALLOC( UINT16_MAXDIGITS + 1 ));
-        if( str == NULL ) {
-            WRES_ERROR( WRS_MALLOC_FAILED );
-        } else {
-            *u32tostr( str, id->ID.Num ) = '\0';
-        }
-    }
-
-    return( str );
-} /* WResIDToStr */
-
+    return( idToStr( id, UINT16_MAXDIGITS ) );
+}
 
 char *WResHelpIDToStr( const WResHelpID *help_id )
 /*************************************************
  * return the value in a Help ID if it is a string, NULL otherwise
  */
 {
-    char            *str;
-
-    if( help_id->IsName ) {
-        /* alloc space for the string and a \0 char at the end */
-        str = (char *)(WRESALLOC( help_id->ID.Name.NumChars + 1 ));
-        if( str == NULL ) {
-            WRES_ERROR( WRS_MALLOC_FAILED );
-        } else {
-            /* copy the string */
-            memcpy( str, help_id->ID.Name.Name, help_id->ID.Name.NumChars );
-            str[help_id->ID.Name.NumChars] = '\0';
-        }
-    } else {
-        str = (char *)(WRESALLOC( UINT32_MAXDIGITS + 1 ));
-        if( str == NULL ) {
-            WRES_ERROR( WRS_MALLOC_FAILED );
-        } else {
-            *u32tostr( str, help_id->ID.Num ) = '\0';
-        }
-    }
-    return( str );
-} /* WResHelpIDToStr */
+    return( idToStr( help_id, UINT32_MAXDIGITS ) );
+}

@@ -30,7 +30,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "util.h"
 
@@ -41,5 +40,5 @@ void WResInitIDFromNum( long num, WResID *id )
  */
 {
     id->IsName = false;
-    id->ID.Num = num;
+    id->ID.Num = static_cast<uint_16>( num );
 }

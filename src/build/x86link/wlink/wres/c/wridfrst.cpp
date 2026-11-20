@@ -30,8 +30,7 @@
 *
 ****************************************************************************/
 
-
-#include <string.h>
+#include <cstring>
 #include "layer0.h"
 #include "util.h"
 #include "reserr.h"
@@ -43,25 +42,24 @@ WResID *WResIDFromStr( const char *str )
  * allocate an ID and fill it in
  */
 {
-    WResID  *id;
-    size_t  len;
+    const size_t    len = std::strlen( str );
 
-    len = strlen( str );
     /* check the size of the string:  can it fit in two bytes? */
 #if !defined( _M_I86 )
     if( len > 0xffff ) {
         WRES_ERROR( WRS_BAD_PARAMETER );
-        return( NULL );
+        return( nullptr );
     }
 #endif
     /* allocate the new ID */
-    id = (WResID *)(AllocWResIDName( offsetof( WResID, ID.Name ), len ));
-    if( id == NULL ) {
+    auto *id = static_cast<WResID *>( AllocWResIDName( offsetof( WResID, ID.Name ), len ) );
+
+    if( id == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
     } else {
         id->IsName = true;
-        id->ID.Name.NumChars = len;
-        memcpy( id->ID.Name.Name, str, len );
+        id->ID.Name.NumChars = static_cast<uint_16>( len );
+        std::memcpy( id->ID.Name.Name, str, len );
     }
     return( id );
-} /* WResIDFromStr */
+}

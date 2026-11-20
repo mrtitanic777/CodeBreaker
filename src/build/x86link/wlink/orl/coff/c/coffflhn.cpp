@@ -34,17 +34,16 @@
 #include "cofforl.h"
 #include "orlhash.h"
 
+// A file handle and everything the loader and the scans gave it, all of it the client's memory.
 static void free_coff_file_hnd( coff_file_handle coff_file_hnd )
 {
-    coff_quantity       i;
-    coff_sec_handle     coff_sec_hnd;
+    if( coff_file_hnd->coff_sec_hnd != nullptr ) {
+        for( coff_quantity i = 0; i < coff_file_hnd->num_sections; ++i ) {
+            coff_sec_handle     coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
 
-    if( coff_file_hnd->coff_sec_hnd != NULL ) {
-        for( i = 0; i < coff_file_hnd->num_sections; ++i ) {
-            coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
             if( coff_sec_hnd->type == ORL_SEC_TYPE_RELOCS ) {
-                if( coff_sec_hnd->assoc.reloc.relocs != NULL ) {
-                    _ClientFree( coff_file_hnd, (void *)coff_sec_hnd->assoc.reloc.relocs );
+                if( coff_sec_hnd->assoc.reloc.relocs != nullptr ) {
+                    _ClientFree( coff_file_hnd, const_cast<ORL_STRUCT( orl_reloc ) *>( coff_sec_hnd->assoc.reloc.relocs ) );
                 }
             }
             if( coff_sec_hnd->name_alloced ) {
@@ -55,8 +54,8 @@ static void free_coff_file_hnd( coff_file_handle coff_file_hnd )
         _ClientFree( coff_file_hnd, coff_file_hnd->coff_sec_hnd );
     }
     _ClientFree( coff_file_hnd, coff_file_hnd->orig_sec_hnd );
-    if( coff_file_hnd->symbol_handles != NULL ) {
-        for( i = 0; i < coff_file_hnd->num_symbols; ++i ) {
+    if( coff_file_hnd->symbol_handles != nullptr ) {
+        for( coff_quantity i = 0; i < coff_file_hnd->num_symbols; ++i ) {
             if( coff_file_hnd->symbol_handles[i].name_alloced ) {
                 _ClientFree( coff_file_hnd, coff_file_hnd->symbol_handles[i].name );
             }
@@ -64,7 +63,7 @@ static void free_coff_file_hnd( coff_file_handle coff_file_hnd )
         }
         _ClientFree( coff_file_hnd, coff_file_hnd->symbol_handles );
     }
-    if( coff_file_hnd->sec_name_hash_table != NULL ) {
+    if( coff_file_hnd->sec_name_hash_table != nullptr ) {
         ORLHashTableFree( coff_file_hnd->sec_name_hash_table );
     }
     convert_import_library_fini( coff_file_hnd );
@@ -80,23 +79,19 @@ void CoffAddFileLinks( coff_handle coff_hnd, coff_file_handle coff_file_hnd )
 
 orl_return CoffRemoveFileLinks( coff_file_handle coff_file_hnd )
 {
-    coff_handle                         coff_hnd;
-    coff_file_handle                    current;
-
-    coff_hnd = coff_file_hnd->coff_hnd;
+    coff_handle         coff_hnd = coff_file_hnd->coff_hnd;
 
     if( coff_hnd->first_file_hnd == coff_file_hnd ) {
         coff_hnd->first_file_hnd = coff_file_hnd->next;
         free_coff_file_hnd( coff_file_hnd );
-        return( ORL_OKAY );
-    } else {
-        for( current = coff_hnd->first_file_hnd; current->next != NULL; current = current->next ) {
-            if( current->next == coff_file_hnd ) {
-                current->next = coff_file_hnd->next;
-                free_coff_file_hnd( coff_file_hnd );
-                return( ORL_OKAY );
-            }
+        return ORL_OKAY;
+    }
+    for( coff_file_handle current = coff_hnd->first_file_hnd; current->next != nullptr; current = current->next ) {
+        if( current->next == coff_file_hnd ) {
+            current->next = coff_file_hnd->next;
+            free_coff_file_hnd( coff_file_hnd );
+            return ORL_OKAY;
         }
     }
-    return( ORL_ERROR );
+    return ORL_ERROR;
 }

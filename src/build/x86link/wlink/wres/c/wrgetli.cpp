@@ -37,19 +37,11 @@
 WResLangInfo *WResGetLangInfo( WResDirWindow wind )
 /*************************************************/
 {
-    if( wind.CurrLang == NULL ) {
-        return( NULL );
-    } else {
-        return( &(wind.CurrLang->Info) );
-    }
+    return( wind.CurrLang == nullptr ? nullptr : &(wind.CurrLang->Info) );
 }
 
 void *WResGetFileInfo( WResDirWindow wind )
 /*****************************************/
 {
-    if( wind.CurrLang == NULL ) {
-        return( NULL );
-    } else {
-        return( wind.CurrLang->fileInfo );
-    }
+    return( wind.CurrLang == nullptr ? nullptr : wind.CurrLang->fileInfo );
 }

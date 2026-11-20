@@ -30,75 +30,90 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "read.h"
 #include "reserr.h"
 #include "wresrtns.h"
 
 
+namespace {
+
+/* the Win32 form of the header: DWORD aligned, 32-bit sizes */
+bool readHeader32( MResResourceHeader *msheader, FILE *fp )
+{
+    bool    error;
+
+    error = ResReadPadDWord( fp );
+    if( !error ) {
+        msheader->Size = ResReadUint32( &error, fp );
+    }
+    if( !error ) {
+        msheader->HdrSize = ResReadUint32( &error, fp );
+    }
+    if( !error ) {
+        msheader->Type = ResRead32NameOrOrdinal( fp );
+        error = ( msheader->Type == nullptr );
+    }
+    if( !error ) {
+        msheader->Name = ResRead32NameOrOrdinal( fp );
+        error = ( msheader->Name == nullptr );
+    }
+    if( !error ) {
+        error = ResReadPadDWord( fp );
+    }
+    if( !error ) {
+        msheader->DataVersion = ResReadUint32( &error, fp );
+    }
+    if( !error ) {
+        msheader->MemoryFlags = ResReadUint16( &error, fp );
+    }
+    if( !error ) {
+        msheader->LanguageId = ResReadUint16( &error, fp );
+    }
+    if( !error ) {
+        msheader->Version = ResReadUint32( &error, fp );
+    }
+    if( !error ) {
+        msheader->Characteristics = ResReadUint32( &error, fp );
+    }
+    return( error );
+}
+
+/* the Win16 form of the header */
+bool readHeader16( MResResourceHeader *msheader, FILE *fp )
+{
+    bool    error;
+
+    msheader->Type = ResReadNameOrOrdinal( fp );
+    error = ( msheader->Type == nullptr );
+    if( !error ) {
+        msheader->Name = ResReadNameOrOrdinal( fp );
+        error = ( msheader->Name == nullptr );
+    }
+    if( !error ) {
+        msheader->MemoryFlags = ResReadUint16( &error, fp );
+    }
+    if( !error ) {
+        msheader->Size = ResReadUint32( &error, fp );
+    }
+    return( error );
+}
+
+} // namespace
+
 MResResourceHeader *MResReadResourceHeader( FILE *fp, bool iswin32 )
 /******************************************************************/
 {
-    MResResourceHeader      *msheader;
-    bool                    error;
+    auto *msheader = static_cast<MResResourceHeader *>( WRESALLOC( sizeof( MResResourceHeader ) ) );
 
-    msheader = (MResResourceHeader *)(WRESALLOC( sizeof( MResResourceHeader ) ));
-    if( msheader == NULL ) {
+    if( msheader == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
-        return( NULL );
+        return( nullptr );
     }
-    if( iswin32 ) {
-        error = ResReadPadDWord( fp );
-        if( !error ) {
-            msheader->Size = ResReadUint32( &error, fp );
-        }
-        if( !error ) {
-            msheader->HdrSize = ResReadUint32( &error, fp );
-        }
-        if( !error ) {
-            msheader->Type = ResRead32NameOrOrdinal( fp );
-            error = ( msheader->Type == NULL );
-        }
-        if( !error ) {
-            msheader->Name = ResRead32NameOrOrdinal( fp );
-            error = ( msheader->Name == NULL );
-        }
-        if( !error ) {
-            error = ResReadPadDWord( fp );
-        }
-        if( !error ) {
-            msheader->DataVersion = ResReadUint32( &error, fp );
-        }
-        if( !error ) {
-            msheader->MemoryFlags = ResReadUint16( &error, fp );
-        }
-        if( !error ) {
-            msheader->LanguageId = ResReadUint16( &error, fp );
-        }
-        if( !error ) {
-            msheader->Version = ResReadUint32( &error, fp );
-        }
-        if( !error ) {
-            msheader->Characteristics = ResReadUint32( &error, fp );
-        }
-    } else {
-        msheader->Type = ResReadNameOrOrdinal( fp );
-        error = ( msheader->Type == NULL );
-        if( !error ) {
-            msheader->Name = ResReadNameOrOrdinal( fp );
-            error = ( msheader->Name == NULL );
-        }
-        if( !error ) {
-            msheader->MemoryFlags = ResReadUint16( &error, fp );
-        }
-        if( !error ) {
-            msheader->Size = ResReadUint32( &error, fp );
-        }
-    }
+    const bool error = iswin32 ? readHeader32( msheader, fp ) : readHeader16( msheader, fp );
     if( error ) {
         WRESFREE( msheader );
-        msheader = NULL;
+        msheader = nullptr;
     }
     return( msheader );
 }

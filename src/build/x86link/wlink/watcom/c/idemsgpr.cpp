@@ -28,9 +28,8 @@
 *
 ****************************************************************************/
 
-
-#include <assert.h>
-#include <string.h>
+#include <algorithm>
+#include <cstring>
 
 #include "idedll.h"
 
@@ -43,10 +42,10 @@ void IdeMsgInit                 // INITIALIZE MSG STRUCTURE
     info->severity = severity;
     info->msg = msg;
     info->flags = 0;
-    info->helpfile = 0;
+    info->helpfile = nullptr;
     info->helpid = 0;
-    info->src_symbol = 0;
-    info->src_file = 0;
+    info->src_symbol = nullptr;
+    info->src_file = nullptr;
     info->src_line = 0;
     info->src_col = 0;
     info->msg_no = 0;
@@ -74,13 +73,11 @@ void IdeMsgSetMsgGroup          // SET MESSAGE GROUP
     ( IDEMsgInfo* info          // - message information
     , char const *group )       // - group name
 {
-    size_t len = strlen( group );
-    if( len > sizeof( info->msg_group ) - 1 ) {
-        len = sizeof( info->msg_group ) - 1;
-    }
+    // truncated to the field, as before; only the terminator is written after the copied part
+    const std::size_t len = std::min( std::strlen( group ), sizeof( info->msg_group ) - 1 );
     info->msg_group[ len ] = '\0';
     info->flags |= IDE_INFO_HAS_MSG_GRP;
-    memcpy( info->msg_group, group, len );
+    std::memcpy( info->msg_group, group, len );
 }
 
 

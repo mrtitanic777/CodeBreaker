@@ -30,12 +30,12 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
+
 
 bool WResIsEmpty( WResDir dir )
 /*****************************/
 {
-    return( dir->Head == NULL && dir->Tail == NULL );
+    return( dir->Head == nullptr && dir->Tail == nullptr );
 }

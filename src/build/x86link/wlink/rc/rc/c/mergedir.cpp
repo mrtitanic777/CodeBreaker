@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 
-#include <stdio.h>
+#include <cstdio>
 #include "bool.h"
 #include "watcom.h"
 #include "wres.h"
@@ -40,23 +40,21 @@
 
 
 #if !defined( INSIDE_WLINK ) || defined( _OS2 )
-bool MergeDirectory( ResFileInfo *resfiles, WResMergeError **errs )
-/******************************************************************
+/*
  * merge the directories of all the res files into one large directory
  * stored on the first resfileinfo node
  */
+bool MergeDirectory( ResFileInfo *resfiles, WResMergeError **errs )
 {
-    ResFileInfo     *cur;
-
-    if( errs != NULL )
-        *errs = NULL;
-    if( resfiles == NULL )
-        return( false );
-    for( cur = resfiles->next; cur != NULL; cur = cur->next ) {
+    if( errs != nullptr )
+        *errs = nullptr;
+    if( resfiles == nullptr )
+        return false;
+    for( ResFileInfo *cur = resfiles->next; cur != nullptr; cur = cur->next ) {
         if( WResMergeDirs( resfiles->Dir, cur->Dir, errs ) ) {
-            return( true );
+            return true;
         }
     }
-    return( false );
+    return false;
 }
 #endif

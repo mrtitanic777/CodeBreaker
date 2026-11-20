@@ -30,12 +30,29 @@
 *
 ****************************************************************************/
 
-
 #include <stddef.h>
 #include <ctype.h>
 #include "bool.h"
 #include "wstrcmp.h"
 
+
+namespace {
+
+/* a character folded to lower case when it is an ASCII letter */
+struct FoldedChar {
+    char    ch;
+    bool    alpha;
+};
+
+FoldedChar foldChar( char ch )
+{
+    if( ch >= 'A' && ch <= 'Z' ) {
+        return { static_cast<char>( ch + ( 'a' - 'A' ) ), true };
+    }
+    return { ch, ch >= 'a' && ch <= 'z' };
+}
+
+} // namespace
 
 int WresStrnicmp( const void *p1, const void *p2, size_t len )
 /*************************************************************
@@ -45,42 +62,24 @@ int WresStrnicmp( const void *p1, const void *p2, size_t len )
  * original values are used for comparision
  */
 {
-    char        ch1;
-    char        ch2;
-    size_t      i;
-    bool        a1;
-    bool        a2;
+    const char  *s1 = static_cast<const char *>( p1 );
+    const char  *s2 = static_cast<const char *>( p2 );
 
-    for( i = 0; i < len; i++ ) {
-        ch1 = ((const char *)p1)[i];
-        if( ch1 >= 'A' && ch1 <= 'Z' ) {
-            a1 = true;
-            ch1 += 'a' - 'A';
-        } else if( ch1 >= 'a' && ch1 <= 'z' ) {
-            a1 = true;
-        } else {
-            a1 = false;
-        }
-        ch2 = ((const char *)p2)[i];
-        if( ch2 >= 'A' && ch2 <= 'Z' ) {
-            a2 = true;
-            ch2 += 'a' - 'A';
-        } else if( ch2 >= 'a' && ch2 <= 'z' ) {
-            a2 = true;
-        } else {
-            a2 = false;
-        }
-        if( ch1 != ch2 ) {
-            if( a1 != a2 ) {
-                if( a1 ) {
-                    ch1 = ((const char *)p1)[i];
+    for( size_t i = 0; i < len; i++ ) {
+        FoldedChar  c1 = foldChar( s1[i] );
+        FoldedChar  c2 = foldChar( s2[i] );
+
+        if( c1.ch != c2.ch ) {
+            if( c1.alpha != c2.alpha ) {
+                if( c1.alpha ) {
+                    c1.ch = s1[i];
                 } else {
-                    ch2 = ((const char *)p2)[i];
+                    c2.ch = s2[i];
                 }
             }
-            return( ( ch1 < ch2 ) ? -1 : 1 );
+            return( ( c1.ch < c2.ch ) ? -1 : 1 );
         }
-        if( ch1 == 0 ) {
+        if( c1.ch == 0 ) {
             break;      /* equal to 0, end of string */
         }
     }

@@ -28,151 +28,105 @@
 *
 ****************************************************************************/
 
-
-#include <assert.h>
-#include <string.h>
-#include <stdio.h>
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <string_view>
 
 #include "idedll.h"
+#include "run_state.hpp"
 
-static char contextual_file[ 144 ];     // name of contextual file
+namespace {
 
-#define TEXT_SEVERITY_WARNING   "Warning!"
-#define TEXT_SEVERITY_ERROR     "Error!"
-#define TEXT_SEVERITY_NOTE      "Note!"
-#define TEXT_SEVERITY_NOTE_MSG  ""
-#define TEXT_SEVERITY_BANNER    ""
-#define TEXT_SEVERITY_DEBUG     "Debug!"
-
-static char const * const text_severity[] =
-{
-#   define _IdeMsgSeverity(a) TEXT_SEVERITY_ ## a
-    __IdeMsgSeverity
-#   undef _IdeMsgSeverity
+// What the formatter keeps for a run: the name of the contextual file (only cleared by IdeMsgStartDll now;
+// the code that set it is switched off).
+struct FileState {
+    std::array<char, 144> contextual_file{};
 };
 
-#define TEXT_MSG_NO_WARNING   "W"
-#define TEXT_MSG_NO_ERROR     "E"
-#define TEXT_MSG_NO_NOTE      "N"
-#define TEXT_MSG_NO_NOTE_MSG  "N"
-#define TEXT_MSG_NO_BANNER    "B"
-#define TEXT_MSG_NO_DEBUG     "D"
-
-static char const * const text_msg_no[] =
-{
-#   define _IdeMsgSeverity(a) TEXT_MSG_NO_ ## a
-    __IdeMsgSeverity
-#   undef _IdeMsgSeverity
+// Indexed by IDEMsgSeverity, in the order of __IdeMsgSeverity: WARNING, ERROR, NOTE, BANNER, DEBUG, NOTE_MSG.
+constexpr std::array<const char *, 6> text_severity = {
+    "Warning!", "Error!", "Note!", "", "Debug!", ""
 };
 
-#define _ARRAY_SIZE( a ) ( sizeof(a) / sizeof( (a)[0] ) )
+constexpr std::array<const char *, 6> text_msg_no = {
+    "W", "E", "N", "B", "D", "N"
+};
 
+static_assert( text_severity.size() == text_msg_no.size() );
+static_assert( IDEMSGSEV_WARNING == 0 && IDEMSGSEV_NOTE_MSG == 5, "severity tables follow __IdeMsgSeverity" );
 
-typedef struct {                // CONSTRUCTION ELEMENT
-    char* buffer;               // - buffer
-    size_t bsize;               // - buffer size
-    size_t used;                // - amount used
-} CONSTRUCTION;
+// The message under construction, in the caller's buffer.
+class Construction {
+public:
+    Construction( char *buffer, std::size_t bsize ) : buffer_( buffer ), bsize_( bsize ) {}
 
-
-static void concatText          // CONCATENATE TEXT
-    ( CONSTRUCTION* ct          // - construction info
-    , char const *text )        // - text to be appended
-{
-    size_t size = strlen( text ) + 1;
-    size_t left = ct->bsize - ct->used;
-    if( size > left ) {
-        size = left;
-    }
-    if( size >= 1 ) {
-        char* tgt = &ct->buffer[ ct->used ];
-        -- size;
-        tgt[ size ] = '\0';
-        if( size != 0 ) {
-            ct->used += size;
-            memcpy( tgt, text, size );
+    void text( std::string_view s )
+    {
+        const std::size_t left = bsize_ - used_;
+        if( left == 0 )
+            return;
+        const std::size_t n = std::min( s.size(), left - 1 );
+        char *tgt = &buffer_[used_];
+        tgt[n] = '\0';
+        if( n != 0 ) {
+            used_ += n;
+            std::memcpy( tgt, s.data(), n );
         }
     }
-}
 
-
-static void concatBlank         // CONCATENATE BLANK, IF NOT AT START
-    ( CONSTRUCTION* ct )        // - construction info
-{
-    if( 0 != ct->used ) {
-        concatText( ct, " " );
+    // a blank, if not at the start
+    void blank()
+    {
+        if( used_ != 0 )
+            text( " " );
     }
-}
 
+    // the number as 3 digits at least
+    void number3( unsigned number )
+    {
+        const std::string s = std::to_string( number + ( number > 999 ? 10000 : 1000 ) );
+        text( std::string_view( s ).substr( 1 ) );
+    }
 
-static void concat3DigitNumber  // CONCATENATE 3 DIGIT NUMBER
-    ( CONSTRUCTION* ct          // - construction info
-    , unsigned number )         // - the number
-{
-    char buf[32];
+    void number( unsigned n )
+    {
+        text( std::to_string( n ) );
+    }
 
-    sprintf( buf, "%u", number + ( number > 999 ? 10000 : 1000 ) );
-    concatText( ct, buf + 1 );
-}
+    void severity( const IDEMsgInfo *info )
+    {
+        blank();
+        text( text_severity[info->severity] );
+    }
 
-
-static void concatNumber        // CONCATENATE NUMBER
-    ( CONSTRUCTION* ct          // - construction info
-    , unsigned number )         // - the number
-{
-    char buf[32];
-
-    sprintf( buf, "%u", number );
-    concatText( ct, buf );
-}
-
-
-static void concatSeverity      // CONCATENATE SEVERITY MESSAGE
-    ( CONSTRUCTION* ct          // - construction info
-    , IDEMsgInfo const * info ) // - message information
-{
-    concatBlank( ct );
-    concatText( ct, text_severity[ info->severity ] );
-}
-
-
-static void concatMsgNumber     // CONCATENATE MESSAGE NUMBER
-    ( CONSTRUCTION* ct          // - construction info
-    , IDEMsgInfo const * info ) // - message information
-{
-    if( IDE_HAS_MSG_NUM( info ) ) {
-        concatBlank( ct );
-        if( IDE_HAS_MSG_GRP( info ) ) {
-            if( '\0' == info->msg_group[0] ) {
-                concatText( ct, text_msg_no[ info->severity ] );
-                concat3DigitNumber( ct, info->msg_no );
+    void msg_number( const IDEMsgInfo *info )
+    {
+        if( IDE_HAS_MSG_NUM( info ) ) {
+            blank();
+            if( IDE_HAS_MSG_GRP( info ) && info->msg_group[0] != '\0' ) {
+                text( info->msg_group );
+                text( "-" );
+                number3( info->msg_no & 255 );
             } else {
-                concatText( ct, info->msg_group );
-                concatText( ct, "-" );
-                concat3DigitNumber( ct, info->msg_no & 255 );
+                text( text_msg_no[info->severity] );
+                number3( info->msg_no );
             }
-        } else {
-            concatText( ct, text_msg_no[ info->severity ] );
-            concat3DigitNumber( ct, info->msg_no );
+            text( ":" );
         }
-        concatText( ct, ":" );
     }
-}
 
+private:
+    char        *buffer_;
+    std::size_t bsize_;
+    std::size_t used_ = 0;
+};
 
-#if 0
-static void displayContextMsg   // DISPLAY A CONTEXT MESSAGE
-    ( IDECBHdl handle           // - handle for requestor
-    , IDEMsgInfoFn displayer    // - display function
-    , CONSTRUCTION* ct )        // - construction information
-{
-    IDEMsgInfo info;            // - info passed to display routine
-
-    IdeMsgInit( &info, IDEMSGSEV_NOTE_MSG, ct->buffer );
-    displayer( handle, &info );
-    ct->used = 0;
-}
-#endif
+} // namespace
 
 
 // The "displayer" parameter is no longer required
@@ -184,60 +138,33 @@ void IdeMsgFormat               // FORMAT A MESSAGE
     , size_t bsize              // - buffer size
     , IDEMsgInfoFn displayer )  // - display function
 {
-    CONSTRUCTION ct;            // - construction info
-
     /* unused parameters */ (void)handle; (void)displayer;
-    // ********** displayer CAN BE REMOVED **********
 
-    ct.buffer = buffer;
-    ct.bsize = bsize;
-    ct.used = 0;
-    assert( info != NULL );
-    assert( buffer != NULL );
+    Construction ct( buffer, bsize );
+    assert( info != nullptr );
+    assert( buffer != nullptr );
     assert( bsize != 0 );
-    assert( info->severity < _ARRAY_SIZE( text_severity ) );
+    assert( info->severity < text_severity.size() );
     if( IDE_IS_READABLE( info ) ) {
-#if 0
-
-    // It is the responsibility of the processor to put out messages:
-    //      File: current file
-    //      Included from: file(line)
-    //          ...
-    //      Included from: file(line)
-    // before a group of messages from the current file (and nesting).
-
-        if( IDE_HAS_SRC_FILE( info ) ) {
-            if( 0 != strncmp( info->src_file
-                            , contextual_file
-                            , sizeof( contextual_file ) - 1 )
-              ) {
-                concatText( &ct, "File: " );
-                concatText( &ct, info->src_file );
-                displayContextMsg( handle, displayer, &ct );
-                strncpy( contextual_file
-                       , info->src_file
-                       , sizeof( contextual_file ) - 1 );
-            }
-        }
-#endif
+        // It is the responsibility of the processor to put out the file and include-chain messages.
         switch( info->severity ) {
           case IDEMSGSEV_ERROR :
           case IDEMSGSEV_WARNING :
           case IDEMSGSEV_DEBUG :
             if( IDE_HAS_SRC_LINE( info ) ) {
-                concatText( &ct, "(" );
-                concatNumber( &ct, info->src_line );
+                ct.text( "(" );
+                ct.number( static_cast<unsigned>( info->src_line ) );
                 if( IDE_HAS_SRC_COL( info ) ) {
-                    concatText( &ct, "," );
-                    concatNumber( &ct, info->src_col );
+                    ct.text( "," );
+                    ct.number( static_cast<unsigned>( info->src_col ) );
                 }
-                concatText( &ct, "):" );
+                ct.text( "):" );
             }
-            concatSeverity( &ct, info );
-            concatMsgNumber( &ct, info );
+            ct.severity( info );
+            ct.msg_number( info );
             break;
           case IDEMSGSEV_NOTE :
-            concatText( &ct, " " );
+            ct.text( " " );
             break;
         }
     } else {
@@ -247,30 +174,30 @@ void IdeMsgFormat               // FORMAT A MESSAGE
           case IDEMSGSEV_NOTE :
           case IDEMSGSEV_DEBUG :
             if( IDE_HAS_SRC_FILE( info ) ) {
-                concatText( &ct, info->src_file );
+                ct.text( info->src_file );
                 if( IDE_HAS_SRC_LINE( info ) ) {
-                    concatText( &ct, "(" );
-                    concatNumber( &ct, info->src_line );
-                    concatText( &ct, "):" );
+                    ct.text( "(" );
+                    ct.number( static_cast<unsigned>( info->src_line ) );
+                    ct.text( "):" );
                 }
             }
-            concatSeverity( &ct, info );
-            concatMsgNumber( &ct, info );
+            ct.severity( info );
+            ct.msg_number( info );
             if( IDE_HAS_SRC_COL( info ) ) {
-                concatText( &ct, " col(" );
-                concatNumber( &ct, info->src_col );
-                concatText( &ct, ")" );
+                ct.text( " col(" );
+                ct.number( static_cast<unsigned>( info->src_col ) );
+                ct.text( ")" );
             }
             break;
         }
     }
-    concatBlank( &ct );
-    concatText( &ct, info->msg );
+    ct.blank();
+    ct.text( info->msg );
 }
 
 
 void IdeMsgStartDll             // START OF FORMATING FOR A DLL (EACH TIME)
     ( void )
 {
-    contextual_file[0] = '\0';
+    cb_wlink::RunState::part<FileState>().contextual_file[0] = '\0';
 }

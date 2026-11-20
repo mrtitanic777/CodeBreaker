@@ -30,24 +30,20 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "util.h"
+
 
 int WResIDCmp( const WResID *id1, const WResID *id2 )
 /***************************************************/
 {
-    bool    same;
-
     if( id1->IsName && id2->IsName ) {
         /* they are both names */
-        same = ( WResIDNameCmp( &(id1->ID.Name), &(id2->ID.Name) ) == 0 );
-    } else if( !id1->IsName && !id2->IsName ) {
-        same = ( id1->ID.Num == id2->ID.Num );
-    } else {
-        /* one is a name, the other is a number:  they are not the same */
-        same = false;
+        return( WResIDNameCmp( &(id1->ID.Name), &(id2->ID.Name) ) == 0 );
     }
-
-    return( same );
+    if( !id1->IsName && !id2->IsName ) {
+        return( id1->ID.Num == id2->ID.Num );
+    }
+    /* one is a name, the other is a number:  they are not the same */
+    return( false );
 }

@@ -10,45 +10,47 @@
 *
 ****************************************************************************/
 
-
-#include <stddef.h>
+#include <cstddef>
 #include "omfhash.h"
 
+namespace {
 
-#define _rotl( a, b )   ( ( a << b ) | ( a >> ( 16 - b ) ) )
-#define _rotr( a, b )   ( ( a << ( 16 - b ) ) | ( a  >> b ) )
+// 16-bit rotates; the original macros worked in int and every use truncated the result to 16 bits.
+constexpr unsigned short rotl16( unsigned short a, unsigned b )
+{
+    return static_cast<unsigned short>( ( a << b ) | ( a >> ( 16 - b ) ) );
+}
+
+constexpr unsigned short rotr16( unsigned short a, unsigned b )
+{
+    return static_cast<unsigned short>( ( a << ( 16 - b ) ) | ( a >> b ) );
+}
+
+} // namespace
 
 void omflib_hash( const char *name, size_t len, hash_entry *hash, unsigned num_blocks )
 {
-    const unsigned char *leftptr;
-    const unsigned char *rightptr;
-    unsigned short      curr;
-    unsigned short      block;
-    unsigned short      bucket;
-    unsigned short      blockd;
-    unsigned short      bucketd;
-    unsigned short      count;
+    unsigned short      count = static_cast<unsigned short>( len );
+    const unsigned char *leftptr = reinterpret_cast<const unsigned char *>( name );
+    const unsigned char *rightptr = leftptr + count;
+    unsigned short      block = count | 0x20;
+    unsigned short      blockd = 0;
+    unsigned short      bucket = 0;
+    unsigned short      bucketd = count | 0x20;
 
-    count = (unsigned short)len;
-    leftptr = (const unsigned char *)name;
-    rightptr = leftptr + count;
-    block = count | 0x20;
-    blockd = 0;
-    bucket = 0;
-    bucketd = count | 0x20;
     for( ;; ) {
         --rightptr;
         /* zap to lower case (sort of) */
-        curr = *rightptr | 0x20;
-        blockd = curr ^ _rotl( blockd, 2 );
-        bucket = curr ^ _rotr( bucket, 2 );
+        unsigned short curr = *rightptr | 0x20;
+        blockd = curr ^ rotl16( blockd, 2 );
+        bucket = curr ^ rotr16( bucket, 2 );
         if( --count == 0 ) {
             break;
         }
         curr = *leftptr | 0x20;
         ++leftptr;
-        block = curr ^ _rotl( block, 2 );
-        bucketd = curr ^ _rotr( bucketd, 2 );
+        block = curr ^ rotl16( block, 2 );
+        bucketd = curr ^ rotr16( bucketd, 2 );
     }
     hash->bucket = bucket % NUM_BUCKETS;
     bucketd %= NUM_BUCKETS;

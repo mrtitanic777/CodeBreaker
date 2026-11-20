@@ -30,56 +30,53 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
 #include "layer1.h"
 #include "util.h"
 
+
 WResTypeNode *__FindType( const WResID *type_id, WResDir dir )
 {
-    WResTypeNode        *typenode;
+    WResTypeNode    *typenode;
 
-    for( typenode = dir->Head; typenode != NULL; typenode = typenode->Next ) {
+    for( typenode = dir->Head; typenode != nullptr; typenode = typenode->Next ) {
         if( WResIDCmp( type_id, &(typenode->Info.TypeName) ) ) {
             break;
         }
     }
-
     return( typenode );
 }
 
 WResResNode *__FindRes( const WResID *res_id, WResTypeNode *typenode )
 {
-    WResResNode         *resnode;
+    WResResNode     *resnode;
 
-    for( resnode = typenode->Head; resnode != NULL; resnode = resnode->Next ) {
+    for( resnode = typenode->Head; resnode != nullptr; resnode = resnode->Next ) {
         if( WResIDCmp( res_id, &( resnode->Info.ResName ) ) ) {
             break;
         }
     }
-
     return( resnode );
 }
 
 WResLangNode *__FindLang( const WResLangType *lang, WResResNode *resnode )
 /************************************************************************/
 {
-    WResLangNode        *langnode;
-    WResLangType        deflang;
+    WResLangType    deflang;
 
-    if( lang == NULL ) {
+    if( lang == nullptr ) {
         deflang.lang = DEF_LANG;
         deflang.sublang = DEF_SUBLANG;
         lang = &deflang;
     }
-    langnode = resnode->Head;
-    while( langnode != NULL ) {
+    for( WResLangNode *langnode = resnode->Head; langnode != nullptr; langnode = langnode->Next ) {
         if( langnode->Info.lang.lang == lang->lang
-            && langnode->Info.lang.sublang == lang->sublang ) break;
-        langnode = langnode->Next;
+          && langnode->Info.lang.sublang == lang->sublang ) {
+            return( langnode );
+        }
     }
-    return( langnode );
+    return( nullptr );
 }
 
 /*
@@ -93,22 +90,21 @@ WResDirWindow WResFindResource( const WResID *type_id, const WResID *res_id,
     WResDirWindow   wind;
 
     wind.CurrType = __FindType( type_id, dir );
-    if( wind.CurrType != NULL ) {
+    if( wind.CurrType != nullptr ) {
         wind.CurrRes = __FindRes( res_id, wind.CurrType );
-        if( wind.CurrRes != NULL ) {
-            if( lang == NULL ) {
+        if( wind.CurrRes != nullptr ) {
+            if( lang == nullptr ) {
                 wind.CurrLang = wind.CurrRes->Head;
             } else {
                 wind.CurrLang = __FindLang( lang, wind.CurrRes );
             }
         } else {
-            wind.CurrLang = NULL;
-            wind.CurrType = NULL;
+            wind.CurrLang = nullptr;
+            wind.CurrType = nullptr;
         }
     } else {
-        wind.CurrRes = NULL;
-        wind.CurrLang = NULL;
+        wind.CurrRes = nullptr;
+        wind.CurrLang = nullptr;
     }
-
     return( wind );
 }

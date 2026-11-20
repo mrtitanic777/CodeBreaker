@@ -30,8 +30,7 @@
 *
 ****************************************************************************/
 
-
-#include <string.h>
+#include <cstring>
 #include "layer0.h"
 #include "read.h"
 #include "reserr.h"
@@ -42,18 +41,13 @@
 void *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver )
 /*********************************************************/
 {
-    WResID          *id;
-    uint_8          isname;
-    char            *ptr;
-    bool            error;
-    size_t          numchars;
-    size_t          numread;
+    bool        error = false;
+    size_t      numchars = 0;
+    uint_8      isname = ResReadUint8( &error, fp );
+    char        *ptr;
 
-    numchars = 0;
-    error = false;
-    isname = ResReadUint8( &error, fp );
     if( error )
-        return( NULL );
+        return( nullptr );
     if( isname ) {
         isname = true;  /* normalize value to boolean type */
         if( ver < 3 ) {
@@ -62,20 +56,23 @@ void *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver )
             numchars = ResReadUint16( &error, fp );
         }
         if( error )
-            return( NULL );
-        ptr = (char *)(AllocWResIDName( offs + offsetof( WResID, ID.Name ), numchars ));
+            return( nullptr );
+        ptr = static_cast<char *>( AllocWResIDName( offs + offsetof( WResID, ID.Name ), numchars ) );
     } else {
-        ptr = (char *)(AllocWResIDNum( offs + offsetof( WResID, ID.Num ) ));
+        ptr = static_cast<char *>( AllocWResIDNum( offs + offsetof( WResID, ID.Num ) ) );
     }
-    if( ptr == NULL ) {
+    if( ptr == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
-        return( NULL );
+        return( nullptr );
     }
-    id = (WResID *)( ptr + offs );
+    auto *id = reinterpret_cast<WResID *>( ptr + offs );
+
     id->IsName = isname;
     if( isname ) {
-        id->ID.Name.NumChars = numchars;
-        if( (numread = WRESREAD( fp, id->ID.Name.Name, numchars )) != numchars ) {
+        id->ID.Name.NumChars = static_cast<uint_16>( numchars );
+        const size_t numread = WRESREAD( fp, id->ID.Name.Name, numchars );
+
+        if( numread != numchars ) {
             error = WRES_ERROR( WRESIOERR( fp, numread ) ? WRS_READ_FAILED : WRS_READ_INCOMPLETE );
         }
     } else {
@@ -83,7 +80,7 @@ void *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver )
     }
     if( error ) {
         WRESFREE( ptr );
-        return( NULL );
+        return( nullptr );
     }
     return( ptr );
 }
@@ -91,5 +88,5 @@ void *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver )
 WResID *WResReadWResID( FILE *fp )
 /********************************/
 {
-    return(WResID *)(( ResReadWResID( fp, 0, WRESVERSION ) ));
+    return( static_cast<WResID *>( ResReadWResID( fp, 0, WRESVERSION ) ) );
 }

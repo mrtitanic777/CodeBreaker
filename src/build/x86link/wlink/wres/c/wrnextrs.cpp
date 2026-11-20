@@ -30,7 +30,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
 
@@ -41,16 +40,16 @@ WResDirWindow WResNextResource( WResDirWindow wind, WResDir dir )
     /* unused parameters */ (void)dir;
 
     if( !WResIsEmptyWindow( wind ) ) {
-        if( wind.CurrLang->Next != NULL ) {
+        if( wind.CurrLang->Next != nullptr ) {
             wind.CurrLang = wind.CurrLang->Next;
-        } else if( wind.CurrRes->Next != NULL ) {
+        } else if( wind.CurrRes->Next != nullptr ) {
             wind.CurrRes = wind.CurrRes->Next;
             wind.CurrLang = wind.CurrRes->Head;
         } else {
             wind.CurrType = wind.CurrType->Next;
-            if( wind.CurrType == NULL ) {
-                wind.CurrLang = NULL;
-                wind.CurrRes = NULL;
+            if( wind.CurrType == nullptr ) {
+                wind.CurrLang = nullptr;
+                wind.CurrRes = nullptr;
             } else {
                 wind.CurrRes = wind.CurrType->Head;
                 wind.CurrLang = wind.CurrRes->Head;
@@ -58,4 +57,4 @@ WResDirWindow WResNextResource( WResDirWindow wind, WResDir dir )
         }
     }
     return( wind );
-} /* WResNextResource */
+}

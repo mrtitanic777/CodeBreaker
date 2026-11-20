@@ -30,8 +30,7 @@
 *
 ****************************************************************************/
 
-
-#include <string.h>
+#include <cstring>
 #include "layer0.h"
 #include "varstr.h"
 #include "reserr.h"
@@ -41,31 +40,29 @@
 VarString *VarStringStart( void )
 /*******************************/
 {
-    VarString       *varstr;
+    auto *varstr = static_cast<VarString *>( WRESALLOC( sizeof( VarString ) ) );
 
-    varstr = (VarString *)(WRESALLOC( sizeof( VarString ) ));
-    if( varstr == NULL ) {
+    if( varstr == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
     } else {
         varstr->len = 0;
-        varstr->next = NULL;
+        varstr->next = nullptr;
     }
-
     return( varstr );
-} /* VarStringStart */
+}
 
 void VarStringAddChar( VarString *varstr, char chr )
 /**************************************************/
 {
-    if( varstr != NULL ) {
+    if( varstr != nullptr ) {
         /* skip the parts that are already full */
-        while( varstr->next != NULL ) {
+        while( varstr->next != nullptr ) {
             varstr = varstr->next;
         }
         /* if the current part is full */
         if( varstr->len == VAR_STR_PART_SIZE ) {
             varstr->next = VarStringStart();
-            if( varstr->next == NULL ) {
+            if( varstr->next == nullptr ) {
                 return;
             }
             varstr = varstr->next;
@@ -74,20 +71,17 @@ void VarStringAddChar( VarString *varstr, char chr )
         varstr->partString[varstr->len] = chr;
         varstr->len += 1;
     }
-} /* VarStringAddChar */
+}
 
-static size_t ComputeVarStringLen( VarString *varstr )
+static size_t ComputeVarStringLen( const VarString *varstr )
 {
-    size_t  len;
+    size_t  len = 0;
 
-    len = 0;
-    while( varstr != NULL ) {
+    for( ; varstr != nullptr; varstr = varstr->next ) {
         len += varstr->len;
-        varstr = varstr->next;
     }
-
     return( len );
-} /* ComputeVarStringLen */
+}
 
 char *VarStringEnd( VarString *varstr, size_t *plen )
 /****************************************************
@@ -96,33 +90,28 @@ char *VarStringEnd( VarString *varstr, size_t *plen )
  * returned there
  */
 {
-    VarString       *tmp;
-    char            *str;
-    char            *p;
-    size_t          len;
-
-    len = ComputeVarStringLen( varstr );
+    const size_t    len = ComputeVarStringLen( varstr );
     /* +1 is for the '\0' */
-    str = (char *)(WRESALLOC( len + 1 ));
-    if( str == NULL ) {
+    auto            *str = static_cast<char *>( WRESALLOC( len + 1 ) );
+
+    if( str == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
     } else {
-        p = str;
-        while( varstr != NULL ) {
-            /* copy the current string part */
-            memcpy( p, varstr->partString, varstr->len );
+        char *p = str;
+
+        while( varstr != nullptr ) {
+            /* copy the current string part, then free it */
+            std::memcpy( p, varstr->partString, varstr->len );
             p += varstr->len;
-            /* free the current string part */
-            tmp = varstr;
+            VarString *tmp = varstr;
             varstr = varstr->next;
             WRESFREE( tmp );
         }
         /* write the '\0' character */
         str[len] = '\0';
-
-        if( plen != NULL ) {
+        if( plen != nullptr ) {
             *plen = len;
         }
     }
     return( str );
-} /* EndStringList */
+}

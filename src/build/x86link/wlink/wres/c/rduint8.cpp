@@ -30,7 +30,7 @@
 *
 ****************************************************************************/
 
-
+#include <array>
 #include "layer0.h"
 #include "read.h"
 #include "reserr.h"
@@ -40,10 +40,11 @@
 uint_8 ResReadUint8( bool *error, FILE *fp )
 /******************************************/
 {
-    size_t      numread;
-    char        tmp[1];
+    std::array<char, 1> tmp{};
 
-    if( (numread = WRESREAD( fp, tmp, sizeof( tmp ) )) != sizeof( tmp ) )
+    const size_t numread = WRESREAD( fp, tmp.data(), tmp.size() );
+
+    if( numread != tmp.size() )
         *error = WRES_ERROR( WRESIOERR( fp, numread ) ? WRS_READ_FAILED : WRS_READ_INCOMPLETE );
-    return( tmp[0] );
+    return( static_cast<uint_8>( tmp[0] ) );
 }

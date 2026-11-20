@@ -32,7 +32,9 @@
 
 
 #include "global.h"
-#include <errno.h>
+#include <cerrno>
+#include <cstring>
+#include <string>
 #include "rcerrors.h"
 #include "depinfo.h"
 #include "reserr.h"
@@ -40,59 +42,86 @@
 #include "rcrtns.h"
 #include "rccore.h"
 #include "memfuncs.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
 
 #if !defined( INSIDE_WLINK ) || defined( _OS2 )
 
-#define MAX_OPEN_RESFILES       6
+namespace {
 
-typedef struct {
-    bool        used;
-    WResStatus  status;
-    int         errnum;
-} ErrFrame;
+constexpr unsigned MAX_OPEN_RESFILES = 6;
 
-static ErrFrame         errFromWres;
+// the last error wres reported
+struct ErrFrame {
+    bool        used = false;
+    WResStatus  status = WResStatus();
+    int         errnum = 0;
+};
 
-int RCCloseFile( FILE **fp )
-/**************************/
+// What the file keeps for a run.
+struct FileState {
+    ErrFrame    errFromWres;
+};
+
+ErrFrame &errFromWres()
 {
-    int rc;
-
-    rc = 0;
-    if( *fp != NULL ) {
-        rc = ResCloseFile( *fp );
-        *fp = NULL;
-    }
-    return( rc );
+    return cb_wlink::RunState::part<FileState>().errFromWres;
 }
 
-bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen,
-                  ExeType type, const char *exename )
-/**************************************************************************/
+// a name or type that WResIDToStr made (to free with MemFree), or what stands for it
+struct IdText {
+    std::string     text;       // a number's text
+    char            *owned = nullptr;
+    const char      *shown = nullptr;
+
+    IdText() = default;
+    IdText( const IdText & ) = delete;
+    IdText &operator=( const IdText & ) = delete;
+    ~IdText()
+    {
+        if( owned != nullptr )
+            MemFree( owned );
+    }
+};
+
+} // namespace
+
+int RCCloseFile( FILE **fp )
 {
-    unsigned        rescnt;
-    ResFileInfo     *resfile;
-    WResID          *res_id;
-    WResID          *type_id;
+    int rc = 0;
+    if( *fp != nullptr ) {
+        rc = ResCloseFile( *fp );
+        *fp = nullptr;
+    }
+    return rc;
+}
+
+bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, ExeType type, const char *exename )
+{
+    unsigned        rescnt = 0;
     bool            dup_discarded;
-    WResTargetOS    res_os;
+
+    // an error: the files opened so far are closed
+    auto fail = [presfiles]() {
+        CloseResFiles( *presfiles );
+        *presfiles = nullptr;
+        return false;
+    };
 
     *allopen = true;
-    *presfiles = NULL;
-    rescnt = 0;
-    for( ; resnames != NULL; resnames = resnames->next ) {
-        resfile = (ResFileInfo *)(MemAllocSafe( sizeof( ResFileInfo ) ));
+    *presfiles = nullptr;
+    for( ; resnames != nullptr; resnames = resnames->next ) {
+        ResFileInfo *resfile = static_cast<ResFileInfo *>( MemAllocSafe( sizeof( ResFileInfo ) ) );
         resfile->next = *presfiles;
         *presfiles = resfile;
-        resfile->Dir = NULL;
+        resfile->Dir = nullptr;
         resfile->name = resnames->name;
         resfile->fp = ResOpenFileRO( resfile->name );
-        if( resfile->fp == NULL ) {
+        if( resfile->fp == nullptr ) {
             RcError( ERR_CANT_OPEN_FILE, resfile->name, LastWresErrStr() );
-            goto HANDLE_ERROR;
+            return fail();
         }
         if( WResReadDir2( resfile->fp, &resfile->Dir, &dup_discarded, resfile ) ) {
             switch( LastWresStatus() ) {
@@ -106,7 +135,7 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen,
                 RcError( ERR_READING_RES, resfile->name, LastWresErrStr() );
                 break;
             }
-            goto HANDLE_ERROR;
+            return fail();
         }
         if( rescnt >= MAX_OPEN_RESFILES ) {
             RCCloseFile( &(resfile->fp) );
@@ -115,18 +144,18 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen,
         /*
          * remove the autodepend resource
          */
-        res_id = WResIDFromStr( DEP_LIST_NAME );
-        type_id = WResIDFromNum( DEP_LIST_TYPE );
+        WResID *res_id = WResIDFromStr( DEP_LIST_NAME );
+        WResID *type_id = WResIDFromNum( DEP_LIST_TYPE );
         WResDelResource( resfile->Dir, type_id, res_id );
         WResIDFree( res_id );
         WResIDFree( type_id );
 
-        res_os = (WResTargetOS)resfile->Dir->TargetOS;
+        const WResTargetOS res_os = static_cast<WResTargetOS>( resfile->Dir->TargetOS );
         switch( type ) {
         case EXE_TYPE_NE_WIN:
             if( res_os != WRES_OS_WIN16 ) {
                 RcError( ERR_NONWIN_RES_TO_WIN_EXE, resfile->name, exename );
-                goto HANDLE_ERROR;
+                return fail();
             }
             break;
         case EXE_TYPE_NE_OS2:
@@ -137,13 +166,13 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen,
             if( res_os != WRES_OS_WIN16
               && res_os != WRES_OS_OS2 ) {
                 RcError( ERR_NONWIN_RES_TO_WIN_EXE, resfile->name, exename );
-                goto HANDLE_ERROR;
+                return fail();
             }
             break;
         case EXE_TYPE_PE:
             if( res_os != WRES_OS_WIN32 ) {
                 RcError( ERR_NONNT_RES_TO_NT_EXE, resfile->name, exename );
-                goto HANDLE_ERROR;
+                return fail();
             }
             break;
         case EXE_TYPE_LX:
@@ -153,7 +182,7 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen,
             if( res_os != WRES_OS_OS2
               && res_os != WRES_OS_WIN16 ) {
                 RcError( ERR_NONOS2_RES_TO_OS2_EXE, resfile->name, exename );
-                goto HANDLE_ERROR;
+                return fail();
             }
             break;
         default: /* EXE_TYPE_UNKNOWN */
@@ -161,20 +190,14 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen,
         }
         rescnt++;
     }
-    return( true );
-
-HANDLE_ERROR:
-    CloseResFiles( *presfiles );
-    *presfiles = NULL;
-    return( false );
+    return true;
 }
 
 void CloseResFiles( ResFileInfo *resfiles )
-/*****************************************/
 {
     ResFileInfo         *res;
 
-    while( (res = resfiles) != NULL ) {
+    while( (res = resfiles) != nullptr ) {
         resfiles = res->next;
         WResFreeDir( res->Dir );
         RCCloseFile( &(res->fp) );
@@ -183,156 +206,140 @@ void CloseResFiles( ResFileInfo *resfiles )
 }
 
 bool WresRecordError( WResStatus status )
-/***************************************/
 {
-    errFromWres.used = true;
-    errFromWres.status = status;
-    errFromWres.errnum = errno;
-    return( true );
+    ErrFrame &err = errFromWres();
+
+    err.used = true;
+    err.status = status;
+    err.errnum = errno;
+    return true;
 }
 
-const const char *LastWresErrStr( void )
-/**************************/
+const char *LastWresErrStr( void )
 {
-    if( errFromWres.used ) {
-        switch( errFromWres.status ) {
+    const ErrFrame &err = errFromWres();
+
+    if( err.used ) {
+        switch( err.status ) {
         case WRS_READ_INCOMPLETE:
-            return( "Unexpected end of file" );
+            return "Unexpected end of file";
         default:
-            return( strerror( errFromWres.errnum ) );
+            return std::strerror( err.errnum );
         }
     } else {
-        return( "" );
+        return "";
     }
 }
 
 int LastWresErr( void )
-/*********************/
 {
-    if( errFromWres.used ) {
-        return( errFromWres.errnum );
+    const ErrFrame &err = errFromWres();
+
+    if( err.used ) {
+        return err.errnum;
     }
-    return( 0 );
+    return 0;
 }
 
 int LastWresStatus( void )
-/************************/
 {
-    if( errFromWres.used ) {
-        return( errFromWres.status );
+    const ErrFrame &err = errFromWres();
+
+    if( err.used ) {
+        return err.status;
     }
-    return( 0 );
+    return 0;
 }
 
 void SharedIOInitStatics( void )
-/******************************/
 {
-    memset( &errFromWres, 0, sizeof( ErrFrame ) );
+    errFromWres() = ErrFrame();
 }
 
-void ReportDupResource( WResID *res_id, WResID *type_id, const char *file1,
-                           const char *file2, bool warn )
-/*******************************************************************/
+void ReportDupResource( WResID *res_id, WResID *type_id, const char *file1, const char *file2, bool warn )
 {
-    const char  *type;
-    char        *name;
-    char        namebuf[20];
-    char        typebuf[20];
-    unsigned    strbase;
+    IdText      type;
+    IdText      name;
 
     if( type_id->IsName ) {
-        type = WResIDToStr( type_id );
+        type.owned = WResIDToStr( type_id );
+        type.shown = type.owned;
     } else {
         switch( type_id->ID.Num ) {
         case RESOURCE2INT( RT_CURSOR ):
         case RESOURCE2INT( RT_GROUP_CURSOR ):
-            type = "cursor";
+            type.shown = "cursor";
             break;
         case RESOURCE2INT( RT_BITMAP ):
-            type = "bitmap";
+            type.shown = "bitmap";
             break;
         case RESOURCE2INT( RT_ICON ):
         case RESOURCE2INT( RT_GROUP_ICON ):
-            type = "icon";
+            type.shown = "icon";
             break;
         case RESOURCE2INT( RT_MENU ):
-            type = "menu";
+            type.shown = "menu";
             break;
         case RESOURCE2INT( RT_DIALOG ):
-            type = "dialog";
+            type.shown = "dialog";
             break;
         case RESOURCE2INT( RT_FONTDIR ):
-            type = "font directory";
+            type.shown = "font directory";
             break;
         case RESOURCE2INT( RT_FONT ):
-            type = "font";
+            type.shown = "font";
             break;
         case RESOURCE2INT( RT_ACCELERATOR ):
-            type = "accelerator";
+            type.shown = "accelerator";
             break;
         case RESOURCE2INT( RT_RCDATA ):
-            type = "rcdata";
+            type.shown = "rcdata";
             break;
         case RESOURCE2INT( RT_VERSIONINFO ):
-            type = "version info";
+            type.shown = "version info";
             break;
         case RESOURCE2INT( RT_MESSAGETABLE ):
-            type = "message table";
+            type.shown = "message table";
             break;
         case RESOURCE2INT( RT_TOOLBAR ):
-            type = "toolbar";
+            type.shown = "toolbar";
             break;
         default:
-            type = typebuf;
-            sprintf( typebuf, "%u", (unsigned)type_id->ID.Num );
+            type.text = std::to_string( static_cast<unsigned>( type_id->ID.Num ) );
+            type.shown = type.text.c_str();
             break;
         }
     }
 
     if( res_id->IsName ) {
-        name = WResIDToStr( res_id );
+        name.owned = WResIDToStr( res_id );
+        name.shown = name.owned;
     } else {
-        name = namebuf;
-        sprintf( name, "%u", (unsigned)res_id->ID.Num );
+        name.text = std::to_string( static_cast<unsigned>( res_id->ID.Num ) );
+        name.shown = name.text.c_str();
     }
+    // the same message, as a warning or an error
+    auto report = [warn]( unsigned errornum, auto... args ) {
+        if( warn ) {
+            RcWarning( errornum, args... );
+        } else {
+            RcError( errornum, args... );
+        }
+    };
     if( !type_id->IsName
       && type_id->ID.Num == RESOURCE2INT( RT_STRING ) ) {
-        strbase = ( res_id->ID.Num - 1 ) * 16;
-        if( file1 != NULL
-          && file2 != NULL ) {
-            if( warn ) {
-                RcWarning( ERR_DUPLICATE_STR_TABLE_FILE,
-                                strbase, strbase + 15, file1, file2 );
-            } else {
-                RcError( ERR_DUPLICATE_STR_TABLE_FILE,
-                                strbase, strbase + 15, file1, file2 );
-            }
+        const unsigned strbase = ( res_id->ID.Num - 1 ) * 16;
+        if( file1 != nullptr
+          && file2 != nullptr ) {
+            report( ERR_DUPLICATE_STR_TABLE_FILE, strbase, strbase + 15, file1, file2 );
         } else {
-            if( warn ) {
-                RcWarning( ERR_DUPLICATE_STR_TABLE, strbase, strbase + 15 );
-            } else {
-                RcError( ERR_DUPLICATE_STR_TABLE, strbase, strbase + 15 );
-            }
+            report( ERR_DUPLICATE_STR_TABLE, strbase, strbase + 15 );
         }
-    } else if( file1 != NULL
-      && file2 != NULL ) {
-        if( warn ) {
-            RcWarning( ERR_DUPLICATE_RES_FILE, type, name, file1, file2 );
-        } else {
-            RcError( ERR_DUPLICATE_RES_FILE, type, name, file1, file2 );
-        }
+    } else if( file1 != nullptr
+      && file2 != nullptr ) {
+        report( ERR_DUPLICATE_RES_FILE, type.shown, name.shown, file1, file2 );
     } else {
-        if( warn ) {
-            RcWarning( ERR_DUPLICATE_RES, type, name );
-        } else {
-            RcError( ERR_DUPLICATE_RES, type, name );
-        }
-    }
-    if( res_id->IsName ) {
-        MemFree( name );
-    }
-    if( type_id->IsName ) {
-        MemFree( (void *)type );
+        report( ERR_DUPLICATE_RES, type.shown, name.shown );
     }
 }
 

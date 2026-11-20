@@ -29,7 +29,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "opcl.h"
 #include "reserr.h"
@@ -40,10 +39,9 @@ FILE *ResOpenFileRO( const char *filename )
 /*****************************************/
 /* use this function to open Microsoft .RES files also */
 {
-    FILE    *fp;
+    FILE *fp = WRESOPEN( filename, WRES_OPEN_RO );
 
-    fp = WRESOPEN( filename, WRES_OPEN_RO );
-    if( fp == NULL )
+    if( fp == nullptr )
         WRES_ERROR( WRS_OPEN_FAILED );
     return( fp );
 }

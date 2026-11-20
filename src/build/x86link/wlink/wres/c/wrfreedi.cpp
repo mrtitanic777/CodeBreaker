@@ -30,61 +30,56 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
 #include "wresrtns.h"
 
+
 void __FreeLangList( WResResNode *resnode )
 /*****************************************/
 {
-    WResLangNode        *langnode;
-    WResLangNode        *nextlangnode;
+    WResLangNode    *nextlangnode;
 
-    for( langnode = resnode->Head; langnode != NULL; langnode = nextlangnode ) {
+    for( WResLangNode *langnode = resnode->Head; langnode != nullptr; langnode = nextlangnode ) {
         nextlangnode = langnode->Next;
         WRESFREE( langnode );
     }
-    resnode->Head = NULL;
-    resnode->Tail = NULL;
+    resnode->Head = nullptr;
+    resnode->Tail = nullptr;
 }
 
 void __FreeResList( WResTypeNode *typenode )
 /******************************************/
 {
-    WResResNode         *resnode;
-    WResResNode         *nextresnode;
+    WResResNode     *nextresnode;
 
-    for( resnode = typenode->Head; resnode != NULL; resnode = nextresnode ) {
+    for( WResResNode *resnode = typenode->Head; resnode != nullptr; resnode = nextresnode ) {
         nextresnode = resnode->Next;
         __FreeLangList( resnode );
         WRESFREE( resnode );
     }
-
-    typenode->Head = NULL;
-    typenode->Tail = NULL;
+    typenode->Head = nullptr;
+    typenode->Tail = nullptr;
 }
 
 void __FreeTypeList( WResDir dir )
 /********************************/
 {
-    WResTypeNode        *typenode;
-    WResTypeNode        *nexttypenode;
+    WResTypeNode    *nexttypenode;
 
-    for( typenode = dir->Head; typenode != NULL; typenode = nexttypenode ) {
+    for( WResTypeNode *typenode = dir->Head; typenode != nullptr; typenode = nexttypenode ) {
         nexttypenode = typenode->Next;
         __FreeResList( typenode );
         WRESFREE( typenode );
     }
-
-    dir->Head = NULL;
-    dir->Tail = NULL;
+    dir->Head = nullptr;
+    dir->Tail = nullptr;
 }
 
 void WResFreeDir( WResDir dir )
 /*****************************/
 {
-    if( dir != NULL ) {
+    if( dir != nullptr ) {
         __FreeTypeList( dir );
         WRESFREE( dir );
     }

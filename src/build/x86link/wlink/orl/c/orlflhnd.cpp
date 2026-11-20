@@ -42,23 +42,19 @@ void ORLAddFileLinks( LCL_SYM( orl_handle ) orl_hnd, LCL_SYM( orl_file_handle ) 
 
 orl_return ORLRemoveFileLinks( LCL_SYM( orl_file_handle ) orl_file_hnd )
 {
-    LCL_SYM( orl_handle )                        orl_hnd;
-    LCL_SYM( orl_file_handle )                   current;
-
-    orl_hnd = orl_file_hnd->orl_hnd;
+    LCL_SYM( orl_handle )   orl_hnd = orl_file_hnd->orl_hnd;
 
     if( orl_hnd->first_file_hnd == orl_file_hnd ) {
         orl_hnd->first_file_hnd = orl_file_hnd->next;
         ORL_FUNCS_FREE( orl_hnd, orl_file_hnd );
-        return( ORL_OKAY );
-    } else {
-        for( current = orl_hnd->first_file_hnd; current->next != NULL; current = current->next ) {
-            if( current->next == orl_file_hnd ) {
-                current->next = orl_file_hnd->next;
-                ORL_FUNCS_FREE( orl_hnd, orl_file_hnd );
-                return( ORL_OKAY );
-            }
+        return ORL_OKAY;
+    }
+    for( LCL_SYM( orl_file_handle ) current = orl_hnd->first_file_hnd; current->next != nullptr; current = current->next ) {
+        if( current->next == orl_file_hnd ) {
+            current->next = orl_file_hnd->next;
+            ORL_FUNCS_FREE( orl_hnd, orl_file_hnd );
+            return ORL_OKAY;
         }
     }
-    return( ORL_ERROR );
+    return ORL_ERROR;
 }

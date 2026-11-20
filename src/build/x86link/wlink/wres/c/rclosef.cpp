@@ -29,11 +29,11 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "opcl.h"
 #include "reserr.h"
 #include "wresrtns.h"
+
 
 bool ResCloseFile( FILE *fp )
 /***************************/

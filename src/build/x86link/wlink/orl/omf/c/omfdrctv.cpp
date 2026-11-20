@@ -31,9 +31,6 @@
 
 
 #include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
 
 #include "omfdrctv.h"
 #include "omfmunge.h"
@@ -44,34 +41,33 @@
 
 orl_return      OmfParseComments( omf_sec_handle sh, orl_note_callbacks *cbs, void *cookie )
 {
-    omf_quantity                x;
     orl_return                  return_val;
     omf_comment                 comment;
-    ORL_STRUCT( omf_scan_tab )  st_entry;
+    ORL_STRUCT( omf_scan_tab )  st_entry{};     // lname stays 0 when the directive names a segment
     orl_sec_handle              csh;
 
     assert( sh );
     assert( cbs );
 
-    for( x = 0; x < sh->assoc.comment.num; x++ ) {
+    for( omf_quantity x = 0; x < sh->assoc.comment.num; x++ ) {
         comment = sh->assoc.comment.comments[x];
         assert( comment );
 
         switch( comment->class_ ) {
-        case( CMT_DEFAULT_LIBRARY ):
-            if( cbs->deflib_fn != NULL ) {
-                return_val = cbs->deflib_fn( (char *)comment->data, cookie );
+        case CMT_DEFAULT_LIBRARY:
+            if( cbs->deflib_fn != nullptr ) {
+                return_val = cbs->deflib_fn( reinterpret_cast<const char *>( comment->data ), cookie );
                 if( return_val != ORL_OKAY ) {
                     return( return_val );
                 }
             }
             break;
-        case( CMT_DISASM_DIRECTIVE ):
-            if( cbs->scantab_fn != NULL ) {
+        case CMT_DISASM_DIRECTIVE:
+            if( cbs->scantab_fn != nullptr ) {
                 return_val = OmfParseScanTab( comment->data, comment->len, &st_entry );
                 if( return_val == ORL_OKAY ) {
-                    csh = (orl_sec_handle)OmfFindSegOrComdat( sh->omf_file_hnd, st_entry.seg, st_entry.lname );
-                    if( csh != NULL ) {
+                    csh = reinterpret_cast<orl_sec_handle>( OmfFindSegOrComdat( sh->omf_file_hnd, st_entry.seg, st_entry.lname ) );
+                    if( csh != nullptr ) {
                         return_val = cbs->scantab_fn( csh, &st_entry.start, &st_entry.end, cookie );
                         if( return_val != ORL_OKAY ) {
                             return( return_val );

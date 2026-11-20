@@ -30,123 +30,78 @@
 *
 ****************************************************************************/
 
-
-#include <string.h>
+#include <cstring>
 #include "layer0.h"
 #include "read.h"
 #include "reserr.h"
 #include "wresrtns.h"
 
-ResNameOrOrdinal *ResReadNameOrOrdinal( FILE *fp )
-/************************************************/
-{
-    uint_8              flags;
-    uint_16             ord;
-    ResNameOrOrdinal    *name;
-    bool                error;
-    size_t              stringlen;
-    char                *restofstr;
 
-    error = false;
-    flags = ResReadUint8( &error, fp );
-    if( error )
-        return( NULL );
+namespace {
+
+/* a name or ordinal whose first unit (flags) is read already; 'wide' units are the Win32 form */
+ResNameOrOrdinal *finishNameOrOrdinal( FILE *fp, bool wide, unsigned flags )
+{
+    const unsigned  ordinal_flag = wide ? 0xffffu : 0xffu;
+    bool            error = false;
+    uint_16         ord = 0;
+    char            *restofstr = nullptr;
+    size_t          stringlen = 0;
 
     /* read the rest of the Name or Ordinal */
-    ord = 0;
-    restofstr = NULL;
-    stringlen = 0;
-    if( flags == 0xff ) {
+    if( flags == ordinal_flag ) {
         ord = ResReadUint16( &error, fp );
         if( error ) {
-            return( NULL );
+            return( nullptr );
         }
-    } else if( flags == 0 ) {
-    } else {
-        restofstr = ResReadString( fp, &stringlen );
-        if( restofstr == NULL ) {
-            return( NULL );
+    } else if( flags != 0 ) {
+        restofstr = wide ? ResRead32String( fp, &stringlen ) : ResReadString( fp, &stringlen );
+        if( restofstr == nullptr ) {
+            return( nullptr );
         }
         stringlen++; /* for the '\0' */
     }
-
     /* allocate space for the new Name or Ordinal */
-    name = (ResNameOrOrdinal *)(WRESALLOC( sizeof( ResNameOrOrdinal ) + stringlen ));
-    if( name == NULL ) {
-        WRES_ERROR( WRS_MALLOC_FAILED );
-    } else {
-        /* copy the new new Name or Ordinal into the correct place */
-        if( flags == 0xff ) {
-            name->ord.fFlag = 0xff;
-            name->ord.wOrdinalID = ord;
-        } else if( flags == 0) {
-            name->name[0] = '\0';
-        } else {
-            name->name[0] = flags;
-            memcpy( name->name + 1, restofstr, stringlen );
-        }
-    }
+    auto *name = static_cast<ResNameOrOrdinal *>( WRESALLOC( sizeof( ResNameOrOrdinal ) + stringlen ) );
 
-    if( restofstr != NULL ) {
+    if( name == nullptr ) {
+        WRES_ERROR( WRS_MALLOC_FAILED );
+    } else if( flags == ordinal_flag ) {
+        /* copy the new Name or Ordinal into the correct place */
+        name->ord.fFlag = 0xff;
+        name->ord.wOrdinalID = ord;
+    } else if( flags == 0 ) {
+        name->name[0] = '\0';
+    } else {
+        name->name[0] = wide ? UNI2ASCII( flags ) : static_cast<char>( flags );
+        std::memcpy( name->name + 1, restofstr, stringlen );
+    }
+    if( restofstr != nullptr ) {
         WRESFREE( restofstr );
     }
-
     return( name );
+}
+
+} // namespace
+
+ResNameOrOrdinal *ResReadNameOrOrdinal( FILE *fp )
+/************************************************/
+{
+    bool            error = false;
+    const uint_8    flags = ResReadUint8( &error, fp );
+
+    if( error )
+        return( nullptr );
+    return( finishNameOrOrdinal( fp, false, flags ) );
 }
 
 ResNameOrOrdinal *ResRead32NameOrOrdinal( FILE *fp )
 /**************************************************/
 {
-    uint_16             flags;
-    uint_16             ord;
-    ResNameOrOrdinal    *name;
-    bool                error;
-    size_t              stringlen;
-    char                *restofstr;
+    bool            error = false;
+    const uint_16   flags = ResReadUint16( &error, fp );
 
-    error = false;
-    flags = ResReadUint16( &error, fp );
     if( error )
-        return( NULL );
-
-    /* read the rest of the Name or Ordinal */
-    ord = 0;
-    restofstr = NULL;
-    stringlen = 0;
-    if( flags == 0xffff ) {
-        ord = ResReadUint16( &error, fp );
-        if( error ) {
-            return( NULL );
-        }
-    } else if( flags == 0 ) {
-    } else {
-        restofstr = ResRead32String( fp, &stringlen );
-        if( restofstr == NULL ) {
-            return( NULL );
-        }
-        stringlen++; /* for the '\0' */
-    }
-
-    /* allocate space for the new Name or Ordinal */
-    name = (ResNameOrOrdinal *)(WRESALLOC( sizeof( ResNameOrOrdinal ) + stringlen ));
-    if( name == NULL ) {
-        error = WRES_ERROR( WRS_MALLOC_FAILED );
-    } else {
-        /* copy the new Name or Ordinal into the correct place */
-        if( flags == 0xffff ) {
-            name->ord.fFlag = 0xff;
-            name->ord.wOrdinalID = ord;
-        } else if( flags == 0 ) {
-            name->name[0] = '\0';                 /* NUL character */
-        } else {
-            name->name[0] = UNI2ASCII( flags );
-            memcpy( name->name + 1, restofstr, stringlen );
-        }
-    }
-
-    if( restofstr != NULL ) {
-        WRESFREE( restofstr );
-    }
-
-    return( name );
+        return( nullptr );
+    return( finishNameOrOrdinal( fp, true, flags ) );
 }

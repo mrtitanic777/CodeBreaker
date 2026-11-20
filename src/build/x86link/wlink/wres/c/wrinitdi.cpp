@@ -30,7 +30,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
 #include "reserr.h"
@@ -40,18 +39,16 @@
 WResDir WResInitDir( void )
 /*************************/
 {
-    WResDir         dir;
+    auto dir = static_cast<WResDir>( WRESALLOC( sizeof( WResDirHead ) ) );
 
-    dir = (WResDir)(WRESALLOC( sizeof( *dir ) ));
-    if( dir == NULL ) {
+    if( dir == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
     } else {
         dir->NumResources = 0;
         dir->NumTypes = 0;
         dir->TargetOS = WRES_OS_WIN16;
-        dir->Head = NULL;
-        dir->Tail = NULL;
+        dir->Head = nullptr;
+        dir->Tail = nullptr;
     }
-
     return( dir );
 }

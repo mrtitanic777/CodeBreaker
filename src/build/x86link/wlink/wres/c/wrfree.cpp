@@ -30,8 +30,7 @@
 *
 ****************************************************************************/
 
-
-#include <string.h>
+#include <cstring>
 #include "layer0.h"
 #include "filefmt.h"
 #include "resfmt.h"
@@ -45,11 +44,11 @@
 void MResFreeResourceHeader( MResResourceHeader *msheader )
 /*********************************************************/
 {
-    if( msheader->Type != NULL ) {
+    if( msheader->Type != nullptr ) {
         WRESFREE( msheader->Type );
     }
-    if( msheader->Name != NULL ) {
+    if( msheader->Name != nullptr ) {
         WRESFREE( msheader->Name );
     }
     WRESFREE( msheader );
-} /* MResFreeResourceHeader */
+}

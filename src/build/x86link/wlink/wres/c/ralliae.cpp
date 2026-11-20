@@ -29,58 +29,37 @@
 *
 ****************************************************************************/
 
-
-/*
- * MEM2.C - memory allocation/usage routines
- *
- * By:  Craig Eisler
- *      June 4-5,11-12,17 1990
- *      July 16,31 1990
- *      August 1 1990
- *      September 11 1990
- *      October 31 1990
- *      November 4,7,19,22 1990
- *      December 28 1990
- *      January 1 1991
- *      March 30 1991
- *
- * Routines:
- *              ResAddLLItemAtEnd
- *              ResInsertLLItemAfter
- *              ResInsertLLItemBefore
- *              ResDeleteLLItem
- *              ResReplaceLLItem
- */
-
 #include <stdlib.h>
 #include "mem2.h"
 
-typedef struct ss {
-struct ss *next,*prev;
-} ss;
+
+namespace {
+
+/* every list item starts with these two links */
+struct LLItem {
+    LLItem  *next;
+    LLItem  *prev;
+};
+
+} // namespace
 
 /*
  * ResAddLLItemAtEnd - create a new item at the tail of a linked list
  */
 void ResAddLLItemAtEnd( void **head, void **tail, void *item )
 {
-    ss          **headptr;
-    ss          **tailptr;
-    ss          *itemptr;
+    auto **headptr = reinterpret_cast<LLItem **>( head );
+    auto **tailptr = reinterpret_cast<LLItem **>( tail );
+    auto *itemptr = static_cast<LLItem *>( item );
 
-    headptr = (ss **)head;
-    tailptr = (ss **)tail;
-    itemptr = (ss *)item;
-
-    if( *headptr == NULL ) {
+    if( *headptr == nullptr ) {
         *headptr = *tailptr = itemptr;
-        itemptr->next = NULL;
-        itemptr->prev = NULL;
+        itemptr->next = nullptr;
+        itemptr->prev = nullptr;
     } else {
         itemptr->prev = *tailptr;
-        itemptr->next = NULL;
+        itemptr->next = nullptr;
         (*tailptr)->next = itemptr;
         *tailptr = itemptr;
-    } /* if */
-
-} /* ResAddLLItemAtEnd */
+    }
+}

@@ -30,7 +30,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "read.h"
 #include "reserr.h"
@@ -40,11 +39,10 @@
 bool WResReadHeader( WResHeader *header, FILE *fp )
 /*************************************************/
 {
-    bool        error;
+    bool    error = false;
 
     if( WRESSEEK( fp, 0, SEEK_SET ) )
         return( WRES_ERROR( WRS_SEEK_FAILED ) );
-    error = false;
     header->Magic[0] = ResReadUint32( &error, fp );
     if( error )
         return( true );
@@ -67,21 +65,16 @@ bool WResReadHeader( WResHeader *header, FILE *fp )
 bool WResReadExtHeader( WResExtHeader *extheader, FILE *fp )
 /**********************************************************/
 {
-    bool        error;
+    bool    error = false;
 
-    error = false;
     extheader->TargetOS = ResReadUint16( &error, fp );
     if( error )
         return( true );
-    extheader->reserved[0] = ResReadUint16( &error, fp );
-    if( error )
-        return( true );
-    extheader->reserved[1] = ResReadUint16( &error, fp );
-    if( error )
-        return( true );
-    extheader->reserved[2] = ResReadUint16( &error, fp );
-    if( error )
-        return( true );
-    extheader->reserved[3] = ResReadUint16( &error, fp );
-    return( error );
+    for( uint_16 &reserved : extheader->reserved ) {
+        reserved = ResReadUint16( &error, fp );
+        if( error ) {
+            return( true );
+        }
+    }
+    return( false );
 }

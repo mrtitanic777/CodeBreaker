@@ -29,31 +29,28 @@
 *
 ****************************************************************************/
 
-
-#include <limits.h>
+#include <climits>
 #include "layer0.h"
 #include "util.h"
 #include "reserr.h"
 #include "wresrtns.h"
 
 
-WResID * WResIDFromNum( long num )
+WResID *WResIDFromNum( long num )
 /*********************************
  * allocate an ID and fill it in
  */
 {
-    WResID          *id;
-
     if( num < SHRT_MIN || ( num > 0 && num > USHRT_MAX ) ) {
-        id = NULL;
         WRES_ERROR( WRS_BAD_PARAMETER );
+        return( nullptr );
+    }
+    auto *id = static_cast<WResID *>( AllocWResIDNum( offsetof( WResID, ID.Num ) ) );
+
+    if( id == nullptr ) {
+        WRES_ERROR( WRS_MALLOC_FAILED );
     } else {
-        id = (WResID *)(AllocWResIDNum( offsetof( WResID, ID.Num ) ));
-        if( id == NULL ) {
-            WRES_ERROR( WRS_MALLOC_FAILED );
-        } else {
-            WResInitIDFromNum( num, id );
-        }
+        WResInitIDFromNum( num, id );
     }
     return( id );
-} /* WResIDFromNum */
+}

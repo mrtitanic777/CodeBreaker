@@ -44,60 +44,60 @@ static orl_return       freeFileHandle( omf_file_handle ofh )
     omf_quantity        x;
     omf_tmp_fixup       tf;
 
-    while( (sh = ofh->first_sec) != NULL ) {
+    while( (sh = ofh->first_sec) != nullptr ) {
         switch( sh->type ) {
         case ORL_SEC_TYPE_NOTE:
-            if( sh->assoc.comment.comments != NULL ) {
+            if( sh->assoc.comment.comments != nullptr ) {
                 for( x = 0; x < sh->assoc.comment.num; x++ ) {
                     _ClientFree( ofh, sh->assoc.comment.comments[x] );
                 }
                 _ClientFree( ofh, sh->assoc.comment.comments );
-                sh->assoc.comment.comments = NULL;
+                sh->assoc.comment.comments = nullptr;
                 sh->assoc.comment.num = 0;
             }
             break;
         case ORL_SEC_TYPE_RELOCS:
-            if( sh->assoc.reloc.relocs != NULL ) {
+            if( sh->assoc.reloc.relocs != nullptr ) {
                 for( x = 0; x < sh->assoc.reloc.num; x++ ) {
-                    _ClientFree( ofh, (void *)sh->assoc.reloc.relocs[x] );
+                    _ClientFree( ofh, const_cast<orl_reloc_struct *>( sh->assoc.reloc.relocs[x] ) );
                 }
-                _ClientFree( ofh, (void *)sh->assoc.reloc.relocs );
-                sh->assoc.reloc.relocs = NULL;
+                _ClientFree( ofh, sh->assoc.reloc.relocs );
+                sh->assoc.reloc.relocs = nullptr;
                 sh->assoc.reloc.num = 0;
             }
             break;
         case ORL_SEC_TYPE_SYM_TABLE:
-            if( sh->assoc.sym.syms != NULL ) {
+            if( sh->assoc.sym.syms != nullptr ) {
                 for( x = 0; x < sh->assoc.sym.num; x++ ) {
                     _ClientFree( ofh, sh->assoc.sym.syms[x] );
                 }
                 _ClientFree( ofh, sh->assoc.sym.syms );
-                sh->assoc.sym.syms = NULL;
+                sh->assoc.sym.syms = nullptr;
                 sh->assoc.sym.num = 0;
             }
-            if( sh->assoc.sym.hash_tab != NULL ) {
+            if( sh->assoc.sym.hash_tab != nullptr ) {
                 ORLHashTableFree( sh->assoc.sym.hash_tab );
             }
             break;
-        case( ORL_SEC_TYPE_STR_TABLE ):
-            if( sh->assoc.string.strings != NULL ) {
+        case ORL_SEC_TYPE_STR_TABLE:
+            if( sh->assoc.string.strings != nullptr ) {
                 for( x = 0; x < sh->assoc.string.num; x++ ) {
                     _ClientFree( ofh, sh->assoc.string.strings[x] );
                 }
                 _ClientFree( ofh, sh->assoc.string.strings );
-                sh->assoc.string.strings = NULL;
+                sh->assoc.string.strings = nullptr;
                 sh->assoc.string.num = 0;
             }
             break;
-        case( ORL_SEC_TYPE_NO_BITS ):
-        case( ORL_SEC_TYPE_PROG_BITS ):
-            if( sh->contents != NULL ) {
+        case ORL_SEC_TYPE_NO_BITS:
+        case ORL_SEC_TYPE_PROG_BITS:
+            if( sh->contents != nullptr ) {
                 _ClientFree( ofh, sh->contents );
-                sh->contents = NULL;
+                sh->contents = nullptr;
             }
-            if( sh->assoc.seg.lines != NULL && ( sh->assoc.seg.num_lines > 0 ) ) {
-                _ClientFree( ofh, (void *)sh->assoc.seg.lines );
-                sh->assoc.seg.lines = NULL;
+            if( sh->assoc.seg.lines != nullptr && ( sh->assoc.seg.num_lines > 0 ) ) {
+                _ClientFree( ofh, const_cast<orl_linnum_struct *>( sh->assoc.seg.lines ) );
+                sh->assoc.seg.lines = nullptr;
                 sh->assoc.seg.num_lines = 0;
             }
             break;
@@ -108,37 +108,37 @@ static orl_return       freeFileHandle( omf_file_handle ofh )
         _ClientFree( ofh, sh );
     }
 
-    if( ofh->segs != NULL ) {
+    if( ofh->segs != nullptr ) {
         _ClientFree( ofh, ofh->segs );
-        ofh->segs = NULL;
+        ofh->segs = nullptr;
         ofh->num_segs = 0;
     }
 
-    if( ofh->comdats != NULL ) {
+    if( ofh->comdats != nullptr ) {
         _ClientFree( ofh, ofh->comdats );
-        ofh->comdats = NULL;
+        ofh->comdats = nullptr;
         ofh->num_comdats = 0;
     }
 
-    if( ofh->groups != NULL ) {
+    if( ofh->groups != nullptr ) {
         for( x = 0; x < ofh->num_groups; x++ ) {
             assert( ofh->groups[x] );
             _ClientFree( ofh, ofh->groups[x]->segs );
             _ClientFree( ofh, ofh->groups[x] );
         }
         _ClientFree( ofh, ofh->groups );
-        ofh->groups = NULL;
+        ofh->groups = nullptr;
         ofh->num_groups = 0;
     }
 
-    if( ofh->lidata != NULL ) {
-        while( ofh->lidata->first_fixup != NULL ) {
+    if( ofh->lidata != nullptr ) {
+        while( ofh->lidata->first_fixup != nullptr ) {
             tf = ofh->lidata->first_fixup;
             ofh->lidata->first_fixup = tf->next;
             _ClientFree( ofh, tf );
         }
         _ClientFree( ofh, ofh->lidata );
-        ofh->lidata = NULL;
+        ofh->lidata = nullptr;
     }
 
     _ClientFree( ofh, ofh );
@@ -168,7 +168,7 @@ orl_return OmfRemoveFileLinks( omf_file_handle ofh )
     if( oh->first_file_hnd == ofh ) {
         oh->first_file_hnd = ofh->next;
     } else {
-        for( curr = oh->first_file_hnd; curr->next != NULL; curr = curr->next ) {
+        for( curr = oh->first_file_hnd; curr->next != nullptr; curr = curr->next ) {
             if( curr->next == ofh ) {
                 curr->next = ofh->next;
                 break;

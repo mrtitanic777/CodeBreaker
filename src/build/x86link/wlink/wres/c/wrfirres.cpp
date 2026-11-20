@@ -30,7 +30,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
 
@@ -41,24 +40,23 @@ WResDirWindow WResFirstResource( WResDir dir )
     WResDirWindow   wind;
 
     wind.CurrType = dir->Head;
-    if( wind.CurrType != NULL ) {
+    if( wind.CurrType != nullptr ) {
         wind.CurrRes = wind.CurrType->Head;
         wind.CurrLang = wind.CurrRes->Head;
     } else {
-        wind.CurrRes = NULL;
-        wind.CurrLang = NULL;
+        wind.CurrRes = nullptr;
+        wind.CurrLang = nullptr;
     }
-
     return( wind );
 }
 
 void WResSetEmptyWindow( WResDirWindow *wind )
 /********************************************/
 {
-    if( wind != NULL ) {
-        wind->CurrType = NULL;
-        wind->CurrRes = NULL;
-        wind->CurrLang = NULL;
+    if( wind != nullptr ) {
+        wind->CurrType = nullptr;
+        wind->CurrRes = nullptr;
+        wind->CurrLang = nullptr;
     }
 }
 
@@ -66,7 +64,7 @@ void WResMakeWindow( WResDirWindow *wind, WResTypeNode *typenode,
                     WResResNode *resnode, WResLangNode *langnode )
 /****************************************************************/
 {
-    if( wind != NULL ) {
+    if( wind != nullptr ) {
         wind->CurrType = typenode;
         wind->CurrRes = resnode;
         wind->CurrLang = langnode;

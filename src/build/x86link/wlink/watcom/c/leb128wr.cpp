@@ -30,34 +30,32 @@
 *
 ****************************************************************************/
 
-
 #include "leb128wr.h"
 
-
+// `ofn` is called as ofn( &h, byte ): it may advance the handle.  Values shift arithmetically (as before).
 void *EncodeSLEB128( void *h, void (*ofn)(void **h, unsigned char), long long value )
 {
     unsigned char   byte;
 
-    /* we can only handle an arithmetic right shift */
     if( value >= 0 ) {
         for( ;; ) {
-            byte = value & 0x7f;
+            byte = static_cast<unsigned char>( value & 0x7f );
             value >>= 7;
             if( value == 0 && ( byte & 0x40 ) == 0 )
                 break;
-            ofn( &h, byte | 0x80 );
+            ofn( &h, static_cast<unsigned char>( byte | 0x80 ) );
         }
     } else {
         for( ;; ) {
-            byte = value & 0x7f;
+            byte = static_cast<unsigned char>( value & 0x7f );
             value >>= 7;
             if( value == -1 && ( byte & 0x40 ) )
                 break;
-            ofn( &h, byte | 0x80 );
+            ofn( &h, static_cast<unsigned char>( byte | 0x80 ) );
         }
     }
     ofn( &h, byte );
-    return( h );
+    return h;
 }
 
 void *EncodeULEB128( void *h, void (*ofn)(void **h, unsigned char), unsigned long long value )
@@ -65,12 +63,12 @@ void *EncodeULEB128( void *h, void (*ofn)(void **h, unsigned char), unsigned lon
     unsigned char   byte;
 
     for( ;; ) {
-        byte = value & 0x7f;
+        byte = static_cast<unsigned char>( value & 0x7f );
         value >>= 7;
         if( value == 0 )
             break;
-        ofn( &h, byte | 0x80 );
+        ofn( &h, static_cast<unsigned char>( byte | 0x80 ) );
     }
     ofn( &h, byte );
-    return( h );
+    return h;
 }

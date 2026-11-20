@@ -30,6 +30,10 @@
 ****************************************************************************/
 
 
+#include <array>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
 #include "coffload.h"
 #include "coffimpl.h"
 #include "cofforl.h"
@@ -43,25 +47,91 @@
  * is present or not except by attempting to read its size. If we read
  * some ridiculously large value, it's the start of the next member.
  */
-#define MAX_STRTAB_SIZE     0x1000000   /* 16MB */
+static constexpr coff_quantity  MAX_STRTAB_SIZE = 0x1000000;    /* 16MB */
 
-static char SectionNames[3][COFF_SEC_NAME_LEN] =
-    { ".rel", ".symtab", ".strtab" };
+// the names the sections made up for the relocations, the symbols and the strings have
+static constexpr char   rel_section_name[] = ".rel";
+static constexpr char   symtab_section_name[] = ".symtab";
+static constexpr char   strtab_section_name[] = ".strtab";
+
+namespace {
+
+// what a COFF flag turns into among ORL's
+template <class Coff, class Orl>
+struct FlagMap {
+    Coff    coff;
+    Orl     orl;
+};
+
+constexpr FlagMap<unsigned_16, orl_file_flags> file_flag_map[] = {
+    { COFF_IMAGE_FILE_RELOCS_STRIPPED,      ORL_FILE_FLAG_RELOCS_STRIPPED },
+    { COFF_IMAGE_FILE_LINE_NUMS_STRIPPED,   ORL_FILE_FLAG_LINE_NUMS_STRIPPED },
+    { COFF_IMAGE_FILE_LOCAL_SYMS_STRIPPED,  ORL_FILE_FLAG_LOCAL_SYMS_STRIPPED },
+    { COFF_IMAGE_FILE_DEBUG_STRIPPED,       ORL_FILE_FLAG_DEBUG_STRIPPED },
+};
+
+//  COFF_IMAGE_SCN_TYPE_GROUP and COFF_IMAGE_SCN_LNK_OVER: no MS support
+constexpr FlagMap<unsigned_32, orl_sec_flags> sec_flag_map[] = {
+    { COFF_IMAGE_SCN_TYPE_NO_PAD,           ORL_SEC_FLAG_NO_PADDING },
+    { COFF_IMAGE_SCN_LNK_REMOVE,            ORL_SEC_FLAG_REMOVE },
+    { COFF_IMAGE_SCN_LNK_COMDAT,            ORL_SEC_FLAG_COMDAT },
+    { COFF_IMAGE_SCN_MEM_DISCARDABLE,       ORL_SEC_FLAG_DISCARDABLE },
+    { COFF_IMAGE_SCN_MEM_NOT_CACHED,        ORL_SEC_FLAG_NOT_CACHED },
+    { COFF_IMAGE_SCN_MEM_NOT_PAGED,         ORL_SEC_FLAG_NOT_PAGEABLE },
+    { COFF_IMAGE_SCN_MEM_SHARED,            ORL_SEC_FLAG_SHARED },
+    { COFF_IMAGE_SCN_MEM_EXECUTE,           ORL_SEC_FLAG_EXECUTE_PERMISSION },
+    { COFF_IMAGE_SCN_MEM_READ,              ORL_SEC_FLAG_READ_PERMISSION },
+    { COFF_IMAGE_SCN_MEM_WRITE,             ORL_SEC_FLAG_WRITE_PERMISSION },
+};
+
+orl_machine_type machine_type_of( unsigned_16 cpu_type )
+{
+    switch( cpu_type ) {
+    case COFF_IMAGE_FILE_MACHINE_I860:
+        return ORL_MACHINE_TYPE_I860;
+    case COFF_IMAGE_FILE_MACHINE_I386:
+    case COFF_IMAGE_FILE_MACHINE_I386A:
+        return ORL_MACHINE_TYPE_I386;
+    case COFF_IMAGE_FILE_MACHINE_R3000:
+        return ORL_MACHINE_TYPE_R3000;
+    case COFF_IMAGE_FILE_MACHINE_R4000:
+        return ORL_MACHINE_TYPE_R4000;
+    case COFF_IMAGE_FILE_MACHINE_ALPHA:
+        return ORL_MACHINE_TYPE_ALPHA;
+    case COFF_IMAGE_FILE_MACHINE_POWERPC:
+        return ORL_MACHINE_TYPE_PPC601;
+    case COFF_IMAGE_FILE_MACHINE_AMD64:
+        return ORL_MACHINE_TYPE_AMD64;
+    case COFF_IMAGE_FILE_MACHINE_UNKNOWN:
+        return ORL_MACHINE_TYPE_NONE;
+    default:
+        break;
+    }
+    return ORL_MACHINE_TYPE_UNKNOWN;
+}
+
+// the one section handle every file keeps for each of the symbol and string tables (and the relocation tables)
+coff_sec_handle new_sec_handle( coff_file_handle coff_file_hnd )
+{
+    return static_cast<coff_sec_handle>( _ClientAlloc( coff_file_hnd, ORL_STRUCT_SIZEOF( coff_sec_handle ) ) );
+}
+
+}  // namespace
 
 static bool determine_file_specs( coff_file_handle coff_file_hnd, coff_file_header *f_hdr )
 /*****************************************************************************************/
 {
+    const auto  *import_hdr = reinterpret_cast<const coff_import_object_header *>( f_hdr );
+    const bool  flag_import_library = ( import_hdr->sig1 == COFF_IMPORT_OBJECT_HDR_SIG1
+                                     && import_hdr->sig2 == COFF_IMPORT_OBJECT_HDR_SIG2 );
     unsigned_16 cpu_type;
     unsigned_16 flags;
-    bool        flag_import_library;
 
-    flag_import_library = ( ((coff_import_object_header *)f_hdr)->sig1 == COFF_IMPORT_OBJECT_HDR_SIG1
-                        && ((coff_import_object_header *)f_hdr)->sig2 == COFF_IMPORT_OBJECT_HDR_SIG2 );
     if( flag_import_library ) {
         /*
          * COFF import library
          */
-        cpu_type = ((coff_import_object_header *)f_hdr)->machine;
+        cpu_type = import_hdr->machine;
         flags = 0;
     } else {
         /*
@@ -70,36 +140,7 @@ static bool determine_file_specs( coff_file_handle coff_file_hnd, coff_file_head
         cpu_type = f_hdr->cpu_type;
         flags = f_hdr->flags;
     }
-    switch( cpu_type ) {
-    case COFF_IMAGE_FILE_MACHINE_I860:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_I860;
-        break;
-    case COFF_IMAGE_FILE_MACHINE_I386:
-    case COFF_IMAGE_FILE_MACHINE_I386A:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_I386;
-        break;
-    case COFF_IMAGE_FILE_MACHINE_R3000:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_R3000;
-        break;
-    case COFF_IMAGE_FILE_MACHINE_R4000:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_R4000;
-        break;
-    case COFF_IMAGE_FILE_MACHINE_ALPHA:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_ALPHA;
-        break;
-    case COFF_IMAGE_FILE_MACHINE_POWERPC:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_PPC601;
-        break;
-    case COFF_IMAGE_FILE_MACHINE_AMD64:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_AMD64;
-        break;
-    case COFF_IMAGE_FILE_MACHINE_UNKNOWN:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_NONE;
-        break;
-    default:
-        coff_file_hnd->machine_type = ORL_MACHINE_TYPE_UNKNOWN;
-        break;
-    }
+    coff_file_hnd->machine_type = machine_type_of( cpu_type );
 
     if( flags & COFF_IMAGE_FILE_DLL ) {
         coff_file_hnd->type = ORL_FILE_TYPE_DLL;
@@ -110,17 +151,10 @@ static bool determine_file_specs( coff_file_handle coff_file_hnd, coff_file_head
     }
 
     coff_file_hnd->flags = ORL_FILE_FLAG_NONE;
-    if( flags & COFF_IMAGE_FILE_RELOCS_STRIPPED ) {
-        coff_file_hnd->flags |= ORL_FILE_FLAG_RELOCS_STRIPPED;
-    }
-    if( flags & COFF_IMAGE_FILE_LINE_NUMS_STRIPPED ) {
-        coff_file_hnd->flags |= ORL_FILE_FLAG_LINE_NUMS_STRIPPED;
-    }
-    if( flags & COFF_IMAGE_FILE_LOCAL_SYMS_STRIPPED ) {
-        coff_file_hnd->flags |= ORL_FILE_FLAG_LOCAL_SYMS_STRIPPED;
-    }
-    if( flags & COFF_IMAGE_FILE_DEBUG_STRIPPED ) {
-        coff_file_hnd->flags |= ORL_FILE_FLAG_DEBUG_STRIPPED;
+    for( const auto &map : file_flag_map ) {
+        if( flags & map.coff ) {
+            coff_file_hnd->flags |= map.orl;
+        }
     }
     if( cpu_type == COFF_IMAGE_FILE_MACHINE_AMD64 ) {
         coff_file_hnd->flags |= ORL_FILE_FLAG_64BIT_MACHINE;
@@ -143,10 +177,8 @@ static bool determine_file_specs( coff_file_handle coff_file_hnd, coff_file_head
         coff_file_hnd->flags |= ORL_FILE_FLAG_LITTLE_ENDIAN;
     } else {
         /*
-        if( flags & COFF_IMAGE_FILE_BYTES_REVERSED_LO ) {
-            coff_file_hnd->flags |= ORL_FILE_FLAG_LITTLE_ENDIAN;
-        }
-        */
+         * (COFF_IMAGE_FILE_BYTES_REVERSED_LO is not looked at)
+         */
         if( flags & COFF_IMAGE_FILE_BYTES_REVERSED_HI ) {
             coff_file_hnd->flags |= ORL_FILE_FLAG_BIG_ENDIAN;
         } else {
@@ -167,7 +199,7 @@ static bool determine_file_specs( coff_file_handle coff_file_hnd, coff_file_head
             coff_file_hnd->machine_type
             coff_file_hnd->flags
     */
-    return( flag_import_library );
+    return flag_import_library;
 }
 
 static void determine_section_specs( coff_sec_handle coff_sec_hnd,
@@ -189,43 +221,12 @@ static void determine_section_specs( coff_sec_handle coff_sec_hnd,
     } else {
         coff_sec_hnd->type = ORL_SEC_TYPE_NONE;
     }
-//  if( s_hdr->flags & COFF_IMAGE_SCN_TYPE_GROUP ) {         // no MS support
-//      coff_sec_hnd->flags |= ORL_SEC_FLAG_GROUPED;
-//  }
-    if( s_hdr->flags & COFF_IMAGE_SCN_TYPE_NO_PAD ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_NO_PADDING;
+    for( const auto &map : sec_flag_map ) {
+        if( s_hdr->flags & map.coff ) {
+            coff_sec_hnd->flags |= map.orl;
+        }
     }
-//  if( s_hdr->flags & COFF_IMAGE_SCN_LNK_OVER ) {           // no MS support
-//      coff_sec_hnd->flags |= ORL_SEC_FLAG_OVERLAY;
-//  }
-    if( s_hdr->flags & COFF_IMAGE_SCN_LNK_REMOVE ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_REMOVE;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_LNK_COMDAT ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_COMDAT;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_MEM_DISCARDABLE ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_DISCARDABLE;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_MEM_NOT_CACHED ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_NOT_CACHED;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_MEM_NOT_PAGED ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_NOT_PAGEABLE;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_MEM_SHARED ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_SHARED;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_MEM_EXECUTE ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_EXECUTE_PERMISSION;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_MEM_READ ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_READ_PERMISSION;
-    }
-    if( s_hdr->flags & COFF_IMAGE_SCN_MEM_WRITE ) {
-        coff_sec_hnd->flags |= ORL_SEC_FLAG_WRITE_PERMISSION;
-    }
-    coff_sec_hnd->align = (s_hdr->flags & COFF_IMAGE_SCN_ALIGN_MASK) >> COFF_IMAGE_SCN_ALIGN_SHIFT;
+    coff_sec_hnd->align = ( s_hdr->flags & COFF_IMAGE_SCN_ALIGN_MASK ) >> COFF_IMAGE_SCN_ALIGN_SHIFT;
     if( coff_sec_hnd->align == 0 ) {
         coff_sec_hnd->align = 4;
     } else {
@@ -241,10 +242,8 @@ static void determine_section_specs( coff_sec_handle coff_sec_hnd,
 static void free_coff_sec_handles( coff_file_handle coff_file_hnd, coff_quantity num_alloced )
 /********************************************************************************************/
 {
-    coff_quantity   i;
-
-    if( coff_file_hnd->coff_sec_hnd != NULL ) {
-        for( i = 0; i < num_alloced; i++ ) {
+    if( coff_file_hnd->coff_sec_hnd != nullptr ) {
+        for( coff_quantity i = 0; i < num_alloced; i++ ) {
             if( coff_file_hnd->coff_sec_hnd[i]->name_alloced ) {
                 _ClientFree( coff_file_hnd, coff_file_hnd->coff_sec_hnd[i]->name );
             }
@@ -252,7 +251,7 @@ static void free_coff_sec_handles( coff_file_handle coff_file_hnd, coff_quantity
         }
         _ClientFree( coff_file_hnd, coff_file_hnd->coff_sec_hnd );
     } else {
-        for( i = 0; i < num_alloced; i++ ) {
+        for( coff_quantity i = 0; i < num_alloced; i++ ) {
             _ClientFree( coff_file_hnd, coff_file_hnd->orig_sec_hnd[i] );
         }
     }
@@ -263,57 +262,36 @@ static orl_return load_coff_sec_handles( coff_file_handle coff_file_hnd,
                                          coff_file_header *f_hdr )
 /**********************************************************************/
 {
-    coff_section_header     *s_hdr;
-    coff_sec_handle         coff_sec_hnd;
-    coff_sec_handle         coff_reloc_sec_hnd;
-    coff_quantity           i;
-    coff_quantity           num_reloc_secs = 0;
-    coff_sec_offset         *reloc_sec_offset;
-    coff_sec_size           *reloc_sec_size;
-    coff_quantity           reloc_secs_created;
-    bool                    is64bit;
+    // where each section's relocations are in the file, and how big they are
+    std::vector<coff_sec_offset>    reloc_sec_offset( coff_file_hnd->num_sections, 0 );
+    std::vector<coff_sec_size>      reloc_sec_size( coff_file_hnd->num_sections, 0 );
+    coff_quantity                   num_reloc_secs = 0;
 
     if( coff_file_hnd->num_sections == 0 ) {
-        reloc_sec_offset = NULL;
-        reloc_sec_size = NULL;
-        coff_file_hnd->orig_sec_hnd = NULL;
+        coff_file_hnd->orig_sec_hnd = nullptr;
     } else {
-        reloc_sec_offset = (coff_sec_offset *)_ClientAlloc( coff_file_hnd, sizeof( coff_sec_offset ) * coff_file_hnd->num_sections );
-        if( reloc_sec_offset == NULL )
-            return( ORL_OUT_OF_MEMORY );
-        reloc_sec_size = (coff_sec_size *)_ClientAlloc( coff_file_hnd, sizeof( coff_sec_size ) * coff_file_hnd->num_sections );
-        if( reloc_sec_size == NULL ) {
-            _ClientFree( coff_file_hnd, reloc_sec_offset );
-            return( ORL_OUT_OF_MEMORY );
-        }
-        memset( reloc_sec_offset, 0, sizeof( coff_sec_offset ) * coff_file_hnd->num_sections );
-        memset( reloc_sec_size, 0, sizeof( coff_sec_size ) * coff_file_hnd->num_sections );
-        coff_file_hnd->orig_sec_hnd = (coff_sec_handle *)_ClientAlloc( coff_file_hnd, sizeof( coff_sec_handle ) * coff_file_hnd->num_sections );
-        if( coff_file_hnd->orig_sec_hnd == NULL ) {
-            _ClientFree( coff_file_hnd, reloc_sec_offset );
-            _ClientFree( coff_file_hnd, reloc_sec_size );
-            return( ORL_OUT_OF_MEMORY );
+        coff_file_hnd->orig_sec_hnd = static_cast<coff_sec_handle *>( _ClientAlloc( coff_file_hnd, sizeof( coff_sec_handle ) * coff_file_hnd->num_sections ) );
+        if( coff_file_hnd->orig_sec_hnd == nullptr ) {
+            return ORL_OUT_OF_MEMORY;
         }
     }
-    coff_file_hnd->coff_sec_hnd = NULL;
-    s_hdr = (coff_section_header *)coff_file_hnd->s_hdr_table_buffer;
-    is64bit = ( (coff_file_hnd->flags & ORL_FILE_FLAG_64BIT_MACHINE) != 0 );
-    for( i = 0; i < coff_file_hnd->num_sections; ++i ) {
-        coff_sec_hnd = (coff_sec_handle)_ClientAlloc( coff_file_hnd, ORL_STRUCT_SIZEOF( coff_sec_handle ) );
-        if( coff_sec_hnd == NULL ) {
+    coff_file_hnd->coff_sec_hnd = nullptr;
+    coff_section_header *s_hdr = reinterpret_cast<coff_section_header *>( coff_file_hnd->s_hdr_table_buffer );
+    const bool          is64bit = ( ( coff_file_hnd->flags & ORL_FILE_FLAG_64BIT_MACHINE ) != 0 );
+
+    for( coff_quantity i = 0; i < coff_file_hnd->num_sections; ++i ) {
+        coff_sec_handle     coff_sec_hnd = new_sec_handle( coff_file_hnd );
+
+        if( coff_sec_hnd == nullptr ) {
             free_coff_sec_handles( coff_file_hnd, i );
-            _ClientFree( coff_file_hnd, reloc_sec_offset );
-            _ClientFree( coff_file_hnd, reloc_sec_size );
-            return( ORL_OUT_OF_MEMORY );
+            return ORL_OUT_OF_MEMORY;
         }
         coff_file_hnd->orig_sec_hnd[i] = coff_sec_hnd;
         if( s_hdr->name[0] != '/' ) {
-            coff_sec_hnd->name = (char *)(_ClientAlloc( coff_file_hnd, COFF_SEC_NAME_LEN + 1 ));
-            if( coff_sec_hnd->name == NULL ) {
+            coff_sec_hnd->name = static_cast<char *>( _ClientAlloc( coff_file_hnd, COFF_SEC_NAME_LEN + 1 ) );
+            if( coff_sec_hnd->name == nullptr ) {
                 free_coff_sec_handles( coff_file_hnd, i );
-                _ClientFree( coff_file_hnd, reloc_sec_offset );
-                _ClientFree( coff_file_hnd, reloc_sec_size );
-                return( ORL_OUT_OF_MEMORY );
+                return ORL_OUT_OF_MEMORY;
             }
             coff_sec_hnd->name_alloced = true;
             strncpy( coff_sec_hnd->name, s_hdr->name, COFF_SEC_NAME_LEN );
@@ -330,8 +308,8 @@ static orl_return load_coff_sec_handles( coff_file_handle coff_file_hnd,
         coff_sec_hnd->offset = s_hdr->rawdata_ptr;
         coff_sec_hnd->hdr = s_hdr;
         determine_section_specs( coff_sec_hnd, s_hdr, is64bit );
-        coff_sec_hnd->contents = NULL;
-        coff_sec_hnd->assoc.normal.reloc_sec = NULL;
+        coff_sec_hnd->contents = nullptr;
+        coff_sec_hnd->assoc.normal.reloc_sec = nullptr;
         reloc_sec_offset[i] = s_hdr->reloc_ptr;
         if( s_hdr->num_relocs > 0 ) {
             num_reloc_secs++;
@@ -341,30 +319,29 @@ static orl_return load_coff_sec_handles( coff_file_handle coff_file_hnd,
     }
     /* There are num_reloc_secs + 2 additional section handles to create
      (one each for the symbol and string tables) */
-    coff_file_hnd->coff_sec_hnd = (coff_sec_handle *)_ClientAlloc( coff_file_hnd, sizeof( coff_sec_handle ) * (coff_file_hnd->num_sections + num_reloc_secs + 2) );
-    if( coff_file_hnd->coff_sec_hnd == NULL ) {
+    coff_file_hnd->coff_sec_hnd = static_cast<coff_sec_handle *>( _ClientAlloc( coff_file_hnd, sizeof( coff_sec_handle ) * ( coff_file_hnd->num_sections + num_reloc_secs + 2 ) ) );
+    if( coff_file_hnd->coff_sec_hnd == nullptr ) {
         free_coff_sec_handles( coff_file_hnd, coff_file_hnd->num_sections );
-        _ClientFree( coff_file_hnd, reloc_sec_offset );
-        _ClientFree( coff_file_hnd, reloc_sec_size );
-        return( ORL_OUT_OF_MEMORY );
+        return ORL_OUT_OF_MEMORY;
     }
     memcpy( coff_file_hnd->coff_sec_hnd, coff_file_hnd->orig_sec_hnd, sizeof( coff_sec_handle ) * coff_file_hnd->num_sections );
-    reloc_secs_created = 0;
+    coff_quantity   reloc_secs_created = 0;
+    coff_quantity   i;
+
     for( i = 0; i < coff_file_hnd->num_sections; ++i ) {
         if( reloc_sec_size[i] > 0 ) {
             reloc_secs_created++;
             // create a reloc section
-            coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created] = (coff_sec_handle)_ClientAlloc( coff_file_hnd, ORL_STRUCT_SIZEOF( coff_sec_handle ) );
-            coff_reloc_sec_hnd = coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created];
-            if( coff_reloc_sec_hnd == NULL ) {
+            coff_sec_handle     coff_reloc_sec_hnd = new_sec_handle( coff_file_hnd );
+
+            coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created] = coff_reloc_sec_hnd;
+            if( coff_reloc_sec_hnd == nullptr ) {
                 free_coff_sec_handles( coff_file_hnd, coff_file_hnd->num_sections + reloc_secs_created );
-                _ClientFree( coff_file_hnd, reloc_sec_offset );
-                _ClientFree( coff_file_hnd, reloc_sec_size );
-                return( ORL_OUT_OF_MEMORY );
+                return ORL_OUT_OF_MEMORY;
             }
             coff_reloc_sec_hnd->file_format = ORL_COFF;
             coff_reloc_sec_hnd->coff_file_hnd = coff_file_hnd;
-            coff_reloc_sec_hnd->name = SectionNames[0];     // ".rel"
+            coff_reloc_sec_hnd->name = const_cast<char *>( rel_section_name );
             coff_reloc_sec_hnd->name_alloced = false;
             coff_reloc_sec_hnd->relocs_done = false;
             coff_reloc_sec_hnd->size = reloc_sec_size[i];
@@ -372,99 +349,87 @@ static orl_return load_coff_sec_handles( coff_file_handle coff_file_hnd,
             coff_reloc_sec_hnd->offset = reloc_sec_offset[i];
             coff_reloc_sec_hnd->type = ORL_SEC_TYPE_RELOCS;
             coff_reloc_sec_hnd->flags = ORL_SEC_FLAG_NONE;
-            coff_reloc_sec_hnd->hdr = NULL;
+            coff_reloc_sec_hnd->hdr = nullptr;
             coff_reloc_sec_hnd->assoc.reloc.orig_sec = coff_file_hnd->coff_sec_hnd[i];
-            coff_reloc_sec_hnd->assoc.reloc.relocs = NULL;
+            coff_reloc_sec_hnd->assoc.reloc.relocs = nullptr;
             coff_reloc_sec_hnd->align = 4;
             coff_file_hnd->coff_sec_hnd[i]->assoc.normal.reloc_sec = coff_reloc_sec_hnd;
             coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created - 1] = coff_reloc_sec_hnd;
         }
     }
     // create the symbol table section
-    coff_file_hnd->symbol_table = (coff_sec_handle)_ClientAlloc( coff_file_hnd, ORL_STRUCT_SIZEOF( coff_sec_handle ) );
-    if( coff_file_hnd->symbol_table == NULL ) {
+    coff_file_hnd->symbol_table = new_sec_handle( coff_file_hnd );
+    if( coff_file_hnd->symbol_table == nullptr ) {
         free_coff_sec_handles( coff_file_hnd, i + coff_file_hnd->num_sections );
-        _ClientFree( coff_file_hnd, reloc_sec_offset );
-        _ClientFree( coff_file_hnd, reloc_sec_size );
-        return( ORL_OUT_OF_MEMORY );
+        return ORL_OUT_OF_MEMORY;
     }
-    coff_file_hnd->symbol_table->file_format = ORL_COFF;
-    coff_file_hnd->symbol_table->coff_file_hnd = coff_file_hnd;
-    coff_file_hnd->symbol_table->name = SectionNames[1];    // ".symtab"
-    coff_file_hnd->symbol_table->name_alloced = false;
-    coff_file_hnd->symbol_table->relocs_done = false;
-    coff_file_hnd->symbol_table->size = f_hdr->num_symbols * sizeof( coff_symbol );
-    coff_file_hnd->symbol_table->base = 0;
-    coff_file_hnd->symbol_table->offset = f_hdr->sym_table;
-    coff_file_hnd->symbol_table->hdr = NULL;
-    coff_file_hnd->symbol_table->assoc.normal.reloc_sec = NULL;
-    coff_file_hnd->symbol_table->type = ORL_SEC_TYPE_SYM_TABLE;
-    coff_file_hnd->symbol_table->flags = ORL_SEC_FLAG_NONE;
-    coff_file_hnd->symbol_table->align = 4;
-    coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created] = coff_file_hnd->symbol_table;
+    coff_sec_handle     symbol_table = coff_file_hnd->symbol_table;
+
+    symbol_table->file_format = ORL_COFF;
+    symbol_table->coff_file_hnd = coff_file_hnd;
+    symbol_table->name = const_cast<char *>( symtab_section_name );
+    symbol_table->name_alloced = false;
+    symbol_table->relocs_done = false;
+    symbol_table->size = f_hdr->num_symbols * sizeof( coff_symbol );
+    symbol_table->base = 0;
+    symbol_table->offset = f_hdr->sym_table;
+    symbol_table->hdr = nullptr;
+    symbol_table->assoc.normal.reloc_sec = nullptr;
+    symbol_table->type = ORL_SEC_TYPE_SYM_TABLE;
+    symbol_table->flags = ORL_SEC_FLAG_NONE;
+    symbol_table->align = 4;
+    coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created] = symbol_table;
     i++;
     // create the string table section
-    coff_file_hnd->string_table = (coff_sec_handle)_ClientAlloc( coff_file_hnd, ORL_STRUCT_SIZEOF( coff_sec_handle ) );
-    if( coff_file_hnd->string_table == NULL ) {
+    coff_file_hnd->string_table = new_sec_handle( coff_file_hnd );
+    if( coff_file_hnd->string_table == nullptr ) {
         free_coff_sec_handles( coff_file_hnd, i + coff_file_hnd->num_sections );
-        _ClientFree( coff_file_hnd, reloc_sec_offset );
-        _ClientFree( coff_file_hnd, reloc_sec_size );
-        return( ORL_OUT_OF_MEMORY );
+        return ORL_OUT_OF_MEMORY;
     }
-    coff_file_hnd->string_table->file_format = ORL_COFF;
-    coff_file_hnd->string_table->coff_file_hnd = coff_file_hnd;
-    coff_file_hnd->string_table->name = SectionNames[2];    // ".strtab"
-    coff_file_hnd->string_table->name_alloced = false;
-    coff_file_hnd->string_table->relocs_done = false;
-    coff_file_hnd->string_table->size = 0;  // determined later
-    coff_file_hnd->string_table->base = 0;
-    coff_file_hnd->string_table->offset = coff_file_hnd->symbol_table->offset + coff_file_hnd->symbol_table->size;
-    coff_file_hnd->string_table->hdr = NULL;
-    coff_file_hnd->string_table->assoc.normal.reloc_sec = NULL;
-    coff_file_hnd->string_table->type = ORL_SEC_TYPE_STR_TABLE;
-    coff_file_hnd->string_table->flags = ORL_SEC_FLAG_NONE;
-    coff_file_hnd->string_table->align = 4;
-    coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created + 1] = coff_file_hnd->string_table;
-    _ClientFree( coff_file_hnd, reloc_sec_offset );
-    _ClientFree( coff_file_hnd, reloc_sec_size );
+    coff_sec_handle     string_table = coff_file_hnd->string_table;
+
+    string_table->file_format = ORL_COFF;
+    string_table->coff_file_hnd = coff_file_hnd;
+    string_table->name = const_cast<char *>( strtab_section_name );
+    string_table->name_alloced = false;
+    string_table->relocs_done = false;
+    string_table->size = 0;     // determined later
+    string_table->base = 0;
+    string_table->offset = symbol_table->offset + symbol_table->size;
+    string_table->hdr = nullptr;
+    string_table->assoc.normal.reloc_sec = nullptr;
+    string_table->type = ORL_SEC_TYPE_STR_TABLE;
+    string_table->flags = ORL_SEC_FLAG_NONE;
+    string_table->align = 4;
+    coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections + reloc_secs_created + 1] = string_table;
     coff_file_hnd->num_sections += num_reloc_secs + 2;
-    return( ORL_OKAY );
+    return ORL_OKAY;
 }
 
 orl_return CoffLoadFileStructure( coff_file_handle coff_file_hnd )
 /****************************************************************/
 {
     orl_return          return_val;
-    coff_file_header    *f_hdr;
-    coff_quantity       sec_header_table_size;
-    coff_quantity       buf_size;
-    coff_sec_offset     string_table_index;
-    coff_sec_handle     last_sec_hnd;
-    coff_sec_handle     coff_sec_hnd;
-    coff_quantity       i;
-    coff_quantity       num_sections;
-    exe_header          *exe_hdr;
-    char                *PE;
-    orl_file_offset     PEoffset;
-    coff_sec_size       *string_sec_size;
+    orl_file_offset     PEoffset = 0;
+    auto                *exe_hdr = static_cast<const exe_header *>( _ClientRead( coff_file_hnd, 2 ) );
 
-    PEoffset = 0;
-    exe_hdr = (exe_header *)(_ClientRead( coff_file_hnd, 2 ));
     _ClientSeek( coff_file_hnd, SEEK_POSBACK( 2 ), SEEK_CUR );
     if( exe_hdr->MZ[0] == 'M' && exe_hdr->MZ[1] == 'Z' ) {
-        exe_hdr = (exe_header *)(_ClientRead( coff_file_hnd, sizeof( exe_header ) ));
+        exe_hdr = static_cast<const exe_header *>( _ClientRead( coff_file_hnd, sizeof( exe_header ) ) );
         _ClientSeek( coff_file_hnd, exe_hdr->ne_header_off - sizeof( exe_header ), SEEK_CUR );
-        PE = (char *)(_ClientRead( coff_file_hnd, 4 ));
+        const char  *PE = static_cast<const char *>( _ClientRead( coff_file_hnd, 4 ) );
+
         if( PE[0] == 'P' && PE[1] == 'E' && PE[2] == '\0' && PE[3] == '\0' ) {
             PEoffset = exe_hdr->ne_header_off + 4;
         } else {
             _ClientSeek( coff_file_hnd, SEEK_POSBACK( exe_hdr->ne_header_off - 4 ), SEEK_CUR );
         }
     }
-    coff_file_hnd->f_hdr_buffer = (coff_file_header *)(_ClientRead( coff_file_hnd, sizeof( coff_file_header ) ));
-    if( coff_file_hnd->f_hdr_buffer == NULL )
-        return( ORL_OUT_OF_MEMORY );
-    f_hdr = (coff_file_header *)coff_file_hnd->f_hdr_buffer;
+    coff_file_hnd->f_hdr_buffer = static_cast<coff_file_header *>( _ClientRead( coff_file_hnd, sizeof( coff_file_header ) ) );
+    if( coff_file_hnd->f_hdr_buffer == nullptr )
+        return ORL_OUT_OF_MEMORY;
+    coff_file_header    *f_hdr = coff_file_hnd->f_hdr_buffer;
+
     if( determine_file_specs( coff_file_hnd, f_hdr ) ) {
         /*
          * we have identified an import_object_header
@@ -472,21 +437,22 @@ orl_return CoffLoadFileStructure( coff_file_handle coff_file_hnd )
          * library structures, change _ClientRead and _ClientSeek
          * macros to read from converted metadata
          */
-        return_val = (orl_return)(convert_import_library_init( coff_file_hnd ));
-        if ( return_val != ORL_OKAY ) {
-            return( return_val );
+        return_val = static_cast<orl_return>( convert_import_library_init( coff_file_hnd ) );
+        if( return_val != ORL_OKAY ) {
+            return return_val;
         }
         /*
          * reread new converted file header and next process as normal
          */
-        coff_file_hnd->f_hdr_buffer = (coff_file_header *)(_ClientRead( coff_file_hnd, sizeof( coff_file_header ) ));
-        if( coff_file_hnd->f_hdr_buffer == NULL )
-            return( ORL_OUT_OF_MEMORY );
-        f_hdr = (coff_file_header *)coff_file_hnd->f_hdr_buffer;
+        coff_file_hnd->f_hdr_buffer = static_cast<coff_file_header *>( _ClientRead( coff_file_hnd, sizeof( coff_file_header ) ) );
+        if( coff_file_hnd->f_hdr_buffer == nullptr )
+            return ORL_OUT_OF_MEMORY;
+        f_hdr = coff_file_hnd->f_hdr_buffer;
         determine_file_specs( coff_file_hnd, f_hdr );
     }
     if( f_hdr->opt_hdr_size > 0 ) {     // skip/process optional header
-        pe_opt_hdr *opt_hdr = (pe_opt_hdr *)_ClientRead( coff_file_hnd, f_hdr->opt_hdr_size );
+        const pe_opt_hdr    *opt_hdr = static_cast<const pe_opt_hdr *>( _ClientRead( coff_file_hnd, f_hdr->opt_hdr_size ) );
+
         switch( opt_hdr->magic ) {
         case COFF_IMAGE_NT_OPTIONAL_HDR32_MAGIC:
             /*
@@ -508,48 +474,50 @@ orl_return CoffLoadFileStructure( coff_file_handle coff_file_hnd )
         }
     }
     coff_file_hnd->initial_size = sizeof( coff_file_header ) + f_hdr->opt_hdr_size + PEoffset;
-    switch( coff_file_hnd->machine_type ) {
-    case ORL_MACHINE_TYPE_UNKNOWN:
-        return( ORL_ERROR );
-    default:
-        break;
+    if( coff_file_hnd->machine_type == ORL_MACHINE_TYPE_UNKNOWN ) {
+        return ORL_ERROR;
     }
     coff_file_hnd->num_symbols = f_hdr->num_symbols;
     coff_file_hnd->num_sections = f_hdr->num_sections;
-    sec_header_table_size = coff_file_hnd->num_sections * sizeof( coff_section_header );
+    const coff_quantity     sec_header_table_size = coff_file_hnd->num_sections * sizeof( coff_section_header );
+
     if( coff_file_hnd->num_sections > 0 ) {
-        coff_file_hnd->s_hdr_table_buffer = (char *)(_ClientRead( coff_file_hnd, sec_header_table_size));
-        if( coff_file_hnd->s_hdr_table_buffer == NULL ) {
-            return( ORL_ERROR );
+        coff_file_hnd->s_hdr_table_buffer = static_cast<char *>( _ClientRead( coff_file_hnd, sec_header_table_size ) );
+        if( coff_file_hnd->s_hdr_table_buffer == nullptr ) {
+            return ORL_ERROR;
         }
     }
     return_val = load_coff_sec_handles( coff_file_hnd, f_hdr );
     if( return_val != ORL_OKAY ) {
-        return( return_val );
+        return return_val;
     }
-    last_sec_hnd = coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections - 1];
+    coff_sec_handle     last_sec_hnd = coff_file_hnd->coff_sec_hnd[coff_file_hnd->num_sections - 1];
+
     coff_file_hnd->initial_size += sec_header_table_size;
 
-    buf_size = 0;
-    for( i = 0; i < coff_file_hnd->num_sections; ++i ) {
-        coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
-        if( (coff_sec_hnd->offset + coff_sec_hnd->size) > buf_size && (coff_sec_hnd->flags & ORL_SEC_FLAG_UNINITIALIZED_DATA) == 0 ) {
+    coff_quantity   buf_size = 0;
+
+    for( coff_quantity i = 0; i < coff_file_hnd->num_sections; ++i ) {
+        coff_sec_handle     coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
+
+        if( ( coff_sec_hnd->offset + coff_sec_hnd->size ) > buf_size && ( coff_sec_hnd->flags & ORL_SEC_FLAG_UNINITIALIZED_DATA ) == 0 ) {
             buf_size = coff_sec_hnd->offset + coff_sec_hnd->size;
         }
     }
     coff_file_hnd->size = buf_size;
     buf_size -= coff_file_hnd->initial_size;
-    coff_file_hnd->rest_of_file_buffer = (unsigned char *)(_ClientRead( coff_file_hnd, buf_size ));
-    if( coff_file_hnd->rest_of_file_buffer == NULL ) {
-        return( ORL_ERROR );
+    coff_file_hnd->rest_of_file_buffer = static_cast<unsigned char *>( _ClientRead( coff_file_hnd, buf_size ) );
+    if( coff_file_hnd->rest_of_file_buffer == nullptr ) {
+        return ORL_ERROR;
     }
-    num_sections = coff_file_hnd->num_sections;
+    coff_quantity   num_sections = coff_file_hnd->num_sections;
     // read string table; always follows the symbol table, but may not exist
     if( last_sec_hnd == coff_file_hnd->string_table ) {
         // read the string table size; if that fails, there isn't any
         if( f_hdr->sym_table ) {
-            string_sec_size = (coff_sec_size *)(_ClientRead( coff_file_hnd, sizeof( coff_sec_size ) ));
-            if( string_sec_size != NULL ) {
+            const auto  *string_sec_size = static_cast<const coff_sec_size *>( _ClientRead( coff_file_hnd, sizeof( coff_sec_size ) ) );
+
+            if( string_sec_size != nullptr ) {
                 last_sec_hnd->size = *string_sec_size;
             }
         }
@@ -561,41 +529,44 @@ orl_return CoffLoadFileStructure( coff_file_handle coff_file_hnd )
         }
         if( last_sec_hnd->size > 0 && last_sec_hnd->offset != 0 ) {
             if( last_sec_hnd->offset == buf_size + coff_file_hnd->initial_size ) {
-                last_sec_hnd->contents = (unsigned char *)(_ClientRead( coff_file_hnd, last_sec_hnd->size ));
+                last_sec_hnd->contents = static_cast<unsigned char *>( _ClientRead( coff_file_hnd, last_sec_hnd->size ) );
                 coff_file_hnd->size += last_sec_hnd->size;
             } else {
                 last_sec_hnd->contents = coff_file_hnd->rest_of_file_buffer + last_sec_hnd->offset - coff_file_hnd->initial_size + sizeof( coff_sec_size );
             }
-            if( last_sec_hnd->contents == NULL ) {
-                return( ORL_ERROR );
+            if( last_sec_hnd->contents == nullptr ) {
+                return ORL_ERROR;
             }
         } else {
-            last_sec_hnd->contents = NULL;
+            last_sec_hnd->contents = nullptr;
         }
         num_sections--;
     }
     // determine contents pointers of all sections
-    for( i = 0; i < num_sections; ++i ) {
-        coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
-        if( (coff_sec_hnd->size > 0 || coff_sec_hnd->type == ORL_SEC_TYPE_STR_TABLE) && coff_sec_hnd->offset != 0 ) {
+    for( coff_quantity i = 0; i < num_sections; ++i ) {
+        coff_sec_handle     coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
+
+        if( ( coff_sec_hnd->size > 0 || coff_sec_hnd->type == ORL_SEC_TYPE_STR_TABLE ) && coff_sec_hnd->offset != 0 ) {
             coff_sec_hnd->contents = coff_file_hnd->rest_of_file_buffer + coff_sec_hnd->offset - coff_file_hnd->initial_size;
         }
     }
     if( last_sec_hnd != coff_file_hnd->string_table ) {
-        memcpy( &(coff_file_hnd->string_table->size), coff_file_hnd->string_table->contents, sizeof( coff_sec_size ) );
+        memcpy( &( coff_file_hnd->string_table->size ), coff_file_hnd->string_table->contents, sizeof( coff_sec_size ) );
         if( coff_file_hnd->string_table->size != 0 ) {
             coff_file_hnd->string_table->size -= sizeof( coff_sec_size );
             coff_file_hnd->string_table->contents += sizeof( coff_sec_size );
         }
     }
     // determine section names
-    for( i = 0; i < coff_file_hnd->num_sections; ++i ) {
-        coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
+    for( coff_quantity i = 0; i < coff_file_hnd->num_sections; ++i ) {
+        coff_sec_handle     coff_sec_hnd = coff_file_hnd->coff_sec_hnd[i];
+
         if( coff_sec_hnd->name[0] == '/' ) {
             // change pointer to point into string table
-            string_table_index = atoi( coff_sec_hnd->name + 1 ) - sizeof( coff_sec_size );
-            coff_sec_hnd->name = (char *)( coff_file_hnd->string_table->contents + string_table_index );
+            const coff_sec_offset   string_table_index = static_cast<coff_sec_offset>( atoi( coff_sec_hnd->name + 1 ) - sizeof( coff_sec_size ) );
+
+            coff_sec_hnd->name = reinterpret_cast<char *>( coff_file_hnd->string_table->contents + string_table_index );
         }
     }
-    return( ORL_OKAY );
+    return ORL_OKAY;
 }

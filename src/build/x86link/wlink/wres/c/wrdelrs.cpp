@@ -30,31 +30,32 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
 #include "wresrtns.h"
+
+
+namespace {
 
 /*
  * delAResource - delete a single resource node and update pointers/counters
  *                This routine assumes that all language nodes for this
  *                resource have already been deleted.
  */
-static void delAResource( WResDir dir, WResTypeNode *typenode,
-                           WResResNode *resnode )
+void delAResource( WResDir dir, WResTypeNode *typenode, WResResNode *resnode )
 {
-    if( resnode->Next != NULL ) {
+    if( resnode->Next != nullptr ) {
         resnode->Next->Prev = resnode->Prev;
     } else {
         typenode->Tail = resnode->Prev;
     }
-    if( resnode->Prev != NULL ) {
+    if( resnode->Prev != nullptr ) {
         resnode->Prev->Next = resnode->Next;
     } else {
         typenode->Head = resnode->Next;
     }
-    typenode->Info.NumResources --;
-    dir->NumResources --;
+    typenode->Info.NumResources--;
+    dir->NumResources--;
     WRESFREE( resnode );
 }
 
@@ -62,19 +63,19 @@ static void delAResource( WResDir dir, WResTypeNode *typenode,
  * delAType - delete a type node.  This routine assumes that all
  *            resource nodes for the type have already been deleted
  */
-static void delAType( WResDir dir, WResTypeNode *typenode ) {
-
-    if( typenode->Next != NULL ) {
+void delAType( WResDir dir, WResTypeNode *typenode )
+{
+    if( typenode->Next != nullptr ) {
         typenode->Next->Prev = typenode->Prev;
     } else {
         dir->Tail = typenode->Prev;
     }
-    if( typenode->Prev != NULL ) {
+    if( typenode->Prev != nullptr ) {
         typenode->Prev->Next = typenode->Next;
     } else {
         dir->Head = typenode->Next;
     }
-    dir->NumTypes --;
+    dir->NumTypes--;
     WRESFREE( typenode );
 }
 
@@ -84,68 +85,27 @@ static void delAType( WResDir dir, WResTypeNode *typenode ) {
  *                 all language nodes for the resource have already been
  *                 deleted
  */
-static void doDelResource( WResDir dir, WResResNode *resnode,
-                           WResTypeNode *typenode ) {
+void doDelResource( WResDir dir, WResResNode *resnode, WResTypeNode *typenode )
+{
     delAResource( dir, typenode, resnode );
     if( typenode->Info.NumResources == 0 ) {
         delAType( dir, typenode );
     }
 }
 
-void WResDelResource( WResDir dir, const WResID *type_id,
-                      const WResID *res_id ) {
-    WResTypeNode        *typenode;
-    WResResNode         *resnode;
+} // namespace
 
-    typenode = __FindType( type_id, dir );
-    if( typenode == NULL ) return;
-    resnode = __FindRes( res_id, typenode );
-    if( resnode == NULL ) return;
+void WResDelResource( WResDir dir, const WResID *type_id, const WResID *res_id )
+{
+    WResTypeNode    *typenode = __FindType( type_id, dir );
+
+    if( typenode == nullptr )
+        return;
+
+    WResResNode     *resnode = __FindRes( res_id, typenode );
+
+    if( resnode == nullptr )
+        return;
     __FreeLangList( resnode );
     doDelResource( dir, resnode, typenode );
 }
-
-#if( 0 )
-//
-// Not currently needed
-//
-
-/*
- * delALang - delete one language node and update pointers and counters
- */
-static void delALang( WResResNode *resnode, const WResLangType *lang )
-{
-    WResLangNode        *langnode;
-
-    langnode = __FindLang( lang, resnode );
-    if( langnode == NULL ) return;
-    if( langnode->Next != NULL ) {
-        langnode->Next->Prev = langnode->Prev;
-    } else {
-        resnode->Tail = langnode->Prev;
-    }
-    if( langnode->Prev != NULL ) {
-        langnode->Prev->Next = langnode->Next;
-    } else {
-        resnode->Head = langnode->Head;
-    }
-    resnode->Info.NumResources --;
-    WRESFREE( langnode );
-}
-
-void WResDelLang( WResDir dir, const WResID *type_id,
-                        const WResID *res_id, const WResLangType *lang ) {
-
-    WResTypeNode        *typenode;
-    WResResNode         *resnode;
-
-    typenode = __FindType( type_id, dir );
-    if( typenode == NULL ) return;
-    resnode = __FindRes( res_id, typenode )
-    if( resnode != NULL ) return;
-    delALang( resnode, lang )
-    if( resnode->Info.NumResources == 0 ) {
-        doDelResource( dir, typenode, resnode );
-    }
-}
-#endif

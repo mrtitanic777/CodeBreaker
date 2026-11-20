@@ -30,16 +30,15 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "util.h"
+
 
 WResID *WResIDFromNameOrOrdinal( ResNameOrOrdinal *name )
 /*******************************************************/
 {
     if( name->ord.fFlag == 0xff ) {
         return( WResIDFromNum( name->ord.wOrdinalID ) );
-    } else {
-        return( WResIDFromStr( name->name ) );
     }
-} /* WResIDFromNameOrOrd */
+    return( WResIDFromStr( name->name ) );
+}

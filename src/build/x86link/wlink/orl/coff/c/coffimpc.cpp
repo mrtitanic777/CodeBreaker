@@ -30,11 +30,32 @@
 ****************************************************************************/
 
 
-#include <stdlib.h>
+#include <cstdlib>
 #include "coffimpc.h"
 
 
-#define IMPLIB_STR(s,t) name_len s = { sizeof( t ) - 1, t };
-IMPLIB_STRS
-#undef IMPLIB_STR
+// the names an import library's members are made of, each with its length (declared in coffimpc.h)
+namespace {
 
+template <std::size_t N>
+constexpr name_len make_name( const char ( &text )[N] )
+{
+    return name_len{ N - 1, text };
+}
+
+}  // namespace
+
+name_len str_coff_idata2 = make_name( ".idata$2" );
+name_len str_coff_idata3 = make_name( ".idata$3" );
+name_len str_coff_idata4 = make_name( ".idata$4" );
+name_len str_coff_idata5 = make_name( ".idata$5" );
+name_len str_coff_idata6 = make_name( ".idata$6" );
+name_len str_coff_text = make_name( ".text" );
+name_len str_coff_pdata = make_name( ".pdata" );
+name_len str_coff_reldata = make_name( ".reldata" );
+name_len str_coff_toc = make_name( ".toc" );
+name_len str_coff_ppc_prefix = make_name( ".." );
+name_len str_coff_imp_prefix = make_name( "__imp_" );
+name_len str_coff_null_thunk_data = make_name( "_NULL_THUNK_DATA" );
+name_len str_coff_import_descriptor = make_name( "__IMPORT_DESCRIPTOR_" );
+name_len str_coff_null_import_descriptor = make_name( "__NULL_IMPORT_DESCRIPTOR" );

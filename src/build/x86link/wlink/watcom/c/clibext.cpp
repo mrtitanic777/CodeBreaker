@@ -28,79 +28,65 @@
 *
 ****************************************************************************/
 
+// Notes:
+//   bootstrap tools use only single-byte encoding: no multi-byte or wide character support is dealt with.
+//
+// The functions of Watcom's C library that other C libraries lack, for the one configuration wlink is built in
+// (not Open Watcom itself, not a Unix host): the plain C-library branches and, with _MSC_VER, the Windows ones.
 
-/****************************************************************************
-*
-* Notes:
-*   botstrap tools use only single-byte encoding that no need to deal with
-*   multi-byte encodings or wide character support
-*
-****************************************************************************/
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cerrno>
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <string_view>
 
-#ifdef __WATCOMC__
-
-    #include <stddef.h> /* need to load _comdef.h */
-  #if __WATCOMC__ == 1290           /* OW 1.9 fix */
-    #include <stdlib.h>
-    #include <stdio.h>
-    #include <string.h>
-  #endif
-  #if ( __WATCOMC__ == 1290 ) && defined( __NT__ ) /* OW 1.9 fix */
-    #include <errno.h>
-    #include <time.h>
+#if defined( _MSC_VER )
     #include <windows.h>
     #include "_dtaxxx.h"
     #include "ntext.h"
-    #include "wio.h"
-  #endif
-
-#else /* !__WATCOMC__ */
-
-  #if defined( __UNIX__ ) && !defined( __OSX__ )
-    /*
-     * following definition is necessary to access timegm function
-     * in GNU C library
-     */
-    #define _DEFAULT_SOURCE
-    #define _BSD_SOURCE
-  #endif
-    #include <string.h>
-    #include <ctype.h>
-    #include <errno.h>
-  #if defined( _MSC_VER )
-    #include <windows.h>
-    #include "_dtaxxx.h"
-    #include "ntext.h"
-  #endif
-    #include "wio.h"
-    #include "wreslang.h"
-
-#endif /* !__WATCOMC__ */
+#endif
+#include "wio.h"
+#include "wreslang.h"
 
 #include "clibint.h"
 #include "clibext.h"
+#include "run_state.hpp"
 
+namespace {
 
-/****************************************************************************
-*
-* Description:  Platform independent macros.
-*
-****************************************************************************/
+// Path separators of DOS, OS/2 and Windows.
+constexpr char PC = '\\';
 
-#define TEST_UNC(x)         ((x)[0] == '\\' && (x)[1] == '\\')
-#define TEST_DRIVE(x)       (isalpha( (x)[0] ) && (x)[1] == ':')
-#define TEST_NODE(x)        ((x)[0] == '/' && (x)[1] == '/')
+constexpr bool ISPS( int c )
+{
+    return c == PC || c == '/';
+}
 
-#define DRIVE2CHAR(x)       ('a' + (x))
-#define CHAR2DRIVE(x)       (tolower(x) - 'a')
+// "\\server" (a UNC name)
+inline bool test_unc( const char *x )
+{
+    return x[0] == '\\' && x[1] == '\\';
+}
 
-#if defined(__UNIX__)
-    #define PC '/'
-    #define ISPS(c)   ((c)==PC)
-#else   /* DOS, OS/2, Windows */
-    #define PC '\\'
-    #define ISPS(c)   ((c)==PC || (c)=='/')
-#endif
+// "c:"
+inline bool test_drive( const char *x )
+{
+    return std::isalpha( x[0] ) && x[1] == ':';
+}
+
+// What the file's functions keep between calls (getopt's position in the argument being parsed).
+struct FileState {
+    int     opt_offset = 0;         // position in currently parsed argument
+    char    altoptchar = '/';       // alternate option character
+    char    optchar = '\0';         // matched option char ('-' or altoptchar)
+};
+
+} // namespace
 
 /****************************************************************************
 *
@@ -109,12 +95,8 @@
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
-
-#else /* !__WATCOMC__ */
-
-char **_argv;
-int  _argc;
+char **_argv = nullptr;
+int  _argc = 0;
 
 /****************************************************************************
 *
@@ -123,91 +105,66 @@ int  _argc;
 *****************************************************************************
 *
 * split full path name into its components
-*
-* Under Unix we will map drive to node, dir to dir, and
-* filename to (filename and extension)
-*          or (filename) if no extension requested.
 */
 
-static char *pcopy( char **pdst, char *dst, const char *srcb, const char *srce )
-/*============================================================================*/
-{
-    size_t    len;
+namespace {
 
-    if( pdst == NULL )
-        return( dst );
+// copy srcb..srce (at most _MAX_PATH2 - 1 characters) to dst, if the caller asked for the part (pdst != nullptr)
+char *pcopy( char **pdst, char *dst, const char *srcb, const char *srce )
+{
+    if( pdst == nullptr )
+        return dst;
     *pdst = dst;
-    len = srce - srcb;
-    if( len > _MAX_PATH2 - 1 ) {
-        len = _MAX_PATH2 - 1;
-    }
-    strncpy( dst, srcb, len );
+    const std::size_t len = (std::min<std::size_t>)( static_cast<std::size_t>( srce - srcb ), _MAX_PATH2 - 1 );
+    std::memcpy( dst, srcb, len );
     dst[len] = '\0';
-    return( dst + len + 1 );
+    return dst + len + 1;
 }
 
-void  _splitpath2( char const *inp, char *outp, char **drive, char **path, char **fn, char **ext )
-/*==============================================================================================*/
-{
-    const char      *dotp;
-    const char      *fnamep;
-    const char      *startp;
-    unsigned char   ch;
+} // namespace
 
+void  _splitpath2( char const *inp, char *outp, char **drive, char **path, char **fn, char **ext )
+{
     /*
      * take apart specification like
-     *   //0/hd/user/fred/filename.ext for QNX
      *   \\disk2\fred\filename.ext for UNC names
      *   c:\fred\filename.ext for DOS, OS/2, Windows
      *
      * process node/drive/UNC specification
      */
-    startp = inp;
-  #ifdef __UNIX__
-    if( TEST_NODE( inp ) ) {
-  #else
-    if( TEST_UNC( inp ) ) {
-  #endif
+    const char *startp = inp;
+    if( test_unc( inp ) ) {
         inp += 2;
-        for( ;; ) {
-            if( *inp == '\0' )
-                break;
-            if( ISPS( *inp ) )
-                break;
-            if( *inp == '.' )
-                break;
+        while( *inp != '\0' && !ISPS( *inp ) && *inp != '.' ) {
             inp++;
         }
         outp = pcopy( drive, outp, startp, inp );
-  #ifndef __UNIX__
-    } else if( TEST_DRIVE( inp ) ) {
+    } else if( test_drive( inp ) ) {
         /*
          * process drive specification
          */
-        if( drive != NULL ) {
+        if( drive != nullptr ) {
             *drive = outp;
             *outp++ = inp[0];
             *outp++ = ':';
             *outp++ = '\0';
         }
         inp += 2;
-  #endif
-    } else if( drive != NULL ) {
+    } else if( drive != nullptr ) {
         *drive = outp;
         *outp++ = '\0';
     }
     /*
      * process
-     * /user/fred/filename.ext for QNX
      * \fred\filename.ext for DOS, OS/2, Windows
      * /fred/filename.ext for DOS, OS/2, Windows
      */
-    dotp = NULL;
-    fnamep = inp;
+    const char *dotp = nullptr;
+    const char *fnamep = inp;
     startp = inp;
 
-    for(;;) {
-        ch = *inp;
+    for( ;; ) {
+        const unsigned char ch = static_cast<unsigned char>( *inp );
         if( ch == 0 )
             break;
         if( ch == '.' ) {
@@ -218,220 +175,15 @@ void  _splitpath2( char const *inp, char *outp, char **drive, char **path, char 
         inp++;
         if( ISPS( ch ) ) {
             fnamep = inp;
-            dotp = NULL;
+            dotp = nullptr;
         }
     }
     outp = pcopy( path, outp, startp, fnamep );
-    if( dotp == NULL )
+    if( dotp == nullptr )
         dotp = inp;
     outp = pcopy( fn, outp, fnamep, dotp );
     outp = pcopy( ext, outp, dotp, inp );
 }
-
-#endif /* !__WATCOMC__ */
-
-/****************************************************************************
-*
-* Description:  Platform independent _makepath() implementation.
-*
-****************************************************************************/
-
-#ifdef __WATCOMC__
-
-#elif defined(__UNIX__)
-
-/* create full Unix style path name from the components */
-
-void _makepath(
-    char        *path,
-    const char  *node,
-    const char  *dir,
-    const char  *fname,
-    const char  *ext )
-{
-    *path = '\0';
-
-    if( node != NULL
-      && *node != '\0' ) {
-        strcpy( path, node );
-        path = strchr( path, '\0' );
-        /*
-         * if node did not end in '/' then put in a provisional one
-         */
-        if( ISPS( path[-1] ) ) {
-            path--;
-        } else {
-            *path = PC;
-        }
-    }
-    if( dir != NULL
-      && *dir != '\0' ) {
-        /*
-         * if dir does not start with a '/' and we had a node then
-         *       stick in a separator
-         */
-        if( !ISPS( *dir )
-          && ISPS( *path ) )
-            path++;
-
-        strcpy( path, dir );
-        path = strchr( path, '\0' );
-
-        /* if dir did not end in '/' then put in a provisional one */
-        if( ISPS( path[-1] ) ) {
-            path--;
-        } else {
-            *path = PC;
-        }
-    }
-
-    if( fname != NULL
-      && *fname != '\0' ) {
-        if( !ISPS( *fname )
-          && ISPS( *path ) )
-            path++;
-
-        strcpy( path, fname );
-        path = strchr( path, '\0' );
-    } else {
-        if( ISPS( *path ) ) {
-            path++;
-        }
-    }
-    if( ext != NULL
-      && *ext != '\0' ) {
-        if( *ext != '.' )
-            *path++ = '.';
-        strcpy( path, ext );
-        path = strchr( path, '\0' );
-    }
-    *path = '\0';
-}
-
-#endif
-
-/****************************************************************************
-*
-* Description:  Implementation of fullpath() - returns fully qualified
-*               pathname of a file.
-*
-****************************************************************************/
-
-#ifdef __WATCOMC__
-
-#elif defined(__UNIX__)
-
-#define _WILL_FIT( c )          \
-    if(( (c) + 1 ) > size ) {   \
-        errno = ERANGE;         \
-        return( NULL );         \
-    }                           \
-    size -= (c);
-
-char *_sys_fullpath( char *buff, const char *path, size_t size )
-/*********************************************************************/
-{
-    const char  *p;
-    char        *q;
-    size_t      len;
-    char        curr_dir[_MAX_PATH];
-
-    p = path;
-    q = buff;
-    if( !ISPS( p[0] ) ) {
-        if( getcwd( curr_dir, sizeof(curr_dir) ) == NULL ) {
-            errno = ENOENT;
-            return( NULL );
-        }
-        len = strlen( curr_dir );
-        _WILL_FIT( len );
-        strcpy( q, curr_dir );
-        q += len;
-        if( !ISPS( q[-1] ) ) {
-            _WILL_FIT( 1 );
-            *(q++) = '/';
-        }
-        for(;;) {
-            if( p[0] == '\0' )
-                break;
-            if( p[0] != '.' ) {
-                _WILL_FIT( 1 );
-                *(q++) = *(p++);
-                continue;
-            }
-            ++p;
-            if( ISPS( p[0] ) ) {
-                /* ignore "./" in directory specs */
-                if( !ISPS( q[-1] ) ) {
-                    *q++ = PC;
-                }
-                ++p;
-                continue;
-            }
-            if( p[0] == '\0' )
-                break;
-            if( p[0] == '.'
-              && ISPS( p[1] ) ) {
-                /* go up a directory for a "../" */
-                p += 2;
-                if( !ISPS( q[-1] ) ) {
-                    return( NULL );
-                }
-                q -= 2;
-                for(;;) {
-                    if( q < buff ) {
-                        return( NULL );
-                    }
-                    if( ISPS( *q ) )
-                        break;
-                    --q;
-                }
-                ++q;
-                *q = '\0';
-                continue;
-            }
-            _WILL_FIT( 1 );
-            *(q++) = '.';
-        }
-        *q = '\0';
-    } else {
-        len = strlen( p );
-        _WILL_FIT( len );
-        strcpy( q, p );
-    }
-    return( buff );
-}
-
-char *_fullpath( char *buff, const char *path, size_t size )
-/**********************************************************/
-{
-    char *ptr = NULL;
-
-    if( buff == NULL ) {
-        size = _MAX_PATH;
-        ptr = malloc( size );
-        if( ptr == NULL )
-            errno = ENOMEM;
-        buff = ptr;
-    }
-    if( buff != NULL ) {
-        buff[0] = '\0';
-        if( path == NULL
-          || path[0] == '\0' ) {
-            buff = getcwd( buff, (int)size );
-        } else {
-            buff = _sys_fullpath( buff, path, size );
-        }
-        if( buff == NULL ) {
-            if( ptr != NULL ) {
-                free( ptr );
-            }
-        }
-    }
-    return( buff );
-}
-
-#endif
 
 /****************************************************************************
 *
@@ -439,240 +191,31 @@ char *_fullpath( char *buff, const char *path, size_t size )
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
-
-#elif defined( __OSX__ )
-
-#include <mach-o/dyld.h>
-
-/* No procfs on Darwin, have to use special API */
+#if defined( _MSC_VER )
 
 char *_cmdname( char *name )
 {
-    uint32_t    len = 4096;
+    char    *pgm = nullptr;
 
-    _NSGetExecutablePath( name, &len );
-    return( name );
-}
-
-#elif defined( __BSD__ )
-
- #if defined( __FREEBSD__ )
-
-    #include <sys/sysctl.h>
-
-char *_cmdname( char *name )
-{
-    int     mib[4];
-    size_t  cb;
-
-    mib[0] = CTL_KERN;
-    mib[1] = KERN_PROC;
-    mib[2] = KERN_PROC_PATHNAME;
-    mib[3] = -1;
-    cb = PATH_MAX;
-    sysctl( mib, 4, name, &cb, NULL, 0 );
-    return( name );
-}
-
- #elif defined( __OPENBSD__ )
-
-extern const char *__progname;
-    #include <sys/stat.h>
-
-static int _cmdname_sub( char *out, const char *path, const char *name )
-{
-    int         path_len, name_len;
-    char        tmp[PATH_MAX];
-    struct stat sb;
-
-    path_len = ( path == NULL ) ? 0 : ( strlen( path ) + 1 );   /* with '/' */
-    name_len = ( name == NULL ) ? 0 : strlen( name );
-
-    if( ( path_len + name_len ) >= sizeof( tmp ) ) {
-        abort();
-    }
-    if( path_len ) {
-        memcpy( tmp, path, path_len - 1 );
-        tmp[path_len - 1] = '/';
-    }
-    if( name_len ) {
-        memcpy( tmp + path_len, name, name_len );
-    }
-    tmp[path_len + name_len] = '\0';
-
-    if( tmp[0] == '/' ) {
-        memcpy( out, tmp, path_len + name_len + 1 );
-    } else {
-        realpath( tmp, out );
-    }
-    return( stat( out, &sb ) );
-}
-
-static char *_cmdname_tokenize( char *str, char **next )
-{
-    char    *p;
-
-    if( *str == '\0' ) {
-        return( NULL );
-    }
-
-    p = strchr( str, ':' );
-    if( p == NULL ) {
-        *next = str + strlen( str );
-    } else {
-        *p = '\0';
-        *next = p + 1;
-    }
-
-    return( str );
-}
-
-char *_cmdname(char *name)
-{
-    int     save_errno, envpath_len;
-    char    *path, *envpath, *result = NULL;
-    char    *p, *pp;
-
-    save_errno = errno;
-
-    if( ( _argv != NULL
-      && _argv[0] != NULL )
-      && ( *_argv[0] == '.'
-      || *_argv[0] == '/' )
-      && ( _cmdname_sub( name, NULL, _argv[0] ) == 0 ) ) {
-        result = name;
-        goto fin0;
-    }
-
-    envpath = getenv( "PATH" );
-    if( envpath == NULL ) {
-        goto fin0;
-    }
-    envpath_len = strlen( envpath ) + 1;
-    path = malloc( envpath_len + 1 );
-    if( path == NULL ) {
-        goto fin0;
-    }
-    memcpy( path, envpath, envpath_len );
-
-    /* last ":" treat as ":." */
-    if( path[envpath_len - 2] == ':' ) {
-        path[envpath_len - 1] = '.';
-        path[envpath_len] = '\0';
-    }
-    pp = path;
-    while( (p = _cmdname_tokenize( pp, &pp )) != NULL ) {
-        if( _cmdname_sub( name, ( *p == '\0' ) ? "." : p, __progname ) == 0 ) {
-            result = name;
-            break;
-        }
-    }
-    free( path );
-fin0:
-    errno = save_errno;
-    return( result );
-}
-
- #else
-
-char *_cmdname( char *name )
-{
-    int save_errno;
-    int result;
-
-    save_errno = errno;
-    result = readlink( "/proc/self/exe", name, PATH_MAX );
-    if( result == -1 ) {
-        /* try another way for BSD */
-  #if defined( __NETBSD__ )
-        result = readlink( "/proc/curproc/exe", name, PATH_MAX );
-  #else
-        result = readlink( "/proc/curproc/file", name, PATH_MAX );
-  #endif
-    }
-    errno = save_errno;
-
-    /* fall back to argv[0] if readlink doesn't work */
-    if( result == -1
-      || result == PATH_MAX )
-        return( strcpy( name, _argv[0] ) );
-
-    /* readlink does not add a NUL so we need to do it ourselves */
-    name[result] = '\0';
-    return( name );
-}
-
- #endif
-
-#elif defined (__HAIKU__)
-
-    #include <image.h>
-
-char *_cmdname( char *name )
-{
-    image_info info;
-    int32 cookie;
-
-    while( get_next_image_info( 0, &cookie, &info ) == B_OK ) {
-        if( info.type != B_APP_IMAGE )
-            continue;
-        return( strcpy( name, info.name ) );
-    }
-}
-
-#elif defined( __UNIX__ )
-
-char *_cmdname( char *name )
-{
-    int save_errno;
-    int result;
-
-    save_errno = errno;
-    result = readlink( "/proc/self/exe", name, PATH_MAX );
-    if( result == -1 ) {
-        /* try another way */
-        result = readlink( "/proc/curproc/file", name, PATH_MAX );
-    }
-    errno = save_errno;
-
-    /* fall back to argv[0] if readlink doesn't work */
-    if( result == -1
-      || result == PATH_MAX )
-        return( strcpy( name, _argv[0] ) );
-
-    /* readlink does not add a NUL so we need to do it ourselves */
-    name[result] = '\0';
-    return( name );
-}
-
-#elif defined( _MSC_VER )
-
-char *_cmdname( char *name )
-{
-    char    *pgm;
-    char    buff[_MAX_PATH];
-    DWORD   size;
-
-    pgm = NULL;
     if( _get_pgmptr( &pgm ) != 0
-      || pgm == NULL
+      || pgm == nullptr
       || *pgm == '\0' ) {
         /* fix for buggy _get_pgmptr in some versions of Microsoft CRTL */
-        pgm = buff;
-        size = GetModuleFileName( NULL, buff, sizeof( buff ) );
-        if( size == sizeof( buff ) )
+        std::array<char, _MAX_PATH> buff;
+        DWORD   size = GetModuleFileName( nullptr, buff.data(), static_cast<DWORD>( buff.size() ) );
+        if( size == buff.size() )
             size--;
         buff[size] = '\0';
+        return std::strcpy( name, buff.data() );
     }
-    return( strcpy( name, pgm ) );
+    return std::strcpy( name, pgm );
 }
 
 #else   /* others */
 
 char *_cmdname( char *name )
 {
-    return( strcpy( name, _argv[0] ) );
+    return std::strcpy( name, _argv[0] );
 }
 
 #endif
@@ -683,21 +226,14 @@ char *_cmdname( char *name )
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
-
-#elif defined( _MSC_VER )
+#if defined( _MSC_VER )
 
 int _bgetcmd( char *buffer, int len )
 {
-    int         cmdlen;
-    char        *cmd;
-    char        *tmp;
-
-    if( ( buffer != NULL )
-      && ( len > 0 ) )
+    if( buffer != nullptr && len > 0 )
         *buffer = '\0';
 
-    cmd = GetCommandLine();
+    const char *cmd = GetCommandLine();
     if( *cmd == '"' ) {
         cmd++;
         while( *cmd != '\0' && *cmd != '"' ) {
@@ -715,48 +251,38 @@ int _bgetcmd( char *buffer, int len )
     while( *cmd == ' ' || *cmd == '\t' )
         ++cmd;
 
-    for( cmdlen = 0, tmp = cmd; *tmp != '\0'; ++tmp, ++cmdlen )
-        ;
+    const int cmdlen = static_cast<int>( std::strlen( cmd ) );
 
-    if( ( buffer == NULL )
-      || ( len <= 0 ) )
-        return( cmdlen );
+    if( buffer == nullptr || len <= 0 )
+        return cmdlen;
 
     len--;
-    len = (len < cmdlen) ? len : cmdlen;
+    len = (std::min)( len, cmdlen );
 
-    while( len ) {
-        *buffer++ = *cmd++;
-        --len;
-    }
-    *buffer = '\0';
+    std::memcpy( buffer, cmd, static_cast<std::size_t>( len ) );
+    buffer[len] = '\0';
 
-    return( cmdlen );
+    return cmdlen;
 }
 
 #else   /* others */
 
 int (_bgetcmd)( char *buffer, int len )
 {
-    int     total;
-    int     i;
-    char    *word;
     char    *p;
     char    **argv = &_argv[1];
-    int     need_quotes;
 
-    if( ( buffer != NULL )
-      && ( len > 0 ) ) {
+    if( buffer != nullptr && len > 0 ) {
         p = buffer;
         --len;          /* reserve space for terminating NULL byte */
     } else {
-        p = NULL;
+        p = nullptr;
         len = 0;
     }
 
     /* create approximation of original command line */
-    total = 0;
-    while( (word = *argv++) != NULL ) {
+    int total = 0;
+    while( const char *word = *argv++ ) {
         /* account for at least one space separating arguments */
         if( total != 0 ) {
             ++total;
@@ -766,183 +292,37 @@ int (_bgetcmd)( char *buffer, int len )
             }
         }
 
-        i = strlen( word );
+        int i = static_cast<int>( std::strlen( word ) );
         total += i;
-        need_quotes = ( strpbrk( word, " " ) != NULL || i == 0 );
+        const bool need_quotes = std::strpbrk( word, " " ) != nullptr || i == 0;
         if( need_quotes )
             total += 2;
 
-        if( need_quotes
-          && len != 0 ) {
+        if( need_quotes && len != 0 ) {
             --len;
             *p++ = '"';
         }
-        if( len != 0
-          && i != 0 ) {
-            if( i > len )
-                i = len;
-            memcpy( p, word, i );
+        if( len != 0 && i != 0 ) {
+            i = (std::min)( i, len );
+            std::memcpy( p, word, static_cast<std::size_t>( i ) );
             p += i;
             len -= i;
         }
-        if( need_quotes
-          && len != 0 ) {
+        if( need_quotes && len != 0 ) {
             --len;
             *p++ = '"';
         }
     }
-    if( p != NULL ) {
+    if( p != nullptr ) {
         *p = '\0';  /* terminate string */
     }
 
-    return( total );
+    return total;
 }
 
 #endif  /* !_MSC_VER */
 
-
-/****************************************************************************
-*
-* Description:  Implementation of spawn.. functions for Unix.
-*
-****************************************************************************/
-
-#ifdef __WATCOMC__
-
-#elif defined(__UNIX__)
-
-int spawnvp( int mode, const char *cmd, const char * const *args )
-{
-    pid_t       pid;
-    int         status;
-
-    pid = fork();
-    if( pid == -1 )
-        return( -1 );
-    if( pid == 0 ) {
-        execvp( cmd, (char * const *)args );
-        _exit( 127 );
-    }
-    if( waitpid( pid, &status, 0 ) == -1 ) {
-        status = -1;
-    }
-    return( status );
-}
-
-int spawnlp( int mode, const char *path, const char *cmd, ... )
-{
-    va_list     ap;
-    const char  *arg;
-    const char  *args[16];
-    int         i;
-
-    va_start( ap, cmd );
-    args[0] = cmd;
-    i = 1;
-    while( (arg = va_arg( ap, const char * )) != NULL ) {
-        args[i++] = arg;
-    }
-    args[i] = NULL;
-    va_end( ap );
-    return( spawnvp( mode, cmd, (const char * const *)args ) );
-}
-
-#endif
-
-/****************************************************************************
-*
-* Description:  This function searches for the specified file in the
-*               1) current directory or, failing that,
-*               2) the paths listed in the specified environment variable
-*               until it finds the first occurrence of the file.
-*
-****************************************************************************/
-
-#ifdef __WATCOMC__
-
-#elif defined(__UNIX__)
-
-    #define LIST_SEPARATOR ':'
-
-void _searchenv( const char *name, const char *env_var, char *buffer )
-{
-    char        *p;
-    const char  *penv;
-    int         prev_errno;
-    size_t      len;
-
-    prev_errno = errno;
-    if( access( name, F_OK ) == 0 ) {
-        p = buffer;
-        len = 0;
-        for( ;; ) {
-            if( ISPS( name[0] ) )
-                break;
-            if( name[0] == '.' )
-                break;
-            if( getcwd( buffer, _MAX_PATH ) ==  NULL )
-                break;
-            len = strlen( buffer );
-            p = &buffer[len];
-            if( !ISPS( p[-1] ) ) {
-                if( len < (_MAX_PATH - 1) ) {
-                    *p++ = PC;
-                    len++;
-                }
-            }
-            break;
-        }
-        *p = '\0';
-        strncat( p, name, (_MAX_PATH - 1) - len );
-        return;
-    }
-    penv = getenv( env_var );
-    if( penv != NULL ) {
-        for( ;; ) {
-            if( *penv == '\0' )
-                break;
-            p = buffer;
-            len = 0;
-            while( *penv != '\0' ) {
-                if( *penv == LIST_SEPARATOR )
-                    break;
-                if( *penv != '"' ) {
-                    if( len < (_MAX_PATH - 1) ) {
-                        *p++ = *penv;
-                        len++;
-                    }
-                }
-                penv++;
-            }
-            /* check for zero-length prefix which represents CWD */
-            if( p != buffer ) {
-                if( !ISPS( p[-1] ) ) {
-                    if( len < (_MAX_PATH - 1) ) {
-                        *p++ = PC;
-                        len++;
-                    }
-                }
-                *p = '\0';
-                len += strlen( name );
-                if( len < _MAX_PATH ) {
-                    strcat( p, name );
-                    /* check to see if file exists */
-                    if( access( buffer, 0 ) == 0 ) {
-                        errno = prev_errno;
-                        return;
-                    }
-                }
-            }
-            if( *penv == '\0' )
-                break;
-            ++penv;
-        }
-    }
-    buffer[0] = '\0';
-}
-
-#endif /* __UNIX__ */
-
+#if defined( _MSC_VER )
 
 /****************************************************************************
 *
@@ -955,14 +335,14 @@ void _searchenv( const char *name, const char *env_var, char *buffer )
 * identical to forward slashes when FNM_PATHNAME is set.
 */
 
-#ifdef __WATCOMC__
+namespace {
 
-#elif defined(_MSC_VER)
+struct CharClass {
+    std::string_view    name;
+    int                 mask;
+};
 
-static const struct my_wctypes {
-    const char  *name;
-    int         mask;
-} my_wctypes[] = {
+constexpr std::array<CharClass, 11> my_wctypes = {{
     { "alnum", _ALPHA | _DIGIT },
     { "alpha", _ALPHA },
     { "cntrl", _CONTROL },
@@ -974,102 +354,95 @@ static const struct my_wctypes {
     { "space", _SPACE },
     { "upper", _UPPER },
     { "xdigit", _HEX }
-};
+}};
 
-    #define WCTYPES_SIZE (sizeof( my_wctypes ) / sizeof( my_wctypes[0] ))
-
-static int my_wctype( const char *name )
+int my_wctype( std::string_view name )
 {
-    unsigned i;
-
-    for( i = 0; i < WCTYPES_SIZE; ++i ) {
-        if( strcmp( my_wctypes[i].name, name ) == 0 ) {
-            return( my_wctypes[i].mask );
+    for( const CharClass &cc : my_wctypes ) {
+        if( cc.name == name ) {
+            return cc.mask;
         }
     }
-    return( 0 );
+    return 0;
 }
 
-static int icase( int ch, int flags )
+int icase( int ch, int flags )
 {
     if( flags & FNM_IGNORECASE ) {
-        return( tolower( ch ) );
+        return std::tolower( ch );
     } else {
-        return( ch );
+        return ch;
     }
 }
 
 /* Maximum length of character class name.
  * The longest is currently 'xdigit' (6 chars).
  */
-    #define CCL_NAME_MAX    8
+constexpr int CCL_NAME_MAX = 8;
 
 /* Note: Using wctype()/iswctype() may seem odd, but that way we can avoid
  * hardcoded character class lists.
  */
-static int sub_bracket( const char *p, int c )
+int sub_bracket( const char *p, int c )
 {
     const char      *s = p;
-    char            sname[CCL_NAME_MAX + 1];
-    int             i;
-    int             type;
 
     switch( *++p ) {
-    case ':':
+    case ':': {
         ++p;
-        for( i = 0; i < CCL_NAME_MAX; i++ ) {
-            if( !isalpha( *p ) )
+        std::string sname;
+        for( int i = 0; i < CCL_NAME_MAX; i++ ) {
+            if( !std::isalpha( *p ) )
                 break;
-            sname[i] = *p++;
+            sname += *p++;
         }
-        sname[i] = '\0';
         if( *p++ != ':' )
-            return( 0 );
+            return 0;
         if( *p++ != ']' )
-            return( 0 );
-        type = my_wctype( sname );
+            return 0;
+        const int type = my_wctype( sname );
         if( type ) {
-            return( iswctype( (wint_t)c, (wctype_t)type ) ? (int)( p - s ) : (int)( s - p ) );
+            return iswctype( static_cast<wint_t>( c ), static_cast<wctype_t>( type ) ) ? static_cast<int>( p - s ) : static_cast<int>( s - p );
         }
-        return( 0 );
+        return 0;
+    }
     case '=':
-        return( 0 );
+        return 0;
     case '.':
-        return( 0 );
+        return 0;
     default:
-        return( 0 );
+        return 0;
     }
 }
 
-static const char *cclass_match( const char *patt, int c )
+const char *cclass_match( const char *patt, int c )
 {
-    int         ok = 0;
+    bool        ok = false;
     int         lc = 0;
     int         state = 0;
-    int         invert = 0;
-    int         sb;
+    bool        invert = false;
 
     /* Meaning of '^' is unspecified in POSIX - consider it equal to '!' */
     if( *patt == '!'
       || *patt == '^' ) {
-        invert = 1;
+        invert = true;
         ++patt;
     }
     while( *patt != '\0' ) {
         if( *patt == ']' )
-            return( ok ^ invert ? patt + 1 : NULL );
+            return ( ok != invert ) ? patt + 1 : nullptr;
 
         if( *patt == '[' ) {
-             sb = sub_bracket( patt, c );
-             if( sb < 0 ) {
-                 patt -= sb;
-                 ok = 0;
-                 continue;
-             } else if( sb > 0 ) {
-                 patt += sb;
-                 ok = 1;
-                 continue;
-             }
+            const int sb = sub_bracket( patt, c );
+            if( sb < 0 ) {
+                patt -= sb;
+                ok = false;
+                continue;
+            } else if( sb > 0 ) {
+                patt += sb;
+                ok = true;
+                continue;
+            }
         }
 
         switch( state ) {
@@ -1077,8 +450,8 @@ static const char *cclass_match( const char *patt, int c )
             if( *patt == '\\' )
                 ++patt;
             if( *patt == c )
-                ok = 1;
-            lc = (int)*patt++;
+                ok = true;
+            lc = static_cast<int>( *patt++ );
             state = 1;
             break;
         case 1:
@@ -1094,19 +467,20 @@ static const char *cclass_match( const char *patt, int c )
                 ++patt;
             if( lc <= c
               && c <= *patt )
-                ok = 1;
+                ok = true;
             ++patt;
             state = 0;
             break;
         default:
-            return( NULL );
+            return nullptr;
         }
     }
-    return( NULL );
+    return nullptr;
 }
 
+} // namespace
+
 int   fnmatch( const char *patt, const char *s, int flags )
-/*********************************************************/
 {
     int         c, cl;
     const char  *start = s;
@@ -1116,29 +490,29 @@ int   fnmatch( const char *patt, const char *s, int flags )
         case '?':
             if( (flags & FNM_PATHNAME)
               && ISPS( *s ) )
-                return( FNM_NOMATCH );
+                return FNM_NOMATCH;
             if( (flags & FNM_PERIOD)
               && *s == '.'
               && s == start )
-                return( FNM_NOMATCH );
+                return FNM_NOMATCH;
             ++s;
             break;
         case '[':
             if( (flags & FNM_PATHNAME)
               && ISPS( *s ) )
-                return( FNM_NOMATCH );
+                return FNM_NOMATCH;
             if( (flags & FNM_PERIOD)
               && *s == '.'
               && s == start )
-                return( FNM_NOMATCH );
+                return FNM_NOMATCH;
             patt = cclass_match( patt, *s );
-            if( patt == NULL )
-                return( FNM_NOMATCH );
+            if( patt == nullptr )
+                return FNM_NOMATCH;
             ++s;
             break;
         case '*':
             if( *s == '\0' )
-                return( 0 );
+                return 0;
             if( (flags & FNM_PATHNAME)
               && ( *patt == '/' ) ) {
                 while( *s != '\0' && !ISPS( *s ) )
@@ -1148,25 +522,25 @@ int   fnmatch( const char *patt, const char *s, int flags )
             if( (flags & FNM_PERIOD)
               && *s == '.'
               && s == start )
-                return( FNM_NOMATCH );
+                return FNM_NOMATCH;
             if( *patt == '\0' ) {
                 /*
                  * Shortcut - don't examine every remaining character.
                  */
                 if( flags & FNM_PATHNAME ) {
                     if( (flags & FNM_LEADING_DIR)
-                      || strchr( s, '/' ) == NULL ) {
-                        return( 0 );
+                      || std::strchr( s, '/' ) == nullptr ) {
+                        return 0;
                     } else {
-                        return( FNM_NOMATCH );
+                        return FNM_NOMATCH;
                     }
                 } else {
-                    return( 0 );
+                    return 0;
                 }
             }
             while( (cl = icase( *s, flags )) != '\0' ) {
                 if( !fnmatch( patt, s, flags & ~FNM_PERIOD ) )
-                    return( 0 );
+                    return 0;
                 if( (flags & FNM_PATHNAME)
                   && ISPS( cl ) ) {
                     start = s + 1;
@@ -1174,12 +548,12 @@ int   fnmatch( const char *patt, const char *s, int flags )
                 }
                 ++s;
             }
-            return( FNM_NOMATCH );
+            return FNM_NOMATCH;
         case '\\':
             if( (flags & FNM_NOESCAPE) == 0 ) {
                 c = icase( *patt++, flags );
             }
-            /* Fall through */
+            [[fallthrough]];
         default:
             if( ISPS( *s ) )
                 start = s + 1;
@@ -1188,85 +562,36 @@ int   fnmatch( const char *patt, const char *s, int flags )
               && cl == PC )
                 cl = '/';
             if( c != cl ) {
-                return( FNM_NOMATCH );
+                return FNM_NOMATCH;
             }
         }
     }
     if( (flags & FNM_LEADING_DIR)
       && ISPS( *s ) )
-        return( 0 );
-    return( *s != '\0' ? FNM_NOMATCH : 0 );
+        return 0;
+    return *s != '\0' ? FNM_NOMATCH : 0;
 }
-
-#endif
 
 /****************************************************************************
 *
-* Description:  Implementation of POSIX environment setenv
+* Description:  Implementation of POSIX environment setenv / unsetenv
 *
 ****************************************************************************/
-
-#ifdef __WATCOMC__
-
-#elif defined(_MSC_VER)
 
 int setenv( const char *name, const char *newvalue, int overwrite )
-/*****************************************************************/
 {
-    char    *buff;
-    size_t  len;
-
-    len = strlen( name ) + strlen( newvalue ) + 16;
-    buff = (char *)(malloc( len ));
-    overwrite = overwrite;
-    sprintf( buff, "%s=%s", name, newvalue );
-    putenv( buff );
-    free( buff );
-    return( 0 );
+    (void)overwrite;
+    std::string buff = std::string( name ) + '=' + newvalue;
+    putenv( buff.data() );
+    return 0;
 }
-
-#endif
-
-/****************************************************************************
-*
-* Description:  Implementation of POSIX environment unsetenv
-*
-****************************************************************************/
-
-#if defined( __WATCOMC__ )
-
-  #if ( __WATCOMC__ == 1290 )        /* OW 1.9 fix */
-void unsetenv( const char *name )
-/*******************************/
-{
-    char    *buff;
-    size_t  len;
-
-    len = strlen( name ) + 16;
-    buff = malloc( len );
-    sprintf( buff, "%s=", name );
-    putenv( buff );
-    free( buff );
-}
-  #endif
-
-#elif defined(_MSC_VER)
 
 int unsetenv( const char *name )
-/******************************/
 {
-    char    *buff;
-    size_t  len;
-
-    len = strlen( name ) + 16;
-    buff = (char *)(malloc( len ));
-    sprintf( buff, "%s=", name );
-    putenv( buff );
-    free( buff );
-    return( 0 );
+    std::string buff = std::string( name ) + '=';
+    putenv( buff.data() );
+    return 0;
 }
-
-#endif
 
 /****************************************************************************
 *
@@ -1274,52 +599,56 @@ int unsetenv( const char *name )
 *
 ****************************************************************************/
 
-#if defined(_MSC_VER) \
-  || defined( __WATCOMC__ ) \
-  && ( __WATCOMC__ == 1290 ) \
-  && defined( __NT__ )      /* OW 1.9 fix */
+namespace {
 
-    #define _DIR_ISFIRST            0
-    #define _DIR_NOTFIRST           1
-    #define _DIR_CLOSED             2
+// dirent::d_first
+enum class DirState : char {
+    IsFirst  = 0,
+    NotFirst = 1,
+    Closed   = 2
+};
 
-    #define OPENMODE_ACCESS_MASK    0x0007
-    #define OPENMODE_SHARE_MASK     0x0070
+constexpr unsigned OPENMODE_ACCESS_MASK   = 0x0007;
+constexpr unsigned OPENMODE_SHARE_MASK    = 0x0070;
 
-    #define OPENMODE_ACCESS_RDONLY  0x0000
+constexpr unsigned OPENMODE_ACCESS_RDONLY = 0x0000;
 
-    #define OPENMODE_DENY_COMPAT    0x0000
-    #define OPENMODE_DENY_ALL       0x0010
-    #define OPENMODE_DENY_WRITE     0x0020
-    #define OPENMODE_DENY_READ      0x0030
-    #define OPENMODE_DENY_NONE      0x0040
+constexpr unsigned OPENMODE_DENY_COMPAT   = 0x0000;
+constexpr unsigned OPENMODE_DENY_ALL      = 0x0010;
+constexpr unsigned OPENMODE_DENY_WRITE    = 0x0020;
+constexpr unsigned OPENMODE_DENY_READ     = 0x0030;
+constexpr unsigned OPENMODE_DENY_NONE     = 0x0040;
 
-  #if defined(_MSC_VER)
-    #define MAKEDOSDTXX     __MakeDOSDT
-    #define FROMDOSDTXX     __FromDOSDT
-    #define GETNTDIRINFOXX  __GetNTDirInfo
-  #else
-    #define MAKEDOSDTXX     __MakeDOSDT20
-    #define FROMDOSDTXX     __FromDOSDT20
-    #define GETNTDIRINFOXX  __GetNTDirInfo20
-  #endif
+constexpr DWORD NT_FIND_ATTRIBUTES_MASK = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_DIRECTORY;
+
+inline DirState dir_state( const DIR *dirp )
+{
+    return static_cast<DirState>( dirp->d_first );
+}
+
+inline void set_dir_state( DIR *dirp, DirState state )
+{
+    dirp->d_first = static_cast<char>( state );
+}
+
+} // namespace
 
 void __NT_timet_to_filetime( time_t t, FILETIME *ft )
 {
     ULARGE_INTEGER  ulint;
 
     ulint.QuadPart = t * WINDOWS_TICK_PER_SEC + TICK_TO_UNIX_EPOCH;
-    ft->dwLowDateTime = ulint.u.LowPart;
-    ft->dwHighDateTime = ulint.u.HighPart;
+    ft->dwLowDateTime = ulint.LowPart;
+    ft->dwHighDateTime = ulint.HighPart;
 }
 
 time_t __NT_filetime_to_timet( const FILETIME *ft )
 {
     ULARGE_INTEGER  ulint;
 
-    ulint.u.LowPart   =   ft->dwLowDateTime;
-    ulint.u.HighPart  =   ft->dwHighDateTime;
-    return( ( ulint.QuadPart - TICK_TO_UNIX_EPOCH ) / WINDOWS_TICK_PER_SEC );
+    ulint.LowPart   =   ft->dwLowDateTime;
+    ulint.HighPart  =   ft->dwHighDateTime;
+    return static_cast<time_t>( ( ulint.QuadPart - TICK_TO_UNIX_EPOCH ) / WINDOWS_TICK_PER_SEC );
 }
 
 void __GetNTCreateAttr( unsigned dos_attrib, LPDWORD desired_access, LPDWORD nt_attrib )
@@ -1355,11 +684,8 @@ void __GetNTAccessAttr( unsigned rwmode, LPDWORD desired_access, LPDWORD nt_attr
 
 void __GetNTShareAttr( unsigned mode, LPDWORD share_mode )
 {
-    unsigned share;
-    unsigned rwmode;
-
-    share  = mode & OPENMODE_SHARE_MASK;
-    rwmode = mode & OPENMODE_ACCESS_MASK;
+    const unsigned share  = mode & OPENMODE_SHARE_MASK;
+    const unsigned rwmode = mode & OPENMODE_ACCESS_MASK;
 
     switch( share ) {
     case OPENMODE_DENY_COMPAT:
@@ -1389,8 +715,7 @@ void __GetNTShareAttr( unsigned mode, LPDWORD share_mode )
     }
 }
 
-void FROMDOSDTXX( unsigned short d, unsigned short t, FILETIME *NT_stamp )
-/************************************************************************/
+void __FromDOSDT( unsigned short d, unsigned short t, FILETIME *NT_stamp )
 {
     FILETIME local_ft;
 
@@ -1398,8 +723,7 @@ void FROMDOSDTXX( unsigned short d, unsigned short t, FILETIME *NT_stamp )
     LocalFileTimeToFileTime( &local_ft, NT_stamp );
 }
 
-void MAKEDOSDTXX( FILETIME *NT_stamp, unsigned short *d, unsigned short *t )
-/**************************************************************************/
+void __MakeDOSDT( FILETIME *NT_stamp, unsigned short *d, unsigned short *t )
 {
     FILETIME local_ft;
 
@@ -1407,170 +731,144 @@ void MAKEDOSDTXX( FILETIME *NT_stamp, unsigned short *d, unsigned short *t )
     FileTimeToDosDateTime( &local_ft, d, t );
 }
 
-    #define NT_FIND_ATTRIBUTES_MASK (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_DIRECTORY)
-
 bool __NTFindNextFileWithAttr( HANDLE osffh, unsigned nt_attrib, LPWIN32_FIND_DATA ffd )
-/**************************************************************************************/
 {
     for( ;; ) {
         if( (nt_attrib | ~ffd->dwFileAttributes) & NT_FIND_ATTRIBUTES_MASK ) {
-            return( true );
+            return true;
         }
         if( FindNextFile( osffh, ffd ) == 0 ) {
-            return( false );
+            return false;
         }
     }
 }
 
-static int is_directory( const char *name )
-/*****************************************/
+namespace {
+
+// What a name given to opendir is.
+enum class DirKind {
+    Wildcard = -1,      // has wildcards: must be a file
+    Unknown  = 0,       // without wildcards: maybe a file or a directory, needs a check ("\*.*" to add if a directory)
+    Dot      = 1,       // ends in '.': a directory, "\*.*" to add
+    Trailing = 2        // ends in a separator or ':': a directory, "*.*" to add
+};
+
+DirKind is_directory( std::string_view name )
 {
-    unsigned char    curr_ch;
-    unsigned char    prev_ch;
-
-    curr_ch = '\0';
-    for(;;) {
-        prev_ch = curr_ch;
-        curr_ch = *name;
-        if( curr_ch == '\0' ) {
-            if( ISPS( prev_ch )
-              || prev_ch == ':' ){
-                /* directory, need add "*.*" */
-                return( 2 );
-            }
-            if( prev_ch == '.' ){
-                /* directory, need add "\\*.*" */
-                return( 1 );
-            }
-            /* without wildcards maybe file or directory, need next check */
-            /* need add "\\*.*" if directory */
-            return( 0 );
-        }
-        if( curr_ch == '*' )
-            break;
-        if( curr_ch == '?' )
-            break;
-        name++;
-    }
-    /* with wildcard must be file */
-    return( -1 );
+    if( name.find_first_of( "*?" ) != std::string_view::npos )
+        return DirKind::Wildcard;
+    const unsigned char last = name.empty() ? '\0' : static_cast<unsigned char>( name.back() );
+    if( ISPS( last ) || last == ':' )
+        return DirKind::Trailing;
+    if( last == '.' )
+        return DirKind::Dot;
+    return DirKind::Unknown;
 }
 
-void GETNTDIRINFOXX( struct DIRENTXX *dirp, LPWIN32_FIND_DATA ffd )
-/*****************************************************************/
+void get_nt_dir_info( dirent *dirp, LPWIN32_FIND_DATA ffd )
 {
     DTAXXX_TSTAMP_OF( dirp->d_dta ) = __NT_filetime_to_timet( &ffd->ftLastWriteTime );
-    MAKEDOSDTXX( &ffd->ftLastWriteTime, &dirp->d_date, &dirp->d_time );
-    dirp->d_attr = NT2DOSATTR( ffd->dwFileAttributes );
-    dirp->d_size = ffd->nFileSizeLow;
-    strncpy( dirp->d_name, ffd->cFileName, NAME_MAX );
+    __MakeDOSDT( &ffd->ftLastWriteTime, &dirp->d_date, &dirp->d_time );
+    dirp->d_attr = static_cast<char>( NT2DOSATTR( ffd->dwFileAttributes ) );
+    dirp->d_size = static_cast<long>( ffd->nFileSizeLow );
+    std::strncpy( dirp->d_name, ffd->cFileName, NAME_MAX );
     dirp->d_name[NAME_MAX] = 0;
 }
 
-static DIRXX *__opendir( const char *dirname, DIRXX *dirp )
-/*********************************************************/
+DIR *open_dir( const char *dirname, DIR *dirp )
 {
     WIN32_FIND_DATA     ffd;
-    HANDLE              osffh;
 
-    if( dirp->d_first != _DIR_CLOSED ) {
+    if( dir_state( dirp ) != DirState::Closed ) {
         FindClose( DTAXXX_HANDLE_OF( dirp->d_dta ) );
-        dirp->d_first = _DIR_CLOSED;
+        set_dir_state( dirp, DirState::Closed );
     }
-    osffh = FindFirstFile( dirname, &ffd );
+    HANDLE osffh = FindFirstFile( dirname, &ffd );
     if( osffh == INVALID_HANDLE_VALUE ) {
         errno = ENOENT;
-        return( NULL );
+        return nullptr;
     }
     DTAXXX_HANDLE_OF( dirp->d_dta ) = osffh;
-    GETNTDIRINFOXX( dirp, &ffd );
-    dirp->d_first = _DIR_ISFIRST;
-    return( dirp );
+    get_nt_dir_info( dirp, &ffd );
+    set_dir_state( dirp, DirState::IsFirst );
+    return dirp;
 }
 
-DIRXX *OPENDIRXX( const char *dirname )
-/*************************************/
+} // namespace
+
+DIR *opendir( const char *dirname )
 {
-    DIRXX       tmp;
-    DIRXX       *dirp;
-    int         i;
-    char        pathname[MAX_PATH + 6];
+    DIR         tmp{};
+    std::string pathname;
 
-    memset( &tmp, 0, sizeof( tmp ) );
     tmp.d_attr = _A_SUBDIR;
-    tmp.d_first = _DIR_CLOSED;
-    i = is_directory( dirname );
-    if( i <= 0 ) {
-        if( __opendir( dirname, &tmp ) == NULL ) {
-            return( NULL );
+    set_dir_state( &tmp, DirState::Closed );
+    const DirKind kind = is_directory( dirname );
+    if( kind == DirKind::Wildcard || kind == DirKind::Unknown ) {
+        if( open_dir( dirname, &tmp ) == nullptr ) {
+            return nullptr;
         }
     }
-    if( i >= 0
+    if( kind != DirKind::Wildcard
       && (tmp.d_attr & _A_SUBDIR) ) {
-        size_t          len;
-
         /* directory, add wildcard */
-        len = strlen( dirname );
-        memcpy( pathname, dirname, len );
-        if( i < 2 ) {
-            pathname[len++] = PC;
+        pathname = dirname;
+        if( kind != DirKind::Trailing ) {
+            pathname += PC;
         }
-        strcpy( &pathname[len], "*.*" );
-        if( __opendir( pathname, &tmp ) == NULL ) {
-            return( NULL );
+        pathname += "*.*";
+        if( open_dir( pathname.c_str(), &tmp ) == nullptr ) {
+            return nullptr;
         }
-        dirname = pathname;
+        dirname = pathname.c_str();
     }
-    dirp = (DIR *)(malloc( sizeof( *dirp ) ));
-    if( dirp == NULL ) {
+    // the directory handle is handed to the caller, who frees it with closedir: malloc as before
+    DIR *dirp = static_cast<DIR *>( std::malloc( sizeof( *dirp ) ) );
+    if( dirp == nullptr ) {
         FindClose( DTAXXX_HANDLE_OF( tmp.d_dta ) );
         errno = ENOMEM;
-        return( NULL );
+        return nullptr;
     }
     tmp.d_openpath = strdup( dirname );
     *dirp = tmp;
-    return( dirp );
+    return dirp;
 }
 
-struct DIRENTXX *READDIRXX( DIRXX *dirp )
-/***************************************/
+dirent *readdir( DIR *dirp )
 {
     WIN32_FIND_DATA     ffd;
 
-    if( dirp == NULL
-      || dirp->d_first == _DIR_CLOSED )
-        return( NULL );
-    if( dirp->d_first == _DIR_ISFIRST ) {
-        dirp->d_first = _DIR_NOTFIRST;
+    if( dirp == nullptr
+      || dir_state( dirp ) == DirState::Closed )
+        return nullptr;
+    if( dir_state( dirp ) == DirState::IsFirst ) {
+        set_dir_state( dirp, DirState::NotFirst );
     } else {
         if( FindNextFileA( DTAXXX_HANDLE_OF( dirp->d_dta ), &ffd ) == 0 ) {
             errno = ENOENT;
-            return( NULL );
+            return nullptr;
         }
-        GETNTDIRINFOXX( dirp, &ffd );
+        get_nt_dir_info( dirp, &ffd );
     }
-    return( dirp );
+    return dirp;
 }
 
-int CLOSEDIRXX( DIRXX *dirp )
-/***************************/
+int closedir( DIR *dirp )
 {
-    if( dirp == NULL
-      || dirp->d_first == _DIR_CLOSED ) {
+    if( dirp == nullptr
+      || dir_state( dirp ) == DirState::Closed ) {
         errno = ERANGE;
-        return( -1 );
+        return -1;
     }
     if( FindClose( DTAXXX_HANDLE_OF( dirp->d_dta ) ) == 0 ) {
-        return( -1 );
+        return -1;
     }
-    dirp->d_first = _DIR_CLOSED;
-    if( dirp->d_openpath != NULL )
-        free( dirp->d_openpath );
-    free( dirp );
-    return( 0 );
+    set_dir_state( dirp, DirState::Closed );
+    if( dirp->d_openpath != nullptr )
+        std::free( dirp->d_openpath );
+    std::free( dirp );
+    return 0;
 }
-
-#endif
 
 /****************************************************************************
 *
@@ -1578,110 +876,97 @@ int CLOSEDIRXX( DIRXX *dirp )
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
-
-#elif defined(_MSC_VER)
-
 char        *optarg;            /* pointer to option argument */
 int         optind = 1;         /* current argv[] index */
 int         optopt;             /* currently processed chracter */
 int         opterr = 1;         /* error output control flag */
 
-char        __altoptchar = '/'; /* alternate option character */
-char        __optchar;          /* matched option char ('-' or altoptchar) */
-
-static int  opt_offset = 0;     /* position in currently parsed argument */
-
-    /* Error messages suggested by Single UNIX Specification */
-    #define NO_ARG_MSG      "%s: option requires an argument -- %c\n"
-    #define BAD_OPT_MSG     "%s: illegal option -- %c\n"
+/* Error messages suggested by Single UNIX Specification */
+#define NO_ARG_MSG      "%s: option requires an argument -- %c\n"
+#define BAD_OPT_MSG     "%s: illegal option -- %c\n"
 
 int getopt( int argc, char * const argv[], const char *optstring )
-/****************************************************************/
 {
-    char        *ptr;
-    char        *curr_arg;
+    FileState   &st = cb_wlink::RunState::part<FileState>();
 
-    argc = argc;
-    optarg = NULL;
-    curr_arg = argv[optind];
-    if( curr_arg == NULL ) {
-        return( -1 );
+    (void)argc;
+    optarg = nullptr;
+    char *curr_arg = argv[optind];
+    if( curr_arg == nullptr ) {
+        return -1;
     }
     for( ;; ) {
-        optopt = curr_arg[opt_offset];
-        if( isspace( optopt ) ) {
-            opt_offset++;
+        optopt = curr_arg[st.opt_offset];
+        if( std::isspace( optopt ) ) {
+            st.opt_offset++;
             continue;
         }
         break;
     }
-    if( opt_offset > 1
+    if( st.opt_offset > 1
       || optopt == '-'
-      || optopt == __altoptchar ) {
-        if( opt_offset > 1 ) {
-            optopt = curr_arg[opt_offset];
+      || optopt == st.altoptchar ) {
+        if( st.opt_offset > 1 ) {
+            optopt = curr_arg[st.opt_offset];
             if( optopt == '-'
-              || optopt == __altoptchar ) {
-                __optchar = (char)optopt;
-                opt_offset++;
-                optopt = curr_arg[opt_offset];
+              || optopt == st.altoptchar ) {
+                st.optchar = static_cast<char>( optopt );
+                st.opt_offset++;
+                optopt = curr_arg[st.opt_offset];
             }
         } else {
-            __optchar = (char)optopt;
-            opt_offset++;
-            optopt = curr_arg[opt_offset];
+            st.optchar = static_cast<char>( optopt );
+            st.opt_offset++;
+            optopt = curr_arg[st.opt_offset];
         }
         if( optopt == '\0' ) {  /* option char by itself should be */
-            return( -1 );       /* left alone */
+            return -1;          /* left alone */
         }
         if( optopt == '-'
-          && curr_arg[opt_offset + 1] == '\0' ) {
-            opt_offset = 0;
+          && curr_arg[st.opt_offset + 1] == '\0' ) {
+            st.opt_offset = 0;
             ++optind;
-            return( -1 );   /* "--" POSIX end of options delimiter */
+            return -1;      /* "--" POSIX end of options delimiter */
         }
-        ptr = (char *)strchr( optstring, optopt );
-        if( ptr == NULL ) {
+        const char *ptr = std::strchr( optstring, optopt );
+        if( ptr == nullptr ) {
             if( opterr
               && *optstring != ':' ) {
-                fprintf( stderr, BAD_OPT_MSG, argv[0], optopt );
+                std::fprintf( stderr, BAD_OPT_MSG, argv[0], optopt );
             }
-            return( '?' );  /* unrecognized option */
+            return '?';     /* unrecognized option */
         }
         if( *(ptr + 1) == ':' ) {   /* check if option requires argument */
-            if( curr_arg[opt_offset + 1] == '\0' ) {
-                if( argv[optind + 1] == NULL ) {
+            if( curr_arg[st.opt_offset + 1] == '\0' ) {
+                if( argv[optind + 1] == nullptr ) {
                     if( *optstring == ':' ) {
-                        return( ':' );
+                        return ':';
                     } else {
                         if( opterr ) {
-                            fprintf( stderr, NO_ARG_MSG, argv[0], optopt );
+                            std::fprintf( stderr, NO_ARG_MSG, argv[0], optopt );
                         }
-                        return( '?' );
+                        return '?';
                     }
                 }
                 optarg = argv[optind + 1];
                 ++optind;
             } else {
-                optarg = &curr_arg[opt_offset + 1];
+                optarg = &curr_arg[st.opt_offset + 1];
             }
-            opt_offset = 0;
+            st.opt_offset = 0;
             ++optind;
         } else {
-            opt_offset++;
-            if( curr_arg[opt_offset] == '\0' ) {    /* last char in argv element */
-                opt_offset = 0;
+            st.opt_offset++;
+            if( curr_arg[st.opt_offset] == '\0' ) {    /* last char in argv element */
+                st.opt_offset = 0;
                 ++optind;
             }
         }
-        return( optopt );   /* return recognized option char */
+        return optopt;      /* return recognized option char */
     } else {
-        return( -1 );       /* no more options */
+        return -1;          /* no more options */
     }
 }
-
-#endif
 
 /****************************************************************************
 *
@@ -1689,52 +974,44 @@ int getopt( int argc, char * const argv[], const char *optstring )
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
+namespace {
 
-#elif defined(_MSC_VER)
-
-static int is_valid_template( char *template_str, char **xs )
+// where the "XXXXXX" ends the template, or nullptr if it does not
+char *template_xs( char *template_str )
 {
-    size_t              len;
-    char                *p;
-
     /*** Ensure the last 6 characters form the string "XXXXXX" ***/
-    len = strlen( template_str );
+    const std::size_t len = std::strlen( template_str );
     if( len < 6 ) {
-        return( 0 );        /* need room for six exes */
+        return nullptr;     /* need room for six exes */
     }
-    p = template_str + len - 6;
-    if( strcmp( p, "XXXXXX" ) ) {
-        return( 0 );
+    char *p = template_str + len - 6;
+    if( std::strcmp( p, "XXXXXX" ) ) {
+        return nullptr;
     }
-    *xs = p;
-
-    return( 1 );
+    return p;
 }
+
+} // namespace
 
 int mkstemp( char *template_str )
 {
-    char                letter;
-    unsigned            pid;
-    char                *xs;
-    int                 fh;
-
     /*** Ensure the template is valid ***/
-    if( !is_valid_template( template_str, &xs ) ) {
-        return( -1 );
+    char *xs = template_xs( template_str );
+    if( xs == nullptr ) {
+        return -1;
     }
 
     /*** Get the process/thread ID ***/
-    pid = GetCurrentProcessId();
+    unsigned pid = GetCurrentProcessId();
     pid %= 100000;      /* first few digits could be repeated */
 
     /*** Try to build a unique filename ***/
-    for( letter = 'a'; letter <= 'z'; letter++ ) {
-        sprintf( xs, "%c%05u", letter, pid );
+    for( char letter = 'a'; letter <= 'z'; letter++ ) {
+        std::snprintf( xs, 7, "%c%05u", letter, pid );
         if( access( template_str, F_OK ) != 0 ) {
-            fh = open( template_str, O_RDWR | O_CREAT | O_TRUNC | O_EXCL | O_BINARY, S_IREAD | S_IWRITE );
+            const int fh = open( template_str, O_RDWR | O_CREAT | O_TRUNC | O_EXCL | O_BINARY, S_IREAD | S_IWRITE );
             if( fh != -1 ) {
-                return( fh );       /* file successfully created */
+                return fh;          /* file successfully created */
             }
             /* EEXIST may occur in case of a race condition or if we simply
              * created that temp file earlier, and we'll try again. If however
@@ -1742,14 +1019,12 @@ int mkstemp( char *template_str )
              * certainly fail again no matter how many times we try. So don't.
              */
             if( errno != EEXIST ) {
-                return( -1 );
+                return -1;
             }
         }
     }
-    return( -1 );
+    return -1;
 }
-
-#endif
 
 /****************************************************************************
 *
@@ -1757,14 +1032,10 @@ int mkstemp( char *template_str )
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
-
-#elif defined(_MSC_VER)
-
 unsigned sleep( unsigned time )
 {
     Sleep( time * 1000UL );
-    return( 0 );
+    return 0;
 }
 
 #endif /* _MSC_VER */
@@ -1775,16 +1046,10 @@ unsigned sleep( unsigned time )
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
-
-#else
-
 wres_lang_id _WResLanguage( void )
 {
-    return(wres_lang_id)(( RLE_ENGLISH ));
+    return static_cast<wres_lang_id>( RLE_ENGLISH );
 }
-
-#endif /* ! __WATCOMC__ */
 
 /****************************************************************************
 *
@@ -1792,123 +1057,15 @@ wres_lang_id _WResLanguage( void )
 *
 ****************************************************************************/
 
-#ifdef __WATCOMC__
-
-#else
-
 char *get_dllname( char *buf, int len )
 {
-  #ifdef _MSC_VER
-    HMODULE hnd = NULL;
-  #endif
-
     *buf = '\0';
-  #ifdef _MSC_VER
-    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&optind, &hnd);
+#ifdef _MSC_VER
+    HMODULE hnd = nullptr;
+    GetModuleHandleEx( GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCTSTR>( &optind ), &hnd );
     GetModuleFileName( hnd, buf, len );
-  #endif
-    return( buf );
-}
-
+#else
+    (void)len;
 #endif
-
-/****************************************************************************
-*
-* Description:  Implementation of _mkgmtime.
-*
-****************************************************************************/
-
-#if defined( __OSX__ ) \
-  || defined( __WATCOMC__ ) \
-  && defined( BOOTSTRAP ) \
-  && !defined( TESTBOOT ) \
-  && ( __WATCOMC__ <= 1300 )
-
-    #define SECONDS_FROM_1900_TO_1970   2208988800UL
-    #define SECONDS_PER_DAY             (24UL * 60UL * 60UL)
-    #define DAYS_FROM_1900_TO_1970      (SECONDS_FROM_1900_TO_1970 / SECONDS_PER_DAY)
-
-enum {
-    TIME_SEC_B  = 0,
-    TIME_SEC_F  = 0x001f,
-    TIME_MIN_B  = 5,
-    TIME_MIN_F  = 0x07e0,
-    TIME_HOUR_B = 11,
-    TIME_HOUR_F = 0xf800
-};
-
-enum {
-    DATE_DAY_B  = 0,
-    DATE_DAY_F  = 0x001f,
-    DATE_MON_B  = 5,
-    DATE_MON_F  = 0x01e0,
-    DATE_YEAR_B = 9,
-    DATE_YEAR_F = 0xfe00
-};
-
-static short const month_start_days[] = {
-    0,                                                          /* Jan */
-    31,                                                         /* Feb */
-    31 + 28,                                                    /* Mar */
-    31 + 28 + 31,                                               /* Apr */
-    31 + 28 + 31 + 30,                                          /* May */
-    31 + 28 + 31 + 30 + 31,                                     /* Jun */
-    31 + 28 + 31 + 30 + 31 + 30,                                /* Jul */
-    31 + 28 + 31 + 30 + 31 + 30 + 31,                           /* Aug */
-    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,                      /* Sep */
-    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,                 /* Oct */
-    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,            /* Nov */
-    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,       /* Dec */
-    31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31   /* Jan, next year */
-};
-
-static int is_leapyear( unsigned year )
-{
-    if( year & 3 )
-        return( 0 );
-    if( ( year % 100 ) != 0 )
-        return( 1 );
-    if( ( year % 400 ) == 0 )
-        return( 1 );
-    return( 0 );
+    return buf;
 }
-
-static unsigned long years_days( unsigned year )
-{
-    return( year * 365L                         /* # of days in the years */
-        + ( ( year + 3L ) / 4L )                /* add # of leap years before year */
-        - ( ( year + 99L ) / 100L )             /* sub # of leap centuries */
-        + ( ( year + 399L - 100L ) / 400L ) );  /* add # of leap 4 centuries */
-                                                /* adjust for 1900 offset */
-                                                /* note: -100 == 300 (mod 400) */
-}
-
-  #if defined( __OSX__ )
-time_t _mkgmtime( struct tm *t )
-  #else
-time_t _mkgmtime20( struct tm *t )
-  #endif
-/*********************************************
- * used internaly then no checks to simplify
- * it suppose tm structure contains valid data
- */
-{
-    unsigned long   days;
-    unsigned        month_start;
-
-    month_start = month_start_days[t->tm_mon];
-    if( t->tm_mon > 1
-      && is_leapyear( t->tm_year + 1900U ) ) {
-        month_start++;
-    }
-    days = years_days( t->tm_year ) /* # of days in the years + leap years days */
-        + month_start               /* # of days to 1st of month*/
-        + t->tm_mday - 1;           /* day of the month */
-    if( days < ( DAYS_FROM_1900_TO_1970 - 1 ) )
-        return( (time_t)-1 );
-    return( ( days - DAYS_FROM_1900_TO_1970 ) * SECONDS_PER_DAY
-            + ( t->tm_hour * 60UL + t->tm_min ) * 60UL + t->tm_sec );
-}
-
-#endif
-

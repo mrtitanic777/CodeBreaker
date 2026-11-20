@@ -35,9 +35,16 @@
 #include "dwline.h"
 
 
+namespace {
+
+// The address increment of special opcode 255: past it a CONST_ADD_PC is needed first.
+constexpr dw_addr_delta MAX_ADDR_INCR = ( 255 - DWLINE_OPCODE_BASE ) / DWLINE_RANGE;
+
+}  // namespace
+
 uint_8 * DWENTRY DWLineGen( dw_linenum_delta line_incr, dw_addr_delta addr_incr, uint_8 *end )
 {
-    uint                opcode;
+    unsigned            opcode = 0;
     dw_addr_delta       addr;
 
     if( line_incr < DWLINE_BASE
@@ -63,43 +70,38 @@ uint_8 * DWENTRY DWLineGen( dw_linenum_delta line_incr, dw_addr_delta addr_incr,
 
     /* calculate the opcode with overflow checks */
     line_incr -= DWLINE_BASE;
-    if( DWLINE_RANGE * addr_incr < addr_incr )
-        goto overflow;
+    if( DWLINE_RANGE * addr_incr >= addr_incr ) {
+        opcode = DWLINE_RANGE * addr_incr;
+        if( opcode + line_incr >= opcode ) {
+            opcode += line_incr;
 
-    opcode = DWLINE_RANGE * addr_incr;
-    if( opcode + line_incr < opcode )
-        goto overflow;
+            /* can we use a special opcode? */
+            if( opcode <= 255 - DWLINE_OPCODE_BASE ) {
+                *end++ = static_cast<uint_8>( opcode + DWLINE_OPCODE_BASE );
+                return( end );
+            }
 
-    opcode += line_incr;
-
-    /* can we use a special opcode? */
-    if( opcode <= 255 - DWLINE_OPCODE_BASE ) {
-        *end++ = opcode + DWLINE_OPCODE_BASE;
-        return( end );
+            /*
+                We can't use a special opcode directly... but we may be able to
+                use a CONST_ADD_PC followed by a special opcode.  So we calculate
+                if addr_incr lies in this range.
+            */
+            if( addr_incr < 2 * MAX_ADDR_INCR ) {
+                *end++ = DW_LNS_const_add_pc;
+                *end++ = static_cast<uint_8>( opcode - MAX_ADDR_INCR * DWLINE_RANGE + DWLINE_OPCODE_BASE );
+                return( end );
+            }
+        }
     }
 
-    /*
-        We can't use a special opcode directly... but we may be able to
-        use a CONST_ADD_PC followed by a special opcode.  So we calculate
-        if addr_incr lies in this range.  MAX_ADDR_INCR is the addr
-        increment for special opcode 255.
-    */
-#define MAX_ADDR_INCR   ( ( 255 - DWLINE_OPCODE_BASE ) / DWLINE_RANGE )
+    /* A computation overflowed, or addr_incr is too large for either opcode form.
 
-    if( addr_incr < 2 * MAX_ADDR_INCR ) {
-        *end++ = DW_LNS_const_add_pc;
-        *end++ = opcode - MAX_ADDR_INCR * DWLINE_RANGE + DWLINE_OPCODE_BASE;
-        return( end );
-    }
-
-    /*
         Emit an ADVANCE_PC followed by a special opcode.
 
         We use MAX_ADDR_INCR - 1 to prevent problems if special opcode
         255 - DWLINE_OPCODE_BASE - DWLINE_BASE + 1 isn't an integral multiple
         of DWLINE_RANGE.
     */
-overflow:
     *end++ = DW_LNS_advance_pc;
     if( line_incr == 0 - DWLINE_BASE ) {
         opcode = DW_LNS_copy;
@@ -109,6 +111,6 @@ overflow:
         opcode = line_incr + ( DWLINE_RANGE * addr ) + DWLINE_OPCODE_BASE;
     }
     end = WriteSLEB128( end, addr_incr );
-    *end++ = opcode;
+    *end++ = static_cast<uint_8>( opcode );
     return( end );
 }

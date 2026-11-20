@@ -31,7 +31,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wresrtns.h"
 #include "reserr.h"
@@ -42,13 +41,13 @@ bool ResReadPadDWord( FILE *fp )
 /******************************/
 /* advances in the file to the next DWORD boundry */
 {
-    long    currpos;
-    long    padding;
+    const long currpos = WRESTELL( fp );
 
-    currpos = WRESTELL( fp );
     if( currpos == -1L )
         return( WRES_ERROR( WRS_TELL_FAILED ) );
-    padding = RES_PADDING_DWORD( currpos );
+
+    const long padding = RES_PADDING_DWORD( currpos );
+
     if( WRESSEEK( fp, padding, SEEK_CUR ) )
         return( WRES_ERROR( WRS_SEEK_FAILED ) );
     return( false );

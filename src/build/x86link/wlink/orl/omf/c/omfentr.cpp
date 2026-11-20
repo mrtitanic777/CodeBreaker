@@ -32,6 +32,8 @@
 
 
 #include <assert.h>
+#include <string.h>
+#include <type_traits>
 
 #include "omfentr.h"
 #include "omfload.h"
@@ -42,7 +44,21 @@
 #include "orlhash.h"
 
 
-#define _IsSegType( t )     ( ( t == ORL_SEC_TYPE_PROG_BITS ) || ( t == ORL_SEC_TYPE_NO_BITS ) )
+namespace {
+
+// ORL's opaque handles and OMF's own, both ways
+template<class To, class From>
+To handleCast( From *p )
+{
+    return reinterpret_cast<To>( const_cast<std::remove_const_t<From> *>( p ) );
+}
+
+constexpr bool isSegType( orl_sec_type t )
+{
+    return t == ORL_SEC_TYPE_PROG_BITS || t == ORL_SEC_TYPE_NO_BITS;
+}
+
+}
 
 omf_handle OMFENTRY OmfInit( orl_funcs *funcs )
 {
@@ -50,10 +66,10 @@ omf_handle OMFENTRY OmfInit( orl_funcs *funcs )
 
     assert( funcs );
 
-    oh = (omf_handle)(ORL_CLI_ALLOC( funcs, ORL_STRUCT_SIZEOF( omf_handle ) ));
-    if( oh != NULL ) {
+    oh = static_cast<omf_handle>( ORL_CLI_ALLOC( funcs, ORL_STRUCT_SIZEOF( omf_handle ) ) );
+    if( oh != nullptr ) {
         oh->funcs = funcs;
-        oh->first_file_hnd = NULL;
+        oh->first_file_hnd = nullptr;
     }
     return( oh );
 }
@@ -65,7 +81,7 @@ orl_return OMFENTRY OmfFini( omf_handle oh )
 
     assert( oh );
 
-    while( oh->first_file_hnd != NULL ) {
+    while( oh->first_file_hnd != nullptr ) {
         return_val = OmfRemoveFileLinks( oh->first_file_hnd );
         if( return_val != ORL_OKAY ) {
             return( return_val );
@@ -83,8 +99,8 @@ orl_return OMFENTRY OmfFileInit( omf_handle oh, orl_io_handle io_hnd, omf_file_h
 
     assert( oh );
 
-    ofh = (omf_file_handle)(ORL_PTR_ALLOC( oh, ORL_STRUCT_SIZEOF( omf_file_handle ) ));
-    if( ofh == NULL )
+    ofh = static_cast<omf_file_handle>( ORL_PTR_ALLOC( oh, ORL_STRUCT_SIZEOF( omf_file_handle ) ) );
+    if( ofh == nullptr )
         return( ORL_OUT_OF_MEMORY );
 
     memset( ofh, 0, ORL_STRUCT_SIZEOF( omf_file_handle ) );
@@ -94,7 +110,7 @@ orl_return OMFENTRY OmfFileInit( omf_handle oh, orl_io_handle io_hnd, omf_file_h
     return_val = OmfLoadFileStructure( ofh );
     if( return_val != ORL_OKAY ) {
         OmfRemoveFileLinks( ofh );
-        ofh = NULL;
+        ofh = nullptr;
     }
     *pofh = ofh;
     return( return_val );
@@ -120,25 +136,25 @@ orl_return OMFENTRY OmfFileScan( omf_file_handle ofh, const char *desired, orl_s
     assert( ofh );
     assert( return_func );
 
-    if( desired == NULL ) {
+    if( desired == nullptr ) {
         /* global request */
-        for( sh = ofh->first_sec; sh != NULL; sh = sh->next ) {
+        for( sh = ofh->first_sec; sh != nullptr; sh = sh->next ) {
             // string tables are internal sections which are not seen by
             // the user code
             if( sh->type != ORL_SEC_TYPE_STR_TABLE ) {
-                return_val = return_func( (orl_sec_handle)sh );
+                return_val = return_func( reinterpret_cast<orl_sec_handle>( sh ) );
                 if( return_val != ORL_OKAY ) {
                     return( return_val );
                 }
             }
         }
-    } else if( ofh->symbol_table != NULL ) {
+    } else if( ofh->symbol_table != nullptr ) {
         assert( ofh->symbol_table->assoc.sym.hash_tab );
         h_key.u.string = desired;
-        for( data_entry = ORLHashTableQuery( ofh->symbol_table->assoc.sym.hash_tab, h_key ); data_entry != NULL; data_entry = data_entry->next ) {
-            sym = (omf_symbol_handle)data_entry->data.u.sym_handle;
+        for( data_entry = ORLHashTableQuery( ofh->symbol_table->assoc.sym.hash_tab, h_key ); data_entry != nullptr; data_entry = data_entry->next ) {
+            sym = handleCast<omf_symbol_handle>( data_entry->data.u.sym_handle );
             if( ( sym->typ == ORL_SYM_TYPE_SECTION ) && (sym->flags & OMF_SYM_FLAGS_GRPDEF) == 0 ) {
-                return_val = return_func( (orl_sec_handle)sym->section );
+                return_val = return_func( reinterpret_cast<orl_sec_handle>( sym->section ) );
                 if( return_val != ORL_OKAY ) {
                     return( return_val );
                 }
@@ -193,18 +209,16 @@ const char * OMFENTRY OmfSecGetName( omf_sec_handle sh )
 {
     assert( sh );
 
-    if( _IsSegType( sh->type ) ) {
+    if( isSegType( sh->type ) ) {
         assert( sh->assoc.seg.sym );
         return( sh->assoc.seg.sym->name.string );
     }
-    return( NULL );
+    return( nullptr );
 }
 
 
 omf_sec_base OMFENTRY OmfSecGetBase( omf_sec_handle sh )
 {
-    /* unused parameters */ (void)sh;
-
     assert( sh );
 
     // Ask Jim
@@ -240,7 +254,7 @@ orl_sec_alignment OMFENTRY OmfSecGetAlignment( omf_sec_handle sh )
 {
     assert( sh );
 
-    if( _IsSegType( sh->type ) ) {
+    if( isSegType( sh->type ) ) {
         return( sh->assoc.seg.alignment );
     }
     return( 0 );
@@ -253,13 +267,13 @@ const char * OMFENTRY OmfSecGetClassName( omf_sec_handle sh )
 
     assert( sh );
 
-    if( _IsSegType( sh->type ) ) {
+    if( isSegType( sh->type ) ) {
         class_ = OmfGetLName( sh->omf_file_hnd, sh->assoc.seg.class_ );
-        if( class_ != NULL ) {
+        if( class_ != nullptr ) {
             return( class_->string );
         }
     }
-    return( NULL );
+    return( nullptr );
 }
 
 
@@ -267,7 +281,7 @@ orl_sec_combine OMFENTRY OmfSecGetCombine( omf_sec_handle sh )
 {
     assert( sh );
 
-    if( _IsSegType( sh->type ) ) {
+    if( isSegType( sh->type ) ) {
         return( sh->assoc.seg.combine );
     }
     return( ORL_SEC_COMBINE_NONE );
@@ -278,7 +292,7 @@ orl_sec_frame OMFENTRY OmfSecGetAbsFrame( omf_sec_handle sh )
 {
     assert( sh );
 
-    if( _IsSegType( sh->type ) && (sh->assoc.seg.seg_flags & OMF_SEG_IS_ABS) ) {
+    if( isSegType( sh->type ) && (sh->assoc.seg.seg_flags & OMF_SEG_IS_ABS) ) {
         return( sh->assoc.seg.frame );
     }
     return( ORL_SEC_NO_ABS_FRAME );
@@ -289,10 +303,10 @@ orl_sec_handle OMFENTRY OmfSecGetAssociated( omf_sec_handle sh )
 {
     assert( sh );
 
-    if( _IsSegType( sh->type ) && ( sh->flags & ORL_SEC_FLAG_COMDAT ) ) {
-        return( (orl_sec_handle)(sh->assoc.seg.comdat.assoc_seg) );
+    if( isSegType( sh->type ) && ( sh->flags & ORL_SEC_FLAG_COMDAT ) ) {
+        return( reinterpret_cast<orl_sec_handle>( sh->assoc.seg.comdat.assoc_seg ) );
     }
-    return( NULL );
+    return( nullptr );
 }
 
 
@@ -300,14 +314,14 @@ orl_group_handle OMFENTRY OmfSecGetGroup( omf_sec_handle sh )
 {
     assert( sh );
 
-    if( _IsSegType( sh->type ) ) {
+    if( isSegType( sh->type ) ) {
         if( sh->flags & ORL_SEC_FLAG_COMDAT ) {
-            return( (orl_group_handle)(sh->assoc.seg.comdat.group) );
+            return( reinterpret_cast<orl_group_handle>( sh->assoc.seg.comdat.group ) );
         } else if( sh->flags & ORL_SEC_FLAG_GROUPED ) {
-            return( (orl_group_handle)(sh->assoc.seg.group) );
+            return( reinterpret_cast<orl_group_handle>( sh->assoc.seg.group ) );
         }
     }
-    return( NULL );
+    return( nullptr );
 }
 
 
@@ -321,7 +335,7 @@ omf_sec_handle OMFENTRY OmfSecGetStringTable( omf_sec_handle sh )
     } else if( sh == sh->omf_file_hnd->extdefs ) {
         return( sh );
     }
-    return( NULL );
+    return( nullptr );
 }
 
 
@@ -342,7 +356,7 @@ omf_sec_handle OMFENTRY OmfSecGetRelocTable( omf_sec_handle sh )
     if( sh->type == ORL_SEC_TYPE_PROG_BITS ) {
         return( sh->omf_file_hnd->relocs );
     }
-    return( NULL );
+    return( nullptr );
 }
 
 
@@ -352,7 +366,7 @@ orl_return OMFENTRY OmfSecGetContents( omf_sec_handle sh, unsigned_8 **buffer )
 
     assert( sh );
 
-    if( ( sh->contents != NULL ) || ( sh->type == ORL_SEC_TYPE_PROG_BITS ) ) {
+    if( ( sh->contents != nullptr ) || ( sh->type == ORL_SEC_TYPE_PROG_BITS ) ) {
         return_val = OmfExportSegmentContents( sh );
         if( return_val != ORL_OKAY )
             return( return_val );
@@ -370,14 +384,14 @@ static orl_return OMFENTRY relocScan( omf_sec_handle sh, omf_sec_offset sec_offs
     unsigned_32         num;
     orl_reloc           *relocs;
     orl_return          return_val;
-    int                 global;
+    bool                global;
     omf_sec_handle      rsh;
 
     assert( sh );
     assert( sh->omf_file_hnd );
     assert( return_func );
 
-    if( sh->omf_file_hnd->relocs == NULL )
+    if( sh->omf_file_hnd->relocs == nullptr )
         return( ORL_FALSE );
     relocs = sh->omf_file_hnd->relocs->assoc.reloc.relocs;
     num = sh->omf_file_hnd->relocs->assoc.reloc.num;
@@ -389,7 +403,7 @@ static orl_return OMFENTRY relocScan( omf_sec_handle sh, omf_sec_offset sec_offs
     global = ( sh->index == sh->omf_file_hnd->relocs->index );
 
     for( x = 0; x < num; x++ ) {
-        rsh = (omf_sec_handle)(relocs[x]->section);
+        rsh = handleCast<omf_sec_handle>( relocs[x]->section );
         if( global || ( sh->index == rsh->index ) ) {
             if( !check || ( relocs[x]->offset == sec_offset ) ) {
                 return_val = return_func( relocs[x] );
@@ -441,7 +455,7 @@ omf_sec_handle OMFENTRY OmfCvtIdxToSecHdl( omf_file_handle ofh, orl_table_index 
 
     assert( ofh );
 
-    for( sh = ofh->first_sec; sh != NULL; sh = sh->next ) {
+    for( sh = ofh->first_sec; sh != nullptr; sh = sh->next ) {
         if( sh->index == idx ) {
             break;
         }
@@ -473,11 +487,11 @@ orl_return OMFENTRY OmfSymbolSecScan( omf_sec_handle sh, orl_symbol_return_func 
     if( sh->type != ORL_SEC_TYPE_SYM_TABLE )
         return( ORL_ERROR );
     syms = sh->assoc.sym.syms;
-    if( syms == NULL )
+    if( syms == nullptr )
         return( ORL_ERROR );
 
     for( x = 0; x < sh->assoc.sym.num; x++ ) {
-        return_val = return_func( (orl_symbol_handle)syms[x] );
+        return_val = return_func( reinterpret_cast<orl_symbol_handle>( syms[x] ) );
         if( return_val != ORL_OKAY ) {
             return( return_val );
         }
@@ -505,7 +519,7 @@ orl_linnum OMFENTRY OmfSecGetLines( omf_sec_handle sh )
     if( sh->type == ORL_SEC_TYPE_PROG_BITS ) {
         return( sh->assoc.seg.lines );
     } else {
-        return( NULL );
+        return( nullptr );
     }
 }
 
@@ -543,8 +557,6 @@ orl_symbol_type OMFENTRY OmfSymbolGetType( omf_symbol_handle sym )
 
 unsigned char OMFENTRY OmfSymbolGetRawInfo( omf_symbol_handle sym )
 {
-    /* unused parameters */ (void)sym;
-
     assert( sym );
 
     return( 0 );
@@ -581,7 +593,7 @@ orl_return OMFENTRY OmfGroupsScan( omf_file_handle hnd, orl_group_return_func re
     return_val = ORL_OKAY;
     for( idx = 0; idx < hnd->num_groups; idx++ ) {
         assert( hnd->groups );
-        return_val = return_func( (orl_group_handle)hnd->groups[idx] );
+        return_val = return_func( reinterpret_cast<orl_group_handle>( hnd->groups[idx] ) );
         if( return_val != ORL_OKAY ) {
             break;
         }
@@ -618,11 +630,11 @@ const char * OMFENTRY OmfGroupMember( omf_grp_handle hnd, orl_table_index idx )
         assert( hnd->segs );
         if( hnd->segs[idx] ) {
             sh = OmfFindSegOrComdat( hnd->omf_file_hnd, hnd->segs[idx], 0 );
-            if( sh != NULL ) {
+            if( sh != nullptr ) {
                 assert( sh->assoc.seg.sym );
                 return( sh->assoc.seg.sym->name.string );
             }
         }
     }
-    return( NULL );
+    return( nullptr );
 }

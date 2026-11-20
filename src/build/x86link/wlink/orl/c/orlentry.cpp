@@ -30,9 +30,9 @@
 ****************************************************************************/
 
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "orl.h"
 #include "orllevel.h"
 #include "orlentry.h"
@@ -43,66 +43,136 @@
 #include "i64.h"
 
 
+namespace {
+
+using lcl_orl = LCL_SYM( orl_handle );
+using lcl_file = LCL_SYM( orl_file_handle );
+
+// the handles ORL hands out are const pointers to opaque types; each format reads its own through a pointer it may
+// write, and the first member of every one is the file format
+template <class To>
+To as_handle( const void *p )
+{
+    return static_cast<To>( const_cast<void *>( p ) );
+}
+
+lcl_orl lcl( orl_handle h )
+{
+    return as_handle<lcl_orl>( h );
+}
+
+lcl_file lcl( orl_file_handle h )
+{
+    return as_handle<lcl_file>( h );
+}
+
+orl_file_format format_of( orl_sec_handle h )
+{
+    return as_handle<LCL_SYM( orl_sec_handle )>( h )->type;
+}
+
+orl_file_format format_of( orl_symbol_handle h )
+{
+    return as_handle<LCL_SYM( orl_symbol_handle )>( h )->type;
+}
+
+orl_file_format format_of( orl_group_handle h )
+{
+    return as_handle<LCL_SYM( orl_group_handle )>( h )->type;
+}
+
+// What each entry point does is one thing per format: the ELF, COFF and OMF routines are given as three callables, `none`
+// is what a handle of no known format (ORL_UNRECOGNIZED_FORMAT) gets.
+template <class R, class E, class C, class O>
+R by_format( orl_file_format fmt, R none, E elf, C coff, O omf )
+{
+    switch( fmt ) {
+    case ORL_ELF:
+        return elf();
+    case ORL_COFF:
+        return coff();
+    case ORL_OMF:
+        return omf();
+    default:    // ORL_UNRECOGNIZED_FORMAT
+        break;
+    }
+    return none;
+}
+
+// a format's handle given out as ORL's own
+template <class To, class From>
+To handle_out( From p )
+{
+    return reinterpret_cast<To>( p );
+}
+
+}  // namespace
+
 orl_handle ORLENTRY ORLInit( orl_funcs *funcs )
 /*********************************************/
 {
-    orl_handle                  orl_hnd;
+    orl_handle  orl_hnd = static_cast<orl_handle>( ORL_CLI_ALLOC( funcs, sizeof( ORL_LCL_STRUCT( orl_handle ) ) ) );
 
-    orl_hnd = (orl_handle)ORL_CLI_ALLOC( funcs, sizeof( ORL_LCL_STRUCT( orl_handle ) ) );
-    if( orl_hnd != NULL ) {
-        LCL_ORL_HND( orl_hnd )->error = ORL_OKAY;
-        LCL_ORL_HND( orl_hnd )->funcs = *funcs;
-        LCL_ORL_HND( orl_hnd )->elf_hnd = ElfInit( &LCL_ORL_HND( orl_hnd )->funcs );
-        if( LCL_ORL_HND( orl_hnd )->elf_hnd == NULL ) {
-            ORL_CLI_FREE( funcs, (void *)orl_hnd );
-            return( NULL );
+    if( orl_hnd != nullptr ) {
+        lcl_orl     h = lcl( orl_hnd );
+
+        h->error = ORL_OKAY;
+        h->funcs = *funcs;
+        h->elf_hnd = ElfInit( &h->funcs );
+        if( h->elf_hnd == nullptr ) {
+            ORL_CLI_FREE( funcs, h );
+            return nullptr;
         }
-        LCL_ORL_HND( orl_hnd )->coff_hnd = CoffInit( &LCL_ORL_HND( orl_hnd )->funcs );
-        if( LCL_ORL_HND( orl_hnd )->coff_hnd == NULL ) {
-            ORL_CLI_FREE( funcs, (void *)orl_hnd );
-            return( NULL );
+        h->coff_hnd = CoffInit( &h->funcs );
+        if( h->coff_hnd == nullptr ) {
+            ORL_CLI_FREE( funcs, h );
+            return nullptr;
         }
-        LCL_ORL_HND( orl_hnd )->omf_hnd = OmfInit( &LCL_ORL_HND( orl_hnd )->funcs );
-        if( LCL_ORL_HND( orl_hnd )->omf_hnd == NULL ) {
-            ORL_CLI_FREE( funcs, (void *)orl_hnd );
-            return( NULL );
+        h->omf_hnd = OmfInit( &h->funcs );
+        if( h->omf_hnd == nullptr ) {
+            ORL_CLI_FREE( funcs, h );
+            return nullptr;
         }
-        LCL_ORL_HND( orl_hnd )->first_file_hnd = NULL;
+        h->first_file_hnd = nullptr;
     }
-    return( orl_hnd );
+    return orl_hnd;
 }
 
 orl_return ORLENTRY ORLGetError( orl_handle orl_hnd )
 /***************************************************/
 {
-    return( LCL_ORL_HND( orl_hnd )->error );
+    return lcl( orl_hnd )->error;
 }
 
 orl_return ORLENTRY ORLFini( orl_handle orl_hnd )
 /***********************************************/
 {
+    lcl_orl         h = lcl( orl_hnd );
     orl_return      return_val;
 
-    if( ( return_val = ElfFini( LCL_ORL_HND( orl_hnd )->elf_hnd ) ) != ORL_OKAY )
-        return( return_val );
-    if( ( return_val = CoffFini( LCL_ORL_HND( orl_hnd )->coff_hnd ) ) != ORL_OKAY )
-        return( return_val );
-    if( ( return_val = OmfFini( LCL_ORL_HND( orl_hnd )->omf_hnd ) ) != ORL_OKAY )
-        return( return_val );
-    while( LCL_ORL_HND( orl_hnd )->first_file_hnd != NULL ) {
-        return_val = ORLRemoveFileLinks( LCL_ORL_HND( orl_hnd )->first_file_hnd );
+    if( ( return_val = ElfFini( h->elf_hnd ) ) != ORL_OKAY )
+        return return_val;
+    if( ( return_val = CoffFini( h->coff_hnd ) ) != ORL_OKAY )
+        return return_val;
+    if( ( return_val = OmfFini( h->omf_hnd ) ) != ORL_OKAY )
+        return return_val;
+    while( h->first_file_hnd != nullptr ) {
+        return_val = ORLRemoveFileLinks( h->first_file_hnd );
         if( return_val != ORL_OKAY ) {
-            return( return_val );
+            return return_val;
         }
     }
-    ORL_FUNCS_FREE( LCL_ORL_HND( orl_hnd ), (void *)orl_hnd );
-    return( ORL_OKAY );
+    ORL_FUNCS_FREE( h, h );
+    return ORL_OKAY;
 }
 
-static bool checkPEMachine( unsigned char *buffer )
-/*************************************************/
+static bool checkPEMachine( const unsigned char *buffer )
+/*******************************************************/
 {
-    switch( *(unsigned_16 *)buffer ) {
+    unsigned_16     machine;
+
+    std::memcpy( &machine, buffer, sizeof( machine ) );
+    switch( machine ) {
     case COFF_IMAGE_FILE_MACHINE_I860:
     case COFF_IMAGE_FILE_MACHINE_I386A:
     case COFF_IMAGE_FILE_MACHINE_I386:
@@ -111,84 +181,82 @@ static bool checkPEMachine( unsigned char *buffer )
     case COFF_IMAGE_FILE_MACHINE_ALPHA:
     case COFF_IMAGE_FILE_MACHINE_POWERPC:
     case COFF_IMAGE_FILE_MACHINE_AMD64:
-        return( true );
+        return true;
     }
-    return( false );
+    return false;
 }
 
-static int checkPE( orl_handle orl_hnd, orl_io_handle io_hnd )
-/************************************************************/
+static int checkPE( lcl_orl h, orl_io_handle io_hnd )
+/***************************************************/
+// (the stream is moved to the PE header and back: 1 when it holds a PE image, -1 when moving back failed)
 {
-    unsigned char   *buffer;
-    unsigned_32     ne_header_off;
-    long            pos1;
-    long            pos2;
-    int             rc;
+    auto    read = [&]( size_t len ) { return static_cast<unsigned char *>( ORL_FUNCS_READ( h, io_hnd, len ) ); };
+    auto    seek = [&]( long pos ) { return ORL_FUNCS_SEEK( h, io_hnd, pos, SEEK_CUR ); };
+    int     rc = 0;
+    long    pos1 = NE_HEADER_OFFSET - 4;
 
-    rc = 0;
-    pos1 = NE_HEADER_OFFSET - 4;
-    if( ORL_FUNCS_SEEK( LCL_ORL_HND( orl_hnd ), io_hnd, pos1, SEEK_CUR ) == 0 ) {
-        buffer = (unsigned char *)(ORL_FUNCS_READ( LCL_ORL_HND( orl_hnd ), io_hnd, 0x4 ));
-        if( buffer != NULL ) {
+    if( seek( pos1 ) == 0 ) {
+        const unsigned char     *buffer = read( 0x4 );
+
+        if( buffer != nullptr ) {
+            unsigned_32     ne_header_off;
+
             pos1 += 4;
-            ne_header_off = *(unsigned_32 *)buffer;
-            pos2 = ne_header_off - pos1 - 4;
-            if( ORL_FUNCS_SEEK( LCL_ORL_HND( orl_hnd ), io_hnd, pos2, SEEK_CUR ) == 0 ) {
-                buffer = (unsigned char *)(ORL_FUNCS_READ( LCL_ORL_HND( orl_hnd ), io_hnd, 4 ));
-                if( buffer != NULL ) {
+            std::memcpy( &ne_header_off, buffer, sizeof( ne_header_off ) );
+            long    pos2 = static_cast<long>( ne_header_off ) - pos1 - 4;
+
+            if( seek( pos2 ) == 0 ) {
+                buffer = read( 4 );
+                if( buffer != nullptr ) {
                     pos2 += 4;
                     rc = ( buffer[0] == 'P' && buffer[1] == 'E' && buffer[2] == '\0' && buffer[3] == '\0' );
                     if( rc ) {
                         rc = 0;
-                        buffer = (unsigned char *)(ORL_FUNCS_READ( LCL_ORL_HND( orl_hnd ), io_hnd, 4 ));
-                        if( buffer != NULL ) {
+                        buffer = read( 4 );
+                        if( buffer != nullptr ) {
                             pos2 += 4;
                             rc = checkPEMachine( buffer );
                         }
                     }
                 }
-                if( ORL_FUNCS_SEEK( LCL_ORL_HND( orl_hnd ), io_hnd, SEEK_POSBACK( pos2 ), SEEK_CUR ) ) {
+                if( seek( SEEK_POSBACK( pos2 ) ) ) {
                     rc = -1;
                 }
             }
         }
-        if( ORL_FUNCS_SEEK( LCL_ORL_HND( orl_hnd ), io_hnd, SEEK_POSBACK( pos1 ), SEEK_CUR ) ) {
+        if( seek( SEEK_POSBACK( pos1 ) ) ) {
             rc = -1;
         }
     }
-    return( rc );
+    return rc;
 }
 
-static int checkOMF( orl_handle orl_hnd, orl_io_handle io_hnd, unsigned char *magic )
-/************************************************************************************
+static int checkOMF( lcl_orl h, orl_io_handle io_hnd, const unsigned char *magic )
+/*********************************************************************************
  * See if this is the start of an OMF object file
  * the first record must be a THEADR or LHEADR record and we check that
  * it is valid, if it is then we assume that this is an OMF object file.
  */
 {
-    int             rc;
-    int             len;
-    int             pos;
-    unsigned char   *buffer;
-    unsigned char   *p;
-    unsigned char   chksum;
+    int     rc = 0;
 
-    rc = 0;
     if( ( magic[0] == CMD_THEADR
       || magic[0] == CMD_LHEADR )
-      && ( magic[1] + ( (int)magic[2] << 8 ) - magic[3] - 2 ) == 0 ) {
+      && ( magic[1] + ( static_cast<int>( magic[2] ) << 8 ) - magic[3] - 2 ) == 0 ) {
         /*
          * This looks good so far, we must now check the record
          */
-        len = magic[3] + 1;
-        buffer = (unsigned char *)(ORL_FUNCS_READ( LCL_ORL_HND( orl_hnd ), io_hnd, len ));
-        if( buffer != NULL ) {
-            pos = len;
+        int                     len = magic[3] + 1;
+        const unsigned char     *buffer = static_cast<unsigned char *>( ORL_FUNCS_READ( h, io_hnd, len ) );
+
+        if( buffer != nullptr ) {
+            const int   pos = len;
             /*
              * Go on to check record checksum
              */
-            chksum = magic[0] + magic[1] + magic[2] + magic[3];
-            p = buffer;
+            unsigned char       chksum = magic[0] + magic[1] + magic[2] + magic[3];
+            const unsigned char *p = buffer;
+
             while( len ) {
                 chksum += *p;
                 len--;
@@ -207,51 +275,49 @@ static int checkOMF( orl_handle orl_hnd, orl_io_handle io_hnd, unsigned char *ma
                  */
                 rc = 1;
             }
-            if( ORL_FUNCS_SEEK( LCL_ORL_HND( orl_hnd ), io_hnd, SEEK_POSBACK( pos ), SEEK_CUR ) ) {
+            if( ORL_FUNCS_SEEK( h, io_hnd, SEEK_POSBACK( pos ), SEEK_CUR ) ) {
                 rc = -1;
             }
         }
     }
-    return( rc );
+    return rc;
 }
 
 orl_file_format ORLFileIdentify( orl_handle orl_hnd, orl_io_handle io_hnd )
 /*************************************************************************/
 {
-    unsigned char       *magic;
-    orl_file_format     ret_format;
-    int                 rc;
+    lcl_orl             h = lcl( orl_hnd );
+    orl_file_format     ret_format = ORL_UNRECOGNIZED_FORMAT;
+    const unsigned char *magic = static_cast<unsigned char *>( ORL_FUNCS_READ( h, io_hnd, 4 ) );
+    int                 rc = 0;
 
-    ret_format = ORL_UNRECOGNIZED_FORMAT;
-    rc = 0;
-    magic = (unsigned char *)(ORL_FUNCS_READ( LCL_ORL_HND( orl_hnd ), io_hnd, 4 ));
-    if( magic != NULL ) {
-        /*
-         * check ELF object
-         */
+    if( magic != nullptr ) {
         if( magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F' ) {
+            /*
+             * check ELF object
+             */
             ret_format = ORL_ELF;
-        /*
-         * check COFF import library
-         */
         } else if( magic[0] == 0 && magic[1] == 0 && magic[2] == 0xFF && magic[3] == 0xFF ) {
+            /*
+             * check COFF import library
+             */
             ret_format = ORL_COFF;
-        /*
-         * check OMF object image
-         */
-        } else if( (rc = checkOMF( orl_hnd, io_hnd, magic )) != 0 ) {
+        } else if( ( rc = checkOMF( h, io_hnd, magic ) ) != 0 ) {
+            /*
+             * check OMF object image
+             */
             if( rc > 0 ) {
                 ret_format = ORL_OMF;
             }
-        /*
-         * check COFF object image
-         */
         } else if( checkPEMachine( magic ) ) {
+            /*
+             * check COFF object image
+             */
             ret_format = ORL_COFF;
-        /*
-         * check PE executable image
-         */
-        } else if( magic[0] == 'M' && magic[1] == 'Z' && (rc = checkPE( orl_hnd, io_hnd )) != 0 ) {
+        } else if( magic[0] == 'M' && magic[1] == 'Z' && ( rc = checkPE( h, io_hnd ) ) != 0 ) {
+            /*
+             * check PE executable image
+             */
             if( rc > 0 ) {
                 ret_format = ORL_COFF;
             }
@@ -259,74 +325,76 @@ orl_file_format ORLFileIdentify( orl_handle orl_hnd, orl_io_handle io_hnd )
         /*
          * seek to beginning of object before return
          */
-        if( ORL_FUNCS_SEEK( LCL_ORL_HND( orl_hnd ), io_hnd, SEEK_POSBACK( 4 ), SEEK_CUR ) ) {
+        if( ORL_FUNCS_SEEK( h, io_hnd, SEEK_POSBACK( 4 ), SEEK_CUR ) ) {
             ret_format = ORL_UNRECOGNIZED_FORMAT;
         }
     }
-    return( ret_format );
+    return ret_format;
 }
 
 orl_file_handle ORLENTRY ORLFileInit( orl_handle orl_hnd, orl_io_handle io_hnd, orl_file_format type )
 {
-    orl_file_handle     orl_file_hnd;
+    lcl_orl     h = lcl( orl_hnd );
 
     switch( type ) {
-    case( ORL_ELF ):
-    case( ORL_COFF ):
-    case( ORL_OMF ):
-        orl_file_hnd = (orl_file_handle)ORL_FUNCS_ALLOC( LCL_ORL_HND( orl_hnd ), sizeof( ORL_LCL_STRUCT( orl_file_handle ) ) );
-        if( orl_file_hnd == NULL ) {
-            LCL_ORL_HND( orl_hnd )->error = ORL_OUT_OF_MEMORY;
+    case ORL_ELF:
+    case ORL_COFF:
+    case ORL_OMF: {
+        lcl_file    fh = static_cast<lcl_file>( ORL_FUNCS_ALLOC( h, sizeof( ORL_LCL_STRUCT( orl_file_handle ) ) ) );
+
+        if( fh == nullptr ) {
+            h->error = ORL_OUT_OF_MEMORY;
             break;
         }
-        LCL_FIL_HND( orl_file_hnd )->type = type;
+        fh->type = type;
         switch( type ) {
         case ORL_ELF:
-            LCL_ORL_HND( orl_hnd )->error = ElfFileInit( LCL_ORL_HND( orl_hnd )->elf_hnd, io_hnd, &LCL_FIL_HND( orl_file_hnd )->file_hnd.elf );
+            h->error = ElfFileInit( h->elf_hnd, io_hnd, &fh->file_hnd.elf );
             break;
         case ORL_COFF:
-            LCL_ORL_HND( orl_hnd )->error = CoffFileInit( LCL_ORL_HND( orl_hnd )->coff_hnd, io_hnd, &LCL_FIL_HND( orl_file_hnd )->file_hnd.coff );
+            h->error = CoffFileInit( h->coff_hnd, io_hnd, &fh->file_hnd.coff );
             break;
         case ORL_OMF:
-            LCL_ORL_HND( orl_hnd )->error = OmfFileInit( LCL_ORL_HND( orl_hnd )->omf_hnd, io_hnd, &LCL_FIL_HND( orl_file_hnd )->file_hnd.omf );
+            h->error = OmfFileInit( h->omf_hnd, io_hnd, &fh->file_hnd.omf );
             break;
         default:
             break;
         }
-        if( LCL_ORL_HND( orl_hnd )->error != ORL_OKAY ) {
-            ORL_FUNCS_FREE( LCL_ORL_HND( orl_hnd ), (void *)orl_file_hnd );
+        if( h->error != ORL_OKAY ) {
+            ORL_FUNCS_FREE( h, fh );
             break;
         }
-        ORLAddFileLinks( LCL_ORL_HND( orl_hnd ), LCL_FIL_HND( orl_file_hnd ) );
-        return( orl_file_hnd );
+        ORLAddFileLinks( h, fh );
+        return handle_out<orl_file_handle>( fh );
+    }
     default:    //ORL_UNRECOGNIZED_FORMAT
         break;
     }
-    return( NULL );
+    return nullptr;
 }
 
 orl_return ORLENTRY ORLFileFini( orl_file_handle orl_file_hnd )
 {
-    orl_return          return_val;
+    lcl_file        fh = lcl( orl_file_hnd );
+    orl_return      return_val;
 
-    /* jump table replace: */
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return_val = ElfFileFini( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf );
+    switch( fh->type ) {
+    case ORL_ELF:
+        return_val = ElfFileFini( fh->file_hnd.elf );
         break;
-    case( ORL_COFF ):
-        return_val = CoffFileFini( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff );
+    case ORL_COFF:
+        return_val = CoffFileFini( fh->file_hnd.coff );
         break;
-    case( ORL_OMF ):
-        return_val = OmfFileFini( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf );
+    case ORL_OMF:
+        return_val = OmfFileFini( fh->file_hnd.omf );
         break;
     default:    // ORL_UNRECOGNIZED_FORMAT
-        return( ORL_ERROR );
+        return ORL_ERROR;
     }
 
     if( return_val != ORL_OKAY )
-        return( return_val );
-    return( ORLRemoveFileLinks( LCL_FIL_HND( orl_file_hnd ) ) );
+        return return_val;
+    return ORLRemoveFileLinks( fh );
 }
 
 
@@ -334,596 +402,394 @@ orl_rva ORLENTRY ORLExportTableRVA( orl_file_handle orl_file_hnd )
 {
     orl_rva     rva = 0;
 
-    if( LCL_FIL_HND( orl_file_hnd )->type == ORL_COFF ) {
-        rva = CoffExportTableRVA( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff );
+    if( lcl( orl_file_hnd )->type == ORL_COFF ) {
+        rva = CoffExportTableRVA( lcl( orl_file_hnd )->file_hnd.coff );
     }
-
-    return( rva );
+    return rva;
 }
 
 orl_return ORLENTRY ORLFileScan( orl_file_handle orl_file_hnd, const char *desired, orl_sec_return_func return_func )
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfFileScan( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf, desired, return_func ) );
-    case( ORL_COFF ):
-        return( CoffFileScan( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff, desired, return_func ) );
-    case( ORL_OMF ):
-        return( OmfFileScan( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf, desired, return_func ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_return>( fh->type, ORL_ERROR,
+        [&] { return ElfFileScan( fh->file_hnd.elf, desired, return_func ); },
+        [&] { return CoffFileScan( fh->file_hnd.coff, desired, return_func ); },
+        [&] { return OmfFileScan( fh->file_hnd.omf, desired, return_func ); } );
 }
 
 orl_machine_type ORLENTRY ORLFileGetMachineType( orl_file_handle orl_file_hnd )
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfFileGetMachineType( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf ) );
-    case( ORL_COFF ):
-        return( CoffFileGetMachineType( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff ) );
-    case( ORL_OMF ):
-        return( OmfFileGetMachineType( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return(orl_machine_type)(( 0 ));
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_machine_type>( fh->type, static_cast<orl_machine_type>( 0 ),
+        [&] { return ElfFileGetMachineType( fh->file_hnd.elf ); },
+        [&] { return CoffFileGetMachineType( fh->file_hnd.coff ); },
+        [&] { return OmfFileGetMachineType( fh->file_hnd.omf ); } );
 }
 
 orl_file_flags ORLENTRY ORLFileGetFlags( orl_file_handle orl_file_hnd )
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfFileGetFlags( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf ) );
-    case( ORL_COFF ):
-        return( CoffFileGetFlags( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff ) );
-    case( ORL_OMF ):
-        return( OmfFileGetFlags( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return(orl_file_flags)(( 0 ));
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_file_flags>( fh->type, static_cast<orl_file_flags>( 0 ),
+        [&] { return ElfFileGetFlags( fh->file_hnd.elf ); },
+        [&] { return CoffFileGetFlags( fh->file_hnd.coff ); },
+        [&] { return OmfFileGetFlags( fh->file_hnd.omf ); } );
 }
 
 orl_file_size ORLENTRY ORLFileGetSize( orl_file_handle orl_file_hnd )
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfFileGetSize( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf ) );
-    case( ORL_COFF ):
-        return( CoffFileGetSize( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff ) );
-    case( ORL_OMF ):
-        return( OmfFileGetSize( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( 0 );
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_file_size>( fh->type, 0,
+        [&] { return ElfFileGetSize( fh->file_hnd.elf ); },
+        [&] { return CoffFileGetSize( fh->file_hnd.coff ); },
+        [&] { return OmfFileGetSize( fh->file_hnd.omf ); } );
 }
 
 orl_file_type ORLENTRY ORLFileGetType( orl_file_handle orl_file_hnd )
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfFileGetType( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf ) );
-    case( ORL_COFF ):
-        return( CoffFileGetType( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff ) );
-    case( ORL_OMF ):
-        return( OmfFileGetType( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return(orl_file_type)(( 0 ));
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_file_type>( fh->type, static_cast<orl_file_type>( 0 ),
+        [&] { return ElfFileGetType( fh->file_hnd.elf ); },
+        [&] { return CoffFileGetType( fh->file_hnd.coff ); },
+        [&] { return OmfFileGetType( fh->file_hnd.omf ); } );
 }
 
 orl_file_format ORLENTRY ORLFileGetFormat( orl_file_handle orl_file_hnd )
 {
-    return( LCL_FIL_HND( orl_file_hnd )->type );
+    return lcl( orl_file_hnd )->type;
 }
 
 orl_sec_handle ORLENTRY ORLFileGetSymbolTable( orl_file_handle orl_file_hnd )
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return( (orl_sec_handle)ElfFileGetSymbolTable( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf ) );
-    case( ORL_COFF ):
-        return( (orl_sec_handle)CoffFileGetSymbolTable( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff ) );
-    case( ORL_OMF ):
-        return( (orl_sec_handle)OmfFileGetSymbolTable( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_sec_handle>( fh->type, nullptr,
+        [&] { return handle_out<orl_sec_handle>( ElfFileGetSymbolTable( fh->file_hnd.elf ) ); },
+        [&] { return handle_out<orl_sec_handle>( CoffFileGetSymbolTable( fh->file_hnd.coff ) ); },
+        [&] { return handle_out<orl_sec_handle>( OmfFileGetSymbolTable( fh->file_hnd.omf ) ); } );
 }
 
 const char * ORLENTRY ORLSecGetName( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecGetName( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSecGetName( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSecGetName( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<const char *>( format_of( orl_sec_hnd ), nullptr,
+        [&] { return ElfSecGetName( as_handle<elf_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return CoffSecGetName( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfSecGetName( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_return ORLENTRY ORLSecGetBase( orl_sec_handle orl_sec_hnd, orl_sec_base *sec_base )
 {
-    if( sec_base != NULL ) {
-        switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-        case( ORL_ELF ):
-            return( ElfSecGetBase( (elf_sec_handle)orl_sec_hnd, sec_base ) );
-        case( ORL_COFF ):
-            Set64ValU32( *sec_base, CoffSecGetBase( (coff_sec_handle)orl_sec_hnd ) );
-            return( ORL_OKAY );
-        case( ORL_OMF ):
-            Set64ValU32( *sec_base, OmfSecGetBase( (omf_sec_handle)orl_sec_hnd ) );
-            return( ORL_OKAY );
+    if( sec_base != nullptr ) {
+        switch( format_of( orl_sec_hnd ) ) {
+        case ORL_ELF:
+            return ElfSecGetBase( as_handle<elf_sec_handle>( orl_sec_hnd ), sec_base );
+        case ORL_COFF:
+            Set64ValU32( *sec_base, CoffSecGetBase( as_handle<coff_sec_handle>( orl_sec_hnd ) ) );
+            return ORL_OKAY;
+        case ORL_OMF:
+            Set64ValU32( *sec_base, OmfSecGetBase( as_handle<omf_sec_handle>( orl_sec_hnd ) ) );
+            return ORL_OKAY;
         default:    // ORL_UNRECOGNIZED_FORMAT
             break;
         }
         Set64ValZero( *sec_base );
     }
-    return( ORL_ERROR );
+    return ORL_ERROR;
 }
 
 orl_sec_size ORLENTRY ORLSecGetSize( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecGetSize( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSecGetSize( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSecGetSize( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( 0 );
+    return by_format<orl_sec_size>( format_of( orl_sec_hnd ), 0,
+        [&] { return ElfSecGetSize( as_handle<elf_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return CoffSecGetSize( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfSecGetSize( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_sec_type ORLENTRY ORLSecGetType( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecGetType( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSecGetType( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSecGetType( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return(orl_sec_type)(( 0 ));
+    return by_format<orl_sec_type>( format_of( orl_sec_hnd ), static_cast<orl_sec_type>( 0 ),
+        [&] { return ElfSecGetType( as_handle<elf_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return CoffSecGetType( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfSecGetType( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_sec_alignment ORLENTRY ORLSecGetAlignment( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecGetAlignment( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSecGetAlignment( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSecGetAlignment( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( 0 );
+    return by_format<orl_sec_alignment>( format_of( orl_sec_hnd ), 0,
+        [&] { return ElfSecGetAlignment( as_handle<elf_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return CoffSecGetAlignment( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfSecGetAlignment( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_sec_flags ORLENTRY ORLSecGetFlags( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecGetFlags( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSecGetFlags( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSecGetFlags( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return(orl_sec_flags)(( 0 ));
+    return by_format<orl_sec_flags>( format_of( orl_sec_hnd ), static_cast<orl_sec_flags>( 0 ),
+        [&] { return ElfSecGetFlags( as_handle<elf_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return CoffSecGetFlags( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfSecGetFlags( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_sec_handle ORLENTRY ORLSecGetStringTable( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( (orl_sec_handle)ElfSecGetStringTable( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( (orl_sec_handle)CoffSecGetStringTable( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( (orl_sec_handle)OmfSecGetStringTable( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<orl_sec_handle>( format_of( orl_sec_hnd ), nullptr,
+        [&] { return handle_out<orl_sec_handle>( ElfSecGetStringTable( as_handle<elf_sec_handle>( orl_sec_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( CoffSecGetStringTable( as_handle<coff_sec_handle>( orl_sec_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( OmfSecGetStringTable( as_handle<omf_sec_handle>( orl_sec_hnd ) ) ); } );
 }
 
 orl_sec_handle ORLENTRY ORLSecGetSymbolTable( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( (orl_sec_handle)ElfSecGetSymbolTable( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( (orl_sec_handle)CoffSecGetSymbolTable( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( (orl_sec_handle)OmfSecGetSymbolTable( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<orl_sec_handle>( format_of( orl_sec_hnd ), nullptr,
+        [&] { return handle_out<orl_sec_handle>( ElfSecGetSymbolTable( as_handle<elf_sec_handle>( orl_sec_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( CoffSecGetSymbolTable( as_handle<coff_sec_handle>( orl_sec_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( OmfSecGetSymbolTable( as_handle<omf_sec_handle>( orl_sec_hnd ) ) ); } );
 }
 
 orl_sec_handle ORLENTRY ORLSecGetRelocTable( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( (orl_sec_handle)ElfSecGetRelocTable( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( (orl_sec_handle)CoffSecGetRelocTable( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( (orl_sec_handle)OmfSecGetRelocTable( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<orl_sec_handle>( format_of( orl_sec_hnd ), nullptr,
+        [&] { return handle_out<orl_sec_handle>( ElfSecGetRelocTable( as_handle<elf_sec_handle>( orl_sec_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( CoffSecGetRelocTable( as_handle<coff_sec_handle>( orl_sec_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( OmfSecGetRelocTable( as_handle<omf_sec_handle>( orl_sec_hnd ) ) ); } );
 }
 
 orl_linnum ORLENTRY ORLSecGetLines( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( NULL );
-    case( ORL_COFF ):
-        return( CoffSecGetLines( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSecGetLines( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<orl_linnum>( format_of( orl_sec_hnd ), nullptr,
+        []() -> orl_linnum { return nullptr; },
+        [&] { return CoffSecGetLines( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfSecGetLines( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_table_index ORLENTRY ORLSecGetNumLines( orl_sec_handle orl_sec_hnd )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( 0 );
-    case( ORL_COFF ):
-        return( CoffSecGetNumLines( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSecGetNumLines( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( 0 );
+    return by_format<orl_table_index>( format_of( orl_sec_hnd ), 0,
+        []() -> orl_table_index { return 0; },
+        [&] { return CoffSecGetNumLines( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfSecGetNumLines( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_sec_offset ORLENTRY ORLSecGetOffset( orl_sec_handle orl_sec_hnd )
 {
-    if( LCL_SEC_HND( orl_sec_hnd )->type == ORL_COFF ) {
-        return( CoffSecGetOffset( (coff_sec_handle)orl_sec_hnd ) );
+    if( format_of( orl_sec_hnd ) == ORL_COFF ) {
+        return CoffSecGetOffset( as_handle<coff_sec_handle>( orl_sec_hnd ) );
     }
-    return( 0 );
+    return 0;
 }
 
 const char * ORLENTRY ORLSecGetClassName( orl_sec_handle orl_sec_hnd )
 {
-    if( LCL_SEC_HND( orl_sec_hnd )->type == ORL_OMF ) {
-        return( OmfSecGetClassName( (omf_sec_handle)orl_sec_hnd ) );
+    if( format_of( orl_sec_hnd ) == ORL_OMF ) {
+        return OmfSecGetClassName( as_handle<omf_sec_handle>( orl_sec_hnd ) );
     }
-    return( 0 );
+    return nullptr;
 }
 
 orl_sec_combine ORLENTRY ORLSecGetCombine( orl_sec_handle orl_sec_hnd )
 {
-    if( LCL_SEC_HND( orl_sec_hnd )->type == ORL_OMF ) {
-        return( OmfSecGetCombine( (omf_sec_handle)orl_sec_hnd ) );
+    if( format_of( orl_sec_hnd ) == ORL_OMF ) {
+        return OmfSecGetCombine( as_handle<omf_sec_handle>( orl_sec_hnd ) );
     }
-    return( ORL_SEC_COMBINE_NONE );
+    return ORL_SEC_COMBINE_NONE;
 }
 
 orl_sec_frame ORLENTRY ORLSecGetAbsFrame( orl_sec_handle orl_sec_hnd )
 {
-    if( LCL_SEC_HND( orl_sec_hnd )->type == ORL_OMF ) {
-        return( OmfSecGetAbsFrame( (omf_sec_handle)orl_sec_hnd ) );
+    if( format_of( orl_sec_hnd ) == ORL_OMF ) {
+        return OmfSecGetAbsFrame( as_handle<omf_sec_handle>( orl_sec_hnd ) );
     }
-    return( ORL_SEC_NO_ABS_FRAME );
+    return ORL_SEC_NO_ABS_FRAME;
 }
 
 orl_sec_handle ORLENTRY ORLSecGetAssociated( orl_sec_handle orl_sec_hnd )
 {
-    if( LCL_SEC_HND( orl_sec_hnd )->type == ORL_OMF ) {
-        return( OmfSecGetAssociated( (omf_sec_handle)orl_sec_hnd ) );
+    if( format_of( orl_sec_hnd ) == ORL_OMF ) {
+        return OmfSecGetAssociated( as_handle<omf_sec_handle>( orl_sec_hnd ) );
     }
-    return( NULL );
+    return nullptr;
 }
 
 orl_group_handle ORLENTRY ORLSecGetGroup( orl_sec_handle orl_sec_hnd )
 {
-    if( LCL_SEC_HND( orl_sec_hnd )->type == ORL_OMF ) {
-        return( OmfSecGetGroup( (omf_sec_handle)orl_sec_hnd ) );
+    if( format_of( orl_sec_hnd ) == ORL_OMF ) {
+        return OmfSecGetGroup( as_handle<omf_sec_handle>( orl_sec_hnd ) );
     }
-    return( NULL );
+    return nullptr;
 }
 
 orl_return ORLENTRY ORLSecGetContents( orl_sec_handle orl_sec_hnd, unsigned char **buffer )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecGetContents( (elf_sec_handle)orl_sec_hnd, buffer ) );
-    case( ORL_COFF ):
-        return( CoffSecGetContents( (coff_sec_handle)orl_sec_hnd, buffer ) );
-    case( ORL_OMF ):
-        return( OmfSecGetContents( (omf_sec_handle)orl_sec_hnd, buffer ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    return by_format<orl_return>( format_of( orl_sec_hnd ), ORL_ERROR,
+        [&] { return ElfSecGetContents( as_handle<elf_sec_handle>( orl_sec_hnd ), buffer ); },
+        [&] { return CoffSecGetContents( as_handle<coff_sec_handle>( orl_sec_hnd ), buffer ); },
+        [&] { return OmfSecGetContents( as_handle<omf_sec_handle>( orl_sec_hnd ), buffer ); } );
 }
 
 orl_return ORLENTRY ORLSecQueryReloc( orl_sec_handle orl_sec_hnd, orl_sec_offset sec_offset, orl_reloc_return_func return_func )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecQueryReloc( (elf_sec_handle)orl_sec_hnd, sec_offset, return_func ) );
-    case( ORL_COFF ):
-        return( CoffSecQueryReloc( (coff_sec_handle)orl_sec_hnd, sec_offset, return_func ) );
-    case( ORL_OMF ):
-        return( OmfSecQueryReloc( (omf_sec_handle)orl_sec_hnd, sec_offset, return_func ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    return by_format<orl_return>( format_of( orl_sec_hnd ), ORL_ERROR,
+        [&] { return ElfSecQueryReloc( as_handle<elf_sec_handle>( orl_sec_hnd ), sec_offset, return_func ); },
+        [&] { return CoffSecQueryReloc( as_handle<coff_sec_handle>( orl_sec_hnd ), sec_offset, return_func ); },
+        [&] { return OmfSecQueryReloc( as_handle<omf_sec_handle>( orl_sec_hnd ), sec_offset, return_func ); } );
 }
 
 orl_return ORLENTRY ORLSecScanReloc( orl_sec_handle orl_sec_hnd, orl_reloc_return_func return_func )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSecScanReloc( (elf_sec_handle)orl_sec_hnd, return_func ) );
-    case( ORL_COFF ):
-        return( CoffSecScanReloc( (coff_sec_handle)orl_sec_hnd, return_func ) );
-    case( ORL_OMF ):
-        return( OmfSecScanReloc( (omf_sec_handle)orl_sec_hnd, return_func ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    return by_format<orl_return>( format_of( orl_sec_hnd ), ORL_ERROR,
+        [&] { return ElfSecScanReloc( as_handle<elf_sec_handle>( orl_sec_hnd ), return_func ); },
+        [&] { return CoffSecScanReloc( as_handle<coff_sec_handle>( orl_sec_hnd ), return_func ); },
+        [&] { return OmfSecScanReloc( as_handle<omf_sec_handle>( orl_sec_hnd ), return_func ); } );
 }
 
 
 orl_table_index ORLENTRY ORLCvtSecHdlToIdx( orl_sec_handle orl_sec_hnd )
 /**********************************************************************/
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfCvtSecHdlToIdx( (elf_sec_handle)orl_sec_hnd ) );
-    case( ORL_COFF ):
-        return( CoffCvtSecHdlToIdx( (coff_sec_handle)orl_sec_hnd ) );
-    case( ORL_OMF ):
-        return( OmfCvtSecHdlToIdx( (omf_sec_handle)orl_sec_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( 0 );
+    return by_format<orl_table_index>( format_of( orl_sec_hnd ), 0,
+        [&] { return ElfCvtSecHdlToIdx( as_handle<elf_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return CoffCvtSecHdlToIdx( as_handle<coff_sec_handle>( orl_sec_hnd ) ); },
+        [&] { return OmfCvtSecHdlToIdx( as_handle<omf_sec_handle>( orl_sec_hnd ) ); } );
 }
 
 orl_sec_handle ORLENTRY ORLCvtIdxToSecHdl( orl_file_handle orl_file_hnd, orl_table_index idx )
 /********************************************************************************************/
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-        return( (orl_sec_handle)ElfCvtIdxToSecHdl( LCL_FIL_HND( orl_file_hnd )->file_hnd.elf, idx ) );
-    case( ORL_COFF ):
-        return( (orl_sec_handle)CoffCvtIdxToSecHdl( LCL_FIL_HND( orl_file_hnd )->file_hnd.coff, idx ) );
-    case( ORL_OMF ):
-        return( (orl_sec_handle)OmfCvtIdxToSecHdl( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf, idx ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_sec_handle>( fh->type, nullptr,
+        [&] { return handle_out<orl_sec_handle>( ElfCvtIdxToSecHdl( fh->file_hnd.elf, idx ) ); },
+        [&] { return handle_out<orl_sec_handle>( CoffCvtIdxToSecHdl( fh->file_hnd.coff, idx ) ); },
+        [&] { return handle_out<orl_sec_handle>( OmfCvtIdxToSecHdl( fh->file_hnd.omf, idx ) ); } );
 }
 
 orl_return ORLENTRY ORLRelocSecScan( orl_sec_handle orl_sec_hnd, orl_reloc_return_func return_func )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfRelocSecScan( (elf_sec_handle)orl_sec_hnd, return_func ) );
-    case( ORL_COFF ):
-        return( CoffRelocSecScan( (coff_sec_handle)orl_sec_hnd, return_func ) );
-    case( ORL_OMF ):
-        return( OmfRelocSecScan( (omf_sec_handle)orl_sec_hnd, return_func ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    return by_format<orl_return>( format_of( orl_sec_hnd ), ORL_ERROR,
+        [&] { return ElfRelocSecScan( as_handle<elf_sec_handle>( orl_sec_hnd ), return_func ); },
+        [&] { return CoffRelocSecScan( as_handle<coff_sec_handle>( orl_sec_hnd ), return_func ); },
+        [&] { return OmfRelocSecScan( as_handle<omf_sec_handle>( orl_sec_hnd ), return_func ); } );
 }
 
 orl_return ORLENTRY ORLSymbolSecScan( orl_sec_handle orl_sec_hnd, orl_symbol_return_func return_func )
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSymbolSecScan( (elf_sec_handle)orl_sec_hnd, return_func ) );
-    case( ORL_COFF ):
-        return( CoffSymbolSecScan( (coff_sec_handle)orl_sec_hnd, return_func ) );
-    case( ORL_OMF ):
-        return( OmfSymbolSecScan( (omf_sec_handle)orl_sec_hnd, return_func ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    return by_format<orl_return>( format_of( orl_sec_hnd ), ORL_ERROR,
+        [&] { return ElfSymbolSecScan( as_handle<elf_sec_handle>( orl_sec_hnd ), return_func ); },
+        [&] { return CoffSymbolSecScan( as_handle<coff_sec_handle>( orl_sec_hnd ), return_func ); },
+        [&] { return OmfSymbolSecScan( as_handle<omf_sec_handle>( orl_sec_hnd ), return_func ); } );
 }
 
 orl_return ORLENTRY ORLNoteSecScan( orl_sec_handle orl_sec_hnd, orl_note_callbacks *cbs, void *cookie )
 /*****************************************************************************************************/
 {
-    switch( LCL_SEC_HND( orl_sec_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfNoteSecScan( (elf_sec_handle)orl_sec_hnd, cbs, cookie ) );
-    case( ORL_COFF ):
-        return( CoffNoteSecScan( (coff_sec_handle)orl_sec_hnd, cbs, cookie ) );
-    case( ORL_OMF ):
-        return( OmfNoteSecScan( (omf_sec_handle)orl_sec_hnd, cbs, cookie ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    return by_format<orl_return>( format_of( orl_sec_hnd ), ORL_ERROR,
+        [&] { return ElfNoteSecScan( as_handle<elf_sec_handle>( orl_sec_hnd ), cbs, cookie ); },
+        [&] { return CoffNoteSecScan( as_handle<coff_sec_handle>( orl_sec_hnd ), cbs, cookie ); },
+        [&] { return OmfNoteSecScan( as_handle<omf_sec_handle>( orl_sec_hnd ), cbs, cookie ); } );
 }
 
 
 const char * ORLENTRY ORLSymbolGetName( orl_symbol_handle orl_symbol_hnd )
 {
-    switch( LCL_SYM_HND( orl_symbol_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSymbolGetName( (elf_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSymbolGetName( (coff_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSymbolGetName( (omf_symbol_handle)orl_symbol_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<const char *>( format_of( orl_symbol_hnd ), nullptr,
+        [&] { return ElfSymbolGetName( as_handle<elf_symbol_handle>( orl_symbol_hnd ) ); },
+        [&] { return CoffSymbolGetName( as_handle<coff_symbol_handle>( orl_symbol_hnd ) ); },
+        [&] { return OmfSymbolGetName( as_handle<omf_symbol_handle>( orl_symbol_hnd ) ); } );
 }
 
 orl_return ORLENTRY ORLSymbolGetValue( orl_symbol_handle orl_symbol_hnd, orl_symbol_value *sym_value )
 {
-    if( sym_value != NULL ) {
-        switch( LCL_SYM_HND( orl_symbol_hnd )->type ) {
-        case( ORL_ELF ):
-            return( ElfSymbolGetValue( (elf_symbol_handle)orl_symbol_hnd, sym_value ) );
-        case( ORL_COFF ):
-            Set64ValU32( *sym_value, CoffSymbolGetValue( (coff_symbol_handle)orl_symbol_hnd ) );
-            return( ORL_OKAY );
-        case( ORL_OMF ):
-            Set64ValU32( *sym_value, OmfSymbolGetValue( (omf_symbol_handle)orl_symbol_hnd ) );
-            return( ORL_OKAY );
+    if( sym_value != nullptr ) {
+        switch( format_of( orl_symbol_hnd ) ) {
+        case ORL_ELF:
+            return ElfSymbolGetValue( as_handle<elf_symbol_handle>( orl_symbol_hnd ), sym_value );
+        case ORL_COFF:
+            Set64ValU32( *sym_value, CoffSymbolGetValue( as_handle<coff_symbol_handle>( orl_symbol_hnd ) ) );
+            return ORL_OKAY;
+        case ORL_OMF:
+            Set64ValU32( *sym_value, OmfSymbolGetValue( as_handle<omf_symbol_handle>( orl_symbol_hnd ) ) );
+            return ORL_OKAY;
         default:     //ORL_UNRECOGNIZED_FORMAT
             break;
         }
         Set64ValZero( *sym_value );
     }
-    return( ORL_ERROR );
+    return ORL_ERROR;
 }
 
 orl_symbol_binding ORLENTRY ORLSymbolGetBinding( orl_symbol_handle orl_symbol_hnd )
 {
-    switch( LCL_SYM_HND( orl_symbol_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSymbolGetBinding( (elf_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSymbolGetBinding( (coff_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSymbolGetBinding( (omf_symbol_handle)orl_symbol_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return(orl_symbol_binding)(( 0 ));
+    return by_format<orl_symbol_binding>( format_of( orl_symbol_hnd ), static_cast<orl_symbol_binding>( 0 ),
+        [&] { return ElfSymbolGetBinding( as_handle<elf_symbol_handle>( orl_symbol_hnd ) ); },
+        [&] { return CoffSymbolGetBinding( as_handle<coff_symbol_handle>( orl_symbol_hnd ) ); },
+        [&] { return OmfSymbolGetBinding( as_handle<omf_symbol_handle>( orl_symbol_hnd ) ); } );
 }
 
 orl_symbol_type ORLENTRY ORLSymbolGetType( orl_symbol_handle orl_symbol_hnd )
 {
-    switch( LCL_SYM_HND( orl_symbol_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSymbolGetType( (elf_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_COFF ):
-        return( CoffSymbolGetType( (coff_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_OMF ):
-        return( OmfSymbolGetType( (omf_symbol_handle)orl_symbol_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return(orl_symbol_type)(( 0 ));
+    return by_format<orl_symbol_type>( format_of( orl_symbol_hnd ), static_cast<orl_symbol_type>( 0 ),
+        [&] { return ElfSymbolGetType( as_handle<elf_symbol_handle>( orl_symbol_hnd ) ); },
+        [&] { return CoffSymbolGetType( as_handle<coff_symbol_handle>( orl_symbol_hnd ) ); },
+        [&] { return OmfSymbolGetType( as_handle<omf_symbol_handle>( orl_symbol_hnd ) ); } );
 }
 
 unsigned char ORLENTRY ORLSymbolGetRawInfo( orl_symbol_handle orl_symbol_hnd )
 {
-    switch( LCL_SYM_HND( orl_symbol_hnd )->type ) {
-    case( ORL_ELF ):
-        return( ElfSymbolGetRawInfo( (elf_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_COFF ):
-        return( 0 ); // no COFF equivilent
-    case( ORL_OMF ):
-        return( OmfSymbolGetRawInfo( (omf_symbol_handle)orl_symbol_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( 0 );
+    return by_format<unsigned char>( format_of( orl_symbol_hnd ), 0,
+        [&] { return ElfSymbolGetRawInfo( as_handle<elf_symbol_handle>( orl_symbol_hnd ) ); },
+        []() -> unsigned char { return 0; },   // no COFF equivilent
+        [&] { return OmfSymbolGetRawInfo( as_handle<omf_symbol_handle>( orl_symbol_hnd ) ); } );
 }
 
 orl_sec_handle ORLENTRY ORLSymbolGetSecHandle( orl_symbol_handle orl_symbol_hnd )
 {
-    switch( LCL_SYM_HND( orl_symbol_hnd )->type ) {
-    case( ORL_ELF ):
-        return( (orl_sec_handle)ElfSymbolGetSecHandle( (elf_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_COFF ):
-        return( (orl_sec_handle)CoffSymbolGetSecHandle( (coff_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_OMF ):
-        return( (orl_sec_handle)OmfSymbolGetSecHandle( (omf_symbol_handle)orl_symbol_hnd ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<orl_sec_handle>( format_of( orl_symbol_hnd ), nullptr,
+        [&] { return handle_out<orl_sec_handle>( ElfSymbolGetSecHandle( as_handle<elf_symbol_handle>( orl_symbol_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( CoffSymbolGetSecHandle( as_handle<coff_symbol_handle>( orl_symbol_hnd ) ) ); },
+        [&] { return handle_out<orl_sec_handle>( OmfSymbolGetSecHandle( as_handle<omf_symbol_handle>( orl_symbol_hnd ) ) ); } );
 }
 
 orl_symbol_handle ORLENTRY ORLSymbolGetAssociated( orl_symbol_handle orl_symbol_hnd )
 {
-    switch( LCL_SYM_HND( orl_symbol_hnd )->type ) {
-    case( ORL_ELF ):
-        return( (orl_symbol_handle)ElfSymbolGetAssociated( (elf_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_COFF ):
-        return( (orl_symbol_handle)CoffSymbolGetAssociated( (coff_symbol_handle)orl_symbol_hnd ) );
-    case( ORL_OMF ):
-        // NYI: call to an OMF func. here.
-        return( NULL );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( NULL );
+    return by_format<orl_symbol_handle>( format_of( orl_symbol_hnd ), nullptr,
+        [&] { return handle_out<orl_symbol_handle>( ElfSymbolGetAssociated( as_handle<elf_symbol_handle>( orl_symbol_hnd ) ) ); },
+        [&] { return handle_out<orl_symbol_handle>( CoffSymbolGetAssociated( as_handle<coff_symbol_handle>( orl_symbol_hnd ) ) ); },
+        []() -> orl_symbol_handle { return nullptr; } );   // NYI: call to an OMF func. here.
 }
 
 orl_return ORLENTRY ORLGroupsScan( orl_file_handle orl_file_hnd, orl_group_return_func return_func )
 {
-    switch( LCL_FIL_HND( orl_file_hnd )->type ) {
-    case( ORL_ELF ):
-    case( ORL_COFF ):
-        return( ORL_OKAY );
-    case( ORL_OMF ):
-        return( OmfGroupsScan( LCL_FIL_HND( orl_file_hnd )->file_hnd.omf, return_func ) );
-    default:    // ORL_UNRECOGNIZED_FORMAT
-        break;
-    }
-    return( ORL_ERROR );
+    lcl_file    fh = lcl( orl_file_hnd );
+
+    return by_format<orl_return>( fh->type, ORL_ERROR,
+        []() -> orl_return { return ORL_OKAY; },
+        []() -> orl_return { return ORL_OKAY; },
+        [&] { return OmfGroupsScan( fh->file_hnd.omf, return_func ); } );
 }
 
 const char * ORLENTRY ORLGroupName( orl_group_handle orl_group_hnd )
 {
-    if( LCL_GRP_HND( orl_group_hnd )->type == ORL_OMF ) {
-        return( OmfGroupName( (omf_grp_handle)orl_group_hnd ) );
+    if( format_of( orl_group_hnd ) == ORL_OMF ) {
+        return OmfGroupName( as_handle<omf_grp_handle>( orl_group_hnd ) );
     }
-    return( NULL );
+    return nullptr;
 }
 
 orl_table_index ORLENTRY ORLGroupSize( orl_group_handle orl_group_hnd )
 {
-    if( LCL_GRP_HND( orl_group_hnd )->type == ORL_OMF ) {
-        return( OmfGroupSize( (omf_grp_handle)orl_group_hnd ) );
+    if( format_of( orl_group_hnd ) == ORL_OMF ) {
+        return OmfGroupSize( as_handle<omf_grp_handle>( orl_group_hnd ) );
     }
-    return( 0 );
+    return 0;
 }
 
 const char * ORLENTRY ORLGroupMember( orl_group_handle orl_group_hnd, orl_table_index idx )
 {
-    if( LCL_GRP_HND( orl_group_hnd )->type == ORL_OMF ) {
-        return( OmfGroupMember( (omf_grp_handle)orl_group_hnd, idx ) );
+    if( format_of( orl_group_hnd ) == ORL_OMF ) {
+        return OmfGroupMember( as_handle<omf_grp_handle>( orl_group_hnd ), idx );
     }
-    return( NULL );
+    return nullptr;
 }

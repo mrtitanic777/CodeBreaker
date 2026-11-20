@@ -30,61 +30,64 @@
 *
 ****************************************************************************/
 
-
+#include <cstring>
+#include <string>
 #include "layer0.h"
 #include "varstr.h"
 #include "read.h"
+#include "reserr.h"
 #include "wresrtns.h"
 
+
+namespace {
+
+/* hand the collected text to the caller in a block wres allocated (none when the read failed) */
+char *finishString( const std::string &text, bool error, size_t *len )
+{
+    auto *str = static_cast<char *>( WRESALLOC( text.size() + 1 ) );
+
+    if( str == nullptr ) {
+        WRES_ERROR( WRS_MALLOC_FAILED );
+        return( nullptr );
+    }
+    std::memcpy( str, text.data(), text.size() );
+    str[text.size()] = '\0';
+    if( len != nullptr ) {
+        *len = text.size();
+    }
+    if( error ) {
+        WRESFREE( str );
+        str = nullptr;
+    }
+    return( str );
+}
+
+} // namespace
 
 char *ResReadString( FILE *fp, size_t *len )
 /******************************************/
 {
-    VarString           *varstr;
-    bool                error;
-    uint_8              nextchar;
-    char                *str;
+    std::string text;
+    bool        error = false;
+    uint_8      nextchar = ResReadUint8( &error, fp );
 
-    varstr = VarStringStart();
-    error = false;
-    nextchar = ResReadUint8( &error, fp );
     while( !error && nextchar != '\0' ) {
-        VarStringAddChar( varstr, nextchar );
+        text.push_back( static_cast<char>( nextchar ) );
         nextchar = ResReadUint8( &error, fp );
     }
-
-    str = VarStringEnd( varstr, len );
-
-    if( error && str != NULL ) {
-        WRESFREE( str );
-        str = NULL;
-    }
-
-    return( str );
-} /* ResReadString */
+    return( finishString( text, error, len ) );
+}
 
 char *ResRead32String( FILE *fp, size_t *len )
 /********************************************/
 {
-    VarString           *varstr;
-    bool                error;
-    uint_16             nextchar;
-    char                *str;
+    std::string text;
+    bool        error = false;
+    uint_16     nextchar = ResReadUint16( &error, fp );
 
-    varstr = VarStringStart();
-    error = false;
-    nextchar = ResReadUint16( &error, fp );
     while( !error && nextchar != 0x0000 ) {
-        VarStringAddChar( varstr, UNI2ASCII( nextchar ) );
+        text.push_back( UNI2ASCII( nextchar ) );
         nextchar = ResReadUint16( &error, fp );
     }
-
-    str = VarStringEnd( varstr, len );
-
-    if( error && str != NULL ) {
-        WRESFREE( str );
-        str = NULL;
-    }
-
-    return( str );
-} /* ResRead32String */
+    return( finishString( text, error, len ) );
+}

@@ -34,7 +34,10 @@
 #include "dwutils.h"
 
 
+// Appends one byte to the buffer *h points into and moves *h past it.
 void OutputLEB128( void **h, unsigned char byte )
 {
-    *(*(unsigned char **)h)++ = byte;
+    auto &out = *reinterpret_cast<unsigned char **>( h );
+
+    *out++ = byte;
 }

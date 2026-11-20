@@ -30,8 +30,7 @@
 *
 ****************************************************************************/
 
-
-#include <string.h>
+#include <cstring>
 #include "wresall.h"
 #include "reserr.h"
 #include "wrmergdi.h"
@@ -41,27 +40,25 @@
 bool WResMergeDirs( WResDir dstdir, WResDir srcdir, WResMergeError **errs )
 /*************************************************************************/
 {
-    WResDirWindow       wind;
-    WResDirWindow       wind_dup;
-    WResLangInfo        *langinfo;
-    WResResInfo         *resinfo;
-    WResTypeInfo        *typeinfo;
-    void                *fileinfo;
-    WResMergeError      *err;
+    WResDirWindow   wind_dup;
 
-    if( errs != NULL ) *errs = NULL;
-    wind = WResFirstResource( srcdir );
+    if( errs != nullptr )
+        *errs = nullptr;
+    WResDirWindow   wind = WResFirstResource( srcdir );
+
     while( !WResIsEmptyWindow( wind ) ) {
-        typeinfo = WResGetTypeInfo( wind );
-        resinfo = WResGetResInfo( wind );
-        langinfo = WResGetLangInfo( wind );
-        fileinfo = WResGetFileInfo( wind );
+        WResTypeInfo    *typeinfo = WResGetTypeInfo( wind );
+        WResResInfo     *resinfo = WResGetResInfo( wind );
+        WResLangInfo    *langinfo = WResGetLangInfo( wind );
+        void            *fileinfo = WResGetFileInfo( wind );
+
         WResAddResource2( &typeinfo->TypeName, &resinfo->ResName,
                         langinfo->MemoryFlags, langinfo->Offset,
                         langinfo->Length, dstdir, &langinfo->lang,
                         &wind_dup, fileinfo );
-        if( !WResIsEmptyWindow( wind_dup ) && errs != NULL ) {
-            err = (WResMergeError *)(WRESALLOC( sizeof( WResMergeError ) ));
+        if( !WResIsEmptyWindow( wind_dup ) && errs != nullptr ) {
+            auto *err = static_cast<WResMergeError *>( WRESALLOC( sizeof( WResMergeError ) ) );
+
             err->next = *errs;
             *errs = err;
             err->dstres = wind_dup;
@@ -75,9 +72,9 @@ bool WResMergeDirs( WResDir dstdir, WResDir srcdir, WResMergeError **errs )
 void WResFreeMergeErrors( WResMergeError *errs )
 /**********************************************/
 {
-    WResMergeError      *err;
+    WResMergeError  *err;
 
-    while( (err = errs) != NULL ) {
+    while( (err = errs) != nullptr ) {
         errs = errs->next;
         WRESFREE( err );
     }

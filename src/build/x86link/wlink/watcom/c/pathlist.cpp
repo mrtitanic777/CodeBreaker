@@ -10,7 +10,7 @@
 *
 ****************************************************************************/
 
-#include <stddef.h>
+#include <cstddef>
 #include "bool.h"
 #include "iopath.h"
 #include "pathlist.h"
@@ -22,12 +22,10 @@
 
 char *GetPathElement( const char *path_list, const char *end, char **path )
 {
-    bool    is_blank;
-    char    c;
+    bool    is_blank = true;
 
-    is_blank = true;
-    while( path_list != end && (c = *path_list) != '\0' ) {
-        path_list++;
+    while( path_list != end && *path_list != '\0' ) {
+        const char c = *path_list++;
         if( IS_INCLUDE_LIST_SEP( c ) ) {
             if( !is_blank ) {
                 break;
@@ -42,5 +40,5 @@ char *GetPathElement( const char *path_list, const char *end, char **path )
             *(*path)++ = c;
         }
     }
-    return( (char *)path_list );
+    return const_cast<char *>( path_list );
 }

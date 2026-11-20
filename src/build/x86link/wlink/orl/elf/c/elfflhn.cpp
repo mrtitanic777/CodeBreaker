@@ -34,24 +34,26 @@
 #include "elforl.h"
 #include "orlhash.h"
 
-static void free_elf_file_hnd( elf_file_handle elf_file_hnd )
-{
-    elf_quantity                i;
-    elf_sec_handle              elf_sec_hnd;
+namespace {
 
-    if( elf_file_hnd->sec_handles != NULL ) {
-        for( i = 0; i < elf_file_hnd->num_sections; ++i ) {
-            elf_sec_hnd = elf_file_hnd->sec_handles[i];
+// Gives back a file handle with everything it owns: the relocations and symbols built so far, the section
+// handles (both arrays), the section name table.
+void free_elf_file_hnd( elf_file_handle elf_file_hnd )
+{
+    if( elf_file_hnd->sec_handles != nullptr ) {
+        for( elf_quantity i = 0; i < elf_file_hnd->num_sections; ++i ) {
+            elf_sec_handle elf_sec_hnd = elf_file_hnd->sec_handles[i];
+
             switch( elf_sec_hnd->type ) {
             case ORL_SEC_TYPE_RELOCS:
             case ORL_SEC_TYPE_RELOCS_EXPADD:
-                if( elf_sec_hnd->assoc.reloc.relocs != NULL ) {
-                    _ClientFree( elf_file_hnd, (void *)elf_sec_hnd->assoc.reloc.relocs );
+                if( elf_sec_hnd->assoc.reloc.relocs != nullptr ) {
+                    _ClientFree( elf_file_hnd, const_cast<void *>( static_cast<const void *>( elf_sec_hnd->assoc.reloc.relocs ) ) );
                 }
                 break;
             case ORL_SEC_TYPE_SYM_TABLE:
             case ORL_SEC_TYPE_DYN_SYM_TABLE:
-                if( elf_sec_hnd->assoc.sym.symbols != NULL ) {
+                if( elf_sec_hnd->assoc.sym.symbols != nullptr ) {
                     _ClientFree( elf_file_hnd, elf_sec_hnd->assoc.sym.symbols );
                 }
                 break;
@@ -63,11 +65,13 @@ static void free_elf_file_hnd( elf_file_handle elf_file_hnd )
         _ClientFree( elf_file_hnd, elf_file_hnd->sec_handles );
     }
     _ClientFree( elf_file_hnd, elf_file_hnd->orig_sec_handles );
-    if( elf_file_hnd->sec_name_hash_table != NULL ) {
+    if( elf_file_hnd->sec_name_hash_table != nullptr ) {
         ORLHashTableFree( elf_file_hnd->sec_name_hash_table );
     }
     _ClientFree( elf_file_hnd, elf_file_hnd );
 }
+
+}  // namespace
 
 void ElfAddFileLinks( elf_handle elf_hnd, elf_file_handle elf_file_hnd )
 {
@@ -78,22 +82,18 @@ void ElfAddFileLinks( elf_handle elf_hnd, elf_file_handle elf_file_hnd )
 
 orl_return ElfRemoveFileLinks( elf_file_handle elf_file_hnd )
 {
-    elf_handle                          elf_hnd;
-    elf_file_handle                     current;
-
-    elf_hnd = elf_file_hnd->elf_hnd;
+    elf_handle      elf_hnd = elf_file_hnd->elf_hnd;
 
     if( elf_hnd->first_file_hnd == elf_file_hnd ) {
         elf_hnd->first_file_hnd = elf_file_hnd->next;
         free_elf_file_hnd( elf_file_hnd );
         return( ORL_OKAY );
-    } else {
-        for( current = elf_hnd->first_file_hnd; current->next != NULL; current = current->next ) {
-            if( current->next == elf_file_hnd ) {
-                current->next = elf_file_hnd->next;
-                free_elf_file_hnd( elf_file_hnd );
-                return( ORL_OKAY );
-            }
+    }
+    for( elf_file_handle current = elf_hnd->first_file_hnd; current->next != nullptr; current = current->next ) {
+        if( current->next == elf_file_hnd ) {
+            current->next = elf_file_hnd->next;
+            free_elf_file_hnd( elf_file_hnd );
+            return( ORL_OKAY );
         }
     }
     return( ORL_ERROR );

@@ -30,7 +30,6 @@
 *
 ****************************************************************************/
 
-
 #include "layer0.h"
 #include "wres.h"
 
@@ -38,9 +37,5 @@
 WResTypeInfo *WResGetTypeInfo( WResDirWindow wind )
 /*************************************************/
 {
-    if( wind.CurrType == NULL ) {
-        return( NULL );
-    } else {
-        return( &(wind.CurrType->Info) );
-    }
+    return( wind.CurrType == nullptr ? nullptr : &(wind.CurrType->Info) );
 }
