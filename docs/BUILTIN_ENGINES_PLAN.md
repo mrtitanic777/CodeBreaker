@@ -1,0 +1,62 @@
+# Built-in engines: what CodeBreaker still runs as separate programs, and how each becomes its own
+
+The rule (Logan, 2026-11-19): CodeBreaker does its work with engines in its own codebase, compiled into `codebreaker.exe`
+— never by starting a separate tool beside it. x86asm (docs/X86ASM_DESIGN.md) replaces NASM. This is the plan for the
+rest. Nothing here is built yet.
+
+## What is still separate
+
+| Separate program | What CodeBreaker uses it for | Called from |
+|---|---|---|
+| `native/decompiler/build/bin/decompiler.exe` (+ `pcodecheck.exe`, `sleigh.exe`) | every decompilation to C: a module's description in, each function's C and notes out | decompile/decompiler.cpp, emulate (pcodecheck) |
+| OpenWatcom `wcc` / `wcc386` | compiling the C CodeBreaker writes (16-bit and 32-bit), the build and check lanes | build/functions, module_build16/32, engine/lane_kit*, engine/win16, verify/gate16 (23 files) |
+| OpenWatcom `wasm` | DOS programs' and VxDs' MASM-style assembly | source/dos_writer, source/vxd |
+| OpenWatcom `wlink` | linking DOS, Win16, Win32 and VxD builds | the same lanes |
+| DOSBox-X | running period DOS tools (Microsoft C, MASM) and DOS programs | build/dos_tools, scripts |
+
+## 1. The decompiler — first, and the smallest step
+
+It is already ours in all but packaging: `native/decompiler` is `decompiler.cc` (ours) around a decompiler core
+(`native/decompiler/core`, about 190,000 lines of C++, Apache-2.0) built as a library. Making it built-in means linking
+that library into `codebreaker.exe` and calling it in memory: the description CodeBreaker writes today becomes a
+structure passed directly, and each function's C comes back as data. No process, no description files on disk.
+
+What has to be solved:
+- **Crash isolation.** Today a function that crashes the decompiler kills only `decompiler.exe`; in-process it would kill
+  CodeBreaker. The engine runs each batch on a worker thread with structured-exception and C++ exception guards, and a
+  function that faults is reported as not decompiled — the same outcome as now.
+- **Speed.** Parallel decompilation keeps working: the core's state is per-architecture object, so several run at once.
+- **The core's origin.** The core is Ghidra's C++ decompiler library. The standing rule says "no Ghidra anywhere"
+  (the Ghidra application, its Java, its installs). Under the absorbed-projects rule the core becomes a CodeBreaker
+  engine in its own folder, its licence and notice kept. **Logan to confirm** this is acceptable, or whether the core
+  must instead be replaced — a far larger project.
+
+## 2. OpenWatcom's assembler and linker (wasm, wlink)
+
+Same shape as x86asm: port the job into C++ engines with differential proof against the current tools (capture every
+run, replay, same bytes). `wasm`'s MASM dialect largely overlaps x86asm's MASM mode, so after x86asm phase 4 the DOS and
+VxD sources can move to x86asm and `wasm` drops out without its own port. `wlink` becomes `x86link`: OMF and COFF in,
+MZ / NE / PE / LE out — the formats CodeBreaker already reads and writes (formats/).
+
+## 3. OpenWatcom's C compilers (wcc, wcc386) — the largest
+
+A full C compiler with its optimizing code generator: hundreds of thousands of lines (the C front end and the code
+generator together). Options, smallest first:
+1. **Port OpenWatcom's front end and code generator** into CodeBreaker as an engine, with the same differential proof.
+   Faithful, very large.
+2. **Write CodeBreaker's own C compiler** for the C CodeBreaker writes (a known subset), over the L2 hub, with its own
+   16- and 32-bit x86 back end. Smaller, but its code would differ from OpenWatcom's: the proof becomes "behaves the same"
+   (the oracle judges both), not "same bytes".
+Recommended: decide after x86asm and the decompiler are built in; option 2 fits the L2 architecture
+(docs/ARCHITECTURE.md), option 1 keeps every build's bytes as they are today.
+
+## 4. DOSBox-X
+
+Already has an in-house replacement under way: CodeBreaker's own DOS executive on its emulator (build/native_dos,
+exact/emu/dos), proven byte-identical for MASM and ML. Extending it to the Microsoft C passes and to running DOS
+programs for behaviour checks retires DOSBox-X.
+
+## Order
+
+1. x86asm (in progress). 2. The decompiler in-process. 3. x86link, and wasm's jobs moved to x86asm. 4. The DOS executive
+for everything DOSBox-X does. 5. The C compiler, by the option chosen.
