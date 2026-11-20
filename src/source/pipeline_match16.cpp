@@ -17,6 +17,7 @@
 #include "base/cache.hpp"
 #include "build/dos_tools.hpp"
 #include "build/msc6.hpp"
+#include "exact/emu/native_dos_executive.hpp"
 #include "compare/mask.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
@@ -77,8 +78,10 @@ am16::Masked m16p_trim(am16::Masked code) {
 // Microsoft C, in the emulator or on Windows itself, and the comparison.
 class M16Chain final : public am16::Toolchain {
 public:
-    M16Chain(m6::Tools tools, build::dos_tools::Emulator emulator, base::cache::Cache* cache, stdfs::path work)
-        : tools_(std::move(tools)), runner_(std::move(emulator)), context_{tools_, runner_, cache}, work_(std::move(work)) {}
+    // (the compilers on CodeBreaker's own DOS executive; DOSBox-X only for a run it cannot complete)
+    M16Chain(m6::Tools tools, const config::Config& config, base::cache::Cache* cache, stdfs::path work)
+        : tools_(std::move(tools)), dos_(config), runner_(exact::emu::dos_runner(config, dos_)), context_{tools_, *runner_, cache},
+          work_(std::move(work)) {}
 
     std::vector<std::string> flag_sets(const std::string& compiler) const override {
         std::vector<std::string> out;
@@ -139,7 +142,8 @@ public:
 
 private:
     m6::Tools tools_;
-    build::dos_tools::DosboxRunner runner_;
+    exact::emu::NativeDosExecutive dos_;
+    std::unique_ptr<build::DosRunner> runner_;
     m6::Context context_;
     stdfs::path work_;
 };
@@ -379,7 +383,7 @@ Match16Run run_match16(World& world, const stdfs::path& module, const Match16Opt
         for (const auto& [fn, t] : texts) v.texts[fn] = t;
     }
 
-    run.toolchain = std::make_unique<M16Chain>(tools, build::dos_tools::Emulator::from_config(config), &world.kit().cache(), folder / "work");
+    run.toolchain = std::make_unique<M16Chain>(tools, config, &world.kit().cache(), folder / "work");
     am16::Inputs in;
     in.functions = run.functions;
     in.variants = std::move(variants);

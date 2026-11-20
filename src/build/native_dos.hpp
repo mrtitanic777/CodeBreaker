@@ -75,11 +75,31 @@ struct MemoryResult {
     Bytes console;
 };
 
+// One program of a DOS session (native_dos_runner: BLD.BAT's lines, each run on the executive): its drives, each its own
+// host folder, the current one, the command tail and the environment.
+struct SessionRun {
+    std::filesystem::path exe;                       // the program, on the host
+    std::map<char, std::filesystem::path> drives;    // 'C' -> folder ...
+    char drive = 'D';                                // the current drive
+    std::string cmdline;                             // the command tail, as typed (a leading blank is the caller's)
+    Bytes env;                                       // NAME=value strings, each NUL-ended
+    bool dpmi = false;                               // a DPMI host for a DOS-extended program
+};
+// What it did: its exit code, everything it wrote to the console, and what of that was standard output (`>`).
+struct SessionExit {
+    std::optional<std::int32_t> code;
+    Bytes console;
+    Bytes standard_out;
+};
+
 // The DOS executive on the emulator (exact/emu/dos, with the DPMI host). Implementations throw a cb::Error of any kind
 // when a run cannot complete; this module turns that into NativeDosError.
 class DosExecutive {
 public:
     virtual ~DosExecutive() = default;
+    // One program of a session over the session's drives (the files it writes are written to those folders). The default
+    // says the executive cannot: NativeDosError.
+    virtual SessionExit run_session(const SessionRun& run) const;
     // Whether an emulator engine can be opened at all (the program has handed over unicorn.dll).
     virtual bool available() const = 0;
     // Run the real-mode program `exe` with `work` as the DOS working directory (every file it names is there).

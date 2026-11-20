@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cwctype>
 
 using namespace cbd;
 
@@ -13,7 +14,7 @@ struct Result : cbd_result {
     std::wstring fname;
     Bytes con;
     std::vector<uint64_t> blk, cl, wt;
-    Bytes wd;
+    Bytes wd, so;
 };
 }  // namespace
 
@@ -91,6 +92,17 @@ CBD_API cbd_result *cbd_run(const cbd_args *a) {
         if (a->watch_max > 0) run.watch_max = a->watch_max;
         if (a->watch_ds_bytes > 0) run.watch_ds_bytes = a->watch_ds_bytes;
         run.watch_dumps = a->watch_dumps;
+        if (a->drives) {   // "C=folder\nD=folder"
+            std::wstring all = a->drives, line;
+            for (size_t k = 0; k <= all.size(); ++k) {
+                if (k == all.size() || all[k] == L'\n') {
+                    if (line.size() > 2 && line[1] == L'=') run.drives[wchar_t(towupper(line[0]))] = line.substr(2);
+                    line.clear();
+                } else {
+                    line += all[k];
+                }
+            }
+        }
         try {
             run.go();
             r->status = CBD_OK;
@@ -111,6 +123,7 @@ CBD_API cbd_result *cbd_run(const cbd_args *a) {
         r->steps = run.n;
         r->wt = run.watched;
         r->wd = run.watch_bytes;
+        r->so = run.standard_out;
         r->load_seg = run.load;
     } catch (std::exception &e) {
         r->status = CBD_OTHER;
@@ -128,6 +141,8 @@ CBD_API cbd_result *cbd_run(const cbd_args *a) {
     r->nwatched = int64_t(r->wt.size() / CBD_WATCH_STRIDE);
     r->dumps = r->wd.data();
     r->ndumps = int64_t(r->wd.size());
+    r->standard_out = r->so.data();
+    r->nstandard_out = int64_t(r->so.size());
     return r;
 }
 

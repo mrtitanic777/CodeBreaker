@@ -1,5 +1,6 @@
 #include "exact/emu/dos_run_command.hpp"
 
+#include <cctype>
 #include <filesystem>
 #include <format>
 
@@ -46,6 +47,17 @@ int run(const cli::Args& a) {
     spec.trace_calls = a.flag("trace-calls");
     if (const auto w = a.value("watch")) spec.watch = std::stoull(*w, nullptr, 16);
     spec.watch_near = a.flag("watch-near");
+    for (const std::string& d : a.values("drive")) {   // X=DIR: drive X is that folder
+        if (d.size() < 3 || d[1] != '=') throw UsageError("--drive takes X=DIR: " + d);
+        spec.drives[static_cast<char>(std::toupper(static_cast<unsigned char>(d[0])))] = stdfs::absolute(fs::from_text(d.substr(2)));
+    }
+    if (const auto c = a.value("current"); c && !c->empty()) spec.drive = std::toupper(static_cast<unsigned char>((*c)[0])) - 'A';
+    for (const std::string& v : a.values("env")) {   // NAME=value
+        if (spec.environment == Bytes{'P', 'A', 'T', 'H', '=', 0}) spec.environment.clear();
+        spec.environment.insert(spec.environment.end(), v.begin(), v.end());
+        spec.environment.push_back(0);
+    }
+    if (a.flag("dpmi")) spec.dpmi = true;
     if (const auto n = a.value("watch-calls")) spec.watch_max = std::stoi(*n);
     const std::optional<std::string> dump = a.value("watch-dump");
     if (dump) spec.watch_dumps = a.value("watch-dumps") ? std::stoi(*a.value("watch-dumps")) : 8;
@@ -56,6 +68,7 @@ int run(const cli::Args& a) {
     out["program"] = fs::to_text(program);
     out["exit"] = r.exit ? nlohmann::json(*r.exit) : nlohmann::json(nullptr);
     out["console"] = text::from_latin1(r.console);
+    out["stdout"] = text::from_latin1(r.standard_out);   // (the console without what went to standard error)
     out["blocks"] = r.steps;
     nlohmann::json made = nlohmann::json::array();
     const std::optional<std::string> save = a.value("save");
@@ -123,6 +136,10 @@ cli::Command command() {
          cli::Option{"--trace-calls", "", "count the calls of each address"},
          cli::Option{"--watch", "", "record each call of the function at this image offset (hex): its arguments, and AX, DX, flags and DS at its return", cli::Arg::Value, "ADDR"},
          cli::Option{"--watch-near", "", "the watched function returns with RET (default: RETF)"},
+         cli::Option{"--drive", "", "drive X is this folder (X=DIR; again for each drive): every drive is --dir without it", cli::Arg::Value, "X=DIR"},
+         cli::Option{"--current", "", "the current drive (default C)", cli::Arg::Value, "X"},
+         cli::Option{"--env", "", "an environment string (NAME=value; again for each)", cli::Arg::Value, "NAME=VALUE"},
+         cli::Option{"--dpmi", "", "a DPMI host for a DOS-extended program"},
          cli::Option{"--watch-calls", "", "how many of its calls to record (default 200)", cli::Arg::Value, "N"},
          cli::Option{"--watch-dump", "", "write DS's 64 KB at entry and at return of the first watched calls here", cli::Arg::Value, "FILE"},
          cli::Option{"--watch-dumps", "", "how many calls --watch-dump keeps (default 8)", cli::Arg::Value, "N"},

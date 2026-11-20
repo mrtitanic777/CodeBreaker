@@ -196,6 +196,9 @@ struct RunSpec {
     int watch_max = 200;                 // the calls recorded
     int watch_ds_bytes = 0x10000;        // the bytes of DS hashed at each return
     int watch_dumps = 0;                 // the first calls whose DS bytes are kept (WatchedCall::ds_in_bytes / ds_bytes)
+    std::map<char, std::filesystem::path> drives;   // a drive letter -> its folder (empty: every drive is workdir); the
+                                                    // current drive is `drive`, else Limits::drive (2: C)
+    std::optional<int> drive;            // the current drive for this run (0: A, 2: C, 3: D)
 };
 
 // One call of the watched function.
@@ -219,6 +222,7 @@ struct Result {
     std::uint64_t steps = 0;                                   // basic blocks executed
     std::map<std::uint64_t, std::uint64_t> calls;              // address -> how many times it was called (trace_calls)
     std::vector<WatchedCall> watched;                          // the watched function's calls, in order (RunSpec::watch)
+    Bytes standard_out;                                        // what went to standard output (console without handle 2)
 };
 
 // What the executive is run under.

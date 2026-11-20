@@ -4,6 +4,7 @@
 
 #include "build/dos_tools.hpp"
 #include "build/period16.hpp"
+#include "exact/emu/native_dos_executive.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
 
@@ -47,7 +48,10 @@ cli::Command command(const Environment& environment) {
         std::shared_ptr<base::Corpus> corpus = environment.corpus;
         if (!corpus) corpus = std::make_shared<base::Corpus>(environment.config.products());
         const Tools tools = tools_from(environment.config, *corpus);
-        const dos_tools::DosboxRunner runner(dos_tools::Emulator::from_config(environment.config));
+        // (CodeBreaker's own DOS executive runs the period tools; DOSBox-X only for a run it cannot complete)
+        const exact::emu::NativeDosExecutive dos(environment.config);
+        const std::unique_ptr<DosRunner> dos_runner = exact::emu::dos_runner(environment.config, dos);
+        const DosRunner& runner = *dos_runner;
         std::optional<stdfs::path> donor;   // found before the build, which takes minutes
         if (const auto d = a.value("stub")) donor = p16_resolve(*corpus, *d);
         std::optional<stdfs::path> work;

@@ -107,7 +107,16 @@ std::wstring Run::hostpath(const std::wstring &name) {
     for (auto &c : n)
         if (c == L'/') c = L'\\';
     n = py_upper(n);
-    if (n.size() > 1 && n[1] == L':') n = n.substr(2);
+    std::wstring root = workdir;
+    wchar_t letter = wchar_t(L'A' + S.drive);
+    if (n.size() > 1 && n[1] == L':') {
+        letter = n[0];
+        n = n.substr(2);
+    }
+    if (!drives.empty()) {
+        auto d = drives.find(letter);
+        if (d != drives.end()) root = d->second;
+    }
     size_t s = 0;
     while (s < n.size() && n[s] == L'\\') s++;
     n = n.substr(s);
@@ -121,7 +130,7 @@ std::wstring Run::hostpath(const std::wstring &name) {
             cur += n[i];
         }
     }
-    return path_join(workdir, parts);
+    return path_join(root, parts);
 }
 
 uint64_t Run::pc() {
@@ -334,6 +343,7 @@ void Run::int21() {
     if (ah == 0x02 || ah == 0x06) {
         if (ah == 0x06 && (dx & 0xFF) == 0xFF) { carry(false); W(UC_X86_REG_AX, ax & 0xFF00); return; }
         console.push_back(uint8_t(dx & 0xFF));
+        standard_out.push_back(uint8_t(dx & 0xFF));
         return;
     }
     if (ah == 0x09) {
@@ -342,6 +352,7 @@ void Run::int21() {
             uint8_t c = rd1(a);
             if (c == 0x24) break;
             console.push_back(c);
+            standard_out.push_back(c);
             a++;
         }
         return;
@@ -360,6 +371,8 @@ void Run::int21() {
         line.resize(std::min(line.size(), size_t(std::max(mx - 1, 0))));
         console.insert(console.end(), line.begin(), line.end());
         console.push_back('\r');                       // (DOS echoes the line, and the carriage return)
+        standard_out.insert(standard_out.end(), line.begin(), line.end());
+        standard_out.push_back('\r');
         Bytes o;
         o.push_back(uint8_t(line.size()));
         o.insert(o.end(), line.begin(), line.end());
@@ -374,7 +387,13 @@ void Run::int21() {
         return;
     }
     if (ah == 0x0B) { W(UC_X86_REG_AX, (uint64_t(ah) << 8) | (in.empty() ? 0 : 0xFF)); return; }
-    if (ah == 0x0E) { W(UC_X86_REG_AX, (uint64_t(ah) << 8) | 3); return; }
+    if (ah == 0x0E) {
+        uint64_t last = 3;
+        for (const auto &kv : drives) last = std::max<uint64_t>(last, uint64_t(kv.first - L'A' + 1));
+        if (!drives.empty() && drives.count(wchar_t(L'A' + (dx & 0xFF)))) S.drive = int(dx & 0xFF);
+        W(UC_X86_REG_AX, (uint64_t(ah) << 8) | last);
+        return;
+    }
     if (ah == 0x19) { W(UC_X86_REG_AX, (uint64_t(ah) << 8) | uint64_t(int64_t(S.drive))); return; }
     if (ah == 0x1A) { dta = lin(ds, dx); return; }
     if (ah == 0x0F || ah == 0x10 || ah == 0x11 || ah == 0x12 || ah == 0x13 || ah == 0x14 || ah == 0x15 ||
@@ -524,6 +543,8 @@ void Run::int21() {
         auto it = files.find(int64_t(bx));
         if (bx == 1 || bx == 2 || (it != files.end() && it->second.has_dev && it->second.dev == L"CON")) {
             console.insert(console.end(), data.begin(), data.end());
+            const bool to_out = bx == 2 ? err_is_out : !(bx == 1 && out_is_err);
+            if (to_out) standard_out.insert(standard_out.end(), data.begin(), data.end());
         } else if (it != files.end() && it->second.f) {
             if (cx == 0) it->second.f->truncate();
             else it->second.f->write(data.data(), data.size());
@@ -574,6 +595,12 @@ void Run::int21() {
         } else {
             carry(false, 0);
         }
+        return;
+    }
+    if (ah == 0x46 && (bx == 1 || bx == 2) && (cx == 1 || cx == 2)) {   // force-duplicate between the console's two handles
+        if (cx == 2) err_is_out = bx == 1;
+        else out_is_err = bx == 2;
+        carry(false, bx);
         return;
     }
     if (ah == 0x45 || ah == 0x46) { carry(false, bx); return; }
@@ -700,8 +727,12 @@ void Run::int21() {
         c.fast = fast;
         c.fs = fs;
         c.S = S;
+        c.drives = drives;
+        c.err_is_out = err_is_out;   // (a child has its parent's handles)
+        c.out_is_err = out_is_err;
         c.go();
         console.insert(console.end(), c.console.begin(), c.console.end());
+        standard_out.insert(standard_out.end(), c.standard_out.begin(), c.standard_out.end());
         child = c.exit ? *c.exit : 0;
         if (S.debug) fprintf(stderr, "exec %s -> %lld\n", utf8(name).c_str(), (long long)child);
         carry(false);
@@ -946,6 +977,15 @@ void Run::go() {
     // the environment block, and after its strings the program's own path, as DOS gives it
     int envseg = ENVSEG;
     std::wstring rel = relpath(abspath(exe), abspath(workdir));
+    wchar_t exe_drive = L'C';
+    for (const auto &d : drives) {   // (the drive the program is on: CL finds its passes beside C:\BIN\CL.EXE)
+        std::wstring r = relpath(abspath(exe), abspath(d.second));
+        if (r.compare(0, 2, L"..") != 0 && !(r.size() > 1 && r[1] == L':')) {
+            rel = r;
+            exe_drive = d.first;
+            break;
+        }
+    }
     if (rel.compare(0, 2, L"..") == 0) rel = basename(exe);
     for (auto &c : rel)
         if (c == L'/') c = L'\\';
@@ -956,7 +996,7 @@ void Run::go() {
     envb.push_back(0);
     envb.push_back(1);
     envb.push_back(0);
-    envb.push_back('C');
+    envb.push_back(uint8_t(exe_drive));
     envb.push_back(':');
     envb.push_back('\\');
     envb.insert(envb.end(), relb.begin(), relb.end());

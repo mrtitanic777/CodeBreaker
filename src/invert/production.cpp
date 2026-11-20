@@ -18,6 +18,7 @@
 #include "core/process.hpp"
 #include "core/text.hpp"
 #include "decompile/describe.hpp"
+#include "exact/emu/native_dos_executive.hpp"
 #include "exact/emu/native_dosexec.hpp"
 #include "exact/toolchain.hpp"
 #include "formats/detect.hpp"
@@ -112,6 +113,7 @@ struct ProductionState {
     std::mutex lock;
     std::unique_ptr<base::cache::Cache> cache;
     build::dos_tools::Emulator emulator;
+    std::unique_ptr<exact::emu::NativeDosExecutive> dos_executive;   // (declared before the runner, which uses it)
     std::unique_ptr<build::DosRunner> runner;
     msc6b::Tools tools;
     // MC 2.03
@@ -130,7 +132,8 @@ struct ProductionState {
 
     ProductionState(config::Config c, std::shared_ptr<base::Corpus> k) : config(std::move(c)), corpus(std::move(k)) {
         emulator = build::dos_tools::Emulator::from_config(config);
-        runner = std::make_unique<build::dos_tools::DosboxRunner>(emulator);
+        dos_executive = std::make_unique<exact::emu::NativeDosExecutive>(config);   // (the period tools on CodeBreaker's own DOS executive)
+        runner = exact::emu::dos_runner(config, *dos_executive);
         if (const auto p = config.path("dosbox_x")) tools.dosbox_x = *p;
         if (const auto p = config.path("msc6")) tools.msc6 = *p;
         if (const auto p = config.path("msvc152")) tools.msvc152 = *p;

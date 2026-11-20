@@ -57,6 +57,7 @@ typedef struct cbd_args {
     int32_t watch_max;             /* the calls recorded (0: 200) */
     int32_t watch_ds_bytes;        /* the bytes of DS hashed at each return (0: 64 KB) */
     int32_t watch_dumps;           /* the first calls whose DS bytes are kept, at entry and at return */
+    const wchar_t *drives;         /* "C=folder\nD=folder" -- each drive its own folder; NULL or empty: every drive is workdir */
 } cbd_args;
 
 /* One watched call, CBD_WATCH_STRIDE words: [0] the return address (linear), [1] the stack pointer after it (linear),
@@ -84,6 +85,8 @@ typedef struct cbd_result {
     int64_t nwatched;
     const uint8_t *dumps;          /* the kept DS bytes (cbd_args.watch_dumps) */
     int64_t ndumps;
+    const uint8_t *standard_out;   /* what went to standard output (the console without handle 2's writes) */
+    int64_t nstandard_out;
 } cbd_result;
 
 CBD_API int cbd_version(void);

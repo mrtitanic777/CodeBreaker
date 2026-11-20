@@ -154,6 +154,9 @@ struct Run {
 
     // st
     Bytes console;
+    Bytes standard_out;                          // what went to standard output: the console without handle 2's writes
+    bool err_is_out = false, out_is_err = false; // INT 21h 46h made handle 2 handle 1 (CL: its messages on stdout), or 1 2
+    std::map<wchar_t, std::wstring> drives;      // a drive letter (upper case) -> its folder; empty: every drive is workdir
     std::deque<uint8_t> in;
     uint64_t dta = 0;
     std::map<int, std::pair<uint64_t, uint64_t>> vec;

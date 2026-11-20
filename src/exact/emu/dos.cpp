@@ -1,5 +1,6 @@
 #include "exact/emu/dos.hpp"
 
+#include <cctype>
 #include <algorithm>
 #include <chrono>
 #include <format>
@@ -425,7 +426,7 @@ Result Executive::run(const RunSpec& spec) const {
     a.fast = spec.fast;
     a.dpmi = spec.dpmi;
     a.debug = i.limits.debug;
-    a.drive = i.limits.drive;
+    a.drive = spec.drive.value_or(i.limits.drive);
     a.fast_limit = i.limits.fast_limit;
     a.dpmi_limit = i.limits.dpmi_limit;
     a.watch = spec.watch;
@@ -433,6 +434,11 @@ Result Executive::run(const RunSpec& spec) const {
     a.watch_max = spec.watch_max;
     a.watch_ds_bytes = spec.watch_ds_bytes;
     a.watch_dumps = spec.watch_dumps;
+    std::wstring drive_list;
+    for (const auto& [letter, folder] : spec.drives)
+        drive_list += std::wstring(1, static_cast<wchar_t>(std::toupper(static_cast<unsigned char>(letter)))) + L"=" +
+                      to_wide(fs::to_text(stdfs::absolute(folder))) + L"\n";
+    a.drives = drive_list.empty() ? nullptr : drive_list.c_str();
 
     struct HandedOver {   // the MemFS in the executive's own shape, freed whatever happens
         const Impl& impl;
@@ -476,6 +482,7 @@ Result Executive::run(const RunSpec& spec) const {
     Result out;
     if (r->has_exit) out.exit = static_cast<std::uint32_t>(r->exit);
     out.console.assign(r->console, r->console + r->nconsole);
+    if (r->standard_out != nullptr) out.standard_out.assign(r->standard_out, r->standard_out + r->nstandard_out);
     out.blocks.insert(r->blocks, r->blocks + r->nblocks);
     for (std::int64_t k = 0; k + 1 < r->ncalls * 2; k += 2) out.calls[r->calls[k]] = r->calls[k + 1];
     for (std::int64_t k = 0; k < r->nwatched; ++k) {

@@ -146,6 +146,9 @@ bool run_session(const Context& ctx, const stdfs::path& work, std::string_view h
     for (const BatchFiles::File& file : files) {
         write_dos_text(work / (file.stem + ".C"), "#include \"m.h\"\n\n" + file.text + "\n");
         spec.commands.push_back(std::format("cl /nologo /c /W0 {} /Fo{}.OBJ {}.C > {}.TXT", flags, file.stem, file.stem, file.stem));
+        // (the objects are what the session is for: a runner that made none of them -- the DOS executive, which does not yet run
+        // Visual C++ 1.52's passes -- hands it to the one that can)
+        spec.artifacts.push_back(file.stem + ".OBJ");
     }
     spec.mounts = {{"c", ctx.tools.home(compiler)}, {"d", work}};
     spec.timeout = timeout;

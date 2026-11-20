@@ -96,6 +96,10 @@ dos_sessions::Product run_masm(const DosExecutive& dos, const stdfs::path& work,
 
 } // namespace
 
+SessionExit DosExecutive::run_session(const SessionRun& run) const {
+    throw NativeDosError("this DOS executive runs no sessions: " + run.exe.filename().string());
+}
+
 Mode mode_from_environment() {
     const std::string value = text::lower(fs::get_env("CB_NATIVE_DOS").value_or("auto"));
     if (value == "0" || value == "off" || value == "no" || value == "false")
