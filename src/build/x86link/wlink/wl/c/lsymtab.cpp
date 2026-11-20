@@ -30,9 +30,10 @@
 ****************************************************************************/
 
 
-#include <stdio.h>
-#include <string.h>
-#include "walloca.h"
+#include <array>
+#include <cstdio>
+#include <cstring>
+#include <string>
 #include "linkstd.h"
 #include "pcobj.h"
 #include "objio.h"
@@ -50,294 +51,113 @@
 #include "symtab.h"
 #include "symmem.h"
 #include "symtrace.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
 
-#define STATIC_TABSIZE  241     /* should be prime */
-#define GLOBAL_TABSIZE  1789    /* should be prime */
+static constexpr unsigned STATIC_TABSIZE = 241;     /* should be prime */
+static constexpr unsigned GLOBAL_TABSIZE = 1789;    /* should be prime */
 
-#define STATIC_TABALLOC (256 * sizeof( symbol * ))  // 1st power of 128 > TABSIZE
-#define GLOBAL_TABALLOC (1792 * sizeof( symbol * )) // 1st power of 128 > TABSIZE
+static constexpr size_t STATIC_TABALLOC = 256 * sizeof( symbol * );     // 1st power of 128 > TABSIZE
+static constexpr size_t GLOBAL_TABALLOC = 1792 * sizeof( symbol * );    // 1st power of 128 > TABSIZE
 
 int             (*CmpNRtn)( const char *, const char *, size_t );
 int             (*CmpRtn)( const char *, const char * );
 size_t          NameLen;
 symbol          *LastSym;
 
-static  symbol  *SymList = NULL;
+namespace {
 
-// not a static array to save space for watfor
-
-static symbol   **GlobalSymPtrs;
-static symbol   **StaticSymPtrs;
-
-static const unsigned ScatterTable[] = {
-0x1DE82EE1,
-0x6E21134B,
-0x0F406D5B,
-0x07671454,
-0x3FE530A8,
-0x05D03ED8,
-0x63060B8C,
-0x02B93A2E,
-0x065A15F3,
-0x177C1A12,
-0x1100789C,
-0x3DB02031,
-0x54160785,
-0x77250A74,
-0x091B1715,
-0x799E7A0C,
-0x5A05780C,
-0x5A4D3F42,
-0x4F21462B,
-0x750F15FC,
-0x3EAF75A2,
-0x0B6C1F0E,
-0x1A394B3E,
-0x574C2246,
-0x35B72B4F,
-0x0D7A6536,
-0x64646B5A,
-0x0BDA22BF,
-0x075E1283,
-0x2F6A6F62,
-0x6A0034B9,
-0x0DFB1646,
-0x0800549F,
-0x0FAB3B09,
-0x1947783E,
-0x24294C47,
-0x7F935C6B,
-0x0FA812EB,
-0x71CF72F9,
-0x0BA06A38,
-0x012E179F,
-0x37476C96,
-0x540927A8,
-0x13D3211D,
-0x327E685D,
-0x086C75E3,
-0x40C46832,
-0x29F31306,
-0x035046B3,
-0x42755278,
-0x08A90F2C,
-0x546D688D,
-0x550C121B,
-0x15BD0946,
-0x6BBF6956,
-0x1E6B165B,
-0x123512FC,
-0x471C220A,
-0x28E74F1D,
-0x735152A2,
-0x35ED2C29,
-0x436372CE,
-0x7D5E6E19,
-0x6A3F3AA2,
-0x436D3C5F,
-0x22E21D67,
-0x1440428E,
-0x01942826,
-0x2D8F2FCA,
-0x1CE43CF7,
-0x660240ED,
-0x4A663707,
-0x2E47417E,
-0x6B2F436A,
-0x07F52F53,
-0x040D7AA6,
-0x0E236D00,
-0x1D8706FB,
-0x6BC72F06,
-0x27986374,
-0x5BD00FBC,
-0x5D2A7FAE,
-0x0F0375FC,
-0x6354546B,
-0x13973A8F,
-0x205334D6,
-0x1A8F3856,
-0x064A6894,
-0x36D9333D,
-0x4DB95A8F,
-0x722B41DF,
-0x5BBF6881,
-0x539925F9,
-0x500F1F42,
-0x33F63F91,
-0x76B46FD2,
-0x7BF106E2,
-0x19842926,
-0x27EB390E,
-0x6D6542B3,
-0x2D992382,
-0x174343BB,
-0x1F5E3A28,
-0x04CD535A,
-0x29666450,
-0x14F23D4F,
-0x44822C5C,
-0x4C1F778B,
-0x3AC63E2D,
-0x1035747C,
-0x59E46051,
-0x284C4E16,
-0x6F4753E9,
-0x7C2A15A6,
-0x69EF475B,
-0x4F815456,
-0x3E0F47BD,
-0x74EC087F,
-0x66685CFC,
-0x34A82BB2,
-0x1F633CD0,
-0x63120D84,
-0x37F14060,
-0x62E40F1D,
-0x142308B4,
-0x0F2F0B7F,
-0x3D887DDF,
-0x49187897,
-0x1D4A14E8,
-0x25520D06,
-0x3C07087C,
-0x755F76AC,
-0x23707056,
-0x28866DF9,
-0x3DA4636A,
-0x409331F2,
-0x4E4A10D5,
-0x56513905,
-0x61717B84,
-0x69C8228E,
-0x4C2744A6,
-0x7A373525,
-0x1ADB30D2,
-0x21D075AE,
-0x097353F8,
-0x3136231E,
-0x612C1009,
-0x06B7230D,
-0x58355266,
-0x1D492B01,
-0x4F0B3C0A,
-0x0F463274,
-0x07932076,
-0x08E779AB,
-0x31F9075F,
-0x66823136,
-0x6B4B1D1A,
-0x7A830E45,
-0x09D43DC3,
-0x372C57B1,
-0x53390731,
-0x380C37C6,
-0x78551D9A,
-0x67415ED2,
-0x72D60F05,
-0x3A6D426F,
-0x20940173,
-0x4379058F,
-0x38B517CC,
-0x110C554C,
-0x7681398B,
-0x1ACA466D,
-0x16062929,
-0x354D7FB8,
-0x7E6B154A,
-0x49E43CFA,
-0x361510AA,
-0x4E0E76D7,
-0x7C7B1CC6,
-0x36B43B52,
-0x25C9334A,
-0x632A031B,
-0x14387A3D,
-0x3BE40F9C,
-0x6B280EEE,
-0x00F81DC2,
-0x5802139E,
-0x0457798B,
-0x0CD06BEA,
-0x4BCB3E54,
-0x489953FF,
-0x56B04FE0,
-0x097E3E7C,
-0x03725827,
-0x44952525,
-0x50CA55E5,
-0x3F89384E,
-0x76B707DE,
-0x67EE1902,
-0x133F40F1,
-0x446509F6,
-0x66E370E3,
-0x5B744330,
-0x5CE36DE9,
-0x2C225477,
-0x5B364AF3,
-0x14554279,
-0x164746BB,
-0x40EC4ABF,
-0x64711F90,
-0x039C7A51,
-0x4D3957E3,
-0x2A8B0328,
-0x504E378E,
-0x35AE7C58,
-0x204115E8,
-0x05E378FA,
-0x4D043889,
-0x61CD21DB,
-0x1A2452DE,
-0x6C733DE6,
-0x7CC6726B,
-0x69985551,
-0x7D6363E3,
-0x6BD85B8A,
-0x79435CEA,
-0x48870BE0,
-0x7FBB76A4,
-0x6D4964F2,
-0x47264505,
-0x73716ED8,
-0x75A416D8,
-0x0D1B3813,
-0x39952A8C,
-0x28083535,
-0x6DD463C1,
-0x623C6F4F,
-0x45B34D96,
-0x2C592D1F,
-0x3CBB75B1,
-0x35B902F6,
-0x46206C0B,
-0x7E4E756B,
-0x78067381,
-0x2A3B1AC2,
-0x2E762F1A,
-0x732E6719,
-0x621F5819,
-0x53840F58,
-0x2ECC48C2,
-0x471A2ED6,
-0x45A967ED,
-0x3DF41BCC,
-0x4735414C,
-0x1C90167A,
-0x4106567B
+/* the symbol table of one run: the hash chains' heads (not a static array to save space for watfor)
+ * and where the current module's symbols begin */
+struct SymTabState {
+    symbol  *SymList;
+    symbol  **GlobalSymPtrs;
+    symbol  **StaticSymPtrs;
 };
+
+inline SymTabState &st()
+{
+    return cb_wlink::RunState::part<SymTabState>();
+}
+
+} // namespace
+
+static constexpr std::array<unsigned, 256> ScatterTable = {{
+    0x1DE82EE1, 0x6E21134B, 0x0F406D5B, 0x07671454,
+    0x3FE530A8, 0x05D03ED8, 0x63060B8C, 0x02B93A2E,
+    0x065A15F3, 0x177C1A12, 0x1100789C, 0x3DB02031,
+    0x54160785, 0x77250A74, 0x091B1715, 0x799E7A0C,
+    0x5A05780C, 0x5A4D3F42, 0x4F21462B, 0x750F15FC,
+    0x3EAF75A2, 0x0B6C1F0E, 0x1A394B3E, 0x574C2246,
+    0x35B72B4F, 0x0D7A6536, 0x64646B5A, 0x0BDA22BF,
+    0x075E1283, 0x2F6A6F62, 0x6A0034B9, 0x0DFB1646,
+    0x0800549F, 0x0FAB3B09, 0x1947783E, 0x24294C47,
+    0x7F935C6B, 0x0FA812EB, 0x71CF72F9, 0x0BA06A38,
+    0x012E179F, 0x37476C96, 0x540927A8, 0x13D3211D,
+    0x327E685D, 0x086C75E3, 0x40C46832, 0x29F31306,
+    0x035046B3, 0x42755278, 0x08A90F2C, 0x546D688D,
+    0x550C121B, 0x15BD0946, 0x6BBF6956, 0x1E6B165B,
+    0x123512FC, 0x471C220A, 0x28E74F1D, 0x735152A2,
+    0x35ED2C29, 0x436372CE, 0x7D5E6E19, 0x6A3F3AA2,
+    0x436D3C5F, 0x22E21D67, 0x1440428E, 0x01942826,
+    0x2D8F2FCA, 0x1CE43CF7, 0x660240ED, 0x4A663707,
+    0x2E47417E, 0x6B2F436A, 0x07F52F53, 0x040D7AA6,
+    0x0E236D00, 0x1D8706FB, 0x6BC72F06, 0x27986374,
+    0x5BD00FBC, 0x5D2A7FAE, 0x0F0375FC, 0x6354546B,
+    0x13973A8F, 0x205334D6, 0x1A8F3856, 0x064A6894,
+    0x36D9333D, 0x4DB95A8F, 0x722B41DF, 0x5BBF6881,
+    0x539925F9, 0x500F1F42, 0x33F63F91, 0x76B46FD2,
+    0x7BF106E2, 0x19842926, 0x27EB390E, 0x6D6542B3,
+    0x2D992382, 0x174343BB, 0x1F5E3A28, 0x04CD535A,
+    0x29666450, 0x14F23D4F, 0x44822C5C, 0x4C1F778B,
+    0x3AC63E2D, 0x1035747C, 0x59E46051, 0x284C4E16,
+    0x6F4753E9, 0x7C2A15A6, 0x69EF475B, 0x4F815456,
+    0x3E0F47BD, 0x74EC087F, 0x66685CFC, 0x34A82BB2,
+    0x1F633CD0, 0x63120D84, 0x37F14060, 0x62E40F1D,
+    0x142308B4, 0x0F2F0B7F, 0x3D887DDF, 0x49187897,
+    0x1D4A14E8, 0x25520D06, 0x3C07087C, 0x755F76AC,
+    0x23707056, 0x28866DF9, 0x3DA4636A, 0x409331F2,
+    0x4E4A10D5, 0x56513905, 0x61717B84, 0x69C8228E,
+    0x4C2744A6, 0x7A373525, 0x1ADB30D2, 0x21D075AE,
+    0x097353F8, 0x3136231E, 0x612C1009, 0x06B7230D,
+    0x58355266, 0x1D492B01, 0x4F0B3C0A, 0x0F463274,
+    0x07932076, 0x08E779AB, 0x31F9075F, 0x66823136,
+    0x6B4B1D1A, 0x7A830E45, 0x09D43DC3, 0x372C57B1,
+    0x53390731, 0x380C37C6, 0x78551D9A, 0x67415ED2,
+    0x72D60F05, 0x3A6D426F, 0x20940173, 0x4379058F,
+    0x38B517CC, 0x110C554C, 0x7681398B, 0x1ACA466D,
+    0x16062929, 0x354D7FB8, 0x7E6B154A, 0x49E43CFA,
+    0x361510AA, 0x4E0E76D7, 0x7C7B1CC6, 0x36B43B52,
+    0x25C9334A, 0x632A031B, 0x14387A3D, 0x3BE40F9C,
+    0x6B280EEE, 0x00F81DC2, 0x5802139E, 0x0457798B,
+    0x0CD06BEA, 0x4BCB3E54, 0x489953FF, 0x56B04FE0,
+    0x097E3E7C, 0x03725827, 0x44952525, 0x50CA55E5,
+    0x3F89384E, 0x76B707DE, 0x67EE1902, 0x133F40F1,
+    0x446509F6, 0x66E370E3, 0x5B744330, 0x5CE36DE9,
+    0x2C225477, 0x5B364AF3, 0x14554279, 0x164746BB,
+    0x40EC4ABF, 0x64711F90, 0x039C7A51, 0x4D3957E3,
+    0x2A8B0328, 0x504E378E, 0x35AE7C58, 0x204115E8,
+    0x05E378FA, 0x4D043889, 0x61CD21DB, 0x1A2452DE,
+    0x6C733DE6, 0x7CC6726B, 0x69985551, 0x7D6363E3,
+    0x6BD85B8A, 0x79435CEA, 0x48870BE0, 0x7FBB76A4,
+    0x6D4964F2, 0x47264505, 0x73716ED8, 0x75A416D8,
+    0x0D1B3813, 0x39952A8C, 0x28083535, 0x6DD463C1,
+    0x623C6F4F, 0x45B34D96, 0x2C592D1F, 0x3CBB75B1,
+    0x35B902F6, 0x46206C0B, 0x7E4E756B, 0x78067381,
+    0x2A3B1AC2, 0x2E762F1A, 0x732E6719, 0x621F5819,
+    0x53840F58, 0x2ECC48C2, 0x471A2ED6, 0x45A967ED,
+    0x3DF41BCC, 0x4735414C, 0x1C90167A, 0x4106567B
+}};
 
 void ResetSym( void )
 /**************************/
 {
     NameLen = 0;
-    SymList = NULL;
-    HeadSym = NULL;
-    LastSym = NULL;
+    st().SymList = nullptr;
+    HeadSym = nullptr;
+    LastSym = nullptr;
     LinkFlags |= LF_CASE_FLAG;
     SetSymCase();
     ResetPermBlocks();
@@ -347,8 +167,10 @@ void ResetSym( void )
 void InitSym( void )
 /*************************/
 {
-    GlobalSymPtrs = (symbol **)(MemAllocSafe( GLOBAL_TABALLOC ));
-    StaticSymPtrs = (symbol **)(MemAllocSafe( STATIC_TABALLOC ));
+    SymTabState &state = st();
+
+    state.GlobalSymPtrs = static_cast<symbol **>( MemAllocSafe( GLOBAL_TABALLOC ) );
+    state.StaticSymPtrs = static_cast<symbol **>( MemAllocSafe( STATIC_TABALLOC ) );
 }
 
 #ifdef DEVBUILD
@@ -373,7 +195,7 @@ static void DumpTable( symbol **table, unsigned tabsize )
             mask |= DBG_NOCRLF;
         }
         val = 0;
-        for( sym = table[index]; sym != NULL; sym = sym->hash ) {
+        for( sym = table[index]; sym != nullptr; sym = sym->hash ) {
             val++;
         }
         DEBUG(( mask, "%x ", val ));
@@ -395,8 +217,8 @@ static void DumpHashTable( void )
 {
     if( LinkState & LS_INTERNAL_DEBUG ) {
         DEBUG(( DBG_ALWAYS, "symbol table load" ));
-        DumpTable( GlobalSymPtrs, GLOBAL_TABSIZE );
-        DumpTable( StaticSymPtrs, STATIC_TABSIZE );
+        DumpTable( st().GlobalSymPtrs, GLOBAL_TABSIZE );
+        DumpTable( st().StaticSymPtrs, STATIC_TABSIZE );
     }
 }
 #endif
@@ -410,15 +232,15 @@ static void WipeSym( symbol *sym )
             if( sym->p.import_nov != DUMMY_IMPORT_PTR ) {
                 MemFree( sym->p.import_nov );
             }
-            sym->p.import_nov = NULL;
+            sym->p.import_nov = nullptr;
         } else {
             FreeImport( sym->p.import_dll );
-            sym->p.import_dll = NULL;
+            sym->p.import_dll = nullptr;
         }
     } else if( IS_SYM_ALIAS( sym ) ) {
-        if( sym->p.alias.u.ptr != NULL ) {
+        if( sym->p.alias.u.ptr != nullptr ) {
             MemFree( sym->p.alias.u.ptr );
-            sym->p.alias.u.ptr = NULL;
+            sym->p.alias.u.ptr = nullptr;
         }
         sym->u.aliaslen = 0;    // make sure this is nulled again
     }
@@ -441,7 +263,7 @@ void CleanSym( void )
     DumpHashTable();
 #endif
     if( (LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        for( sym = HeadSym; sym != NULL; sym = next ) {
+        for( sym = HeadSym; sym != nullptr; sym = next ) {
             next = sym->next;
             FreeSymbol( sym );
         }
@@ -453,15 +275,17 @@ void CleanSym( void )
 void FiniSym( void )
 /*************************/
 {
-    MemFree( GlobalSymPtrs );
-    MemFree( StaticSymPtrs );
+    SymTabState &state = st();
+
+    MemFree( state.GlobalSymPtrs );
+    MemFree( state.StaticSymPtrs );
 }
 
 static void PrepHashTable( symbol **table, unsigned size )
 /********************************************************/
 {
     for( ; size > 0; --size ) {
-        *table = (symbol *)(CarveGetIndex( CarveSymbol, *table ));
+        *table = static_cast<symbol *>( CarveGetIndex( CarveSymbol, *table ) );
         table++;
     }
 }
@@ -469,17 +293,20 @@ static void PrepHashTable( symbol **table, unsigned size )
 void WriteHashPointers( void *cookie )
 /*******************************************/
 {
-    PrepHashTable( StaticSymPtrs, STATIC_TABSIZE );
-    WritePermFile( (perm_write_info *)(cookie), StaticSymPtrs, STATIC_TABALLOC );
-    PrepHashTable( GlobalSymPtrs, GLOBAL_TABSIZE );
-    WritePermFile( (perm_write_info *)(cookie), GlobalSymPtrs, GLOBAL_TABALLOC );
+    SymTabState &state = st();
+    perm_write_info *info = static_cast<perm_write_info *>( cookie );
+
+    PrepHashTable( state.StaticSymPtrs, STATIC_TABSIZE );
+    WritePermFile( info, state.StaticSymPtrs, STATIC_TABALLOC );
+    PrepHashTable( state.GlobalSymPtrs, GLOBAL_TABSIZE );
+    WritePermFile( info, state.GlobalSymPtrs, GLOBAL_TABALLOC );
 }
 
 static void RebuildHashTable( symbol **table, unsigned size )
 /***********************************************************/
 {
     for( ; size > 0; --size ) {
-        *table = (symbol *)(CarveMapIndex( CarveSymbol, *table ));
+        *table = static_cast<symbol *>( CarveMapIndex( CarveSymbol, *table ) );
         table++;
     }
 }
@@ -487,25 +314,30 @@ static void RebuildHashTable( symbol **table, unsigned size )
 void ReadHashPointers( void *cookie )
 /******************************************/
 {
-    ReadPermFile( (perm_read_info *)(cookie), StaticSymPtrs, STATIC_TABALLOC );
-    ReadPermFile( (perm_read_info *)(cookie), GlobalSymPtrs, GLOBAL_TABALLOC );
-    RebuildHashTable( StaticSymPtrs, STATIC_TABSIZE );
-    RebuildHashTable( GlobalSymPtrs, GLOBAL_TABSIZE );
+    SymTabState &state = st();
+    perm_read_info *info = static_cast<perm_read_info *>( cookie );
+
+    ReadPermFile( info, state.StaticSymPtrs, STATIC_TABALLOC );
+    ReadPermFile( info, state.GlobalSymPtrs, GLOBAL_TABALLOC );
+    RebuildHashTable( state.StaticSymPtrs, STATIC_TABSIZE );
+    RebuildHashTable( state.GlobalSymPtrs, GLOBAL_TABSIZE );
 }
 
 void ClearHashPointers( void )
 /***********************************/
 {
-    memset( GlobalSymPtrs, 0, GLOBAL_TABSIZE * sizeof( symbol * ) );
-    memset( StaticSymPtrs, 0, STATIC_TABSIZE * sizeof( symbol * ) );
+    SymTabState &state = st();
+
+    std::memset( state.GlobalSymPtrs, 0, GLOBAL_TABSIZE * sizeof( symbol * ) );
+    std::memset( state.StaticSymPtrs, 0, STATIC_TABSIZE * sizeof( symbol * ) );
 }
 
 void SetSymCase( void )
 /****************************/
 {
     if( LinkFlags & LF_CASE_FLAG ) {
-        CmpNRtn = strncmp;
-        CmpRtn = strcmp;
+        CmpNRtn = std::strncmp;
+        CmpRtn = std::strcmp;
     } else {
         CmpNRtn = strnicmp;
         CmpRtn = stricmp;
@@ -517,7 +349,7 @@ void SymModStart( void )
  * do necessary symbol table processing before the start of a module in pass1
  */
 {
-    SymList = LastSym;
+    st().SymList = LastSym;
 }
 
 void SymModEnd( void )
@@ -526,17 +358,18 @@ void SymModEnd( void )
  * references to symbols which are in this module only.
  */
 {
+    symbol *&   symlist = st().SymList;
     symbol *    sym;
 
-    if( SymList == NULL ) {
+    if( symlist == nullptr ) {
         sym = HeadSym;
     } else {
-        sym = SymList;
-        if( sym != NULL ) {     // symlist points to previous one
+        sym = symlist;
+        if( sym != nullptr ) {  // symlist points to previous one
             sym = sym->next;
         }
     }
-    for( ; sym != NULL; sym = sym->next ) {
+    for( ; sym != nullptr; sym = sym->next ) {
         sym->info &= ~SYM_IN_CURRENT;
         sym->info |= SYM_OLDHAT;
         if( (sym->info & SYM_REFERENCED)
@@ -545,7 +378,7 @@ void SymModEnd( void )
             sym->info |= SYM_LOCAL_REF;
         }
     }
-    SymList = NULL;
+    symlist = nullptr;
 }
 
 void ClearRefInfo( symbol *sym )
@@ -576,7 +409,7 @@ void ClearSymUnion( symbol * sym )
 symbol *RefISymbol( const char *name )
 /************************************/
 {
-    return( SymOp( ST_CREATE_REFERENCE, name, strlen( name ) ) );
+    return( SymOp( ST_CREATE_REFERENCE, name, std::strlen( name ) ) );
 }
 
 symbol *DefISymbol( const char *name )
@@ -596,7 +429,7 @@ symbol *DefISymbol( const char *name )
 symbol *FindISymbol( const char *name )
 /*************************************/
 {
-    return( SymOp( ST_FIND | ST_REFERENCE, name, strlen( name ) ) );
+    return( SymOp( ST_FIND | ST_REFERENCE, name, std::strlen( name ) ) );
 }
 
 symbol *SymOpNWPfx( sym_flags symop, const char *name, size_t length, const char *prefix, size_t prefixlen )
@@ -604,17 +437,17 @@ symbol *SymOpNWPfx( sym_flags symop, const char *name, size_t length, const char
 {
     symbol  *sym;
 
-    if( (sym = SymOp( symop, name, length )) == NULL )
-        return( NULL );
+    if( (sym = SymOp( symop, name, length )) == nullptr )
+        return( nullptr );
 
-    if( ( prefix != NULL ) && prefixlen ) {
+    if( ( prefix != nullptr ) && prefixlen ) {
         if( prefixlen > 254 ) {
             LnkMsg( ERR+MSG_SYMBOL_NAME_TOO_LONG, "s", prefix );
-            return( NULL );
+            return( nullptr );
         }
-        if( (sym->prefix = AddSymbolStringTable( &PrefixStrings, prefix, prefixlen )) == NULL ) {
+        if( (sym->prefix = AddSymbolStringTable( &PrefixStrings, prefix, prefixlen )) == nullptr ) {
             LnkMsg( ERR+MSG_INTERNAL, "s", "no memory for prefix symbol");
-            return( NULL );
+            return( nullptr );
         }
     }
     return( sym );
@@ -640,10 +473,9 @@ void MakeSymAlias( const char *name, size_t namelen, const char *target, size_t 
 
     if( namelen == targetlen
       && (*CmpNRtn)( name, target, namelen ) == 0 ) {
-        char    *buff;
+        const std::string   buff( target, targetlen );
 
-        DUPSTR_STACK( buff, target, targetlen );
-        LnkMsg( WRN+MSG_CIRCULAR_ALIAS_FOUND, "s", buff );
+        LnkMsg( WRN+MSG_CIRCULAR_ALIAS_FOUND, "s", buff.c_str() );
         return;                 // <--------- NOTE: premature return!!!!
     }
     sym = SymOp( ST_CREATE | ST_NOALIAS, name, namelen );
@@ -669,19 +501,19 @@ void WeldSyms( symbol *src, symbol *targ )
  * make all references to src refer to targ. (alias src to targ)
  */
 {
-    if( targ != NULL ) {
-        SetSymAlias( src, targ->name.u.ptr, strlen( targ->name.u.ptr ) );
+    if( targ != nullptr ) {
+        SetSymAlias( src, targ->name.u.ptr, std::strlen( targ->name.u.ptr ) );
     }
 }
 
-static symbol *GlobalSearchSym( const char *symname, unsigned hash, size_t len )
-/*******************************************************************************
+static symbol *GlobalSearchSym( symbol **chains, const char *symname, unsigned hash, size_t len )
+/***********************************************************************************************
  * search through the given chain for the given name
  */
 {
     symbol      *sym;
 
-    for( sym = GlobalSymPtrs[hash]; sym != NULL; sym = sym->hash ) {
+    for( sym = chains[hash]; sym != nullptr; sym = sym->hash ) {
         if( len == sym->namelen_cmp
           && (*CmpNRtn)( symname, sym->name.u.ptr, len ) == 0 ) {
             break;
@@ -690,17 +522,17 @@ static symbol *GlobalSearchSym( const char *symname, unsigned hash, size_t len )
     return( sym );
 }
 
-static symbol *StaticSearchSym( const char *symname, unsigned hash, size_t len )
-/*******************************************************************************
+static symbol *StaticSearchSym( symbol **chains, const char *symname, unsigned hash, size_t len )
+/***********************************************************************************************
  * search through the given chain for the given name
  */
 {
     symbol      *sym;
 
-    for( sym = StaticSymPtrs[hash]; sym != NULL; sym = sym->hash ) {
+    for( sym = chains[hash]; sym != nullptr; sym = sym->hash ) {
         if( sym->info & SYM_IN_CURRENT ) {
             if( len == sym->namelen_cmp
-              && memcmp( symname, sym->name.u.ptr, len ) == 0 ) {
+              && std::memcmp( symname, sym->name.u.ptr, len ) == 0 ) {
                 break;
             }
         }
@@ -714,12 +546,12 @@ static unsigned StaticHashFn( const char *name, size_t len )
     unsigned    value;
     unsigned    modval;
 
-    modval = (unsigned)CurrMod->modtime;
+    modval = static_cast<unsigned>( CurrMod->modtime );
     value = ScatterTable[modval & 0xff];
     modval >>= 8;
     value = value ^ ScatterTable[modval & 0xff];
     while( len-- > 0 ) {
-        value = (value << 1) ^ ScatterTable[*(unsigned char *)name];
+        value = (value << 1) ^ ScatterTable[static_cast<unsigned char>( *name )];
         ++name;
     }
     return( value % STATIC_TABSIZE );
@@ -732,7 +564,7 @@ static unsigned GlobalHashFn( const char *name, size_t len )
 
     value = 0;
     while( len-- > 0 ) {
-        value = (value << 1) ^ ScatterTable[*(unsigned char *)name | 0x20];
+        value = (value << 1) ^ ScatterTable[static_cast<unsigned char>( *name ) | 0x20];
         ++name;
     }
     return( value % GLOBAL_TABSIZE );
@@ -744,10 +576,10 @@ static symbol *DoSymOp( sym_flags symop, const char *symname, size_t length )
     unsigned    hash;
     symbol      *sym;
     size_t      searchlen;
+    SymTabState &state = st();
 #ifdef DEVBUILD
-    char        *symname_dbg;
-
-    DUPSTR_STACK( symname_dbg, symname, length );
+    const std::string   symname_dbg_str( symname, length );
+    const char          *symname_dbg = symname_dbg_str.c_str();
 #endif
     DEBUG(( DBG_OLD, "SymOp( %d, %s, %d )", symop, symname_dbg, length ));
     if( NameLen
@@ -761,16 +593,16 @@ static symbol *DoSymOp( sym_flags symop, const char *symname, size_t length )
         /* If symbol isn't unique, don't look for duplicates. */
         if( (symop & (ST_CREATE | ST_STATIC | ST_NONUNIQUE)) ==
                   (ST_CREATE | ST_STATIC | ST_NONUNIQUE) ) {
-            sym = NULL;
+            sym = nullptr;
         } else {
-            sym = StaticSearchSym( symname, hash, searchlen );
+            sym = StaticSearchSym( state.StaticSymPtrs, symname, hash, searchlen );
         }
     } else {
         hash = GlobalHashFn( symname, searchlen );
-        sym = GlobalSearchSym( symname, hash, searchlen );
+        sym = GlobalSearchSym( state.GlobalSymPtrs, symname, hash, searchlen );
     }
     DEBUG(( DBG_OLD, "- hash %d", hash ));
-    if( sym != NULL ) {
+    if( sym != nullptr ) {
         DEBUG(( DBG_OLD, "found symbol %s", symname_dbg ));
         DEBUG(( DBG_OLD, " - handle = %h", sym ));
         return( sym );
@@ -782,11 +614,11 @@ static symbol *DoSymOp( sym_flags symop, const char *symname, size_t length )
 
         if( symop & ST_STATIC ) {
             sym->info |= SYM_STATIC;
-            sym->hash = StaticSymPtrs[hash];
-            StaticSymPtrs[hash] = sym;
+            sym->hash = state.StaticSymPtrs[hash];
+            state.StaticSymPtrs[hash] = sym;
         } else {
-            sym->hash = GlobalSymPtrs[hash];
-            GlobalSymPtrs[hash] = sym;
+            sym->hash = state.GlobalSymPtrs[hash];
+            state.GlobalSymPtrs[hash] = sym;
             if( FindSymTrace( symname ) ) {
                 sym->info |= SYM_TRACE;
             }
@@ -800,7 +632,7 @@ symbol *UnaliasSym( sym_flags symop, symbol *sym )
 /************************************************/
 {
     symbol *orig_sym = sym;
-    while( sym != NULL
+    while( sym != nullptr
       && IS_SYM_ALIAS( sym ) ) {
         sym = DoSymOp( symop, sym->p.alias.u.ptr, sym->u.aliaslen );
         /* circular ref, may be a weak symbol ! */
@@ -821,7 +653,7 @@ symbol *SymOp( sym_flags symop, const char *symname, size_t length )
     if( (symop & ST_NOALIAS) == 0 ) {
         sym = UnaliasSym( symop, sym );
     }
-    if( sym != NULL ) {
+    if( sym != nullptr ) {
         if( symop & ST_DEFINE ) {
             if( IS_SYM_ALIAS( sym )
               && (sym->info & SYM_FREE_ALIAS) ) {
@@ -863,7 +695,7 @@ void ReportUndefined( void )
     symbol *    sym;
     unsigned    level;
 
-    for( sym = HeadSym; sym != NULL; sym = sym->next ) {
+    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
         sym->info &= ~SYM_CLEAR_ON_P2;  // reset also floatin-point patch flags
         if( (sym->info & (SYM_DEFINED | SYM_IS_ALTDEF)) == 0 )  {
             if( LinkFlags & LF_UNDEFS_ARE_OK ) {
@@ -900,7 +732,7 @@ symbol *HashReplace( symbol *sym )
 {
     symbol *    newsym;
 
-    if( sym->mod == NULL )
+    if( sym->mod == nullptr )
         return( sym );
     Ring2Prune( &sym->mod->publist, sym );
     if( IS_SYM_COMMUNAL( sym ) ) {
@@ -924,7 +756,7 @@ symbol *HashReplace( symbol *sym )
 static void SetDataSymInfo( symbol *sym, symbol *old )
 /****************************************************/
 {
-    sym->u.datasym = NULL;
+    sym->u.datasym = nullptr;
     sym->p.seg->u1.vm_ptr = old->p.seg->u1.vm_ptr;
     sym->info |= SYM_HAS_DATA;
     old->info &= ~SYM_HAS_DATA;
@@ -934,11 +766,11 @@ static void SetDataSymInfo( symbol *sym, symbol *old )
 static bool SetNewDataSym( void *_dead, void *_sym )
 /**************************************************/
 {
-    symbol *deadsym = (symbol *)(_dead);
-    symbol *sym = (symbol *)(_sym);
+    symbol *deadsym = static_cast<symbol *>( _dead );
+    symbol *sym = static_cast<symbol *>( _sym );
 
     if( deadsym == sym->u.datasym ) {
-        if( deadsym->u.datasym == NULL ) {
+        if( deadsym->u.datasym == nullptr ) {
             SetDataSymInfo( sym, deadsym );
         } else {
             sym->u.datasym = deadsym->u.datasym;
@@ -956,13 +788,13 @@ static void CleanAltDefs( symbol *sym )
 
     if( IS_SYM_ALIAS( sym )
       || (sym->info & SYM_DEAD)
-      || sym->u.altdefs == NULL )
+      || sym->u.altdefs == nullptr )
         return;
-    testring = NULL;
-    while( (altsym = (symbol *)(RingPop( &sym->u.altdefs ))) != NULL ) {
+    testring = nullptr;
+    while( (altsym = static_cast<symbol *>( RingPop( &sym->u.altdefs ) )) != nullptr ) {
         if( altsym->info & SYM_KILL ) {
             if( altsym->info & SYM_HAS_DATA ) {
-                altsym->u.datasym = NULL;
+                altsym->u.datasym = nullptr;
                 RingAppend( &testring, altsym );
             }
         } else if( (altsym->info & SYM_HAS_DATA) == 0 ) {
@@ -977,18 +809,18 @@ static void UndefSymbol( symbol *sym )
     ClearSymUnion( sym );
     SET_ADDR_UNDEFINED( sym->addr );
     if( (sym->info & SYM_EXPORTED) == 0
-      && sym->e.def != NULL ) {
+      && sym->e.def != nullptr ) {
         sym->info = SYM_LAZY_REF | SYM_REFERENCED;
     } else {
         sym->info = SYM_REGULAR | SYM_REFERENCED;
     }
-    sym->mod = NULL;
+    sym->mod = nullptr;
 }
 
 static void PurgeHashTable( symbol **curr )
 /*****************************************/
 {
-    while( *curr != NULL ) {
+    while( *curr != nullptr ) {
         CleanAltDefs( *curr );
         if( (*curr)->info & SYM_KILL ) {
             if( (*curr)->info & SYM_RELOC_REFD ) {
@@ -1008,7 +840,7 @@ static void CleanupOldAltdefs( symbol **curr )
 /* some symbols may have been marked SYM_KILL during PurgeHashTable. Make
  * sure these are gone */
 {
-    while( *curr != NULL ) {
+    while( *curr != nullptr ) {
         if( (*curr)->info & SYM_KILL ) {
             *curr = (*curr)->hash;
         } else {
@@ -1030,8 +862,10 @@ static void WalkAHashTable( void (*fn)(symbol **), symbol **symtab,
 static void WalkHashTables( void (*fn)(symbol **) )
 /***************************************************/
 {
-    WalkAHashTable( fn, GlobalSymPtrs, GLOBAL_TABSIZE );
-    WalkAHashTable( fn, StaticSymPtrs, STATIC_TABSIZE );
+    SymTabState &state = st();
+
+    WalkAHashTable( fn, state.GlobalSymPtrs, GLOBAL_TABSIZE );
+    WalkAHashTable( fn, state.StaticSymPtrs, STATIC_TABSIZE );
 }
 
 void PurgeSymbols( void )
@@ -1042,7 +876,7 @@ void PurgeSymbols( void )
 
     WalkHashTables( PurgeHashTable );
     WalkHashTables( CleanupOldAltdefs );
-    for( owner = &HeadSym; (sym = *owner) != NULL; ) {
+    for( owner = &HeadSym; (sym = *owner) != nullptr; ) {
         if( sym->info & SYM_KILL ) {
             *owner = sym->next;
             FreeSymbol( sym );
@@ -1076,7 +910,7 @@ void ConvertLazyRefs( void )
     symbol *    defsym;
     symbol *    sym;
 
-    for( sym = HeadSym; sym != NULL; sym = sym->next ) {
+    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
         if( IS_SYM_A_REF( sym ) ) {
             if( IS_SYM_VF_REF( sym ) ) {
                 defsym = *(sym->e.vfdata);
@@ -1090,7 +924,7 @@ void ConvertLazyRefs( void )
             WeldSyms( sym, defsym );
             sym->info |= SYM_WAS_LAZY;
             if( LinkFlags & LF_SHOW_DEAD ) {
-                if( MapFile != NULL ) {
+                if( MapFile != nullptr ) {
                     WriteMapLnkMsg( MSG_SYMBOL_DEAD, "S", sym );
                 }
             }
@@ -1101,7 +935,7 @@ void ConvertLazyRefs( void )
 static void MarkSymTraced( void *sym )
 /************************************/
 {
-    ((symbol *)sym)->info |= SYM_TRACE;
+    static_cast<symbol *>( sym )->info |= SYM_TRACE;
 }
 
 void TraceSymList( symbol * sym )
@@ -1116,7 +950,7 @@ symbol *MakeWeakExtdef( const char *name, symbol *def )
 {
     symbol * sym;
 
-    sym = SymOp( ST_CREATE, name, strlen( name ) );
+    sym = SymOp( ST_CREATE, name, std::strlen( name ) );
     sym->e.def = def;
     SET_SYM_TYPE( sym, SYM_LINK_WEAK_REF );
     return( sym );
@@ -1148,7 +982,7 @@ offset SymbolAbsAddr( symbol *sym )
 
     gr = SymbolGroup( sym );
     addr = sym->addr.off;
-    if( gr != NULL ) {
+    if( gr != nullptr ) {
         addr += gr->linear + FmtData.base;
     } else {
         // it is an imported symbol; addr is already absolute
@@ -1162,18 +996,18 @@ group_entry *SymbolGroup( symbol *sym )
     group_entry *group;
 
     if( IS_SYM_ALIAS( sym ) ) {
-        group = NULL;
+        group = nullptr;
     } else if( IS_SYM_GROUP( sym ) ) {
-        for( group = Groups; group != NULL; group = group->next ) {
+        for( group = Groups; group != nullptr; group = group->next ) {
             if( sym == group->sym ) {
                 break;
             }
         }
     } else {
-        if( sym->p.seg != NULL ) {
+        if( sym->p.seg != nullptr ) {
             group = sym->p.seg->u.leader->group;
         } else {
-            group = NULL;
+            group = nullptr;
         }
     }
     return( group );

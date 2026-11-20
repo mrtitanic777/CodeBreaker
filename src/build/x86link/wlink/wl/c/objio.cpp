@@ -44,6 +44,7 @@
 #include "objio.h"
 
 #include "clibext.h"
+#include <array>
 
 
 infilelist      *CachedLibFiles;
@@ -52,8 +53,8 @@ infilelist      *CachedFiles;
 void ResetObjIO( void )
 /****************************/
 {
-    CachedFiles = NULL;
-    CachedLibFiles = NULL;
+    CachedFiles = nullptr;
+    CachedLibFiles = nullptr;
 }
 
 static infilelist *AllocEntry( const char *name, const path_entry *path )
@@ -61,14 +62,14 @@ static infilelist *AllocEntry( const char *name, const path_entry *path )
 {
     infilelist  *infile;
 
-    infile = (infilelist *)(_PermAlloc( sizeof( infilelist ) ));
+    infile = static_cast<infilelist *>( _PermAlloc( sizeof( infilelist ) ) );
     infile->name.u.ptr = AddStringStringTable( &PermStrings, name );
     infile->path_list = path;
-    infile->prefix = NULL;
+    infile->prefix = nullptr;
     infile->handle = NIL_FHANDLE;
-    infile->cache = NULL;
+    infile->cache = nullptr;
     infile->len = 0;
-    infile->status = (infile_status)(0);
+    infile->status = static_cast<infile_status>( 0 );
     return( infile );
 }
 
@@ -88,17 +89,17 @@ infilelist *AllocUniqueFileEntry( const char *name, const path_entry *path )
 {
     infilelist  *infile;
 
-    for( infile = CachedLibFiles; infile != NULL; infile = infile->next ) {
+    for( infile = CachedLibFiles; infile != nullptr; infile = infile->next ) {
         if( FNAMECMPSTR( infile->name.u.ptr, name ) == 0 ) {
             return( infile );    // we found 1 with the same name.
         }
     }
     infile = AllocEntry( name, path );   // didn't find one, so allocate a new 1
-    if( CachedLibFiles == NULL ) {      // add libraries to the end of the
+    if( CachedLibFiles == nullptr ) {      // add libraries to the end of the
         CachedLibFiles = infile;         // regular cached files list.
-        AppendList( (void **)&CachedFiles, infile );
+        AppendList( reinterpret_cast<void **>( &CachedFiles ), infile );
     } else {
-        AppendList( (void **)&CachedLibFiles, infile );
+        AppendList( reinterpret_cast<void **>( &CachedLibFiles ), infile );
     }
     return( infile );
 }
@@ -108,13 +109,13 @@ bool CleanCachedHandles( void )
 {
     infilelist *infile;
 
-    for( infile = CachedFiles; infile != NULL; infile = infile->next ) {
+    for( infile = CachedFiles; infile != nullptr; infile = infile->next ) {
         if( (infile->status & INSTAT_IN_USE) == 0
           && infile->handle != NIL_FHANDLE ) {
             break;
         }
     }
-    if( infile == NULL )
+    if( infile == nullptr )
         return( false );
     QClose( infile->handle, infile->name.u.ptr );
     infile->handle = NIL_FHANDLE;
@@ -128,7 +129,7 @@ char *MakePath( char *fullname, const char **path_list )
     char        c;
 
     p = fullname;
-    if( *path_list != NULL
+    if( *path_list != nullptr
       && (c = **path_list) != '\0' ) {
         do {
             ++(*path_list);
@@ -151,13 +152,13 @@ char *MakeFileName( infilelist *infile, char *fullname )
     const char  *path = infile->prefix;
 
     strcpy( MakePath( fullname, &path ), infile->name.u.ptr );
-    return( (char *)path );
+    return( const_cast<char *>( path ) );
 }
 
 bool MakeFileNameFromList( const char **path_list, char *name, char *fullname )
 /*****************************************************************************/
 {
-    if( *path_list != NULL
+    if( *path_list != nullptr
       && **path_list != '\0' ) {
         strcpy( MakePath( fullname, path_list ), name );
         return( true );
@@ -174,7 +175,7 @@ static f_handle PathObjOpen( const char *path_ptr, char *name, char *new_name, i
     for( ;; ) {
         infile->prefix = path_ptr;
         if( !MakeFileNameFromList( &path_ptr, name, new_name ) ) {
-            infile->prefix = NULL;
+            infile->prefix = nullptr;
             break;
         }
         fp = QObjOpen( new_name );
@@ -191,7 +192,7 @@ bool DoObjOpen( infilelist *infile )
     char                *name;
     f_handle            fp;
     unsigned            err;
-    char                new_name[PATH_MAX];
+    std::array<char, PATH_MAX>  new_name;
     const path_entry    *searchpath;
 
     name = infile->name.u.ptr;
@@ -199,29 +200,29 @@ bool DoObjOpen( infilelist *infile )
         return( true );
     infile->currpos = 0;
     if( HAS_PATH( name ) ) {   // has path defined
-        infile->path_list = NULL;
+        infile->path_list = nullptr;
         fp = QObjOpen( name );
-    } else if( infile->prefix != NULL ) {     // already searched path
-        MakeFileName( infile, new_name );
-        fp = QObjOpen( new_name );
+    } else if( infile->prefix != nullptr ) {     // already searched path
+        MakeFileName( infile, new_name.data() );
+        fp = QObjOpen( new_name.data() );
     } else {                                // new, no searched path
         fp = NIL_FHANDLE;
         if( (infile->status & INSTAT_LIB_SEARCH)
-          || infile->path_list == NULL ) {
+          || infile->path_list == nullptr ) {
             /* try in current directory */
             fp = QObjOpen( name );
         }
         if( fp == NIL_FHANDLE ) {
-            for( searchpath = infile->path_list; searchpath != NULL; searchpath = searchpath->next ) {
-                fp = PathObjOpen( searchpath->name, name, new_name, infile );
+            for( searchpath = infile->path_list; searchpath != nullptr; searchpath = searchpath->next ) {
+                fp = PathObjOpen( searchpath->name, name, new_name.data(), infile );
                 if( fp != NIL_FHANDLE ) {
                     break;
                 }
             }
             if( fp == NIL_FHANDLE
               && (infile->status & INSTAT_USE_LIBPATH) ) {
-                if( LibPath != NULL ) {
-                    fp = PathObjOpen( LibPath, name, new_name, infile );
+                if( LibPath != nullptr ) {
+                    fp = PathObjOpen( LibPath, name, new_name.data(), infile );
                 }
             }
         }
@@ -235,7 +236,7 @@ bool DoObjOpen( infilelist *infile )
     } else if( (infile->status & INSTAT_NO_WARNING) == 0 ) {
         err = ( infile->status & INSTAT_OPEN_WARNING ) ? WRN+MSG_CANT_OPEN : ERR+MSG_CANT_OPEN;
         PrintIOError( err, "12", name );
-        infile->prefix = NULL;
+        infile->prefix = nullptr;
         infile->handle = NIL_FHANDLE;
     }
     return( false );
@@ -245,15 +246,15 @@ void InitTokBuff( void )
 /*****************************/
 {
     TokSize = MAX_HEADROOM;
-    TokBuff = (char *)(MemAllocSafe( MAX_HEADROOM ));
+    TokBuff = static_cast<char *>( MemAllocSafe( MAX_HEADROOM ) );
 }
 
 void FreeTokBuffs( void )
 /******************************/
 {
-    if( TokBuff != NULL ) {
+    if( TokBuff != nullptr ) {
         MemFree( TokBuff );
-        TokBuff = NULL;
+        TokBuff = nullptr;
     }
 }
 
@@ -261,13 +262,13 @@ void BadObject( void )
 /***************************/
 {
     CurrMod->u1.source->infile->status |= INSTAT_IOERR;
-    LnkMsg( ERR+LOC+MSG_OBJ_FILE_ATTR, NULL );
+    LnkMsg( ERR+LOC+MSG_OBJ_FILE_ATTR, nullptr );
 }
 
 void EarlyEOF( void )
 /**************************/
 {
     CurrMod->u1.source->infile->status |= INSTAT_IOERR;
-    Locator( CurrMod->u1.source->infile->name.u.ptr, NULL, 0 );
-    LnkMsg( ERR+MSG_EARLY_EOF, NULL );
+    Locator( CurrMod->u1.source->infile->name.u.ptr, nullptr, 0 );
+    LnkMsg( ERR+MSG_EARLY_EOF, nullptr );
 }

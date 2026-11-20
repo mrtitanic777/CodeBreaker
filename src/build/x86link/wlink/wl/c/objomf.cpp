@@ -52,20 +52,29 @@
 #include "virtmem.h"
 #include "impexp.h"
 #include "objomf.h"
+#include "run_state.hpp"
 
 
-enum dll_entry_type {
-    DLL_RELOC_NAME,
-    DLL_RELOC_ORDINAL
+namespace {
+
+constexpr unsigned_8 DLL_RELOC_NAME     = 0;
+constexpr unsigned_8 EXPDEF_ORDINAL     = 0x80;
+
+struct ObjOMFState {
+    unsigned        HllLineNumOffset = 0;   // next offset in the $$LINES segment
 };
+
+inline ObjOMFState &st() { return cb_wlink::RunState::part<ObjOMFState>(); }
+
+}
 
 byte        OMFAlignTab[] = {0,0,1,4,8,2,12};
 
 void ResetObjOMF( void )
 /**********************/
 {
-    ObjBuff = NULL;
-    EOObjRec = NULL;
+    ObjBuff = nullptr;
+    EOObjRec = nullptr;
 }
 
 static unsigned long ProcObj( const file_list *file, unsigned long loc, void (*procrtn)( byte ) )
@@ -80,18 +89,18 @@ static unsigned long ProcObj( const file_list *file, unsigned long loc, void (*p
     RecNum = 0;
     do {
         ObjFormat &= ~OBJ_FMT_MS_386;   /* assume not a Microsoft 386 .obj file */
-        rec = (omf_record *)(CacheRead( file, loc, sizeof( omf_record ) ));
-        if( rec == NULL ) {
+        rec = static_cast<omf_record *>( CacheRead( file, loc, sizeof( omf_record ) ) );
+        if( rec == nullptr ) {
             EarlyEOF();
             break;
         }
         loc += sizeof( omf_record );
         len = rec->length;
         cmd = rec->command;
-        if( procrtn != NULL ) {
+        if( procrtn != nullptr ) {
             RecNum++;
-            ObjBuff = (byte *)(CacheRead( file, loc, len ));
-            if( ObjBuff == NULL ) {
+            ObjBuff = static_cast<byte *>( CacheRead( file, loc, len ) );
+            if( ObjBuff == nullptr ) {
                 EarlyEOF();
                 break;
             }
@@ -110,9 +119,9 @@ static unsigned long ProcObj( const file_list *file, unsigned long loc, void (*p
 static void CheckUninit( void *_seg, void *dummy )
 /************************************************/
 {
-    segnode *snode = (segnode *)(_seg);
+    segnode *snode = static_cast<segnode *>( _seg );
 
-    /* unused parameters */ (void)dummy;
+    /* unused parameters */ static_cast<void>( dummy );
 
     if( (snode->info & SEGINF_LXDATA_SEEN) == 0 ) {
         snode->entry->isuninit = true;
@@ -128,8 +137,8 @@ bool IsOMF( const file_list *file, unsigned long loc )
 {
     byte        *rec;
 
-    rec = (byte *)(CacheRead( file, loc, sizeof( unsigned_8 ) ));
-    return( rec != NULL && ( *rec == CMD_THEADR || *rec == CMD_LHEADR ) );
+    rec = static_cast<byte *>( CacheRead( file, loc, sizeof( unsigned_8 ) ) );
+    return( rec != nullptr && ( *rec == CMD_THEADR || *rec == CMD_LHEADR ) );
 }
 
 char *GetOMFName( const file_list *file, unsigned long *loc )
@@ -139,15 +148,15 @@ char *GetOMFName( const file_list *file, unsigned long *loc )
     char        *name;
     unsigned    len;
 
-    rec = (omf_record *)(CacheRead( file, *loc, sizeof( omf_record ) ));
-    if( rec == NULL )
-        return( NULL );
+    rec = static_cast<omf_record *>( CacheRead( file, *loc, sizeof( omf_record ) ) );
+    if( rec == nullptr )
+        return( nullptr );
     *loc += sizeof( omf_record );
     len = rec->length;
-    name = (char *)(CacheRead( file, *loc, rec->length ));
+    name = static_cast<char *>( CacheRead( file, *loc, rec->length ) );
     *loc += len;
-    if( name == NULL )
-        return( NULL );
+    if( name == nullptr )
+        return( nullptr );
     len = *(unsigned char *)name;        /* get actual name length */
     return( MemToStringSafe( name + 1, len ) );
 }
@@ -155,7 +164,7 @@ char *GetOMFName( const file_list *file, unsigned long *loc )
 void OMFSkipObj( const file_list *file, unsigned long *loc )
 /**********************************************************/
 {
-    *loc = ProcObj( file, *loc, NULL );
+    *loc = ProcObj( file, *loc, nullptr );
 }
 
 static void ProcTHEADR( void )
@@ -178,8 +187,6 @@ static void ProcTHEADR( void )
     }
 }
 
-#define EXPDEF_ORDINAL  0x80
-
 static void ProcExportKeyword( void )
 /***********************************/
 {
@@ -190,10 +197,10 @@ static void ProcExportKeyword( void )
 
     flags = *ObjBuff++;
     expname.len = *ObjBuff++;
-    expname.name = (char *)ObjBuff;
+    expname.name = reinterpret_cast<char *>( ObjBuff );
     ObjBuff += expname.len;
     intname.len = *ObjBuff++;
-    intname.name = (char *)ObjBuff;
+    intname.name = reinterpret_cast<char *>( ObjBuff );
     ObjBuff += intname.len;
     ordinal = 0;
     if( flags & EXPDEF_ORDINAL ) {
@@ -211,10 +218,10 @@ static void ProcImportKeyword( void )
 
     info = *ObjBuff++;
     intname.len = *ObjBuff++;
-    intname.name = (char *)ObjBuff;
+    intname.name = reinterpret_cast<char *>( ObjBuff );
     ObjBuff += intname.len;
     modname.len = *ObjBuff++;
-    modname.name = (char *)ObjBuff;
+    modname.name = reinterpret_cast<char *>( ObjBuff );
     ObjBuff += modname.len;
     if( info == DLL_RELOC_NAME ) {
         if( *ObjBuff == 0 ) {   /* use internal name */
@@ -223,12 +230,12 @@ static void ProcImportKeyword( void )
             length_name     extname;
 
             extname.len = *ObjBuff++;
-            extname.name = (char *)ObjBuff;
+            extname.name = reinterpret_cast<char *>( ObjBuff );
             ObjBuff += extname.len;
             HandleImport( &intname, &modname, &extname, IMP_BY_NAME );
         }
     } else {
-        HandleImport(&intname, &modname, NULL, MGET_LE_U16_UN( ObjBuff ) );
+        HandleImport(&intname, &modname, nullptr, MGET_LE_U16_UN( ObjBuff ) );
     }
 }
 
@@ -281,13 +288,13 @@ static void ProcAlias( void )
 
     for( ; ObjBuff < EOObjRec; ObjBuff += targetlen ) {
         aliaslen = *ObjBuff++;
-        alias = (char *)ObjBuff;
+        alias = reinterpret_cast<char *>( ObjBuff );
         ObjBuff += aliaslen;
         targetlen = *ObjBuff++;
         sym = SymOp( ST_FIND | ST_NOALIAS, alias, aliaslen );
-        if( sym == NULL
+        if( sym == nullptr
           || (sym->info & SYM_DEFINED) == 0 ) {
-            MakeSymAlias( alias, aliaslen, (const char *)ObjBuff, targetlen );
+            MakeSymAlias( alias, aliaslen, reinterpret_cast<const char *>( ObjBuff ), targetlen );
         }
     }
 }
@@ -322,17 +329,17 @@ static void ProcModuleEnd( void )
                 LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", StartInfo.mod->u1.source->infile->name, StartInfo.mod->name );
                 return;                 /* <-------- NOTE: premature return */
             }
-            snode = (segnode *)FindNode( SegNodes, targetidx );
+            snode = static_cast<segnode *>( FindNode( SegNodes, targetidx ) );
             StartInfo.type = START_IS_SDATA;
             StartInfo.targ.sdata= snode->entry;
             if( (snode->info & SEGINF_CODE)
               && (LinkFlags & LF_STRIP_CODE) ) {
-                RefSeg( (segdata *)snode->entry );
+                RefSeg( snode->entry );
             }
             StartInfo.mod = CurrMod;
             break;
         case TARGET_EXT:
-            ext = (extnode *)FindNode( ExtNodes, targetidx );
+            ext = static_cast<extnode *>( FindNode( ExtNodes, targetidx ) );
             SetStartSym( ext->entry->name.u.ptr );
             break;
         case TARGET_ABS:
@@ -361,8 +368,8 @@ static void AddNames( void )
     DEBUG(( DBG_OLD, "AddNames()" ));
     for( ; ObjBuff < EOObjRec; ObjBuff += name_len ) {
         name_len = *ObjBuff++;
-        entry = (list_of_names **)(AllocNode( NameNodes ));
-        *entry = MakeListName( (char *)ObjBuff, name_len );
+        entry = static_cast<list_of_names **>( AllocNode( NameNodes ) );
+        *entry = MakeListName( reinterpret_cast<char *>( ObjBuff ), name_len );
     }
 }
 
@@ -448,7 +455,7 @@ static void ProcSegDef( void )
         sdata->bits = BITS_16;
     }
     sdata->iscode = IsCodeClass( clname->name, strlen( clname->name ) );
-    snode = (segnode *)(AllocNode( SegNodes ));
+    snode = static_cast<segnode *>( AllocNode( SegNodes ) );
     snode->entry = sdata;
     AllocateSegment( snode, clname->name );
 }
@@ -477,11 +484,11 @@ static void DefineGroup( void )
         SkipIdx();  /* skip segment index */
         ++num_segs;
     }
-    newnode = (grpnode *)(AllocNode( GrpNodes ));
+    newnode = static_cast<grpnode *>( AllocNode( GrpNodes ) );
     group = SearchGroups( grp_name->name );
-    if( group == NULL ) {
+    if( group == nullptr ) {
         if( num_segs == 0 ) {
-            newnode->entry = NULL;
+            newnode->entry = nullptr;
             return;                     /* NOTE: premature return! */
         }
         group = AllocGroup( grp_name->name, &Groups );
@@ -490,7 +497,7 @@ static void DefineGroup( void )
     ObjBuff = anchor;
     while( ObjBuff < EOObjRec ) {
         ObjBuff++;
-        snode = (segnode *)FindNode( SegNodes, GetIdx() );
+        snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
         AddToGroup( group, snode->entry->u.leader );
     }
 }
@@ -513,10 +520,10 @@ static void ProcPubdef( bool static_sym )
     SkipIdx();
     segidx = GetIdx();
     if( segidx != 0 ) {
-        snode = (segnode *)FindNode( SegNodes, segidx );
+        snode = static_cast<segnode *>( FindNode( SegNodes, segidx ) );
         frame = 0;
     } else {
-        snode = NULL;
+        snode = nullptr;
         frame = MGET_LE_U16_UN( ObjBuff );
         ObjBuff += sizeof( unsigned_16 );
     }
@@ -530,7 +537,7 @@ static void ProcPubdef( bool static_sym )
         if( sym_len == 0 ) {
             BadObject();
         }
-        sym_name = (char *)ObjBuff;
+        sym_name = reinterpret_cast<char *>( ObjBuff );
         ObjBuff += sym_len;
         if( ObjFormat & OBJ_FMT_32BIT_REC ) {
             off = MGET_LE_U32_UN( ObjBuff );
@@ -555,11 +562,11 @@ static void DoLazyExtdef( bool isweak )
     unsigned    idx;
 
     while( ObjBuff < EOObjRec ) {
-        ext = (extnode *) FindNode( ExtNodes, GetIdx() );
+        ext = static_cast<extnode *>( FindNode( ExtNodes, GetIdx() ) );
         sym = ext->entry;
         ext->isweak = true;
         idx = GetIdx();
-        ext = (extnode *) FindNode( ExtNodes, idx );
+        ext = static_cast<extnode *>( FindNode( ExtNodes, idx ) );
         DefineLazyExtdef( sym, ext->entry, isweak );
     }
 }
@@ -573,7 +580,7 @@ static void *GetVFListStart( void )
 static void SetVFListStart( void *start )
 /***************************************/
 {
-    ObjBuff = (byte *)(start);
+    ObjBuff = static_cast<byte *>( start );
 }
 
 static bool EndOfVFList( void )
@@ -602,10 +609,10 @@ static void ProcVFTableRecord( bool ispure )
 
     if( (LinkFlags & LF_VF_REMOVAL) == 0 )
         return;
-    ext = (extnode *) FindNode( ExtNodes, GetIdx() );
+    ext = static_cast<extnode *>( FindNode( ExtNodes, GetIdx() ) );
     sym = ext->entry;
     ext->isweak = true;
-    ext = (extnode *) FindNode( ExtNodes, GetIdx() );
+    ext = static_cast<extnode *>( FindNode( ExtNodes, GetIdx() ) );
     rtns.getstart = GetVFListStart;
     rtns.setstart = SetVFListStart;
     rtns.isend = EndOfVFList;
@@ -628,21 +635,21 @@ static void ProcVFReference( void )
         return;
     index = GetIdx();
     if( index == 0 ) {
-        LnkMsg( WRN+LOC+MSG_NOT_COMPILED_VF_ELIM, NULL );
+        LnkMsg( WRN+LOC+MSG_NOT_COMPILED_VF_ELIM, nullptr );
         return;
     }
-    ext = (extnode *) FindNode( ExtNodes, index );
+    ext = static_cast<extnode *>( FindNode( ExtNodes, index ) );
     if( LinkFlags & LF_STRIP_CODE ) {
         if( *ObjBuff == 0 ) {   /* it is a comdat index */
             ObjBuff++;
             lname = FindName( GetIdx() );
             sym = FindISymbol( lname->name );
-            if( sym == NULL ) {
-                sym = MakeWeakExtdef( lname->name, NULL );
+            if( sym == nullptr ) {
+                sym = MakeWeakExtdef( lname->name, nullptr );
             }
             DefineVFReference( sym, ext->entry, true );
         } else {                /* it's a seg idx */
-            snode = (segnode *)FindNode( SegNodes, GetIdx() );
+            snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
             DefineVFReference( snode, ext->entry, false );
         }
     }
@@ -676,10 +683,10 @@ static void UseSymbols( bool static_sym, bool iscextdef )
             if( sym_len == 0 ) {
                 BadObject();
             }
-            sym = SymOp( symop, (char *)ObjBuff, sym_len );
+            sym = SymOp( symop, reinterpret_cast<char *>( ObjBuff ), sym_len );
             ObjBuff += sym_len;
         }
-        newnode = (extnode *)(AllocNode( ExtNodes ));
+        newnode = static_cast<extnode *>( AllocNode( ExtNodes ) );
         newnode->entry = sym;
         newnode->isweak = false;
         DefineReference( sym );
@@ -716,7 +723,7 @@ list_of_names *FindName( unsigned_16 index )
  * Find name of specified index.
  */
 {
-    return( *((list_of_names **)FindNode( NameNodes, index ) ) );
+    return( *static_cast<list_of_names **>( FindNode( NameNodes, index ) ) );
 }
 
 static void ProcLinnum( void )
@@ -728,7 +735,7 @@ static void ProcLinnum( void )
     bool        is32bit;
 
     SkipIdx();          /* don't need the group idx */
-    snode = (segnode *)FindNode( SegNodes, GetIdx() );
+    snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
     if( snode->info & SEGINF_DEAD )   /* ignore dead segments */
         return;
     is32bit = ( (ObjFormat & OBJ_FMT_32BIT_REC) != 0 );
@@ -738,8 +745,8 @@ static void ProcLinnum( void )
 static void EnumFindLinesSeg( void *_seg, void *_result_seg )
 /****************************/
 {
-    segnode **result_snode = (segnode **)_result_seg;
-    segnode *snode = (segnode *)(_seg);
+    segnode **result_snode = static_cast<segnode **>( _result_seg );
+    segnode *snode = static_cast<segnode *>( _seg );
 
     if (    snode->entry->bits == BITS_32
         &&  !snode->entry->align
@@ -846,12 +853,12 @@ static void GetObject( segdata *snode, unsigned obj_offset, bool lidata )
             DoLIData( start, ObjBuff, size );
         } else {
             if( size + obj_offset > snode->length ) {
-                LnkMsg( FTL+LOC_REC+MSG_OBJ_FILE_ATTR, NULL );
+                LnkMsg( FTL+LOC_REC+MSG_OBJ_FILE_ATTR, nullptr );
             }
             PutInfo( start, ObjBuff, size );
         }
     }
-    SetCurrSeg( snode, obj_offset, NULL );
+    SetCurrSeg( snode, obj_offset, nullptr );
 }
 
 static void ProcLxdata( bool islidata )
@@ -862,7 +869,7 @@ static void ProcLxdata( bool islidata )
     segnode     *snode;
     unsigned    obj_offset;
 
-    snode = (segnode *)FindNode( SegNodes, GetIdx() );
+    snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
     snode->entry->u.leader->info |= SEGINF_LXDATA_SEEN;
     snode->info |= SEGINF_LXDATA_SEEN;
     if( ObjFormat & OBJ_FMT_32BIT_REC ) {
@@ -888,7 +895,6 @@ static void ProcHllLinnum( void )
 // the 'LEDATA' - at least not for HLL v4.
 // FIXME: check what the LINNUM records looks like in the other HLL versions!
 {
-    static unsigned HllLineNumOffset;
     segnode         *snode;
     unsigned        obj_offset;
 
@@ -896,9 +902,9 @@ static void ProcHllLinnum( void )
         return;
 
     /* find the $$LINES segment, create it if not found with this module. */
-    snode = NULL;
+    snode = nullptr;
     IterateNodelist( SegNodes, EnumFindLinesSeg, &snode );
-    if( snode == NULL ) {
+    if( snode == nullptr ) {
         segdata             *sdata;
         segnode             *snode1;
         omf_record          *rec;
@@ -908,7 +914,7 @@ static void ProcHllLinnum( void )
         byte                *buf;
 
         sdata = AllocSegData();
-        sdata->u.name.u.ptr = (char *)"$$LINES";
+        sdata->u.name.u.ptr = const_cast<char *>( "$$LINES" );
         sdata->combine      = COMBINE_ADD;
         sdata->align        = 0;
         sdata->bits         = BITS_32;
@@ -927,7 +933,7 @@ static void ProcHllLinnum( void )
         loc = CurrMod->location;
         DEBUG(( DBG_HLL, "ProcHllLinnum: counting LINNUM data for %s", CurrMod->name ));
         do {
-            rec = (omf_record *)(CacheRead( CurrMod->u1.source, loc, sizeof( *rec ) ));
+            rec = static_cast<omf_record *>( CacheRead( CurrMod->u1.source, loc, sizeof( *rec ) ) );
             if (!rec) {
                 break;
             }
@@ -943,17 +949,17 @@ static void ProcHllLinnum( void )
         } while ( rec->command != CMD_MODEND && rec->command != CMD_MODE32 );
 
         /* get the current record from the cache */
-        buf = (byte *)(CacheRead( CurrMod->u1.source, loc_1st_linnum, len_1st_linnum ));
+        buf = static_cast<byte *>( CacheRead( CurrMod->u1.source, loc_1st_linnum, len_1st_linnum ) );
         if ( buf != ObjBuff ) {
             EOObjRec = buf + len_1st_linnum - 1;
             ObjBuff = buf;
         }
 
-        snode1 = (segnode *)(AllocNode( SegNodes ));
+        snode1 = static_cast<segnode *>( AllocNode( SegNodes ) );
         snode1->entry = sdata;
         AllocateSegment( snode1, _HllLineClass );
 
-        HllLineNumOffset = 0;
+        st().HllLineNumOffset = 0;
         IterateNodelist( SegNodes, EnumFindLinesSeg, &snode );
     }
 
@@ -961,9 +967,9 @@ static void ProcHllLinnum( void )
     SkipIdx(); // segment idx (ignored)
 
     /* Do like ProcLxData */
-    obj_offset = HllLineNumOffset;
-    DEBUG(( DBG_HLL, "ProcHllLinnum: HllLineNumOffset=%d length=%h", HllLineNumOffset, EOObjRec - ObjBuff ));
-    HllLineNumOffset += EOObjRec - ObjBuff;
+    obj_offset = st().HllLineNumOffset;
+    DEBUG(( DBG_HLL, "ProcHllLinnum: HllLineNumOffset=%d length=%h", st().HllLineNumOffset, EOObjRec - ObjBuff ));
+    st().HllLineNumOffset += EOObjRec - ObjBuff;
     snode->entry->u.leader->info |= SEGINF_LXDATA_SEEN;
     snode->info |= SEGINF_LXDATA_SEEN;
     GetObject( snode->entry, obj_offset, false );
@@ -980,8 +986,8 @@ static void LinkDirective( void )
     switch( directive ) {
     case LDIR_DEFAULT_LIBRARY:
         if( ObjBuff < EOObjRec ) {
-            priority = (lib_priority)(*ObjBuff++ - '0');
-            AddCommentLib( (char *)ObjBuff, EOObjRec - ObjBuff, priority );
+            priority = static_cast<lib_priority>( *ObjBuff++ - '0' );
+            AddCommentLib( reinterpret_cast<char *>( ObjBuff ), EOObjRec - ObjBuff, priority );
         }
         break;
     case LDIR_SOURCE_LANGUAGE:
@@ -1003,7 +1009,7 @@ static void LinkDirective( void )
         }
         break;
     case LDIR_OPT_FAR_CALLS:
-        snode = (segnode *)FindNode( SegNodes, GetIdx() );
+        snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
         snode->entry->canfarcall = true;
         snode->entry->iscode = true;
         break;
@@ -1060,7 +1066,7 @@ static void Comment( void )
         LinkState |= LS_DOSSEG_FLAG;
         break;
     case CMT_DEFAULT_LIBRARY:
-        AddCommentLib( (char *)ObjBuff, EOObjRec - ObjBuff, (lib_priority)(LIB_PRIORITY_MAX - 2) );
+        AddCommentLib( reinterpret_cast<char *>( ObjBuff ), EOObjRec - ObjBuff, static_cast<lib_priority>( LIB_PRIORITY_MAX - 2 ) );
         break;
     case CMT_LINKER_DIRECTIVE:
         LinkDirective();
@@ -1257,7 +1263,7 @@ unsigned long OMFPass1( void )
     }
     CurrMod->omfdbg = OMF_DBG_CODEVIEW; /* Assume MS style LINNUM records */
     retval = ProcObj( CurrMod->u1.source, CurrMod->location, &Pass1Cmd );
-    IterateNodelist( SegNodes, CheckUninit, NULL );
+    IterateNodelist( SegNodes, CheckUninit, nullptr );
     ResolveComdats();
     return( retval );
 }

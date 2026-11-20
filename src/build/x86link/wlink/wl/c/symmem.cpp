@@ -30,49 +30,70 @@
 ****************************************************************************/
 
 
-#include <string.h>
-#include <stdlib.h>
-#include <limits.h>
+#include <cstring>
+#include <cstdlib>
+#include <climits>
 #include "linkstd.h"
 #include "pcobj.h"
 #include "strtab.h"
 #include "carve.h"
 #include "permdata.h"
 #include "symmem.h"
+#include "run_state.hpp"
 
 
-#define ALLOC_ALIGN         sizeof( void  * )
+namespace {
 
-#define SYM_BLOCK_MIN       32
-#define SYM_BLOCK_HDR_SIZE  __ROUND_UP_SIZE( sizeof( sym_block ), ALLOC_ALIGN )
-#define SYM_BLOCK_SIZE(x)   (SYM_BLOCK_HDR_SIZE + (x))
-#define SYM_BLOCK_DATA(b,x) ((char *)(b) + SYM_BLOCK_HDR_SIZE + (x))
+constexpr std::size_t ALLOC_ALIGN = sizeof( void * );
+constexpr std::size_t SYM_BLOCK_MIN = 32;
 
-typedef struct sym_block {
-    struct sym_block    *next;       /* NOTE: this *must* be the first field */
-    size_t              size;
-//    char                block[];
-} sym_block;
+struct sym_block {
+    sym_block   *next;       /* NOTE: this *must* be the first field */
+    size_t      size;
+    //    char                block[];
+};
 
-typedef struct block_data {
-    sym_block       *list;
-    size_t          currbrk;
-} block_data;
+constexpr std::size_t SYM_BLOCK_HDR_SIZE = __ROUND_UP_SIZE( sizeof( sym_block ), ALLOC_ALIGN );
 
-static block_data Pass1Blocks;
-static block_data PermBlocks;
+inline std::size_t SymBlockSize( std::size_t x )
+{
+    return SYM_BLOCK_HDR_SIZE + x;
+}
+
+inline void *SymBlockData( sym_block *b, std::size_t x )
+{
+    return reinterpret_cast<char *>( b ) + SYM_BLOCK_HDR_SIZE + x;
+}
+
+struct block_data {
+    sym_block   *list;
+    size_t      currbrk;
+};
+
+/* the symbol table's allocation blocks, one set for a run */
+struct SymMemState {
+    block_data  pass1;
+    block_data  perm;
+};
+
+inline SymMemState &st()
+{
+    return cb_wlink::RunState::part<SymMemState>();
+}
+
+} // namespace
 
 void ResetPermBlocks( void )
 /**************************/
 /* allocate memory for symbol table allocation and code */
 {
-    PermBlocks.list = NULL;
+    st().perm.list = nullptr;
 }
 
 void ResetPass1Blocks( void )
 /***************************/
 {
-    Pass1Blocks.list = NULL;
+    st().pass1.list = nullptr;
 }
 
 static bool ShrinkBlock( block_data *block_set )
@@ -81,11 +102,11 @@ static bool ShrinkBlock( block_data *block_set )
 #ifdef __WATCOMC__
     sym_block   *block;
 
-    if( block_set->list == NULL )
+    if( block_set->list == nullptr )
         return( false );
     if( block_set->currbrk >= block_set->list->size )
         return( false );
-    block = MemReallocSafe( block_set->list, SYM_BLOCK_SIZE( block_set->currbrk ) );
+    block = static_cast<sym_block *>( MemReallocSafe( block_set->list, SymBlockSize( block_set->currbrk ) ) );
     block->size = block_set->currbrk;
     /* assuming that a shrinkage will not move the block */
   #ifdef DEVBUILD
@@ -107,11 +128,12 @@ bool PermShrink( void )
 /*********************/
 /* shrink down the current permanent allocation blocks */
 {
-    bool    ret;
+    SymMemState &state = st();
+    bool        ret;
 
-    ret = ShrinkBlock( &PermBlocks );
+    ret = ShrinkBlock( &state.perm );
     if( !ret ) {
-        ret = ShrinkBlock( &Pass1Blocks );
+        ret = ShrinkBlock( &state.pass1 );
     }
     return( ret );
 }
@@ -127,13 +149,13 @@ static void GetNewBlock( block_data *block_set, size_t size )
     if( try_ < size )
         try_ = size;
     for( ;; ) {
-        block = (sym_block *)(MemAlloc( SYM_BLOCK_SIZE( try_ ) ));
-        if( block != NULL )
+        block = static_cast<sym_block *>( MemAlloc( SymBlockSize( try_ ) ) );
+        if( block != nullptr )
             break;
         try_ /= 2;
         if( try_ < size
           || try_ < SYM_BLOCK_MIN ) {
-            LnkMsg( FTL + MSG_NO_DYN_MEM, NULL );
+            LnkMsg( FTL + MSG_NO_DYN_MEM, nullptr );
         }
     }
     block->size = try_;
@@ -150,12 +172,12 @@ static void *AllocBlock( size_t size, block_data *block_set )
 
     size = __ROUND_UP_SIZE( size, ALLOC_ALIGN );
     newbrk = block_set->currbrk + size;
-    if( block_set->list == NULL ) {
+    if( block_set->list == nullptr ) {
         GetNewBlock( block_set, size );
     } else if( newbrk > block_set->list->size ) {
         GetNewBlock( block_set, size );
     }
-    ptr = SYM_BLOCK_DATA( block_set->list, block_set->currbrk );
+    ptr = SymBlockData( block_set->list, block_set->currbrk );
     block_set->currbrk += size;
     return( ptr );
 }
@@ -163,29 +185,29 @@ static void *AllocBlock( size_t size, block_data *block_set )
 void *Pass1Alloc( size_t size )
 /*****************************/
 {
-    return( AllocBlock( size, &Pass1Blocks ) );
+    return( AllocBlock( size, &st().pass1 ) );
 }
 
 void *PermAlloc( size_t size )
 /****************************/
 /* allocate a thunk of permanently allocated memory */
 {
-    return( AllocBlock( size, &PermBlocks ) );
+    return( AllocBlock( size, &st().perm ) );
 }
 
 void BasicInitSym( symbol *sym )
 /*************************************/
 {
-    sym->hash = NULL;
-    sym->next = NULL;
-    sym->next_by_publist = NULL;
+    sym->hash = nullptr;
+    sym->next = nullptr;
+    sym->next_by_publist = nullptr;
     SET_ADDR_UNDEFINED( sym->addr );
-    sym->mod = NULL;
-    sym->p.seg = NULL;
+    sym->mod = nullptr;
+    sym->p.seg = nullptr;
     sym->info = SYM_REGULAR | SYM_IN_CURRENT;
-    sym->u.altdefs = NULL;      // this sets all union members to zero.
-    sym->e.def = NULL;          // ditto
-    sym->prefix = NULL;
+    sym->u.altdefs = nullptr;   // this sets all union members to zero.
+    sym->e.def = nullptr;       // ditto
+    sym->prefix = nullptr;
 }
 
 symbol * AddSym( void )
@@ -194,12 +216,12 @@ symbol * AddSym( void )
 {
     symbol              *sym;
 
-    sym = (symbol *)(CarveAlloc( CarveSymbol ));
+    sym = static_cast<symbol *>( CarveAlloc( CarveSymbol ) );
     BasicInitSym( sym );
-    if( LastSym != NULL )
+    if( LastSym != nullptr )
         LastSym->next = sym;
     LastSym = sym;
-    if( HeadSym == NULL )
+    if( HeadSym == nullptr )
         HeadSym = sym;
     return( sym );
 }
@@ -208,14 +230,18 @@ void ReleasePass1Blocks( void )
 /*****************************/
 /* free pass1 block allocations */
 {
-    FreeList( Pass1Blocks.list );
-    Pass1Blocks.list = NULL;
+    block_data &b = st().pass1;
+
+    FreeList( b.list );
+    b.list = nullptr;
 }
 
 void ReleasePermBlocks( void )
 /****************************/
 /* free memory used for symbol table allocation and code */
 {
-    FreeList( PermBlocks.list );
-    PermBlocks.list = NULL;
+    block_data &b = st().perm;
+
+    FreeList( b.list );
+    b.list = nullptr;
 }

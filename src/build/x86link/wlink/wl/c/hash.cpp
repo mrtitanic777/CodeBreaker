@@ -30,16 +30,15 @@
 *
 ****************************************************************************/
 
-
 #include "hash.h"
-#include <stdlib.h>
-#include <ctype.h>
-#include <string.h>
+#include <cstdlib>
+#include <cctype>
+#include <cstring>
 #include "bool.h"
 #include "debug.h"
 
 
-#define HASH_MULT   101
+static constexpr unsigned long HASH_MULT = 101;
 
 /* ----------------------------------------------------------------------- */
 pHTable CreateHTable( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
@@ -47,9 +46,9 @@ pHTable CreateHTable( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
 {
     pHTable table;
 
-    table = (pHTable)(allocFunc( sizeof( *table ) ));
-    table->tbl = (pHTElem *)(allocFunc( sizeof( table[0] ) * size ));
-    memset( table->tbl, 0, sizeof( table[0] ) * size );
+    table = static_cast<pHTable>( allocFunc( sizeof( *table ) ) );
+    table->tbl = static_cast<pHTElem *>( allocFunc( sizeof( table->tbl[0] ) * size ) );
+    std::memset( table->tbl, 0, sizeof( table->tbl[0] ) * size );
 
     table->size = size;
     table->hashFunc = hashFunc;
@@ -67,7 +66,7 @@ pHTable CreateHTableDouble( int size, pHashFunc hashFunc, pHashElemCmp compareFu
          pAllocFunc allocFunc, pFreeFunc freeFunc )
 {
     pHTable table = CreateHTable( size, hashFunc, compareFunc, allocFunc, freeFunc );
-    if( table != NULL ) {
+    if( table != nullptr ) {
         table->allowDoubles = 1;
     }
     return( table );
@@ -84,11 +83,11 @@ void *AddHTableElem( pHTable table, void *elem )
     key = table->hashFunc( elem, table->size );
 
     if( table->allowDoubles ) {
-        for( tblElem = table->tbl[key]; tblElem != NULL; tblElem = tblElem->next ) {
+        for( tblElem = table->tbl[key]; tblElem != nullptr; tblElem = tblElem->next ) {
             chainLen++;
         }
     } else {
-        for( tblElem = table->tbl[key]; tblElem != NULL; tblElem = tblElem->next ) {
+        for( tblElem = table->tbl[key]; tblElem != nullptr; tblElem = tblElem->next ) {
             chainLen++;
 
             if( cmp( elem, tblElem->userData ) == 0 ) {
@@ -97,7 +96,7 @@ void *AddHTableElem( pHTable table, void *elem )
         }
     }
 
-    tblElem = (pHTElem)(table->allocFunc( sizeof( *tblElem ) ));
+    tblElem = static_cast<pHTElem>( table->allocFunc( sizeof( *tblElem ) ) );
     tblElem->userData = elem;
     tblElem->next = table->tbl[key];
     table->tbl[key] = tblElem;
@@ -126,13 +125,13 @@ void *FindHTableElem( pHTable table, void *elem )
 
     key = table->hashFunc( elem, table->size );
 
-    for( tblElem = table->tbl[key]; tblElem != NULL; tblElem = tblElem->next ) {
+    for( tblElem = table->tbl[key]; tblElem != nullptr; tblElem = tblElem->next ) {
         if( cmp( elem, tblElem->userData ) == 0 ) {
             return( tblElem->userData );
         }
     }
 
-    return( NULL );
+    return( nullptr );
 }
 
 /* ----------------------------------------------------------------------- */
@@ -143,7 +142,7 @@ int WalkHTableElem( pHTable table, void *elem, void (*action)( void * ) )
     int key = table->hashFunc( elem, table->size );
     pHashElemCmp cmp = table->compareFunc;
 
-    for( tblElem = table->tbl[key]; tblElem != NULL; tblElem = tblElem->next ) {
+    for( tblElem = table->tbl[key]; tblElem != nullptr; tblElem = tblElem->next ) {
         if( cmp( elem, tblElem->userData ) == 0 ) {
             action( tblElem->userData );
             numElem++;
@@ -159,12 +158,12 @@ void WalkHTableCookie( pHTable table, void (*action)( void *, void *), void *coo
     pHTElem     *tblPtr = table->tbl;
     pHTElem     tblElem;
 
-    if( action == NULL ) {
+    if( action == nullptr ) {
         return;
     }
 
     for( i = 0; i < table->size; i++ ) {
-        for( tblElem = tblPtr[i]; tblElem != NULL; tblElem = tblElem->next ) {
+        for( tblElem = tblPtr[i]; tblElem != nullptr; tblElem = tblElem->next ) {
             action( tblElem->userData, cookie );
         }
     }
@@ -177,12 +176,12 @@ void WalkHTable( pHTable table, void (*action)( void * ) )
     pHTElem     *tblPtr = table->tbl;
     pHTElem     tblElem;
 
-    if( action == NULL ) {
+    if( action == nullptr ) {
         return;
     }
 
     for( i = 0; i < table->size; i++ ) {
-        for( tblElem = tblPtr[i]; tblElem != NULL; tblElem = tblElem->next ) {
+        for( tblElem = tblPtr[i]; tblElem != nullptr; tblElem = tblElem->next ) {
             action( tblElem->userData );
         }
     }
@@ -198,7 +197,7 @@ void RehashHTable( pHTable table )
 
     tbl = table->tbl;
     for( i = 0; i < table->size; i++ ) {
-        for( pelem = &tbl[i]; *pelem != NULL; ) {
+        for( pelem = &tbl[i]; *pelem != nullptr; ) {
             elem = *pelem;
             hash = table->hashFunc( elem->userData, table->size );
             if( i != hash ) {
@@ -206,7 +205,7 @@ void RehashHTable( pHTable table )
                 elem->next = tbl[hash];
                 tbl[hash] = elem;
             } else {
-                if( *pelem == NULL )
+                if( *pelem == nullptr )
                     break;
                 pelem = &((*pelem)->next);
             }
@@ -222,7 +221,7 @@ void ZapHTable( pHTable table, void (*zapElemAction)( void * ) )
     pHTElem     tblElem, temp;
     pFreeFunc   free;
 
-    if( table == NULL ) {
+    if( table == nullptr ) {
         return;
     }
 
@@ -230,8 +229,8 @@ void ZapHTable( pHTable table, void (*zapElemAction)( void * ) )
     free = table->freeFunc;
 
     for( i = 0; i < table->size; i++ ) {
-        for( tblElem = tblPtr[i]; tblElem != NULL; tblElem = temp ) {
-            if( zapElemAction != NULL ) {
+        for( tblElem = tblPtr[i]; tblElem != nullptr; tblElem = temp ) {
+            if( zapElemAction != nullptr ) {
                 zapElemAction( tblElem->userData );
             }
             temp = tblElem->next;
@@ -268,40 +267,41 @@ unsigned StringHashFunc( char *s, unsigned size )
 
     key = key & (size - 1);
 
-    return( key );
+    return( static_cast<unsigned>( key ) );
 }
 
 /* ----------------------------------------------------------------------- */
 unsigned StringiHashFunc( void *_s, unsigned size )
 {
-    char            *s = (char *)(_s);
+    const unsigned char *s = static_cast<const unsigned char *>( _s );
     unsigned long   key = 0;
     unsigned        i;
 
     for( i = 0; s[i] != 0; i++ ) {
-        key += toupper( ((unsigned char *)s)[i] );
+        key += std::toupper( s[i] );
         key *= HASH_MULT;
     }
 
     key = key & (size - 1);
 
-    return( key );
+    return( static_cast<unsigned>( key ) );
 }
 
 /* ----------------------------------------------------------------------- */
 unsigned DataHashFunc( void *data, unsigned n, unsigned size )
 {
+    const char      *bytes = static_cast<const char *>( data );
     unsigned long   key = 0;
     unsigned        i;
 
     for( i = 0; i < n; i++ ) {
-        key += ((char*)data)[i];
+        key += bytes[i];
         key *= HASH_MULT;
     }
 
     key = key & (size - 1);
 
-    return( key );
+    return( static_cast<unsigned>( key ) );
 }
 
 /* ----------------------------------------------------------------------- */
@@ -320,7 +320,7 @@ void CollectHTableDistribution( pHTable table, unsigned *stat )
 
     for( i = 0; i < table->size; i++ ) {
         n = 0;
-        for( tblElem = tblPtr[i]; tblElem != NULL; tblElem = tblElem->next ) {
+        for( tblElem = tblPtr[i]; tblElem != nullptr; tblElem = tblElem->next ) {
             n++;
         }
         stat[i] = n;

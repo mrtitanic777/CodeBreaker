@@ -45,28 +45,36 @@
 #include "objpass2.h"
 #include "ring.h"
 #include "omfreloc.h"
+#include "run_state.hpp"
 
 
-typedef struct bakpatlist {
-    struct bakpatlist   *next;
+struct bakpat_list {
+    bakpat_list         *next;
     unsigned_16         len;
     segdata             *sdata;
     byte                loctype;
     bool                is32bit;
     char                data[1];
-} bakpat_list;
+};
 
-static bakpat_list      *BakPats;
+namespace {
 
-#define MAX_THREADS 4
+constexpr unsigned MAX_THREADS = 4;
 
-static frame_spec       FrameThreads[MAX_THREADS];
-static target_spec      TargThreads[MAX_THREADS];
+struct OMFRelocState {
+    bakpat_list     *BakPats = nullptr;
+    frame_spec      FrameThreads[MAX_THREADS] = {};
+    target_spec     TargThreads[MAX_THREADS] = {};
+};
+
+inline OMFRelocState &st() { return cb_wlink::RunState::part<OMFRelocState>(); }
+
+}
 
 void ResetOMFReloc( void )
 /************************/
 {
-    BakPats = NULL;
+    st().BakPats = nullptr;
 }
 
 static void GetFrame( unsigned method, frame_spec *frame )
@@ -79,13 +87,13 @@ static void GetFrame( unsigned method, frame_spec *frame )
 
     switch( method ) {
     case FRAME_SEG:
-        snode = (segnode *)FindNode( SegNodes, GetIdx() );
+        snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
         frame->u.sdata = snode->entry;
         frame->type = FIX_FRAME_SEG;
         break;
     case FRAME_GRP:
-        group = (grpnode *) FindNode( GrpNodes, GetIdx() );
-        if( group->entry == NULL ) {
+        group = static_cast<grpnode *>( FindNode( GrpNodes, GetIdx() ) );
+        if( group->entry == nullptr ) {
             frame->type = FIX_FRAME_FLAT;
         } else {
             frame->u.group = group->entry;
@@ -93,7 +101,7 @@ static void GetFrame( unsigned method, frame_spec *frame )
         }
         break;
     case FRAME_EXT:
-        ext = (extnode *) FindNode( ExtNodes, GetIdx() );
+        ext = static_cast<extnode *>( FindNode( ExtNodes, GetIdx() ) );
         if( IS_SYM_IMPORTED( ext->entry ) ) {
             frame->type = FIX_FRAME_TARG;
         } else {
@@ -126,17 +134,17 @@ static void GetTarget( unsigned method, target_spec *target )
 
     switch( method ) {
     case TARGET_SEG:
-        snode = (segnode *)FindNode( SegNodes, GetIdx() );
+        snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
         target->u.sdata = snode->entry;
         target->type = FIX_TARGET_SEG;
         break;
     case TARGET_GRP:
-        group = (grpnode *) FindNode( GrpNodes, GetIdx() );
+        group = static_cast<grpnode *>( FindNode( GrpNodes, GetIdx() ) );
         target->u.group = group->entry;
         target->type = FIX_TARGET_GRP;
         break;
     case TARGET_EXT:
-        ext = (extnode *) FindNode( ExtNodes, GetIdx() );
+        ext = static_cast<extnode *>( FindNode( ExtNodes, GetIdx() ) );
         target->u.sym = ext->entry;
         target->type = FIX_TARGET_EXT;
         break;
@@ -152,6 +160,7 @@ void DoRelocs( void )
 /**************************/
 /* Process FIXUP records. */
 {
+    OMFRelocState &state = st();
     fix_type    fixtype;
     unsigned    typ;
     offset      location;
@@ -162,7 +171,7 @@ void DoRelocs( void )
     if( ObjFormat & OBJ_FMT_IGNORE_FIXUPP )
         return;
     if( ObjFormat & OBJ_FMT_IS_LIDATA ) {
-        LnkMsg( WRN+LOC_REC+MSG_REL_IN_LIDATA, NULL );
+        LnkMsg( WRN+LOC_REC+MSG_REL_IN_LIDATA, nullptr );
         return;
     }
     do {
@@ -221,7 +230,7 @@ void DoRelocs( void )
              * frame processing
              */
             if( typ & FIXDAT_FTHREAD ) {
-                frame = FrameThreads[( typ >> 4 ) & 3];
+                frame = state.FrameThreads[( typ >> 4 ) & 3];
             } else {
                 GetFrame( ( typ >> 4 ) & 7, &frame );
             }
@@ -229,7 +238,7 @@ void DoRelocs( void )
              * target processing
              */
             if( typ & FIXDAT_TTHREAD ) {
-                target = TargThreads[typ & 3];
+                target = state.TargThreads[typ & 3];
             } else {
                 GetTarget( typ & 3, &target );
             }
@@ -253,10 +262,10 @@ void DoRelocs( void )
              */
             if( typ & 0x40 ) {
                 /*  frame */
-                GetFrame( (typ >> 2) & 7, &FrameThreads[typ & 3] );
+                GetFrame( (typ >> 2) & 7, &state.FrameThreads[typ & 3] );
             } else {
                 /*  target */
-                GetTarget( (typ >> 2) & 3, &TargThreads[typ & 3] );
+                GetTarget( (typ >> 2) & 3, &state.TargThreads[typ & 3] );
             }
         }
     } while( ObjBuff < EOObjRec );
@@ -276,7 +285,7 @@ static void StoreBakPat( segdata *sdata, byte loctype )
     bkptr->sdata = sdata;   /* We don't know the data offset yet. */
     bkptr->is32bit = (ObjFormat & OBJ_FMT_32BIT_REC) != 0;
     memcpy( bkptr->data, ObjBuff, len );
-    AppendList( (void **)&BakPats, bkptr );
+    AppendList( reinterpret_cast<void **>( &st().BakPats ), bkptr );
 }
 
 void ProcBakpat( void )
@@ -286,7 +295,7 @@ void ProcBakpat( void )
     segnode             *snode;
     byte                loctype;
 
-    snode = (segnode *)FindNode( SegNodes, GetIdx() );
+    snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
     if( snode->info & SEGINF_DEAD )
         return;
     loctype = *ObjBuff++;
@@ -307,7 +316,7 @@ void DoBakPats( void )
     unsigned_32         value32;
     virt_mem            vmemloc;
 
-    for( bkptr = BakPats; bkptr != NULL; bkptr = next ) {
+    for( bkptr = st().BakPats; bkptr != nullptr; bkptr = next ) {
         next = bkptr->next;
         data = bkptr->data;
         off = 0;
@@ -348,7 +357,7 @@ void DoBakPats( void )
         }
         MemFree( bkptr );
     }
-    BakPats = NULL;
+    st().BakPats = nullptr;
 }
 
 void ProcNbkpat( void )
