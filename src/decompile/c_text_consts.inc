@@ -62,6 +62,7 @@ typedef unsigned char xunknown1; typedef unsigned short xunknown2; typedef unsig
 typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsigned short undefined2;
 typedef unsigned long undefined4; typedef unsigned char bool; typedef unsigned long float4;
 typedef int2 __cdecl code();                    /* (a convention named: Watcom's own would pass the arguments in registers) */
+typedef int4 __cdecl code4();                   /* a call through a pointer whose DX:AX the caller keeps (a far pointer, a long) */
 typedef int2 __stdcall code_callee_pops();      /* a call through a pointer whose callee removes its arguments */
 #define true 1
 uint2 codebreaker_ss(void);

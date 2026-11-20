@@ -300,6 +300,8 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
     const describe::Code16 code(d.image);
     std::map<Va, std::pair<std::size_t, std::size_t>> words;   // the fewest and the most words a call of it removes
     std::map<Va, std::size_t> deferred;   // the most words a call that leaves its words on the stack pushes right before it
+    struct Site { Va here, caller, target; std::size_t passed; bool far; };
+    std::vector<Site> sites;              // each call that says how many words it passed
     auto cs_of = [&](Va linear) -> std::optional<Va> {
         auto it = a.functions.upper_bound(static_cast<std::uint32_t>(linear));
         if (it == a.functions.begin()) return std::nullopt;
@@ -341,6 +343,9 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
         }
         const auto [w, first] = words.try_emplace(*target, passed, passed);
         if (!first) w->second = {std::min(w->second.first, passed), std::max(w->second.second, passed)};
+        if (passed != 0)
+            if (auto caller = a.functions.upper_bound(static_cast<std::uint32_t>(here)); caller != a.functions.begin())
+                sites.push_back({here, static_cast<Va>((--caller)->first), *target, passed, length == 5});
     }
     for (const auto& [target, pushed] : deferred) words.try_emplace(target, pushed, pushed);   // (only such calls: what they push)
     for (std::string& line : d.lines) {
@@ -358,6 +363,12 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
         // (the result: four bytes, when describe_dos found them)
         line = std::format("F\t{}\t{}\t0\t{}\t{}\t{}", f[1], f[2], f[4], f.size() == 6 ? f[5] : std::string_view(), text::join(sizes, ","));
     }
+    // a call of a function its callers pass different words (`...`) passes the words it removes: an `O` line for the call, as
+    // the Win16 route has one -- the decompiler counting the pushes on its own missed one made before another call (C1's
+    // do_define pushed new_body_node's seventh word before read_identifier, and the call came out with six)
+    for (const Site& site : sites)
+        if (const auto w = words.find(site.target); w != words.end() && w->second.first != w->second.second)
+            d.lines.push_back(std::format("O\t{}\t{}\t{}\t__cdecl16{}", hex(site.here), hex(site.caller), site.passed * 2, site.far ? "far" : "near"));
     d.write();
 }
 

@@ -341,6 +341,34 @@ std::string ctd_volatile_joined(const std::string& signature, const std::set<std
     return signature.substr(0, open + 1) + list + signature.substr(close);
 }
 
+// A word of the caller's stack the function reads past the arguments its prototype names (`int2 in_stack_00000010;`: the
+// word 10h above the return address, a variadic function's seventh -- C1's new_body_node handed it on to its allocator):
+// that word, through SS at the entry SP, not a local nothing sets. The declarations go; a #define before the function says
+// where each is (`names`: #undef after it).
+CtdFrame ctd_caller_stack(const std::string& body) {
+    CtdFrame out{body, {}, {}};
+    std::string b;
+    for (const std::string_view line : text::lines(body)) {
+        const std::string_view t = ctd_trim(line);
+        if (line.starts_with("  ") && t.ends_with(';') && t.find_first_of("=(*[") == std::string_view::npos) {
+            const std::string name = ctd_declared(t.substr(0, t.size() - 1));
+            if (name.starts_with("in_stack_") && name.size() == 17 && std::all_of(name.begin() + 9, name.end(), ctd_hex)) {
+                const std::string type(ctd_trim(t.substr(0, t.size() - 1 - name.size())));
+                const auto off = std::stoul(name.substr(9), nullptr, 16);
+                out.defines += std::format("\n#define {} (*({} __far *)codebreaker_far(codebreaker_ss(),(uint2)(codebreaker_entry_sp() + 0x{:x})))", name, type, off);
+                out.names.push_back(name);
+                continue;
+            }
+        }
+        b += line;
+        b += '\n';
+    }
+    if (out.names.empty()) return out;
+    if (!body.ends_with('\n') && !b.empty()) b.pop_back();
+    out.body = std::move(b);
+    return out;
+}
+
 CtdFrame ctd_stack_frame(const std::string& body, const std::set<std::string>& joined) {
     CtdFrame out{body, {}, {}};
     bool taken = std::any_of(joined.begin(), joined.end(), [](const std::string& j) { return j.find("Stack_") != std::string::npos; });
@@ -1286,6 +1314,23 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         out += f.body.substr(at);
         f.body = std::move(out);
     }
+    for (CtdFunction& f : fns) {   // (C1's match_flag kept a callback's far pointer, its segment cut to FFFF by `code`'s int2)
+        std::map<std::string, std::string> types;
+        for (const std::string_view line : text::lines(f.body)) {
+            const std::string_view t = ctd_trim(line);
+            if (!line.starts_with("  ") || !t.ends_with(';') || t.find_first_of("=(") != std::string_view::npos) continue;
+            const std::string var = ctd_declared(t.substr(0, t.size() - 1));
+            types[var] = std::string(ctd_trim(t.substr(0, t.size() - 1 - var.size())));
+        }
+        for (std::size_t k = f.body.find(" = (*("); k != std::string::npos; k = f.body.find(" = (*(", k + 1)) {
+            std::size_t b = k;
+            while (b > 0 && ctd_word(f.body[b - 1])) --b;
+            const auto ty = types.find(f.body.substr(b, k - b));
+            if (ty == types.end() || ctd_bytes(ty->second) != 4) continue;
+            for (const std::string_view cast : {std::string_view("(*(code *)"), std::string_view("(*((code __far *)")})
+                if (f.body.compare(k + 3, cast.size(), cast) == 0) f.body.replace(k + 3 + cast.find("code"), 4, "code4");
+        }
+    }
     std::set<std::string> ram, helpers, kept_long;
     for (const CtdFunction& f : fns) {   // (`xVar3 = check_binary_operands(` with xVar3 four bytes: the callee's result is)
         std::map<std::string, std::string> types;
@@ -1323,12 +1368,50 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
                 helpers.insert(std::string(id));
         }
     }
+    // (the width a body gives it: `pxStack_8 = &xRam00028e91;` with pxStack_8 an `xunknown1 *` -- C1's scan_number wrote the
+    // digits of a number there a byte at a time, and a word-wide name cleared the next digit with each)
+    std::map<std::string, std::string> ram_type;
+    for (const CtdFunction& f : fns) {
+        std::map<std::string, std::string> types;
+        for (const std::string_view line : text::lines(f.body)) {
+            const std::string_view t = ctd_trim(line);
+            if (!line.starts_with("  ") || !t.ends_with(';') || t.find_first_of("=(") != std::string_view::npos) continue;
+            const std::string var = ctd_declared(t.substr(0, t.size() - 1));
+            types[var] = std::string(ctd_trim(t.substr(0, t.size() - 1 - var.size())));
+        }
+        for (const std::string& name : ram)
+            for (std::size_t k = f.body.find(" = &" + name); k != std::string::npos; k = f.body.find(" = &" + name, k + 1)) {
+                if (k + 4 + name.size() < f.body.size() && ctd_word(f.body[k + 4 + name.size()])) continue;
+                std::size_t b = k;
+                while (b > 0 && ctd_word(f.body[b - 1])) --b;
+                const auto ty = types.find(f.body.substr(b, k - b));
+                if (ty != types.end() && ty->second.ends_with('*') && !ty->second.ends_with("* *"))
+                    ram_type.try_emplace(name, std::string(ctd_near_off(ctd_trim(std::string_view(ty->second).substr(0, ty->second.size() - 1)))));
+            }
+    }
+    const CtdSegments ram_segments = ctd_segment_names(layout);
+    const auto place_of = [](const std::string& name) {
+        const std::uint64_t value = std::stoull(name.substr(name.find("Ram") + 3), nullptr, 16);
+        return value > 0xFFFFF ? (value >> 16) * 16 + (value & 0xFFFF) : value;   // (linear)
+    };
+    std::set<std::uint64_t> places;
+    for (const std::string& name : ram) places.insert(place_of(name));
+    for (const std::string& name : ram)   // (one with another at the very next byte is a byte: 28E9:0000 beside 28E9:0001)
+        if (name.front() == 'x' && !ram_type.contains(name) && places.contains(place_of(name) + 1)) ram_type[name] = "xunknown1";
     for (const std::string& name : ram) {
         const std::size_t ram_at = name.find("Ram");
-        const std::uint32_t linear = static_cast<std::uint32_t>(std::stoul(name.substr(ram_at + 3), nullptr, 16));
+        const std::uint64_t value = std::stoull(name.substr(ram_at + 3), nullptr, 16);
+        // (eight digits past 1 MB are a segment and an offset, `xRam28e90000` 28E9:0000; else an address, `xRam00028e91`)
+        const bool segmented = value > 0xFFFFF;
+        const std::uint32_t seg = segmented ? static_cast<std::uint32_t>(value >> 16) : static_cast<std::uint32_t>(value >> 4);
+        const std::uint32_t off = segmented ? static_cast<std::uint32_t>(value & 0xFFFF) : static_cast<std::uint32_t>(value & 15);
         const char kind = name.front();
-        const std::string type = kind == 'b' ? "uint1" : kind == 'c' ? "char" : kind == 'i' ? "int2" : kind == 'u' ? "uint2" : "xunknown2";
-        defines += std::format("#define {} (*({} __far *)codebreaker_far(0x{:x}, 0x{:x}))   /* {:05X}h */\n", name, type, linear >> 4, linear & 15, linear);
+        std::string type = kind == 'b' ? "uint1" : kind == 'c' ? "char" : kind == 'i' ? "int2" : kind == 'u' ? "uint2" : "xunknown2";
+        if (const auto given = ram_type.find(name); given != ram_type.end() && kind == 'x') type = given->second;
+        std::string segment = std::format("0x{:x}", seg);
+        if (ram_segments.data && seg == *ram_segments.data) segment = "codebreaker_ds()";
+        else if (const auto n = ram_segments.names.find(seg); n != ram_segments.names.end()) segment = "CODEBREAKER_SEG(" + n->second + ")";
+        defines += std::format("#define {} (*({} __far *)codebreaker_far({}, 0x{:x}))   /* {:04X}:{:04X} */\n", name, type, segment, off, seg, off);
     }
 
     // the whole: the title, the header, the program's declarations, then the functions
@@ -1401,7 +1484,8 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         for (const std::string_view id : ctd_identifiers(f.body))
             if (id.size() >= 2 && id.starts_with('_') && declared.contains(std::string(id.substr(1))) && !declared.contains(std::string(id)))
                 joined.insert(std::string(id));
-        const CtdFrame frame = ctd_stack_frame(ctd_segment_registers(f.body), joined);
+        const CtdFrame above = ctd_caller_stack(ctd_segment_registers(f.body));
+        const CtdFrame frame = ctd_stack_frame(above.body, joined);
         r.frames += frame.names.empty() ? 0 : 1;
         // (the pointer's type as the body gives it, `_a1 = (char *)CONCAT22(a2,...)`: read through as a word, `*_a1 == '\0'`
         // compared two bytes where the original compared one -- C1's strchr, sub_18CE7)
@@ -1417,10 +1501,12 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
             return "xunknown2 *";
         };
         for (const std::string& j : joined) out += "\n#define " + j + " (*(" + joined_type(j) + "*)&" + j.substr(1) + ")";
+        out += above.defines;
         out += frame.defines;
         out += "\n" + ctd_volatile_joined(f.signature, joined) + "\n" + frame.body;
         for (const std::string& j : joined) out += "#undef " + j + "\n";
         for (const std::string& n : frame.names) out += "#undef " + n + "\n";
+        for (const std::string& n : above.names) out += "#undef " + n + "\n";
         if (!file_of.empty()) {
             if (!file_texts.contains(here)) file_order.push_back(here);
             file_texts[here] += out.substr(text_at);
