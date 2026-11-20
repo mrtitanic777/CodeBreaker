@@ -85,9 +85,14 @@ cli::Command switch_tables_command(const Environment& environment) {
             analysed.replace_extension(".analysed.toml");
             if (out.has_parent_path()) fs::make_dirs(out.parent_path());
 
-            // XenonAnalyse's tables for the bctr the finder leaves unresolved; where it cannot be had the finder's alone are written
+            // XenonAnalyse's tables for the bctr the finder leaves unresolved; where it cannot be had the finder's alone are written. It
+            // reads the basic form only (an encrypted or compressed module would be read as garbage, past its end), so it is given
+            // one written from this file, whatever form it is in.
             std::optional<std::string> with_analysed;
-            const xenon_engine::Run analysis = xenon_engine::analyse({fs::to_text(stdfs::absolute(xex)), fs::to_text(stdfs::absolute(analysed))});
+            const fs::ScopedTempDir scratch("cb-switch-tables");
+            const stdfs::path basic = scratch.path() / "basic.xex";
+            formats::xex::write_basic(tools_of(environment.config), xex, basic);
+            const xenon_engine::Run analysis = xenon_engine::analyse({fs::to_text(basic), fs::to_text(stdfs::absolute(analysed))});
             std::error_code ec;
             if (analysis.code == 0 && stdfs::is_regular_file(analysed, ec)) {
                 with_analysed = fs::read_text(analysed);

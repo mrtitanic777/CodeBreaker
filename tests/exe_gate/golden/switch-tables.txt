@@ -1,5 +1,6 @@
 exit: 0
 --- stdout
 --- files
+s.analysed.toml 121 54f2c15bfbc1572237bb5072127fc78b4d24c4cdbf61c9e9505c22e57a3b1ec9
 s.toml 74607 e79c72a76f06d872712a2408fb704357e007e5e649bc187f73f2a844ebf98143
 --- stderr (not compared)
