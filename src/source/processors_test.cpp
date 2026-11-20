@@ -113,6 +113,8 @@ CB_TEST("source.processors.the_one_assembler_rebuilds_what_the_one_disassembler_
     // labels: a branch to a label defined further on (the first pass guesses it)
     const Image loop = assemble_described(find("z80"), "\tLD A,0x12\nloop:\n\tDEC A\n\tJR NZ,loop\n\tJP done\ndone:\n\tRET\n", ".");
     CB_CHECK(loop.data == (Bytes{0x3E, 0x12, 0x3D, 0x20, 0xFD, 0xC3, 0x08, 0x00, 0xC9}));
+    // a forward label after a word of the description's own (the condition NZ, the register HL): the label is the unknown word
+    CB_CHECK(assemble_described(find("z80"), "\tJR NZ,ahead\n\tLD HL,ahead\nahead:\n\tRET\n", ".").data == (Bytes{0x20, 0x03, 0x21, 0x05, 0x00, 0xC9}));
     // the SM83's CPL is not CP L (texts that differ only by a space between two words)
     CB_CHECK(assemble_described(find("sm83"), "\tCPL\n\tCP L\n", ".").data == (Bytes{0x2F, 0xBD}));
 });

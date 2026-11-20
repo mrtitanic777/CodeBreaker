@@ -6,10 +6,9 @@
 #include <format>
 #include <set>
 
-#include "build/z80_asm.hpp"
 #include "core/fs.hpp"
-#include "core/text.hpp"
 #include "source/isa.hpp"
+#include "source/z80_source.hpp"
 
 namespace cb::source::z80_writer {
 
@@ -21,8 +20,6 @@ namespace {
 constexpr iw::Spelling kSub{"sub_", 4};
 constexpr iw::Spelling kLocal{"L_", 4};
 constexpr iw::Spelling kData{"D_", 4};
-const iw::DataSyntax kSyntax{.bytes = "DEFB", .fill = "DEFS", .fill_separator = ","};
-
 bool port_access(const z80::Insn& insn) { return insn.pattern == "OUT (n),A" || insn.pattern == "IN A,(n)"; }
 
 // Flow runs through the block, in a 64 KB memory with the block at its origin.
@@ -72,16 +69,8 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const z80::Insn& insn) const override { return insn.size; }
-    std::string text(const z80::Insn& insn) const override {
-        std::string t = z80::text(insn, names_);
-        if (t.starts_with(".db ")) t = "DEFB " + t.substr(4);   // bytes an assembler would not write so (z80::text), in this syntax
-        if (port_access(insn) && insn.value_count > 0) {
-            const auto named = ports_.find(static_cast<std::uint32_t>(insn.values[0]));
-            if (named != ports_.end()) t = text::replace_all(t, std::format("(${:02X})", insn.values[0]), "(" + named->second + ")");
-        }
-        return t;
-    }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::string text(const z80::Insn& insn) const override { return z80_source::code(insn, names_, ports_); }   // (the description's text, the names put in)
+    std::vector<std::string> data_lines(ByteView data) const override { return z80_source::data_lines(data); }
 
 private:
     const Block& block_;
@@ -137,31 +126,35 @@ iw::Written write(const Block& block, const Machine& machine, const std::filesys
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker", stem)};
     for (const std::string& line : block.header) head.push_back("; " + line);
     head.push_back("");
-    translate::l2::Assembly out(head, "sjasmplus", std::string(stem));
-    for (const auto& [port, name] : used_ports) out.append(std::format("{:<16} EQU ${:02X}", name, port));
-    for (const auto& [address, name] : used_names) out.append(std::format("{:<16} EQU ${:04X}", name, address));
+    translate::l2::Assembly out(head, "sleigh-z80", std::string(stem));
+    for (const auto& [port, name] : used_ports) out.append(z80_source::equ(name, port, 2));
+    for (const auto& [address, name] : used_names) out.append(z80_source::equ(name, address, 4));
     if (!used_ports.empty() || !used_names.empty()) out.append("");
-    out.append(std::format("        ORG ${:04X}", origin));
+    out.append(std::format("        .org 0x{:04x}", origin));
     decompile::AddressLabels names_for_text;   // the labels and the fixed addresses: a fixed address wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
     for (const auto& [a, name] : used_names) names_for_text[a] = name;
+    std::set<std::uint32_t> fixed;
+    for (const auto& entry : used_names) fixed.insert(entry.first);
+    iw::Names early;   // (labels the assembler's first pass meets before their lines: defined once here, see z80_source::forward_reference)
+    for (const auto& entry : code) {
+        if (const auto a = z80_source::forward_reference(entry.second, names_for_text, fixed)) early[*a] = names_for_text.at(*a);
+    }
+    if (!early.empty()) {
+        out.append("; read ahead of their lines (behind a register the assembler's first pass takes them for unknown names)");
+        for (const auto& [a, name] : early) out.append(z80_source::equ(name, a, 4));
+        out.append("");
+    }
 
     BlockListing listing(block, code, names_for_text, used_ports);
     iw::emit<z80::Insn>(out, origin, end, labels, functions, listing);
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, std::string(stem) + ".asm", source, functions, iw::code_bytes(code, flow), block.image.size());
 
-    const build::z80_asm::Assembler assembler(isa::z80_encoder());
-    std::uint32_t placed = 0;
+    // (the one directive layer says where the first byte stands only through the `.org` this writer put first)
     const std::optional<Bytes> built = iw::assembled(
-        r,
-        [&] {
-            build::z80_asm::Assembler::Flat flat = assembler.build_flat(source, folder);
-            placed = flat.start;
-            return std::move(flat.bytes);
-        },
-        block.image, std::nullopt, "block",
-        [&](ByteView made) { return placed == origin && made.size() == block.image.size() && std::equal(made.begin(), made.end(), block.image.begin()); });
+        r, [&] { return z80_source::assemble(source, folder); }, block.image, std::nullopt, "block",
+        [&](ByteView made) { return made.size() == block.image.size() && std::equal(made.begin(), made.end(), block.image.begin()); });
     if (built) r.built_image = *built;
     return r;
 }

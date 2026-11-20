@@ -1,7 +1,7 @@
 // source/cpc_writer.hpp -- an Amstrad CPC program (a disk's binary, an AMSDOS file or a snapshot's RAM) as assembly source that builds back into it.
 //
 //     image_writer::Written r = cpc_writer::reconstruct("game.dsk", "out");
-//     r.source                  game.asm (sjasmplus / pasmo syntax: ORG ...)
+//     r.source                  game.asm (the Z80 SLEIGH description's syntax: .org, .equ, .byte)
 //     r.same                    the source, built, is the program block byte for byte
 //
 // Written through source/z80_writer from the program's execution address (a snapshot's program counter), with the firmware's names: a call to

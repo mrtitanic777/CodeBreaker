@@ -1,62 +1,53 @@
 ; demo.asm -- written by CodeBreaker from demo.sms
 ; Master System, 32 KB ROM
+; 2 pages of 16 KB: page 0 is seen at $0000, page 1 at $4000, every later page at $8000
+; (Z80 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu z80 --sleigh`)
 
-.MEMORYMAP
-SLOTSIZE $4000
-DEFAULTSLOT 2
-SLOT 0 $0000
-SLOT 1 $4000
-SLOT 2 $8000
-.ENDME
+.equ VDP_DATA, 0xbe
+.equ VDP_CONTROL, 0xbf
+.equ MAPPER_SLOT0, 0xfffd
 
-.ROMBANKMAP
-BANKSTOTAL 2
-BANKSIZE $4000
-BANKS 2
-.ENDRO
+; read ahead of their lines (behind a register the assembler's first pass takes them for unknown names)
+.equ D_0120, 0x0120
 
-.DEFINE VDP_DATA         $BE
-.DEFINE VDP_CONTROL      $BF
-.DEFINE MAPPER_SLOT0     $FFFD
-
-.BANK 0 SLOT 0
-.ORG $0000
+; page 0 in slot 0
+        .org 0x0000
 
 reset:
         DI
         IM 1
         JP L_0080
-        .DSB 50,$FF
+        .space 50, 0xff
 
 irq:
         EI
         RETI
-        .DSB 43,$FF
+        .space 43, 0xff
 
 nmi:
         RETN
-        .DSB 24,$FF
+        .space 24, 0xff
 L_0080:
-        LD HL,$C000
-        LD A,$01
+        LD HL,0xc000
+        LD A,0x1
         OUT (VDP_CONTROL),A
         CALL sub_0100
         LD (MAPPER_SLOT0),A
         LD HL,D_0120
 L_0090:
         JP L_0090
-        .DSB 109,$FF
+        .space 109, 0xff
 
 sub_0100:
-        LD A,$00
+        LD A,0x0
         OUT (VDP_DATA),A
         RET
-        .DSB 27,$FF
+        .space 27, 0xff
 D_0120:
-        .DB "HELLO WORLD"
-        .DSB 16085,$FF
+        .ascii "HELLO WORLD"
+        .space 16085, 0xff
 
-.BANK 1 SLOT 1
-.ORG $0000
-        .DSB 16384,$FF
+; page 1 in slot 1
+        .org 0x4000
+        .space 16384, 0xff
 

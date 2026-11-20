@@ -56,9 +56,9 @@ CB_TEST("source.z80_writer.the_golden_names_what_the_code_touches", [] {
     // Read for what it says: the machine's port and system variable are defined and used by name, the entry keeps its name, a pointer
     // loaded into HL is a data label, the bytes after code that the flow does not reach are data.
     const std::string text = golden("z80.golden.asm");
-    for (const char* line : {"; ZX Spectrum demo", "; 64 bytes at $8000", "ULA              EQU $FE", "LAST_K           EQU $5C08", "        ORG $8000",
+    for (const char* line : {"; ZX Spectrum demo", "; 64 bytes at $8000", ".equ ULA, 0xfe", ".equ LAST_K, 0x5c08", "        .org 0x8000",
                              "start:", "        CALL sub_8010", "        LD HL,D_8020", "        OUT (ULA),A", "        JP start", "sub_8010:",
-                             "        LD (LAST_K),A", "D_8020:", "        DEFB \"HELLO\"", "        DEFS 27,$00"}) {
+                             "        LD (LAST_K),A", "D_8020:", "        .ascii \"HELLO\"", "        .space 27, 0x00"}) {
         CB_CHECK(text.find(line) != std::string::npos);
     }
 });
@@ -74,8 +74,8 @@ CB_TEST("source.z80_writer.a_machine_names_only_what_the_code_uses", [] {
     CB_CHECK(source.find("KEMPSTON") == std::string::npos && source.find("FLAGS") == std::string::npos && source.find("CLS") == std::string::npos);
     const image_writer::Written bare = write(b, Machine{}, dir.path() / "bare", "demo");   // no names at all: numbers, and it still builds back
     CB_CHECK(bare.same);
-    CB_CHECK(fs::read_text(bare.source).find("        LD ($5C08),A") != std::string::npos);
-    CB_CHECK(fs::read_text(bare.source).find("        OUT ($FE),A") != std::string::npos);
+    CB_CHECK(fs::read_text(bare.source).find("        LD (0x5c08),A") != std::string::npos);
+    CB_CHECK(fs::read_text(bare.source).find("        OUT (0xfe),A") != std::string::npos);
 });
 
 CB_TEST("source.z80_writer.a_call_makes_a_function_and_a_restart_does_not", [] {
@@ -122,7 +122,7 @@ CB_TEST("source.z80_writer.a_prefix_that_does_nothing_is_written_as_bytes", [] {
     fs::ScopedTempDir dir("cb_z80");
     const image_writer::Written r = write(b, Machine{}, dir.path(), "prefix");
     CB_CHECK(r.same);
-    CB_CHECK(fs::read_text(r.source).find("        DEFB $DD") != std::string::npos);
+    CB_CHECK(fs::read_text(r.source).find("        .byte 0xdd") != std::string::npos);
 });
 
 }  // namespace

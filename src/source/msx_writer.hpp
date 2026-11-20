@@ -1,7 +1,7 @@
 // source/msx_writer.hpp -- an MSX cartridge as assembly source that builds back into it.
 //
 //     image_writer::Written r = msx_writer::reconstruct("game.rom", "out");
-//     r.source                  game.asm (sjasmplus / pasmo syntax)
+//     r.source                  game.asm (the Z80 SLEIGH description's syntax: .org, .equ, .byte)
 //     r.same                    the source, built, is the cartridge byte for byte
 //
 // The cartridge (formats/msx) is written through source/z80_writer from its header's entry points, with the MSX's names: the VDP, PSG

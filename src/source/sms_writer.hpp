@@ -1,7 +1,7 @@
 // source/sms_writer.hpp -- a Master System / Game Gear program as assembly source that builds back into it.
 //
 //     image_writer::Written r = sms_writer::reconstruct("game.sms", "out");
-//     r.source                  game.asm (WLA-DX syntax)
+//     r.source                  game.asm (the Z80 SLEIGH description's syntax, source/z80_source: .org, .equ, .byte)
 //     r.same                    the source, built, is the cartridge image byte for byte
 //     r.functions               {address: name}
 //
@@ -11,8 +11,8 @@
 // jump targets `L_<address>`, and absolute words naming the start of a line get that line's label, so the source can be moved and
 // edited, not only rebuilt. The console's ports and the mapper's registers are written by name.
 //
-// It builds with CodeBreaker's own assembler (build/z80_asm) or with WLA-DX (`wla-z80 -o game.o game.asm && wlalink linkfile
-// game.sms`).
+// It builds with CodeBreaker's one assembler (`assemble --cpu z80 --sleigh`): the instructions are the Z80 description's text, a page
+// begins at its `.org` (the slot it is seen in), and the file is the pages in order.
 #pragma once
 
 #include <cstdint>

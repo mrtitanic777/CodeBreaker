@@ -16,7 +16,7 @@
 //
 // The sound program, the M-ROM (the Z80's, in a `.neo` container or a file of its own), is written through source/z80_writer: the fixed
 // 32 KB the Z80 runs from $0000 (`reset`, `irq` at $38, `nmi` at $66, then what they reach), the YM2610's and the 68000-link ports by name,
-// as <stem>.m1.asm in sjasmplus / pasmo syntax, and rebuilt. Its banks (the rest of a 128 KB M-ROM) are not written. A `.neo` container's
+// as <stem>.m1.asm in the Z80 SLEIGH description's syntax, and rebuilt. Its banks (the rest of a 128 KB M-ROM) are not written. A `.neo` container's
 // result says in its notes when the sound program did not rebuild; the Z80's functions are not in `functions` (their addresses are the Z80's)
 // and are not judged: there is no Neo Geo sound machine in the Z80 lanes' models.
 // It builds with CodeBreaker's own assembler (build/m68k_asm), or with asm68k / vasm.

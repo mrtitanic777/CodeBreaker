@@ -44,7 +44,11 @@ public:
         const std::string_view text = text::trim(line);
         const std::size_t mnemonic_end = std::min(text.find_first_of(" \t"), text.size());
         std::string out(text.substr(0, mnemonic_end));
-        std::optional<std::string> unknown;
+        struct Unknown {
+            std::string word;
+            std::size_t at;   // where it is in `out`
+        };
+        std::vector<Unknown> unknown;   // the words that are no label: the description's own names (registers, conditions) or labels not defined yet
         for (std::size_t k = mnemonic_end; k < text.size();) {
             if (word_start(text[k]) && (k == 0 || !word_char(text[k - 1]))) {
                 std::size_t e = k;
@@ -52,8 +56,8 @@ public:
                 const std::string word(text.substr(k, e - k));
                 if (const auto hit = labels.find(word); hit != labels.end()) out += std::format("0x{:x}", static_cast<std::uint64_t>(hit->second));
                 else {
+                    unknown.push_back({word, out.size()});
                     out += word;
-                    if (!unknown) unknown = word;
                 }
                 k = e;
             } else {
@@ -63,7 +67,13 @@ public:
         std::lock_guard hold(lock_);
         const std::vector<std::vector<std::uint8_t>> encodings = assembler_.assemble(out, static_cast<std::uint64_t>(pc));
         if (!encodings.empty()) return Bytes(encodings.front().begin(), encodings.front().end());
-        if (unknown) return Failure(build::UndefinedSymbolError(*unknown));
+        // Which unknown word is the label not defined yet? The one that, as a number, makes the line an instruction (in `JR NZ,ahead`
+        // NZ is the description's and `ahead` the label): the directive layer then guesses its value and assembles again.
+        for (const Unknown& u : unknown) {
+            std::string guess = out;
+            guess.replace(u.at, u.word.size(), std::format("0x{:x}", static_cast<std::uint64_t>(pc)));
+            if (!assembler_.assemble(guess, static_cast<std::uint64_t>(pc)).empty()) return Failure(build::UndefinedSymbolError(u.word));
+        }
         return Failure(build::AsmError(0, text, "not an instruction of the processor's description"));
     }
 

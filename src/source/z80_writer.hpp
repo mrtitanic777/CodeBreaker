@@ -3,7 +3,7 @@
 //
 //     z80_writer::Block block{.image = bytes, .origin = 0x4000, .entries = {{0x4010, "init"}}};
 //     image_writer::Written r = z80_writer::write(block, machine, "out", "game");
-//     r.source                  <stem>.asm (sjasmplus / pasmo syntax: ORG, DEFB, DEFW, DEFS, EQU)
+//     r.source                  <stem>.asm (the Z80 SLEIGH description's syntax, source/z80_source: .org, .equ, .byte, .ascii, .space)
 //     r.same                    the source, built, is the block byte for byte
 //     r.functions               {address: name}
 //     r.built_image             the block as the source builds it

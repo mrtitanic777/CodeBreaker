@@ -1,7 +1,7 @@
 // source/coleco_writer.hpp -- a ColecoVision cartridge as assembly source that builds back into it.
 //
 //     image_writer::Written r = coleco_writer::reconstruct("game.col", "out");
-//     r.source                  game.asm (sjasmplus / pasmo syntax)
+//     r.source                  game.asm (the Z80 SLEIGH description's syntax: .org, .equ, .byte)
 //     r.same                    the source, built, is the cartridge byte for byte
 //
 // The cartridge (formats/coleco) is written through source/z80_writer from the game's start address and the vectors the BIOS jumps through

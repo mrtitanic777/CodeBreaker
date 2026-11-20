@@ -6,7 +6,9 @@
 #include "core/testing.hpp"
 #include "source/gb_writer.hpp"
 #include "source/genesis_writer.hpp"
+#include "source/coleco_writer.hpp"
 #include "source/gba_writer.hpp"
+#include "source/msx_writer.hpp"
 #include "source/ps1_writer.hpp"
 #include "source/sms_writer.hpp"
 #include "source/zx_writer.hpp"
@@ -38,6 +40,14 @@ CB_TEST("source.writers.homebrew.master_system", [] {
     rebuild("sms-peterlemon/HelloWorld.sms", 3, sms_writer::reconstruct);
     rebuild("sms-peterlemon/Sprite.sms", 3, sms_writer::reconstruct);
     rebuild("sms-peterlemon/SMSAudio.sms", 3, sms_writer::reconstruct);
+});
+
+// (the SG-1000 is the Master System's lane; the MSX and the ColecoVision write a flat block)
+CB_TEST("source.writers.homebrew.z80_family", [] {
+    rebuild("sg1000-240p/suitesg.sg", 1, sms_writer::reconstruct);
+    rebuild("msx-nohzdyve/nohzdyve.rom", 1, msx_writer::reconstruct);
+    rebuild("msx-wrally/rally-demo.rom", 1, msx_writer::reconstruct);
+    rebuild("coleco-240p/suitecv.rom", 1, coleco_writer::reconstruct);
 });
 
 CB_TEST("source.writers.homebrew.game_boy_color", [] { rebuild("gb-ucity/ucity.gbc", 25, gb_writer::reconstruct); });

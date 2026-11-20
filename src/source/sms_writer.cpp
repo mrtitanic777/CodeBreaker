@@ -6,11 +6,10 @@
 #include <format>
 #include <set>
 
-#include "build/z80_asm.hpp"
 #include "core/fs.hpp"
-#include "core/text.hpp"
 #include "decompile/z80.hpp"
 #include "source/isa.hpp"
+#include "source/z80_source.hpp"
 
 namespace cb::source::sms_writer {
 
@@ -66,15 +65,8 @@ public:
         return it != code_.end() && offset + it->second.size <= end_ ? &it->second : nullptr;
     }
     std::uint32_t size(const z80::Insn& insn) const override { return insn.size; }
-    std::string text(const z80::Insn& insn) const override {
-        std::string t = z80::text(insn, names_);
-        if (port_access(insn) && insn.value_count > 0) {   // (the port is written by its name)
-            const auto named = port_names_.find(static_cast<std::uint32_t>(insn.values[0]));
-            if (named != port_names_.end()) t = text::replace_all(t, std::format("(${:02X})", insn.values[0]), "(" + named->second + ")");
-        }
-        return t;
-    }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data); }
+    std::string text(const z80::Insn& insn) const override { return z80_source::code(insn, names_, port_names_); }   // (the description's text, the names put in)
+    std::vector<std::string> data_lines(ByteView data) const override { return z80_source::data_lines(data); }
 
 private:
     const formats::sms::Rom& rom_;
@@ -166,15 +158,26 @@ iw::Written write(const formats::sms::Rom& rom, std::string_view file_name, cons
          std::format("; {}, {} KB ROM{}", formats::sms::to_string(rom.system), rom.data.size() / 1024,
                      rom.header ? std::format(", header product {} version {} ({})", rom.header->product, rom.header->version, rom.header->region)
                                 : std::string()),
-         "", ".MEMORYMAP", "SLOTSIZE $4000", "DEFAULTSLOT 2", "SLOT 0 $0000", "SLOT 1 $4000", "SLOT 2 $8000", ".ENDME", "", ".ROMBANKMAP",
-         std::format("BANKSTOTAL {}", pages), "BANKSIZE $4000", std::format("BANKS {}", pages), ".ENDRO", ""},
-        "wla-z80", std::string(file_name));
-    for (const auto& [a, name] : port_names) out.append(std::format(".DEFINE {:<16} ${:02X}", name, a));
-    for (const auto& [a, name] : constants) out.append(std::format(".DEFINE {:<16} ${:04X}", name, a));
+         std::format("; {} pages of 16 KB: page 0 is seen at $0000, page 1 at $4000, every later page at $8000", pages),
+         "; (Z80 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu z80 --sleigh`)", ""},
+        "sleigh-z80", std::string(file_name));
+    for (const auto& [a, name] : port_names) out.append(z80_source::equ(name, a, 2));
+    for (const auto& [a, name] : constants) out.append(z80_source::equ(name, a, 4));
     if (!port_names.empty() || !constants.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
     for (const auto& [a, name] : constants) names_for_text[a] = name;
+    std::set<std::uint32_t> fixed;
+    for (const auto& entry : constants) fixed.insert(entry.first);
+    iw::Names early;   // (labels the assembler's first pass meets before their lines: defined once here, see z80_source::forward_reference)
+    for (const auto& entry : code) {
+        if (const auto a = z80_source::forward_reference(entry.second, names_for_text, fixed)) early[*a] = names_for_text.at(*a);
+    }
+    if (!early.empty()) {
+        out.append("; read ahead of their lines (behind a register the assembler's first pass takes them for unknown names)");
+        for (const auto& [a, name] : early) out.append(z80_source::equ(name, a, 4));
+        out.append("");
+    }
 
     const iw::Names no_labels;
     for (std::size_t page = 0; page < pages; ++page) {
@@ -184,16 +187,15 @@ iw::Written write(const formats::sms::Rom& rom, std::string_view file_name, cons
         const std::uint32_t end = first + static_cast<std::uint32_t>(rom.page(page).size());
         const bool mapped = page <= 2 && first < limit;   // (the pages seen at power-on: where flow was followed)
         out.part(std::format("bank{}", page), "bank", std::nullopt, rom.page(page).size());
-        out.append(std::format(".BANK {} SLOT {}", page, slot));
-        out.append(".ORG $0000");
+        out.append(std::format("; page {} in slot {}", page, slot));
+        out.append(std::format("        .org 0x{:04x}", base));
         SmsListing listing(rom, base, first, end, mapped, code, names_for_text, port_names);
         iw::emit<z80::Insn>(out, first, end, mapped ? labels : no_labels, functions, listing);
         out.append("");
     }
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    const build::z80_asm::Assembler assembler(isa::z80_encoder());
-    iw::assembled(r, [&] { return assembler.build(source, folder); }, rom.data, folder / (stem + ".built" + file.extension().string()));
+    iw::assembled(r, [&] { return z80_source::assemble(source, folder); }, rom.data, folder / (stem + ".built" + file.extension().string()));
     return r;
 }
 

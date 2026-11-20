@@ -55,12 +55,12 @@ CB_TEST("source.sms_writer.the_golden_names_what_the_code_touches", [] {
     // Read for what it says: the ports and the mapper register the code uses are defined and written by name, a word loaded into HL that
     // is the start of a line has a data label, and a jump target a local label.
     const std::string text = golden("sms.golden.asm");
-    for (const char* line : {".DEFINE VDP_DATA         $BE", ".DEFINE VDP_CONTROL      $BF", ".DEFINE MAPPER_SLOT0     $FFFD", "        OUT (VDP_CONTROL),A",
+    for (const char* line : {".equ VDP_DATA, 0xbe", ".equ VDP_CONTROL, 0xbf", ".equ MAPPER_SLOT0, 0xfffd", "        OUT (VDP_CONTROL),A",
                              "        OUT (VDP_DATA),A", "        LD (MAPPER_SLOT0),A", "        LD HL,D_0120", "D_0120:", "        CALL sub_0100", "sub_0100:",
-                             "L_0090:", "        JP L_0090", "reset:", "irq:", "nmi:", ".BANK 0 SLOT 0", ".BANK 1 SLOT 1", "BANKSTOTAL 2"}) {
+                             "L_0090:", "        JP L_0090", "reset:", "irq:", "nmi:", "; page 0 in slot 0", "; page 1 in slot 1", "        .org 0x4000", "; 2 pages of 16 KB"}) {
         CB_CHECK(text.find(line) != std::string::npos);
     }
-    CB_CHECK(text.find("        LD HL,$C000") != std::string::npos);   // a RAM address is a number: not a line of the program
+    CB_CHECK(text.find("        LD HL,0xc000") != std::string::npos);   // a RAM address is a number: not a line of the program
 });
 
 CB_TEST("source.sms_writer.pages_after_the_second_are_shown_in_the_third_slot_as_data", [] {
@@ -73,8 +73,8 @@ CB_TEST("source.sms_writer.pages_after_the_second_are_shown_in_the_third_slot_as
     const image_writer::Written r = write(formats::sms::parse(image, ".sms"), "big.sms", dir.path());
     CB_CHECK(r.same);
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(source.find("BANKSTOTAL 4") != std::string::npos);
-    CB_CHECK(source.find(".BANK 3 SLOT 2") != std::string::npos);
+    CB_CHECK(source.find("; 4 pages of 16 KB") != std::string::npos);
+    CB_CHECK(source.find("; page 3 in slot 2") != std::string::npos);
     CB_CHECK_EQ(r.functions.size(), 4u);
 });
 
@@ -87,12 +87,12 @@ CB_TEST("source.sms_writer.the_game_gears_own_port_is_named_for_a_game_gear_only
     CB_CHECK(gg.same);
     const std::string gg_source = fs::read_text(gg.source);
     CB_CHECK(gg_source.find("; Game Gear, 32 KB ROM") != std::string::npos);
-    CB_CHECK(gg_source.find(".DEFINE GG_START") != std::string::npos);
+    CB_CHECK(gg_source.find(".equ GG_START, 0x00") != std::string::npos);
     CB_CHECK(gg_source.find("        IN A,(GG_START)") != std::string::npos);
     const image_writer::Written sms = write(formats::sms::parse(rom, ".sms"), "game.sms", dir.path() / "sms");
     CB_CHECK(sms.same);
     CB_CHECK(fs::read_text(sms.source).find("GG_START") == std::string::npos);   // the same bytes on a Master System are just port 0
-    CB_CHECK(fs::read_text(sms.source).find("        IN A,($00)") != std::string::npos);
+    CB_CHECK(fs::read_text(sms.source).find("        IN A,(0x0)") != std::string::npos);
 });
 
 CB_TEST("source.sms_writer.a_cartridge_header_is_said_in_the_head", [] {
